@@ -1,3 +1,4 @@
+import { DELEGATE_MESSAGE } from "@lyrica/extension";
 import type { Message, MessagePart } from "./api.ts";
 
 // Stored Pi entries as the web UI shows them, and the memory markers that both
@@ -70,6 +71,10 @@ export function toMessages(threadId: string, entries: { n: number; data: unknown
       pendingRecall = turnRecall(e.content);
       continue;
     }
+    if (e.type === "custom_message" && e.customType === DELEGATE_MESSAGE) {
+      out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "notice", parts: [delegationPart(e.content, (e as { details?: unknown }).details)] });
+      continue;
+    }
     const m = e.type === "message" ? e.message : undefined;
     if (!m) continue;
     const base = { id: `e:${threadId}#${n}`, n, createdAt };
@@ -99,6 +104,15 @@ export function toMessages(threadId: string, entries: { n: number; data: unknown
     }
   }
   return out;
+}
+
+/** What delegate delivers into a thread: a background run's result or question. */
+export function delegationPart(content: unknown, details: unknown): Extract<MessagePart, { type: "delegation" }> {
+  const d = (details ?? {}) as { runId?: unknown; status?: unknown };
+  return {
+    type: "delegation", text: textOf(content as Content),
+    ...(typeof d.runId === "string" ? { runId: d.runId } : {}), ...(typeof d.status === "string" ? { status: d.status } : {}),
+  };
 }
 
 /** A model or endpoint failure, in plain words. */
