@@ -55,9 +55,11 @@ Any of them can add `background: true`, `folders`, `readOnly: true` or
 `internet: false`.
 
 **Fork.** A task with `fork: true` starts its subagent from a copy of the
-parent's stored conversation (entry for entry, so it is compacted as the
-parent's is; the `delegate` call still waiting for its result is left out),
-then its task. The tool stores the parent's current turn first. It keeps its
+parent's stored conversation, then its task. The copy is made with
+`copyEntries`, as an export is: entry for entry, so it is compacted as the
+parent's is, each copy pointing at its original (`orig`) and not indexed
+again, so search and sleep see the conversation once. The `delegate` call
+still waiting for its result is left out. The tool stores the parent's current turn first. It keeps its
 role's tools and prompt, and the parent's pool, rules and model limits. A fork
 of a private or local-only parent is local-only itself, and stays so when
 continued. Off by default: each fork costs the whole conversation again.

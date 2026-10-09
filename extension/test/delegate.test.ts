@@ -607,6 +607,15 @@ describe("talking with subagents", () => {
     expect(forked.tools!.map((t) => t.function.name)).not.toContain("remember");
     // Without fork, it sees only its task.
     expect(JSON.stringify(subs.find((r) => told(r).includes("way B"))!.messages)).not.toContain("SPRUCE");
+    // The copies point at their originals: search finds the parent's entry once, and sleep doesn't read them again.
+    const forkThread = s.delegation.status(parent).find((r) => r.role === "worker")!.thread;
+    const said = parent.view.own.search("password SPRUCE").filter((h) => h.id.startsWith("e:"));
+    const original = said.filter((h) => h.snippet.includes("The password is SPRUCE"));
+    expect(original.map((h) => h.id)).toEqual([expect.stringMatching(new RegExp(`^e:${parent.threadId}#`))]);
+    const copied = parent.view.own.entryPage(forkThread, { limit: 1000 }).entries.length - (parent.view.own.sleepMaterial(undefined, "9999").threads.find((t) => t.id === forkThread)?.entries ?? 0);
+    expect(copied).toBeGreaterThan(0);
+    const material = parent.view.own.sleepMaterial(undefined, "9999").threads.find((t) => t.id === forkThread)!;
+    expect(Number(material.first.split("#")[1])).toBeGreaterThan(copied);
 
     // A fork of a private or local-only conversation runs on local models, now and when continued.
     s.local.respond((r) => ({ text: JSON.stringify(r.messages).includes("HEMLOCK") ? "local fork knows HEMLOCK" : "local" }));

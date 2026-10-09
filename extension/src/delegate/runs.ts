@@ -947,16 +947,18 @@ export function outcome(run: Run): string {
 
 /**
  * Copies a parent's stored conversation into a fork's new thread, entry for
- * entry, so its compaction applies as it does for the parent. A trailing
- * call still waiting for its results (the `delegate` call making the fork) is left out.
+ * entry, so its compaction applies as it does for the parent. The copies
+ * point at their originals and aren't indexed again (`copyEntries`). A
+ * trailing call still waiting for its results (the `delegate` call making the fork) is left out.
  */
 export function forkConversation(store: PoolStore, from: string, to: string): void {
-  const entries = store.loadEntries(from) as (SessionEntry & { message?: { role: string; content?: unknown } })[];
-  const answered = new Set(entries.map((e) => (e.message as { toolCallId?: string } | undefined)?.toolCallId).filter(Boolean));
-  const waiting = (e: (typeof entries)[number]) => e.type === "message" && e.message?.role === "assistant" && Array.isArray(e.message.content)
+  type Entry = { type?: string; message?: { role: string; content?: unknown; toolCallId?: string } };
+  const entries = store.entryPage(from, { limit: Number.MAX_SAFE_INTEGER }).entries as { n: number; data: Entry }[];
+  const answered = new Set(entries.map((e) => e.data.message?.toolCallId).filter(Boolean));
+  const waiting = ({ data: e }: { data: Entry }) => e.type === "message" && e.message?.role === "assistant" && Array.isArray(e.message.content)
     && (e.message.content as { type: string; id?: string }[]).some((p) => p.type === "toolCall" && !answered.has(p.id));
   while (entries.length && waiting(entries.at(-1)!)) entries.pop();
-  for (const e of entries) store.appendEntry(to, toStoredEntry(e), e.timestamp);
+  if (entries.length) store.copyEntries(from, to, { upTo: entries.at(-1)!.n });
 }
 
 /**
