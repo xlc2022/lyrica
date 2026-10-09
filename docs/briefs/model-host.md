@@ -1,0 +1,130 @@
+# Brief: Model host
+
+**Thread:** Model host. **Branch:** `feature/model-host`.
+
+**Depends on:** nothing in Lyrica. The host is its own package. Lyrica's side
+(pairing client, fallbacks, Models page) is the **Models 2** thread
+(`docs/briefs/models-2.md`), built in parallel against the API defined here.
+
+**Read first:**
+- AGENTS.md and PRINCIPLES.md;
+- DESIGN.md: "Models and endpoints", especially the model host bullets,
+  Pairing and the Models page, and "Images";
+- docs/contracts.md: `core/models`.
+
+## Goal
+
+One self-contained package that turns a Linux GPU machine, NVIDIA or AMD,
+into a model host for Lyrica. It must be easy to deploy, safe on a personal
+workstation, and manageable from Lyrica or from its own dashboard. This
+serves principles 1 and 2: Lyrica's best models live on a machine Li also
+games on, so the host has to be easy to live with and hard to misuse.
+
+## In scope
+
+1. **Layout:** a new top-level `host/` folder with its own README. The host
+   API is TypeScript on Node 22, like the rest of the project (principle 7).
+2. **The Compose stack**, with images pinned by digest:
+   - `host-api`: ours, built in CI. It is the only service with a published
+     port.
+   - `comfyui`: ours, built in CI from pinned ComfyUI and custom-node
+     commits, with a CUDA and a ROCm variant. It has no plugin manager.
+   - vLLM and llama.cpp: their official images, pinned by digest, with a
+     CUDA and a ROCm variant (and Vulkan for llama.cpp where useful).
+   - A compose profile per vendor (`nvidia`, `amd`). An `install.sh` checks
+     the GPU, the driver and the container runtime's GPU support, writes
+     `.env`, and starts the stack. Running it again upgrades in place.
+3. **Network.**
+   - The model servers sit on an internal Docker network with no route out.
+   - `host-api` joins it and publishes one port, bound to the LAN address
+     given at install, never `0.0.0.0`.
+   - An optional `tailscale` service makes the stack a tailnet device of its
+     own (the auth key comes from `.env` and is never logged), and serves the
+     dashboard over HTTPS with Tailscale's certificate.
+   - `host-api` accepts only paired clients. Any address allowlist is an
+     outer check.
+4. **Pairing**, as in DESIGN:
+   - The host makes its key and certificate at first start, and stores them
+     in its data volume, readable only by its user.
+   - **Pair with Lyrica** shows a one-time code of about 16 characters,
+     expiring after 10 minutes, on the dashboard and in the log.
+   - The client proves it knows the code, bound to both certificates as each
+     side sees them. The host pins the client's certificate.
+   - Every API call after that is mutual TLS with pinned certificates.
+   - Paired clients are listed on the dashboard and can be revoked.
+   - Specify the exact exchange in `host/PAIRING.md` and in the PR, so Models
+     2 implements the same thing.
+5. **The host API** (mutual TLS):
+   - an OpenAI-compatible `/v1` (chat completions with streaming and tools,
+     embeddings, and models), routed to the right server;
+   - an image API (create and edit) that fills **workflow templates** kept in
+     `host/workflows/`. A request names a template and gives its parameters,
+     never a workflow;
+   - management: status (GPUs, VRAM, loaded and pinned models, queue,
+     paused), load, unload, pin, GPU roles, pause, resume, restart, and
+     downloads.
+6. **VRAM**, as in DESIGN:
+   - each GPU has a role (vLLM or shared);
+   - pinned models;
+   - least-recently-used unloading of idle models, never a pinned model or
+     one in use;
+   - a priority queue per GPU (chat, then images, then background work);
+   - plain errors instead of running out of memory;
+   - each model's VRAM use is measured on first load.
+
+   It works through each server's own API: vLLM sleep and wake, llama.cpp's
+   model loading, ComfyUI's `/free`. Never the Docker socket.
+7. **Pause.** Finish the current job, unload everything, and refuse new work
+   with a clear "paused" error until resumed. The state survives a restart.
+8. **The models folder**, set on the dashboard or in `.env`:
+   - mounted read-only into the model servers;
+   - llama.cpp reads GGUF files from it directly, and ComfyUI reads it through
+     its extra model paths;
+   - downloads go into a `lyrica/` subfolder, through a one-off container
+     that has internet access, from a catalogue with pinned checksums.
+9. **The dashboard**, a small page served by `host-api` on port 7236:
+   - shows GPUs and VRAM, models, the queue, and usage statistics (counts,
+     tokens, images and time per model; never prompts, results or who asked;
+     nothing leaves the machine);
+   - controls pause, resume and restart, the models folder, downloads,
+     roles and pins, pairing and revoking;
+   - at the machine (`127.0.0.1`) it needs no login. Remotely it needs a
+     password set at first start, rate-limited, over HTTPS;
+   - it checks the Host and Origin headers.
+10. **No prompt traces.**
+    - The serving containers use the `none` log driver.
+    - ComfyUI's input, output and temp folders are `tmpfs`, metadata saving
+      is off, and history is cleared after each job.
+    - `host-api` logs carry no text.
+
+## Out of scope
+
+- Lyrica's side: Models 2.
+- Windows.
+- Training (LoRA).
+- Public internet exposure.
+
+## Done when
+
+- CI builds the images (CUDA and ROCm variants) and pins them. A no-GPU CI
+  job runs `host-api` against fake model servers.
+- Tests show that:
+  - pairing succeeds only with the right code, binds both certificates, and
+    fails against a machine in the middle;
+  - an unpaired client is refused, and a revoked one is refused;
+  - the queue respects priorities;
+  - least-recently-used unloading never touches pinned or busy models, and a
+    request that can't fit gets the plain error;
+  - pause refuses work and survives a restart;
+  - image requests accept only template names and parameters;
+  - the dashboard needs no login at `127.0.0.1`, needs one remotely, and
+    rejects a foreign Origin;
+  - no logs contain prompt text, checked with a marker string;
+  - the serving containers can't reach the internet.
+- `install.sh` runs on a clean Debian or Ubuntu machine (record it in the PR
+  if CI can't). The README explains install, pairing and the models folder.
+- `host/PAIRING.md` and the API are documented for Models 2.
+
+## Handoff notes
+
+(The thread fills this in if it stops before it's done.)

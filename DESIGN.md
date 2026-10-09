@@ -31,6 +31,10 @@ individual: her persona is the only thing users share.
   both passwords. Switching between linked users needs no password. Logging in
   as a user who isn't linked to the ones already there first ends their session
   in that browser. The menu says **Switch user**.
+- **Words in the UI.** A person's own linked users are their **personas**
+  ("Link separate persona"). Lyrica's own character is always **Lyrica's
+  persona**, as in "Changes to Lyrica's persona", so the two are never
+  confused.
 - **Logging out** keeps the user's key in memory, so sleep can run, unless that
   user turns this off in settings. **Lock** always drops it.
 - **Not protected from the operator.** Users are protected from each other in
@@ -394,6 +398,15 @@ Details in [docs/memory.md](docs/memory.md).
 - **Lineage:** each layer cites the one below it by ID, inline. "Where did this
   come from" and "what was it consolidated into" are both answered from those
   citations.
+- **About you.** Each pool has one page about its user, `p:about-user`: who
+  they are, what they prefer and dislike, and what they care about, citing the
+  notes behind it. It is loaded every turn as its own section next to WAKE,
+  with its own budget, so a stated dislike isn't forgotten in an unrelated
+  conversation.
+  - A private thread loads the private page first, then the general one if
+    there is room. A general thread loads only the general page.
+  - Sleep keeps it up to date. Until Sleep exists, the user can write it in the
+    memory browser. User edits are authoritative, as for any memory.
 - **Writes:** she saves notes without asking, one fact per note, and is told
   to save liberally. Sleep reports how many notes it had to catch up on, which
   shows whether she's noting too little. Pages change only during sleep. Every
@@ -434,9 +447,20 @@ Details in [docs/sleep.md](docs/sleep.md).
 - **Skipping:** sleep skips a user whose key isn't available, or a pool whose
   endpoint is offline, and tries again at the next due time. Nothing is lost.
   The next sleep just covers a longer period.
-- **Dreams:** she may bring them up in conversation, as her persona inclines
-  her to.
-- **UI:** a **Sleep** section in the sidebar shows what she did each night.
+- **What she'd like to raise** after a night (a thought from the dream, a
+  question from consolidation, a persona suggestion) never opens a
+  conversation by itself.
+  - Each becomes an item in the **Sleep** section of the sidebar, with a
+    badge. **Start a chat** opens a new thread in that pool where she begins
+    with it. Items can also be dismissed.
+  - WAKE is orientation only: where things stand and what's in motion. It
+    holds no dream content, so a new thread doesn't open with her dreams.
+  - Dreams still come up naturally. When a conversation touches something she
+    dreamt about, recall brings the dream back and she may mention it ("I
+    dreamt about something like this last night"). She just never opens a
+    new thread with it.
+- **UI:** the **Sleep** section in the sidebar shows these items, and what she
+  did each night.
 
 ## Persona
 
@@ -580,12 +604,22 @@ Details in [docs/sleep.md](docs/sleep.md).
   PRINCIPLES, this document and the contracts, and keeps coding to a minimum.
 - **Feature threads** are separate Claude Code sessions tagged `project:lyrica`:
   Core, Memory, Workspace, Models, Delegation, Daemon, Web UI, Sleep,
-  Integrations, Model host and Images.
+  Integrations, Model host, Models 2 and Images.
   - Each works from a brief in `docs/briefs/` on its own branch and ends with a
     pull request.
   - No more than two or three are active at once.
   - Sessions hand off through the repo (briefs, docs, PR descriptions), never
     through chat transcripts.
+- **The cheapest model that does the job well.** Before starting a thread or
+  subagent, judge how hard the task is.
+  - Work that builds or reviews a boundary (privacy, cloud, sandbox, keys,
+    authentication) uses the strongest model.
+  - Small, well-specified work uses a cheaper model: copy changes, a UI page
+    from a finished mockup, a mechanical refactor, running checks.
+  - A cheaper model gets a complete prompt: the files to touch, the exact
+    change, how to check it, and what to leave alone.
+  - Checks that need no judgement (test runs, screenshots) are done directly,
+    without a subagent.
 - Contributor rules for everyone, including other models and later Lyrica, are
   in [AGENTS.md](AGENTS.md).
 
