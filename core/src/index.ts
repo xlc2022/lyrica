@@ -9,4 +9,5 @@ export * from "./store/pool.ts";
 export * from "./store/memory.ts";
 export { citationsIn, kindOf, splitId, type Kind } from "./store/refs.ts";
 export * from "./models/index.ts";
+export * from "./delegation.ts";
 export * from "./workspace/index.ts";

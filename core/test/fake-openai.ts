@@ -4,6 +4,8 @@ import { afterEach } from "vitest";
 
 /** What the fake answers to one chat request: text, a tool call, or an HTTP error. */
 export type Reply = { text: string } | { tools: { name: string; args: unknown; id?: string }[] } | { status: number };
+/** Picks the reply from the request, and may take its time. */
+export type Responder = (chat: ChatRequest) => Reply | Promise<Reply>;
 
 export interface ChatRequest { model: string; messages: { role: string; content?: unknown; tool_calls?: unknown }[]; tools?: { function: { name: string } }[]; stream?: boolean }
 
@@ -13,17 +15,18 @@ afterEach(async () => { await Promise.all(servers.splice(0).map((s) => new Promi
 /**
  * A small OpenAI-compatible server on 127.0.0.1: GET /v1/models and streaming
  * POST /v1/chat/completions. It records every chat request. Replies come from
- * the queue, then `fallback`.
+ * the queue, then the responder, then a default text.
  */
 export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; label?: string } = {}) {
   const requests: ChatRequest[] = [];
-  const queue: Reply[] = [];
+  const queue: (Reply | Responder)[] = [];
+  let responder: Responder | undefined;
   const label = opts.label ?? "fake";
   let modelLists = 0;
   const server = createServer((req, res) => {
     let body = "";
     req.on("data", (c) => (body += c));
-    req.on("end", () => {
+    req.on("end", async () => {
       if (req.method === "GET" && req.url === "/v1/models") {
         modelLists++;
         res.writeHead(200, { "content-type": "application/json" });
@@ -32,7 +35,8 @@ export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; lab
       if (req.method !== "POST" || req.url !== "/v1/chat/completions") { res.writeHead(404); return res.end(); }
       const chat = JSON.parse(body) as ChatRequest;
       requests.push(chat);
-      const reply = queue.shift() ?? { text: `ok from ${label}` };
+      const next = queue.shift() ?? responder ?? { text: `ok from ${label}` };
+      const reply = typeof next === "function" ? await next(chat) : next;
       if ("status" in reply) { res.writeHead(reply.status, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: { message: "scripted failure" } })); }
       const base = { id: "chatcmpl-1", object: "chat.completion.chunk", created: 0, model: chat.model };
       const delta = "text" in reply
@@ -53,7 +57,9 @@ export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; lab
   return {
     baseUrl: `http://127.0.0.1:${port}/v1`,
     requests,
-    reply: (...r: Reply[]) => { queue.push(...r); },
+    reply: (...r: (Reply | Responder)[]) => { queue.push(...r); },
+    /** Answers every request the queue doesn't. */
+    respond: (fn: Responder) => { responder = fn; },
     get modelLists() { return modelLists; },
   };
 }
