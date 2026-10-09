@@ -129,14 +129,28 @@ nothing else. No code path gives a general view a private handle.
 | Area | Methods |
 |---|---|
 | Threads | `create({ parent?, unlogged? })`, `list({ includeHidden })`, `get`, `setHidden`, `setUnlogged`, `appendEntry`, `loadEntries`, `forget` |
-| Notes | `add`, `get`, `update(author)`, `archive`, `delete` |
-| Pages | `index()` (titles and summaries), `get`, `put(author)` (sleep only), `delete`, `forFolders(paths)` |
-| WAKE and journal | `getWake`, `putWake`, `addJournal`, `listJournal` |
+| Notes | `add`, `get`, `edit(author)`, `archive`, `delete` |
+| Pages | `index()` (titles and summaries), `get`, `put` (sleep), `edit(author)` (owner), `delete`, `forFolders(paths)` |
+| WAKE and journal | `getWake`, `putWake(author)`, `addJournal`, `editJournal(author)`, `listJournal` |
 | Search | `search(query, { kinds, limit })`, returning `{ id, kind, snippet, score }` |
 | Lineage | `cameFrom(id)`, `usedIn(id)`, `revisions(id)`, `isTombstoned(entryId)` |
 | Sleep | `watermark()`, `recordSleepRun(run)`, `listSleepRuns()` |
 
 Authors are `lyrica`, `sleep` or `user:<id>`.
+
+**Editing.** Every `edit` stores a revision. `restore(id, revisionId, author)`
+brings back an earlier version as a new revision. Each edit:
+- keeps or creates mention tokens: the input is stored form, or `{user}`
+  placeholders;
+- re-derives citations;
+- updates the search index in the same transaction.
+
+Sleep reads `editedSince(watermark)` so it can treat user edits as
+authoritative.
+
+**Owner view.** `openOwnerView(userId)` gives the signed-in user read and write
+access to both of their own pools, for the memory browser and `lyrica mem`.
+It is never passed to the extension, a Pi session or sleep.
 
 **Pages can describe folders.** A page has an optional `folders` list of host
 paths or SSH locations. Sleep sets it. `forFolders(paths)` returns the pages

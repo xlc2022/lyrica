@@ -38,22 +38,31 @@ is the main failure to test against.
    - Also: `supersedes`, `archive`, `delete` (removes text and revisions,
      leaves a text-free tombstone), and `revisions` with authors.
    - Every read goes through `render`.
-4. **Pages, WAKE and journal storage.**
+4. **Editing.** `edit` for notes, pages, WAKE and the journal, as the user
+   (owner view) or as Lyrica:
+   - every edit is a revision with its author, and `restore` brings back an
+     earlier version;
+   - stored mention tokens survive edits, and `{user}` is accepted;
+   - citations and the search index update in the same transaction;
+   - `editedSince(watermark)` is ready for sleep;
+   - `openOwnerView(userId)` serves the memory browser and is never handed to
+     a session.
+5. **Pages, WAKE and journal storage.**
    - Tables and store methods, including page `folders` and `forFolders`.
    - Sleep writes them later. This thread only needs `index()`, `get`, WAKE
      reads and `forFolders` working, plus test fixtures.
-5. **Search.**
+6. **Search.**
    - FTS5 inside the encrypted databases, over notes, pages and entries. Tool
      outputs are indexed in truncated form.
    - Entries written unlogged are never indexed.
    - A private view searches both pools. A general view searches general only.
    - Names in a query use `queryTokens`, searched as word OR token.
-6. **Lineage.** The `citations` table is derived from inline citations.
+7. **Lineage.** The `citations` table is derived from inline citations.
    Provide `cameFrom`, `usedIn`, and `isTombstoned(entryId)` for sleep.
-7. **Deletion levels:** archive, delete a memory, forget a thread (with notes
+8. **Deletion levels:** archive, delete a memory, forget a thread (with notes
    whose only sources were in it, tombstones, and flagged pages), and forget
    by search (the bulk helper).
-8. **Extension.**
+9. **Extension.**
    - Fill in `memorySections`. WAKE, the page index and pages for the
      thread's `folders()` go in the system-prompt sections. Recall hits for
      the current message go in the per-turn message.
@@ -62,7 +71,7 @@ is the main failure to test against.
      `{user}` for the person you're talking with, no subject pronoun form.
    - In an unlogged thread, `remember` isn't offered, and the prompt says the
      thread isn't being remembered.
-9. **Developer bench.** `lyrica dev` opens a real general-pool view in the
+10. **Developer bench.** `lyrica dev` opens a real general-pool view in the
    development runtime and records entries, so `remember` and `recall`
    work across bench sessions.
 
@@ -98,6 +107,9 @@ is the main failure to test against.
   - deletion removes text and revisions, leaves a text-free tombstone, and
     flags citing pages;
   - "Li-ion" and name searches both work;
+  - an edit keeps mention tokens, updates citations and search, and can be
+    restored from its revisions;
+  - an owner view can't be passed to a session;
   - nothing in memory appears as plaintext on disk.
 - On the bench, a fact she `remember`s in one session comes back through
   automatic recall in a new session. Use pi-ai's fake model if no real model

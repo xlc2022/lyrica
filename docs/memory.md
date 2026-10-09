@@ -175,9 +175,11 @@ follows the same local/cloud rules as every other model call.
     reports how many. A count that stays high means she is noting too little
     in conversation, which is a signal to adjust her instructions;
   - the continuity evals include "was it noted at all?" scenarios.
-- Pages change only during sleep. See [sleep.md](sleep.md).
-- Each change to a note or page keeps the previous text in `revisions`, with
-  an author of `lyrica`, `sleep` or `user:<id>`.
+- In conversation, Lyrica writes only notes. Pages change during sleep, or
+  when a user edits them. See [sleep.md](sleep.md) and
+  [Editing memories](#editing-memories).
+- Each change to a note, page, WAKE or journal entry keeps the previous text
+  in `revisions`, with an author of `lyrica`, `sleep` or `user:<id>`.
 
 Model-facing memory tools: `remember`, `recall`, `read_memory`. That's three of the
 eight-tool budget.
@@ -244,19 +246,50 @@ A **tombstone** holds no text: only the deleted item's ID, its kind, when it was
 deleted, who deleted it, and the IDs of its source entries. Its one job is to
 stop sleep from re-extracting a deleted fact from a thread that still exists.
 
+## Editing memories
+
+Users can edit any of their memories: notes, pages, WAKE and the journal, in
+both pools.
+
+- **Every edit is a revision.** The previous text is kept, with the author
+  (`user:<id>`, `lyrica` or `sleep`) and the time. Any earlier version can be
+  restored, which is itself recorded as a new revision. Deleting a memory
+  still removes all of its revisions.
+- **Edits keep name tokens.** The editor shows each mention of a user as a
+  chip with their current name, and saves it as the token. Typing `{user}`
+  also works. Saving never turns a token into plain text, so a later rename
+  still applies.
+- **Lineage follows the text.** Citations are read from the edited text, so
+  adding or removing a citation updates "came from" and "used in". The search
+  index is refreshed at the same moment.
+- **Sleep respects edits.** At the next sleep, Lyrica sees which pages and
+  notes a user edited since she last slept. She treats those edits as
+  authoritative:
+  - she builds on them and doesn't revert them;
+  - if newer conversation contradicts an edit, she asks rather than
+    overwriting it.
+- **Lyrica's own corrections** go through `remember` with `supersedes`, so the
+  old note stays in history. She doesn't edit pages in conversation; sleep
+  does.
+
 ## The memory browser
 
 The web UI gets a memory browser:
 
-- A search box and filters by pool and layer (note, page, WAKE, journal).
+- A search box and filters by pool and layer (note, page, WAKE, journal). The
+  **Show general** and **Show private** checkboxes apply here too.
 - An item view: the text; **Came from** (cited sources, linking into the
-  thread); **Used in** (pages and WAKE that cite it); and its revisions.
+  thread); **Used in** (pages and WAKE that cite it); and its revisions, with
+  differences and a restore button.
 - Edit, archive and delete, recorded as the user who made the change.
+- The browser works through an **owner view**: the signed-in user's own
+  general and private pools, read and write. An owner view never goes into a
+  conversation or a model's context. Those use thread views only.
 
-Until the browser exists, a small CLI (`lyrica mem search|show|delete`) covers
-review, and users can ask Lyrica to correct a memory in conversation. There is no
-CLI editing, because opening a memory in `$EDITOR` would write decrypted text
-to a file.
+Until the browser exists, `lyrica mem search|show|edit|delete` covers review.
+`edit` reads the new text at the terminal prompt, never through a temporary
+file, so decrypted text doesn't touch disk. Users can also ask Lyrica to
+correct a memory in conversation.
 
 ## Guarantees, in one sentence
 
