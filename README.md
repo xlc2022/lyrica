@@ -7,7 +7,7 @@ start with [AGENTS.md](AGENTS.md). The design lives in
 [PRINCIPLES.md](PRINCIPLES.md) and [DESIGN.md](DESIGN.md). The memory
 design is in [docs/memory.md](docs/memory.md).
 
-Lyrica runs for one person, Xu, on one server. Each of Xu's personas is a separate
+Lyrica runs for one person, Li, on one server. Each of Li's personas is a separate
 user whose memory is encrypted with that user's own key. Encryption protects
 data at rest: anyone with root access while a user is unlocked can read that
 user's data, and anything sent to a cloud model is outside our control.

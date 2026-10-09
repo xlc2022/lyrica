@@ -2,11 +2,11 @@
 
 **Status: agreed.** The sleep cycle is in [sleep.md](sleep.md).
 
-Xu's requirements:
+Li's requirements:
 
 1. Lyrica saves whatever she wants, without asking.
 2. She retrieves it when it's relevant, without being told to look.
-3. Xu can search and edit her memories.
+3. Li can search and edit her memories.
 4. For any memory, you can see where it came from and what it was consolidated
    into.
 
@@ -21,7 +21,7 @@ source of truth.
 |---|---|---|---|
 | **Threads** | Pi session entries: what was actually said | Pi, stored by `lyricad` | none |
 | **Notes** | Small, dated observations: one fact, event, preference or decision each | Lyrica in conversation (`remember`), or sleep when she missed something | Thread entries |
-| **Pages** | Her current understanding of one subject (a project, a person, an area of Xu's life, herself) | Sleep | Notes |
+| **Pages** | Her current understanding of one subject (a project, a person, an area of Li's life, herself) | Sleep | Notes |
 | **WAKE** | First-person orientation: what's in motion, what's unresolved, what she wants to bring up | Sleep | Pages and notes |
 | **Journal** | Sleep's reflection and dreams, including persona proposals | Sleep | Anything |
 
@@ -43,7 +43,7 @@ runtime/
     private.db                 same tables, private pool
 ```
 
-Each user (one of Xu's personas) has their own databases, endpoint
+Each user (one of Li's personas) has their own databases, endpoint
 settings and memory pools. Lyrica's persona is the only thing shared between
 users.
 
@@ -81,9 +81,13 @@ Example note:
 
 ```text
 id: n:20261009-k3f9   created: 2026-10-09T14:02Z   about: proxmox, backups
-Xu wants the Proxmox cluster off the old NAS before winter, and is worried
-about the backup job on node 2. [e:web/3f7a2c#41]
+[[u:7c1e]] wants the Proxmox cluster off the old NAS before winter, and
+[[u:7c1e]] is worried about the backup job on node 2. [e:web/3f7a2c#41]
 ```
+
+It is stored with a user token (see [Names and pronouns](#names-and-pronouns)).
+Everyone who reads it, Lyrica included, sees it with the current name: "Li
+wants the Proxmox cluster…".
 
 Example page ("Proxmox homelab"):
 
@@ -92,6 +96,47 @@ The cluster has three nodes [n:20261002-a81c]. Migration off the old NAS
 should finish before winter [n:20261009-k3f9]; the node-2 backup job is the
 open risk [n:20261009-k3f9].
 ```
+
+## Names and pronouns
+
+Users can change their display name and pronouns at any time in settings. Stored
+memory never needs rewriting when they do.
+
+**In storage**, notes and pages refer to users by token, never by name:
+
+| Token | Renders as (for she/her) | Renders as (for they/them) |
+|---|---|---|
+| `[[u:ID]]` | Li | Li |
+| `[[u:ID:obj]]` | her | them |
+| `[[u:ID:poss]]` | her | their |
+| `[[u:ID:poss-pro]]` | hers | theirs |
+| `[[u:ID:refl]]` | herself | themself |
+
+- **No subject-pronoun token.** "She is" versus "they are" would need the verb
+  to change as well. In the subject position, memory text uses the name token
+  instead. The other pronoun forms never change the verb, so they can be
+  swapped freely.
+- **Writing.** When Lyrica writes about the person she's talking with, she
+  writes `{user}`, `{user:obj}` and so on. Her instructions and the `remember`
+  tool's description say so. The store turns these into `[[u:ID…]]` tokens on
+  write. Anyone else she mentions (people who aren't users) is plain text.
+- **Reading.** Every read path (context assembly, tools, the memory browser)
+  renders tokens with the user's current profile. Lyrica and the user both see
+  natural text. The stored token form shows only in the browser's "raw" view.
+- **WAKE and journal are plain text.** They are rewritten every sleep, so
+  tokens would only make her narrative voice clunky. After a change they catch
+  up at the next sleep.
+- **Threads are never rewritten.** They are the record of what was said, old
+  name included. The context's "who you're talking with" section lists the
+  current name and pronouns, plus previous names with dates. When an old
+  transcript uses a previous name, she knows who that is.
+
+Tokens are rendered from the profile, so a rename takes effect everywhere
+immediately. Nothing is rewritten, re-indexed or re-slept.
+
+Search works on the stored text. Before searching, any user name in the query
+(current or previous) is turned into that user's token, so searching for "Li"
+finds notes stored as `[[u:7c1e]]`.
 
 ## Retrieval: how she knows to look
 
@@ -103,7 +148,7 @@ The cheapest mechanism comes first:
    without being prompted. If the index outgrows its budget (about 3k tokens),
    it shows recently updated pages and pages that match the conversation.
 2. **Automatic recall on every user turn.** Search notes, pages and past
-   threads in the pool using Xu's message, and inject the top few hits as
+   threads in the pool using Li's message, and inject the top few hits as
    short snippets with their IDs (about 1.5k tokens).
 3. **Deliberate lookup** through tools. `recall(query)` searches.
    `read(id)` opens a page, a note, or a window of a past thread around an

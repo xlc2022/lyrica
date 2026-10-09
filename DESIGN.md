@@ -9,8 +9,8 @@ of earlier choices are listed under [History](#history) so they aren't relitigat
 
 ## Who Lyrica is for
 
-Lyrica is one continuous companion for Xu, running on a server Xu administers.
-Xu talks to her through several **personas**. Each persona is a separate
+Lyrica is one continuous companion for Li, running on a server Li administers.
+Li talks to her through several **personas**. Each persona is a separate
 **user** with its own password, its own encrypted databases, its own endpoint
 and model settings, and its own memory. To Lyrica, each user is a different
 relationship. She is still one individual: her persona is the only thing users
@@ -23,6 +23,12 @@ share.
   - edit global settings such as the sleep time and the endpoint list.
 - Accounts stay minimal: local users, Argon2id password hashes and a web login
   cookie. No identity providers or roles beyond administrator.
+- **Names and pronouns.** Each user has a login name, a display name and
+  pronouns. Users can change their display name and pronouns at any time in
+  settings, and previous names are kept with dates. The first user is **Li**.
+  Memory refers to users by token rather than by name, so a change never
+  requires rewriting memories (see
+  [docs/memory.md](docs/memory.md#names-and-pronouns)).
 - No memory crosses between users. A one-way "may read" link between users can
   be added later if it's missed.
 
@@ -158,7 +164,7 @@ Details in [docs/sleep.md](docs/sleep.md).
 - **Integrations:** Google Calendar, iCloud and CalDAV (which covers Nextcloud)
   for calendars; files, notes, downloads and email for sorting. Each sits behind
   a common adapter interface, and they don't all need to be connected at first.
-- **Much later:** managing computer systems such as Xu's Proxmox deployment,
+- **Much later:** managing computer systems such as Li's Proxmox deployment,
   once she has proven reliable and sensitive data can be kept on local models.
 
 ## Runtime
@@ -206,7 +212,7 @@ new evidence.
     forgetting receipts.
 - **Plain files in git → encrypted SQLite (2026-10-09).** Readable markdown in
   a repository wasn't private enough.
-- **No accounts → personas as users (2026-10-09).** Xu's personas need
+- **No accounts → personas as users (2026-10-09).** Li's personas need
   separate credentials and fully separate data.
 - **"Spaces" → users with general and private pools (2026-10-09).** This is
   simpler than per-space flags, and private reading general is safe because
