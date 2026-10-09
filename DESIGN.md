@@ -178,12 +178,21 @@ Details in [docs/sleep.md](docs/sleep.md).
   process. All interfaces go through it, with the same extension, and it is the
   only process that writes Lyrica's databases.
 - **She works like a coding agent.** She has Pi's `read`, `write`, `edit` and
-  `bash`, but they never run inside `lyricad`. Each operation goes to a
-  bubblewrap sandbox that sees only the directories granted to the thread, or
-  to a named SSH target. See [docs/workspace.md](docs/workspace.md), which is
-  still a proposal.
+  `bash`, but they never run inside `lyricad`. Details are in
+  [docs/workspace.md](docs/workspace.md).
+  - Each operation goes either to a bubblewrap sandbox, which sees only the
+    folders granted to the thread, or to a named SSH target.
+  - An administrator decides which folders each user may grant, with separate
+    lists for the general and private pools.
+  - Shared drives (Samba, NFS) are host mounts, granted like any other folder.
+  - Each user has an encrypted home workspace (gocryptfs) for uploads and
+    working files, unlocked with that user's key.
+  - In private threads, tools have no internet unless the user's setting
+    allows it. It is off by default.
 - **Deployment:** `lyricad` runs as a systemd service, in practice inside an
-  LXC container or VM on Li's Proxmox. No Docker.
+  LXC container or VM on Li's Proxmox. No Docker. The host needs bubblewrap,
+  gocryptfs, FUSE and unprivileged user namespaces. In an LXC container, that
+  means turning on the nesting and FUSE features.
 - **One command, `lyrica`**, written in TypeScript like the rest of the
   project:
 
@@ -214,7 +223,7 @@ Details in [docs/sleep.md](docs/sleep.md).
 - **The design thread** (the "Agent harness design principles" session) owns
   PRINCIPLES, this document and the contracts, and keeps coding to a minimum.
 - **Feature threads** are separate Claude Code sessions tagged `project:lyrica`:
-  Core, Memory, Models, Web, Sleep and Integrations.
+  Core, Memory, Workspace, Models, Web, Sleep and Integrations.
   - Each works from a brief in `docs/briefs/` on its own branch and ends with a
     pull request.
   - No more than two or three are active at once.
@@ -251,5 +260,7 @@ new evidence.
 - **Local-only scope narrowed for general threads (2026-10-09).** In a general
   thread, local-only covers that conversation's own model calls, not its later
   memory.
-- **Tool budget raised from 6 to 8 (2026-10-09)** to leave room for web
-  research next to memory, delegation and the integrations.
+- **Tool budget raised from 6 to 8, then to 30 (2026-10-09).** First to make
+  room for web research, then because Lyrica works like a coding agent (files,
+  commands, SSH). The budget still exists so that every tool has to justify
+  itself.

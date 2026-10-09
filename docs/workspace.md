@@ -1,6 +1,6 @@
 # Workspaces: files, commands and remote machines
 
-**Status: proposal for discussion.**
+**Status: agreed.**
 
 Lyrica works like a coding agent. She can read, write and edit files, run
 commands, work on remote machines over SSH, reach shared drives, and work with
@@ -11,16 +11,29 @@ files a user uploads. She must not touch anything she wasn't given.
 Lyrica uses Pi's standard `read`, `write`, `edit` and `bash` tools. Pi lets each
 tool's file and process operations be swapped for another backend
 (`createReadTool(cwd, { operations })` and so on). Lyrica's versions send every
-operation to an **execution target**. Nothing runs inside `lyricad` or as its
-operating-system user.
+operation to an **execution target**. Nothing runs inside `lyricad`'s process.
 
 That matters because `lyricad` holds the unlocked keys in memory and owns the
-database files. A command running as the same user could read both.
+database files. A command that could see either one could read everything.
 
 | Target | What it is | How she is confined |
 |---|---|---|
-| **Sandbox** (default) | Commands run on the Lyrica host as an unprivileged `lyrica-tools` user inside bubblewrap. | Only the directories granted to the thread are mounted, read-only or read-write. Lyrica's runtime directory, other users' files and `lyricad`'s process don't exist inside the sandbox. Network access follows the thread's rules (below). |
-| **SSH** | A named remote machine. Its key is stored in the user's encrypted settings. | She is confined by the remote account's own permissions, which is why each target should use a dedicated account. An optional root path limits `read`, `write` and `edit`. If SSH fails, the action fails: it **never** falls back to running locally. |
+| **Sandbox** (default) | Each command runs on the Lyrica host inside bubblewrap. | The sandbox is described below. |
+| **SSH** | A named remote machine. | She is confined by the remote account's own permissions, so each target should use a dedicated account. An optional root path limits `read`, `write` and `edit`. If SSH fails, the action fails: it **never** falls back to running locally. |
+
+**The sandbox:**
+- It runs with every namespace unshared (mount, process, user, IPC, network),
+  plus `--die-with-parent`.
+- Only the thread's granted directories and a minimal read-only system are
+  mounted. Lyrica's runtime directory, other users' files, and `lyricad`'s
+  process and credentials don't exist inside it.
+- It runs as `lyricad`'s own service user, isolated by namespaces, so no root
+  or privileged helper is needed. Because the sandbox has its own process
+  namespace, it can't see `lyricad` at all, let alone read its memory.
+
+**SSH targets** use an in-process SSH library (`ssh2`). Each private key is
+stored in the user's encrypted settings and handed to the library in memory,
+so it never touches disk, and no system `ssh` agent is involved.
 
 ## Grants: what she may touch
 
@@ -38,24 +51,35 @@ database files. A command running as the same user could read both.
 - **Her own code.** Later, when she edits her own code, her repository checkout
   is simply another grant.
 
-## Uploads
+## The home workspace and uploads
 
-- A file uploaded in the web UI goes into the thread's `uploads/` folder,
-  inside the user's **home workspace**. Every thread can read its own uploads.
+- Each user has an encrypted **home workspace**: a gocryptfs folder whose key
+  is derived from the user's data key. It is mounted when the user's key
+  becomes available (at login, or at startup if credentials are saved) and
+  unmounted when the key is dropped. Every thread gets its own folder inside
+  it.
+- A file uploaded in the web UI goes into the thread's `uploads/` folder in the
+  home workspace.
 - An uploaded file is a file, not a memory. She notes what matters from it, as
   with anything else she reads.
-- **At-rest encryption (proposed):** each user's home workspace is a gocryptfs
-  folder, unlocked with that user's key at login and locked when the user's key
-  is dropped. Files are then as protected as the user's memory, while tools
-  still see ordinary files inside the sandbox.
+- **Granted host paths outside the home workspace are ordinary files.** Their
+  protection is whatever the host gives them.
 
 ## Network access from tools
 
-| Thread | Default network for `bash` and fetches |
-|---|---|
-| General | Allowed |
-| General, local-only | Allowed. Local-only governs model calls, not tool traffic. |
-| Private | **Off**, except the custom model endpoint and explicitly listed LAN hosts or SSH targets. Otherwise a `curl` could send private content to the internet. |
+- **General threads:** tools have network access. Local-only governs model
+  calls, not tool traffic.
+- **Private threads:** a setting controls tools' internet access, and it is
+  **off by default**.
+  - The user sets a default for their private pool, and each private thread
+    can override it.
+  - When it is off, the sandbox has no network at all (`--unshare-net`).
+  - SSH targets still work, because `lyricad`'s SSH client reaches them, not
+    the sandbox.
+  - Model calls also come from `lyricad`, not from tools.
+  - The reason: otherwise a `curl` command could send private content to the
+    internet.
+  - An allowlist of LAN hosts can be added later if it's needed.
 
 ## Approval
 
@@ -64,23 +88,24 @@ freely by default, following the principle that the harness should trust her
 judgment and make review easy. Each thread has a **permission mode**:
 - **Ask before commands**
 - **Ask before changes**
-- **Auto** (the default for sandbox grants)
+- **Auto** (the default)
 
 Anything irreversible that leaves the server, such as sending a message,
 deleting remote data or spending money, always asks.
 
-## Tool budget
+## Tools
 
-These are four more tools: `read`, `write`, `edit` and `bash`. Pi's `grep`,
-`find` and `ls` are left out, because `bash` covers them. The total becomes 12:
+`read`, `write`, `edit` and `bash`. Pi's `grep`, `find` and `ls` can be added
+inside the 30-tool budget if `bash` turns out not to be enough. The memory tool
+is `read_memory`, so it doesn't clash with `read`.
 
-| Group | Tools |
-|---|---|
-| Files and commands | `read`, `write`, `edit`, `bash` |
-| Memory | `remember`, `recall`, `read_memory` |
-| Delegation | `delegate` |
-| Integrations | `calendar`, `sort` |
-| Research | `web_search`, `web_fetch` |
+## Host requirements
 
-The memory tool `read` becomes `read_memory`, so it doesn't clash with Pi's
-file `read`.
+The machine running `lyricad` needs:
+- bubblewrap;
+- gocryptfs;
+- FUSE (`/dev/fuse` and `fusermount3`);
+- unprivileged user namespaces.
+
+In a Proxmox LXC container, turn on the **nesting** and **FUSE** features. A
+VM needs nothing special.

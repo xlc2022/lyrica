@@ -153,15 +153,14 @@ The extension is created with a `ThreadContext`:
   routed topic addenda, WAKE, page index, recall hits, time since last talk,
   and "who you're talking with": the user's current display name, pronouns,
   and previous names with dates. Each section has a size budget.
-- **Tools** (at most 8 in total; see principle 8):
+- **Tools** (budget: 30; see principle 8):
+  - `read`, `write`, `edit` and `bash` (Workspace thread; see
+    [workspace.md](workspace.md));
   - `remember`, `recall` and `read_memory` (Memory thread);
   - `delegate` (Models thread);
   - `calendar` and `sort` (Integrations thread);
   - `web_search` and `web_fetch` (research, carried over from v1 or taken from
     a Pi package).
-
-  That uses all 8. [workspace.md](workspace.md) proposes adding `read`,
-  `write`, `edit` and `bash`, for 12 in total.
 - **Commands:** `/sleep`, and others only within the budget.
 - Lyrica's sessions **never** load project context files (`AGENTS.md`,
   `CLAUDE.md`). Her self-primer is a routed topic.
@@ -210,6 +209,23 @@ runSleep(userId: string, pool: Pool, reason: "scheduled" | "manual"): SleepRun
 // status: "complete" | "partial" | "skipped"
 // skipReason: "no-key" | "endpoint-down" | "no-activity"
 ```
+
+## core/workspace
+
+```ts
+interface ExecutionTarget {               // "sandbox" | "ssh:<name>"
+  ops(): { read: ReadOperations; write: WriteOperations; edit: EditOperations; bash: BashOperations };
+}
+targetFor(ctx: ThreadContext): ExecutionTarget
+grantsFor(ctx: ThreadContext): Grant[]    // from the user's per-pool allowed paths
+mountHome(userId): Promise<string>        // gocryptfs; called when the user's key becomes available
+unmountHome(userId): Promise<void>
+```
+
+- Every sandbox run receives exactly `grantsFor(ctx)`, the thread's folder in
+  the home workspace, and a read-only system.
+- The network is unshared unless the thread allows it.
+- See [workspace.md](workspace.md).
 
 ## integrations
 
