@@ -40,6 +40,9 @@ phone (principle 1).
      removing parts, a To review page for proposals (bulk Use, Download parts and Ignore, grouped by host, paged), missing
      parts to download, and Delete that says what it keeps; Download model
      with Starter recipes, Hugging Face, Link and Scan folder.
+   - **Downloads**, a tab of its own with a count while anything runs:
+     Download text model, Download image model, Accounts (hub tokens),
+     progress with Cancel, finished downloads and deletions, Clear finished.
    - **Text models**: one row per model, opening to its copies with their raw
      names, where groups are made, reordered and undone; finetunes in rows of
      their own, linked to their base; flagged copies and **Not this model**;

@@ -237,6 +237,11 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     subagents. A task with no list of its own follows Chat, as before;
   - two libraries, **Text models** and **Image models**, because the two
     are managed differently. The image library is described under Images.
+  - a **Downloads** page in the top bar, with a count while anything is
+    downloading. It holds **Download text model**, **Download image model**
+    and **Accounts**, downloads in progress with Cancel, and finished
+    downloads and deletions until cleared. The libraries themselves stay
+    free of downloads;
   - the **text model library** stays usable with hundreds of models (an
     OpenRouter account, a large shared models folder):
     - one row per model, which opens to its copies on every endpoint. That
