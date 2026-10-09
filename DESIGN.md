@@ -289,6 +289,18 @@ Details in [docs/sleep.md](docs/sleep.md).
   LXC container or VM on Li's Proxmox. No Docker. The host needs bubblewrap,
   gocryptfs, pasta, FUSE and unprivileged user namespaces. In an LXC container, that
   means turning on the nesting and FUSE features.
+- **Reaching the web UI:**
+  - `lyricad` listens only on `127.0.0.1`. Caddy in front of it serves HTTPS on
+    the host's Tailscale and LAN addresses.
+  - The name is a subdomain of Li's domain (for example
+    `lyrica.example.net`), whose DNS record points at the Tailscale address.
+  - Caddy gets the certificate with a **DNS-01 challenge** through the DNS
+    provider's API, because a Tailscale address can't be reached for the usual
+    HTTP challenge.
+  - On the LAN, the same name resolves to the LAN address through local
+    (split) DNS, so the same certificate works. There is no plain HTTP: login
+    cookies are `Secure`.
+- **Phones:** the web UI works well on a phone from the start.
 - **One command, `lyrica`**, written in TypeScript like the rest of the
   project:
 
