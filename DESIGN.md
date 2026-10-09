@@ -235,8 +235,25 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - In the UI a subagent lives inline, as a card in the parent's chat that
     expands to its work and can be messaged. It is not listed in the sidebar.
   - **Child threads** are different: conversations of their own (forks and
-    copies of a thread), listed collapsibly under their parent in the
-    sidebar, which the user opens and talks in like any thread.
+    copies of a thread, and threads Lyrica starts), listed collapsibly under
+    their parent in the sidebar, which the user opens and talks in like any
+    thread.
+- **Lyrica chooses between them the way Claude does.** A subagent when she
+  needs an answer to carry on and the task is bounded (search, read,
+  review, check). A child thread when the work is a stream of its own that
+  outlasts the conversation, that the user may want to follow or steer, or
+  that needs a long context of its own, such as "I'll keep going on the
+  homelab migration in its own thread."
+  - A child thread is full Lyrica: her persona, memory tools and the tools
+    its settings allow. It inherits the parent's pool, "Do not log",
+    local-only, permission mode and workspace settings, or narrower ones.
+  - It and its parent message each other: it posts short updates at
+    milestones (a badge on it in the sidebar, a card in the parent), and the
+    parent or the user can message it at any time. Its approvals appear in
+    the child thread, and in Notifications.
+  - It keeps going in the background and stays until it is forgotten.
+    Forgetting a parent asks whether to forget its child threads too, ticked
+    by default.
   - In version one, subagents can't start subagents of their own.
 - **Local-only.** In a private or local-only thread, any attempt to use a cloud
   model, for any purpose, fails with an error. Nothing ever falls back across
@@ -824,7 +841,8 @@ Details in [docs/sleep.md](docs/sleep.md).
   PRINCIPLES, this document and the contracts, and keeps coding to a minimum.
 - **Feature threads** are separate Claude Code sessions tagged `project:lyrica`:
   Core, Memory, Workspace, Models, Delegation, Daemon, Web UI, Sleep,
-  Integrations, Model host, Models 2, Images and Delegation 2.
+  Integrations, Model host, Models 2, Images, Delegation 2 and Child
+  threads.
   - Each works from a brief in `docs/briefs/` on its own branch and ends with a
     pull request.
   - No more than two or three are active at once.

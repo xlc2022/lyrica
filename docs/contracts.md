@@ -349,6 +349,11 @@ One model-facing tool: `delegate({ action?, ... })`.
 - A subagent also has `ask_parent({ question, wait? })` (planned: `wait:
   false` sends a note and keeps working), and read-only memory
   (`registerMemoryTools({ readOnly: true })`).
+- Planned (Child threads): one more model-facing tool, `threads({ action,
+  ... })`: `start` (`title`, `task`, optional narrower `folders`,
+  `readOnly`, `internet`), `message` (to a child, or `to: "parent"` from a
+  child), and `list`. A child thread is `createThread({ parent, child: true
+  })`, hosted like any thread, with inherited settings that can only narrow.
 - Planned (Delegation 2): a user's message in a subagent's thread goes to
   the subagent, marked as theirs, and a note goes to the parent thread. A
   subagent's tool approvals go through the same `ThreadTools.approve`
