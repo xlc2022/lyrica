@@ -15,6 +15,7 @@ const KINDS: { kind: MemoryKind; label: string }[] = [
   { kind: "page", label: "Pages" },
   { kind: "wake", label: "WAKE" },
   { kind: "journal", label: "Journal" },
+  { kind: "thread", label: "Threads" },
   { kind: "entry", label: "Thread messages" },
 ];
 
