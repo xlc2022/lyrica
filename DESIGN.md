@@ -203,13 +203,18 @@ Details in [docs/sleep.md](docs/sleep.md).
   - Each operation goes either to a bubblewrap sandbox, which sees only the
     folders granted to the thread, or to a named SSH target.
   - An administrator decides which folders each user may grant, with separate
-    lists for the general and private pools.
+    lists for the general and private pools. The lists live in `self.db`, so
+    the user's password isn't needed and users can't extend their own.
   - Shared drives (Samba, NFS) are host mounts, granted like any other folder.
   - Each user has an encrypted home workspace (gocryptfs) for uploads and
     working files, unlocked with that user's key.
-  - Every thread has an internet switch for its tools. It is on by default in
-    the general pool and off by default in the private pool, with per-user
-    defaults and per-thread overrides.
+  - Every thread has two network switches for its tools: **internet** (on by
+    default in general, off in private) and **this machine's services** (off
+    by default in both). There are per-user defaults and per-thread
+    overrides.
+  - When either switch is on, the sandbox gets its own isolated network
+    (`pasta`), never the host's.
+  - `lyricad`'s own API and the host's Unix sockets are never reachable.
   - A workspace is just a thread with folders granted. It has the same
     settings as any other thread: models for the main conversation and
     subagents, local-only, internet, folders and permission mode.
@@ -217,7 +222,7 @@ Details in [docs/sleep.md](docs/sleep.md).
     settings, never widen them.
 - **Deployment:** `lyricad` runs as a systemd service, in practice inside an
   LXC container or VM on Li's Proxmox. No Docker. The host needs bubblewrap,
-  gocryptfs, FUSE and unprivileged user namespaces. In an LXC container, that
+  gocryptfs, pasta, FUSE and unprivileged user namespaces. In an LXC container, that
   means turning on the nesting and FUSE features.
 - **One command, `lyrica`**, written in TypeScript like the rest of the
   project:

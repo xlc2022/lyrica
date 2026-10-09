@@ -300,12 +300,18 @@ unmountHome(userId): Promise<void>
 
 - Every sandbox run receives exactly `grantsFor(ctx)`, the thread's folder in
   the home workspace, and a read-only system.
-- **Workspace settings live in the user's `user.db`:** allowed paths per pool,
-  each thread's grants, network setting and permission mode, and SSH targets.
+- **Workspace settings live in the user's `user.db`:** each thread's grants,
+  network switches and permission mode, and SSH targets. The exception is
+  allowed paths, which live in `self.db` (below).
   Workspace never adds tables to the pool databases, which belong to Memory.
-- The network is unshared unless the thread's internet switch is on. Every
-  thread has the switch. The defaults are per user and per pool (general on,
-  private off), with a per-thread override.
+- **Network:** every thread has two switches, internet and this machine's
+  services, with per-user, per-pool defaults and per-thread overrides.
+  - Both off: `--unshare-net`.
+  - Otherwise: an isolated namespace through `pasta`. The host's loopback is
+    mapped only when the machine's-services switch is on, and `lyricad`'s
+    own ports are always excluded. Never `--share-net`.
+- **Allowed paths** live in `self.db` (`workspace_paths`, keyed by user ID)
+  and change only with an administrator actor.
 - See [workspace.md](workspace.md).
 
 ## integrations

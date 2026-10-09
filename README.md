@@ -19,7 +19,7 @@ Each milestone leaves her usable:
 1. **She is herself.** Users and keys, persona, topic routing and context
    assembly, tried out on the developer bench (`lyrica dev`).
 2. **She remembers.** Encrypted general and private pools, notes,
-   `remember`/`recall`/`read`, and automatic recall.
+   `remember`/`recall`/`read_memory`, and automatic recall.
 3. **Web chat.** `lyricad` hosts every conversation. The web UI gets login,
    threads per pool, streaming replies, visible tool calls, the model badge
    and the control panel. `lyrica chat` connects to the same daemon.
