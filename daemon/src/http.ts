@@ -73,11 +73,17 @@ export function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
   });
 }
 
-export function makeRequest(req: IncomingMessage, res: ServerResponse, route: string, params: Record<string, string>, url: URL): Request {
+/** Whose X-Forwarded-For a listener believes: on 127.0.0.1, the built-in Caddy's; on the extra listener, the external proxy's. */
+export type TrustForwarded = (remote: string) => boolean;
+
+export const fromLoopback: TrustForwarded = (remote) => remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1";
+
+export function makeRequest(req: IncomingMessage, res: ServerResponse, route: string, params: Record<string, string>, url: URL,
+  trust: TrustForwarded = fromLoopback): Request {
   let body: Promise<Buffer> | undefined;
   const bytes = (limit: number) => (body ??= readBody(req, limit));
   return {
-    req, res, method: req.method ?? "GET", route, params, query: url.searchParams, ip: clientIp(req), cookie: cookieOf(req),
+    req, res, method: req.method ?? "GET", route, params, query: url.searchParams, ip: clientIp(req, trust), cookie: cookieOf(req),
     bytes,
     async json<T>() {
       const raw = await bytes(JSON_LIMIT);
@@ -99,14 +105,16 @@ function cookieOf(req: IncomingMessage): string | undefined {
   return undefined;
 }
 
-function clientIp(req: IncomingMessage): string {
+function clientIp(req: IncomingMessage, trust: TrustForwarded): string {
   const remote = req.socket.remoteAddress;
   if (!remote) return "local"; // the Unix socket
-  const loopback = remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1";
   const forwarded = req.headers["x-forwarded-for"];
-  if (loopback && typeof forwarded === "string") return forwarded.split(",").pop()!.trim() || remote;
+  if (trust(remote) && typeof forwarded === "string") return forwarded.split(",").pop()!.trim() || remote;
   return remote;
 }
+
+/** An address as a client socket reports it, without the IPv4-mapped prefix. */
+export const plainAddress = (a: string | undefined): string => (a ?? "").replace(/^::ffff:/, "");
 
 /** A state-changing request must come from a page on this host. */
 export function checkOrigin(req: IncomingMessage): void {

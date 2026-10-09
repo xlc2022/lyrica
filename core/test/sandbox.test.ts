@@ -254,6 +254,14 @@ describe.skipIf(!netRunnable || !lan)("a sandbox's network switches", () => {
     expect(await at({ internet: true, services: true, hosts: [lan!] }, lyricad)).not.toContain("LYRICAD");
   });
 
+  it("never reaches the front door on an external proxy's address or Lyrica's name", async () => {
+    // The LAN address stands in for another machine running the proxy (self: []), listed as a front-door host.
+    // Names go through resolveAddresses (core/test/workspace.test.ts).
+    const proxied = new Sandbox({ workdir: p("work"), grants: [], network: { ...OFF, internet: true }, self: [], front: [lyricad], frontHosts: [lan!] });
+    expect((await sh(tcp(lan!, lyricad), proxied)).out).not.toContain("LYRICAD");
+    expect((await sh(tcp(lan!, peer), proxied)).out).toContain("PEER");
+  });
+
   it("never reaches the host's abstract sockets", async () => {
     const connect = `python3 -c "import socket; s=socket.socket(socket.AF_UNIX); s.connect('\\0${abstract}'); print(s.recv(99))"`;
     for (const net of [{}, { internet: true }, { services: true }, { internet: true, services: true }, { hosts: [lan!] }]) {

@@ -162,34 +162,107 @@ One line per request: method, route pattern (never the path, which holds
 IDs), status and time. Failures log the error's class and first line.
 Message, memory and file text never reach the log.
 
+## Web access
+
+How Lyrica is reached from other machines, set by an administrator
+(`…/admin/web-access`, with `/status` and `/snippet`). Code:
+`daemon/src/web/`. The mode, name and built-in settings live in `self.db`
+under `web.access`, so the DNS credentials are encrypted with the rest of it.
+Secret credentials are never sent back by the API (only whether they're set)
+and never logged; a Caddy error that quotes one has it replaced with
+`[hidden]`. Changes run one at a time.
+
+- **Off** (the start): only `127.0.0.1` and the Unix socket.
+- **Built-in Caddy.** The administrator picks the name, the Tailscale and/or
+  LAN addresses to serve on (detected from the host's interfaces), the DNS
+  provider and its credentials, an optional ACME email, and Let's Encrypt
+  staging for testing. `lyricad` writes Caddy's whole JSON config through its
+  admin socket (`POST /load`): HTTPS for the name on those addresses (no
+  port 80), a DNS-01 certificate through the provider, and `reverse_proxy` to
+  `127.0.0.1:<port>`. Caddy saves it (`--resume`), so it keeps serving while
+  `lyricad` is locked; after unlock, `lyricad` loads it again only if Caddy's
+  differs.
+- **A new name never locks the administrator out.** While the name changes,
+  Caddy serves the old and the new name together. `lyricad` waits up to 90
+  seconds for a certificate for the new name that verifies (with staging, any
+  certificate for the name), then drops the old one. If none comes (no DNS
+  record yet, a token for the wrong zone), the old config goes back, nothing
+  is saved, and the reason comes back with Caddy's TLS error.
+- Caddy's TLS errors never reach the journal (a DNS plugin can quote its
+  token in one): they go to `/run/lyrica-caddy/tls.log`, readable only by the
+  `lyrica-caddy` group. The status shows the newest one since the last change,
+  with credentials hidden; whether Caddy answers, has a site at all (it has
+  none if its saved config had to be set aside at start), and runs the
+  expected config; and the certificate's issuer and expiry, read by
+  connecting to the name on the first address.
+- **Providers** are one table, `daemon/src/web/providers.ts`: Cloudflare,
+  Porkbun, Namecheap, Route 53, DigitalOcean, Hetzner, deSEC and Duck DNS,
+  each with its pinned plugin, credential fields and how to make a token
+  limited to one zone. Adding one is a row there and running `install.sh`
+  again.
+- **External proxy.** `lyricad` opens an extra listener on one of this
+  machine's Tailscale or LAN addresses and a port. Only the listed proxy
+  addresses may connect, and only their `X-Forwarded-For` is believed. On an
+  address on Tailscale's own interface it is plain HTTP, since Tailscale
+  encrypts (an address in `100.64.0.0/10` on another interface doesn't
+  count); elsewhere it is HTTPS with a certificate `lyricad` makes for the
+  address only (P-256, ten years), whose fingerprint and PEM the panel shows
+  for the proxy to pin. It is made again only when the address changes, so a
+  new name keeps the pin. `/snippet` is the proxy's Caddyfile site, with a
+  reminder to get its certificate by DNS-01.
+- The extra listener's settings (address, port, proxies, the proxy's own
+  port) and its TLS key are kept in `<runtime>/web-external.json`, mode
+  `0600`, not in `self.db`: `lyricad` opens the listener at start, before
+  unlock, and there it answers only state, unlock and the web UI's files,
+  like every other listener. A new listener opens before the old one closes;
+  if it can't, the old one stays.
+- **Sandboxes never reach the front door.** `Workspace` reads it at every
+  sandbox start (`frontDoor`): the front port (443, or the external proxy's
+  own port) on this machine's addresses, on every address the name has
+  resolved to, and on the external proxy's addresses; and the extra
+  listener's port on every address. If the name has never resolved, the
+  sandbox gets no network for that run
+  ([workspace.md](workspace.md#network-access-from-tools)).
+
 ## Deployment
 
-`daemon/deploy/lyricad.service`, `daemon/deploy/Caddyfile.example` and
-`daemon/deploy/caddy-override.conf` (a drop-in for Caddy's unit).
+`daemon/deploy/install.sh`, run as root on Debian or Ubuntu from a checkout,
+installs or upgrades everything. Running it again upgrades in place.
 
-- Install the code at `/opt/lyrica`, create a `lyrica` system user, run
-  `lyrica admin init` as that user with `LYRICA_HOME=/var/lib/lyrica`, then
-  enable the unit.
-- The unit runs `lyrica serve` as `lyrica`, with `StateDirectory` for the
-  runtime and the credentials directory, and `LoadCredentialEncrypted` for
-  saved credentials.
-- Hardening: `NoNewPrivileges` breaks the setuid `fusermount3`, so homes
-  never mount, and so does every option that makes systemd set it for a
-  non-root service, because they install seccomp filters (listed in the unit;
-  `ProtectHostname` is one of them). `RestrictNamespaces` and `PrivateUsers`
-  also break bubblewrap and pasta. The unit keeps only `PrivateTmp` and
-  `ProtectControlGroups`.
+- It installs the packages (bubblewrap, gocryptfs, FUSE, passt, nftables,
+  openssl), checks for Node.js 22 or later, and creates two system users:
+  `lyrica` runs `lyricad`, `lyrica-caddy` runs Caddy. The `lyrica-caddy`
+  group shares Caddy's admin socket (mode `0660`) and TLS log; lyricad's unit
+  joins it (`SupplementaryGroups`), and nobody else can use them. An allowed
+  path that overlaps `/run/lyrica-caddy` is refused, since sandboxes run with
+  lyricad's groups.
+- It copies the code to `/opt/lyrica` and runs `npm ci --omit=dev`.
+- It builds Caddy (`/usr/local/bin/lyrica-caddy`) with `xcaddy`, from pinned
+  versions, in a clean environment (`env -i`, `GOENV=off`, `GOPROXY` and
+  `GOSUMDB` set): Go from `proxy.golang.org`, checked against the sha256 in
+  the script; xcaddy, Caddy and every plugin in the provider table at their
+  pinned versions, checked by Go against `sum.golang.org`. It rebuilds only
+  when a pin changes.
+- It sets `net.ipv4.ip_nonlocal_bind=1` (in `/etc/sysctl.d`), so Caddy binds
+  its addresses even before they're up: Tailscale at boot, a DHCP change.
+- It installs `lyricad.service` and `lyrica-caddy.service` and starts them,
+  or says how to run `lyrica admin init` first.
+- **lyricad's unit** runs `lyrica serve` as `lyrica`, with `StateDirectory`
+  for the runtime and the credentials directory, and `LoadCredentialEncrypted`
+  for saved credentials. Hardening: `NoNewPrivileges` breaks the setuid
+  `fusermount3`, so homes never mount, and so does every option that makes
+  systemd set it for a non-root service, because they install seccomp filters
+  (listed in the unit; `ProtectHostname` is one of them). `RestrictNamespaces`
+  and `PrivateUsers` also break bubblewrap and pasta. The unit keeps only
+  `PrivateTmp` and `ProtectControlGroups`.
 - **Deploy check:** `grep NoNewPrivs /proc/$(systemctl show -p MainPID --value lyricad)/status`
   must show `0`.
-- Caddy serves HTTPS for a subdomain on the Tailscale and LAN addresses, with
-  a DNS-01 certificate, and proxies to `127.0.0.1:7340`. There is no plain
-  HTTP.
-- Caddy's admin API listens on a Unix socket (`/run/caddy/admin.sock`), not
-  `localhost:2019`: a thread with "this machine's services" on reaches
-  loopback ports, and the admin API could replace the site with a fake login
-  page.
-- Caddy starts after `tailscaled` (the drop-in), and retries on failure,
-  because `bind` to the Tailscale address fails until that address exists.
-- Sandboxes never reach Caddy on this machine's own addresses: `lyricad`
-  passes its front ports (`frontPorts`, default 443) to `Workspace`
-  ([workspace.md](workspace.md#network-access-from-tools)).
+- **Caddy's unit** runs `caddy run --resume`, starting from
+  `/etc/lyrica/caddy.json`, which only puts the admin API on its Unix socket.
+  It is never on `localhost:2019`: a thread with "this machine's services" on
+  reaches loopback ports, and the admin API could replace the site with a
+  fake login page. Caddy needs none of what lyricad's sandboxes need, so its
+  unit is fully hardened. Before it starts, a saved config that no longer
+  loads (`caddy validate`) is moved aside, so Caddy still comes up with its
+  admin socket and `lyricad` can apply the setup again. Its saved config,
+  which holds the DNS token, stays in its own state directory (`0700`).

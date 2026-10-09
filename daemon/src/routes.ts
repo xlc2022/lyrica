@@ -434,6 +434,13 @@ export function apiRoutes(d: Lyricad): Route[] {
       s().workspace.allowedPaths.disallow(actor, target(d, r).id, checkPool(pool), String(path ?? ""));
       return s().workspace.allowedPaths.list(target(d, r).id);
     }),
+    route("GET", `${u}/admin/web-access`, (r) => { d.adminFor(r); return s().web.view(); }),
+    route("PUT", `${u}/admin/web-access`, async (r) => {
+      d.adminFor(r);
+      return s().web.set(await r.json<Api.WebAccessChange>());
+    }),
+    route("GET", `${u}/admin/web-access/status`, (r) => { d.adminFor(r); return s().web.status(); }),
+    route("GET", `${u}/admin/web-access/snippet`, (r): Api.WebAccessSnippet => { d.adminFor(r); return { caddyfile: s().web.snippet() }; }),
     route("GET", `${u}/admin/sleep`, (r) => { d.adminFor(r); return { time: sleepTime(d) }; }),
     route("PUT", `${u}/admin/sleep`, async (r) => {
       d.adminFor(r);
