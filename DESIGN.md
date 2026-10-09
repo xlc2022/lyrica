@@ -31,6 +31,10 @@ individual: her persona is the only thing users share.
   both passwords. Switching between linked users needs no password. Logging in
   as a user who isn't linked to the ones already there first ends their session
   in that browser. The menu says **Switch user**.
+- **Words in the UI.** A person's own linked users are their **personas**
+  ("Link separate persona"). Lyrica's own character is always **Lyrica's
+  persona**, as in "Changes to Lyrica's persona", so the two are never
+  confused.
 - **Logging out** keeps the user's key in memory, so sleep can run, unless that
   user turns this off in settings. **Lock** always drops it.
 - **Not protected from the operator.** Users are protected from each other in
