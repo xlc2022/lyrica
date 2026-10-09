@@ -302,18 +302,40 @@ Details in [docs/sleep.md](docs/sleep.md).
 - **Deployment:** `lyricad` runs as a systemd service, in practice inside an
   LXC container or VM on Li's Proxmox. No Docker. The host needs bubblewrap,
   gocryptfs, pasta, FUSE and unprivileged user namespaces. In an LXC container, that
-  means turning on the nesting and FUSE features.
+  means turning on the nesting and FUSE features. One install script sets up
+  the service users, `lyricad`'s unit, and the built-in Caddy.
 - **Reaching the web UI:**
-  - `lyricad` listens only on `127.0.0.1`. Caddy in front of it serves HTTPS on
-    the host's Tailscale and LAN addresses.
+  - `lyricad` serves plain HTTP on `127.0.0.1` behind an HTTPS proxy. The
+    browser never gets plain HTTP: login cookies are `Secure`.
   - The name is a subdomain of Li's domain (for example
-    `lyrica.example.net`), whose DNS record points at the Tailscale address.
-  - Caddy gets the certificate with a **DNS-01 challenge** through the DNS
-    provider's API, because a Tailscale address can't be reached for the usual
-    HTTP challenge.
-  - On the LAN, the same name resolves to the LAN address through local
-    (split) DNS, so the same certificate works. There is no plain HTTP: login
-    cookies are `Secure`.
+    `lyrica.example.net`), whose DNS record points at a Tailscale address. On
+    the LAN, local (split) DNS gives the same name a LAN address, so one
+    certificate works for both.
+  - Certificates come from a **DNS-01 challenge** through the DNS provider's
+    API, because a Tailscale address can't be reached for the usual HTTP
+    challenge.
+  - An administrator chooses the proxy in the control panel, under **Web
+    access**:
+    - **Built-in Caddy**, the default. Lyrica's install includes a pinned
+      Caddy, built with the DNS plugins for several common providers, running
+      as its own service. `lyricad` writes Caddy's whole configuration through
+      Caddy's admin API, on a Unix socket only `lyricad` can use. The panel
+      sets the name, which addresses to serve on (Tailscale, LAN), the DNS
+      provider and its credentials, and shows the certificate's state.
+    - **External proxy**: a Caddy, or another proxy, elsewhere on Li's
+      network. `lyricad` also listens on one Tailscale or LAN address and
+      accepts connections only from the proxy addresses listed in the panel.
+      Over Tailscale the hop is plain HTTP inside WireGuard. Over the LAN it is
+      HTTPS, with a certificate `lyricad` makes and the panel shows for
+      pinning in the proxy. Plain HTTP never crosses the LAN. The panel gives
+      a Caddyfile snippet for the proxy.
+  - The DNS credentials are stored encrypted in `self.db`. Caddy keeps its own
+    copy with its certificates, readable only by Caddy's service user, so it
+    goes on serving, and the unlock page stays reachable, while `lyricad` is
+    locked. Use a token limited to the one DNS zone.
+  - Sandboxes never reach the front door. On the proxy's ports, they are
+    refused this machine's own addresses, the external proxy's addresses, and
+    whatever Lyrica's name resolves to when the sandbox starts.
 - **Phones:** the web UI works well on a phone from the start.
 - **One command, `lyrica`**, written in TypeScript like the rest of the
   project:
