@@ -1,7 +1,7 @@
 # Lyrica: design principles
 
-**Status: draft for discussion (2026-10-09).** Nothing here is settled until Xu
-agrees. Once it is settled, changes go through [DECISIONS.md](DECISIONS.md).
+**Status: accepted (2026-10-09).** Changes go through
+[DECISIONS.md](DECISIONS.md).
 
 ## Thesis
 
@@ -43,8 +43,10 @@ around it.
 - No accounts, passwords, ACLs or non-enumerability until a second person is
   actually invited. At that point it becomes a separate project with its own
   design, not a retrofit.
-- Sensitive work is handled by choosing where the model runs (see open question
-  2), not by a tiered storage architecture.
+- Xu's separate personas are *spaces* (D-002). Spaces keep contexts apart; they
+  are not a security system.
+- Sensitive work is handled by choosing where the model runs, not by a tiered
+  storage architecture.
 
 ### 3. Lean on Pi
 
@@ -64,7 +66,7 @@ editor:
 
 - Pi session JSONL: what was said.
 - Persona markdown: who she is.
-- `WAKE.md`, `FACTS.md`, notes and journal: what she has made of it.
+- Notes, pages, `WAKE.md` and journal: what she has made of it.
 
 Her self-directory is a git repository. That gives us history, diffs, revert,
 and an answer to "what did sleep change last night?" for free.
@@ -77,9 +79,11 @@ and an answer to "what did sleep change last night?" for free.
 ### 5. Memory is reconstruction: invest in the curator, not the ledger
 
 Continuity comes from what gets surfaced and how well it is written (WAKE,
-recall, sleep). Provenance bookkeeping doesn't add to it.
+recall, sleep). Bookkeeping doesn't add to it.
 
-- Provenance is one link, `session-id#entry-id`, and nothing more.
+- Lineage is citations: each layer cites the layer below it by ID, written
+  inline in the text. "Consolidated into" is computed from those citations,
+  never stored separately.
 - A correction is an edit, and git keeps the old version. No tombstones,
   revision tables, receipts or relation graphs.
 - Spend the effort on recall quality and sleep quality, and check both with
@@ -114,7 +118,7 @@ brake.
 |---|---|
 | Model-facing tools | 6 or fewer |
 | Slash commands | 6 or fewer |
-| Long-running processes | 1 (Pi) |
+| Long-running processes | 1 daemon, plus Pi's TUI when in use (D-007) |
 | Core extension | about 2,000 lines |
 | Docs | README, PRINCIPLES, DECISIONS, and at most one page per component |
 
@@ -132,13 +136,14 @@ hold session policies, storage tiers or tool behavior.
 - The persona is where the thesis lives, so it deserves the most care. A
   specific opinion is worth more than another listed virtue.
 
-### 10. One interface at a time
+### 10. Interfaces are separate rooms; memory is what connects them
 
-The CLI comes first. A second interface is added only once the first works
-well, and only if it is where Xu actually wants to talk to her. Every interface
-is a thin client over the same Pi sessions.
+Each interface owns its own threads (D-003). Lyrica is continuous across
+interfaces because she remembers, not because threads are mirrored.
 
-- One writer per session is enforced with a lock file, not a lease protocol.
+- Interfaces are built one at a time: web chat first. The next one starts only
+  once the previous one works well.
+- Moving a thread to another interface is an explicit export, never a sync.
 
 ## How we work (several models, one project)
 
@@ -176,57 +181,3 @@ hand or scripted against a model:
 Next to the evals, keep a **friction log**: one line every time she forgot
 something, got something wrong, or couldn't do what Xu asked. The evals and the
 friction log are what decide the next piece of work.
-
-## Sketch of v0 (for discussion, not a plan)
-
-```text
-lyrica/                    this repo
-  persona/                 seed: SOUL, STYLE, REGISTER, topics/
-  extension/               one Pi extension
-    context.ts             persona + WAKE + FACTS + topics + recall -> system prompt
-    memory.ts              notes, plus a rebuildable full-text index over notes and sessions
-    sleep.ts               /sleep -> WAKE, FACTS, journal entry
-    tools.ts               remember, recall, read_session
-  bin/lyrica               launcher
-  evals/
-
-~/.lyrica/                 runtime state, not in this repo
-  sessions/                Pi JSONL (owned by Pi)
-  self/                    git repo: persona/, WAKE.md, FACTS.md, notes/, journal/
-  index.sqlite             derived, safe to delete
-```
-
-Milestones. Each one is usable on its own:
-
-1. **She is herself.** Persona, topic routing and the launcher.
-2. **She remembers.** `remember`, `recall`, `read_session` and session indexing.
-3. **She wakes up oriented.** `/sleep` writes WAKE, FACTS and a journal entry
-   with persona proposals.
-4. **Live with it** for a few weeks and keep the friction log. Pick the next
-   piece of work from the log.
-
-**Carried over from v1:** the persona text as a starting point; Pi JSONL as the
-canonical history; topic routing; the WAKE/FACTS/journal shape of sleep; the
-web research tools, unless a Pi package does the job better.
-
-**Left behind:** accounts; the Ordinary/Temporary/Private/Custom session
-presets; the General/Sensitive memory tiers; the controller, leases and fences;
-the delegation ledger; forgetting receipts and redaction; the forum (for now).
-
-## Open questions
-
-1. **Audience.** Will Lyrica be for Xu alone for at least the next six months?
-   (If so, principle 2 holds.)
-2. **Off-the-record mode.** What is the real use case for local or private
-   sessions? One proposal is a single switch: local model, no memory writes,
-   session deleted on exit. Another is to leave it out of v0.
-3. **Interface.** Where does Xu actually want to talk to her: the CLI over SSH,
-   a web chat, or a phone messenger (Telegram, Signal, Matrix)? The forum is
-   Monika's taste; is it Xu's?
-4. **Secretary work.** The persona calls her a secretary, but v1 has no
-   calendar, reminder, email or task tools. Which chores should she take on
-   first? That may deserve milestone 4 more than any infrastructure does.
-5. **Memory autonomy.** Is Xu comfortable with her writing memories without
-   asking, as long as they can be reviewed afterwards (principle 6)?
-6. **Persona.** Keep the v1 seed as it is, or rewrite it together as part of
-   the restart, with more specific opinions, tastes and tensions?
