@@ -12,6 +12,7 @@ sketches; names may move, but the boundaries may not.
 - SQLCipher through `better-sqlite3-multiple-ciphers`. Argon2id through
   `@node-rs/argon2`.
 - Tests with `vitest`. Type checks with `tsc --noEmit`.
+- The web UI is React with TypeScript, built with Vite.
 
 ```text
 core/        keyring, users, stores, model router (no Pi dependency)
@@ -302,6 +303,8 @@ The extension is created with a `ThreadContext`:
     also removes extension tools.
   - Sessions run in-process, with no `pi` subprocesses.
   - Each `message_end` calls `appendEntry`.
+- **Startup:** `lyricad` builds `Workspace` with its own listening ports as
+  `excludePorts`, and calls `selfTest()` before serving threads.
 - **Unlocking:** when started as a service, `lyricad` starts locked, and the
   API serves only the unlock endpoint until `self.db` is unlocked.
 - **HTTP/SSE API** (detailed by the Web thread):
@@ -337,36 +340,50 @@ runSleep(userId: string, pool: Pool, reason: "scheduled" | "manual"): SleepRun
 ## core/workspace
 
 ```ts
-interface ExecutionTarget {               // "sandbox" | "ssh:<name>"
-  ops(): { read: ReadOperations; write: WriteOperations; edit: EditOperations; bash: BashOperations };
+new Workspace(keyring, users, { excludePorts })  // excludePorts: lyricad's own ports; required, [] for none
+interface WorkspaceThread { userId; pool; threadId }
+interface Network { internet: boolean; services: boolean; hosts: string[] }
+interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
+  cwd(): Promise<string>;
+  ops(): { read; write; edit; bash };     // Pi's tool operations
+  folders(): string[];                    // host folders, or "<ssh name>:<root>"
 }
-targetFor(ctx: ThreadContext): ExecutionTarget
-grantsFor(ctx: ThreadContext): Grant[]    // the thread's chosen grants
-inheritSettings(parentThreadId, childThreadId, narrower?): void  // subagents: same or stricter, never wider
-mountHome(userId): Promise<string>        // gocryptfs; called when the user's key becomes available
-unmountHome(userId): Promise<void>
+forThread(t)  // { target(), settings(), network(), folders() }, each read fresh
+targetFor(t): ExecutionTarget
+grantsFor(t): Grant[]                     // { path, writable }
+folders(t): string[]
+network(t): Network
+inheritSettings(parent, childThreadId, narrower?)  // subagents: same or stricter, never wider
+settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, SSH targets
+allowedPaths.allow(actor, userId, pool, path) / disallow(...) / list(userId)
+saveUpload(t, name, bytes): Promise<string>
+mountHome(userId) / unmountHome(userId)   // gocryptfs; mount when the user's key becomes available
+selfTest(): Promise<string | undefined>   // lyricad calls this at startup
 ```
 
-- Every sandbox run receives exactly `grantsFor(ctx)`, the thread's folder in
-  the home workspace, and a read-only system.
+- Every sandbox run receives exactly the thread's grants, the thread's folder
+  in the home workspace, and a read-only system.
 - **Workspace settings live in the user's `user.db`:** each thread's grants,
-  network switches and permission mode, and SSH targets. The exception is
-  allowed paths, which live in `self.db` (below).
-  Workspace never adds tables to the pool databases, which belong to Memory.
+  network switches, permission mode and target, and the SSH targets. Allowed
+  paths are the exception (below). Workspace never adds tables to the pool
+  databases, which belong to Memory.
 - **Network:** every thread has two switches (internet, and this machine's
   services) and an **allowed hosts** list. Each has per-user, per-pool
   defaults and a per-thread override.
   - Nothing on, list empty: `--unshare-net`.
-  - Otherwise: an isolated namespace through `pasta`, with default-deny
-    output rules set inside the namespace before the command runs. They
+  - Otherwise `pasta` wraps the sandbox in its own network namespace, with
+    default-deny output rules set inside it before the command runs. They
     allow the internet if that switch is on, the host's loopback if the
     machine's-services switch is on, and each allowed host (IP, CIDR, or a
     hostname resolved at start, each with an optional port).
-  - `lyricad`'s own ports on every address are always rejected. Never
-    `--share-net`.
+  - Never the host's network namespace. `excludePorts` are rejected on every
+    address, and so are the host's Unix sockets.
   - Allowed hostnames are written to the sandbox's `/etc/hosts`. With
     internet off there is no DNS resolver inside the sandbox.
   - `inheritSettings` may only shrink the list.
+  - If `selfTest()` finds that a sandbox could undo its firewall, or can't
+    start one, every thread runs with network off and the reason is kept in
+    `networkRefused` for the UI.
 - **Allowed paths** live in `self.db` (`workspace_paths`, keyed by user ID)
   and change only with an administrator actor.
 - See [workspace.md](workspace.md).

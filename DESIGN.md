@@ -58,6 +58,9 @@ Each user has two pools of memory.
 
 - Web chat is the main interface. The CLI, Matrix and a forum come later, in
   that order, each built only once the previous one works well.
+- **The web UI is React with TypeScript, built with Vite.** Models will write
+  and maintain almost all of it, and React is what they know best; `tsc`
+  checks its components like the rest of the code.
 - **Each interface keeps its own threads.** Lyrica is continuous across
   interfaces because she remembers, not because threads are mirrored. Moving a
   thread to another interface is an explicit export that copies it. Nothing
