@@ -212,9 +212,20 @@ Details in [docs/sleep.md](docs/sleep.md).
     default in general, off in private) and **this machine's services** (off
     by default in both). There are per-user defaults and per-thread
     overrides.
-  - When either switch is on, the sandbox gets its own isolated network
-    (`pasta`), never the host's.
-  - `lyricad`'s own API and the host's Unix sockets are never reachable.
+  - Each thread can also have an **allowed hosts** list: IP addresses,
+    address ranges (CIDR), hostnames, or URLs, each optionally limited to a
+    port. Listed hosts are reachable even with internet off, so a private
+    thread can use one service on another machine on your network and
+    nothing else. Each user sets a default list per pool, and subagents get
+    their parent's list or less.
+  - Hostnames are resolved when the sandbox starts and pinned in its
+    `/etc/hosts`. With internet off, the sandbox has no DNS at all, so a
+    lookup can't be used to smuggle data out.
+  - When any of this is on, the sandbox gets its own isolated network
+    (`pasta` plus firewall rules inside the sandbox's namespace), never the
+    host's.
+  - `lyricad`'s own API (on every address) and the host's Unix sockets are
+    never reachable, even if listed.
   - A workspace is just a thread with folders granted. It has the same
     settings as any other thread: models for the main conversation and
     subagents, local-only, internet, folders and permission mode.

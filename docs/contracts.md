@@ -304,12 +304,20 @@ unmountHome(userId): Promise<void>
   network switches and permission mode, and SSH targets. The exception is
   allowed paths, which live in `self.db` (below).
   Workspace never adds tables to the pool databases, which belong to Memory.
-- **Network:** every thread has two switches, internet and this machine's
-  services, with per-user, per-pool defaults and per-thread overrides.
-  - Both off: `--unshare-net`.
-  - Otherwise: an isolated namespace through `pasta`. The host's loopback is
-    mapped only when the machine's-services switch is on, and `lyricad`'s
-    own ports are always excluded. Never `--share-net`.
+- **Network:** every thread has two switches (internet, and this machine's
+  services) and an **allowed hosts** list. Each has per-user, per-pool
+  defaults and a per-thread override.
+  - Nothing on, list empty: `--unshare-net`.
+  - Otherwise: an isolated namespace through `pasta`, with default-deny
+    output rules set inside the namespace before the command runs. They
+    allow the internet if that switch is on, the host's loopback if the
+    machine's-services switch is on, and each allowed host (IP, CIDR, or a
+    hostname resolved at start, each with an optional port).
+  - `lyricad`'s own ports on every address are always rejected. Never
+    `--share-net`.
+  - Allowed hostnames are written to the sandbox's `/etc/hosts`. With
+    internet off there is no DNS resolver inside the sandbox.
+  - `inheritSettings` may only shrink the list.
 - **Allowed paths** live in `self.db` (`workspace_paths`, keyed by user ID)
   and change only with an administrator actor.
 - See [workspace.md](workspace.md).
