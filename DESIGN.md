@@ -830,6 +830,26 @@ Details in [docs/sleep.md](docs/sleep.md).
     subagents, local-only, internet, folders and permission mode.
   - Subagents work in their parent's workspace and can only narrow its
     settings, never widen them.
+- **Modes, in the message box,** as in Claude Code: a picker beside the
+  message box (Shift+Tab cycles), per thread, with a per-user default.
+  - **Ask:** asks before commands and file changes.
+  - **Accept edits:** file changes go through; commands ask.
+  - **Auto** (the default): works freely inside the thread's grants.
+  - **Plan:** she can only read, recall and use read-only subagents. She
+    writes a plan and asks to go ahead; approving it switches the thread to
+    the mode the user picks, and she carries on.
+  - Irreversible actions that leave the server always ask, whatever the
+    mode. Subagents and child threads get the parent's mode or a stricter
+    one; a Plan-mode parent's subagents are read-only. Enforced in the
+    `tool_call` hook and by which tools are active, never by instructions.
+- **Switches in the message box,** as in Open WebUI: a "+" beside the
+  message box turns tools on or off for this thread, without opening its
+  settings: **Web search** (`web_search` and `web_fetch`), **Internet for
+  commands** (the sandbox's internet switch) and **Images** (the `image`
+  tool). A switch that's off removes the tools from the session, so she
+  can't use them; a subagent or child thread can't turn back on what its
+  parent turned off. Local-only and the pool are not switches here: they
+  stay in the thread's settings, where changing them is deliberate.
 - **Deployment:** `lyricad` runs as a systemd service, in practice inside an
   LXC container or VM on Li's Proxmox. No Docker. The host needs bubblewrap,
   gocryptfs, pasta, FUSE and unprivileged user namespaces. In an LXC container, that
@@ -906,8 +926,8 @@ Details in [docs/sleep.md](docs/sleep.md).
   PRINCIPLES, this document and the contracts, and keeps coding to a minimum.
 - **Feature threads** are separate Claude Code sessions tagged `project:lyrica`:
   Core, Memory, Workspace, Models, Delegation, Daemon, Web UI, Sleep,
-  Integrations, Model host, Models 2, Images, Delegation 2 and Child
-  threads.
+  Integrations, Model host, Models 2, Images, Delegation 2, Child
+  threads and Modes.
   - Each works from a brief in `docs/briefs/` on its own branch and ends with a
     pull request.
   - No more than two or three are active at once.

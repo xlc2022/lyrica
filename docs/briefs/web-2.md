@@ -53,6 +53,9 @@ phone (principle 1).
      tokens.
    - Clean up, as in the mockup.
    - Recent calls, with fallback notes.
+   - A mode picker beside the message box (Ask, Accept edits, Auto, Plan;
+     Shift+Tab cycles) and a "+" menu of switches (Web search, Internet for
+     commands, Images), once the Modes brief lands.
    - A thinking control in the message box (Off, Low, Medium, High; only
      the current model's levels; hidden when it has none), and a note beside
      the model badge when a fallback couldn't think.

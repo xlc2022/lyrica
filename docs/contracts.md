@@ -357,6 +357,13 @@ One model-facing tool: `delegate({ action?, ... })`.
   `readOnly`, `internet`), `message` (to a child, or `to: "parent"` from a
   child), and `list`. A child thread is `createThread({ parent, child: true
   })`, hosted like any thread, with inherited settings that can only narrow.
+- Planned (Modes): the permission mode values become `ask`, `acceptEdits`,
+  `auto` and `plan` (migrating "ask before changes" to `ask` and "ask before
+  commands" to `acceptEdits`). `plan` leaves only read-only tools active and
+  adds a `propose_plan({ plan })` tool whose approval sets the next mode.
+  Thread settings gain `webSearch` and `images` switches beside `internet`;
+  each one off removes its tools from the session, and children can only
+  narrow them.
 - Planned (Child threads, rewinding): the workspace's `write` and `edit`
   operations record each change per entry (path, created or changed, content
   hash after) and keep a snapshot of a changed file's earlier content in the
