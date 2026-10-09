@@ -116,7 +116,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     two different entries, one cloud and one local. "DeepSeek" in a private
     thread can only ever mean the local copy.
 - **Tasks.** Different tasks use different models: chat, cheap and strong
-  subagents, compaction, titles, embeddings, and each sleep phase.
+  subagents, compaction, titles, embeddings, each sleep phase, and creating
+  and editing images.
 - **Profiles.** A **control panel** sets default models per task, in a **cloud
   profile** and a **local profile**. Each thread can override which model
   handles which task, including the main conversation and its subagents. That
@@ -172,10 +173,61 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   fast models: titles, embeddings, cheap subagents).
   - Each model host serves an OpenAI-compatible endpoint plus a small,
     authenticated management API: list, load, unload, status.
+  - It also runs ComfyUI for images (see [Images](#images)).
   - Lyrica connects to it as a local endpoint she can also start, stop and
     switch models on.
   - LAN only, authenticated with a token.
   - This is a separate thread, after the web UI.
+
+## Images
+
+Lyrica can create and edit images, the way ChatGPT does: she writes the image
+prompt herself from the conversation, looks at the result, and tries again if
+it's off.
+
+- **One `image` tool**, with `create` and `edit`.
+  - She picks **fast** or **quality**, never a model.
+  - The profiles' `image.create` and `image.edit` tasks decide what those
+    mean, so the router's rules apply as for text. Private and local-only
+    threads use local image models only.
+  - Results go to the thread's folder in the user's encrypted home and show
+    inline in the chat. The prompts she wrote are part of the encrypted thread.
+- **Local images** run on **ComfyUI**, inside the model host on a GPU machine.
+  ComfyUI supports new open models (Krea 2, Z-Image, Qwen-Image, SDXL, and
+  editing models such as Qwen-Image-Edit) as they appear. It is contained,
+  because as it ships it has no login, runs every plugin with full rights, and
+  saves prompts into images and history:
+  - it listens only on the GPU machine, runs as its own user, and has no
+    internet access;
+  - there is no plugin manager, only a few custom nodes pinned to reviewed
+    commits;
+  - its input, output and temp folders are in RAM, image metadata is off,
+    results come back over its websocket, and its history is cleared after
+    every job;
+  - Lyrica reaches it only through the model host's token-protected API, which
+    fills workflow templates kept in Lyrica's repository. She can never send
+    ComfyUI a workflow of her own.
+- **Cloud image services** are cloud endpoints like any other: OpenAI's image
+  API first, then others (for example Black Forest Labs, Krea, Google, and
+  aggregators such as fal or Replicate). They're used only where cloud is
+  allowed.
+- **Photos of you.** Each user can keep reference photos of themselves in
+  their encrypted home, for edits and for putting them in new scenes. Sending
+  these photos to a cloud model is the user's choice, with a setting:
+  - **Never.**
+  - **Ask once a day**, the default. The first time a day that one would go
+    to a cloud model, she asks first, the way she asks before a command. A yes
+    lasts until the end of that day.
+  - **Always.**
+
+  This rule is enforced by the `image` tool, not by instructions to the model.
+- **Later:** a personal LoRA, trained on the user's photos on the GPU machine
+  for a closer likeness. It would be stored encrypted in their home, and loaded
+  into the GPU machine's memory only for a job.
+- **Wireframes and diagrams** are drawn as code (HTML, SVG or Mermaid) and
+  rendered to an image by a headless browser in her sandbox. Image models are
+  poor at exact layouts and text. Storyboards suit the image models, with
+  reference images keeping characters consistent.
 
 ## Storage, encryption and unlocking
 
@@ -393,8 +445,8 @@ Details in [docs/sleep.md](docs/sleep.md).
 - **The design thread** (the "Agent harness design principles" session) owns
   PRINCIPLES, this document and the contracts, and keeps coding to a minimum.
 - **Feature threads** are separate Claude Code sessions tagged `project:lyrica`:
-  Core, Memory, Workspace, Models, Delegation, Daemon, Web UI, Sleep and
-  Integrations.
+  Core, Memory, Workspace, Models, Delegation, Daemon, Web UI, Sleep,
+  Integrations, Model host and Images.
   - Each works from a brief in `docs/briefs/` on its own branch and ends with a
     pull request.
   - No more than two or three are active at once.

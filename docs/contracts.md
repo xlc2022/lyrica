@@ -211,7 +211,8 @@ are enforced in the store:
 
 ```ts
 type Task = "chat" | "subagent.cheap" | "subagent.strong" | "compaction"
-          | "title" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake";
+          | "title" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
+          | "image.create" | "image.edit";    // the image tasks come with the Images thread
 
 interface Endpoint {
   id: string;                              // "<name>" for a user's own, "shared.<name>" for a shared one
@@ -336,6 +337,7 @@ The extension is created with a `ThreadContext`:
   - `delegate`, and `ask_parent` in subagents (Delegation thread; see
     [delegate](#delegate));
   - `calendar` and `sort` (Integrations thread);
+  - `image`, with `create` and `edit` (Images thread);
   - `web_search` and `web_fetch` (research, carried over from v1 or taken from
     a Pi package).
 - **Commands:** `/sleep`, and others only within the budget.
