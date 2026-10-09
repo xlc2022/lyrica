@@ -17,7 +17,9 @@ The cloud boundary is the main failure to test against.
 
 ## In scope
 
-1. **Endpoints, stored in the user's `user.db`.**
+1. **Endpoints.** Shared endpoints live in `self.db`, administrator only (for
+   example OpenRouter and the GPU machine, set up once for every user). A
+   user's own endpoints live in their `user.db`.
    - Each endpoint has a name, a kind (`cloud` or `local`, declared, never
      inferred), a base URL, and an API key held encrypted in `user.db`.
    - Initial targets, all OpenAI-compatible: OpenRouter (cloud), LM Studio
@@ -47,9 +49,10 @@ The cloud boundary is the main failure to test against.
 
    The tool's guidelines state the rule: cheap for searching, reading,
    summarizing and checking; strong for writing, judgment and changing files.
-5. **Admin CLI.** `lyrica admin models endpoints add|list|remove|probe` and
-   `lyrica admin models profile show|set`, as the user. These are settings
-   in their `user.db`, like SSH targets.
+5. **Admin CLI.**
+   - `lyrica admin models endpoints add|list|remove|probe [--shared]`:
+     `--shared` signs in as an administrator; otherwise as the user.
+   - `lyrica admin models profile show|set`, as the user.
 6. **Developer bench.**
    - `lyrica dev` uses the router instead of Pi's default model config.
    - A `--private` / `--local-only` flag starts a bench thread with local-only
@@ -61,9 +64,10 @@ The cloud boundary is the main failure to test against.
 - The control panel, the model badge, and the nested subagent UI (Web
   thread). Do record what that UI needs: subagent threads must be listable
   under their parent.
-- Lyrica running models herself (llama.cpp or vLLM), which comes later. Keep
-  `Endpoint` simple enough that a managed local server can be added as
-  another local endpoint.
+- Lyrica managing her own models, which comes later: a model host on each GPU
+  machine wrapping vLLM or llama.cpp, with a management API. Keep `Endpoint`
+  simple enough that a managed endpoint can be added later as a local
+  endpoint with extra controls.
 - Sleep.
 - Embeddings beyond resolving the `embedding` task.
 

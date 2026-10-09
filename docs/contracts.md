@@ -218,6 +218,10 @@ probe(endpointId: string): Promise<"up" | "down">
   Even Pi's own compaction then has nothing cloud-based to pick.
 - Asking for a cloud model throws `CloudModelForbidden`. Nothing falls back
   across the local/cloud line.
+- **Shared endpoints** live in `self.db`. Only an administrator can change
+  them, and their API keys are encrypted with the rest of `self.db`. Every
+  user can use them in their profiles. A user's own endpoints live in their
+  `user.db`.
 - **What each user stores** in `user.db`:
   - endpoints;
   - a cloud profile and a local profile, mapping each task to a model;

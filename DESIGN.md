@@ -109,11 +109,24 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
 - **Visibility.** The current model and endpoint, with a clear cloud or local
   badge, are always visible in a thread. Choosing an endpoint, public or
   custom, is easy.
-- **Later: Lyrica runs models herself.** She could load and serve local models
-  by wrapping llama.cpp (`llama-server`) or vLLM. A Lyrica-managed server
-  would be just another local endpoint, one she can start, stop and switch
-  models on. This is a separate thread after the web UI, and it depends on the
-  GPU available to her host.
+- **Shared endpoints.** An administrator can set up endpoints once for every
+  user, such as OpenRouter or the GPU machine. These live in `self.db`. Users
+  can also add their own in their `user.db`.
+- **Hardware.**
+  - Lyrica runs in a VM with an RTX 3090 (24 GB).
+  - Most of her models will run on a second machine on the LAN, with two RTX
+    6000 Pro Blackwell GPUs.
+  - Both count as **local**: the data stays on Li's network.
+- **Later: Lyrica manages her own models.** A small **model host** service
+  runs on each GPU machine. It wraps vLLM on the Blackwell machine (both GPUs,
+  for the large models) and llama.cpp (`llama-server`) on the 3090 VM (small
+  fast models: titles, embeddings, cheap subagents).
+  - Each model host serves an OpenAI-compatible endpoint plus a small,
+    authenticated management API: list, load, unload, status.
+  - Lyrica connects to it as a local endpoint she can also start, stop and
+    switch models on.
+  - LAN only, authenticated with a token.
+  - This is a separate thread, after the web UI.
 
 ## Storage, encryption and unlocking
 
