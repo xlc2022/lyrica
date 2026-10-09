@@ -182,6 +182,55 @@ follows the same local/cloud rules as every other model call.
 Model-facing memory tools: `remember`, `recall`, `read_memory`. That's three of the
 eight-tool budget.
 
+## Workspace activity is memory too
+
+What she does in a workspace is part of her experience, the same as what is
+said:
+- **Tool calls and results are thread entries.** Files read, edits made,
+  commands and their output are stored and searchable like the rest of the
+  conversation. Large outputs are indexed in truncated form. The full text
+  stays in the thread entry, encrypted with everything else.
+- **Notes can be about work.** She notes what matters, for example "Changed
+  the node-2 backup job to keep 14 days [e:…]". Each note cites the tool-call
+  entry it came from.
+- **Sleep consolidates work.** It turns what happened in workspaces into pages
+  about each project or folder: what it is, its current state, recent changes,
+  and what's unfinished. Unfinished work goes into WAKE.
+- **Opening a folder brings back what she knows about it.** When a thread is
+  granted a folder that a page describes, that page is loaded with the thread's
+  context, the same way a relevant page comes up in conversation.
+- **Copies of files are not memory.** File contents stay in the thread entry
+  where she read them. Notes and pages hold what she concluded, with
+  citations.
+
+## Threads that aren't logged
+
+Each thread has a **Do not log thread in memory** checkbox. When it is on:
+- the thread isn't indexed, so no other thread can recall anything from it;
+- sleep skips it, and catch-up never extracts notes from it;
+- she can't write notes in it: `remember` isn't offered, and her prompt tells
+  her the thread isn't being remembered, so she doesn't promise to;
+- she can still *read* her existing memory in it;
+- the thread itself is still kept, encrypted, so you can scroll back. You can
+  forget it like any other thread.
+
+**Daughter threads inherit the setting.** Subagent threads, forks, and copies
+exported to another interface are created unlogged if their parent is
+unlogged, and their checkbox can't be turned off. The store refuses to create
+a logged daughter of an unlogged thread, so this doesn't depend on the
+interface getting it right.
+
+**Exported copies aren't processed twice.** A thread copied to another
+interface keeps the original entries' IDs. Sleep and search treat those
+entries as already processed, so only new entries in the copy are new
+material.
+
+**Changing the setting part-way through** only affects what comes after:
+- **Turning it on:** anything already consolidated stays in memory. Use
+  "forget thread" to remove it.
+- **Turning it off:** entries written while it was on are never logged, even
+  later. Each entry records whether it was written while unlogged.
+
 ## Deletion
 
 | Level | Effect |

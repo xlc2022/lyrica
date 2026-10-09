@@ -128,6 +128,13 @@ Details in [docs/memory.md](docs/memory.md).
   edit keeps the previous text as a revision.
 - **Review:** users search, review and edit her memory in a memory browser in
   the web UI.
+- **Workspace activity is memory too.** File reads, edits and commands are
+  thread entries. Sleep turns them into pages about each project or folder,
+  and opening a folder brings back what she knows about it.
+- **Do not log thread in memory** is a checkbox on each thread. An unlogged
+  thread isn't indexed, slept or noted from, but she can still read her
+  existing memory in it. Daughter threads (subagents, forks, exports) inherit
+  the setting and can't turn it off.
 - **Deletion has four levels:** archive, delete a memory, forget a thread, and
   forget a topic. A deleted memory leaves a **tombstone** that holds no text,
   only IDs, so sleep doesn't extract the same fact again from a thread that

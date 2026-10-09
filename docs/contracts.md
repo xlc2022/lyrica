@@ -124,7 +124,7 @@ nothing else. No code path gives a general view a private handle.
 
 | Area | Methods |
 |---|---|
-| Threads | `create`, `list({ includeHidden })`, `get`, `setHidden`, `appendEntry`, `loadEntries`, `forget` |
+| Threads | `create({ parent?, unlogged? })`, `list({ includeHidden })`, `get`, `setHidden`, `setUnlogged`, `appendEntry`, `loadEntries`, `forget` |
 | Notes | `add`, `get`, `update(author)`, `archive`, `delete` |
 | Pages | `index()` (titles and summaries), `get`, `put(author)` (sleep only), `delete` |
 | WAKE and journal | `getWake`, `putWake`, `addJournal`, `listJournal` |
@@ -133,6 +133,14 @@ nothing else. No code path gives a general view a private handle.
 | Sleep | `watermark()`, `recordSleepRun(run)`, `listSleepRuns()` |
 
 Authors are `lyrica`, `sleep` or `user:<id>`.
+
+**Unlogged threads** (see [memory.md](memory.md#threads-that-arent-logged))
+are enforced in the store:
+- `create` with an unlogged `parent` always makes an unlogged child, and
+  `setUnlogged(false)` is refused on a thread whose parent is unlogged.
+- Entries record whether they were written while unlogged. Search, sleep and
+  catch-up never see those entries.
+- Notes can't be written from an unlogged thread.
 
 ## core/models: the cloud boundary lives here
 
