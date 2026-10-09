@@ -7,6 +7,7 @@ import {
   Keyring, Memory, Models, PersonaStore, SystemdCredentials, Users, Workspace,
   type Argon2Params, type CredentialStore, type User,
 } from "@lyrica/core";
+import { Delegation, type Limits } from "@lyrica/extension";
 import type { State, UserCard } from "./api.ts";
 import { RateLimiter, Sessions } from "./auth.ts";
 import { ThreadHost } from "./hosted.ts";
@@ -35,6 +36,8 @@ export interface LyricadOptions {
   idleMs?: number;
   /** Unanswered permission requests are denied after this long. Default 5 minutes. */
   permissionMs?: number;
+  /** Subagent limits (depth, concurrency, runs per request, timeout). Delegation's defaults otherwise. */
+  delegation?: Partial<Limits>;
   /** Largest upload, in bytes. Default 50 MB. */
   uploadLimit?: number;
   rateLimit?: ConstructorParameters<typeof RateLimiter>[0];
@@ -49,6 +52,7 @@ export interface Services {
   models: Models;
   workspace: Workspace;
   persona: PersonaStore;
+  delegation: Delegation;
   host: ThreadHost;
 }
 
@@ -142,11 +146,12 @@ export class Lyricad {
     const persona = new PersonaStore(keyring.self());
     const cwd = join(this.opts.home, "run");
     mkdirSync(cwd, { recursive: true, mode: 0o700 });
+    const delegation = new Delegation({ users, memory, models, workspace, cwd, limits: this.opts.delegation });
     const host = new ThreadHost({
-      users, memory, models, workspace, persona, cwd, log: this.log,
+      users, memory, models, workspace, persona, delegation, cwd, log: this.log,
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000,
     });
-    this.services = { users, memory, models, workspace, persona, host };
+    this.services = { users, memory, models, workspace, persona, delegation, host };
     for (const u of users.all()) {
       if (keyring.loadSavedKey(u.id)) {
         await this.keyAvailable(u.id);
@@ -172,6 +177,8 @@ export class Lyricad {
     const s = this.services!;
     // First, at once: no request or stream gets past userFor from here on.
     this.sessions.dropUser(userId);
+    // Subagent runs record how they ended in user.db, so they stop before the key goes.
+    await s.delegation.stopAll(userId);
     this.keyring.lockUser(userId);
     await s.host.close(userId);
     await s.workspace.unmountHome(userId).catch((err: Error) => this.log(`unmounting a home workspace failed: ${err.message}`));
@@ -191,6 +198,7 @@ export class Lyricad {
     this.servers.length = 0;
     const s = this.services;
     if (s) {
+      await s.delegation.stopAll();
       await s.host.close();
       for (const id of this.mounted) await s.workspace.unmountHome(id).catch(() => {});
       for (const u of s.users.all()) this.keyring.lockUser(u.id);
