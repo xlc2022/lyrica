@@ -1,4 +1,4 @@
-import type { BuildSystemPromptOptions, ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import type { BuildSystemPromptOptions, ExtensionCommandContext, ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { isThreadView, type CallContext, type Interface, type Persona, type Pool, type PoolView, type Profile, type User } from "@lyrica/core";
 import { assemble, type Budgets, type Section } from "./assemble.ts";
 import { memorySections } from "./memory.ts";
@@ -9,6 +9,7 @@ export * from "./assemble.ts";
 export * from "./memory.ts";
 export * from "./record.ts";
 export * from "./routing.ts";
+export * from "./sleep.ts";
 export * from "./workspace.ts";
 
 export interface ThreadContext {
@@ -31,6 +32,12 @@ export interface LyricaOptions {
   debugPrompt?: boolean;
   budgets?: Budgets;
   now?: () => Date;
+  /** "read" (sleep): recall and read_memory, without remember. Default "full". */
+  memoryTools?: "full" | "read";
+  /** Memories this thread must not see, in recall and read_memory alike. */
+  hide?: (id: string) => boolean;
+  /** The /sleep command, where the host offers it (the bench). */
+  sleep?: (ctx: ExtensionCommandContext) => Promise<void>;
 }
 
 /** The Lyrica Pi extension for one thread. */
@@ -38,17 +45,18 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
   // Only a view from openThreadView may reach a session: never the owner view, never a lookalike.
   if (!isThreadView(thread.view) || thread.view.pool !== thread.pool) throw new Error("the extension needs this thread's own view from openThreadView");
   const { view } = thread;
-  const who = () => ({ threadId: thread.threadId, user: { id: thread.user.id, profile: opts.profile() } });
+  const who = () => ({ threadId: thread.threadId, user: { id: thread.user.id, profile: opts.profile() }, hide: opts.hide });
   return (pi) => {
     const router = new TopicRouter();
-    registerMemoryTools(pi, view, who);
+    registerMemoryTools(pi, view, who, { readOnly: opts.memoryTools === "read" });
+    if (opts.sleep) pi.registerCommand("sleep", { description: "Sleep now: consolidate, dream and wake, for this pool", handler: (_args, ctx) => opts.sleep!(ctx) });
     pi.on("before_agent_start", async (event, ctx) => {
       const persona = opts.persona();
       const topics = router.route(persona.topics, event.prompt);
       const memory = await memorySections(view, event.prompt, { ...who(), folders: opts.folders?.() ?? [] });
       // An unlogged thread isn't offered remember at all. Tools keep their order, so the prompt prefix stays the same.
       const active = pi.getActiveTools();
-      if (active.includes("remember") === !!memory.notice) {
+      if (opts.memoryTools !== "read" && active.includes("remember") === !!memory.notice) {
         const want = new Set(memory.notice ? active.filter((t) => t !== "remember") : [...active, "remember"]);
         pi.setActiveTools(pi.getAllTools().map((t) => t.name).filter((t) => want.has(t)));
       }

@@ -20,7 +20,7 @@ clients; they still log in.
 - When unlocked it builds `Workspace` with its own port as `excludePorts`, and
   runs `selfTest()`. If network is refused, the reason is logged and shown to
   administrators (`GET …/admin/status`).
-- On SIGTERM it stops every subagent run and turn, disposes sessions,
+- On SIGTERM it stops every subagent run, sleep and turn, disposes sessions,
   unmounts home workspaces, drops keys, closes `self.db` and exits.
 
 ## Saving credentials
@@ -70,7 +70,7 @@ service.
   `Me.warning` points out saved credentials with stay-unlocked off: the key
   then comes back at every start.
 - **Lock** (`POST /api/u/:userId/lock`) at once removes the user from every
-  session, stops their subagent runs (which record how they ended), drops
+  session, stops their subagent runs and sleep (which record how they ended), drops
   their key, then stops their threads and unmounts their home. Event
   streams check the session with every event and every few seconds, so
   logout and Lock end them.
@@ -183,11 +183,37 @@ own conversation goes there at once. Each keeps the file's revision it was
 drafted against: if the file has changed since, approving it needs
 `overwrite`, so newer changes aren't undone unseen.
 
+## Sleep
+
+`lyricad` builds one `Sleep` ([sleep.md](sleep.md)) and runs it three ways:
+
+- **At night.** At `sleep.time` (local time, default 04:00) it sleeps every
+  user's general pool, then private pool, one at a time
+  (`Lyricad.sleepNight`). A user in manual mode is left out; a user without
+  a key, or a pool with nothing new, is skipped with the reason.
+- **`/sleep`.** `POST …/sleep/:pool`, or the text `/sleep` sent to a thread
+  (which sleeps the thread's pool and starts no turn). In manual mode it
+  answers `confirm` unless confirmed, and once the run ends a fresh thread
+  opens in that pool (a `thread` event). Whatever would stop the run at once
+  (no key, endpoint down, nothing new) is a `409` in plain words, and the
+  skip is recorded.
+- **The Sleep section.** `GET …/sleep` gives the mode (`sleep.mode` in
+  `user.db`, set with `PUT …/sleep/mode`), the time, open items and recent
+  runs of both pools. `GET …/sleep/:pool/runs/:runId` gives one run: notes she
+  caught up on, pages with their text before and after, questions, the dream,
+  WAKE and items. `POST …/sleep/:pool/items/:itemId/chat` starts a web thread
+  from an item and has her speak first; `DELETE` dismisses one.
+  `GET …/sleep/events` streams `started`, `phase`, `finished` and `thread`.
+
+Lock and shutdown stop a running sleep before the key goes; the run is
+recorded as partial and resumes next time.
+
 ## Logs
 
 One line per request: method, route pattern (never the path, which holds
-IDs), status and time. Failures log the error's class and first line.
-Message, memory and file text never reach the log.
+IDs), status and time. Failures log the error's class and first line. Sleep
+logs the pool, the status or skip reason and the time taken. Message, memory
+and file text never reach the log.
 
 ## Web access
 

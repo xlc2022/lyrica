@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { searchView, type PoolView } from "@lyrica/core";
+import type { PoolView } from "@lyrica/core";
 import { Type } from "typebox";
-import { formatHit, formatRead, type MemoryContext } from "./memory.ts";
+import { formatHit, formatRead, search, type MemoryContext } from "./memory.ts";
 import { syncEntries } from "./record.ts";
 
 // The Memory component's model-facing tools: remember, recall, read_memory.
@@ -55,7 +55,7 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
     }),
     async execute(_id, params) {
       const c = ctx();
-      const hits = searchView(view, params.query, { limit: params.limit ?? 8, excludeThread: c.threadId });
+      const hits = search(view, params.query, { limit: params.limit ?? 8, excludeThread: c.threadId }, c.hide);
       return text(hits.length ? hits.map((h) => formatHit(h, c.user)).join("\n") : "Nothing found.");
     },
   });

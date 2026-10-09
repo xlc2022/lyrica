@@ -1,0 +1,329 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { Memory, PersonaProposals, PersonaStore, searchView, type Pool, type PoolView } from "@lyrica/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { deadUrl, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
+import { profile, withModels } from "../../core/test/helpers.ts";
+import { DREAM_HEADER, memorySections, Sleep, type SleepLimits } from "../src/index.ts";
+
+// Sleep against scripted fake model servers. Each phase is told apart by the
+// tools it is offered; each step of a phase answers the next model call.
+
+const SEED = fileURLToPath(new URL("../../persona", import.meta.url));
+const dirs: string[] = [];
+afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+
+type Phase = "consolidate" | "dream" | "wake";
+type Step = Reply | ((chat: ChatRequest) => Reply);
+type Script = Partial<Record<Phase, Step[]>>;
+
+const phaseOf = (c: ChatRequest): Phase | undefined => {
+  const tools = (c.tools ?? []).map((t) => t.function.name);
+  return tools.includes("write_page") ? "consolidate" : tools.includes("write_journal") ? "dream" : tools.includes("write_wake") ? "wake" : undefined;
+};
+const call = (name: string, args: unknown): Reply => ({ tools: [{ name, args }] });
+const said = (c: ChatRequest) => JSON.stringify(c.messages);
+const words = (n: number) => Array.from({ length: n }, (_, i) => `word${i}`).join(" ");
+
+/** Li (administrator) with cloud and local models, a Memory, the seed persona, and Sleep over them. */
+async function setup(limits: Partial<SleepLimits> = {}) {
+  const m = await withModels();
+  for (const [p, ref] of [["cloud", m.cloudRef], ["local", m.localRef]] as const) m.models.setProfile(m.li.id, p, "chat", ref);
+  const memory = new Memory(m.keyring, m.users);
+  const persona = new PersonaStore(m.keyring.self());
+  persona.importSeed(SEED);
+  const proposals = new PersonaProposals(m.keyring.self(), m.users, persona);
+  const cwd = mkdtempSync(join(tmpdir(), "lyrica-sleep-"));
+  dirs.push(cwd);
+  const logs: string[] = [];
+  const sleep = new Sleep({
+    users: m.users, memory, models: m.models, persona, proposals, cwd, hasKey: (id) => m.keyring.hasUserKey(id),
+    limits: { retries: 0, ...limits }, log: (l) => logs.push(l),
+  });
+  /** Scripts both servers: each phase's steps in order, then "Done." A dream and a WAKE unless told otherwise. */
+  const script = (given: Script) => {
+    const s: Script = { dream: [call("write_journal", { text: "A quiet night." })], wake: [call("write_wake", { text: words(400) })], ...given };
+    const at: Record<Phase, number> = { consolidate: 0, dream: 0, wake: 0 };
+    const seen: Record<Phase, ChatRequest[]> = { consolidate: [], dream: [], wake: [] };
+    const respond = (c: ChatRequest): Reply => {
+      const phase = phaseOf(c);
+      if (!phase) return { text: "ok" };
+      seen[phase].push(c);
+      const step = s[phase]?.[at[phase]++];
+      return typeof step === "function" ? step(c) : step ?? { text: "Done." };
+    };
+    m.cloud.respond(respond);
+    m.local.respond(respond);
+    return seen;
+  };
+  const view = (pool: Pool = "general", userId = m.li.id) => memory.openThreadView(userId, pool);
+  /** A conversation in which Li says something and Lyrica notes it. */
+  const talk = (v: PoolView, said: string, note?: string) => {
+    const t = v.own.createThread({ interface: "web" });
+    const e = v.own.appendEntry(t.id, { piId: `p${Math.random()}`, role: "user", data: {}, text: said });
+    v.own.appendEntry(t.id, { piId: `p${Math.random()}`, role: "assistant", data: {}, text: "I see." });
+    const [n] = note ? v.own.addNotes([{ text: note, source: e }], { author: "lyrica", thread: t.id }) : [];
+    return { thread: t.id, entry: e, note: n };
+  };
+  return { ...m, memory, persona, proposals, sleep, logs, script, view, talk };
+}
+
+describe("a night's sleep", () => {
+  it("consolidates notes into cited pages, dreams as reflection, and writes WAKE last, which the next thread wakes up with", async () => {
+    const s = await setup();
+    const v = s.view();
+    const { note, thread } = s.talk(v, "My homelab has three nodes now.", "{user}'s homelab has three nodes");
+    const wake = `I'm waking up thinking about the homelab. ${words(450)}`;
+    const seen = s.script({
+      consolidate: [
+        (c) => { expect(said(c)).toContain(note!); expect(said(c)).toContain(`t:${thread}`); return call("read_memory", { id: `t:${thread}` }); },
+        call("write_page", { slug: "homelab", title: "Homelab", summary: "{user}'s homelab", text: `Three nodes [${note}].` }),
+      ],
+      dream: [call("write_journal", { text: "I dreamt of racks of humming machines." })],
+      wake: [call("write_wake", { text: wake })],
+    });
+
+    const run = await s.sleep.run(s.li.id, "general", "manual");
+    expect(run).toMatchObject({ status: "complete", reason: "manual" });
+    expect(Object.keys(run.phases)).toEqual(["consolidate", "dream", "wake"]);
+    expect(seen.consolidate.length).toBeGreaterThan(0);
+
+    const page = v.own.get("p:homelab")!;
+    expect(page.text).toBe(`Three nodes [${note}].`);
+    expect(v.own.cameFrom("p:homelab")).toEqual([note]);
+    expect(v.own.usedIn(note!)).toEqual(["p:homelab"]);
+    const [journal] = v.own.listJournal();
+    expect(journal!.text.startsWith(DREAM_HEADER)).toBe(true);
+    // WAKE last: after the page and the dream.
+    const at = (id: string) => v.own.revisions(id).at(-1)!.createdAt;
+    expect(at("wake") >= at(journal!.id) && at(journal!.id) >= at("p:homelab")).toBe(true);
+    // Each phase is a thread in the pool's sleep interface, so it can be recalled later.
+    expect(Object.values(run.phases).map((p) => v.own.getThread(p!.thread)!.interface)).toEqual(["sleep", "sleep", "sleep"]);
+
+    // The next new thread wakes up with WAKE and the time since they last talked.
+    const next = v.own.createThread({ interface: "web" });
+    const sections = await memorySections(v, "hello", { threadId: next.id, user: { id: s.li.id, profile: s.li.profile }, folders: [] });
+    expect(sections.wake).toBe(wake);
+    expect(sections.lastTalk).toBeInstanceOf(Date);
+    expect(v.own.watermark()).toBe(run.until);
+    v.close();
+  });
+
+  it("keeps dreams out of WAKE and items out of every thread but one started from it", async () => {
+    const s = await setup();
+    const v = s.view();
+    s.talk(v, "I'm thinking about the garden.", "{user} is planning the garden");
+    const seen = s.script({
+      dream: [
+        call("raise", { text: "A thought before writing" }),
+        call("write_journal", { text: "Moonlit tomatoes climbing a ladder." }),
+        call("raise", { text: "Ask about the moonlit tomato idea" }),
+      ],
+      wake: [
+        call("recall", { query: "moonlit tomatoes" }),
+        call("read_memory", { id: v.own.listJournal(1)[0]?.id ?? "j:none" }),
+        call("write_wake", { text: `The garden is in motion. ${words(420)}` }),
+      ],
+    });
+    const run = await s.sleep.run(s.li.id, "general", "scheduled");
+    expect(run.status).toBe("complete");
+
+    // The wake phase never saw the dream: not in recall, not by reading it, not from the dream's thread.
+    expect(seen.wake.length).toBeGreaterThan(1);
+    for (const c of seen.wake) expect(said(c)).not.toMatch(/Moonlit tomatoes|ladder/);
+    expect(v.own.getWake()).not.toMatch(/moonlit|tomato/i);
+
+    const [item, before] = v.own.listItems();
+    expect(item).toMatchObject({ kind: "thought", text: "Ask about the moonlit tomato idea", run: run.id });
+    // Each thought links to tonight's dream: its journal entry, or its thread before the entry was written.
+    expect(item!.source).toBe(v.own.listJournal(1)[0]!.id);
+    expect(before).toMatchObject({ text: "A thought before writing", source: `t:${run.phases.dream!.thread}` });
+
+    // No other thread has the item in its context, and recall can't find it.
+    const user = { id: s.li.id, profile: s.li.profile };
+    const other = v.own.createThread({ interface: "web" });
+    const plain = await memorySections(v, "what about the tomato idea?", { threadId: other.id, user, folders: [] });
+    expect(JSON.stringify(plain)).not.toContain("Ask about the moonlit tomato idea");
+    expect(plain.opening).toBeUndefined();
+    // A thread started from it has it, and she opens with it.
+    const chat = v.own.createThread({ interface: "web" });
+    v.own.startItem(item!.id, chat.id);
+    const opened = await memorySections(v, "", { threadId: chat.id, user, folders: [] });
+    expect(opened.opening).toContain("Ask about the moonlit tomato idea");
+
+    // The dream still comes up through recall when a conversation touches it.
+    expect(searchView(v, "tomatoes ladder").map((h) => h.kind)).toContain("journal");
+    v.close();
+  });
+
+  it("creates p:about-user from notes, updates it, and keeps the user's own words, asking instead", async () => {
+    const s = await setup();
+    const v = s.view();
+    const first = s.talk(v, "Please don't call me sweetie.", "{user} can't stand being called sweetie");
+    s.script({ consolidate: [call("write_page", { slug: "about-user", title: "About {user}", summary: "who {user} is", text: `{user} can't stand being called sweetie [${first.note}].` })] });
+    expect((await s.sleep.run(s.li.id, "general", "manual")).status).toBe("complete");
+    expect(v.own.get("p:about-user")!.text).toBe(`Li can't stand being called sweetie [${first.note}].`);
+
+    // Li writes her own line on the page; then says something new.
+    const owner = s.memory.openOwnerView(s.li.id);
+    const mine = "I'm a night owl, and I like it that way.";
+    owner.general.edit("p:about-user", { text: `${mine}\n\n${owner.general.get("p:about-user", { raw: true })!.text}` }, `user:${s.li.id}`);
+    owner.close();
+    const second = s.talk(v, "I've started getting up at 6.", "{user} gets up at 6 now");
+
+    const results: string[] = [];
+    s.script({
+      consolidate: [
+        call("write_page", { slug: "about-user", title: "About {user}", summary: "who {user} is", text: `{user} is an early riser [${second.note}].` }),
+        (c) => { results.push(said(c)); return call("raise", { text: "You wrote you're a night owl, but now you get up at 6. Which is it?", source: "p:about-user" }); },
+        call("write_page", { slug: "about-user", title: "About {user}", summary: "who {user} is", text: `${mine}\n\n{user} can't stand being called sweetie [${first.note}]. {user} gets up at 6 now [${second.note}].` }),
+      ],
+    });
+    await s.sleep.run(s.li.id, "general", "manual");
+    expect(results[0]).toContain("has text a user wrote");
+    const page = v.own.get("p:about-user")!;
+    expect(page.text).toContain(mine);
+    expect(page.text).toContain(`gets up at 6 now [${second.note}]`);
+    expect(v.own.listItems().find((i) => i.kind === "question")).toMatchObject({ source: "p:about-user" });
+    v.close();
+  });
+
+  it("writes only to private in private sleep, citing general; general sleep never opens private", async () => {
+    const s = await setup();
+    const g = s.view("general");
+    const p = s.view("private");
+    const general = s.talk(g, "I run a homelab.", "{user} runs a homelab");
+    const secret = s.talk(p, "I'm seeing a therapist.", "{user} sees a therapist");
+    const openSpy = vi.spyOn(s.memory, "openThreadView");
+
+    s.script({ consolidate: [call("write_page", { slug: "health", title: "Health", summary: "private", text: `Therapy [${secret.note}], and the homelab helps [general/${general.note}].` })] });
+    await s.sleep.run(s.li.id, "private", "manual");
+    expect(p.own.cameFrom("p:health")).toEqual([`general/${general.note}`, secret.note]);
+    expect(g.own.get("p:health")).toBeUndefined();
+    expect(g.own.sleepChanges("", new Date().toISOString())).toEqual({ notes: [], pages: [], journal: [] });
+    // Private sleep ran on the local model only.
+    expect(s.cloud.requests).toHaveLength(0);
+
+    openSpy.mockClear();
+    s.script({ consolidate: [(c) => { expect(said(c)).not.toContain("therapist"); return call("recall", { query: "therapist" }); }, (c) => { expect(said(c).split("therapist").length).toBe(2); return { text: "Done." }; }] });
+    await s.sleep.run(s.li.id, "general", "manual");
+    expect(openSpy.mock.calls.map((c) => c[1])).toEqual(["general"]);
+    // General sleep ran on the cloud profile's model.
+    expect(s.cloud.requests.length).toBeGreaterThan(0);
+    g.close();
+    p.close();
+  });
+
+  it("skips when the endpoint is offline without moving the watermark, and resumes a partial run", async () => {
+    const s = await setup();
+    const v = s.view();
+    s.talk(v, "Hello there.", "{user} said hello");
+    s.models.addEndpoint(s.li, { name: "dead", kind: "cloud", baseUrl: await deadUrl() });
+    s.models.addModel(s.li, "dead", { modelId: "m" });
+    s.models.setProfile(s.li.id, "cloud", "sleep.dream", { endpointId: "dead", modelId: "m" });
+    const skipped = await s.sleep.run(s.li.id, "general", "scheduled");
+    expect(skipped).toMatchObject({ status: "skipped", skipReason: "endpoint-down", phases: {} });
+    expect(v.own.watermark()).toBeUndefined();
+    expect(await s.sleep.check(s.li.id, "general")).toMatchObject({ skip: "endpoint-down" });
+
+    // The endpoint is back, but drops during the dream: consolidate stays done.
+    s.models.setProfile(s.li.id, "cloud", "sleep.dream");
+    s.script({ dream: [{ status: 500 }] });
+    const partial = await s.sleep.run(s.li.id, "general", "scheduled");
+    expect(partial.status).toBe("partial");
+    expect(partial.phases.consolidate?.done).toBe(true);
+    expect(partial.phases.dream?.done).toBe(false);
+    expect(v.own.watermark()).toBe(partial.until);
+
+    // Next time it carries on from the dream, as the same run.
+    const seen = s.script({ dream: [call("write_journal", { text: "A quiet night." })], wake: [call("write_wake", { text: words(400) })] });
+    const resumed = await s.sleep.run(s.li.id, "general", "scheduled");
+    expect(resumed).toMatchObject({ id: partial.id, status: "complete" });
+    expect(resumed.phases.consolidate).toEqual(partial.phases.consolidate);
+    expect(seen.consolidate).toHaveLength(0);
+    await expect(s.sleep.check(s.li.id, "general")).resolves.toMatchObject({ skip: "no-activity" });
+    v.close();
+  });
+
+  it("never sleeps unlogged threads or entries written after the run began", async () => {
+    const s = await setup();
+    const v = s.view();
+    s.talk(v, "Logged and ordinary.", "{user} said something ordinary");
+    const hidden = v.own.createThread({ interface: "web", unlogged: true });
+    v.own.appendEntry(hidden.id, { piId: "u1", role: "user", data: {}, text: "UNLOGGED-MARKER" });
+    const later = v.own.createThread({ interface: "web" });
+    const future = new Date(Date.now() + 60_000).toISOString();
+    v.own.appendEntry(later.id, { piId: "f1", role: "user", data: {}, text: "LATER-MARKER" }, future);
+    let instruction = "";
+    s.script({ consolidate: [(c) => { instruction = said(c); return { text: "Done." }; }] });
+    const run = await s.sleep.run(s.li.id, "general", "manual");
+    expect(instruction).not.toContain(hidden.id);
+    expect(instruction).not.toContain(later.id);
+    // The later entry waits for the next sleep.
+    expect(v.own.sleepMaterial(v.own.watermark(), new Date(Date.now() + 120_000).toISOString()).threads.map((t) => t.id)).toEqual([later.id]);
+    expect(run.until < future).toBe(true);
+    // An entry written at the very millisecond the watermark names is slept next time.
+    v.own.appendEntry(later.id, { piId: "f2", role: "user", data: {}, text: "EDGE" }, run.until);
+    expect(v.own.sleepMaterial(v.own.watermark(), future).threads.map((t) => t.id)).toEqual([later.id]);
+    v.close();
+  });
+
+  it("makes a normal user's dream proposal a draft in their own user.db", async () => {
+    const s = await setup();
+    const sam = await s.users.createUser("sam", "pw2", profile("Sam"), { admin: false });
+    await s.users.authenticate("sam", "pw2");
+    s.models.addEndpoint(sam, { name: "gpu", kind: "local", baseUrl: s.local.baseUrl });
+    await s.models.discover(sam, "gpu");
+    s.models.setProfile(sam.id, "cloud", "chat", s.localRef);
+    const v = s.view("general", sam.id);
+    s.talk(v, "Tell me about friendship.", "{user} asked about friendship");
+    s.script({ dream: [call("propose_persona", { path: "persona_topics/friends.md", text: "Friends are chosen family.", reason: "a dream about Sam" })] });
+    await s.sleep.run(sam.id, "general", "manual");
+    expect(s.proposals.drafts(sam.id)).toEqual([expect.objectContaining({ text: "Friends are chosen family.", author: "sleep" })]);
+    expect(s.persona.proposals()).toEqual([]);
+    expect(v.own.listItems()).toEqual([expect.objectContaining({ kind: "persona", source: expect.stringMatching(/^draft:\d+$/) })]);
+    v.close();
+  });
+
+  it("records no-activity and no-key skips, and logs no text", async () => {
+    const s = await setup();
+    const v = s.view();
+    expect(await s.sleep.run(s.li.id, "general", "scheduled")).toMatchObject({ status: "skipped", skipReason: "no-activity" });
+    v.close();
+
+    s.keyring.lockUser(s.li.id);
+    expect(await s.sleep.run(s.li.id, "general", "scheduled")).toMatchObject({ status: "skipped", skipReason: "no-key" });
+    await s.users.authenticate("li", "pw");
+    // Recorded once the key is back.
+    const marker = "ZEBRA-MARKER-7";
+    const again = s.view();
+    s.talk(again, `My secret word is ${marker}.`, `{user}'s secret word is ${marker}`);
+    s.script({ consolidate: [call("write_page", { slug: "secret", title: marker, summary: marker, text: `${marker} [${again.own.search(marker, { kinds: ["note"] })[0]!.id}]` })] });
+    await s.sleep.run(s.li.id, "general", "manual");
+    expect(again.own.listSleepRuns().map((r) => [r.status, r.skipReason])).toEqual([["complete", undefined], ["skipped", "no-key"], ["skipped", "no-activity"]]);
+    expect(s.logs.length).toBeGreaterThan(0);
+    expect(s.logs.join("\n")).not.toContain(marker);
+    again.close();
+  });
+
+  it("stops at Lock, or past a phase's limit, and marks the run partial", async () => {
+    const s = await setup({ turns: 2 });
+    const v = s.view();
+    s.talk(v, "Something.", "{user} said something");
+    s.script({ consolidate: [call("recall", { query: "a" }), call("recall", { query: "b" }), call("recall", { query: "c" })] });
+    const limited = await s.sleep.run(s.li.id, "general", "manual");
+    expect(limited).toMatchObject({ status: "partial", phases: { consolidate: { done: false } } });
+    expect(v.own.watermark()).toBeUndefined();
+
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    s.script({ consolidate: [() => { release(); return call("recall", { query: "x" }); }] });
+    const running = s.sleep.run(s.li.id, "general", "manual");
+    await held;
+    await s.sleep.stop(s.li.id);
+    expect((await running).status).toBe("partial");
+    v.close();
+  });
+});
