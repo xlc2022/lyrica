@@ -6,8 +6,10 @@ import type { RoutedTopic } from "./routing.ts";
 export interface Budgets {
   persona: number;
   topics: number;
+  notice: number;
   wake: number;
   pages: number;
+  folders: number;
   user: number;
   recall: number;
   time: number;
@@ -16,8 +18,10 @@ export interface Budgets {
 export const DEFAULT_BUDGETS: Budgets = {
   persona: 8000,
   topics: 9000,
+  notice: 400,
   wake: 4000,
   pages: 3000,
+  folders: 4000,
   user: 600,
   recall: 4000,
   time: 300,
@@ -44,7 +48,7 @@ export interface Section {
 export interface Assembled {
   /** The persona core: Pi's `customPrompt`. */
   customPrompt: string;
-  /** Stable sections for Pi's `sections`, in order: topics, wake, pages, user. Pi adds the tags. */
+  /** Stable sections for Pi's `sections`, in order: topics, notice, wake, pages, folders, user. Pi adds the tags. */
   sections: Record<string, string>;
   /** Content that changes every turn (recall, time), sent as a message so the prompt prefix stays cacheable. */
   turn: string;
@@ -52,8 +56,9 @@ export interface Assembled {
 }
 
 /**
- * Splits her context into a stable system prompt (persona core, topics, WAKE,
- * page index, who she's talking with) and a per-turn message (recall, time).
+ * Splits her context into a stable system prompt (persona core, topics, an
+ * unlogged notice, WAKE, page index, folder pages, who she's talking with) and
+ * a per-turn message (recall, time).
  */
 export function assemble(input: PromptInput, budgets: Budgets = DEFAULT_BUDGETS): Assembled {
   const report: Section[] = [];
@@ -74,8 +79,10 @@ export function assemble(input: PromptInput, budgets: Budgets = DEFAULT_BUDGETS)
     report.push({ name: "topics", text: topics.text, budget: budgets.topics, truncated: topics.truncated, place: "system" });
   }
   const stable: [keyof Budgets, string | undefined][] = [
+    ["notice", input.memory.notice],
     ["wake", input.memory.wake],
     ["pages", input.memory.pageIndex],
+    ["folders", input.memory.folders],
     ["user", whoLine(input.profile)],
   ];
   for (const [name, body] of stable) {
