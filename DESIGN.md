@@ -100,8 +100,10 @@ endpoints.
   the user logs in, or at startup if they chose **save credentials**, in which
   case it's kept with systemd credentials and sealed to the TPM where one
   exists.
-- `lyricad` asks for a passphrase on start to unlock `self.db`. An option saves
-  this too, so it can start unattended.
+- `lyricad` needs a passphrase to unlock `self.db`.
+  - As a service, it starts **locked** and the web UI shows an unlock page.
+  - Run by hand with `lyrica serve`, it can prompt in the terminal instead.
+  - A "save credentials" option skips both, so it can start unattended.
 - Memory never goes into a git repository. Backups are encrypted.
 - What this protects against: a stolen disk, a leaked backup, or someone
   reading the files while a user is locked.
@@ -171,9 +173,13 @@ Details in [docs/sleep.md](docs/sleep.md).
 
 - The Lyrica Pi extension holds everything that makes her Lyrica: persona,
   context assembly, memory tools and sleep.
-- **`lyricad`** is one Node process. It hosts the Pi SDK sessions for every
-  interface, using that same extension. It is the only process that writes
-  Lyrica's databases.
+- **`lyricad`** is one Node process. It embeds Pi through Pi's SDK: each
+  active thread is a Pi session object inside `lyricad`, not a separate `pi`
+  process. All interfaces go through it, with the same extension, and it is the
+  only process that writes Lyrica's databases.
+- **Pi's built-in coding tools (`bash`, `read`, `write`, `edit`) are off** in
+  Lyrica's sessions. She has only her own tools. Letting her run commands or
+  edit her own code later needs its own sandboxed design.
 - **Deployment:** `lyricad` runs as a systemd service, in practice inside an
   LXC container or VM on Li's Proxmox. No Docker.
 - **One command, `lyrica`**, written in TypeScript like the rest of the

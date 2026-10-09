@@ -170,8 +170,13 @@ The extension is created with a `ThreadContext`:
 - **Session hosting:** `createAgentSession` with
   `SessionManager.inMemory(cwd, opts, view.own.loadEntries(threadId))`, the
   router's `modelRuntimeFor`, and a `DefaultResourceLoader` that has the inline
-  Lyrica extension and context-file discovery turned off. Each `message_end`
-  calls `appendEntry`.
+  Lyrica extension and context-file discovery turned off.
+  - Built-in tools are disabled (`noTools`), so only the extension's tools
+    exist.
+  - Sessions run in-process, with no `pi` subprocesses.
+  - Each `message_end` calls `appendEntry`.
+- **Unlocking:** when started as a service, `lyricad` starts locked, and the
+  API serves only the unlock endpoint until `self.db` is unlocked.
 - **HTTP/SSE API** (detailed by the Web thread):
   - auth;
   - threads (list, create, hide, forget);

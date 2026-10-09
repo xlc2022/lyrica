@@ -62,11 +62,12 @@ users.
   thread is ever written as a plaintext file.
 - **Full-text search lives inside the encrypted database** (FTS5). There is no
   plaintext index.
-- **Unlocking.** One passphrase unwraps the per-database keys when
-  `lyricad` starts. By default it asks for the passphrase on every restart. The
-  optional "start automatically" mode stores the unwrapped key with systemd
-  credentials (sealed to the TPM if one exists). Choosing that mode trades
-  protection for convenience, and the settings page says so.
+- **Unlocking.** The `lyricad` passphrase unlocks `self.db`. As a service,
+  `lyricad` starts locked and the web UI shows an unlock page. Each user's
+  databases are unlocked by that user's password at login. "Save credentials"
+  (for `lyricad` or for a user) keeps the key with systemd credentials, sealed
+  to the TPM if one exists. That trades protection for convenience, and the
+  settings page says so.
 - **Backups** are encrypted (restic or borg). Memory never goes into a git
   repository.
 
