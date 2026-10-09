@@ -162,7 +162,7 @@ describe.skipIf(!homeRunnable)("the home workspace", () => {
     const users = new Users(keyring);
     const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
     await users.authenticate("li", "pw");
-    const workspace = new Workspace(keyring, users);
+    const workspace = new Workspace(keyring, users, { excludePorts: [] });
     const thread = { userId: li.id, pool: "general" as const, threadId: "t1" };
     try {
       await workspace.mountHome(li.id);
@@ -270,13 +270,31 @@ describe.skipIf(!netRunnable || !lan)("a sandbox's network switches", () => {
   });
 });
 
+describe.skipIf(!netRunnable)("the network self-test", () => {
+  it("passes on this host, and refuses network modes when a networked sandbox can't start", async () => {
+    const keyring = await freshKeyring();
+    const users = new Users(keyring);
+    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    await users.authenticate("li", "pw");
+    const thread = { userId: li.id, pool: "general" as const, threadId: "t1" };
+
+    const ok = new Workspace(keyring, users, { excludePorts: [] });
+    expect(await ok.selfTest()).toBeUndefined();
+    expect(ok.forThread(thread).network().internet).toBe(true);
+
+    const broken = new Workspace(keyring, users, { excludePorts: [], pasta: "/nonexistent/pasta" });
+    expect(await broken.selfTest()).toMatch(/didn't start/);
+    expect(broken.forThread(thread).network()).toEqual({ internet: false, services: false, hosts: [] });
+  });
+});
+
 describe.skipIf(!homeRunnable || !netRunnable)("a thread's switches", () => {
   it("cut the network in either pool", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
     const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
     await users.authenticate("li", "pw");
-    const workspace = new Workspace(keyring, users);
+    const workspace = new Workspace(keyring, users, { excludePorts: [] });
     const thread = (pool: "general" | "private", threadId: string) => ({ userId: li.id, pool, threadId });
     workspace.settings(li.id).setThread("general-off", "general", { internet: false });
     workspace.settings(li.id).setThread("private-on", "private", { services: true });

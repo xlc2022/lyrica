@@ -34,7 +34,7 @@ async function setup() {
   const users = new Users(keyring);
   const tester = await users.createUser("tester", "pw", profile("Tester"), { admin: true });
   await users.authenticate("tester", "pw");
-  new Workspace(keyring, users).allowedPaths.allow(tester, tester.id, "general", join(host, "project"));
+  new Workspace(keyring, users, { excludePorts: [] }).allowedPaths.allow(tester, tester.id, "general", join(host, "project"));
 
   const server = await fakeOpenAI({ models: [{ id: "m1" }] });
   const models = new Models(keyring, users);

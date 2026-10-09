@@ -18,7 +18,7 @@ async function setup() {
   const host = realpathSync(mkdtempSync(join(tmpdir(), "lyrica-host-")));
   dirs.push(host);
   for (const d of ["shared", "shared/music", "diary", "both"]) mkdirSync(join(host, d));
-  const workspace = new Workspace(keyring, users);
+  const workspace = new Workspace(keyring, users, { excludePorts: [] });
   const paths = workspace.allowedPaths;
   paths.allow(li, li.id, "general", join(host, "shared"));
   paths.allow(li, li.id, "private", join(host, "diary"));
@@ -80,9 +80,15 @@ describe("grants", () => {
     expect(settings.network("g1", "general")).toMatchObject({ internet: false, services: true });
     settings.setThread("p1", "private", { hosts: ["http://nas.lan:8080/api", "192.168.1.0/24"] });
     expect(settings.network("p1", "private").hosts).toEqual(["nas.lan:8080", "192.168.1.0/24"]);
-    settings.setDefaultNetwork("private", { internet: true, hosts: ["[fd00::1]:80"] });
-    expect(settings.network("p2", "private")).toEqual({ internet: true, services: false, hosts: ["[fd00::1]:80"] });
+    settings.setDefaultNetwork("private", { internet: true, hosts: ["nas.lan"] });
+    expect(settings.network("p2", "private")).toEqual({ internet: true, services: false, hosts: ["nas.lan"] });
     expect(() => settings.setThread("p1", "private", { hosts: ["not a host"] })).toThrow(/can't read host/);
+    for (const all of ["0.0.0.0/0", "10.0.0.0/0", "0.0.0.0", "0.0.0.0:443", "255.255.255.255"]) {
+      expect(() => settings.setThread("p1", "private", { hosts: [all] }), all).toThrow(/every address|isn't a host/);
+    }
+    for (const v6 of ["::/0", "::", "fd00::1", "[fd00::1]:80", "http://[fd00::1]:8080/"]) {
+      expect(() => settings.setThread("p1", "private", { hosts: [v6] }), v6).toThrow(/IPv6 hosts aren't supported yet/);
+    }
   });
 
   it("let a subagent have its parent's settings or stricter ones, never wider", async () => {
@@ -144,7 +150,7 @@ describe("ssh targets", () => {
     const { keyring, users, li, settings } = await setup();
     settings.addSsh({ ...unreachable, root: "/srv/lyrica" });
     settings.setThread("t1", "general", { target: "ssh:nas" });
-    const workspace = new Workspace(keyring, users);
+    const workspace = new Workspace(keyring, users, { excludePorts: [] });
     const thread = { userId: li.id, pool: "general" as const, threadId: "t1" };
     expect(workspace.targetFor(thread).name).toBe("ssh:nas");
     expect(workspace.folders(thread)).toEqual(["nas:/srv/lyrica"]);

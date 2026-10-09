@@ -127,7 +127,7 @@ async function workspaceAdmin(users: Users, keyring: Keyring, kind: "grants" | "
   const [action, ...rest] = args;
   if (!login) throw new Error(USAGE);
   const target = need(users, login);
-  const workspace = new Workspace(keyring, users);
+  const workspace = new Workspace(keyring, users, { excludePorts: [] });
   const isPool = (p: string | undefined): p is Pool => p === "general" || p === "private";
 
   if (kind === "grants") {

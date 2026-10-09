@@ -20,7 +20,8 @@ export async function openBench(keyring: Keyring, users: Users, user: User, opts
   const pool = opts.pool ?? "general";
   const persona = new PersonaStore(keyring.self());
   const models = new Models(keyring, users);
-  const workspace = new Workspace(keyring, users);
+  const workspace = new Workspace(keyring, users, { excludePorts: [] });
+  const refused = await workspace.selfTest();
   const view = new Memory(keyring, users).openThreadView(user.id, pool);
   const thread = view.own.createThread({ interface: "cli", title: "lyrica dev" });
   if (opts.localOnly) models.setLocalOnly(user.id, pool, thread.id, true);
@@ -33,7 +34,7 @@ export async function openBench(keyring: Keyring, users: Users, user: User, opts
   const ctx: ThreadContext = { user, pool, interface: "cli", threadId: thread.id, view, call };
 
   // The model and endpoint for each task, as the router resolves them for this thread.
-  const report = TASKS.map((task) => {
+  const report = [...(refused ? [`[lyrica] network is off for every thread: ${refused}`] : []), ...TASKS.map((task) => {
     try {
       const ref = models.resolveModel(task, call);
       const ep = models.endpoint(user.id, ref.endpointId)!;
@@ -41,7 +42,7 @@ export async function openBench(keyring: Keyring, users: Users, user: User, opts
     } catch (err) {
       return `[lyrica] ${task}: ${(err as Error).message}`;
     }
-  });
+  })];
 
   let released = false;
   const release = async () => {

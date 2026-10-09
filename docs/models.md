@@ -72,6 +72,15 @@ holding its recorded models.
 
 `openThreadSession` hosts one thread with that runtime and its chat model.
 
+## Local servers
+
+For native tool calling, start KoboldCpp with `--jinja --jinja_tools` and
+llama-server with `--jinja`. Without them, KoboldCpp picks tools in extra
+grammar-constrained passes and llama-server falls back to a generic format.
+LM Studio uses a model's own tool format when its template has one. None of
+the three reports the context window through `/v1/models` except
+llama-server, so enter it with `endpoints model … --context`.
+
 ## Child threads
 
 `childContext(parent, childThreadId, { tier } | { model })` gives a child

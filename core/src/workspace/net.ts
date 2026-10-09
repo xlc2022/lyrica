@@ -47,6 +47,11 @@ export function parseHost(raw: string): HostEntry {
     throw new Error(`can't read host ${raw}`);
   }
   if (!family && !name) throw new Error(`can't read host ${raw}`);
+  // Sandboxes are IPv4-only for now, and an IPv6 rule would do nothing until that changes.
+  if (family === 6) throw new Error(`${raw}: IPv6 hosts aren't supported yet`);
+  // An entry that matches everything would be internet access with the switch off.
+  if (prefix !== undefined && Number(prefix) === 0) throw new Error(`${raw} would allow every address; use the internet switch instead`);
+  if (family && ["0.0.0.0", "255.255.255.255"].includes(addr!)) throw new Error(`${raw} isn't a host`);
   if (port !== undefined && !(Number.isInteger(port) && port > 0 && port < 65536)) throw new Error(`bad port in ${raw}`);
   const host = family ? s : s.toLowerCase();
   const shown = host.includes(":") && !host.includes("/") && port !== undefined ? `[${host}]` : host;
@@ -55,7 +60,7 @@ export function parseHost(raw: string): HostEntry {
 
 export interface ResolvedHosts {
   /** Address or CIDR, family and optional port, for the firewall. */
-  rules: { addr: string; family: 4 | 6; port?: number }[];
+  rules: { addr: string; port?: number }[];
   /** Lines for the sandbox's /etc/hosts, pinning each hostname to what it resolved to now. */
   pinned: string[];
 }
@@ -64,14 +69,13 @@ export interface ResolvedHosts {
 export async function resolveHosts(entries: string[]): Promise<ResolvedHosts> {
   const out: ResolvedHosts = { rules: [], pinned: [] };
   for (const e of entries.map(parseHost)) {
-    const family = isIP(e.host.split("/")[0]!);
-    if (family) {
-      out.rules.push({ addr: e.host, family: family as 4 | 6, port: e.port });
+    if (isIP(e.host.split("/")[0]!)) {
+      out.rules.push({ addr: e.host, port: e.port });
       continue;
     }
-    const addrs = await lookup(e.host, { all: true }).catch(() => []);
+    const addrs = await lookup(e.host, { all: true, family: 4 }).catch(() => []);
     for (const a of addrs) {
-      out.rules.push({ addr: a.address, family: a.family as 4 | 6, port: e.port });
+      out.rules.push({ addr: a.address, port: e.port });
       out.pinned.push(`${a.address} ${e.host}`);
     }
   }
@@ -122,7 +126,7 @@ export function nftRules(internet: boolean, hosts: ResolvedHosts["rules"], exclu
   rules.push('oif "lo" accept');
   if (internet) rules.push("accept");
   for (const h of hosts) {
-    const match = `${h.family === 4 ? "ip" : "ip6"} daddr ${h.addr}`;
+    const match = `ip daddr ${h.addr}`;
     rules.push(h.port ? `${match} meta l4proto { tcp, udp } th dport ${h.port} accept` : `${match} accept`);
   }
   rules.push("meta l4proto tcp reject with tcp reset", "reject");
