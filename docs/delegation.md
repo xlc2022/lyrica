@@ -102,7 +102,8 @@ under `worktrees/<run>-<n>/` in the parent's folder in the home workspace, on
 branch `lyrica/<run>-<n>`. Git runs where the parent's tools run. The writer's
 grant for the repository becomes its `.git` folder (for commits), and its task
 and result name the worktree and branch. Otherwise, the writers run one at a
-time. Writers share only the thread's scratch folder (`/workspace`).
+time, and the result says why. Writers share only the thread's scratch folder
+(`/workspace`).
 
 ## Limits and accounting
 

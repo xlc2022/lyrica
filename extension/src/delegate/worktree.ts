@@ -15,16 +15,18 @@ async function sh(target: ExecutionTarget, command: string, signal?: AbortSignal
 /**
  * A `git worktree` per writer for every writable grant, in the parent's
  * folder in the home workspace, made by running git where the parent's tools
- * run. Undefined when that isn't possible (no writable grants, a writable grant
- * that isn't the top of a git repository, or an SSH target): writers then run
- * one at a time.
+ * run. When that isn't possible (no writable grants, a writable grant that
+ * isn't the top of a git repository, or an SSH target), the reason, and the
+ * writers run one at a time.
  */
-export async function makeWorktrees(target: ExecutionTarget, grants: Grant[], runId: string, writers: number, signal?: AbortSignal): Promise<Worktree[][] | undefined> {
+export async function makeWorktrees(target: ExecutionTarget, grants: Grant[], runId: string, writers: number, signal?: AbortSignal): Promise<Worktree[][] | string> {
   const repos = grants.filter((g) => g.writable).map((g) => g.path);
-  if (target.name !== "sandbox" || !repos.length) return undefined;
+  if (target.name !== "sandbox") return `worktrees need the sandbox, and this thread works on ${target.name}`;
+  if (!repos.length) return "this thread has no writable folders, only its scratch folder";
   for (const repo of repos) {
-    const top = await sh(target, `cd ${quote(repo)} && test -d .git && git rev-parse --show-toplevel`, signal);
-    if (!top.ok || top.out !== repo) return undefined;
+    // Marked, because a networked sandbox may add its own lines to the output.
+    const top = await sh(target, `cd ${quote(repo)} && test -d .git && echo "TOP=$(git rev-parse --show-toplevel)"`, signal);
+    if (!top.ok || /^TOP=(.*)$/m.exec(top.out)?.[1] !== repo) return `${repo} isn't the top of a git repository${top.out ? ` (${top.out.slice(0, 300)})` : ""}`;
   }
   const base = posix.join(await target.cwd(), "worktrees");
   const all: Worktree[][] = [];

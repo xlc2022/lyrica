@@ -313,6 +313,7 @@ describe("delegate", () => {
     most = 0;
     const serial = await s.run(other, { tasks: [{ task: "change C" }, { task: "change D" }] });
     expect(serial.status).toBe("finished");
+    expect(serial.result).toContain(`The writers ran one at a time: ${plain} isn't the top of a git repository`);
     expect(most).toBe(1);
   });
 

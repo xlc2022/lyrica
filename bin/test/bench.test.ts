@@ -127,7 +127,8 @@ describe.skipIf(!runnable)("lyrica dev", () => {
       const msgs = JSON.stringify(r.messages);
       if (msgs.includes("You are a subagent")) {
         if (r.messages.at(-1)!.role === "tool") return { text: "committed" };
-        const tree = /worktree (\S+), branch/.exec(msgs)![1]!;
+        const tree = /worktree (\S+), branch/.exec(msgs)?.[1];
+        if (!tree) return { text: "no worktree given" };
         const name = msgs.includes("note A") ? "a" : "b";
         return { tools: [{ name: "bash", args: { command: `cd ${tree} && echo ${name} > ${name}.txt && git add ${name}.txt && git -c user.name=s -c user.email=s@s commit -qm ${name} && git log --oneline | wc -l` } }] };
       }
@@ -141,6 +142,7 @@ describe.skipIf(!runnable)("lyrica dev", () => {
       await bench.close();
     }
     const result = JSON.stringify(bench.session.messages.find((m) => m.role === "toolResult"));
+    expect(result).not.toContain("one at a time");
     const runId = /branch lyrica\/(d-[0-9a-f]+)-1/.exec(result)![1];
     expect(git("show", "--stat", `lyrica/${runId}-1`)).toContain("a.txt");
     expect(git("show", "--stat", `lyrica/${runId}-2`)).toContain("b.txt");

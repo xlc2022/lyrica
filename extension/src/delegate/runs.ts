@@ -437,11 +437,14 @@ export class Delegation {
     const writes = roles.map((r) => !r.readOnly && !narrowing.readOnly);
     const writers = writes.filter(Boolean).length;
     let worktrees: Worktree[][] | undefined;
+    let turns = "";
     if (writers > 1 && this.o.workspace) {
       const t = { userId: run.parent.user.id, pool: run.parent.pool, threadId: run.parent.threadId };
-      worktrees = await makeWorktrees(this.o.workspace.forThread(t).target(), this.grants(run, narrowing), run.id, writers, run.abort.signal);
+      const made = await makeWorktrees(this.o.workspace.forThread(t).target(), this.grants(run, narrowing), run.id, writers, run.abort.signal);
+      if (typeof made === "string") turns = `The writers ran one at a time: ${made}.\n\n`;
+      else worktrees = made;
     }
-    const oneWriter = writers > 1 && !worktrees ? new Slots(1) : undefined;
+    const oneWriter = turns ? new Slots(1) : undefined;
     let w = 0;
     const results = await Promise.allSettled(steps.map(async (step, i) => {
       const mine = writes[i] && worktrees ? worktrees[w++]! : [];
@@ -453,7 +456,7 @@ export class Delegation {
       }
     }));
     if (run.abort.signal.aborted) throw new Stopped("stopped");
-    return results.map((r, i) => `## ${i + 1}. ${roles[i]!.name}: ${steps[i]!.task.split("\n")[0]!.slice(0, 80)}\n${r.status === "fulfilled" ? r.value : `Failed: ${(r.reason as Error).message}`}`).join("\n\n");
+    return turns + results.map((r, i) => `## ${i + 1}. ${roles[i]!.name}: ${steps[i]!.task.split("\n")[0]!.slice(0, 80)}\n${r.status === "fulfilled" ? r.value : `Failed: ${(r.reason as Error).message}`}`).join("\n\n");
   }
 
   private async chain(run: Run, steps: Step[], narrowing: Narrowing): Promise<string> {
