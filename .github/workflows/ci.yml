@@ -28,3 +28,14 @@ jobs:
       - run: npx playwright install --with-deps chromium
         working-directory: web
       - run: npm run e2e -w @lyrica/web
+  # The model host's Compose stack, without a GPU: install, then check the networks.
+  host-stack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: mkdir -p "$RUNNER_TEMP/models"
+      - run: host/install.sh --no-gpu --yes --models "$RUNNER_TEMP/models" --name ci-host
+      - run: host/test/stack/network.sh
+      - if: failure()
+        run: docker compose logs
+        working-directory: host

@@ -1,0 +1,41 @@
+# The model host. Run through install.sh, which writes .env (including
+# COMPOSE_FILE, which adds compose.lan.yaml and compose.tailscale.yaml).
+#
+# Networks:
+# - models: internal, no route out. host-api and the model servers.
+# - outside: host-api, fetch and tailscale. The only route out, and where
+#   the published ports arrive.
+name: lyrica-host
+
+networks:
+  models:
+    internal: true
+  outside: {}
+
+volumes:
+  data: {}
+
+services:
+  host-api:
+    build:
+      context: ..
+      dockerfile: host/Dockerfile
+    image: lyrica-host-api:local
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      HOST_NAME: ${HOST_NAME:?run install.sh}
+      HOST_NAMES: ${LAN_ADDRESS:-},host-api
+      TAILNET_NAME: ${TS_HOSTNAME:-}
+      MODELS_HOST_PATH: ${MODELS_DIR:?run install.sh}
+      HOST_VERSION: ${HOST_VERSION:-dev}
+    volumes:
+      - data:/data
+      - ${MODELS_DIR}:/models:ro
+    networks: [models, outside]
+    ports:
+      # The dashboard at the machine. Everything else is in compose.lan.yaml
+      # or reached through the tailscale service.
+      - "127.0.0.1:7236:7080"

@@ -1,0 +1,6 @@
+# Publishes host-api's TLS port on the LAN address only, never on every
+# interface: Docker's published ports bypass the machine's firewall.
+services:
+  host-api:
+    ports:
+      - "${LAN_ADDRESS:?set LAN_ADDRESS}:7236:7443"

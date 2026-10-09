@@ -5,7 +5,7 @@
   "workspaces": ["core", "extension", "daemon", "web", "host"],
   "engines": { "node": ">=22" },
   "scripts": {
-    "typecheck": "tsc --noEmit && tsc --noEmit -p web",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p web && tsc --noEmit -p host",
     "test": "vitest --run",
     "evals": "vitest --run -c vitest.evals.config.ts",
     "build": "npm run build -w @lyrica/web"

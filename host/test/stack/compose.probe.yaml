@@ -1,0 +1,10 @@
+# Test-only: one probe container on each network, to check what each can reach.
+services:
+  probe-models:
+    image: alpine:3.22.2@sha256:4b7ce07002c69e8f3d704a9c5d6fd3053be500b7f1c69fc0d80990c2ad8dd412
+    command: sleep infinity
+    networks: [models]
+  probe-outside:
+    image: alpine:3.22.2@sha256:4b7ce07002c69e8f3d704a9c5d6fd3053be500b7f1c69fc0d80990c2ad8dd412
+    command: sleep infinity
+    networks: [outside]
