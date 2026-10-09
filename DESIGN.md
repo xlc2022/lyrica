@@ -149,6 +149,10 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
 - **Local-only.** In a private or local-only thread, any attempt to use a cloud
   model, for any purpose, fails with an error. Nothing ever falls back across
   the local/cloud line.
+- **Fallbacks.** A profile can list several models for a task, in order. If
+  the first one's endpoint is down, the next is used, and the thread shows
+  which model actually answered. A fallback never crosses the local/cloud
+  line.
 - **Visibility.** The current model and endpoint, with a clear cloud or local
   badge, are always visible in a thread. Choosing an endpoint, public or
   custom, is easy.
@@ -157,8 +161,10 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   can also add their own in their `user.db`.
 - **Hardware.**
   - Lyrica runs in a VM with an RTX 3090 (24 GB).
-  - Most of her models will run on a second machine on the LAN, with two RTX
-    6000 Pro Blackwell GPUs.
+  - Her larger models run on Li's workstation, on the LAN, with two RTX 6000
+    Pro Blackwell GPUs. It is also Li's gaming machine and dual-boots
+    Windows, so it is **not always available**. The 3090 VM is the
+    always-on base.
   - Both count as **local**: the data stays on Li's network.
 - **"Local" means on Li's own network:** the LAN, or Li's Tailscale tailnet.
   - A model host, SSH target or allowed host reached over Tailscale
@@ -168,34 +174,53 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     mistakes, Lyrica warns when a local endpoint resolves to an address
     outside private, loopback or tailnet ranges.
 - **Later: Lyrica manages her own models.** A small **model host** runs on
-  each GPU machine, such as the Blackwell machine and the 3090 VM. It serves
-  text models through vLLM or llama.cpp (`llama-server`), and images through
+  each GPU machine: the 3090 VM and the Blackwell workstation. It serves text
+  models through vLLM or llama.cpp (`llama-server`), and images through
   ComfyUI (see [Images](#images)).
-  - **Easy to deploy and self-contained.** One install script, run as root on
-    Debian or Ubuntu (in a VM, or an LXC container with the GPU passed
-    through), puts everything under `/opt/lyrica-host`:
-    - a pinned `uv` and a pinned Python;
-    - locked Python packages, with PyTorch built for CUDA or ROCm according to
-      the GPU it finds;
-    - ComfyUI and llama.cpp at pinned versions.
-  - **NVIDIA and AMD.** The machine needs only the GPU's kernel driver: the
-    CUDA and ROCm runtimes come inside the packages. llama.cpp runs on both.
-    vLLM is used where its builds support the GPU. No Docker. Running the
-    script again upgrades in place.
-  - **Its own service user.** It runs as systemd units under that user. The
-    units serving models can reach only Lyrica's addresses, never the internet
-    (systemd `IPAddressDeny`). Downloading models is a separate step, from a
-    pinned list with checksums, started by an administrator.
-  - **Pairing.** The script prints the host's address and a token. An
-    administrator adds the host in the control panel as a local endpoint,
-    reached over the LAN or Tailscale.
+  - **Containers.** The model host ships as a Docker Compose file with pinned
+    images, so it runs the same way on Linux (Docker or Podman) and on Windows
+    (Docker Desktop with WSL2). That matters because the Blackwell machine
+    dual-boots. `lyricad` itself stays a native service (see Deployment).
+  - **NVIDIA and AMD**, through a compose profile per vendor (CUDA or ROCm
+    images). On Windows, AMD support depends on ROCm under WSL2, so NVIDIA is
+    the case that is sure to work. The machine needs only the GPU driver and
+    the container runtime's GPU support.
+  - **Our images, pinned by digest.** The host API and ComfyUI images are ours,
+    built in CI from pinned versions. vLLM and llama.cpp use their official
+    images, also pinned by digest. Nothing is pulled as `latest`.
+  - **No internet for the serving containers.** They sit on an internal
+    network that can't reach the internet. Only the host API container
+    publishes a port, bound to the LAN or Tailscale address, never every
+    interface. Models download in a separate one-off container started by an
+    administrator, from a pinned list with checksums.
+  - **No prompt logs.** Docker keeps container output on disk by default, so
+    the serving containers log nothing, and ComfyUI's folders are in-memory
+    (`tmpfs`). Models are mounted read-only.
+  - **No Docker socket.** The host API manages VRAM through each server's own
+    API: vLLM's sleep and wake, llama.cpp's model loading, and ComfyUI's
+    `/free`. It never touches the Docker socket, which would amount to root.
+  - **Pairing.** On first start the host prints its address and a token. An
+    administrator adds it in the control panel as a local endpoint, reached
+    over the LAN or Tailscale.
   - **Management API.** Each host serves an OpenAI-compatible endpoint plus a
     small, authenticated management API: list, load, unload, status, and
     download models. Lyrica can start, stop and switch models on it.
-  - **Placement.** The same package runs on every GPU machine, and an
-    administrator decides what runs where. By default, images run on the
-    Blackwell machine. The 3090 VM keeps the small, always-ready text models
-    (titles, embeddings, cheap subagents) and runs images only as a fallback.
+  - **Placement.** The same host runs on every GPU machine, and an
+    administrator decides what runs where.
+    - The **3090 VM** is the always-on base. It holds the small text models
+      (titles, embeddings, cheap subagents), a capable fallback chat model,
+      and a small image model.
+    - The **Blackwell workstation** runs the large models and the best image
+      models when it is up. Profiles list it first and the 3090 second, so
+      Lyrica keeps working when it's off, gaming or booted into Windows
+      without the host running.
+  - **Pause for games.** The host has a pause switch, a command on the
+    machine or a button in the control panel. It finishes the current job,
+    unloads every model, and declines new work until it is resumed. Lyrica
+    then uses her fallbacks.
+  - **Sleep** runs on the 3090's models when the workstation is away at the
+    scheduled time. A pool whose sleep model is set to the workstation only
+    waits until it is back, as with any endpoint that's offline.
   - **The host manages each GPU's VRAM.** No program can grab a GPU behind its
     back:
     - Each GPU has a role set in the control panel: a whole GPU for vLLM (which
@@ -533,6 +558,10 @@ new evidence.
   linked users, persona proposals need the originating user's consent before
   an administrator sees them, and staying unlocked after logout is a per-user
   choice.
+- **Model host: native install → containers (2026-10-09).** The Blackwell
+  machine is Li's workstation and dual-boots Windows. A Compose file runs the
+  same host on Linux and on Windows, with pinned images per GPU vendor.
+  `lyricad` stays native.
 - **Tool budget raised from 6 to 8, then to 30 (2026-10-09).** First to make
   room for web research, then because Lyrica works like a coding agent (files,
   commands, SSH). The budget still exists so that every tool has to justify
