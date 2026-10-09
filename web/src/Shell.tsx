@@ -207,6 +207,7 @@ function UserMenu({ ctx, users, onAuthChange }: { ctx: ShellContext; users: User
             </a>
           ))}
           <a href="#/login" onClick={() => setOpen(false)}>Log in as another user…</a>
+          <p className="menu-note">Only linked personas share a browser.</p>
           <button type="button" onClick={() => leave("/api/logout", { userId: user.id })}>Log out {user.displayName}</button>
           <button type="button" onClick={() => leave(u(user.id, "lock"), {})}>Lock {user.displayName}</button>
           <ErrorText error={error} />

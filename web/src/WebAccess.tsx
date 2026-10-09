@@ -8,7 +8,7 @@ import { ErrorText, Switch, useAction, useLoad } from "./ui.tsx";
 
 const MODES: { mode: WebMode; label: string; hint: string }[] = [
   { mode: "off", label: "Only this machine", hint: "Nothing listens beyond 127.0.0.1." },
-  { mode: "builtin", label: "Built-in Caddy", hint: "Lyrica runs Caddy on the addresses you pick, with a certificate from a DNS challenge." },
+  { mode: "builtin", label: "Built-in Caddy", hint: "Lyrica runs Caddy on the addresses you pick, with a certificate for your hostname from a DNS challenge." },
   { mode: "external", label: "A proxy elsewhere", hint: "Another machine's proxy forwards to an address here." },
 ];
 
@@ -21,7 +21,8 @@ export function WebAccessSection({ userId }: { userId: string }) {
     <>
       <WebAccessForm key={JSON.stringify(access.data)} path={path} access={access.data}
         onSaved={(a) => { access.set(a); status.reload(); }} />
-      <Status status={status.data} error={status.error} onRefresh={status.reload} />
+      <Status status={status.data} error={status.error} onRefresh={status.reload}
+        staging={access.data.mode === "builtin" && !!access.data.builtin?.staging} />
       {access.data.mode === "external" && <Snippet path={path} />}
     </>
   );
@@ -78,9 +79,10 @@ function WebAccessForm({ path, access, onSaved }: { path: string; access: WebAcc
 
       {mode !== "off" && (
         <fieldset className="group" disabled={busy}>
-          <legend>Name</legend>
-          <label className="field"><span>Lyrica's name</span>
+          <legend>Hostname</legend>
+          <label className="field"><span>Hostname</span>
             <input value={name} placeholder="lyrica.example.net" autoCapitalize="none" onChange={(ev) => setName(ev.target.value)} />
+            <small className="muted">The address you'll open in the browser, for example lyrica.example.net. Its DNS record should point at this machine's Tailscale address.</small>
           </label>
         </fieldset>
       )}
@@ -111,11 +113,16 @@ function WebAccessForm({ path, access, onSaved }: { path: string; access: WebAcc
             </label>
           ))}
           {chosen?.hint && <p className="muted small">{chosen.hint}</p>}
-          <label className="field"><span>Email for the certificate authority (optional)</span>
+          <label className="field"><span>Email for certificate warnings (optional)</span>
             <input type="email" value={email} onChange={(ev) => setEmail(ev.target.value)} />
+            <small className="muted">Let's Encrypt may write to this address if a certificate can't be renewed. It isn't used for anything else.</small>
           </label>
-          <Switch label="Use the staging certificate authority" hint="For trying things out: its certificates aren't trusted by browsers."
-            checked={staging} onChange={setStaging} />
+          <details className="advanced" open={staging || undefined}>
+            <summary>Advanced</summary>
+            <Switch label="Test with untrusted certificates"
+              hint="Uses Let's Encrypt's test service while you try out DNS settings. It has much higher rate limits, but browsers won't trust its certificates, so turn it off once it works."
+              checked={staging} onChange={setStaging} />
+          </details>
         </fieldset>
       )}
 
@@ -145,7 +152,7 @@ function WebAccessForm({ path, access, onSaved }: { path: string; access: WebAcc
       )}
 
       <ErrorText error={error} />
-      {busy && <p className="muted" role="status">Applying… {elapsed} s. A new name can take up to 90 s while its certificate is checked; the old setup keeps running until then.</p>}
+      {busy && <p className="muted" role="status">Applying… {elapsed} s. A new hostname can take up to 90 s while its certificate is checked; the old setup keeps running until then.</p>}
       <div className="row"><button className="primary" disabled={busy || (mode !== "off" && !name.trim())}>Apply</button></div>
     </form>
   );
@@ -162,13 +169,15 @@ function useElapsed(running: boolean) {
   return s;
 }
 
-function Status({ status, error, onRefresh }: { status?: WebAccessStatus; error: string; onRefresh: () => void }) {
+function Status({ status, error, onRefresh, staging }: { status?: WebAccessStatus; error: string; onRefresh: () => void; staging: boolean }) {
   return (
     <section className="stack sub-card" aria-label="Web access status">
       <div className="row between"><h3>Status</h3><button type="button" onClick={onRefresh}>Check again</button></div>
       <ErrorText error={error} />
+      {staging && <p className="warn-text" role="status">Testing with untrusted certificates: browsers will warn about this hostname until you turn it off under Advanced.</p>}
       {status && (
         <dl className="facts">
+          {status.name && <><dt>Hostname</dt><dd>{status.name}</dd></>}
           {status.caddy && (
             <>
               <dt>Caddy</dt>

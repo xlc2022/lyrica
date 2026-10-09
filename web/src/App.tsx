@@ -84,7 +84,7 @@ function Login({ canCancel, onDone }: { canCancel: boolean; onDone: (r: LoginRes
   const [password, setPassword] = useState("");
   const [run, busy, error] = useAction();
   return (
-    <Gate title={canCancel ? "Add a user" : "Log in"}>
+    <Gate title={canCancel ? "Log in as another user" : "Log in"}>
       <form className="stack" onSubmit={(e) => { e.preventDefault(); run(() => post<LoginResponse>("/api/login", { login, password }).then(onDone)); }}>
         <label className="field"><span>Login name</span>
           <input autoComplete="username" autoCapitalize="none" autoFocus value={login} onChange={(e) => setLogin(e.target.value)} />
@@ -94,7 +94,7 @@ function Login({ canCancel, onDone }: { canCancel: boolean; onDone: (r: LoginRes
         </label>
         <ErrorText error={error} />
         <button className="primary" disabled={busy || !login || !password}>Log in</button>
-        {canCancel && <p className="muted small">Only users linked to the ones on this browser can join them. Anyone else signs them out here first.</p>}
+        {canCancel && <p className="muted small">Only your linked personas can share this browser. Logging in as anyone else signs the others out here first.</p>}
         {canCancel && <a className="quiet" href="#/">Cancel</a>}
       </form>
     </Gate>

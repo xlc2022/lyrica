@@ -28,7 +28,7 @@ const TASKS: { task: Task; label: string }[] = [
 
 export function Panel({ ctx }: { ctx: ShellContext }) {
   const admin = ctx.user.admin;
-  const sections = ["Profile", "Password", "Linked users", "Your proposals", "Endpoints", "Model profiles", "Network", "SSH targets", ...(admin ? ["Server", "Web access", "Users", "Persona proposals"] : [])];
+  const sections = ["Profile", "Password", "Your personas", "Your suggestions for Lyrica's persona", "Endpoints", "Model profiles", "Network", "SSH targets", ...(admin ? ["Server", "Web access", "Users", "Changes to Lyrica's persona"] : [])];
   return (
     <main className="main panel">
       <header className="head">
@@ -445,10 +445,10 @@ function ProposalsSection({ ctx }: { ctx: ShellContext }) {
     run(async () => { await post(u(userId, "admin", "proposals", String(id)), { approve, ...(overwrite && { overwrite }) }); proposals.reload(); });
   const who = (sentBy: string) => users.data?.find((x) => `user:${x.id}` === sentBy)?.displayName ?? sentBy;
   return (
-    <Section title="Persona proposals">
-      <p className="muted">Changes to Lyrica's persona that users have sent on from their conversations.</p>
+    <Section title="Changes to Lyrica's persona">
+      <p className="muted">Suggestions for Lyrica's persona that users have sent on from their conversations.</p>
       <ErrorText error={proposals.error || error} />
-      {proposals.data && !proposals.data.length && <p className="muted">No open proposals.</p>}
+      {proposals.data && !proposals.data.length && <p className="muted">No suggestions waiting.</p>}
       <ul className="list">
         {(proposals.data ?? []).map((p) => (
           <li key={p.id}>
@@ -488,51 +488,52 @@ function LinksSection({ ctx }: { ctx: ShellContext }) {
   const [run, busy, error] = useAction();
   const [form, setForm] = useState({ password: "", login: "", otherPassword: "" });
   return (
-    <Section title="Linked users">
-      <p className="muted">Link your own other users, so one browser can hold them together and switch without a password. Linking needs both passwords.</p>
+    <Section title="Your personas">
+      <p className="muted">Link a separate persona of yours, another user you also log in as, so one browser can switch between them without a password. Linking needs both passwords.</p>
+      <h3>Linked personas</h3>
       <ErrorText error={links.error || error} />
       <ul className="list">
         {(links.data ?? []).map((x) => (
           <li key={x.id} className="row between">
             <span><b>{x.displayName}</b> <span className="muted">({x.login})</span></span>
-            <Confirm label="Unlink" danger confirm="Unlink" question={`Unlink ${x.displayName}? Browsers holding you both keep only you.`}
+            <Confirm label="Unlink persona" danger confirm="Unlink persona" question={`Unlink ${x.displayName}? Browsers holding you both keep only you.`}
               onConfirm={() => run(async () => links.set(await del<UserCard[]>(u(userId, "links", x.id))))} />
           </li>
         ))}
-        {links.data && !links.data.length && <li className="muted">No linked users.</li>}
+        {links.data && !links.data.length && <li className="muted">No linked personas.</li>}
       </ul>
       <form className="stack sub-card" onSubmit={(e) => {
         e.preventDefault();
         void run(async () => { links.set(await post<UserCard[]>(u(userId, "links"), form)); setForm({ password: "", login: "", otherPassword: "" }); });
       }}>
-        <h3>Link a user</h3>
+        <h3>Link a separate persona</h3>
         <label className="field"><span>Your password</span>
           <input type="password" autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
         </label>
         <div className="row wrap">
-          <label className="field"><span>Their login name</span>
+          <label className="field"><span>Its login name</span>
             <input autoCapitalize="none" autoComplete="off" value={form.login} onChange={(e) => setForm({ ...form, login: e.target.value })} />
           </label>
-          <label className="field"><span>Their password</span>
+          <label className="field"><span>Its password</span>
             <input type="password" autoComplete="off" value={form.otherPassword} onChange={(e) => setForm({ ...form, otherPassword: e.target.value })} />
           </label>
         </div>
-        <div className="row"><button className="primary" disabled={busy || !form.password || !form.login || !form.otherPassword}>Link</button></div>
+        <div className="row"><button className="primary" disabled={busy || !form.password || !form.login || !form.otherPassword}>Link separate persona</button></div>
       </form>
     </Section>
   );
 }
 
-/** Persona proposals from this user's conversations: only they see them, until they send one on. */
+/** Suggestions for Lyrica's persona from this user's conversations: only they see them, until they send one on. */
 function DraftsSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const drafts = useLoad(() => get<ProposalDraft[]>(u(userId, "proposals")), [userId]);
   const [run, , error] = useAction();
   return (
-    <Section title="Your proposals">
-      <p className="muted">Changes to her persona that Lyrica proposed in your conversations. Administrators see one only after you send it on, so edit out anything private first.</p>
+    <Section title="Your suggestions for Lyrica's persona">
+      <p className="muted">Changes to her own persona that Lyrica suggested in your conversations. Administrators see a suggestion only after you send it on, so edit out anything private first.</p>
       <ErrorText error={drafts.error || error} />
-      {drafts.data && !drafts.data.length && <p className="muted">No proposals.</p>}
+      {drafts.data && !drafts.data.length && <p className="muted">No suggestions.</p>}
       <ul className="list">
         {(drafts.data ?? []).map((d) => (
           <Draft key={d.id} draft={d} path={u(userId, "proposals", String(d.id))} run={run} onChange={drafts.reload} />
@@ -557,7 +558,7 @@ function Draft({ draft, path, run, onChange }: {
         <button type="button" disabled={!changed} onClick={() => run(async () => { await patch(path, { text, reason }); onChange(); })}>Save</button>
         <button type="button" className="primary" disabled={changed} title={changed ? "Save your changes first" : undefined}
           onClick={() => run(async () => { await post(`${path}/send`); onChange(); })}>Send to administrators</button>
-        <Confirm label="Drop" danger confirm="Drop it" question="Drop this proposal? It can't be brought back."
+        <Confirm label="Drop" danger confirm="Drop it" question="Drop this suggestion? It can't be brought back."
           onConfirm={() => run(async () => { await del(path); onChange(); })} />
       </div>
     </li>

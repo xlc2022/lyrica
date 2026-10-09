@@ -249,18 +249,18 @@ test("linked users share a browser; logging in as anyone else signs this browser
 
   // Link Lark to Li from the control panel.
   await page.goto(`/#/u/${userId}/panel`);
-  const links = page.getByRole("region", { name: "Linked users" });
+  const links = page.getByRole("region", { name: "Your personas" });
   await links.getByLabel("Your password").fill("pw");
-  await links.getByLabel("Their login name").fill("lark");
-  await links.getByLabel("Their password").fill("pw-lark");
-  await links.getByRole("button", { name: "Link", exact: true }).click();
+  await links.getByLabel("Its login name").fill("lark");
+  await links.getByLabel("Its password").fill("pw-lark");
+  await links.getByRole("button", { name: "Link separate persona" }).click();
   await expect(links.getByText("Lark", { exact: true })).toBeVisible();
 
   const logInAs = async (login: string, password: string) => {
     if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
     await page.getByRole("button", { name: /Switch user/ }).click();
     await page.getByRole("link", { name: "Log in as another user…" }).click();
-    await expect(page.getByRole("heading", { name: "Add a user" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Log in as another user" })).toBeVisible();
     await page.getByLabel("Login name", { exact: true }).fill(login);
     await page.getByLabel("Password", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Log in" }).click();
