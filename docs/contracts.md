@@ -356,7 +356,7 @@ The extension is created with a `ThreadContext`:
   - Sessions run in-process, with no `pi` subprocesses.
   - Entries are recorded with `appendEntry` as each turn ends (`recordEntries`).
 - **Startup:** once unlocked, `lyricad` builds `Workspace` with its own
-  listening ports as `excludePorts` and the proxy's as `frontPorts`, and calls
+  listening ports as `excludePorts` and its front door as `frontDoor`, and calls
   `selfTest()` before serving threads. It builds one `Delegation`, adds
   `createDelegateExtension` to each thread's session, forwards
   `delegation.events` to the parent thread's stream, and calls `stopAll` on
@@ -364,6 +364,11 @@ The extension is created with a `ThreadContext`:
 - **Permission prompts:** the workspace extension's `tool_call` hook calls
   `ThreadTools.approve?(request)`; `lyricad` supplies it and waits for an
   answer from any open view, denying on timeout or Stop.
+- **Web access** (`LyricadOptions.web`): built-in Caddy, configured through
+  its admin socket `/run/lyrica-caddy/admin.sock`, or an external proxy, with
+  an extra listener whose settings and TLS key are in
+  `<runtime>/web-external.json` (0600) and which opens before unlock. Settings
+  and DNS credentials live in `self.db`. See [daemon.md](daemon.md).
 - **Unlocking:** when started as a service, `lyricad` starts locked, and the
   API serves only the unlock endpoint until `self.db` is unlocked.
 - **HTTP/SSE API**, defined in `daemon/src/api.ts` and described in
@@ -400,9 +405,12 @@ runSleep(userId: string, pool: Pool, reason: "scheduled" | "manual"): SleepRun
 ## core/workspace
 
 ```ts
-new Workspace(keyring, users, { excludePorts, frontPorts? })
+new Workspace(keyring, users, { excludePorts, frontDoor? })
 // excludePorts: lyricad's own ports, refused on every address; required, [] for none
-// frontPorts: the proxy's ports (default [443]), refused on this machine's own addresses
+// frontDoor(): FrontDoor { ports, hosts, exclude }, read at each sandbox start:
+//   the proxy's ports, refused on this machine's addresses, on every address
+//   `hosts` has ever resolved to, and on the proxy's addresses
+resolveAddresses(hosts): Promise<string[] | undefined>   // undefined: never resolved, so no network
 interface WorkspaceThread { userId; pool; threadId }
 interface Network { internet: boolean; services: boolean; hosts: string[] }
 interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
@@ -442,7 +450,9 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
     address, and so are the host's Unix sockets.
   - This machine's own addresses (LAN, Tailscale; read when each sandbox
     starts) count as this machine: reachable only with the services switch,
-    never through internet or an allowed host, and never on `frontPorts`.
+    never through internet or an allowed host.
+  - The front door (`frontDoor()`) is refused wherever it answers. If Lyrica's
+    name has never resolved, that sandbox run gets no network at all.
   - Allowed hostnames are written to the sandbox's `/etc/hosts`. With
     internet off there is no DNS resolver inside the sandbox.
   - `inheritSettings` may only shrink the list.
@@ -450,7 +460,9 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
     start one, every thread runs with network off and the reason is kept in
     `networkRefused` for the UI.
 - **Allowed paths** live in `self.db` (`workspace_paths`, keyed by user ID)
-  and change only with an administrator actor.
+  and change only with an administrator actor. Paths overlapping
+  `NEVER_GRANTED` (`/run/lyrica-caddy`) are refused, because sandboxes run with
+  `lyricad`'s groups.
 - See [workspace.md](workspace.md).
 
 ## integrations
