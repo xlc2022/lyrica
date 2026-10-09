@@ -30,13 +30,14 @@ Each milestone leaves her usable:
 Later, when real use calls for them: Matrix, the forum, thread export between
 interfaces, sorting data, local-model spaces, and system administration.
 
-## Layout (planned)
+## Layout
 
 ```text
-extension/     the Pi extension: persona, spaces, context, memory, sleep
-daemon/        lyricad: hosts sessions for web chat and later adapters
-web/           web chat and memory browser
-persona/       seed copied into the self repository on first run
-evals/         continuity scenarios
-bin/lyrica     launcher (TUI) and small admin commands
+core/          keyring, users, persona store (see core/README.md)
+extension/     the Pi extension: persona, topic routing, context assembly
+daemon/        lyricad (empty for now)
+persona/       seed, imported into self.db on first run
+bin/lyrica     admin commands and the dev launcher (see extension/README.md)
 ```
+
+Checks: `npm install`, `npm run typecheck`, `npm test`.
