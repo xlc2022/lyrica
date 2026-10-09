@@ -221,3 +221,30 @@ persona inclines her to. The rest of the cycle is a proposal in
   No more than two or three are active at once.
 - Sessions hand off through the repo (briefs, docs, PR descriptions), not
   through chat transcripts.
+
+## D-019 — General and private memory pools (2026-10-09, accepted)
+
+**Decision.** This refines D-002, D-008 and D-016. Spaces come in two kinds:
+
+- A **general** space may use cloud models or a custom endpoint.
+- A **private** space must use a custom endpoint for every model call.
+
+Private threads read general memory. General threads never read private
+memory. Sleep runs per pool and never writes across pools. The control panel
+sets a model for each pool. In a private space, the UI doesn't offer cloud
+models at all, and a cloud call fails with an error.
+
+The local-only checkbox on a *general* thread controls only that
+conversation's own live model calls. Its memories belong to the general pool,
+and general sleep may process them with a cloud model. Content that must never
+reach the cloud belongs in a private space.
+
+## D-020 — Sleep modes and offline endpoints (2026-10-09, accepted)
+
+**Decision.**
+- `sleep.mode` is `scheduled` (nightly at `sleep.time`, default 04:00) or
+  `manual`. Manual works like Monika: `/sleep` asks for confirmation, sleeps,
+  then opens a fresh thread.
+- If a pool's endpoint is offline when sleep is due, that pool is skipped until
+  the next due time. Skipped and partial runs are recorded, and the watermark
+  doesn't advance past unprocessed material.

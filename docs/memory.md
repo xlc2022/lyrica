@@ -38,13 +38,18 @@ Memory lives in encrypted SQLite (SQLCipher), with one database per space
 ```text
 runtime/
   self.db              shared: persona (with revisions), settings, model config
-  spaces/public.db     threads, entries, notes, pages, WAKE, journal, index
-  spaces/private.db
+  spaces/general.db    threads, entries, notes, pages, WAKE, journal, index
+  spaces/private.db    (one file per private space)
 ```
 
-- **Separate files, separate keys.** A public thread's code only ever opens
-  `public.db`, so private memory can't reach a public context by mistake. A
-  private thread opens both, and writes only to its own.
+- **Two kinds of space (D-019).** A **general** space may use cloud models or a
+  custom endpoint. A **private** space may use only a custom endpoint. Nothing
+  in a private space ever reaches a cloud model.
+- **Separate files, separate keys.** A general thread's code only ever opens
+  `general.db`, so private memory can't reach a general context by mistake. A
+  private thread opens both: it reads general memory and writes only to its
+  own database. That's safe because private threads run only on a custom
+  endpoint.
 - **Threads are stored in the database too.** The daemon runs Pi sessions with
   an in-memory session manager (`SessionManager.inMemory(cwd, opts, entries)`
   in Pi 1.1). It loads entries from the database and writes new ones back. Pi's
@@ -137,8 +142,10 @@ The web UI gets a memory browser:
   thread); **Used in** (pages and WAKE that cite it); and its revisions.
 - Edit, archive and delete, recorded as Xu.
 
-A small CLI (`lyrica mem search|show|edit|delete`) covers the time before the
-web UI exists. Editing opens the text in `$EDITOR` from a tmpfs file.
+Until the browser exists, a small CLI (`lyrica mem search|show|delete`) covers
+review, and Xu can ask Lyrica to correct a memory in conversation. There is no
+CLI editing, because opening a memory in `$EDITOR` would write decrypted text
+to a file.
 
 ## Guarantees, in one sentence
 
