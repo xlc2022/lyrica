@@ -48,24 +48,34 @@ service.
   their home workspace. It sets `__Host-lyrica`, a random 256-bit session ID,
   `Secure; HttpOnly; SameSite=Strict`, for 30 days. Sessions live in memory
   only; a restart logs everyone out.
+- **A session ID is never reused for someone new.** Every login gets a fresh
+  session and cookie, and the old session ends; a session left with no users
+  (after logout, Lock or an unlink) ends at once. A copied cookie can never
+  come to hold a user who logs in later.
 - **One browser, one person.** A session holds a set of users that are all
   linked: users of the same person, linked with both passwords
-  (`…/links`). Everything a user owns is under `/api/u/:userId/…`, and the
-  session must hold that user. Logging in as a linked user adds them, and
-  switching is just using the other path; logging in as anyone else ends the
-  session first and starts a new one. Unlinking takes the other user out of
-  every session that holds both.
+  (`…/links`; an unknown login costs the same Argon2 as a known one).
+  Everything a user owns is under `/api/u/:userId/…`, and the session must
+  hold that user. Logging in as a linked user brings the session's users
+  along into the new session, and switching is just using the other path;
+  logging in as anyone else leaves them behind (`replaced: true`, without
+  naming them). Unlinking takes the other user out of every session that
+  holds both.
 - `POST /api/logout` ends the session, or with `userId` removes one user from
   it. The key stays in memory, so sleep can run, unless the user turned
   "stay unlocked" off (`…/me/stay-unlocked`, in their `user.db`): then it is
-  dropped as with Lock, once no other browser session holds them.
+  dropped as with Lock, once no other live browser session holds them. The
+  same happens when a session expires, or when an unlink takes the user out.
+  The response lists who stays unlocked because another session holds them.
+  `Me.warning` points out saved credentials with stay-unlocked off: the key
+  then comes back at every start.
 - **Lock** (`POST /api/u/:userId/lock`) at once removes the user from every
   session, stops their subagent runs (which record how they ended), drops
-    their key, then stops their threads and unmounts their home. Event
+  their key, then stops their threads and unmounts their home. Event
   streams check the session with every event and every few seconds, so
   logout and Lock end them.
-- Login, unlock and password changes are rate-limited per login name and per
-  address: three failures are free, then each attempt waits twice as long as
+- Login, unlock, password changes and linking are rate-limited per login
+  name and per address: three failures are free, then each attempt waits twice as long as
   the last, up to 15 minutes (`429` with `Retry-After`). Behind Caddy, the
   address is the last `X-Forwarded-For` entry.
 - One attempt per login name and per address runs at a time; others get
@@ -164,10 +174,14 @@ proposals.
 
 **Persona proposals** come from one user's conversation or dream, so they
 may carry that user's details. They start as drafts in that user's `user.db`
-(`PersonaProposals`), which only they can read: `…/proposals` lists, edits,
-drops and sends them on. Sending copies one to `self.db`, where
-administrators approve or reject it (`…/admin/proposals`). A proposal from an
-administrator's own conversation goes there at once.
+(`PersonaProposals.propose`, which takes the thread's own view, so whose a
+proposal is comes from the store, never from the caller), which only they
+can read: `…/proposals` lists, edits, drops and sends them on. Sending puts
+one in `self.db` for the administrators (`…/admin/proposals`), marked with
+who sent it and whether they edited it. A proposal from an administrator's
+own conversation goes there at once. Each keeps the file's revision it was
+drafted against: if the file has changed since, approving it needs
+`overwrite`, so newer changes aren't undone unseen.
 
 ## Logs
 

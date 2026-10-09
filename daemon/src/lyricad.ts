@@ -82,7 +82,7 @@ const DEFAULT_WEB = fileURLToPath(new URL("../../web/dist", import.meta.url));
  */
 export class Lyricad {
   readonly keyring: Keyring;
-  readonly sessions = new Sessions();
+  readonly sessions: Sessions;
   readonly limiter: RateLimiter;
   readonly log: (line: string) => void;
   services: Services | undefined;
@@ -97,6 +97,9 @@ export class Lyricad {
     this.keyring = new Keyring(opts.home, opts.argon2);
     this.keyring.credentials = opts.credentials ?? new SystemdCredentials(join(opts.home, "credentials"));
     this.limiter = new RateLimiter(opts.rateLimit);
+    // An expired session's users are logged out like any others: keys go for those who chose that.
+    this.sessions = new Sessions(Date.now, (ids) => void this.loggedOut(ids));
+    setInterval(() => void this.loggedOut(this.sessions.sweep()), 10 * 60_000).unref();
     this.log = opts.log ?? ((line) => process.stderr.write(`${line}\n`));
     this.routes = apiRoutes(this);
     this.external = new ExternalListener(join(opts.home, "web-external.json"), (o) => this.listenExternal(o));
@@ -183,7 +186,7 @@ export class Lyricad {
       users, memory, models, workspace, persona, delegation, cwd, log: this.log,
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000,
     });
-    this.services = { users, memory, models, workspace, persona, proposals: new PersonaProposals(users, persona), delegation, host, web };
+    this.services = { users, memory, models, workspace, persona, proposals: new PersonaProposals(keyring.self(), users, persona), delegation, host, web };
     await web.resume();
     for (const u of users.all()) {
       if (keyring.loadSavedKey(u.id)) {
@@ -210,6 +213,7 @@ export class Lyricad {
    * and is in no other session is locked, as with Lock.
    */
   async loggedOut(userIds: string[]): Promise<void> {
+    if (!this.services) return;
     for (const id of userIds) {
       if (!this.keyring.hasUserKey(id) || this.sessions.holders(id) > 0) continue;
       if (!this.services!.users.stayUnlocked(id)) await this.lockUser(id);

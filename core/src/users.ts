@@ -61,11 +61,7 @@ export class Users {
   /** Checks the password and unlocks the user's key. */
   async authenticate(login: string, password: string): Promise<User> {
     const user = this.find(login);
-    if (!user) {
-      this.dummy ??= this.keyring.wrap(randomBytes(32), randomBytes(16).toString("hex"));
-      await this.keyring.unwrap(await this.dummy, password).catch(() => {});
-      throw new AuthError();
-    }
+    if (!user) return this.unknown(password);
     try {
       await this.keyring.unlockUser(user.id, password);
     } catch (err) {
@@ -73,6 +69,13 @@ export class Users {
       throw err;
     }
     return user;
+  }
+
+  /** For a login that doesn't exist: Argon2 runs anyway, so the time taken doesn't tell. Always throws AuthError. */
+  private async unknown(password: string): Promise<never> {
+    this.dummy ??= this.keyring.wrap(randomBytes(32), randomBytes(16).toString("hex"));
+    await this.keyring.unwrap(await this.dummy, password).catch(() => {});
+    throw new AuthError();
   }
 
   /** Checks a password without unlocking anything. Throws AuthError if it's wrong. */
@@ -89,12 +92,16 @@ export class Users {
 
   /**
    * Links two users that belong to the same person, so one browser may hold
-   * both. It takes both passwords: one person proves they are both.
+   * both. It takes both passwords: one person proves they are both. The other
+   * user is named by login, and an unknown login costs the same Argon2 as a
+   * known one, so linking can't be used to find which names exist.
    */
-  async link(a: User, aPassword: string, b: User, bPassword: string): Promise<void> {
-    if (a.id === b.id) throw new Error("a user is already themself");
+  async link(a: User, aPassword: string, otherLogin: string, bPassword: string): Promise<void> {
     await this.verify(a, aPassword);
+    const b = this.find(otherLogin);
+    if (!b) return this.unknown(bPassword);
     await this.verify(b, bPassword);
+    if (a.id === b.id) throw new Error("a user is already themself");
     const [x, y] = [a.id, b.id].sort() as [string, string];
     this.db.prepare("INSERT OR IGNORE INTO user_links (a, b) VALUES (?, ?)").run(x, y);
   }

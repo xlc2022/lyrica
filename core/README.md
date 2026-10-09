@@ -52,11 +52,13 @@ Keys, users and the persona store. No Pi dependency.
   `self.db` on first run. Every version of every file is a row in
   `persona_revisions`; the latest per path is current. `apply` (administrators
   only) adds a revision, and `read` returns the core files plus the topics
-  parsed from the matrix's front matter. `submit` puts a proposal before the
-  administrators, who approve (applying it) or reject it with `decide`.
-  `PersonaProposals` is the way in: a proposal from a user's conversation or
-  dream starts as a draft in their `user.db` (`persona_drafts`), which they
-  can edit, drop or `send` on; an administrator's own is submitted at once.
+  parsed from the matrix's front matter. Administrators approve (applying it)
+  or reject a sent proposal with `decide`; a proposal whose file changed
+  since it was drafted needs `overwrite`. `PersonaProposals` is the only way
+  in: `propose` takes the thread's own view (the owner comes from it), and a
+  proposal starts as a draft in that user's `user.db` (`persona_drafts`),
+  which they can edit, drop or `send` on, recorded with who sent it and
+  whether they edited it; an administrator's own is sent at once.
 - **`store/`**: the pool databases and the privacy boundary (`Memory`,
   `openThreadView`, `openOwnerView`, `PoolStore`). See
   [docs/memory.md](../docs/memory.md#in-code).
