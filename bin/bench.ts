@@ -1,7 +1,8 @@
 import { join } from "node:path";
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import { Memory, Models, PersonaStore, TASKS, Workspace, type Keyring, type Pool, type User, type Users } from "@lyrica/core";
-import { createDelegateExtension, createLyricaExtension, createWorkspaceExtension, Delegation, openThreadSession, syncEntries, type ThreadContext } from "@lyrica/extension";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { Memory, Models, PersonaProposals, PersonaStore, TASKS, Workspace, type Keyring, type Pool, type User, type Users } from "@lyrica/core";
+import { createDelegateExtension, createLyricaExtension, createWorkspaceExtension, Delegation, openThreadSession, Sleep, syncEntries, type ThreadContext } from "@lyrica/extension";
 
 export interface BenchOptions {
   pool?: Pool;
@@ -47,6 +48,19 @@ export async function openBench(keyring: Keyring, users: Users, user: User, opts
 
   const cwd = join(keyring.home, "bench");
   const delegation = new Delegation({ users, memory, models, workspace, cwd });
+  const sleep = new Sleep({
+    users, memory, models, persona, proposals: new PersonaProposals(keyring.self(), users, persona), cwd, hasKey: (id) => keyring.hasUserKey(id),
+  });
+  // /sleep: this pool, now. Manual mode asks first; afterwards a new session wakes up with the new WAKE.
+  const sleepNow = async (c: ExtensionCommandContext) => {
+    if (sleep.mode(user.id) === "manual" && c.hasUI && !(await c.ui.confirm("Sleep now?", `Consolidate, dream and wake for the ${pool} pool.`))) return;
+    syncEntries(c.sessionManager, view.own, thread.id);
+    const { skip, reason } = await sleep.check(user.id, pool);
+    const run = skip ? undefined : await sleep.run(user.id, pool, "manual");
+    const said = run ? `Sleep ${run.status}. Start a new session to wake up with it.` : `Sleep can't run now: ${reason}.`;
+    if (c.hasUI) c.ui.notify(said, run?.status === "complete" ? "info" : "warning");
+    else process.stderr.write(`[lyrica] ${said}\n`);
+  };
   let released = false;
   const release = async () => {
     if (released) return;
@@ -65,11 +79,11 @@ export async function openBench(keyring: Keyring, users: Users, user: User, opts
   const opened = await openThreadSession({
     thread: ctx, models, cwd,
     extensions: [
-      createLyricaExtension(ctx, { persona: () => persona.read(), profile: () => users.get(user.id)!.profile, folders: tools.folders, debugPrompt: opts.debugPrompt }),
+      createLyricaExtension(ctx, { persona: () => persona.read(), profile: () => users.get(user.id)!.profile, folders: tools.folders, debugPrompt: opts.debugPrompt, sleep: sleepNow }),
       createWorkspaceExtension(tools),
       createDelegateExtension(ctx, delegation),
       onShutdown,
     ],
   });
-  return { ...opened, threadId: thread.id, call, report, delegation, close: async () => { opened.dispose(); await release(); } };
+  return { ...opened, threadId: thread.id, call, report, delegation, sleep, close: async () => { opened.dispose(); await release(); } };
 }

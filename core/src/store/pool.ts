@@ -111,6 +111,49 @@ export interface Edited {
   at: string;
 }
 
+export type SleepStatus = "running" | "complete" | "partial" | "skipped";
+export type SkipReason = "no-key" | "endpoint-down" | "no-activity";
+export type SleepPhase = "consolidate" | "dream" | "wake";
+
+export interface SleepRunRecord {
+  id: string;
+  reason: "scheduled" | "manual";
+  status: SleepStatus;
+  skipReason?: SkipReason;
+  /** Entries written before this are what the run covers. */
+  until: string;
+  /** Each phase's thread, and whether it finished. */
+  phases: Partial<Record<SleepPhase, { thread: string; done: boolean }>>;
+  startedAt: string;
+  finishedAt?: string;
+}
+
+/** Something she'd like to raise after a night. Never in any thread's context but the one started from it. */
+export interface SleepItem {
+  id: string;
+  run: string;
+  kind: "thought" | "question" | "persona";
+  text: string;
+  /** What it came from: a journal entry, a page, a note, or `proposal:<id>`. */
+  source?: string;
+  /** The chat started from it. */
+  thread?: string;
+  dismissed: boolean;
+  createdAt: string;
+}
+
+/** What a sleep run has to work with: everything after the watermark and before the run started. */
+export interface SleepMaterial {
+  /** Logged threads with new entries (not sleep's own threads, not exported copies). */
+  threads: { id: string; title?: string; entries: number; first: string; last: string }[];
+  /** Notes written in conversation or by a user. */
+  notes: Item[];
+  /** Memories a user changed or added. */
+  edited: Edited[];
+  /** Pages that cited something since deleted. */
+  flagged: string[];
+}
+
 export interface StoreContext {
   db: Db;
   pool: Pool;
@@ -185,7 +228,7 @@ export class PoolReader {
 
   /** When the user last spoke in this pool, in any thread. */
   lastUserMessage(): Date | undefined {
-    const row = this.db.prepare("SELECT max(created_at) AS at FROM entries WHERE role = 'user' AND unlogged = 0").get() as { at: string | null };
+    const row = this.db.prepare("SELECT max(created_at) AS at FROM entries WHERE role = 'user' AND unlogged = 0 AND text != ''").get() as { at: string | null };
     return row.at ? new Date(row.at) : undefined;
   }
 
@@ -269,6 +312,79 @@ export class PoolReader {
     return (this.db.prepare(
       "SELECT id, updated_at FROM notes WHERE origin = 'user' UNION ALL SELECT 'p:' || slug, updated_at FROM pages WHERE origin = 'user' ORDER BY 2 DESC",
     ).all() as { id: string }[]).map((r) => r.id);
+  }
+
+  // Sleep
+
+  /** Entries before this time have been slept: the latest run whose consolidate finished. */
+  watermark(): string | undefined {
+    const rows = this.db.prepare("SELECT until, phases FROM sleep_runs WHERE status != 'skipped' ORDER BY until DESC").all() as { until: string; phases: string }[];
+    return rows.find((r) => json<SleepRunRecord["phases"]>(r.phases).consolidate?.done)?.until;
+  }
+
+  listSleepRuns(limit = 30): SleepRunRecord[] {
+    return (this.db.prepare("SELECT * FROM sleep_runs ORDER BY started_at DESC, rowid DESC LIMIT ?").all(limit) as SleepRunRow[]).map(toRun);
+  }
+
+  getSleepRun(id: string): SleepRunRecord | undefined {
+    const row = this.db.prepare("SELECT * FROM sleep_runs WHERE id = ?").get(id) as SleepRunRow | undefined;
+    return row && toRun(row);
+  }
+
+  /** Everything after `since` and before `until` that sleep should look at. */
+  sleepMaterial(since: string | undefined, until: string): SleepMaterial {
+    const from = since ?? "";
+    const threads = (this.db.prepare(`SELECT e.thread AS id, t.title, count(*) AS entries, min(e.n) AS first, max(e.n) AS last
+      FROM entries e JOIN threads t ON t.id = e.thread
+      WHERE e.unlogged = 0 AND e.orig IS NULL AND t.interface != 'sleep' AND e.text != '' AND e.created_at >= ? AND e.created_at < ?
+      GROUP BY e.thread ORDER BY min(e.created_at)`).all(from, until) as { id: string; title: string | null; entries: number; first: number; last: number }[])
+      .map((r) => ({ id: r.id, ...(r.title ? { title: r.title } : {}), entries: r.entries, first: entryId(r.id, r.first), last: entryId(r.id, r.last) }));
+    const notes = (this.db.prepare("SELECT id FROM notes WHERE origin != 'sleep' AND archived = 0 AND created_at >= ? AND created_at < ? ORDER BY created_at")
+      .all(from, until) as { id: string }[]).map((r) => this.get(r.id)!);
+    const edited = this.editedSince(from).filter((e) => e.at < until);
+    const flagged = (this.db.prepare("SELECT slug FROM pages WHERE flagged = 1 AND archived = 0").all() as { slug: string }[]).map((r) => `p:${r.slug}`);
+    return { threads, notes, edited, flagged };
+  }
+
+  /** What sleep wrote between two times, newest version of each: notes, pages (with the version before), journal, WAKE. */
+  sleepChanges(from: string, to: string): { notes: string[]; pages: { id: string; before?: Body; after: Body }[]; journal: string[]; wake?: string } {
+    const revs = this.db.prepare("SELECT * FROM revisions WHERE author = 'sleep' AND created_at >= ? AND created_at <= ? ORDER BY id")
+      .all(from, to) as RevisionRow[];
+    const latest = new Map<string, RevisionRow>();
+    for (const r of revs) latest.set(r.item, r);
+    const firstId = new Map<string, number>();
+    for (const r of revs) if (!firstId.has(r.item)) firstId.set(r.item, r.id);
+    const ids = [...latest.keys()];
+    const pages = ids.filter((id) => kindOf(id) === "page").map((id) => {
+      const before = this.db.prepare("SELECT body FROM revisions WHERE item = ? AND id < ? ORDER BY id DESC LIMIT 1").get(id, firstId.get(id)) as { body: string } | undefined;
+      return { id, ...(before ? { before: json<Body>(before.body) } : {}), after: json<Body>(latest.get(id)!.body) };
+    });
+    const created = (id: string) => !this.db.prepare("SELECT 1 FROM revisions WHERE item = ? AND id < ?").get(id, firstId.get(id));
+    const wake = latest.get("wake");
+    return {
+      notes: ids.filter((id) => kindOf(id) === "note" && created(id)),
+      pages,
+      journal: ids.filter((id) => kindOf(id) === "journal"),
+      ...(wake ? { wake: json<Body>(wake.body).text } : {}),
+    };
+  }
+
+  /** Items from sleep, newest first. Dismissed ones are left out unless asked for. */
+  listItems(opts: { run?: string; includeDismissed?: boolean } = {}): SleepItem[] {
+    const where = [opts.includeDismissed ? "" : "dismissed = 0", opts.run ? "run = @run" : ""].filter(Boolean);
+    return (this.db.prepare(`SELECT * FROM sleep_items ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at DESC, rowid DESC`)
+      .all(opts.run ? { run: opts.run } : {}) as ItemRow[]).map(toItem);
+  }
+
+  getItem(id: string): SleepItem | undefined {
+    const row = this.db.prepare("SELECT * FROM sleep_items WHERE id = ?").get(id) as ItemRow | undefined;
+    return row && toItem(row);
+  }
+
+  /** The item a thread was started from: the only way an item reaches a conversation. */
+  itemForThread(threadId: string): SleepItem | undefined {
+    const row = this.db.prepare("SELECT * FROM sleep_items WHERE thread = ?").get(threadId) as ItemRow | undefined;
+    return row && toItem(row);
   }
 
   // Search
@@ -496,6 +612,50 @@ export class PoolStore extends PoolReader {
     });
   }
 
+  // Sleep runs and items
+
+  startSleepRun(reason: SleepRunRecord["reason"], until: string): string {
+    const id = this.newSleepId("s", "sleep_runs");
+    this.db.prepare("INSERT INTO sleep_runs (id, reason, status, until, started_at) VALUES (?, ?, 'running', ?, ?)").run(id, reason, until, now());
+    return id;
+  }
+
+  updateSleepRun(id: string, change: { status?: SleepStatus; phases?: SleepRunRecord["phases"]; finished?: boolean }): void {
+    const run = this.getSleepRun(id);
+    if (!run) throw new Error(`no sleep run ${id}`);
+    this.db.prepare("UPDATE sleep_runs SET status = ?, phases = ?, finished_at = ? WHERE id = ?")
+      .run(change.status ?? run.status, JSON.stringify(change.phases ?? run.phases), change.finished ? now() : run.finishedAt ?? null, id);
+  }
+
+  /** A skipped run: nothing moves, and the reason is kept. */
+  recordSleepRun(reason: SleepRunRecord["reason"], skipReason: SkipReason, at = now()): string {
+    const id = this.newSleepId("s", "sleep_runs");
+    this.db.prepare("INSERT INTO sleep_runs (id, reason, status, skip_reason, until, started_at, finished_at) VALUES (?, ?, 'skipped', ?, ?, ?, ?)")
+      .run(id, reason, skipReason, at, at, at);
+    return id;
+  }
+
+  addItem(run: string, item: { kind: SleepItem["kind"]; text: string; source?: string }): string {
+    const text = item.text.trim();
+    if (!text) throw new Error("an item needs text");
+    const id = this.newSleepId("i", "sleep_items");
+    this.db.prepare("INSERT INTO sleep_items (id, run, kind, text, source, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(id, run, item.kind, text, item.source ?? null, now());
+    return id;
+  }
+
+  /** Links the item to the chat started from it. One chat per item. */
+  startItem(id: string, threadId: string): void {
+    this.mustThread(threadId);
+    if (!this.db.prepare("UPDATE sleep_items SET thread = ? WHERE id = ? AND thread IS NULL AND dismissed = 0").run(threadId, id).changes) {
+      throw new Error(`item ${id} is gone or already has a chat`);
+    }
+  }
+
+  dismissItem(id: string): void {
+    if (!this.db.prepare("UPDATE sleep_items SET dismissed = 1 WHERE id = ?").run(id).changes) throw new Error(`no item ${id}`);
+  }
+
   // Editing
 
   /**
@@ -511,6 +671,11 @@ export class PoolStore extends PoolReader {
       throw new Error("a memory a user added can only be changed by the user");
     }
     const body = this.stored({ ...bodyOf(item), ...change });
+    // A page a user wrote or edited keeps their words: sleep may only add around them.
+    const theirs = item.kind === "page" && !author.startsWith("user:") ? this.userText(id) : undefined;
+    if (theirs && !body.text.includes(theirs)) {
+      throw new Error(`${id} has text a user wrote; keep it word for word and add around it, or ask about it instead`);
+    }
     const at = now();
     this.tx(() => {
       switch (item.kind) {
@@ -568,6 +733,19 @@ export class PoolStore extends PoolReader {
   }
 
   // Internals
+
+  /** The text of the latest version a user wrote, if any. */
+  private userText(id: string): string | undefined {
+    const row = this.db.prepare("SELECT body FROM revisions WHERE item = ? AND author LIKE 'user:%' ORDER BY id DESC LIMIT 1").get(id) as { body: string } | undefined;
+    return row ? json<Body>(row.body).text.trim() : undefined;
+  }
+
+  private newSleepId(prefix: "s" | "i", table: "sleep_runs" | "sleep_items"): string {
+    let id: string;
+    do id = `${prefix}:${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${randomBytes(4).toString("hex")}`;
+    while (this.db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id));
+    return id;
+  }
 
   private remove(id: string, author: Author, forgettingThread: boolean): void {
     const item = this.load(id)!;
@@ -654,12 +832,28 @@ interface ThreadRow { id: string; interface: Interface; parent: string | null; s
 interface EntryRow { thread: string; n: number; role: string; text: string; unlogged: number; orig: string | null; created_at: string }
 interface NoteRow { text: string; about: string; origin: string; author: string; superseded_by: string | null; archived: number; created_at: string; updated_at: string }
 interface PageRow { slug: string; title: string; summary: string; text: string; folders: string; origin: string; author: string; archived: number; flagged: number; created_at: string; updated_at: string }
+interface SleepRunRow { id: string; reason: string; status: string; skip_reason: string | null; until: string; phases: string; started_at: string; finished_at: string | null }
+interface ItemRow { id: string; run: string; kind: string; text: string; source: string | null; thread: string | null; dismissed: number; created_at: string }
 interface RevisionRow { id: number; item: string; body: string; author: string; created_at: string }
 
 function toThread(r: ThreadRow): Thread {
   return {
     id: r.id, interface: r.interface, parent: r.parent ?? undefined, subagent: r.subagent === 1, title: r.title ?? undefined,
     hidden: r.hidden === 1, unlogged: r.unlogged === 1, createdAt: r.created_at,
+  };
+}
+
+function toRun(r: SleepRunRow): SleepRunRecord {
+  return {
+    id: r.id, reason: r.reason as SleepRunRecord["reason"], status: r.status as SleepStatus, ...(r.skip_reason ? { skipReason: r.skip_reason as SkipReason } : {}),
+    until: r.until, phases: json(r.phases), startedAt: r.started_at, ...(r.finished_at ? { finishedAt: r.finished_at } : {}),
+  };
+}
+
+function toItem(r: ItemRow): SleepItem {
+  return {
+    id: r.id, run: r.run, kind: r.kind as SleepItem["kind"], text: r.text, ...(r.source ? { source: r.source } : {}),
+    ...(r.thread ? { thread: r.thread } : {}), dismissed: r.dismissed === 1, createdAt: r.created_at,
   };
 }
 

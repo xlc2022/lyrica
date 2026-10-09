@@ -74,7 +74,8 @@ users.
 
 Tables in a pool database (`core/src/store/schema.ts`, one line of reason
 each): `threads`, `entries`, `notes`, `pages`, `wake`, `journal`,
-`revisions`, `citations`, `tombstones`, and the FTS5 table `search`.
+`revisions`, `citations`, `tombstones`, `sleep_runs`, `sleep_items`, and the
+FTS5 table `search`.
 `citations` and `search` are derived from the text. Deleting runs with
 `secure_delete` on and merges the index, so removed text doesn't linger in
 free pages.
@@ -164,10 +165,10 @@ The cheapest mechanism comes first:
    on the next message sharing its words. A private thread loads the private
    page first, then the general one if the section's budget (1,500
    characters) has room. A general thread loads only the general page. No
-   page means no section. A user can write it now in the memory browser (add
-   a page with the short name `about-user`), and it is then User introduced
-   and authoritative. Sleep will keep it up later without overwriting what
-   the user wrote.
+   page means no section. Sleep creates and keeps it, citing notes. A user can
+   also write it in the memory browser (a page with the short name
+   `about-user`); what they write is authoritative, and sleep only adds
+   around it.
 2. **Automatic recall on every user turn.** Search notes, pages and past
    threads in the pool using Li's message, and inject the top few hits as
    short snippets with their IDs (about 1.5k tokens).
@@ -360,11 +361,14 @@ correct a memory in conversation.
     refuses any view `openThreadView` didn't make (`isThreadView`).
   - A thread view writes only as `lyrica` or `sleep`; an owner view only as
     `user:<id>`. Notes and pages a user added can't be changed or deleted by
-    `lyrica` or `sleep` (sleep may extend a user's page).
+    `lyrica` or `sleep`. Sleep may extend a page a user wrote or edited, but
+    an edit that drops the user's latest text is refused.
   - A deletion's tombstone keeps every source that any revision cited.
     Deleting general memory from the owner view flags general pages only, not
     private pages that cite it.
-- **`extension/src/`**: `tools.ts` registers the three tools; `memory.ts`
+- **`extension/src/`**: `tools.ts` registers the three tools (only `recall`
+  and `read_memory` with `memoryTools: "read"`, and minus whatever `hide`
+  hides); `memory.ts`
   builds the prompt sections (an unlogged notice, WAKE, the about-user page,
   page index, pages for `folders()`) and the recall hits; `record.ts` copies Pi entries into the
   thread at each turn end (`recordEntries`). Pi entry IDs make copying

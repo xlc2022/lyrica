@@ -332,8 +332,13 @@ export interface MessagePage { messages: Message[]; hasMore: boolean }
  * POST /api/u/:userId/threads/:pool/:threadId/messages → SendResponse.
  * Starts a turn, or waits as a follow-up while one runs.
  */
-export interface SendRequest { text: string }
-export interface SendResponse { queued: boolean }
+export interface SendRequest {
+  text: string;
+  /** With text `/sleep` in manual mode: the user confirmed. */
+  confirm?: boolean;
+}
+/** `/sleep` sleeps the thread's pool instead of starting a turn (see SleepRequest), and answers `sleep`. */
+export interface SendResponse { queued: boolean; sleep?: SleepStarted }
 
 /** POST /api/u/:userId/threads/:pool/:threadId/stop → Ok. Aborts the running turn. */
 
@@ -666,3 +671,79 @@ export interface PersonaProposal {
 /** GET /api/u/:userId/admin/proposals → PersonaProposal[]: open ones that users have sent on. */
 /** POST /api/u/:userId/admin/proposals/:id → Ok. Approve applies the change; reject drops it. */
 export interface ProposalDecision { approve: boolean; overwrite?: boolean }
+
+// --- Sleep ---
+// What she did each night, per pool, and what she'd like to raise. Text is in
+// stored form, with mention tokens: render it with `users`, as in the memory browser.
+
+export type SleepMode = "scheduled" | "manual";
+export type SleepPhase = "consolidate" | "dream" | "wake";
+export type SkipReason = "no-key" | "endpoint-down" | "no-activity";
+
+export interface SleepRunInfo {
+  pool: Pool;
+  id: string;
+  reason: "scheduled" | "manual";
+  status: "running" | "complete" | "partial" | "skipped";
+  skipReason?: SkipReason;
+  /** Entries written before this are what the run covers. */
+  until: string;
+  /** Each phase's thread (interface `sleep`) and whether it finished. */
+  phases: Partial<Record<SleepPhase, { thread: string; done: boolean }>>;
+  startedAt: string;
+  finishedAt?: string;
+}
+
+export interface SleepItemInfo {
+  pool: Pool;
+  id: string;
+  run: string;
+  kind: "thought" | "question" | "persona";
+  text: string;
+  /** What it came from: a memory ID, or `draft:<id>` / `proposal:<id>` for a persona suggestion. */
+  source?: string;
+  /** The chat started from it. */
+  thread?: string;
+  /** Neither started nor dismissed: the Sleep section shows a badge while any are new. */
+  new: boolean;
+  createdAt: string;
+}
+
+/** GET /api/u/:userId/sleep → SleepOverview: the mode, the sleep time, open items and recent runs of both pools, newest first. */
+export interface SleepOverview { mode: SleepMode; time: string; items: SleepItemInfo[]; runs: SleepRunInfo[] }
+/** PUT /api/u/:userId/sleep/mode → SleepOverview */
+export interface SleepModeChange { mode: SleepMode }
+
+/** GET /api/u/:userId/sleep/:pool/runs/:runId → SleepRunDetail */
+export interface SleepRunDetail extends SleepRunInfo {
+  /** Notes she wrote that she had missed in conversation. */
+  notes: { id: string; text: string }[];
+  /** Pages created or changed, each with its text before (absent for a new page) and after. */
+  pages: { id: string; title?: string; before?: string; after: string }[];
+  questions: SleepItemInfo[];
+  /** Everything else she'd like to raise from this run. */
+  items: SleepItemInfo[];
+  dream: { id: string; text: string }[];
+  wake?: string;
+  users: UserMap;
+}
+
+/**
+ * POST /api/u/:userId/sleep/:pool → SleepStarted. Sleeps the pool now (`/sleep`).
+ * In manual mode it answers `confirm` unless `confirm: true` is sent; then, once
+ * the run ends, a fresh thread opens in that pool (a `thread` event). Anything
+ * that stops it at once (no key, endpoint down, nothing new) is a 409 in plain words.
+ */
+export interface SleepRequest { confirm?: boolean }
+export type SleepStarted = { started: true } | { confirm: string };
+
+/** POST /api/u/:userId/sleep/:pool/items/:itemId/chat → ThreadSummary: a new web thread where she opens with the item. */
+/** DELETE /api/u/:userId/sleep/:pool/items/:itemId → Ok: dismissed. */
+
+/** GET /api/u/:userId/sleep/events: SSE of SleepEvent, for this user's runs. */
+export type SleepEvent =
+  | { type: "started"; pool: Pool; runId: string; reason: "scheduled" | "manual" }
+  | { type: "phase"; pool: Pool; runId: string; phase: SleepPhase; state: "started" | "done" | "stopped" }
+  | { type: "finished"; pool: Pool; runId: string; status: SleepRunInfo["status"]; skipReason?: SkipReason }
+  /** Manual mode: the fresh thread opened after the run. */
+  | { type: "thread"; pool: Pool; threadId: string };

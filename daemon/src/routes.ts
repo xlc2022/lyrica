@@ -1,11 +1,12 @@
 import {
   AuthError, WrongPassword, checkTask, isRestricted, publicKeyOf, generateSshKey, CloudModelForbidden, NoModel, PRONOUN_PRESETS,
-  type Author, type Hit, type Item, type OwnerView, type Pool, type PoolStore, type Thread, type User,
+  type Author, type Hit, type Item, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type User,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
 import { Sessions } from "./auth.ts";
 import { HttpError, route, type Request, type Route } from "./http.ts";
+import { OPENING } from "@lyrica/extension";
 import { card, type Lyricad, type Services } from "./lyricad.ts";
 import { toMessages } from "./messages.ts";
 
@@ -303,8 +304,9 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("POST", `${t}/messages`, async (r) => {
       const user = d.userFor(r);
-      const { text } = await r.json<Api.SendRequest>();
+      const { text, confirm } = await r.json<Api.SendRequest>();
       const thread = owner(d, user, (o) => threadOf(o, r));
+      if (String(text ?? "").trim() === "/sleep") return { queued: false, sleep: await startSleep(d, user, poolOf(r), confirm === true) };
       return s().host.get(user.id, poolOf(r), thread.id).send(String(text ?? ""));
     }),
     route("POST", `${t}/stop`, async (r) => {
@@ -352,6 +354,58 @@ export function apiRoutes(d: Lyricad): Route[] {
       }, 2_500);
       res.on("close", () => { clearInterval(check); stop(); });
       return undefined;
+    }),
+
+    // --- Sleep: runs, items, /sleep ---
+    route("GET", `${u}/sleep`, (r) => sleepOverview(d, d.userFor(r))),
+    route("PUT", `${u}/sleep/mode`, async (r) => {
+      const user = d.userFor(r);
+      const { mode } = await r.json<Api.SleepModeChange>();
+      s().sleep.setMode(user.id, mode);
+      return sleepOverview(d, user);
+    }),
+    route("GET", `${u}/sleep/events`, (r) => {
+      const user = d.userFor(r);
+      const { res } = r;
+      res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
+      res.write("retry: 3000\n\n");
+      const allowed = () => !!d.sessions.users(r.cookie)?.has(user.id) && d.keyring.hasUserKey(user.id);
+      let n = 0;
+      const listener = (e: { userId: string } & Api.SleepEvent) => {
+        if (e.userId !== user.id) return;
+        if (!allowed()) return void res.end();
+        const { userId: _u, ...event } = e;
+        res.write(`id: ${++n}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+      };
+      s().sleep.events.on("event", listener);
+      const check = setInterval(() => { if (!allowed()) res.end(); else res.write(": keep-alive\n\n"); }, 25_000);
+      res.on("close", () => { clearInterval(check); s().sleep.events.off("event", listener); });
+      return undefined;
+    }),
+    route("GET", `${u}/sleep/:pool/runs/:runId`, (r) => owner(d, d.userFor(r), (o) => sleepRunDetail(d, o, poolOf(r), r.params.runId!))),
+    route("POST", `${u}/sleep/:pool`, async (r) => {
+      const user = d.userFor(r);
+      const { confirm } = await r.json<Api.SleepRequest>();
+      return startSleep(d, user, poolOf(r), confirm === true);
+    }),
+    route("POST", `${u}/sleep/:pool/items/:itemId/chat`, async (r) => {
+      const user = d.userFor(r);
+      const pool = poolOf(r);
+      const thread = owner(d, user, (o) => {
+        const item = o[pool].getItem(r.params.itemId!);
+        if (!item || item.dismissed) throw new HttpError(404, "no such item");
+        if (item.thread) throw new HttpError(409, "a chat was already started from this item");
+        const th = o[pool].createThread({ interface: "web" });
+        o[pool].startItem(item.id, th.id);
+        return th;
+      });
+      // She speaks first, with the item in her context (and in no other thread's).
+      await s().host.get(user.id, pool, thread.id).send(OPENING);
+      return owner(d, user, (o) => summary(d, user, pool, o[pool], o[pool].getThread(thread.id)!, []));
+    }),
+    route("DELETE", `${u}/sleep/:pool/items/:itemId`, (r) => {
+      owner(d, d.userFor(r), (o) => o[poolOf(r)].dismissItem(r.params.itemId!));
+      return { ok: true };
     }),
 
     // --- Memory browser, through the owner view ---
@@ -480,7 +534,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("GET", `${u}/admin/web-access/status`, (r) => { d.adminFor(r); return s().web.status(); }),
     route("GET", `${u}/admin/web-access/snippet`, (r): Api.WebAccessSnippet => { d.adminFor(r); return { caddyfile: s().web.snippet() }; }),
-    route("GET", `${u}/admin/sleep`, (r) => { d.adminFor(r); return { time: sleepTime(d) }; }),
+    route("GET", `${u}/admin/sleep`, (r) => { d.adminFor(r); return { time: d.sleepTime() }; }),
     route("PUT", `${u}/admin/sleep`, async (r) => {
       d.adminFor(r);
       const { time } = await r.json<Api.SleepTime>();
@@ -653,10 +707,68 @@ function adminStatus(d: Lyricad): Api.AdminStatus {
   };
 }
 
-function sleepTime(d: Lyricad): string {
-  const row = d.keyring.self().prepare("SELECT value FROM settings WHERE key = 'sleep.time'").get() as { value: string } | undefined;
-  return row?.value ?? "03:00";
+/**
+ * /sleep: sleeps the pool now. Manual mode asks first, and opens a fresh
+ * thread once the run ends. Whatever stops it at once is a plain error.
+ */
+async function startSleep(d: Lyricad, user: User, pool: Pool, confirmed: boolean): Promise<Api.SleepStarted> {
+  const { sleep } = d.services!;
+  const manual = sleep.mode(user.id) === "manual";
+  if (manual && !confirmed) return { confirm: `Sleep now? She'll consolidate, dream and wake for your ${pool} memory, and then a fresh thread opens.` };
+  const { skip, reason } = await sleep.check(user.id, pool);
+  const run = sleep.run(user.id, pool, "manual"); // records a skip too
+  if (skip) {
+    await run;
+    throw new HttpError(409, `Sleep can't run now: ${reason}.`);
+  }
+  void run.then((done) => {
+    if (!manual || done.status === "skipped" || !d.keyring.hasUserKey(user.id)) return;
+    const thread = owner(d, user, (o) => o[pool].createThread({ interface: "web" }));
+    sleep.events.emit("event", { type: "thread", userId: user.id, pool, threadId: thread.id });
+  }).catch((err: Error) => d.log(`sleep failed: ${err.name}`));
+  return { started: true };
 }
+
+function sleepRunInfo(pool: Pool, r: SleepRunRecord): Api.SleepRunInfo {
+  return { pool, ...r };
+}
+
+function sleepItemInfo(pool: Pool, i: SleepItem): Api.SleepItemInfo {
+  const { dismissed, ...rest } = i;
+  return { pool, ...rest, new: !dismissed && !i.thread };
+}
+
+function sleepOverview(d: Lyricad, user: User): Api.SleepOverview {
+  return owner(d, user, (o) => {
+    const pools = ["general", "private"] as const;
+    return {
+      mode: d.services!.sleep.mode(user.id),
+      time: d.sleepTime(),
+      items: pools.flatMap((p) => o[p].listItems().map((i) => sleepItemInfo(p, i))).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+      runs: pools.flatMap((p) => o[p].listSleepRuns(30).map((r) => sleepRunInfo(p, r))).sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
+    };
+  });
+}
+
+function sleepRunDetail(d: Lyricad, o: OwnerView, pool: Pool, runId: string): Api.SleepRunDetail {
+  const store = o[pool];
+  const run = store.getSleepRun(runId);
+  if (!run) throw new HttpError(404, "no such sleep run");
+  const changes = run.status === "skipped" ? { notes: [], pages: [], journal: [] } : store.sleepChanges(run.startedAt, run.finishedAt ?? new Date().toISOString());
+  const raw = (id: string) => store.get(id, { raw: true });
+  const items = store.listItems({ run: run.id, includeDismissed: true }).map((i) => sleepItemInfo(pool, i));
+  return {
+    ...sleepRunInfo(pool, run),
+    notes: changes.notes.map((id) => ({ id, text: raw(id)?.text ?? "" })),
+    pages: changes.pages.map((p) => ({ id: p.id, ...(p.after.title ? { title: p.after.title } : {}), ...(p.before ? { before: p.before.text } : {}), after: p.after.text })),
+    questions: items.filter((i) => i.kind === "question"),
+    items: items.filter((i) => i.kind !== "question"),
+    dream: changes.journal.map((id) => ({ id, text: raw(id)?.text ?? "" })),
+    ...("wake" in changes && changes.wake !== undefined ? { wake: changes.wake } : {}),
+    users: Object.fromEntries(d.services!.users.all().map((u) => [u.id, { displayName: u.profile.displayName, pronouns: u.profile.pronouns }])),
+  };
+}
+
 
 /** A thread with its subagents nested under it. */
 function tree(d: Lyricad, user: User, pool: Pool, store: PoolStore, threads: Thread[]): Api.ThreadSummary[] {

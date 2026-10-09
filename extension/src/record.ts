@@ -5,7 +5,11 @@ import type { NewEntry, PoolStore } from "@lyrica/core";
 // message only after its message_end listeners run, so entries are copied over
 // at turn and agent boundaries, by Pi entry ID, which makes copying idempotent.
 
-const MEMORY_TOOLS = new Set(["remember", "recall", "read_memory"]);
+// Memory tools, sleep's included: what they wrote is indexed where it was written.
+const MEMORY_TOOLS = new Set(["remember", "recall", "read_memory", "write_page", "write_journal", "write_wake", "raise", "propose_persona"]);
+
+/** What a thread started from a sleep item is prompted with, so she speaks first. Never shown or indexed. */
+export const OPENING = "(The conversation is starting. Speak first.)";
 
 interface EntrySource { getEntries(): SessionEntry[] }
 
@@ -43,5 +47,5 @@ export function toStoredEntry(entry: SessionEntry): NewEntry {
     .filter(Boolean)
     .join("\n");
   if (m.role === "toolResult") return { piId: entry.id, role: m.role, data: entry, text: MEMORY_TOOLS.has(m.toolName ?? "") ? "" : `${m.toolName}: ${text}` };
-  return { piId: entry.id, role: m.role, data: entry, text };
+  return { piId: entry.id, role: m.role, data: entry, text: m.role === "user" && text === OPENING ? "" : text };
 }

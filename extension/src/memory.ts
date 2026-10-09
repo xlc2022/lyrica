@@ -1,4 +1,4 @@
-import { readView, resolve, searchView, type Hit, type PoolView, type Profile, type StoredEntry, type Item } from "@lyrica/core";
+import { readView, resolve, searchView, type Hit, type SearchOptions, type PoolView, type Profile, type StoredEntry, type Item } from "@lyrica/core";
 
 /** What memory contributes to the prompt. Every field is optional. */
 export interface MemorySections {
@@ -11,6 +11,8 @@ export interface MemorySections {
   /** Pages about the thread's granted folders. */
   folders?: string;
   recall?: string;
+  /** The item from sleep this thread was started from: she opens with it. No other thread sees items. */
+  opening?: string;
   lastTalk?: Date;
 }
 
@@ -19,6 +21,8 @@ export interface MemoryContext {
   /** The person she's talking with, for "added by" labels. */
   user: { id: string; profile: Profile };
   folders: string[];
+  /** Memories this thread must not see (sleep's wake phase never sees dreams). */
+  hide?: (id: string) => boolean;
 }
 
 export const UNLOGGED_NOTICE =
@@ -36,7 +40,8 @@ export async function memorySections(view: PoolView, prompt: string, ctx: Memory
   const index = own.pageIndex().map((p) => `- [${p.id}] ${p.title}: ${p.summary}`).join("\n");
   const stores = [{ prefix: "", store: own }, ...view.reads.map((store) => ({ prefix: `${store.pool}/`, store }))];
   const folderPages = stores.flatMap(({ prefix, store }) => store.forFolders(ctx.folders).map((p) => ({ ...p, id: prefix + p.id })));
-  const hits = prompt.trim() ? searchView(view, prompt, { current: true, limit: RECALL_HITS, excludeThread: ctx.threadId }) : [];
+  const hits = prompt.trim() ? search(view, prompt, { current: true, limit: RECALL_HITS, excludeThread: ctx.threadId }, ctx.hide) : [];
+  const item = own.itemForThread(ctx.threadId);
   return {
     notice: own.getThread(ctx.threadId)?.unlogged ? UNLOGGED_NOTICE : undefined,
     wake: own.getWake(),
@@ -46,8 +51,16 @@ export async function memorySections(view: PoolView, prompt: string, ctx: Memory
     pageIndex: index || undefined,
     folders: folderPages.map((p) => `<page id="${p.id}" title="${p.title}">\n${p.text}\n</page>`).join("\n\n") || undefined,
     recall: hits.map((h) => formatHit(h, ctx.user)).join("\n") || undefined,
+    opening: item && `You're starting this conversation. Bring this up, in your own words: ${item.text}${item.source ? ` [${item.source}]` : ""}`,
     lastTalk: own.lastUserMessage(),
   };
+}
+
+/** searchView, minus what the thread must not see. */
+export function search(view: PoolView, query: string, opts: SearchOptions, hide?: (id: string) => boolean): Hit[] {
+  if (!hide) return searchView(view, query, opts);
+  const limit = opts.limit ?? 8;
+  return searchView(view, query, { ...opts, limit: limit * 4 }).filter((h) => !hide(h.id)).slice(0, limit);
 }
 
 /** One recall hit: `[id] (kind, added by Li) snippet`. */
@@ -62,10 +75,11 @@ function authorLabel(author: string | undefined, user: MemoryContext["user"]): s
 }
 
 /** A memory or a stretch of a past thread, as `read_memory` shows it. */
-export function formatRead(view: PoolView, id: string, ctx: Pick<MemoryContext, "threadId" | "user">): string {
+export function formatRead(view: PoolView, id: string, ctx: Pick<MemoryContext, "threadId" | "user" | "hide">): string {
+  if (ctx.hide?.(id.trim())) return `Nothing found for ${id}.`;
   const found = readView(view, id, ctx.threadId);
   if (!found) return `Nothing found for ${id}.`;
-  if (found.entries) return found.entries.map(formatEntry).join("\n\n");
+  if (found.entries) return found.entries.filter((e) => !ctx.hide?.(e.id)).map(formatEntry).join("\n\n") || `Nothing found for ${id}.`;
   const item = found.item as Item;
   const { store } = resolve(view, id)!;
   const head = [item.kind, item.title, authorLabel(item.author, ctx.user), item.supersededBy && `superseded by ${item.supersededBy}`,
