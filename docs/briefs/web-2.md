@@ -27,10 +27,12 @@ phone (principle 1).
      included), with system fallbacks; the five sizes; the three action
      looks; badges for state only; no explanatory captions.
    - The sidebar as described, with thread sorting (by date, last activity,
-     start date, title) and the user's own groups, saved per user (a small
+     start date, title) and the user's own groups (made and filled from a
+     thread's header or a right-click / long-press menu), saved per user (a small
      API and a `thread_groups` table in `user.db`; a thread's group is a
      per-user setting, never in the pool).
-   - The user's button ("N Notifications"), its menu, Settings and Server as
+   - A Notifications row with its count above the user's button; the user's
+     button and its menu, Settings and Server as
      pages with a section list (the control panel's cards move into them),
      and the Notifications page with its API: one list over what waits for
      the user, sortable, filterable, paged, with each item's actions.

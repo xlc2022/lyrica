@@ -109,16 +109,18 @@ Each user has two pools of memory.
   - **Sidebar:** New thread, Search (with a Pinned messages view), Memory,
     Sleep (with a count) and Models at the top; then her items from last
     night; then threads, with child threads nested under their parent; then
-    a line of host status; then the user's button.
+    a line of host status; then **Notifications** with its count (in orange),
+    a link to the Notifications page; then the user's button.
   - **Threads can be sorted** by date (grouped Today, Yesterday, Previous 7
     days, Previous 30 days, the default), by last activity, by start date or
     by title, or shown in **the user's own groups**, which they make, name
-    and move threads into from a thread's header. The choice and the groups
+    and move threads into from a thread's header or by right-clicking (a long
+    press on a phone) in the thread list: **New group** anywhere, and **Move
+    to …** on a thread. The choice and the groups
     are saved per user, in `user.db`. A group can hold general and private
     threads; hiding a pool still hides its threads.
-  - **The user's button** shows "**N** Notifications", the count in orange,
-    and opens a menu: Notifications, Settings, Server (administrators),
-    Switch user, Lock and Log out.
+  - **The user's button** opens a menu: Notifications (with its count),
+    Settings, Server (administrators), Switch user, Lock and Log out.
   - **Settings** (the user's own) and **Server** (administrators) are pages
     with a list of sections on the left. Notifications is the first section
     of Settings.
