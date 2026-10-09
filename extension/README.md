@@ -23,14 +23,15 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
   persists for 3 more turns with a decaying score; only a new trigger resets
   its count, so it always expires.
 - **`assemble.ts`** builds these pieces:
-  - stable: the persona core, topic addenda, WAKE, the page index, and who
+  - stable: the persona core, topic addenda, WAKE, the page about the user
+    (`p:about-user`), the page index, and who
     she's talking with (display name, pronouns, previous names with dates);
   - per turn: recall, and the time, with the time since you last talked.
 
   Each has a character budget (`DEFAULT_BUDGETS`) and is cut at a line break
   when it's over.
 - **`memory.ts`** reads the thread's `PoolView`: an unlogged notice, WAKE, the
-  page index and pages about the thread's `folders()` go in the system
+  about-user page (private first, then general), the page index and pages about the thread's `folders()` go in the system
   prompt; recall hits for the message (labelled "added by Li" for a user's
   own memories) and the time since the user last spoke go in the turn
   message.

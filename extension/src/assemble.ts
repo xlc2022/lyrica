@@ -8,6 +8,7 @@ export interface Budgets {
   topics: number;
   notice: number;
   wake: number;
+  about: number;
   pages: number;
   folders: number;
   user: number;
@@ -20,6 +21,7 @@ export const DEFAULT_BUDGETS: Budgets = {
   topics: 9000,
   notice: 400,
   wake: 4000,
+  about: 1500,
   pages: 3000,
   folders: 4000,
   user: 600,
@@ -48,7 +50,7 @@ export interface Section {
 export interface Assembled {
   /** The persona core: Pi's `customPrompt`. */
   customPrompt: string;
-  /** Stable sections for Pi's `sections`, in order: topics, notice, wake, pages, folders, user. Pi adds the tags. */
+  /** Stable sections for Pi's `sections`, in order: topics, notice, wake, about, pages, folders, user. Pi adds the tags. */
   sections: Record<string, string>;
   /** Content that changes every turn (recall, time), sent as a message so the prompt prefix stays cacheable. */
   turn: string;
@@ -57,8 +59,8 @@ export interface Assembled {
 
 /**
  * Splits her context into a stable system prompt (persona core, topics, an
- * unlogged notice, WAKE, page index, folder pages, who she's talking with) and
- * a per-turn message (recall, time).
+ * unlogged notice, WAKE, the page about the user, page index, folder pages,
+ * who she's talking with) and a per-turn message (recall, time).
  */
 export function assemble(input: PromptInput, budgets: Budgets = DEFAULT_BUDGETS): Assembled {
   const report: Section[] = [];
@@ -81,6 +83,7 @@ export function assemble(input: PromptInput, budgets: Budgets = DEFAULT_BUDGETS)
   const stable: [keyof Budgets, string | undefined][] = [
     ["notice", input.memory.notice],
     ["wake", input.memory.wake],
+    ["about", input.memory.about],
     ["pages", input.memory.pageIndex],
     ["folders", input.memory.folders],
     ["user", whoLine(input.profile)],

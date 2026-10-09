@@ -5,6 +5,8 @@ export interface MemorySections {
   /** Said when the thread isn't logged, so she doesn't promise to remember. */
   notice?: string;
   wake?: string;
+  /** The person's own page, `p:about-user`: private first, then general. */
+  about?: string;
   pageIndex?: string;
   /** Pages about the thread's granted folders. */
   folders?: string;
@@ -25,7 +27,10 @@ export const UNLOGGED_NOTICE =
 
 const RECALL_HITS = 5;
 
-/** Reads WAKE, the page index, folder pages and this message's recall hits from the view. */
+/** The page about the person she's talking with. A user can write it; sleep keeps it up. */
+export const ABOUT_USER_PAGE = "p:about-user";
+
+/** Reads WAKE, the about-user page, the page index, folder pages and this message's recall hits from the view. */
 export async function memorySections(view: PoolView, prompt: string, ctx: MemoryContext): Promise<MemorySections> {
   const { own } = view;
   const index = own.pageIndex().map((p) => `- [${p.id}] ${p.title}: ${p.summary}`).join("\n");
@@ -35,6 +40,9 @@ export async function memorySections(view: PoolView, prompt: string, ctx: Memory
   return {
     notice: own.getThread(ctx.threadId)?.unlogged ? UNLOGGED_NOTICE : undefined,
     wake: own.getWake(),
+    // The thread's own pool comes first; the about section's budget cuts whatever doesn't fit.
+    about: [own, ...view.reads].map((store) => store.get(ABOUT_USER_PAGE)).filter((p) => p && !p.archived)
+      .map((p) => p!.text.trim()).filter(Boolean).join("\n\n") || undefined,
     pageIndex: index || undefined,
     folders: folderPages.map((p) => `<page id="${p.id}" title="${p.title}">\n${p.text}\n</page>`).join("\n\n") || undefined,
     recall: hits.map((h) => formatHit(h, ctx.user)).join("\n") || undefined,
