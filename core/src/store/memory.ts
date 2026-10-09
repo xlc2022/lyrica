@@ -52,7 +52,7 @@ export class Memory {
       throw err;
     }
     const view: PoolView = {
-      pool, own, reads,
+      pool, own, reads: Object.freeze(reads),
       close: () => { own.close(); for (const r of reads) r.close(); },
     };
     threadViews.add(view);

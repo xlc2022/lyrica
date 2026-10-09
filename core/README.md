@@ -3,7 +3,8 @@
 Keys, users and the persona store. No Pi dependency.
 
 - **`db.ts`** opens SQLCipher databases (`better-sqlite3-multiple-ciphers`,
-  `cipher=sqlcipher`, `legacy=4`) and holds the schemas. A wrong key throws.
+  `cipher=sqlcipher`, `legacy=4`), optionally read-only, and holds the
+  schemas. A wrong key throws.
 - **`keyring.ts`** (`Keyring`) keeps unlocked keys in process memory only.
   - `self.db` is keyed by the operator's passphrase (SQLCipher's own KDF).
   - Each user has a random 256-bit data key, wrapped with AES-256-GCM under
@@ -42,12 +43,16 @@ Keys, users and the persona store. No Pi dependency.
   `persona_revisions`; the latest per path is current. `apply` (administrators
   only) adds a revision, and `read` returns the core files plus the topics
   parsed from the matrix's front matter.
-- **`types.ts`**: `Pool`, `Interface`, `CallContext` and a placeholder
-  `PoolView` for the Memory and Models threads.
+- **`store/`**: the pool databases and the privacy boundary (`Memory`,
+  `openThreadView`, `openOwnerView`, `PoolStore`). See
+  [docs/memory.md](../docs/memory.md#in-code).
+- **`types.ts`**: `Pool`, `Interface` and `CallContext` for the Models thread.
 
 On disk, under `LYRICA_HOME`:
 
 ```text
 self.db                 users (login, admin, profile, wrapped key), persona_revisions
 users/<id>/user.db      settings (empty until the Models thread adds endpoints)
+users/<id>/general.db   general pool: threads, entries, notes, pages, WAKE, journal, index
+users/<id>/private.db   private pool, same tables
 ```
