@@ -62,8 +62,10 @@ becomes understanding (principle 5), and where she wakes up continuous
      Each item is stored in the pool with a link to its source.
    - A new thread can be started **from an item**. That thread gets the item
      in its context, and she opens with it.
-   - Items never enter other threads, which is the structural rule; dreams
-     reach them only through recall.
+   - Items never enter other threads; that is the structural rule. Dreams
+     still come up naturally through recall when a conversation touches them.
+     Journal entries stay searchable, and a test should show a related dream
+     surfacing later.
 6. **Pools.**
    - Private sleep reads general memory as background and writes only to the
      private pool.

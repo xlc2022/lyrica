@@ -455,8 +455,10 @@ Details in [docs/sleep.md](docs/sleep.md).
     with it. Items can also be dismissed.
   - WAKE is orientation only: where things stand and what's in motion. It
     holds no dream content, so a new thread doesn't open with her dreams.
-  - Otherwise dreams come up only through recall, for example when asked how
-    she slept.
+  - Dreams still come up naturally. When a conversation touches something she
+    dreamt about, recall brings the dream back and she may mention it ("I
+    dreamt about something like this last night"). She just never opens a
+    new thread with it.
 - **UI:** the **Sleep** section in the sidebar shows these items, and what she
   did each night.
 

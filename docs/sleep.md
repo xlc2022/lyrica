@@ -40,7 +40,7 @@ working implementation (`config/extensions/stateful-memory/memory-sleep.js`).
 | Sleep saved as experience | yes | **Keep.** Sleep sessions are threads in a "sleep" area of the pool, so dreams can be recalled. |
 | Trigger | manual | **Add** nightly at 04:00 for each pool with new activity, plus manual `/sleep`. A setting restores Monika's manual-only behavior. |
 | Phase order | WAKE, FACTS, dream | **Change** to consolidate, dream, wake. WAKE is written last so it can carry what she thought about overnight. |
-| Dreams in conversation | only via recall | **Keep, and add items.** Dreams reach a conversation only through recall. What she'd like to raise becomes an item in the Sleep section, and the user can start a chat from it. She never opens a thread with it. |
+| Dreams in conversation | only via recall | **Keep, and add items.** Dreams come up naturally through recall when a conversation touches them ("I dreamt about something like this last night"). What she'd like to raise becomes an item in the Sleep section, and the user can start a chat from it. She never opens a thread with it. |
 | Persona proposals | in the journal, reviewed out of band | **Change.** A proposal from a pool's dream is a draft in that user's own `user.db` (`PersonaProposals.propose`): the user can edit, drop or send it on, and only what they send reaches the administrators, who approve or reject it. A proposal from an administrator's own dream is sent at once. It also appears as an item in the Sleep section. |
 | Fallback to other providers | yes | **Change.** Retries only within the models the pool allows. Never across the local/cloud line. |
 | Tools during sleep | everything | **Narrow** to memory tools only: no shell or web. |
