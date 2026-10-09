@@ -341,10 +341,18 @@ One model-facing tool: `delegate({ action?, ... })`.
   or `tasks: [...]` (parallel), `chain: [...]`, `loop`, `council`, or
   `workflow: name`. Any of these can be `background: true`. She picks a tier,
   never a model; only saved workflows, which users write, may name one.
-- The other actions are `status`, `wait`, `stop`, `steer` and `answer`, each
-  on a run ID, and only on runs the calling thread started.
-- A subagent also has `ask_parent`, and read-only memory
+- The other actions are `status`, `wait`, `stop` and `message`, each on a
+  run ID, and only on runs the calling thread started. (Planned, Delegation
+  2: `message` replaces `steer` and `answer`. It joins a working
+  subagent's turn, answers its open question, or continues a finished or
+  interrupted one in its own thread.)
+- A subagent also has `ask_parent({ question, wait? })` (planned: `wait:
+  false` sends a note and keeps working), and read-only memory
   (`registerMemoryTools({ readOnly: true })`).
+- Planned (Delegation 2): a user's message in a subagent's thread goes to
+  the subagent, marked as theirs, and a note goes to the parent thread. A
+  subagent's tool approvals go through the same `ThreadTools.approve`
+  prompt, shown in its thread and its parent's.
 
 Every run:
 - creates a child thread with `createThread({ parent, subagent: true })`;

@@ -207,8 +207,19 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   [docs/delegation.md](docs/delegation.md) and History.
   - Roles (scout, researcher, reviewer, worker, oracle) and custom roles.
   - Parallel runs, chains, review loops, councils and saved workflows.
-  - Background runs with status, wait, stop and steer.
-  - A subagent can ask the parent a question.
+  - Background runs with status, wait and stop.
+  - **Conversation both ways.** Lyrica sends a subagent a message at any
+    point: it joins the work in progress, answers an open question, or
+    continues a finished subagent in its own thread with everything it
+    knew, even after a restart. A subagent asks Lyrica a question and waits,
+    or sends her a note and keeps working.
+  - **The user can talk to a subagent** in its thread. The message reaches
+    the subagent as the user's, and Lyrica is told in her own thread. The
+    subagent keeps the folders, permissions and model its parent gave it.
+  - **Approvals from subagents.** Where the thread's permission mode asks
+    before commands or changes, a subagent's request shows in its own thread
+    and in its parent's, and any open view can answer it. Writers run in
+    such threads instead of being refused.
   - Parallel writers get separate git worktrees.
   - Limits, cost tracking, and a live view in the web UI.
   - Everything runs inside `lyricad`. A background run interrupted by a
@@ -805,7 +816,7 @@ Details in [docs/sleep.md](docs/sleep.md).
   PRINCIPLES, this document and the contracts, and keeps coding to a minimum.
 - **Feature threads** are separate Claude Code sessions tagged `project:lyrica`:
   Core, Memory, Workspace, Models, Delegation, Daemon, Web UI, Sleep,
-  Integrations, Model host, Models 2 and Images.
+  Integrations, Model host, Models 2, Images and Delegation 2.
   - Each works from a brief in `docs/briefs/` on its own branch and ends with a
     pull request.
   - No more than two or three are active at once.
