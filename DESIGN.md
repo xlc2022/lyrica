@@ -106,11 +106,11 @@ Each user has two pools of memory.
   - **Familiar shapes first**, from ChatGPT, Claude and Open WebUI, unless
     Lyrica has a reason to differ (pools, privacy, model hosts, subagents).
 - **Where things are:**
-  - **Sidebar:** New thread, Search (with a Pinned messages view), Memory,
-    Sleep (with a count) and Models at the top; then her items from last
-    night; then threads, with child threads nested under their parent; then
-    a line of host status; then **Notifications** with its count (in orange),
-    a link to the Notifications page; then the user's button.
+  - **Sidebar:** New thread, Search (with a Pinned messages view),
+    **Notifications** with its count (in orange), Memory, Sleep (with a
+    count) and Models at the top; then her items from last night; then
+    threads, with child threads nested under their parent; then a line of
+    host status; then the user's button.
   - **Threads can be sorted** by date (grouped Today, Yesterday, Previous 7
     days, Previous 30 days, the default), by last activity, by start date or
     by title, or shown in **the user's own groups**, which they make, name

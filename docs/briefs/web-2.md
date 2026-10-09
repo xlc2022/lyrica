@@ -44,7 +44,7 @@ phone (principle 1).
    - The header shows "Lyrica (ver. …, build …)" inline, with the date
      beneath; the daemon reports its version (package.json) and build (the
      git commit, set at build time).
-   - A Notifications row with its count above the user's button; the user's
+   - Notifications with its count in the sidebar's top links, under Search; the user's
      button and its menu, Settings and Server as
      pages with a section list (the control panel's cards move into them),
      and the Notifications page with its API: one list over what waits for
