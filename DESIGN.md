@@ -128,6 +128,27 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       **missing**, so a profile never changes silently.
     - The UI recognises the same model on different endpoints and can offer
       it as a fallback.
+  - **Model groups.** A user can group entries from different endpoints as
+    one model, for example "Qwen 3.8 27B" served by the Blackwell machine,
+    the 3090 and a laptop, in their preferred order. A group has its own
+    permanent ID.
+    - Profiles and overrides can name a group or a single entry. A group in a
+      fallback list expands in place into its members, in order.
+    - The usual rules filter members: a private or local-only thread skips
+      cloud members, and a group that mixes kinds is usable as a whole only
+      in the Custom profile.
+    - The router skips a member that can't handle the call, such as one
+      without tool support when tools are needed, or one whose context
+      window is smaller than the conversation, and moves on to the next.
+    - The group editor shows how members differ (quantisation, context
+      window, tools, vision) and warns about it.
+    - Lyrica suggests groups but never creates them. A strong suggestion is
+      the same file on two hosts, matched by checksum; a weak one is a
+      matching name. The user confirms.
+    - Administrators make shared groups from shared endpoints. Each user can
+      make personal groups from their own and shared entries.
+    - When an entry is replaced or removed, the change applies inside groups
+      too, and a group left empty is flagged in Clean up.
   - **Editing an endpoint never changes its IDs.** A new URL, address or key,
     or re-pairing a host, keeps them all, so moving a server means editing
     its address.

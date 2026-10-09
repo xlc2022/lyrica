@@ -80,16 +80,34 @@ can be off, paused or busy gaming without Lyrica going dark.
      from discovery or set by hand. Offer "the same model" on another
      endpoint as a suggested fallback, matching on the model's name or
      digest.
-5. **The Custom profile.**
+5. **Model groups**, as in DESIGN:
+   - Groups of offerings from different endpoints that the user declares the
+     same model, ordered, with a permanent ID, shared (administrators) or
+     personal.
+   - Lists can name a group, which expands in place into its members in order.
+   - Members are filtered by the thread's allowed kinds, and skipped when
+     unfit for the call (no tool support when needed, a context window
+     smaller than the conversation).
+   - An API showing how members differ.
+   - Suggestions, never automatic: the same file checksum on two hosts
+     (strong), or a matching name (weak).
+   - Cleanup applies inside groups, and an empty group is flagged.
+   - Tests:
+     - a private thread never uses a group's cloud member;
+     - failover runs through a group in order;
+     - an unfit member is skipped;
+     - a member removed while another user is locked is gone from that user's
+       group after they unlock.
+6. **The Custom profile.**
    - A third profile, `custom`, mixes local and cloud. Only general threads
      that aren't local-only use it.
    - A per-user default ("general threads use Cloud or Custom") plus a
      per-thread switch.
    - Tests must show that a private or local-only thread never resolves
      through Custom, even when it is the user's default.
-6. **The model library API.** Search and filter by kind, endpoint and
+7. **The model library API.** Search and filter by kind, endpoint and
    capability, with paging for hundreds of models, plus starring (per user).
-7. **Ordered fallbacks** (the contract change already planned):
+8. **Ordered fallbacks** (the contract change already planned):
    - A profile entry and a thread override become `ModelRef[]`. Migrate
      existing single entries in place.
    - `resolveModel` returns the first model whose endpoint is up, using a
@@ -98,7 +116,7 @@ can be off, paused or busy gaming without Lyrica going dark.
      refused. Custom may mix them.
    - Record which model answered on the call, so the thread and Recent calls
      can show it, along with a fallback that was used and why.
-8. **Models page API** in `daemon/src/api.ts`, per the mockup
+9. **Models page API** in `daemon/src/api.ts`, per the mockup
    (https://claude.ai/artifact/U3xANiSAFje8cuinWpHo7V):
    - endpoints and hosts with live status;
    - each host's GPUs, roles, pins, VRAM and queue, plus pause, resume and a
@@ -108,7 +126,7 @@ can be off, paused or busy gaming without Lyrica going dark.
      remove;
    - recent calls for the user: time, thread, task, answering model,
      fallback note. Never prompt text.
-9. **Plain endpoints stay as they are.** Mark a local endpoint served over
+10. **Plain endpoints stay as they are.** Mark a local endpoint served over
    plain HTTP, outside this machine and the tailnet, as `unencrypted` in the
    API.
 

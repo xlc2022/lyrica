@@ -278,6 +278,12 @@ openThreadSession({ thread, models, cwd, extensions, settings? })  // one thread
     30 days). Gone offerings nothing refers to are pruned.
   - `resetIds(endpoint)` and `merge(from, into)` work through redirects.
   - Call records keep the name and endpoint label with the ID.
+  - **Model groups:** `{ groupId, name, members: offeringId[] }`, shared in
+    `self.db` or personal in `user.db`.
+    - `ModelRef` is `{ offeringId } | { groupId }`. A group expands in place,
+      in order, filtered by the thread's allowed kinds and by each member's
+      fitness for the call (tools, context window).
+    - Redirects and tombstones apply to members.
   - A profile entry becomes an ordered list,
     `Partial<Record<Task, ModelRef[]>>`, in three profiles: `local`, `cloud`
     and `custom`. `resolveModel` returns the first whose endpoint is up, and
