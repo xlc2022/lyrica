@@ -48,16 +48,22 @@ service.
   their home workspace. It sets `__Host-lyrica`, a random 256-bit session ID,
   `Secure; HttpOnly; SameSite=Strict`, for 30 days. Sessions live in memory
   only; a restart logs everyone out.
-- **Several users per browser.** A session holds a set of users. Everything a
-  user owns is under `/api/u/:userId/…`, and the session must hold that user.
-  Logging in as another persona adds them; switching is just using the other
-  path.
+- **One browser, one person.** A session holds a set of users that are all
+  linked: users of the same person, linked with both passwords
+  (`…/links`). Everything a user owns is under `/api/u/:userId/…`, and the
+  session must hold that user. Logging in as a linked user adds them, and
+  switching is just using the other path; logging in as anyone else ends the
+  session first and starts a new one. Unlinking takes the other user out of
+  every session that holds both.
 - `POST /api/logout` ends the session, or with `userId` removes one user from
-  it. The key stays in memory, so sleep can run.
+  it. The key stays in memory, so sleep can run, unless the user turned
+  "stay unlocked" off (`…/me/stay-unlocked`, in their `user.db`): then it is
+  dropped as with Lock, once no other browser session holds them.
 - **Lock** (`POST /api/u/:userId/lock`) at once removes the user from every
   session, stops their subagent runs (which record how they ended), drops
-  their key, then stops their threads and unmounts their home. Event streams check the session with every event and every few
-  seconds, so logout and Lock end them.
+    their key, then stops their threads and unmounts their home. Event
+  streams check the session with every event and every few seconds, so
+  logout and Lock end them.
 - Login, unlock and password changes are rate-limited per login name and per
   address: three failures are free, then each attempt waits twice as long as
   the last, up to 15 minutes (`429` with `Retry-After`). Behind Caddy, the
@@ -155,6 +161,13 @@ display settings (in `user.db`), passwords, endpoints and profiles, network
 defaults, SSH targets, and for administrators users, allowed paths, shared
 endpoints, the sleep time (`sleep.time` in `self.db`'s `settings`) and persona
 proposals.
+
+**Persona proposals** come from one user's conversation or dream, so they
+may carry that user's details. They start as drafts in that user's `user.db`
+(`PersonaProposals`), which only they can read: `…/proposals` lists, edits,
+drops and sends them on. Sending copies one to `self.db`, where
+administrators approve or reject it (`…/admin/proposals`). A proposal from an
+administrator's own conversation goes there at once.
 
 ## Logs
 

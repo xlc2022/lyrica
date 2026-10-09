@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Db } from "./db.ts";
-import { Forbidden, type User } from "./users.ts";
+import { Forbidden, type User, type Users } from "./users.ts";
 
 export const MATRIX = "PERSONALITY_MATRIX.md";
 export const CORE_FILES = ["SOUL.md", "STYLE.md", "REGISTER.md"] as const;
@@ -87,14 +87,14 @@ export class PersonaStore {
     this.insert(path, text, `user:${actor.id}`);
   }
 
-  /** Proposes a change for an administrator to approve or reject. Sleep is the usual author. */
-  propose(path: string, text: string, reason: string, author: string): number {
+  /** Puts a proposal before the administrators. Only `PersonaProposals.send` (the user's choice) calls it. */
+  submit(path: string, text: string, reason: string, author: string): number {
     if (!VALID_PATH.test(path)) throw new Error(`not a persona file: ${path}`);
     return Number(this.db.prepare("INSERT INTO persona_proposals (path, text, reason, author, created_at) VALUES (?, ?, ?, ?, ?)")
       .run(path, text, reason, author, new Date().toISOString()).lastInsertRowid);
   }
 
-  /** Open proposals, oldest first. */
+  /** Proposals sent on to the administrators, oldest first. Drafts stay in each user's user.db. */
   proposals(): Proposal[] {
     return this.db.prepare("SELECT id, path, text, reason, author, created_at AS createdAt FROM persona_proposals ORDER BY id").all() as Proposal[];
   }
@@ -146,5 +146,74 @@ export function parseMatrix(text: string, strict = false): MatrixTopic[] {
   } catch (err) {
     if (strict) throw new Error(`${MATRIX}: ${(err as Error).message}`);
     return [];
+  }
+}
+
+/** Drafts in the originating user's user.db, encrypted with their key. */
+export const DRAFT_SCHEMA = `
+CREATE TABLE IF NOT EXISTS persona_drafts (
+  id         INTEGER PRIMARY KEY,
+  path       TEXT NOT NULL,
+  text       TEXT NOT NULL,
+  reason     TEXT NOT NULL,
+  author     TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+`;
+
+export type Draft = Proposal;
+
+/**
+ * Persona proposals as they come from one user's conversation or dream. They
+ * may carry that user's details, so they start as drafts in the user's own
+ * user.db, which only they can read: they can edit, drop or send each one on.
+ * Sending copies it to self.db for the administrators. A proposal from an
+ * administrator's own conversation is sent at once.
+ */
+export class PersonaProposals {
+  constructor(private readonly users: Users, private readonly persona: PersonaStore) {}
+
+  /** Records a proposal from `user`'s conversation or dream. Returns where it went. */
+  propose(user: User, p: { path: string; text: string; reason: string; author: string }): { sent: boolean; id: number } {
+    if (!VALID_PATH.test(p.path)) throw new Error(`not a persona file: ${p.path}`);
+    if (this.users.get(user.id)?.admin) return { sent: true, id: this.persona.submit(p.path, p.text, p.reason, p.author) };
+    const id = this.db(user.id, (db) => Number(db.prepare("INSERT INTO persona_drafts (path, text, reason, author, created_at) VALUES (?, ?, ?, ?, ?)")
+      .run(p.path, p.text, p.reason, p.author, new Date().toISOString()).lastInsertRowid));
+    return { sent: false, id };
+  }
+
+  drafts(userId: string): Draft[] {
+    return this.db(userId, (db) => db.prepare("SELECT id, path, text, reason, author, created_at AS createdAt FROM persona_drafts ORDER BY id").all() as Draft[]);
+  }
+
+  edit(userId: string, id: number, change: { text?: string; reason?: string }): Draft {
+    this.db(userId, (db) => {
+      if (!db.prepare("UPDATE persona_drafts SET text = coalesce(?, text), reason = coalesce(?, reason) WHERE id = ?")
+        .run(change.text ?? null, change.reason ?? null, id).changes) throw new Error(`no draft ${id}`);
+    });
+    return this.drafts(userId).find((d) => d.id === id)!;
+  }
+
+  drop(userId: string, id: number): void {
+    this.db(userId, (db) => { if (!db.prepare("DELETE FROM persona_drafts WHERE id = ?").run(id).changes) throw new Error(`no draft ${id}`); });
+  }
+
+  /** Sends a draft on to the administrators. Returns its id among the sent proposals. */
+  send(userId: string, id: number): number {
+    const d = this.drafts(userId).find((x) => x.id === id);
+    if (!d) throw new Error(`no draft ${id}`);
+    const sent = this.persona.submit(d.path, d.text, d.reason, d.author);
+    this.drop(userId, id);
+    return sent;
+  }
+
+  private db<T>(userId: string, fn: (db: Db) => T): T {
+    const db = this.users.openUserDb(userId);
+    try {
+      db.exec(DRAFT_SCHEMA);
+      return fn(db);
+    } finally {
+      db.close();
+    }
   }
 }

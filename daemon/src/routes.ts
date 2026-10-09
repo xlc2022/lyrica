@@ -32,7 +32,16 @@ export function apiRoutes(d: Lyricad): Route[] {
       const keys = [`login:${String(login ?? "").trim().toLowerCase()}`, `ip:${r.ip}`];
       const user = await limited(d, keys, () => s().users.authenticate(String(login ?? ""), String(password ?? "")), "wrong login or password");
       await d.keyAvailable(user.id);
+      // One browser, one person: users not linked to this one end the session first.
       let session = r.cookie;
+      const held = d.sessions.users(session);
+      const linked = new Set(s().users.linked(user.id));
+      if (held && [...held].some((id) => id !== user.id && !linked.has(id))) {
+        const others = [...held];
+        d.sessions.end(session!);
+        await d.loggedOut(others);
+        session = undefined;
+      }
       if (!d.sessions.users(session)) session = d.sessions.create();
       d.sessions.addUser(session!, user.id);
       r.res.setHeader("set-cookie", Sessions.setCookie(session!));
@@ -40,12 +49,15 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("POST", "/api/logout", async (r) => {
       const { userId } = await r.json<Api.LogoutRequest>();
-      if (!d.sessions.users(r.cookie)) throw new HttpError(401, "not logged in");
+      const held = d.sessions.users(r.cookie);
+      if (!held) throw new HttpError(401, "not logged in");
+      const leaving = userId ? (held.has(userId) ? [userId] : []) : [...held];
       if (userId) d.sessions.removeUser(r.cookie!, userId);
       else {
         d.sessions.end(r.cookie!);
         r.res.setHeader("set-cookie", Sessions.clearCookie());
       }
+      await d.loggedOut(leaving);
       return { ok: true };
     }),
     route("POST", `${u}/lock`, async (r) => {
@@ -81,6 +93,42 @@ export function apiRoutes(d: Lyricad): Route[] {
       await limited(d, keys, () => s().users.changePassword(user, String(oldPassword ?? ""), String(newPassword ?? "")), "the current password is wrong");
       return { ok: true };
     }),
+    route("PUT", `${u}/me/stay-unlocked`, async (r) => {
+      const user = d.userFor(r);
+      const { stayUnlocked } = await r.json<Api.StayUnlockedChange>();
+      s().users.setStayUnlocked(user.id, stayUnlocked !== false);
+      return me(d, user);
+    }),
+    route("GET", `${u}/links`, (r) => links(d, d.userFor(r))),
+    route("POST", `${u}/links`, async (r) => {
+      const user = d.userFor(r);
+      const { password, login, otherPassword } = await r.json<Api.LinkRequest>();
+      const other = s().users.find(String(login ?? ""));
+      const keys = [`login:${user.login.toLowerCase()}`, `login:${String(login ?? "").trim().toLowerCase()}`, `ip:${r.ip}`];
+      await limited(d, keys, async () => {
+        if (!other) throw new AuthError();
+        await s().users.link(user, String(password ?? ""), other, String(otherPassword ?? ""));
+      }, "a login or password is wrong");
+      return links(d, user);
+    }),
+    route("DELETE", `${u}/links/:otherId`, (r) => {
+      const user = d.userFor(r);
+      const other = s().users.get(r.params.otherId!);
+      if (!other) throw new HttpError(404, "no such user");
+      s().users.unlink(user, other);
+      d.sessions.separate(user.id, other.id);
+      return links(d, user);
+    }),
+    route("GET", `${u}/proposals`, (r): Api.ProposalDraft[] => s().proposals.drafts(d.userFor(r).id)),
+    route("PATCH", `${u}/proposals/:id`, async (r) => {
+      const user = d.userFor(r);
+      const change = await r.json<Api.ProposalDraftChange>();
+      return s().proposals.edit(user.id, Number(r.params.id), {
+        ...(change.text !== undefined ? { text: String(change.text) } : {}), ...(change.reason !== undefined ? { reason: String(change.reason) } : {}),
+      });
+    }),
+    route("DELETE", `${u}/proposals/:id`, (r) => { s().proposals.drop(d.userFor(r).id, Number(r.params.id)); return { ok: true }; }),
+    route("POST", `${u}/proposals/:id/send`, (r) => { s().proposals.send(d.userFor(r).id, Number(r.params.id)); return { ok: true }; }),
     route("PUT", `${u}/me/credentials`, async (r) => {
       const user = d.userFor(r);
       const { save } = await r.json<Api.CredentialsChange>();
@@ -556,7 +604,14 @@ function display(d: Lyricad, userId: string): Api.Display {
 
 function me(d: Lyricad, user: User): Api.Me {
   const fresh = d.services!.users.get(user.id)!;
-  return { user: card(fresh), previousNames: fresh.profile.previousNames, display: display(d, user.id), savedCredentials: d.keyring.hasSavedKey(user.id) };
+  return {
+    user: card(fresh), previousNames: fresh.profile.previousNames, display: display(d, user.id),
+    savedCredentials: d.keyring.hasSavedKey(user.id), stayUnlocked: d.services!.users.stayUnlocked(user.id),
+  };
+}
+
+function links(d: Lyricad, user: User): Api.UserCard[] {
+  return d.services!.users.linked(user.id).map((id) => d.services!.users.get(id)).filter((u): u is User => !!u).map(card);
 }
 
 function endpointInfo(d: Lyricad, userId: string, id: string): Api.EndpointInfo {

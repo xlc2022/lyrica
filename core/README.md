@@ -20,10 +20,15 @@ Keys, users and the persona store. No Pi dependency.
     `systemd-creds encrypt` and reads what systemd unsealed at start from
     `$CREDENTIALS_DIRECTORY`. See [docs/daemon.md](../docs/daemon.md#saving-credentials).
 - **`users.ts`** (`Users`): `createUser` (the first must be an administrator),
-  `authenticate` (also unlocks the key), `changePassword` (rewraps the same
-  key, so data isn't re-encrypted), `setAdmin` (administrators only; the last
-  administrator can't be demoted), `updateProfile` (the user or an
-  administrator), `listUsers`, and `openUserDb`.
+  `authenticate` (also unlocks the key; Argon2 runs for unknown logins too),
+  `changePassword` (rewraps the same key, so data isn't re-encrypted),
+  `setAdmin` (administrators only; the last administrator can't be demoted),
+  `updateProfile` (the user or an administrator), `listUsers`, and
+  `openUserDb`.
+  - `link` joins two users of the same person (it checks both passwords),
+    `unlink` undoes it, and `linked` lists them; links live in `self.db`'s
+    `user_links`. `stayUnlocked` / `setStayUnlocked` keep the user's choice
+    about logout in their `user.db`.
   - A user signs in with a **login** name. The **profile** (display name,
     five pronoun forms, and previous names with the date each ended) is
     separate and kept in `self.db`, so it can be edited and rendered while the
@@ -47,8 +52,11 @@ Keys, users and the persona store. No Pi dependency.
   `self.db` on first run. Every version of every file is a row in
   `persona_revisions`; the latest per path is current. `apply` (administrators
   only) adds a revision, and `read` returns the core files plus the topics
-  parsed from the matrix's front matter. `propose` records a change for an
-  administrator, who approves (applying it) or rejects it with `decide`.
+  parsed from the matrix's front matter. `submit` puts a proposal before the
+  administrators, who approve (applying it) or reject it with `decide`.
+  `PersonaProposals` is the way in: a proposal from a user's conversation or
+  dream starts as a draft in their `user.db` (`persona_drafts`), which they
+  can edit, drop or `send` on; an administrator's own is submitted at once.
 - **`store/`**: the pool databases and the privacy boundary (`Memory`,
   `openThreadView`, `openOwnerView`, `PoolStore`). See
   [docs/memory.md](../docs/memory.md#in-code).

@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  Keyring, Memory, Models, PersonaStore, SystemdCredentials, Users, Workspace,
+  Keyring, Memory, Models, PersonaProposals, PersonaStore, SystemdCredentials, Users, Workspace,
   type Argon2Params, type CredentialStore, type User,
 } from "@lyrica/core";
 import { Delegation, type Limits } from "@lyrica/extension";
@@ -52,6 +52,8 @@ export interface Services {
   models: Models;
   workspace: Workspace;
   persona: PersonaStore;
+  /** Persona proposals: drafts in each user's user.db until they send them on. */
+  proposals: PersonaProposals;
   delegation: Delegation;
   host: ThreadHost;
 }
@@ -151,7 +153,7 @@ export class Lyricad {
       users, memory, models, workspace, persona, delegation, cwd, log: this.log,
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000,
     });
-    this.services = { users, memory, models, workspace, persona, delegation, host };
+    this.services = { users, memory, models, workspace, persona, proposals: new PersonaProposals(users, persona), delegation, host };
     for (const u of users.all()) {
       if (keyring.loadSavedKey(u.id)) {
         await this.keyAvailable(u.id);
@@ -169,6 +171,17 @@ export class Lyricad {
       this.mounted.add(userId);
     } catch (err) {
       this.log(`the home workspace didn't mount: ${(err as Error).message.split("\n")[0]}`);
+    }
+  }
+
+  /**
+   * After users leave a browser session: anyone who turned "stay unlocked" off
+   * and is in no other session is locked, as with Lock.
+   */
+  async loggedOut(userIds: string[]): Promise<void> {
+    for (const id of userIds) {
+      if (!this.keyring.hasUserKey(id) || this.sessions.holders(id) > 0) continue;
+      if (!this.services!.users.stayUnlocked(id)) await this.lockUser(id);
     }
   }
 

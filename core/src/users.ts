@@ -75,6 +75,61 @@ export class Users {
     return user;
   }
 
+  /** Checks a password without unlocking anything. Throws AuthError if it's wrong. */
+  private async verify(user: User, password: string): Promise<void> {
+    const row = this.db.prepare("SELECT wrapped_key FROM users WHERE id = ?").get(user.id) as { wrapped_key: string } | undefined;
+    if (!row) throw new AuthError();
+    try {
+      (await this.keyring.unwrap(JSON.parse(row.wrapped_key), password)).fill(0);
+    } catch (err) {
+      if (err instanceof WrongPassword) throw new AuthError();
+      throw err;
+    }
+  }
+
+  /**
+   * Links two users that belong to the same person, so one browser may hold
+   * both. It takes both passwords: one person proves they are both.
+   */
+  async link(a: User, aPassword: string, b: User, bPassword: string): Promise<void> {
+    if (a.id === b.id) throw new Error("a user is already themself");
+    await this.verify(a, aPassword);
+    await this.verify(b, bPassword);
+    const [x, y] = [a.id, b.id].sort() as [string, string];
+    this.db.prepare("INSERT OR IGNORE INTO user_links (a, b) VALUES (?, ?)").run(x, y);
+  }
+
+  /** Either of the two may undo a link. */
+  unlink(actor: User, other: User): void {
+    const [x, y] = [actor.id, other.id].sort() as [string, string];
+    if (!this.db.prepare("DELETE FROM user_links WHERE a = ? AND b = ?").run(x, y).changes) throw new Error(`${other.login} isn't linked to ${actor.login}`);
+  }
+
+  /** The users linked to this one. */
+  linked(userId: string): string[] {
+    return (this.db.prepare("SELECT CASE WHEN a = ? THEN b ELSE a END AS id FROM user_links WHERE a = ? OR b = ?").all(userId, userId, userId) as { id: string }[])
+      .map((r) => r.id);
+  }
+
+  /** Whether logging out keeps the user's key in memory (so sleep can run). Their choice, in their user.db; on by default. */
+  stayUnlocked(userId: string): boolean {
+    const db = this.openUserDb(userId);
+    try {
+      return (db.prepare("SELECT value FROM settings WHERE key = 'stay_unlocked'").get() as { value: string } | undefined)?.value !== "off";
+    } finally {
+      db.close();
+    }
+  }
+
+  setStayUnlocked(userId: string, on: boolean): void {
+    const db = this.openUserDb(userId);
+    try {
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('stay_unlocked', ?)").run(on ? "on" : "off");
+    } finally {
+      db.close();
+    }
+  }
+
   /** Rewraps the same data key under the new password. Data is not re-encrypted. */
   async changePassword(user: User, oldPassword: string, newPassword: string): Promise<void> {
     if (!newPassword) throw new Error("password must not be empty");

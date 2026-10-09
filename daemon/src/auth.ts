@@ -7,8 +7,9 @@ const MAX_AGE_S = 30 * 24 * 3600;
 interface Session { users: Set<string>; lastSeen: number }
 
 /**
- * Browser sessions, in memory only. One session can hold several users (Li's
- * personas), so switching between them needs no new password.
+ * Browser sessions, in memory only. One session can hold several users that
+ * belong to the same person (linked users), so switching between them needs
+ * no new password. One browser, one person.
  */
 export class Sessions {
   private readonly sessions = new Map<string, Session>();
@@ -40,6 +41,18 @@ export class Sessions {
   removeUser(id: string, userId: string): void { this.sessions.get(id)?.users.delete(userId); }
 
   end(id: string): void { this.sessions.delete(id); }
+
+  /** How many sessions hold the user: logout drops their key only when none do (and they chose not to stay unlocked). */
+  holders(userId: string): number {
+    let n = 0;
+    for (const s of this.sessions.values()) if (s.users.has(userId)) n++;
+    return n;
+  }
+
+  /** After an unlink: no session holds both any more; `other` leaves the ones that held `userId` too. */
+  separate(userId: string, other: string): void {
+    for (const s of this.sessions.values()) if (s.users.has(userId)) s.users.delete(other);
+  }
 
   /** Lock: the user leaves every session. */
   dropUser(userId: string): void { for (const s of this.sessions.values()) s.users.delete(userId); }
