@@ -1,5 +1,5 @@
 import type { ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import type { CallContext, Interface, Persona, Pool, PoolView, User } from "@lyrica/core";
+import type { CallContext, Interface, Persona, Pool, PoolView, Profile, User } from "@lyrica/core";
 import { assemble, type Budgets, type Section } from "./assemble.ts";
 import { memorySections } from "./memory.ts";
 import { TopicRouter, type RoutedTopic } from "./routing.ts";
@@ -20,9 +20,10 @@ export interface ThreadContext {
 export interface LyricaOptions {
   /** Current persona; called every turn so approved changes apply at once. */
   persona: () => Persona;
-  displayName: string;
+  /** The user's current profile; called every turn so a rename applies at once. */
+  profile: () => Profile;
   /** Show routed topics and the assembled prompt each turn. */
-  debug?: boolean;
+  debugPrompt?: boolean;
   budgets?: Budgets;
   now?: () => Date;
 }
@@ -36,10 +37,10 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
       const topics = router.route(persona.topics, event.prompt);
       const memory = await memorySections(thread.view, event.prompt);
       const { prompt, sections } = assemble(
-        { persona, topics, memory, displayName: opts.displayName, now: opts.now?.() ?? new Date() },
+        { persona, topics, memory, profile: opts.profile(), now: opts.now?.() ?? new Date() },
         opts.budgets,
       );
-      if (opts.debug) showDebug(ctx, topics, sections, prompt);
+      if (opts.debugPrompt) showDebug(ctx, topics, sections, prompt);
       return { systemPrompt: prompt };
     });
   };

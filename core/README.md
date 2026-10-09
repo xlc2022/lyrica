@@ -14,7 +14,24 @@ Keys, users and the persona store. No Pi dependency.
 - **`users.ts`** (`Users`): `createUser` (the first must be an administrator),
   `authenticate` (also unlocks the key), `changePassword` (rewraps the same
   key, so data isn't re-encrypted), `setAdmin` (administrators only; the last
-  administrator can't be demoted), `listUsers`, and `openUserDb`.
+  administrator can't be demoted), `updateProfile` (the user or an
+  administrator), `listUsers`, and `openUserDb`.
+  - A user signs in with a **login** name. The **profile** (display name,
+    five pronoun forms, and previous names with the date each ended) is
+    separate and kept in `self.db`, so it can be edited and rendered while the
+    user is locked.
+- **`profile.ts`**: the `Profile` type and the she/he/they pronoun presets.
+- **`mentions.ts`**, pure functions:
+  - `toStored(text, speaker)` turns `{user}`, `{user:obj}`, `{user:poss}`,
+    `{user:poss-pro}` and `{user:refl}` into `[[u:ID]]`, `[[u:ID:obj]]` and
+    so on. There is no subject pronoun form: `{user:subj}` throws, and the
+    name token goes in the subject position.
+  - `render(text, profiles)` turns tokens into the current name and pronouns.
+    A pronoun that starts a sentence is capitalised. Tokens for unknown users
+    are left as they are.
+  - `queryTokens(query, profiles)` turns current or previous names in a
+    search query into name tokens. A current name wins over someone else's
+    previous name.
 - **`persona.ts`** (`PersonaStore`): `importSeed` copies `persona/` into
   `self.db` on first run. Every version of every file is a row in
   `persona_revisions`; the latest per path is current. `apply` (administrators
@@ -26,6 +43,6 @@ Keys, users and the persona store. No Pi dependency.
 On disk, under `LYRICA_HOME`:
 
 ```text
-self.db                 users (index + wrapped keys), persona_revisions
-users/<id>/user.db      settings (display name for now)
+self.db                 users (login, admin, profile, wrapped key), persona_revisions
+users/<id>/user.db      settings (empty until the Models thread adds endpoints)
 ```

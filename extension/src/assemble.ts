@@ -1,4 +1,4 @@
-import type { Persona } from "@lyrica/core";
+import { pronounLabel, type Persona, type Profile } from "@lyrica/core";
 import type { MemorySections } from "./memory.ts";
 import type { RoutedTopic } from "./routing.ts";
 
@@ -27,7 +27,8 @@ export interface PromptInput {
   persona: Persona;
   topics: RoutedTopic[];
   memory: MemorySections;
-  displayName: string;
+  /** The person she's talking with. */
+  profile: Profile;
   now: Date;
 }
 
@@ -38,7 +39,7 @@ export interface Section {
   truncated: boolean;
 }
 
-/** Builds the system prompt: persona core, topics, WAKE, page index, recall, time, user. */
+/** Builds the system prompt: persona core, topics, WAKE, page index, recall, time, who you're talking with. */
 export function assemble(input: PromptInput, budgets: Budgets = DEFAULT_BUDGETS): { prompt: string; sections: Section[] } {
   const sections: Section[] = [];
   const add = (name: keyof Budgets, body: string | undefined, wrap = (s: string) => `<${name}>\n${s}\n</${name}>`) => {
@@ -65,7 +66,7 @@ export function assemble(input: PromptInput, budgets: Budgets = DEFAULT_BUDGETS)
   add("pages", input.memory.pageIndex);
   add("recall", input.memory.recall);
   add("time", timeLine(input.now, input.memory.lastTalk));
-  add("user", `You are talking with ${input.displayName}.`);
+  add("user", whoLine(input.profile));
 
   return { prompt: sections.map((s) => s.text).join("\n\n"), sections };
 }
@@ -76,6 +77,15 @@ export function fit(text: string, budget: number): string {
   const head = text.slice(0, Math.max(0, budget - 2));
   const cut = Math.max(head.lastIndexOf("\n\n"), head.lastIndexOf("\n"));
   return `${cut > budget / 2 ? head.slice(0, cut) : head}\n…`;
+}
+
+function whoLine(p: Profile): string {
+  const lines = [`You are talking with ${p.displayName} (pronouns: ${pronounLabel(p.pronouns)}).`];
+  if (p.previousNames.length) {
+    const prev = p.previousNames.map((n) => `${n.name} (until ${n.until})`).join(", ");
+    lines.push(`Earlier conversations may call ${p.displayName} by a previous name: ${prev}.`);
+  }
+  return lines.join("\n");
 }
 
 function timeLine(now: Date, lastTalk?: Date): string {

@@ -3,21 +3,27 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { openEncrypted, USER_SCHEMA, type Db } from "./db.ts";
 import { WrongPassword, type Keyring } from "./keyring.ts";
+import { checkProfile, type Profile } from "./profile.ts";
 
 export interface User {
   id: string;
-  name: string;
+  /** Used to sign in. Separate from the display name, so renames never affect it. */
+  login: string;
   admin: boolean;
+  profile: Profile;
 }
 
+export type ProfileChange = Partial<Pick<Profile, "displayName" | "pronouns">>;
+
 export class AuthError extends Error {
-  constructor() { super("wrong name or password"); }
+  constructor() { super("wrong login or password"); }
 }
 
 export class Forbidden extends Error {}
 
-interface Row { id: string; name: string; admin: number }
-const toUser = (r: Row): User => ({ id: r.id, name: r.name, admin: r.admin === 1 });
+interface Row { id: string; login: string; admin: number; profile: string }
+const toUser = (r: Row): User => ({ id: r.id, login: r.login, admin: r.admin === 1, profile: JSON.parse(r.profile) });
+const COLUMNS = "id, login, admin, profile";
 
 /** Local accounts. The index lives in self.db; each user's data lives in their own user.db. */
 export class Users {
@@ -27,31 +33,30 @@ export class Users {
 
   userDir(userId: string): string { return join(this.keyring.home, "users", userId); }
 
-  async createUser(name: string, password: string, opts: { admin: boolean }): Promise<User> {
-    name = name.trim();
-    if (!name) throw new Error("name must not be empty");
+  async createUser(login: string, password: string, profile: Omit<Profile, "previousNames">, opts: { admin: boolean }): Promise<User> {
+    login = login.trim();
+    if (!/^[A-Za-z0-9._-]{1,64}$/.test(login)) throw new Error("login names use letters, digits, '.', '_' and '-'");
     if (!password) throw new Error("password must not be empty");
-    if (this.find(name)) throw new Error(`user ${name} already exists`);
+    if (this.find(login)) throw new Error(`user ${login} already exists`);
     if (!opts.admin && this.adminCount() === 0) throw new Error("the first user must be an administrator");
+    const full: Profile = { ...profile, displayName: profile.displayName.trim(), previousNames: [] };
+    checkProfile(full);
 
-    const user: User = { id: randomUUID(), name, admin: opts.admin };
+    const user: User = { id: randomUUID(), login, admin: opts.admin, profile: full };
     const dataKey = randomBytes(32);
     const wrapped = await this.keyring.wrap(dataKey, password);
     mkdirSync(this.userDir(user.id), { recursive: true, mode: 0o700 });
-    const udb = openEncrypted(join(this.userDir(user.id), "user.db"), { raw: dataKey });
-    udb.exec(USER_SCHEMA);
-    udb.prepare("INSERT INTO settings (key, value) VALUES ('display_name', ?)").run(name);
-    udb.close();
+    openEncrypted(join(this.userDir(user.id), "user.db"), { raw: dataKey }).exec(USER_SCHEMA).close();
     dataKey.fill(0);
 
-    this.db.prepare("INSERT INTO users (id, name, admin, wrapped_key, created_at) VALUES (?, ?, ?, ?, ?)")
-      .run(user.id, user.name, user.admin ? 1 : 0, JSON.stringify(wrapped), new Date().toISOString());
+    this.db.prepare("INSERT INTO users (id, login, admin, profile, wrapped_key, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(user.id, user.login, user.admin ? 1 : 0, JSON.stringify(full), JSON.stringify(wrapped), new Date().toISOString());
     return user;
   }
 
   /** Checks the password and unlocks the user's key. */
-  async authenticate(name: string, password: string): Promise<User> {
-    const user = this.find(name);
+  async authenticate(login: string, password: string): Promise<User> {
+    const user = this.find(login);
     if (!user) throw new AuthError();
     try {
       await this.keyring.unlockUser(user.id, password);
@@ -79,26 +84,50 @@ export class Users {
   }
 
   setAdmin(actor: User, target: User, admin: boolean): void {
-    if (!this.find(actor.name)?.admin) throw new Forbidden("only an administrator can change administrator status");
-    const current = this.find(target.name);
-    if (!current) throw new Error(`no such user: ${target.name}`);
+    if (!this.get(actor.id)?.admin) throw new Forbidden("only an administrator can change administrator status");
+    const current = this.get(target.id);
+    if (!current) throw new Error(`no such user: ${target.login}`);
     if (!admin && current.admin && this.adminCount() === 1) throw new Forbidden("the last administrator can't be demoted");
     this.db.prepare("UPDATE users SET admin = ? WHERE id = ?").run(admin ? 1 : 0, current.id);
+  }
+
+  /** Changes display name or pronouns, as the user themself or an administrator. A rename keeps the old name. */
+  updateProfile(actor: User, target: User, change: ProfileChange): Profile {
+    const current = this.get(target.id);
+    if (!current) throw new Error(`no such user: ${target.login}`);
+    if (actor.id !== current.id && !this.get(actor.id)?.admin) throw new Forbidden("only the user or an administrator can change a profile");
+    const old = current.profile;
+    const next: Profile = {
+      displayName: change.displayName?.trim() ?? old.displayName,
+      pronouns: change.pronouns ?? old.pronouns,
+      previousNames: [...old.previousNames],
+    };
+    if (next.displayName !== old.displayName) {
+      next.previousNames.push({ name: old.displayName, until: new Date().toISOString().slice(0, 10) });
+    }
+    checkProfile(next);
+    this.db.prepare("UPDATE users SET profile = ? WHERE id = ?").run(JSON.stringify(next), current.id);
+    return next;
   }
 
   /** Administrators see everyone; other users see themselves. */
   listUsers(actor: User): User[] {
     const all = this.all();
-    return this.find(actor.name)?.admin ? all : all.filter((u) => u.id === actor.id);
+    return this.get(actor.id)?.admin ? all : all.filter((u) => u.id === actor.id);
   }
 
   /** Every user, for the operator's admin commands. */
   all(): User[] {
-    return (this.db.prepare("SELECT id, name, admin FROM users ORDER BY created_at, name").all() as Row[]).map(toUser);
+    return (this.db.prepare(`SELECT ${COLUMNS} FROM users ORDER BY created_at, login`).all() as Row[]).map(toUser);
   }
 
-  find(name: string): User | undefined {
-    const row = this.db.prepare("SELECT id, name, admin FROM users WHERE name = ?").get(name.trim()) as Row | undefined;
+  find(login: string): User | undefined {
+    const row = this.db.prepare(`SELECT ${COLUMNS} FROM users WHERE login = ?`).get(login.trim()) as Row | undefined;
+    return row && toUser(row);
+  }
+
+  get(id: string): User | undefined {
+    const row = this.db.prepare(`SELECT ${COLUMNS} FROM users WHERE id = ?`).get(id) as Row | undefined;
     return row && toUser(row);
   }
 
@@ -107,16 +136,6 @@ export class Users {
     const db = openEncrypted(join(this.userDir(userId), "user.db"), { raw: this.keyring.userKey(userId) });
     db.exec(USER_SCHEMA);
     return db;
-  }
-
-  displayName(user: User): string {
-    const db = this.openUserDb(user.id);
-    try {
-      const row = db.prepare("SELECT value FROM settings WHERE key = 'display_name'").get() as { value: string } | undefined;
-      return row?.value ?? user.name;
-    } finally {
-      db.close();
-    }
   }
 
   private adminCount(): number {

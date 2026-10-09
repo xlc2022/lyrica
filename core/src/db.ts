@@ -30,11 +30,13 @@ export function openEncrypted(path: string, key: DbKey): Db {
 
 /** self.db: shared by all users. */
 export const SELF_SCHEMA = `
--- Who can log in. The wrapped key lives here because it is needed before user.db can open.
+-- Who can log in. The wrapped key lives here because it is needed before user.db
+-- can open; the profile, so admins can edit it and mentions render while a user is locked.
 CREATE TABLE IF NOT EXISTS users (
   id          TEXT PRIMARY KEY,
-  name        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  login       TEXT NOT NULL UNIQUE COLLATE NOCASE,
   admin       INTEGER NOT NULL,
+  profile     TEXT NOT NULL,
   wrapped_key TEXT NOT NULL,
   created_at  TEXT NOT NULL
 );
@@ -51,7 +53,7 @@ CREATE INDEX IF NOT EXISTS persona_revisions_path ON persona_revisions (path, id
 
 /** user.db: one per user, encrypted with that user's data key. */
 export const USER_SCHEMA = `
--- Per-user settings (display name now; endpoints and model profiles later).
+-- Per-user settings (endpoints and model profiles, from the Models thread).
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL

@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { Forbidden, MATRIX, PersonaStore, Users } from "../src/index.ts";
-import { freshKeyring } from "./helpers.ts";
+import { freshKeyring, profile } from "./helpers.ts";
 
 const SEED = fileURLToPath(new URL("../../persona", import.meta.url));
 
@@ -21,28 +21,28 @@ describe("persona", () => {
   it("keeps every change as a revision, and only administrators can change it", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const xu = await users.createUser("Xu", "pw", { admin: true });
-    const mina = await users.createUser("Mina", "pw", { admin: false });
+    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    const mina = await users.createUser("Mina", "pw", profile("Mina"), { admin: false });
     const store = new PersonaStore(keyring.self());
     store.importSeed(SEED);
     const original = store.files().get("STYLE.md")!;
 
     expect(() => store.apply(mina, "STYLE.md", "changed")).toThrow(Forbidden);
-    store.apply(xu, "STYLE.md", `${original}\nShe likes footnotes.`);
-    store.apply(xu, "STYLE.md", `${original}\nShe likes footnotes.`); // unchanged: no new revision
+    store.apply(li, "STYLE.md", `${original}\nShe likes footnotes.`);
+    store.apply(li, "STYLE.md", `${original}\nShe likes footnotes.`); // unchanged: no new revision
 
     expect(store.files().get("STYLE.md")).toContain("footnotes");
     const revs = store.revisions("STYLE.md");
-    expect(revs.map((r) => r.author)).toEqual(["seed", `user:${xu.id}`]);
+    expect(revs.map((r) => r.author)).toEqual(["seed", `user:${li.id}`]);
     expect(revs[0]!.text).toBe(original);
   });
 
   it("rejects a matrix it can't parse", async () => {
     const keyring = await freshKeyring();
-    const xu = await new Users(keyring).createUser("Xu", "pw", { admin: true });
+    const li = await new Users(keyring).createUser("li", "pw", profile("Li"), { admin: true });
     const store = new PersonaStore(keyring.self());
     store.importSeed(SEED);
-    expect(() => store.apply(xu, MATRIX, "no front matter")).toThrow(/front matter/);
-    expect(() => store.apply(xu, "../etc/passwd", "x")).toThrow(/not a persona file/);
+    expect(() => store.apply(li, MATRIX, "no front matter")).toThrow(/front matter/);
+    expect(() => store.apply(li, "../etc/passwd", "x")).toThrow(/not a persona file/);
   });
 });
