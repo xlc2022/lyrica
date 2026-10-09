@@ -129,3 +129,42 @@ extensions.
 
 This replaces "one process" in principle 8 with "one daemon, plus the TUI when
 it is in use."
+
+## D-008 — Spaces: private reads public, never the reverse (2026-10-09, accepted)
+
+**Decision.** This refines D-002. Private spaces include all memories from the
+public space. Nothing from a private space can be retrieved in a public space.
+Lyrica has one user, but nothing in the design should assume there will only
+ever be one.
+
+## D-009 — Models, delegation, and the local-only switch (2026-10-09, accepted)
+
+**Context.** She will run on a mix of DeepSeek 4.1 Flash, GLM 5.3 Flash,
+Qwen 3.8 27B and Qwen 3.8 Flash Next, through public and custom endpoints.
+
+**Decision.**
+- Each endpoint is declared explicitly as **cloud** or **local**. The API type
+  never decides this.
+- Different tasks can use different models (chat, subagents, sleep phases).
+- Xu defines the list of models she may choose when she delegates on her own.
+- A thread has a **local-only** checkbox. When it is on, any attempt to use a
+  cloud model for a subagent fails with an error.
+- Choosing an endpoint, public or custom, is easy. The model currently running
+  is always obvious in the UI.
+
+## D-010 — Integrations (2026-10-09, accepted)
+
+**Decision.** Build adapters for Google Calendar, iCloud and CalDAV (which
+covers Nextcloud), and for sorting files, notes, downloads and email. They
+don't all need to be connected at first.
+
+## D-011 — Fresh start with a self-primer (2026-10-09, accepted)
+
+**Decision.** No v1 data is imported. Lyrica starts with a primer on her own
+design, architecture and goals. It includes the rule that whenever she edits
+her own code, she keeps the documentation current and readable. The primer is
+loaded when the topic comes up, not always (principle 9).
+
+## D-012 — Pages are written only by sleep (2026-10-09, accepted)
+
+**Decision.** In conversation she writes notes. Pages change only during sleep.

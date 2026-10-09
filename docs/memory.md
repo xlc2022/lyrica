@@ -1,6 +1,8 @@
 # Memory
 
-**Status: proposal for discussion.** Implements D-004.
+**Status: proposal for discussion.** Implements D-004. Storage (plain files
+versus an encrypted database), deletion and tombstones, and the sleep cycle are
+being reworked. Don't build from this page yet.
 
 Xu's requirements:
 
@@ -101,8 +103,8 @@ model would keep memory text on the server.
   current thread entry. She uses it freely. Superseded notes stay on disk but
   drop out of automatic recall.
 - She does not edit pages during a conversation; sleep owns pages. This keeps
-  conversations fast and gives each page change one reviewable commit.
-  (Open question below.)
+  conversations fast and gives each page change one reviewable commit
+  (D-012).
 
 Model-facing memory tools: `remember`, `recall`, `read`. That's three of the
 six-tool budget.
@@ -153,9 +155,7 @@ to a model provider are not covered.
 
 ## Open questions
 
-1. **Pages in conversation.** Should she update a page mid-conversation when
-   Xu says "update your notes on X," or always leave it for sleep?
-2. **Note granularity.** One fact per note, as proposed, or one note per
+1. **Note granularity.** One fact per note, as proposed, or one note per
    conversation moment that may hold several facts?
-3. **Thread files in git?** The proposal keeps threads out of git (they're
+2. **Thread files in git?** The proposal keeps threads out of git (they're
    large). Deleting a thread then means deleting the file and its index rows.
