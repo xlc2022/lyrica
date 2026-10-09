@@ -193,28 +193,58 @@ are enforced in the store:
 type Task = "chat" | "subagent.cheap" | "subagent.strong" | "compaction"
           | "title" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake";
 
+interface Endpoint {
+  id: string; name: string;
+  kind: "cloud" | "local";                 // declared by the user, never inferred
+  api: "openai-compatible";                // OpenRouter, LM Studio, KoboldCpp, llama-server
+  baseUrl: string; apiKey?: string;        // the key is stored in the user's user.db
+}
+interface ModelRef { endpointId: string; modelId: string }   // same model on two endpoints = two refs
+
 interface CallContext {
   userId: string;
   pool: Pool;
   localOnly: boolean;       // thread checkbox; always true for private
-  overrides?: Partial<Record<Task, string>>;
+  overrides?: Partial<Record<Task, ModelRef>>;
 }
 
-resolveModel(task: Task, ctx: CallContext): Model         // throws CloudModelForbidden
+resolveModel(task: Task, ctx: CallContext): ModelRef      // throws CloudModelForbidden
 modelRuntimeFor(ctx: CallContext): ModelRuntime           // Pi runtime with only the allowed models
 probe(endpointId: string): Promise<"up" | "down">
 ```
 
-- Every endpoint is declared `cloud` or `local`. Its API type never decides
-  this.
 - When `ctx.pool === "private"` or `ctx.localOnly` is set, Pi sessions are
   built with `modelRuntimeFor(ctx)`, which contains **no cloud models at all**.
-  Even Pi's own compaction then has nothing cloud-based to pick. Asking for a
-  cloud model throws `CloudModelForbidden`. Nothing falls back across the
-  local/cloud line.
-- Each user has settings for their endpoints, task-to-model defaults in a
-  cloud profile and a local profile, and the list of models allowed for
-  automatic delegation.
+  Even Pi's own compaction then has nothing cloud-based to pick.
+- Asking for a cloud model throws `CloudModelForbidden`. Nothing falls back
+  across the local/cloud line.
+- **What each user stores** in `user.db`:
+  - endpoints;
+  - a cloud profile and a local profile, mapping each task to a model;
+  - per-thread model overrides and the local-only flag.
+
+  Workspace's thread settings live in `user.db` too, in separate tables.
+
+## delegate
+
+```ts
+delegate({ task: string, tier: "cheap" | "strong", folders?: string[], readOnly?: boolean, internet?: boolean })
+  → { result: string, threadId: string }
+```
+
+- **Thread:** creates a child thread with `createThread({ parent, interface })`.
+  The thread records that it's a subagent, so the UI can nest it under the
+  parent.
+- **Workspace:** calls `workspace.inheritSettings` with any narrowing.
+- **Model:** uses the thread's `subagent.<tier>` model, resolved through the
+  same `CallContext`.
+- **Runs** a Pi session to completion and returns its final text.
+- **Subagents** get a short worker prompt with the task, the workspace tools,
+  and read-only memory (`recall`, `read_memory`), but not `remember`. Their
+  threads are ordinary threads, so sleep still learns from them unless they
+  are unlogged.
+- **Limits:** depth 1 (subagents can't delegate), and a per-thread limit on
+  concurrent subagents.
 
 ## extension
 
@@ -248,7 +278,7 @@ The extension is created with a `ThreadContext`:
   - `read`, `write`, `edit` and `bash` (Workspace thread; see
     [workspace.md](workspace.md));
   - `remember`, `recall` and `read_memory` (Memory thread);
-  - `delegate` (Models thread);
+  - `delegate` (Models thread; see [delegate](#delegate));
   - `calendar` and `sort` (Integrations thread);
   - `web_search` and `web_fetch` (research, carried over from v1 or taken from
     a Pi package).

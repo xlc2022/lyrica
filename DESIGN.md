@@ -73,24 +73,47 @@ Each user has two pools of memory.
 
 ## Models and endpoints
 
-Lyrica runs on a mix of models such as DeepSeek 4.1 Flash, GLM 5.3 Flash,
-Qwen 3.8 27B and Qwen 3.8 Flash Next, reached through public and custom
-endpoints.
+Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
+27B and Qwen 3.8 Flash Next.
+- **Cloud:** through OpenRouter.
+- **Local:** through LM Studio or KoboldCpp. The Qwen models and a local copy
+  of DeepSeek run there.
 
-- Every endpoint is declared **cloud** or **local** by the user. Its API type
-  never decides this.
-- Different tasks use different models: chat, cheap and strong subagents,
-  compaction, titles, embeddings, and each sleep phase.
-- A **control panel** sets default models per task, in a **cloud profile** and
-  a **local profile**. Each thread can override which model handles which
-  task, including the main conversation and its subagents. That applies to
-  every thread, with or without folders.
-- Each user lists the models Lyrica may choose by herself when delegating.
-- In a private or local-only thread, any attempt to use a cloud model, for any
-  purpose, fails with an error. Nothing ever falls back across the local/cloud
-  line.
-- The current model and endpoint, with a clear cloud or local badge, are always
-  visible in a thread. Choosing an endpoint, public or custom, is easy.
+- **Endpoints.** Every endpoint is declared **cloud** or **local** by the user.
+  Its API type never decides this.
+  - A model is an endpoint plus a model ID. The same model on two endpoints is
+    two different entries, one cloud and one local. "DeepSeek" in a private
+    thread can only ever mean the local copy.
+- **Tasks.** Different tasks use different models: chat, cheap and strong
+  subagents, compaction, titles, embeddings, and each sleep phase.
+- **Profiles.** A **control panel** sets default models per task, in a **cloud
+  profile** and a **local profile**. Each thread can override which model
+  handles which task, including the main conversation and its subagents. That
+  applies to every thread, with or without folders.
+- **Delegation.** When Lyrica delegates, she picks a tier, never a model,
+  following a simple rule:
+  - **cheap** for searching, reading, summarizing and checking;
+  - **strong** for writing, judgment, and changing code or files.
+
+  The thread's `subagent.cheap` and `subagent.strong` models decide which
+  model that is.
+- **Subagents** are ordinary threads.
+  - They inherit "Do not log" and their parent's workspace settings, or
+    narrower ones.
+  - In the UI they appear nested under their parent thread, collapsed behind a
+    `>` that expands to show them.
+  - In version one, subagents can't start subagents of their own.
+- **Local-only.** In a private or local-only thread, any attempt to use a cloud
+  model, for any purpose, fails with an error. Nothing ever falls back across
+  the local/cloud line.
+- **Visibility.** The current model and endpoint, with a clear cloud or local
+  badge, are always visible in a thread. Choosing an endpoint, public or
+  custom, is easy.
+- **Later: Lyrica runs models herself.** She could load and serve local models
+  by wrapping llama.cpp (`llama-server`) or vLLM. A Lyrica-managed server
+  would be just another local endpoint, one she can start, stop and switch
+  models on. This is a separate thread after the web UI, and it depends on the
+  GPU available to her host.
 
 ## Storage, encryption and unlocking
 
