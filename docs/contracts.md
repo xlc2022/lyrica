@@ -304,6 +304,11 @@ openThreadSession({ thread, models, cwd, extensions, settings? })  // one thread
     user's in `user.db`, or a shared one in `self.db`, encrypted like
     endpoint keys.
   - Deleting an offering leaves a `removed` redirect, like Clean up.
+  - An offering for `image.create` or `image.edit` on a host is a **recipe**:
+    `{ arch, template, parts: { role, slot?, file }[], loras: { file,
+    strength }[], defaults }`, stored on the host. Parts are files the host
+    reports by role, slot, architecture, precision and size. A proposed
+    recipe is listed but never resolves until it is confirmed.
 - A local endpoint is still declared, not inferred. `probe` warns, without
   blocking, when one resolves outside loopback, private or tailnet ranges.
 - **Shared endpoints** live in `self.db`. Only an administrator can change

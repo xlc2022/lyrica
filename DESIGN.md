@@ -235,7 +235,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     use another task's list (**Same as**), one level deep: by default titles
     and compaction follow cheap subagents, and sleep follows strong
     subagents. A task with no list of its own follows Chat, as before;
-  - a **model library** that stays usable with hundreds of models (an
+  - two libraries, **Text models** and **Image models**, because the two
+    are managed differently. The image library is described under Images.
+  - the **text model library** stays usable with hundreds of models (an
     OpenRouter account, a large shared models folder):
     - one row per model, which opens to its copies on every endpoint. That
       is where groups are made, ordered and undone, and where Lyrica's
@@ -477,9 +479,44 @@ it's off.
   - its input, output and temp folders are in RAM, image metadata is off,
     results come back over its websocket, and its history is cleared after
     every job;
-  - Lyrica reaches it only through the model host's token-protected API, which
-    fills workflow templates kept in Lyrica's repository. She can never send
-    ComfyUI a workflow of her own.
+  - Lyrica reaches it only through the model host's paired API (mutual
+    TLS), which fills workflow templates kept in Lyrica's repository. She can
+    never send ComfyUI a workflow of her own.
+- **Image models are recipes.** An image model isn't one file: most need a
+  diffusion model, one or two text encoders and a VAE, unless a checkpoint
+  holds them all. A recipe names each part by its role (and an encoder by its
+  slot, such as T5 or CLIP-L), any LoRAs built in with their strength, the
+  workflow template for its architecture (one per architecture, not per
+  model), and default settings (steps, CFG, sampler, size). Lyrica calls
+  recipes, never files, so she never picks parts herself.
+  - **Parts are shared.** One T5 encoder or VAE serves several recipes. Each
+    part shows its raw file name, size, precision and which recipes use it.
+    The host measures VRAM per part.
+  - **Identity** follows the text rule. A recipe is its diffusion model plus
+    its built-in LoRAs: a lower-precision encoder makes a copy that differs,
+    and a built-in LoRA that changes the results (a Lightning LoRA, a style)
+    makes a model of its own, linked to its base.
+  - **Where recipes come from,** borrowing from Invoke's model manager:
+    - **Starter recipes** shipped with the host for each supported
+      architecture, with each part's known-good file and checksum. Download
+      model fetches only the parts the host doesn't have.
+    - **Scan folder:** the host reads each safetensors header (tensor names
+      only, never loading the file) to tell a checkpoint, diffusion model,
+      text encoder, VAE or LoRA and its architecture. Files are used in
+      place, never copied or deleted. Lyrica proposes recipes from matching
+      parts, and offers to download missing ones. A proposed recipe does
+      nothing until the user confirms it (an administrator on a shared
+      host). A file with no template for its architecture is kept as a file.
+    - Hugging Face, ModelScope and links, as for text models.
+    - Unlike Invoke, parts are fixed in the recipe rather than chosen for
+      each image, because Lyrica, not a person, makes the call. A part can be
+      swapped only for another of the same role and slot.
+  - **The image library** lists recipes, and by type (checkpoints, diffusion
+    models, text encoders, VAEs, LoRAs, unused files), filtered by
+    architecture. Deleting a recipe deletes only the parts Lyrica downloaded
+    that no other recipe uses, and says which it keeps and why.
+  - Quantized GGUF diffusion models run through one more pinned custom node
+    (ComfyUI-GGUF), so smaller GPUs can use them.
 - **Cloud image services** are cloud endpoints like any other: OpenAI's image
   API first, then others (for example Black Forest Labs, Krea, Google, and
   aggregators such as fal or Replicate). They're used only where cloud is
@@ -496,7 +533,11 @@ it's off.
   This rule is enforced by the `image` tool, not by instructions to the model.
 - **Later:** a personal LoRA, trained on the user's photos on the GPU machine
   for a closer likeness. It would be stored encrypted in their home, and loaded
-  into the GPU machine's memory only for a job.
+  into the GPU machine's memory only for a job. Choosing a LoRA for one image
+  (a style, a person) comes with it: the `image` tool would offer a short list
+  of LoRAs the user enabled, with their trigger words, and each recipe would
+  say which LoRA slots it takes. Until then, LoRAs exist only inside
+  recipes.
 - **Wireframes and diagrams** are drawn as code (HTML, SVG or Mermaid) and
   rendered to an image by a headless browser in her sandbox. Image models are
   poor at exact layouts and text. Storyboards suit the image models, with
@@ -807,6 +848,10 @@ new evidence.
   pinned and apart from the rest of the machine, with images per GPU vendor,
   and is easy to add or remove. Windows isn't a model host. `lyricad` stays
   native.
+- **Image models: files → recipes (2026-10-09).** Most image models need
+  several files that work only together, and many share parts. Lyrica can't
+  be asked to choose encoders and VAEs, so the user settles them once in a
+  recipe. The image library is separate from the text one.
 - **Model downloads: one-off container → fetch service (2026-10-09).** The
   host has no Docker socket, so nothing could start a one-off container.
   Downloads also became open-ended (Hugging Face, ModelScope, links) instead

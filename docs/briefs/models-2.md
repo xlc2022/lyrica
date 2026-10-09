@@ -105,7 +105,15 @@ can be off, paused or busy gaming without Lyrica going dark.
      per-thread switch.
    - Tests must show that a private or local-only thread never resolves
      through Custom, even when it is the user's default.
-7. **The model library API.** One entry per model with its copies on every
+7. **The model library API**, as two libraries: text models, and image
+   models. The image library lists recipes (with their parts, proposals and
+   missing parts) and parts by type, through the host's recipe API: confirm
+   or ignore a proposal, fill missing parts, swap a part within its role and
+   slot, delete. Pickers for image tasks offer only confirmed recipes.
+   Tests: a proposed recipe never resolves; deleting a recipe keeps every
+   part another recipe uses.
+
+   The text library: one entry per model with its copies on every
    endpoint, and the group they're in, if any. Each copy carries its raw
    name and whether Lyrica downloaded it.
    - **Identity**, as in DESIGN: base name, size and finetune, from the

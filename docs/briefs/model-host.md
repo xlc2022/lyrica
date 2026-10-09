@@ -28,7 +28,8 @@ games on, so the host has to be easy to live with and hard to misuse.
    - `host-api`: ours, built in CI. It is the only service with a published
      port.
    - `comfyui`: ours, built in CI from pinned ComfyUI and custom-node
-     commits, with a CUDA and a ROCm variant. It has no plugin manager.
+     commits (including ComfyUI-GGUF), with a CUDA and a ROCm variant. It
+     has no plugin manager.
    - vLLM and llama.cpp: their official images, pinned by digest, with a
      CUDA and a ROCm variant (and Vulkan for llama.cpp where useful).
    - `fetch`: ours, small, for downloads (item 9).
@@ -61,8 +62,13 @@ games on, so the host has to be easy to live with and hard to misuse.
    - an OpenAI-compatible `/v1` (chat completions with streaming and tools,
      embeddings, and models), routed to the right server;
    - an image API (create and edit) that fills **workflow templates** kept in
-     `host/workflows/`. A request names a template and gives its parameters,
-     never a workflow;
+     `host/workflows/`, one per architecture. A request names a confirmed
+     **recipe** and gives its parameters, never a workflow;
+   - **recipes**, as in DESIGN ("Image models are recipes"), kept in the
+     host's data folder: list, confirm or ignore a proposal, swap a part for
+     another of the same role and slot, delete. Starter recipes for each
+     supported architecture live in `host/recipes/`, with each part's file
+     and checksum;
    - management: status (GPUs, VRAM, loaded and pinned models, queue,
      paused), load, unload, pin, GPU roles, pause, resume, restart, and
      downloads (list a repository's files, start, progress, cancel).
@@ -109,6 +115,13 @@ games on, so the host has to be easy to live with and hard to misuse.
    - discovery reports each file's raw path and its GGUF identity metadata
      (`general.basename`, `size_label`, `finetune`, `base_model.*`), or the
      model card's `base_model` and `base_model_relation` for a download;
+   - for image files, discovery reads the safetensors header only (tensor
+     names, never loading the file) to report the part's role, slot,
+     architecture and precision. It proposes recipes from matching parts,
+     listing parts that are missing; a file whose architecture has no
+     template stays a file. Scanned files are used in place;
+   - deleting a recipe deletes only parts in the download record that no
+     other recipe uses;
    - tests: a pickle file is refused, a wrong checksum leaves nothing
      behind, a link to a LAN address or a redirect to one is refused, the
      token never reaches disk or logs, and deleting is refused for a path
