@@ -61,6 +61,17 @@ Each user has two pools of memory.
 - **The web UI is React with TypeScript, built with Vite.** Models will write
   and maintain almost all of it, and React is what they know best; `tsc`
   checks its components like the rest of the code.
+- **How the web UI looks:**
+  - Calm and plain, so the conversation comes first. Colour comes from the
+    persona's accent, not from decoration.
+  - Her messages run full width as prose. The user's sit in a lightly tinted
+    block. No chat bubbles.
+  - Light or dark follows the device, with an override in settings.
+  - Each persona chooses an accent colour and a monogram in settings. No
+    avatar images.
+  - Her inner workings (memories she recalled, notes she saved, tool calls)
+    show as one-line markers that expand when tapped. A subagent shows as a
+    small card that opens its thread.
 - **Each interface keeps its own threads.** Lyrica is continuous across
   interfaces because she remembers, not because threads are mirrored. Moving a
   thread to another interface is an explicit export that copies it. Nothing
@@ -334,7 +345,8 @@ Details in [docs/sleep.md](docs/sleep.md).
 - **The design thread** (the "Agent harness design principles" session) owns
   PRINCIPLES, this document and the contracts, and keeps coding to a minimum.
 - **Feature threads** are separate Claude Code sessions tagged `project:lyrica`:
-  Core, Memory, Workspace, Models, Delegation, Web, Sleep and Integrations.
+  Core, Memory, Workspace, Models, Delegation, Daemon, Web UI, Sleep and
+  Integrations.
   - Each works from a brief in `docs/briefs/` on its own branch and ends with a
     pull request.
   - No more than two or three are active at once.

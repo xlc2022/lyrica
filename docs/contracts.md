@@ -77,6 +77,8 @@ interface Profile {
   displayName: string;                       // changeable at any time
   pronouns: { subj: string; obj: string; poss: string; possPro: string; refl: string };
   previousNames: { name: string; until: string }[];   // appended on rename
+  accent?: string;                           // persona colour in the web UI, "#rrggbb"
+  monogram?: string;                         // one or two letters
 }
 ```
 
@@ -88,6 +90,7 @@ interface Profile {
     is locked, so the admin panel and `render` keep working.
   - Each user's `user.db` holds that user's settings. Their memory lives in the
     pool databases.
+- The theme (device, light or dark) is a display setting in `user.db`.
 - The **login name** is separate from the display name, so renaming never
   affects signing in.
 - Pronoun presets are she/her, he/him and they/them, plus a custom option that
@@ -282,7 +285,7 @@ The extension is created with a `ThreadContext`:
   - `read`, `write`, `edit` and `bash` (Workspace thread; see
     [workspace.md](workspace.md));
   - `remember`, `recall` and `read_memory` (Memory thread);
-  - `delegate` (Models thread; see [delegate](#delegate));
+  - `delegate` (Delegation thread; see [delegate](#delegate));
   - `calendar` and `sort` (Integrations thread);
   - `web_search` and `web_fetch` (research, carried over from v1 or taken from
     a Pi package).
@@ -307,7 +310,8 @@ The extension is created with a `ThreadContext`:
   `excludePorts`, and calls `selfTest()` before serving threads.
 - **Unlocking:** when started as a service, `lyricad` starts locked, and the
   API serves only the unlock endpoint until `self.db` is unlocked.
-- **HTTP/SSE API** (detailed by the Web thread):
+- **HTTP/SSE API**, detailed by the Daemon thread in `daemon/src/api.ts`.
+  The web UI imports its types from there:
   - auth;
   - threads (list, create, hide, forget);
   - messages (send, stream);
