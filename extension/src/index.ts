@@ -88,3 +88,5 @@ function showDebug(ctx: ExtensionContext, topics: RoutedTopic[], sections: Secti
   if (ctx.hasUI) ctx.ui.notify(text, "info");
   else process.stderr.write(`${text}\n`);
 }
+export * from "./models.ts";
+export * from "./session.ts";
