@@ -29,7 +29,7 @@ Read these, in this order:
 - **Docs describe what exists.** When you change behavior, update its doc in the
   same commit. Write plainly and keep docs short. Plans go in briefs, never in
   component docs. If a doc and the code disagree, the PR isn't done.
-- **Tests protect what Xu would notice:** context assembly, memory round trips,
+- **Tests protect what Li would notice:** context assembly, memory round trips,
   the privacy and cloud boundaries, and sleep output. Don't add a test for
   every hypothetical.
 - **Deleting code is progress.**

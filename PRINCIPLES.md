@@ -6,12 +6,12 @@
 ## Thesis
 
 Lyrica is a continuous companion for one person. What we optimize for is that
-each conversation feels like it continues a life she and Xu share. She
+each conversation feels like it continues a life she and Li share. She
 remembers what happened, has her own point of view, and changes with
 experience.
 
 A feature belongs in Lyrica if it makes that more true, or if it lets her be
-present where Xu's life actually happens. Anything else is out of scope until
+present where Li's life actually happens. Anything else is out of scope until
 real use shows otherwise.
 
 From Monika we take the thesis (narrative continuity as the main engineering
@@ -28,7 +28,7 @@ The order matters. When two principles conflict, the earlier one wins.
 Build what makes the next conversation better. Build infrastructure only after
 real use has run into a real wall.
 
-- Ask every proposal one question: what will Xu notice in a conversation this
+- Ask every proposal one question: what will Li notice in a conversation this
   month? If the answer is "nothing, but it closes a gap," the proposal waits.
 - Pick the next piece of work from the continuity evals and the friction log
   (see [Evaluation](#evaluation-does-she-remember)), not from a list of things
@@ -36,7 +36,7 @@ real use has run into a real wall.
 
 ### 2. One operator, one server, simple boundaries
 
-Lyrica serves Xu on a server Xu administers. Xu's personas are separate
+Lyrica serves Li on a server Li administers. Li's personas are separate
 **users** with their own credentials and their own encrypted databases.
 The server's administrator is trusted.
 
@@ -93,7 +93,7 @@ recall, sleep). Bookkeeping doesn't add to it.
 The persona asks her to take initiative and use independent judgment. The
 harness shouldn't then treat her as an adversary.
 
-- She writes memories without asking each time. Xu reviews afterwards in the
+- She writes memories without asking each time. Li reviews afterwards in the
   memory browser.
 - Confirmation is required only for changes to her core identity files (SOUL,
   STYLE, REGISTER) and for irreversible actions that leave the server (sending
@@ -115,7 +115,7 @@ brake.
 
 | Thing | Budget |
 |---|---|
-| Model-facing tools | 8 or fewer |
+| Model-facing tools | 30 or fewer |
 | Slash commands | 6 or fewer |
 | Long-running processes | 1 daemon, plus Pi's TUI when in use |
 | Core extension | about 2,000 lines |
@@ -151,7 +151,7 @@ interfaces because she remembers, not because threads are mirrored.
 The previous attempt drifted because every review added guards and caveats and
 nothing ever removed them. These rules work against that:
 
-1. **Xu owns decisions.** Models propose and Xu decides. Settled decisions are
+1. **Li owns decisions.** Models propose and Li decides. Settled decisions are
    written into [DESIGN.md](DESIGN.md) as current design, not as a log.
    Reversals are noted in its History section. A new model session reads
    PRINCIPLES.md and DESIGN.md first, and doesn't reopen a settled point
@@ -166,7 +166,7 @@ nothing ever removed them. These rules work against that:
 5. **Docs describe what exists or has been agreed.** Work in progress lives in
    briefs or issues, not in architecture documents that keep growing. No doc should say "staged,
    not yet validated."
-6. **Tests protect what Xu would notice:** context assembly, memory round trips
+6. **Tests protect what Li would notice:** context assembly, memory round trips
    and sleep output. Don't add a test for every hypothetical guard.
 
 ## Evaluation: does she remember?
@@ -181,5 +181,5 @@ hand or scripted against a model:
 - Does she sound like herself, and not like a generic assistant?
 
 Next to the evals, keep a **friction log**: one line every time she forgot
-something, got something wrong, or couldn't do what Xu asked. The evals and the
+something, got something wrong, or couldn't do what Li asked. The evals and the
 friction log are what decide the next piece of work.
