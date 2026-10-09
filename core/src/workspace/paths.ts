@@ -15,6 +15,13 @@ CREATE TABLE IF NOT EXISTS workspace_paths (
 );
 `;
 
+/**
+ * Never grantable: the built-in Caddy's runtime directory. Sandboxes run as
+ * lyricad's user, which is in its group, so a grant there would hand them
+ * Caddy's admin socket.
+ */
+export const NEVER_GRANTED = ["/run/lyrica-caddy"];
+
 /** The folders each user may grant to their threads, kept in self.db. */
 export class AllowedPaths {
   /** `runtime` is LYRICA_HOME: no allowed folder may overlap it. */
@@ -34,6 +41,8 @@ export class AllowedPaths {
     if (!statSync(path).isDirectory()) throw new Error(`${path} is not a directory`);
     if (realpathSync(path) !== path) throw new Error(`${path} goes through a symlink; use ${realpathSync(path)}`);
     if (overlaps(path, cleanPath(realpathSync(this.runtime)))) throw new Error(`${path} overlaps Lyrica's runtime directory`);
+    const never = NEVER_GRANTED.find((n) => overlaps(path, n));
+    if (never) throw new Error(`${path} overlaps ${never}, which is never granted`);
     const otherPool = pool === "general" ? "private" : "general";
     const other = this.list(userId)[otherPool].find((p) => overlaps(path, p));
     if (other) throw new Error(`${path} overlaps ${other}, which is in the ${otherPool} list`);

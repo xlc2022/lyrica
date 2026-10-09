@@ -4,7 +4,7 @@ import { connect } from "node:net";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { generateSshKey, SshTarget, Users, Workspace, type SshTargetConfig } from "../src/index.ts";
+import { generateSshKey, nftRules, resolveAddresses, SshTarget, Users, Workspace, type SshTargetConfig } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -24,6 +24,26 @@ async function setup() {
   paths.allow(li, li.id, "private", join(host, "diary"));
   return { keyring, users, li, host, workspace, paths, settings: workspace.settings(li.id) };
 }
+
+describe("the front door in a sandbox's rules", () => {
+  it("covers this machine's addresses and the front door's other hosts, resolved when the sandbox starts", async () => {
+    const front = (await resolveAddresses(["localhost", "192.0.2.10", "::1"]))!;
+    expect(front).toEqual(["127.0.0.1", "192.0.2.10"]);
+    // Fails closed: a name that has never resolved gives no answer, so the run gets no network.
+    expect(await resolveAddresses(["lyrica.invalid"], async () => { throw new Error("NXDOMAIN"); })).toBeUndefined();
+    // A name that resolved once keeps that address covered when it moves or stops resolving.
+    const at = (...a: string[]) => async () => a.map((address) => ({ address, family: 4 }));
+    expect(await resolveAddresses(["moving.example"], at("192.0.2.20"))).toEqual(["192.0.2.20"]);
+    expect(await resolveAddresses(["moving.example"], at("192.0.2.21"))).toEqual(["192.0.2.20", "192.0.2.21"]);
+    expect(await resolveAddresses(["moving.example"], async () => { throw new Error("SERVFAIL"); })).toEqual(["192.0.2.20", "192.0.2.21"]);
+    const rules = nftRules(true, [], [7340, 7341], { addresses: ["10.0.0.5"], services: false, front: [443], frontAddresses: front });
+    expect(rules).toContain("ip daddr { 10.0.0.5, 127.0.0.1, 192.0.2.10 } meta l4proto { tcp, udp } th dport { 443 } reject");
+    expect(rules).toContain("th dport { 7340, 7341 } reject");
+    expect(rules).toContain("ip daddr { 10.0.0.5 } reject");
+    // Both come before anything is accepted.
+    expect(rules.indexOf("dport { 443 }")).toBeLessThan(rules.indexOf("    accept"));
+  });
+});
 
 describe("grants", () => {
   it("keep general threads out of private folders", async () => {
@@ -57,6 +77,8 @@ describe("grants", () => {
     expect(() => paths.allow(li, li.id, "general", join(host, "link"))).toThrow(/symlink/);
     expect(() => paths.allow(li, li.id, "general", keyring.home)).toThrow(/runtime/);
     expect(() => paths.allow(li, li.id, "general", "/")).toThrow(/runtime|overlaps/);
+    // The built-in Caddy's runtime directory holds its admin socket, which lyricad's user (and so a sandbox) can open.
+    expect(() => paths.allow(li, li.id, "general", "/run")).toThrow(/lyrica-caddy/);
     expect(() => settings.setThread("g1", "general", {
       grants: [{ path: join(host, "shared"), writable: false }, { path: join(host, "shared", "music"), writable: true }],
     })).toThrow(/inside/);
