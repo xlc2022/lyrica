@@ -45,7 +45,10 @@ async function run(argv: string[]): Promise<void> {
   };
   const [cmd] = argv;
   if (cmd && cmd in STUBS) throw new Error(STUBS[cmd]);
-  if (cmd === "admin") return admin(argv.slice(1), flag("--runtime") ?? process.env.LYRICA_HOME ?? "runtime");
+  if (cmd === "admin") {
+    const home = flag("--runtime") ?? process.env.LYRICA_HOME ?? "runtime";
+    return admin(argv.slice(1), home);
+  }
   if (cmd === "dev") return dev(argv.slice(1));
   throw new Error(USAGE);
 }

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
-import { Client, utils, type SFTPWrapper } from "ssh2";
+import ssh2, { type Client, type SFTPWrapper } from "ssh2";
 import { capOutput, sniffImage, type ExecutionTarget, type ToolOps } from "./ops.ts";
 import { cleanPath, within, type SshTargetConfig } from "./settings.ts";
 
@@ -9,7 +9,7 @@ const fingerprint = (key: Buffer) => `SHA256:${createHash("sha256").update(key).
 
 /** A new ed25519 key pair in OpenSSH format, generated in memory. */
 export function generateSshKey(comment: string): { privateKey: string; publicKey: string } {
-  const { private: privateKey, public: publicKey } = utils.generateKeyPairSync("ed25519", { comment });
+  const { private: privateKey, public: publicKey } = ssh2.utils.generateKeyPairSync("ed25519", { comment });
   return { privateKey, publicKey };
 }
 
@@ -40,7 +40,7 @@ export class SshTarget implements ExecutionTarget {
   private connect(): Promise<Conn> {
     if (this.conn) return this.conn;
     const conn: Promise<Conn> = new Promise<Conn>((resolve, reject) => {
-      const client = new Client();
+      const client = new ssh2.Client();
       const fail = (err: Error) => { client.end(); reject(new Error(`ssh ${this.cfg.name}: ${err.message}`)); };
       client.on("error", fail);
       client.on("close", () => { if (this.conn === conn) this.conn = undefined; });

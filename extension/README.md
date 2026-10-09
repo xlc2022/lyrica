@@ -35,7 +35,14 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
   and the full system prompt plus the turn message (a TUI notification, or stderr in
   print mode).
 
-No tools or commands yet.
+- **`workspace.ts`**: `createWorkspaceExtension(tools)` registers `read`,
+  `write`, `edit` and `bash`, routed to the thread's execution target (see
+  [docs/workspace.md](../docs/workspace.md)). It enforces the thread's
+  permission mode in `tool_call`, sends `!` commands to the same target, and
+  adds a short `workspace` prompt section. `LyricaOptions.folders()` carries
+  the thread's folders to Memory.
+
+No commands yet.
 
 ## Running it: `bin/lyrica`
 
@@ -45,6 +52,10 @@ bin/lyrica admin user add <login> [--admin]
 bin/lyrica admin user list | set-admin <login> on|off | passwd <login> | profile <login>
 bin/lyrica dev --init <dir>            # development runtime with test administrator "tester"
 bin/lyrica dev --runtime <dir> --user <login> [--debug-prompt] [-- <pi args>]
+bin/lyrica admin grants add|remove --user <login> --pool general|private <path>
+bin/lyrica admin grants list --user <login>
+bin/lyrica admin ssh add --user <login> <name> <account>@<host>[:<port>] [--root <path>]
+bin/lyrica admin ssh list|remove --user <login> [<name>]
 ```
 
 - Admin commands use `--runtime <dir>`, else `LYRICA_HOME`, else `./runtime`.
@@ -54,4 +65,7 @@ bin/lyrica dev --runtime <dir> --user <login> [--debug-prompt] [-- <pi args>]
   Pi's TUI with `--no-session` and `--no-builtin-tools`, with no context
   files, skills, prompt templates, MCP or other extensions. It uses Pi's own
   model configuration.
+- `dev` loads Lyrica's routed tools (`bin/bench.ts`) for one thread,
+  `cli-dev`. It mounts the user's home workspace and grants every general
+  folder the user may grant, read-write.
 - `serve`, `chat` and `mem` are stubs that name the thread that builds them.

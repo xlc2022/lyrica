@@ -42,6 +42,15 @@ Keys, users and the persona store. No Pi dependency.
   `persona_revisions`; the latest per path is current. `apply` (administrators
   only) adds a revision, and `read` returns the core files plus the topics
   parsed from the matrix's front matter.
+- **`workspace/`**: where her file and command tools run. See
+  [docs/workspace.md](../docs/workspace.md).
+  - `Workspace` mounts each user's gocryptfs home (`mountHome`,
+    `unmountHome`), gives a thread its target (`targetFor`), folders,
+    `inheritSettings` for subagents, and `saveUpload`.
+  - `WorkspaceSettings` keeps allowed folders, thread settings and SSH targets
+    in the user's `user.db`.
+  - `Sandbox` (bubblewrap) and `SshTarget` (ssh2) implement Pi's tool
+    operations without depending on Pi.
 - **`types.ts`**: `Pool`, `Interface`, `CallContext` and a placeholder
   `PoolView` for the Memory and Models threads.
 
@@ -49,5 +58,23 @@ On disk, under `LYRICA_HOME`:
 
 ```text
 self.db                 users (login, admin, profile, wrapped key), persona_revisions
-users/<id>/user.db      settings (empty until the Models thread adds endpoints)
+users/<id>/user.db      settings, workspace folders, thread workspaces, SSH targets
+users/<id>/home.crypt/  the encrypted home workspace (gocryptfs)
+users/<id>/home/        where it is mounted while the user is unlocked
+```
+
+## Sandbox tests
+
+`test/sandbox.test.ts` and `bin/test/bench.test.ts` need bubblewrap,
+gocryptfs and FUSE, and must run as an unprivileged user, because root hides
+permission bugs. As root they are skipped. CI runs them as its normal user,
+with `LYRICA_SANDBOX_TESTS=require` so they can't be skipped. In a root cloud
+session, create a user and run them as that user from a copy of the checkout:
+
+```sh
+apt-get install -y bubblewrap gocryptfs fuse3 openssh-server
+chmod 666 /dev/fuse        # some containers ship it 0600
+useradd -m lyricatest
+rsync -a --exclude .git ./ /home/lyricatest/lyrica/ && chown -R lyricatest: /home/lyricatest/lyrica
+su lyricatest -c 'cd ~/lyrica && LYRICA_SANDBOX_TESTS=require npx vitest --run'
 ```
