@@ -188,3 +188,26 @@ describe.skipIf(!homeRunnable)("the home workspace", () => {
     }
   });
 });
+
+describe.skipIf(!homeRunnable)("a thread's internet switch", () => {
+  it("cuts the network in either pool", async () => {
+    const keyring = await freshKeyring();
+    const users = new Users(keyring);
+    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    await users.authenticate("li", "pw");
+    const workspace = new Workspace(keyring, users);
+    const thread = (pool: "general" | "private", threadId: string) => ({ userId: li.id, pool, threadId });
+    workspace.settings(li.id).setThread("general-off", "general", { network: false });
+    workspace.settings(li.id).setThread("private-on", "private", { network: true });
+    const reach = async (t: ReturnType<typeof thread>) => (await sh(`exec 3<>/dev/tcp/127.0.0.1/${port} && cat <&3`, workspace.targetFor(t) as Sandbox)).out;
+    await workspace.mountHome(li.id);
+    try {
+      expect(await reach(thread("general", "general-default"))).toContain("hello from the host");
+      expect(await reach(thread("general", "general-off"))).not.toContain("hello from the host");
+      expect(await reach(thread("private", "private-default"))).not.toContain("hello from the host");
+      expect(await reach(thread("private", "private-on"))).toContain("hello from the host");
+    } finally {
+      await workspace.unmountHome(li.id);
+    }
+  });
+});

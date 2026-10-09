@@ -60,17 +60,43 @@ describe("grants", () => {
     })).toThrow(/inside/);
   });
 
-  it("give private threads no network unless the user allows it", async () => {
+  it("follow each pool's internet default unless the thread overrides it", async () => {
     const { settings } = await setup();
     expect(settings.network("g1", "general")).toBe(true);
     expect(settings.network("p1", "private")).toBe(false);
+    settings.setThread("g1", "general", { network: false });
+    expect(settings.network("g1", "general")).toBe(false);
     settings.setThread("p1", "private", { network: true });
     expect(settings.network("p1", "private")).toBe(true);
-    settings.setPrivateNetwork(true);
+    settings.setDefaultNetwork("private", true);
+    settings.setDefaultNetwork("general", false);
     expect(settings.network("p2", "private")).toBe(true);
-    settings.setThread("p2", "private", { network: false });
-    expect(settings.network("p2", "private")).toBe(false);
-    expect(() => settings.setThread("g1", "general", { network: false })).toThrow(/always/);
+    expect(settings.network("g2", "general")).toBe(false);
+  });
+
+  it("let a subagent have its parent's settings or stricter ones, never wider", async () => {
+    const { host, settings } = await setup();
+    const music = join(host, "shared", "music");
+    settings.setThread("parent", "general", { grants: [{ path: music, writable: true }], network: false, mode: "ask-commands" });
+
+    const same = settings.inheritSettings("parent", "child", "general");
+    expect(same).toMatchObject({ grants: [{ path: music, writable: true }], network: false, mode: "ask-commands", parent: "parent" });
+    const narrow = settings.inheritSettings("parent", "child2", "general", { grants: [{ path: music, writable: false }], mode: "ask-changes" });
+    expect(narrow).toMatchObject({ grants: [{ path: music, writable: false }], mode: "ask-changes" });
+
+    expect(() => settings.inheritSettings("parent", "c3", "general", { network: true })).toThrow(/no internet/);
+    expect(() => settings.inheritSettings("parent", "c4", "general", { mode: "auto" })).toThrow(/permission mode/);
+    expect(() => settings.inheritSettings("parent", "c5", "general", { grants: [{ path: join(host, "shared"), writable: false }] }))
+      .toThrow(/parent thread's folders/);
+    // Widening later, through the thread's own settings, is refused too.
+    expect(() => settings.setThread("child2", "general", { grants: [{ path: join(host, "shared"), writable: false }] }))
+      .toThrow(/parent thread's folders/);
+    expect(() => settings.setThread("child", "general", { network: null })).toThrow(/no internet/);
+    // Narrowing the parent later narrows what the child may keep.
+    settings.setThread("parent", "general", { grants: [{ path: music, writable: false }] });
+    expect(() => settings.setThread("child", "general", { grants: [{ path: music, writable: true }] })).toThrow(/read-only in the parent/);
+    expect(() => settings.checkInherited("child", "general")).toThrow(/read-only in the parent/);
+    expect(settings.folderThread("child2")).toBe("parent");
   });
 });
 

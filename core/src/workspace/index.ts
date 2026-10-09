@@ -6,7 +6,7 @@ import type { Users } from "../users.ts";
 import { isMounted, mountGocryptfs, unmountGocryptfs } from "./home.ts";
 import type { ExecutionTarget } from "./ops.ts";
 import { Sandbox, WORKDIR } from "./sandbox.ts";
-import { checkGrant, WorkspaceSettings, type Grant } from "./settings.ts";
+import { checkGrant, WorkspaceSettings, type Grant, type ThreadWorkspace } from "./settings.ts";
 import { SshTarget } from "./ssh.ts";
 
 export * from "./home.ts";
@@ -72,9 +72,15 @@ export class Workspace {
   threadDir(t: WorkspaceThread): string {
     const home = this.homeDir(t.userId);
     if (!isMounted(home)) throw new Locked("the home workspace is not mounted");
-    const dir = join(home, "threads", safeName(t.threadId, "thread id"));
+    const id = this.settings(t.userId).folderThread(t.threadId);
+    const dir = join(home, "threads", safeName(id, "thread id"));
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     return dir;
+  }
+
+  /** A subagent's thread gets its parent's settings, or stricter ones. See WorkspaceSettings.inheritSettings. */
+  inheritSettings(parent: WorkspaceThread, childThreadId: string, narrower?: Parameters<WorkspaceSettings["inheritSettings"]>[3]): ThreadWorkspace {
+    return this.settings(parent.userId).inheritSettings(parent.threadId, childThreadId, parent.pool, narrower);
   }
 
   grantsFor(t: WorkspaceThread): Grant[] { return this.settings(t.userId).thread(t.threadId).grants; }
@@ -90,6 +96,7 @@ export class Workspace {
   targetFor(t: WorkspaceThread): ExecutionTarget {
     const s = this.settings(t.userId);
     const tw = s.thread(t.threadId);
+    s.checkInherited(t.threadId, t.pool);
     if (tw.target !== "sandbox") return this.ssh(t.userId, tw.target.slice(4));
     return new Sandbox({
       workdir: this.threadDir(t),
