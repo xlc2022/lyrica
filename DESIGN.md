@@ -239,7 +239,20 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     OpenRouter account, a large shared models folder):
     - one row per model, which opens to its copies on every endpoint. That
       is where groups are made, ordered and undone, and where Lyrica's
-      suggestions to group copies appear;
+      suggestions to group copies appear. Each copy shows its **raw name**:
+      the file under the models folder, or the endpoint's model ID. Search
+      matches raw names too;
+    - **what counts as the same model:** copies are the same weights in
+      another quantisation or format. A model's identity is its base name,
+      size and finetune, read from GGUF metadata (`general.basename`,
+      `size_label`, `finetune`, `base_model.*`), from the hub's model card
+      (`base_model` with `base_model_relation`, where only `quantized`
+      makes a copy), or from the endpoint's model ID. A finetune, merge or
+      adapter is a model of its own with a link to its base: never listed
+      under it, never suggested for its group. A copy whose file records no
+      finetune but whose name has words the model's name doesn't is flagged
+      for a check, and **Not this model** moves any copy to a row of its
+      own;
     - search, and filters by kind, endpoint and what a model can do (chat
       with tools, vision, embeddings, images), or groups only;
     - **starred** models, which pickers show first;
@@ -247,8 +260,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       task lists only embedding models;
     - **Download model:** ask a paired host to download one, from Hugging
       Face, ModelScope or a link (see Downloads under the model host);
-    - **Delete** a copy Lyrica downloaded from a host, after a confirmation
-      that says where it's used. Lists that named it skip it, and its ID is
+    - **Delete** a copy Lyrica downloaded herself, after a confirmation that
+      says where it's used. Nothing else can be deleted from the library. Lists that named it skip it, and its ID is
       kept as removed so other users' lists are tidied when they next
       unlock;
     - **Accounts:** saved tokens for gated repositories on Hugging Face and
@@ -346,9 +359,12 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     - An access token for a gated repository comes from Lyrica's saved
       tokens (see Accounts) and travels with each request. The host never
       stores it.
-    - **Deleting** works only inside the `lyrica` subfolder, through fetch,
-      the folder's only writer. Files elsewhere in the shared folder, such
-      as LM Studio's, are never deleted. A loaded model is unloaded first.
+    - **Deleting** works only on files fetch downloaded. Fetch keeps a
+      record of each download, with its path, size and checksum, and deletes
+      only a file in that record that hasn't changed since. A file put in
+      the `lyrica` subfolder by hand, and everything elsewhere in the shared
+      folder, such as LM Studio's, is never deleted. A loaded model is
+      unloaded first.
     - Free space is checked first. A paused host still downloads. A finished
       model gets its offering ID at once, and Lyrica suggests adding it to a
       group of the same model.

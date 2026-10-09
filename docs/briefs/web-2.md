@@ -32,8 +32,10 @@ phone (principle 1).
    - Profiles: one line per task showing what answers it now, opening to its
      ordered list (drag or arrows to reorder, add, remove) or **Same as**
      another task. Pickers offer only suitable models.
-   - The library: one row per model, opening to its copies, where groups
-     are made, reordered and undone; search, filters and stars;
+   - The library: one row per model, opening to its copies with their raw
+     names, where groups are made, reordered and undone; finetunes in rows of
+     their own, linked to their base; flagged copies and **Not this model**;
+     search, filters and stars;
      **Download model** (host, source, repository lookup with file choice,
      the saved token for gated repositories, progress); **Delete** with a
      confirmation that lists where the copy is used; **Accounts** for hub

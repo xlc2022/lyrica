@@ -101,12 +101,19 @@ games on, so the host has to be easy to live with and hard to misuse.
      written to disk;
    - free space is checked first; downloads resume after a restart and can
      be cancelled, which deletes the partial file;
-   - **delete** removes a file under `lyrica/` only, through fetch, after
-     unloading it if it's loaded. Anything outside `lyrica/` is refused;
+   - fetch keeps a **download record** (path, size, checksum, when) in the
+     host's data folder;
+   - **delete** removes only a file in that record, unchanged since it was
+     downloaded, after unloading it if it's loaded. Anything else is
+     refused;
+   - discovery reports each file's raw path and its GGUF identity metadata
+     (`general.basename`, `size_label`, `finetune`, `base_model.*`), or the
+     model card's `base_model` and `base_model_relation` for a download;
    - tests: a pickle file is refused, a wrong checksum leaves nothing
      behind, a link to a LAN address or a redirect to one is refused, the
-     token never reaches disk or logs, and deleting a path outside
-     `lyrica/` (including through `..` or a symlink) is refused.
+     token never reaches disk or logs, and deleting is refused for a path
+     outside `lyrica/` (including through `..` or a symlink), for a file put
+     there by hand, and for a downloaded file that has since changed.
 10. **The dashboard**, a small page served by `host-api` on port 7236:
    - shows GPUs and VRAM, models, the queue, and usage statistics (counts,
      tokens, images and time per model; never prompts, results or who asked;
