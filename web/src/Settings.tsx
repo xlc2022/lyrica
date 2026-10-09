@@ -1,5 +1,5 @@
 // The model badge and its picker, and the thread settings drawer.
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   del, get, patch, u, THREAD_TASKS,
   type AllowedPaths, type EndpointInfo, type Grant, type ModelRef, type PermissionMode, type SshTargetInfo,
@@ -7,7 +7,7 @@ import {
 } from "./api.ts";
 import { go } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
-import { Confirm, ErrorText, Switch, useAction, useLoad } from "./ui.tsx";
+import { Confirm, ErrorText, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 export const TASK_LABELS: Record<ThreadTask, string> = {
   chat: "Main conversation",
@@ -30,6 +30,9 @@ export function ModelBadge({ base, settings, onChange, readOnly }: {
   base: string; settings: ThreadSettings; onChange: (s: ThreadSettings) => void; readOnly: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLSpanElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(anchor, open, close);
   const chat = settings.models.chat;
   const label = (
     <>
@@ -40,31 +43,23 @@ export function ModelBadge({ base, settings, onChange, readOnly }: {
   );
   if (readOnly) return <span className="badge model" data-kind={chat.kind}>{label}</span>;
   return (
-    <span className="picker-anchor">
+    <span className="picker-anchor" ref={anchor}>
       <button type="button" className="badge model" data-kind={chat.kind} aria-haspopup="dialog" aria-expanded={open}
         aria-label={`Model: ${chat.model ? `${chat.model.modelId}, ${chat.kind}, ${chat.endpointName ?? chat.model.endpointId}` : "none"}. Change`}
         onClick={() => setOpen(!open)}>{label}</button>
-      {open && <ModelPicker base={base} settings={settings} task="chat" onChange={(s) => { onChange(s); setOpen(false); }} onClose={() => setOpen(false)} />}
+      {open && <ModelPicker base={base} settings={settings} task="chat" onChange={(s) => { onChange(s); setOpen(false); }} />}
     </span>
   );
 }
 
-function ModelPicker({ base, settings, task, onChange, onClose }: {
-  base: string; settings: ThreadSettings; task: ThreadTask; onChange: (s: ThreadSettings) => void; onClose: () => void;
+function ModelPicker({ base, settings, task, onChange }: {
+  base: string; settings: ThreadSettings; task: ThreadTask; onChange: (s: ThreadSettings) => void;
 }) {
   const [run, busy, error] = useAction();
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    const click = (e: MouseEvent) => !ref.current?.parentElement?.contains(e.target as Node) && onClose();
-    addEventListener("keydown", key);
-    addEventListener("mousedown", click);
-    return () => { removeEventListener("keydown", key); removeEventListener("mousedown", click); };
-  }, [onClose]);
   const current = settings.models[task];
   const choose = (model: ModelRef | null) => run(async () => onChange(await patch<ThreadSettings>(`${base}/settings`, { models: { [task]: model } })));
   return (
-    <div ref={ref} className="picker" role="dialog" aria-label={`Model for ${TASK_LABELS[task].toLowerCase()}`}>
+    <div className="picker" role="dialog" aria-label={`Model for ${TASK_LABELS[task].toLowerCase()}`}>
       {settings.localOnly && <p className="muted small">Only local models: this thread is {settings.parent ? "a subagent of a local-only thread" : "local-only"}.</p>}
       {settings.allowed.map((ep) => (
         <div key={ep.id} className="picker-group">

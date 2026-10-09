@@ -28,6 +28,18 @@ export function useLoad<T>(fn: () => Promise<T>, deps: unknown[]): { data?: T; e
   return { data, error, reload: useCallback(() => setTick((t) => t + 1), []), set: setData };
 }
 
+/** Closes a popup on Escape or a click outside `ref`. */
+export function useDismiss(ref: React.RefObject<HTMLElement | null>, open: boolean, close: () => void) {
+  useEffect(() => {
+    if (!open) return;
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    const click = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) close(); };
+    addEventListener("keydown", key);
+    addEventListener("pointerdown", click);
+    return () => { removeEventListener("keydown", key); removeEventListener("pointerdown", click); };
+  }, [ref, open, close]);
+}
+
 export function ErrorText({ error }: { error?: string }) {
   return error ? <p className="error" role="alert">{error}</p> : null;
 }

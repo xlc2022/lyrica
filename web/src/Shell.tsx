@@ -1,11 +1,11 @@
 // The signed-in layout: sidebar, and the page the route points at.
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { get, patch, post, u, type DisplayChange, type Me, type Pool, type ThreadSummary, type UserCard } from "./api.ts";
 import { href, go, type Route } from "./route.ts";
 import { Thread } from "./Thread.tsx";
 import { Memory } from "./Memory.tsx";
 import { Panel } from "./Panel.tsx";
-import { ErrorText, shortTime, useAction, useLoad } from "./ui.tsx";
+import { ErrorText, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 export interface ShellContext {
   user: UserCard;
@@ -157,6 +157,10 @@ function ThreadLink({ t, userId, on }: { t: ThreadSummary; userId: string; on: b
 function PersonaMenu({ ctx, users, onAuthChange }: { ctx: ShellContext; users: UserCard[]; onAuthChange: () => void }) {
   const { user } = ctx;
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(ref, open, close);
+  useEffect(() => { addEventListener("hashchange", close); return () => removeEventListener("hashchange", close); }, [close]);
   const [run, , error] = useAction();
   const leave = (path: string, body: unknown) => run(async () => {
     await post(path, body);
@@ -165,7 +169,7 @@ function PersonaMenu({ ctx, users, onAuthChange }: { ctx: ShellContext; users: U
     onAuthChange();
   });
   return (
-    <div className="persona-menu">
+    <div className="persona-menu" ref={ref}>
       <button type="button" className="persona" aria-expanded={open} aria-haspopup="true" onClick={() => setOpen(!open)}>
         <span className="avatar" aria-hidden="true">{monogram(user)}</span>
         <span><b>{user.displayName}</b><small>Switch persona</small></span>
