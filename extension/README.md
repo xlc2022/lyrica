@@ -45,6 +45,13 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
   and the full system prompt plus the turn message (a TUI notification, or stderr in
   print mode).
 
+- **`workspace.ts`**: `createWorkspaceExtension(tools)` registers `read`,
+  `write`, `edit` and `bash`, routed to the thread's execution target (see
+  [docs/workspace.md](../docs/workspace.md)). It enforces the thread's
+  permission mode in `tool_call`, sends `!` commands to the same target, and
+  adds a short `workspace` prompt section. `LyricaOptions.folders()` carries
+  the thread's folders to Memory.
+
 No commands yet.
 
 ## Running it: `bin/lyrica`
@@ -55,6 +62,13 @@ bin/lyrica admin user add <login> [--admin]
 bin/lyrica admin user list | set-admin <login> on|off | passwd <login> | profile <login>
 bin/lyrica dev --init <dir>            # development runtime with test administrator "tester"
 bin/lyrica dev --runtime <dir> --user <login> [--debug-prompt] [-- <pi args>]
+bin/lyrica admin grants add|remove --user <login> --pool general|private <path>
+bin/lyrica admin grants list --user <login>
+bin/lyrica admin ssh add --user <login> <name> <account>@<host>[:<port>] [--root <path>]
+bin/lyrica admin ssh list|remove --user <login> [<name>]
+bin/lyrica admin net show --user <login>
+bin/lyrica admin net set --user <login> --pool general|private internet|services on|off
+bin/lyrica admin net hosts add|remove --user <login> --pool general|private <host>
 ```
 
 - Admin commands use `--runtime <dir>`, else `LYRICA_HOME`, else `./runtime`.
@@ -67,4 +81,7 @@ bin/lyrica dev --runtime <dir> --user <login> [--debug-prompt] [-- <pi args>]
   - Each run is a new general-pool thread in the development runtime, and its
     entries are recorded there, so `remember` and `recall` carry over between
     bench sessions.
+  - It also loads Lyrica's routed tools (`bin/bench.ts`) for that thread,
+    mounts the user's home workspace, and grants every general folder the
+    user may grant, read-write.
 - `serve`, `chat` and `mem` are stubs that name the thread that builds them.

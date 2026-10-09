@@ -9,6 +9,7 @@ export * from "./assemble.ts";
 export * from "./memory.ts";
 export * from "./record.ts";
 export * from "./routing.ts";
+export * from "./workspace.ts";
 
 export interface ThreadContext {
   user: User;
