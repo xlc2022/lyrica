@@ -167,6 +167,10 @@ describe("the memory browser", () => {
     const hits = (await li.get<MemoryHit[]>(`${m}/search?q=tomatoes`)).body;
     expect(hits.map((h) => [h.pool, h.id])).toEqual([["general", item.id]]);
     expect(hits[0]!.snippet).toContain("Li");
+    // Show general off hides the pool from search too, unless ?all=1.
+    await li.patch(`/api/u/${rt.li.id}/me/display`, { showGeneral: false });
+    expect((await li.get<MemoryHit[]>(`${m}/search?q=tomatoes`)).body).toEqual([]);
+    expect((await li.get<MemoryHit[]>(`${m}/search?q=tomatoes&all=1`)).body).toHaveLength(1);
 
     const url = `${m}/general/${enc(item.id)}`;
     await li.patch(url, { text: `[[u:${rt.li.id}]] grows tomatoes and basil` });

@@ -23,6 +23,7 @@ describe("a conversation", () => {
   it("streams a reply, stores it, and still has it after a restart", async () => {
     const { rt, li, model, path, stop } = await setup();
     model.reply({ text: "Hello, Li." });
+    await li.post(`/api/u/${rt.li.id}/threads`, { pool: "general", title: "newer" });
     const stream = li.events(`${path}/events`);
     await stream.ready;
     const sent = await li.post(`${path}/messages`, { text: "hi there" });
@@ -32,6 +33,11 @@ describe("a conversation", () => {
     expect(types).toEqual(expect.arrayContaining(["hello", "turn_start", "message_start", "text", "usage", "turn_end"]));
     expect(stream.events.filter((e) => e.event.type === "text").map((e) => (e.event as { delta: string }).delta).join("")).toBe("Hello, Li.");
     stream.close();
+
+    // The thread with recent activity comes first, ahead of a newer, quiet one.
+    const list = (await li.get<ThreadSummary[]>(`/api/u/${rt.li.id}/threads`)).body;
+    expect(list.map((x) => x.title)).toEqual(["test thread", "newer"]);
+    expect(list[0]!.updatedAt > list[0]!.createdAt).toBe(true);
 
     const page = (await li.get<MessagePage>(`${path}/messages`)).body;
     expect(page.messages.map((m) => [m.role, m.parts.find((p) => p.type === "text")])).toEqual([

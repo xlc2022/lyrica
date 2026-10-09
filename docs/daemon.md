@@ -86,7 +86,9 @@ Each active thread is one Pi session from `openThreadSession`, with
   local-only, a subagent wider than its parent, a folder outside the allowed
   paths, a host that matches everything.
 - Thread lists are per interface (`web` by default), filtered by the user's
-  display settings, with subagents nested under their parent.
+  display settings, most recently active first, with subagents nested under
+  their parent. Memory search honours the same pool filters; `?all=1` ignores
+  them in both.
 
 ## The event stream
 
