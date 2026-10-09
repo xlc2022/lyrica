@@ -5,9 +5,11 @@
   "exports": { ".": "./src/index.ts" },
   "dependencies": {
     "@node-rs/argon2": "2.2.2",
-    "better-sqlite3-multiple-ciphers": "13.0.3"
+    "better-sqlite3-multiple-ciphers": "13.0.3",
+    "ssh2": "1.17.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "7.6.13"
+    "@types/better-sqlite3": "7.6.13",
+    "@types/ssh2": "1.15.6"
   }
 }
