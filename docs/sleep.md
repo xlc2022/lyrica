@@ -53,8 +53,9 @@ working implementation (`config/extensions/stateful-memory/memory-sleep.js`).
    writes a note (catch-up stays light; Monika manages without it). Then she
    updates or creates pages, citing notes. Contradictions become questions for
    the user rather than guesses. This step also rewrites pages flagged by a
-   deletion. Notes and pages a user edited since the last sleep are
+   deletion. Notes and pages a user edited or added since the last sleep are
    authoritative: she builds on them, and asks rather than overwriting them.
+   She never edits or deletes a memory a user wrote.
 2. **Dream.** Free reflection, as in Monika, written into the journal. It's
    marked as reflection, so nothing in a dream becomes a fact by itself.
 3. **Wake.** Write WAKE: where things stand, what's in motion, what's

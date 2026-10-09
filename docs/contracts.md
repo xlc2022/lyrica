@@ -34,8 +34,8 @@ bin/         launchers and admin commands
 | **Note, page, WAKE, journal** | Memory layers (see [memory.md](memory.md)). |
 
 IDs and citations:
-- An entry is `e:<thread>#<n>`, a note is `n:<ulid>`, and a page is
-  `p:<slug>`.
+- An entry is `e:<thread>#<n>`, a whole thread is `t:<thread>`, a note is
+  `n:<ulid>`, and a page is `p:<slug>`.
 - A citation into the other pool carries its pool: `[general/n:…]`. Only
   private memory may cite general memory, never the reverse.
 
@@ -147,6 +147,12 @@ brings back an earlier version as a new revision. Each edit:
 
 Sleep reads `editedSince(watermark)` so it can treat user edits as
 authoritative.
+
+**User-introduced memories.** Through the owner view, `notes.add` and
+`pages.add` accept `author: user:<id>` and text with any inline links (`t:`,
+`e:`, `n:`, `p:`) or none. Each memory records its origin (`lyrica`, `sleep`
+or `user`), and the browser filters on it. Sleep may cite user memories but
+never edits or deletes them.
 
 **Owner view.** `openOwnerView(userId)` gives the signed-in user read and write
 access to both of their own pools, for the memory browser and `lyrica mem`.

@@ -47,6 +47,10 @@ is the main failure to test against.
    - `editedSince(watermark)` is ready for sleep;
    - `openOwnerView(userId)` serves the memory browser and is never handed to
      a session.
+   - Users can **add** their own notes and pages through the owner view, in
+     either pool. Links to threads, messages and other memories are optional,
+     and each memory records its origin, so "User introduced" can be listed.
+     Recalled user memories are labelled with their author.
 5. **Pages, WAKE and journal storage.**
    - Tables and store methods, including page `folders` and `forFolders`.
    - Sleep writes them later. This thread only needs `index()`, `get`, WAKE
@@ -110,6 +114,8 @@ is the main failure to test against.
   - an edit keeps mention tokens, updates citations and search, and can be
     restored from its revisions;
   - an owner view can't be passed to a session;
+  - a user-added memory, free-floating or linked, is recalled with its author
+    label and shows up in "connected to" and "used in";
   - nothing in memory appears as plaintext on disk.
 - On the bench, a fact she `remember`s in one session comes back through
   automatic recall in a new session. Use pi-ai's fake model if no real model

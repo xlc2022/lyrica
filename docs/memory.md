@@ -272,6 +272,33 @@ both pools.
   old note stays in history. She doesn't edit pages in conversation; sleep
   does.
 
+## Memories users add themselves
+
+Users can write their own notes and pages, not only edit hers.
+
+- **Pick a pool.** A memory a user adds goes into their general or private
+  pool, chosen when it's added, so the privacy rules apply as usual.
+- **Connect it, or don't.** A user memory can link to any mix of:
+  - **threads**, a whole thread (`[t:THREAD]`) or one message in it
+    (`[e:THREAD#N]`);
+  - **other memories**, notes (`[n:ID]`) or pages (`[p:SLUG]`);
+  - **nothing**, so it's free-floating.
+
+  Links are inline references, like the citations in her notes. "Connected
+  to" and "used in" therefore work the same way for both.
+- **"User introduced"** is a collection, not a separate privacy pool. Every
+  memory a user adds carries that origin, and the browser can filter on it, in
+  either pool. Free-floating user memories live there and nowhere else.
+- **Lyrica knows who wrote it.** When a user memory is recalled, it's labelled
+  "added by Li" (with the current name).
+  - She treats it as authoritative, like a user edit. If newer conversation
+    contradicts it, she asks rather than overriding it.
+  - Sleep folds user notes into pages, but never deletes or rewrites a user's
+    memory. Only the user can do that.
+- **Pages too.** A user can write a whole page, for example a reference page
+  about their homelab. Sleep may add to it, citing its own sources, but keeps
+  what the user wrote.
+
 ## The memory browser
 
 The web UI gets a memory browser:
@@ -281,12 +308,14 @@ The web UI gets a memory browser:
 - An item view: the text; **Came from** (cited sources, linking into the
   thread); **Used in** (pages and WAKE that cite it); and its revisions, with
   differences and a restore button.
+- Add a note or page, with optional links to threads, messages and other
+  memories, and filter by the **User introduced** origin.
 - Edit, archive and delete, recorded as the user who made the change.
 - The browser works through an **owner view**: the signed-in user's own
   general and private pools, read and write. An owner view never goes into a
   conversation or a model's context. Those use thread views only.
 
-Until the browser exists, `lyrica mem search|show|edit|delete` covers review.
+Until the browser exists, `lyrica mem search|show|add|edit|delete` covers review.
 `edit` reads the new text at the terminal prompt, never through a temporary
 file, so decrypted text doesn't touch disk. Users can also ask Lyrica to
 correct a memory in conversation.
