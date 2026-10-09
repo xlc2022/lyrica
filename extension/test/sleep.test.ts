@@ -220,9 +220,8 @@ describe("a night's sleep", () => {
     const s = await setup();
     const v = s.view();
     s.talk(v, "Hello there.", "{user} said hello");
-    s.models.addEndpoint(s.li, { name: "dead", kind: "cloud", baseUrl: await deadUrl() });
-    s.models.addModel(s.li, "dead", { modelId: "m" });
-    s.models.setProfile(s.li.id, "cloud", "sleep.dream", { endpointId: "dead", modelId: "m" });
+    const dead = s.models.addEndpoint(s.li, { name: "dead", kind: "cloud", baseUrl: await deadUrl() });
+    s.models.setProfile(s.li.id, "cloud", "sleep.dream", { offeringId: s.models.addModel(s.li, dead.id, { modelId: "m" }).id });
     const skipped = await s.sleep.run(s.li.id, "general", "scheduled");
     expect(skipped).toMatchObject({ status: "skipped", skipReason: "endpoint-down", phases: {} });
     expect(v.own.watermark()).toBeUndefined();
@@ -274,9 +273,8 @@ describe("a night's sleep", () => {
     const s = await setup();
     const sam = await s.users.createUser("sam", "pw2", profile("Sam"), { admin: false });
     await s.users.authenticate("sam", "pw2");
-    s.models.addEndpoint(sam, { name: "gpu", kind: "local", baseUrl: s.local.baseUrl });
-    await s.models.discover(sam, "gpu");
-    s.models.setProfile(sam.id, "cloud", "chat", s.localRef);
+    const gpu = s.models.addEndpoint(sam, { name: "gpu", kind: "local", baseUrl: s.local.baseUrl });
+    s.models.setProfile(sam.id, "cloud", "chat", { offeringId: (await s.models.discover(sam, gpu.id))[0]!.id });
     const v = s.view("general", sam.id);
     s.talk(v, "Tell me about friendship.", "{user} asked about friendship");
     s.script({ dream: [call("propose_persona", { path: "persona_topics/friends.md", text: "Friends are chosen family.", reason: "a dream about Sam" })] });

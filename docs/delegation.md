@@ -28,7 +28,7 @@ subagent:
   with the parent's `CallContext` as it is when the subagent starts: the
   parent's `subagent.cheap` or `subagent.strong` model. She picks a tier,
   never a model; only a saved workflow, which a user writes, may name a model
-  the parent allows. In a private or local-only thread it is always a local
+  the parent allows, by its offering ID or as `<endpoint>/<model>`. In a private or local-only thread it is always a local
   model. A refused model fails the run before any thread is made;
 - gets its workspace from `inheritSettings`: the parent's folders (or the
   ones asked for), read-only for a read-only role or `readOnly: true`, and

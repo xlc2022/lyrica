@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { DelegationEvent, MessagePage, Subagents, ThreadEvent, ThreadSummary } from "../src/api.ts";
+import type { DelegationEvent, EndpointInfo, MessagePage, Subagents, ThreadEvent, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 /**
@@ -15,8 +15,8 @@ async function setup() {
   const parent = await fakeOpenAI({ label: "parent", models: [{ id: "chat-model" }] });
   const sub = await fakeOpenAI({ label: "sub", models: [{ id: "sub-model" }] });
   await localModel(li, rt.li.id, parent.baseUrl, "chat-model");
-  await li.post(`/api/u/${rt.li.id}/endpoints`, { name: "subs", kind: "local", baseUrl: sub.baseUrl });
-  for (const task of ["subagent.cheap", "subagent.strong"]) await li.put(`/api/u/${rt.li.id}/profiles/cloud/${task}`, { model: { endpointId: "subs", modelId: "sub-model" } });
+  const subs = (await li.post<EndpointInfo>(`/api/u/${rt.li.id}/endpoints`, { name: "subs", kind: "local", baseUrl: sub.baseUrl })).body;
+  for (const task of ["subagent.cheap", "subagent.strong"]) await li.put(`/api/u/${rt.li.id}/profiles/cloud/${task}`, { model: { offeringId: subs.models[0]!.id } });
   const thread = (await li.post<ThreadSummary>(`/api/u/${rt.li.id}/threads`, { pool: "general", title: "parent" })).body;
   const path = `/api/u/${rt.li.id}/threads/general/${enc(thread.id)}`;
   return { rt, ...dm, li, parent, sub, thread, path };

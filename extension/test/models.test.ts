@@ -40,13 +40,13 @@ describe("the model runtime", () => {
       const s = await setup();
       for (const t of [s.thread("private"), s.thread("general", { localOnly: true })]) {
         const runtime = await modelRuntimeFor(s.models, t.call);
-        expect(runtime.getProviders().map((p) => p.id)).toEqual(["gpu"]);
-        expect(runtime.getAllModels().map((m) => `${m.provider}/${m.id}`)).toEqual(["gpu/qwen3.8-27b"]);
-        expect(runtime.getModel("openrouter", s.cloudRef.modelId)).toBeUndefined();
-        expect(() => runtime.registerProvider("openrouter", { baseUrl: s.cloud.baseUrl })).toThrow();
+        expect(runtime.getProviders().map((p) => p.id)).toEqual([s.gpu.id]);
+        expect(runtime.getAllModels().map((m) => `${m.provider}/${m.id}`)).toEqual([`${s.gpu.id}/qwen3.8-27b`]);
+        expect(runtime.getModel(s.openrouter.id, "deepseek/deepseek-4.1-flash")).toBeUndefined();
+        expect(() => runtime.registerProvider(s.openrouter.id, { baseUrl: s.cloud.baseUrl })).toThrow();
       }
       const general = await modelRuntimeFor(s.models, s.thread("general").call);
-      expect(general.getProviders().map((p) => p.id).sort()).toEqual(["gpu", "openrouter"]);
+      expect(general.getProviders().map((p) => p.id).sort()).toEqual([s.gpu.id, s.openrouter.id].sort());
     } finally {
       delete process.env.OPENROUTER_API_KEY;
     }
@@ -58,7 +58,7 @@ describe("the model runtime", () => {
     const runtime = await modelRuntimeFor(s.models, t.call);
     expect(() => piModelFor(runtime, s.models, "chat", { ...t.call, overrides: { chat: s.cloudRef } })).toThrow(CloudModelForbidden);
     // Even a cloud Model object from a general runtime can't be used through it.
-    const cloudModel = (await modelRuntimeFor(s.models, s.thread("general").call)).getModel("openrouter", s.cloudRef.modelId)!;
+    const cloudModel = (await modelRuntimeFor(s.models, s.thread("general").call)).getModel(s.openrouter.id, "deepseek/deepseek-4.1-flash")!;
     const { session, dispose } = await s.open(t);
     try {
       await expect(session.setModel(cloudModel)).rejects.toThrow();
@@ -116,7 +116,7 @@ describe("the model runtime", () => {
     const { session, runtime, chat, dispose } = await s.open({ ...parent, threadId: id, call });
     try {
       expect(chat).toEqual(s.localRef);
-      expect(runtime.getProviders().map((p) => p.id)).toEqual(["gpu"]);
+      expect(runtime.getProviders().map((p) => p.id)).toEqual([s.gpu.id]);
       await session.prompt("check the list");
     } finally {
       dispose();

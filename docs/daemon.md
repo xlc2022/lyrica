@@ -167,7 +167,8 @@ request. Memories are sent in stored form, with mention tokens, plus a map of
 users, so the UI renders current names and edits keep the tokens. It covers
 search, lineage, edit, restore, the four deletion levels and user-introduced
 notes and pages. The settings API covers profiles (with accent and monogram),
-display settings (in `user.db`), passwords, endpoints and profiles, network
+display settings (in `user.db`), passwords, endpoints, offerings, Clean up
+and the models notice, profiles, network
 defaults, SSH targets, and for administrators users, allowed paths, shared
 endpoints, the sleep time (`sleep.time` in `self.db`'s `settings`) and persona
 proposals.
@@ -191,6 +192,8 @@ drafted against: if the file has changed since, approving it needs
   user's general pool, then private pool, one at a time
   (`Lyricad.sleepNight`). A user in manual mode is left out; a user without
   a key, or a pool with nothing new, is skipped with the reason.
+  Before that, it prunes gone models nothing names (`Models.prune`,
+  [models.md](models.md)).
 - **`/sleep`.** `POST …/sleep/:pool`, or the text `/sleep` sent to a thread
   (which sleeps the thread's pool and starts no turn). In manual mode it
   answers `confirm` unless confirmed, and once the run ends a fresh thread

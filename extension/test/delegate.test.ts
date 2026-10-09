@@ -76,7 +76,7 @@ describe("delegate", () => {
       expect(run.status).toBe("finished");
       expect(run.result).toBe("checked locally");
       // Naming a cloud model is refused before any thread is made.
-      const named = await s.run(parent, { task: "check it", model: `openrouter/${s.cloudRef.modelId}` });
+      const named = await s.run(parent, { task: "check it", model: "openrouter/deepseek/deepseek-4.1-flash" });
       expect(named.status).toBe("failed");
       expect(named.result).toContain("isn't one of this thread's models");
       expect(parent.view.own.listThreads({ parent: parent.threadId })).toHaveLength(1);
@@ -178,7 +178,7 @@ describe("delegate", () => {
     const s = await setup();
     s.local.respond(() => ({ text: "local says plant tomatoes" }));
     s.cloud.respond((r) => ({ text: told(r).includes("Several advisers") ? "Combined: tomatoes, then beans." : "cloud says plant beans" }));
-    const run = await s.run(s.thread(), { council: { question: "What should I plant?", models: [`openrouter/${s.cloudRef.modelId}`, "gpu/qwen3.8-27b"] } });
+    const run = await s.run(s.thread(), { council: { question: "What should I plant?", models: ["openrouter/deepseek/deepseek-4.1-flash", "gpu/qwen3.8-27b"] } });
     expect(run.result).toContain("Combined: tomatoes, then beans.");
     const synthesis = told(s.cloud.requests.find((r) => told(r).includes("Several advisers"))!);
     expect(synthesis).toContain("local says plant tomatoes");
