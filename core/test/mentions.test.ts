@@ -44,16 +44,24 @@ describe("mentions", () => {
     expect(render(text, lookup)).toBe("Li met Mina and thanked them. [[u:gone]] too.");
   });
 
-  it("turns current and previous names in a query into tokens", () => {
-    expect(queryTokens("what did li say about Mia's piano", profiles)).toBe("what did [[u:u1]] say about [[u:u2]]'s piano");
-    expect(queryTokens("Mina", profiles)).toBe("[[u:u2]]");
-    expect(queryTokens("Lisbon and Miami", profiles)).toBe("Lisbon and Miami");
+  it("finds current and previous names in a query without changing it", () => {
+    expect(queryTokens("what did li say about Mia's piano, and Li again", profiles)).toEqual([
+      { name: "li", userId: "u1" },
+      { name: "Mia", userId: "u2" },
+    ]);
+    expect(queryTokens("Mina", profiles)).toEqual([{ name: "Mina", userId: "u2" }]);
+    expect(queryTokens("Lisbon and Miami", profiles)).toEqual([]);
+  });
+
+  it("reports a name inside a hyphenated word, so the caller can keep the literal word", () => {
+    // The Memory thread searches for "Li" OR [[u:u1]]; notes about "Li-ion" still match the word.
+    expect(queryTokens("Li-ion battery", profiles)).toEqual([{ name: "Li", userId: "u1" }]);
   });
 
   it("prefers a current name over someone else's previous one", () => {
     const clash = new Map(profiles);
     clash.set("u3", { displayName: "Ash", pronouns: PRONOUN_PRESETS.he, previousNames: [{ name: "Li", until: "2026-01-01" }] });
-    expect(queryTokens("Li", clash)).toBe("[[u:u1]]");
-    expect(queryTokens("Ash", clash)).toBe("[[u:u3]]");
+    expect(queryTokens("Li", clash)).toEqual([{ name: "Li", userId: "u1" }]);
+    expect(queryTokens("Ash", clash)).toEqual([{ name: "Ash", userId: "u3" }]);
   });
 });

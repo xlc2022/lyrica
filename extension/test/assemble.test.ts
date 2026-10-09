@@ -17,43 +17,53 @@ const now = new Date("2026-10-09T12:00:00Z");
 const li: Profile = { displayName: "Li", pronouns: PRONOUN_PRESETS.they, previousNames: [] };
 
 describe("prompt assembly", () => {
-  it("orders sections and omits empty memory", () => {
-    const { prompt, sections } = assemble({ persona, topics: [routed("music", "Music is structured feeling.")], memory: {}, profile: li, now });
-    expect(sections.map((s) => s.name)).toEqual(["persona", "topics", "time", "user"]);
-    expect(prompt.indexOf("She is Lyrica")).toBeLessThan(prompt.indexOf('<topic id="music">'));
-    expect(prompt).toContain("You are talking with Li (pronouns: they/them).");
-    expect(prompt).not.toContain("previous name");
+  it("puts stable content in the system prompt and omits empty memory", () => {
+    const a = assemble({ persona, topics: [routed("music", "Music is structured feeling.")], memory: {}, profile: li, now });
+    expect(a.customPrompt).toBe("# Soul\nShe is Lyrica.\n\n# Style\nWarm.");
+    expect(Object.keys(a.sections)).toEqual(["topics", "user"]);
+    expect(a.sections.topics).toBe('<topic id="music">\nMusic is structured feeling.\n</topic>');
+    expect(a.sections.user).toBe("You are talking with Li (pronouns: they/them).");
+  });
+
+  it("keeps per-turn content (recall, time) out of the system prompt", () => {
+    const a = assemble({
+      persona, topics: [], profile: li, now,
+      memory: { wake: "WAKE", pageIndex: "pages", recall: "a recall hit", lastTalk: new Date("2026-10-07T12:00:00Z") },
+    });
+    expect(Object.keys(a.sections)).toEqual(["wake", "pages", "user"]);
+    expect(JSON.stringify(a.sections)).not.toMatch(/recall hit|2026/);
+    expect(a.turn).toMatch(/^<recall>\na recall hit\n<\/recall>\n\n<time>\nIt is Friday, 9 October 2026 at .*You last talked 2 days ago\.\n<\/time>$/s);
+  });
+
+  it("gives the same system content at a different time", () => {
+    const input = { persona, topics: [], memory: {}, profile: li };
+    const a = assemble({ ...input, now });
+    const b = assemble({ ...input, now: new Date("2026-10-10T08:00:00Z") });
+    expect([b.customPrompt, b.sections]).toEqual([a.customPrompt, a.sections]);
+    expect(b.turn).not.toBe(a.turn);
   });
 
   it("tells her who she's talking with, including previous names", () => {
     const renamed: Profile = { ...li, displayName: "Lin", previousNames: [{ name: "Li", until: "2026-10-09" }] };
-    const { prompt } = assemble({ persona, topics: [], memory: {}, profile: renamed, now });
-    expect(prompt).toContain("You are talking with Lin (pronouns: they/them).");
-    expect(prompt).toContain("previous name: Li (until 2026-10-09)");
-  });
-
-  it("places memory sections between topics and time", () => {
-    const { sections } = assemble({
-      persona, topics: [], profile: li, now,
-      memory: { wake: "WAKE", pageIndex: "pages", recall: "recall", lastTalk: new Date("2026-10-07T12:00:00Z") },
-    });
-    expect(sections.map((s) => s.name)).toEqual(["persona", "wake", "pages", "recall", "time", "user"]);
-    expect(sections.find((s) => s.name === "time")!.text).toContain("2 days ago");
+    const { sections } = assemble({ persona, topics: [], memory: {}, profile: renamed, now });
+    expect(sections.user).toContain("You are talking with Lin (pronouns: they/them).");
+    expect(sections.user).toContain("previous name: Li (until 2026-10-09)");
   });
 
   it("keeps every section within its budget", () => {
     const long = Array.from({ length: 400 }, (_, i) => `Line ${i} of a long topic.`).join("\n");
-    const budgets = { ...DEFAULT_BUDGETS, persona: 20, topics: 1000, wake: 100 };
-    const { sections } = assemble(
-      { persona, topics: [routed("a", long), routed("b", long), routed("c", long)], memory: { wake: long }, profile: li, now },
+    const budgets = { ...DEFAULT_BUDGETS, persona: 20, topics: 1000, wake: 100, recall: 100 };
+    const a = assemble(
+      { persona, topics: [routed("a", long), routed("b", long), routed("c", long)], memory: { wake: long, recall: long }, profile: li, now },
       budgets,
     );
-    const body = (name: string) => sections.find((s) => s.name === name)!;
-    expect(body("persona").truncated).toBe(true);
-    expect(body("wake").text.length).toBeLessThanOrEqual(budgets.wake + "<wake>\n\n</wake>".length);
-    const topicBodies = body("topics").text.replace(/<\/?topic[^>]*>\n?/g, "");
-    expect(topicBodies.length).toBeLessThanOrEqual(budgets.topics + 10);
-    expect(body("topics").text).toContain('<topic id="a">');
+    const section = (name: string) => a.report.find((s) => s.name === name)!;
+    expect(section("persona").truncated).toBe(true);
+    expect(a.customPrompt.length).toBeLessThanOrEqual(budgets.persona);
+    expect(a.sections.wake!.length).toBeLessThanOrEqual(budgets.wake);
+    expect(section("recall").text.length).toBeLessThanOrEqual(budgets.recall);
+    expect(a.sections.topics!.replace(/<\/?topic[^>]*>\n?/g, "").length).toBeLessThanOrEqual(budgets.topics + 10);
+    expect(a.sections.topics).toContain('<topic id="a">');
   });
 
   it("cuts at a line break when one is near", () => {

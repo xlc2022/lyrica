@@ -8,9 +8,9 @@ export interface Budgets {
   topics: number;
   wake: number;
   pages: number;
+  user: number;
   recall: number;
   time: number;
-  user: number;
 }
 
 export const DEFAULT_BUDGETS: Budgets = {
@@ -18,9 +18,9 @@ export const DEFAULT_BUDGETS: Budgets = {
   topics: 9000,
   wake: 4000,
   pages: 3000,
+  user: 600,
   recall: 4000,
   time: 300,
-  user: 300,
 };
 
 export interface PromptInput {
@@ -37,38 +37,76 @@ export interface Section {
   text: string;
   budget: number;
   truncated: boolean;
+  /** "system" stays in the cacheable system prompt; "turn" goes in this turn's message. */
+  place: "system" | "turn";
 }
 
-/** Builds the system prompt: persona core, topics, WAKE, page index, recall, time, who you're talking with. */
-export function assemble(input: PromptInput, budgets: Budgets = DEFAULT_BUDGETS): { prompt: string; sections: Section[] } {
-  const sections: Section[] = [];
-  const add = (name: keyof Budgets, body: string | undefined, wrap = (s: string) => `<${name}>\n${s}\n</${name}>`) => {
-    if (!body?.trim()) return;
-    const fitted = fit(body.trim(), budgets[name]);
-    sections.push({ name, text: wrap(fitted), budget: budgets[name], truncated: fitted !== body.trim() });
+export interface Assembled {
+  /** The persona core: Pi's `customPrompt`. */
+  customPrompt: string;
+  /** Stable sections for Pi's `sections`, in order: topics, wake, pages, user. Pi adds the tags. */
+  sections: Record<string, string>;
+  /** Content that changes every turn (recall, time), sent as a message so the prompt prefix stays cacheable. */
+  turn: string;
+  report: Section[];
+}
+
+/**
+ * Splits her context into a stable system prompt (persona core, topics, WAKE,
+ * page index, who she's talking with) and a per-turn message (recall, time).
+ */
+export function assemble(input: PromptInput, budgets: Budgets = DEFAULT_BUDGETS): Assembled {
+  const report: Section[] = [];
+  const add = (name: keyof Budgets, body: string | undefined, place: Section["place"]) => {
+    const raw = body?.trim();
+    if (!raw) return undefined;
+    const text = fit(raw, budgets[name]);
+    report.push({ name, text, budget: budgets[name], truncated: text !== raw, place });
+    return text;
   };
 
-  add("persona", input.persona.core.map((f) => f.text.trim()).join("\n\n"));
+  const customPrompt = add("persona", input.persona.core.map((f) => f.text.trim()).join("\n\n"), "system") ?? "";
 
-  let room = budgets.topics;
-  const topicTexts: string[] = [];
-  let topicsTruncated = false;
-  for (const { topic } of input.topics) {
-    if (room < 200 || !topic.text.trim()) continue;
-    const body = fit(topic.text.trim(), room);
-    topicsTruncated ||= body !== topic.text.trim();
-    topicTexts.push(`<topic id="${topic.id}">\n${body}\n</topic>`);
+  const sections: Record<string, string> = {};
+  const topics = topicBlocks(input.topics, budgets.topics);
+  if (topics.text) {
+    sections.topics = topics.text;
+    report.push({ name: "topics", text: topics.text, budget: budgets.topics, truncated: topics.truncated, place: "system" });
+  }
+  const stable: [keyof Budgets, string | undefined][] = [
+    ["wake", input.memory.wake],
+    ["pages", input.memory.pageIndex],
+    ["user", whoLine(input.profile)],
+  ];
+  for (const [name, body] of stable) {
+    const text = add(name, body, "system");
+    if (text) sections[name] = text;
+  }
+
+  const turn = (["recall", "time"] as const)
+    .map((name) => {
+      const text = add(name, name === "recall" ? input.memory.recall : timeLine(input.now, input.memory.lastTalk), "turn");
+      return text && `<${name}>\n${text}\n</${name}>`;
+    })
+    .filter(Boolean)
+    .join("\n\n");
+
+  return { customPrompt, sections, turn, report };
+}
+
+function topicBlocks(topics: RoutedTopic[], budget: number): { text: string; truncated: boolean } {
+  let room = budget;
+  let truncated = false;
+  const blocks: string[] = [];
+  for (const { topic } of topics) {
+    const raw = topic.text.trim();
+    if (room < 200 || !raw) continue;
+    const body = fit(raw, room);
+    truncated ||= body !== raw;
+    blocks.push(`<topic id="${topic.id}">\n${body}\n</topic>`);
     room -= body.length;
   }
-  if (topicTexts.length) sections.push({ name: "topics", text: topicTexts.join("\n\n"), budget: budgets.topics, truncated: topicsTruncated });
-
-  add("wake", input.memory.wake);
-  add("pages", input.memory.pageIndex);
-  add("recall", input.memory.recall);
-  add("time", timeLine(input.now, input.memory.lastTalk));
-  add("user", whoLine(input.profile));
-
-  return { prompt: sections.map((s) => s.text).join("\n\n"), sections };
+  return { text: blocks.join("\n\n"), truncated };
 }
 
 /** Cuts text to at most `budget` characters, at a paragraph or line break when one is near. */

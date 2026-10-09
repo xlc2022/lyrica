@@ -37,8 +37,18 @@ export function render(text: string, profiles: (id: UserId) => Profile | undefin
   });
 }
 
-/** Turns users' names (current or previous) in a search query into their name tokens. */
-export function queryTokens(query: string, profiles: Map<UserId, Profile>): string {
+export interface NameMatch {
+  /** The name as it appears in the query. */
+  name: string;
+  userId: UserId;
+}
+
+/**
+ * Finds users' names (current or previous) in a search query. The query is
+ * not changed: the caller searches for each name OR its user's token, so
+ * "Li-ion" still matches notes that say "Li-ion".
+ */
+export function queryTokens(query: string, profiles: Map<UserId, Profile>): NameMatch[] {
   // Current names win over previous ones; longer names win over their prefixes.
   const byName = new Map<string, UserId>();
   for (const [id, p] of profiles) byName.set(p.displayName.toLowerCase(), id);
@@ -46,9 +56,17 @@ export function queryTokens(query: string, profiles: Map<UserId, Profile>): stri
     for (const prev of p.previousNames) if (!byName.has(prev.name.toLowerCase())) byName.set(prev.name.toLowerCase(), id);
   }
   const names = [...byName.keys()].filter(Boolean).sort((a, b) => b.length - a.length);
-  if (!names.length) return query;
+  if (!names.length) return [];
   const pattern = new RegExp(`(?<![\\p{L}\\p{N}])(${names.map(escape).join("|")})(?![\\p{L}\\p{N}])`, "giu");
-  return query.replace(pattern, (name) => `[[u:${byName.get(name.toLowerCase())}]]`);
+  const seen = new Set<string>();
+  const matches: NameMatch[] = [];
+  for (const [name] of query.matchAll(pattern)) {
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    matches.push({ name, userId: byName.get(key)! });
+  }
+  return matches;
 }
 
 function startsSentence(text: string, offset: number): boolean {
