@@ -30,7 +30,20 @@ phone (principle 1).
      start date, title) and the user's own groups (made and filled from a
      thread's header or a right-click / long-press menu), saved per user (a small
      API and a `thread_groups` table in `user.db`; a thread's group is a
-     per-user setting, never in the pool).
+     per-user setting, never in the pool). One Sort menu holds the sort
+     choices and the Show general / private / hidden checkboxes.
+   - The thread menu (right-click or long press, letter shortcuts): Pin,
+     Mark as unread, Rename, Share with ›, Move to group ›, Hide, Delete.
+     **Share with** sends a copy to another user on the server: a
+     notification for them with Add to General, Add to Private and Decline;
+     accepting copies the entries into a new thread in their pool, as an
+     export does, and indexes it there. Nothing of the sender's memory goes
+     with it. Tests: a declined share leaves nothing in the recipient's
+     pools; a shared private thread lands only where the recipient chooses;
+     the sender's later messages never reach the copy.
+   - The header shows "Lyrica (ver. …, build …)" inline, with the date
+     beneath; the daemon reports its version (package.json) and build (the
+     git commit, set at build time).
    - A Notifications row with its count above the user's button; the user's
      button and its menu, Settings and Server as
      pages with a section list (the control panel's cards move into them),

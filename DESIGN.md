@@ -114,11 +114,24 @@ Each user has two pools of memory.
   - **Threads can be sorted** by date (grouped Today, Yesterday, Previous 7
     days, Previous 30 days, the default), by last activity, by start date or
     by title, or shown in **the user's own groups**, which they make, name
-    and move threads into from a thread's header or by right-clicking (a long
-    press on a phone) in the thread list: **New group** anywhere, and **Move
-    to …** on a thread. The choice and the groups
-    are saved per user, in `user.db`. A group can hold general and private
-    threads; hiding a pool still hides its threads.
+    and move threads into from a thread's header or the thread menu, or by
+    right-clicking empty space in the thread list (**New group**). The
+    choice and the groups are saved per user, in `user.db`. A group can hold
+    general and private threads; hiding a pool still hides its threads.
+  - **One Sort menu** above the threads holds the sort choices and, below
+    a line, the Show general, Show private and Show hidden threads
+    checkboxes. Nothing on screen says that hidden content exists.
+  - **The thread menu** opens by right-clicking a thread (a long press on a
+    phone), with a letter shortcut for each item: Pin (P), Mark as unread
+    (U), Rename (R), **Share with ›** (S), **Move to group ›** (M), Hide (H)
+    and Delete (D). Delete confirms, says that what Lyrica learned from the
+    thread is forgotten, and offers to delete its child threads too.
+  - **Share with** sends another user a copy of the thread as it is now.
+    They add it to their General or Private threads, or decline. The
+    sender's later messages aren't shared, and none of the sender's
+    memories go with it; the copy is the recipient's thread from then on, and
+    Lyrica remembers it in the recipient's pool. Sharing a private thread
+    asks first. Only users on the same server appear in the list.
   - **The user's button** opens a menu: Notifications (with its count),
     Settings, Server (administrators), Switch user, Lock and Log out.
   - **Settings** (the user's own) and **Server** (administrators) are pages
@@ -126,10 +139,12 @@ Each user has two pools of memory.
     of Settings.
   - **Notifications:** one page for everything waiting for the user: sleep
     items, persona suggestions and approvals, permission requests, child
-    thread updates, image models to review, clean-up items, finished
-    downloads, host problems. It sorts by newest, oldest, type, or host and
+    thread updates, threads shared with them, image models to review,
+    clean-up items, finished downloads, host problems. It sorts by newest, oldest, type, or host and
     pool, filters by type and place, has actions on each row and bulk
     actions, and pages through large numbers. Counts elsewhere link to it.
+  - **Header:** "Lyrica (ver. …, build …)" with the date and time beneath;
+    the daemon reports its version and build.
   - **Welcome:** a greeting, the message box with General or Private, her
     items from last night, what's waiting, and what's answering now.
 - **Each interface keeps its own threads.** Lyrica is continuous across
@@ -139,8 +154,8 @@ Each user has two pools of memory.
 - A thread belongs to one user, one pool and one interface, all chosen when it
   is created.
 - **Visibility:**
-  - Two checkboxes, **Show general** and **Show private**, show or hide all
-    content from a pool.
+  - Two checkboxes in the Sort menu, **Show general** and **Show private**,
+    show or hide all content from a pool.
   - Any thread can be hidden, and **Show hidden threads** reveals them.
   - These settings are saved per user. They only affect what's displayed:
     hiding doesn't change what Lyrica remembers.
