@@ -111,8 +111,10 @@ Details in [docs/memory.md](docs/memory.md).
 - **Lineage:** each layer cites the one below it by ID, inline. "Where did this
   come from" and "what was it consolidated into" are both answered from those
   citations.
-- **Writes:** she saves notes without asking. Pages change only during sleep.
-  Every edit keeps the previous text as a revision.
+- **Writes:** she saves notes without asking, one fact per note, and is told
+  to save liberally. Sleep reports how many notes it had to catch up on, which
+  shows whether she's noting too little. Pages change only during sleep. Every
+  edit keeps the previous text as a revision.
 - **Review:** users search, review and edit her memory in a memory browser in
   the web UI.
 - **Deletion has four levels:** archive, delete a memory, forget a thread, and

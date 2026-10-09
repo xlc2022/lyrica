@@ -115,15 +115,25 @@ follows the same local/cloud rules as every other model call.
 
 ## Writing
 
-- `remember(text, about?, supersedes?)` writes a note, and its source is the
-  current thread entry. She uses it freely. Superseded notes stay but drop out
-  of automatic recall.
+- `remember(notes: [{ text, about?, supersedes? }])` writes notes. Their
+  source is the current thread entry. Superseded notes stay but drop out of
+  automatic recall.
+- **One fact per note, and plenty of notes.** Small notes keep lineage and
+  deletion precise. Small notes must never mean fewer notes, so:
+  - one `remember` call can save several notes at once, so splitting a moment
+    into facts costs her nothing extra;
+  - her instructions say to save liberally: when in doubt, note it. Notes are
+    cheap, and sleep consolidates and prunes;
+  - sleep's catch-up writes notes for what she missed, and each sleep run
+    reports how many. A count that stays high means she is noting too little
+    in conversation, which is a signal to adjust her instructions;
+  - the continuity evals include "was it noted at all?" scenarios.
 - Pages change only during sleep. See [sleep.md](sleep.md).
 - Each change to a note or page keeps the previous text in `revisions`, with
-  an author of `lyrica`, `sleep` or `xu`.
+  an author of `lyrica`, `sleep` or `user:<id>`.
 
 Model-facing memory tools: `remember`, `recall`, `read`. That's three of the
-six-tool budget.
+eight-tool budget.
 
 ## Deletion
 
@@ -138,17 +148,17 @@ A **tombstone** holds no text: only the deleted item's ID, its kind, when it was
 deleted, who deleted it, and the IDs of its source entries. Its one job is to
 stop sleep from re-extracting a deleted fact from a thread that still exists.
 
-## Xu's editing tool
+## The memory browser
 
 The web UI gets a memory browser:
 
 - A search box and filters by pool and layer (note, page, WAKE, journal).
 - An item view: the text; **Came from** (cited sources, linking into the
   thread); **Used in** (pages and WAKE that cite it); and its revisions.
-- Edit, archive and delete, recorded as Xu.
+- Edit, archive and delete, recorded as the user who made the change.
 
 Until the browser exists, a small CLI (`lyrica mem search|show|delete`) covers
-review, and Xu can ask Lyrica to correct a memory in conversation. There is no
+review, and users can ask Lyrica to correct a memory in conversation. There is no
 CLI editing, because opening a memory in `$EDITOR` would write decrypted text
 to a file.
 
@@ -164,8 +174,3 @@ they expire. Anything already sent to a model provider is out of our hands.
 - Contradiction-detection code. Sleep (the model) notices contradictions and
   asks.
 - Memory tiers by model route.
-
-## Open questions
-
-1. **Note granularity.** One fact per note, as proposed, or one note per
-   conversation moment that may hold several facts?
