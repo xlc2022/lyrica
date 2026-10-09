@@ -1,0 +1,6 @@
+{
+  "name": "@lyrica/host",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" }
+}
