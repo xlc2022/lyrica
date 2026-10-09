@@ -1,7 +1,7 @@
 # Lyrica: design principles
 
-**Status: accepted (2026-10-09).** Changes go through
-[DECISIONS.md](DECISIONS.md).
+**Status: accepted (2026-10-09).** The design built on these principles is in
+[DESIGN.md](DESIGN.md).
 
 ## Thesis
 
@@ -37,7 +37,7 @@ real use has run into a real wall.
 ### 2. One operator, one server, simple boundaries
 
 Lyrica serves Xu on a server Xu administers. Xu's personas are separate
-**users** with their own credentials and their own encrypted databases (D-021).
+**users** with their own credentials and their own encrypted databases.
 The server's administrator is trusted.
 
 - A boundary is enforced by the structure of the system (separate databases,
@@ -62,7 +62,7 @@ compaction and the TUI. Lyrica is a persona directory plus one Pi extension.
 ### 4. Few stores, each easy to explain
 
 All of her state lives in one encrypted SQLite database per space, plus one
-shared database (D-013):
+shared database:
 
 - Threads: what was said.
 - Persona: who she is.
@@ -115,21 +115,23 @@ brake.
 
 | Thing | Budget |
 |---|---|
-| Model-facing tools | 6 or fewer |
+| Model-facing tools | 8 or fewer |
 | Slash commands | 6 or fewer |
-| Long-running processes | 1 daemon, plus Pi's TUI when in use (D-007) |
+| Long-running processes | 1 daemon, plus Pi's TUI when in use |
 | Core extension | about 2,000 lines |
-| Docs | README, PRINCIPLES, DECISIONS, and at most one page per component |
+| Docs | README, AGENTS, PRINCIPLES, DESIGN, the contracts, briefs, and at most one page per component |
 
-Going over a budget takes a DECISIONS entry or removing something else.
+Going over a budget takes an agreed change to DESIGN.md, or removing
+something else.
 
 ### 9. The persona is about her, not about the machine
 
 Persona files hold her values, voice, tastes, opinions and history. They don't
 hold session policies, storage tiers or tool behavior.
 
-- She grows through proposals in sleep's journal. Xu accepts them in
-  conversation and are stored as persona revisions.
+- She grows through proposals from her dream journal and from reflection. An
+  administrator approves each one in conversation, and each is kept as a
+  persona revision.
 - She can be curious about her own memory. Her identity shouldn't be built out
   of its implementation.
 - The persona is where the thesis lives, so it deserves the most care. A
@@ -137,7 +139,7 @@ hold session policies, storage tiers or tool behavior.
 
 ### 10. Interfaces are separate rooms; memory is what connects them
 
-Each interface owns its own threads (D-003). Lyrica is continuous across
+Each interface owns its own threads. Lyrica is continuous across
 interfaces because she remembers, not because threads are mirrored.
 
 - Interfaces are built one at a time: web chat first. The next one starts only
@@ -149,10 +151,11 @@ interfaces because she remembers, not because threads are mirrored.
 The previous attempt drifted because every review added guards and caveats and
 nothing ever removed them. These rules work against that:
 
-1. **Xu owns decisions.** Models propose and Xu decides. Each decision gets a
-   short entry in [DECISIONS.md](DECISIONS.md): date, decision, reason, and what
-   it rules out. A new model session reads PRINCIPLES.md and DECISIONS.md first
-   and doesn't reopen a settled entry without new evidence.
+1. **Xu owns decisions.** Models propose and Xu decides. Settled decisions are
+   written into [DESIGN.md](DESIGN.md) as current design, not as a log.
+   Reversals are noted in its History section. A new model session reads
+   PRINCIPLES.md and DESIGN.md first, and doesn't reopen a settled point
+   without new evidence.
 2. **Every change names the principle it serves.** "Closes a theoretical gap"
    isn't a principle.
 3. **Ask reviewers the right question.** Don't ask for "all problems", because
@@ -160,8 +163,8 @@ nothing ever removed them. These rules work against that:
    and what can be deleted.
 4. **Deleting code counts as progress.** Ask a model for a removal pass
    regularly.
-5. **Docs describe what exists.** Plans live in a DECISIONS entry or an issue,
-   not in architecture documents that keep growing. No doc should say "staged,
+5. **Docs describe what exists or has been agreed.** Work in progress lives in
+   briefs or issues, not in architecture documents that keep growing. No doc should say "staged,
    not yet validated."
 6. **Tests protect what Xu would notice:** context assembly, memory round trips
    and sleep output. Don't add a test for every hypothetical guard.

@@ -26,9 +26,9 @@ bin/         launchers and admin commands
 
 | Term | Meaning |
 |---|---|
-| **User** | One of Xu's personas, with its own login (D-021). Either an administrator or a normal user (D-026). |
-| **Pool** | `general` or `private` (D-019). Each user has one of each. |
-| **Interface** | Where a thread lives: `web`, `cli`, `matrix`, `forum` or `sleep` (D-003). |
+| **User** | One of Xu's personas, with its own login. Either an administrator or a normal user. |
+| **Pool** | `general` or `private`. Each user has one of each. |
+| **Interface** | Where a thread lives: `web`, `cli`, `matrix`, `forum` or `sleep`. |
 | **Thread** | One conversation. It belongs to one user, one pool and one interface. |
 | **Entry** | One stored Pi session entry in a thread. |
 | **Note, page, WAKE, journal** | Memory layers (see [memory.md](memory.md)). |
@@ -39,7 +39,7 @@ IDs and citations:
 - A citation into the other pool carries its pool: `[general/n:…]`. Only
   private memory may cite general memory, never the reverse.
 
-## core/keyring (D-015, D-024)
+## core/keyring
 
 ```ts
 unlockSelf(passphrase: string): Promise<void>            // self.db only
@@ -90,7 +90,7 @@ nothing else. No code path gives a general view a private handle.
 
 Authors are `lyrica`, `sleep` or `user:<id>`.
 
-## core/models: the cloud boundary lives here (D-009, D-016, D-019)
+## core/models: the cloud boundary lives here
 
 ```ts
 type Task = "chat" | "subagent.cheap" | "subagent.strong" | "compaction"
@@ -127,15 +127,17 @@ The extension is created with a `ThreadContext`:
 - **`before_agent_start`** builds the prompt sections, in order: persona core,
   routed topic addenda, WAKE, page index, recall hits, time since last talk,
   and the user's display name. Each section has a size budget.
-- **Tools** (at most 6 in total; see principle 8):
+- **Tools** (at most 8 in total; see principle 8):
   - `remember`, `recall` and `read` (Memory thread);
   - `delegate` (Models thread);
-  - `calendar` and `sort` (Integrations thread).
+  - `calendar` and `sort` (Integrations thread);
+  - `web_search` and `web_fetch` (research, carried over from v1 or taken from
+    a Pi package).
 
-  Web research would be a seventh, which needs a decision to raise the budget.
+  That uses all 8.
 - **Commands:** `/sleep`, and others only within the budget.
 - Lyrica's sessions **never** load project context files (`AGENTS.md`,
-  `CLAUDE.md`). Her self-primer (D-011) is a routed topic.
+  `CLAUDE.md`). Her self-primer is a routed topic.
 
 ## daemon
 
@@ -153,7 +155,7 @@ The extension is created with a `ThreadContext`:
   - memory browser;
   - sleep runs.
 - **Scheduler:** at `sleep.time`, for each user with a key available and each
-  pool with activity past its watermark, run sleep (D-020).
+  pool with activity past its watermark, run sleep.
 
 ## sleep
 
@@ -163,7 +165,7 @@ runSleep(userId: string, pool: Pool, reason: "scheduled" | "manual"): SleepRun
 // skipReason: "no-key" | "endpoint-down" | "no-activity"
 ```
 
-## integrations (D-010)
+## integrations
 
 ```ts
 interface CalendarProvider {          // google, icloud, caldav
@@ -180,7 +182,7 @@ through the `calendar` and `sort` tools.
 ## UI rules that cross components
 
 - The current model and endpoint, with a cloud or local badge, are always
-  visible in a thread (D-009).
+  visible in a thread.
 - **Show general**, **Show private** and **Show hidden threads** are per-user
-  display filters (D-027).
-- The sidebar has a Sleep section (D-022).
+  display filters.
+- The sidebar has a Sleep section.

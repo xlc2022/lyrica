@@ -1,7 +1,7 @@
 # Brief: Core (milestone 1, "She is herself")
 
 **Thread:** Core. **Branch:** `feature/core`. **Depends on:** nothing.
-**Read first:** AGENTS.md, PRINCIPLES.md, DECISIONS.md, docs/contracts.md.
+**Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md, docs/contracts.md.
 
 ## Goal
 

@@ -4,7 +4,7 @@ A continuous personal companion built on [Pi](https://github.com/badlogic/pi-mon
 
 This repository is being rebuilt from scratch. Contributors (human or model)
 start with [AGENTS.md](AGENTS.md). The design lives in
-[PRINCIPLES.md](PRINCIPLES.md) and [DECISIONS.md](DECISIONS.md). The memory
+[PRINCIPLES.md](PRINCIPLES.md) and [DESIGN.md](DESIGN.md). The memory
 design is in [docs/memory.md](docs/memory.md).
 
 Lyrica runs for one person, Xu, on one server. Each of Xu's personas is a separate

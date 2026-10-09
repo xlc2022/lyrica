@@ -1,7 +1,6 @@
 # Memory
 
-**Status: agreed in outline** (D-004, D-012, D-013, D-014). The sleep cycle is
-in [sleep.md](sleep.md) and is still under discussion.
+**Status: agreed.** The sleep cycle is in [sleep.md](sleep.md).
 
 Xu's requirements:
 
@@ -32,8 +31,8 @@ citations.
 
 ## Storage
 
-Memory lives in encrypted SQLite (SQLCipher), with one database per space
-(D-013):
+Memory lives in encrypted SQLite (SQLCipher), with separate databases for each
+user and pool:
 
 ```text
 runtime/
@@ -44,13 +43,13 @@ runtime/
     private.db                 same tables, private pool
 ```
 
-Each user (one of Xu's personas, D-021) has their own databases, endpoint
+Each user (one of Xu's personas) has their own databases, endpoint
 settings and memory pools. Lyrica's persona is the only thing shared between
 users.
 
-- **Two kinds of space (D-019).** A **general** space may use cloud models or a
-  custom endpoint. A **private** space may use only a custom endpoint. Nothing
-  in a private space ever reaches a cloud model.
+- **Two pools per user.** The **general** pool may use cloud models or a
+  custom endpoint. The **private** pool may use only a custom endpoint. Nothing
+  in the private pool ever reaches a cloud model.
 - **Separate files, separate keys.** A general thread's code only ever opens
   `general.db`, so private memory can't reach a general context by mistake. A
   private thread opens both: it reads general memory and writes only to its
@@ -63,7 +62,7 @@ users.
   on an encrypted filesystem.
 - **Full-text search lives inside the encrypted database** (FTS5). There is no
   plaintext index.
-- **Unlocking (D-015).** One passphrase unwraps the per-database keys when
+- **Unlocking.** One passphrase unwraps the per-database keys when
   `lyricad` starts. By default it asks for the passphrase on every restart. The
   optional "start automatically" mode stores the unwrapped key with systemd
   credentials (sealed to the TPM if one exists). Choosing that mode trades
@@ -71,7 +70,7 @@ users.
 - **Backups** are encrypted (restic or borg). Memory never goes into a git
   repository.
 
-Tables in a space database, roughly: `threads`, `entries`, `notes`, `pages`,
+Tables in a pool database, roughly: `threads`, `entries`, `notes`, `pages`,
 `wake`, `journal`, `citations`, `revisions`, `tombstones`, plus FTS tables.
 
 A note's text carries inline citations such as `[e:web/3f7a2c#41]`, and a
@@ -98,13 +97,13 @@ open risk [n:20261009-k3f9].
 
 The cheapest mechanism comes first:
 
-1. **Always in context** for the thread's space: persona, WAKE, and a **page
+1. **Always in context** for the thread's pool: persona, WAKE, and a **page
    index** with each page's title and one-line summary. The index tells her
    what she knows about, which is what lets her think "I have notes on that"
    without being prompted. If the index outgrows its budget (about 3k tokens),
    it shows recently updated pages and pages that match the conversation.
 2. **Automatic recall on every user turn.** Search notes, pages and past
-   threads in the space using Xu's message, and inject the top few hits as
+   threads in the pool using Xu's message, and inject the top few hits as
    short snippets with their IDs (about 1.5k tokens).
 3. **Deliberate lookup** through tools. `recall(query)` searches.
    `read(id)` opens a page, a note, or a window of a past thread around an
@@ -119,14 +118,14 @@ follows the same local/cloud rules as every other model call.
 - `remember(text, about?, supersedes?)` writes a note, and its source is the
   current thread entry. She uses it freely. Superseded notes stay but drop out
   of automatic recall.
-- Pages change only during sleep (D-012). See [sleep.md](sleep.md).
+- Pages change only during sleep. See [sleep.md](sleep.md).
 - Each change to a note or page keeps the previous text in `revisions`, with
   an author of `lyrica`, `sleep` or `xu`.
 
 Model-facing memory tools: `remember`, `recall`, `read`. That's three of the
 six-tool budget.
 
-## Deletion (D-014)
+## Deletion
 
 | Level | Effect |
 |---|---|
@@ -143,7 +142,7 @@ stop sleep from re-extracting a deleted fact from a thread that still exists.
 
 The web UI gets a memory browser:
 
-- A search box and filters by space and layer (note, page, WAKE, journal).
+- A search box and filters by pool and layer (note, page, WAKE, journal).
 - An item view: the text; **Came from** (cited sources, linking into the
   thread); **Used in** (pages and WAKE that cite it); and its revisions.
 - Edit, archive and delete, recorded as Xu.
