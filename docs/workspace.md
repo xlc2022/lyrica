@@ -149,7 +149,8 @@ How it is enforced:
   order:
   - replies on connections already made;
   - nothing to `lyricad`'s own ports, on any address (`Workspace`'s
-    `excludePorts`; `lyricad` passes its HTTP port);
+    `excludePorts`, a required option, so forgetting it can't leave them
+    open; `lyricad` passes its HTTP port);
   - the sandbox's loopback, where pasta forwards exactly the host's loopback
     ports, minus the excluded ones, when the services switch is on;
   - everything else, if internet is on;
@@ -172,7 +173,8 @@ How it is enforced:
   or a networked sandbox can't start, network modes are refused: every thread
   runs with network off and `networkRefused` says why. `lyricad` runs it at
   startup, and `lyrica dev` prints the reason.
-- IPv4 only for now.
+- IPv4 only for now: sandboxes run `pasta --ipv4-only`, and IPv6 host
+  entries are refused until IPv6 is supported end to end.
 - SSH targets don't depend on these switches: `lyricad`'s SSH client reaches
   them, not the sandbox. Model calls also come from `lyricad`, so local-only
   and the switches are independent.

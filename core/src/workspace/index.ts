@@ -32,8 +32,11 @@ const safeName = (name: string, what: string) => {
 };
 
 export interface WorkspaceOptions {
-  /** lyricad's own ports (its HTTP API): never reachable from a sandbox, on any address. */
-  excludePorts?: number[];
+  /**
+   * lyricad's own ports (its HTTP API): never reachable from a sandbox, on any
+   * address. Required, so forgetting it can't leave them open; pass [] for none.
+   */
+  excludePorts: number[];
   bwrap?: string;
   pasta?: string;
 }
@@ -49,7 +52,7 @@ export class Workspace {
   /** Which folders each user may grant. Only administrators change them. */
   readonly allowedPaths: AllowedPaths;
 
-  constructor(private readonly keyring: Keyring, private readonly users: Users, private readonly opts: WorkspaceOptions = {}) {
+  constructor(private readonly keyring: Keyring, private readonly users: Users, private readonly opts: WorkspaceOptions) {
     this.allowedPaths = new AllowedPaths(keyring.self(), users, keyring.home);
   }
 
@@ -135,7 +138,7 @@ export class Workspace {
       // One allowed host that answers nothing: enough to start pasta and load the rules.
       const box = new Sandbox({
         workdir: dir, grants: [], network: { internet: false, services: false, hosts: ["192.0.2.1:9"] },
-        bwrap: this.opts.bwrap, pasta: this.opts.pasta,
+        exclude: this.opts.excludePorts, bwrap: this.opts.bwrap, pasta: this.opts.pasta,
       });
       const r = await box.run(["bash", "-c", probe], { timeoutMs: 30_000 });
       const out = r.stdout.toString();

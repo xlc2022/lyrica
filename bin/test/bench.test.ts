@@ -35,7 +35,7 @@ describe.skipIf(!runnable)("lyrica dev", () => {
     const users = new Users(keyring);
     const tester = await users.createUser("tester", "pw", profile("Tester"), { admin: true });
     await users.authenticate("tester", "pw");
-    new Workspace(keyring, users).allowedPaths.allow(tester, tester.id, "general", join(host, "project"));
+    new Workspace(keyring, users, { excludePorts: [] }).allowedPaths.allow(tester, tester.id, "general", join(host, "project"));
 
     const faux = fauxProvider({ provider: "faux", models: [{ id: "echo" }] });
     faux.setResponses([

@@ -110,7 +110,11 @@ export class Sandbox implements ExecutionTarget {
         stdio: ["pipe", "pipe", "pipe", ...fds, ...data.map(() => "pipe" as const)],
       });
       for (const fd of fds) closeSync(fd);
-      data.forEach(([, text], i) => (child.stdio[3 + fds.length + i] as Writable).end(text));
+      data.forEach(([, text], i) => {
+        const pipe = child.stdio[3 + fds.length + i] as Writable;
+        pipe.on("error", () => {}); // if bwrap or pasta never starts, the spawn error is what's reported
+        pipe.end(text);
+      });
       const { stdin, stdout, stderr } = child as unknown as { stdin: Writable; stdout: Readable; stderr: Readable };
       const out: Buffer[] = [];
       const err: Buffer[] = [];
