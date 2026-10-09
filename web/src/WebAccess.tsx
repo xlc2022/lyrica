@@ -78,13 +78,10 @@ function WebAccessForm({ path, access, onSaved }: { path: string; access: WebAcc
       </fieldset>
 
       {mode !== "off" && (
-        <fieldset className="group" disabled={busy}>
-          <legend>Hostname</legend>
-          <label className="field"><span>Hostname</span>
-            <input value={name} placeholder="lyrica.example.net" autoCapitalize="none" onChange={(ev) => setName(ev.target.value)} />
-            <small className="muted">The address you'll open in the browser, for example lyrica.example.net. Its DNS record should point at this machine's Tailscale address.</small>
-          </label>
-        </fieldset>
+        <label className="field"><span>Hostname</span>
+          <input value={name} placeholder="lyrica.example.net" autoCapitalize="none" disabled={busy} onChange={(ev) => setName(ev.target.value)} />
+          <small className="muted">The address you'll open in the browser, for example lyrica.example.net. Its DNS record should point at this machine's Tailscale address.</small>
+        </label>
       )}
 
       {mode === "builtin" && (
