@@ -203,7 +203,7 @@ export type RunStatus = "running" | "question" | "finished" | "failed" | "stoppe
 
 /** One delegate call and the subagents it started. */
 export class Run {
-  readonly id = `d-${randomBytes(3).toString("hex")}`;
+  readonly id = `d-${randomBytes(4).toString("hex")}`;
   status: RunStatus = "running";
   result = "";
   readonly subagents: Subagent[] = [];
@@ -314,7 +314,7 @@ export class Delegation {
     return run;
   }
 
-  /** This thread's runs, newest first, from the records plus what's live. */
+  /** This thread's subagents, newest first, from the records. */
   status(thread: ThreadContext): SubagentRecord[] {
     return this.store.runs(thread.user.id, thread.pool, { parent: thread.threadId });
   }
