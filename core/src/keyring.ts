@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { hashRaw } from "@node-rs/argon2";
@@ -22,6 +22,9 @@ export interface WrappedKey {
   tag: string;
   argon2: Argon2Params;
 }
+
+/** What a subkey is for. Each purpose gets its own key, derived from the user's data key. */
+export type SubkeyPurpose = "pool:general" | "pool:private" | "home";
 
 export class WrongPassword extends Error {
   constructor() { super("wrong password"); }
@@ -83,6 +86,15 @@ export class Keyring {
     const key = this.keys.get(userId);
     if (!key) throw new Locked(`user ${userId} is locked`);
     return key;
+  }
+
+  /**
+   * A 256-bit key for one purpose (a pool database, the encrypted home
+   * workspace), derived with HKDF-SHA256 from the user's data key. Purposes
+   * never share a key. Throws Locked if the user is locked.
+   */
+  subkey(userId: string, purpose: SubkeyPurpose): Buffer {
+    return Buffer.from(hkdfSync("sha256", this.userKey(userId), Buffer.alloc(0), `lyrica:${purpose}`, 32));
   }
 
   lockUser(userId: string): void {

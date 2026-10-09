@@ -1,7 +1,8 @@
 # Brief: Workspace
 
 **Thread:** Workspace. **Branch:** `feature/workspace`. **Depends on:** Core
-(keyring, users, `ThreadContext`, the `lyrica` command).
+(merged). **Runs alongside:** Memory. The two meet only through the contracts
+listed under "Seams" below.
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md, docs/contracts.md,
 docs/workspace.md.
 
@@ -14,10 +15,12 @@ the project. Treat escaping the sandbox as the main failure to test against.
 
 ## In scope
 
-1. **Grants.**
+1. **Grants.** Everything Workspace stores goes in the user's `user.db`. The
+   pool databases belong to Memory.
    - Store each user's allowed host paths, with separate lists for the general
-     and private pools, in their `user.db`.
-   - Store each thread's chosen grants, read-only or read-write.
+     and private pools.
+   - Store each thread's chosen grants (read-only or read-write), network
+     setting and permission mode, keyed by thread ID.
    - A general thread can never grant a private path.
    - `lyrica admin grants add|list|remove --user <u> --pool <general|private> <path>`.
 2. **Sandbox target.** Implement bubblewrap with every namespace unshared and
@@ -31,7 +34,8 @@ the project. Treat escaping the sandbox as the main failure to test against.
    - Path checks happen *and* the mounts confine. Don't rely on the checks
      alone.
 3. **Home workspace.**
-   - gocryptfs per user, with its key derived (HKDF) from the user's data key.
+   - gocryptfs per user, keyed with `keyring.subkey(userId, "home")`, which
+     is already in Core.
    - `mountHome` runs when the key becomes available, and `unmountHome` when
      it's dropped.
    - Each thread gets a folder with an `uploads/` subfolder.
@@ -55,6 +59,16 @@ the project. Treat escaping the sandbox as the main failure to test against.
      are enforced through Pi's `tool_call` event.
 7. **Developer bench.** `lyrica dev` switches from `--no-builtin-tools` to
    Lyrica's routed tools, with grants taken from the development runtime.
+
+## Seams with Memory
+
+- **Folders:** supply the thread's granted folders to the extension through
+  the `folders()` option of `LyricaOptions`. Memory uses them to bring back
+  pages about those folders. Never import from `core/store`.
+- **Tool calls in memory:** they become memory automatically, because tool
+  calls are thread entries. Nothing extra is needed from Workspace.
+- **Tools:** register yours in your own extension module. Memory does the
+  same.
 
 ## Out of scope
 

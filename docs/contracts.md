@@ -47,8 +47,12 @@ unlockUser(userId: string, password: string): Promise<void>
 saveUserKey(userId: string): Promise<void>                // "save credentials"
 forgetSavedKey(userId: string): Promise<void>
 hasUserKey(userId: string): boolean
+subkey(userId: string, purpose: "pool:general" | "pool:private" | "home"): Buffer  // HKDF-SHA256
 lockUser(userId: string): void
 ```
+
+- Pool databases (Memory) and the encrypted home workspace (Workspace) each
+  use their own `subkey`. Never use the raw data key for them.
 
 - Each user has a random 256-bit data key, wrapped by Argon2id of their
   password. Changing the password rewraps the key. The data is never
@@ -126,13 +130,18 @@ nothing else. No code path gives a general view a private handle.
 |---|---|
 | Threads | `create({ parent?, unlogged? })`, `list({ includeHidden })`, `get`, `setHidden`, `setUnlogged`, `appendEntry`, `loadEntries`, `forget` |
 | Notes | `add`, `get`, `update(author)`, `archive`, `delete` |
-| Pages | `index()` (titles and summaries), `get`, `put(author)` (sleep only), `delete` |
+| Pages | `index()` (titles and summaries), `get`, `put(author)` (sleep only), `delete`, `forFolders(paths)` |
 | WAKE and journal | `getWake`, `putWake`, `addJournal`, `listJournal` |
 | Search | `search(query, { kinds, limit })`, returning `{ id, kind, snippet, score }` |
 | Lineage | `cameFrom(id)`, `usedIn(id)`, `revisions(id)`, `isTombstoned(entryId)` |
 | Sleep | `watermark()`, `recordSleepRun(run)`, `listSleepRuns()` |
 
 Authors are `lyrica`, `sleep` or `user:<id>`.
+
+**Pages can describe folders.** A page has an optional `folders` list of host
+paths or SSH locations. Sleep sets it. `forFolders(paths)` returns the pages
+whose folders contain or equal any of the given paths, which is how opening a
+folder brings back what she knows about it.
 
 **Unlogged threads** (see [memory.md](memory.md#threads-that-arent-logged))
 are enforced in the store:
@@ -179,6 +188,10 @@ The extension is created with a `ThreadContext`:
 - The factory is `createLyricaExtension(thread: ThreadContext, opts:
   LyricaOptions)`. The options are:
   - `persona()` and `profile()`, read every turn;
+  - `folders()`: the thread's granted folders, also read every turn. It
+    defaults to none. Workspace supplies it, and Memory uses it to load
+    `forFolders` pages. This is the only link between the two components, so
+    neither imports the other;
   - `debugPrompt`;
   - `budgets`.
 - **`before_agent_start`** never replaces the whole system prompt. It does two
@@ -259,13 +272,16 @@ interface ExecutionTarget {               // "sandbox" | "ssh:<name>"
   ops(): { read: ReadOperations; write: WriteOperations; edit: EditOperations; bash: BashOperations };
 }
 targetFor(ctx: ThreadContext): ExecutionTarget
-grantsFor(ctx: ThreadContext): Grant[]    // from the user's per-pool allowed paths
+grantsFor(ctx: ThreadContext): Grant[]    // the thread's chosen grants
 mountHome(userId): Promise<string>        // gocryptfs; called when the user's key becomes available
 unmountHome(userId): Promise<void>
 ```
 
 - Every sandbox run receives exactly `grantsFor(ctx)`, the thread's folder in
   the home workspace, and a read-only system.
+- **Workspace settings live in the user's `user.db`:** allowed paths per pool,
+  each thread's grants, network setting and permission mode, and SSH targets.
+  Workspace never adds tables to the pool databases, which belong to Memory.
 - The network is unshared unless the thread allows it.
 - See [workspace.md](workspace.md).
 
