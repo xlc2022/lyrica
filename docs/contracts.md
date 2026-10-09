@@ -171,8 +171,9 @@ The extension is created with a `ThreadContext`:
   `SessionManager.inMemory(cwd, opts, view.own.loadEntries(threadId))`, the
   router's `modelRuntimeFor`, and a `DefaultResourceLoader` that has the inline
   Lyrica extension and context-file discovery turned off.
-  - Built-in tools are disabled (`noTools`), so only the extension's tools
-    exist.
+  - Built-in tools are disabled with `noTools: "builtin"`, so only the
+    extension's tools exist. `noTools: "all"` would remove the extension's
+    tools too.
   - Sessions run in-process, with no `pi` subprocesses.
   - Each `message_end` calls `appendEntry`.
 - **Unlocking:** when started as a service, `lyricad` starts locked, and the
