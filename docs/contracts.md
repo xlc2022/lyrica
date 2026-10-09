@@ -180,8 +180,19 @@ The extension is created with a `ThreadContext`:
   - users and admin;
   - memory browser;
   - sleep runs.
+- **Local socket:** a Unix socket (mode `0600`, owned by the service user)
+  serves the same API to `lyrica chat` and `lyrica mem`. The user still logs in
+  with a password over the socket. Being on the machine isn't enough.
 - **Scheduler:** at `sleep.time`, for each user with a key available and each
   pool with activity past its watermark, run sleep.
+
+## bin/lyrica
+
+One entry point with subcommands: `serve`, `chat`, `admin`, `mem` and `dev`
+(see [DESIGN.md](../DESIGN.md#runtime)).
+- `dev` refuses to start unless it is pointed at a development runtime: a
+  directory with a marker file, created by `lyrica dev --init`.
+- No subcommand reads a password from arguments or the environment.
 
 ## sleep
 

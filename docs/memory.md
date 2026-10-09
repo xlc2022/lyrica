@@ -57,9 +57,9 @@ users.
   endpoint.
 - **Threads are stored in the database too.** The daemon runs Pi sessions with
   an in-memory session manager (`SessionManager.inMemory(cwd, opts, entries)`
-  in Pi 1.1). It loads entries from the database and writes new ones back. Pi's
-  terminal UI writes its own JSONL files, so the CLI keeps its data directory
-  on an encrypted filesystem.
+  in Pi 1.1). It loads entries from the database and writes new ones back.
+  Every interface, including `lyrica chat`, goes through `lyricad`, so no
+  thread is ever written as a plaintext file.
 - **Full-text search lives inside the encrypted database** (FTS5). There is no
   plaintext index.
 - **Unlocking.** One passphrase unwraps the per-database keys when

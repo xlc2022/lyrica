@@ -171,9 +171,32 @@ Details in [docs/sleep.md](docs/sleep.md).
 
 - The Lyrica Pi extension holds everything that makes her Lyrica: persona,
   context assembly, memory tools and sleep.
-- **`lyricad`** is one Node process. It hosts Pi SDK sessions for web chat and
-  later Matrix and the forum, using that same extension.
-- The CLI is Pi's terminal UI with the same extension loaded.
+- **`lyricad`** is one Node process. It hosts the Pi SDK sessions for every
+  interface, using that same extension. It is the only process that writes
+  Lyrica's databases.
+- **Deployment:** `lyricad` runs as a systemd service, in practice inside an
+  LXC container or VM on Li's Proxmox. No Docker.
+- **One command, `lyrica`**, written in TypeScript like the rest of the
+  project:
+
+  | Subcommand | What it does |
+  |---|---|
+  | `lyrica serve` | Starts `lyricad`. This is what the systemd unit runs. |
+  | `lyrica chat` | The terminal interface: a thin client of the running `lyricad` over a local Unix socket. Its threads are stored encrypted like any other interface's. |
+  | `lyrica admin …` | Set up, manage users and administrators, change passwords and profiles. |
+  | `lyrica mem …` | Search, show and delete memories, until the web memory browser exists. |
+  | `lyrica dev` | The developer bench. See below. |
+
+  Passwords and passphrases are only ever typed at a hidden prompt, never
+  passed as arguments or environment variables.
+- **The developer bench (`lyrica dev`)** runs Pi's own terminal interface with
+  the Lyrica extension loaded, for testing persona, prompt assembly and tools
+  before `lyricad` exists, and for debugging afterwards.
+  - It works only against a separate development runtime with test users,
+    never real data, because Pi's terminal interface writes plaintext session
+    files.
+  - A debug flag prints the assembled prompt for each turn.
+  - The same in-process setup, run headless, drives the continuity evals.
 - Interfaces between components are in [docs/contracts.md](docs/contracts.md).
 
 ## How the project runs

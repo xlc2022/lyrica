@@ -45,13 +45,21 @@ scaffolding, users, keys and extension skeleton from this thread.
      v1's notes say Monika's version reset its counter while persisting.
    - Leave stubs for memory sections (WAKE, page index, recall), returning
      nothing.
-7. **Admin and dev launcher:**
-   - `bin/lyrica admin init`: create the `self.db` passphrase and the first
+7. **The `lyrica` command** (TypeScript, one entry point with subcommands; see
+   the `bin/lyrica` section of the contracts):
+   - `lyrica admin init`: create the `self.db` passphrase and the first
      administrator.
-   - `bin/lyrica admin user add|list|set-admin|passwd|profile`.
-   - `bin/lyrica dev --user <name>`: prompt for the password, then start Pi's
-     terminal UI with `--no-session` and the extension loaded. Nothing is
-     written in plaintext, and Pi's default model config is used for now.
+   - `lyrica admin user add|list|set-admin|passwd|profile`.
+   - `lyrica dev --init <dir>`: create a development runtime, with a marker
+     file and a test administrator.
+   - `lyrica dev --runtime <dir> --user <name>`:
+     - refuses any directory without the development marker;
+     - prompts for the password;
+     - starts Pi's terminal UI with `--no-session` and the extension loaded;
+     - `--debug-prompt` prints the assembled prompt for each turn;
+     - Pi's default model config is used for now.
+   - Leave `serve`, `chat` and `mem` as stubs that say which thread builds
+     them.
 
 ## Out of scope
 
