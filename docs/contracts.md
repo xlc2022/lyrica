@@ -185,9 +185,12 @@ The extension is created with a `ThreadContext`:
   things:
   - It edits `event.systemPromptOptions`. The persona core goes in
     `customPrompt`. Topics, WAKE, the page index, and "who you're talking
-    with" go in `sections`. Pi's tool snippets and guidelines are left intact,
-    and Pi appends only what changed, so the prompt prefix stays cacheable
-    (DeepSeek's prefix cache, a local model's KV cache).
+    with" go in `sections`. Pi appends only what changed, so the prompt
+    prefix stays cacheable (DeepSeek's prefix cache, a local model's KV cache).
+  - In Pi 1.1.0, setting `customPrompt` also drops Pi's default tool list and
+    rules. The extension therefore rebuilds them from each tool's own snippets
+    and guidelines (`toolGuidance`) into a `tools` section. Any tool
+    registered with a snippet and guidelines appears there automatically.
   - It returns content that changes every turn, namely recall hits and the
     time, as the result's `message`. That way it sits in the transcript, not
     in the prefix.
