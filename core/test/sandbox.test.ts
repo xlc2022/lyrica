@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { connect as connectTcp, createServer, type Server } from "node:net";
 import { lookup } from "node:dns/promises";
 import { networkInterfaces, tmpdir } from "node:os";
@@ -20,6 +20,10 @@ const homeRunnable = runnable && has("gocryptfs") && has("fusermount3");
 if (process.env.LYRICA_SANDBOX_TESTS === "require" && !homeRunnable) {
   throw new Error(`sandbox tests required but can't run here (${root ? "running as root" : "bwrap, gocryptfs or fusermount3 missing"})`);
 }
+
+// Making a file someone else owns needs root; CI's runner has passwordless sudo.
+const sudo = runnable && (() => { try { execFileSync("sudo", ["-n", "true"], { stdio: "ignore" }); return true; } catch { return false; } })();
+if (process.env.LYRICA_SANDBOX_TESTS === "require" && runnable && !sudo) throw new Error("sandbox tests required but sudo -n isn't available");
 
 let dir: string;
 let server: Server;
@@ -109,7 +113,7 @@ describe.skipIf(!runnable)("the sandbox", () => {
     // Symlinks pass the path check, but resolve inside the sandbox, where the target doesn't exist.
     for (const link of ["abs-link", "rel-link"]) {
       await expect(ops.read.readFile(p("rw", link))).rejects.toThrow(/No such file/);
-      await expect(ops.write.writeFile(p("rw", link), "overwritten")).rejects.toThrow(/No such file|nonexistent/);
+      await expect(ops.write.writeFile(p("rw", link), "overwritten")).rejects.toThrow(/is a symlink/);
     }
     // And commands, which skip the checks, are confined by the mounts alone.
     const r = await sh(`cat ${p("rw", "..", "outside", "secret.txt")} ${p("rw", "abs-link")} rw-link 2>&1; cd ${p("rw")}/../.. && ls`);
@@ -146,6 +150,48 @@ describe.skipIf(!runnable)("the sandbox", () => {
       expect(r.out, t).not.toMatch(/hello from the host|REACHED/);
     }
     expect((await sh("cat /proc/net/dev | tail -n +3 | cut -d: -f1 | tr -d ' '")).out.trim()).toBe("lo");
+  });
+
+  it("writes in place, keeping the owner, when the folder won't take a temp file", async () => {
+    mkdirSync(p("rw", "locked"));
+    writeFileSync(p("rw", "locked", "f.txt"), "old");
+    const inode = statSync(p("rw", "locked", "f.txt")).ino;
+    chmodSync(p("rw", "locked"), 0o555);
+    try {
+      await box().ops().write.writeFile(p("rw", "locked", "f.txt"), "new");
+      expect(readFileSync(p("rw", "locked", "f.txt"), "utf8")).toBe("new");
+      expect(statSync(p("rw", "locked", "f.txt")).ino).toBe(inode);
+    } finally {
+      chmodSync(p("rw", "locked"), 0o755);
+    }
+  });
+
+  it.skipIf(!sudo)("writes in place a file someone else owns, so it keeps its owner", async () => {
+    const file = p("rw", "theirs.txt");
+    writeFileSync(file, "old", { mode: 0o666 });
+    chmodSync(file, 0o666);
+    execFileSync("sudo", ["-n", "chown", "0:0", file]);
+    await box().ops().write.writeFile(file, "new");
+    expect(readFileSync(file, "utf8")).toBe("new");
+    expect(statSync(file).uid).toBe(0);
+    expect(readdirSync(p("rw")).filter((f) => f.startsWith(".theirs.txt."))).toEqual([]);
+  });
+
+  it("writes atomically: parallel reads see the old file or the new one, never a partial one", async () => {
+    const ops = box().ops();
+    const file = p("rw", "big.txt");
+    const versions = ["a", "b", "c", "d"].map((c) => c.repeat(4 * 1024 * 1024));
+    writeFileSync(file, versions[0]!);
+    chmodSync(file, 0o640);
+    const writes = versions.slice(1).map((v) => ops.write.writeFile(file, v));
+    const reads = Array.from({ length: 24 }, () => ops.read.readFile(file).then((b) => b.toString()));
+    const seen = await Promise.all(reads);
+    await Promise.all(writes);
+    for (const text of seen) expect(versions.includes(text), `read ${text.length} bytes starting ${JSON.stringify(text.slice(0, 1))}`).toBe(true);
+    expect(statSync(file).mode & 0o777).toBe(0o640);
+    expect(readdirSync(p("rw")).filter((f) => f.startsWith(".big.txt."))).toEqual([]);
+    await ops.write.writeFile(p("rw", "new.txt"), "fresh");
+    expect(statSync(p("rw", "new.txt")).mode & 0o777).toBe(0o666 & ~process.umask());
   });
 
   it("keeps long output under Pi's limits, so Pi writes no temp file", async () => {

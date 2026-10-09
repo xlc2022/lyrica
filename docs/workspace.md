@@ -42,6 +42,17 @@ database files. A command that could see either one could read everything.
   paths and symlinks always resolve inside it. `read`, `write` and `edit`
   first refuse paths outside `/workspace` and the grants (and writes to
   read-only grants). The mounts confine her anyway: `bash` has no path checks.
+- **Writes are atomic for files she owns.** `write` and `edit` write a temp
+  file in the same folder, give it the old file's mode and group (or the
+  usual mode for a new file), and rename it over the target. A read running
+  at the same time sees the old file or the new one, never an empty or
+  half-written one, and a failed write leaves the old file in place.
+- **Files she doesn't own are written in place**, so they keep their owner,
+  group and permissions: a file of Li's that `lyrica` may write through its
+  group or an ACL stays Li's. The same goes for a file whose group can't be
+  kept, or one in a folder she can't create files in. A read can then briefly
+  see a partial file.
+- A symlink at the target is refused, not followed or replaced.
 - Folders are opened by `lyricad` and mounted by file descriptor
   (`--bind-fd`), after checking that the opened folder is exactly the granted
   path and that the grant is still allowed. A symlink swapped in by a running
@@ -57,6 +68,10 @@ so it never touches disk, and no system `ssh` agent is involved.
 - The host key is pinned on first connection; a different key later fails.
 - The root path check follows remote symlinks. Commands are not confined by
   it, only by the remote account.
+- Writes follow the same rule there: for a file the remote account owns, an
+  SFTP temp file with the old mode and group, then `posix-rename` (plain
+  rename where the server lacks it); otherwise, or if the temp file can't be
+  made, the file is written in place.
 
 ## Grants: what she may touch
 
