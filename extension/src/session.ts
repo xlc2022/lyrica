@@ -3,7 +3,7 @@ import {
   type AgentSession, type ExtensionFactory, type ModelRuntime,
 } from "@earendil-works/pi-coding-agent";
 import type { ModelRef, Models } from "@lyrica/core";
-import { createLyricaExtension, type LyricaOptions, type ThreadContext } from "./index.ts";
+import type { ThreadContext } from "./index.ts";
 import { modelRuntimeFor, piModelFor } from "./models.ts";
 import { recordEntries } from "./record.ts";
 
@@ -12,17 +12,16 @@ type Settings = Parameters<typeof SettingsManager.inMemory>[0];
 export interface ThreadSessionOptions {
   thread: ThreadContext;
   models: Models;
-  lyrica: LyricaOptions;
   /** Working directory for Pi. Nothing is discovered from it. */
   cwd: string;
-  /** More extensions, such as the workspace tools or delegate. */
-  extensions?: ExtensionFactory[];
+  /** Lyrica herself (createLyricaExtension) or a subagent's worker, plus tools such as the workspace's. */
+  extensions: ExtensionFactory[];
   settings?: Settings;
 }
 
 /**
  * A Pi session for one thread, in process: the thread's stored entries, the
- * Lyrica extension, Pi's built-in tools off, and a model runtime from the
+ * given extensions, Pi's built-in tools off, and a model runtime from the
  * router, so the session can only reach the models its CallContext allows.
  * Entries are recorded into the thread as turns end.
  */
@@ -34,7 +33,7 @@ export async function openThreadSession(o: ThreadSessionOptions): Promise<{ sess
   const loader = new DefaultResourceLoader({
     cwd: o.cwd, agentDir: o.cwd, settingsManager,
     noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true, noThemes: true,
-    extensionFactories: [createLyricaExtension(thread, o.lyrica), ...(o.extensions ?? [])],
+    extensionFactories: o.extensions,
   });
   await loader.reload();
   const { session } = await createAgentSession({

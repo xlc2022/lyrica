@@ -36,9 +36,8 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
   message.
 - **`tools.ts`** registers `remember`, `recall` and `read_memory`, each with a
   snippet and guidelines. In an unlogged thread `remember` is taken out of the
-  active tools.
-- **`record.ts`** stores Pi's entries in the thread (`recordEntries`,
-  `entryRecorder`).
+  active tools; for a subagent (`readOnly`) it isn't registered.
+- **`record.ts`** stores Pi's entries in the thread (`recordEntries`).
 - The factory throws unless `thread.view` came from `openThreadView` for the
   thread's pool.
 - With `debugPrompt: true`, each turn shows the routed topics, section sizes,
@@ -51,6 +50,14 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
   permission mode in `tool_call`, sends `!` commands to the same target, and
   adds a short `workspace` prompt section. `LyricaOptions.folders()` carries
   the thread's folders to Memory.
+- **`models.ts`**: `modelRuntimeFor(models, call)` builds the Pi
+  `ModelRuntime` for a thread from the router, and `piModelFor` resolves a
+  task to a Pi model. See [docs/models.md](../docs/models.md).
+- **`session.ts`**: `openThreadSession` hosts one thread in process: its
+  stored entries, the given extensions, Pi's built-in tools off, the router's
+  runtime and chat model, and entries recorded as turns end.
+- **`delegate.ts`**: the `delegate` tool (`createDelegateExtension`) and
+  `runSubagent`. See [docs/models.md](../docs/models.md#delegate).
 
 No commands yet.
 
@@ -61,24 +68,31 @@ bin/lyrica admin init                  # self.db passphrase, first administrator
 bin/lyrica admin user add <login> [--admin]
 bin/lyrica admin user list | set-admin <login> on|off | passwd <login> | profile <login>
 bin/lyrica dev --init <dir>            # development runtime with test administrator "tester"
-bin/lyrica dev --runtime <dir> --user <login> [--debug-prompt] [-- <pi args>]
+bin/lyrica dev --runtime <dir> --user <login> [--private | --local-only] [--debug-prompt]
 bin/lyrica admin grants add|remove --user <login> --pool general|private <path>
 bin/lyrica admin grants list --user <login>
 bin/lyrica admin ssh add --user <login> <name> <account>@<host>[:<port>] [--root <path>]
 bin/lyrica admin ssh list|remove --user <login> [<name>]
+bin/lyrica admin models endpoints add <name> cloud|local <base-url> [--shared | --user <login>]
+bin/lyrica admin models endpoints list|remove|probe [<name>] [--shared | --user <login>]
+bin/lyrica admin models endpoints model <name> <model-id> [--context <tokens>] [--tools] [--shared | --user <login>]
+bin/lyrica admin models profile show|set … --user <login>
 ```
 
 - Admin commands use `--runtime <dir>`, else `LYRICA_HOME`, else `./runtime`.
 - Passwords and passphrases are read only at a hidden terminal prompt.
 - `dev` is a developer bench. It refuses any directory without the
-  `LYRICA_DEVELOPMENT_RUNTIME` marker that `dev --init` writes. It then starts
-  Pi's TUI with `--no-session` and `--no-builtin-tools`, with no context
-  files, skills, prompt templates, MCP or other extensions. It uses Pi's own
-  model configuration.
-  - Each run is a new general-pool thread in the development runtime, and its
-    entries are recorded there, so `remember` and `recall` carry over between
-    bench sessions.
-- `dev` loads Lyrica's routed tools (`bin/bench.ts`) for one thread,
-  `cli-dev`. It mounts the user's home workspace and grants every general
-  folder the user may grant, read-write.
+  `LYRICA_DEVELOPMENT_RUNTIME` marker that `dev --init` writes.
+  - Each run is a new thread in the development runtime (`bin/bench.ts`),
+    general by default, private with `--private`, or local-only with
+    `--local-only`. Its entries are recorded there, so `remember` and
+    `recall` carry over between bench sessions.
+  - It runs Pi's TUI on a session from `openThreadSession`: the router's
+    model runtime (never Pi's own model config, `auth.json` or environment
+    keys), no Pi session files, context files, skills, prompt templates, MCP
+    or other extensions. It prints the model and endpoint chosen for each
+    task at startup.
+  - It loads Lyrica's routed tools and `delegate`, mounts the user's home
+    workspace and grants every folder the user may grant in that pool,
+    read-write.
 - `serve`, `chat` and `mem` are stubs that name the thread that builds them.

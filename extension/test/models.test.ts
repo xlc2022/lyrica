@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { CloudModelForbidden, Memory, PRONOUN_PRESETS, type Persona, type Pool } from "@lyrica/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { withModels } from "../../core/test/helpers.ts";
-import { modelRuntimeFor, openThreadSession, piModelFor, type ThreadContext } from "../src/index.ts";
+import { createLyricaExtension, modelRuntimeFor, openThreadSession, piModelFor, type ThreadContext } from "../src/index.ts";
 
 const persona: Persona = { core: [{ path: "SOUL.md", text: "She is Lyrica." }], topics: [] };
 const dirs: string[] = [];
@@ -27,7 +27,7 @@ async function setup() {
     dirs.push(cwd);
     return openThreadSession({
       thread: t, models: m.models, cwd, settings,
-      lyrica: { persona: () => persona, profile: () => ({ displayName: "Li", pronouns: PRONOUN_PRESETS.she, previousNames: [] }) },
+      extensions: [createLyricaExtension(t, { persona: () => persona, profile: () => ({ displayName: "Li", pronouns: PRONOUN_PRESETS.she, previousNames: [] }) })],
     });
   };
   return { ...m, thread, open };

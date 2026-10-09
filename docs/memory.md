@@ -82,6 +82,9 @@ free pages.
 IDs: `t:<thread>`, `e:<thread>#<n>`, `n:<date>-<hex>`, `p:<slug>`,
 `j:<date>-<hex>` and `wake`. Thread IDs look like `web/3f7a2c9b`.
 
+A thread made by `delegate` has its parent and `subagent` set, so the UI can
+nest it: `listThreads({ parent })` returns a thread's subagents.
+
 A note's text carries inline citations such as `[e:web/3f7a2c#41]`, and a
 page's text carries citations such as `[n:20261009-k3f9]`. The `citations`
 table is derived from the text, so "came from" and "used in" are cheap queries.
@@ -355,8 +358,7 @@ correct a memory in conversation.
 - **`extension/src/`**: `tools.ts` registers the three tools; `memory.ts`
   builds the prompt sections (an unlogged notice, WAKE, page index, pages for
   `folders()`) and the recall hits; `record.ts` copies Pi entries into the
-  thread at each turn end (`recordEntries` for a hosted session,
-  `entryRecorder` as an extension for the bench). Pi entry IDs make copying
+  thread at each turn end (`recordEntries`). Pi entry IDs make copying
   idempotent.
 
 ## Guarantees, in one sentence

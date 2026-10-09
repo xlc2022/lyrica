@@ -91,3 +91,4 @@ function showDebug(ctx: ExtensionContext, topics: RoutedTopic[], sections: Secti
 }
 export * from "./models.ts";
 export * from "./session.ts";
+export * from "./delegate.ts";

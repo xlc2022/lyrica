@@ -54,7 +54,8 @@ CREATE INDEX IF NOT EXISTS persona_revisions_path ON persona_revisions (path, id
 
 /** user.db: one per user, encrypted with that user's data key. */
 export const USER_SCHEMA = `
--- Per-user settings (endpoints and model profiles, from the Models thread).
+-- Small per-user settings by key, such as default network switches. Models and
+-- Workspace keep their own tables.
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
