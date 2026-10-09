@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { AgentSession, ExtensionFactory, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
-  DelegationStore, LIVE_STATUSES, parseRef, refString,
+  DelegationStore, isRestricted, LIVE_STATUSES, parseRef, refString,
   type CouncilSpec, type Grant, type LoopSpec, type Memory, type ModelRef, type Models, type Pool, type PoolStore, type Role,
   type Step, type SubagentRecord, type SubagentStatus, type Tier, type Usage, type Users, type Workflow, type WorkflowSpec, type Workspace,
 } from "@lyrica/core";
@@ -12,7 +12,7 @@ import { openThreadSession } from "../session.ts";
 import { createWorkspaceExtension } from "../workspace.ts";
 import { rolesFor } from "./roles.ts";
 import { createDelegateExtension, createSubagentExtension } from "./tool.ts";
-import { makeWorktrees, worktreeGrants, worktreeNote, type Worktree } from "./worktree.ts";
+import { makeWorktrees, removeWorktrees, worktreeGrants, worktreeNote, type Worktree } from "./worktree.ts";
 
 // Runs: one delegate call each, with one or more subagents. A subagent is a
 // Pi session in this process, on a thread of its own under the parent's.
@@ -64,7 +64,7 @@ export type DelegationEvent =
   | (RunRef & { type: "tool_call"; toolName: string; args: unknown })
   | (RunRef & { type: "question"; question: string })
   | (RunRef & { type: "finished"; status: "finished" | "failed" })
-  | (RunRef & { type: "stopped"; reason: "stopped" | "timeout" })
+  | (RunRef & { type: "stopped"; reason: StopReason })
   | (RunRef & { type: "interrupted" })
   | (RunRef & { type: "usage" } & Usage);
 type EventMap = { [K in DelegationEvent["type"]]: [Extract<DelegationEvent, { type: K }>] } & { event: [DelegationEvent] };
@@ -81,6 +81,7 @@ export class DelegationEvents extends EventEmitter<EventMap> {
 // --- Plumbing ---
 
 export class Stopped extends Error {}
+const stopped = (signal: AbortSignal) => (signal.reason instanceof Stopped ? signal.reason : new Stopped("stopped"));
 
 /** A counting lock: at most `max` holders, the rest wait in order. */
 class Slots {
@@ -89,14 +90,14 @@ class Slots {
   constructor(private readonly max: number) {}
   async acquire(signal: AbortSignal): Promise<() => void> {
     while (this.used >= this.max) {
-      if (signal.aborted) throw new Stopped("stopped");
+      if (signal.aborted) throw stopped(signal);
       await new Promise<void>((resolve) => {
         const wake = () => { signal.removeEventListener("abort", wake); resolve(); };
         this.waiting.push(wake);
         signal.addEventListener("abort", wake, { once: true });
       });
     }
-    if (signal.aborted) throw new Stopped("stopped");
+    if (signal.aborted) throw stopped(signal);
     this.used++;
     let held = true;
     return () => { if (held) { held = false; this.used--; this.waiting.shift()?.(); } };
@@ -111,17 +112,22 @@ const lastText = (s: AgentSession) => s.getLastAssistantText()?.trim() ?? "";
 
 export const DELEGATE_MESSAGE = "lyrica-delegate";
 
-/** One subagent: its thread, its session, and what it has cost. */
+/** Why a subagent was stopped: on request, by the timeout, or because its parent thread changed under it. */
+export type StopReason = "stopped" | "timeout" | "parent_changed";
+
+/** One subagent: its thread, its session, and the tokens it has used. */
 export class Subagent {
   status: SubagentStatus = "running";
   question?: string;
-  readonly usage: Usage = { inputTokens: 0, outputTokens: 0, cost: 0 };
-  private stopReason?: "stopped" | "timeout";
-  private release?: () => void;
+  readonly usage: Usage = { inputTokens: 0, outputTokens: 0 };
+  private stopped?: { reason: StopReason; message: string };
 
   constructor(
     private readonly d: Delegation, readonly run: Run, readonly ctx: ThreadContext, readonly role: Role, readonly model: string,
-    readonly session: AgentSession, private readonly dispose: () => void, readonly worktrees: Worktree[],
+    /** Whether its model is on a cloud endpoint. */
+    readonly cloud: boolean, readonly session: AgentSession, private readonly dispose: () => void,
+    /** Releases the parent's folders, for a writer without worktrees. */
+    private readonly releaseFolders: () => void,
   ) {
     session.subscribe((e) => {
       if (e.type === "message_update" && e.assistantMessageEvent.type === "text_delta") this.emit({ type: "output", delta: e.assistantMessageEvent.delta });
@@ -130,7 +136,6 @@ export class Subagent {
         const u = e.message.usage;
         this.usage.inputTokens += u.input + u.cacheRead + u.cacheWrite;
         this.usage.outputTokens += u.output;
-        this.usage.cost += u.cost.total;
         this.emit({ type: "usage", ...this.usage });
       }
     });
@@ -142,21 +147,24 @@ export class Subagent {
 
   emit(e: DistributiveOmit<DelegationEvent, keyof RunRef>): void { this.d.events.send({ ...this.ref, ...e } as DelegationEvent); }
 
-  hold(release: () => void): void { this.release = release; }
-  async reacquire(): Promise<void> { this.release = await this.d.slot(this.run).acquire(this.run.abort.signal); }
-  free(): void { this.release?.(); this.release = undefined; }
-
-  /** One stretch of work. Returns the subagent's reply, or its question with status "question". */
+  /**
+   * One stretch of work, holding one of the parent's concurrency slots. Returns
+   * the reply, or the question with status "question". First checks that the
+   * parent still allows this subagent; if not, the whole run stops.
+   */
   async turn(text: string): Promise<string> {
+    this.guard();
+    const release = await this.d.slot(this.run).acquire(this.run.abort.signal);
     this.set("running");
     this.question = undefined;
-    const timer = setTimeout(() => this.stop("timeout"), this.d.limits.timeoutMs);
+    const timer = setTimeout(() => this.stop("timeout", `timed out after ${Math.round(this.d.limits.timeoutMs / 1000)} s`), this.d.limits.timeoutMs);
     try {
       await this.session.prompt(text);
     } finally {
       clearTimeout(timer);
+      release();
     }
-    if (this.stopReason) throw new Stopped(this.stopReason === "timeout" ? `timed out after ${Math.round(this.d.limits.timeoutMs / 1000)} s` : "stopped");
+    if (this.stopped) throw new Stopped(this.stopped.message);
     if (this.question !== undefined) {
       this.set("question");
       this.emit({ type: "question", question: this.question });
@@ -168,26 +176,35 @@ export class Subagent {
     return reply || "(The subagent finished without a reply.)";
   }
 
-  stop(reason: "stopped" | "timeout"): void {
-    if (LIVE_STATUSES.includes(this.status) && !this.stopReason) {
-      this.stopReason = reason;
+  stop(reason: StopReason, message: string = reason): void {
+    if (LIVE_STATUSES.includes(this.status) && !this.stopped) {
+      this.stopped = { reason, message };
       void this.session.abort();
     }
   }
 
   steer(text: string): void {
+    this.guard();
     if (this.status !== "running" || !this.session.isStreaming) throw new Error("that subagent isn't working right now");
     void this.session.steer(text);
+  }
+
+  /** Stops the run if the parent thread is gone, stopped being logged, or went local-only while this runs on a cloud model. */
+  private guard(): void {
+    const why = this.d.parentChanged(this);
+    if (!why) return;
+    this.run.stop("parent_changed", why);
+    throw new Stopped(why);
   }
 
   /** Ends the subagent: records its status and usage, and closes its session and view. */
   close(status: "finished" | "failed" | "stopped"): void {
     if (!LIVE_STATUSES.includes(this.status)) return;
-    this.set(status === "stopped" || this.stopReason ? "stopped" : status);
-    this.free();
+    this.set(status === "stopped" || this.stopped ? "stopped" : status);
+    this.releaseFolders();
     this.dispose();
     this.ctx.view.close();
-    if (this.status === "stopped") this.emit({ type: "stopped", reason: this.stopReason ?? "stopped" });
+    if (this.status === "stopped") this.emit({ type: "stopped", reason: this.stopped?.reason ?? "stopped" });
     else this.emit({ type: "finished", status: this.status as "finished" | "failed" });
   }
 
@@ -251,10 +268,11 @@ export class Run {
     next.answer(text);
   }
 
-  stop(): void {
-    this.abort.abort();
-    for (const a of this.asking.splice(0)) a.fail(new Stopped("stopped"));
-    for (const s of this.subagents) s.stop("stopped");
+  stop(reason: StopReason = "stopped", message: string = reason): void {
+    if (this.abort.signal.aborted) return;
+    this.abort.abort(new Stopped(message));
+    for (const a of this.asking.splice(0)) a.fail(new Stopped(message));
+    for (const s of this.subagents) s.stop(reason, message);
   }
 }
 
@@ -270,6 +288,8 @@ export class Delegation {
   readonly limits: Limits;
   private readonly live = new Map<string, Run>();
   private readonly slots = new Map<string, Slots>();
+  /** One writer at a time in a parent thread's folders, across runs. Writers in their own worktrees don't take it. */
+  private readonly writers = new Map<string, Slots>();
   private readonly parents = new Map<string, Deliver>();
   private readonly recovered = new Set<string>();
 
@@ -350,6 +370,26 @@ export class Delegation {
     await Promise.all(runs.map((r) => r.ended));
   }
 
+  /** Before a thread is forgotten: stops the runs it started and drops their records. */
+  async forget(userId: string, pool: Pool, threadId: string): Promise<void> {
+    const runs = [...this.live.values()].filter((r) => r.parent.user.id === userId && r.parent.pool === pool && r.parent.threadId === threadId);
+    for (const r of runs) r.stop("parent_changed", "its parent thread was forgotten");
+    await Promise.all(runs.map((r) => r.ended));
+    this.store.forget(userId, pool, threadId);
+  }
+
+  /** Why a subagent may no longer go on, if its parent thread changed under it. */
+  parentChanged(sub: Subagent): string | undefined {
+    const { user, pool, threadId } = sub.run.parent;
+    const own = sub.ctx.view.own;
+    const parent = own.getThread(threadId);
+    const mine = own.getThread(sub.ctx.threadId);
+    if (!parent || !mine) return "its parent thread was forgotten";
+    if (parent.unlogged && !mine.unlogged) return "its parent thread is no longer logged";
+    if (sub.cloud && isRestricted(this.o.models.callContext(user.id, pool, threadId))) return "its parent thread is now local-only, and this subagent runs on a cloud model";
+    return undefined;
+  }
+
   /** Marks runs that a restart left behind as interrupted, and tells their parent threads. Once per user per process. */
   recover(userId: string): void {
     if (this.recovered.has(userId)) return;
@@ -365,10 +405,12 @@ export class Delegation {
     }
   }
 
-  slot(run: Run): Slots {
+  slot(run: Run): Slots { return this.lock(this.slots, run, this.limits.concurrency); }
+
+  private lock(locks: Map<string, Slots>, run: Run, max: number): Slots {
     const key = threadKey(run.parent.user.id, run.parent.pool, run.parent.threadId);
-    let s = this.slots.get(key);
-    if (!s) this.slots.set(key, (s = new Slots(this.limits.concurrency)));
+    let s = locks.get(key);
+    if (!s) locks.set(key, (s = new Slots(max)));
     return s;
   }
 
@@ -378,13 +420,16 @@ export class Delegation {
     this.deliverTo(parent.user.id, parent.pool, parent.threadId, content, details);
   }
 
-  /** Into the live parent session if there is one, else straight into the parent's stored thread, for its next session. */
+  /**
+   * Into the live parent session if there is one, else straight into the
+   * parent's stored thread, for its next session. Nothing, if the parent was forgotten.
+   */
   private deliverTo(userId: string, pool: Pool, threadId: string, content: string, details: unknown): void {
     const live = this.parents.get(threadKey(userId, pool, threadId));
     if (live?.({ content, details })) return;
     const view = this.o.memory.openThreadView(userId, pool);
     try {
-      appendMessage(view.own, threadId, content, details);
+      if (view.own.getThread(threadId)) appendMessage(view.own, threadId, content, details);
     } finally {
       view.close();
     }
@@ -407,25 +452,35 @@ export class Delegation {
   }
 
   private async single(run: Run, step: Step, narrowing: Narrowing, worktrees: Worktree[] = []): Promise<string> {
-    const sub = await this.spawn(run, step, narrowing, worktrees);
+    // Its worktrees go once it's done; its commits stay on its branches.
+    const tidy = async () => (worktrees.length ? `\n\n${await removeWorktrees(this.target(run), worktrees)}` : "");
+    let reply: string;
     try {
-      const reply = await this.ask(sub, withWorktrees(step.task, worktrees));
-      sub.close("finished");
-      return worktrees.length ? `${reply}\n\nChanges are in its own worktrees:\n${worktreeNote(worktrees)}` : reply;
+      const sub = await this.spawn(run, step, narrowing, worktrees);
+      try {
+        reply = await this.ask(sub, withWorktrees(step.task, worktrees));
+        sub.close("finished");
+      } catch (err) {
+        sub.close(err instanceof Stopped ? "stopped" : "failed");
+        throw err;
+      }
     } catch (err) {
-      sub.close(err instanceof Stopped ? "stopped" : "failed");
+      (err as Error).message += await tidy();
       throw err;
     }
+    return reply + await tidy();
+  }
+
+  private target(run: Run) {
+    return this.o.workspace!.forThread({ userId: run.parent.user.id, pool: run.parent.pool, threadId: run.parent.threadId }).target();
   }
 
   /** Sends text and keeps going through any questions, until the subagent replies. */
   private async ask(sub: Subagent, text: string): Promise<string> {
     let reply = await sub.turn(text);
     while (sub.status === "question") {
-      sub.free();
       if (sub.run.background) this.deliver(sub.run.parent, `Subagent run ${sub.run.id} (${sub.role.name}, t:${sub.ctx.threadId}) asks:\n${reply}\n\nAnswer with delegate({ action: "answer", id: "${sub.run.id}", message: … }).`, { runId: sub.run.id, status: "question" });
       const answer = await sub.run.waitForAnswer(sub);
-      await sub.reacquire();
       reply = await sub.turn(answer);
     }
     return reply;
@@ -439,23 +494,14 @@ export class Delegation {
     let worktrees: Worktree[][] | undefined;
     let turns = "";
     if (writers > 1 && this.o.workspace) {
-      const t = { userId: run.parent.user.id, pool: run.parent.pool, threadId: run.parent.threadId };
-      const made = await makeWorktrees(this.o.workspace.forThread(t).target(), this.grants(run, narrowing), run.id, writers, run.abort.signal);
+      this.checkWriters(run);
+      const made = await makeWorktrees(this.target(run), this.grants(run, narrowing), run.id, writers, run.abort.signal);
       if (typeof made === "string") turns = `The writers ran one at a time: ${made}.\n\n`;
       else worktrees = made;
     }
-    const oneWriter = turns ? new Slots(1) : undefined;
     let w = 0;
-    const results = await Promise.allSettled(steps.map(async (step, i) => {
-      const mine = writes[i] && worktrees ? worktrees[w++]! : [];
-      const release = writes[i] && oneWriter ? await oneWriter.acquire(run.abort.signal) : undefined;
-      try {
-        return await this.single(run, step, narrowing, mine);
-      } finally {
-        release?.();
-      }
-    }));
-    if (run.abort.signal.aborted) throw new Stopped("stopped");
+    const results = await Promise.allSettled(steps.map((step, i) => this.single(run, step, narrowing, writes[i] && worktrees ? worktrees[w++]! : [])));
+    if (run.abort.signal.aborted) throw stopped(run.abort.signal);
     return turns + results.map((r, i) => `## ${i + 1}. ${roles[i]!.name}: ${steps[i]!.task.split("\n")[0]!.slice(0, 80)}\n${r.status === "fulfilled" ? r.value : `Failed: ${(r.reason as Error).message}`}`).join("\n\n");
   }
 
@@ -495,9 +541,9 @@ export class Delegation {
   }
 
   private async council(run: Run, spec: CouncilSpec, narrowing: Narrowing): Promise<string> {
-    const refs = spec.models?.length ? spec.models.map(parseRef) : this.councilModels(run.parent);
+    const refs = spec.models?.length ? spec.models.map(parseRef) : this.councilModels(run);
     const answers = await Promise.allSettled(refs.map((ref) => this.single(run, { task: spec.question, role: "oracle", model: refString(ref) }, narrowing)));
-    if (run.abort.signal.aborted) throw new Stopped("stopped");
+    if (run.abort.signal.aborted) throw stopped(run.abort.signal);
     const got = answers.map((a, i) => ({ model: refString(refs[i]!), text: a.status === "fulfilled" ? a.value : undefined })).filter((a) => a.text !== undefined);
     if (!got.length) throw new Error(`no member of the council answered: ${(answers.find((a) => a.status === "rejected") as PromiseRejectedResult).reason.message}`);
     const listed = got.map((a, i) => `<answer n="${i + 1}" model="${a.model}">\n${a.text}\n</answer>`).join("\n\n");
@@ -509,15 +555,27 @@ export class Delegation {
   }
 
   /** Up to three distinct models: the thread's subagent models first, then others it allows. */
-  private councilModels(parent: ThreadContext): ModelRef[] {
+  private councilModels(run: Run): ModelRef[] {
     const { models } = this.o;
+    const call = this.parentCall(run);
     const picks: ModelRef[] = [];
     for (const task of ["subagent.strong", "subagent.cheap", "chat"] as const) {
-      try { picks.push(models.resolveModel(task, parent.call)); } catch { /* not set */ }
+      try { picks.push(models.resolveModel(task, call)); } catch { /* not set */ }
     }
-    for (const { endpoint, models: list } of models.allowed(parent.call)) for (const m of list) if (m.tools !== false) picks.push({ endpointId: endpoint.id, modelId: m.modelId });
+    for (const { endpoint, models: list } of models.allowed(call)) for (const m of list) if (m.tools !== false) picks.push({ endpointId: endpoint.id, modelId: m.modelId });
     const seen = new Set<string>();
     return picks.filter((r) => !seen.has(refString(r)) && !!seen.add(refString(r))).slice(0, 3);
+  }
+
+  /** The parent's CallContext as it is now: local-only may have been switched on since the run started. */
+  private parentCall(run: Run) {
+    return this.o.models.callContext(run.parent.user.id, run.parent.pool, run.parent.threadId);
+  }
+
+  /** Subagents can't ask for approval yet, so a writer is refused where the parent asks before changes or commands. */
+  private checkWriters(run: Run): void {
+    const mode = this.o.workspace?.settings(run.parent.user.id).thread(run.parent.threadId).mode ?? "auto";
+    if (mode !== "auto") throw new Error(`this thread asks before ${mode === "ask-commands" ? "commands" : "changes"}, and a subagent can't ask yet: use a read-only role or readOnly: true`);
   }
 
   /** The parent's grants, narrowed to `folders` if given. */
@@ -531,24 +589,30 @@ export class Delegation {
     });
   }
 
-  /** A new subagent: its thread, model, workspace and session. Waits for a free slot first. */
+  /**
+   * A new subagent: its thread, model, workspace and session. A writer
+   * without worktrees first waits until no other writer is in the parent's folders.
+   */
   private async spawn(run: Run, step: Step, narrowing: Narrowing, worktrees: Worktree[] = []): Promise<Subagent> {
     const { parent } = run;
     const { models, workspace } = this.o;
     const role = this.role(parent.user.id, step.role, "worker");
+    const writer = !!workspace && !role.readOnly && !narrowing.readOnly;
+    if (writer) this.checkWriters(run);
+    const parentCall = this.parentCall(run);
     const pick: ModelPick = step.model ? { model: parseRef(step.model) } : { tier: step.tier ?? role.tier };
     // Refuse a model before anything is written.
-    if ("tier" in pick) models.resolveModel(`subagent.${pick.tier}`, parent.call);
-    else if (!models.allowed(parent.call).some((a) => a.endpoint.id === pick.model.endpointId && a.models.some((m) => m.modelId === pick.model.modelId))) {
+    if ("tier" in pick) models.resolveModel(`subagent.${pick.tier}`, parentCall);
+    else if (!models.allowed(parentCall).some((a) => a.endpoint.id === pick.model.endpointId && a.models.some((m) => m.modelId === pick.model.modelId))) {
       throw new Error(`${step.model} isn't one of this thread's models`);
     }
     if (run.budget.left <= 0) throw new Error(`this request has already started ${this.limits.runsPerRequest} subagents`);
     run.budget.left--;
-    const release = await this.slot(run).acquire(run.abort.signal);
+    const release = writer && !worktrees.length ? await this.lock(this.writers, run, 1).acquire(run.abort.signal) : () => {};
     const view = this.o.memory.openThreadView(parent.user.id, parent.pool);
     try {
       const child = view.own.createThread({ interface: parent.interface, parent: parent.threadId, subagent: true, title: `${role.name}: ${step.task.split("\n")[0]!.slice(0, 80)}` });
-      const call = models.childContext(parent.call, child.id, pick);
+      const call = models.childContext(parentCall, child.id, pick);
       const ctx: ThreadContext = { user: parent.user, pool: parent.pool, interface: parent.interface, threadId: child.id, view, call };
       const hooks = { question: (_q: string) => {} };
       const extensions: ExtensionFactory[] = [];
@@ -562,21 +626,21 @@ export class Delegation {
         extensions.push(createWorkspaceExtension(tools));
       }
       const nested = this.depth(ctx) < this.limits.depth;
-      if (nested) extensions.push(createDelegateExtension(ctx, this));
+      if (nested) extensions.push(createDelegateExtension(ctx, this, run.budget));
       const allowed = new Set([...role.tools, "ask_parent", ...(nested ? ["delegate"] : [])]);
       extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed));
       const opened = await openThreadSession({ thread: ctx, models, cwd: this.o.cwd, extensions });
       opened.session.setThinkingLevel(role.thinking);
-      const sub = new Subagent(this, run, ctx, role, refString(opened.chat), opened.session, opened.dispose, worktrees);
+      const cloud = models.endpoint(parent.user.id, opened.chat.endpointId)?.kind !== "local";
+      const sub = new Subagent(this, run, ctx, role, refString(opened.chat), cloud, opened.session, opened.dispose, release);
       hooks.question = (q) => { sub.question = q; };
-      sub.hold(release);
       run.subagents.push(sub);
       this.store.record(parent.user.id, {
         pool: parent.pool, thread: child.id, run: run.id, parent: parent.threadId, role: role.name, model: sub.model,
         background: run.background, status: "running", startedAt: new Date().toISOString(),
       });
       sub.emit({ type: "started", role: role.name, model: sub.model, title: child.title ?? "" });
-      if (run.abort.signal.aborted) sub.stop("stopped");
+      if (run.abort.signal.aborted) sub.stop("stopped", stopped(run.abort.signal).message);
       return sub;
     } catch (err) {
       release();

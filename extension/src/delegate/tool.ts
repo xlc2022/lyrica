@@ -10,11 +10,11 @@ import { DELEGATE_MESSAGE, outcome, Stopped, type Delegation, type Deliver, type
 const text = (t: string, details?: unknown) => ({ content: [{ type: "text" as const, text: t }], details });
 
 const Tier = Type.Union([Type.Literal("cheap"), Type.Literal("strong")]);
+// She picks a tier, never a model. Only a saved workflow, which a user writes, may name one.
 const Step = Type.Object({
   task: Type.String({ description: "What to do, with everything the subagent needs: it sees none of this conversation." }),
   role: Type.Optional(Type.String({ description: "A role; worker if not given." })),
   tier: Type.Optional(Tier),
-  model: Type.Optional(Type.String({ description: "A named model, <endpoint>/<model>, from this thread's models. Usually give a tier instead." })),
 });
 
 const Params = Type.Object({
@@ -27,9 +27,7 @@ const Params = Type.Object({
     task: Type.String(), worker: Type.Optional(Type.String()), reviewer: Type.Optional(Type.String()),
     rounds: Type.Optional(Type.Integer({ minimum: 1, maximum: 5, description: "Default 3." })),
   }, { description: "A worker does the task and a reviewer checks it, round after round, until the reviewer approves." })),
-  council: Type.Optional(Type.Object({
-    question: Type.String(), models: Type.Optional(Type.Array(Type.String(), { description: "<endpoint>/<model> each; by default up to three of this thread's models." })),
-  }, { description: "The same question to several models, then one combined answer." })),
+  council: Type.Optional(Type.Object({ question: Type.String() }, { description: "The same question to up to three of this thread's models, then one combined answer." })),
   workflow: Type.Optional(Type.String({ description: "A saved workflow's name." })),
   input: Type.Optional(Type.String({ description: "The workflow's input, for {input} in its steps." })),
   background: Type.Optional(Type.Boolean({ description: "Return a run ID at once; the result arrives as a message later." })),
@@ -47,7 +45,7 @@ function request(p: Params): Request {
   const given = WORK.filter((k) => p[k] !== undefined);
   if (given.length !== 1) throw new Error(`give exactly one of ${WORK.join(", ")}`);
   const narrowing = { folders: p.folders, readOnly: p.readOnly, internet: p.internet };
-  if (p.task !== undefined) return { ...narrowing, task: p.task, role: p.role, tier: p.tier, model: p.model };
+  if (p.task !== undefined) return { ...narrowing, task: p.task, role: p.role, tier: p.tier };
   if (p.workflow !== undefined) return { ...narrowing, workflow: p.workflow, input: p.input };
   const k = given[0] as "tasks" | "chain" | "loop" | "council";
   return { ...narrowing, [k]: p[k] } as Request;
@@ -59,7 +57,7 @@ function formatStatus(rows: SubagentRecord[], live: (id: string) => Run | undefi
   return rows.map((r) => {
     const tokens = r.inputTokens + r.outputTokens;
     const asking = live(r.run)?.questions.find((q) => q.sub.ctx.threadId === r.thread);
-    return `${r.run} ${r.role} ${r.status}${r.background ? " (background)" : ""}, t:${r.thread}, ${r.model}, ${tokens} tokens${r.cost ? `, $${r.cost.toFixed(4)}` : ""}${asking ? `\n  asks: ${asking.question}` : ""}`;
+    return `${r.run} ${r.role} ${r.status}${r.background ? " (background)" : ""}, t:${r.thread}, ${r.model}, ${tokens} tokens${asking ? `\n  asks: ${asking.question}` : ""}`;
   }).join("\n");
 }
 
@@ -81,18 +79,22 @@ function deliverVia(pi: ExtensionAPI, ctx: ExtensionContext, thread: ThreadConte
   };
 }
 
-/** The `delegate` tool for one thread. Refuses a thread already at the depth limit. */
-export function createDelegateExtension(thread: ThreadContext, delegation: Delegation): ExtensionFactory {
+/**
+ * The `delegate` tool for one thread. Refuses a thread already at the depth
+ * limit. A subagent's tool shares its run's `budget`, so nesting can't start
+ * more subagents than one request may.
+ */
+export function createDelegateExtension(thread: ThreadContext, delegation: Delegation, budget?: { left: number }): ExtensionFactory {
   delegation.recover(thread.user.id);
   if (delegation.depth(thread) >= delegation.limits.depth) throw new Error("this thread is at the depth limit and can't delegate");
   const userId = thread.user.id;
   return (pi) => {
-    let budget = delegation.newBudget();
+    let requestBudget = budget ?? delegation.newBudget();
     let detach: (() => void) | undefined;
     pi.on("session_start", (_e, ctx) => { detach = delegation.attach(thread, deliverVia(pi, ctx, thread)); });
     pi.on("session_shutdown", () => detach?.());
     pi.on("before_agent_start", (event) => {
-      budget = delegation.newBudget();
+      if (!budget) requestBudget = delegation.newBudget();
       const roles = delegation.roles(userId).map((r) => `- ${r.name} (${r.tier}${r.readOnly ? ", read-only" : ""}): ${r.description}`);
       const flows = delegation.workflows(userId).map((w) => `- ${w.name}: ${w.description}`);
       const o = event.systemPromptOptions;
@@ -122,10 +124,10 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
         if (action === "status") {
           const rows = delegation.status(thread).filter((r) => !p.id || r.run === p.id);
           const u = delegation.usage(thread);
-          return text(`${formatStatus(rows.slice(0, 20), (id) => { try { return delegation.get(thread, id); } catch { return undefined; } })}\nAll subagents of this thread: ${u.inputTokens + u.outputTokens} tokens${u.cost ? `, $${u.cost.toFixed(4)}` : ""}.`);
+          return text(`${formatStatus(rows.slice(0, 20), (id) => { try { return delegation.get(thread, id); } catch { return undefined; } })}\nAll subagents of this thread: ${u.inputTokens + u.outputTokens} tokens.`);
         }
         if (action === "run") {
-          const run = delegation.start(thread, request(p), { background: !!p.background, budget });
+          const run = delegation.start(thread, request(p), { background: !!p.background, budget: requestBudget });
           if (p.background) return text(`Started run ${run.id} in the background. Its result will arrive as a message.`, { runId: run.id, status: run.status });
           const stop = () => run.stop();
           signal?.addEventListener("abort", stop, { once: true });

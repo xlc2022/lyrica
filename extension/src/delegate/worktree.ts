@@ -34,7 +34,7 @@ export async function makeWorktrees(target: ExecutionTarget, grants: Grant[], ru
     const mine: Worktree[] = [];
     for (const repo of repos) {
       const wt = { repo, path: posix.join(base, `${runId}-${i}`, posix.basename(repo)), branch: `lyrica/${runId}-${i}` };
-      const r = await sh(target, `mkdir -p ${quote(posix.dirname(wt.path))} && git -C ${quote(repo)} worktree add -q -b ${quote(wt.branch)} ${quote(wt.path)}`, signal);
+      const r = await sh(target, `mkdir -p ${quote(posix.dirname(wt.path))} && git -c core.hooksPath=/dev/null -C ${quote(repo)} worktree add -q -b ${quote(wt.branch)} ${quote(wt.path)}`, signal);
       if (!r.ok) throw new Error(`couldn't make a worktree of ${repo}: ${r.out}`);
       mine.push(wt);
     }
@@ -46,6 +46,21 @@ export async function makeWorktrees(target: ExecutionTarget, grants: Grant[], ru
 /** The writer's grants: each repository's .git (for commits), and its other folders as they were. */
 export function worktreeGrants(grants: Grant[], mine: Worktree[]): Grant[] {
   return grants.map((g) => (mine.some((w) => w.repo === g.path) ? { path: `${g.path}/.git`, writable: true } : g));
+}
+
+/**
+ * Removes a writer's worktrees, keeping their branches. One with changes that
+ * weren't committed is kept, and the note says where.
+ */
+export async function removeWorktrees(target: ExecutionTarget, mine: Worktree[]): Promise<string> {
+  const lines: string[] = [];
+  for (const w of mine) {
+    const r = await sh(target, `git -c core.hooksPath=/dev/null -C ${quote(w.repo)} worktree remove ${quote(w.path)} && rmdir ${quote(posix.dirname(w.path))}`);
+    lines.push(r.ok || !(await sh(target, `test -e ${quote(w.path)}`)).ok
+      ? `${w.repo}: its commits are on branch ${w.branch}.`
+      : `${w.repo}: its commits are on branch ${w.branch}; its worktree ${w.path} was kept, because it has changes that weren't committed.`);
+  }
+  return lines.join("\n");
 }
 
 export function worktreeNote(mine: Worktree[]): string {

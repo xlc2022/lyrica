@@ -107,11 +107,15 @@ describe("delegate", () => {
     const parent = s.thread();
     ws.settings(s.li.id).setThread(parent.threadId, "general", { grants: [{ path: join(host, "a"), writable: true }], internet: false, hosts: ["10.0.0.5"], mode: "ask-commands" });
 
-    const outside = await s.run(parent, { task: "write there", folders: [join(host, "b")] });
+    const outside = await s.run(parent, { task: "read there", role: "scout", folders: [join(host, "b")] });
     expect(outside.status).toBe("failed");
     expect(outside.result).toContain("isn't one of this thread's folders");
+    // A subagent can't ask for approval yet, so no writer where the parent asks first.
+    const asks = await s.run(parent, { task: "change it", role: "worker" });
+    expect(asks.result).toContain("this thread asks before commands");
 
     await s.run(parent, { task: "look", role: "scout" });
+    ws.settings(s.li.id).setThread(parent.threadId, "general", { mode: "auto" });
     await s.run(parent, { task: "change it", role: "worker" });
     const [worker, scout] = s.delegation.status(parent);
     const child = (thread: string) => ({ ...ws.settings(s.li.id).thread(thread), network: ws.network({ userId: s.li.id, pool: "general", threadId: thread }) });
@@ -154,8 +158,8 @@ describe("delegate", () => {
     expect(told(s.cloud.requests[1]!)).toBe("use alpha well");
   });
 
-  it("stops a review loop when the reviewer approves", async () => {
-    const s = await setup();
+  it("stops a review loop when the reviewer approves, even one subagent at a time", async () => {
+    const s = await setup({ limits: { concurrency: 1 } });
     let drafts = 0;
     let reviews = 0;
     s.cloud.respond((r) => {
@@ -297,10 +301,11 @@ describe("delegate", () => {
     expect(run.status).toBe("finished");
     expect(most).toBe(3);
     const trees = [1, 2].map((i) => join(scratch, "worktrees", `${run.id}-${i}`, "repo"));
-    for (const t of trees) expect(existsSync(join(t, "README.md"))).toBe(true);
-    expect(git("worktree", "list")).toContain(`lyrica/${run.id}-2`);
-    expect(run.result).toContain(trees[0]);
-    expect(run.result).toContain(trees[1]);
+    // Each writer's worktree is gone once it's done; its branch stays.
+    for (const t of trees) expect(existsSync(t)).toBe(false);
+    expect(git("worktree", "list")).not.toContain("worktrees");
+    expect(git("branch", "--list", "lyrica/*")).toContain(`lyrica/${run.id}-2`);
+    expect(run.result).toContain(`its commits are on branch lyrica/${run.id}-1`);
     const writers = s.delegation.status(parent).filter((r) => r.role === "worker");
     expect(writers.map((r) => ws.settings(s.li.id).thread(r.thread).grants)).toEqual([[{ path: `${repo}/.git`, writable: true }], [{ path: `${repo}/.git`, writable: true }]]);
     const tasks = s.cloud.requests.map(told).filter((t) => t.startsWith("change"));
@@ -314,6 +319,14 @@ describe("delegate", () => {
     const serial = await s.run(other, { tasks: [{ task: "change C" }, { task: "change D" }] });
     expect(serial.status).toBe("finished");
     expect(serial.result).toContain(`The writers ran one at a time: ${plain} isn't the top of a git repository`);
+    expect(most).toBe(1);
+
+    // Nor do writers from two runs share it.
+    most = 0;
+    const both = [s.delegation.start(other, { task: "change E" }, { background: true, budget: s.delegation.newBudget() }),
+      s.delegation.start(other, { task: "change F" }, { background: true, budget: s.delegation.newBudget() })];
+    await Promise.all(both.map((r) => r.ended));
+    expect(both.map((r) => r.status)).toEqual(["finished", "finished"]);
     expect(most).toBe(1);
   });
 
@@ -370,5 +383,78 @@ describe("delegate", () => {
     expect(told(s.cloud.requests[0]!)).toBe("A poem about spring");
     expect(JSON.stringify(s.cloud.requests[0]!.messages)).toContain("You write short poems.");
     expect(s.cloud.requests[0]!.tools!.map((t) => t.function.name).sort()).toEqual(["ask_parent"]);
+  });
+
+  it("stops a run when its parent goes local-only or unlogged, and gives later steps a local model", async () => {
+    const s = await setup();
+    s.local.respond(() => ({ text: "local step" }));
+    const g = gate();
+    s.cloud.respond(async (r) => {
+      if (told(r) === "first") { await g.opened; return { text: "cloud step" }; }
+      return told(r).includes("secret") ? { text: "got it" } : { tools: [{ name: "ask_parent", args: { question: "Which one?" } }] };
+    });
+    // A chain whose parent goes local-only between steps: the next step is local.
+    const parent = s.thread();
+    const chain = s.delegation.start(parent, { chain: [{ task: "first" }, { task: "second" }] }, { background: true, budget: s.delegation.newBudget() });
+    await until(() => s.cloud.requests.length === 1);
+    s.models.setLocalOnly(s.li.id, "general", parent.threadId, true);
+    g.open();
+    await chain.checkpoint();
+    expect(chain.result).toBe("local step");
+    expect(s.local.requests).toHaveLength(1);
+
+    // A cloud subagent waiting on an answer is stopped, and never sees it.
+    for (const change of ["local-only", "unlogged"] as const) {
+      const p = s.thread();
+      const run = await s.run(p, { task: "pick" }, true);
+      expect(run.status).toBe("question");
+      if (change === "local-only") s.models.setLocalOnly(s.li.id, "general", p.threadId, true);
+      else p.view.own.setUnlogged(p.threadId, true);
+      run.answer("the secret one");
+      await run.checkpoint();
+      expect(run.status).toBe("stopped");
+      expect(run.result).toContain(change === "local-only" ? "now local-only" : "no longer logged");
+      expect(s.delegation.status(p)[0]!.status).toBe("stopped");
+    }
+    expect(JSON.stringify(s.cloud.requests)).not.toContain("secret");
+  });
+
+  it("stops a forgotten thread's runs, and survives a restart after its parent was forgotten", async () => {
+    const s = await setup();
+    const g = gate();
+    s.cloud.respond(async () => { await g.opened; return { text: "done" }; });
+    const parent = s.thread();
+    const run = s.delegation.start(parent, { task: "long job" }, { background: true, budget: s.delegation.newBudget() });
+    await until(() => s.cloud.requests.length === 1);
+    await s.delegation.forget(s.li.id, "general", parent.threadId);
+    expect(run.status).toBe("stopped");
+    expect(run.result).toContain("forgotten");
+    expect(s.delegation.status(parent)).toEqual([]);
+    parent.view.own.forgetThread(parent.threadId, "lyrica");
+    expect(parent.view.own.listThreads({ includeHidden: true }).filter((t) => t.subagent)).toEqual([]);
+
+    // A run left live by a restart, whose parent is forgotten before anything recovers it.
+    const other = s.thread();
+    const left = s.delegation.start(other, { task: "more" }, { background: true, budget: s.delegation.newBudget() });
+    await until(() => s.cloud.requests.length === 2);
+    other.view.own.forgetThread(other.threadId, "lyrica");
+    const after = new Delegation(s.options);
+    expect(() => after.recover(s.li.id)).not.toThrow();
+    left.stop();
+    g.open();
+  });
+
+  it("counts nested subagents against the request that started them", async () => {
+    const s = await setup({ limits: { depth: 2, runsPerRequest: 2 } });
+    s.cloud.respond((r) => {
+      const tools = r.tools?.map((t) => t.function.name) ?? [];
+      if (tools.includes("delegate") && r.messages.at(-1)!.role !== "tool") return { tools: [{ name: "delegate", args: { tasks: [{ task: "a", role: "scout" }, { task: "b", role: "scout" }] } }] };
+      return { text: r.messages.at(-1)!.role === "tool" ? said(r.messages.at(-1)!) : "scouted" };
+    });
+    const parent = s.thread();
+    const run = await s.run(parent, { task: "split it up", role: "worker" });
+    expect(run.result).toContain("this request has already started 2 subagents");
+    const [child] = parent.view.own.listThreads({ parent: parent.threadId });
+    expect(parent.view.own.listThreads({ parent: child!.id })).toHaveLength(1);
   });
 });

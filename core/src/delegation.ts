@@ -45,12 +45,12 @@ export interface SubagentRecord {
   status: SubagentStatus;
   inputTokens: number;
   outputTokens: number;
-  cost: number;
   startedAt: string;
   endedAt: string | null;
 }
 
-export interface Usage { inputTokens: number; outputTokens: number; cost: number }
+/** Tokens only: every model is declared free to Pi, so it reports no cost. */
+export interface Usage { inputTokens: number; outputTokens: number }
 
 export const DELEGATION_SCHEMA = `
 -- Roles the user added, or built-in roles they changed (same name).
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS delegate_workflows (
   description TEXT NOT NULL,
   spec        TEXT NOT NULL
 );
--- Each subagent thread a run started: its status and what it cost. Live rows left by a restart become interrupted.
+-- Each subagent thread a run started: its status and the tokens it used. Live rows left by a restart become interrupted.
 CREATE TABLE IF NOT EXISTS subagent_runs (
   pool          TEXT NOT NULL,
   thread        TEXT NOT NULL,
@@ -81,7 +81,6 @@ CREATE TABLE IF NOT EXISTS subagent_runs (
   status        TEXT NOT NULL,
   input_tokens  INTEGER NOT NULL DEFAULT 0,
   output_tokens INTEGER NOT NULL DEFAULT 0,
-  cost          REAL NOT NULL DEFAULT 0,
   started_at    TEXT NOT NULL,
   ended_at      TEXT,
   PRIMARY KEY (pool, thread)
@@ -94,11 +93,11 @@ const NAME = /^[a-z][a-z0-9-]{0,39}$/;
 interface RoleRow { name: string; description: string; prompt: string; tier: Tier; tools: string; read_only: number; thinking: Thinking }
 interface RunRow {
   pool: Pool; thread: string; run: string; parent: string; role: string; model: string; background: number; status: SubagentStatus;
-  input_tokens: number; output_tokens: number; cost: number; started_at: string; ended_at: string | null;
+  input_tokens: number; output_tokens: number; started_at: string; ended_at: string | null;
 }
 const toRecord = (r: RunRow): SubagentRecord => ({
   pool: r.pool, thread: r.thread, run: r.run, parent: r.parent, role: r.role, model: r.model, background: r.background === 1,
-  status: r.status, inputTokens: r.input_tokens, outputTokens: r.output_tokens, cost: r.cost, startedAt: r.started_at, endedAt: r.ended_at,
+  status: r.status, inputTokens: r.input_tokens, outputTokens: r.output_tokens, startedAt: r.started_at, endedAt: r.ended_at,
 });
 
 /** One user's roles, workflows and subagent runs. Opens user.db per call, so the user must be unlocked. */
@@ -149,7 +148,7 @@ export class DelegationStore {
 
   // --- Runs ---
 
-  record(userId: string, r: Omit<SubagentRecord, "inputTokens" | "outputTokens" | "cost" | "endedAt">): void {
+  record(userId: string, r: Omit<SubagentRecord, "inputTokens" | "outputTokens" | "endedAt">): void {
     this.db(userId, (db) => db.prepare(`INSERT INTO subagent_runs (pool, thread, run, parent, role, model, background, status, started_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(r.pool, r.thread, r.run, r.parent, r.role, r.model, r.background ? 1 : 0, r.status, r.startedAt));
   }
@@ -157,8 +156,8 @@ export class DelegationStore {
   update(userId: string, pool: Pool, thread: string, change: { status?: SubagentStatus; usage?: Usage }): void {
     const ended = change.status && !LIVE_STATUSES.includes(change.status) ? new Date().toISOString() : null;
     this.db(userId, (db) => db.prepare(`UPDATE subagent_runs SET status = coalesce(?, status), ended_at = coalesce(?, ended_at),
-      input_tokens = coalesce(?, input_tokens), output_tokens = coalesce(?, output_tokens), cost = coalesce(?, cost) WHERE pool = ? AND thread = ?`)
-      .run(change.status ?? null, ended, change.usage?.inputTokens ?? null, change.usage?.outputTokens ?? null, change.usage?.cost ?? null, pool, thread));
+      input_tokens = coalesce(?, input_tokens), output_tokens = coalesce(?, output_tokens) WHERE pool = ? AND thread = ?`)
+      .run(change.status ?? null, ended, change.usage?.inputTokens ?? null, change.usage?.outputTokens ?? null, pool, thread));
   }
 
   /** A parent thread's subagent runs, newest first, or one run's. */
@@ -178,11 +177,16 @@ export class DelegationStore {
     });
   }
 
-  /** Tokens and cost of every subagent a parent thread started. */
+  /** Tokens used by every subagent a parent thread started. */
   usage(userId: string, pool: Pool, parent: string): Usage {
-    const row = this.db(userId, (db) => db.prepare(`SELECT coalesce(sum(input_tokens), 0) AS i, coalesce(sum(output_tokens), 0) AS o, coalesce(sum(cost), 0) AS c
-      FROM subagent_runs WHERE pool = ? AND parent = ?`).get(pool, parent)) as { i: number; o: number; c: number };
-    return { inputTokens: row.i, outputTokens: row.o, cost: row.c };
+    const row = this.db(userId, (db) => db.prepare(`SELECT coalesce(sum(input_tokens), 0) AS i, coalesce(sum(output_tokens), 0) AS o
+      FROM subagent_runs WHERE pool = ? AND parent = ?`).get(pool, parent)) as { i: number; o: number };
+    return { inputTokens: row.i, outputTokens: row.o };
+  }
+
+  /** Drops a forgotten thread's records. */
+  forget(userId: string, pool: Pool, parent: string): void {
+    this.db(userId, (db) => db.prepare("DELETE FROM subagent_runs WHERE pool = ? AND parent = ?").run(pool, parent));
   }
 
   private db<T>(userId: string, fn: (db: Db) => T): T {

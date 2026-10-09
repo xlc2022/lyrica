@@ -248,8 +248,12 @@ describe("deletion", () => {
       { text: "only from a", source: a.entry },
       { text: `from both [${b.entry}]`, source: a.entry },
     ], { author: "lyrica", thread: a.thread });
+    const sub = own.createThread({ interface: "cli", parent: a.thread, subagent: true });
+    const copy = own.exportThread(a.thread, "web");
     own.forgetThread(a.thread, "lyrica");
     expect(own.getThread(a.thread)).toBeUndefined();
+    expect(own.getThread(sub.id)).toBeUndefined();
+    expect(own.getThread(copy.id)).toBeDefined();
     expect(own.get(only!)).toBeUndefined();
     expect(own.get(both!)).toBeDefined();
     expect(own.search("first")).toEqual([]);
