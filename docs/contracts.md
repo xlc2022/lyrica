@@ -73,9 +73,10 @@ class Users {
   setAdmin(actor: User, target: User, admin: boolean): void  // refuses to demote the last admin
   updateProfile(actor: User, target: User, change): Profile  // self, or an admin; a rename appends to previousNames
   listUsers(actor: User): User[]                             // admins see everyone, others themselves
-  link(a: User, aPassword, b: User, bPassword): void          // the same person's users; needs both passwords
+  link(a: User, aPassword, otherLogin, otherPassword): Promise<void>  // the same person's users; both passwords
   unlink(actor: User, other: User): void
   linked(userId): string[]
+  stayUnlocked(userId): boolean / setStayUnlocked(userId, on)   // in user.db, default on
   get(id): User | undefined; find(login): User | undefined; all(): User[]
 }
 
@@ -101,9 +102,13 @@ interface Profile {
     pool databases.
 - The theme (device, light or dark) is a display setting in `user.db`.
 - **Persona proposals start in the originating user's `user.db`**, encrypted
-  with that user's key, where only they can read, edit, drop or send them on.
-  Sending copies the proposal to `self.db` for the administrators. A proposal
-  from an administrator's own conversation is sent at once.
+  with that user's key, where only they can read, edit, drop or send them on:
+  `PersonaProposals.propose(view, threadId, …)` (the owner comes from the
+  thread view), `drafts`, `edit`, `drop`, `send`. Sending copies the proposal
+  to `self.db` with `sent_by`, `edited` and its base revision, and `decide`
+  refuses a stale one unless told to overwrite. A proposal from an
+  administrator's own conversation is sent at once. There is no other way to
+  write a proposal into `self.db`.
 - **A browser session holds only linked users.** Logging in as a user not
   linked to the session's users ends the session first. Each user's "stay
   unlocked after logout" choice lives in their `user.db` (default on).
