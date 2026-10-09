@@ -24,7 +24,7 @@ export interface LyricaOptions {
   persona: () => Persona;
   /** The user's current profile; called every turn so a rename applies at once. */
   profile: () => Profile;
-  /** The thread's granted folders (from Workspace); called every turn. Pages about them are loaded. */
+  /** The thread's granted folders, read every turn. Workspace supplies them; defaults to none. */
   folders?: () => string[];
   /** Show routed topics and the assembled prompt each turn. */
   debugPrompt?: boolean;
