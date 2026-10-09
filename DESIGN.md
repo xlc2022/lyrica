@@ -213,9 +213,13 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     continues a finished subagent in its own thread with everything it
     knew, even after a restart. A subagent asks Lyrica a question and waits,
     or sends her a note and keeps working.
-  - **The user can talk to a subagent** in its thread. The message reaches
-    the subagent as the user's, and Lyrica is told in her own thread. The
-    subagent keeps the folders, permissions and model its parent gave it.
+  - **The user can talk to a subagent** from its card in Lyrica's chat. The
+    message reaches the subagent as the user's, and Lyrica is told in her own
+    thread. The subagent keeps the folders, permissions and model its parent
+    gave it.
+  - **Fork:** a subagent can start from a copy of Lyrica's conversation
+    instead of a blank slate (off by default, since it costs more). It stays
+    in the same pool under the same rules.
   - **Approvals from subagents.** Where the thread's permission mode asks
     before commands or changes, a subagent's request shows in its own thread
     and in its parent's, and any open view can answer it. Writers run in
@@ -224,11 +228,15 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - Limits, cost tracking, and a live view in the web UI.
   - Everything runs inside `lyricad`. A background run interrupted by a
     restart is marked interrupted, never silently lost.
-- **Subagents** are ordinary threads.
-  - They inherit "Do not log" and their parent's workspace settings, or
-    narrower ones.
-  - In the UI they appear nested under their parent thread, collapsed behind a
-    `>` that expands to show them.
+- **Subagents** work like Claude's: Lyrica hands one a bounded task and gets
+  its result back. Underneath each is a stored thread, so it is encrypted in
+  its parent's pool, inherits "Do not log" and the parent's workspace
+  settings (or narrower), and is forgotten with its parent.
+  - In the UI a subagent lives inline, as a card in the parent's chat that
+    expands to its work and can be messaged. It is not listed in the sidebar.
+  - **Child threads** are different: conversations of their own (forks and
+    copies of a thread), listed collapsibly under their parent in the
+    sidebar, which the user opens and talks in like any thread.
   - In version one, subagents can't start subagents of their own.
 - **Local-only.** In a private or local-only thread, any attempt to use a cloud
   model, for any purpose, fails with an error. Nothing ever falls back across

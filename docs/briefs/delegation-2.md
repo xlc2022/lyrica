@@ -42,15 +42,25 @@ the permission boundary structural.
    keeps working and the note is delivered to the parent like a background
    result: into the live session, or into the stored thread. Limit notes to
    a few per stretch of work so a subagent can't flood its parent.
-3. **The user talks to a subagent.**
-   - The composer works in a subagent's thread. Its settings panel stays
-     read-only.
+3. **Subagents live inline, and the user can talk to them.**
+   - A subagent is no longer listed in the sidebar (child threads such as
+     forks and copies still are). Its `delegate` card in the parent's chat
+     expands to show its work (the stored thread, read-only as a transcript)
+     and has a message box.
    - The message reaches the subagent through the same path as `message`,
      marked as the user's (by name in its context, as in any thread).
    - The parent thread gets a short note: who said what to which subagent.
-     In the web UI it's a card linking to the subagent's thread.
    - Only users who can open the parent can do this (the same pool and
      owner checks as any thread).
+   - Opening a subagent's thread by link still works and shows the same
+     transcript and message box, never the full composer or settings.
+3a. **Fork.** `delegate` takes `fork: true` on a task: the subagent starts
+   from a copy of the parent's conversation (its stored entries, compacted as
+   the parent's are) plus the task, instead of the preamble alone. It keeps
+   its role's tools and the parent's pool, rules and model limits. Off by
+   default; the parent's prompt says when it's worth the cost (parallel
+   approaches that need the whole conversation). A fork of a local-only or
+   private parent stays local-only. Test it.
 4. **Approvals from subagents.**
    - A subagent's tool calls go through the workspace extension's
      `tool_call` hook with the **parent's** permission mode, and
@@ -65,9 +75,10 @@ the permission boundary structural.
    - Parallel writers each ask for their own calls; answers name the
      subagent so they can't be confused.
 5. **Web UI.**
-   - The `delegate` card and notice cards gain **Message** (send a message to
-     the run) where useful, and show notes and approvals.
-   - The subagent thread shows who sent each message: Lyrica, Li, or the
+   - The `delegate` card expands inline to each subagent's work, with a
+     message box, its notes and its approvals; notice cards link to it.
+   - The sidebar lists child threads only, not subagents.
+   - A subagent's transcript shows who sent each message: Lyrica, Li, or the
      subagent's own work.
 6. **Docs.** docs/delegation.md, docs/daemon.md and docs/web.md describe
    what exists; the PR lists the contract changes.
@@ -90,9 +101,12 @@ the permission boundary structural.
     a local model, and one whose parent was forgotten is refused;
   - `ask_parent` with `wait: false` delivers a note and the subagent keeps
     going; the note limit holds;
-  - a user's message in a subagent's thread reaches the subagent as theirs
-    and leaves a note in the parent;
-  - a user without access to the parent can't post in its subagent's thread;
+  - a user's message from the card reaches the subagent as theirs and
+    leaves a note in the parent;
+  - a user without access to the parent can't message its subagents;
+  - a fork starts with the parent's conversation in its context, and a fork
+    of a private or local-only parent gets local models only;
+  - subagents don't appear in the thread list; forks of a thread still do;
   - in an ask-first thread, a writer subagent's command waits for approval
     shown in both threads, runs once approved, is refused on deny or
     timeout, and the first of two answers wins;
