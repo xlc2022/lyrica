@@ -220,6 +220,11 @@ unlogged, and their checkbox can't be turned off. The store refuses to create
 a logged daughter of an unlogged thread, so this doesn't depend on the
 interface getting it right.
 
+**Exported copies aren't processed twice.** A thread copied to another
+interface keeps the original entries' IDs. Sleep and search treat those
+entries as already processed, so only new entries in the copy are new
+material.
+
 **Changing the setting part-way through** only affects what comes after:
 - **Turning it on:** anything already consolidated stays in memory. Use
   "forget thread" to remove it.
