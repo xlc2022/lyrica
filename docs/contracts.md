@@ -58,19 +58,31 @@ lockUser(userId: string): void
 ## core/users
 
 ```ts
-createUser(login, password, profile, { admin }): User     // first user must be admin
-authenticate(login, password): User                       // also calls unlockUser
-setAdmin(actor: User, target: User, admin: boolean): void // refuses to demote the last admin
-listUsers(actor: User): User[]
-updateProfile(actor: User, target: User, change: Partial<Profile>): Profile  // self, or an admin
+class Users {
+  createUser(login, password, profile: Omit<Profile, "previousNames">, { admin }): Promise<User>  // first user must be admin
+  authenticate(login, password): Promise<User>               // also unlocks the user's key
+  changePassword(user, oldPassword, newPassword): Promise<void>  // rewraps the same data key
+  setAdmin(actor: User, target: User, admin: boolean): void  // refuses to demote the last admin
+  updateProfile(actor: User, target: User, change): Profile  // self, or an admin; a rename appends to previousNames
+  listUsers(actor: User): User[]                             // admins see everyone, others themselves
+  get(id): User | undefined; find(login): User | undefined; all(): User[]
+}
 
 interface Profile {
   displayName: string;                       // changeable at any time
-  pronouns: { obj: string; poss: string; possPro: string; refl: string; subj: string };
+  pronouns: { subj: string; obj: string; poss: string; possPro: string; refl: string };
   previousNames: { name: string; until: string }[];   // appended on rename
 }
 ```
 
+- **Where things live.** `self.db` holds a `users` index: login, admin flag,
+  profile and wrapped key.
+  - The wrapped key has to be readable before the user's own databases can
+    open.
+  - The profile and admin flag must stay readable and editable while the user
+    is locked, so the admin panel and `render` keep working.
+  - Each user's `user.db` holds that user's settings. Their memory lives in the
+    pool databases.
 - The **login name** is separate from the display name, so renaming never
   affects signing in.
 - Pronoun presets are she/her, he/him and they/them, plus a custom option that
@@ -81,13 +93,20 @@ interface Profile {
 ## core/mentions
 
 ```ts
-toStored(text: string, speaker: UserId): string  // {user}, {user:obj}… → [[u:ID]], [[u:ID:obj]]…
-render(text: string): string                     // tokens → current names and pronouns
-queryTokens(query: string, userIds: UserId[]): string  // names (current or previous) → tokens
+toStored(text: string, speaker: UserId): string              // {user}, {user:obj}… → [[u:ID]], [[u:ID:obj]]…
+render(text: string, profiles: (id) => Profile | undefined): string   // tokens → current names and pronouns
+queryTokens(query: string, profiles: Map<UserId, Profile>): …  // see below
 ```
 
-Every write of a note or page goes through `toStored`. Every read path goes
-through `render`. See [memory.md](memory.md#names-and-pronouns).
+- Every write of a note or page goes through `toStored`, and every read path
+  goes through `render`. See [memory.md](memory.md#names-and-pronouns).
+- **Search must keep the literal words.** A user's name in a query (current or
+  previous) adds that user's token as an *alternative*. It never replaces the
+  word.
+  - Example: "Li-ion battery" must still match notes that say "Li-ion".
+  - `queryTokens` returns the name matches found in the query, as names and
+    user IDs. The Memory thread builds the full-text query from them, as
+    word OR token.
 
 ## core/store: the privacy boundary lives here
 
@@ -149,18 +168,30 @@ probe(endpointId: string): Promise<"up" | "down">
 The extension is created with a `ThreadContext`:
 `{ user, pool, interface, threadId, view: PoolView, call: CallContext }`.
 
-- **`before_agent_start`** builds the prompt sections, in order: persona core,
-  routed topic addenda, WAKE, page index, recall hits, time since last talk,
-  and "who you're talking with": the user's current display name, pronouns,
-  and previous names with dates. Each section has a size budget.
-- **Tools** (at most 8 in total; see principle 8):
-  - `remember`, `recall` and `read` (Memory thread);
+- The factory is `createLyricaExtension(thread: ThreadContext, opts:
+  LyricaOptions)`. The options are:
+  - `persona()` and `profile()`, read every turn;
+  - `debugPrompt`;
+  - `budgets`.
+- **`before_agent_start`** never replaces the whole system prompt. It does two
+  things:
+  - It edits `event.systemPromptOptions`. The persona core goes in
+    `customPrompt`. Topics, WAKE, the page index, and "who you're talking
+    with" go in `sections`. Pi's tool snippets and guidelines are left intact,
+    and Pi appends only what changed, so the prompt prefix stays cacheable
+    (DeepSeek's prefix cache, a local model's KV cache).
+  - It returns content that changes every turn, namely recall hits and the
+    time, as the result's `message`. That way it sits in the transcript, not
+    in the prefix.
+  - Each section has a size budget.
+- **Tools** (budget: 30; see principle 8):
+  - `read`, `write`, `edit` and `bash` (Workspace thread; see
+    [workspace.md](workspace.md));
+  - `remember`, `recall` and `read_memory` (Memory thread);
   - `delegate` (Models thread);
   - `calendar` and `sort` (Integrations thread);
   - `web_search` and `web_fetch` (research, carried over from v1 or taken from
     a Pi package).
-
-  That uses all 8.
 - **Commands:** `/sleep`, and others only within the budget.
 - Lyrica's sessions **never** load project context files (`AGENTS.md`,
   `CLAUDE.md`). Her self-primer is a routed topic.
@@ -171,9 +202,11 @@ The extension is created with a `ThreadContext`:
   `SessionManager.inMemory(cwd, opts, view.own.loadEntries(threadId))`, the
   router's `modelRuntimeFor`, and a `DefaultResourceLoader` that has the inline
   Lyrica extension and context-file discovery turned off.
-  - Built-in tools are disabled with `noTools: "builtin"`, so only the
-    extension's tools exist. `noTools: "all"` would remove the extension's
-    tools too.
+  - Pi's built-in tools are disabled with `noTools: "builtin"`. Lyrica
+    registers her own `read`, `write`, `edit` and `bash`, built with Pi's
+    `create*Tool(cwd, { operations })` and routed to the thread's execution
+    target ([workspace.md](workspace.md)). Never use `noTools: "all"`, which
+    also removes extension tools.
   - Sessions run in-process, with no `pi` subprocesses.
   - Each `message_end` calls `appendEntry`.
 - **Unlocking:** when started as a service, `lyricad` starts locked, and the
@@ -207,6 +240,23 @@ runSleep(userId: string, pool: Pool, reason: "scheduled" | "manual"): SleepRun
 // status: "complete" | "partial" | "skipped"
 // skipReason: "no-key" | "endpoint-down" | "no-activity"
 ```
+
+## core/workspace
+
+```ts
+interface ExecutionTarget {               // "sandbox" | "ssh:<name>"
+  ops(): { read: ReadOperations; write: WriteOperations; edit: EditOperations; bash: BashOperations };
+}
+targetFor(ctx: ThreadContext): ExecutionTarget
+grantsFor(ctx: ThreadContext): Grant[]    // from the user's per-pool allowed paths
+mountHome(userId): Promise<string>        // gocryptfs; called when the user's key becomes available
+unmountHome(userId): Promise<void>
+```
+
+- Every sandbox run receives exactly `grantsFor(ctx)`, the thread's folder in
+  the home workspace, and a read-only system.
+- The network is unshared unless the thread allows it.
+- See [workspace.md](workspace.md).
 
 ## integrations
 
