@@ -610,6 +610,16 @@ Details in [docs/sleep.md](docs/sleep.md).
   - No more than two or three are active at once.
   - Sessions hand off through the repo (briefs, docs, PR descriptions), never
     through chat transcripts.
+- **The cheapest model that does the job well.** Before starting a thread or
+  subagent, judge how hard the task is.
+  - Work that builds or reviews a boundary (privacy, cloud, sandbox, keys,
+    authentication) uses the strongest model.
+  - Small, well-specified work uses a cheaper model: copy changes, a UI page
+    from a finished mockup, a mechanical refactor, running checks.
+  - A cheaper model gets a complete prompt: the files to touch, the exact
+    change, how to check it, and what to leave alone.
+  - Checks that need no judgement (test runs, screenshots) are done directly,
+    without a subagent.
 - Contributor rules for everyone, including other models and later Lyrica, are
   in [AGENTS.md](AGENTS.md).
 
