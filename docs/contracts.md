@@ -73,9 +73,10 @@ class Users {
   setAdmin(actor: User, target: User, admin: boolean): void  // refuses to demote the last admin
   updateProfile(actor: User, target: User, change): Profile  // self, or an admin; a rename appends to previousNames
   listUsers(actor: User): User[]                             // admins see everyone, others themselves
-  link(a: User, aPassword, b: User, bPassword): void          // the same person's users; needs both passwords
+  link(a: User, aPassword, otherLogin, otherPassword): Promise<void>  // the same person's users; both passwords
   unlink(actor: User, other: User): void
   linked(userId): string[]
+  stayUnlocked(userId): boolean / setStayUnlocked(userId, on)   // in user.db, default on
   get(id): User | undefined; find(login): User | undefined; all(): User[]
 }
 
@@ -101,9 +102,13 @@ interface Profile {
     pool databases.
 - The theme (device, light or dark) is a display setting in `user.db`.
 - **Persona proposals start in the originating user's `user.db`**, encrypted
-  with that user's key, where only they can read, edit, drop or send them on.
-  Sending copies the proposal to `self.db` for the administrators. A proposal
-  from an administrator's own conversation is sent at once.
+  with that user's key, where only they can read, edit, drop or send them on:
+  `PersonaProposals.propose(view, threadId, …)` (the owner comes from the
+  thread view), `drafts`, `edit`, `drop`, `send`. Sending copies the proposal
+  to `self.db` with `sent_by`, `edited` and its base revision, and `decide`
+  refuses a stale one unless told to overwrite. A proposal from an
+  administrator's own conversation is sent at once. There is no other way to
+  write a proposal into `self.db`.
 - **A browser session holds only linked users.** Logging in as a user not
   linked to the session's users ends the session first. Each user's "stay
   unlocked after logout" choice lives in their `user.db` (default on).
@@ -211,7 +216,8 @@ are enforced in the store:
 
 ```ts
 type Task = "chat" | "subagent.cheap" | "subagent.strong" | "compaction"
-          | "title" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake";
+          | "title" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
+          | "image.create" | "image.edit";    // the image tasks come with the Images thread
 
 interface Endpoint {
   id: string;                              // "<name>" for a user's own, "shared.<name>" for a shared one
@@ -254,6 +260,10 @@ openThreadSession({ thread, models, cwd, extensions, settings? })  // one thread
   across the local/cloud line.
 - A task with no model set uses the same profile's chat model (except
   `embedding`), never the other profile's.
+- **Planned (model host):** a profile entry becomes an ordered list,
+  `Partial<Record<Task, ModelRef[]>>`. `resolveModel` returns the first whose
+  endpoint is up, the thread shows which one answered, and the list never
+  mixes cloud and local.
 - A local endpoint is still declared, not inferred. `probe` warns, without
   blocking, when one resolves outside loopback, private or tailnet ranges.
 - **Shared endpoints** live in `self.db`. Only an administrator can change
@@ -336,6 +346,7 @@ The extension is created with a `ThreadContext`:
   - `delegate`, and `ask_parent` in subagents (Delegation thread; see
     [delegate](#delegate));
   - `calendar` and `sort` (Integrations thread);
+  - `image`, with `create` and `edit` (Images thread);
   - `web_search` and `web_fetch` (research, carried over from v1 or taken from
     a Pi package).
 - **Commands:** `/sleep`, and others only within the budget.
@@ -356,7 +367,7 @@ The extension is created with a `ThreadContext`:
   - Sessions run in-process, with no `pi` subprocesses.
   - Entries are recorded with `appendEntry` as each turn ends (`recordEntries`).
 - **Startup:** once unlocked, `lyricad` builds `Workspace` with its own
-  listening ports as `excludePorts` and the proxy's as `frontPorts`, and calls
+  listening ports as `excludePorts` and its front door as `frontDoor`, and calls
   `selfTest()` before serving threads. It builds one `Delegation`, adds
   `createDelegateExtension` to each thread's session, forwards
   `delegation.events` to the parent thread's stream, and calls `stopAll` on
@@ -364,6 +375,11 @@ The extension is created with a `ThreadContext`:
 - **Permission prompts:** the workspace extension's `tool_call` hook calls
   `ThreadTools.approve?(request)`; `lyricad` supplies it and waits for an
   answer from any open view, denying on timeout or Stop.
+- **Web access** (`LyricadOptions.web`): built-in Caddy, configured through
+  its admin socket `/run/lyrica-caddy/admin.sock`, or an external proxy, with
+  an extra listener whose settings and TLS key are in
+  `<runtime>/web-external.json` (0600) and which opens before unlock. Settings
+  and DNS credentials live in `self.db`. See [daemon.md](daemon.md).
 - **Unlocking:** when started as a service, `lyricad` starts locked, and the
   API serves only the unlock endpoint until `self.db` is unlocked.
 - **HTTP/SSE API**, defined in `daemon/src/api.ts` and described in
@@ -400,9 +416,12 @@ runSleep(userId: string, pool: Pool, reason: "scheduled" | "manual"): SleepRun
 ## core/workspace
 
 ```ts
-new Workspace(keyring, users, { excludePorts, frontPorts? })
+new Workspace(keyring, users, { excludePorts, frontDoor? })
 // excludePorts: lyricad's own ports, refused on every address; required, [] for none
-// frontPorts: the proxy's ports (default [443]), refused on this machine's own addresses
+// frontDoor(): FrontDoor { ports, hosts, exclude }, read at each sandbox start:
+//   the proxy's ports, refused on this machine's addresses, on every address
+//   `hosts` has ever resolved to, and on the proxy's addresses
+resolveAddresses(hosts): Promise<string[] | undefined>   // undefined: never resolved, so no network
 interface WorkspaceThread { userId; pool; threadId }
 interface Network { internet: boolean; services: boolean; hosts: string[] }
 interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
@@ -442,7 +461,9 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
     address, and so are the host's Unix sockets.
   - This machine's own addresses (LAN, Tailscale; read when each sandbox
     starts) count as this machine: reachable only with the services switch,
-    never through internet or an allowed host, and never on `frontPorts`.
+    never through internet or an allowed host.
+  - The front door (`frontDoor()`) is refused wherever it answers. If Lyrica's
+    name has never resolved, that sandbox run gets no network at all.
   - Allowed hostnames are written to the sandbox's `/etc/hosts`. With
     internet off there is no DNS resolver inside the sandbox.
   - `inheritSettings` may only shrink the list.
@@ -450,7 +471,9 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
     start one, every thread runs with network off and the reason is kept in
     `networkRefused` for the UI.
 - **Allowed paths** live in `self.db` (`workspace_paths`, keyed by user ID)
-  and change only with an administrator actor.
+  and change only with an administrator actor. Paths overlapping
+  `NEVER_GRANTED` (`/run/lyrica-caddy`) are refused, because sandboxes run with
+  `lyricad`'s groups.
 - See [workspace.md](workspace.md).
 
 ## integrations
