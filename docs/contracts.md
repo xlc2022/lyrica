@@ -287,14 +287,20 @@ openThreadSession({ thread, models, cwd, extensions, settings? })  // one thread
       in order, filtered by the thread's allowed kinds and by each member's
       fitness for the call (tools, context window).
     - Redirects and tombstones apply to members.
-  - A profile entry becomes an ordered list,
-    `Partial<Record<Task, ModelRef[]>>`, in three profiles: `local`, `cloud`
-    and `custom`. `resolveModel` returns the first whose endpoint is up, and
-    the thread shows which one answered.
+  - A profile entry becomes an ordered list or a pointer to another task's
+    list: `Partial<Record<Task, ModelRef[] | { same: Task }>>`, in three
+    profiles: `local`, `cloud` and `custom`. `same` must name a task with its
+    own list and the same capability, so it is one level deep. A task with
+    neither follows `chat`, as now. `resolveModel` returns the first model
+    whose endpoint is up, and the thread shows which one answered.
   - Local and cloud lists never mix kinds. Custom may, and is never offered
     to private or local-only threads.
   - Offerings carry capabilities (`tools`, `vision`, `embedding`, `image`,
     `edit`), and pickers filter by the task.
+  - Downloads go through a paired host's management API (`host/API.md`):
+    list a repository's files, start, progress, cancel. Shared hosts need an
+    administrator, and a gated repository's token comes from Lyrica's saved
+    credentials with each request.
 - A local endpoint is still declared, not inferred. `probe` warns, without
   blocking, when one resolves outside loopback, private or tailnet ranges.
 - **Shared endpoints** live in `self.db`. Only an administrator can change

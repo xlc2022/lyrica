@@ -107,9 +107,20 @@ can be off, paused or busy gaming without Lyrica going dark.
      through Custom, even when it is the user's default.
 7. **The model library API.** Search and filter by kind, endpoint and
    capability, with paging for hundreds of models, plus starring (per user).
+   - **Get a model:** list a repository's files on a chosen host (marking
+     files already there and those too big for its free space), start a
+     download, follow its progress, cancel. It goes through the host's
+     management API. Shared hosts need an administrator.
+   - A gated repository's token is kept in Lyrica's saved credentials (per
+     user, or shared by an administrator) and sent with each request.
+   - A finished download is discovered as a new offering at once, with a
+     suggestion to add it to a group of the same model.
 8. **Ordered fallbacks** (the contract change already planned):
-   - A profile entry and a thread override become `ModelRef[]`. Migrate
-     existing single entries in place.
+   - A profile entry and a thread override become `ModelRef[]`, or
+     `{ same: Task }` for a task that uses another task's list (one level
+     deep, same capability). Migrate existing single entries in place. New
+     profiles start with titles and compaction following cheap subagents,
+     and sleep following strong.
    - `resolveModel` returns the first model whose endpoint is up, using a
      short-lived health cache fed by probes and by failed calls.
    - Local and cloud lists can never mix kinds, and saving one that does is

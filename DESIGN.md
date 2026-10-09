@@ -228,9 +228,12 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     local, for quick testing or a server started by hand. **Add model host**
     pairs a managed host. A local endpoint over plain HTTP outside this
     machine or the tailnet is marked **unencrypted**;
-  - the local, cloud and custom profiles: for each task (chat, subagents,
-    titles, embeddings, sleep phases, images), an ordered list of models with
-    their fallbacks;
+  - the local, cloud and custom profiles. Each task (chat, subagents,
+    titles, embeddings, sleep, images) shows on one line what answers it
+    right now, and opens to its ordered list of models. A task can instead
+    use another task's list (**Same as**), one level deep: by default titles
+    and compaction follow cheap subagents, and sleep follows strong
+    subagents. A task with no list of its own follows Chat, as before;
   - a **model library** that stays usable with hundreds of models (an
     OpenRouter account, a large shared models folder):
     - search, and filters by kind, endpoint and what a model can do (chat
@@ -238,6 +241,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     - **starred** models, which pickers show first;
     - each picker offers only models suited to its task, so the embeddings
       task lists only embedding models;
+    - **Get a model:** ask a paired host to download one, from Hugging Face,
+      ModelScope or a link (see Downloads under the model host);
   - each model host's GPUs, roles, pinned and loaded models, VRAM and queue,
     with pause, through the host's dashboard;
   - recent calls: which model answered, and when a fallback was used.
@@ -311,8 +316,26 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       `lyrica` subfolder of it.
     - llama.cpp loads GGUF files from it directly, and ComfyUI finds
       checkpoints and LoRAs through its extra model paths.
-    - Downloads run in a separate one-off container, from a pinned list with
-      checksums, started from the dashboard or by an administrator.
+  - **Downloads,** from Lyrica's model library or the host's dashboard: from
+    Hugging Face, ModelScope or an https link. A shared host takes requests
+    from administrators only, and a personal host from its owner.
+    - A small **fetch** service is the only container with internet access.
+      It can write only to the `lyrica` subfolder, and has no GPU and no way
+      to the other containers. `host-api` asks it to list a repository's
+      files and to download one, so nothing needs the Docker socket.
+    - Only GGUF and safetensors files are accepted. Pickle formats (`.bin`,
+      `.pt`, `.ckpt`) can run code when they load, so they are refused. A
+      model that needs `trust_remote_code` is never run.
+    - Each file is checked against the checksum its hub publishes, or one
+      given with a link. A link without one is marked **unverified**. A file
+      downloads under a temporary name and appears only once it is checked.
+    - Links are https only. Fetch checks every address it connects to,
+      redirects included, and refuses this machine, the LAN and the tailnet.
+    - An access token for a gated repository stays in Lyrica's saved
+      credentials and travels with each request. The host never stores it.
+    - Free space is checked first. A paused host still downloads. A finished
+      model gets its offering ID at once, and Lyrica suggests adding it to a
+      group of the same model.
   - **No prompt logs.** Docker keeps container output on disk by default, so
     the serving containers log nothing. ComfyUI's folders are in memory
     (`tmpfs`).
@@ -752,6 +775,11 @@ new evidence.
   pinned and apart from the rest of the machine, with images per GPU vendor,
   and is easy to add or remove. Windows isn't a model host. `lyricad` stays
   native.
+- **Model downloads: one-off container → fetch service (2026-10-09).** The
+  host has no Docker socket, so nothing could start a one-off container.
+  Downloads also became open-ended (Hugging Face, ModelScope, links) instead
+  of a pinned catalogue, so the checks moved into fetch: file formats,
+  checksums and addresses.
 - **Tool budget raised from 6 to 8, then to 30 (2026-10-09).** First to make
   room for web research, then because Lyrica works like a coding agent (files,
   commands, SSH). The budget still exists so that every tool has to justify

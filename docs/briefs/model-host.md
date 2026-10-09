@@ -31,11 +31,14 @@ games on, so the host has to be easy to live with and hard to misuse.
      commits, with a CUDA and a ROCm variant. It has no plugin manager.
    - vLLM and llama.cpp: their official images, pinned by digest, with a
      CUDA and a ROCm variant (and Vulkan for llama.cpp where useful).
+   - `fetch`: ours, small, for downloads (item 9).
    - A compose profile per vendor (`nvidia`, `amd`). An `install.sh` checks
      the GPU, the driver and the container runtime's GPU support, writes
      `.env`, and starts the stack. Running it again upgrades in place.
 3. **Network.**
    - The model servers sit on an internal Docker network with no route out.
+   - `fetch` alone has a route out, on a network of its own that `host-api`
+     shares with it and the model servers don't.
    - `host-api` joins it and publishes one port, bound to the LAN address
      given at install, never `0.0.0.0`.
    - An optional `tailscale` service makes the stack a tailnet device of its
@@ -62,7 +65,7 @@ games on, so the host has to be easy to live with and hard to misuse.
      never a workflow;
    - management: status (GPUs, VRAM, loaded and pinned models, queue,
      paused), load, unload, pin, GPU roles, pause, resume, restart, and
-     downloads.
+     downloads (list a repository's files, start, progress, cancel).
 6. **VRAM**, as in DESIGN:
    - each GPU has a role (vLLM or shared);
    - pinned models;
@@ -80,9 +83,28 @@ games on, so the host has to be easy to live with and hard to misuse.
    - mounted read-only into the model servers;
    - llama.cpp reads GGUF files from it directly, and ComfyUI reads it through
      its extra model paths;
-   - downloads go into a `lyrica/` subfolder, through a one-off container
-     that has internet access, from a catalogue with pinned checksums.
-9. **The dashboard**, a small page served by `host-api` on port 7236:
+   - downloads go into a `lyrica/` subfolder.
+9. **Downloads,** as in DESIGN, from Hugging Face, ModelScope or an https
+   link, asked for by Lyrica or on the dashboard:
+   - a small `fetch` service is the only container with internet access. It
+     writes only to `lyrica/`, has no GPU, and has no way to the other
+     containers. `host-api` asks it to list and download; never the Docker
+     socket;
+   - GGUF and safetensors only. Pickle formats are refused, and nothing runs
+     with `trust_remote_code`;
+   - each file is checked against the hub's published checksum, or the one
+     given with a link (otherwise it is marked unverified). It downloads
+     under a temporary name and appears only once checked;
+   - https only. Every address, redirects included, is checked, refusing
+     loopback, private, link-local and tailnet ranges;
+   - a gated repository's token arrives with the request and is never
+     written to disk;
+   - free space is checked first; downloads resume after a restart and can
+     be cancelled, which deletes the partial file;
+   - tests: a pickle file is refused, a wrong checksum leaves nothing
+     behind, a link to a LAN address or a redirect to one is refused, and
+     the token never reaches disk or logs.
+10. **The dashboard**, a small page served by `host-api` on port 7236:
    - shows GPUs and VRAM, models, the queue, and usage statistics (counts,
      tokens, images and time per model; never prompts, results or who asked;
      nothing leaves the machine);
@@ -91,7 +113,7 @@ games on, so the host has to be easy to live with and hard to misuse.
    - at the machine (`127.0.0.1`) it needs no login. Remotely it needs a
      password set at first start, rate-limited, over HTTPS;
    - it checks the Host and Origin headers.
-10. **No prompt traces.**
+11. **No prompt traces.**
     - The serving containers use the `none` log driver.
     - ComfyUI's input, output and temp folders are `tmpfs`, metadata saving
       is off, and history is cleared after each job.

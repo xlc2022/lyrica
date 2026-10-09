@@ -29,8 +29,13 @@ phone (principle 1).
    - **Add endpoint**, with the plain-HTTP warning.
    - **Add model host**: addresses, pairing code, then the paired
      fingerprint.
-   - Profiles with ordered fallbacks: reorder, add and remove, offering only
-     models of the same kind.
+   - Profiles: one line per task showing what answers it now, opening to its
+     ordered list (drag or arrows to reorder, add, remove) or **Same as**
+     another task. Pickers offer only suitable models.
+   - The model library: search, filters, stars, and **Get a model** (host,
+     source, repository lookup with file choice, token for gated
+     repositories, progress).
+   - Model groups and Clean up, as in the mockup.
    - Recent calls, with fallback notes.
    - The thread's model badge shows which model actually answered, and when
      a fallback was used.
