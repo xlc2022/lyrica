@@ -21,6 +21,10 @@ if (process.env.LYRICA_SANDBOX_TESTS === "require" && !homeRunnable) {
   throw new Error(`sandbox tests required but can't run here (${root ? "running as root" : "bwrap, gocryptfs or fusermount3 missing"})`);
 }
 
+// Making a file someone else owns needs root; CI's runner has passwordless sudo.
+const sudo = runnable && (() => { try { execFileSync("sudo", ["-n", "true"], { stdio: "ignore" }); return true; } catch { return false; } })();
+if (process.env.LYRICA_SANDBOX_TESTS === "require" && runnable && !sudo) throw new Error("sandbox tests required but sudo -n isn't available");
+
 let dir: string;
 let server: Server;
 let port: number;
@@ -146,6 +150,31 @@ describe.skipIf(!runnable)("the sandbox", () => {
       expect(r.out, t).not.toMatch(/hello from the host|REACHED/);
     }
     expect((await sh("cat /proc/net/dev | tail -n +3 | cut -d: -f1 | tr -d ' '")).out.trim()).toBe("lo");
+  });
+
+  it("writes in place, keeping the owner, when the folder won't take a temp file", async () => {
+    mkdirSync(p("rw", "locked"));
+    writeFileSync(p("rw", "locked", "f.txt"), "old");
+    const inode = statSync(p("rw", "locked", "f.txt")).ino;
+    chmodSync(p("rw", "locked"), 0o555);
+    try {
+      await box().ops().write.writeFile(p("rw", "locked", "f.txt"), "new");
+      expect(readFileSync(p("rw", "locked", "f.txt"), "utf8")).toBe("new");
+      expect(statSync(p("rw", "locked", "f.txt")).ino).toBe(inode);
+    } finally {
+      chmodSync(p("rw", "locked"), 0o755);
+    }
+  });
+
+  it.skipIf(!sudo)("writes in place a file someone else owns, so it keeps its owner", async () => {
+    const file = p("rw", "theirs.txt");
+    writeFileSync(file, "old", { mode: 0o666 });
+    chmodSync(file, 0o666);
+    execFileSync("sudo", ["-n", "chown", "0:0", file]);
+    await box().ops().write.writeFile(file, "new");
+    expect(readFileSync(file, "utf8")).toBe("new");
+    expect(statSync(file).uid).toBe(0);
+    expect(readdirSync(p("rw")).filter((f) => f.startsWith(".theirs.txt."))).toEqual([]);
   });
 
   it("writes atomically: parallel reads see the old file or the new one, never a partial one", async () => {

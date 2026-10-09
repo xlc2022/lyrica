@@ -44,20 +44,29 @@ const LOAD_RULES = 'printf "%s" "$1" | nft -f - || exit 125; shift; exec "$@"';
 export class SandboxDenied extends Error {}
 
 /**
- * Writes stdin to "$1" atomically: a temp file in the same folder, the old
- * file's mode (or the usual one for a new file), then a rename over the
- * target. A reader sees the old content
- * or the new, never a truncated file. A symlink at the target is refused
- * rather than replaced or followed.
+ * Writes stdin to "$1". For a file she owns (or a new one), atomically: a
+ * temp file in the same folder with the old file's mode and group (or the
+ * usual mode for a new file), then a rename over the target, so a reader
+ * sees the old content or the new, never a truncated file. A file someone
+ * else owns, one whose group can't be kept, or one in a folder she can't
+ * create files in is written in place, so it keeps its owner, group and
+ * permissions. A symlink at the target is refused rather than followed.
  */
-const ATOMIC_WRITE = [
-  'set -e; t="$1"',
+const WRITE = [
+  't="$1"',
   'if [ -L "$t" ]; then echo "$t is a symlink; not writing through it" >&2; exit 1; fi',
-  'tmp=$(mktemp "$(dirname -- "$t")/.$(basename -- "$t").XXXXXX")',
+  'if [ -e "$t" ] && [ ! -O "$t" ]; then exec cat > "$t"; fi',
+  'tmp=$(mktemp "$(dirname -- "$t")/.$(basename -- "$t").XXXXXX" 2>/dev/null) || exec cat > "$t"',
   "trap 'rm -f -- \"$tmp\"' EXIT",
-  'cat > "$tmp"',
-  'if [ -e "$t" ]; then chmod --reference="$t" -- "$tmp"; else chmod "$(printf %o $((0666 & ~$(umask))))" -- "$tmp"; fi',
-  'mv -f -T -- "$tmp" "$t"',
+  'if [ -e "$t" ]; then',
+  '  chmod --reference="$t" -- "$tmp" || exit 1',
+  '  if [ "$(stat -c %g -- "$t")" != "$(stat -c %g -- "$tmp")" ] && ! chgrp --reference="$t" -- "$tmp" 2>/dev/null; then',
+  '    rm -f -- "$tmp"; trap - EXIT; exec cat > "$t"',
+  '  fi',
+  'else',
+  '  chmod "$(printf %o $((0666 & ~$(umask))))" -- "$tmp" || exit 1',
+  'fi',
+  'cat > "$tmp" && mv -f -T -- "$tmp" "$t"',
 ].join("\n");
 
 interface RunOptions {
@@ -205,7 +214,7 @@ export class Sandbox implements ExecutionTarget {
   ops(): ToolOps {
     const readFile = async (p: string) => this.file(["cat", "--", this.allow(p, false)]);
     const writeFile = async (p: string, content: string) => {
-      await this.file(["sh", "-c", ATOMIC_WRITE, "sh", this.allow(p, true)], content);
+      await this.file(["sh", "-c", WRITE, "sh", this.allow(p, true)], content);
     };
     return {
       read: {

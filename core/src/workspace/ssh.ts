@@ -130,24 +130,42 @@ export class SshTarget implements ExecutionTarget {
   }
 
   /**
-   * Writes a temp file in the same folder, gives it the old file's mode, then
-   * renames it over the target, so a reader never sees a truncated file. A
-   * symlink at the target is refused.
+   * For a file she owns (or a new one), writes a temp file in the same
+   * folder with the old file's mode and group, then renames it over the
+   * target, so a reader never sees a truncated file. A file someone else
+   * owns, one whose group can't be kept, or one in a folder she can't create
+   * files in is written in place, so it keeps its owner. A symlink at the
+   * target is refused.
    */
-  private async atomicWrite(path: string, content: string): Promise<void> {
+  private async write(path: string, content: string): Promise<void> {
     const old = await this.sftp<Stats | undefined>((s, done) =>
       s.lstat(path, (err, st) => done((err as { code?: number } | undefined)?.code === 2 ? undefined : err, st)));
     if (old?.isSymbolicLink()) throw new Error(`${path} is a symlink; not writing through it`);
+    const inPlace = () => this.sftp<void>((s, done) => s.writeFile(path, content, done));
     const tmp = posix.join(posix.dirname(path), `.${posix.basename(path)}.${randomBytes(6).toString("hex")}`);
+    const drop = () => this.sftp<void>((s, done) => s.unlink(tmp, () => done(undefined))).catch(() => {});
     try {
       await this.sftp<void>((s, done) => s.writeFile(tmp, content, { mode: 0o600 }, done));
+    } catch {
+      await drop();
+      return inPlace();
+    }
+    try {
+      if (old) {
+        const mine = await this.sftp<Stats>((s, done) => s.lstat(tmp, done));
+        if (mine.uid !== old.uid) { await drop(); return inPlace(); }
+        if (mine.gid !== old.gid) {
+          const kept = await this.sftp<void>((s, done) => s.chown(tmp, old.uid, old.gid, done)).then(() => true, () => false);
+          if (!kept) { await drop(); return inPlace(); }
+        }
+      }
       await this.sftp<void>((s, done) => s.chmod(tmp, old ? old.mode & 0o7777 : 0o644, done));
       await this.sftp<void>((s, done) => {
         // posix-rename replaces the target in one step; plain SFTP rename refuses to.
         try { s.ext_openssh_rename(tmp, path, done); } catch { s.rename(tmp, path, done); }
       });
     } catch (err) {
-      await this.sftp<void>((s, done) => s.unlink(tmp, () => done(undefined))).catch(() => {});
+      await drop();
       throw err;
     }
   }
@@ -159,7 +177,7 @@ export class SshTarget implements ExecutionTarget {
 
   ops(): ToolOps {
     const readFile = async (p: string) => { const q = await this.inside(p); return this.sftp<Buffer>((s, done) => s.readFile(q, done)); };
-    const writeFile = async (p: string, content: string) => this.atomicWrite(await this.inside(p), content);
+    const writeFile = async (p: string, content: string) => this.write(await this.inside(p), content);
     return {
       read: {
         readFile,
