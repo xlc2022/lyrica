@@ -12,6 +12,7 @@ sketches; names may move, but the boundaries may not.
 - SQLCipher through `better-sqlite3-multiple-ciphers`. Argon2id through
   `@node-rs/argon2`.
 - Tests with `vitest`. Type checks with `tsc --noEmit`.
+- The web UI is React with TypeScript, built with Vite.
 
 ```text
 core/        keyring, users, stores, model router (no Pi dependency)
@@ -76,6 +77,8 @@ interface Profile {
   displayName: string;                       // changeable at any time
   pronouns: { subj: string; obj: string; poss: string; possPro: string; refl: string };
   previousNames: { name: string; until: string }[];   // appended on rename
+  accent?: string;                           // persona colour in the web UI, "#rrggbb"
+  monogram?: string;                         // one or two letters
 }
 ```
 
@@ -87,6 +90,7 @@ interface Profile {
     is locked, so the admin panel and `render` keep working.
   - Each user's `user.db` holds that user's settings. Their memory lives in the
     pool databases.
+- The theme (device, light or dark) is a display setting in `user.db`.
 - The **login name** is separate from the display name, so renaming never
   affects signing in.
 - Pronoun presets are she/her, he/him and they/them, plus a custom option that
@@ -134,7 +138,7 @@ nothing else. No code path gives a general view a private handle.
 
 | Area | Methods |
 |---|---|
-| Threads | `createThread({ interface, parent?, unlogged?, title? })`, `listThreads({ includeHidden })`, `getThread`, `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `exportThread`, `forgetThread` |
+| Threads | `createThread({ interface, parent?, subagent?, unlogged?, title? })`, `listThreads({ includeHidden?, parent? })`, `getThread`, `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `exportThread`, `forgetThread` |
 | Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
 | Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `userIntroduced` |
@@ -194,10 +198,12 @@ type Task = "chat" | "subagent.cheap" | "subagent.strong" | "compaction"
           | "title" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake";
 
 interface Endpoint {
-  id: string; name: string;
+  id: string;                              // "<name>" for a user's own, "shared.<name>" for a shared one
+  name: string;
   kind: "cloud" | "local";                 // declared by the user, never inferred
   api: "openai-compatible";                // OpenRouter, LM Studio, KoboldCpp, llama-server
-  baseUrl: string; apiKey?: string;        // the key is stored in the user's user.db
+  baseUrl: string; apiKey?: string;
+  shared: boolean;
 }
 interface ModelRef { endpointId: string; modelId: string }   // same model on two endpoints = two refs
 
@@ -208,16 +214,32 @@ interface CallContext {
   overrides?: Partial<Record<Task, ModelRef>>;
 }
 
-resolveModel(task: Task, ctx: CallContext): ModelRef      // throws CloudModelForbidden
-modelRuntimeFor(ctx: CallContext): ModelRuntime           // Pi runtime with only the allowed models
-probe(endpointId: string): Promise<"up" | "down">
+class Models {                                              // new Models(keyring, users)
+  addEndpoint(actor, input, { shared? }) / removeEndpoint(actor, id)   // shared: administrators only
+  endpoints(userId) / models(userId, endpointId) / addModel(actor, endpointId, m) / discover(actor, endpointId)
+  probe(userId, endpointId): Promise<{ state: "up" | "down"; warning?: string }>
+  profile(userId, "cloud" | "local") / setProfile(userId, name, task, ref?)
+  setThreadModel(userId, pool, threadId, task, ref?) / setLocalOnly(userId, pool, threadId, on)
+  callContext(userId, pool, threadId): CallContext
+  childContext(parent, childThreadId, { tier } | { model }): CallContext   // a child under its parent's rules
+  resolveModel(task, ctx): ModelRef                         // throws CloudModelForbidden
+  allowed(ctx): { endpoint, models }[]
+}
+
+// extension/, because core has no Pi dependency:
+modelRuntimeFor(models, ctx): Promise<ModelRuntime>       // Pi runtime with only the allowed models
+openThreadSession({ thread, models, cwd, extensions, settings? })  // one thread's Pi session, in process
 ```
 
 - When `ctx.pool === "private"` or `ctx.localOnly` is set, Pi sessions are
-  built with `modelRuntimeFor(ctx)`, which contains **no cloud models at all**.
+  built with `modelRuntimeFor(models, ctx)`, which contains **no cloud models at all**.
   Even Pi's own compaction then has nothing cloud-based to pick.
 - Asking for a cloud model throws `CloudModelForbidden`. Nothing falls back
   across the local/cloud line.
+- A task with no model set uses the same profile's chat model (except
+  `embedding`), never the other profile's.
+- A local endpoint is still declared, not inferred. `probe` warns, without
+  blocking, when one resolves outside loopback, private or tailnet ranges.
 - **Shared endpoints** live in `self.db`. Only an administrator can change
   them, and their API keys are encrypted with the rest of `self.db`. Every
   user can use them in their profiles. A user's own endpoints live in their
@@ -281,7 +303,7 @@ The extension is created with a `ThreadContext`:
   - `read`, `write`, `edit` and `bash` (Workspace thread; see
     [workspace.md](workspace.md));
   - `remember`, `recall` and `read_memory` (Memory thread);
-  - `delegate` (Models thread; see [delegate](#delegate));
+  - `delegate` (Delegation thread; see [delegate](#delegate));
   - `calendar` and `sort` (Integrations thread);
   - `web_search` and `web_fetch` (research, carried over from v1 or taken from
     a Pi package).
@@ -291,20 +313,23 @@ The extension is created with a `ThreadContext`:
 
 ## daemon
 
-- **Session hosting:** `createAgentSession` with
-  `SessionManager.inMemory(cwd, opts, view.own.loadEntries(threadId))`, the
-  router's `modelRuntimeFor`, and a `DefaultResourceLoader` that has the inline
-  Lyrica extension and context-file discovery turned off.
+- **Session hosting:** each thread through `openThreadSession`. It uses
+  `SessionManager.inMemory` with the thread's stored entries, the router's
+  `modelRuntimeFor`, and a resource loader with discovery of context files,
+  skills and extensions turned off, so only the extensions passed in load.
   - Pi's built-in tools are disabled with `noTools: "builtin"`. Lyrica
     registers her own `read`, `write`, `edit` and `bash`, built with Pi's
     `create*Tool(cwd, { operations })` and routed to the thread's execution
     target ([workspace.md](workspace.md)). Never use `noTools: "all"`, which
     also removes extension tools.
   - Sessions run in-process, with no `pi` subprocesses.
-  - Each `message_end` calls `appendEntry`.
+  - Entries are recorded with `appendEntry` as each turn ends (`recordEntries`).
+- **Startup:** `lyricad` builds `Workspace` with its own listening ports as
+  `excludePorts`, and calls `selfTest()` before serving threads.
 - **Unlocking:** when started as a service, `lyricad` starts locked, and the
   API serves only the unlock endpoint until `self.db` is unlocked.
-- **HTTP/SSE API** (detailed by the Web thread):
+- **HTTP/SSE API**, detailed by the Daemon thread in `daemon/src/api.ts`.
+  The web UI imports its types from there:
   - auth;
   - threads (list, create, hide, forget);
   - messages (send, stream);
@@ -337,36 +362,50 @@ runSleep(userId: string, pool: Pool, reason: "scheduled" | "manual"): SleepRun
 ## core/workspace
 
 ```ts
-interface ExecutionTarget {               // "sandbox" | "ssh:<name>"
-  ops(): { read: ReadOperations; write: WriteOperations; edit: EditOperations; bash: BashOperations };
+new Workspace(keyring, users, { excludePorts })  // excludePorts: lyricad's own ports; required, [] for none
+interface WorkspaceThread { userId; pool; threadId }
+interface Network { internet: boolean; services: boolean; hosts: string[] }
+interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
+  cwd(): Promise<string>;
+  ops(): { read; write; edit; bash };     // Pi's tool operations
+  folders(): string[];                    // host folders, or "<ssh name>:<root>"
 }
-targetFor(ctx: ThreadContext): ExecutionTarget
-grantsFor(ctx: ThreadContext): Grant[]    // the thread's chosen grants
-inheritSettings(parentThreadId, childThreadId, narrower?): void  // subagents: same or stricter, never wider
-mountHome(userId): Promise<string>        // gocryptfs; called when the user's key becomes available
-unmountHome(userId): Promise<void>
+forThread(t)  // { target(), settings(), network(), folders() }, each read fresh
+targetFor(t): ExecutionTarget
+grantsFor(t): Grant[]                     // { path, writable }
+folders(t): string[]
+network(t): Network
+inheritSettings(parent, childThreadId, narrower?)  // subagents: same or stricter, never wider
+settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, SSH targets
+allowedPaths.allow(actor, userId, pool, path) / disallow(...) / list(userId)
+saveUpload(t, name, bytes): Promise<string>
+mountHome(userId) / unmountHome(userId)   // gocryptfs; mount when the user's key becomes available
+selfTest(): Promise<string | undefined>   // lyricad calls this at startup
 ```
 
-- Every sandbox run receives exactly `grantsFor(ctx)`, the thread's folder in
-  the home workspace, and a read-only system.
+- Every sandbox run receives exactly the thread's grants, the thread's folder
+  in the home workspace, and a read-only system.
 - **Workspace settings live in the user's `user.db`:** each thread's grants,
-  network switches and permission mode, and SSH targets. The exception is
-  allowed paths, which live in `self.db` (below).
-  Workspace never adds tables to the pool databases, which belong to Memory.
+  network switches, permission mode and target, and the SSH targets. Allowed
+  paths are the exception (below). Workspace never adds tables to the pool
+  databases, which belong to Memory.
 - **Network:** every thread has two switches (internet, and this machine's
   services) and an **allowed hosts** list. Each has per-user, per-pool
   defaults and a per-thread override.
   - Nothing on, list empty: `--unshare-net`.
-  - Otherwise: an isolated namespace through `pasta`, with default-deny
-    output rules set inside the namespace before the command runs. They
+  - Otherwise `pasta` wraps the sandbox in its own network namespace, with
+    default-deny output rules set inside it before the command runs. They
     allow the internet if that switch is on, the host's loopback if the
     machine's-services switch is on, and each allowed host (IP, CIDR, or a
     hostname resolved at start, each with an optional port).
-  - `lyricad`'s own ports on every address are always rejected. Never
-    `--share-net`.
+  - Never the host's network namespace. `excludePorts` are rejected on every
+    address, and so are the host's Unix sockets.
   - Allowed hostnames are written to the sandbox's `/etc/hosts`. With
     internet off there is no DNS resolver inside the sandbox.
   - `inheritSettings` may only shrink the list.
+  - If `selfTest()` finds that a sandbox could undo its firewall, or can't
+    start one, every thread runs with network off and the reason is kept in
+    `networkRefused` for the UI.
 - **Allowed paths** live in `self.db` (`workspace_paths`, keyed by user ID)
   and change only with an administrator actor.
 - See [workspace.md](workspace.md).

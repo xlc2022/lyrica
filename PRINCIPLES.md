@@ -168,6 +168,9 @@ nothing ever removed them. These rules work against that:
    not yet validated."
 6. **Tests protect what Li would notice:** context assembly, memory round trips
    and sleep output. Don't add a test for every hypothetical guard.
+7. **Choose what models know best.** Models write almost all of the code and
+   Li rarely edits it by hand, so prefer mainstream languages and libraries
+   that models are fluent in, and that a type checker can verify.
 
 ## Evaluation: does she remember?
 
