@@ -151,7 +151,11 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   the local/cloud line.
 - **Models page.** One page in the control panel covers everything about
   models:
-  - endpoints, cloud and local, and model hosts, each with its live status;
+  - endpoints and model hosts, each with its live status. **Add endpoint**
+    takes any OpenAI-compatible URL, with an optional key, declared cloud or
+    local, for quick testing or a server started by hand. **Add model host**
+    pairs a managed host. A local endpoint over plain HTTP outside this
+    machine or the tailnet is marked **unencrypted**;
   - the cloud and local profiles: for each task (chat, subagents, titles,
     embeddings, sleep phases, images), an ordered list of models with their
     fallbacks;
@@ -204,8 +208,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     built in CI from pinned versions. vLLM and llama.cpp use their official
     images, also pinned by digest. Nothing is pulled as `latest`.
   - **One way in.** Only the host API container can be reached from outside.
-    Lyrica connects to it with the host's token, and it passes requests on to
-    the model servers (vLLM, llama.cpp, ComfyUI).
+    Lyrica connects to it over mutual TLS with pinned keys (see Pairing), and
+    it passes requests on to the model servers (vLLM, llama.cpp, ComfyUI).
     - The model servers sit on an internal Docker network. The host API can
       reach them, but they can't reach the internet or anything else, and
       nothing outside can reach them directly.
@@ -245,14 +249,35 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       rate-limited. Over Tailscale it uses HTTPS with a real certificate for
       the host's tailnet name, from Tailscale. On the LAN it uses HTTPS with
       a certificate the host makes.
-    - **From Lyrica's control panel,** which reaches it through the host API
-      with the host's token.
+    - **From Lyrica's control panel,** which reaches it through the paired
+      connection.
 
     It checks the Host and Origin headers, so a web page open in a browser
     can't drive it.
-  - **Pairing.** On first start the host shows its address and a token, in
-    its log and on the dashboard. An administrator adds it in Lyrica's
-    control panel as a local endpoint.
+  - **Pairing.** A host's identity is a key it holds, not its address, so
+    hosts can move.
+    - On first start the host makes a key and certificate, kept in its data
+      folder. `lyricad` has its own key in `self.db`.
+    - On the Models page, **Add model host** takes a name and one or more
+      addresses (a LAN address, a tailnet name). Lyrica tries them in order.
+    - The host's dashboard (and its log) shows a one-time **pairing code**,
+      about 16 characters long, which expires after 10 minutes. It is pasted
+      into Lyrica. Each side proves it knows the code, tied to both
+      certificates as it sees them, so a machine in the middle, or someone on
+      the LAN without the code, can't pair.
+    - Both sides then pin each other's certificate. Every connection is
+      mutual TLS with those keys: no tokens. Over Tailscale it also runs
+      inside WireGuard, and Tailscale's access rules remain an outer fence.
+    - **Addresses** can be edited at any time, and trust stays with the key.
+      A host whose key changed must be paired again, and Lyrica says so
+      plainly.
+    - **Unpairing** works from either side: remove the host in Lyrica, or
+      revoke a Lyrica server on the host's dashboard. A host can be paired
+      with several Lyrica servers, such as a test instance.
+    - Administrators pair **shared** hosts, in `self.db`, for every user. Any
+      user can pair a **personal** host, in their `user.db`, that only they
+      can use. Hosts are always local endpoints, with the usual warning if an
+      address resolves outside Li's network.
   - **Management API.** Each host serves an OpenAI-compatible endpoint plus a
     small, authenticated management API: list, load, unload, status, and
     download models. Lyrica can start, stop and switch models on it.
