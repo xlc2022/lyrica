@@ -50,14 +50,28 @@ CREATE TABLE IF NOT EXISTS persona_revisions (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS persona_revisions_path ON persona_revisions (path, id);
--- Changes to the persona waiting for an administrator. Approving applies one as a revision.
+-- Changes to the persona sent on to the administrators. Approving applies one as a revision.
+-- They start as drafts in the originating user's user.db (persona_drafts).
+-- sent_by: the user who sent it on; edited: whether they changed its text; base: the file's
+-- revision when it was drafted, so approving it after the file changed can't silently undo that.
 CREATE TABLE IF NOT EXISTS persona_proposals (
   id         INTEGER PRIMARY KEY,
   path       TEXT NOT NULL,
   text       TEXT NOT NULL,
   reason     TEXT NOT NULL,
   author     TEXT NOT NULL,
+  sent_by    TEXT NOT NULL,
+  edited     INTEGER NOT NULL,
+  base       INTEGER NOT NULL,
   created_at TEXT NOT NULL
+);
+-- Users that belong to the same person, so one browser may hold them together.
+-- One row per pair, smaller ID first: a link is mutual.
+CREATE TABLE IF NOT EXISTS user_links (
+  a TEXT NOT NULL,
+  b TEXT NOT NULL,
+  PRIMARY KEY (a, b),
+  CHECK (a < b)
 );
 -- Global settings by key, such as the sleep time.
 CREATE TABLE IF NOT EXISTS settings (

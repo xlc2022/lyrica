@@ -131,6 +131,8 @@ export class PoolReader {
   constructor(protected readonly c: StoreContext) {}
 
   get pool(): Pool { return this.c.pool; }
+  /** The user whose pool this is. */
+  get owner(): UserId { return this.c.owner; }
   protected get db(): Db { return this.c.db; }
   close(): void { this.db.close(); }
 

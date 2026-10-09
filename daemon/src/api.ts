@@ -60,12 +60,29 @@ export interface State {
 /** POST /api/unlock → State. Only while locked. */
 export interface UnlockRequest { passphrase: string }
 
-/** POST /api/login → LoginResponse. Adds the user to this browser session (creating it if needed). */
+/**
+ * POST /api/login → LoginResponse. Adds the user to this browser session (creating it if needed).
+ * One browser, one person: if the session holds users this one isn't linked to, it ends first and a new one starts.
+ */
 export interface LoginRequest { login: string; password: string }
-export interface LoginResponse { user: UserCard }
+export interface LoginResponse {
+  user: UserCard;
+  /** This browser held users not linked to this one; they were logged out of it (they aren't named). */
+  replaced: boolean;
+}
 
-/** POST /api/logout → Ok. Ends the cookie session, or with `userId` removes only that user from it. The key stays in memory. */
+/**
+ * POST /api/logout → LogoutResponse. Ends the cookie session, or with `userId` removes only that user from it
+ * (a session left empty ends).
+ * A user's key stays in memory unless they turned "stay unlocked" off and no other browser session holds them.
+ */
 export interface LogoutRequest { userId?: string }
+/** POST /api/logout → LogoutResponse */
+export interface LogoutResponse {
+  ok: true;
+  /** Users who left but stay unlocked, because another browser session still holds them. */
+  stillUnlocked: string[];
+}
 
 /** POST /api/u/:userId/lock → Ok. Drops the user's key and every session of theirs, in every browser. */
 
@@ -85,7 +102,33 @@ export interface Me {
   display: Display;
   /** Whether this user's key is saved with systemd credentials, so it's unlocked at startup. */
   savedCredentials: boolean;
+  /** Whether logging out keeps the key in memory, so sleep can run. On by default; Lock always drops it. */
+  stayUnlocked: boolean;
+  /** A setting that contradicts another, in plain words: saved credentials with stay-unlocked off. */
+  warning?: string;
 }
+
+/** PUT /api/u/:userId/me/stay-unlocked → Me */
+export interface StayUnlockedChange { stayUnlocked: boolean }
+
+/**
+ * Linked users belong to the same person: one browser may hold them together.
+ * GET /api/u/:userId/links → UserCard[]
+ * POST /api/u/:userId/links → UserCard[]. Needs both passwords: this user's and the other's.
+ * DELETE /api/u/:userId/links/:otherId → UserCard[]. Sessions holding both keep only this user.
+ */
+export interface LinkRequest { password: string; login: string; otherPassword: string }
+
+/**
+ * A persona proposal from this user's conversations or dreams, kept in their own
+ * encrypted user.db until they send it on. Administrators never see drafts.
+ * GET /api/u/:userId/proposals → ProposalDraft[]
+ * PATCH /api/u/:userId/proposals/:id (ProposalDraftChange) → ProposalDraft
+ * DELETE /api/u/:userId/proposals/:id → Ok
+ * POST /api/u/:userId/proposals/:id/send → Ok: copied to the administrators' list, and the draft goes.
+ */
+export interface ProposalDraft { id: number; path: string; text: string; reason: string; author: string; createdAt: string }
+export interface ProposalDraftChange { text?: string; reason?: string }
 
 /** PATCH /api/u/:userId/me/profile → Me. Accent is "#rrggbb"; the monogram is one or two letters. */
 export interface ProfileChange {
@@ -608,12 +651,18 @@ export interface PersonaProposal {
   id: number;
   path: string;
   text: string;
+  /** The user who sent it on (`user:<id>`), and whether they changed its text: then the words are theirs. */
+  sentBy: string;
+  edited: boolean;
+  /** The file has changed since it was proposed: approving would replace those changes, so it needs `overwrite`. */
+  stale: boolean;
+  base: number;
   /** What it replaces: the current text of the file, or empty for a new topic. */
   current: string;
   reason: string;
   author: string;
   createdAt: string;
 }
-/** GET /api/u/:userId/admin/proposals → PersonaProposal[] (open ones) */
+/** GET /api/u/:userId/admin/proposals → PersonaProposal[]: open ones that users have sent on. */
 /** POST /api/u/:userId/admin/proposals/:id → Ok. Approve applies the change; reject drops it. */
-export interface ProposalDecision { approve: boolean }
+export interface ProposalDecision { approve: boolean; overwrite?: boolean }
