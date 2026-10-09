@@ -1,14 +1,17 @@
-# lyricad as a systemd service. Install as /etc/systemd/system/lyricad.service.
+# lyricad as a systemd service. daemon/deploy/install.sh installs it as
+# /etc/systemd/system/lyricad.service.
 # See docs/daemon.md ("Deployment").
 [Unit]
 Description=Lyrica (lyricad)
-After=network-online.target
-Wants=network-online.target
+After=network-online.target lyrica-caddy.service
+Wants=network-online.target lyrica-caddy.service
 
 [Service]
 Type=simple
 User=lyrica
 Group=lyrica
+# The built-in Caddy's admin socket and TLS log are this group's.
+SupplementaryGroups=lyrica-caddy
 Environment=LYRICA_HOME=/var/lib/lyrica
 # Creates both directories, owned by lyrica, before the service starts.
 StateDirectory=lyrica lyrica/credentials

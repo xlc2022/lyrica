@@ -1,0 +1,45 @@
+# The built-in Caddy, which lyricad configures through the admin socket.
+# daemon/deploy/install.sh installs it as /etc/systemd/system/lyrica-caddy.service.
+[Unit]
+Description=Caddy for Lyrica (configured by lyricad)
+# It binds the Tailscale address, which exists once tailscaled is up.
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lyrica-caddy
+Group=lyrica-caddy
+# --resume: the config lyricad last gave it, so it serves while lyricad is
+# locked. caddy.json is only the first start's: the admin API on a Unix
+# socket, group-only (0660), and nothing on localhost:2019.
+ExecStart=/usr/local/bin/lyrica-caddy run --config /etc/lyrica/caddy.json --resume
+Environment=XDG_CONFIG_HOME=/var/lib/lyrica-caddy/config XDG_DATA_HOME=/var/lib/lyrica-caddy/data
+# Its saved config holds the DNS token, so its state is its own.
+StateDirectory=lyrica-caddy
+StateDirectoryMode=0700
+# The admin socket and TLS log, for the lyrica-caddy group (lyricad's user is in it).
+RuntimeDirectory=lyrica-caddy
+RuntimeDirectoryMode=0750
+UMask=0027
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+# Caddy needs none of what breaks lyricad's sandboxes, so it is hardened fully.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+LimitNOFILE=1048576
+TimeoutStopSec=10
+# If the Tailscale address isn't up yet, try again.
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -3,7 +3,7 @@ import { closeSync, constants, existsSync, lstatSync, openSync, readlinkSync } f
 import { posix } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { capOutput, sniffImage, type ExecutionTarget, type ToolOps } from "./ops.ts";
-import { hostAddresses, nftRules, pastaArgs, resolveHosts, SANDBOX_GATEWAY } from "./net.ts";
+import { hostAddresses, nftRules, pastaArgs, resolveAddresses, resolveHosts, SANDBOX_GATEWAY } from "./net.ts";
 import { cleanPath, within, type Grant, type Network } from "./settings.ts";
 
 /** The thread's folder in the home workspace, as she sees it. */
@@ -20,6 +20,8 @@ export interface SandboxSpec {
   front?: number[];
   /** This machine's own addresses. Defaults to the host's, read at each run. */
   self?: string[];
+  /** Other hosts (IPs or names, resolved at each run) where the front ports are never reachable: an external proxy, Lyrica's name. */
+  frontHosts?: string[];
   /**
    * Called with each grant's real path just before it is mounted, so the
    * grant can be checked against the current settings. Throws to refuse.
@@ -104,8 +106,10 @@ export class Sandbox implements ExecutionTarget {
     let cmd = [this.spec.bwrap ?? "bwrap", ...args, "--", ...argv];
     if (networked) {
       const exclude = this.spec.exclude ?? [];
-      const rules = nftRules(internet, resolved.rules, exclude,
-        { addresses: this.spec.self ?? hostAddresses(), services, front: this.spec.front ?? [] });
+      const rules = nftRules(internet, resolved.rules, exclude, {
+        addresses: this.spec.self ?? hostAddresses(), services, front: this.spec.front ?? [],
+        frontAddresses: await resolveAddresses(this.spec.frontHosts ?? []),
+      });
       // The front ports are never forwarded from loopback either, in case the proxy listens on every address.
       cmd = [this.spec.pasta ?? "pasta", ...pastaArgs({ internet, services, hosts: hosts.length > 0 }, [...exclude, ...(this.spec.front ?? [])]),
         "--", "sh", "-c", LOAD_RULES, "sh", rules, ...cmd];

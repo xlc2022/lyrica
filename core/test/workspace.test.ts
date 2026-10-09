@@ -4,7 +4,7 @@ import { connect } from "node:net";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { generateSshKey, SshTarget, Users, Workspace, type SshTargetConfig } from "../src/index.ts";
+import { generateSshKey, nftRules, resolveAddresses, SshTarget, Users, Workspace, type SshTargetConfig } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -24,6 +24,19 @@ async function setup() {
   paths.allow(li, li.id, "private", join(host, "diary"));
   return { keyring, users, li, host, workspace, paths, settings: workspace.settings(li.id) };
 }
+
+describe("the front door in a sandbox's rules", () => {
+  it("covers this machine's addresses and the front door's other hosts, resolved when the sandbox starts", async () => {
+    const front = await resolveAddresses(["localhost", "192.0.2.10", "no-such-host.invalid", "::1"]);
+    expect(front).toEqual(["127.0.0.1", "192.0.2.10"]);
+    const rules = nftRules(true, [], [7340, 7341], { addresses: ["10.0.0.5"], services: false, front: [443], frontAddresses: front });
+    expect(rules).toContain("ip daddr { 10.0.0.5, 127.0.0.1, 192.0.2.10 } meta l4proto { tcp, udp } th dport { 443 } reject");
+    expect(rules).toContain("th dport { 7340, 7341 } reject");
+    expect(rules).toContain("ip daddr { 10.0.0.5 } reject");
+    // Both come before anything is accepted.
+    expect(rules.indexOf("dport { 443 }")).toBeLessThan(rules.indexOf("    accept"));
+  });
+});
 
 describe("grants", () => {
   it("keep general threads out of private folders", async () => {

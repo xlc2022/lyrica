@@ -33,6 +33,8 @@ export function cleanUploadName(name: string): string {
   return clean || "upload";
 }
 
+export interface FrontDoor { ports: number[]; hosts: string[]; exclude: number[] }
+
 export interface WorkspaceOptions {
   /**
    * lyricad's own ports (its HTTP API): never reachable from a sandbox, on any
@@ -44,6 +46,13 @@ export interface WorkspaceOptions {
    * own addresses, so a sandbox can't reach the API through the proxy. Default [443].
    */
   frontPorts?: number[];
+  /**
+   * Where lyricad's front door is now, read at every sandbox start: its ports,
+   * the hosts it answers on besides this machine (an external proxy, Lyrica's
+   * name), and extra ports to refuse on every address (an extra listener).
+   * Overrides `frontPorts`.
+   */
+  frontDoor?: () => FrontDoor;
   bwrap?: string;
   pasta?: string;
 }
@@ -72,7 +81,15 @@ export class Workspace {
     return s;
   }
 
-  private get front(): number[] { return this.opts.frontPorts ?? [443]; }
+  /** The front door and excluded ports as they are now. */
+  private door(): { exclude: number[]; front: number[]; frontHosts: string[] } {
+    const d = this.opts.frontDoor?.();
+    return {
+      exclude: [...new Set([...this.opts.excludePorts, ...(d?.exclude ?? [])])],
+      front: d?.ports ?? this.opts.frontPorts ?? [443],
+      frontHosts: d?.hosts ?? [],
+    };
+  }
 
   /** Where the user's home workspace is mounted. */
   homeDir(userId: string): string { return join(realpathSync(this.users.userDir(userId)), "home"); }
@@ -147,7 +164,7 @@ export class Workspace {
       // One allowed host that answers nothing: enough to start pasta and load the rules.
       const box = new Sandbox({
         workdir: dir, grants: [], network: { internet: false, services: false, hosts: ["192.0.2.1:9"] },
-        exclude: this.opts.excludePorts, front: this.front, bwrap: this.opts.bwrap, pasta: this.opts.pasta,
+        ...this.door(), bwrap: this.opts.bwrap, pasta: this.opts.pasta,
       });
       const r = await box.run(["bash", "-c", probe], { timeoutMs: 30_000 });
       const out = r.stdout.toString();
@@ -187,8 +204,7 @@ export class Workspace {
       workdir: this.threadDir(t),
       grants: tw.grants,
       network: this.network(t),
-      exclude: this.opts.excludePorts,
-      front: this.front,
+      ...this.door(),
       check: (g) => checkGrant(s.allowed(), t.pool, g),
       bwrap: this.opts.bwrap,
       pasta: this.opts.pasta,

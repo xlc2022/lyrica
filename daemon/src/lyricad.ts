@@ -1,5 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,7 +11,11 @@ import {
 import type { State, UserCard } from "./api.ts";
 import { RateLimiter, Sessions } from "./auth.ts";
 import { ThreadHost } from "./hosted.ts";
-import { checkOrigin, HttpError, makeRequest, match, sendJson, serveStatic, statusOf, type Request, type Route } from "./http.ts";
+import {
+  checkOrigin, fromLoopback, HttpError, makeRequest, match, plainAddress, sendJson, serveStatic, statusOf,
+  type Request, type Route, type TrustForwarded,
+} from "./http.ts";
+import { WebAccess } from "./web/access.ts";
 import { apiRoutes } from "./routes.ts";
 
 export interface LyricadOptions {
@@ -18,8 +23,13 @@ export interface LyricadOptions {
   home: string;
   /** TCP port on 127.0.0.1. 0 picks a free one. */
   port: number;
-  /** The proxy's ports in front of lyricad (Caddy's HTTPS). Sandboxes never reach them on this machine's addresses. Default [443]. */
-  frontPorts?: number[];
+  /** Web access: the built-in Caddy's admin socket and TLS log, its HTTPS port, and (for tests) this machine's addresses. */
+  web?: {
+    caddySocket?: string;
+    tlsLog?: string;
+    httpsPort?: number;
+    addresses?: () => import("./api.ts").HostAddress[];
+  };
   /** The Unix socket for local clients; false for none. Defaults to `<home>/lyricad.sock`. */
   socket?: string | false;
   /** The built web UI. Defaults to `web/dist` in the repository. */
@@ -50,6 +60,7 @@ export interface Services {
   workspace: Workspace;
   persona: PersonaStore;
   host: ThreadHost;
+  web: WebAccess;
 }
 
 const DEFAULT_WEB = fileURLToPath(new URL("../../web/dist", import.meta.url));
@@ -132,7 +143,17 @@ export class Lyricad {
   private async unlocked(): Promise<void> {
     const { keyring } = this;
     const users = new Users(keyring);
-    const workspace = new Workspace(keyring, users, { excludePorts: [this.port], frontPorts: this.opts.frontPorts, bwrap: this.opts.bwrap, pasta: this.opts.pasta });
+    const w = this.opts.web ?? {};
+    const web: WebAccess = new WebAccess({
+      self: () => keyring.self(),
+      caddy: { socket: w.caddySocket ?? "/run/lyrica-caddy/admin.sock", tlsLog: w.tlsLog ?? "/run/lyrica-caddy/tls.log" },
+      httpsPort: w.httpsPort ?? 443, upstream: this.port, reserved: [this.port], addresses: w.addresses,
+      open: (o) => this.listenExternal(o, web), log: this.log,
+    });
+    // Where the front door is, read at every sandbox start, so a change in web access applies to the next command.
+    const workspace = new Workspace(keyring, users, {
+      excludePorts: [this.port], frontDoor: () => web.frontDoor(), bwrap: this.opts.bwrap, pasta: this.opts.pasta,
+    });
     if (this.opts.selfTest !== false) {
       const refused = await workspace.selfTest();
       if (refused) this.log(`network is off for every thread: ${refused}`);
@@ -146,7 +167,8 @@ export class Lyricad {
       users, memory, models, workspace, persona, cwd, log: this.log,
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000,
     });
-    this.services = { users, memory, models, workspace, persona, host };
+    this.services = { users, memory, models, workspace, persona, host, web };
+    await web.resume();
     for (const u of users.all()) {
       if (keyring.loadSavedKey(u.id)) {
         await this.keyAvailable(u.id);
@@ -190,6 +212,7 @@ export class Lyricad {
     await Promise.all(this.servers.map((s) => new Promise((r) => { s.close(r); s.closeAllConnections(); })));
     this.servers.length = 0;
     const s = this.services;
+    s?.web.close();
     if (s) {
       await s.host.close();
       for (const id of this.mounted) await s.workspace.unmountHome(id).catch(() => {});
@@ -202,7 +225,23 @@ export class Lyricad {
     if (socket && existsSync(socket)) rmSync(socket, { force: true });
   }
 
-  private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  /**
+   * The extra listener for an external proxy: only the listed proxies may
+   * connect, and only their X-Forwarded-For is believed. HTTPS with lyricad's
+   * own certificate, or plain HTTP on a Tailscale address.
+   */
+  private listenExternal(o: { address: string; port: number; tls?: { key: string; cert: string } }, web: WebAccess): Promise<Server> {
+    const trust: TrustForwarded = (remote) => web.proxies().includes(plainAddress(remote));
+    const handler = (req: IncomingMessage, res: ServerResponse) => void this.handle(req, res, trust);
+    const server: Server = o.tls ? createHttpsServer({ key: o.tls.key, cert: o.tls.cert, minVersion: "TLSv1.2" }, handler) : createServer(handler);
+    server.on("connection", (socket) => { if (!trust(socket.remoteAddress ?? "")) socket.destroy(); });
+    return new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(o.port, o.address, () => { server.off("error", reject); resolve(server); });
+    });
+  }
+
+  private async handle(req: IncomingMessage, res: ServerResponse, trust: TrustForwarded = fromLoopback): Promise<void> {
     const started = performance.now();
     const method = req.method ?? "GET";
     let routeName = "(static)";
@@ -221,7 +260,7 @@ export class Lyricad {
       const open = routeName === "/api/state" || routeName === "/api/unlock";
       if (!open && !this.services) throw new HttpError(503, "lyricad is locked");
       if (method !== "GET" && method !== "HEAD") checkOrigin(req);
-      const r: Request = makeRequest(req, res, routeName, found.params, url);
+      const r: Request = makeRequest(req, res, routeName, found.params, url, trust);
       const body = await found.route.handler(r);
       if (res.headersSent) return; // a stream, or a handler that answered itself
       sendJson(res, 200, body);

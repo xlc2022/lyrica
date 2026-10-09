@@ -131,19 +131,36 @@ export function pastaArgs(net: { internet: boolean; services: boolean; hosts: bo
 }
 
 /** What a sandbox counts as this machine: its addresses, whether the services switch is on, and the front ports. */
-export interface ThisMachine { addresses: string[]; services: boolean; front: number[] }
+export interface ThisMachine {
+  addresses: string[];
+  services: boolean;
+  /** lyricad's front-door ports (the proxy's HTTPS). */
+  front: number[];
+  /** Other addresses the front door answers on: an external proxy's, and whatever Lyrica's name resolves to. */
+  frontAddresses?: string[];
+}
+
+/** IPv4 addresses for IPs and hostnames, resolved now. A name that doesn't resolve is left out. */
+export async function resolveAddresses(hosts: string[]): Promise<string[]> {
+  const out = new Set<string>();
+  for (const h of hosts) {
+    if (isIP(h) === 4) out.add(h);
+    else if (!isIP(h)) for (const a of await lookup(h, { all: true, family: 4 }).catch(() => [])) out.add(a.address);
+  }
+  return [...out];
+}
 
 /** The nftables ruleset loaded into the sandbox's namespace: default deny, then what the thread allows. */
 export function nftRules(internet: boolean, hosts: ResolvedHosts["rules"], exclude: number[],
   self: ThisMachine = { addresses: [], services: false, front: [] }): string {
   const rules = ["ct state established,related accept"];
   if (exclude.length) rules.push(`meta l4proto { tcp, udp } th dport { ${exclude.join(", ")} } reject`);
+  // lyricad's front door, on this machine's addresses and wherever else it answers: never, whatever the switches say.
+  const doors = [...new Set([...self.addresses, ...(self.frontAddresses ?? [])])];
+  if (doors.length && self.front.length) rules.push(`ip daddr { ${doors.join(", ")} } meta l4proto { tcp, udp } th dport { ${self.front.join(", ")} } reject`);
   if (self.addresses.length) {
-    const mine = `ip daddr { ${self.addresses.join(", ")} }`;
-    // lyricad's front door (Caddy) on this machine's own addresses: never, whatever the switches say.
-    if (self.front.length) rules.push(`${mine} meta l4proto { tcp, udp } th dport { ${self.front.join(", ")} } reject`);
     // Otherwise this machine is reachable only with its services switch on, never through "internet" or a listed host.
-    rules.push(self.services ? `${mine} accept` : `${mine} reject`);
+    rules.push(`ip daddr { ${self.addresses.join(", ")} } ${self.services ? "accept" : "reject"}`);
   }
   // pasta forwards only the allowed loopback ports, so loopback itself can stay open.
   rules.push('oif "lo" accept');
