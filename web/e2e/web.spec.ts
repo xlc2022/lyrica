@@ -260,8 +260,9 @@ test("linked users share a browser; logging in as anyone else signs this browser
     if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
     await page.getByRole("button", { name: /Switch user/ }).click();
     await page.getByRole("link", { name: "Log in as another user…" }).click();
-    await page.getByLabel("Login name").fill(login);
-    await page.getByLabel("Password").fill(password);
+    await expect(page.getByRole("heading", { name: "Add a user" })).toBeVisible();
+    await page.getByLabel("Login name", { exact: true }).fill(login);
+    await page.getByLabel("Password", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Log in" }).click();
     await expect(page.getByText("Switch user")).toBeAttached();
   };
