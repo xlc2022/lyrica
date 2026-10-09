@@ -1,7 +1,8 @@
 import { defineConfig } from "vite";
 
-// `npm run dev -w @lyrica/web` serves the UI and passes /api to lyricad (or the
-// fake in test/fake-lyricad.ts) on LYRICA_API, default 127.0.0.1:7340.
+// `npm run dev -w @lyrica/web` serves the UI and passes /api to lyricad on
+// LYRICA_API (default 127.0.0.1:7340). `npx tsx web/e2e/serve.ts 7340 7350`
+// starts a throwaway lyricad with a fake model for that.
 export default defineConfig({
   esbuild: { jsx: "automatic" },
   build: { outDir: "dist", emptyOutDir: true, assetsInlineLimit: 0 },
