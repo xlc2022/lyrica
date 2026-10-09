@@ -42,10 +42,19 @@ export class ThreadHost {
     const key = `${userId}/${pool}/${threadId}`;
     let t = this.threads.get(key);
     if (!t) {
-      t = new HostedThread(this.opts, userId, pool, threadId);
+      // An idle record with no streams is dropped; a stream that comes back later gets `reset`.
+      const created: HostedThread = new HostedThread(this.opts, userId, pool, threadId, () => {
+        if (this.threads.get(key) === created) this.threads.delete(key);
+      });
+      t = created;
       this.threads.set(key, t);
     }
     return t;
+  }
+
+  /** Settings changed: an open session reopens with them. A thread with no record needs nothing. */
+  reload(userId: string, pool: Pool, threadId: string): void {
+    this.threads.get(`${userId}/${pool}/${threadId}`)?.reload();
   }
 
   /** Whether a turn is running in the thread, without creating a record. */
@@ -87,7 +96,10 @@ export class HostedThread {
   closed = false;
   busy = false;
 
-  constructor(private readonly o: HostOptions, readonly userId: string, readonly pool: Pool, readonly threadId: string) {}
+  constructor(private readonly o: HostOptions, readonly userId: string, readonly pool: Pool, readonly threadId: string,
+    private readonly release: () => void) {
+    this.startIdle();
+  }
 
   // --- The stream ---
 
@@ -103,7 +115,11 @@ export class HostedThread {
     }
     client(this.id(this.n), hello);
     this.clients.add(client);
-    return () => this.clients.delete(client);
+    this.stopIdle();
+    return () => {
+      this.clients.delete(client);
+      if (!this.clients.size && !this.busy) this.startIdle();
+    };
   }
 
   private id(n: number): string { return `${EPOCH}-${n}`; }
@@ -325,9 +341,14 @@ export class HostedThread {
     this.opened = undefined;
   }
 
+  /** After a while with no turn: the session is disposed, and with no stream open, the whole record with its buffer. */
   private startIdle(): void {
     this.stopIdle();
-    this.idle = setTimeout(() => { if (!this.busy && !this.pending.size) this.dispose(); }, this.o.idleMs);
+    this.idle = setTimeout(() => {
+      if (this.busy || this.pending.size || this.opening) return;
+      this.dispose();
+      if (!this.clients.size) this.release();
+    }, this.o.idleMs);
     this.idle.unref();
   }
 

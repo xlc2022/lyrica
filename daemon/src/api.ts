@@ -190,8 +190,8 @@ export interface ThreadSummary {
  * display filters (pools, hidden); `?all=1` ignores them. Subagents appear
  * only under their parent.
  */
-/** POST /api/u/:userId/threads → ThreadSummary. The interface is `web` unless a local client asks for `cli`. */
-export interface NewThread { pool: Pool; title?: string; interface?: "web" | "cli" }
+/** POST /api/u/:userId/threads → ThreadSummary. Its interface is `web`. */
+export interface NewThread { pool: Pool; title?: string }
 /** GET /api/u/:userId/threads/:pool/:threadId → ThreadSummary */
 /** PATCH /api/u/:userId/threads/:pool/:threadId → ThreadSummary. Rename, hide or unhide. */
 export interface ThreadChange { title?: string; hidden?: boolean }

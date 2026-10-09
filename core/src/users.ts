@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { openEncrypted, USER_SCHEMA, type Db } from "./db.ts";
-import { WrongPassword, type Keyring } from "./keyring.ts";
+import { WrongPassword, type Keyring, type WrappedKey } from "./keyring.ts";
 import { checkProfile, type Profile } from "./profile.ts";
 
 export interface User {
@@ -28,6 +28,9 @@ const COLUMNS = "id, login, admin, profile";
 
 /** Local accounts. The index lives in self.db; each user's data lives in their own user.db. */
 export class Users {
+  /** Unlocked against for unknown logins, so the time taken doesn't tell which names exist. */
+  private dummy: Promise<WrappedKey> | undefined;
+
   constructor(private readonly keyring: Keyring) {}
 
   private get db(): Db { return this.keyring.self(); }
@@ -58,7 +61,11 @@ export class Users {
   /** Checks the password and unlocks the user's key. */
   async authenticate(login: string, password: string): Promise<User> {
     const user = this.find(login);
-    if (!user) throw new AuthError();
+    if (!user) {
+      this.dummy ??= this.keyring.wrap(randomBytes(32), randomBytes(16).toString("hex"));
+      await this.keyring.unwrap(await this.dummy, password).catch(() => {});
+      throw new AuthError();
+    }
     try {
       await this.keyring.unlockUser(user.id, password);
     } catch (err) {

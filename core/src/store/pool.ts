@@ -400,11 +400,13 @@ export class PoolStore extends PoolReader {
 
   /**
    * Deletes the thread and its entries, and the notes whose only sources were
-   * in it (each leaves a tombstone, and pages citing them are flagged).
+   * in it (each leaves a tombstone, and pages citing them are flagged). Its
+   * subagents' threads hold its tasks and results, so they go first.
    */
   forgetThread(threadId: string, author: Author): void {
     this.checkAuthor(author);
     this.mustThread(threadId);
+    for (const child of this.listThreads({ includeHidden: true, parent: threadId })) this.forgetThread(child.id, author);
     this.tx(() => {
       const inThread = (dst: string) => dst === `t:${threadId}` || dst.startsWith(`e:${threadId}#`);
       const candidates = this.db.prepare("SELECT DISTINCT src FROM citations WHERE src LIKE 'n:%' AND (dst = ? OR dst LIKE ?)")

@@ -47,8 +47,9 @@ afterAll(() => {
 
 const grants = (): Grant[] => [{ path: p("rw"), writable: true }, { path: p("ro"), writable: false }];
 const OFF: Network = { internet: false, services: false, hosts: [] };
+// `self: []`: these tests use the host's own LAN address as a stand-in for another machine.
 const box = (network: Partial<Network> = {}, extra: Grant[] = [], exclude: number[] = []) =>
-  new Sandbox({ workdir: p("work"), grants: [...grants(), ...extra], network: { ...OFF, ...network }, exclude });
+  new Sandbox({ workdir: p("work"), grants: [...grants(), ...extra], network: { ...OFF, ...network }, exclude, self: [] });
 
 async function sh(command: string, sandbox = box()): Promise<{ code: number | null; out: string }> {
   let out = "";
@@ -240,6 +241,17 @@ describe.skipIf(!netRunnable || !lan)("a sandbox's network switches", () => {
     expect(await reach(all, lan!, lyricad, [lyricad])).not.toContain("LYRICAD");
     expect(await reach({ hosts: [`${lan}:${lyricad}`, lan!] }, lan!, lyricad, [lyricad])).not.toContain("LYRICAD");
     expect(await reach(all, lan!, lyricad)).toContain("LYRICAD"); // the control: only the exclusion stops it
+  });
+
+  it("counts this machine's own addresses as this machine, and never reaches its front door there", async () => {
+    // The real host addresses this time: the LAN address is this machine, not a peer.
+    const real = (net: Partial<Network>) => new Sandbox({ workdir: p("work"), grants: [], network: { ...OFF, ...net }, front: [lyricad] });
+    const at = async (net: Partial<Network>, port: number) => (await sh(tcp(lan!, port), real(net))).out;
+    expect(await at({ internet: true }, peer)).not.toContain("PEER");
+    expect(await at({ hosts: [lan!] }, peer)).not.toContain("PEER");
+    expect(await at({ internet: true, services: true }, peer)).toContain("PEER");
+    // The front port (Caddy, in front of lyricad) stays shut on this machine's addresses, whatever the switches say.
+    expect(await at({ internet: true, services: true, hosts: [lan!] }, lyricad)).not.toContain("LYRICAD");
   });
 
   it("never reaches the host's abstract sockets", async () => {

@@ -54,12 +54,18 @@ service.
   path.
 - `POST /api/logout` ends the session, or with `userId` removes one user from
   it. The key stays in memory, so sleep can run.
-- **Lock** (`POST /api/u/:userId/lock`) stops the user's threads, unmounts
-  their home, drops their key and removes them from every session.
+- **Lock** (`POST /api/u/:userId/lock`) at once removes the user from every
+  session and drops their key, then stops their threads and unmounts their
+  home. Event streams check the session with every event and every few
+  seconds, so logout and Lock end them.
 - Login, unlock and password changes are rate-limited per login name and per
   address: three failures are free, then each attempt waits twice as long as
   the last, up to 15 minutes (`429` with `Retry-After`). Behind Caddy, the
   address is the last `X-Forwarded-For` entry.
+- One attempt per login name and per address runs at a time; others get
+  `429` at once, so parallel guesses get no free tries. An unknown login
+  still runs Argon2 (against a dummy key), so the time taken doesn't reveal
+  which names exist.
 - Every POST, PUT, PATCH and DELETE needs an `Origin` whose host matches the
   `Host` header; user routes also need the cookie. There are no CORS headers.
 - Every response carries `Content-Security-Policy: default-src 'self'`,
@@ -72,7 +78,8 @@ Each active thread is one Pi session from `openThreadSession`, with
 `openThreadView` and `CallContext`.
 
 - A session opens on the first message and is disposed after 15 idle
-  minutes. Entries are stored as turns end, so reopening loses nothing.
+  minutes. Entries are stored as turns end, so reopening loses nothing. With
+  no stream open, the thread's whole record (with its event buffer) goes too.
 - One turn runs at a time. A message sent during a turn waits; queued messages
   go together as the next turn. **Stop** aborts the turn, denies waiting
   permission requests and drops the queue.
@@ -118,6 +125,8 @@ or Stop, denies. A view that opens later sees waiting requests in `hello`.
 `POST …/threads/:pool/:threadId/uploads?name=<file>` with the file's bytes
 (up to 50 MB) saves it with `Workspace.saveUpload` into the thread's
 `uploads/`, and answers with the path she sees (`/workspace/uploads/<file>`).
+The name is cleaned (no path, no control characters), and a name already
+taken gets a suffix (`image-2.jpg`) rather than overwriting.
 
 ## Memory browser and settings
 
@@ -139,7 +148,8 @@ Message, memory and file text never reach the log.
 
 ## Deployment
 
-`daemon/deploy/lyricad.service` and `daemon/deploy/Caddyfile.example`.
+`daemon/deploy/lyricad.service`, `daemon/deploy/Caddyfile.example` and
+`daemon/deploy/caddy-override.conf` (a drop-in for Caddy's unit).
 
 - Install the code at `/opt/lyrica`, create a `lyrica` system user, run
   `lyrica admin init` as that user with `LYRICA_HOME=/var/lib/lyrica`, then
@@ -147,10 +157,23 @@ Message, memory and file text never reach the log.
 - The unit runs `lyrica serve` as `lyrica`, with `StateDirectory` for the
   runtime and the credentials directory, and `LoadCredentialEncrypted` for
   saved credentials.
-- Hardening: `NoNewPrivileges` breaks the setuid `fusermount3`, and so does
-  every option that implies it for a non-root service (listed in the unit).
-  `RestrictNamespaces` and `PrivateUsers` break bubblewrap and pasta. The unit
-  keeps only `PrivateTmp`, `ProtectControlGroups` and `ProtectHostname`.
+- Hardening: `NoNewPrivileges` breaks the setuid `fusermount3`, so homes
+  never mount, and so does every option that makes systemd set it for a
+  non-root service, because they install seccomp filters (listed in the unit;
+  `ProtectHostname` is one of them). `RestrictNamespaces` and `PrivateUsers`
+  also break bubblewrap and pasta. The unit keeps only `PrivateTmp` and
+  `ProtectControlGroups`.
+- **Deploy check:** `grep NoNewPrivs /proc/$(systemctl show -p MainPID --value lyricad)/status`
+  must show `0`.
 - Caddy serves HTTPS for a subdomain on the Tailscale and LAN addresses, with
   a DNS-01 certificate, and proxies to `127.0.0.1:7340`. There is no plain
   HTTP.
+- Caddy's admin API listens on a Unix socket (`/run/caddy/admin.sock`), not
+  `localhost:2019`: a thread with "this machine's services" on reaches
+  loopback ports, and the admin API could replace the site with a fake login
+  page.
+- Caddy starts after `tailscaled` (the drop-in), and retries on failure,
+  because `bind` to the Tailscale address fails until that address exists.
+- Sandboxes never reach Caddy on this machine's own addresses: `lyricad`
+  passes its front ports (`frontPorts`, default 443) to `Workspace`
+  ([workspace.md](workspace.md#network-access-from-tools)).

@@ -1,5 +1,5 @@
 import {
-  checkTask, isRestricted, publicKeyOf, generateSshKey, CloudModelForbidden, NoModel, PRONOUN_PRESETS,
+  AuthError, WrongPassword, checkTask, isRestricted, publicKeyOf, generateSshKey, CloudModelForbidden, NoModel, PRONOUN_PRESETS,
   type Author, type Hit, type Item, type OwnerView, type Pool, type PoolStore, type Thread, type User,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
@@ -24,30 +24,13 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("GET", "/api/state", (r) => d.state(r.cookie)),
     route("POST", "/api/unlock", async (r) => {
       const { passphrase } = await r.json<Api.UnlockRequest>();
-      const keys = [`unlock:${r.ip}`];
-      slowDown(d, keys);
-      try {
-        await d.unlock(String(passphrase ?? ""));
-      } catch (err) {
-        if (err instanceof HttpError) throw err;
-        d.limiter.fail(keys);
-        throw new HttpError(401, "wrong passphrase");
-      }
-      d.limiter.succeed(keys);
+      await limited(d, [`unlock:${r.ip}`], () => d.unlock(String(passphrase ?? "")), "wrong passphrase");
       return d.state(r.cookie);
     }),
     route("POST", "/api/login", async (r): Promise<Api.LoginResponse> => {
       const { login, password } = await r.json<Api.LoginRequest>();
       const keys = [`login:${String(login ?? "").trim().toLowerCase()}`, `ip:${r.ip}`];
-      slowDown(d, keys);
-      let user: User;
-      try {
-        user = await s().users.authenticate(String(login ?? ""), String(password ?? ""));
-      } catch (err) {
-        d.limiter.fail(keys);
-        throw new HttpError(401, "wrong login or password");
-      }
-      d.limiter.succeed(keys);
+      const user = await limited(d, keys, () => s().users.authenticate(String(login ?? ""), String(password ?? "")), "wrong login or password");
       await d.keyAvailable(user.id);
       let session = r.cookie;
       if (!d.sessions.users(session)) session = d.sessions.create();
@@ -95,15 +78,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const user = d.userFor(r);
       const { oldPassword, newPassword } = await r.json<Api.PasswordChange>();
       const keys = [`login:${user.login.toLowerCase()}`, `ip:${r.ip}`];
-      slowDown(d, keys);
-      try {
-        await s().users.changePassword(user, String(oldPassword ?? ""), String(newPassword ?? ""));
-      } catch (err) {
-        if ((err as Error).name === "Error") throw err; // an empty new password
-        d.limiter.fail(keys);
-        throw new HttpError(401, "the current password is wrong");
-      }
-      d.limiter.succeed(keys);
+      await limited(d, keys, () => s().users.changePassword(user, String(oldPassword ?? ""), String(newPassword ?? "")), "the current password is wrong");
       return { ok: true };
     }),
     route("PUT", `${u}/me/credentials`, async (r) => {
@@ -188,10 +163,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       const user = d.userFor(r);
       const input = await r.json<Api.NewThread>();
       const pool = checkPool(input.pool);
-      const iface = input.interface ?? "web";
-      if (iface !== "web" && (iface !== "cli" || r.ip !== "local")) throw new Error("threads made here are web threads");
       return owner(d, user, (o) => {
-        const thread = o[pool].createThread({ interface: iface, title: input.title?.trim() || undefined });
+        const thread = o[pool].createThread({ interface: "web", title: input.title?.trim() || undefined });
         return summary(d, user, pool, o[pool], thread, []);
       });
     }),
@@ -229,7 +202,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const pool = poolOf(r);
       const thread = owner(d, user, (o) => threadOf(o, r));
       changeSettings(d, user, pool, thread, change);
-      s().host.get(user.id, pool, thread.id).reload();
+      s().host.reload(user.id, pool, thread.id);
       return threadSettings(d, user, pool, thread.id);
     }),
     route("GET", `${t}/messages`, (r) => {
@@ -275,17 +248,23 @@ export function apiRoutes(d: Lyricad): Route[] {
       const hosted = s().host.get(user.id, poolOf(r), thread.id);
       const { res } = r;
       res.writeHead(200, {
-        "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store", "x-accel-buffering": "no",
+        "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store",
         "content-security-policy": "default-src 'none'", "x-content-type-options": "nosniff",
       });
       res.write("retry: 3000\n\n");
-      const last = (r.req.headers["last-event-id"] as string | undefined) ?? r.query.get("lastEventId") ?? undefined;
+      // Logout and Lock end live streams: the session is checked with every event and every few seconds.
+      const allowed = () => !!d.sessions.users(r.cookie)?.has(user.id) && d.keyring.hasUserKey(user.id);
       const stop = hosted.subscribe((id, event) => {
+        if (!allowed()) return void res.end();
         res.write(`id: ${id}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
         if (event.type === "reset" && hosted.closed) res.end(); // Lock or shutdown: the stream is over
-      }, last);
-      const beat = setInterval(() => res.write(": keep-alive\n\n"), 25_000);
-      res.on("close", () => { clearInterval(beat); stop(); });
+      }, r.req.headers["last-event-id"] as string | undefined);
+      let ticks = 0;
+      const check = setInterval(() => {
+        if (!allowed()) return void res.end();
+        if (++ticks % 10 === 0) res.write(": keep-alive\n\n");
+      }, 2_500);
+      res.on("close", () => { clearInterval(check); stop(); });
       return undefined;
     }),
 
@@ -432,11 +411,30 @@ export function apiRoutes(d: Lyricad): Route[] {
 
 // --- Helpers ---
 
-function slowDown(d: Lyricad, keys: string[]): void {
+/**
+ * One password attempt under the rate limiter: refused while the keys must
+ * wait or another attempt on them is running, and counted as a failure if the
+ * password was wrong. The attempt is taken before the slow key derivation, so
+ * parallel guesses get no free tries.
+ */
+async function limited<T>(d: Lyricad, keys: string[], attempt: () => Promise<T>, wrong: string): Promise<T> {
+  const tooMany = (ms: number) => {
+    const seconds = Math.max(1, Math.ceil(ms / 1000));
+    return new HttpError(429, `too many attempts; try again in ${seconds} s`, { "retry-after": String(seconds) });
+  };
   const wait = d.limiter.wait(keys);
-  if (wait > 0) {
-    const seconds = Math.ceil(wait / 1000);
-    throw new HttpError(429, `too many attempts; try again in ${seconds} s`, { "retry-after": String(seconds) });
+  if (wait > 0) throw tooMany(wait);
+  if (!d.limiter.begin(keys)) throw tooMany(1000);
+  try {
+    const result = await attempt();
+    d.limiter.succeed(keys);
+    return result;
+  } catch (err) {
+    if (!(err instanceof AuthError) && !(err instanceof WrongPassword)) throw err;
+    d.limiter.fail(keys);
+    throw new HttpError(401, wrong);
+  } finally {
+    d.limiter.end(keys);
   }
 }
 

@@ -256,7 +256,7 @@ material.
 |---|---|
 | **Archive** | She stops using the memory. It is kept, and archiving can be undone. |
 | **Delete a memory** | The text and its revisions are removed. A tombstone is left. Pages that cited it are flagged, and the next sleep rewrites them. |
-| **Forget a thread** | The thread and its entries are deleted, along with notes whose only sources were in it. Each deleted note leaves a tombstone, and pages that cited them are flagged. |
+| **Forget a thread** | The thread and its entries are deleted, along with notes whose only sources were in it, and its subagents' threads the same way. Each deleted note leaves a tombstone, and pages that cited them are flagged. |
 | **Forget a topic** | Search, review the matches, then delete them in bulk. |
 
 A **tombstone** holds no text: only the deleted item's ID, its kind, when it was

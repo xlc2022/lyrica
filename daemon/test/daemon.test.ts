@@ -59,6 +59,26 @@ describe("logging in", () => {
     expect((await b.post("/api/login", { login: "sam", password: "pw2" })).status).toBe(429);
   });
 
+  it("counts parallel attempts, so a burst of guesses gets one try", async () => {
+    const rt = await runtime();
+    const { base } = await daemon(rt, { rateLimit: { free: 1, baseMs: 60_000, maxMs: 600_000 } });
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const statuses = await Promise.all(Array.from({ length: 5 }, () => browser(base).post("/api/login", { login: "li", password: "nope" })))
+      .then((rs) => rs.map((r) => r.status).sort());
+    expect(statuses).toEqual([401, 429, 429, 429, 429]);
+  });
+
+  it("slows down guessing the current password with a stolen cookie", async () => {
+    const rt = await runtime();
+    const { base } = await daemon(rt, { rateLimit: { free: 2, baseMs: 60_000, maxMs: 600_000 } });
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const li = await login(base, "li", "pw");
+    const url = `/api/u/${rt.li.id}/me/password`;
+    expect((await li.post(url, { oldPassword: "guess1", newPassword: "x" })).status).toBe(401);
+    expect((await li.post(url, { oldPassword: "guess2", newPassword: "x" })).status).toBe(401);
+    expect((await li.post(url, { oldPassword: "pw", newPassword: "x" })).status).toBe(429);
+  });
+
   it("sets a Secure, HttpOnly, SameSite=Strict cookie with a 256-bit ID and refuses cross-origin writes", async () => {
     const rt = await runtime();
     const { base } = await daemon(rt);
@@ -111,7 +131,11 @@ describe("logging in", () => {
     await browser(base).post("/api/unlock", { passphrase: "passphrase" });
     const li = await login(base, "li", "pw");
     const other = await login(base, "li", "pw");
+    const t = (await other.post<ThreadSummary>(`/api/u/${rt.li.id}/threads`, { pool: "general", title: "t" })).body;
+    const stream = other.events(`/api/u/${rt.li.id}/threads/general/${enc(t.id)}/events`);
+    await stream.ready;
     expect((await li.post(`/api/u/${rt.li.id}/lock`)).status).toBe(200);
+    await stream.done; // Lock ends live streams in every browser
     expect(d.keyring.hasUserKey(rt.li.id)).toBe(false);
     expect((await li.get(`/api/u/${rt.li.id}/threads`)).status).toBe(401);
     expect((await other.get(`/api/u/${rt.li.id}/threads`)).status).toBe(401);

@@ -60,6 +60,7 @@ export class Sessions {
  */
 export class RateLimiter {
   private readonly failures = new Map<string, { count: number; last: number }>();
+  private readonly inFlight = new Set<string>();
 
   constructor(private readonly opts: { free: number; baseMs: number; maxMs: number; now?: () => number } = { free: 3, baseMs: 1000, maxMs: 15 * 60_000 }) {}
 
@@ -89,4 +90,13 @@ export class RateLimiter {
   }
 
   succeed(keys: string[]): void { for (const key of keys) this.failures.delete(key); }
+
+  /** Takes the keys for one attempt. Only one attempt per key runs at a time, so parallel guesses aren't free. */
+  begin(keys: string[]): boolean {
+    if (keys.some((k) => this.inFlight.has(k))) return false;
+    for (const k of keys) this.inFlight.add(k);
+    return true;
+  }
+
+  end(keys: string[]): void { for (const k of keys) this.inFlight.delete(k); }
 }

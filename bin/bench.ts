@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Memory, Models, PersonaStore, TASKS, Workspace, type Keyring, type Pool, type User, type Users } from "@lyrica/core";
-import { createLyricaExtension, createWorkspaceExtension, openThreadSession, syncEntries, type ThreadContext } from "@lyrica/extension";
+import { createDelegateExtension, createLyricaExtension, createWorkspaceExtension, Delegation, openThreadSession, syncEntries, type ThreadContext } from "@lyrica/extension";
 
 export interface BenchOptions {
   pool?: Pool;
@@ -12,7 +12,7 @@ export interface BenchOptions {
 
 /**
  * What `lyrica dev` runs: a new thread for the user, with Lyrica, her routed
- * tools and a model runtime from the router. The thread gets every folder the
+ * tools, delegate, and a model runtime from the router. The thread gets every folder the
  * user may grant in its pool, read-write. Headless, the same session drives tests
  * and evals.
  */
@@ -22,7 +22,8 @@ export async function openBench(keyring: Keyring, users: Users, user: User, opts
   const models = new Models(keyring, users);
   const workspace = new Workspace(keyring, users, { excludePorts: [] });
   const refused = await workspace.selfTest();
-  const view = new Memory(keyring, users).openThreadView(user.id, pool);
+  const memory = new Memory(keyring, users);
+  const view = memory.openThreadView(user.id, pool);
   const thread = view.own.createThread({ interface: "cli", title: "lyrica dev" });
   if (opts.localOnly) models.setLocalOnly(user.id, pool, thread.id, true);
   const call = models.callContext(user.id, pool, thread.id);
@@ -44,10 +45,13 @@ export async function openBench(keyring: Keyring, users: Users, user: User, opts
     }
   })];
 
+  const cwd = join(keyring.home, "bench");
+  const delegation = new Delegation({ users, memory, models, workspace, cwd });
   let released = false;
   const release = async () => {
     if (released) return;
     released = true;
+    await delegation.stopAll();
     view.close();
     await workspace.unmountHome(user.id);
   };
@@ -59,12 +63,13 @@ export async function openBench(keyring: Keyring, users: Users, user: User, opts
     });
   };
   const opened = await openThreadSession({
-    thread: ctx, models, cwd: join(keyring.home, "bench"),
+    thread: ctx, models, cwd,
     extensions: [
       createLyricaExtension(ctx, { persona: () => persona.read(), profile: () => users.get(user.id)!.profile, folders: tools.folders, debugPrompt: opts.debugPrompt }),
       createWorkspaceExtension(tools),
+      createDelegateExtension(ctx, delegation),
       onShutdown,
     ],
   });
-  return { ...opened, threadId: thread.id, call, report, close: async () => { opened.dispose(); await release(); } };
+  return { ...opened, threadId: thread.id, call, report, delegation, close: async () => { opened.dispose(); await release(); } };
 }
