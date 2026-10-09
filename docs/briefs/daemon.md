@@ -168,4 +168,13 @@ only on the developer bench.
 
 ## Handoff notes
 
-(The Daemon thread fills this in if it stops before it's done.)
+- **Done:** everything in scope, with the tests listed above. The upload test
+  needs bubblewrap and gocryptfs as a non-root user, so it runs in CI only.
+- **Not verified on a real host:** the systemd unit (no systemd in the build
+  container). Check on Li's LXC: the service starts and unlocks with saved
+  credentials (`LoadCredentialEncrypted` from a directory, `systemd-creds
+  encrypt --user`, systemd 256 or later), and `PrivateTmp`,
+  `ProtectControlGroups` and `ProtectHostname` don't break bubblewrap, pasta
+  or gocryptfs. Drop any that do.
+- **Open:** Delegation's events reach the stream through
+  `HostedThread.publish` once Delegation lands.

@@ -83,7 +83,8 @@ export class HostedThread {
   private idle: NodeJS.Timeout | undefined;
   /** Settings changed during a turn: reopen the session once it ends. */
   private stale = false;
-  private closed = false;
+  /** Closed by Lock, forgetting or shutdown. */
+  closed = false;
   busy = false;
 
   constructor(private readonly o: HostOptions, readonly userId: string, readonly pool: Pool, readonly threadId: string) {}

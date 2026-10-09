@@ -176,6 +176,8 @@ export interface ThreadSummary {
   hidden: boolean;
   unlogged: boolean;
   createdAt: string;
+  /** When its last entry was written, or its creation time. The list is ordered by it. */
+  updatedAt: string;
   /** A turn is running. */
   busy: boolean;
   /** Subagents' threads, nested under their parent. */
@@ -184,7 +186,7 @@ export interface ThreadSummary {
 
 /**
  * GET /api/u/:userId/threads?interface=web → ThreadSummary[]
- * One interface's threads (default `web`), newest first. Honours the user's
+ * One interface's threads (default `web`), most recently active first. Honours the user's
  * display filters (pools, hidden); `?all=1` ignores them. Subagents appear
  * only under their parent.
  */
@@ -364,6 +366,7 @@ export interface MemoryHit {
 
 /**
  * GET /api/u/:userId/memory/search?q=&pool=&kinds=note,page&origin=user&limit= → MemoryHit[]
+ * Honours the display filters (Show general, Show private); `?all=1` ignores them.
  * Without `q`, `origin=user` lists what users introduced.
  */
 

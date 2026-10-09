@@ -10,6 +10,7 @@ import { card, type Lyricad, type Services } from "./lyricad.ts";
 import { toMessages } from "./messages.ts";
 
 const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, showPrivate: true, showHidden: false };
+const DISPLAY_DEFAULTS_ALL: Api.Display = { ...DISPLAY_DEFAULTS, showPrivate: true, showGeneral: true, showHidden: true };
 const MESSAGE_PAGE = 50;
 
 /** Every API route. Locked, only /api/state and /api/unlock answer (lyricad.ts enforces it). */
@@ -102,6 +103,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         d.limiter.fail(keys);
         throw new HttpError(401, "the current password is wrong");
       }
+      d.limiter.succeed(keys);
       return { ok: true };
     }),
     route("PUT", `${u}/me/credentials`, async (r) => {
@@ -179,8 +181,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       const show = display(d, user.id);
       return owner(d, user, (o) => (["general", "private"] as const)
         .filter((p) => all || (p === "general" ? show.showGeneral : show.showPrivate))
-        .flatMap((p) => tree(d, user, p, o[p].listThreads({ includeHidden: all || show.showHidden }).filter((x) => x.interface === iface)))
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+        .flatMap((p) => tree(d, user, p, o[p], o[p].listThreads({ includeHidden: all || show.showHidden }).filter((x) => x.interface === iface)))
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
     }),
     route("POST", `${u}/threads`, async (r) => {
       const user = d.userFor(r);
@@ -190,12 +192,12 @@ export function apiRoutes(d: Lyricad): Route[] {
       if (iface !== "web" && (iface !== "cli" || r.ip !== "local")) throw new Error("threads made here are web threads");
       return owner(d, user, (o) => {
         const thread = o[pool].createThread({ interface: iface, title: input.title?.trim() || undefined });
-        return summary(d, user, pool, thread, []);
+        return summary(d, user, pool, o[pool], thread, []);
       });
     }),
     route("GET", t, (r) => {
       const user = d.userFor(r);
-      return owner(d, user, (o) => summary(d, user, poolOf(r), threadOf(o, r), []));
+      return owner(d, user, (o) => summary(d, user, poolOf(r), o[poolOf(r)], threadOf(o, r), []));
     }),
     route("PATCH", t, async (r) => {
       const user = d.userFor(r);
@@ -205,7 +207,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         const thread = threadOf(o, r);
         if (change.title !== undefined) store.setTitle(thread.id, String(change.title));
         if (change.hidden !== undefined) store.setHidden(thread.id, !!change.hidden);
-        return summary(d, user, poolOf(r), store.getThread(thread.id)!, []);
+        return summary(d, user, poolOf(r), store, store.getThread(thread.id)!, []);
       });
     }),
     route("DELETE", t, async (r) => {
@@ -280,7 +282,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const last = (r.req.headers["last-event-id"] as string | undefined) ?? r.query.get("lastEventId") ?? undefined;
       const stop = hosted.subscribe((id, event) => {
         res.write(`id: ${id}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
-        if (event.type === "reset" && !d.services) res.end();
+        if (event.type === "reset" && hosted.closed) res.end(); // Lock or shutdown: the stream is over
       }, last);
       const beat = setInterval(() => res.write(": keep-alive\n\n"), 25_000);
       res.on("close", () => { clearInterval(beat); stop(); });
@@ -291,7 +293,9 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("GET", `${u}/memory/search`, (r) => {
       const user = d.userFor(r);
       const q = r.query.get("q")?.trim() ?? "";
-      const pools = r.query.get("pool") ? [checkPool(r.query.get("pool"))] : (["general", "private"] as const);
+      const show = r.query.get("all") === "1" ? DISPLAY_DEFAULTS_ALL : display(d, user.id);
+      const pools = (r.query.get("pool") ? [checkPool(r.query.get("pool"))] : (["general", "private"] as const))
+        .filter((p) => (p === "general" ? show.showGeneral : show.showPrivate));
       const kinds = r.query.get("kinds")?.split(",").filter(Boolean) as Hit["kind"][] | undefined;
       const origin = r.query.get("origin") ?? undefined;
       const limit = Math.min(100, Number(r.query.get("limit") ?? 30) || 30);
@@ -542,16 +546,17 @@ function sleepTime(d: Lyricad): string {
 }
 
 /** A thread with its subagents nested under it. */
-function tree(d: Lyricad, user: User, pool: Pool, threads: Thread[]): Api.ThreadSummary[] {
+function tree(d: Lyricad, user: User, pool: Pool, store: PoolStore, threads: Thread[]): Api.ThreadSummary[] {
   const children = new Map<string, Thread[]>();
   for (const th of threads) if (th.subagent && th.parent) children.set(th.parent, [...(children.get(th.parent) ?? []), th]);
-  const build = (th: Thread): Api.ThreadSummary => summary(d, user, pool, th, (children.get(th.id) ?? []).map(build));
+  const build = (th: Thread): Api.ThreadSummary => summary(d, user, pool, store, th, (children.get(th.id) ?? []).map(build));
   return threads.filter((th) => !th.subagent || !threads.some((p) => p.id === th.parent)).map(build);
 }
 
-function summary(d: Lyricad, user: User, pool: Pool, th: Thread, children: Api.ThreadSummary[]): Api.ThreadSummary {
+function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Thread, children: Api.ThreadSummary[]): Api.ThreadSummary {
   return {
     pool, id: th.id, interface: th.interface, subagent: th.subagent, hidden: th.hidden, unlogged: th.unlogged, createdAt: th.createdAt,
+    updatedAt: store.lastEntry(th.id)?.createdAt ?? th.createdAt,
     ...(th.title ? { title: th.title } : {}), ...(th.parent ? { parent: th.parent } : {}),
     busy: d.services!.host.busy(user.id, pool, th.id), children,
   };
