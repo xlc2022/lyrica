@@ -119,8 +119,8 @@ shows:
 
 Each item links into the memory browser.
 
-## Open questions
+## Keys
 
-1. **Keys during sleep.** If each user's databases are encrypted with a key
-   derived from that user's password, sleep can't run for a user whose key
-   isn't available at 04:00. See the design thread.
+Sleep runs only for users whose key is available, either because they are
+logged in or because they saved credentials. Other users are skipped with the
+reason `no-key`, the same way an offline endpoint is skipped (D-024).
