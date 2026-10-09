@@ -94,8 +94,11 @@ endpoints.
 ## Storage, encryption and unlocking
 
 - Each user's memory and threads live in encrypted SQLite (SQLCipher): a
-  general database, a private database, and a `user.db` for credentials and
-  settings. A shared `self.db` holds Lyrica's persona and global settings.
+  general database, a private database, and a `user.db` for settings.
+- A shared `self.db` holds Lyrica's persona, global settings, and the user
+  index: logins, administrator flags, profiles, and each user's
+  password-wrapped key. Names and pronouns are therefore readable whenever
+  `lyricad` is unlocked, even while that user is locked. Their memory is not.
 - Each user's data key is wrapped by their password. It becomes available when
   the user logs in, or at startup if they chose **save credentials**, in which
   case it's kept with systemd credentials and sealed to the TPM where one

@@ -36,9 +36,10 @@ user and pool:
 
 ```text
 runtime/
-  self.db                      shared: Lyrica's persona (with revisions), global settings
+  self.db                      shared: persona (with revisions), global settings, and the users
+                               index (login, admin flag, profile, password-wrapped key)
   users/<user-id>/
-    user.db                    credentials hash, endpoint and model settings
+    user.db                    endpoint and model settings
     general.db                 threads, entries, notes, pages, WAKE, journal, index
     private.db                 same tables, private pool
 ```
