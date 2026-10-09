@@ -271,9 +271,23 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
 - **What a removed turn takes with it.** Its entries are deleted like
   forgotten ones: notes written in those turns go too, sleep and search never
   see them, and pages that already rest on them are flagged for rewriting.
-  Subagents started in them are stopped and forgotten. Commands and file
-  changes are not undone, and the confirmation says so before anything is
-  removed. A short Undo follows, then it is final.
+  Subagents started in them are stopped and forgotten. A short Undo follows,
+  then it is final.
+- **Orphans are cleaned up.**
+  - Lyrica's own leftovers go automatically: subagent runs and threads,
+    images and other outputs in the thread's folder, uploads attached only to
+    removed messages, and the thread's scratch files.
+  - Files in the user's folders are restored, as Claude Code's rewind does.
+    Before her `write` or `edit` tools change a file, Lyrica keeps a snapshot
+    of it, encrypted in the user's home. Removing turns deletes files those
+    turns created and puts back files they changed, but only files nothing has
+    touched since; anything changed later is kept and listed. The
+    confirmation lists each, ticked by default.
+  - Changes made by shell commands can't be tracked reliably: files touched
+    only by commands are listed as not tracked. Git branches left by
+    subagents in removed turns are listed, ticked when they have no commits.
+  - A nightly sweep removes what slipped through (thread folders of forgotten
+    threads, worktrees with no live run) and snapshots older than 30 days.
   - A branch copies the earlier entries the way an export does, keeping
     their original IDs, so memories and citations that point at them still
     resolve, and sleep and recall don't count them twice.

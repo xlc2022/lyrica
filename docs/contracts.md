@@ -354,6 +354,12 @@ One model-facing tool: `delegate({ action?, ... })`.
   `readOnly`, `internet`), `message` (to a child, or `to: "parent"` from a
   child), and `list`. A child thread is `createThread({ parent, child: true
   })`, hosted like any thread, with inherited settings that can only narrow.
+- Planned (Child threads, rewinding): the workspace's `write` and `edit`
+  operations record each change per entry (path, created or changed, content
+  hash after) and keep a snapshot of a changed file's earlier content in the
+  user's encrypted home. `rewindFiles(thread, fromN, { apply })` reports and
+  then deletes created files and restores changed ones that are unchanged
+  since. Snapshots expire after 30 days.
 - Planned (Delegation 2): a user's message in a subagent's thread goes to
   the subagent, marked as theirs, and a note goes to the parent thread. A
   subagent's tool approvals go through the same `ThreadTools.approve`

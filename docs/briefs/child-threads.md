@@ -91,22 +91,41 @@ structural.
      optionally with a chosen model from the thread's allowed list, checked
      by the router), **Delete** (the last turn) and **Delete from here**,
      **Edit** (truncate from a user message and send the edited text).
-   - Before removing, the API reports side effects in the removed turns
-     (commands run, files changed, subagents) so the UI can say they won't
-     be undone. Undo is a short delay in the UI before the request is sent,
-     not a restore.
+   - Undo is a short delay in the UI before the request is sent, not a
+     restore.
+6c. **Orphans.**
+   - Automatic with the removal: subagent runs and threads from those turns;
+     images and outputs in the thread's folder, uploads attached only to
+     removed messages, and scratch files those turns made.
+   - **File snapshots** (Workspace's operations, the only place this
+     touches it): before `write` or `edit` changes or creates a file, record
+     the change against the entry (path, created or changed, hash after) and
+     keep a snapshot of the earlier content in the user's encrypted home.
+     Never for files outside the thread's granted folders.
+   - Before removing, the API reports, per file: created (delete), changed
+     (restore), changed since by something else (keep), touched only by a
+     command (not tracked); plus subagents and git branches from those turns
+     (branches with no commits ticked). The user can untick any item; the
+     removal then applies the ticked ones.
+   - A nightly sweep in `lyricad` removes thread folders of forgotten
+     threads, worktrees with no live run, and snapshots older than 30 days.
+     It logs counts only.
    - Tests: regenerate replaces the reply and what followed; regenerate with
      a cloud model in a local-only thread is refused; delete from the end
      repeatedly; a note written in a removed turn is gone and sleep doesn't
      see the turn; a page citing it is flagged; a running subagent from a
-     removed turn is stopped; the side-effect report lists a command that
-     ran; no text reaches a log.
+     removed turn is stopped; a file a removed turn created is deleted and one
+     it changed is restored; a file edited since is kept and listed; a file
+     touched only by a command is listed as not tracked; images from removed
+     turns are gone; the sweep removes old snapshots and orphaned worktrees;
+     nothing outside the granted folders is ever touched; no text reaches a
+     log.
 7. **Web UI.**
    - Every message's menu: **Branch from here**, **Delete from here**; on
      Lyrica's replies **Regenerate** and **Regenerate with…** (a model
      picker); on the user's messages **Edit**; and **Delete** on the last
-     turn. Removing turns confirms, naming any side effects, then shows an
-     Undo toast. A new branch opens, nested under its parent. Children nest collapsibly under their parent (as forks do),
+     turn. Removing turns confirms with the file and branch list (ticked by
+     default), then shows an Undo toast. A new branch opens, nested under its parent. Children nest collapsibly under their parent (as forks do),
    with status and the update badge; update cards in the parent; `threads`
    calls render as a card.
 8. **Docs.** docs/delegation.md (or a new docs/threads.md if it reads better),
