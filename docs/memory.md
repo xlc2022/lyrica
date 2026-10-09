@@ -230,6 +230,14 @@ unlogged, whatever the parent's setting.
   to every result: the files the subagent changed and the commands it ran
   that had effects. This doesn't rely on the subagent remembering to mention
   them.
+- **This holds for every thread and session:** web, CLI, Matrix, forum and
+  sleep sessions alike, and for subagents started by subagents. A nested
+  subagent's result returns to its own parent, which is also unlogged, so
+  only what finally reaches a main thread can become memory.
+- **Exported copies aren't counted twice.** A thread copied to another
+  interface keeps the original entries' IDs. Sleep and search treat those
+  entries as the ones already processed, and only new entries in the copy are
+  new material.
 
 **Changing the setting part-way through** only affects what comes after:
 - **Turning it on:** anything already consolidated stays in memory. Use

@@ -138,7 +138,8 @@ Details in [docs/memory.md](docs/memory.md).
 - **Disposable subagents never become memory directly.** Their own threads are
   always unlogged. Only the result that comes back into the parent thread can
   become memory, and `delegate` appends the files changed and commands run so
-  their work isn't lost.
+  their work isn't lost. This holds in every interface and kind of session,
+  including nested subagents.
 - **Deletion has four levels:** archive, delete a memory, forget a thread, and
   forget a topic. A deleted memory leaves a **tombstone** that holds no text,
   only IDs, so sleep doesn't extract the same fact again from a thread that
