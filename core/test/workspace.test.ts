@@ -160,9 +160,10 @@ describe.skipIf(!existsSync(sshd) || process.getuid?.() === 0)("an ssh target", 
     const hostKey = generateSshKey("host");
     writeFileSync(join(dir, "authorized_keys"), `${key.publicKey}\n`, { mode: 0o600 });
     writeFileSync(join(dir, "host_key"), hostKey.privateKey, { mode: 0o600 });
+    writeFileSync(join(dir, "sshd_config"), ""); // the system's may include files only root can read
     mkdirSync(join(dir, "root"));
     const port = 20000 + Math.floor(Math.random() * 20000);
-    const server = spawn(sshd, ["-D", "-e", "-p", String(port), "-h", join(dir, "host_key"), "-o", `AuthorizedKeysFile=${join(dir, "authorized_keys")}`,
+    const server = spawn(sshd, ["-D", "-e", "-f", join(dir, "sshd_config"), "-p", String(port), "-h", join(dir, "host_key"), "-o", `AuthorizedKeysFile=${join(dir, "authorized_keys")}`,
       "-o", "StrictModes=no", "-o", "UsePAM=no", "-o", `PidFile=${join(dir, "pid")}`, "-o", "ListenAddress=127.0.0.1"], { stdio: ["ignore", "ignore", "pipe"] });
     let log = "";
     server.stderr.on("data", (d: Buffer) => { log += d.toString(); });
