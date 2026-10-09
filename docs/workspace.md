@@ -65,21 +65,50 @@ so it never touches disk, and no system `ssh` agent is involved.
 - **Granted host paths outside the home workspace are ordinary files.** Their
   protection is whatever the host gives them.
 
+## Thread settings
+
+A workspace is not a separate kind of session. It's any thread that has
+folders granted. Every thread has the same settings panel, and the current
+values are always visible next to the model badge:
+
+| Setting | What it controls |
+|---|---|
+| **Models** | Which model handles each task: the main conversation, cheap and strong subagents, compaction and titles. This follows the user's cloud or local profile unless overridden (see DESIGN.md, "Models and endpoints"). |
+| **Local-only** | Whether every model call stays on the custom endpoint. Always on in private threads. |
+| **Internet access for tools** | Whether `bash` and fetches inside the sandbox can reach the network. |
+| **Folders** | The thread's grants, each read-only or read-write. |
+| **Permission mode** | Ask before commands, ask before changes, or auto. |
+| **Do not log thread in memory** | See [memory.md](memory.md#threads-that-arent-logged). |
+
 ## Network access from tools
 
-- **General threads:** tools have network access. Local-only governs model
-  calls, not tool traffic.
-- **Private threads:** a setting controls tools' internet access, and it is
-  **off by default**.
-  - The user sets a default for their private pool, and each private thread
-    can override it.
-  - When it is off, the sandbox has no network at all (`--unshare-net`).
+- **Every thread has an internet switch** for its tools. Each user sets a
+  default for each pool, and each thread can override it.
+  - In the **general** pool, internet is on by default.
+  - In the **private** pool, internet is **off by default**. Otherwise a `curl`
+    command could send private content to the internet.
+- When it is off, the sandbox has no network at all (`--unshare-net`).
   - SSH targets still work, because `lyricad`'s SSH client reaches them, not
     the sandbox.
-  - Model calls also come from `lyricad`, not from tools.
-  - The reason: otherwise a `curl` command could send private content to the
-    internet.
-  - An allowlist of LAN hosts can be added later if it's needed.
+  - Model calls also come from `lyricad`, not from tools, so local-only and
+    the internet switch are independent.
+- An allowlist of LAN hosts can be added later if it's needed.
+
+## Subagents
+
+A subagent works in its parent thread's workspace, under the same or stricter
+settings:
+- **Folders:** the parent's grants or a subset. Read-write can be narrowed to
+  read-only, never the reverse.
+- **Internet:** off if the parent's is off. When the parent's is on, the
+  subagent's can be off.
+- **Models:** chosen from the thread's subagent models, or from the user's
+  delegation list when Lyrica picks one herself. In a local-only or private
+  thread, only local models are available (see contracts, `core/models`).
+- **Permission mode:** the parent's or stricter.
+
+A subagent can never widen what its parent was given. The stored settings for
+the subagent's thread are checked against its parent's when it is created.
 
 ## Approval
 

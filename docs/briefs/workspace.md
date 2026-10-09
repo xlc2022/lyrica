@@ -47,17 +47,21 @@ the project. Treat escaping the sandbox as the main failure to test against.
    - An optional root path confines `read`, `write` and `edit`.
    - A connection failure fails the call, with no local fallback.
    - `lyrica admin ssh add|list|remove --user <u> <name> <host> …`.
-5. **Network setting.**
-   - A private-pool default per user ("tools may use the internet": off by
-     default), plus a per-thread override.
-   - General threads have network on.
-6. **Tools in the extension.** Register `read`, `write`, `edit` and `bash`
+5. **Internet setting for every thread.**
+   - A per-user default for each pool (general on, private off) and a
+     per-thread override.
+   - When it is off, the sandbox runs with `--unshare-net`.
+6. **Subagent settings.** Add `inheritSettings(parentThreadId, childThreadId,
+   narrower?)`. A child thread gets its parent's folders, internet setting
+   and permission mode, or stricter ones. Anything wider is refused. The
+   Models thread's `delegate` will call it.
+7. **Tools in the extension.** Register `read`, `write`, `edit` and `bash`
    using Pi's `create*Tool(cwd, { operations })` with the thread's target.
    - Keep the registration in its own module, so it doesn't collide with the
      Memory thread's tools.
    - Permission modes ("ask before commands", "ask before changes", "auto")
      are enforced through Pi's `tool_call` event.
-7. **Developer bench.** `lyrica dev` switches from `--no-builtin-tools` to
+8. **Developer bench.** `lyrica dev` switches from `--no-builtin-tools` to
    Lyrica's routed tools, with grants taken from the development runtime.
 
 ## Seams with Memory
@@ -87,12 +91,14 @@ the project. Treat escaping the sandbox as the main failure to test against.
     process;
   - write to a read-only grant;
   - leave the granted paths through `..`, symlinks, or absolute paths;
-  - reach the network when it's off (both `curl` and raw sockets).
+  - reach the network when it's off (both `curl` and raw sockets), in either
+    pool.
 - Tests also show that:
   - a general thread can't take a private grant;
   - files under the home workspace are encrypted on disk and readable only
     while it's mounted;
-  - SSH failures don't fall back to local execution.
+  - SSH failures don't fall back to local execution;
+  - a subagent's settings can't be wider than its parent's.
 - `lyrica dev` can read, edit and run commands in a granted folder, and is
   refused outside it.
 - `docs/workspace.md` describes what exists, including a short host checklist
