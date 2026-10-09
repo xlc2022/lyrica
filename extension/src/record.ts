@@ -1,4 +1,4 @@
-import type { AgentSession, ExtensionFactory, SessionEntry } from "@earendil-works/pi-coding-agent";
+import type { AgentSession, SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { NewEntry, PoolStore } from "@lyrica/core";
 
 // Threads live in the pool database, never in Pi session files. Pi saves a
@@ -26,16 +26,6 @@ export function recordEntries(session: AgentSession, store: PoolStore, threadId:
   return session.subscribe((event) => {
     if (event.type === "turn_end" || event.type === "agent_end") syncEntries(session.sessionManager, store, threadId);
   });
-}
-
-/** The same as an extension, for the developer bench, where Pi's own main() owns the session. */
-export function entryRecorder(store: PoolStore, threadId: string): ExtensionFactory {
-  return (pi) => {
-    const sync = (_e: unknown, ctx: { sessionManager: EntrySource }) => { syncEntries(ctx.sessionManager, store, threadId); };
-    pi.on("turn_end", sync);
-    pi.on("agent_end", sync);
-    pi.on("session_shutdown", sync);
-  };
 }
 
 /**

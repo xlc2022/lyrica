@@ -92,7 +92,7 @@ describe("the model runtime", () => {
   it("runs a tool-call round trip through the router", async () => {
     const s = await setup();
     const t = s.thread("general");
-    s.cloud.reply({ tool: { name: "recall", args: { query: "Miso" } } }, { text: "Nothing about Miso yet." });
+    s.cloud.reply({ tools: [{ name: "recall", args: { query: "Miso" } }] }, { text: "Nothing about Miso yet." });
     const { session, chat, dispose } = await s.open(t);
     try {
       expect(chat).toEqual(s.cloudRef);

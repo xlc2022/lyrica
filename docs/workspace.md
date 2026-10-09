@@ -2,6 +2,9 @@
 
 **Status: agreed.**
 
+Code: `core/src/workspace/` (settings, sandbox, home, SSH) and
+`extension/src/workspace.ts` (the tools).
+
 Lyrica works like a coding agent. She can read, write and edit files, run
 commands, work on remote machines over SSH, reach shared drives, and work with
 files a user uploads. She must not touch anything she wasn't given.
@@ -30,10 +33,30 @@ database files. A command that could see either one could read everything.
 - It runs as `lyricad`'s own service user, isolated by namespaces, so no root
   or privileged helper is needed. Because the sandbox has its own process
   namespace, it can't see `lyricad` at all, let alone read its memory.
+- Inside it are `/usr` (with the `/bin` and `/lib` links), a handful of `/etc`
+  files (certificates, `resolv.conf`, `hosts`, `passwd`, `group`, the loader
+  cache), `/proc`, `/dev`, an empty `/tmp`, the thread's folder at
+  `/workspace`, and each grant at its own host path. Its environment is a
+  fixed minimal set; nothing of `lyricad`'s is passed in.
+- **Every operation is a fresh sandbox**, file reads and writes included, so
+  paths and symlinks always resolve inside it. `read`, `write` and `edit`
+  first refuse paths outside `/workspace` and the grants (and writes to
+  read-only grants). The mounts confine her anyway: `bash` has no path checks.
+- Folders are opened by `lyricad` and mounted by file descriptor
+  (`--bind-fd`), after checking that the opened folder is exactly the granted
+  path and that the grant is still allowed. A symlink swapped in by a running
+  command can't redirect a mount.
+- Command output past 20 KB is cut to its last 20 KB before Pi sees it. Pi
+  would otherwise save long output to a plaintext temp file on the host.
 
 **SSH targets** use an in-process SSH library (`ssh2`). Each private key is
 stored in the user's encrypted settings and handed to the library in memory,
 so it never touches disk, and no system `ssh` agent is involved.
+- `lyrica admin ssh add` generates an ed25519 key and prints the public half
+  to install on the remote account.
+- The host key is pinned on first connection; a different key later fails.
+- The root path check follows remote symlinks. Commands are not confined by
+  it, only by the remote account.
 
 ## Grants: what she may touch
 
@@ -42,8 +65,20 @@ so it never touches disk, and no system `ssh` agent is involved.
   thread can only grant general paths. That keeps files meant for private work
   from being read in a thread that may use cloud models.
 - **Each thread chooses its grants** from those lists, as read-only or
-  read-write, much like choosing a working directory in Claude Code. The thread
-  shows them next to the model badge.
+  read-write, much like choosing a working directory in Claude Code. A grant
+  can be a listed folder or any folder inside one. The thread shows them next
+  to the model badge.
+- The rules, checked when settings change and again before every sandbox run:
+  - A listed folder must be a real directory, with no symlinks on its path,
+    and must not overlap Lyrica's runtime directory.
+  - No folder may be in both lists, or overlap one in the other list.
+  - A general thread can't take a folder that overlaps a private one.
+  - A private thread may also take general folders, read-only, the same way
+    private memory reads general memory.
+  - One thread's grants don't nest inside each other.
+- `lyrica admin grants add|list|remove --user <u> --pool <pool> <path>` edits
+  the lists. They live in the user's `user.db`, so the command asks for that
+  user's password as well as the `self.db` passphrase.
 - **Shared drives (Samba, NFS):** the system mounts them on the host (systemd
   mount units, with credentials in system config). Once mounted, they're
   ordinary paths an administrator can add to a user's grant lists. Lyrica never
@@ -58,8 +93,13 @@ so it never touches disk, and no system `ssh` agent is involved.
   becomes available (at login, or at startup if credentials are saved) and
   unmounted when the key is dropped. Every thread gets its own folder inside
   it.
+- On disk: `users/<id>/home.crypt` holds the ciphertext, mounted at
+  `users/<id>/home`, with one folder per thread under `threads/`. A
+  subagent works in its parent's folder. The gocryptfs password is the hex
+  `home` subkey, passed on stdin.
 - A file uploaded in the web UI goes into the thread's `uploads/` folder in the
-  home workspace.
+  home workspace. `Workspace.saveUpload` writes it from inside a sandbox, so a
+  symlink she left in `uploads/` can't point it anywhere else.
 - An uploaded file is a file, not a memory. She notes what matters from it, as
   with anything else she reads.
 - **Granted host paths outside the home workspace are ordinary files.** Their
@@ -107,8 +147,10 @@ settings:
   thread, only local models are available (see contracts, `core/models`).
 - **Permission mode:** the parent's or stricter.
 
-A subagent can never widen what its parent was given. The stored settings for
-the subagent's thread are checked against its parent's when it is created.
+A subagent can never widen what its parent was given. `inheritSettings`
+copies the parent's settings, or the narrower ones it is given, and the
+subagent's settings are checked against its parent's whenever they change and
+before every use. A subagent always uses its parent's target.
 
 ## Approval
 
@@ -119,12 +161,21 @@ judgment and make review easy. Each thread has a **permission mode**:
 - **Ask before changes**
 - **Auto** (the default)
 
+"Ask before commands" asks before `bash`. "Ask before changes" asks before
+`bash`, `write` and `edit`, since a command can change files too. The
+extension enforces both in Pi's `tool_call` event; with no one to ask, the
+call is blocked.
+
 Anything irreversible that leaves the server, such as sending a message,
 deleting remote data or spending money, always asks.
 
 ## Tools
 
-`read`, `write`, `edit` and `bash`. Pi's `grep`, `find` and `ls` can be added
+`read`, `write`, `edit` and `bash`, built from Pi's own tool definitions
+with the thread's target looked up on every call, so changing a thread's
+settings applies at once. Commands typed with `!` in the terminal go to the
+same target. A short `workspace` prompt section tells her where she works,
+what she was given and whether she has internet. Pi's `grep`, `find` and `ls` can be added
 inside the 30-tool budget if `bash` turns out not to be enough. The memory tool
 is `read_memory`, so it doesn't clash with `read`.
 
@@ -138,3 +189,13 @@ The machine running `lyricad` needs:
 
 In a Proxmox LXC container, turn on the **nesting** and **FUSE** features. A
 VM needs nothing special.
+
+**Checklist for Li's LXC container:**
+1. In Proxmox, under the container's Options → Features, turn on `nesting`
+   and `fuse` (or `features: nesting=1,fuse=1` in its config), then restart it.
+2. In the container: `apt install bubblewrap gocryptfs fuse3`.
+3. `ls -l /dev/fuse` shows `crw-rw-rw-`, and `fusermount3` is setuid root.
+4. As the service user, `bwrap --unshare-all --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib64 /lib64 -- /bin/true`
+   succeeds. On Ubuntu 24.04 or later, if it fails with "Permission denied",
+   set `kernel.apparmor_restrict_unprivileged_userns=0` on the Proxmox host.
+5. `LYRICA_HOME` is on a normal filesystem owned by the service user.

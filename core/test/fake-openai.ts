@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach } from "vitest";
 
 /** What the fake answers to one chat request: text, a tool call, or an HTTP error. */
-export type Reply = { text: string } | { tool: { name: string; args: unknown } } | { status: number };
+export type Reply = { text: string } | { tools: { name: string; args: unknown; id?: string }[] } | { status: number };
 
 export interface ChatRequest { model: string; messages: { role: string; content?: unknown; tool_calls?: unknown }[]; tools?: { function: { name: string } }[]; stream?: boolean }
 
@@ -37,7 +37,7 @@ export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; lab
       const base = { id: "chatcmpl-1", object: "chat.completion.chunk", created: 0, model: chat.model };
       const delta = "text" in reply
         ? { role: "assistant", content: reply.text }
-        : { role: "assistant", tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: reply.tool.name, arguments: JSON.stringify(reply.tool.args) } }] };
+        : { role: "assistant", tool_calls: reply.tools.map((t, index) => ({ index, id: t.id ?? `call_${index + 1}`, type: "function", function: { name: t.name, arguments: JSON.stringify(t.args) } })) };
       const finish = "text" in reply ? "stop" : "tool_calls";
       res.writeHead(200, { "content-type": "text/event-stream" });
       const send = (o: unknown) => res.write(`data: ${JSON.stringify(o)}\n\n`);
