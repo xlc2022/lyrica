@@ -124,7 +124,7 @@ nothing else. No code path gives a general view a private handle.
 
 | Area | Methods |
 |---|---|
-| Threads | `create({ parent?, kind?, unlogged? })`, `list({ includeHidden })`, `get`, `setHidden`, `setUnlogged`, `appendEntry`, `loadEntries`, `forget` |
+| Threads | `create({ parent?, unlogged? })`, `list({ includeHidden })`, `get`, `setHidden`, `setUnlogged`, `appendEntry`, `loadEntries`, `forget` |
 | Notes | `add`, `get`, `update(author)`, `archive`, `delete` |
 | Pages | `index()` (titles and summaries), `get`, `put(author)` (sleep only), `delete` |
 | WAKE and journal | `getWake`, `putWake`, `addJournal`, `listJournal` |
@@ -136,8 +136,6 @@ Authors are `lyrica`, `sleep` or `user:<id>`.
 
 **Unlogged threads** (see [memory.md](memory.md#threads-that-arent-logged))
 are enforced in the store:
-- Subagent threads (`create({ parent, kind: "subagent" })`) are always
-  unlogged.
 - `create` with an unlogged `parent` always makes an unlogged child, and
   `setUnlogged(false)` is refused on a thread whose parent is unlogged.
 - Entries record whether they were written while unlogged. Search, sleep and

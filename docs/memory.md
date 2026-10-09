@@ -214,30 +214,11 @@ Each thread has a **Do not log thread in memory** checkbox. When it is on:
 - the thread itself is still kept, encrypted, so you can scroll back. You can
   forget it like any other thread.
 
-**Daughter threads inherit the setting.** Forks, and copies exported to
-another interface, are created unlogged if their parent is unlogged, and
-their checkbox can't be turned off. The store refuses to create a logged
-daughter of an unlogged thread, so this doesn't depend on the interface
-getting it right.
-
-**Disposable subagents are never memory themselves.** A subagent's own thread
-is stored, so the parent thread can show its steps, but it is always
-unlogged, whatever the parent's setting.
-- Only what comes back into the parent thread can become memory: the
-  subagent's result, which arrives as a tool result in the parent.
-- Whether that result is logged then follows the parent's setting.
-- So that work isn't lost, the `delegate` tool appends a mechanical summary
-  to every result: the files the subagent changed and the commands it ran
-  that had effects. This doesn't rely on the subagent remembering to mention
-  them.
-- **This holds for every thread and session:** web, CLI, Matrix, forum and
-  sleep sessions alike, and for subagents started by subagents. A nested
-  subagent's result returns to its own parent, which is also unlogged, so
-  only what finally reaches a main thread can become memory.
-- **Exported copies aren't counted twice.** A thread copied to another
-  interface keeps the original entries' IDs. Sleep and search treat those
-  entries as the ones already processed, and only new entries in the copy are
-  new material.
+**Daughter threads inherit the setting.** Subagent threads, forks, and copies
+exported to another interface are created unlogged if their parent is
+unlogged, and their checkbox can't be turned off. The store refuses to create
+a logged daughter of an unlogged thread, so this doesn't depend on the
+interface getting it right.
 
 **Changing the setting part-way through** only affects what comes after:
 - **Turning it on:** anything already consolidated stays in memory. Use
