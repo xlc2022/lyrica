@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Models, PersonaStore, Users, Workspace } from "@lyrica/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
 import { openBench } from "../bench.ts";
@@ -73,5 +73,79 @@ describe.skipIf(!runnable)("lyrica dev", () => {
     expect(r("5")).toMatchObject({ error: true, text: expect.stringContaining("No such file") });
     expect(r("6")).toMatchObject({ error: true, text: expect.stringContaining("outside this thread's folders") });
     expect(JSON.stringify(results)).not.toContain("s3cr3t");
+  });
+
+  it("lets a subagent work in the thread's folders, read-only when asked", async () => {
+    const { host, keyring, users, tester, server } = await setup();
+    const readme = join(host, "project", "README.md");
+    server.reply(
+      { tools: [{ id: "d", name: "delegate", args: { task: "Read the README, then try to change it", role: "worker", readOnly: true } }] },
+      { tools: [{ id: "r", name: "read", args: { path: readme } }, { id: "w", name: "write", args: { path: readme, content: "changed" } }] },
+      { text: "It says hello; I couldn't change it." },
+      { text: "done" },
+    );
+    const bench = await openBench(keyring, users, tester);
+    try {
+      await bench.session.prompt("ask a subagent");
+    } finally {
+      await bench.close();
+    }
+    const worker = JSON.stringify(server.requests[2]!.messages);
+    expect(worker).toContain("Hello from the project");
+    expect(worker).toMatch(/read-only|Read-only file system|EROFS/i);
+    expect(readFileSync(readme, "utf8")).toBe("Hello from the project\n");
+  });
+
+  it("brings a background subagent's result to a later turn", async () => {
+    const { keyring, users, tester, server } = await setup();
+    let parentTurns = 0;
+    server.respond((r) => {
+      if (JSON.stringify(r.messages).includes("You are a subagent")) return { text: "The project has one README." };
+      parentTurns++;
+      return parentTurns === 1 ? { tools: [{ name: "delegate", args: { task: "Survey the project", role: "scout", background: true } }] } : { text: "ok" };
+    });
+    const bench = await openBench(keyring, users, tester);
+    try {
+      await bench.session.prompt("survey the project in the background");
+      await vi.waitFor(() => expect(JSON.stringify(bench.session.messages)).toContain("The project has one README."), { timeout: 10_000 });
+      await bench.session.prompt("what did it find?");
+    } finally {
+      await bench.close();
+    }
+    expect(JSON.stringify(server.requests.at(-1)!.messages)).toContain("The project has one README.");
+  });
+
+  it("gives two parallel writers their own git worktrees in the sandbox", async () => {
+    const { host, keyring, users, tester, server } = await setup();
+    const project = join(host, "project");
+    const git = (...a: string[]) => execFileSync("git", ["-C", project, ...a], { encoding: "utf8" });
+    git("init", "-q");
+    git("add", ".");
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init");
+    let parentTurns = 0;
+    server.respond((r) => {
+      const msgs = JSON.stringify(r.messages);
+      if (msgs.includes("You are a subagent")) {
+        if (r.messages.at(-1)!.role === "tool") return { text: "committed" };
+        const tree = /worktree (\S+), branch/.exec(msgs)?.[1];
+        if (!tree) return { text: "no worktree given" };
+        const name = msgs.includes("note A") ? "a" : "b";
+        return { tools: [{ name: "bash", args: { command: `cd ${tree} && echo ${name} > ${name}.txt && git add ${name}.txt && git -c user.name=s -c user.email=s@s commit -qm ${name} && git log --oneline | wc -l` } }] };
+      }
+      parentTurns++;
+      return parentTurns === 1 ? { tools: [{ name: "delegate", args: { tasks: [{ task: "Write note A" }, { task: "Write note B" }] } }] } : { text: "ok" };
+    });
+    const bench = await openBench(keyring, users, tester);
+    try {
+      await bench.session.prompt("write two notes at once");
+    } finally {
+      await bench.close();
+    }
+    const result = JSON.stringify(bench.session.messages.find((m) => m.role === "toolResult"));
+    expect(result).not.toContain("one at a time");
+    const runId = /branch lyrica\/(d-[0-9a-f]+)-1/.exec(result)![1];
+    expect(git("show", "--stat", `lyrica/${runId}-1`)).toContain("a.txt");
+    expect(git("show", "--stat", `lyrica/${runId}-2`)).toContain("b.txt");
+    expect(existsSync(join(project, "a.txt"))).toBe(false);
   });
 });

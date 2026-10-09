@@ -195,7 +195,8 @@ settings:
 A subagent can never widen what its parent was given. `inheritSettings`
 copies the parent's settings, or the narrower ones it is given, and the
 subagent's settings are checked against its parent's whenever they change and
-before every use. A subagent always uses its parent's target.
+before every use. A subagent always uses its parent's target. Parallel
+writers get their own git worktrees (see [delegation.md](delegation.md)).
 
 ## Approval
 
