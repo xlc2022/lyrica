@@ -42,7 +42,13 @@ describe("delegation in lyricad", () => {
     stream.close();
 
     // Stored too, as a notice, and the subagent's thread lists under its parent with its usage.
+    // The stored delegate call and the delivered result name the subagent's thread, so their cards can open it.
+    // (Live, a background call returns before its subagents exist; their `started` events carry each thread.)
+    const ref = { pool: "general", id: started.event.threadId };
     const page = (await li.get<MessagePage>(`${path}/messages`)).body;
+    const parts = page.messages.flatMap((m) => m.parts);
+    expect(parts.find((p) => p.type === "tool" && p.name === "delegate")).toMatchObject({ threads: [ref] });
+    expect(parts.find((p) => p.type === "delegation")).toMatchObject({ threads: [ref] });
     expect(page.messages.filter((m) => m.role === "notice")).toEqual([
       expect.objectContaining({ parts: [expect.objectContaining({ type: "delegation", status: "finished", text: expect.stringContaining("in the shed") })] }),
     ]);
@@ -59,6 +65,18 @@ describe("delegation in lyricad", () => {
     await next.until(is("turn_end"));
     next.close();
     expect(JSON.stringify(parent.requests.at(-1)!.messages)).toContain("The seed list is in the shed.");
+  });
+
+  it("names a foreground run's subagent threads on the delegate call as it ends", async () => {
+    const { li, parent, sub, path } = await setup();
+    parent.reply({ tools: [{ name: "delegate", args: { task: "check the shed", role: "scout" } }] }, { text: "Checked." });
+    sub.reply({ text: "Seeds found." });
+    const stream = li.events(`${path}/events`);
+    await li.post(`${path}/messages`, { text: "check" });
+    await stream.until(is("turn_end"));
+    const child = (stream.events.find((e) => e.event.type === "delegation")!.event as Extract<ThreadEvent, { type: "delegation" }>).event.threadId;
+    expect(stream.events.find((e) => e.event.type === "tool_end")!.event).toMatchObject({ name: "delegate", threads: [{ pool: "general", id: child }] });
+    stream.close();
   });
 
   it("Lock stops the user's runs", async () => {
@@ -99,7 +117,16 @@ describe("delegation in lyricad", () => {
     });
     expect(put.body.find((r) => r.name === "gardener")).toMatchObject({ custom: true });
     expect(put.body.find((r) => r.name === "scout")).toMatchObject({ custom: false });
-    expect((await li.put(`${roles}/Bad Name`, { prompt: "x", tier: "cheap", tools: [], thinking: "off" })).status).toBe(400);
+    // Bad values are refused with the reason, never a 500.
+    const ok = { description: "", prompt: "x", tier: "cheap", tools: [], readOnly: false, thinking: "off" };
+    for (const [name, bad, why] of [
+      ["Bad Name", {}, /role names/], ["x", { tier: "huge" }, /tier/], ["x", { thinking: "lots" }, /thinking/],
+      ["x", { tier: undefined }, /tier/], ["x", { prompt: "" }, /prompt/], ["x", { tools: "read" }, /tools/],
+    ] as const) {
+      const r = await li.put<{ error: string }>(`${roles}/${encodeURIComponent(name)}`, { ...ok, ...bad });
+      expect(r.status, JSON.stringify(bad)).toBe(400);
+      expect(r.body.error).toMatch(why);
+    }
     expect((await li.del<{ name: string }[]>(`${roles}/gardener`)).body.map((r) => r.name)).not.toContain("gardener");
 
     const flows = `/api/u/${rt.li.id}/workflows`;

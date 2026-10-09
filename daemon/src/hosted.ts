@@ -9,7 +9,7 @@ import {
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
-import { delegationPart, markersFor, plainError, shortResult, turnRecall } from "./messages.ts";
+import { delegateThreads, delegationPart, markersFor, plainError, shortResult, turnRecall } from "./messages.ts";
 
 export interface HostOptions {
   users: Users;
@@ -329,7 +329,8 @@ export class HostedThread {
       case "tool_execution_end": {
         const content = (e.result as { content?: unknown } | undefined)?.content;
         const result = shortResult(content);
-        this.emit({ type: "tool_end", toolCallId: e.toolCallId, name: e.toolName, result, isError: e.isError });
+        const threads = delegateThreads(e.toolName, (e.result as { details?: unknown } | undefined)?.details, this.pool);
+        this.emit({ type: "tool_end", toolCallId: e.toolCallId, name: e.toolName, result, isError: e.isError, ...(threads ? { threads } : {}) });
         const full = Array.isArray(content) ? content.map((p: { text?: string }) => p.text ?? "").join("\n") : String(content ?? "");
         for (const m of markersFor(e.toolName, (e as { args?: unknown }).args, full)) this.emit(m);
         break;

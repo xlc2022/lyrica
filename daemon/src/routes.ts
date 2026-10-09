@@ -131,7 +131,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const role = await r.json<Api.Role>();
       s().delegation.store.setRole(user.id, {
         name: r.params.name!, description: String(role.description ?? ""), prompt: String(role.prompt ?? ""), tier: role.tier,
-        tools: Array.isArray(role.tools) ? role.tools.map(String) : [], readOnly: !!role.readOnly, thinking: role.thinking ?? "off",
+        tools: toolList(role.tools), readOnly: !!role.readOnly, thinking: role.thinking ?? "off",
       });
       return roles(d, user.id);
     }),
@@ -258,7 +258,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       return owner(d, user, (o): Api.MessagePage => {
         const thread = threadOf(o, r);
         const page = o[poolOf(r)].entryPage(thread.id, { before: before ? Number(before) : undefined, limit });
-        return { messages: toMessages(thread.id, page.entries), hasMore: page.hasMore };
+        return { messages: toMessages(thread.id, poolOf(r), page.entries,
+          (run) => s().delegation.store.runs(user.id, poolOf(r), { run }).map((x) => x.thread)), hasMore: page.hasMore };
       });
     }),
     route("POST", `${t}/messages`, async (r) => {
@@ -529,6 +530,12 @@ function target(d: Lyricad, r: Request): User {
 function withLinks(text: string, links: unknown): string {
   const ids = Array.isArray(links) ? links.map(String).filter((l) => /^(general\/)?[tenp]:\S+$/.test(l)) : [];
   return [text.trim(), ...ids.map((l) => `[${l}]`)].filter(Boolean).join(" ");
+}
+
+function toolList(tools: unknown): string[] {
+  if (tools === undefined) return [];
+  if (!Array.isArray(tools) || !tools.every((t) => typeof t === "string")) throw new Error("a role's tools are a list of tool names");
+  return tools;
 }
 
 /** Every role the user's runs can use: built-ins, overridden or not, and their own. */

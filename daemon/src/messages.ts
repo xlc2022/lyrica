@@ -1,5 +1,5 @@
 import { DELEGATE_MESSAGE } from "@lyrica/extension";
-import type { Message, MessagePart } from "./api.ts";
+import type { Message, MessagePart, Pool, ThreadRef } from "./api.ts";
 
 // Stored Pi entries as the web UI shows them, and the memory markers that both
 // stored messages and the live stream carry.
@@ -8,7 +8,22 @@ const RESULT_LINES = 6;
 const RESULT_CHARS = 600;
 
 type Content = string | { type: string; text?: string; thinking?: string; id?: string; name?: string; arguments?: unknown }[];
-interface PiMessage { role: string; content?: Content; toolCallId?: string; toolName?: string; isError?: boolean; model?: string; stopReason?: string; errorMessage?: string; customType?: string }
+interface PiMessage { role: string; content?: Content; toolCallId?: string; toolName?: string; isError?: boolean; model?: string; stopReason?: string; errorMessage?: string; customType?: string; details?: unknown }
+
+/** A run's subagent threads, from its records: a background run's result names only the run. */
+export type RunThreads = (runId: string) => string[];
+
+/**
+ * The subagent threads a `delegate` result (or a delivered result) belongs to,
+ * in the parent's pool: named in its details, or found by its run.
+ */
+export function delegateThreads(tool: string, details: unknown, pool: Pool, runThreads?: RunThreads): ThreadRef[] | undefined {
+  if (tool !== "delegate") return undefined;
+  const d = (details ?? {}) as { threads?: unknown; runId?: unknown };
+  const ids = Array.isArray(d.threads) ? d.threads.filter((id): id is string => typeof id === "string")
+    : typeof d.runId === "string" && runThreads ? runThreads(d.runId) : [];
+  return ids.length ? ids.map((id) => ({ pool, id })) : undefined;
+}
 interface PiEntry { type: string; message?: PiMessage; customType?: string; content?: Content }
 
 /** The first few lines of a tool's output. */
@@ -61,7 +76,7 @@ export function turnRecall(content: unknown): string[] {
 }
 
 /** Folds a page of stored entries into messages: tool results join their calls; recall joins the reply it fed. */
-export function toMessages(threadId: string, entries: { n: number; data: unknown; createdAt: string }[]): Message[] {
+export function toMessages(threadId: string, pool: Pool, entries: { n: number; data: unknown; createdAt: string }[], runThreads?: RunThreads): Message[] {
   const out: Message[] = [];
   const calls = new Map<string, { part: Extract<MessagePart, { type: "tool" }>; owner: Message }>();
   let pendingRecall: string[] = [];
@@ -72,7 +87,10 @@ export function toMessages(threadId: string, entries: { n: number; data: unknown
       continue;
     }
     if (e.type === "custom_message" && e.customType === DELEGATE_MESSAGE) {
-      out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "notice", parts: [delegationPart(e.content, (e as { details?: unknown }).details)] });
+      const details = (e as { details?: unknown }).details;
+      const part = delegationPart(e.content, details);
+      const threads = delegateThreads("delegate", details, pool, runThreads);
+      out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "notice", parts: [threads ? { ...part, threads } : part] });
       continue;
     }
     const m = e.type === "message" ? e.message : undefined;
@@ -100,6 +118,8 @@ export function toMessages(threadId: string, entries: { n: number; data: unknown
       if (!call) continue;
       call.part.result = shortResult(m.content);
       call.part.isError = !!m.isError;
+      const threads = delegateThreads(call.part.name, m.details, pool, runThreads);
+      if (threads) call.part.threads = threads;
       call.owner.parts.push(...markersFor(call.part.name, call.part.args, textOf(m.content)));
     }
   }

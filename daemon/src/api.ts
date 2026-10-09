@@ -256,11 +256,14 @@ export interface ThreadSettingsChange {
 export type MessagePart =
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
-  | { type: "tool"; toolCallId: string; name: string; args: unknown; result?: string; isError?: boolean }
+  | { type: "tool"; toolCallId: string; name: string; args: unknown; result?: string; isError?: boolean; threads?: ThreadRef[] }
   | { type: "recall"; ids: string[] }
   | { type: "remember"; ids: string[] }
   /** A background subagent run's result or question, delivered into the thread. */
-  | { type: "delegation"; text: string; runId?: string; status?: string };
+  | { type: "delegation"; text: string; runId?: string; status?: string; threads?: ThreadRef[] };
+
+/** A `delegate` call's subagent threads, so its card can open them. */
+export interface ThreadRef { pool: Pool; id: string }
 
 export interface Message {
   /** The entry ID, `e:<thread>#<n>`. */
@@ -321,7 +324,7 @@ export type ThreadEvent =
   | { type: "thinking"; delta: string }
   | { type: "tool_start"; toolCallId: string; name: string; args: unknown }
   /** `result` is short: the first lines of the tool's output. */
-  | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean }
+  | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean; threads?: ThreadRef[] }
   /** Memories recalled for this turn, automatically or with recall/read_memory. */
   | { type: "recall"; ids: string[] }
   /** Notes she saved. */
