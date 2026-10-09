@@ -6,6 +6,7 @@ import {
   type Pool, type Probe, type Profiles, type Pronouns, type SleepTime, type SshTargetInfo, type Task, type Theme, type UserCard,
 } from "./api.ts";
 import type { ShellContext } from "./Shell.tsx";
+import { WebAccessSection } from "./WebAccess.tsx";
 import { Confirm, ErrorText, Switch, useAction, useLoad } from "./ui.tsx";
 
 const PRESETS: Record<string, Pronouns> = {
@@ -27,7 +28,7 @@ const TASKS: { task: Task; label: string }[] = [
 
 export function Panel({ ctx }: { ctx: ShellContext }) {
   const admin = ctx.user.admin;
-  const sections = ["Profile", "Password", "Endpoints", "Model profiles", "Network", "SSH targets", ...(admin ? ["Server", "Users", "Persona proposals"] : [])];
+  const sections = ["Profile", "Password", "Endpoints", "Model profiles", "Network", "SSH targets", ...(admin ? ["Server", "Web access", "Users", "Persona proposals"] : [])];
   return (
     <main className="main panel">
       <header className="head">
@@ -45,6 +46,7 @@ export function Panel({ ctx }: { ctx: ShellContext }) {
         <NetworkSection ctx={ctx} />
         <SshSection ctx={ctx} />
         {admin && <ServerSection ctx={ctx} />}
+        {admin && <Section title="Web access"><WebAccessSection userId={ctx.user.id} /></Section>}
         {admin && <UsersSection ctx={ctx} />}
         {admin && <ProposalsSection ctx={ctx} />}
       </div>
@@ -98,8 +100,8 @@ function ProfileSection({ ctx }: { ctx: ShellContext }) {
         <label className="field"><span>Display name</span><input value={name} onChange={(e) => setName(e.target.value)} /></label>
         {me.previousNames.length > 0 && <p className="muted small">Before: {me.previousNames.map((p) => `${p.name} (until ${p.until.slice(0, 10)})`).join(", ")}</p>}
         <PronounFields value={pronouns} onChange={setPronouns} />
-        <div className="row wrap">
-          <div className="field narrow">
+        <div className="row wrap top">
+          <div className="field narrow swatch">
             <label className="field"><span>Accent colour</span>
               <input type="color" value={accent || "#1f6f78"} onChange={(e) => setAccent(e.target.value)} />
             </label>

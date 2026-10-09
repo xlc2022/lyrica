@@ -60,6 +60,9 @@ fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .row.between { justify-content: space-between; }
+.row.top { align-items: start; }
+.swatch { justify-items: start; }
+.swatch > button { padding: 2px 0; }
 .stack { display: grid; gap: 12px; }
 .inline { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
 .inline input { flex: 1 1 140px; }
@@ -69,6 +72,7 @@ fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 .field.narrow { flex: 0 1 120px; }
 .row > .field { flex: 1 1 160px; }
 .switch { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: center; cursor: pointer; min-height: var(--tap); }
+.switch input[type="radio"] { accent-color: var(--accent); width: 18px; height: 18px; margin: 0; min-height: 0; }
 .switch small { grid-column: 2; color: var(--muted); font-size: 0.8rem; }
 .k { font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.66rem; margin-right: 6px; }
 .k.cloud, [data-kind="cloud"] > .k { color: var(--cloud); }
@@ -259,6 +263,10 @@ main > .head, .composer, .subnote, .offline { flex: none; }
 .probe[data-state="up"] { color: var(--local); }
 .probe[data-state="down"] { color: var(--danger); }
 .profiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 0; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+textarea.code { font: 0.82rem/1.5 var(--mono); white-space: pre; }
 .notice { border: 1px solid var(--cloud); border-radius: 10px; padding: 10px 12px; }
 .diff { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; }
 .diff pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--tool); border-radius: 8px; padding: 8px; max-height: 300px; overflow-y: auto; }

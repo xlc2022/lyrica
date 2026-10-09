@@ -177,7 +177,7 @@ function ThreadLinks({ threads, env }: { threads?: ThreadRef[]; env: Env }) {
 /** Something delivered into the thread: a background subagent run's result or question. */
 function Notice({ text, threads, env }: { text: string; threads?: ThreadRef[]; env: Env }) {
   return (
-    <div className="subagent notice">
+    <div className="subagent delivered">
       <div className="sub-head"><b>Subagent result</b><ThreadLinks threads={threads} env={env} /></div>
       <div className="prose"><Prose text={text} /></div>
     </div>

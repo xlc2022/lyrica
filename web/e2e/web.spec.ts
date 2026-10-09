@@ -224,6 +224,19 @@ test("turning Show private off hides an open private thread and private memory",
   await expect(page.getByLabel("Show private")).toBeChecked();
 });
 
+test("an administrator sees how Lyrica is reached", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}/panel`);
+  const section = page.getByRole("region", { name: "Web access", exact: true });
+  await expect(section.getByLabel("Only this machine")).toBeChecked();
+  await expect(section.getByRole("region", { name: "Web access status" })).toContainText("Only on this machine");
+  await section.getByLabel("Built-in Caddy").check();
+  await expect(section.getByLabel("DNS provider")).toBeVisible();
+  await section.getByLabel("A proxy elsewhere").check();
+  await expect(section.getByLabel("Proxy addresses")).toBeVisible();
+  await noHorizontalScroll(page);
+});
+
 test("no horizontal scrolling and big enough tap targets on a phone", async ({ page, baseURL }) => {
   test.skip(!phone(page), "phone only");
   const userId = await enter(page, baseURL!);

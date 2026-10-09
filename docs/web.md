@@ -25,7 +25,7 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
 - **Thread:** a header with the title, the pool badge, the model badge
   (cloud or local, model and endpoint; it opens the model picker), and folder
   badges. Below it the conversation and the composer.
-- **Thread settings drawer:** a model per task, local-only, the internet and
+- **Thread settings drawer:** a model per task (each option says cloud or local first), local-only, the internet and
   this machine's services switches (each following the user's default until
   changed), allowed hosts, folders from the allowed paths (read-only or
   read-write), where commands run (sandbox or an SSH target), permission
@@ -41,8 +41,19 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   saved credentials), password, endpoints with probe status, both model
   profiles, network defaults per pool, and SSH targets. Administrators also
   get the server's network self-test result, sleep time, saving the `self.db`
-  passphrase, users with the administrator flag and their allowed folders, and
-  persona proposals.
+  passphrase, users with the administrator flag and their allowed folders,
+  persona proposals, and **Web access**:
+  - the mode: only this machine, the built-in Caddy, or a proxy elsewhere;
+  - the name;
+  - for the built-in Caddy: the Tailscale and LAN addresses to serve on, the
+    DNS provider with its credential fields and its token-scoping hint, an
+    email, and staging;
+  - for a proxy: the address and ports to listen on, the proxy addresses,
+    the certificate to pin, and a Caddyfile snippet;
+  - the status of Caddy, the certificate, and the last certificate error.
+
+  Applying waits as long as `lyricad` needs (a new name can take about 90 s)
+  and shows the time so far.
 
 ## Chat
 
