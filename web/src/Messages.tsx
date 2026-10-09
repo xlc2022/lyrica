@@ -19,7 +19,10 @@ interface Props {
 export function Conversation({ ctx, pool, base, thread, children_ }: Props) {
   const { messages, live, hasMore, loadOlder, loaded } = thread;
   const [run, loading, error] = useAction();
-  const env = { userId: ctx.user.id, pool, children: children_ };
+  // Expanded tool markers, by call ID, so they stay open when the stored copy replaces the live one.
+  const [openTools, setOpenTools] = useState<ReadonlySet<string>>(new Set());
+  const toggleTool = (id: string) => setOpenTools((o) => { const n = new Set(o); if (!n.delete(id)) n.add(id); return n; });
+  const env = { userId: ctx.user.id, pool, children: children_, openTools, toggleTool };
   return (
     <>
       {hasMore && <button type="button" className="older" disabled={loading} onClick={() => run(loadOlder)}>Show earlier messages</button>}
@@ -42,7 +45,7 @@ export function Conversation({ ctx, pool, base, thread, children_ }: Props) {
   );
 }
 
-interface Env { userId: string; pool: Pool; children: ThreadSummary[] }
+interface Env { userId: string; pool: Pool; children: ThreadSummary[]; openTools: ReadonlySet<string>; toggleTool: (id: string) => void }
 
 function StoredMessage({ m, env, you }: { m: Message; env: Env; you: string }) {
   if (m.role === "user") return <UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={you} />;
@@ -100,7 +103,9 @@ function Parts({ parts, env, model, streaming }: { parts: MessagePart[]; env: En
 }
 
 function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" }>; env: Env }) {
-  const [open, setOpen] = useState(false);
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = part.type === "tool" ? env.openTools.has(part.toolCallId) : localOpen;
+  const toggle = () => (part.type === "tool" ? env.toggleTool(part.toolCallId) : setLocalOpen(!localOpen));
   if (part.type === "tool" && part.name === "delegate") return <SubagentCard part={part} env={env} />;
   let label: React.ReactNode;
   let body: React.ReactNode;
@@ -130,7 +135,7 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" }>; e
   }
   return (
     <div className="marker" data-type={part.type}>
-      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>{label}</button>
+      <button type="button" aria-expanded={open} onClick={toggle}>{label}</button>
       {open && <div className="marker-body">{body}</div>}
     </div>
   );

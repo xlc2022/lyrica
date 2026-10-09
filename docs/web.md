@@ -51,7 +51,8 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   as a link with their alt text.
   The user's sit in a tinted block.
 - Thinking, recalls, saved notes and tool calls are one-line markers that
-  expand when tapped. A `delegate` call is a card that opens the subagent's
+  expand when tapped. An expanded tool call stays open when the turn ends
+  and the stored copy replaces the live one. A `delegate` call is a card that opens the subagent's
   thread when its ID appears in the result.
 - Permission requests appear inline with Allow and Deny and the time left.
 - Errors from the stream (a refused model, an endpoint that's down) are shown
