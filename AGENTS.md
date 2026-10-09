@@ -51,4 +51,5 @@ Read these, in this order:
 npm install
 npm run typecheck
 npm test
+npm run evals      # continuity scenarios in evals/; a failure is evidence, not a broken build
 ```
