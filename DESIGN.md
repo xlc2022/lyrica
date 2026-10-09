@@ -167,17 +167,31 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - Endpoints are still declared local by the user. As a guard against
     mistakes, Lyrica warns when a local endpoint resolves to an address
     outside private, loopback or tailnet ranges.
-- **Later: Lyrica manages her own models.** A small **model host** service
-  runs on each GPU machine. It wraps vLLM on the Blackwell machine (both GPUs,
-  for the large models) and llama.cpp (`llama-server`) on the 3090 VM (small
-  fast models: titles, embeddings, cheap subagents).
-  - Each model host serves an OpenAI-compatible endpoint plus a small,
-    authenticated management API: list, load, unload, status.
-  - It also runs ComfyUI for images (see [Images](#images)).
-  - Lyrica connects to it as a local endpoint she can also start, stop and
-    switch models on.
-  - LAN only, authenticated with a token.
-  - This is a separate thread, after the web UI.
+- **Later: Lyrica manages her own models.** A small **model host** runs on
+  each GPU machine, such as the Blackwell machine and the 3090 VM. It serves
+  text models through vLLM or llama.cpp (`llama-server`), and images through
+  ComfyUI (see [Images](#images)).
+  - **Easy to deploy and self-contained.** One install script, run as root on
+    Debian or Ubuntu (in a VM, or an LXC container with the GPU passed
+    through), puts everything under `/opt/lyrica-host`:
+    - a pinned `uv` and a pinned Python;
+    - locked Python packages, with PyTorch built for CUDA or ROCm according to
+      the GPU it finds;
+    - ComfyUI and llama.cpp at pinned versions.
+  - **NVIDIA and AMD.** The machine needs only the GPU's kernel driver: the
+    CUDA and ROCm runtimes come inside the packages. llama.cpp runs on both.
+    vLLM is used where its builds support the GPU. No Docker. Running the
+    script again upgrades in place.
+  - **Its own service user.** It runs as systemd units under that user. The
+    units serving models can reach only Lyrica's addresses, never the internet
+    (systemd `IPAddressDeny`). Downloading models is a separate step, from a
+    pinned list with checksums, started by an administrator.
+  - **Pairing.** The script prints the host's address and a token. An
+    administrator adds the host in the control panel as a local endpoint,
+    reached over the LAN or Tailscale.
+  - **Management API.** Each host serves an OpenAI-compatible endpoint plus a
+    small, authenticated management API: list, load, unload, status, and
+    download models. Lyrica can start, stop and switch models on it.
 
 ## Images
 
