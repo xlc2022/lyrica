@@ -138,7 +138,7 @@ nothing else. No code path gives a general view a private handle.
 
 | Area | Methods |
 |---|---|
-| Threads | `createThread({ interface, parent?, unlogged?, title? })`, `listThreads({ includeHidden })`, `getThread`, `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `exportThread`, `forgetThread` |
+| Threads | `createThread({ interface, parent?, subagent?, unlogged?, title? })`, `listThreads({ includeHidden?, parent? })`, `getThread`, `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `exportThread`, `forgetThread` |
 | Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
 | Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `userIntroduced` |
@@ -198,10 +198,12 @@ type Task = "chat" | "subagent.cheap" | "subagent.strong" | "compaction"
           | "title" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake";
 
 interface Endpoint {
-  id: string; name: string;
+  id: string;                              // "<name>" for a user's own, "shared.<name>" for a shared one
+  name: string;
   kind: "cloud" | "local";                 // declared by the user, never inferred
   api: "openai-compatible";                // OpenRouter, LM Studio, KoboldCpp, llama-server
-  baseUrl: string; apiKey?: string;        // the key is stored in the user's user.db
+  baseUrl: string; apiKey?: string;
+  shared: boolean;
 }
 interface ModelRef { endpointId: string; modelId: string }   // same model on two endpoints = two refs
 
@@ -212,16 +214,32 @@ interface CallContext {
   overrides?: Partial<Record<Task, ModelRef>>;
 }
 
-resolveModel(task: Task, ctx: CallContext): ModelRef      // throws CloudModelForbidden
-modelRuntimeFor(ctx: CallContext): ModelRuntime           // Pi runtime with only the allowed models
-probe(endpointId: string): Promise<"up" | "down">
+class Models {                                              // new Models(keyring, users)
+  addEndpoint(actor, input, { shared? }) / removeEndpoint(actor, id)   // shared: administrators only
+  endpoints(userId) / models(userId, endpointId) / addModel(actor, endpointId, m) / discover(actor, endpointId)
+  probe(userId, endpointId): Promise<{ state: "up" | "down"; warning?: string }>
+  profile(userId, "cloud" | "local") / setProfile(userId, name, task, ref?)
+  setThreadModel(userId, pool, threadId, task, ref?) / setLocalOnly(userId, pool, threadId, on)
+  callContext(userId, pool, threadId): CallContext
+  childContext(parent, childThreadId, { tier } | { model }): CallContext   // a child under its parent's rules
+  resolveModel(task, ctx): ModelRef                         // throws CloudModelForbidden
+  allowed(ctx): { endpoint, models }[]
+}
+
+// extension/, because core has no Pi dependency:
+modelRuntimeFor(models, ctx): Promise<ModelRuntime>       // Pi runtime with only the allowed models
+openThreadSession({ thread, models, cwd, extensions, settings? })  // one thread's Pi session, in process
 ```
 
 - When `ctx.pool === "private"` or `ctx.localOnly` is set, Pi sessions are
-  built with `modelRuntimeFor(ctx)`, which contains **no cloud models at all**.
+  built with `modelRuntimeFor(models, ctx)`, which contains **no cloud models at all**.
   Even Pi's own compaction then has nothing cloud-based to pick.
 - Asking for a cloud model throws `CloudModelForbidden`. Nothing falls back
   across the local/cloud line.
+- A task with no model set uses the same profile's chat model (except
+  `embedding`), never the other profile's.
+- A local endpoint is still declared, not inferred. `probe` warns, without
+  blocking, when one resolves outside loopback, private or tailnet ranges.
 - **Shared endpoints** live in `self.db`. Only an administrator can change
   them, and their API keys are encrypted with the rest of `self.db`. Every
   user can use them in their profiles. A user's own endpoints live in their
@@ -295,17 +313,17 @@ The extension is created with a `ThreadContext`:
 
 ## daemon
 
-- **Session hosting:** `createAgentSession` with
-  `SessionManager.inMemory(cwd, opts, view.own.loadEntries(threadId))`, the
-  router's `modelRuntimeFor`, and a `DefaultResourceLoader` that has the inline
-  Lyrica extension and context-file discovery turned off.
+- **Session hosting:** each thread through `openThreadSession`. It uses
+  `SessionManager.inMemory` with the thread's stored entries, the router's
+  `modelRuntimeFor`, and a resource loader with discovery of context files,
+  skills and extensions turned off, so only the extensions passed in load.
   - Pi's built-in tools are disabled with `noTools: "builtin"`. Lyrica
     registers her own `read`, `write`, `edit` and `bash`, built with Pi's
     `create*Tool(cwd, { operations })` and routed to the thread's execution
     target ([workspace.md](workspace.md)). Never use `noTools: "all"`, which
     also removes extension tools.
   - Sessions run in-process, with no `pi` subprocesses.
-  - Each `message_end` calls `appendEntry`.
+  - Entries are recorded with `appendEntry` as each turn ends (`recordEntries`).
 - **Startup:** `lyricad` builds `Workspace` with its own listening ports as
   `excludePorts`, and calls `selfTest()` before serving threads.
 - **Unlocking:** when started as a service, `lyricad` starts locked, and the
