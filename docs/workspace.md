@@ -42,6 +42,12 @@ database files. A command that could see either one could read everything.
   paths and symlinks always resolve inside it. `read`, `write` and `edit`
   first refuse paths outside `/workspace` and the grants (and writes to
   read-only grants). The mounts confine her anyway: `bash` has no path checks.
+- **Writes are atomic.** `write` and `edit` write a temp file in the same
+  folder, give it the old file's mode (or the usual one for a new file), and
+  rename it over the target. A read running at the same time sees the old
+  file or the new one, never an empty or half-written one, and a failed write
+  leaves the old file in place. A symlink at the target is refused, not
+  followed or replaced.
 - Folders are opened by `lyricad` and mounted by file descriptor
   (`--bind-fd`), after checking that the opened folder is exactly the granted
   path and that the grant is still allowed. A symlink swapped in by a running
@@ -57,6 +63,8 @@ so it never touches disk, and no system `ssh` agent is involved.
 - The host key is pinned on first connection; a different key later fails.
 - The root path check follows remote symlinks. Commands are not confined by
   it, only by the remote account.
+- Writes are atomic there too: an SFTP temp file, the old mode, then
+  `posix-rename` (plain rename where the server lacks it).
 
 ## Grants: what she may touch
 

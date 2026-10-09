@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { posix } from "node:path";
-import ssh2, { type Client, type SFTPWrapper } from "ssh2";
+import ssh2, { type Client, type SFTPWrapper, type Stats } from "ssh2";
 import { capOutput, sniffImage, type ExecutionTarget, type ToolOps } from "./ops.ts";
 import { cleanPath, within, type SshTargetConfig } from "./settings.ts";
 
@@ -129,6 +129,29 @@ export class SshTarget implements ExecutionTarget {
     });
   }
 
+  /**
+   * Writes a temp file in the same folder, gives it the old file's mode, then
+   * renames it over the target, so a reader never sees a truncated file. A
+   * symlink at the target is refused.
+   */
+  private async atomicWrite(path: string, content: string): Promise<void> {
+    const old = await this.sftp<Stats | undefined>((s, done) =>
+      s.lstat(path, (err, st) => done((err as { code?: number } | undefined)?.code === 2 ? undefined : err, st)));
+    if (old?.isSymbolicLink()) throw new Error(`${path} is a symlink; not writing through it`);
+    const tmp = posix.join(posix.dirname(path), `.${posix.basename(path)}.${randomBytes(6).toString("hex")}`);
+    try {
+      await this.sftp<void>((s, done) => s.writeFile(tmp, content, { mode: 0o600 }, done));
+      await this.sftp<void>((s, done) => s.chmod(tmp, old ? old.mode & 0o7777 : 0o644, done));
+      await this.sftp<void>((s, done) => {
+        // posix-rename replaces the target in one step; plain SFTP rename refuses to.
+        try { s.ext_openssh_rename(tmp, path, done); } catch { s.rename(tmp, path, done); }
+      });
+    } catch (err) {
+      await this.sftp<void>((s, done) => s.unlink(tmp, () => done(undefined))).catch(() => {});
+      throw err;
+    }
+  }
+
   private async open(path: string, mode: "r" | "r+"): Promise<void> {
     const handle = await this.sftp<Buffer>((s, done) => s.open(path, mode, done));
     await this.sftp<void>((s, done) => s.close(handle, done));
@@ -136,7 +159,7 @@ export class SshTarget implements ExecutionTarget {
 
   ops(): ToolOps {
     const readFile = async (p: string) => { const q = await this.inside(p); return this.sftp<Buffer>((s, done) => s.readFile(q, done)); };
-    const writeFile = async (p: string, content: string) => { const q = await this.inside(p); await this.sftp<void>((s, done) => s.writeFile(q, content, done)); };
+    const writeFile = async (p: string, content: string) => this.atomicWrite(await this.inside(p), content);
     return {
       read: {
         readFile,
