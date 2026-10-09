@@ -10,6 +10,9 @@ Keys, users and the persona store. No Pi dependency.
     Argon2id of their password. The wrapped key sits in `self.db`'s `users`
     table, because it's needed before `user.db` can open. A wrong password
     fails the GCM tag check.
+  - `subkey(userId, purpose)` derives a separate 256-bit key (HKDF-SHA256)
+    for each purpose (`pool:general`, `pool:private`, `home`) from the user's
+    data key. Purposes never share a key.
   - `saveUserKey` and `forgetSavedKey` throw "not implemented".
 - **`users.ts`** (`Users`): `createUser` (the first must be an administrator),
   `authenticate` (also unlocks the key), `changePassword` (rewraps the same

@@ -126,8 +126,17 @@ Details in [docs/memory.md](docs/memory.md).
   to save liberally. Sleep reports how many notes it had to catch up on, which
   shows whether she's noting too little. Pages change only during sleep. Every
   edit keeps the previous text as a revision.
-- **Review:** users search, review and edit her memory in a memory browser in
-  the web UI.
+- **Review and editing:** users can search, edit, restore and delete any of
+  their memories (notes, pages, WAKE, journal) in a memory browser in the web
+  UI, or with `lyrica mem` at the terminal.
+  - Every edit is a revision.
+  - Name tokens survive edits.
+  - Sleep treats user edits as authoritative and asks rather than overwriting
+    them.
+- **Users can add their own memories**, notes or pages, in either pool. A
+  memory can link to threads, specific messages or other memories, or float
+  free. Everything a user adds is in the **User introduced** collection.
+  Lyrica treats it as authoritative and never rewrites it.
 - **Workspace activity is memory too.** File reads, edits and commands are
   thread entries. Sleep turns them into pages about each project or folder,
   and opening a folder brings back what she knows about it.
@@ -211,7 +220,7 @@ Details in [docs/sleep.md](docs/sleep.md).
   | `lyrica serve` | Starts `lyricad`. This is what the systemd unit runs. |
   | `lyrica chat` | The terminal interface: a thin client of the running `lyricad` over a local Unix socket. Its threads are stored encrypted like any other interface's. |
   | `lyrica admin …` | Set up, manage users and administrators, change passwords and profiles. |
-  | `lyrica mem …` | Search, show and delete memories, until the web memory browser exists. |
+  | `lyrica mem …` | Search, show, add, edit and delete memories. Edits are typed at the prompt, never through a temporary file. |
   | `lyrica dev` | The developer bench. See below. |
 
   Passwords and passphrases are only ever typed at a hidden prompt, never

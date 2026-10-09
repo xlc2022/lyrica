@@ -34,8 +34,8 @@ bin/         launchers and admin commands
 | **Note, page, WAKE, journal** | Memory layers (see [memory.md](memory.md)). |
 
 IDs and citations:
-- An entry is `e:<thread>#<n>`, a note is `n:<ulid>`, and a page is
-  `p:<slug>`.
+- An entry is `e:<thread>#<n>`, a whole thread is `t:<thread>`, a note is
+  `n:<ulid>`, and a page is `p:<slug>`.
 - A citation into the other pool carries its pool: `[general/n:…]`. Only
   private memory may cite general memory, never the reverse.
 
@@ -47,8 +47,12 @@ unlockUser(userId: string, password: string): Promise<void>
 saveUserKey(userId: string): Promise<void>                // "save credentials"
 forgetSavedKey(userId: string): Promise<void>
 hasUserKey(userId: string): boolean
+subkey(userId: string, purpose: "pool:general" | "pool:private" | "home"): Buffer  // HKDF-SHA256
 lockUser(userId: string): void
 ```
+
+- Pool databases (Memory) and the encrypted home workspace (Workspace) each
+  use their own `subkey`. Never use the raw data key for them.
 
 - Each user has a random 256-bit data key, wrapped by Argon2id of their
   password. Changing the password rewraps the key. The data is never
@@ -125,14 +129,39 @@ nothing else. No code path gives a general view a private handle.
 | Area | Methods |
 |---|---|
 | Threads | `create({ parent?, unlogged? })`, `list({ includeHidden })`, `get`, `setHidden`, `setUnlogged`, `appendEntry`, `loadEntries`, `forget` |
-| Notes | `add`, `get`, `update(author)`, `archive`, `delete` |
-| Pages | `index()` (titles and summaries), `get`, `put(author)` (sleep only), `delete` |
-| WAKE and journal | `getWake`, `putWake`, `addJournal`, `listJournal` |
+| Notes | `add`, `get`, `edit(author)`, `archive`, `delete` |
+| Pages | `index()` (titles and summaries), `get`, `put` (sleep), `edit(author)` (owner), `delete`, `forFolders(paths)` |
+| WAKE and journal | `getWake`, `putWake(author)`, `addJournal`, `editJournal(author)`, `listJournal` |
 | Search | `search(query, { kinds, limit })`, returning `{ id, kind, snippet, score }` |
 | Lineage | `cameFrom(id)`, `usedIn(id)`, `revisions(id)`, `isTombstoned(entryId)` |
 | Sleep | `watermark()`, `recordSleepRun(run)`, `listSleepRuns()` |
 
 Authors are `lyrica`, `sleep` or `user:<id>`.
+
+**Editing.** Every `edit` stores a revision. `restore(id, revisionId, author)`
+brings back an earlier version as a new revision. Each edit:
+- keeps or creates mention tokens: the input is stored form, or `{user}`
+  placeholders;
+- re-derives citations;
+- updates the search index in the same transaction.
+
+Sleep reads `editedSince(watermark)` so it can treat user edits as
+authoritative.
+
+**User-introduced memories.** Through the owner view, `notes.add` and
+`pages.add` accept `author: user:<id>` and text with any inline links (`t:`,
+`e:`, `n:`, `p:`) or none. Each memory records its origin (`lyrica`, `sleep`
+or `user`), and the browser filters on it. Sleep may cite user memories but
+never edits or deletes them.
+
+**Owner view.** `openOwnerView(userId)` gives the signed-in user read and write
+access to both of their own pools, for the memory browser and `lyrica mem`.
+It is never passed to the extension, a Pi session or sleep.
+
+**Pages can describe folders.** A page has an optional `folders` list of host
+paths or SSH locations. Sleep sets it. `forFolders(paths)` returns the pages
+whose folders contain or equal any of the given paths, which is how opening a
+folder brings back what she knows about it.
 
 **Unlogged threads** (see [memory.md](memory.md#threads-that-arent-logged))
 are enforced in the store:
@@ -179,15 +208,22 @@ The extension is created with a `ThreadContext`:
 - The factory is `createLyricaExtension(thread: ThreadContext, opts:
   LyricaOptions)`. The options are:
   - `persona()` and `profile()`, read every turn;
+  - `folders()`: the thread's granted folders, also read every turn. It
+    defaults to none. Workspace supplies it, and Memory uses it to load
+    `forFolders` pages. This is the only link between the two components, so
+    neither imports the other;
   - `debugPrompt`;
   - `budgets`.
 - **`before_agent_start`** never replaces the whole system prompt. It does two
   things:
   - It edits `event.systemPromptOptions`. The persona core goes in
     `customPrompt`. Topics, WAKE, the page index, and "who you're talking
-    with" go in `sections`. Pi's tool snippets and guidelines are left intact,
-    and Pi appends only what changed, so the prompt prefix stays cacheable
-    (DeepSeek's prefix cache, a local model's KV cache).
+    with" go in `sections`. Pi appends only what changed, so the prompt
+    prefix stays cacheable (DeepSeek's prefix cache, a local model's KV cache).
+  - In Pi 1.1.0, setting `customPrompt` also drops Pi's default tool list and
+    rules. The extension therefore rebuilds them from each tool's own snippets
+    and guidelines (`toolGuidance`) into a `tools` section. Any tool
+    registered with a snippet and guidelines appears there automatically.
   - It returns content that changes every turn, namely recall hits and the
     time, as the result's `message`. That way it sits in the transcript, not
     in the prefix.
@@ -256,13 +292,16 @@ interface ExecutionTarget {               // "sandbox" | "ssh:<name>"
   ops(): { read: ReadOperations; write: WriteOperations; edit: EditOperations; bash: BashOperations };
 }
 targetFor(ctx: ThreadContext): ExecutionTarget
-grantsFor(ctx: ThreadContext): Grant[]    // from the user's per-pool allowed paths
+grantsFor(ctx: ThreadContext): Grant[]    // the thread's chosen grants
 mountHome(userId): Promise<string>        // gocryptfs; called when the user's key becomes available
 unmountHome(userId): Promise<void>
 ```
 
 - Every sandbox run receives exactly `grantsFor(ctx)`, the thread's folder in
   the home workspace, and a read-only system.
+- **Workspace settings live in the user's `user.db`:** allowed paths per pool,
+  each thread's grants, network setting and permission mode, and SSH targets.
+  Workspace never adds tables to the pool databases, which belong to Memory.
 - The network is unshared unless the thread allows it.
 - See [workspace.md](workspace.md).
 
