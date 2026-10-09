@@ -59,22 +59,20 @@ compaction and the TUI. Lyrica is a persona directory plus one Pi extension.
 - Use an existing Pi package before writing our own (web search, browser,
   subagents).
 
-### 4. Files are the state; everything else is a cache
+### 4. Few stores, each easy to explain
 
-The canonical state is a handful of human-readable files that Xu can open in an
-editor:
+All of her state lives in one encrypted SQLite database per space, plus one
+shared database (D-013):
 
-- Pi session JSONL: what was said.
-- Persona markdown: who she is.
-- Notes, pages, `WAKE.md` and journal: what she has made of it.
+- Threads: what was said.
+- Persona: who she is.
+- Notes, pages, WAKE and journal: what she has made of it.
 
-Her self-directory is a git repository. That gives us history, diffs, revert,
-and an answer to "what did sleep change last night?" for free.
-
-- Any database is a derived index. It can be deleted and rebuilt with one
-  command.
-- If listing a directory doesn't explain the state, the state is too
-  complicated.
+- Every table has a one-line reason to exist. If the schema can't be explained
+  on one screen, it is too complicated.
+- Anything derived (search indexes, citation links) can be rebuilt from the
+  text with one command.
+- The answer to "what did sleep change last night?" is always one query away.
 
 ### 5. Memory is reconstruction: invest in the curator, not the ledger
 
@@ -84,8 +82,9 @@ recall, sleep). Bookkeeping doesn't add to it.
 - Lineage is citations: each layer cites the layer below it by ID, written
   inline in the text. "Consolidated into" is computed from those citations,
   never stored separately.
-- A correction is an edit, and git keeps the old version. No tombstones,
-  revision tables, receipts or relation graphs.
+- A correction is an edit, and the previous text is kept as a revision.
+  Tombstones hold no text and exist only so a deleted fact isn't extracted
+  again. No receipts or relation graphs.
 - Spend the effort on recall quality and sleep quality, and check both with
   evals.
 
@@ -94,8 +93,8 @@ recall, sleep). Bookkeeping doesn't add to it.
 The persona asks her to take initiative and use independent judgment. The
 harness shouldn't then treat her as an adversary.
 
-- She writes memories without asking each time. Xu reviews afterwards with
-  `git log -p` or a `/memories` view.
+- She writes memories without asking each time. Xu reviews afterwards in the
+  memory browser.
 - Confirmation is required only for changes to her core identity files (SOUL,
   STYLE, REGISTER) and for irreversible actions that leave the server (sending
   messages, deleting remote data, spending money).
@@ -130,7 +129,7 @@ Persona files hold her values, voice, tastes, opinions and history. They don't
 hold session policies, storage tiers or tool behavior.
 
 - She grows through proposals in sleep's journal. Xu accepts them in
-  conversation and they are committed to git.
+  conversation and are stored as persona revisions.
 - She can be curious about her own memory. Her identity shouldn't be built out
   of its implementation.
 - The persona is where the thesis lives, so it deserves the most care. A

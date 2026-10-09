@@ -101,7 +101,7 @@ consolidated into.
 
 **Decision.** Keep the v1 persona as the seed. Lyrica proposes persona changes
 when asked to reflect on how things have been going, and in sleep's journal.
-Changes apply only after Xu approves them and are committed to git. Because the
+Changes apply only after Xu approves them, and each one is kept as a revision. Because the
 persona is shared across spaces, a proposal must not carry private details from
 the space it came from.
 
@@ -168,3 +168,56 @@ loaded when the topic comes up, not always (principle 9).
 ## D-012 — Pages are written only by sleep (2026-10-09, accepted)
 
 **Decision.** In conversation she writes notes. Pages change only during sleep.
+
+## D-013 — Encrypted SQLite per space (2026-10-09, accepted)
+
+**Decision.** This supersedes the plain-files-in-git idea. Memory and threads
+live in SQLCipher databases: one per space, plus a shared `self.db` for the
+persona and settings. Separate keys and separate files make "private never
+reaches public" structural. Memory never goes into a git repository. See
+[docs/memory.md](docs/memory.md).
+
+## D-014 — Deletion levels and content-free tombstones (2026-10-09, accepted)
+
+**Decision.** There are four levels: archive, delete a memory, forget a thread,
+and forget a topic. A tombstone records IDs, kind, time, who deleted it, and the
+source entries, never text. It exists so that sleep doesn't re-extract a
+deleted fact.
+
+## D-015 — Unlocking (2026-10-09, accepted)
+
+**Decision.** By default, `lyricad` asks for a passphrase each time it starts.
+An option saves the key (with systemd credentials, sealed to the TPM where
+available) so it can start unattended.
+
+## D-016 — Local-only means local for everything (2026-10-09, accepted)
+
+**Decision.** This extends D-009. With local-only on, every model call made for
+that thread goes to the thread's custom endpoint and nothing else: chat,
+subagents, compaction, titles, embeddings, and the sleep work over that thread.
+A cloud call fails with an error. It is never silently rerouted.
+
+A settings page sets the default models per task, in separate cloud and local
+profiles. Each thread can override which model handles which task. Open: how
+memories written in a local-only thread are treated later (see
+[docs/sleep.md](docs/sleep.md)).
+
+## D-017 — Sleep schedule and dreams (2026-10-09, accepted in part)
+
+**Decision.** Nightly sleep runs at about 04:00 for each space with new
+activity, and `/sleep` runs it manually. She may bring up her dreams, as her
+persona inclines her to. The rest of the cycle is a proposal in
+[docs/sleep.md](docs/sleep.md), based on a review of Monika's.
+
+## D-018 — Project workflow (2026-10-09, accepted)
+
+**Decision.**
+- The "Agent harness design principles" session is the design thread. It owns
+  the principles, decisions and contracts, and keeps coding to a minimum.
+- Feature threads are separate Claude Code sessions, titled and tagged
+  `project:lyrica`. Each works from a brief in `docs/briefs/` on its own branch
+  and ends with a pull request.
+- The initial threads are: Core, Memory, Models, Web, Sleep and Integrations.
+  No more than two or three are active at once.
+- Sessions hand off through the repo (briefs, docs, PR descriptions), not
+  through chat transcripts.
