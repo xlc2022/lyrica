@@ -13,6 +13,14 @@ export function generateSshKey(comment: string): { privateKey: string; publicKey
   return { privateKey, publicKey };
 }
 
+/** The public half of a stored private key, in authorized_keys form. */
+export function publicKeyOf(privateKey: string): string {
+  const parsed = ssh2.utils.parseKey(privateKey);
+  if (parsed instanceof Error) throw parsed;
+  const key = Array.isArray(parsed) ? parsed[0]! : parsed;
+  return [key.type, key.getPublicSSH().toString("base64"), key.comment].filter(Boolean).join(" ");
+}
+
 interface Conn { client: Client; sftp: SFTPWrapper; home: string }
 
 /**

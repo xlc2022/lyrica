@@ -160,6 +160,14 @@ export class PoolReader {
       .map((r) => json(r.data));
   }
 
+  /** A page of the thread's raw entries, oldest first: the newest `limit`, or those before entry `before`. */
+  entryPage(threadId: string, opts: { before?: number; limit: number }): { entries: { n: number; data: unknown; createdAt: string }[]; hasMore: boolean } {
+    const rows = this.db.prepare("SELECT n, data, created_at FROM entries WHERE thread = ? AND n < ? ORDER BY n DESC LIMIT ?")
+      .all(threadId, opts.before ?? Number.MAX_SAFE_INTEGER, opts.limit + 1) as { n: number; data: string; created_at: string }[];
+    const hasMore = rows.length > opts.limit;
+    return { entries: rows.slice(0, opts.limit).reverse().map((r) => ({ n: r.n, data: json(r.data), createdAt: r.created_at })), hasMore };
+  }
+
   /** Pi entry IDs already stored for the thread. */
   storedPiIds(threadId: string): Set<string> {
     return new Set((this.db.prepare("SELECT pi_id FROM entries WHERE thread = ?").all(threadId) as { pi_id: string }[]).map((r) => r.pi_id));
@@ -339,6 +347,13 @@ export class PoolStore extends PoolReader {
     this.db.prepare("INSERT INTO threads (id, interface, parent, subagent, title, unlogged, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .run(id, opts.interface, parent?.id ?? null, opts.subagent ? 1 : 0, opts.title ?? null, unlogged ? 1 : 0, now());
     return this.getThread(id)!;
+  }
+
+  setTitle(id: string, title: string): void {
+    this.mustThread(id);
+    const clean = title.trim();
+    if (!clean || clean.length > 200) throw new Error("a title has 1 to 200 characters");
+    this.db.prepare("UPDATE threads SET title = ? WHERE id = ?").run(clean, id);
   }
 
   setHidden(id: string, hidden: boolean): void {

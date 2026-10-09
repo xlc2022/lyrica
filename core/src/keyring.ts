@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { hashRaw } from "@node-rs/argon2";
 
 const ARGON2ID = 2; // Algorithm.Argon2id, a const enum
+import type { CredentialStore } from "./credentials.ts";
 import { openEncrypted, SELF_SCHEMA, type Db } from "./db.ts";
 
 export interface Argon2Params {
@@ -39,6 +40,8 @@ export class Locked extends Error {}
 export class Keyring {
   private selfDb: Db | undefined;
   private readonly keys = new Map<string, Buffer>();
+  /** Where "save credentials" keeps the self.db passphrase and users' keys. lyricad sets it. */
+  credentials: CredentialStore | undefined;
 
   constructor(readonly home: string, private readonly argon2: Argon2Params = DEFAULT_ARGON2) {}
 
@@ -102,8 +105,51 @@ export class Keyring {
     this.keys.delete(userId);
   }
 
-  async saveUserKey(_userId: string): Promise<void> { throw new Error("saving credentials is not implemented"); }
-  async forgetSavedKey(_userId: string): Promise<void> { throw new Error("saving credentials is not implemented"); }
+  /** Saves the user's unlocked data key, so it is available at the next start without their password. */
+  async saveUserKey(userId: string): Promise<void> {
+    await this.store().save(`user-${userId}`, this.userKey(userId));
+  }
+
+  async forgetSavedKey(userId: string): Promise<void> { await this.store().remove(`user-${userId}`); }
+
+  hasSavedKey(userId: string): boolean { return this.credentials?.saved(`user-${userId}`) ?? false; }
+
+  /** Takes the key saved for the user, if one was handed over at startup. Returns whether it did. */
+  loadSavedKey(userId: string): boolean {
+    const key = this.credentials?.load(`user-${userId}`);
+    if (!key || key.length !== 32) return false;
+    this.keys.set(userId, key);
+    return true;
+  }
+
+  /** Saves the self.db passphrase after checking it, so lyricad can start unlocked. */
+  async saveSelfPassphrase(passphrase: string): Promise<void> {
+    try {
+      openEncrypted(this.selfPath, { passphrase }, { readonly: true }).close();
+    } catch {
+      throw new WrongPassword();
+    }
+    await this.store().save("self", Buffer.from(passphrase));
+  }
+
+  async forgetSelfPassphrase(): Promise<void> { await this.store().remove("self"); }
+
+  hasSavedPassphrase(): boolean { return this.credentials?.saved("self") ?? false; }
+
+  /** Unlocks self.db with the passphrase handed over at startup, if there is one. Returns whether it did. */
+  async unlockSaved(): Promise<boolean> {
+    const saved = this.credentials?.load("self");
+    if (!saved) return false;
+    await this.unlockSelf(saved.toString());
+    return true;
+  }
+
+  private store(): CredentialStore {
+    if (!this.credentials) throw new Error("saving credentials isn't set up here");
+    const why = this.credentials.unavailable();
+    if (why) throw new Error(`can't save credentials: ${why}`);
+    return this.credentials;
+  }
 
   async wrap(dataKey: Buffer, password: string): Promise<WrappedKey> {
     const salt = randomBytes(16);

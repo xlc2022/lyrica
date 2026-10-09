@@ -50,6 +50,20 @@ CREATE TABLE IF NOT EXISTS persona_revisions (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS persona_revisions_path ON persona_revisions (path, id);
+-- Changes to the persona waiting for an administrator. Approving applies one as a revision.
+CREATE TABLE IF NOT EXISTS persona_proposals (
+  id         INTEGER PRIMARY KEY,
+  path       TEXT NOT NULL,
+  text       TEXT NOT NULL,
+  reason     TEXT NOT NULL,
+  author     TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+-- Global settings by key, such as the sleep time.
+CREATE TABLE IF NOT EXISTS settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `;
 
 /** user.db: one per user, encrypted with that user's data key. */

@@ -31,6 +31,15 @@ export interface Revision {
   createdAt: string;
 }
 
+export interface Proposal {
+  id: number;
+  path: string;
+  text: string;
+  reason: string;
+  author: string;
+  createdAt: string;
+}
+
 /** Lyrica's persona in self.db. Every change is a new revision; the latest per file is current. */
 export class PersonaStore {
   constructor(private readonly db: Db) {}
@@ -76,6 +85,29 @@ export class PersonaStore {
     if (path === MATRIX) parseMatrix(text, true);
     if (this.files().get(path) === text) return;
     this.insert(path, text, `user:${actor.id}`);
+  }
+
+  /** Proposes a change for an administrator to approve or reject. Sleep is the usual author. */
+  propose(path: string, text: string, reason: string, author: string): number {
+    if (!VALID_PATH.test(path)) throw new Error(`not a persona file: ${path}`);
+    return Number(this.db.prepare("INSERT INTO persona_proposals (path, text, reason, author, created_at) VALUES (?, ?, ?, ?, ?)")
+      .run(path, text, reason, author, new Date().toISOString()).lastInsertRowid);
+  }
+
+  /** Open proposals, oldest first. */
+  proposals(): Proposal[] {
+    return this.db.prepare("SELECT id, path, text, reason, author, created_at AS createdAt FROM persona_proposals ORDER BY id").all() as Proposal[];
+  }
+
+  /** Approving applies the change as the administrator; either way the proposal is closed. */
+  decide(actor: User, id: number, approve: boolean): void {
+    if (!actor.admin) throw new Forbidden("only an administrator can decide on persona changes");
+    const p = this.proposals().find((q) => q.id === id);
+    if (!p) throw new Error(`no proposal ${id}`);
+    this.db.transaction(() => {
+      if (approve) this.apply(actor, p.path, p.text);
+      this.db.prepare("DELETE FROM persona_proposals WHERE id = ?").run(id);
+    })();
   }
 
   revisions(path: string): Revision[] {
