@@ -1,12 +1,12 @@
 // What a thread's event stream says is happening now, before it is stored.
 // Pure, so it can be tested without a browser.
-import type { MessagePart, PermissionRequest, ThreadEvent } from "./api.ts";
+import type { MessagePart, PermissionRequest, ThreadEvent, ThreadRef } from "./api.ts";
 
 export type LiveItem =
   | { role: "user"; text: string }
   | { role: "assistant"; model?: string; parts: MessagePart[] }
   /** Delivered into the thread, such as a background subagent run's result. */
-  | { role: "notice"; text: string };
+  | { role: "notice"; text: string; status?: string; threads?: ThreadRef[] };
 
 export interface Live {
   busy: boolean;
@@ -33,7 +33,9 @@ export type LiveAction =
   /** The stored messages were reloaded, so the live copy can go. */
   | { type: "stored" }
   /** She pressed Stop; lyricad drops the queue, and its text went back to the composer. */
-  | { type: "stopping" };
+  | { type: "stopping" }
+  /** The stored messages changed outside a turn, such as a subagent's work in its own thread. */
+  | { type: "refresh" };
 
 export function liveReducer(s: Live, e: LiveAction): Live {
   switch (e.type) {
@@ -80,13 +82,16 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     case "title":
       return { ...s, title: e.title };
     case "turn_end":
-      return { ...s, busy: false, permissions: [], reload: s.reload + 1, ended: s.items.length };
+      // A subagent's request outlives the parent's turn: it ends with its own permission_end.
+      return { ...s, busy: false, permissions: s.permissions.filter((p) => p.subagent), reload: s.reload + 1, ended: s.items.length };
     case "stored":
       return { ...s, items: s.items.slice(s.ended), ended: 0 };
     case "stopping":
       return { ...s, queued: [] };
     case "notice":
-      return { ...s, items: [...s.items, { role: "notice", text: e.text }] };
+      return { ...s, items: [...s.items, { role: "notice", text: e.text, status: e.status, threads: e.threads }] };
+    case "refresh":
+      return { ...s, reload: s.reload + 1, ended: s.items.length };
     case "usage":
     case "delegation":
       return s;

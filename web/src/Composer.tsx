@@ -5,8 +5,10 @@ import { upload } from "./api.ts";
 
 interface Upload { id: number; name: string; progress: number; error?: string }
 
-export function Composer({ base, busy, readOnly, restored, onSend, onStop }: {
-  base: string; busy: boolean; readOnly: boolean; onSend: (text: string) => Promise<boolean>; onStop: () => void;
+export function Composer({ base, busy, placeholder, restored, onSend, onStop }: {
+  base: string; busy: boolean; onSend: (text: string) => Promise<boolean>; onStop: () => void;
+  /** What the empty composer says when no turn runs. */
+  placeholder: string;
   /** Text handed back, such as follow-ups that Stop dropped. */
   restored: string;
 }) {
@@ -48,8 +50,6 @@ export function Composer({ base, busy, readOnly, restored, onSend, onStop }: {
     if (!(await onSend(text))) setDraft(text);
   };
 
-  if (readOnly) return <div className="composer readonly muted">A subagent's thread is read-only.</div>;
-
   return (
     <form
       className="composer"
@@ -77,7 +77,7 @@ export function Composer({ base, busy, readOnly, restored, onSend, onStop }: {
         ref={area}
         rows={1}
         aria-label="Message"
-        placeholder={busy ? "Add a follow-up" : "Message Lyrica"}
+        placeholder={busy ? "Add a follow-up" : placeholder}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onPaste={(e) => { if (e.clipboardData.files.length) { e.preventDefault(); attach(e.clipboardData.files); } }}

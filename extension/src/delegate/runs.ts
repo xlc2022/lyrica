@@ -471,10 +471,12 @@ export class Delegation {
     if (!rows.length) throw new Error(live ? `run ${id} hasn't started a subagent yet` : `no run ${id ?? "(no id given)"} in this thread`);
     const row = this.pickSubagent(rows, live, opts.thread?.replace(/^t:/, ""));
     const done = (run: Run, how: Messaged["how"], opened: Promise<void> = Promise.resolve()): Messaged => {
-      if (said.from) {
+      const from = said.from;
+      if (from) {
         run.notify = true;
-        this.deliver(parent, `${said.from.profile.displayName} wrote to subagent ${row.role} (run ${row.run}, t:${row.thread}):\n${said.text}`,
-          { runId: row.run, status: "user_message", threads: [row.thread], userId: said.from.id });
+        // The parent hears of it once it has reached the subagent.
+        opened.then(() => this.deliver(parent, `${from.profile.displayName} wrote to subagent ${row.role} (run ${row.run}, t:${row.thread}):\n${said.text}`,
+          { runId: row.run, status: "user_message", threads: [row.thread], userId: from.id })).catch(() => {});
       }
       return { run, threadId: row.thread, role: row.role, how, opened };
     };

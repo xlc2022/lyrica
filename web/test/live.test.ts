@@ -63,6 +63,15 @@ describe("the live view of a thread's stream", () => {
     expect(run([{ type: "permission_end", requestId: "r1", allowed: true, reason: "answered" }], asked).permissions).toEqual([]);
   });
 
+  it("keeps a subagent's prompt past the parent's turn, and reloads when a subagent's thread changes", () => {
+    const sub = { requestId: "r2", toolCallId: "c2", tool: "bash", args: {}, expiresAt: "2026-10-09T00:00:00Z", subagent: { runId: "d-1", threadId: "t2", parentThreadId: "t1", role: "worker" } };
+    const own = { requestId: "r1", toolCallId: "c1", tool: "bash", args: {}, expiresAt: "2026-10-09T00:00:00Z" };
+    const s = run([{ type: "turn_start" }, { type: "permission", ...own }, { type: "permission", ...sub }, { type: "turn_end", aborted: false }]);
+    expect(s.permissions).toEqual([sub]);
+    const refreshed = run([{ type: "refresh" }], s);
+    expect(refreshed.reload).toBe(s.reload + 1);
+  });
+
   it("reloads after a reconnect finds the turn over, and after a reset", () => {
     const mid = run([{ type: "turn_start" }, { type: "text", delta: "partial" }]);
     const back = run([{ type: "hello", busy: false, queued: [], permissions: [] }], mid);

@@ -78,11 +78,12 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
       <div className="scroll" ref={scroller}>
         <ErrorText error={summary.error || t.loadError} />
         {settings.error && <ErrorText error={`This thread's settings didn't load: ${settings.error}`} />}
-        <Conversation ctx={ctx} pool={pool} base={base} thread={t} />
+        <Conversation ctx={ctx} pool={pool} base={base} threadId={threadId} subagent={!!s?.subagent} thread={t} />
         <ErrorText error={sendError} />
       </div>
       {!t.connected && <p className="offline" role="status">Reconnecting…</p>}
-      <Composer base={base} busy={t.live.busy} onSend={send} onStop={stop} restored={restored} readOnly={!!s?.subagent} />
+      <Composer base={base} busy={t.live.busy} onSend={send} onStop={stop} restored={restored}
+        placeholder={s?.subagent ? "Message this subagent (Lyrica is told)" : "Message Lyrica"} />
       {drawer && settings.data && s && (
         <SettingsDrawer
           ctx={ctx} base={base} summary={s} settings={settings.data}

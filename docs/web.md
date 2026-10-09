@@ -34,6 +34,10 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   read-write), where commands run (sandbox or an SSH target), permission
   mode, "Do not log", rename, hide, and forget. A subagent's thread shows
   them read-only. `lyricad` validates every change and its reason is shown.
+- **A subagent's thread:** a link to its parent, and a composer that writes
+  to the subagent (Lyrica is told). Each message says who sent it: Lyrica,
+  the user by name, or the subagent's own work. Its stored messages reload
+  as the subagent works (its `usage`, `question`, `note` and end events).
 - **Memory:** search filtered by pool, layer and User introduced; a memory
   with its lineage as links, edit (each edit a revision), history with
   restore, archive and delete; forgetting selected results as a topic; and
@@ -73,10 +77,16 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   expand when tapped. An expanded tool call stays open when the turn ends
   and the stored copy replaces the live one.
 - A `delegate` call is a card that opens its subagents' threads (the tool
-  part's `threads`). A background run's result or question, delivered later
-  as a `notice` event and stored as a `notice` message, shows as a card
-  with the same links.
-- Permission requests appear inline with Allow and Deny and the time left.
+  part's `threads`). What a run delivers later (a result, a question, a note,
+  or what someone wrote to a subagent), as a `notice` event and stored as a
+  `notice` message, shows as a card with the same links, headed by what it
+  is. Once the call has returned, the cards have **Message**, which writes to
+  one of the run's subagents in its thread (with a choice where it has
+  several).
+- Permission requests appear inline with Allow and Deny and the time left. A
+  subagent's request shows in its thread and its parent's, naming the
+  subagent (with a link from the parent), and stays past the parent's turn;
+  the first answer wins and the other view updates.
 - Errors from the stream (a refused model, an endpoint that's down) are shown
   as sent, in plain words.
 - A message sent during a turn waits as a follow-up and shows as waiting.

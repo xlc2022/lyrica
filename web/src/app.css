@@ -203,7 +203,6 @@ main > .head, .composer, .subnote, .offline { flex: none; }
 
 .composer { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 8px; align-items: end; padding: 10px var(--gutter) max(12px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--panel); }
 .composer[data-dragging="true"] { outline: 2px dashed var(--accent); outline-offset: -6px; }
-.composer.readonly { display: block; font-size: 0.9rem; }
 .composer textarea { resize: none; min-height: max(42px, var(--tap)); max-height: 40vh; border-radius: var(--radius); padding: 9px 12px; }
 .attach { width: max(42px, var(--tap)); min-height: max(42px, var(--tap)); padding: 0; font-size: 1.2rem; border-radius: var(--radius); }
 .send, .stop { min-height: max(42px, var(--tap)); border-radius: var(--radius); }
@@ -313,3 +312,5 @@ textarea.code { font: 0.82rem/1.5 var(--mono); white-space: pre; }
   .hits li { grid-template-columns: 44px minmax(0, 1fr); }
   .hits li > input { justify-self: center; }
 }
+.sub-message { display: grid; gap: 8px; margin-top: 8px; }
+.sub-message textarea, .sub-message select { font: inherit; }
