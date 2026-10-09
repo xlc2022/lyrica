@@ -106,6 +106,23 @@ describe("a conversation", () => {
   });
 });
 
+describe("idle threads", () => {
+  it("are dropped with their event buffer; a stream that comes back is told to reset", async () => {
+    const { li, model, path } = await setup({ idleMs: 200 });
+    model.reply({ text: "hi" });
+    const first = li.events(`${path}/events`);
+    await li.post(`${path}/messages`, { text: "hello" });
+    await first.until(is("turn_end"));
+    const last = first.events.at(-1)!.id;
+    first.close();
+    await new Promise((r) => setTimeout(r, 600));
+    const again = li.events(`${path}/events`, last);
+    await again.until(is("hello"));
+    expect(again.events[0]!.event.type).toBe("reset");
+    again.close();
+  });
+});
+
 describe("permission prompts", () => {
   it("in an ask mode, bash waits for approval, and deny stops it", async () => {
     const { li, model, path } = await setup();
@@ -202,5 +219,11 @@ describe.skipIf(!homeRunnable)("uploads", () => {
     await stream.until(is("turn_end"));
     expect(stream.events.find((e) => e.event.type === "tool_end")!.event).toMatchObject({ name: "read", isError: false, result: expect.stringContaining("tomatoes") });
     stream.close();
+    // Names are cleaned, not refused, and a name already taken gets a suffix instead of overwriting.
+    const up2 = async (name: string) =>
+      (await li.call<UploadResponse>("POST", `${path}/uploads?name=${enc(name)}`, Buffer.from("x"), { "content-type": "application/octet-stream" })).body.path;
+    expect(await up2("notes.txt")).toBe("/workspace/uploads/notes-2.txt");
+    expect(await up2("Li's résumé.pdf")).toBe("/workspace/uploads/Li's résumé.pdf");
+    expect(await up2("../../etc/passwd")).toBe("/workspace/uploads/passwd");
   });
 });

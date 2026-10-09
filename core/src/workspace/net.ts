@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { networkInterfaces } from "node:os";
 
 // How a sandbox with network access is wired. pasta gives it a network
 // namespace of its own, with its own address, and nftables rules loaded into
@@ -103,6 +104,17 @@ export function loopbackPorts(proto: "tcp" | "udp"): number[] {
   return [...ports].sort((a, b) => a - b);
 }
 
+/**
+ * This machine's own IPv4 addresses (LAN, Tailscale and so on), read when a
+ * sandbox starts. To a sandbox they are this machine, not the network: they
+ * fall under the machine's-services switch, and lyricad's front door (Caddy,
+ * on the front ports) is never reachable on them.
+ */
+export function hostAddresses(): string[] {
+  return Object.values(networkInterfaces()).flat()
+    .filter((i) => i?.family === "IPv4" && !i.internal).map((i) => i!.address);
+}
+
 /** pasta's options for a thread's network. */
 export function pastaArgs(net: { internet: boolean; services: boolean; hosts: boolean }, exclude: number[]): string[] {
   const args = ["--quiet", "--ipv4-only", "-t", "none", "-u", "none"];
@@ -118,10 +130,21 @@ export function pastaArgs(net: { internet: boolean; services: boolean; hosts: bo
   return args;
 }
 
+/** What a sandbox counts as this machine: its addresses, whether the services switch is on, and the front ports. */
+export interface ThisMachine { addresses: string[]; services: boolean; front: number[] }
+
 /** The nftables ruleset loaded into the sandbox's namespace: default deny, then what the thread allows. */
-export function nftRules(internet: boolean, hosts: ResolvedHosts["rules"], exclude: number[]): string {
+export function nftRules(internet: boolean, hosts: ResolvedHosts["rules"], exclude: number[],
+  self: ThisMachine = { addresses: [], services: false, front: [] }): string {
   const rules = ["ct state established,related accept"];
   if (exclude.length) rules.push(`meta l4proto { tcp, udp } th dport { ${exclude.join(", ")} } reject`);
+  if (self.addresses.length) {
+    const mine = `ip daddr { ${self.addresses.join(", ")} }`;
+    // lyricad's front door (Caddy) on this machine's own addresses: never, whatever the switches say.
+    if (self.front.length) rules.push(`${mine} meta l4proto { tcp, udp } th dport { ${self.front.join(", ")} } reject`);
+    // Otherwise this machine is reachable only with its services switch on, never through "internet" or a listed host.
+    rules.push(self.services ? `${mine} accept` : `${mine} reject`);
+  }
   // pasta forwards only the allowed loopback ports, so loopback itself can stay open.
   rules.push('oif "lo" accept');
   if (internet) rules.push("accept");

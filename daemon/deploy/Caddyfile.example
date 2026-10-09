@@ -7,6 +7,11 @@
 {
 	# No plain HTTP listener: the login cookie is Secure.
 	auto_https disable_redirects
+	# Caddy's admin API on a Unix socket, not localhost:2019: a thread with
+	# "this machine's services" on can reach loopback ports, and could use the
+	# admin API to replace this site with a fake login page. /run/caddy comes
+	# from caddy-override.conf.
+	admin unix//run/caddy/admin.sock
 }
 
 lyrica.example.net {

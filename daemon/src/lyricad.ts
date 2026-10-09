@@ -18,6 +18,8 @@ export interface LyricadOptions {
   home: string;
   /** TCP port on 127.0.0.1. 0 picks a free one. */
   port: number;
+  /** The proxy's ports in front of lyricad (Caddy's HTTPS). Sandboxes never reach them on this machine's addresses. Default [443]. */
+  frontPorts?: number[];
   /** The Unix socket for local clients; false for none. Defaults to `<home>/lyricad.sock`. */
   socket?: string | false;
   /** The built web UI. Defaults to `web/dist` in the repository. */
@@ -110,17 +112,27 @@ export class Lyricad {
     return this.opts.socket === false ? undefined : this.opts.socket ?? join(this.opts.home, "lyricad.sock");
   }
 
+  private unlocking: Promise<void> | undefined;
+
+  /** Unlocks self.db. One unlock at a time: the self-test can take a while, and a second open would close the first. */
   async unlock(passphrase: string): Promise<void> {
-    if (this.services) throw new HttpError(409, "already unlocked");
-    await this.keyring.unlockSelf(passphrase);
-    await this.unlocked();
+    if (this.services || this.unlocking) throw new HttpError(409, "already unlocked or unlocking");
+    this.unlocking = (async () => {
+      await this.keyring.unlockSelf(passphrase);
+      await this.unlocked();
+    })();
+    try {
+      await this.unlocking;
+    } finally {
+      this.unlocking = undefined;
+    }
   }
 
   /** Builds everything that needs self.db, runs the network self-test, and takes saved user keys. */
   private async unlocked(): Promise<void> {
     const { keyring } = this;
     const users = new Users(keyring);
-    const workspace = new Workspace(keyring, users, { excludePorts: [this.port], bwrap: this.opts.bwrap, pasta: this.opts.pasta });
+    const workspace = new Workspace(keyring, users, { excludePorts: [this.port], frontPorts: this.opts.frontPorts, bwrap: this.opts.bwrap, pasta: this.opts.pasta });
     if (this.opts.selfTest !== false) {
       const refused = await workspace.selfTest();
       if (refused) this.log(`network is off for every thread: ${refused}`);
@@ -158,11 +170,12 @@ export class Lyricad {
   /** Lock: stops the user's threads, unmounts their home, drops their key and every session of theirs. */
   async lockUser(userId: string): Promise<void> {
     const s = this.services!;
+    // First, at once: no request or stream gets past userFor from here on.
+    this.sessions.dropUser(userId);
+    this.keyring.lockUser(userId);
     await s.host.close(userId);
     await s.workspace.unmountHome(userId).catch((err: Error) => this.log(`unmounting a home workspace failed: ${err.message}`));
     this.mounted.delete(userId);
-    this.keyring.lockUser(userId);
-    this.sessions.dropUser(userId);
   }
 
   state(cookie: string | undefined): State {

@@ -26,16 +26,18 @@ RestartSec=5
 
 # Hardening. Lyrica's tools need unprivileged user namespaces (bubblewrap,
 # pasta) and the setuid fusermount3 (gocryptfs), so these must stay off:
-#   NoNewPrivileges, and everything that implies it for a non-root service:
-#   SystemCallFilter, SystemCallArchitectures, RestrictAddressFamilies,
-#   RestrictNamespaces, PrivateDevices, ProtectKernelTunables,
-#   ProtectKernelModules, ProtectKernelLogs, ProtectClock,
+#   NoNewPrivileges, and everything that makes systemd set no_new_privs for
+#   a non-root service (they install seccomp filters): SystemCallFilter,
+#   SystemCallArchitectures, SystemCallLog, RestrictAddressFamilies,
+#   RestrictNamespaces, PrivateDevices, ProtectHostname, ProtectClock,
+#   ProtectKernelTunables, ProtectKernelModules, ProtectKernelLogs,
 #   MemoryDenyWriteExecute, RestrictRealtime, RestrictSUIDSGID,
-#   LockPersonality, DynamicUser. PrivateUsers also breaks fusermount3.
-# The options below don't touch namespaces, devices or setuid; they are
-# untested on a real host until the handoff note in docs/briefs/daemon.md says so.
+#   LockPersonality. Also off: DynamicUser (it implies several of these) and
+#   PrivateUsers (fusermount3 needs the real user).
+# The two kept are mount-namespace options with no seccomp filter. After
+# installing, check: grep NoNewPrivs /proc/$(systemctl show -p MainPID --value lyricad)/status
+# must say 0.
 ProtectControlGroups=yes
-ProtectHostname=yes
 PrivateTmp=yes
 
 [Install]

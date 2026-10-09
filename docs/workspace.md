@@ -127,7 +127,7 @@ values are always visible next to the model badge:
 Every thread has two switches and a list:
 - **Internet:** anything off this machine.
 - **This machine's services:** whatever listens on the host's loopback, TCP
-  and UDP.
+  and UDP, or on the host's own addresses (except Caddy's front port).
 - **Allowed hosts:** IPs, CIDR ranges or hostnames (a URL is reduced to its
   host and port), each with an optional port. They are reachable even with
   internet off: a private thread can use one service on another PC on Li's
@@ -151,6 +151,12 @@ How it is enforced:
   - nothing to `lyricad`'s own ports, on any address (`Workspace`'s
     `excludePorts`, a required option, so forgetting it can't leave them
     open; `lyricad` passes its HTTP port);
+  - nothing to `lyricad`'s front ports (Caddy's HTTPS, `frontPorts`, default
+    443) on this machine's own addresses;
+  - this machine's own addresses (LAN, Tailscale; read from its interfaces
+    when each sandbox starts) only with the machine's-services switch on.
+    Internet and allowed hosts never reach this machine, so a command can't
+    reach `lyricad` through Caddy;
   - the sandbox's loopback, where pasta forwards exactly the host's loopback
     ports, minus the excluded ones, when the services switch is on;
   - everything else, if internet is on;

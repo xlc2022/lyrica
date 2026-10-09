@@ -95,6 +95,8 @@ export function sse(url: string, headers: Record<string, string>) {
   const controller = new AbortController();
   const events: { id: string; event: ThreadEvent }[] = [];
   const waiters: { test: (e: ThreadEvent) => boolean; from: number; resolve: () => void }[] = [];
+  let ended!: () => void;
+  const done = new Promise<void>((resolve) => (ended = resolve));
   const ready = (async () => {
     const res = await fetch(url, { headers, signal: controller.signal });
     if (res.status !== 200) throw new Error(`events: ${res.status}`);
@@ -118,11 +120,14 @@ export function sse(url: string, headers: Record<string, string>) {
           }
         }
       } catch { /* aborted */ }
+      ended();
     })();
   })();
   return {
     events,
     ready,
+    /** Resolves when the server ends the stream. */
+    done,
     /** Waits for an event matching `test`, from position `from` on. */
     async until(test: (e: ThreadEvent) => boolean, from = 0, ms = 10_000): Promise<void> {
       await ready;
