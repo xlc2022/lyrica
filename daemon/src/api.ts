@@ -483,7 +483,9 @@ export interface WebAccess {
     port: number;
     /** The only addresses allowed to connect, and whose X-Forwarded-For is trusted. */
     proxies: string[];
-    /** On a LAN address lyricad serves HTTPS with its own certificate; on a Tailscale address, plain HTTP. */
+    /** The proxy's own HTTPS port, which sandboxes never reach on its addresses. */
+    proxyPort: number;
+    /** On a LAN address lyricad serves HTTPS with its own certificate (naming only the address); on a Tailscale address, plain HTTP. */
     https: boolean;
     /** For the proxy to pin. */
     fingerprint?: string;
@@ -497,23 +499,29 @@ export interface WebAccess {
 /**
  * PUT /api/u/:userId/admin/web-access → WebAccess.
  * Applied and checked before it's saved: if it fails, the previous setup keeps running and the reason comes back.
+ * Built-in: a new name keeps the old one served until its certificate verifies (up to 90 s), so this can take a while.
  * Credentials left out keep their saved values (for the same provider).
  */
 export interface WebAccessChange {
   mode: WebMode;
   name?: string;
   builtin?: { addresses: string[]; provider: string; credentials?: Record<string, string>; email?: string; staging?: boolean };
-  external?: { address: string; port: number; proxies: string[] };
+  external?: { address: string; port: number; proxies: string[]; proxyPort?: number };
 }
 
 /** GET /api/u/:userId/admin/web-access/status → WebAccessStatus */
 export interface WebAccessStatus {
   mode: WebMode;
   name: string;
-  /** Built-in mode: whether Caddy answers on its admin socket, and runs the config lyricad gave it. */
-  caddy?: { answers: boolean; applied: boolean };
+  /**
+   * Built-in mode: whether Caddy answers on its admin socket, has a site at all
+   * (false: its saved config couldn't load at start and was set aside), and runs
+   * the config lyricad gave it.
+   */
+  caddy?: { answers: boolean; configured: boolean; applied: boolean };
   /** Built-in mode: the certificate served for the name, read by connecting to it on this machine's address. */
   certificate?: { issuer: string; subject: string; notAfter: string } | { error: string };
+  /** Caddy's newest TLS error since the last change, credentials hidden. */
   lastAcmeError?: { at: string; message: string };
   external?: { listening: boolean; address: string; port: number };
 }

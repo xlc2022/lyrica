@@ -1,10 +1,10 @@
-#!/bin/sh
+#!/bin/bash
 # Installs or upgrades Lyrica on Debian or Ubuntu (in the LXC container or VM):
 # the service users, lyricad's code and unit, and the built-in Caddy, built
 # from pinned versions with the DNS plugins in daemon/src/web/providers.ts.
 # Run as root from a checkout of the repository. Running it again upgrades in
 # place: the code is replaced, and Caddy is rebuilt only if a pin changed.
-set -eu
+set -euo pipefail
 
 # --- Pins ---
 GO_VERSION=1.27.2
@@ -46,7 +46,7 @@ NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]')
 getent group lyrica-caddy >/dev/null || groupadd --system lyrica-caddy
 id lyrica-caddy >/dev/null 2>&1 || useradd --system --gid lyrica-caddy --home-dir /var/lib/lyrica-caddy --no-create-home --shell /usr/sbin/nologin lyrica-caddy
 id lyrica >/dev/null 2>&1 || useradd --system --user-group --home-dir "$STATE" --no-create-home --shell /usr/sbin/nologin lyrica
-usermod -a -G lyrica-caddy lyrica
+# lyricad gets the lyrica-caddy group from its unit (SupplementaryGroups), not from /etc/group.
 
 # --- lyricad's code ---
 say "Installing lyricad into $PREFIX..."
@@ -56,13 +56,14 @@ if [ "$SRC" != "$PREFIX" ]; then
 fi
 (cd "$PREFIX" && npm ci --omit=dev --no-audit --no-fund --loglevel=error)
 chown -R root:root "$PREFIX"
-chmod -R go-w "$PREFIX"
+chmod -R a+rX,go-w "$PREFIX"
 install -d -o lyrica -g lyrica -m 0700 "$STATE"
 
 # --- The built-in Caddy ---
-MODULES=$(grep -o 'module: "[^"]*"' "$PREFIX/daemon/src/web/providers.ts" | sed 's/module: "\(.*\)"/\1/' | sort)
+MODULES=$(sed -n 's/.*module: "\([^"]*\)".*/\1/p' "$PREFIX/daemon/src/web/providers.ts" | sort)
+[ -n "$MODULES" ] || die "found no DNS plugins in daemon/src/web/providers.ts"
 WANT="caddy $CADDY_VERSION go $GO_VERSION xcaddy $XCADDY_VERSION $(printf '%s ' $MODULES)"
-if [ -x "$CADDY" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$WANT" ]; then
+if [ -x "$CADDY" ] && [ "$(cat "$STAMP" 2>/dev/null || true)" = "$WANT" ]; then
   say "Caddy is up to date."
   CADDY_CHANGED=no
 else
@@ -73,9 +74,10 @@ else
   echo "$GO_SHA256  $BUILD/go.zip" | sha256sum -c --quiet - || die "the Go toolchain's checksum doesn't match"
   unzip -q "$BUILD/go.zip" -d "$BUILD/go"
   GOROOT="$BUILD/go/golang.org/toolchain@v0.0.1-go$GO_VERSION.linux-$ARCH"
-  # Modules come from proxy.golang.org at the pinned versions, checked against sum.golang.org.
-  env GOROOT="$GOROOT" PATH="$GOROOT/bin:$BUILD/bin:$PATH" GOPATH="$BUILD/gopath" GOCACHE="$BUILD/cache" \
-    GOBIN="$BUILD/bin" GOTOOLCHAIN=local GOFLAGS=-mod=mod HOME="$BUILD" \
+  # A clean environment: modules come only from proxy.golang.org at the pinned
+  # versions, checked against sum.golang.org, whatever root's Go settings say.
+  env -i GOROOT="$GOROOT" PATH="$GOROOT/bin:$BUILD/bin:/usr/bin:/bin" HOME="$BUILD" GOPATH="$BUILD/gopath" GOCACHE="$BUILD/cache" \
+    GOBIN="$BUILD/bin" GOENV=off GOPROXY=https://proxy.golang.org GOSUMDB=sum.golang.org GOTOOLCHAIN=local GOFLAGS=-mod=mod \
     sh -c 'go install "github.com/caddyserver/xcaddy/cmd/xcaddy@$1" && shift && v=$1 && out=$2 && shift 2 &&
       for m in "$@"; do set -- "$@" --with "$m"; shift; done && xcaddy build "$v" --output "$out" "$@"' \
     sh "$XCADDY_VERSION" "$CADDY_VERSION" "$BUILD/caddy" $MODULES >"$BUILD/build.log" 2>&1 \
@@ -85,6 +87,11 @@ else
   printf '%s' "$WANT" >"$STAMP"
   CADDY_CHANGED=yes
 fi
+# Caddy binds its addresses even before they're up (Tailscale at boot, a DHCP
+# renewal), instead of failing to start.
+printf 'net.ipv4.ip_nonlocal_bind = 1\n' >/etc/sysctl.d/60-lyrica.conf
+sysctl -q -w net.ipv4.ip_nonlocal_bind=1 || say "Couldn't set net.ipv4.ip_nonlocal_bind here; Caddy may need a restart once Tailscale is up."
+
 install -d -m 0755 /etc/lyrica
 # Only Caddy's first start: its admin API on the group-only socket. lyricad loads the rest.
 printf '%s\n' '{"admin":{"listen":"unix//run/lyrica-caddy/admin.sock|0660"}}' >/etc/lyrica/caddy.json
@@ -102,10 +109,10 @@ if [ -d /run/systemd/system ]; then
     say "lyricad restarted."
   else
     say "Next: create self.db and the first administrator, then start lyricad:"
-    say "  sudo -u lyrica env LYRICA_HOME=$STATE $PREFIX/bin/lyrica admin init"
+    say "  runuser -u lyrica -- env LYRICA_HOME=$STATE $PREFIX/bin/lyrica admin init"
     say "  systemctl start lyricad"
   fi
 else
   say "systemd isn't running here: the units are installed but not started."
 fi
-say "Done. Set up web access in the control panel (Administration → Web access)."
+say "Done. lyricad listens on 127.0.0.1:7340; web access is set up through its API (PUT /api/u/<id>/admin/web-access)."

@@ -42,15 +42,10 @@ export interface WorkspaceOptions {
    */
   excludePorts: number[];
   /**
-   * lyricad's front ports (Caddy's HTTPS): never reachable on this machine's
-   * own addresses, so a sandbox can't reach the API through the proxy. Default [443].
-   */
-  frontPorts?: number[];
-  /**
    * Where lyricad's front door is now, read at every sandbox start: its ports,
    * the hosts it answers on besides this machine (an external proxy, Lyrica's
    * name), and extra ports to refuse on every address (an extra listener).
-   * Overrides `frontPorts`.
+   * Without it, port 443 on this machine's addresses.
    */
   frontDoor?: () => FrontDoor;
   bwrap?: string;
@@ -86,7 +81,7 @@ export class Workspace {
     const d = this.opts.frontDoor?.();
     return {
       exclude: [...new Set([...this.opts.excludePorts, ...(d?.exclude ?? [])])],
-      front: d?.ports ?? this.opts.frontPorts ?? [443],
+      front: d?.ports ?? [443],
       frontHosts: d?.hosts ?? [],
     };
   }

@@ -140,12 +140,24 @@ export interface ThisMachine {
   frontAddresses?: string[];
 }
 
-/** IPv4 addresses for IPs and hostnames, resolved now. A name that doesn't resolve is left out. */
-export async function resolveAddresses(hosts: string[]): Promise<string[]> {
+/** Every address each front-door name has resolved to in this process: a name that moves keeps its old addresses covered. */
+const seen = new Map<string, Set<string>>();
+
+/**
+ * IPv4 addresses for the front door's IPs and hostnames: what each name
+ * resolves to now, plus every address it resolved to before. Returns
+ * undefined if a name has never resolved, so the caller can fail closed.
+ */
+export async function resolveAddresses(hosts: string[], resolve = (h: string) => lookup(h, { all: true, family: 4 })): Promise<string[] | undefined> {
   const out = new Set<string>();
   for (const h of hosts) {
-    if (isIP(h) === 4) out.add(h);
-    else if (!isIP(h)) for (const a of await lookup(h, { all: true, family: 4 }).catch(() => [])) out.add(a.address);
+    if (isIP(h) === 4) { out.add(h); continue; }
+    if (isIP(h)) continue;
+    const known = seen.get(h) ?? new Set<string>();
+    for (const a of await resolve(h).catch(() => [])) known.add(a.address);
+    if (!known.size) return undefined;
+    seen.set(h, known);
+    for (const a of known) out.add(a);
   }
   return [...out];
 }

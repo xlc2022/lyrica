@@ -34,22 +34,34 @@ export function adminOnly(paths: CaddyPaths): Record<string, unknown> {
   return { admin: { listen: `unix/${paths.socket}|0660` } };
 }
 
-/** Caddy's whole config for Lyrica's site: HTTPS on the chosen addresses, DNS-01, and a reverse proxy to lyricad. */
-export function caddyConfig(site: CaddySite, paths: CaddyPaths): Record<string, unknown> {
+function issuer(site: CaddySite): Record<string, unknown> {
   const p = provider(site.provider);
   const dns: Record<string, string> = { name: p.id };
   for (const f of p.fields) {
     const value = site.credentials[f.name];
     if (value) dns[f.name] = value;
   }
-  const issuer: Record<string, unknown> = { module: "acme", challenges: { dns: { provider: dns } } };
-  if (site.email) issuer.email = site.email;
-  if (site.staging) issuer.ca = STAGING_CA;
+  const out: Record<string, unknown> = { module: "acme", challenges: { dns: { provider: dns } } };
+  if (site.email) out.email = site.email;
+  if (site.staging) out.ca = STAGING_CA;
+  return out;
+}
+
+/**
+ * Caddy's whole config for Lyrica's site: HTTPS on the chosen addresses,
+ * DNS-01, and a reverse proxy to lyricad. While the name changes, the old
+ * site comes along (`also`), so the old name keeps working until the new one
+ * has its certificate.
+ */
+export function caddyConfig(site: CaddySite, paths: CaddyPaths, also: CaddySite[] = []): Record<string, unknown> {
+  const sites = [site, ...also];
   return {
     ...adminOnly(paths),
     logging: {
       logs: {
-        // TLS errors (a failed ACME order, a refused DNS token) go to a file lyricad reads for the status page.
+        // Never to stderr and the journal: a DNS plugin may put its token in an error.
+        default: { exclude: ["tls"] },
+        // TLS errors (a failed ACME order, a refused DNS token) go to a file only lyricad's group can read, for the status page.
         "lyrica-tls": {
           writer: { output: "file", filename: paths.tlsLog, mode: "0640", roll_size_mb: 1, roll_keep: 1 },
           encoder: { format: "json" },
@@ -62,18 +74,18 @@ export function caddyConfig(site: CaddySite, paths: CaddyPaths): Record<string, 
       http: {
         servers: {
           lyrica: {
-            listen: site.addresses.map((a) => `${a}:${site.port}`),
-            routes: [{
-              match: [{ host: [site.name] }],
-              handle: [{ handler: "reverse_proxy", upstreams: [{ dial: `127.0.0.1:${site.upstream}` }], flush_interval: -1 }],
+            listen: [...new Set(sites.flatMap((s) => s.addresses.map((a) => `${a}:${s.port}`)))],
+            routes: sites.map((s) => ({
+              match: [{ host: [s.name] }],
+              handle: [{ handler: "reverse_proxy", upstreams: [{ dial: `127.0.0.1:${s.upstream}` }], flush_interval: -1 }],
               terminal: true,
-            }],
+            })),
             // HTTPS only: no listener on port 80 for redirects.
             automatic_https: { disable_redirects: true },
           },
         },
       },
-      tls: { automation: { policies: [{ subjects: [site.name], issuers: [issuer] }] } },
+      tls: { automation: { policies: sites.map((s) => ({ subjects: [s.name], issuers: [issuer(s)] })) } },
     },
   };
 }

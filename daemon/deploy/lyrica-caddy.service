@@ -2,7 +2,8 @@
 # daemon/deploy/install.sh installs it as /etc/systemd/system/lyrica-caddy.service.
 [Unit]
 Description=Caddy for Lyrica (configured by lyricad)
-# It binds the Tailscale address, which exists once tailscaled is up.
+# It binds the Tailscale address. install.sh allows binding addresses that
+# aren't up yet (net.ipv4.ip_nonlocal_bind), so it starts even before tailscaled has one.
 After=network-online.target tailscaled.service
 Wants=network-online.target
 
@@ -13,6 +14,10 @@ Group=lyrica-caddy
 # --resume: the config lyricad last gave it, so it serves while lyricad is
 # locked. caddy.json is only the first start's: the admin API on a Unix
 # socket, group-only (0660), and nothing on localhost:2019.
+# A saved config that can't load any more (an upgrade, a changed module) is
+# moved aside, so Caddy still starts with its admin socket and lyricad can
+# apply the setup again; the status page then says Caddy has no site.
+ExecStartPre=/bin/sh -c 'f=/var/lib/lyrica-caddy/config/caddy/autosave.json; [ ! -f "$$f" ] || /usr/local/bin/lyrica-caddy validate --config "$$f" >/dev/null 2>&1 || mv -f "$$f" "$$f.bad"'
 ExecStart=/usr/local/bin/lyrica-caddy run --config /etc/lyrica/caddy.json --resume
 Environment=XDG_CONFIG_HOME=/var/lib/lyrica-caddy/config XDG_DATA_HOME=/var/lib/lyrica-caddy/data
 # Its saved config holds the DNS token, so its state is its own.

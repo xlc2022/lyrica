@@ -1,22 +1,26 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer, request as httpRequest, type Server } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { createServer as createTcp, type AddressInfo } from "node:net";
-import { networkInterfaces } from "node:os";
+import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
+// Like the proxy, which dials the address: the certificate is checked against it, whatever the Host header says.
+import { checkServerIdentity, createSecureContext, createServer as createTlsServer, type PeerCertificate, type SecureContext } from "node:tls";
 import { afterEach, describe, expect, it } from "vitest";
-import type { WebAccess, WebAccessStatus } from "../src/api.ts";
+import type { HostAddress, WebAccess, WebAccessStatus } from "../src/api.ts";
 import { browser, daemon, login, runtime } from "./helpers.ts";
 
 const TOKEN = "cf-token-7d1e5b0a9c2f4e6b8a1d3c5e7f9b0a2c";
 
-const servers: Server[] = [];
-afterEach(async () => { await Promise.all(servers.splice(0).map((s) => new Promise((r) => { s.close(r); s.closeAllConnections?.(); }))); });
+const cleanup: (() => unknown)[] = [];
+afterEach(async () => { for (const c of cleanup.splice(0).reverse()) await c(); });
+const track = (s: Server | ReturnType<typeof createTcp>) => cleanup.push(() => new Promise((r) => { s.close(r); (s as Server).closeAllConnections?.(); }));
 
 /** A fake Caddy admin API on a Unix socket: GET /config/ and POST /load, which can be told to refuse. */
 async function fakeCaddy(dir: string) {
   const socket = join(dir, "caddy-admin.sock");
-  const state = { config: { admin: { listen: `unix/${socket}|0660` } } as unknown, loads: [] as unknown[], refuse: false };
+  const state = { config: { admin: { listen: `unix/${socket}|0660` } } as unknown, loads: [] as any[], refuse: false };
   const srv = createServer((req, res) => {
     let body = "";
     req.on("data", (c) => (body += c));
@@ -33,9 +37,33 @@ async function fakeCaddy(dir: string) {
       res.end();
     });
   });
-  servers.push(srv);
+  track(srv);
   await new Promise<void>((r) => srv.listen(socket, r));
   return { socket, state };
+}
+
+/** A test CA that issues certificates for names, like Let's Encrypt would. */
+function testCa() {
+  const dir = mkdtempSync(join(tmpdir(), "lyrica-ca-"));
+  cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
+  const ssl = (...args: string[]) => execFileSync("openssl", args, { cwd: dir, stdio: "pipe" });
+  ssl("req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes", "-keyout", "ca.key", "-out", "ca.pem", "-subj", "/CN=Test CA", "-days", "2");
+  const issue = (name: string) => {
+    writeFileSync(join(dir, "ext"), `subjectAltName=DNS:${name}\n`);
+    ssl("req", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes", "-keyout", `${name}.key`, "-out", `${name}.csr`, "-subj", `/CN=${name}`);
+    ssl("x509", "-req", "-in", `${name}.csr`, "-CA", "ca.pem", "-CAkey", "ca.key", "-CAcreateserial", "-out", `${name}.pem`, "-days", "1", "-extfile", "ext");
+    return createSecureContext({ key: readFileSync(join(dir, `${name}.key`)), cert: readFileSync(join(dir, `${name}.pem`)) });
+  };
+  return { ca: readFileSync(join(dir, "ca.pem"), "utf8"), issue };
+}
+
+/** "Caddy" serving HTTPS for the names it has certificates for, on 127.0.0.1:port. */
+async function caddyServing(port: number, ca: ReturnType<typeof testCa>, names: string[]) {
+  const contexts = new Map<string, SecureContext>(names.map((n) => [n, ca.issue(n)]));
+  const srv = createTlsServer({ SNICallback: (n, cb) => cb(contexts.has(n) ? null : new Error("no certificate"), contexts.get(n)) }, (s) => s.end());
+  track(srv);
+  await new Promise<void>((r) => srv.listen(port, "127.0.0.1", r));
+  return { add: (n: string) => contexts.set(n, ca.issue(n)) };
 }
 
 const freePort = async () => {
@@ -46,54 +74,52 @@ const freePort = async () => {
   return port;
 };
 
-/** Something listening where Caddy would serve, so the check after loading passes. */
-async function caddyListening(port: number) {
-  const s = createTcp((c) => c.destroy());
-  servers.push(s as unknown as Server);
-  await new Promise<void>((r) => s.listen(port, "127.0.0.1", r));
-}
-
-async function setup(addresses = [{ address: "127.0.0.1", kind: "lan" as const, interface: "lo" }]) {
-  const rt = await runtime();
+async function setup(addresses: HostAddress[] = [{ address: "127.0.0.1", kind: "lan", interface: "lo" }], rtIn?: Awaited<ReturnType<typeof runtime>>) {
+  const rt = rtIn ?? await runtime();
   const caddy = await fakeCaddy(rt.home);
+  const ca = testCa();
   const httpsPort = await freePort();
   const dm = await daemon(rt, {
-    web: { caddySocket: caddy.socket, tlsLog: join(rt.home, "tls.log"), httpsPort, addresses: () => addresses },
+    web: { caddySocket: caddy.socket, tlsLog: join(rt.home, "tls.log"), httpsPort, addresses: () => addresses, certWaitMs: 1500, trustCa: ca.ca },
     rateLimit: { free: 1, baseMs: 60_000, maxMs: 600_000 },
   });
   await browser(dm.base).post("/api/unlock", { passphrase: "passphrase" });
   const li = await login(dm.base, "li", "pw");
   const url = `/api/u/${rt.li.id}/admin/web-access`;
-  return { rt, ...dm, caddy, httpsPort, li, url };
+  return { rt, ...dm, caddy, ca, httpsPort, li, url };
 }
 
-const builtin = { mode: "builtin", name: "lyrica.example.net", builtin: { addresses: ["127.0.0.1"], provider: "cloudflare", credentials: { api_token: TOKEN }, staging: true } };
+const builtin = (name = "lyrica.example.net") => ({
+  mode: "builtin", name, builtin: { addresses: ["127.0.0.1"], provider: "cloudflare", credentials: { api_token: TOKEN }, staging: false },
+});
+const routes = (cfg: any) => cfg.apps.http.servers.lyrica.routes.map((r: any) => r.match[0].host[0]);
 
 describe("web access, built-in Caddy", () => {
   it("writes Caddy's config for the site, DNS provider and upstream, and never gives the token back", async () => {
-    const { rt, d, caddy, httpsPort, li, url, logs } = await setup();
-    await caddyListening(httpsPort);
-    const put = await li.put<WebAccess>(url, builtin);
+    const { rt, d, caddy, ca, httpsPort, li, url, logs } = await setup();
+    await caddyServing(httpsPort, ca, ["lyrica.example.net"]);
+    const put = await li.put<WebAccess>(url, builtin());
     expect(put.status).toBe(200);
     const cfg = caddy.state.config as any;
     expect(cfg.admin.listen).toBe(`unix/${caddy.socket}|0660`);
+    expect(cfg.logging.logs.default).toEqual({ exclude: ["tls"] }); // TLS errors (which can quote a token) never reach the journal
     const server = cfg.apps.http.servers.lyrica;
     expect(server.listen).toEqual([`127.0.0.1:${httpsPort}`]);
-    expect(server.routes[0].match[0].host).toEqual(["lyrica.example.net"]);
+    expect(routes(cfg)).toEqual(["lyrica.example.net"]);
     expect(server.routes[0].handle[0]).toMatchObject({ handler: "reverse_proxy", upstreams: [{ dial: `127.0.0.1:${d.port}` }] });
     expect(server.automatic_https).toEqual({ disable_redirects: true });
     const policy = cfg.apps.tls.automation.policies[0];
     expect(policy.subjects).toEqual(["lyrica.example.net"]);
-    expect(policy.issuers[0]).toMatchObject({ module: "acme", ca: expect.stringContaining("staging"), challenges: { dns: { provider: { name: "cloudflare", api_token: TOKEN } } } });
+    expect(policy.issuers[0]).toMatchObject({ module: "acme", challenges: { dns: { provider: { name: "cloudflare", api_token: TOKEN } } } });
 
     // The token never comes back, and saving the same provider again without it keeps it.
     expect(put.body.builtin!.credentials).toEqual({ api_token: { set: true } });
     expect(JSON.stringify((await li.get(url)).body)).not.toContain(TOKEN);
-    expect((await li.put(url, { ...builtin, builtin: { ...builtin.builtin, credentials: {} } })).status).toBe(200);
+    expect((await li.put(url, { ...builtin(), builtin: { ...builtin().builtin, credentials: {} } })).status).toBe(200);
     expect(JSON.stringify(caddy.state.config)).toContain(TOKEN);
 
     const status = (await li.get<WebAccessStatus>(`${url}/status`)).body;
-    expect(status).toMatchObject({ mode: "builtin", caddy: { answers: true, applied: true } });
+    expect(status).toMatchObject({ mode: "builtin", caddy: { answers: true, configured: true, applied: true }, certificate: { subject: "lyrica.example.net" } });
     expect(JSON.stringify(status)).not.toContain(TOKEN);
 
     // Encrypted at rest with the rest of self.db, and never logged.
@@ -104,28 +130,46 @@ describe("web access, built-in Caddy", () => {
     expect(d.services!.web.frontDoor()).toEqual({ ports: [httpsPort], hosts: ["lyrica.example.net"], exclude: [] });
   });
 
-  it("keeps the previous config when Caddy refuses the new one, or doesn't serve it", async () => {
-    const { caddy, httpsPort, li, url, logs } = await setup();
-    // Refused: nothing changes, and the reason comes back without the token.
+  it("keeps the old name served until the new one's certificate verifies, and goes back if none comes", async () => {
+    const { caddy, ca, httpsPort, li, url } = await setup();
+    const tls = await caddyServing(httpsPort, ca, ["old.example.net"]);
+    expect((await li.put(url, builtin("old.example.net"))).status).toBe(200);
+    const settled = caddy.state.config;
+
+    // No certificate for the new name (no DNS record yet, a token for the wrong zone): both names were served while
+    // waiting, then the old config is back and nothing is saved.
+    caddy.state.loads.length = 0;
+    const failed = await li.put<{ error: string }>(url, builtin("new.example.net"));
+    expect(failed.status).toBe(400);
+    expect(failed.body.error).toMatch(/no certificate for new\.example\.net came within/);
+    expect(routes(caddy.state.loads[0])).toEqual(["new.example.net", "old.example.net"]);
+    expect(caddy.state.config).toEqual(settled);
+    expect((await li.get<WebAccess>(url)).body.name).toBe("old.example.net");
+
+    // Once it can get one, the switch finishes and the old name goes.
+    tls.add("new.example.net");
+    caddy.state.loads.length = 0;
+    expect((await li.put(url, builtin("new.example.net"))).status).toBe(200);
+    expect(caddy.state.loads.map(routes)).toEqual([["new.example.net", "old.example.net"], ["new.example.net"]]);
+  });
+
+  it("keeps the previous config when Caddy refuses the new one", async () => {
+    const { caddy, li, url, logs } = await setup();
     caddy.state.refuse = true;
-    const refused = await li.put<{ error: string }>(url, builtin);
+    const refused = await li.put<{ error: string }>(url, builtin());
     expect(refused.status).toBe(400);
     expect(refused.body.error).toContain("appears invalid");
     expect(refused.body.error).not.toContain(TOKEN);
     expect((await li.get<WebAccess>(url)).body.mode).toBe("off");
-    caddy.state.refuse = false;
-
-    // Loaded, but nothing serves on the address: the old config goes back.
-    const before = caddy.state.config;
-    const unserved = await li.put<{ error: string }>(url, builtin);
-    expect(unserved.status).toBe(400);
-    expect(unserved.body.error).toMatch(/didn't start serving/);
-    expect(caddy.state.config).toEqual(before);
-    expect((await li.get<WebAccess>(url)).body.mode).toBe("off");
     expect(logs.join("\n")).not.toContain(TOKEN);
+  });
 
-    await caddyListening(httpsPort);
-    expect((await li.put(url, builtin)).status).toBe(200);
+  it("says when Caddy runs with no site", async () => {
+    const { ca, httpsPort, caddy, li, url } = await setup();
+    await caddyServing(httpsPort, ca, ["lyrica.example.net"]);
+    await li.put(url, builtin());
+    caddy.state.config = { admin: { listen: `unix/${caddy.socket}|0660` } }; // its saved config was set aside at start
+    expect((await li.get<WebAccessStatus>(`${url}/status`)).body.caddy).toEqual({ answers: true, configured: false, applied: false });
   });
 
   it("is for administrators only", async () => {
@@ -133,7 +177,7 @@ describe("web access, built-in Caddy", () => {
     const sam = await login(base, "sam", "pw2");
     const samUrl = url.replace(rt.li.id, rt.sam.id);
     for (const p of [samUrl, `${samUrl}/status`, `${samUrl}/snippet`]) expect((await sam.get(p)).status).toBe(403);
-    expect((await sam.put(samUrl, builtin)).status).toBe(403);
+    expect((await sam.put(samUrl, builtin())).status).toBe(403);
     expect((await sam.get(url)).status).toBe(401);
   });
 });
@@ -145,7 +189,7 @@ const lan = Object.values(networkInterfaces()).flat().find((i) => i?.family === 
 function call(o: { https: boolean; port: number; path: string; method?: string; ca?: string; headers?: Record<string, string>; body?: string }): Promise<number | string> {
   return new Promise((resolve) => {
     const make = o.https ? httpsRequest : httpRequest;
-    const req = make({ host: lan, port: o.port, path: o.path, method: o.method ?? "GET", headers: o.headers, timeout: 5000, ...(o.https ? { ca: o.ca } : {}) }, (res) => {
+    const req = make({ host: lan, port: o.port, path: o.path, method: o.method ?? "GET", headers: o.headers, timeout: 5000, ...(o.https ? { ca: o.ca, checkServerIdentity: (_h: string, cert: PeerCertificate) => checkServerIdentity(lan!, cert) } : {}) }, (res) => {
       res.resume();
       res.on("end", () => resolve(res.statusCode ?? 0));
     });
@@ -155,57 +199,97 @@ function call(o: { https: boolean; port: number; path: string; method?: string; 
   });
 }
 
+const external = (port: number, proxies: string[], extra: Record<string, unknown> = {}) =>
+  ({ mode: "external", name: "lyrica.example.net", external: { address: lan, port, proxies, ...extra } });
+
 describe.skipIf(!lan)("web access, external proxy", () => {
   it("listens for the listed proxies only, over HTTPS the proxy pins, and believes only their forwarded addresses", async () => {
-    const { d, li, url } = await setup([{ address: lan!, kind: "lan", interface: "eth0" }]);
+    const { rt, d, li, url } = await setup([{ address: lan!, kind: "lan", interface: "eth0" }]);
     const port = await freePort();
-    const put = await li.put<WebAccess>(url, { mode: "external", name: "lyrica.example.net", external: { address: lan, port, proxies: ["192.0.2.250"] } });
+    const put = await li.put<WebAccess>(url, external(port, ["192.0.2.250"], { proxyPort: 8443 }));
     expect(put.status).toBe(200);
     const ext = put.body.external!;
-    expect(ext).toMatchObject({ address: lan, port, https: true, fingerprint: expect.stringMatching(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/) });
+    expect(ext).toMatchObject({ address: lan, port, https: true, proxyPort: 8443, fingerprint: expect.stringMatching(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/) });
+
+    // Its settings and TLS key are in a file only lyricad's user can read, so it can open before unlock.
+    const file = join(rt.home, "web-external.json");
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+    expect(readFileSync(file, "utf8")).toContain("PRIVATE KEY");
 
     // From an address that isn't a listed proxy (this machine's own): refused.
     expect(typeof await call({ https: true, port, path: "/api/state", ca: ext.pem })).toBe("string");
 
-    // Listed: HTTPS with the pinned certificate works; plain HTTP on a LAN address doesn't.
-    await li.put(url, { mode: "external", name: "lyrica.example.net", external: { address: lan, port, proxies: [lan] } });
+    // Listed: HTTPS with the pinned certificate works; plain HTTP on a LAN address doesn't, nor an unpinned client.
+    await li.put(url, external(port, [lan!], { proxyPort: 8443 }));
     expect(await call({ https: true, port, path: "/api/state", ca: ext.pem })).toBe(200);
     expect(await call({ https: false, port, path: "/api/state" })).not.toBe(200);
-    // A certificate the proxy didn't pin is refused by the client.
     expect(typeof await call({ https: true, port, path: "/api/state" })).toBe("string");
+
+    // A new name keeps the certificate (it names only the address), so the proxy's pin holds.
+    const renamed = (await li.put<WebAccess>(url, { ...external(port, [lan!]), name: "home.example.net" })).body.external!;
+    expect(renamed.fingerprint).toBe(ext.fingerprint);
 
     // X-Forwarded-For from the proxy names the client: each forwarded address is limited on its own.
     const attempt = (ip: string, loginName: string) => call({
       https: true, port, path: "/api/login", method: "POST", ca: ext.pem, body: JSON.stringify({ login: loginName, password: "x" }),
-      headers: { "content-type": "application/json", host: "lyrica.example.net", origin: "https://lyrica.example.net", "x-forwarded-for": ip },
+      headers: { "content-type": "application/json", host: "home.example.net", origin: "https://home.example.net", "x-forwarded-for": ip },
     });
     expect(await attempt("203.0.113.1", "nobody-1")).toBe(401);
     expect(await attempt("203.0.113.2", "nobody-2")).toBe(401);
     expect(await attempt("203.0.113.1", "nobody-3")).toBe(429);
 
-    // The proxy's site, and the front door for sandboxes: the proxy, the name, and the extra port everywhere.
+    // The proxy's site, and the front door for sandboxes: its port on the proxy and the name, and the extra port everywhere.
     const snippet = (await li.get<{ caddyfile: string }>(`${url}/snippet`)).body.caddyfile;
-    expect(snippet).toContain("lyrica.example.net {");
+    expect(snippet).toContain("home.example.net {");
     expect(snippet).toContain(`reverse_proxy https://${lan}:${port}`);
     expect(snippet).toContain("tls_trust_pool file");
-    expect(d.services!.web.frontDoor()).toEqual({ ports: [443], hosts: ["lyrica.example.net", lan], exclude: [port] });
+    expect(snippet).toContain("dns cloudflare");
+    expect(d.services!.web.frontDoor()).toEqual({ ports: [443], hosts: ["home.example.net", lan], exclude: [port] });
 
-    // Back to off: the extra listener closes.
+    // Back to off: the extra listener closes and its file goes.
     expect((await li.put(url, { mode: "off" })).status).toBe(200);
     expect(typeof await call({ https: true, port, path: "/api/state", ca: ext.pem })).toBe("string");
+    expect(readdirSync(rt.home)).not.toContain("web-external.json");
+  });
+
+  it("opens before unlock, answering only state, unlock and the web UI", async () => {
+    const first = await setup([{ address: lan!, kind: "lan", interface: "eth0" }]);
+    const port = await freePort();
+    const ext = (await first.li.put<WebAccess>(first.url, external(port, [lan!]))).body.external!;
+    await first.stop();
+
+    const again = await daemon(first.rt, { web: { caddySocket: first.caddy.socket, addresses: () => [{ address: lan!, kind: "lan", interface: "eth0" }] } });
+    expect(again.d.locked).toBe(true);
+    expect(await call({ https: true, port, path: "/api/state", ca: ext.pem })).toBe(200);
+    expect(await call({ https: true, port, path: `/api/u/${first.rt.li.id}/threads`, ca: ext.pem })).toBe(503);
+  });
+
+  it("serves plain HTTP only on a Tailscale interface, whatever the address range", async () => {
+    const { li, url } = await setup([{ address: lan!, kind: "tailscale", interface: "tailscale0" }]);
+    const port = await freePort();
+    const put = await li.put<WebAccess>(url, external(port, [lan!]));
+    expect(put.body.external).toMatchObject({ https: false });
+    expect(await call({ https: false, port, path: "/api/state" })).toBe(200);
+    expect((await li.get<{ caddyfile: string }>(`${url}/snippet`)).body.caddyfile).toContain(`reverse_proxy ${lan}:${port}`);
   });
 
   it("refuses an address that isn't this machine's, or a taken port, and keeps the previous setup", async () => {
     const { d, li, url } = await setup([{ address: lan!, kind: "lan", interface: "eth0" }]);
-    expect((await li.put(url, { mode: "external", name: "lyrica.example.net", external: { address: "192.0.2.99", port: 7999, proxies: ["192.0.2.1"] } })).status).toBe(400);
-    expect((await li.put(url, { mode: "external", name: "lyrica.example.net", external: { address: lan, port: d.port, proxies: ["192.0.2.1"] } })).status).toBe(400);
+    expect((await li.put(url, external(7999, ["192.0.2.1"], { address: "192.0.2.99" }))).status).toBe(400);
+    expect((await li.put(url, external(d.port, ["192.0.2.1"]))).status).toBe(400);
     const busy = createTcp();
-    servers.push(busy as unknown as Server);
+    track(busy);
     await new Promise<void>((r) => busy.listen(0, lan, r));
     const taken = (busy.address() as AddressInfo).port;
-    const r = await li.put<{ error: string }>(url, { mode: "external", name: "lyrica.example.net", external: { address: lan, port: taken, proxies: ["192.0.2.1"] } });
+    const r = await li.put<{ error: string }>(url, external(taken, ["192.0.2.1"]));
     expect(r.status).toBe(400);
     expect(r.body.error).toMatch(/couldn't listen/);
     expect((await li.get<WebAccess>(url)).body.mode).toBe("off");
+
+    // Changing the port: if the new one can't open, the old listener keeps working.
+    const port = await freePort();
+    const ext = (await li.put<WebAccess>(url, external(port, [lan!]))).body.external!;
+    expect((await li.put(url, external(taken, [lan!]))).status).toBe(400);
+    expect(await call({ https: true, port, path: "/api/state", ca: ext.pem })).toBe(200);
   });
 });

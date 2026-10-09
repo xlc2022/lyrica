@@ -153,9 +153,11 @@ How it is enforced:
     open; `lyricad` passes its HTTP port);
   - nothing to `lyricad`'s front door, read when each sandbox starts
     (`Workspace`'s `frontDoor`, which `lyricad` gives from its web access
-    settings): its port (443, Caddy's HTTPS) on this machine's own
-    addresses, on whatever Lyrica's name resolves to, and on an external
-    proxy's addresses; and an extra listener's port on every address;
+    settings): its port (443, or the external proxy's own) on this
+    machine's own addresses, on every address Lyrica's name has resolved to,
+    and on an external proxy's addresses; and an extra listener's port on
+    every address. If the name has never resolved, that run gets no network
+    at all;
   - this machine's own addresses (LAN, Tailscale; read from its interfaces
     when each sandbox starts) only with the machine's-services switch on.
     Internet and allowed hosts never reach this machine, so a command can't

@@ -15,7 +15,7 @@ import {
   checkOrigin, fromLoopback, HttpError, makeRequest, match, plainAddress, sendJson, serveStatic, statusOf,
   type Request, type Route, type TrustForwarded,
 } from "./http.ts";
-import { WebAccess } from "./web/access.ts";
+import { ExternalListener, WebAccess, type External } from "./web/access.ts";
 import { apiRoutes } from "./routes.ts";
 
 export interface LyricadOptions {
@@ -29,6 +29,10 @@ export interface LyricadOptions {
     tlsLog?: string;
     httpsPort?: number;
     addresses?: () => import("./api.ts").HostAddress[];
+    /** How long a new name may take to get its certificate (default 90 s). */
+    certWaitMs?: number;
+    /** An extra CA trusted when checking that certificate (tests). */
+    trustCa?: string;
   };
   /** The Unix socket for local clients; false for none. Defaults to `<home>/lyricad.sock`. */
   socket?: string | false;
@@ -79,6 +83,8 @@ export class Lyricad {
   private readonly servers: Server[] = [];
   private readonly routes: Route[];
   private readonly mounted = new Set<string>();
+  /** The external proxy's listener, from its settings file: it opens at start, before unlock. */
+  readonly external: ExternalListener;
   port = 0;
 
   constructor(readonly opts: LyricadOptions) {
@@ -87,6 +93,7 @@ export class Lyricad {
     this.limiter = new RateLimiter(opts.rateLimit);
     this.log = opts.log ?? ((line) => process.stderr.write(`${line}\n`));
     this.routes = apiRoutes(this);
+    this.external = new ExternalListener(join(opts.home, "web-external.json"), (o) => this.listenExternal(o));
   }
 
   get locked(): boolean { return !this.services; }
@@ -112,6 +119,8 @@ export class Lyricad {
       this.servers.push(local);
     }
     this.log(`lyricad listening on 127.0.0.1:${this.port}${socket ? ` and ${socket}` : ""}`);
+    // While locked it answers only state, unlock and the web UI's files here too, so the proxy can show the unlock page.
+    await this.external.start().catch((err: Error) => this.log(`the external proxy's listener didn't open: ${err.message}`));
     if (await this.keyring.unlockSaved().catch((err: Error) => { this.log(`the saved passphrase didn't unlock self.db: ${err.message}`); return false; })) {
       await this.unlocked();
     } else {
@@ -148,7 +157,7 @@ export class Lyricad {
       self: () => keyring.self(),
       caddy: { socket: w.caddySocket ?? "/run/lyrica-caddy/admin.sock", tlsLog: w.tlsLog ?? "/run/lyrica-caddy/tls.log" },
       httpsPort: w.httpsPort ?? 443, upstream: this.port, reserved: [this.port], addresses: w.addresses,
-      open: (o) => this.listenExternal(o, web), log: this.log,
+      external: this.external, certWaitMs: w.certWaitMs, trustCa: w.trustCa, log: this.log,
     });
     // Where the front door is, read at every sandbox start, so a change in web access applies to the next command.
     const workspace = new Workspace(keyring, users, {
@@ -212,7 +221,7 @@ export class Lyricad {
     await Promise.all(this.servers.map((s) => new Promise((r) => { s.close(r); s.closeAllConnections(); })));
     this.servers.length = 0;
     const s = this.services;
-    s?.web.close();
+    this.external.close();
     if (s) {
       await s.host.close();
       for (const id of this.mounted) await s.workspace.unmountHome(id).catch(() => {});
@@ -230,8 +239,8 @@ export class Lyricad {
    * connect, and only their X-Forwarded-For is believed. HTTPS with lyricad's
    * own certificate, or plain HTTP on a Tailscale address.
    */
-  private listenExternal(o: { address: string; port: number; tls?: { key: string; cert: string } }, web: WebAccess): Promise<Server> {
-    const trust: TrustForwarded = (remote) => web.proxies().includes(plainAddress(remote));
+  private listenExternal(o: External): Promise<Server> {
+    const trust: TrustForwarded = (remote) => this.external.proxies().includes(plainAddress(remote));
     const handler = (req: IncomingMessage, res: ServerResponse) => void this.handle(req, res, trust);
     const server: Server = o.tls ? createHttpsServer({ key: o.tls.key, cert: o.tls.cert, minVersion: "TLSv1.2" }, handler) : createServer(handler);
     server.on("connection", (socket) => { if (!trust(socket.remoteAddress ?? "")) socket.destroy(); });

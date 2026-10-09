@@ -85,7 +85,10 @@ export class Sandbox implements ExecutionTarget {
 
   /** Runs argv inside a fresh sandbox. */
   async run(argv: string[], o: RunOptions = {}): Promise<{ code: number | null; signal: NodeJS.Signals | null; stdout: Buffer; stderr: Buffer }> {
-    const { internet, services, hosts } = this.spec.network;
+    let { internet, services, hosts } = this.spec.network;
+    // The front door's names must resolve (now or before), or this run gets no network at all: its rules can't be trusted.
+    const frontAddresses = internet || services || hosts.length ? await resolveAddresses(this.spec.frontHosts ?? []) : [];
+    if (!frontAddresses) [internet, services, hosts] = [false, false, []];
     const networked = internet || services || hosts.length > 0;
     const resolved = await resolveHosts(hosts);
     // Files written into the sandbox's /etc. Hostnames are pinned when it starts;
@@ -108,7 +111,7 @@ export class Sandbox implements ExecutionTarget {
       const exclude = this.spec.exclude ?? [];
       const rules = nftRules(internet, resolved.rules, exclude, {
         addresses: this.spec.self ?? hostAddresses(), services, front: this.spec.front ?? [],
-        frontAddresses: await resolveAddresses(this.spec.frontHosts ?? []),
+        frontAddresses: frontAddresses ?? [],
       });
       // The front ports are never forwarded from loopback either, in case the proxy listens on every address.
       cmd = [this.spec.pasta ?? "pasta", ...pastaArgs({ internet, services, hosts: hosts.length > 0 }, [...exclude, ...(this.spec.front ?? [])]),
