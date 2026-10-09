@@ -83,7 +83,8 @@ endpoints.
   compaction, titles, embeddings, and each sleep phase.
 - A **control panel** sets default models per task, in a **cloud profile** and
   a **local profile**. Each thread can override which model handles which
-  task.
+  task, including the main conversation and its subagents. That applies to
+  every thread, with or without folders.
 - Each user lists the models Lyrica may choose by herself when delegating.
 - In a private or local-only thread, any attempt to use a cloud model, for any
   purpose, fails with an error. Nothing ever falls back across the local/cloud
@@ -206,8 +207,14 @@ Details in [docs/sleep.md](docs/sleep.md).
   - Shared drives (Samba, NFS) are host mounts, granted like any other folder.
   - Each user has an encrypted home workspace (gocryptfs) for uploads and
     working files, unlocked with that user's key.
-  - In private threads, tools have no internet unless the user's setting
-    allows it. It is off by default.
+  - Every thread has an internet switch for its tools. It is on by default in
+    the general pool and off by default in the private pool, with per-user
+    defaults and per-thread overrides.
+  - A workspace is just a thread with folders granted. It has the same
+    settings as any other thread: models for the main conversation and
+    subagents, local-only, internet, folders and permission mode.
+  - Subagents work in their parent's workspace and can only narrow its
+    settings, never widen them.
 - **Deployment:** `lyricad` runs as a systemd service, in practice inside an
   LXC container or VM on Li's Proxmox. No Docker. The host needs bubblewrap,
   gocryptfs, FUSE and unprivileged user namespaces. In an LXC container, that

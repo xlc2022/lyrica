@@ -293,6 +293,7 @@ interface ExecutionTarget {               // "sandbox" | "ssh:<name>"
 }
 targetFor(ctx: ThreadContext): ExecutionTarget
 grantsFor(ctx: ThreadContext): Grant[]    // the thread's chosen grants
+inheritSettings(parentThreadId, childThreadId, narrower?): void  // subagents: same or stricter, never wider
 mountHome(userId): Promise<string>        // gocryptfs; called when the user's key becomes available
 unmountHome(userId): Promise<void>
 ```
@@ -302,7 +303,9 @@ unmountHome(userId): Promise<void>
 - **Workspace settings live in the user's `user.db`:** allowed paths per pool,
   each thread's grants, network setting and permission mode, and SSH targets.
   Workspace never adds tables to the pool databases, which belong to Memory.
-- The network is unshared unless the thread allows it.
+- The network is unshared unless the thread's internet switch is on. Every
+  thread has the switch. The defaults are per user and per pool (general on,
+  private off), with a per-thread override.
 - See [workspace.md](workspace.md).
 
 ## integrations
