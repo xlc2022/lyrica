@@ -1,5 +1,11 @@
 {
   "name": "@lyrica/daemon",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "exports": { ".": "./src/index.ts", "./api": "./src/api.ts" },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "1.1.0",
+    "@lyrica/core": "*",
+    "@lyrica/extension": "*"
+  }
 }

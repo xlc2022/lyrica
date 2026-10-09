@@ -10,6 +10,17 @@ export interface ThreadTools {
   target(): ExecutionTarget;
   settings(): ThreadWorkspace;
   network(): Network;
+  /**
+   * Asks whoever is watching the thread whether a tool call may run. lyricad
+   * supplies it; without it, Pi's own UI asks, and with no UI the call is blocked.
+   */
+  approve?(request: ApprovalRequest): Promise<boolean>;
+}
+
+export interface ApprovalRequest {
+  toolCallId: string;
+  tool: string;
+  input: Record<string, unknown>;
 }
 
 type Create = (cwd: string, options: { operations: never }) => ToolDefinition;
@@ -51,7 +62,11 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
     pi.on("tool_call", async (event, ctx) => {
       const { mode } = tools.settings();
       if (!ASKS[mode].includes(event.toolName)) return undefined;
-      return (await approve(ctx, event.toolName, event.input)) ? undefined : { block: true, reason: "Not approved. Ask what to do instead." };
+      const input = event.input as Record<string, unknown>;
+      const allowed = tools.approve
+        ? await tools.approve({ toolCallId: event.toolCallId, tool: event.toolName, input })
+        : await approve(ctx, event.toolName, input);
+      return allowed ? undefined : { block: true, reason: "Not approved. Ask what to do instead." };
     });
 
     // Commands typed with "!" in the terminal run where her tools do.

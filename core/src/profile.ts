@@ -11,6 +11,10 @@ export interface Profile {
   pronouns: Pronouns;
   /** Earlier display names, oldest first. `until` is the ISO date of the rename. */
   previousNames: { name: string; until: string }[];
+  /** Persona colour in the web UI, "#rrggbb". */
+  accent?: string;
+  /** One or two letters. */
+  monogram?: string;
 }
 
 export const PRONOUN_PRESETS = {
@@ -34,4 +38,6 @@ export function checkProfile(p: Profile): void {
   for (const [form, value] of Object.entries(p.pronouns)) {
     if (!value.trim()) throw new Error(`pronoun form ${form} must not be empty`);
   }
+  if (p.accent !== undefined && !/^#[0-9a-f]{6}$/i.test(p.accent)) throw new Error("the accent colour looks like #rrggbb");
+  if (p.monogram !== undefined && !/^\p{L}{1,2}$/u.test(p.monogram)) throw new Error("a monogram is one or two letters");
 }

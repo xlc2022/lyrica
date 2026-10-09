@@ -6,6 +6,7 @@ import {
   type Pool, type Profile, type Pronouns, type User,
 } from "@lyrica/core";
 import { AgentSessionRuntime, InteractiveMode } from "@earendil-works/pi-coding-agent";
+import { Lyricad } from "@lyrica/daemon";
 import { openBench } from "./bench.ts";
 import { modelsAdmin, MODELS_USAGE } from "./models.ts";
 
@@ -26,17 +27,17 @@ const USAGE = `usage:
 ${MODELS_USAGE}
   lyrica dev --init <dir>
   lyrica dev --runtime <dir> --user <login> [--private | --local-only] [--debug-prompt]
-  lyrica serve | chat | mem      (not built yet)
+  lyrica serve [--port <port>]   (default 7340)
+  lyrica chat | mem              (not built yet)
 
-admin commands use --runtime <dir>, else LYRICA_HOME, else ./runtime.
+serve and admin commands use --runtime <dir>, else LYRICA_HOME, else ./runtime.
 Passwords are only read at a hidden prompt.`;
 
 const SEED = fileURLToPath(new URL("../persona", import.meta.url));
 const DEV_MARKER = "LYRICA_DEVELOPMENT_RUNTIME";
 const STUBS: Record<string, string> = {
-  serve: "lyrica serve starts lyricad, which the Web thread builds.",
-  chat: "lyrica chat is a client of lyricad, which the Web thread builds.",
-  mem: "lyrica mem is a client of lyricad, which the Web thread builds.",
+  chat: "lyrica chat, a client of lyricad, isn't built yet.",
+  mem: "lyrica mem, a client of lyricad, isn't built yet.",
 };
 
 async function run(argv: string[]): Promise<void> {
@@ -55,7 +56,39 @@ async function run(argv: string[]): Promise<void> {
     return admin(argv.slice(1), home);
   }
   if (cmd === "dev") return dev(argv.slice(1));
+  if (cmd === "serve") {
+    const home = flag("--runtime") ?? process.env.LYRICA_HOME ?? "runtime";
+    const port = Number(flag("--port") ?? 7340);
+    if (!Number.isInteger(port) || port <= 0 || port > 65535) throw new Error("--port needs a port number");
+    return serve(home, port);
+  }
   throw new Error(USAGE);
+}
+
+/**
+ * Starts lyricad. As a service it starts locked (or unlocked, with a saved
+ * passphrase); run by hand in a terminal, it asks for the passphrase instead.
+ */
+async function serve(home: string, port: number): Promise<void> {
+  const daemon = new Lyricad({ home, port });
+  if (!daemon.keyring.selfExists()) throw new Error(`${daemon.keyring.selfPath} does not exist; run "lyrica admin init"`);
+  let stopping = false;
+  const stop = async () => {
+    if (stopping) return;
+    stopping = true;
+    await daemon.stop();
+    process.exit(0);
+  };
+  process.on("SIGTERM", () => void stop());
+  process.on("SIGINT", () => void stop());
+  await daemon.start();
+  for (let tries = 0; daemon.locked && process.stdin.isTTY && tries < 3; tries++) {
+    try {
+      await daemon.unlock(await ask("self.db passphrase: ", true));
+    } catch (err) {
+      console.error((err as Error).message);
+    }
+  }
 }
 
 async function admin(args: string[], home: string): Promise<void> {

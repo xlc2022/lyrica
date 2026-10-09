@@ -26,10 +26,12 @@ export interface WorkspaceThread {
   threadId: string;
 }
 
-const safeName = (name: string, what: string) => {
-  if (!/^[A-Za-z0-9._:@ ()+,-]{1,200}$/.test(name) || name === "." || name === "..") throw new Error(`unusable ${what}: ${name}`);
-  return name;
-};
+/** An uploaded file's name made safe: no path, no control characters, at most 120 characters. */
+export function cleanUploadName(name: string): string {
+  const base = name.normalize("NFC").split(/[/\\]/).pop() ?? "";
+  const clean = base.replace(/[^\p{L}\p{N}._:@ ()+,'&-]/gu, "_").replace(/^[.\s]+/, "").trim().slice(0, 120);
+  return clean || "upload";
+}
 
 export interface WorkspaceOptions {
   /**
@@ -37,6 +39,11 @@ export interface WorkspaceOptions {
    * address. Required, so forgetting it can't leave them open; pass [] for none.
    */
   excludePorts: number[];
+  /**
+   * lyricad's front ports (Caddy's HTTPS): never reachable on this machine's
+   * own addresses, so a sandbox can't reach the API through the proxy. Default [443].
+   */
+  frontPorts?: number[];
   bwrap?: string;
   pasta?: string;
 }
@@ -64,6 +71,8 @@ export class Workspace {
     }
     return s;
   }
+
+  private get front(): number[] { return this.opts.frontPorts ?? [443]; }
 
   /** Where the user's home workspace is mounted. */
   homeDir(userId: string): string { return join(realpathSync(this.users.userDir(userId)), "home"); }
@@ -138,7 +147,7 @@ export class Workspace {
       // One allowed host that answers nothing: enough to start pasta and load the rules.
       const box = new Sandbox({
         workdir: dir, grants: [], network: { internet: false, services: false, hosts: ["192.0.2.1:9"] },
-        exclude: this.opts.excludePorts, bwrap: this.opts.bwrap, pasta: this.opts.pasta,
+        exclude: this.opts.excludePorts, front: this.front, bwrap: this.opts.bwrap, pasta: this.opts.pasta,
       });
       const r = await box.run(["bash", "-c", probe], { timeoutMs: 30_000 });
       const out = r.stdout.toString();
@@ -179,6 +188,7 @@ export class Workspace {
       grants: tw.grants,
       network: this.network(t),
       exclude: this.opts.excludePorts,
+      front: this.front,
       check: (g) => checkGrant(s.allowed(), t.pool, g),
       bwrap: this.opts.bwrap,
       pasta: this.opts.pasta,
@@ -198,12 +208,21 @@ export class Workspace {
     return target;
   }
 
-  /** Saves an uploaded file into the thread's uploads/ folder, from inside a sandbox. Returns the path she sees. */
+  /**
+   * Saves an uploaded file into the thread's uploads/ folder, from inside a
+   * sandbox. The name is cleaned, and a name already taken gets a suffix
+   * ("image-2.jpg"), so nothing is overwritten. Returns the path she sees.
+   */
   async saveUpload(t: WorkspaceThread, name: string, bytes: Buffer): Promise<string> {
-    safeName(name, "file name");
+    const clean = cleanUploadName(name);
+    const dot = clean.lastIndexOf(".");
+    const [stem, ext] = dot > 0 ? [clean.slice(0, dot), clean.slice(dot)] : [clean, ""];
+    // noclobber makes taking the name atomic: a file that appears meanwhile is never overwritten.
+    const script = 'mkdir -p uploads && n="$1$2" && i=2 && until (set -C; cat > "uploads/$n") 2>/dev/null; do ' +
+      '[ "$i" -gt 999 ] && exit 1; n="$1-$i$2"; i=$((i+1)); done && printf %s "$n"';
     const box = new Sandbox({ workdir: this.threadDir(t), grants: [], network: { internet: false, services: false, hosts: [] }, bwrap: this.opts.bwrap });
-    const r = await box.run(["sh", "-c", 'mkdir -p uploads && cat > "uploads/$1"', "sh", name], { input: bytes });
-    if (r.code !== 0) throw new Error(`could not save ${name}: ${r.stderr.toString().trim()}`);
-    return `${WORKDIR}/uploads/${name}`;
+    const r = await box.run(["sh", "-c", script, "sh", stem, ext], { input: bytes });
+    if (r.code !== 0) throw new Error(`could not save ${clean}: ${r.stderr.toString().trim()}`);
+    return `${WORKDIR}/uploads/${r.stdout.toString()}`;
   }
 }

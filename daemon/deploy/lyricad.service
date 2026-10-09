@@ -1,0 +1,44 @@
+# lyricad as a systemd service. Install as /etc/systemd/system/lyricad.service.
+# See docs/daemon.md ("Deployment").
+[Unit]
+Description=Lyrica (lyricad)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lyrica
+Group=lyrica
+Environment=LYRICA_HOME=/var/lib/lyrica
+# Creates both directories, owned by lyrica, before the service starts.
+StateDirectory=lyrica lyrica/credentials
+StateDirectoryMode=0700
+UMask=0077
+ExecStart=/opt/lyrica/bin/lyrica serve --port 7340
+# Saved credentials (self.db passphrase, users' keys), sealed by lyricad with
+# `systemd-creds encrypt --user`. systemd unseals them at start into
+# $CREDENTIALS_DIRECTORY as lyrica_<name>, readable only by this service.
+LoadCredentialEncrypted=lyrica:/var/lib/lyrica/credentials
+KillSignal=SIGTERM
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=5
+
+# Hardening. Lyrica's tools need unprivileged user namespaces (bubblewrap,
+# pasta) and the setuid fusermount3 (gocryptfs), so these must stay off:
+#   NoNewPrivileges, and everything that makes systemd set no_new_privs for
+#   a non-root service (they install seccomp filters): SystemCallFilter,
+#   SystemCallArchitectures, SystemCallLog, RestrictAddressFamilies,
+#   RestrictNamespaces, PrivateDevices, ProtectHostname, ProtectClock,
+#   ProtectKernelTunables, ProtectKernelModules, ProtectKernelLogs,
+#   MemoryDenyWriteExecute, RestrictRealtime, RestrictSUIDSGID,
+#   LockPersonality. Also off: DynamicUser (it implies several of these) and
+#   PrivateUsers (fusermount3 needs the real user).
+# The two kept are mount-namespace options with no seccomp filter. After
+# installing, check: grep NoNewPrivs /proc/$(systemctl show -p MainPID --value lyricad)/status
+# must say 0.
+ProtectControlGroups=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

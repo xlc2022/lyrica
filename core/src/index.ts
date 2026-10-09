@@ -1,4 +1,5 @@
 export * from "./types.ts";
+export * from "./credentials.ts";
 export * from "./db.ts";
 export * from "./keyring.ts";
 export * from "./users.ts";

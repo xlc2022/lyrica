@@ -15,6 +15,7 @@ export function runTool(cmd: string, args: string[], input = ""): Promise<string
       const text = Buffer.concat(out).toString().trim();
       code === 0 ? resolve(text) : reject(new Error(`${cmd} failed: ${text}`));
     });
+    child.stdin.on("error", () => {}); // it may exit without reading its input; the exit code says why
     child.stdin.end(input);
   });
 }

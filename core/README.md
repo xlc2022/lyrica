@@ -14,7 +14,11 @@ Keys, users and the persona store. No Pi dependency.
   - `subkey(userId, purpose)` derives a separate 256-bit key (HKDF-SHA256)
     for each purpose (`pool:general`, `pool:private`, `home`) from the user's
     data key. Purposes never share a key.
-  - `saveUserKey` and `forgetSavedKey` throw "not implemented".
+  - "Save credentials": `saveUserKey`, `forgetSavedKey`, `loadSavedKey`,
+    `saveSelfPassphrase` and `unlockSaved` go through a `CredentialStore`
+    that lyricad sets. **`credentials.ts`** (`SystemdCredentials`) seals with
+    `systemd-creds encrypt` and reads what systemd unsealed at start from
+    `$CREDENTIALS_DIRECTORY`. See [docs/daemon.md](../docs/daemon.md#saving-credentials).
 - **`users.ts`** (`Users`): `createUser` (the first must be an administrator),
   `authenticate` (also unlocks the key), `changePassword` (rewraps the same
   key, so data isn't re-encrypted), `setAdmin` (administrators only; the last
@@ -24,7 +28,8 @@ Keys, users and the persona store. No Pi dependency.
     five pronoun forms, and previous names with the date each ended) is
     separate and kept in `self.db`, so it can be edited and rendered while the
     user is locked.
-- **`profile.ts`**: the `Profile` type and the she/he/they pronoun presets.
+- **`profile.ts`**: the `Profile` type (with the web UI's accent colour and
+  monogram) and the she/he/they pronoun presets.
 - **`mentions.ts`**, pure functions:
   - `toStored(text, speaker)` turns `{user}`, `{user:obj}`, `{user:poss}`,
     `{user:poss-pro}` and `{user:refl}` into `[[u:ID]]`, `[[u:ID:obj]]` and
@@ -42,7 +47,8 @@ Keys, users and the persona store. No Pi dependency.
   `self.db` on first run. Every version of every file is a row in
   `persona_revisions`; the latest per path is current. `apply` (administrators
   only) adds a revision, and `read` returns the core files plus the topics
-  parsed from the matrix's front matter.
+  parsed from the matrix's front matter. `propose` records a change for an
+  administrator, who approves (applying it) or rejects it with `decide`.
 - **`store/`**: the pool databases and the privacy boundary (`Memory`,
   `openThreadView`, `openOwnerView`, `PoolStore`). See
   [docs/memory.md](../docs/memory.md#in-code).
