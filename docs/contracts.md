@@ -73,6 +73,9 @@ class Users {
   setAdmin(actor: User, target: User, admin: boolean): void  // refuses to demote the last admin
   updateProfile(actor: User, target: User, change): Profile  // self, or an admin; a rename appends to previousNames
   listUsers(actor: User): User[]                             // admins see everyone, others themselves
+  link(a: User, aPassword, b: User, bPassword): void          // the same person's users; needs both passwords
+  unlink(actor: User, other: User): void
+  linked(userId): string[]
   get(id): User | undefined; find(login): User | undefined; all(): User[]
 }
 
@@ -87,8 +90,9 @@ interface Profile {
 
 - **Where things live.** `self.db` holds a `users` index: login, admin flag,
   profile and wrapped key. It also holds global `settings` (such as
-  `sleep.time`), the persona's revisions and `persona_proposals`
-  (`PersonaStore.propose`, `proposals`, `decide`).
+  `sleep.time`), the persona's revisions, `user_links`, and the
+  `persona_proposals` that users have sent on (`PersonaStore.proposals`,
+  `decide`).
   - The wrapped key has to be readable before the user's own databases can
     open.
   - The profile and admin flag must stay readable and editable while the user
@@ -96,6 +100,13 @@ interface Profile {
   - Each user's `user.db` holds that user's settings. Their memory lives in the
     pool databases.
 - The theme (device, light or dark) is a display setting in `user.db`.
+- **Persona proposals start in the originating user's `user.db`**, encrypted
+  with that user's key, where only they can read, edit, drop or send them on.
+  Sending copies the proposal to `self.db` for the administrators. A proposal
+  from an administrator's own conversation is sent at once.
+- **A browser session holds only linked users.** Logging in as a user not
+  linked to the session's users ends the session first. Each user's "stay
+  unlocked after logout" choice lives in their `user.db` (default on).
 - The **login name** is separate from the display name, so renaming never
   affects signing in.
 - Pronoun presets are she/her, he/him and they/them, plus a custom option that
