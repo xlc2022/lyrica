@@ -298,9 +298,12 @@ openThreadSession({ thread, models, cwd, extensions, settings? })  // one thread
   - Offerings carry capabilities (`tools`, `vision`, `embedding`, `image`,
     `edit`), and pickers filter by the task.
   - Downloads go through a paired host's management API (`host/API.md`):
-    list a repository's files, start, progress, cancel. Shared hosts need an
-    administrator, and a gated repository's token comes from Lyrica's saved
-    credentials with each request.
+    list a repository's files, start, progress, cancel, and delete a file
+    under `lyrica/`. Shared hosts need an administrator. A gated
+    repository's token comes with each request from the hub tokens: a
+    user's in `user.db`, or a shared one in `self.db`, encrypted like
+    endpoint keys.
+  - Deleting an offering leaves a `removed` redirect, like Clean up.
 - A local endpoint is still declared, not inferred. `probe` warns, without
   blocking, when one resolves outside loopback, private or tailnet ranges.
 - **Shared endpoints** live in `self.db`. Only an administrator can change

@@ -32,10 +32,13 @@ phone (principle 1).
    - Profiles: one line per task showing what answers it now, opening to its
      ordered list (drag or arrows to reorder, add, remove) or **Same as**
      another task. Pickers offer only suitable models.
-   - The model library: search, filters, stars, and **Get a model** (host,
-     source, repository lookup with file choice, token for gated
-     repositories, progress).
-   - Model groups and Clean up, as in the mockup.
+   - The library: one row per model, opening to its copies, where groups
+     are made, reordered and undone; search, filters and stars;
+     **Download model** (host, source, repository lookup with file choice,
+     the saved token for gated repositories, progress); **Delete** with a
+     confirmation that lists where the copy is used; **Accounts** for hub
+     tokens.
+   - Clean up, as in the mockup.
    - Recent calls, with fallback notes.
    - The thread's model badge shows which model actually answered, and when
      a fallback was used.

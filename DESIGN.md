@@ -140,8 +140,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     - The router skips a member that can't handle the call, such as one
       without tool support when tools are needed, or one whose context
       window is smaller than the conversation, and moves on to the next.
-    - The group editor shows how members differ (quantisation, context
-      window, tools, vision) and warns about it.
+    - Groups live in the model library, not on a page of their own: each
+      model's row opens to its copies, and the grouped ones show how they
+      differ (quantisation, context window, tools, vision), with warnings.
     - Lyrica suggests groups but never creates them. A strong suggestion is
       the same file on two hosts, matched by checksum; a weak one is a
       matching name. The user confirms.
@@ -236,13 +237,24 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     subagents. A task with no list of its own follows Chat, as before;
   - a **model library** that stays usable with hundreds of models (an
     OpenRouter account, a large shared models folder):
+    - one row per model, which opens to its copies on every endpoint. That
+      is where groups are made, ordered and undone, and where Lyrica's
+      suggestions to group copies appear;
     - search, and filters by kind, endpoint and what a model can do (chat
-      with tools, vision, embeddings, images);
+      with tools, vision, embeddings, images), or groups only;
     - **starred** models, which pickers show first;
     - each picker offers only models suited to its task, so the embeddings
       task lists only embedding models;
-    - **Get a model:** ask a paired host to download one, from Hugging Face,
-      ModelScope or a link (see Downloads under the model host);
+    - **Download model:** ask a paired host to download one, from Hugging
+      Face, ModelScope or a link (see Downloads under the model host);
+    - **Delete** a copy Lyrica downloaded from a host, after a confirmation
+      that says where it's used. Lists that named it skip it, and its ID is
+      kept as removed so other users' lists are tidied when they next
+      unlock;
+    - **Accounts:** saved tokens for gated repositories on Hugging Face and
+      ModelScope. Like endpoint keys, a user's own token is encrypted in
+      their `user.db`, and an administrator can share one for every user in
+      `self.db`. A read-only token is enough;
   - each model host's GPUs, roles, pinned and loaded models, VRAM and queue,
     with pause, through the host's dashboard;
   - recent calls: which model answered, and when a fallback was used.
@@ -331,8 +343,12 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       downloads under a temporary name and appears only once it is checked.
     - Links are https only. Fetch checks every address it connects to,
       redirects included, and refuses this machine, the LAN and the tailnet.
-    - An access token for a gated repository stays in Lyrica's saved
-      credentials and travels with each request. The host never stores it.
+    - An access token for a gated repository comes from Lyrica's saved
+      tokens (see Accounts) and travels with each request. The host never
+      stores it.
+    - **Deleting** works only inside the `lyrica` subfolder, through fetch,
+      the folder's only writer. Files elsewhere in the shared folder, such
+      as LM Studio's, are never deleted. A loaded model is unloaded first.
     - Free space is checked first. A paused host still downloads. A finished
       model gets its offering ID at once, and Lyrica suggests adding it to a
       group of the same model.

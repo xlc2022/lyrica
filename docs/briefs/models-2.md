@@ -105,14 +105,24 @@ can be off, paused or busy gaming without Lyrica going dark.
      per-thread switch.
    - Tests must show that a private or local-only thread never resolves
      through Custom, even when it is the user's default.
-7. **The model library API.** Search and filter by kind, endpoint and
-   capability, with paging for hundreds of models, plus starring (per user).
-   - **Get a model:** list a repository's files on a chosen host (marking
+7. **The model library API.** One entry per model with its copies on every
+   endpoint, and the group they're in, if any. Search and filter by kind,
+   endpoint, capability and groups only, with paging for hundreds of models,
+   plus starring (per user).
+   - **Download model:** list a repository's files on a chosen host (marking
      files already there and those too big for its free space), start a
      download, follow its progress, cancel. It goes through the host's
      management API. Shared hosts need an administrator.
-   - A gated repository's token is kept in Lyrica's saved credentials (per
-     user, or shared by an administrator) and sent with each request.
+   - **Hub tokens** for Hugging Face and ModelScope: add, replace, remove.
+     A user's own is encrypted in `user.db`; an administrator can share one
+     in `self.db`. The API returns only the last four characters. The token
+     is sent with each request that needs it.
+   - **Delete** a copy Lyrica downloaded, through the host's management API,
+     returning first where it's used. It leaves a `removed` redirect. Shared
+     hosts need an administrator.
+   - Tests: a token never appears in an API response, a log or a call
+     record; deleting a shared-folder file is refused; deleting a copy in
+     use leaves every list working.
    - A finished download is discovered as a new offering at once, with a
      suggestion to add it to a group of the same model.
 8. **Ordered fallbacks** (the contract change already planned):
