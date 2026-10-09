@@ -183,12 +183,13 @@ export interface ThreadSummary {
 }
 
 /**
- * GET /api/u/:userId/threads → ThreadSummary[]
- * Honours the user's display filters (pools, hidden); `?all=1` ignores them.
- * Newest first. Subagents appear only under their parent.
+ * GET /api/u/:userId/threads?interface=web → ThreadSummary[]
+ * One interface's threads (default `web`), newest first. Honours the user's
+ * display filters (pools, hidden); `?all=1` ignores them. Subagents appear
+ * only under their parent.
  */
-/** POST /api/u/:userId/threads → ThreadSummary. Interface is always `web`. */
-export interface NewThread { pool: Pool; title?: string }
+/** POST /api/u/:userId/threads → ThreadSummary. The interface is `web` unless a local client asks for `cli`. */
+export interface NewThread { pool: Pool; title?: string; interface?: "web" | "cli" }
 /** GET /api/u/:userId/threads/:pool/:threadId → ThreadSummary */
 /** PATCH /api/u/:userId/threads/:pool/:threadId → ThreadSummary. Rename, hide or unhide. */
 export interface ThreadChange { title?: string; hidden?: boolean }
@@ -344,7 +345,7 @@ export interface PermissionRequest {
 
 // --- Memory browser (the owner view) ---
 
-export type MemoryKind = "note" | "page" | "journal" | "wake" | "entry";
+export type MemoryKind = "note" | "page" | "journal" | "wake" | "entry" | "thread";
 export type Origin = "lyrica" | "sleep" | "user";
 
 /** A user as mention tokens (`[[u:ID]]`, `[[u:ID:obj]]`…) render: current name and pronouns. */
@@ -390,9 +391,9 @@ export interface MemoryRevision { id: number; body: Pick<MemoryItem, "text" | "t
 /** GET /api/u/:userId/memory/:pool/:id → MemoryDetail */
 export interface MemoryDetail {
   item: MemoryItem;
-  /** What it cites. */
+  /** What it cites. IDs in the other pool carry it: `general/n:…`. */
   cameFrom: string[];
-  /** What cites it. */
+  /** What cites it. Private memory citing a general one shows as `private/n:…`. */
   usedIn: string[];
   revisions: MemoryRevision[];
   users: UserMap;
