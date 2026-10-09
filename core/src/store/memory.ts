@@ -8,7 +8,7 @@ import type { Pool } from "../types.ts";
 import type { Users } from "../users.ts";
 import { PoolReader, PoolStore, type Hit, type Item, type SearchOptions, type StoredEntry } from "./pool.ts";
 import { splitId } from "./refs.ts";
-import { POOL_SCHEMA } from "./schema.ts";
+import { POOL_SCHEMA, POOL_UPGRADES } from "./schema.ts";
 
 /**
  * Store handles for one conversation (or one sleep run). A general view holds
@@ -77,6 +77,7 @@ export class Memory {
     const db = openEncrypted(path, key);
     db.pragma("secure_delete = ON");
     db.exec(POOL_SCHEMA);
+    for (const u of POOL_UPGRADES) if (!db.prepare(u.check).get()) db.exec(u.sql);
     return db;
   }
 

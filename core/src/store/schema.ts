@@ -1,10 +1,12 @@
 /** A pool database (general.db or private.db). Owned by the Memory component alone. */
 export const POOL_SCHEMA = `
--- One conversation. parent: the thread it was forked, delegated or exported from.
+-- One conversation. parent: the thread it was forked, delegated or exported from;
+-- subagent: delegated, so the UI nests it under its parent.
 CREATE TABLE IF NOT EXISTS threads (
   id         TEXT PRIMARY KEY,
   interface  TEXT NOT NULL,
   parent     TEXT,
+  subagent   INTEGER NOT NULL DEFAULT 0,
   title      TEXT,
   hidden     INTEGER NOT NULL DEFAULT 0,
   unlogged   INTEGER NOT NULL DEFAULT 0,
@@ -94,3 +96,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS search USING fts5 (
   id UNINDEXED, kind UNINDEXED, text, tokenize = 'unicode61 remove_diacritics 2'
 );
 `;
+
+/** Brings an older pool database up to POOL_SCHEMA. */
+export const POOL_UPGRADES = [
+  { check: "SELECT 1 FROM pragma_table_info('threads') WHERE name = 'subagent'", sql: "ALTER TABLE threads ADD COLUMN subagent INTEGER NOT NULL DEFAULT 0" },
+];
