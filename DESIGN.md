@@ -506,7 +506,11 @@ it's off.
       place, never copied or deleted. Lyrica proposes recipes from matching
       parts, and offers to download missing ones. A proposed recipe does
       nothing until the user confirms it (an administrator on a shared
-      host). A file with no template for its architecture is kept as a file.
+      host). Proposals wait on a **To review** page of their own, with a
+      count on the Image models tab: grouped by host, filtered by ready or
+      parts missing, with **Use**, **Download parts** and **Ignore** for one
+      or many at once, so a scan that finds dozens of files stays easy. A
+      file with no template for its architecture is kept as a file.
     - Hugging Face, ModelScope and links, as for text models.
     - Unlike Invoke, parts are fixed in the recipe rather than chosen for
       each image, because Lyrica, not a person, makes the call.
