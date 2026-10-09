@@ -2,11 +2,19 @@
   "name": "lyrica",
   "private": true,
   "type": "module",
-  "workspaces": ["core", "extension", "daemon"],
-  "engines": { "node": ">=22" },
+  "workspaces": [
+    "core",
+    "extension",
+    "daemon",
+    "web"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "test": "vitest --run"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p web",
+    "test": "vitest --run",
+    "build": "npm run build -w @lyrica/web"
   },
   "dependencies": {
     "tsx": "4.20.6"
