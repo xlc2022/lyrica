@@ -27,7 +27,7 @@ bin/         launchers and admin commands
 
 | Term | Meaning |
 |---|---|
-| **User** | One of Li's personas, with its own login. Either an administrator or a normal user. |
+| **User** | One account with its own login and data: one of Li's, or another person's. Either an administrator or a normal user. Linked users belong to the same person. |
 | **Pool** | `general` or `private`. Each user has one of each. |
 | **Interface** | Where a thread lives: `web`, `cli`, `matrix`, `forum` or `sleep`. |
 | **Thread** | One conversation. It belongs to one user, one pool and one interface. |
@@ -80,7 +80,7 @@ interface Profile {
   displayName: string;                       // changeable at any time
   pronouns: { subj: string; obj: string; poss: string; possPro: string; refl: string };
   previousNames: { name: string; until: string }[];   // appended on rename
-  accent?: string;                           // persona colour in the web UI, "#rrggbb"
+  accent?: string;                           // the user's colour in the web UI, "#rrggbb"
   monogram?: string;                         // one or two letters
 }
 ```
