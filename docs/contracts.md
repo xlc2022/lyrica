@@ -296,7 +296,10 @@ openThreadSession({ thread, models, cwd, extensions, settings? })  // one thread
   - Local and cloud lists never mix kinds. Custom may, and is never offered
     to private or local-only threads.
   - Offerings carry capabilities (`tools`, `vision`, `embedding`, `image`,
-    `edit`), and pickers filter by the task.
+    `edit`, and `reasoning` with its levels), and pickers filter by the task.
+  - A thread's settings gain `thinking` (off, low, medium, high), with a
+    per-user default; the router passes it as Pi's thinking level when the
+    resolved model offers it, and reports when it can't.
   - Downloads go through a paired host's management API (`host/API.md`):
     list a repository's files, start, progress, cancel, and delete a file
     under `lyrica/`. Shared hosts need an administrator. A gated

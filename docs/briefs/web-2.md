@@ -53,6 +53,9 @@ phone (principle 1).
      tokens.
    - Clean up, as in the mockup.
    - Recent calls, with fallback notes.
+   - A thinking control in the message box (Off, Low, Medium, High; only
+     the current model's levels; hidden when it has none), and a note beside
+     the model badge when a fallback couldn't think.
    - The thread's model badge shows which model actually answered, and when
      a fallback was used.
 2. **The Sleep section** in the sidebar, as docs/sleep.md describes:

@@ -167,6 +167,21 @@ can be off, paused or busy gaming without Lyrica going dark.
      remove;
    - recent calls for the user: time, thread, task, answering model,
      fallback note. Never prompt text.
+9a. **Reasoning level.**
+   - The `reasoning` capability with its levels on offerings: discovered
+     where the endpoint says so (OpenAI-compatible model metadata, a host's
+     report for llama.cpp and vLLM models with a thinking switch), else set
+     by hand.
+   - A per-thread `thinking` setting (off, low, medium, high) with a
+     per-user default, passed through Pi's thinking level; mapped to
+     `reasoning_effort` for OpenAI-compatible endpoints and to the chat
+     template's thinking switch for host models that use one.
+   - The thread API reports the levels the current model offers, and a call
+     record notes when a fallback couldn't think.
+   - Thinking text is never indexed for recall and never logged.
+   - Tests: the level reaches the request for a model that offers it; a
+     model without it gets no thinking parameter and the call notes it;
+     thinking text isn't in search results.
 10. **Plain endpoints stay as they are.** Mark a local endpoint served over
    plain HTTP, outside this machine and the tailnet, as `unencrypted` in the
    API.
