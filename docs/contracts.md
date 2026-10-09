@@ -231,29 +231,23 @@ probe(endpointId: string): Promise<"up" | "down">
 
 ## delegate
 
-```ts
-delegate({ task: string, role?: "scout" | "researcher" | "reviewer" | "worker" | "oracle",
-           tier?: "cheap" | "strong", folders?: string[], readOnly?: boolean, internet?: boolean })
-  → { result: string, threadId: string }
-```
+One model-facing tool: `delegate({ action?, ... })`.
+- The default action runs work: `task` with an optional `role` and `tier`;
+  or `tasks: [...]` (parallel), `chain: [...]`, `loop`, `council`, or
+  `workflow: name`. Any of these can be `background: true`.
+- The other actions are `status`, `wait`, `stop`, `steer` and `answer`, each
+  on a run ID.
 
-- **Thread:** creates a child thread with `createThread({ parent, interface })`.
-  The thread records that it's a subagent, so the UI can nest it under the
-  parent.
-- **Workspace:** calls `workspace.inheritSettings` with any narrowing.
-- **Role:** selects a short prompt and a default tier. Scout, researcher and
-  reviewer default to cheap; worker and oracle to strong. An explicit `tier`
-  overrides the role's default. The prompts are adapted from `pi-subagents`
-  (MIT), with credit.
-- **Model:** uses the thread's `subagent.<tier>` model, resolved through the
-  same `CallContext`.
-- **Runs** a Pi session to completion and returns its final text.
-- **Subagents** get a short worker prompt with the task, the workspace tools,
-  and read-only memory (`recall`, `read_memory`), but not `remember`. Their
-  threads are ordinary threads, so sleep still learns from them unless they
-  are unlogged.
-- **Limits:** depth 1 (subagents can't delegate), and a per-thread limit on
-  concurrent subagents.
+Every run:
+- creates a child thread with `createThread({ parent, interface })`, recorded
+  as a subagent;
+- calls `workspace.inheritSettings` with any narrowing;
+- resolves its model through the router with the child's `CallContext`;
+- runs in-process in `lyricad`;
+- emits events (started, output, question, finished, stopped, interrupted)
+  for the web UI's live view.
+
+Full feature list: [delegation.md](delegation.md).
 
 ## extension
 
