@@ -12,19 +12,19 @@ async function enter(page: Page, baseURL: string): Promise<string> {
   await page.goto("/");
   const passphrase = page.getByLabel("Passphrase");
   const login = page.getByLabel("Login name");
-  const persona = page.getByText("Switch persona");
-  await expect(passphrase.or(login).or(persona)).toBeAttached();
+  const signedIn = page.getByText("Switch user");
+  await expect(passphrase.or(login).or(signedIn)).toBeAttached();
   if (await passphrase.isVisible()) {
     await passphrase.fill(PASSPHRASE);
     await page.getByRole("button", { name: "Unlock" }).click();
-    await expect(login.or(persona)).toBeAttached();
+    await expect(login.or(signedIn)).toBeAttached();
   }
   if (await login.isVisible()) {
     await login.fill("li");
     await page.getByLabel("Password").fill("pw");
     await page.getByRole("button", { name: "Log in" }).click();
   }
-  await expect(page.getByText("Switch persona")).toBeAttached();
+  await expect(page.getByText("Switch user")).toBeAttached();
   // Requests go through the page, which holds the session cookie.
   let userId = "";
   const api = (method: string, path: string, data?: unknown) => page.evaluate(async ([method, path, data]) => {
@@ -62,18 +62,24 @@ async function send(page: Page, text: string) {
 
 async function openSettings(page: Page) {
   await page.getByRole("button", { name: "Thread settings" }).click();
-  return page.getByRole("complementary", { name: "Thread settings" });
+  const drawer = page.getByRole("complementary", { name: "Thread settings" });
+  await drawer.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+  return drawer;
 }
 
+/** Body is overflow: hidden, so check the containers that scroll, and that nothing pokes past the viewport. */
 async function noHorizontalScroll(page: Page) {
-  const widths = await page.evaluate(() => {
-    const over = [...document.querySelectorAll<HTMLElement>("body *")]
-      .filter((el) => el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).overflowX === "auto" && el.closest("pre, table") === null)
-      .map((el) => el.className);
-    return { doc: document.documentElement.scrollWidth, view: innerWidth, over };
+  const found = await page.evaluate(() => {
+    const wide = [...document.querySelectorAll<HTMLElement>(".scroll, .head, .drawer-body, .memory-search, .memory-detail, .side")]
+      .filter((el) => el.scrollWidth > el.clientWidth + 1)
+      .map((el) => `${el.className}: ${el.scrollWidth} > ${el.clientWidth}`);
+    const past = [...document.querySelectorAll<HTMLElement>("body *")]
+      .filter((el) => el.offsetParent && el.closest("pre, table, .side, .menu") === null && el.getBoundingClientRect().right > innerWidth + 1)
+      .map((el) => `${el.tagName}.${el.className}`);
+    return { wide, past };
   });
-  expect(widths.doc).toBeLessThanOrEqual(widths.view);
-  expect(widths.over).toEqual([]);
+  expect(found.wide).toEqual([]);
+  expect(found.past).toEqual([]);
 }
 
 test("unlock, log in, start a thread, and see a streamed reply that survives a reload", async ({ page, baseURL }) => {
@@ -184,14 +190,52 @@ test("a memory can be added, edited and restored", async ({ page, baseURL }) => 
   await noHorizontalScroll(page);
 });
 
+test("turning Show private off hides an open private thread and private memory", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}/memory`);
+  await page.getByRole("button", { name: "Add a memory" }).click();
+  await page.locator("form.add-memory").getByLabel("Pool").selectOption("private");
+  await page.getByLabel("Text").fill("A private note about the garden.");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.locator("article.memory-item")).toContainText("about the garden");
+  const memoryUrl = page.url();
+
+  await newThread(page, "Private");
+  await send(page, "A private hello");
+  await expect(page.getByText("You said: A private hello")).toBeVisible();
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await page.getByLabel("Show private").click();
+  await expect(page.getByLabel("Show private")).not.toBeChecked();
+  if (phone(page)) await page.locator(".scrim").first().click({ position: { x: 370, y: 400 } });
+  await expect(page.getByRole("heading", { name: "Private is hidden" })).toBeVisible();
+  await expect(page.getByText("A private hello")).toHaveCount(0);
+
+  await page.goto(memoryUrl);
+  await expect(page.getByText("Private is hidden.")).toBeVisible();
+  await expect(page.getByText("about the garden")).toHaveCount(0);
+  await page.goto(`/#/u/${userId}/memory`);
+  await page.getByRole("searchbox", { name: "Search memory" }).fill("garden");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page.getByText("Nothing found.")).toBeVisible();
+
+  // Leave the filters as the other tests expect them.
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await page.getByLabel("Show private").click();
+  await expect(page.getByLabel("Show private")).toBeChecked();
+});
+
 test("no horizontal scrolling and big enough tap targets on a phone", async ({ page, baseURL }) => {
   test.skip(!phone(page), "phone only");
   const userId = await enter(page, baseURL!);
   await newThread(page, "General");
   await noHorizontalScroll(page);
-  for (const name of ["Show threads", "Thread settings", "Attach a file", "Send"]) {
-    const box = await page.getByRole("button", { name, exact: true }).boundingBox();
-    expect(box!.height, name).toBeGreaterThanOrEqual(44);
+  for (const button of [
+    page.getByRole("button", { name: "Show threads" }), page.getByRole("button", { name: "Thread settings" }),
+    page.getByRole("button", { name: /^Model:/ }), page.getByRole("button", { name: "Attach a file" }),
+    page.getByRole("button", { name: "Send" }),
+  ]) {
+    const box = await button.boundingBox();
+    expect(box!.height, await button.textContent() ?? "").toBeGreaterThanOrEqual(44);
   }
   await openSettings(page);
   await noHorizontalScroll(page);

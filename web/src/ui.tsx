@@ -1,5 +1,10 @@
 // Small pieces shared by every page.
 import { useCallback, useEffect, useRef, useState } from "react";
+import Markdown, { type Components } from "react-markdown";
+import type { Display, Pool } from "./api.ts";
+
+/** Whether the display filters hide a pool. Hiding only changes what's shown. */
+export const hidden = (d: Display, pool: Pool) => (pool === "private" ? !d.showPrivate : !d.showGeneral);
 
 /** Runs a request, tracking whether it's in flight and its error in plain words. */
 export function useAction(): [(fn: () => Promise<unknown>) => Promise<boolean>, boolean, string] {
@@ -81,3 +86,14 @@ export const shortTime = (iso: string) => {
   if (now.getTime() - d.getTime() < 6 * 864e5) return d.toLocaleDateString([], { weekday: "short" });
   return d.toLocaleDateString([], { day: "numeric", month: "short" });
 };
+
+/** Links open in a new tab; images are never loaded, only linked by their alt text. */
+const MARKDOWN: Components = {
+  a: ({ node: _, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+  img: ({ src, alt }) => (typeof src === "string" && src ? <a href={src} target="_blank" rel="noopener noreferrer">{alt || src}</a> : <>{alt}</>),
+};
+
+/** Markdown with raw HTML skipped. */
+export function Prose({ text }: { text: string }) {
+  return <Markdown skipHtml components={MARKDOWN}>{text}</Markdown>;
+}

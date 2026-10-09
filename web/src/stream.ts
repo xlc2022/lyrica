@@ -40,20 +40,19 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
     setHasMore(page.hasMore);
   }, [base, messages]);
 
-  // The event stream. EventSource reconnects by itself with Last-Event-ID; if
-  // it gives up (an HTTP error, say while lyricad restarts), we start a new one
-  // that passes the last ID it saw as a query parameter.
+  // The event stream. EventSource reconnects by itself with Last-Event-ID. If
+  // it gives up (an HTTP error, say while lyricad restarts), a new one can't
+  // send that header, so we reload from stored messages instead. One GET also
+  // checks the login, so a logout in another tab shows at once.
   useEffect(() => {
     let es: EventSource | undefined;
-    let lastId = "";
     let retry: ReturnType<typeof setTimeout> | undefined;
     let delay = 1000;
     let stopped = false;
     const open = () => {
-      es = new EventSource(`${base}/events${lastId ? `?lastEventId=${encodeURIComponent(lastId)}` : ""}`);
+      es = new EventSource(`${base}/events`);
       for (const type of EVENT_TYPES) {
         es.addEventListener(type, (m: MessageEvent<string>) => {
-          if (m.lastEventId) lastId = m.lastEventId;
           if (type === "hello") { setConnected(true); delay = 1000; }
           try { dispatch(JSON.parse(m.data) as ThreadEvent); } catch { /* not ours */ }
         });
@@ -61,7 +60,8 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
       es.onerror = () => {
         setConnected(false);
         if (es?.readyState !== EventSource.CLOSED || stopped) return;
-        retry = setTimeout(open, delay);
+        get(base).catch(() => {});
+        retry = setTimeout(() => { dispatch({ type: "reset" }); open(); }, delay);
         delay = Math.min(delay * 2, 30_000);
       };
     };

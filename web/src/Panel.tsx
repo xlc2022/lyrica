@@ -99,13 +99,15 @@ function ProfileSection({ ctx }: { ctx: ShellContext }) {
         {me.previousNames.length > 0 && <p className="muted small">Before: {me.previousNames.map((p) => `${p.name} (until ${p.until.slice(0, 10)})`).join(", ")}</p>}
         <PronounFields value={pronouns} onChange={setPronouns} />
         <div className="row wrap">
-          <label className="field narrow"><span>Accent colour</span>
-            <input type="color" value={accent || "#1f6f78"} onChange={(e) => setAccent(e.target.value)} />
-          </label>
+          <div className="field narrow">
+            <label className="field"><span>Accent colour</span>
+              <input type="color" value={accent || "#1f6f78"} onChange={(e) => setAccent(e.target.value)} />
+            </label>
+            {accent && <button type="button" className="quiet small" onClick={() => setAccent("")}>Default colour</button>}
+          </div>
           <label className="field narrow"><span>Monogram</span>
             <input maxLength={2} value={monogram} placeholder={name.slice(0, 2)} onChange={(e) => setMonogram(e.target.value)} />
           </label>
-          {accent && <button type="button" className="quiet" onClick={() => setAccent("")}>Default colour</button>}
         </div>
         <ErrorText error={error} />
         <div className="row"><button className="primary" disabled={busy || !name.trim()}>Save profile</button></div>

@@ -43,7 +43,7 @@ function Unlock({ onDone }: { onDone: (s: State) => void }) {
       <p className="muted">Lyrica is locked. Enter the passphrase to unlock her.</p>
       <form className="stack" onSubmit={(e) => { e.preventDefault(); run(() => post<State>("/api/unlock", { passphrase }).then(onDone)); }}>
         <label className="field"><span>Passphrase</span>
-          <input type="password" autoComplete="current-password" autoFocus value={passphrase} onChange={(e) => setPassphrase(e.target.value)} />
+          <input type="password" autoComplete="off" autoFocus value={passphrase} onChange={(e) => setPassphrase(e.target.value)} />
         </label>
         <ErrorText error={error} />
         <button className="primary" disabled={busy || !passphrase}>Unlock</button>
@@ -57,7 +57,7 @@ function Login({ canCancel, onDone }: { canCancel: boolean; onDone: (userId: str
   const [password, setPassword] = useState("");
   const [run, busy, error] = useAction();
   return (
-    <Gate title={canCancel ? "Add a persona" : "Log in"}>
+    <Gate title={canCancel ? "Add a user" : "Log in"}>
       <form className="stack" onSubmit={(e) => { e.preventDefault(); run(() => post<LoginResponse>("/api/login", { login, password }).then((r) => onDone(r.user.id))); }}>
         <label className="field"><span>Login name</span>
           <input autoComplete="username" autoCapitalize="none" autoFocus value={login} onChange={(e) => setLogin(e.target.value)} />

@@ -4,7 +4,8 @@ The browser interface to `lyricad`, in `web/`: React and TypeScript, built
 with Vite into `web/dist`, which `lyricad` serves under its Content Security
 Policy. It talks to the API in `daemon/src/api.ts` with `fetch` and one
 `EventSource` per open thread, and imports only its types (and
-`THREAD_TASKS`).
+`THREAD_TASKS`). It also imports `core/src/mentions.ts`, a pure function, to
+render mention tokens.
 
 ## Pages
 
@@ -12,12 +13,15 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
 `…/panel`, `#/login`), so `lyricad` serves a single file.
 
 - **Unlock** while `lyricad` is locked, then **login**. A browser can hold
-  several users; the persona menu switches between them, adds one, logs one
+  several users; the user menu switches between them, adds one, logs one
   out, or **Lock**s one.
-- **Sidebar:** the persona, the Show general, Show private and Show hidden
+- **Sidebar:** the user, the Show general, Show private and Show hidden
   threads filters (saved per user), New thread (general or private), the
   thread list with subagents behind `›`, and links to Memory and the Control
-  panel.
+  panel. Private threads carry a small lock in the private colour.
+- **Hidden pools:** with Show general or Show private off, a thread or
+  memory from that pool shows "General is hidden" or "Private is hidden"
+  instead, and memory search leaves the pool out.
 - **Thread:** a header with the title, the pool badge, the model badge
   (cloud or local, model and endpoint; it opens the model picker), and folder
   badges. Below it the conversation and the composer.
@@ -42,7 +46,9 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
 
 ## Chat
 
-- Her messages are prose, rendered with `react-markdown` (raw HTML skipped).
+- Her messages are prose, rendered with `react-markdown`. Raw HTML is
+  skipped, links open in a new tab, and images are never loaded: they show
+  as a link with their alt text.
   The user's sit in a tinted block.
 - Thinking, recalls, saved notes and tool calls are one-line markers that
   expand when tapped. A `delegate` call is a card that opens the subagent's
@@ -50,27 +56,31 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
 - Permission requests appear inline with Allow and Deny and the time left.
 - Errors from the stream (a refused model, an endpoint that's down) are shown
   as sent, in plain words.
-- A message sent during a turn waits as a follow-up and shows as waiting;
-  Stop aborts the turn.
+- A message sent during a turn waits as a follow-up and shows as waiting.
+  Stop aborts the turn; `lyricad` drops the waiting follow-ups, so their text
+  goes back into the composer.
 - `src/live.ts` turns stream events into the in-progress turn. When a turn
   ends, the stored messages are reloaded and the live copy is dropped.
-  `EventSource` reconnects with `Last-Event-ID`; if it gives up, a new one
-  passes the last ID as `?lastEventId=`. A `reset`, or a reconnect that finds
-  the turn already over, reloads the stored messages.
+  `EventSource` reconnects with `Last-Event-ID`. If it gives up, a new one
+  can't send that header, so the UI starts again from the stored messages,
+  and one request checks whether the login still holds. A `reset`, or a
+  reconnect that finds the turn already over, also reloads the stored
+  messages.
 - Files attach with the button, by dragging onto the composer, or by pasting.
   Each shows its progress, and its path in the thread goes into the draft.
 
 ## Look
 
 `src/app.css` holds the design tokens as custom properties. The accent is the
-persona's (`--persona`), lightened in dark mode; cloud, local and private
+user's (`--user-accent`), lightened in dark mode; cloud, local and private
 keep fixed colours. The theme follows the device unless the user overrides it.
 System fonts only.
 
 Below 760 px the sidebar and drawer become overlays, and the model picker
-spans the screen. Touch screens get 44 px tap targets. The page uses
-`interactive-widget=resizes-content`, so the composer stays above the
-keyboard. `public/manifest.webmanifest` makes it installable. Reduced motion
+spans the screen. Touch screens get 44 px tap targets. The app is sized to the visual
+viewport (`--vvh`, for iOS) and the page asks for
+`interactive-widget=resizes-content` (for Android), so the composer stays
+above the keyboard, and the login and unlock card scrolls. `public/manifest.webmanifest` makes it installable. Reduced motion
 turns animations off.
 
 ## Checks

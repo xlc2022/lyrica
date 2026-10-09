@@ -5,7 +5,7 @@ import { href, go, type Route } from "./route.ts";
 import { Thread } from "./Thread.tsx";
 import { Memory } from "./Memory.tsx";
 import { Panel } from "./Panel.tsx";
-import { ErrorText, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { ErrorText, hidden, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 export interface ShellContext {
   user: UserCard;
@@ -38,7 +38,9 @@ export function Shell({ user, users, route, onAuthChange }: { user: UserCard; us
     <div className="app" data-side-open={sideOpen}>
       <Sidebar ctx={ctx} users={users} route={route} threads={threads.data ?? []} error={threads.error} onAuthChange={onAuthChange} />
       <div className="scrim" aria-hidden="true" onClick={() => setSideOpen(false)} />
-      {route.page === "thread" ? (
+      {route.page === "thread" && hidden(me.data.display, route.pool) ? (
+        <HiddenPool ctx={ctx} pool={route.pool} />
+      ) : route.page === "thread" ? (
         <Thread key={`${route.pool}/${route.threadId}`} ctx={ctx} pool={route.pool} threadId={route.threadId} threads={threads.data ?? []} />
       ) : route.page === "memory" ? (
         <Memory ctx={ctx} pool={route.pool} id={route.id} />
@@ -51,7 +53,7 @@ export function Shell({ user, users, route, onAuthChange }: { user: UserCard; us
   );
 }
 
-/** Theme and the persona's accent and monogram. */
+/** Theme and the user's accent and monogram. */
 function useLook(me?: Me) {
   const theme = me?.display.theme;
   const accent = me?.user.accent;
@@ -59,9 +61,23 @@ function useLook(me?: Me) {
     const root = document.documentElement;
     if (!theme || theme === "device") delete root.dataset.theme;
     else root.dataset.theme = theme;
-    if (accent) root.style.setProperty("--persona", accent);
-    else root.style.removeProperty("--persona");
+    if (accent) root.style.setProperty("--user-accent", accent);
+    else root.style.removeProperty("--user-accent");
   }, [theme, accent]);
+}
+
+/** In place of a thread or memory from a pool the filters hide. */
+export function HiddenPool({ ctx, pool }: { ctx: ShellContext; pool: Pool }) {
+  const name = pool === "private" ? "Private" : "General";
+  return (
+    <main className="main">
+      <header className="head">
+        <button type="button" className="menu-btn" aria-label="Show threads" onClick={ctx.openSide}>☰</button>
+        <div className="head-title"><h1>{name} is hidden</h1></div>
+      </header>
+      <div className="welcome"><p>Turn on Show {pool} in the sidebar to see it.</p></div>
+    </main>
+  );
 }
 
 export const monogram = (user: UserCard) => user.monogram || user.displayName.slice(0, 2);
@@ -85,7 +101,7 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange }: {
   return (
     <aside className="side" aria-label="Threads">
       <div className="brand">Lyrica</div>
-      <PersonaMenu ctx={ctx} users={users} onAuthChange={onAuthChange} />
+      <UserMenu ctx={ctx} users={users} onAuthChange={onAuthChange} />
       <fieldset className="filters">
         <legend className="sr-only">Show</legend>
         <label><input type="checkbox" checked={me.display.showGeneral} onChange={(e) => setDisplay({ showGeneral: e.target.checked })} /> Show general</label>
@@ -142,19 +158,21 @@ function ThreadLink({ t, userId, on }: { t: ThreadSummary; userId: string; on: b
   const when = t.updatedAt;
   return (
     <a className="thread" href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })} aria-current={on ? "page" : undefined}>
-      <span className="pool-dot" data-pool={t.pool} title={t.pool} />
+      {t.pool === "private"
+        ? <svg className="pool-lock" viewBox="0 0 12 14" aria-hidden="true"><rect x="1" y="6" width="10" height="7.5" rx="1.5" /><path d="M3.5 6V4.2a2.5 2.5 0 0 1 5 0V6" fill="none" strokeWidth="1.6" /></svg>
+        : <span className="pool-dot" aria-hidden="true" />}
       <span className="title">{t.title || "New thread"}</span>
       <span className="when">
         {t.busy && <span className="busy" title="Working" />}
         {t.hidden && <span className="flag">hidden</span>}
         {shortTime(when)}
       </span>
-      <span className="sr-only">{t.pool} thread</span>
+      {t.pool === "private" && <span className="sr-only">private</span>}
     </a>
   );
 }
 
-function PersonaMenu({ ctx, users, onAuthChange }: { ctx: ShellContext; users: UserCard[]; onAuthChange: () => void }) {
+function UserMenu({ ctx, users, onAuthChange }: { ctx: ShellContext; users: UserCard[]; onAuthChange: () => void }) {
   const { user } = ctx;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -169,10 +187,10 @@ function PersonaMenu({ ctx, users, onAuthChange }: { ctx: ShellContext; users: U
     onAuthChange();
   });
   return (
-    <div className="persona-menu" ref={ref}>
-      <button type="button" className="persona" aria-expanded={open} aria-haspopup="true" onClick={() => setOpen(!open)}>
+    <div className="user-menu" ref={ref}>
+      <button type="button" className="user-switch" aria-expanded={open} aria-haspopup="true" onClick={() => setOpen(!open)}>
         <span className="avatar" aria-hidden="true">{monogram(user)}</span>
-        <span><b>{user.displayName}</b><small>Switch persona</small></span>
+        <span><b>{user.displayName}</b><small>Switch user</small></span>
         <span className="caret-down" aria-hidden="true">▾</span>
       </button>
       {open && (
@@ -182,7 +200,7 @@ function PersonaMenu({ ctx, users, onAuthChange }: { ctx: ShellContext; users: U
               <span className="avatar small" style={x.accent ? { background: x.accent } : undefined} aria-hidden="true">{monogram(x)}</span>{x.displayName}
             </a>
           ))}
-          <a href="#/login" onClick={() => setOpen(false)}>Add a persona…</a>
+          <a href="#/login" onClick={() => setOpen(false)}>Add a user…</a>
           <button type="button" onClick={() => leave("/api/logout", { userId: user.id })}>Log out {user.displayName}</button>
           <button type="button" onClick={() => leave(u(user.id, "lock"), {})}>Lock {user.displayName}</button>
           <ErrorText error={error} />

@@ -1,11 +1,11 @@
 /* The Quiet look (DESIGN.md, "How the web UI looks"). Colour comes from the
-   persona's accent (--persona, set from her profile); cloud, local and private
+   user's accent (--user-accent, set from their profile); cloud, local and private
    keep fixed colours so they always mean the same thing. */
 :root {
-  --persona: #1f6f78;
+  --user-accent: #1f6f78;
   --bg: #f7f8f8; --panel: #ffffff; --side: #f0f2f2; --fg: #1d2626; --muted: #5d6969;
   --line: #dfe5e5; --tool: #f3f5f5; --danger: #a8322d; --ok: #26704a;
-  --accent: var(--persona); --accent-fg: #ffffff;
+  --accent: var(--user-accent); --accent-fg: #ffffff;
   --cloud: #9a5b12; --local: #26704a; --private: #6b3fa0;
   --user-block: color-mix(in oklab, var(--accent) 9%, var(--panel));
   --ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -17,7 +17,7 @@
   :root:not([data-theme="light"]) {
     --bg: #141818; --panel: #1a1f1f; --side: #171c1c; --fg: #e3eaea; --muted: #9aa8a8;
     --line: #2a3333; --tool: #1e2424; --danger: #f08a80; --ok: #7fc79a;
-    --accent: color-mix(in oklab, var(--persona) 55%, white); --accent-fg: #0f1414;
+    --accent: color-mix(in oklab, var(--user-accent) 55%, white); --accent-fg: #0f1414;
     --cloud: #e3a95b; --local: #7fc79a; --private: #b896e8;
     color-scheme: dark;
   }
@@ -25,17 +25,15 @@
 :root[data-theme="dark"] {
   --bg: #141818; --panel: #1a1f1f; --side: #171c1c; --fg: #e3eaea; --muted: #9aa8a8;
   --line: #2a3333; --tool: #1e2424; --danger: #f08a80; --ok: #7fc79a;
-  --accent: color-mix(in oklab, var(--persona) 55%, white); --accent-fg: #0f1414;
+  --accent: color-mix(in oklab, var(--user-accent) 55%, white); --accent-fg: #0f1414;
   --cloud: #e3a95b; --local: #7fc79a; --private: #b896e8;
   color-scheme: dark;
 }
-@media (pointer: coarse) {
-  :root { --tap: 44px; }
-  button.badge { min-height: var(--tap); }
-}
+@media (pointer: coarse) { :root { --tap: 44px; } }
 
 * { box-sizing: border-box; }
-html, body, #root { height: 100%; margin: 0; }
+html, body { height: 100%; margin: 0; }
+#root { height: var(--vvh, 100dvh); }
 body { background: var(--bg); color: var(--fg); font: 15px/1.45 var(--ui); -webkit-text-size-adjust: 100%; overflow: hidden; }
 a { color: var(--accent); }
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -79,8 +77,8 @@ fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 [data-kind="general"] > .k { color: var(--muted); }
 
 /* ---- Unlock and login ---- */
-.gate { min-height: 100%; display: grid; place-items: center; padding: 16px; overflow-y: auto; }
-.gate-card { width: min(380px, 100%); display: grid; gap: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; }
+.gate { height: 100%; display: flex; padding: 16px; overflow-y: auto; }
+.gate-card { margin: auto; width: min(380px, 100%); display: grid; gap: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; }
 .gate-card h1 { font-size: 1.4rem; }
 .gate-card p { margin: 0; }
 .loading { padding: 24px; }
@@ -89,11 +87,11 @@ fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 .app { height: 100%; display: grid; grid-template-columns: 272px minmax(0, 1fr); position: relative; overflow: hidden; }
 .side { background: var(--side); border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; padding: 14px 10px 10px; min-height: 0; overflow: hidden; }
 .brand { font-size: 1.4rem; font-weight: 600; padding-inline: 6px; }
-.persona-menu { position: relative; }
-.persona { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; padding: 8px 10px; min-height: 48px; border-radius: var(--radius); }
-.persona b { display: block; }
-.persona small { color: var(--muted); }
-.persona .caret-down { margin-left: auto; color: var(--muted); }
+.user-menu { position: relative; }
+.user-switch { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; padding: 8px 10px; min-height: 48px; border-radius: var(--radius); }
+.user-switch b { display: block; }
+.user-switch small { color: var(--muted); }
+.user-switch .caret-down { margin-left: auto; color: var(--muted); }
 .avatar { width: 30px; height: 30px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-fg); font-weight: 600; font-size: 0.8rem; }
 .avatar.small { width: 24px; height: 24px; font-size: 0.7rem; color: #fff; }
 .menu { position: absolute; z-index: 10; left: 0; right: 0; top: calc(100% + 4px); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 6px; display: grid; gap: 2px; box-shadow: 0 8px 30px rgb(0 0 0 / 0.15); }
@@ -116,7 +114,7 @@ button.private { color: var(--private); border-color: color-mix(in oklab, var(--
 .children { list-style: none; margin: 0 0 4px 24px; padding: 0; display: grid; gap: 2px; }
 .children .thread { font-size: 0.88rem; padding-left: 8px; }
 .pool-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
-.pool-dot[data-pool="private"] { background: transparent; box-shadow: inset 0 0 0 2px var(--private); border-radius: 2px; }
+.pool-lock { width: 10px; height: 12px; fill: var(--private); stroke: var(--private); }
 .flag { font-size: 0.68rem; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 .busy { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.3; } }
@@ -289,4 +287,16 @@ main > .head, .composer, .subnote, .offline { flex: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* Touch screens: every control is at least 44 px. Last, so nothing above overrides it. */
+@media (pointer: coarse) {
+  button.badge, .chev, .chips button, .check, .filters label, .marker > button, .picker-item { min-height: 44px; }
+  .chev { width: 44px; height: 44px; }
+  .threads .row { grid-template-columns: 44px minmax(0, 1fr); }
+  .children { margin-left: 44px; }
+  .chips button { min-width: 44px; }
+  .hits input, .check input, .filters input { width: 22px; height: 22px; }
+  .hits li { grid-template-columns: 44px minmax(0, 1fr); }
+  .hits li > input { justify-self: center; }
 }

@@ -8,11 +8,11 @@
     "e2e": "playwright test"
   },
   "devDependencies": {
+    "@lyrica/daemon": "*",
     "@playwright/test": "1.56.1",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
-    "vite": "7.1.12",
-    "@lyrica/daemon": "*"
+    "vite": "7.3.7"
   },
   "dependencies": {
     "react": "19.2.0",

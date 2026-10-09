@@ -29,7 +29,9 @@ export type LiveAction =
   /** She sent a message that started a turn. */
   | { type: "sent"; text: string }
   /** The stored messages were reloaded, so the live copy can go. */
-  | { type: "stored" };
+  | { type: "stored" }
+  /** She pressed Stop; lyricad drops the queue, and its text went back to the composer. */
+  | { type: "stopping" };
 
 export function liveReducer(s: Live, e: LiveAction): Live {
   switch (e.type) {
@@ -79,6 +81,8 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       return { ...s, busy: false, permissions: [], reload: s.reload + 1, ended: s.items.length };
     case "stored":
       return { ...s, items: s.items.slice(s.ended), ended: 0 };
+    case "stopping":
+      return { ...s, queued: [] };
     case "usage":
     case "delegation":
       return s;

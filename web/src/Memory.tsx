@@ -1,14 +1,13 @@
 // The memory browser: search, read with lineage, edit with history, delete, add.
 import { useEffect, useState } from "react";
-import Markdown from "react-markdown";
 import {
-  del, get, patch, post, u, HttpError,
+  del, get, patch, post, u,
   type MemoryDetail, type MemoryHit, type MemoryKind, type Pool,
 } from "./api.ts";
 import { fromEditable, readable, toEditable } from "./mentions.ts";
-import { go, href } from "./route.ts";
+import { go, href, idHref } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
-import { Confirm, ErrorText, shortTime, useAction, useLoad } from "./ui.tsx";
+import { Confirm, ErrorText, hidden, Prose, shortTime, useAction, useLoad } from "./ui.tsx";
 
 const KINDS: { kind: MemoryKind; label: string }[] = [
   { kind: "note", label: "Notes" },
@@ -33,6 +32,7 @@ export function Memory({ ctx, pool, id }: { ctx: ShellContext; pool?: Pool; id?:
         <Search ctx={ctx} current={id} />
         <div className="memory-detail">
           {adding ? <AddMemory userId={userId} onDone={(d) => { setAdding(false); if (d) go({ page: "memory", userId, pool: d.item.pool, id: d.item.id }); }} />
+            : id && pool && hidden(ctx.me.display, pool) ? <p className="muted empty">{pool === "private" ? "Private" : "General"} is hidden. Turn on Show {pool} in the sidebar to see it.</p>
             : id && pool ? <Detail key={`${pool}/${id}`} userId={userId} pool={pool} id={id} />
             : <p className="muted empty">Search, or pick a memory to read it.</p>}
         </div>
@@ -54,13 +54,11 @@ function Search({ ctx, current }: { ctx: ShellContext; current?: string }) {
   const params = new URLSearchParams();
   if (query) params.set("q", query);
   if (pool) params.set("pool", pool);
-  // A pool chosen here is shown even if the sidebar hides it.
-  if (pool) params.set("all", "1");
   params.set("kinds", kinds.join(","));
   if (userOnly) params.set("origin", "user");
   params.set("limit", "50");
   const search = params.toString();
-  const hits = useLoad(() => (query || userOnly ? get<MemoryHit[]>(`${u(userId, "memory", "search")}?${search}`) : Promise.resolve([])), [userId, search]);
+  const hits = useLoad(() => (query || userOnly ? get<MemoryHit[]>(`${u(userId, "memory", "search")}?${search}`) : Promise.resolve([])), [userId, search, ctx.me.display.showGeneral, ctx.me.display.showPrivate]);
   useEffect(() => setPicked([]), [search]);
 
   const forget = () => run(async () => {
@@ -124,13 +122,7 @@ function Search({ ctx, current }: { ctx: ShellContext; current?: string }) {
 }
 
 function Detail({ userId, pool, id }: { userId: string; pool: Pool; id: string }) {
-  // Recall markers in a private thread may point at general memory: try the other pool too.
-  const d = useLoad(async () => {
-    try { return await get<MemoryDetail>(u(userId, "memory", pool, id)); } catch (e) {
-      if (!(e instanceof HttpError && e.status === 404) || pool === "general") throw e;
-      return await get<MemoryDetail>(u(userId, "memory", "general", id));
-    }
-  }, [userId, pool, id]);
+  const d = useLoad(() => get<MemoryDetail>(u(userId, "memory", pool, id)), [userId, pool, id]);
   const [editing, setEditing] = useState(false);
   const [run, busy, error] = useAction();
   if (!d.data) return <ErrorText error={d.error} />;
@@ -155,7 +147,7 @@ function Detail({ userId, pool, id }: { userId: string; pool: Pool; id: string }
         : (
           <>
             {item.summary && <p className="summary">{readable(item.summary, users)}</p>}
-            <div className="prose"><Markdown skipHtml>{readable(item.text, users)}</Markdown></div>
+            <div className="prose"><Prose text={readable(item.text, users)} /></div>
             <div className="row">
               <button type="button" onClick={() => setEditing(true)}>Edit</button>
               <button type="button" onClick={() => act(() => post<MemoryDetail>(`${path}/archive`, { archived: !item.archived }))}>{item.archived ? "Unarchive" : "Archive"}</button>
@@ -175,7 +167,7 @@ function Detail({ userId, pool, id }: { userId: string; pool: Pool; id: string }
               <li key={r.id}>
                 <details>
                   <summary>{shortTime(r.createdAt)} · {users[r.author]?.displayName ?? r.author}</summary>
-                  <div className="prose small"><Markdown skipHtml>{readable(r.body.text, users)}</Markdown></div>
+                  <div className="prose small"><Prose text={readable(r.body.text, users)} /></div>
                   <button type="button" disabled={busy} onClick={() => act(() => post<MemoryDetail>(`${path}/restore`, { revision: r.id }))}>Restore this version</button>
                 </details>
               </li>
@@ -222,16 +214,8 @@ function Lineage({ userId, pool, title, ids }: { userId: string; pool: Pool; tit
   );
 }
 
-/**
- * Threads and their messages open the thread; everything else opens the
- * memory. An ID in the other pool carries it: `general/n:12`.
- */
 function MemoryLink({ userId, pool, id }: { userId: string; pool: Pool; id: string }) {
-  const [, other, bare = id] = /^(?:(general|private)\/)?(.*)$/.exec(id) ?? [];
-  const p = (other as Pool | undefined) ?? pool;
-  const thread = /^[te]:([^#]+)/.exec(bare)?.[1];
-  const to = thread ? href({ page: "thread", userId, pool: p, threadId: thread }) : href({ page: "memory", userId, pool: p, id: bare });
-  return <a href={to}>{id}</a>;
+  return <a href={idHref(userId, pool, id)}>{id}</a>;
 }
 
 function AddMemory({ userId, onDone }: { userId: string; onDone: (d?: MemoryDetail) => void }) {

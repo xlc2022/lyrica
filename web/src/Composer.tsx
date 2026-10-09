@@ -5,8 +5,10 @@ import { upload } from "./api.ts";
 
 interface Upload { id: number; name: string; progress: number; error?: string }
 
-export function Composer({ base, busy, readOnly, onSend, onStop }: {
+export function Composer({ base, busy, readOnly, restored, onSend, onStop }: {
   base: string; busy: boolean; readOnly: boolean; onSend: (text: string) => Promise<boolean>; onStop: () => void;
+  /** Text handed back, such as follow-ups that Stop dropped. */
+  restored: string;
 }) {
   const [draft, setDraft] = useState("");
   const [uploads, setUploads] = useState<Upload[]>([]);
@@ -14,6 +16,8 @@ export function Composer({ base, busy, readOnly, onSend, onStop }: {
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const nextId = useRef(0);
+
+  useEffect(() => { if (restored) setDraft((d) => (d ? `${restored}\n\n${d}` : restored)); }, [restored]);
 
   // Grow with the text, up to the CSS max-height.
   useEffect(() => {

@@ -1,12 +1,11 @@
 // The conversation: stored messages, then what's streaming now.
 import { useEffect, useState } from "react";
-import Markdown from "react-markdown";
 import { post, type Message, type MessagePart, type PermissionRequest, type Pool, type ThreadSummary } from "./api.ts";
 import type { LiveItem } from "./live.ts";
-import { href } from "./route.ts";
+import { href, idHref } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
 import type { useThread } from "./stream.ts";
-import { ErrorText, useAction } from "./ui.tsx";
+import { ErrorText, Prose, useAction } from "./ui.tsx";
 
 interface Props {
   ctx: ShellContext;
@@ -78,7 +77,7 @@ function Parts({ parts, env, model, streaming }: { parts: MessagePart[]; env: En
     out.push(
       <div key={`p${key}`} className="msg her">
         <div className="body prose">
-          <Markdown skipHtml>{prose.join("")}</Markdown>
+          <Prose text={prose.join("")} />
           {streaming && last && <span className="caret" aria-hidden="true" />}
         </div>
       </div>,
@@ -115,7 +114,7 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" }>; e
       label = part.type === "recall"
         ? `Recalled ${part.ids.length} ${part.ids.length === 1 ? "memory" : "memories"}`
         : `Remembered ${part.ids.length === 1 ? "a note" : `${part.ids.length} notes`}`;
-      body = <ul>{part.ids.map((id) => <li key={id}><a href={href({ page: "memory", userId: env.userId, pool: env.pool, id })}>{id}</a></li>)}</ul>;
+      body = <ul>{part.ids.map((id) => <li key={id}><a href={idHref(env.userId, env.pool, id)}>{id}</a></li>)}</ul>;
       break;
     case "tool": {
       const state = part.result === undefined ? "running" : part.isError ? "failed" : "done";

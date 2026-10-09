@@ -181,7 +181,8 @@ function TaskSelect({ task, value, allowed, onChange }: {
   task: ThreadTask; value: TaskModel; allowed: EndpointInfo[]; onChange: (m: ModelRef | null) => void;
 }) {
   const current = value.source === "thread" ? refKey(value.model) : "";
-  const fromProfile = value.source === "profile" && value.model ? `${value.model.modelId} · ${value.endpointName ?? value.model.endpointId}` : "nothing set";
+  const fromProfile = value.source === "profile" && value.model
+    ? `${value.model.modelId} · ${value.endpointName ?? value.model.endpointId}${value.kind ? ` — ${value.kind}` : ""}` : "nothing set";
   return (
     <label className="field">
       <span>{TASK_LABELS[task]}</span>
@@ -192,7 +193,7 @@ function TaskSelect({ task, value, allowed, onChange }: {
         <option value="">Profile ({fromProfile})</option>
         {allowed.map((ep) => (
           <optgroup key={ep.id} label={`${ep.name} (${ep.kind})`}>
-            {ep.models.map((m) => <option key={m.modelId} value={refKey({ endpointId: ep.id, modelId: m.modelId })}>{m.modelId}</option>)}
+            {ep.models.map((m) => <option key={m.modelId} value={refKey({ endpointId: ep.id, modelId: m.modelId })}>{m.modelId} · {ep.name} — {ep.kind}</option>)}
           </optgroup>
         ))}
         {/* A thread choice that is no longer allowed still shows, so the select says what's set. */}

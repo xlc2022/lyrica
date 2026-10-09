@@ -32,6 +32,17 @@ export function href(r: Route): string {
   }
 }
 
+/**
+ * Where a cited ID leads: a thread or one of its messages opens the thread,
+ * anything else the memory. An ID in the other pool carries it: `general/n:12`.
+ */
+export function idHref(userId: string, pool: Pool, id: string): string {
+  const [, other, bare = id] = /^(?:(general|private)\/)?(.*)$/s.exec(id) ?? [];
+  const p = (other as Pool | undefined) ?? pool;
+  const thread = /^[te]:([^#]+)/.exec(bare)?.[1];
+  return thread ? href({ page: "thread", userId, pool: p, threadId: thread }) : href({ page: "memory", userId, pool: p, id: bare });
+}
+
 export const go = (r: Route) => { location.hash = href(r); };
 
 export function useRoute(): Route {

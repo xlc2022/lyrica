@@ -21,6 +21,12 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
   // A new title, or a finished turn, may change the sidebar.
   useEffect(() => { if (t.live.title) { summary.reload(); refreshThreads(); } }, [t.live.title, summary.reload, refreshThreads]);
   useEffect(() => { if (t.live.reload) refreshThreads(); }, [t.live.reload, refreshThreads]);
+  // The badge follows the profile, which may change elsewhere: refresh it after each turn and on focus.
+  useEffect(() => { if (t.live.reload) settings.reload(); }, [t.live.reload, settings.reload]);
+  useEffect(() => {
+    addEventListener("focus", settings.reload);
+    return () => removeEventListener("focus", settings.reload);
+  }, [settings.reload]);
 
   const send = useCallback(async (text: string) => {
     setSendError("");
@@ -33,7 +39,13 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
       return false;
     }
   }, [base, t.dispatch]);
-  const stop = () => post(`${base}/stop`).catch((e: Error) => setSendError(e.message));
+  // Stop drops queued follow-ups, so their text goes back into the composer.
+  const [restored, setRestored] = useState("");
+  const stop = () => {
+    if (t.live.queued.length) setRestored(t.live.queued.join("\n\n"));
+    t.dispatch({ type: "stopping" });
+    post(`${base}/stop`).catch((e: Error) => setSendError(e.message));
+  };
 
   const s = summary.data;
   const parent = s?.parent ? findThread(threads, pool, s.parent) : undefined;
@@ -65,11 +77,12 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
       )}
       <div className="scroll" ref={scroller}>
         <ErrorText error={summary.error || t.loadError} />
+        {settings.error && <ErrorText error={`This thread's settings didn't load: ${settings.error}`} />}
         <Conversation ctx={ctx} pool={pool} base={base} thread={t} children_={s?.children ?? []} />
         <ErrorText error={sendError} />
       </div>
       {!t.connected && <p className="offline" role="status">Reconnecting…</p>}
-      <Composer base={base} busy={t.live.busy} onSend={send} onStop={stop} readOnly={!!s?.subagent} />
+      <Composer base={base} busy={t.live.busy} onSend={send} onStop={stop} restored={restored} readOnly={!!s?.subagent} />
       {drawer && settings.data && s && (
         <SettingsDrawer
           ctx={ctx} base={base} summary={s} settings={settings.data}
