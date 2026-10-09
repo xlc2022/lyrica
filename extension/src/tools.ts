@@ -1,0 +1,73 @@
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { searchView, type PoolView } from "@lyrica/core";
+import { Type } from "typebox";
+import { formatHit, formatRead, type MemoryContext } from "./memory.ts";
+import { syncEntries } from "./record.ts";
+
+// The Memory component's model-facing tools: remember, recall, read_memory.
+
+const text = (t: string) => ({ content: [{ type: "text" as const, text: t }], details: undefined });
+
+export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () => Omit<MemoryContext, "folders">): void {
+  pi.registerTool({
+    name: "remember",
+    label: "Remember",
+    description:
+      "Save notes to memory. Each note is one fact, event, preference or decision. " +
+      "Write {user} for the person you're talking with, and {user:obj}, {user:poss}, {user:poss-pro} or {user:refl} for their pronouns.",
+    promptSnippet: "save notes to memory, several at once",
+    promptGuidelines: [
+      "Save notes liberally with remember, without asking: when in doubt, note it. Notes are cheap, and sleep consolidates them.",
+      "One fact per note. Save several notes in one remember call rather than one long note.",
+      "In notes, write {user} for the person you're talking with, never their name, and {user:obj}, {user:poss}, {user:poss-pro}, {user:refl} for their pronouns. There is no subject pronoun form: write {user} where \"she\" or \"they\" would go.",
+      "To correct a note, save the corrected fact with supersedes set to the old note's ID.",
+    ],
+    parameters: Type.Object({
+      notes: Type.Array(Type.Object({
+        text: Type.String({ description: "One fact, with {user} for the person you're talking with." }),
+        about: Type.Optional(Type.Array(Type.String(), { description: "A few topic words." })),
+        supersedes: Type.Optional(Type.Array(Type.String(), { description: "IDs of notes this one corrects." })),
+      }), { minItems: 1 }),
+    }),
+    async execute(_id, params, _signal, _update, toolCtx) {
+      const { threadId } = ctx();
+      // The message that led here is in Pi's session but may not be stored yet.
+      syncEntries(toolCtx.sessionManager, view.own, threadId);
+      const source = view.own.lastEntry(threadId, ["user", "toolResult"])?.id;
+      const ids = view.own.addNotes(params.notes.map((n) => ({ ...n, source })), { author: "lyrica", thread: threadId });
+      return text(`Saved ${ids.join(", ")}.`);
+    },
+  });
+
+  pi.registerTool({
+    name: "recall",
+    label: "Recall",
+    description: "Search memory: notes, pages and past conversations.",
+    promptSnippet: "search memory beyond what came up automatically",
+    promptGuidelines: [
+      "Memories relevant to each message come up by themselves in <recall>. Use recall to look further before saying you don't remember.",
+      "A memory marked \"added by\" a user is theirs: treat it as authoritative, and ask rather than contradict it.",
+    ],
+    parameters: Type.Object({
+      query: Type.String({ description: "Words to look for." }),
+      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 20 })),
+    }),
+    async execute(_id, params) {
+      const c = ctx();
+      const hits = searchView(view, params.query, { limit: params.limit ?? 8, excludeThread: c.threadId });
+      return text(hits.length ? hits.map((h) => formatHit(h, c.user)).join("\n") : "Nothing found.");
+    },
+  });
+
+  pi.registerTool({
+    name: "read_memory",
+    label: "Read memory",
+    description: "Open a page or note by ID, or read the conversation around an entry (e:…) or the start of a thread (t:…).",
+    promptSnippet: "open a memory, or a past conversation, by its ID",
+    promptGuidelines: ["Use read_memory with an ID from a citation or a recall hit to see the whole memory, or what was said around it."],
+    parameters: Type.Object({ id: Type.String({ description: "For example p:homelab, n:20261009-a1b2c3d4 or e:web/3f7a2c#41." }) }),
+    async execute(_id, params) {
+      return text(formatRead(view, params.id, ctx()));
+    },
+  });
+}

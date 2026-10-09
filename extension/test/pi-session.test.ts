@@ -1,11 +1,12 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai";
-import { createAgentSession, DefaultResourceLoader, SessionManager, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
+import { createAgentSession, DefaultResourceLoader, SessionManager } from "@earendil-works/pi-coding-agent";
 import { PRONOUN_PRESETS, type Persona, type Profile } from "@lyrica/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { createLyricaExtension } from "../src/index.ts";
+import { createLyricaExtension, recordEntries, type ThreadContext } from "../src/index.ts";
+import { withMemory } from "./helpers.ts";
 
 // Runs the extension inside a real Pi session against pi-ai's fake model, and
 // records what the model receives on each turn.
@@ -19,54 +20,47 @@ const profile: Profile = { displayName: "Li", pronouns: PRONOUN_PRESETS.she, pre
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-async function session() {
+type Step = (ctx: { messages: unknown[] }) => ReturnType<typeof fauxAssistantMessage>;
+
+/** A Pi session for the thread, run by pi-ai's fake model, with its entries recorded in the pool. */
+async function session(thread: ThreadContext, steps?: Step[]) {
   const dir = mkdtempSync(join(tmpdir(), "lyrica-pi-"));
   dirs.push(dir);
   const seen: { system: string; turn: string }[] = [];
   const faux = fauxProvider({ provider: "faux", models: [{ id: "echo" }] });
-  const reply = (ctx: { messages: unknown[] }) => {
+  const record = (ctx: { messages: unknown[] }) => {
     const text = (m: unknown) => JSON.stringify(m);
     seen.push({
       system: ctx.messages.filter((m) => (m as { role: string }).role === "system").map(text).join("\n"),
       turn: ctx.messages.filter((m) => text(m).includes("<time>")).map(text).join("\n"),
     });
-    return fauxAssistantMessage("ok");
   };
-  faux.setResponses([reply, reply]);
+  const reply: Step = (ctx) => { record(ctx); return fauxAssistantMessage("ok"); };
+  faux.setResponses((steps ?? [reply, reply]).map((step) => (ctx: { messages: unknown[] }) => { if (steps) record(ctx); return step(ctx); }));
 
-  const testTool: ExtensionFactory = (pi) => pi.registerTool({
-    name: "recall",
-    label: "Recall",
-    description: "Search memory.",
-    promptSnippet: "search what you remember",
-    promptGuidelines: ["Use recall before saying you don't remember"],
-    parameters: { type: "object", properties: {} } as never,
-    execute: async () => ({ content: [{ type: "text", text: "" }], details: undefined }),
-  });
   let minute = 0;
-  const lyrica = createLyricaExtension(
-    {
-      user: { id: "u1", login: "li", admin: true, profile }, pool: "general", interface: "cli", threadId: "t1",
-      view: { pool: "general" }, call: { userId: "u1", pool: "general", localOnly: false },
-    },
-    { persona: () => persona, profile: () => profile, now: () => new Date(Date.UTC(2026, 9, 9, 12, minute++)) },
-  );
+  const lyrica = createLyricaExtension(thread, {
+    persona: () => persona, profile: () => profile, now: () => new Date(Date.UTC(2026, 9, 9, 12, minute++)),
+  });
   const loader = new DefaultResourceLoader({
     cwd: dir, agentDir: dir, noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true,
-    extensionFactories: [(pi) => pi.registerProvider(faux.provider), testTool, lyrica],
+    extensionFactories: [(pi) => pi.registerProvider(faux.provider), lyrica],
   });
   await loader.reload();
   const { session } = await createAgentSession({
-    cwd: dir, agentDir: dir, resourceLoader: loader, sessionManager: SessionManager.inMemory(dir), noTools: "builtin",
+    cwd: dir, agentDir: dir, resourceLoader: loader,
+    sessionManager: SessionManager.inMemory(dir, undefined, thread.view.own.loadEntries(thread.threadId) as never),
+    noTools: "builtin",
   });
   await session.bindExtensions({});
   await session.setModel(faux.getModel());
+  recordEntries(session, thread.view.own, thread.threadId);
   return { session, seen };
 }
 
 describe("in a Pi session", () => {
   it("keeps the system prompt identical across turns and sends the time as a message", async () => {
-    const { session: s, seen } = await session();
+    const { session: s, seen } = await session((await withMemory()).thread().context);
     try {
       await s.prompt("sing me a song");
       await s.prompt("another song, please");
@@ -86,13 +80,45 @@ describe("in a Pi session", () => {
   });
 
   it("keeps the tools' own prompt guidance", async () => {
-    const { session: s, seen } = await session();
+    const { session: s, seen } = await session((await withMemory()).thread().context);
     try {
       await s.prompt("hello");
     } finally {
       s.dispose();
     }
-    expect(seen[0]!.system).toContain("- recall: search what you remember");
-    expect(seen[0]!.system).toContain("Use recall before saying you don't remember");
+    expect(seen[0]!.system).toContain("- recall: search memory beyond what came up automatically");
+    expect(seen[0]!.system).toContain("Save notes liberally with remember");
+    expect(seen[0]!.system).toContain("write {user} where");
+  });
+
+  it("brings back in a new session what she remembered in an earlier one", async () => {
+    const m = await withMemory();
+    const first = m.thread();
+    const { session: s1 } = await session(first.context, [
+      () => fauxAssistantMessage(fauxToolCall("remember", { notes: [{ text: "{user}'s cat Miso hates the vacuum cleaner", about: ["pets"] }] }), { stopReason: "toolUse" }),
+      () => fauxAssistantMessage("Noted."),
+    ]);
+    try {
+      await s1.prompt("My cat Miso hates the vacuum cleaner.");
+    } finally {
+      s1.dispose();
+    }
+    const [hit] = first.view.own.search("Miso", { kinds: ["note"] });
+    const note = first.view.own.get(hit!.id)!;
+    // The note cites the message it came from.
+    const said = first.view.own.lastEntry(first.threadId, ["user"])!;
+    expect(said.text).toBe("My cat Miso hates the vacuum cleaner.");
+    expect(note.text).toBe(`Li's cat Miso hates the vacuum cleaner [${said.id}]`);
+    expect(first.view.own.loadEntries(first.threadId).length).toBeGreaterThanOrEqual(4);
+
+    const second = m.thread();
+    const { session: s2, seen } = await session(second.context, [(ctx) => { void ctx; return fauxAssistantMessage("Miso!"); }]);
+    try {
+      await s2.prompt("Should I vacuum today? Miso is around.");
+    } finally {
+      s2.dispose();
+    }
+    expect(seen[0]!.turn).toContain(`[${hit!.id}] (note) Li's cat Miso hates the vacuum cleaner`);
+    expect(second.view.own.loadEntries(second.threadId).length).toBeGreaterThanOrEqual(2);
   });
 });
