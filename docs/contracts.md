@@ -260,10 +260,20 @@ openThreadSession({ thread, models, cwd, extensions, settings? })  // one thread
   across the local/cloud line.
 - A task with no model set uses the same profile's chat model (except
   `embedding`), never the other profile's.
-- **Planned (model host):** a profile entry becomes an ordered list,
-  `Partial<Record<Task, ModelRef[]>>`. `resolveModel` returns the first whose
-  endpoint is up, the thread shows which one answered, and the list never
-  mixes cloud and local.
+- **Planned (Models 2):**
+  - Endpoints get a permanent `id` (a UUID), with the name as a label.
+  - Each model an endpoint offers gets a permanent `offeringId` (a UUID).
+    `ModelRef` becomes `{ offeringId }`, and existing `{ endpointId, modelId }`
+    pairs are migrated. An offering the endpoint no longer lists is kept and
+    marked `missing`.
+  - A profile entry becomes an ordered list,
+    `Partial<Record<Task, ModelRef[]>>`, in three profiles: `local`, `cloud`
+    and `custom`. `resolveModel` returns the first whose endpoint is up, and
+    the thread shows which one answered.
+  - Local and cloud lists never mix kinds. Custom may, and is never offered
+    to private or local-only threads.
+  - Offerings carry capabilities (`tools`, `vision`, `embedding`, `image`,
+    `edit`), and pickers filter by the task.
 - A local endpoint is still declared, not inferred. `probe` warns, without
   blocking, when one resolves outside loopback, private or tailnet ranges.
 - **Shared endpoints** live in `self.db`. Only an administrator can change

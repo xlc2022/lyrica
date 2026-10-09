@@ -46,15 +46,36 @@ can be off, paused or busy gaming without Lyrica going dark.
      OpenAI-compatible `/v1`. Pi's `openai-completions` client keeps working,
      with the TLS agent supplied by the router.
    - Map the host's "paused" and "busy" errors to plain reasons.
-4. **Ordered fallbacks** (the contract change already planned):
+4. **Permanent IDs.**
+   - Endpoints get a UUID, with the name as a label.
+   - Each model an endpoint offers gets its own UUID (an *offering*), and
+     profiles, overrides and recent calls refer to it. Migrate existing
+     `{ endpointId, modelId }` references.
+   - A model the endpoint stops listing keeps its offering, marked
+     `missing`.
+   - Offerings carry capabilities (tools, vision, embedding, image, edit),
+     from discovery or set by hand. Offer "the same model" on another
+     endpoint as a suggested fallback, matching on the model's name or
+     digest.
+5. **The Custom profile.**
+   - A third profile, `custom`, mixes local and cloud. Only general threads
+     that aren't local-only use it.
+   - A per-user default ("general threads use Cloud or Custom") plus a
+     per-thread switch.
+   - Tests must show that a private or local-only thread never resolves
+     through Custom, even when it is the user's default.
+6. **The model library API.** Search and filter by kind, endpoint and
+   capability, with paging for hundreds of models, plus starring (per user).
+7. **Ordered fallbacks** (the contract change already planned):
    - A profile entry and a thread override become `ModelRef[]`. Migrate
      existing single entries in place.
    - `resolveModel` returns the first model whose endpoint is up, using a
      short-lived health cache fed by probes and by failed calls.
-   - A list can never mix cloud and local. Saving one that does is refused.
+   - Local and cloud lists can never mix kinds, and saving one that does is
+     refused. Custom may mix them.
    - Record which model answered on the call, so the thread and Recent calls
      can show it, along with a fallback that was used and why.
-5. **Models page API** in `daemon/src/api.ts`, per the mockup
+8. **Models page API** in `daemon/src/api.ts`, per the mockup
    (https://claude.ai/artifact/U3xANiSAFje8cuinWpHo7V):
    - endpoints and hosts with live status;
    - each host's GPUs, roles, pins, VRAM and queue, plus pause, resume and a
@@ -64,7 +85,7 @@ can be off, paused or busy gaming without Lyrica going dark.
      remove;
    - recent calls for the user: time, thread, task, answering model,
      fallback note. Never prompt text.
-6. **Plain endpoints stay as they are.** Mark a local endpoint served over
+9. **Plain endpoints stay as they are.** Mark a local endpoint served over
    plain HTTP, outside this machine and the tailnet, as `unencrypted` in the
    API.
 

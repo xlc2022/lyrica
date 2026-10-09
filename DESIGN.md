@@ -116,16 +116,34 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
 
 - **Endpoints.** Every endpoint is declared **cloud** or **local** by the user.
   Its API type never decides this.
-  - A model is an endpoint plus a model ID. The same model on two endpoints is
-    two different entries, one cloud and one local. "DeepSeek" in a private
-    thread can only ever mean the local copy.
+  - **Every endpoint and every model it offers has a permanent ID.** An
+    endpoint's name is a label that can change.
+    - Each model an endpoint offers is its own entry with its own ID, so the
+      same model on two endpoints is two entries. "DeepSeek" in a private
+      thread can only ever mean a local copy.
+    - Profiles, thread overrides and recent calls refer to these IDs, so
+      renaming an endpoint breaks nothing, and the same model on two
+      endpoints can sit in one fallback list.
+    - A model an endpoint no longer lists keeps its entry, marked
+      **missing**, so a profile never changes silently.
+    - The UI recognises the same model on different endpoints and can offer
+      it as a fallback.
 - **Tasks.** Different tasks use different models: chat, cheap and strong
   subagents, compaction, titles, embeddings, each sleep phase, and creating
   and editing images.
-- **Profiles.** A **control panel** sets default models per task, in a **cloud
-  profile** and a **local profile**. Each thread can override which model
-  handles which task, including the main conversation and its subagents. That
-  applies to every thread, with or without folders.
+- **Profiles.** A **control panel** sets default models per task in three
+  profiles:
+  - **Local:** local models only. Private and local-only threads always use
+    it.
+  - **Cloud:** cloud models only.
+  - **Custom:** local and cloud models mixed freely, for example a local
+    model for titles and a cloud one for chat, or a local model with a cloud
+    fallback. Only general threads that aren't local-only can use it.
+
+  Each user chooses which profile general threads use by default, Cloud or
+  Custom, and a general thread can switch. Each thread can also override
+  which model handles which task, including the main conversation and its
+  subagents. That applies to every thread, with or without folders.
 - **Delegation.** When Lyrica delegates, she picks a tier, never a model,
   following a simple rule:
   - **cheap** for searching, reading, summarizing and checking;
@@ -160,9 +178,16 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     local, for quick testing or a server started by hand. **Add model host**
     pairs a managed host. A local endpoint over plain HTTP outside this
     machine or the tailnet is marked **unencrypted**;
-  - the cloud and local profiles: for each task (chat, subagents, titles,
-    embeddings, sleep phases, images), an ordered list of models with their
-    fallbacks;
+  - the local, cloud and custom profiles: for each task (chat, subagents,
+    titles, embeddings, sleep phases, images), an ordered list of models with
+    their fallbacks;
+  - a **model library** that stays usable with hundreds of models (an
+    OpenRouter account, a large shared models folder):
+    - search, and filters by kind, endpoint and what a model can do (chat
+      with tools, vision, embeddings, images);
+    - **starred** models, which pickers show first;
+    - each picker offers only models suited to its task, so the embeddings
+      task lists only embedding models;
   - each model host's GPUs, roles, pinned and loaded models, VRAM and queue,
     with pause, through the host's dashboard;
   - recent calls: which model answered, and when a fallback was used.
@@ -171,8 +196,13 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   shared endpoints and model hosts.
 - **Fallbacks.** A profile can list several models for a task, in order. If
   the first one's endpoint is down, the next is used, and the thread shows
-  which model actually answered. A fallback never crosses the local/cloud
-  line.
+  which model actually answered.
+  - In the Local and Cloud profiles a fallback never crosses the local/cloud
+    line.
+  - In Custom it may, because the user chose that mix. Each model is marked
+    cloud or local, and a call that fell back to cloud says so.
+  - Private and local-only threads never see the Custom profile, so this can
+    never reach them.
 - **Visibility.** The current model and endpoint, with a clear cloud or local
   badge, are always visible in a thread. Choosing an endpoint, public or
   custom, is easy.
