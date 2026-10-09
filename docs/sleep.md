@@ -39,10 +39,10 @@ working implementation (`config/extensions/stateful-memory/memory-sleep.js`).
 | FACTS as one file | yes | **Change** to pages (one per subject, with citations), for lineage. |
 | Sleep saved as experience | yes | **Keep.** Sleep sessions are threads in a "sleep" area of the pool, so dreams can be recalled. |
 | Trigger | manual | **Add** nightly at 04:00 for each pool with new activity, plus manual `/sleep`. A setting restores Monika's manual-only behavior. |
-| Phase order | WAKE, FACTS, dream | **Change** to consolidate, dream, wake. WAKE is written last so it can carry what she thought about overnight. |
+| Phase order | WAKE, FACTS, dream | **Change** to consolidate, dream, wake. WAKE is written last so it can carry what consolidation found and the questions it raised. |
 | Dreams in conversation | only via recall | **Keep, and add items.** Dreams come up naturally through recall when a conversation touches them ("I dreamt about something like this last night"). What she'd like to raise becomes an item in the Sleep section, and the user can start a chat from it. She never opens a thread with it. |
 | Persona proposals | in the journal, reviewed out of band | **Change.** A proposal from a pool's dream is a draft in that user's own `user.db` (`PersonaProposals.propose`): the user can edit, drop or send it on, and only what they send reaches the administrators, who approve or reject it. A proposal from an administrator's own dream is sent at once. It also appears as an item in the Sleep section. |
-| Fallback to other providers | yes | **Change.** Retries only within the models the pool allows. Never across the local/cloud line. |
+| Fallback to other providers | yes | **Change.** A failed call is retried twice on the same model. Never across the local/cloud line. |
 | Tools during sleep | everything | **Narrow** to memory tools only: no shell or web. |
 | Scope | one user | **Add** users and pools. Each pool sleeps separately. Private sleep reads general memory but writes only to the private pool. |
 
@@ -59,10 +59,12 @@ working implementation (`config/extensions/stateful-memory/memory-sleep.js`).
 2. **Dream.** Free reflection, as in Monika, written into the journal. It's
    marked as reflection, so nothing in a dream becomes a fact by itself.
 3. **Wake.** Write WAKE: where things stand, what's in motion, and what's
-   unresolved. It is orientation only and holds no dream content. Separately,
-   she lists the few things she'd like to raise (a thought from the dream, a
-   question from consolidation, a persona suggestion) as **items** for the
-   Sleep section.
+   unresolved, including the night's questions. It is orientation only and
+   holds no dream content: the wake phase can't see the journal at all.
+
+Along the way she keeps the few things she'd like to raise as **items** for
+the Sleep section: a question from consolidation, a thought or a persona
+suggestion from the dream.
 
 **Waking up.** A new thread starts with persona, WAKE, the page index, and how
 long it has been since she last talked in this pool. Items are not in it. A
@@ -132,4 +134,51 @@ browser.
 
 Sleep runs only for users whose key is available, either because they are
 logged in or because they saved credentials. Other users are skipped with the
-reason `no-key`, the same way an offline endpoint is skipped.
+reason `no-key`, the same way an offline endpoint is skipped. The pool can't be
+written without the key, so that skip is recorded once the key is back; a
+restart in between loses the record.
+
+## In code
+
+- **`extension/src/sleep.ts`**: `Sleep.run(userId, pool, reason)` returns the
+  run (`SleepRunRecord`): `complete`, `partial` or `skipped` with `no-key`,
+  `endpoint-down` or `no-activity`. Runs queue, so pools and users sleep one
+  at a time. `check()` says at once what would stop a run, for `/sleep`.
+  `stop(userId)` (Lock, shutdown) aborts the phase and marks the run partial.
+- **A run.** It opens the pool with `openThreadView`, so general sleep never
+  holds a private handle. It covers entries written after the watermark and
+  before it started, in logged threads other than sleep's own, plus user
+  edits and flagged pages (and, in private, pages citing deleted general
+  memory). It probes each phase's endpoint first. Each phase's model is
+  `sleep.<phase>` through the router with the pool's context, set as that
+  session's chat and compaction model, so private sleep is local-only.
+- **Phases** are threads (`interface: "sleep"`, titled `Sleep: <phase>`), each
+  a Pi session through `openThreadSession` with `createLyricaExtension`
+  (persona and her usual context, `memoryTools: "read"`) and the phase's own
+  tools. Nothing else: no shell, web, `delegate` or `image`.
+  - consolidate: `recall`, `read_memory`, `remember` (each note must cite an
+    entry that wasn't deleted), `write_page` (must cite something, never the
+    journal or sleep's threads), `raise` (a question);
+  - dream: `recall`, `read_memory`, `write_journal` (headed as reflection),
+    `propose_persona` (through `PersonaProposals.propose`, so a normal user's
+    proposal is a draft in their `user.db`), `raise` (a thought);
+  - wake: `recall` and `read_memory` with the journal and sleep's threads
+    hidden, `write_wake`, `raise`.
+- **Watermark.** A run records `until` (its start). The watermark is the
+  latest `until` whose consolidate finished. If dream or wake didn't finish,
+  the next run resumes that run's remaining phases first.
+- **Limits.** Each phase has a turn limit (40), a token limit (600k) and a
+  timeout (20 minutes). Going over ends it, and the run is partial.
+- **User text.** The store refuses a sleep edit to a page that drops the text
+  of its latest user-written version: she can only add around it, or raise a
+  question.
+- **Items** live in the pool (`sleep_items`), each with its source. Only a
+  thread started from one (`itemForThread`) gets it in its context, as the
+  `opening` section, and `lyricad` prompts that thread with a hidden opening
+  line so she speaks first.
+- **`lyricad`** runs every user's pools at `sleep.time` (a user in manual mode
+  is left out), serves the Sleep section's API and its event stream, and
+  takes `/sleep` typed in a thread. See [daemon.md](daemon.md#sleep). The
+  bench offers `/sleep` as a Pi command.
+- **Logs** say which pool, the status or skip reason and the time taken.
+  Never text.

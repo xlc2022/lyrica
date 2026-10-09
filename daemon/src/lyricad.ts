@@ -8,7 +8,7 @@ import {
   Keyring, Memory, Models, PersonaProposals, PersonaStore, SystemdCredentials, Users, Workspace,
   type Argon2Params, type CredentialStore, type User,
 } from "@lyrica/core";
-import { Delegation, type Limits } from "@lyrica/extension";
+import { Delegation, Sleep, type Limits, type SleepLimits } from "@lyrica/extension";
 import type { State, UserCard } from "./api.ts";
 import { RateLimiter, Sessions } from "./auth.ts";
 import { ThreadHost } from "./hosted.ts";
@@ -52,6 +52,8 @@ export interface LyricadOptions {
   permissionMs?: number;
   /** Subagent limits (depth, concurrency, runs per request, timeout). Delegation's defaults otherwise. */
   delegation?: Partial<Limits>;
+  /** Sleep's per-phase limits and retries. Sleep's defaults otherwise. */
+  sleep?: Partial<SleepLimits>;
   /** Largest upload, in bytes. Default 50 MB. */
   uploadLimit?: number;
   rateLimit?: ConstructorParameters<typeof RateLimiter>[0];
@@ -69,6 +71,8 @@ export interface Services {
   /** Persona proposals: drafts in each user's user.db until they send them on. */
   proposals: PersonaProposals;
   delegation: Delegation;
+  /** Each pool's consolidate → dream → wake, one run at a time. */
+  sleep: Sleep;
   host: ThreadHost;
   web: WebAccess;
 }
@@ -92,6 +96,9 @@ export class Lyricad {
   /** The external proxy's listener, from its settings file: it opens at start, before unlock. */
   readonly external: ExternalListener;
   port = 0;
+  private readonly nightly: NodeJS.Timeout;
+  /** The day the scheduled sleep last ran, so it runs once a night. */
+  private sleptOn = "";
 
   constructor(readonly opts: LyricadOptions) {
     this.keyring = new Keyring(opts.home, opts.argon2);
@@ -100,6 +107,8 @@ export class Lyricad {
     // An expired session's users are logged out like any others: keys go for those who chose that.
     this.sessions = new Sessions(Date.now, (ids) => void this.loggedOut(ids));
     setInterval(() => void this.loggedOut(this.sessions.sweep()), 10 * 60_000).unref();
+    this.nightly = setInterval(() => this.tick(), 20_000);
+    this.nightly.unref();
     this.log = opts.log ?? ((line) => process.stderr.write(`${line}\n`));
     this.routes = apiRoutes(this);
     this.external = new ExternalListener(join(opts.home, "web-external.json"), (o) => this.listenExternal(o));
@@ -186,7 +195,9 @@ export class Lyricad {
       users, memory, models, workspace, persona, delegation, cwd, log: this.log,
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000,
     });
-    this.services = { users, memory, models, workspace, persona, proposals: new PersonaProposals(keyring.self(), users, persona), delegation, host, web };
+    const proposals = new PersonaProposals(keyring.self(), users, persona);
+    const sleep = new Sleep({ users, memory, models, persona, proposals, hasKey: (id) => keyring.hasUserKey(id), cwd, limits: this.opts.sleep, log: this.log });
+    this.services = { users, memory, models, workspace, persona, proposals, delegation, sleep, host, web };
     await web.resume();
     for (const u of users.all()) {
       if (keyring.loadSavedKey(u.id)) {
@@ -225,12 +236,44 @@ export class Lyricad {
     const s = this.services!;
     // First, at once: no request or stream gets past userFor from here on.
     this.sessions.dropUser(userId);
-    // Subagent runs record how they ended in user.db, so they stop before the key goes.
+    // Subagent runs record how they ended in user.db, and a sleep run in the pool, so they stop before the key goes.
     await s.delegation.stopAll(userId);
+    await s.sleep.stop(userId);
     this.keyring.lockUser(userId);
     await s.host.close(userId);
     await s.workspace.unmountHome(userId).catch((err: Error) => this.log(`unmounting a home workspace failed: ${err.message}`));
     this.mounted.delete(userId);
+  }
+
+  /** The nightly sleep time, `HH:MM` local time (self.db `settings`). */
+  sleepTime(): string {
+    const row = this.keyring.self().prepare("SELECT value FROM settings WHERE key = 'sleep.time'").get() as { value: string } | undefined;
+    return row?.value ?? "04:00";
+  }
+
+  private tick(): void {
+    if (!this.services) return;
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    if (`${pad(now.getHours())}:${pad(now.getMinutes())}` !== this.sleepTime() || this.sleptOn === now.toDateString()) return;
+    this.sleptOn = now.toDateString();
+    void this.sleepNight();
+  }
+
+  /**
+   * The scheduled sleep: every user, each pool, one at a time. A user without
+   * a key is skipped (no-key); one in manual mode isn't run; a pool with
+   * nothing new is skipped (no-activity).
+   */
+  async sleepNight(): Promise<void> {
+    const s = this.services;
+    if (!s) return;
+    for (const u of s.users.all()) {
+      if (this.keyring.hasUserKey(u.id) && s.sleep.mode(u.id) === "manual") continue;
+      for (const pool of ["general", "private"] as const) {
+        await s.sleep.run(u.id, pool, "scheduled").catch((err: Error) => this.log(`sleep failed: ${err.name}`));
+      }
+    }
   }
 
   state(cookie: string | undefined): State {
@@ -246,8 +289,10 @@ export class Lyricad {
     this.servers.length = 0;
     const s = this.services;
     this.external.close();
+    clearInterval(this.nightly);
     if (s) {
       await s.delegation.stopAll();
+      for (const u of s.users.all()) await s.sleep.stop(u.id);
       await s.host.close();
       for (const id of this.mounted) await s.workspace.unmountHome(id).catch(() => {});
       for (const u of s.users.all()) this.keyring.lockUser(u.id);

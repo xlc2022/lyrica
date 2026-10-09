@@ -91,6 +91,30 @@ CREATE TABLE IF NOT EXISTS tombstones (
   deleted_by TEXT NOT NULL,
   deleted_at TEXT NOT NULL
 );
+-- One sleep run. until: entries written before it are covered; phases: JSON of each phase's thread and
+-- whether it finished. The watermark is the latest until whose consolidate finished.
+CREATE TABLE IF NOT EXISTS sleep_runs (
+  id          TEXT PRIMARY KEY,
+  reason      TEXT NOT NULL,
+  status      TEXT NOT NULL,
+  skip_reason TEXT,
+  until       TEXT NOT NULL,
+  phases      TEXT NOT NULL DEFAULT '{}',
+  started_at  TEXT NOT NULL,
+  finished_at TEXT
+);
+-- What she'd like to raise after a night: a thought, a question or a persona suggestion. source: what
+-- it came from (a journal entry, a page, a proposal); thread: the chat started from it.
+CREATE TABLE IF NOT EXISTS sleep_items (
+  id         TEXT PRIMARY KEY,
+  run        TEXT NOT NULL,
+  kind       TEXT NOT NULL,
+  text       TEXT NOT NULL,
+  source     TEXT,
+  thread     TEXT,
+  dismissed  INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
 -- Full-text index (derived) over notes, pages, journal and logged entries.
 CREATE VIRTUAL TABLE IF NOT EXISTS search USING fts5 (
   id UNINDEXED, kind UNINDEXED, text, tokenize = 'unicode61 remove_diacritics 2'

@@ -1,4 +1,4 @@
-import { DELEGATE_MESSAGE } from "@lyrica/extension";
+import { DELEGATE_MESSAGE, OPENING } from "@lyrica/extension";
 import type { Message, MessagePart, Pool, ThreadRef } from "./api.ts";
 
 // Stored Pi entries as the web UI shows them, and the memory markers that both
@@ -97,6 +97,7 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
     if (!m) continue;
     const base = { id: `e:${threadId}#${n}`, n, createdAt };
     if (m.role === "user") {
+      if (textOf(m.content) === OPENING) continue; // a thread started from a sleep item: she speaks first
       out.push({ ...base, role: "user", parts: [{ type: "text", text: textOf(m.content) }] });
     } else if (m.role === "assistant") {
       const msg: Message = { ...base, role: "assistant", parts: [], ...(m.model ? { model: m.model } : {}) };

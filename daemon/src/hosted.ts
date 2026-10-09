@@ -4,7 +4,7 @@ import {
   CloudModelForbidden, NoModel, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  createDelegateExtension, createLyricaExtension, createWorkspaceExtension, DELEGATE_MESSAGE, openThreadSession, piModelFor,
+  createDelegateExtension, createLyricaExtension, createWorkspaceExtension, DELEGATE_MESSAGE, OPENING, openThreadSession, piModelFor,
   type ApprovalRequest, type Delegation, type DelegationEvent, type ThreadContext,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
@@ -415,5 +415,5 @@ function conversationLine(entry: unknown): string {
   if ((entry as { type?: string }).type !== "message" || !m || (m.role !== "user" && m.role !== "assistant")) return "";
   const text = typeof m.content === "string" ? m.content
     : Array.isArray(m.content) ? m.content.filter((p: { type: string }) => p.type === "text").map((p: { text: string }) => p.text).join(" ") : "";
-  return text.trim() ? `${m.role}: ${text.trim().slice(0, 500)}` : "";
+  return text.trim() && text !== OPENING ? `${m.role}: ${text.trim().slice(0, 500)}` : "";
 }
