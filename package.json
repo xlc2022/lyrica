@@ -1,0 +1,19 @@
+{
+  "name": "lyrica",
+  "private": true,
+  "type": "module",
+  "workspaces": ["core", "extension", "daemon"],
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --run"
+  },
+  "dependencies": {
+    "tsx": "4.20.6"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.8",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}

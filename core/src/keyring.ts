@@ -1,0 +1,121 @@
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { existsSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { hashRaw } from "@node-rs/argon2";
+
+const ARGON2ID = 2; // Algorithm.Argon2id, a const enum
+import { openEncrypted, SELF_SCHEMA, type Db } from "./db.ts";
+
+export interface Argon2Params {
+  memoryCost: number; // KiB
+  timeCost: number;
+  parallelism: number;
+}
+
+export const DEFAULT_ARGON2: Argon2Params = { memoryCost: 64 * 1024, timeCost: 3, parallelism: 1 };
+
+/** A user's data key, encrypted (AES-256-GCM) under Argon2id of their password. */
+export interface WrappedKey {
+  salt: string;
+  nonce: string;
+  ct: string;
+  tag: string;
+  argon2: Argon2Params;
+}
+
+export class WrongPassword extends Error {
+  constructor() { super("wrong password"); }
+}
+
+export class Locked extends Error {}
+
+/**
+ * Holds unlocked keys in process memory only. self.db is opened with the
+ * operator's passphrase; each user's data key is unwrapped with their password.
+ */
+export class Keyring {
+  private selfDb: Db | undefined;
+  private readonly keys = new Map<string, Buffer>();
+
+  constructor(readonly home: string, private readonly argon2: Argon2Params = DEFAULT_ARGON2) {}
+
+  get selfPath(): string { return join(this.home, "self.db"); }
+  selfExists(): boolean { return existsSync(this.selfPath); }
+
+  /** Creates self.db. Refuses if it already exists. */
+  async initSelf(passphrase: string): Promise<void> {
+    if (this.selfExists()) throw new Error(`${this.selfPath} already exists`);
+    if (!passphrase) throw new Error("passphrase must not be empty");
+    mkdirSync(this.home, { recursive: true, mode: 0o700 });
+    this.openSelf(passphrase);
+  }
+
+  async unlockSelf(passphrase: string): Promise<void> {
+    if (!this.selfExists()) throw new Error(`${this.selfPath} does not exist; run "lyrica admin init"`);
+    try {
+      this.openSelf(passphrase);
+    } catch {
+      throw new WrongPassword();
+    }
+  }
+
+  private openSelf(passphrase: string): void {
+    this.selfDb?.close();
+    this.selfDb = openEncrypted(this.selfPath, { passphrase });
+    this.selfDb.exec(SELF_SCHEMA);
+  }
+
+  self(): Db {
+    if (!this.selfDb) throw new Locked("self.db is locked");
+    return this.selfDb;
+  }
+
+  async unlockUser(userId: string, password: string): Promise<void> {
+    const row = this.self().prepare("SELECT wrapped_key FROM users WHERE id = ?").get(userId) as
+      | { wrapped_key: string } | undefined;
+    if (!row) throw new Error(`no such user: ${userId}`);
+    this.keys.set(userId, await this.unwrap(JSON.parse(row.wrapped_key), password));
+  }
+
+  hasUserKey(userId: string): boolean { return this.keys.has(userId); }
+
+  userKey(userId: string): Buffer {
+    const key = this.keys.get(userId);
+    if (!key) throw new Locked(`user ${userId} is locked`);
+    return key;
+  }
+
+  lockUser(userId: string): void {
+    this.keys.get(userId)?.fill(0);
+    this.keys.delete(userId);
+  }
+
+  async saveUserKey(_userId: string): Promise<void> { throw new Error("saving credentials is not implemented"); }
+  async forgetSavedKey(_userId: string): Promise<void> { throw new Error("saving credentials is not implemented"); }
+
+  async wrap(dataKey: Buffer, password: string): Promise<WrappedKey> {
+    const salt = randomBytes(16);
+    const nonce = randomBytes(12);
+    const kek = await this.derive(password, salt, this.argon2);
+    const cipher = createCipheriv("aes-256-gcm", kek, nonce);
+    const ct = Buffer.concat([cipher.update(dataKey), cipher.final()]);
+    const b64 = (b: Buffer) => b.toString("base64");
+    return { salt: b64(salt), nonce: b64(nonce), ct: b64(ct), tag: b64(cipher.getAuthTag()), argon2: this.argon2 };
+  }
+
+  async unwrap(w: WrappedKey, password: string): Promise<Buffer> {
+    const b = (s: string) => Buffer.from(s, "base64");
+    const kek = await this.derive(password, b(w.salt), w.argon2);
+    const decipher = createDecipheriv("aes-256-gcm", kek, b(w.nonce));
+    decipher.setAuthTag(b(w.tag));
+    try {
+      return Buffer.concat([decipher.update(b(w.ct)), decipher.final()]);
+    } catch {
+      throw new WrongPassword();
+    }
+  }
+
+  private async derive(password: string, salt: Buffer, p: Argon2Params): Promise<Buffer> {
+    return hashRaw(password, { ...p, salt, outputLen: 32, algorithm: ARGON2ID });
+  }
+}
