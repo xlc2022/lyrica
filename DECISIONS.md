@@ -274,3 +274,38 @@ notes added, page diffs, the dream and the new WAKE.
 thread, the local-only checkbox keeps only that conversation's own model calls
 local. Its memories may later be processed by cloud models during general
 sleep.
+
+## D-024 — Per-user encryption keys (2026-10-09, accepted)
+
+**Decision.** Each user's databases are encrypted with that user's own data
+key, wrapped by their password (Argon2id). The key is held in memory after the
+user logs in, or kept with systemd credentials if the user chose "save
+credentials." Sleep skips a user whose key isn't available, the same way it
+skips an offline endpoint. The `lyricad` passphrase (D-015) unlocks only
+`self.db`.
+
+## D-025 — Users are fully separate (2026-10-09, accepted)
+
+**Decision.** No memory crosses between users. Within a user, private reads
+general (D-019). A one-way "may read" link between users can be added later if
+it's missed.
+
+## D-026 — Administrators (2026-10-09, accepted)
+
+**Decision.** Users are either administrators or normal users. Administrators
+can:
+- change any account's administrator status from the control panel;
+- approve changes to Lyrica's shared persona;
+- edit global settings (sleep time, the endpoint list).
+
+The last remaining administrator can't be demoted.
+
+## D-027 — Visibility filters (2026-10-09, accepted)
+
+**Decision.** The UI has two checkboxes, **Show general** and **Show private**,
+which show or hide all content from that pool. Any thread can be hidden. A
+**Show hidden threads** option reveals hidden threads. These settings are saved
+per user.
+
+These are display filters only. Hiding a thread doesn't change what Lyrica
+remembers. Archive and forget (D-014) do that.

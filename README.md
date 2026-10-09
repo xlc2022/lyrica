@@ -2,7 +2,8 @@
 
 A continuous personal companion built on [Pi](https://github.com/badlogic/pi-mono).
 
-This repository is being rebuilt from scratch. Start with
+This repository is being rebuilt from scratch. Contributors (human or model)
+start with [AGENTS.md](AGENTS.md). The design lives in
 [PRINCIPLES.md](PRINCIPLES.md) and [DECISIONS.md](DECISIONS.md). The memory
 design is in [docs/memory.md](docs/memory.md).
 
