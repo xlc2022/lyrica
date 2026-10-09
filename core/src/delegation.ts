@@ -47,6 +47,10 @@ export interface SubagentRecord {
   outputTokens: number;
   startedAt: string;
   endedAt: string | null;
+  /** How its model was picked: a tier, or a model a saved workflow named. Read again when it is continued. */
+  pick?: { tier: Tier } | { model: string };
+  /** The narrowing its run was given, applied again when it is continued. */
+  narrowing?: { folders?: string[]; readOnly?: boolean; internet?: false };
 }
 
 /** Tokens only: every model is declared free to Pi, so it reports no cost. */
@@ -83,6 +87,8 @@ CREATE TABLE IF NOT EXISTS subagent_runs (
   output_tokens INTEGER NOT NULL DEFAULT 0,
   started_at    TEXT NOT NULL,
   ended_at      TEXT,
+  pick          TEXT,
+  narrowing     TEXT,
   PRIMARY KEY (pool, thread)
 );
 CREATE INDEX IF NOT EXISTS subagent_runs_parent ON subagent_runs (pool, parent);
@@ -93,11 +99,12 @@ const NAME = /^[a-z][a-z0-9-]{0,39}$/;
 interface RoleRow { name: string; description: string; prompt: string; tier: Tier; tools: string; read_only: number; thinking: Thinking }
 interface RunRow {
   pool: Pool; thread: string; run: string; parent: string; role: string; model: string; background: number; status: SubagentStatus;
-  input_tokens: number; output_tokens: number; started_at: string; ended_at: string | null;
+  input_tokens: number; output_tokens: number; started_at: string; ended_at: string | null; pick: string | null; narrowing: string | null;
 }
 const toRecord = (r: RunRow): SubagentRecord => ({
   pool: r.pool, thread: r.thread, run: r.run, parent: r.parent, role: r.role, model: r.model, background: r.background === 1,
   status: r.status, inputTokens: r.input_tokens, outputTokens: r.output_tokens, startedAt: r.started_at, endedAt: r.ended_at,
+  ...(r.pick ? { pick: JSON.parse(r.pick) } : {}), ...(r.narrowing ? { narrowing: JSON.parse(r.narrowing) } : {}),
 });
 
 /** One user's roles, workflows and subagent runs. Opens user.db per call, so the user must be unlocked. */
@@ -149,15 +156,24 @@ export class DelegationStore {
   // --- Runs ---
 
   record(userId: string, r: Omit<SubagentRecord, "inputTokens" | "outputTokens" | "endedAt">): void {
-    this.db(userId, (db) => db.prepare(`INSERT INTO subagent_runs (pool, thread, run, parent, role, model, background, status, started_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(r.pool, r.thread, r.run, r.parent, r.role, r.model, r.background ? 1 : 0, r.status, r.startedAt));
+    this.db(userId, (db) => db.prepare(`INSERT INTO subagent_runs (pool, thread, run, parent, role, model, background, status, started_at, pick, narrowing)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(r.pool, r.thread, r.run, r.parent, r.role, r.model, r.background ? 1 : 0, r.status, r.startedAt,
+      r.pick ? JSON.stringify(r.pick) : null, r.narrowing ? JSON.stringify(r.narrowing) : null));
   }
 
-  update(userId: string, pool: Pool, thread: string, change: { status?: SubagentStatus; usage?: Usage }): void {
-    const ended = change.status && !LIVE_STATUSES.includes(change.status) ? new Date().toISOString() : null;
-    this.db(userId, (db) => db.prepare(`UPDATE subagent_runs SET status = coalesce(?, status), ended_at = coalesce(?, ended_at),
-      input_tokens = coalesce(?, input_tokens), output_tokens = coalesce(?, output_tokens) WHERE pool = ? AND thread = ?`)
-      .run(change.status ?? null, ended, change.usage?.inputTokens ?? null, change.usage?.outputTokens ?? null, pool, thread));
+  /** A status change, its tokens so far, or the model a continued subagent now runs on. A live status clears the end time. */
+  update(userId: string, pool: Pool, thread: string, change: { status?: SubagentStatus; usage?: Usage; model?: string }): void {
+    const live = change.status && LIVE_STATUSES.includes(change.status);
+    const ended = change.status && !live ? new Date().toISOString() : null;
+    this.db(userId, (db) => db.prepare(`UPDATE subagent_runs SET status = coalesce(?, status), ended_at = CASE WHEN ? THEN NULL ELSE coalesce(?, ended_at) END,
+      input_tokens = coalesce(?, input_tokens), output_tokens = coalesce(?, output_tokens), model = coalesce(?, model) WHERE pool = ? AND thread = ?`)
+      .run(change.status ?? null, live ? 1 : 0, ended, change.usage?.inputTokens ?? null, change.usage?.outputTokens ?? null, change.model ?? null, pool, thread));
+  }
+
+  /** The record of one subagent thread, if it has one. */
+  byThread(userId: string, pool: Pool, thread: string): SubagentRecord | undefined {
+    const row = this.db(userId, (db) => db.prepare("SELECT * FROM subagent_runs WHERE pool = ? AND thread = ?").get(pool, thread)) as RunRow | undefined;
+    return row && toRecord(row);
   }
 
   /** A parent thread's subagent runs, newest first, or one run's. */
@@ -193,6 +209,9 @@ export class DelegationStore {
     const db = this.users.openUserDb(userId);
     try {
       db.exec(DELEGATION_SCHEMA);
+      // Added with Delegation 2: how to continue a subagent.
+      const columns = (db.prepare("PRAGMA table_info(subagent_runs)").all() as { name: string }[]).map((c) => c.name);
+      for (const c of ["pick", "narrowing"]) if (!columns.includes(c)) db.exec(`ALTER TABLE subagent_runs ADD COLUMN ${c} TEXT`);
       return fn(db);
     } finally {
       db.close();

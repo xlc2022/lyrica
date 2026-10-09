@@ -275,7 +275,10 @@ export function apiRoutes(d: Lyricad): Route[] {
       const user = d.userFor(r);
       const thread = owner(d, user, (o) => threadOf(o, r));
       const ref = { user, pool: poolOf(r), threadId: thread.id };
-      return { runs: s().delegation.store.runs(user.id, ref.pool, { parent: thread.id }).map(({ pool: _p, parent: _t, ...run }) => run), usage: s().delegation.usage(ref) };
+      return {
+        runs: s().delegation.store.runs(user.id, ref.pool, { parent: thread.id }).map(({ pool: _p, parent: _t, pick: _k, narrowing: _n, ...run }) => run),
+        usage: s().delegation.usage(ref),
+      };
     }),
     route("GET", `${t}/settings`, (r) => {
       const user = d.userFor(r);
@@ -298,14 +301,16 @@ export function apiRoutes(d: Lyricad): Route[] {
       return owner(d, user, (o): Api.MessagePage => {
         const thread = threadOf(o, r);
         const page = o[poolOf(r)].entryPage(thread.id, { before: before ? Number(before) : undefined, limit });
+        const names = thread.subagent ? { userName: (id: string) => s().users.get(id)?.profile.displayName ?? "a user" } : undefined;
         return { messages: toMessages(thread.id, poolOf(r), page.entries,
-          (run) => s().delegation.store.runs(user.id, poolOf(r), { run }).map((x) => x.thread)), hasMore: page.hasMore };
+          (run) => s().delegation.store.runs(user.id, poolOf(r), { run }).map((x) => x.thread), names), hasMore: page.hasMore };
       });
     }),
     route("POST", `${t}/messages`, async (r) => {
       const user = d.userFor(r);
       const { text, confirm } = await r.json<Api.SendRequest>();
       const thread = owner(d, user, (o) => threadOf(o, r));
+      if (thread.subagent) return toSubagent(d, user, poolOf(r), thread, String(text ?? ""));
       if (String(text ?? "").trim() === "/sleep") return { queued: false, sleep: await startSleep(d, user, poolOf(r), confirm === true) };
       return s().host.get(user.id, poolOf(r), thread.id).send(String(text ?? ""));
     }),
@@ -313,6 +318,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       const user = d.userFor(r);
       const thread = owner(d, user, (o) => threadOf(o, r));
       await s().host.get(user.id, poolOf(r), thread.id).stop();
+      // In a subagent's thread, Stop also stops the subagent's work.
+      if (thread.subagent) s().delegation.stopThread(user.id, poolOf(r), thread.id);
       return { ok: true };
     }),
     route("POST", `${t}/permissions/:requestId`, async (r) => {
@@ -606,6 +613,26 @@ function owner<T>(d: Lyricad, user: User, fn: (o: OwnerView) => T): T {
     return fn(o);
   } finally {
     o.close();
+  }
+}
+
+/**
+ * A user's message in a subagent's thread goes to the subagent, the way
+ * Lyrica's `message` does, marked as theirs. Only someone who can open the
+ * parent thread gets here: it is in the same user's pool.
+ */
+async function toSubagent(d: Lyricad, user: User, pool: Pool, thread: Thread, text: string): Promise<Api.SendResponse> {
+  const s = d.services!;
+  const parent = owner(d, user, (o) => (thread.parent ? o[pool].getThread(thread.parent) : undefined));
+  const row = s.delegation.store.byThread(user.id, pool, thread.id);
+  if (!parent || !row || row.parent !== parent.id) throw new HttpError(409, "this subagent's parent thread is gone, so it can't be messaged");
+  try {
+    const sent = s.delegation.message({ user, pool, interface: parent.interface, threadId: parent.id }, row.run, { text, from: user },
+      { thread: thread.id, budget: s.delegation.newBudget() });
+    await sent.opened;
+    return { queued: false };
+  } catch (err) {
+    throw new HttpError(409, (err as Error).message);
   }
 }
 
