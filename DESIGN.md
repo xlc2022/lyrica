@@ -9,8 +9,8 @@ of earlier choices are listed under [History](#history) so they aren't relitigat
 
 ## Who Lyrica is for
 
-Lyrica is one continuous companion for Xu, running on a server Xu administers.
-Xu talks to her through several **personas**. Each persona is a separate
+Lyrica is one continuous companion for Li, running on a server Li administers.
+Li talks to her through several **personas**. Each persona is a separate
 **user** with its own password, its own encrypted databases, its own endpoint
 and model settings, and its own memory. To Lyrica, each user is a different
 relationship. She is still one individual: her persona is the only thing users
@@ -23,6 +23,12 @@ share.
   - edit global settings such as the sleep time and the endpoint list.
 - Accounts stay minimal: local users, Argon2id password hashes and a web login
   cookie. No identity providers or roles beyond administrator.
+- **Names and pronouns.** Each user has a login name, a display name and
+  pronouns. Users can change their display name and pronouns at any time in
+  settings, and previous names are kept with dates. The first user is **Li**.
+  Memory refers to users by token rather than by name, so a change never
+  requires rewriting memories (see
+  [docs/memory.md](docs/memory.md#names-and-pronouns)).
 - No memory crosses between users. A one-way "may read" link between users can
   be added later if it's missed.
 
@@ -94,8 +100,10 @@ endpoints.
   the user logs in, or at startup if they chose **save credentials**, in which
   case it's kept with systemd credentials and sealed to the TPM where one
   exists.
-- `lyricad` asks for a passphrase on start to unlock `self.db`. An option saves
-  this too, so it can start unattended.
+- `lyricad` needs a passphrase to unlock `self.db`.
+  - As a service, it starts **locked** and the web UI shows an unlock page.
+  - Run by hand with `lyrica serve`, it can prompt in the terminal instead.
+  - A "save credentials" option skips both, so it can start unattended.
 - Memory never goes into a git repository. Backups are encrypted.
 - What this protects against: a stolen disk, a leaked backup, or someone
   reading the files while a user is locked.
@@ -111,8 +119,10 @@ Details in [docs/memory.md](docs/memory.md).
 - **Lineage:** each layer cites the one below it by ID, inline. "Where did this
   come from" and "what was it consolidated into" are both answered from those
   citations.
-- **Writes:** she saves notes without asking. Pages change only during sleep.
-  Every edit keeps the previous text as a revision.
+- **Writes:** she saves notes without asking, one fact per note, and is told
+  to save liberally. Sleep reports how many notes it had to catch up on, which
+  shows whether she's noting too little. Pages change only during sleep. Every
+  edit keeps the previous text as a revision.
 - **Review:** users search, review and edit her memory in a memory browser in
   the web UI.
 - **Deletion has four levels:** archive, delete a memory, forget a thread, and
@@ -156,16 +166,43 @@ Details in [docs/sleep.md](docs/sleep.md).
 - **Integrations:** Google Calendar, iCloud and CalDAV (which covers Nextcloud)
   for calendars; files, notes, downloads and email for sorting. Each sits behind
   a common adapter interface, and they don't all need to be connected at first.
-- **Much later:** managing computer systems such as Xu's Proxmox deployment,
+- **Much later:** managing computer systems such as Li's Proxmox deployment,
   once she has proven reliable and sensitive data can be kept on local models.
 
 ## Runtime
 
 - The Lyrica Pi extension holds everything that makes her Lyrica: persona,
   context assembly, memory tools and sleep.
-- **`lyricad`** is one Node process. It hosts Pi SDK sessions for web chat and
-  later Matrix and the forum, using that same extension.
-- The CLI is Pi's terminal UI with the same extension loaded.
+- **`lyricad`** is one Node process. It embeds Pi through Pi's SDK: each
+  active thread is a Pi session object inside `lyricad`, not a separate `pi`
+  process. All interfaces go through it, with the same extension, and it is the
+  only process that writes Lyrica's databases.
+- **Pi's built-in coding tools (`bash`, `read`, `write`, `edit`) are off** in
+  Lyrica's sessions. She has only her own tools. Letting her run commands or
+  edit her own code later needs its own sandboxed design.
+- **Deployment:** `lyricad` runs as a systemd service, in practice inside an
+  LXC container or VM on Li's Proxmox. No Docker.
+- **One command, `lyrica`**, written in TypeScript like the rest of the
+  project:
+
+  | Subcommand | What it does |
+  |---|---|
+  | `lyrica serve` | Starts `lyricad`. This is what the systemd unit runs. |
+  | `lyrica chat` | The terminal interface: a thin client of the running `lyricad` over a local Unix socket. Its threads are stored encrypted like any other interface's. |
+  | `lyrica admin …` | Set up, manage users and administrators, change passwords and profiles. |
+  | `lyrica mem …` | Search, show and delete memories, until the web memory browser exists. |
+  | `lyrica dev` | The developer bench. See below. |
+
+  Passwords and passphrases are only ever typed at a hidden prompt, never
+  passed as arguments or environment variables.
+- **The developer bench (`lyrica dev`)** runs Pi's own terminal interface with
+  the Lyrica extension loaded, for testing persona, prompt assembly and tools
+  before `lyricad` exists, and for debugging afterwards.
+  - It works only against a separate development runtime with test users,
+    never real data, because Pi's terminal interface writes plaintext session
+    files.
+  - A debug flag prints the assembled prompt for each turn.
+  - The same in-process setup, run headless, drives the continuity evals.
 - Interfaces between components are in [docs/contracts.md](docs/contracts.md).
 
 ## How the project runs
@@ -204,7 +241,7 @@ new evidence.
     forgetting receipts.
 - **Plain files in git → encrypted SQLite (2026-10-09).** Readable markdown in
   a repository wasn't private enough.
-- **No accounts → personas as users (2026-10-09).** Xu's personas need
+- **No accounts → personas as users (2026-10-09).** Li's personas need
   separate credentials and fully separate data.
 - **"Spaces" → users with general and private pools (2026-10-09).** This is
   simpler than per-space flags, and private reading general is safe because

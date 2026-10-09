@@ -26,7 +26,7 @@ bin/         launchers and admin commands
 
 | Term | Meaning |
 |---|---|
-| **User** | One of Xu's personas, with its own login. Either an administrator or a normal user. |
+| **User** | One of Li's personas, with its own login. Either an administrator or a normal user. |
 | **Pool** | `general` or `private`. Each user has one of each. |
 | **Interface** | Where a thread lives: `web`, `cli`, `matrix`, `forum` or `sleep`. |
 | **Thread** | One conversation. It belongs to one user, one pool and one interface. |
@@ -58,11 +58,36 @@ lockUser(userId: string): void
 ## core/users
 
 ```ts
-createUser(name, password, { admin }): User              // first user must be admin
-authenticate(name, password): User                        // also calls unlockUser
+createUser(login, password, profile, { admin }): User     // first user must be admin
+authenticate(login, password): User                       // also calls unlockUser
 setAdmin(actor: User, target: User, admin: boolean): void // refuses to demote the last admin
 listUsers(actor: User): User[]
+updateProfile(actor: User, target: User, change: Partial<Profile>): Profile  // self, or an admin
+
+interface Profile {
+  displayName: string;                       // changeable at any time
+  pronouns: { obj: string; poss: string; possPro: string; refl: string; subj: string };
+  previousNames: { name: string; until: string }[];   // appended on rename
+}
 ```
+
+- The **login name** is separate from the display name, so renaming never
+  affects signing in.
+- Pronoun presets are she/her, he/him and they/them, plus a custom option that
+  fills in all five forms.
+- `subj` is used only in live prompts (for example, "Li's pronouns are
+  they/them"). It is never substituted into stored memory.
+
+## core/mentions
+
+```ts
+toStored(text: string, speaker: UserId): string  // {user}, {user:obj}… → [[u:ID]], [[u:ID:obj]]…
+render(text: string): string                     // tokens → current names and pronouns
+queryTokens(query: string, userIds: UserId[]): string  // names (current or previous) → tokens
+```
+
+Every write of a note or page goes through `toStored`. Every read path goes
+through `render`. See [memory.md](memory.md#names-and-pronouns).
 
 ## core/store: the privacy boundary lives here
 
@@ -126,7 +151,8 @@ The extension is created with a `ThreadContext`:
 
 - **`before_agent_start`** builds the prompt sections, in order: persona core,
   routed topic addenda, WAKE, page index, recall hits, time since last talk,
-  and the user's display name. Each section has a size budget.
+  and "who you're talking with": the user's current display name, pronouns,
+  and previous names with dates. Each section has a size budget.
 - **Tools** (at most 8 in total; see principle 8):
   - `remember`, `recall` and `read` (Memory thread);
   - `delegate` (Models thread);
@@ -144,8 +170,14 @@ The extension is created with a `ThreadContext`:
 - **Session hosting:** `createAgentSession` with
   `SessionManager.inMemory(cwd, opts, view.own.loadEntries(threadId))`, the
   router's `modelRuntimeFor`, and a `DefaultResourceLoader` that has the inline
-  Lyrica extension and context-file discovery turned off. Each `message_end`
-  calls `appendEntry`.
+  Lyrica extension and context-file discovery turned off.
+  - Built-in tools are disabled with `noTools: "builtin"`, so only the
+    extension's tools exist. `noTools: "all"` would remove the extension's
+    tools too.
+  - Sessions run in-process, with no `pi` subprocesses.
+  - Each `message_end` calls `appendEntry`.
+- **Unlocking:** when started as a service, `lyricad` starts locked, and the
+  API serves only the unlock endpoint until `self.db` is unlocked.
 - **HTTP/SSE API** (detailed by the Web thread):
   - auth;
   - threads (list, create, hide, forget);
@@ -154,8 +186,19 @@ The extension is created with a `ThreadContext`:
   - users and admin;
   - memory browser;
   - sleep runs.
+- **Local socket:** a Unix socket (mode `0600`, owned by the service user)
+  serves the same API to `lyrica chat` and `lyrica mem`. The user still logs in
+  with a password over the socket. Being on the machine isn't enough.
 - **Scheduler:** at `sleep.time`, for each user with a key available and each
   pool with activity past its watermark, run sleep.
+
+## bin/lyrica
+
+One entry point with subcommands: `serve`, `chat`, `admin`, `mem` and `dev`
+(see [DESIGN.md](../DESIGN.md#runtime)).
+- `dev` refuses to start unless it is pointed at a development runtime: a
+  directory with a marker file, created by `lyrica dev --init`.
+- No subcommand reads a password from arguments or the environment.
 
 ## sleep
 

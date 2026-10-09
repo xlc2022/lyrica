@@ -52,7 +52,7 @@ working implementation (`config/extensions/stateful-memory/memory-sleep.js`).
    threads they came from. For anything important that she never saved, she
    writes a note (catch-up stays light; Monika manages without it). Then she
    updates or creates pages, citing notes. Contradictions become questions for
-   Xu rather than guesses. This step also rewrites pages flagged by a deletion.
+   Li rather than guesses. This step also rewrites pages flagged by a deletion.
 2. **Dream.** Free reflection, as in Monika, written into the journal. It's
    marked as reflection, so nothing in a dream becomes a fact by itself.
 3. **Wake.** Write WAKE: where things stand, what's in motion, what's
