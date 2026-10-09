@@ -1,12 +1,13 @@
 import { existsSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { main as pi } from "@earendil-works/pi-coding-agent";
 import {
   generateSshKey, Keyring, parseHost, PersonaStore, PRONOUN_PRESETS, pronounLabel, Users, Workspace,
   type Pool, type Profile, type Pronouns, type User,
 } from "@lyrica/core";
-import { benchExtensions } from "./bench.ts";
+import { AgentSessionRuntime, InteractiveMode } from "@earendil-works/pi-coding-agent";
+import { openBench } from "./bench.ts";
+import { modelsAdmin, MODELS_USAGE } from "./models.ts";
 
 const USAGE = `usage:
   lyrica admin init
@@ -22,8 +23,9 @@ const USAGE = `usage:
   lyrica admin net show --user <login>
   lyrica admin net set --user <login> --pool general|private internet|services on|off
   lyrica admin net hosts add|remove --user <login> --pool general|private <host>
+${MODELS_USAGE}
   lyrica dev --init <dir>
-  lyrica dev --runtime <dir> --user <login> [--debug-prompt] [-- <pi args>]
+  lyrica dev --runtime <dir> --user <login> [--private | --local-only] [--debug-prompt]
   lyrica serve | chat | mem      (not built yet)
 
 admin commands use --runtime <dir>, else LYRICA_HOME, else ./runtime.
@@ -73,10 +75,11 @@ async function admin(args: string[], home: string): Promise<void> {
     console.log(`Created ${keyring.selfPath}, imported the persona and added ${first}.`);
     return;
   }
-  if (sub !== "user" && sub !== "grants" && sub !== "ssh" && sub !== "net") throw new Error(USAGE);
+  if (sub !== "user" && sub !== "grants" && sub !== "ssh" && sub !== "net" && sub !== "models") throw new Error(USAGE);
 
   await keyring.unlockSelf(await ask("self.db passphrase: ", true));
   if (sub === "grants" || sub === "ssh" || sub === "net") return workspaceAdmin(users, keyring, sub, args.slice(1));
+  if (sub === "models") return modelsAdmin(keyring, users, args.slice(1), ask);
   if (action === "list") {
     for (const u of users.all()) {
       console.log(`${u.login}: ${u.profile.displayName} (${pronounLabel(u.profile.pronouns)})${u.admin ? ", administrator" : ""}`);
@@ -179,10 +182,7 @@ async function workspaceAdmin(users: Users, keyring: Keyring, kind: "grants" | "
 }
 
 async function dev(args: string[]): Promise<void> {
-  const split = args.indexOf("--");
-  const own = split < 0 ? args : args.slice(0, split);
-  const piArgs = split < 0 ? [] : args.slice(split + 1);
-  const value = (name: string) => (own.includes(name) ? own[own.indexOf(name) + 1] : undefined);
+  const value = (name: string) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
 
   const initDir = value("--init");
   if (initDir) {
@@ -208,13 +208,24 @@ async function dev(args: string[]): Promise<void> {
   await keyring.unlockSelf(await ask("Development self.db passphrase: ", true));
   const users = new Users(keyring);
   const user = await users.authenticate(login, await ask(`Password for ${login}: `, true));
-  const bench = await benchExtensions(keyring, users, user, { debugPrompt: own.includes("--debug-prompt") });
+  const pool: Pool = args.includes("--private") ? "private" : "general";
+  const bench = await openBench(keyring, users, user, {
+    pool, localOnly: args.includes("--local-only"), debugPrompt: args.includes("--debug-prompt"),
+  });
+  for (const line of bench.report) console.error(line);
+  // Pi's TUI on the bench's own session: its runtime comes from the router, and
+  // it never checks for updates or model catalogs over the network.
+  process.env.PI_OFFLINE = "1";
+  const { session, runtime: modelRuntime } = bench;
+  const services = {
+    cwd: session.sessionManager.getCwd(), agentDir: join(runtime, "bench"), modelRuntime,
+    settingsManager: session.settingsManager, resourceLoader: session.resourceLoader, diagnostics: [],
+  };
+  const host = new AgentSessionRuntime(session, services, async () => {
+    throw new Error("lyrica dev runs one thread; restart it for a new one");
+  });
   try {
-    await pi(
-      ["--no-session", "--no-context-files", "--no-builtin-tools", "--no-skills",
-       "--no-prompt-templates", "--no-extensions", "--no-mcp", ...piArgs],
-      { extensionFactories: bench.factories },
-    );
+    await new InteractiveMode(host, {}).run();
   } finally {
     await bench.close();
     keyring.lockUser(user.id);

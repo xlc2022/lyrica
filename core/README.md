@@ -58,13 +58,17 @@ Keys, users and the persona store. No Pi dependency.
     sandbox's network.
   - `Sandbox` (bubblewrap) and `SshTarget` (ssh2) implement Pi's tool
     operations without depending on Pi.
-- **`types.ts`**: `Pool`, `Interface` and `CallContext` for the Models thread.
+- **`models/`**: endpoints, profiles and the model router. See
+  [docs/models.md](../docs/models.md).
+- **`types.ts`**: `Pool`, `Interface`, `Task`, `ModelRef` and `CallContext`.
 
 On disk, under `LYRICA_HOME`:
 
 ```text
-self.db                 users (login, admin, profile, wrapped key), persona_revisions, workspace_paths
-users/<id>/user.db      settings (incl. network defaults), thread workspaces, SSH targets
+self.db                 users (login, admin, profile, wrapped key), persona_revisions, workspace_paths,
+                        shared endpoints
+users/<id>/user.db      settings (incl. network defaults), endpoints, model profiles and thread models,
+                        thread workspaces, SSH targets
 users/<id>/general.db   general pool: threads, entries, notes, pages, WAKE, journal, index
 users/<id>/private.db   private pool, same tables
 users/<id>/home.crypt/  the encrypted home workspace (gocryptfs)

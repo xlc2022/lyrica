@@ -187,9 +187,9 @@ settings:
   read-only, never the reverse.
 - **Network:** each switch off if the parent's is off; the allowed hosts a
   subset of the parent's.
-- **Models:** chosen from the thread's subagent models, or from the user's
-  delegation list when Lyrica picks one herself. In a local-only or private
-  thread, only local models are available (see contracts, `core/models`).
+- **Models:** resolved through the router with the child thread's
+  `CallContext`. In a local-only or private thread, only local models are
+  available (see [models.md](models.md)).
 - **Permission mode:** the parent's or stricter.
 
 A subagent can never widen what its parent was given. `inheritSettings`

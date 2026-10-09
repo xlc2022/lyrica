@@ -13,6 +13,8 @@ export interface Thread {
   id: string;
   interface: Interface;
   parent?: string;
+  /** Delegated by its parent: the UI nests it there. */
+  subagent: boolean;
   title?: string;
   hidden: boolean;
   unlogged: boolean;
@@ -144,8 +146,11 @@ export class PoolReader {
     return row && toThread(row);
   }
 
-  listThreads(opts: { includeHidden?: boolean } = {}): Thread[] {
-    const rows = this.db.prepare(`SELECT * FROM threads ${opts.includeHidden ? "" : "WHERE hidden = 0"} ORDER BY created_at`).all() as ThreadRow[];
+  /** With `parent`, only that thread's subagents. */
+  listThreads(opts: { includeHidden?: boolean; parent?: string } = {}): Thread[] {
+    const where = [opts.includeHidden ? "" : "hidden = 0", opts.parent === undefined ? "" : "parent = @parent AND subagent = 1"].filter(Boolean);
+    const rows = this.db.prepare(`SELECT * FROM threads ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at`)
+      .all(opts.parent === undefined ? {} : { parent: opts.parent }) as ThreadRow[];
     return rows.map(toThread);
   }
 
@@ -324,14 +329,15 @@ export class PoolStore extends PoolReader {
   // Threads and entries
 
   /** A daughter of an unlogged thread is always unlogged. */
-  createThread(opts: { interface: Interface; parent?: string; unlogged?: boolean; title?: string }): Thread {
+  createThread(opts: { interface: Interface; parent?: string; subagent?: boolean; unlogged?: boolean; title?: string }): Thread {
     const parent = opts.parent === undefined ? undefined : this.getThread(opts.parent);
     if (opts.parent !== undefined && !parent) throw new Error(`no such thread: ${opts.parent}`);
+    if (opts.subagent && !parent) throw new Error("a subagent's thread needs its parent");
     let id: string;
     do id = `${opts.interface}/${randomBytes(4).toString("hex")}`; while (this.getThread(id));
     const unlogged = !!opts.unlogged || !!parent?.unlogged;
-    this.db.prepare("INSERT INTO threads (id, interface, parent, title, unlogged, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(id, opts.interface, parent?.id ?? null, opts.title ?? null, unlogged ? 1 : 0, now());
+    this.db.prepare("INSERT INTO threads (id, interface, parent, subagent, title, unlogged, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(id, opts.interface, parent?.id ?? null, opts.subagent ? 1 : 0, opts.title ?? null, unlogged ? 1 : 0, now());
     return this.getThread(id)!;
   }
 
@@ -625,7 +631,7 @@ function bodyOf(item: Item): Body {
   return body;
 }
 
-interface ThreadRow { id: string; interface: Interface; parent: string | null; title: string | null; hidden: number; unlogged: number; created_at: string }
+interface ThreadRow { id: string; interface: Interface; parent: string | null; subagent?: number; title: string | null; hidden: number; unlogged: number; created_at: string }
 interface EntryRow { thread: string; n: number; role: string; text: string; unlogged: number; orig: string | null; created_at: string }
 interface NoteRow { text: string; about: string; origin: string; author: string; superseded_by: string | null; archived: number; created_at: string; updated_at: string }
 interface PageRow { slug: string; title: string; summary: string; text: string; folders: string; origin: string; author: string; archived: number; flagged: number; created_at: string; updated_at: string }
@@ -633,7 +639,7 @@ interface RevisionRow { id: number; item: string; body: string; author: string; 
 
 function toThread(r: ThreadRow): Thread {
   return {
-    id: r.id, interface: r.interface, parent: r.parent ?? undefined, title: r.title ?? undefined,
+    id: r.id, interface: r.interface, parent: r.parent ?? undefined, subagent: r.subagent === 1, title: r.title ?? undefined,
     hidden: r.hidden === 1, unlogged: r.unlogged === 1, createdAt: r.created_at,
   };
 }
