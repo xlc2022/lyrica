@@ -2,15 +2,8 @@
   "name": "lyrica",
   "private": true,
   "type": "module",
-  "workspaces": [
-    "core",
-    "extension",
-    "daemon",
-    "web"
-  ],
-  "engines": {
-    "node": ">=22"
-  },
+  "workspaces": ["core", "extension", "daemon", "web"],
+  "engines": { "node": ">=22" },
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p web",
     "test": "vitest --run",
