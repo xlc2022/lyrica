@@ -5,3 +5,4 @@ export * from "./users.ts";
 export * from "./persona.ts";
 export * from "./profile.ts";
 export * from "./mentions.ts";
+export * from "./workspace/index.ts";
