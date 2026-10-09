@@ -124,6 +124,36 @@ export function apiRoutes(d: Lyricad): Route[] {
       return profiles(d, user.id);
     }),
 
+    // --- Subagent roles and saved workflows, in the user's user.db ---
+    route("GET", `${u}/roles`, (r) => roles(d, d.userFor(r).id)),
+    route("PUT", `${u}/roles/:name`, async (r) => {
+      const user = d.userFor(r);
+      const role = await r.json<Api.Role>();
+      s().delegation.store.setRole(user.id, {
+        name: r.params.name!, description: String(role.description ?? ""), prompt: String(role.prompt ?? ""), tier: role.tier,
+        tools: toolList(role.tools), readOnly: !!role.readOnly, thinking: role.thinking ?? "off",
+      });
+      return roles(d, user.id);
+    }),
+    route("DELETE", `${u}/roles/:name`, (r) => {
+      const user = d.userFor(r);
+      s().delegation.store.removeRole(user.id, r.params.name!);
+      return roles(d, user.id);
+    }),
+    route("GET", `${u}/workflows`, (r) => s().delegation.workflows(d.userFor(r).id)),
+    route("PUT", `${u}/workflows/:name`, async (r) => {
+      const user = d.userFor(r);
+      const w = await r.json<Api.Workflow>();
+      if (!w.spec || typeof w.spec !== "object") throw new Error("a workflow needs a spec: a chain, loop or council");
+      s().delegation.store.setWorkflow(user.id, { name: r.params.name!, description: String(w.description ?? ""), spec: w.spec });
+      return s().delegation.workflows(user.id);
+    }),
+    route("DELETE", `${u}/workflows/:name`, (r) => {
+      const user = d.userFor(r);
+      s().delegation.store.removeWorkflow(user.id, r.params.name!);
+      return s().delegation.workflows(user.id);
+    }),
+
     // --- Workspace defaults, allowed paths, SSH ---
     route("GET", `${u}/network`, (r) => networkDefaults(d, d.userFor(r).id)),
     route("PATCH", `${u}/network/:pool`, async (r) => {
@@ -187,9 +217,25 @@ export function apiRoutes(d: Lyricad): Route[] {
       const user = d.userFor(r);
       const pool = poolOf(r);
       const threadId = owner(d, user, (o) => threadOf(o, r).id);
-      await s().host.forget(user.id, pool, threadId);
-      owner(d, user, (o) => o[pool].forgetThread(threadId, author(user)));
+      // Its subagents' threads go with it, deepest first; each one's runs are stopped and their records dropped first.
+      const doomed = owner(d, user, (o) => {
+        const all: string[] = [];
+        const walk = (id: string) => { for (const c of o[pool].listThreads({ includeHidden: true, parent: id })) walk(c.id); all.push(id); };
+        walk(threadId);
+        return all;
+      });
+      for (const id of doomed) {
+        await s().delegation.forget(user.id, pool, id);
+        await s().host.forget(user.id, pool, id);
+        owner(d, user, (o) => { if (o[pool].getThread(id)) o[pool].forgetThread(id, author(user)); });
+      }
       return { ok: true };
+    }),
+    route("GET", `${t}/subagents`, (r): Api.Subagents => {
+      const user = d.userFor(r);
+      const thread = owner(d, user, (o) => threadOf(o, r));
+      const ref = { user, pool: poolOf(r), threadId: thread.id };
+      return { runs: s().delegation.store.runs(user.id, ref.pool, { parent: thread.id }).map(({ pool: _p, parent: _t, ...run }) => run), usage: s().delegation.usage(ref) };
     }),
     route("GET", `${t}/settings`, (r) => {
       const user = d.userFor(r);
@@ -212,7 +258,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       return owner(d, user, (o): Api.MessagePage => {
         const thread = threadOf(o, r);
         const page = o[poolOf(r)].entryPage(thread.id, { before: before ? Number(before) : undefined, limit });
-        return { messages: toMessages(thread.id, page.entries), hasMore: page.hasMore };
+        return { messages: toMessages(thread.id, poolOf(r), page.entries,
+          (run) => s().delegation.store.runs(user.id, poolOf(r), { run }).map((x) => x.thread)), hasMore: page.hasMore };
       });
     }),
     route("POST", `${t}/messages`, async (r) => {
@@ -483,6 +530,18 @@ function target(d: Lyricad, r: Request): User {
 function withLinks(text: string, links: unknown): string {
   const ids = Array.isArray(links) ? links.map(String).filter((l) => /^(general\/)?[tenp]:\S+$/.test(l)) : [];
   return [text.trim(), ...ids.map((l) => `[${l}]`)].filter(Boolean).join(" ");
+}
+
+function toolList(tools: unknown): string[] {
+  if (tools === undefined) return [];
+  if (!Array.isArray(tools) || !tools.every((t) => typeof t === "string")) throw new Error("a role's tools are a list of tool names");
+  return tools;
+}
+
+/** Every role the user's runs can use: built-ins, overridden or not, and their own. */
+function roles(d: Lyricad, userId: string): Api.RoleInfo[] {
+  const custom = new Set(d.services!.delegation.store.roles(userId).map((r) => r.name));
+  return d.services!.delegation.roles(userId).map((r) => ({ ...r, custom: custom.has(r.name) }));
 }
 
 function display(d: Lyricad, userId: string): Api.Display {

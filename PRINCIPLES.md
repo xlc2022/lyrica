@@ -36,9 +36,10 @@ real use has run into a real wall.
 
 ### 2. One operator, one server, simple boundaries
 
-Lyrica serves Li on a server Li administers. Li's personas are separate
-**users** with their own credentials and their own encrypted databases.
-The server's administrator is trusted.
+Lyrica runs on a server Li administers. Everyone who uses her, Li and anyone
+Li lets in, has one or more separate **users**, with their own credentials and
+their own encrypted databases. The server's operator is trusted; users are
+protected from each other.
 
 - A boundary is enforced by the structure of the system (separate databases,
   separate keys, no cloud model offered in a private pool), never by

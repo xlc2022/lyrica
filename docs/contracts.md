@@ -27,7 +27,7 @@ bin/         launchers and admin commands
 
 | Term | Meaning |
 |---|---|
-| **User** | One of Li's personas, with its own login. Either an administrator or a normal user. |
+| **User** | One account with its own login and data: one of Li's, or another person's. Either an administrator or a normal user. Linked users belong to the same person. |
 | **Pool** | `general` or `private`. Each user has one of each. |
 | **Interface** | Where a thread lives: `web`, `cli`, `matrix`, `forum` or `sleep`. |
 | **Thread** | One conversation. It belongs to one user, one pool and one interface. |
@@ -45,8 +45,9 @@ IDs and citations:
 ```ts
 unlockSelf(passphrase: string): Promise<void>            // self.db only
 unlockUser(userId: string, password: string): Promise<void>
-saveUserKey(userId: string): Promise<void>                // "save credentials"
-forgetSavedKey(userId: string): Promise<void>
+saveUserKey(userId) / forgetSavedKey(userId) / hasSavedKey(userId)   // "save credentials"
+saveSelfPassphrase(p) / forgetSelfPassphrase() / hasSavedPassphrase()
+unlockSaved(): Promise<void>                              // at start: the saved passphrase and keys
 hasUserKey(userId: string): boolean
 subkey(userId: string, purpose: "pool:general" | "pool:private" | "home"): Buffer  // HKDF-SHA256
 lockUser(userId: string): void
@@ -58,18 +59,23 @@ lockUser(userId: string): void
 - Each user has a random 256-bit data key, wrapped by Argon2id of their
   password. Changing the password rewraps the key. The data is never
   re-encrypted for a password change.
-- Keys live only in daemon memory, or in systemd credentials when saved.
+- Keys live only in daemon memory, or in systemd credentials when saved:
+  sealed with `systemd-creds encrypt --user` (systemd 256 or later), the
+  secret on stdin, loaded by the unit with `LoadCredentialEncrypted=`.
 
 ## core/users
 
 ```ts
 class Users {
   createUser(login, password, profile: Omit<Profile, "previousNames">, { admin }): Promise<User>  // first user must be admin
-  authenticate(login, password): Promise<User>               // also unlocks the user's key
+  authenticate(login, password): Promise<User>               // also unlocks the user's key; Argon2 runs for unknown logins too
   changePassword(user, oldPassword, newPassword): Promise<void>  // rewraps the same data key
   setAdmin(actor: User, target: User, admin: boolean): void  // refuses to demote the last admin
   updateProfile(actor: User, target: User, change): Profile  // self, or an admin; a rename appends to previousNames
   listUsers(actor: User): User[]                             // admins see everyone, others themselves
+  link(a: User, aPassword, b: User, bPassword): void          // the same person's users; needs both passwords
+  unlink(actor: User, other: User): void
+  linked(userId): string[]
   get(id): User | undefined; find(login): User | undefined; all(): User[]
 }
 
@@ -77,13 +83,16 @@ interface Profile {
   displayName: string;                       // changeable at any time
   pronouns: { subj: string; obj: string; poss: string; possPro: string; refl: string };
   previousNames: { name: string; until: string }[];   // appended on rename
-  accent?: string;                           // persona colour in the web UI, "#rrggbb"
+  accent?: string;                           // the user's colour in the web UI, "#rrggbb"
   monogram?: string;                         // one or two letters
 }
 ```
 
 - **Where things live.** `self.db` holds a `users` index: login, admin flag,
-  profile and wrapped key.
+  profile and wrapped key. It also holds global `settings` (such as
+  `sleep.time`), the persona's revisions, `user_links`, and the
+  `persona_proposals` that users have sent on (`PersonaStore.proposals`,
+  `decide`).
   - The wrapped key has to be readable before the user's own databases can
     open.
   - The profile and admin flag must stay readable and editable while the user
@@ -91,6 +100,13 @@ interface Profile {
   - Each user's `user.db` holds that user's settings. Their memory lives in the
     pool databases.
 - The theme (device, light or dark) is a display setting in `user.db`.
+- **Persona proposals start in the originating user's `user.db`**, encrypted
+  with that user's key, where only they can read, edit, drop or send them on.
+  Sending copies the proposal to `self.db` for the administrators. A proposal
+  from an administrator's own conversation is sent at once.
+- **A browser session holds only linked users.** Logging in as a user not
+  linked to the session's users ends the session first. Each user's "stay
+  unlocked after logout" choice lives in their `user.db` (default on).
 - The **login name** is separate from the display name, so renaming never
   affects signing in.
 - Pronoun presets are she/her, he/him and they/them, plus a custom option that
@@ -138,7 +154,7 @@ nothing else. No code path gives a general view a private handle.
 
 | Area | Methods |
 |---|---|
-| Threads | `createThread({ interface, parent?, subagent?, unlogged?, title? })`, `listThreads({ includeHidden?, parent? })`, `getThread`, `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `exportThread`, `forgetThread` |
+| Threads | `createThread({ interface, parent?, subagent?, unlogged?, title? })`, `listThreads({ includeHidden?, parent? })`, `getThread`, `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage`, `setTitle`, `exportThread`, `forgetThread` (also forgets its subagents' threads) |
 | Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
 | Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `userIntroduced` |
@@ -253,23 +269,37 @@ openThreadSession({ thread, models, cwd, extensions, settings? })  // one thread
 
 ## delegate
 
+```ts
+new Delegation({ users, memory, models, workspace?, cwd, limits? })  // one per lyricad
+createDelegateExtension(thread, delegation, budget?)   // adds `delegate` (and `ask_parent` in a subagent)
+delegation.events                                      // typed EventEmitter for the live view
+delegation.store                                       // roles and saved workflows, in user.db
+delegation.forget(userId, pool, threadId)              // before forgetThread: stops its runs
+delegation.stopAll(userId?)                            // Lock and shutdown
+```
+
 One model-facing tool: `delegate({ action?, ... })`.
 - The default action runs work: `task` with an optional `role` and `tier`;
   or `tasks: [...]` (parallel), `chain: [...]`, `loop`, `council`, or
-  `workflow: name`. Any of these can be `background: true`.
+  `workflow: name`. Any of these can be `background: true`. She picks a tier,
+  never a model; only saved workflows, which users write, may name one.
 - The other actions are `status`, `wait`, `stop`, `steer` and `answer`, each
-  on a run ID.
+  on a run ID, and only on runs the calling thread started.
+- A subagent also has `ask_parent`, and read-only memory
+  (`registerMemoryTools({ readOnly: true })`).
 
 Every run:
-- creates a child thread with `createThread({ parent, interface })`, recorded
-  as a subagent;
+- creates a child thread with `createThread({ parent, subagent: true })`;
 - calls `workspace.inheritSettings` with any narrowing;
-- resolves its model through the router with the child's `CallContext`;
+- resolves its model with `models.childContext`, from the parent's current
+  `CallContext`, and stops (`parent_changed`) if the parent turns
+  local-only, unlogged or forgotten;
 - runs in-process in `lyricad`;
-- emits events (started, output, question, finished, stopped, interrupted)
-  for the web UI's live view.
+- emits `started`, `output`, `tool_call`, `question`, `finished`, `stopped`,
+  `interrupted` and `usage`.
 
-Full feature list: [delegation.md](delegation.md).
+`user.db` gains `delegate_roles`, `delegate_workflows` and `subagent_runs`
+(no conversation text). Full details: [delegation.md](delegation.md).
 
 ## extension
 
@@ -303,7 +333,8 @@ The extension is created with a `ThreadContext`:
   - `read`, `write`, `edit` and `bash` (Workspace thread; see
     [workspace.md](workspace.md));
   - `remember`, `recall` and `read_memory` (Memory thread);
-  - `delegate` (Delegation thread; see [delegate](#delegate));
+  - `delegate`, and `ask_parent` in subagents (Delegation thread; see
+    [delegate](#delegate));
   - `calendar` and `sort` (Integrations thread);
   - `web_search` and `web_fetch` (research, carried over from v1 or taken from
     a Pi package).
@@ -324,12 +355,19 @@ The extension is created with a `ThreadContext`:
     also removes extension tools.
   - Sessions run in-process, with no `pi` subprocesses.
   - Entries are recorded with `appendEntry` as each turn ends (`recordEntries`).
-- **Startup:** `lyricad` builds `Workspace` with its own listening ports as
-  `excludePorts`, and calls `selfTest()` before serving threads.
+- **Startup:** once unlocked, `lyricad` builds `Workspace` with its own
+  listening ports as `excludePorts` and the proxy's as `frontPorts`, and calls
+  `selfTest()` before serving threads. It builds one `Delegation`, adds
+  `createDelegateExtension` to each thread's session, forwards
+  `delegation.events` to the parent thread's stream, and calls `stopAll` on
+  Lock and shutdown.
+- **Permission prompts:** the workspace extension's `tool_call` hook calls
+  `ThreadTools.approve?(request)`; `lyricad` supplies it and waits for an
+  answer from any open view, denying on timeout or Stop.
 - **Unlocking:** when started as a service, `lyricad` starts locked, and the
   API serves only the unlock endpoint until `self.db` is unlocked.
-- **HTTP/SSE API**, detailed by the Daemon thread in `daemon/src/api.ts`.
-  The web UI imports its types from there:
+- **HTTP/SSE API**, defined in `daemon/src/api.ts` and described in
+  [daemon.md](daemon.md). The web UI imports its types from there:
   - auth;
   - threads (list, create, hide, forget);
   - messages (send, stream);
@@ -362,7 +400,9 @@ runSleep(userId: string, pool: Pool, reason: "scheduled" | "manual"): SleepRun
 ## core/workspace
 
 ```ts
-new Workspace(keyring, users, { excludePorts })  // excludePorts: lyricad's own ports; required, [] for none
+new Workspace(keyring, users, { excludePorts, frontPorts? })
+// excludePorts: lyricad's own ports, refused on every address; required, [] for none
+// frontPorts: the proxy's ports (default [443]), refused on this machine's own addresses
 interface WorkspaceThread { userId; pool; threadId }
 interface Network { internet: boolean; services: boolean; hosts: string[] }
 interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
@@ -378,7 +418,7 @@ network(t): Network
 inheritSettings(parent, childThreadId, narrower?)  // subagents: same or stricter, never wider
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, SSH targets
 allowedPaths.allow(actor, userId, pool, path) / disallow(...) / list(userId)
-saveUpload(t, name, bytes): Promise<string>
+saveUpload(t, name, bytes): Promise<string>  // cleans the name (cleanUploadName), never overwrites
 mountHome(userId) / unmountHome(userId)   // gocryptfs; mount when the user's key becomes available
 selfTest(): Promise<string | undefined>   // lyricad calls this at startup
 ```
@@ -400,6 +440,9 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
     hostname resolved at start, each with an optional port).
   - Never the host's network namespace. `excludePorts` are rejected on every
     address, and so are the host's Unix sockets.
+  - This machine's own addresses (LAN, Tailscale; read when each sandbox
+    starts) count as this machine: reachable only with the services switch,
+    never through internet or an allowed host, and never on `frontPorts`.
   - Allowed hostnames are written to the sandbox's `/etc/hosts`. With
     internet off there is no DNS resolver inside the sandbox.
   - `inheritSettings` may only shrink the list.

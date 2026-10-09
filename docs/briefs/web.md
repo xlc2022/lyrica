@@ -111,6 +111,10 @@ chat is where Li will spend most of her time with Lyrica.
      - sleep time;
      - persona proposals;
      - the network self-test result, if network is refused.
+     - **Web access**: built-in Caddy or an external proxy, the name, the
+       addresses, the DNS provider and credentials, certificate status, and
+       the snippet for an external proxy. Add this once its API lands from
+       `docs/briefs/web-access.md`.
 9. **Look.** As DESIGN.md describes.
    - Her messages run full width as prose; the user's sit in a tinted block.
    - Theme follows the device unless overridden.
