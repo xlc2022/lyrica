@@ -254,11 +254,26 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - It keeps going in the background and stays until it is forgotten.
     Forgetting a parent asks whether to forget its child threads too, ticked
     by default.
-- **The user can branch any thread at any turn,** as in ChatGPT: **Branch
-  from here** on any message makes a child thread holding the conversation up
-  to that message, and **Edit** on one of the user's earlier messages makes a
-  branch with the edited message sent in its place. The original thread never
-  changes, so there are no versions to flip between inside a thread.
+- **The user can rewind, retry and branch at any turn,** because weak local
+  models often need a few tries:
+  - **Regenerate** on any of Lyrica's replies removes it and everything after
+    it, then asks again. **Regenerate with…** does the same with another model
+    the thread may use (local only in a private or local-only thread).
+  - **Delete** removes the last turn, as in LM Studio, again and again until
+    the one to retry; **Delete from here** removes a message and everything
+    after it.
+  - **Edit** on one of the user's messages replaces it in place, as in
+    ChatGPT: the edited text is sent and what followed is replaced.
+  - **Branch from here** makes a child thread holding the conversation up to
+    that message, and leaves the original as it was.
+  - There are no versions to flip between inside a thread: a thread is one
+    line, and branches keep alternatives.
+- **What a removed turn takes with it.** Its entries are deleted like
+  forgotten ones: notes written in those turns go too, sleep and search never
+  see them, and pages that already rest on them are flagged for rewriting.
+  Subagents started in them are stopped and forgotten. Commands and file
+  changes are not undone, and the confirmation says so before anything is
+  removed. A short Undo follows, then it is final.
   - A branch copies the earlier entries the way an export does, keeping
     their original IDs, so memories and citations that point at them still
     resolve, and sleep and recall don't count them twice.

@@ -16,7 +16,8 @@ views are reused here).
 
 ## Goal
 
-The user can branch any thread at any turn, as in ChatGPT, and Lyrica splits
+The user can regenerate, delete, edit and branch at any turn (weak local
+models often need a few tries), and Lyrica splits
 work the way Claude does: a subagent for a bounded answer she
 needs now, a child thread for a stream of work of its own that the user can
 follow and steer. Child threads sit under their parent in the sidebar, keep
@@ -67,25 +68,45 @@ structural.
    - Forgetting a parent asks whether to forget its child threads too, ticked
      by default (API flag; the store cascades when set).
 6a. **Branching by the user.**
-   - `branchThread(threadId, entryN, { editedText? })` in the store: a child
-     thread with the entries up to and including `entryN`, copied as an
-     export copies them (`orig` keeps the source ID), titled from the source
-     ("… (branch)", editable). With `editedText`, `entryN` must be one of the
-     user's messages: the copy stops before it and the edited text is sent as
-     the branch's first new message.
-   - API: branch from a message, and edit-and-branch from a user message.
+   - `branchThread(threadId, entryN)` in the store: a child thread with the
+     entries up to and including `entryN`, copied as an export copies them
+     (`orig` keeps the source ID), titled from the source ("… (branch)",
+     editable).
+   - API: branch from a message.
      Same pool and owner checks as reading the thread; the branch inherits
      the parent's settings (it can't widen them) and is unlogged if the parent
      is.
    - Tests: a branch holds exactly the turns up to the chosen one; the source
      thread is unchanged; citations to copied entries resolve; sleep and
      search don't count copies twice; a branch of a private or local-only
-     thread stays so; edit-and-branch sends the edited text and the source
-     keeps the original.
+     thread stays so.
+6b. **Rewinding in place.**
+   - `truncateThread(threadId, fromN)` in the store removes entries `fromN`
+     onwards through the same path as forgetting: rows and index entries
+     gone, notes written in those turns deleted, pages that cite them
+     flagged, tombstones kept so sleep never re-notes them. Subagent runs
+     started in those turns are stopped and their threads forgotten.
+   - API, with the session's `turn` lock so nothing runs meanwhile:
+     **Regenerate** (truncate from a reply, then resend its user message,
+     optionally with a chosen model from the thread's allowed list, checked
+     by the router), **Delete** (the last turn) and **Delete from here**,
+     **Edit** (truncate from a user message and send the edited text).
+   - Before removing, the API reports side effects in the removed turns
+     (commands run, files changed, subagents) so the UI can say they won't
+     be undone. Undo is a short delay in the UI before the request is sent,
+     not a restore.
+   - Tests: regenerate replaces the reply and what followed; regenerate with
+     a cloud model in a local-only thread is refused; delete from the end
+     repeatedly; a note written in a removed turn is gone and sleep doesn't
+     see the turn; a page citing it is flagged; a running subagent from a
+     removed turn is stopped; the side-effect report lists a command that
+     ran; no text reaches a log.
 7. **Web UI.**
-   - Every message gets **Branch from here** in its menu; the user's own
-     messages also get **Edit**, which branches. The new branch opens, nested
-     under its parent. Children nest collapsibly under their parent (as forks do),
+   - Every message's menu: **Branch from here**, **Delete from here**; on
+     Lyrica's replies **Regenerate** and **Regenerate with…** (a model
+     picker); on the user's messages **Edit**; and **Delete** on the last
+     turn. Removing turns confirms, naming any side effects, then shows an
+     Undo toast. A new branch opens, nested under its parent. Children nest collapsibly under their parent (as forks do),
    with status and the update badge; update cards in the parent; `threads`
    calls render as a card.
 8. **Docs.** docs/delegation.md (or a new docs/threads.md if it reads better),
