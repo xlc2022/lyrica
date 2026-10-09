@@ -254,6 +254,18 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - It keeps going in the background and stays until it is forgotten.
     Forgetting a parent asks whether to forget its child threads too, ticked
     by default.
+- **The user can branch any thread at any turn,** as in ChatGPT: **Branch
+  from here** on any message makes a child thread holding the conversation up
+  to that message, and **Edit** on one of the user's earlier messages makes a
+  branch with the edited message sent in its place. The original thread never
+  changes, so there are no versions to flip between inside a thread.
+  - A branch copies the earlier entries the way an export does, keeping
+    their original IDs, so memories and citations that point at them still
+    resolve, and sleep and recall don't count them twice.
+  - It is a child thread like any other: the same pool, "Do not log",
+    local-only and settings as its parent, nested under it in the sidebar.
+    Subagents aren't branched with it; their results are already in the
+    copied turns.
   - In version one, subagents can't start subagents of their own.
 - **Local-only.** In a private or local-only thread, any attempt to use a cloud
   model, for any purpose, fails with an error. Nothing ever falls back across

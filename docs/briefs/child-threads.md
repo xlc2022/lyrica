@@ -16,7 +16,8 @@ views are reused here).
 
 ## Goal
 
-Lyrica splits work the way Claude does: a subagent for a bounded answer she
+The user can branch any thread at any turn, as in ChatGPT, and Lyrica splits
+work the way Claude does: a subagent for a bounded answer she
 needs now, a child thread for a stream of work of its own that the user can
 follow and steer. Child threads sit under their parent in the sidebar, keep
 going in the background, and talk with their parent. This serves principle 1
@@ -65,7 +66,26 @@ structural.
      told.
    - Forgetting a parent asks whether to forget its child threads too, ticked
      by default (API flag; the store cascades when set).
-7. **Web UI.** Children nest collapsibly under their parent (as forks do),
+6a. **Branching by the user.**
+   - `branchThread(threadId, entryN, { editedText? })` in the store: a child
+     thread with the entries up to and including `entryN`, copied as an
+     export copies them (`orig` keeps the source ID), titled from the source
+     ("… (branch)", editable). With `editedText`, `entryN` must be one of the
+     user's messages: the copy stops before it and the edited text is sent as
+     the branch's first new message.
+   - API: branch from a message, and edit-and-branch from a user message.
+     Same pool and owner checks as reading the thread; the branch inherits
+     the parent's settings (it can't widen them) and is unlogged if the parent
+     is.
+   - Tests: a branch holds exactly the turns up to the chosen one; the source
+     thread is unchanged; citations to copied entries resolve; sleep and
+     search don't count copies twice; a branch of a private or local-only
+     thread stays so; edit-and-branch sends the edited text and the source
+     keeps the original.
+7. **Web UI.**
+   - Every message gets **Branch from here** in its menu; the user's own
+     messages also get **Edit**, which branches. The new branch opens, nested
+     under its parent. Children nest collapsibly under their parent (as forks do),
    with status and the update badge; update cards in the parent; `threads`
    calls render as a card.
 8. **Docs.** docs/delegation.md (or a new docs/threads.md if it reads better),
@@ -74,7 +94,9 @@ structural.
 
 ## Out of scope
 
-- Child threads of child threads.
+- Child threads of child threads started by Lyrica (a user may branch a
+  branch; Lyrica's own children stay one level deep).
+- Versions inside one thread (ChatGPT's < 1/2 >): branches replace them.
 - Moving a child to another pool.
 
 ## Done when
