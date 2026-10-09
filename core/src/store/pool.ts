@@ -336,10 +336,10 @@ export class PoolReader {
     const from = since ?? "";
     const threads = (this.db.prepare(`SELECT e.thread AS id, t.title, count(*) AS entries, min(e.n) AS first, max(e.n) AS last
       FROM entries e JOIN threads t ON t.id = e.thread
-      WHERE e.unlogged = 0 AND e.orig IS NULL AND t.interface != 'sleep' AND e.text != '' AND e.created_at > ? AND e.created_at < ?
+      WHERE e.unlogged = 0 AND e.orig IS NULL AND t.interface != 'sleep' AND e.text != '' AND e.created_at >= ? AND e.created_at < ?
       GROUP BY e.thread ORDER BY min(e.created_at)`).all(from, until) as { id: string; title: string | null; entries: number; first: number; last: number }[])
       .map((r) => ({ id: r.id, ...(r.title ? { title: r.title } : {}), entries: r.entries, first: entryId(r.id, r.first), last: entryId(r.id, r.last) }));
-    const notes = (this.db.prepare("SELECT id FROM notes WHERE origin != 'sleep' AND archived = 0 AND created_at > ? AND created_at < ? ORDER BY created_at")
+    const notes = (this.db.prepare("SELECT id FROM notes WHERE origin != 'sleep' AND archived = 0 AND created_at >= ? AND created_at < ? ORDER BY created_at")
       .all(from, until) as { id: string }[]).map((r) => this.get(r.id)!);
     const edited = this.editedSince(from).filter((e) => e.at < until);
     const flagged = (this.db.prepare("SELECT slug FROM pages WHERE flagged = 1 AND archived = 0").all() as { slug: string }[]).map((r) => `p:${r.slug}`);

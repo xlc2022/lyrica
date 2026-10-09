@@ -117,6 +117,7 @@ describe("a night's sleep", () => {
     s.talk(v, "I'm thinking about the garden.", "{user} is planning the garden");
     const seen = s.script({
       dream: [
+        call("raise", { text: "A thought before writing" }),
         call("write_journal", { text: "Moonlit tomatoes climbing a ladder." }),
         call("raise", { text: "Ask about the moonlit tomato idea" }),
       ],
@@ -134,9 +135,11 @@ describe("a night's sleep", () => {
     for (const c of seen.wake) expect(said(c)).not.toMatch(/Moonlit tomatoes|ladder/);
     expect(v.own.getWake()).not.toMatch(/moonlit|tomato/i);
 
-    const [item] = v.own.listItems();
+    const [item, before] = v.own.listItems();
     expect(item).toMatchObject({ kind: "thought", text: "Ask about the moonlit tomato idea", run: run.id });
-    expect(item!.source).toMatch(/^j:/);
+    // Each thought links to tonight's dream: its journal entry, or its thread before the entry was written.
+    expect(item!.source).toBe(v.own.listJournal(1)[0]!.id);
+    expect(before).toMatchObject({ text: "A thought before writing", source: `t:${run.phases.dream!.thread}` });
 
     // No other thread has the item in its context, and recall can't find it.
     const user = { id: s.li.id, profile: s.li.profile };
@@ -261,6 +264,9 @@ describe("a night's sleep", () => {
     // The later entry waits for the next sleep.
     expect(v.own.sleepMaterial(v.own.watermark(), new Date(Date.now() + 120_000).toISOString()).threads.map((t) => t.id)).toEqual([later.id]);
     expect(run.until < future).toBe(true);
+    // An entry written at the very millisecond the watermark names is slept next time.
+    v.own.appendEntry(later.id, { piId: "f2", role: "user", data: {}, text: "EDGE" }, run.until);
+    expect(v.own.sleepMaterial(v.own.watermark(), future).threads.map((t) => t.id)).toEqual([later.id]);
     v.close();
   });
 

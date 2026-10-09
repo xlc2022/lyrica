@@ -242,7 +242,7 @@ export class Sleep {
     state: { stopped: boolean; abort?: () => Promise<void> }): Promise<{ thread: string; ok: boolean }> {
     const user = this.o.users.get(userId)!;
     const thread = view.own.createThread({ interface: "sleep", title: `Sleep: ${phase}` });
-    const done = { journal: false, wake: false };
+    const done: SleepTools["done"] = { wake: false };
     let ok = false;
     try {
       const { call } = this.context(userId, pool, phase);
@@ -284,7 +284,7 @@ export class Sleep {
         state.abort = undefined;
         dispose();
       }
-      ok = !failed && !over && !state.stopped && (phase !== "dream" || done.journal) && (phase !== "wake" || done.wake);
+      ok = !failed && !over && !state.stopped && (phase !== "dream" || !!done.journal) && (phase !== "wake" || done.wake);
     } catch (err) {
       this.log(`sleep ${pool} ${phase} failed: ${(err as Error).name}`);
     }
@@ -368,7 +368,8 @@ interface SleepTools {
   runId: string;
   threadId: string;
   proposals: PersonaProposals;
-  done: { journal: boolean; wake: boolean };
+  /** What this phase wrote: tonight's journal entry, and whether WAKE is written. */
+  done: { journal?: string; wake: boolean };
 }
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }], details: undefined });
@@ -433,7 +434,7 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
         parameters: Type.Object({ text: Type.String() }),
         async execute(_id, params) {
           const id = own.addJournal(`${DREAM_HEADER}\n\n${params.text.trim()}`, "sleep");
-          s.done.journal = true;
+          s.done.journal = id;
           return text(`Wrote ${id}.`);
         },
       });
@@ -481,7 +482,7 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
       }),
       async execute(_id, params) {
         const kind: SleepItem["kind"] = phase === "consolidate" ? "question" : "thought";
-        const source = params.source?.trim() || (phase === "dream" ? lastJournal(view) : undefined) || `t:${s.threadId}`;
+        const source = params.source?.trim() || s.done.journal || `t:${s.threadId}`;
         own.addItem(s.runId, { kind, text: params.text, source });
         return text(kind === "question" ? "Raised the question." : "Kept it for later.");
       },
@@ -489,6 +490,3 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
   };
 }
 
-function lastJournal(view: PoolView): string | undefined {
-  return view.own.listJournal(1)[0]?.id;
-}
