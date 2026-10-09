@@ -53,6 +53,29 @@ can be off, paused or busy gaming without Lyrica going dark.
      `{ endpointId, modelId }` references.
    - A model the endpoint stops listing keeps its offering, marked
      `missing`.
+   - Editing an endpoint (URL, address, key, re-pairing) never changes its
+     IDs.
+   - **Cleanup**, as in DESIGN:
+     - `stale` endpoints (14 days unreachable) and `gone` offerings (30 days
+       missing);
+     - automatic pruning of gone offerings nothing refers to;
+     - a Clean up API listing where each one is used, with **Replace with…**
+       (suggesting the same model on another endpoint) and **Remove**.
+   - **Redirects and tombstones** (`offering_redirects`) in `self.db` or
+     `user.db`, followed by the router at once.
+     - Each user's profiles, overrides and saved workflows are rewritten when
+       that user unlocks, with a one-time notice.
+     - A redirect is deleted once no user still refers to it, which is
+       tracked per user.
+   - **Reset IDs** and **merge endpoints**, both through redirects.
+   - Call records keep the name and endpoint label with the ID.
+   - **Tests:**
+     - removing a shared endpoint while another user is locked: that user's
+       next unlock rewrites their lists and shows the notice, and their calls
+       already skipped it before that;
+     - a replacement routes at once;
+     - Reset IDs breaks nothing;
+     - history still shows the old label.
    - Offerings carry capabilities (tools, vision, embedding, image, edit),
      from discovery or set by hand. Offer "the same model" on another
      endpoint as a suggested fallback, matching on the model's name or

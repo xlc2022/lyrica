@@ -128,6 +128,35 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       **missing**, so a profile never changes silently.
     - The UI recognises the same model on different endpoints and can offer
       it as a fallback.
+  - **Editing an endpoint never changes its IDs.** A new URL, address or key,
+    or re-pairing a host, keeps them all, so moving a server means editing
+    its address.
+  - **Cleaning up** never deletes silently, because profiles, overrides and
+    saved workflows refer to these IDs, including other users' profiles,
+    which stay encrypted while those users are locked:
+    - An endpoint unreachable for 14 days is marked **stale**, and a model
+      missing for 30 days is marked **gone**. Fallbacks skip both.
+    - A gone model that nothing refers to is removed after 30 days.
+    - Everything else goes through a **Clean up** view. It shows where each
+      stale endpoint or gone model is still used, and offers **Replace
+      with…** (pre-filled with the same model on another endpoint, where
+      there is one) or **Remove**.
+  - **Redirects and tombstones.**
+    - A replacement leaves a **redirect** from the old ID to the new one,
+      and a removal leaves a **tombstone**. They are stored where the
+      endpoint lives: `self.db` for shared endpoints, the user's `user.db`
+      for personal ones. Routing follows them at once, for every user.
+    - Each user's own lists are rewritten the next time they unlock, with a
+      one-time notice on their Models page.
+    - A redirect or tombstone is deleted once no user's lists still refer to
+      it.
+  - **History never breaks.** Recent calls and messages keep the model's name
+    and endpoint label with its ID, so old entries read correctly after the
+    ID is gone.
+  - **Reset IDs** gives an endpoint and its models fresh IDs, for a server you
+    want treated as new. It leaves redirects from the old IDs, so nothing
+    breaks. The same mechanism **merges** two endpoints that turned out to be
+    the same server.
 - **Tasks.** Different tasks use different models: chat, cheap and strong
   subagents, compaction, titles, embeddings, each sleep phase, and creating
   and editing images.

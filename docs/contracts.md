@@ -266,6 +266,18 @@ openThreadSession({ thread, models, cwd, extensions, settings? })  // one thread
     `ModelRef` becomes `{ offeringId }`, and existing `{ endpointId, modelId }`
     pairs are migrated. An offering the endpoint no longer lists is kept and
     marked `missing`.
+  - Editing an endpoint never changes its IDs.
+  - **Redirects and tombstones** (`offering_redirects`, from → to or
+    `removed`) live where the endpoint lives: `self.db` for shared, `user.db`
+    for personal. `resolveModel` follows them.
+    - Each user's references (profiles, overrides, saved workflows) are
+      rewritten when that user unlocks.
+    - A redirect is deleted once no user still refers to it, which is
+      tracked per user.
+  - Endpoint states: `stale` (unreachable for 14 days) and `gone` (missing for
+    30 days). Gone offerings nothing refers to are pruned.
+  - `resetIds(endpoint)` and `merge(from, into)` work through redirects.
+  - Call records keep the name and endpoint label with the ID.
   - A profile entry becomes an ordered list,
     `Partial<Record<Task, ModelRef[]>>`, in three profiles: `local`, `cloud`
     and `custom`. `resolveModel` returns the first whose endpoint is up, and
