@@ -224,6 +224,61 @@ test("turning Show private off hides an open private thread and private memory",
   await expect(page.getByLabel("Show private")).toBeChecked();
 });
 
+test("an administrator sees how Lyrica is reached", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}/panel`);
+  const section = page.getByRole("region", { name: "Web access", exact: true });
+  await expect(section.getByLabel("Only this machine")).toBeChecked();
+  await expect(section.getByRole("region", { name: "Web access status" })).toContainText("Only on this machine");
+  await section.getByLabel("Built-in Caddy").check();
+  await expect(section.getByLabel("DNS provider")).toBeVisible();
+  await section.getByLabel("A proxy elsewhere").check();
+  await expect(section.getByLabel("Proxy addresses")).toBeVisible();
+  await noHorizontalScroll(page);
+});
+
+test("linked users share a browser; logging in as anyone else signs this browser out first", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const admin = (path: string, data: unknown) => page.evaluate(async ([path, data]) => {
+    const r = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
+    if (!r.ok && r.status !== 400) throw new Error(`${path}: ${r.status} ${await r.text()}`);
+  }, [`/api/u/${userId}/admin/users`, data] as const);
+  const pronouns = { subj: "she", obj: "her", poss: "her", possPro: "hers", refl: "herself" };
+  await admin("", { login: "lark", password: "pw-lark", displayName: "Lark", pronouns, admin: false });
+  await admin("", { login: "sam", password: "pw-sam", displayName: "Sam", pronouns, admin: false });
+
+  // Link Lark to Li from the control panel.
+  await page.goto(`/#/u/${userId}/panel`);
+  const links = page.getByRole("region", { name: "Your personas" });
+  await links.getByLabel("Your password").fill("pw");
+  await links.getByLabel("Its login name").fill("lark");
+  await links.getByLabel("Its password").fill("pw-lark");
+  await links.getByRole("button", { name: "Link separate persona" }).click();
+  await expect(links.getByText("Lark", { exact: true })).toBeVisible();
+
+  const logInAs = async (login: string, password: string) => {
+    if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+    await page.getByRole("button", { name: /Switch user/ }).click();
+    await page.getByRole("link", { name: "Log in as another user…" }).click();
+    await expect(page.getByRole("heading", { name: "Log in as another user" })).toBeVisible();
+    await page.getByLabel("Login name", { exact: true }).fill(login);
+    await page.getByLabel("Password", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "Log in" }).click();
+    await expect(page.getByText("Switch user")).toBeAttached();
+  };
+
+  // A linked user joins Li on this browser.
+  await logInAs("lark", "pw-lark");
+  await expect(page.getByText("Signed out the previous user")).toHaveCount(0);
+  expect((await page.evaluate(() => fetch("/api/state").then((r) => r.json())) as { users: unknown[] }).users).toHaveLength(2);
+
+  // Anyone else replaces them both, without naming them.
+  await logInAs("sam", "pw-sam");
+  await expect(page.getByRole("status").filter({ hasText: "Signed out the previous user on this browser." })).toBeVisible();
+  const state = await page.evaluate(() => fetch("/api/state").then((r) => r.json())) as { users: { login: string }[] };
+  expect(state.users.map((x) => x.login)).toEqual(["sam"]);
+});
+
 test("no horizontal scrolling and big enough tap targets on a phone", async ({ page, baseURL }) => {
   test.skip(!phone(page), "phone only");
   const userId = await enter(page, baseURL!);

@@ -1,6 +1,6 @@
 // The signed-in layout: sidebar, and the page the route points at.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { get, patch, post, u, type DisplayChange, type Me, type Pool, type ThreadSummary, type UserCard } from "./api.ts";
+import { get, patch, post, u, type DisplayChange, type LogoutResponse, type Me, type Pool, type ThreadSummary, type UserCard } from "./api.ts";
 import { href, go, type Route } from "./route.ts";
 import { Thread } from "./Thread.tsx";
 import { Memory } from "./Memory.tsx";
@@ -16,7 +16,11 @@ export interface ShellContext {
   openSide: () => void;
 }
 
-export function Shell({ user, users, route, onAuthChange }: { user: UserCard; users: UserCard[]; route: Route; onAuthChange: () => void }) {
+export function Shell({ user, users, route, onAuthChange }: {
+  user: UserCard; users: UserCard[]; route: Route;
+  /** After logout or Lock, with a line to show, if any. */
+  onAuthChange: (notice?: string) => void;
+}) {
   const me = useLoad(() => get<Me>(u(user.id, "me")), [user.id]);
   const threads = useLoad(() => get<ThreadSummary[]>(u(user.id, "threads")), [user.id]);
   const [sideOpen, setSideOpen] = useState(false);
@@ -83,7 +87,7 @@ export function HiddenPool({ ctx, pool }: { ctx: ShellContext; pool: Pool }) {
 export const monogram = (user: UserCard) => user.monogram || user.displayName.slice(0, 2);
 
 function Sidebar({ ctx, users, route, threads, error, onAuthChange }: {
-  ctx: ShellContext; users: UserCard[]; route: Route; threads: ThreadSummary[]; error: string; onAuthChange: () => void;
+  ctx: ShellContext; users: UserCard[]; route: Route; threads: ThreadSummary[]; error: string; onAuthChange: (notice?: string) => void;
 }) {
   const { user, me } = ctx;
   const [run, , actionError] = useAction();
@@ -172,7 +176,7 @@ function ThreadLink({ t, userId, on }: { t: ThreadSummary; userId: string; on: b
   );
 }
 
-function UserMenu({ ctx, users, onAuthChange }: { ctx: ShellContext; users: UserCard[]; onAuthChange: () => void }) {
+function UserMenu({ ctx, users, onAuthChange }: { ctx: ShellContext; users: UserCard[]; onAuthChange: (notice?: string) => void }) {
   const { user } = ctx;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -181,10 +185,12 @@ function UserMenu({ ctx, users, onAuthChange }: { ctx: ShellContext; users: User
   useEffect(() => { addEventListener("hashchange", close); return () => removeEventListener("hashchange", close); }, [close]);
   const [run, , error] = useAction();
   const leave = (path: string, body: unknown) => run(async () => {
-    await post(path, body);
+    const r = await post<Partial<LogoutResponse>>(path, body);
     setOpen(false);
     go({ page: "home" });
-    onAuthChange();
+    onAuthChange(r.stillUnlocked?.length
+      ? `Logged out here. ${user.displayName} stays unlocked, because another browser is still logged in.`
+      : undefined);
   });
   return (
     <div className="user-menu" ref={ref}>
@@ -200,7 +206,8 @@ function UserMenu({ ctx, users, onAuthChange }: { ctx: ShellContext; users: User
               <span className="avatar small" style={x.accent ? { background: x.accent } : undefined} aria-hidden="true">{monogram(x)}</span>{x.displayName}
             </a>
           ))}
-          <a href="#/login" onClick={() => setOpen(false)}>Add a user…</a>
+          <a href="#/login" onClick={() => setOpen(false)}>Log in as another user…</a>
+          <p className="menu-note">Only linked personas share a browser.</p>
           <button type="button" onClick={() => leave("/api/logout", { userId: user.id })}>Log out {user.displayName}</button>
           <button type="button" onClick={() => leave(u(user.id, "lock"), {})}>Lock {user.displayName}</button>
           <ErrorText error={error} />
