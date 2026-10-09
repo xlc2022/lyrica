@@ -35,6 +35,17 @@ describe("the live view of a thread's stream", () => {
     expect(next.items).toEqual([{ role: "user", text: "again" }]);
   });
 
+  it("keeps a delegate call's subagent threads, and shows a delivered notice", () => {
+    const s = run([
+      { type: "turn_start" },
+      { type: "tool_start", toolCallId: "d1", name: "delegate", args: { task: "look" } },
+      { type: "tool_end", toolCallId: "d1", name: "delegate", result: "done", isError: false, threads: [{ pool: "general", id: "web/sub1" }] },
+      { type: "notice", text: "Subagent run r1 finished" },
+    ]);
+    expect(s.items[0]).toMatchObject({ role: "assistant", parts: [{ type: "tool", threads: [{ pool: "general", id: "web/sub1" }] }] });
+    expect(s.items[1]).toEqual({ role: "notice", text: "Subagent run r1 finished" });
+  });
+
   it("shows a follow-up once it leaves the queue", () => {
     const s = run([
       { type: "turn_start" },

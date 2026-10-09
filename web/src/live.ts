@@ -4,7 +4,9 @@ import type { MessagePart, PermissionRequest, ThreadEvent } from "./api.ts";
 
 export type LiveItem =
   | { role: "user"; text: string }
-  | { role: "assistant"; model?: string; parts: MessagePart[] };
+  | { role: "assistant"; model?: string; parts: MessagePart[] }
+  /** Delivered into the thread, such as a background subagent run's result. */
+  | { role: "notice"; text: string };
 
 export interface Live {
   busy: boolean;
@@ -60,7 +62,7 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       return withParts(s, (parts) => [...parts, { type: "tool", toolCallId: e.toolCallId, name: e.name, args: e.args }]);
     case "tool_end":
       return withParts(s, (parts) => parts.map((p) =>
-        p.type === "tool" && p.toolCallId === e.toolCallId ? { ...p, result: e.result, isError: e.isError } : p));
+        p.type === "tool" && p.toolCallId === e.toolCallId ? { ...p, result: e.result, isError: e.isError, ...(e.threads && { threads: e.threads }) } : p));
     case "recall":
     case "remember":
       return withParts(s, (parts) => [...parts, { type: e.type, ids: e.ids }]);
@@ -83,6 +85,8 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       return { ...s, items: s.items.slice(s.ended), ended: 0 };
     case "stopping":
       return { ...s, queued: [] };
+    case "notice":
+      return { ...s, items: [...s.items, { role: "notice", text: e.text }] };
     case "usage":
     case "delegation":
       return s;

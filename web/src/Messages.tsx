@@ -1,6 +1,6 @@
 // The conversation: stored messages, then what's streaming now.
 import { useEffect, useState } from "react";
-import { post, type Message, type MessagePart, type PermissionRequest, type Pool, type ThreadSummary } from "./api.ts";
+import { post, type Message, type MessagePart, type PermissionRequest, type Pool, type ThreadRef } from "./api.ts";
 import type { LiveItem } from "./live.ts";
 import { href, idHref } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
@@ -12,17 +12,15 @@ interface Props {
   pool: Pool;
   base: string;
   thread: ReturnType<typeof useThread>;
-  /** Subagents' threads, for their cards. */
-  children_: ThreadSummary[];
 }
 
-export function Conversation({ ctx, pool, base, thread, children_ }: Props) {
+export function Conversation({ ctx, pool, base, thread }: Props) {
   const { messages, live, hasMore, loadOlder, loaded } = thread;
   const [run, loading, error] = useAction();
   // Expanded tool markers, by call ID, so they stay open when the stored copy replaces the live one.
   const [openTools, setOpenTools] = useState<ReadonlySet<string>>(new Set());
   const toggleTool = (id: string) => setOpenTools((o) => { const n = new Set(o); if (!n.delete(id)) n.add(id); return n; });
-  const env = { userId: ctx.user.id, pool, children: children_, openTools, toggleTool };
+  const env = { userId: ctx.user.id, pool, openTools, toggleTool };
   return (
     <>
       {hasMore && <button type="button" className="older" disabled={loading} onClick={() => run(loadOlder)}>Show earlier messages</button>}
@@ -45,10 +43,13 @@ export function Conversation({ ctx, pool, base, thread, children_ }: Props) {
   );
 }
 
-interface Env { userId: string; pool: Pool; children: ThreadSummary[]; openTools: ReadonlySet<string>; toggleTool: (id: string) => void }
+interface Env { userId: string; pool: Pool; openTools: ReadonlySet<string>; toggleTool: (id: string) => void }
 
 function StoredMessage({ m, env, you }: { m: Message; env: Env; you: string }) {
   if (m.role === "user") return <UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={you} />;
+  if (m.role === "notice") {
+    return <>{m.parts.map((p, i) => <Notice key={i} text={p.type === "delegation" || p.type === "text" ? p.text : ""} threads={p.type === "delegation" ? p.threads : undefined} env={env} />)}</>;
+  }
   return (
     <>
       <Parts parts={m.parts} env={env} model={m.model} />
@@ -59,6 +60,7 @@ function StoredMessage({ m, env, you }: { m: Message; env: Env; you: string }) {
 
 function LiveMessage({ item, env, you, streaming }: { item: LiveItem; env: Env; you: string; streaming: boolean }) {
   if (item.role === "user") return <UserMessage text={item.text} you={you} />;
+  if (item.role === "notice") return <Notice text={item.text} env={env} />;
   return <Parts parts={item.parts} env={env} model={item.model} streaming={streaming} />;
 }
 
@@ -107,6 +109,7 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" }>; e
   const open = part.type === "tool" ? env.openTools.has(part.toolCallId) : localOpen;
   const toggle = () => (part.type === "tool" ? env.toggleTool(part.toolCallId) : setLocalOpen(!localOpen));
   if (part.type === "tool" && part.name === "delegate") return <SubagentCard part={part} env={env} />;
+  if (part.type === "delegation") return <Notice text={part.text} threads={part.threads} env={env} />;
   let label: React.ReactNode;
   let body: React.ReactNode;
   switch (part.type) {
@@ -143,8 +146,6 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" }>; e
 
 function SubagentCard({ part, env }: { part: Extract<MessagePart, { type: "tool" }>; env: Env }) {
   const args = (part.args ?? {}) as { task?: string; role?: string; tier?: string };
-  // The subagent's thread ID appears in the tool's result.
-  const child = part.result ? env.children.find((c) => part.result!.includes(c.id)) : undefined;
   const state = part.result === undefined ? "running" : part.isError ? "failed" : "done";
   return (
     <div className="subagent">
@@ -152,9 +153,33 @@ function SubagentCard({ part, env }: { part: Extract<MessagePart, { type: "tool"
         <span className="status" data-state={state} aria-label={state} />
         <b>{args.role ?? "subagent"}</b>
         {args.tier && <span className="muted">{args.tier}</span>}
-        {child && <a className="open" href={href({ page: "thread", userId: env.userId, pool: child.pool, threadId: child.id })}>Open</a>}
+        <ThreadLinks threads={part.threads} env={env} />
       </div>
       {args.task && <p>{args.task}</p>}
+    </div>
+  );
+}
+
+/** Opens each subagent thread a run made. */
+function ThreadLinks({ threads, env }: { threads?: ThreadRef[]; env: Env }) {
+  if (!threads?.length) return null;
+  return (
+    <span className="open">
+      {threads.map((t, i) => (
+        <a key={t.id} href={href({ page: "thread", userId: env.userId, pool: t.pool, threadId: t.id })}>
+          {threads.length > 1 ? `Open ${i + 1}` : "Open"}
+        </a>
+      ))}
+    </span>
+  );
+}
+
+/** Something delivered into the thread: a background subagent run's result or question. */
+function Notice({ text, threads, env }: { text: string; threads?: ThreadRef[]; env: Env }) {
+  return (
+    <div className="subagent notice">
+      <div className="sub-head"><b>Subagent result</b><ThreadLinks threads={threads} env={env} /></div>
+      <div className="prose"><Prose text={text} /></div>
     </div>
   );
 }

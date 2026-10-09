@@ -5,7 +5,7 @@ import { initialLive, liveReducer } from "./live.ts";
 
 const EVENT_TYPES: ThreadEvent["type"][] = [
   "hello", "reset", "turn_start", "message_start", "text", "thinking", "tool_start", "tool_end", "recall", "remember",
-  "permission", "permission_end", "usage", "queue", "error", "title", "turn_end", "delegation",
+  "permission", "permission_end", "usage", "queue", "error", "title", "turn_end", "delegation", "notice",
 ];
 
 export function useThread(userId: string, pool: Pool, threadId: string) {
