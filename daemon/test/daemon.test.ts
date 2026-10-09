@@ -115,7 +115,8 @@ describe("logging in", () => {
     expect((await sam.get(`/api/u/${rt.sam.id}/threads/private/${enc(thread.id)}/settings`)).status).toBe(404);
     expect((await sam.get(`/api/u/${rt.sam.id}/admin/users`)).status).toBe(403);
 
-    // Li adds Sam to her browser: both are available, without a new password to switch.
+    // Linked (both passwords), the two can share a browser: both are available, without a new password to switch.
+    expect((await li.post(`/api/u/${rt.li.id}/links`, { password: "pw", login: "sam", otherPassword: "pw2" })).status).toBe(200);
     expect((await li.post<LoginResponse>("/api/login", { login: "sam", password: "pw2" })).status).toBe(200);
     const state = (await li.get<State>("/api/state")).body;
     expect(state.users.map((u) => u.login).sort()).toEqual(["li", "sam"]);

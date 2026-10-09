@@ -32,21 +32,26 @@ export function apiRoutes(d: Lyricad): Route[] {
       const keys = [`login:${String(login ?? "").trim().toLowerCase()}`, `ip:${r.ip}`];
       const user = await limited(d, keys, () => s().users.authenticate(String(login ?? ""), String(password ?? "")), "wrong login or password");
       await d.keyAvailable(user.id);
-      let session = r.cookie;
-      if (!d.sessions.users(session)) session = d.sessions.create();
-      d.sessions.addUser(session!, user.id);
-      r.res.setHeader("set-cookie", Sessions.setCookie(session!));
-      return { user: card(user) };
+      // Every login gets a fresh session, so a copied cookie never comes to hold someone new.
+      // One browser, one person: only the users linked to this one come along.
+      const linked = new Set(s().users.linked(user.id));
+      const { id, left } = d.sessions.login(r.cookie, user.id, (u) => linked.has(u));
+      await d.loggedOut(left);
+      r.res.setHeader("set-cookie", Sessions.setCookie(id));
+      return { user: card(user), replaced: left.length > 0 };
     }),
     route("POST", "/api/logout", async (r) => {
       const { userId } = await r.json<Api.LogoutRequest>();
-      if (!d.sessions.users(r.cookie)) throw new HttpError(401, "not logged in");
+      const held = d.sessions.users(r.cookie);
+      if (!held) throw new HttpError(401, "not logged in");
+      const leaving = userId ? (held.has(userId) ? [userId] : []) : [...held];
       if (userId) d.sessions.removeUser(r.cookie!, userId);
-      else {
-        d.sessions.end(r.cookie!);
-        r.res.setHeader("set-cookie", Sessions.clearCookie());
-      }
-      return { ok: true };
+      else d.sessions.end(r.cookie!);
+      if (!d.sessions.users(r.cookie)) r.res.setHeader("set-cookie", Sessions.clearCookie());
+      await d.loggedOut(leaving);
+      // Whose key stays in memory because another browser still holds them.
+      const stillUnlocked = leaving.filter((id) => d.keyring.hasUserKey(id) && d.sessions.holders(id) > 0);
+      return { ok: true, stillUnlocked } satisfies Api.LogoutResponse;
     }),
     route("POST", `${u}/lock`, async (r) => {
       const user = d.userFor(r);
@@ -81,6 +86,40 @@ export function apiRoutes(d: Lyricad): Route[] {
       await limited(d, keys, () => s().users.changePassword(user, String(oldPassword ?? ""), String(newPassword ?? "")), "the current password is wrong");
       return { ok: true };
     }),
+    route("PUT", `${u}/me/stay-unlocked`, async (r) => {
+      const user = d.userFor(r);
+      const { stayUnlocked } = await r.json<Api.StayUnlockedChange>();
+      s().users.setStayUnlocked(user.id, stayUnlocked !== false);
+      return me(d, user);
+    }),
+    route("GET", `${u}/links`, (r) => links(d, d.userFor(r))),
+    route("POST", `${u}/links`, async (r) => {
+      const user = d.userFor(r);
+      const { password, login, otherPassword } = await r.json<Api.LinkRequest>();
+      const keys = [`login:${user.login.toLowerCase()}`, `login:${String(login ?? "").trim().toLowerCase()}`, `ip:${r.ip}`];
+      // Argon2 runs for an unknown login too, so this can't tell which names exist.
+      await limited(d, keys, () => s().users.link(user, String(password ?? ""), String(login ?? ""), String(otherPassword ?? "")), "a login or password is wrong");
+      return links(d, user);
+    }),
+    route("DELETE", `${u}/links/:otherId`, async (r) => {
+      const user = d.userFor(r);
+      const other = s().users.get(r.params.otherId!);
+      if (!other) throw new HttpError(404, "no such user");
+      s().users.unlink(user, other);
+      d.sessions.separate(user.id, other.id);
+      await d.loggedOut([other.id]);
+      return links(d, user);
+    }),
+    route("GET", `${u}/proposals`, (r): Api.ProposalDraft[] => s().proposals.drafts(d.userFor(r).id)),
+    route("PATCH", `${u}/proposals/:id`, async (r) => {
+      const user = d.userFor(r);
+      const change = await r.json<Api.ProposalDraftChange>();
+      return s().proposals.edit(user.id, Number(r.params.id), {
+        ...(change.text !== undefined ? { text: String(change.text) } : {}), ...(change.reason !== undefined ? { reason: String(change.reason) } : {}),
+      });
+    }),
+    route("DELETE", `${u}/proposals/:id`, (r) => { s().proposals.drop(d.userFor(r).id, Number(r.params.id)); return { ok: true }; }),
+    route("POST", `${u}/proposals/:id/send`, (r) => { s().proposals.send(d.userFor(r).id, Number(r.params.id)); return { ok: true }; }),
     route("PUT", `${u}/me/credentials`, async (r) => {
       const user = d.userFor(r);
       const { save } = await r.json<Api.CredentialsChange>();
@@ -456,8 +495,8 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("POST", `${u}/admin/proposals/:id`, async (r) => {
       const actor = d.adminFor(r);
-      const { approve } = await r.json<Api.ProposalDecision>();
-      s().persona.decide(actor, Number(r.params.id), approve === true);
+      const { approve, overwrite } = await r.json<Api.ProposalDecision>();
+      s().persona.decide(actor, Number(r.params.id), approve === true, { overwrite: overwrite === true });
       return { ok: true };
     }),
   ];
@@ -563,7 +602,17 @@ function display(d: Lyricad, userId: string): Api.Display {
 
 function me(d: Lyricad, user: User): Api.Me {
   const fresh = d.services!.users.get(user.id)!;
-  return { user: card(fresh), previousNames: fresh.profile.previousNames, display: display(d, user.id), savedCredentials: d.keyring.hasSavedKey(user.id) };
+  const savedCredentials = d.keyring.hasSavedKey(user.id);
+  const stayUnlocked = d.services!.users.stayUnlocked(user.id);
+  return {
+    user: card(fresh), previousNames: fresh.profile.previousNames, display: display(d, user.id), savedCredentials, stayUnlocked,
+    ...(savedCredentials && !stayUnlocked
+      ? { warning: "Your key is saved, so it is unlocked again whenever Lyrica restarts, even though logging out drops it." } : {}),
+  };
+}
+
+function links(d: Lyricad, user: User): Api.UserCard[] {
+  return d.services!.users.linked(user.id).map((id) => d.services!.users.get(id)).filter((u): u is User => !!u).map(card);
 }
 
 function endpointInfo(d: Lyricad, userId: string, id: string): Api.EndpointInfo {
