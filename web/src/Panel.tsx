@@ -3,7 +3,7 @@ import { useState } from "react";
 import {
   del, get, patch, post, put, u,
   type AdminStatus, type AllowedPaths, type EndpointInfo, type Me, type NetworkDefaults, type PersonaProposal,
-  type Pool, type Probe, type Profiles, type Pronouns, type SleepTime, type SshTargetInfo, type Task, type Theme, type UserCard,
+  type Pool, type Probe, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type SshTargetInfo, type Task, type Theme, type UserCard,
 } from "./api.ts";
 import type { ShellContext } from "./Shell.tsx";
 import { WebAccessSection } from "./WebAccess.tsx";
@@ -28,7 +28,7 @@ const TASKS: { task: Task; label: string }[] = [
 
 export function Panel({ ctx }: { ctx: ShellContext }) {
   const admin = ctx.user.admin;
-  const sections = ["Profile", "Password", "Endpoints", "Model profiles", "Network", "SSH targets", ...(admin ? ["Server", "Web access", "Users", "Persona proposals"] : [])];
+  const sections = ["Profile", "Password", "Linked users", "Your proposals", "Endpoints", "Model profiles", "Network", "SSH targets", ...(admin ? ["Server", "Web access", "Users", "Persona proposals"] : [])];
   return (
     <main className="main panel">
       <header className="head">
@@ -41,6 +41,8 @@ export function Panel({ ctx }: { ctx: ShellContext }) {
         </nav>
         <ProfileSection ctx={ctx} />
         <PasswordSection ctx={ctx} />
+        <LinksSection ctx={ctx} />
+        <DraftsSection ctx={ctx} />
         <EndpointsSection ctx={ctx} />
         <ProfilesSection ctx={ctx} />
         <NetworkSection ctx={ctx} />
@@ -124,6 +126,10 @@ function ProfileSection({ ctx }: { ctx: ShellContext }) {
       <Switch label="Unlock me when Lyrica starts" checked={me.savedCredentials}
         hint="Saves your key with the server's credentials (sealed to its TPM where there is one), so sleep can run after a restart."
         onChange={(save) => run(async () => ctx.setMe(await put<Me>(`${path}/credentials`, { save })))} />
+      <Switch label="Stay unlocked after logout" checked={me.stayUnlocked}
+        hint="Keeps your key in memory when you log out, so sleep can run. Lock always drops it."
+        onChange={(stayUnlocked) => run(async () => ctx.setMe(await put<Me>(`${path}/stay-unlocked`, { stayUnlocked })))} />
+      {me.warning && <p className="warn-text" role="status">{me.warning}</p>}
     </Section>
   );
 }
@@ -433,28 +439,127 @@ function AllowedPathsEditor({ userId, target }: { userId: string; target: string
 function ProposalsSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const proposals = useLoad(() => get<PersonaProposal[]>(u(userId, "admin", "proposals")), [userId]);
+  const users = useLoad(() => get<UserCard[]>(u(userId, "admin", "users")), [userId]);
   const [run, busy, error] = useAction();
-  const decide = (id: number, approve: boolean) => run(async () => { await post(u(userId, "admin", "proposals", String(id)), { approve }); proposals.reload(); });
+  const decide = (id: number, approve: boolean, overwrite?: boolean) =>
+    run(async () => { await post(u(userId, "admin", "proposals", String(id)), { approve, ...(overwrite && { overwrite }) }); proposals.reload(); });
+  const who = (sentBy: string) => users.data?.find((x) => `user:${x.id}` === sentBy)?.displayName ?? sentBy;
   return (
     <Section title="Persona proposals">
+      <p className="muted">Changes to Lyrica's persona that users have sent on from their conversations.</p>
       <ErrorText error={proposals.error || error} />
       {proposals.data && !proposals.data.length && <p className="muted">No open proposals.</p>}
       <ul className="list">
         {(proposals.data ?? []).map((p) => (
           <li key={p.id}>
-            <div className="row between"><code>{p.path}</code><span className="muted small">{p.author} · {p.createdAt.slice(0, 10)}</span></div>
+            <div className="row between"><code>{p.path}</code><span className="muted small">Sent by {who(p.sentBy)} · {p.createdAt.slice(0, 10)}</span></div>
+            {p.edited && <p className="muted small">{who(p.sentBy)} changed its text before sending it: the words are theirs.</p>}
             <p>{p.reason}</p>
             <div className="diff">
               <div><h4>Now</h4><pre>{p.current || "(new topic)"}</pre></div>
               <div><h4>Proposed</h4><pre>{p.text}</pre></div>
             </div>
-            <div className="row">
-              <button type="button" className="primary" disabled={busy} onClick={() => decide(p.id, true)}>Approve</button>
-              <button type="button" disabled={busy} onClick={() => decide(p.id, false)}>Reject</button>
-            </div>
+            {p.stale ? (
+              <div className="stack">
+                <p className="warn-text">The file has changed since this was proposed. Approving replaces those changes.</p>
+                <div className="row">
+                  <Confirm label="Approve anyway" confirm="Replace the file" question={`Replace ${p.path}, including the changes made since this was proposed?`}
+                    onConfirm={() => decide(p.id, true, true)} />
+                  <button type="button" disabled={busy} onClick={() => decide(p.id, false)}>Reject</button>
+                </div>
+              </div>
+            ) : (
+              <div className="row">
+                <button type="button" className="primary" disabled={busy} onClick={() => decide(p.id, true)}>Approve</button>
+                <button type="button" disabled={busy} onClick={() => decide(p.id, false)}>Reject</button>
+              </div>
+            )}
           </li>
         ))}
       </ul>
     </Section>
+  );
+}
+
+/** Users of the same person, linked with both passwords, can share a browser. */
+function LinksSection({ ctx }: { ctx: ShellContext }) {
+  const userId = ctx.user.id;
+  const links = useLoad(() => get<UserCard[]>(u(userId, "links")), [userId]);
+  const [run, busy, error] = useAction();
+  const [form, setForm] = useState({ password: "", login: "", otherPassword: "" });
+  return (
+    <Section title="Linked users">
+      <p className="muted">Link your own other users, so one browser can hold them together and switch without a password. Linking needs both passwords.</p>
+      <ErrorText error={links.error || error} />
+      <ul className="list">
+        {(links.data ?? []).map((x) => (
+          <li key={x.id} className="row between">
+            <span><b>{x.displayName}</b> <span className="muted">({x.login})</span></span>
+            <Confirm label="Unlink" danger confirm="Unlink" question={`Unlink ${x.displayName}? Browsers holding you both keep only you.`}
+              onConfirm={() => run(async () => links.set(await del<UserCard[]>(u(userId, "links", x.id))))} />
+          </li>
+        ))}
+        {links.data && !links.data.length && <li className="muted">No linked users.</li>}
+      </ul>
+      <form className="stack sub-card" onSubmit={(e) => {
+        e.preventDefault();
+        void run(async () => { links.set(await post<UserCard[]>(u(userId, "links"), form)); setForm({ password: "", login: "", otherPassword: "" }); });
+      }}>
+        <h3>Link a user</h3>
+        <label className="field"><span>Your password</span>
+          <input type="password" autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+        </label>
+        <div className="row wrap">
+          <label className="field"><span>Their login name</span>
+            <input autoCapitalize="none" autoComplete="off" value={form.login} onChange={(e) => setForm({ ...form, login: e.target.value })} />
+          </label>
+          <label className="field"><span>Their password</span>
+            <input type="password" autoComplete="off" value={form.otherPassword} onChange={(e) => setForm({ ...form, otherPassword: e.target.value })} />
+          </label>
+        </div>
+        <div className="row"><button className="primary" disabled={busy || !form.password || !form.login || !form.otherPassword}>Link</button></div>
+      </form>
+    </Section>
+  );
+}
+
+/** Persona proposals from this user's conversations: only they see them, until they send one on. */
+function DraftsSection({ ctx }: { ctx: ShellContext }) {
+  const userId = ctx.user.id;
+  const drafts = useLoad(() => get<ProposalDraft[]>(u(userId, "proposals")), [userId]);
+  const [run, , error] = useAction();
+  return (
+    <Section title="Your proposals">
+      <p className="muted">Changes to her persona that Lyrica proposed in your conversations. Administrators see one only after you send it on, so edit out anything private first.</p>
+      <ErrorText error={drafts.error || error} />
+      {drafts.data && !drafts.data.length && <p className="muted">No proposals.</p>}
+      <ul className="list">
+        {(drafts.data ?? []).map((d) => (
+          <Draft key={d.id} draft={d} path={u(userId, "proposals", String(d.id))} run={run} onChange={drafts.reload} />
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
+function Draft({ draft, path, run, onChange }: {
+  draft: ProposalDraft; path: string; run: (fn: () => Promise<unknown>) => Promise<boolean>; onChange: () => void;
+}) {
+  const [text, setText] = useState(draft.text);
+  const [reason, setReason] = useState(draft.reason);
+  const changed = text !== draft.text || reason !== draft.reason;
+  return (
+    <li className="stack">
+      <div className="row between"><code>{draft.path}</code><span className="muted small">{draft.createdAt.slice(0, 10)}</span></div>
+      <label className="field"><span>Why</span><input value={reason} onChange={(e) => setReason(e.target.value)} /></label>
+      <label className="field"><span>Proposed text</span><textarea rows={6} value={text} onChange={(e) => setText(e.target.value)} /></label>
+      <div className="row">
+        <button type="button" disabled={!changed} onClick={() => run(async () => { await patch(path, { text, reason }); onChange(); })}>Save</button>
+        <button type="button" className="primary" disabled={changed} title={changed ? "Save your changes first" : undefined}
+          onClick={() => run(async () => { await post(`${path}/send`); onChange(); })}>Send to administrators</button>
+        <Confirm label="Drop" danger confirm="Drop it" question="Drop this proposal? It can't be brought back."
+          onConfirm={() => run(async () => { await del(path); onChange(); })} />
+      </div>
+    </li>
   );
 }

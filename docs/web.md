@@ -12,9 +12,12 @@ render mention tokens.
 Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
 `…/panel`, `#/login`), so `lyricad` serves a single file.
 
-- **Unlock** while `lyricad` is locked, then **login**. A browser can hold
-  several users; the user menu switches between them, adds one, logs one
-  out, or **Lock**s one.
+- **Unlock** while `lyricad` is locked, then **login**. A browser holds one
+  person's users: the user menu switches between linked users, logs in as
+  another, logs one out, or **Lock**s one. Logging in as a user who isn't
+  linked signs the browser's users out first, and a short notice says so
+  without naming them. Logging out says when the user stays unlocked
+  because another browser still holds them.
 - **Sidebar:** the user, the Show general, Show private and Show hidden
   threads filters (saved per user), New thread (general or private), the
   thread list with subagents behind `›`, and links to Memory and the Control
@@ -38,11 +41,15 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   the editor shows them as `[[Name]]` or `[[Name:obj]]` and saves them back as
   tokens.
 - **Control panel:** profile (name, pronouns, accent colour, monogram, theme,
-  saved credentials), password, endpoints with probe status, both model
-  profiles, network defaults per pool, and SSH targets. Administrators also
+  saved credentials, stay unlocked after logout, and `lyricad`'s warning when
+  two of these contradict), password, linked users (linking needs both
+  passwords), your persona proposals (edit, send on to the administrators,
+  or drop), endpoints with probe status, both model profiles, network
+  defaults per pool, and SSH targets. Administrators also
   get the server's network self-test result, sleep time, saving the `self.db`
   passphrase, users with the administrator flag and their allowed folders,
-  persona proposals, and **Web access**:
+  the persona proposals users sent on (who sent them, whether they edited
+  them, and a confirmation when the file changed since), and **Web access**:
   - the mode: only this machine, the built-in Caddy, or a proxy elsewhere;
   - the name;
   - for the built-in Caddy: the Tailscale and LAN addresses to serve on, the
