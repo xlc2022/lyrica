@@ -20,8 +20,8 @@ clients; they still log in.
 - When unlocked it builds `Workspace` with its own port as `excludePorts`, and
   runs `selfTest()`. If network is refused, the reason is logged and shown to
   administrators (`GET …/admin/status`).
-- On SIGTERM it stops every turn, disposes sessions, unmounts home
-  workspaces, drops keys, closes `self.db` and exits.
+- On SIGTERM it stops every subagent run and turn, disposes sessions,
+  unmounts home workspaces, drops keys, closes `self.db` and exits.
 
 ## Saving credentials
 
@@ -55,8 +55,8 @@ service.
 - `POST /api/logout` ends the session, or with `userId` removes one user from
   it. The key stays in memory, so sleep can run.
 - **Lock** (`POST /api/u/:userId/lock`) at once removes the user from every
-  session and drops their key, then stops their threads and unmounts their
-  home. Event streams check the session with every event and every few
+  session, stops their subagent runs (which record how they ended), drops
+  their key, then stops their threads and unmounts their home. Event streams check the session with every event and every few
   seconds, so logout and Lock end them.
 - Login, unlock and password changes are rate-limited per login name and per
   address: three failures are free, then each attempt waits twice as long as
@@ -92,6 +92,8 @@ Each active thread is one Pi session from `openThreadSession`, with
   model in a private or local-only thread, a private thread made not
   local-only, a subagent wider than its parent, a folder outside the allowed
   paths, a host that matches everything.
+- Forgetting a thread forgets its subagents' threads with it, deepest first,
+  stopping their runs and dropping their records (`Delegation.forget`).
 - Thread lists are per interface (`web` by default), filtered by the user's
   display settings, most recently active first, with subagents nested under
   their parent. Memory search honours the same pool filters; `?all=1` ignores
@@ -104,8 +106,22 @@ carries text and thinking deltas, tool calls (start with arguments; end with
 the first lines of the result), recall and remember markers, permission
 requests and their outcome, usage, errors in plain words (a model the router
 refused, an endpoint that didn't answer), the queue, the title and turn end.
-Delegation's events are forwarded as `delegation` once it lands
-(`HostedThread.publish`).
+A subagent run's events (started, output, tool calls, questions, usage,
+finished, stopped, interrupted) go out as `delegation` to the parent thread's
+stream and to the subagent's own thread's stream. A background run's result
+or question, delivered into the thread, goes out as `notice`, and is stored:
+the message list shows it as a `notice` message.
+
+## Subagents
+
+`lyricad` builds one `Delegation` (Delegation's default limits). Every hosted
+thread under the depth limit gets the `delegate` tool
+(`createDelegateExtension`), which attaches the live session, so a
+background run's result reaches her at once: appended if she is idle, as a
+follow-up if she is busy. With no live session it goes into the stored
+thread. `GET …/threads/:pool/:threadId/subagents` lists a thread's runs and
+their total tokens. `…/roles` and `…/workflows` read and change the user's
+custom roles and saved workflows (`DelegationStore`, in `user.db`).
 
 Event IDs are `<epoch>-<n>`; the epoch changes with every start. A reconnect
 with `Last-Event-ID` replays from a buffer of the last 500 events. If that's

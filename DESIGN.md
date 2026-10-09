@@ -9,19 +9,36 @@ of earlier choices are listed under [History](#history) so they aren't relitigat
 
 ## Who Lyrica is for
 
-Lyrica is one continuous companion for Li, running on a server Li administers.
-Li talks to her through several **personas**. Each persona is a separate
-**user** with its own password, its own encrypted databases, its own endpoint
-and model settings, and its own memory. To Lyrica, each user is a different
-relationship. She is still one individual: her persona is the only thing users
-share.
+Lyrica is one continuous companion, running on a server Li administers. Each
+person who uses her has one or more **users**. Li keeps several for herself
+(for example a public-facing one and a private one), and someone else, such as
+Li's partner, can have their own. Each user has its own password, its own
+encrypted databases, its own endpoint and model settings, and its own memory.
+To Lyrica, each user is a different relationship. She is still one
+individual: her persona is the only thing users share.
 
 - Users are either **administrators** or **normal users**. Administrators can:
   - change any account's administrator status from the control panel (the last
     administrator can't be demoted);
   - approve changes to Lyrica's persona;
   - edit global settings such as the sleep time and the endpoint list.
-- Accounts stay minimal: local users, Argon2id password hashes and a web login
+
+  They can't read another user's threads or memory: each user's data is
+  encrypted with that user's own key. There is no password reset that keeps
+  data, so a forgotten password loses that user's data.
+- **One browser, one person.** A browser holds several users at once only if
+  they are **linked**: users that belong to the same person, linked by entering
+  both passwords. Switching between linked users needs no password. Logging in
+  as a user who isn't linked to the ones already there first ends their session
+  in that browser. The menu says **Switch user**.
+- **Logging out** keeps the user's key in memory, so sleep can run, unless that
+  user turns this off in settings. **Lock** always drops it.
+- **Not protected from the operator.** Users are protected from each other in
+  Lyrica, not from whoever runs the machines. Root on the running server can
+  read an unlocked user's data. Shared endpoints run on accounts and model
+  hosts the administrator controls, which may log prompts. A user who needs
+  privacy from the operator should use only their own endpoints, or not use
+  this server.- Accounts stay minimal: local users, Argon2id password hashes and a web login
   cookie. No identity providers or roles beyond administrator.
 - **Names and pronouns.** Each user has a login name, a display name and
   pronouns. Users can change their display name and pronouns at any time in
@@ -63,11 +80,11 @@ Each user has two pools of memory.
   checks its components like the rest of the code.
 - **How the web UI looks:**
   - Calm and plain, so the conversation comes first. Colour comes from the
-    persona's accent, not from decoration.
+    user's accent, not from decoration.
   - Her messages run full width as prose. The user's sit in a lightly tinted
     block. No chat bubbles.
   - Light or dark follows the device, with an override in settings.
-  - Each persona chooses an accent colour and a monogram in settings. No
+  - Each user chooses an accent colour and a monogram in settings. No
     avatar images.
   - Her inner workings (memories she recalled, notes she saved, tool calls)
     show as one-line markers that expand when tapped. A subagent shows as a
@@ -239,10 +256,12 @@ Details in [docs/sleep.md](docs/sleep.md).
 
 - The v1 persona in `persona/` is the seed.
 - She proposes changes when asked to reflect on how things have been going, and
-  in her dream journal. An administrator approves each change, and every change
-  keeps a revision.
-- Because the persona is shared by all users, a proposal must not carry private
-  details from the conversation that prompted it.
+  in her dream journal. Every change keeps a revision.
+- A proposal comes from one user's conversation or dream, so it may carry that
+  user's details. That user sees it first, and can edit it, send it on, or drop
+  it. Only a proposal they send on reaches the administrators, who approve or
+  reject it. A proposal from an administrator's own conversation goes straight
+  to review.
 - She has a **self-primer** on her own design, architecture and goals. It is
   loaded when the topic comes up, not always. It includes the rule that when
   she edits her own code, she keeps the documentation current and readable.
@@ -302,18 +321,47 @@ Details in [docs/sleep.md](docs/sleep.md).
 - **Deployment:** `lyricad` runs as a systemd service, in practice inside an
   LXC container or VM on Li's Proxmox. No Docker. The host needs bubblewrap,
   gocryptfs, pasta, FUSE and unprivileged user namespaces. In an LXC container, that
-  means turning on the nesting and FUSE features.
+  means turning on the nesting and FUSE features. One install script sets up
+  the service users, `lyricad`'s unit, and the built-in Caddy.
 - **Reaching the web UI:**
-  - `lyricad` listens only on `127.0.0.1`. Caddy in front of it serves HTTPS on
-    the host's Tailscale and LAN addresses.
+  - `lyricad` serves plain HTTP on `127.0.0.1` behind an HTTPS proxy. The
+    browser never gets plain HTTP: login cookies are `Secure`.
   - The name is a subdomain of Li's domain (for example
-    `lyrica.example.net`), whose DNS record points at the Tailscale address.
-  - Caddy gets the certificate with a **DNS-01 challenge** through the DNS
-    provider's API, because a Tailscale address can't be reached for the usual
-    HTTP challenge.
-  - On the LAN, the same name resolves to the LAN address through local
-    (split) DNS, so the same certificate works. There is no plain HTTP: login
-    cookies are `Secure`.
+    `lyrica.example.net`), whose DNS record points at a Tailscale address. On
+    the LAN, local (split) DNS gives the same name a LAN address, so one
+    certificate works for both.
+  - Certificates come from a **DNS-01 challenge** through the DNS provider's
+    API, because a Tailscale address can't be reached for the usual HTTP
+    challenge.
+  - An administrator chooses the proxy in the control panel, under **Web
+    access**:
+    - **Built-in Caddy**, the default. Lyrica's install includes a pinned
+      Caddy, built with the DNS plugins for several common providers, running
+      as its own service. `lyricad` writes Caddy's whole configuration through
+      Caddy's admin API, on a Unix socket only `lyricad` can use. The panel
+      sets the name, which addresses to serve on (Tailscale, LAN), the DNS
+      provider and its credentials, and shows the certificate's state.
+    - **External proxy**: a Caddy, or another proxy, elsewhere on Li's
+      network. `lyricad` also listens on one Tailscale or LAN address and
+      accepts connections only from the proxy addresses listed in the panel.
+      Over Tailscale the hop is plain HTTP inside WireGuard. Over the LAN it is
+      HTTPS, with a certificate `lyricad` makes and the panel shows for
+      pinning in the proxy. Plain HTTP never crosses the LAN. The panel gives
+      a Caddyfile snippet for the proxy.
+    - In external mode, `lyricad` keeps the extra listener's settings and its
+      TLS key in a file only its service user can read, as Caddy does with
+      its own keys. That way the unlock page is reachable while `lyricad` is
+      locked. Until unlock, that listener serves only the unlock page.
+  - A change never locks the administrator out. The old setup keeps serving
+    until the new one has a valid certificate, and it comes back if the new one
+    doesn't get one.
+  - The DNS credentials are stored encrypted in `self.db`. Caddy keeps its own
+    copy with its certificates, readable only by Caddy's service user, so it
+    goes on serving, and the unlock page stays reachable, while `lyricad` is
+    locked. Use a token limited to the one DNS zone.
+  - Sandboxes never reach the front door. On the proxy's ports, they are
+    refused this machine's own addresses, the external proxy's addresses, and
+    whatever Lyrica's name resolves to when the sandbox starts.
 - **Phones:** the web UI works well on a phone from the start.
 - **One command, `lyrica`**, written in TypeScript like the rest of the
   project:
@@ -394,6 +442,11 @@ new evidence.
     fit it. A feature-complete version of our own is estimated at 1,500 to
     2,500 lines on Pi's SDK.
   - We borrow its role prompts and feature list, not its runtime.
+- **Personas → users who may be different people (2026-10-09).** Li's
+  partner may use Lyrica too. Switching without a password is now limited to
+  linked users, persona proposals need the originating user's consent before
+  an administrator sees them, and staying unlocked after logout is a per-user
+  choice.
 - **Tool budget raised from 6 to 8, then to 30 (2026-10-09).** First to make
   room for web research, then because Lyrica works like a coding agent (files,
   commands, SSH). The budget still exists so that every tool has to justify

@@ -3,9 +3,13 @@ import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-
 import {
   CloudModelForbidden, NoModel, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
-import { createLyricaExtension, createWorkspaceExtension, openThreadSession, piModelFor, type ApprovalRequest, type ThreadContext } from "@lyrica/extension";
+import {
+  createDelegateExtension, createLyricaExtension, createWorkspaceExtension, DELEGATE_MESSAGE, openThreadSession, piModelFor,
+  type ApprovalRequest, type Delegation, type DelegationEvent, type ThreadContext,
+} from "@lyrica/extension";
+import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
-import { markersFor, plainError, shortResult, turnRecall } from "./messages.ts";
+import { delegateThreads, delegationPart, markersFor, plainError, shortResult, turnRecall } from "./messages.ts";
 
 export interface HostOptions {
   users: Users;
@@ -13,6 +17,8 @@ export interface HostOptions {
   models: Models;
   workspace: Workspace;
   persona: PersonaStore;
+  /** Subagent runs, for every hosted thread. */
+  delegation: Delegation;
   /** Pi's working directory. Nothing is discovered from it. */
   cwd: string;
   /** A session idle this long is disposed. Its entries are already stored. */
@@ -36,7 +42,13 @@ interface Opened { session: AgentSession; view: PoolView; dispose(): void; title
 export class ThreadHost {
   private readonly threads = new Map<string, HostedThread>();
 
-  constructor(readonly opts: HostOptions) {}
+  constructor(readonly opts: HostOptions) {
+    // A run's events go to its parent thread's stream and its subagent thread's own, wherever they are open.
+    opts.delegation.events.on("event", (e: DelegationEvent) => {
+      const event: Api.DelegationEvent = e;
+      for (const id of new Set([e.parentThreadId, e.threadId])) this.threads.get(`${e.userId}/${e.pool}/${id}`)?.publish({ type: "delegation", event });
+    });
+  }
 
   get(userId: string, pool: Pool, threadId: string): HostedThread {
     const key = `${userId}/${pool}/${threadId}`;
@@ -238,7 +250,7 @@ export class HostedThread {
   }
 
   private async create(): Promise<Opened> {
-    const { users, memory, models, workspace, persona } = this.o;
+    const { users, memory, models, workspace, persona, delegation } = this.o;
     const user = users.get(this.userId);
     if (!user) throw new Error("no such user");
     const view = memory.openThreadView(this.userId, this.pool);
@@ -248,11 +260,14 @@ export class HostedThread {
       const call = models.callContext(this.userId, this.pool, this.threadId);
       const tools = workspace.forThread({ userId: this.userId, pool: this.pool, threadId: this.threadId });
       const ctx: ThreadContext = { user, pool: this.pool, interface: thread.interface, threadId: this.threadId, view, call };
+      // delegate is offered where the depth limit allows; it attaches itself, so background results reach this session.
+      const canDelegate = delegation.depth(ctx) < delegation.limits.depth;
       const { session, runtime, dispose } = await openThreadSession({
         thread: ctx, models, cwd: this.o.cwd,
         extensions: [
           createLyricaExtension(ctx, { persona: () => persona.read(), profile: () => users.get(this.userId)!.profile, folders: tools.folders }),
           createWorkspaceExtension({ ...tools, approve: (r) => this.approve(r) }),
+          ...(canDelegate ? [createDelegateExtension(ctx, delegation)] : []),
         ],
       });
       const unsubscribe = session.subscribe((e) => this.forward(e));
@@ -293,11 +308,19 @@ export class HostedThread {
           const ids = turnRecall(m.content);
           if (ids.length) this.emit({ type: "recall", ids });
         }
+        // Delivered during a turn, as a follow-up.
+        if (m.role === "custom" && m.customType === DELEGATE_MESSAGE) this.notice(m.content, m.details);
         if (m.role === "assistant") {
           const u = m.usage;
           if (u) this.emit({ type: "usage", input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite, total: u.totalTokens });
           if (m.stopReason === "error" && m.errorMessage) this.emit({ type: "error", message: plainError(m.errorMessage) });
         }
+        break;
+      }
+      case "entry_appended": {
+        // Delivered while she was idle: appended straight to the session.
+        const entry = e.entry as { type: string; customType?: string; content?: unknown; details?: unknown };
+        if (entry.type === "custom_message" && entry.customType === DELEGATE_MESSAGE) this.notice(entry.content, entry.details);
         break;
       }
       case "tool_execution_start":
@@ -306,12 +329,25 @@ export class HostedThread {
       case "tool_execution_end": {
         const content = (e.result as { content?: unknown } | undefined)?.content;
         const result = shortResult(content);
-        this.emit({ type: "tool_end", toolCallId: e.toolCallId, name: e.toolName, result, isError: e.isError });
+        const threads = delegateThreads(e.toolName, (e.result as { details?: unknown } | undefined)?.details, this.pool);
+        this.emit({ type: "tool_end", toolCallId: e.toolCallId, name: e.toolName, result, isError: e.isError, ...(threads ? { threads } : {}) });
         const full = Array.isArray(content) ? content.map((p: { text?: string }) => p.text ?? "").join("\n") : String(content ?? "");
         for (const m of markersFor(e.toolName, (e as { args?: unknown }).args, full)) this.emit(m);
         break;
       }
     }
+  }
+
+  private readonly noticed = new Set<string>();
+
+  /** A delivered run result, once, however Pi reported it. */
+  private notice(content: unknown, details: unknown): void {
+    const { type: _part, ...notice } = delegationPart(content, details);
+    const key = JSON.stringify(notice);
+    if (this.noticed.has(key)) return;
+    this.noticed.add(key);
+    if (this.noticed.size > 100) this.noticed.delete(this.noticed.values().next().value!);
+    this.emit({ type: "notice", ...notice });
   }
 
   private async maybeTitle(opened: Opened): Promise<void> {

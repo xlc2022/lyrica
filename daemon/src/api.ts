@@ -256,16 +256,22 @@ export interface ThreadSettingsChange {
 export type MessagePart =
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
-  | { type: "tool"; toolCallId: string; name: string; args: unknown; result?: string; isError?: boolean }
+  | { type: "tool"; toolCallId: string; name: string; args: unknown; result?: string; isError?: boolean; threads?: ThreadRef[] }
   | { type: "recall"; ids: string[] }
-  | { type: "remember"; ids: string[] };
+  | { type: "remember"; ids: string[] }
+  /** A background subagent run's result or question, delivered into the thread. */
+  | { type: "delegation"; text: string; runId?: string; status?: string; threads?: ThreadRef[] };
+
+/** A `delegate` call's subagent threads, so its card can open them. */
+export interface ThreadRef { pool: Pool; id: string }
 
 export interface Message {
   /** The entry ID, `e:<thread>#<n>`. */
   id: string;
   /** Entry number in the thread, for paging. */
   n: number;
-  role: "user" | "assistant";
+  /** "notice": something delivered into the thread, such as a background run's result. */
+  role: "user" | "assistant" | "notice";
   parts: MessagePart[];
   createdAt: string;
   /** The model that wrote an assistant message. */
@@ -318,7 +324,7 @@ export type ThreadEvent =
   | { type: "thinking"; delta: string }
   | { type: "tool_start"; toolCallId: string; name: string; args: unknown }
   /** `result` is short: the first lines of the tool's output. */
-  | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean }
+  | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean; threads?: ThreadRef[] }
   /** Memories recalled for this turn, automatically or with recall/read_memory. */
   | { type: "recall"; ids: string[] }
   /** Notes she saved. */
@@ -333,8 +339,25 @@ export type ThreadEvent =
   | { type: "title"; title: string }
   /** The turn is over; the messages are stored. */
   | { type: "turn_end"; aborted: boolean }
-  /** Delegation's run events, forwarded as they are once Delegation lands. */
-  | { type: "delegation"; event: unknown };
+  /**
+   * A subagent run's event. It goes to the parent thread's stream and to the
+   * subagent's own thread's stream.
+   */
+  | { type: "delegation"; event: DelegationEvent }
+  /** A background run's result or question, just delivered into this thread (also stored, as a `notice` message). */
+  | { type: "notice"; text: string; runId?: string; status?: string };
+
+/** Which run and subagent thread an event is about, and its parent thread. */
+export interface RunRef { userId: string; pool: Pool; parentThreadId: string; runId: string; threadId: string }
+export type DelegationEvent =
+  | (RunRef & { type: "started"; role: string; model: string; title: string })
+  | (RunRef & { type: "output"; delta: string })
+  | (RunRef & { type: "tool_call"; toolName: string; args: unknown })
+  | (RunRef & { type: "question"; question: string })
+  | (RunRef & { type: "finished"; status: "finished" | "failed" })
+  | (RunRef & { type: "stopped"; reason: "stopped" | "timeout" | "parent_changed" })
+  | (RunRef & { type: "interrupted" })
+  | (RunRef & { type: "usage"; inputTokens: number; outputTokens: number });
 
 export interface PermissionRequest {
   requestId: string;
@@ -344,6 +367,55 @@ export interface PermissionRequest {
   /** When it is denied if nobody answers (ISO time). */
   expiresAt: string;
 }
+
+// --- Subagents ---
+
+export interface SubagentRun {
+  run: string;
+  /** The subagent's thread, nested under this one. */
+  thread: string;
+  role: string;
+  model: string;
+  background: boolean;
+  status: "running" | "question" | "finished" | "failed" | "stopped" | "interrupted";
+  inputTokens: number;
+  outputTokens: number;
+  startedAt: string;
+  endedAt: string | null;
+}
+
+/** GET /api/u/:userId/threads/:pool/:threadId/subagents → Subagents: the thread's runs, newest first, and their total tokens. */
+export interface Subagents { runs: SubagentRun[]; usage: { inputTokens: number; outputTokens: number } }
+
+export type Thinking = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export interface Role {
+  name: string;
+  description: string;
+  prompt: string;
+  tier: "cheap" | "strong";
+  /** Tool names it may use. */
+  tools: string[];
+  readOnly: boolean;
+  thinking: Thinking;
+}
+export interface Step { task: string; role?: string; tier?: "cheap" | "strong"; model?: string }
+export type WorkflowSpec =
+  | { chain: Step[] }
+  | { loop: { task: string; worker?: string; reviewer?: string; rounds?: number } }
+  | { council: { question: string; models?: string[] } };
+export interface Workflow { name: string; description: string; spec: WorkflowSpec }
+
+/**
+ * GET /api/u/:userId/roles → RoleInfo[]: built-in roles, with the user's own and their overrides.
+ * PUT /api/u/:userId/roles/:name (a Role) → RoleInfo[]. A built-in's name overrides it.
+ * DELETE /api/u/:userId/roles/:name → RoleInfo[]. Removing an override brings the built-in back.
+ */
+export interface RoleInfo extends Role { custom: boolean }
+/**
+ * GET /api/u/:userId/workflows → Workflow[]
+ * PUT /api/u/:userId/workflows/:name (a Workflow) → Workflow[]
+ * DELETE /api/u/:userId/workflows/:name → Workflow[]
+ */
 
 // --- Memory browser (the owner view) ---
 
