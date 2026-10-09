@@ -1,4 +1,5 @@
-import { mkdirSync, realpathSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Locked, type Keyring } from "../keyring.ts";
 import type { Pool } from "../types.ts";
@@ -101,9 +102,53 @@ export class Workspace {
     return {
       target: () => this.targetFor(t),
       settings: () => this.settings(t.userId).thread(t.threadId),
-      network: (): Network => this.settings(t.userId).network(t.threadId, t.pool),
+      network: (): Network => this.network(t),
       folders: () => this.folders(t),
     };
+  }
+
+  /** What the thread's tools may reach: its settings, or nothing while the self-test has refused network. */
+  network(t: WorkspaceThread): Network {
+    if (this.networkRefused) return { internet: false, services: false, hosts: [] };
+    return this.settings(t.userId).network(t.threadId, t.pool);
+  }
+
+  /** Why network modes are refused on this host, if the self-test found a reason. */
+  networkRefused: string | undefined;
+
+  /**
+   * Checks, on this host, that a sandbox can't undo its own firewall: it
+   * tries a nested user namespace followed by `nft flush ruleset`, and a
+   * connection the rules block. If any of it works, or a networked sandbox
+   * can't start at all, every thread runs with network off and the reason is
+   * kept in `networkRefused`. lyricad calls this at startup.
+   */
+  async selfTest(): Promise<string | undefined> {
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-selftest-"));
+    const probe = [
+      "unshare -r nft flush ruleset >/dev/null 2>&1 && echo ESCAPE:flushed the rules from a nested user namespace",
+      "nft flush ruleset >/dev/null 2>&1 && echo ESCAPE:flushed the rules",
+      "timeout 3 bash -c 'exec 3<>/dev/tcp/1.1.1.1/443' 2>/dev/null && echo ESCAPE:reached a blocked address",
+      "echo DONE",
+    ].join("; ");
+    try {
+      // One allowed host that answers nothing: enough to start pasta and load the rules.
+      const box = new Sandbox({
+        workdir: dir, grants: [], network: { internet: false, services: false, hosts: ["192.0.2.1:9"] },
+        bwrap: this.opts.bwrap, pasta: this.opts.pasta,
+      });
+      const r = await box.run(["bash", "-c", probe], { timeoutMs: 30_000 });
+      const out = r.stdout.toString();
+      const escape = /ESCAPE:(.*)/.exec(out)?.[1];
+      if (escape) this.networkRefused = `the sandbox ${escape}`;
+      else if (r.code !== 0 || !out.includes("DONE")) this.networkRefused = `a networked sandbox didn't start: ${r.stderr.toString().trim() || `exit ${r.code}`}`;
+      else this.networkRefused = undefined;
+    } catch (err) {
+      this.networkRefused = `a networked sandbox didn't start: ${(err as Error).message}`;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    return this.networkRefused;
   }
 
   /** A subagent's thread gets its parent's settings, or stricter ones. See WorkspaceSettings.inheritSettings. */
@@ -129,7 +174,7 @@ export class Workspace {
     return new Sandbox({
       workdir: this.threadDir(t),
       grants: tw.grants,
-      network: s.network(t.threadId, t.pool),
+      network: this.network(t),
       exclude: this.opts.excludePorts,
       check: (g) => checkGrant(s.allowed(), t.pool, g),
       bwrap: this.opts.bwrap,

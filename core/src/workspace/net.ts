@@ -47,6 +47,9 @@ export function parseHost(raw: string): HostEntry {
     throw new Error(`can't read host ${raw}`);
   }
   if (!family && !name) throw new Error(`can't read host ${raw}`);
+  // An entry that matches everything would be internet access with the switch off.
+  if (prefix !== undefined && Number(prefix) === 0) throw new Error(`${raw} would allow every address; use the internet switch instead`);
+  if (family && ["0.0.0.0", "::", "255.255.255.255"].includes(addr!)) throw new Error(`${raw} isn't a host`);
   if (port !== undefined && !(Number.isInteger(port) && port > 0 && port < 65536)) throw new Error(`bad port in ${raw}`);
   const host = family ? s : s.toLowerCase();
   const shown = host.includes(":") && !host.includes("/") && port !== undefined ? `[${host}]` : host;

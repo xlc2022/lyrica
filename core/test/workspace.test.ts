@@ -83,6 +83,9 @@ describe("grants", () => {
     settings.setDefaultNetwork("private", { internet: true, hosts: ["[fd00::1]:80"] });
     expect(settings.network("p2", "private")).toEqual({ internet: true, services: false, hosts: ["[fd00::1]:80"] });
     expect(() => settings.setThread("p1", "private", { hosts: ["not a host"] })).toThrow(/can't read host/);
+    for (const all of ["0.0.0.0/0", "10.0.0.0/0", "::/0", "0.0.0.0", "0.0.0.0:443", "::", "255.255.255.255"]) {
+      expect(() => settings.setThread("p1", "private", { hosts: [all] }), all).toThrow(/every address|isn't a host/);
+    }
   });
 
   it("let a subagent have its parent's settings or stricter ones, never wider", async () => {

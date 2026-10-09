@@ -163,6 +163,15 @@ How it is enforced:
   pasta's forwarder to the host's resolver.
 - Host abstract Unix sockets belong to the host's network namespace, so the
   sandbox never sees them. `lyricad`'s local socket is a file it never mounts.
+- Host entries that match everything (`0.0.0.0/0`, any `/0`, `0.0.0.0`,
+  `::`, broadcast) are refused; that is what the internet switch is for.
+- **Self-test.** Whether a sandbox can undo its rules depends on the host
+  kernel. `Workspace.selfTest()` starts a networked sandbox on the real host
+  and tries `unshare -r` followed by `nft flush ruleset`, a plain
+  `nft flush ruleset`, and a connection the rules block. If any of it works,
+  or a networked sandbox can't start, network modes are refused: every thread
+  runs with network off and `networkRefused` says why. `lyricad` runs it at
+  startup, and `lyrica dev` prints the reason.
 - IPv4 only for now.
 - SSH targets don't depend on these switches: `lyricad`'s SSH client reaches
   them, not the sandbox. Model calls also come from `lyricad`, so local-only
@@ -241,4 +250,8 @@ VM needs nothing special.
    succeeds. On Ubuntu 24.04 or later, if it fails with "Permission denied",
    set `kernel.apparmor_restrict_unprivileged_userns=0` on the Proxmox host.
 5. As the service user, `pasta --config-net -- true` succeeds.
-6. `LYRICA_HOME` is on a normal filesystem owned by the service user.
+6. Check the self-test passes: `lyricad` reports it at startup, and until
+   `lyricad` exists, `lyrica dev` against a development runtime prints
+   "network is off for every thread" with the reason if it fails. Until it's
+   fixed, her tools have no network.
+7. `LYRICA_HOME` is on a normal filesystem owned by the service user.

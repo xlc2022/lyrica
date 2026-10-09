@@ -13,6 +13,8 @@ export async function benchExtensions(keyring: Keyring, users: Users, user: User
   const view = new Memory(keyring, users).openThreadView(user.id, "general");
   const thread = { userId: user.id, pool: "general" as const, threadId: view.own.createThread({ interface: "cli", title: "lyrica dev" }).id };
   const workspace = new Workspace(keyring, users);
+  const refused = await workspace.selfTest();
+  if (refused) process.stderr.write(`[lyrica] network is off for every thread: ${refused}\n`);
   const settings = workspace.settings(user.id);
   settings.setThread(thread.threadId, "general", { grants: settings.allowed().general.map((path) => ({ path, writable: true })) });
   await workspace.mountHome(user.id);
