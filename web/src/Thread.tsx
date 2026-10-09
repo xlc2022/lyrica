@@ -56,8 +56,8 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
             {settings.data && settings.data.target !== "sandbox" && <span className="badge folder">{settings.data.target}</span>}
           </div>
         </div>
-        <button type="button" className="gear" aria-expanded={drawer} aria-controls="thread-settings" onClick={() => setDrawer(!drawer)}>
-          <span aria-hidden="true">⚙</span> <span className="long">Thread settings</span><span className="sr-only">Thread settings</span>
+        <button type="button" className="gear" aria-label="Thread settings" aria-expanded={drawer} aria-controls="thread-settings" onClick={() => setDrawer(!drawer)}>
+          <span aria-hidden="true">⚙ <span className="long">Thread settings</span></span>
         </button>
       </header>
       {parent && (

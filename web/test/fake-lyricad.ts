@@ -346,6 +346,6 @@ async function serveStatic(path: string, res: ServerResponse) {
   } catch { fail(res, 404, "Not found."); }
 }
 
-const port = Number(process.argv[2] ?? 7420);
+const port = Number(process.argv[2] ?? 7340);
 createServer((req, res) => { handle(req, res).catch((e: Error) => fail(res, 500, e.message)); })
   .listen(port, "127.0.0.1", () => console.log(`fake lyricad on http://127.0.0.1:${port} (passphrase "${PASSPHRASE}", login li / pw)`));

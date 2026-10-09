@@ -221,10 +221,15 @@ function Lineage({ userId, pool, title, ids }: { userId: string; pool: Pool; tit
   );
 }
 
-/** Threads and their messages open the thread; everything else opens the memory. */
+/**
+ * Threads and their messages open the thread; everything else opens the
+ * memory. An ID in the other pool carries it: `general/n:12`.
+ */
 function MemoryLink({ userId, pool, id }: { userId: string; pool: Pool; id: string }) {
-  const thread = /^[te]:([^#]+)/.exec(id)?.[1];
-  const to = thread ? href({ page: "thread", userId, pool, threadId: thread }) : href({ page: "memory", userId, pool, id });
+  const [, other, bare = id] = /^(?:(general|private)\/)?(.*)$/.exec(id) ?? [];
+  const p = (other as Pool | undefined) ?? pool;
+  const thread = /^[te]:([^#]+)/.exec(bare)?.[1];
+  const to = thread ? href({ page: "thread", userId, pool: p, threadId: thread }) : href({ page: "memory", userId, pool: p, id: bare });
   return <a href={to}>{id}</a>;
 }
 

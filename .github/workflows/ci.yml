@@ -23,3 +23,8 @@ jobs:
       - run: npm test
         env:
           LYRICA_SANDBOX_TESTS: require
+      - run: npm run build
+      # Playwright drives the web UI against a real lyricad (web/e2e/serve.ts).
+      - run: npx playwright install --with-deps chromium
+        working-directory: web
+      - run: npm run e2e -w @lyrica/web

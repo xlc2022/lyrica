@@ -39,10 +39,15 @@ export async function request<T>(method: string, path: string, body?: unknown, i
   const data = text ? safeJson(text) : undefined;
   if (!res.ok) {
     if (res.status === 401 || res.status === 503) onAuthLost(res.status);
-    const reason = data && typeof data === "object" && "error" in data ? String(data.error) : "";
+    const reason = data && typeof data === "object" && "error" in data ? sentence(String(data.error)) : "";
     throw new HttpError(res.status, reason || PLAIN[res.status] || `Something went wrong (${res.status}).`);
   }
   return data as T;
+}
+
+/** lyricad's reasons are lower-case phrases; show them as sentences. */
+function sentence(s: string): string {
+  return s && s[0]!.toUpperCase() + s.slice(1) + (/[.!?]$/.test(s) ? "" : ".");
 }
 
 function safeJson(text: string): unknown {
@@ -70,7 +75,7 @@ export function upload(url: string, file: File, onProgress: (fraction: number) =
     xhr.onload = () => {
       const data = safeJson(xhr.responseText) as { path?: string; error?: string } | undefined;
       if (xhr.status >= 200 && xhr.status < 300 && data?.path) resolve({ path: data.path });
-      else reject(new HttpError(xhr.status, data?.error || PLAIN[xhr.status] || `The upload failed (${xhr.status}).`));
+      else reject(new HttpError(xhr.status, (data?.error && sentence(data.error)) || PLAIN[xhr.status] || `The upload failed (${xhr.status}).`));
     };
     xhr.send(file);
   });
