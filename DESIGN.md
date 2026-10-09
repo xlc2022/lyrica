@@ -92,7 +92,44 @@ Each user has two pools of memory.
     avatar images.
   - Her inner workings (memories she recalled, notes she saved, tool calls)
     show as one-line markers that expand when tapped. A subagent shows as a
-    small card that opens its thread.
+    card that expands to its work and takes messages.
+  - **Type:** IBM Plex Sans and IBM Plex Mono (open source, OFL), served by
+    `lyricad` itself, never fetched from elsewhere; system fonts as fallback.
+    Five sizes (22, 15, 14, 13, 12 px, plus 11 for small headings). Every
+    number, size and time is in Plex Mono with tabular figures.
+  - **Actions:** three looks only: primary, secondary (bordered) and link.
+    Nothing pressable is plain grey text. Badges carry state only, at most
+    two per row; facts go in the line beneath the name.
+  - **Words:** no explanatory captions under headings or in page headers.
+    Headers state facts (counts, status); a sentence of explanation appears
+    only where an action has a consequence, such as a delete.
+  - **Familiar shapes first**, from ChatGPT, Claude and Open WebUI, unless
+    Lyrica has a reason to differ (pools, privacy, model hosts, subagents).
+- **Where things are:**
+  - **Sidebar:** New thread, Search (with a Pinned messages view), Memory,
+    Sleep (with a count) and Models at the top; then her items from last
+    night; then threads, with child threads nested under their parent; then
+    a line of host status; then the user's button.
+  - **Threads can be sorted** by date (grouped Today, Yesterday, Previous 7
+    days, Previous 30 days, the default), by last activity, by start date or
+    by title, or shown in **the user's own groups**, which they make, name
+    and move threads into from a thread's header. The choice and the groups
+    are saved per user, in `user.db`. A group can hold general and private
+    threads; hiding a pool still hides its threads.
+  - **The user's button** shows "**N** Notifications", the count in orange,
+    and opens a menu: Notifications, Settings, Server (administrators),
+    Switch user, Lock and Log out.
+  - **Settings** (the user's own) and **Server** (administrators) are pages
+    with a list of sections on the left. Notifications is the first section
+    of Settings.
+  - **Notifications:** one page for everything waiting for the user: sleep
+    items, persona suggestions and approvals, permission requests, child
+    thread updates, image models to review, clean-up items, finished
+    downloads, host problems. It sorts by newest, oldest, type, or host and
+    pool, filters by type and place, has actions on each row and bulk
+    actions, and pages through large numbers. Counts elsewhere link to it.
+  - **Welcome:** a greeting, the message box with General or Private, her
+    items from last night, what's waiting, and what's answering now.
 - **Each interface keeps its own threads.** Lyrica is continuous across
   interfaces because she remembers, not because threads are mirrored. Moving a
   thread to another interface is an explicit export that copies it. Nothing
@@ -310,26 +347,30 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
 - **Local-only.** In a private or local-only thread, any attempt to use a cloud
   model, for any purpose, fails with an error. Nothing ever falls back across
   the local/cloud line.
-- **Models page.** One page in the control panel covers everything about
-  models:
+- **Models page.** One area covers everything about models, with its own
+  list of pages: **Overview** (one alert, four tiles: endpoints up, what's
+  answering chat, downloads, what's waiting; compact hosts; the last calls),
+  **Tasks**, **Text models**, **Image models**, **Hosts and endpoints**,
+  **Downloads**, **Clean up** and **Recent calls**. Downloading a model,
+  scanning and pairing are pages; a confirmation is a dialog. It covers:
   - endpoints and model hosts, each with its live status. **Add endpoint**
     takes any OpenAI-compatible URL, with an optional key, declared cloud or
     local, for quick testing or a server started by hand. **Add model host**
     pairs a managed host. A local endpoint over plain HTTP outside this
     machine or the tailnet is marked **unencrypted**;
-  - the local, cloud and custom profiles. Each task (chat, subagents,
-    titles, embeddings, sleep, images) shows on one line what answers it
-    right now, and opens to its ordered list of models. A task can instead
+  - **Tasks:** a table of tasks against **Private threads** (the Local
+    profile) and **General threads** (the user's default, Cloud or Custom,
+    with a switch to the other and a way to show it too). Each cell shows
+    what answers that task right now and opens a side panel with its ordered
+    list of models. A task can instead
     use another task's list (**Same as**), one level deep: by default titles
     and compaction follow cheap subagents, and sleep follows strong
     subagents. A task with no list of its own follows Chat, as before;
   - two libraries, **Text models** and **Image models**, because the two
     are managed differently. The image library is described under Images.
-  - a **Downloads** page in the top bar, with a count while anything is
-    downloading. It holds **Download text model**, **Download image model**
-    and **Accounts**, downloads in progress with Cancel, and finished
-    downloads and deletions until cleared. The libraries themselves stay
-    free of downloads;
+  - a **Downloads** page, with a count while anything is downloading: the
+    queue with Cancel, finished downloads and deletions until cleared, both
+    Download buttons, and **Accounts**. The libraries list no downloads;
   - the **text model library** stays usable with hundreds of models (an
     OpenRouter account, a large shared models folder):
     - one row per model, which opens to its copies on every endpoint. That
@@ -353,8 +394,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     - **starred** models, which pickers show first;
     - each picker offers only models suited to its task, so the embeddings
       task lists only embedding models;
-    - **Download model:** ask a paired host to download one, from Hugging
-      Face, ModelScope or a link (see Downloads under the model host);
+    - **Download model**, in each library's header: ask a paired host to
+      download one, from Hugging Face, ModelScope or a link (see Downloads
+      under the model host);
     - **Delete** a copy Lyrica downloaded herself, after a confirmation that
       says where it's used. Nothing else can be deleted from the library. Lists that named it skip it, and its ID is
       kept as removed so other users' lists are tidied when they next
@@ -443,7 +485,7 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       address, never to every interface, because Docker's published ports
       bypass the machine's firewall. The host API also accepts only the
       addresses of the Lyrica servers it is paired with.
-  - **Models folder.** Models live in a folder set on the dashboard. That can
+  - **Models folder.** Models live in a folder chosen when the host is installed (run `install.sh` again to change it; the dashboard shows the folder and that command). That can
     be a shared folder on another drive that LM Studio also uses, for example.
     - It is mounted read-only into the model servers. Downloads go into a
       `lyrica` subfolder of it.
@@ -641,13 +683,13 @@ it's off.
   recipe of its DiT (3B or 7B, at FP16, FP8 or GGUF) and its VAE, with
   defaults such as the scale and the largest size. The task
   `image.upscale` has its own list in each profile (7B on the Blackwell,
-  3B on the 3090), and the `image` tool gains `upscale`. Photos of you
+  3B on the 3090), and the `image` tool gains `upscale`. Portrait photos
   follow the same rule as for edits. Video is out of scope.
 - **Cloud image services** are cloud endpoints like any other: OpenAI's image
   API first, then others (for example Black Forest Labs, Krea, Google, and
   aggregators such as fal or Replicate). They're used only where cloud is
   allowed.
-- **Photos of you.** Each user can keep reference photos of themselves in
+- **Portrait photos.** Each user can keep reference photos of themselves in
   their encrypted home, for edits and for putting them in new scenes. Sending
   these photos to a cloud model is the user's choice, with a setting:
   - **Never.**

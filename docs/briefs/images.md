@@ -50,7 +50,7 @@ of how she works with Li, from storyboards to edits of Li's own photos.
    - Further providers (Black Forest Labs, Krea, Google, fal, Replicate) come
      through one small provider table, like the DNS providers in web access.
      Add one or two if they're cheap; the table matters more than the count.
-4. **Photos of you.**
+4. **Portrait photos.**
    - Each user has a `photos-of-me/` folder in their encrypted home, managed
      from the UI.
    - A per-user setting in `user.db`: **Never**, **Ask once a day** (the

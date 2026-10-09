@@ -7,7 +7,7 @@ started when its API lands:
 |---|---|
 | Models page | Models 2's API |
 | Sleep section | Sleep's API |
-| Images and photos of you | Images' API |
+| Images and portrait photos | Images' API |
 
 **Read first:** docs/briefs/web.md and docs/web.md, DESIGN.md ("How the web UI
 looks", "Models and endpoints", "Sleep" and "Images"), and the API in
@@ -20,18 +20,37 @@ phone (principle 1).
 
 ## In scope
 
-1. **The Models page**, built from the mockup
-   (https://claude.ai/artifact/U3xANiSAFje8cuinWpHo7V). It replaces the
-   control panel's Endpoints and Model profiles sections, which then link
-   to it.
+0. **The look and the shell**, from the app mockup
+   (https://claude.ai/artifact/96BoPXPoxL2LDBg8eLxjHx) and DESIGN's "How the
+   web UI looks" and "Where things are":
+   - IBM Plex Sans and Mono, self-hosted in the web build (OFL licence file
+     included), with system fallbacks; the five sizes; the three action
+     looks; badges for state only; no explanatory captions.
+   - The sidebar as described, with thread sorting (by date, last activity,
+     start date, title) and the user's own groups, saved per user (a small
+     API and a `thread_groups` table in `user.db`; a thread's group is a
+     per-user setting, never in the pool).
+   - The user's button ("N Notifications"), its menu, Settings and Server as
+     pages with a section list (the control panel's cards move into them),
+     and the Notifications page with its API: one list over what waits for
+     the user, sortable, filterable, paged, with each item's actions.
+   - The thread view's message actions, mode picker, "+" switches, thinking
+     control, pins and the removal confirmation come with the back-end briefs
+     that add them (Modes, Child threads, Models 2).
+1. **The Models page**, built from the revised mockup
+   (https://claude.ai/artifact/U3xANiSAFje8cuinWpHo7V): Overview, Tasks
+   (Private and General), Text models, Image models, Hosts and endpoints,
+   Downloads, Clean up and Recent calls. It replaces the control panel's
+   Endpoints and Model profiles sections.
    - Hosts and plain endpoints with live status: per-GPU VRAM bars, models,
      pause and resume, a dashboard link, and editable addresses.
    - **Add endpoint**, with the plain-HTTP warning.
    - **Add model host**: addresses, pairing code, then the paired
      fingerprint.
-   - Profiles: one line per task showing what answers it now, opening to its
-     ordered list (drag or arrows to reorder, add, remove) or **Same as**
-     another task. Pickers offer only suitable models.
+   - Tasks: a table of tasks against Private and General threads; each cell
+     shows what answers now and opens a side panel with its ordered list
+     (drag or arrows to reorder, add, remove) or **Same as** another task.
+     Pickers offer only suitable models.
    - **Image models**, a tab of its own: recipes, and parts by type
      (checkpoints, diffusion models, text encoders, VAEs, LoRAs, unused
      files), filtered by architecture; each recipe opens to its copies and
@@ -74,7 +93,7 @@ phone (principle 1).
 3. **Images.**
    - Inline images in messages, with a full-size view, and progress while
      one is made.
-   - A **Photos of you** page: upload, view and delete the photos, plus the
+   - A **Portrait photos** page: upload, view and delete the photos, plus the
      Never, Ask once a day and Always setting, explained in plain words.
    - The ask-once-a-day prompt uses the existing permission prompt, worded
      for photos.
