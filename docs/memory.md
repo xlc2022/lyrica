@@ -159,6 +159,15 @@ The cheapest mechanism comes first:
    what she knows about, which is what lets her think "I have notes on that"
    without being prompted. If the index outgrows its budget (about 3k tokens),
    it shows recently updated pages and pages that match the conversation.
+   Also always in context: the **page about the user**, `p:about-user` (who
+   they are, what they like and can't stand), so a preference doesn't depend
+   on the next message sharing its words. A private thread loads the private
+   page first, then the general one if the section's budget (1,500
+   characters) has room. A general thread loads only the general page. No
+   page means no section. A user can write it now in the memory browser (add
+   a page with the short name `about-user`), and it is then User introduced
+   and authoritative. Sleep will keep it up later without overwriting what
+   the user wrote.
 2. **Automatic recall on every user turn.** Search notes, pages and past
    threads in the pool using Li's message, and inject the top few hits as
    short snippets with their IDs (about 1.5k tokens).
@@ -356,8 +365,8 @@ correct a memory in conversation.
     Deleting general memory from the owner view flags general pages only, not
     private pages that cite it.
 - **`extension/src/`**: `tools.ts` registers the three tools; `memory.ts`
-  builds the prompt sections (an unlogged notice, WAKE, page index, pages for
-  `folders()`) and the recall hits; `record.ts` copies Pi entries into the
+  builds the prompt sections (an unlogged notice, WAKE, the about-user page,
+  page index, pages for `folders()`) and the recall hits; `record.ts` copies Pi entries into the
   thread at each turn end (`recordEntries`). Pi entry IDs make copying
   idempotent.
 

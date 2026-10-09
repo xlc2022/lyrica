@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { PRONOUN_PRESETS, type Persona, type Profile } from "@lyrica/core";
 import { describe, expect, it } from "vitest";
-import { createLyricaExtension, toolGuidance, UNLOGGED_NOTICE, type ThreadContext } from "../src/index.ts";
+import { createLyricaExtension, DEFAULT_BUDGETS, toolGuidance, type Budgets, UNLOGGED_NOTICE, type ThreadContext } from "../src/index.ts";
 import { withMemory } from "./helpers.ts";
 
 const persona: Persona = {
@@ -11,7 +11,7 @@ const persona: Persona = {
 const profile: Profile = { displayName: "Li", pronouns: PRONOUN_PRESETS.she, previousNames: [] };
 
 /** Loads the extension against a fake Pi API and returns a function that runs one turn. */
-function load(thread: ThreadContext, folders: string[] = []) {
+function load(thread: ThreadContext, folders: string[] = [], budgets?: Budgets) {
   const handlers = new Map<string, Function>();
   const tools: string[] = [];
   let active: string[] = [];
@@ -22,7 +22,7 @@ function load(thread: ThreadContext, folders: string[] = []) {
     getAllTools: () => tools.map((name) => ({ name })),
     setActiveTools: (names: string[]) => { active = names; },
   } as unknown as ExtensionAPI;
-  void createLyricaExtension(thread, { persona: () => persona, profile: () => profile, folders: () => folders })(pi);
+  void createLyricaExtension(thread, { persona: () => persona, profile: () => profile, folders: () => folders, budgets })(pi);
   const turn = async (prompt: string) => {
     // Pi builds fresh options from its base for every turn.
     const options = { cwd: "/", selectedTools: [], sections: {} as Record<string, string> };
@@ -81,6 +81,49 @@ describe("extension", () => {
     expect(JSON.stringify(options.sections)).not.toContain("Gerald");
     expect(threadId).not.toBe(past.id);
     owner.close();
+  });
+
+  describe("the page about the user", () => {
+    const about = (text: string) => ({ slug: "about-user", title: "About Li", summary: "who Li is", text });
+
+    it("is in the prompt when it exists, and absent otherwise", async () => {
+      const m = await withMemory();
+      expect((await load(m.thread().context)("hi")).options.sections.about).toBeUndefined();
+      const owner = m.memory.openOwnerView(m.user.id);
+      owner.general.putPage(about("{user} can't stand being called sweetie."), `user:${m.user.id}`);
+      expect((await load(m.thread().context)("hi")).options.sections.about).toBe("Li can't stand being called sweetie.");
+      owner.general.archive("p:about-user", true, `user:${m.user.id}`);
+      expect((await load(m.thread().context)("hi")).options.sections.about).toBeUndefined();
+      owner.close();
+    });
+
+    it("puts the private page before the general one, within its budget", async () => {
+      const m = await withMemory();
+      const owner = m.memory.openOwnerView(m.user.id);
+      owner.general.putPage(about("General: {user} likes rye bread."), `user:${m.user.id}`);
+      owner.private.putPage(about("Private: {user} is seeing a therapist on Tuesdays."), `user:${m.user.id}`);
+      const both = (await load(m.thread("private").context)("hi")).options.sections.about!;
+      expect(both).toBe("Private: Li is seeing a therapist on Tuesdays.\n\nGeneral: Li likes rye bread.");
+
+      owner.private.putPage(about(`Private: ${"x".repeat(60)}\nmore`), `user:${m.user.id}`);
+      const tight = (await load(m.thread("private").context, [], { ...DEFAULT_BUDGETS, about: 70 })("hi")).options.sections.about!;
+      expect(tight.length).toBeLessThanOrEqual(70);
+      expect(tight.startsWith("Private:")).toBe(true);
+      expect(tight).not.toContain("General");
+      owner.close();
+    });
+
+    it("never gives a general thread the private page", async () => {
+      const m = await withMemory();
+      const owner = m.memory.openOwnerView(m.user.id);
+      owner.private.putPage(about("Private: {user} is seeing a therapist on Tuesdays."), `user:${m.user.id}`);
+      const { options } = await load(m.thread("general").context)("therapist on Tuesdays?");
+      expect(options.sections.about).toBeUndefined();
+      expect(JSON.stringify(options)).not.toContain("therapist");
+      owner.general.putPage(about("General: {user} likes rye bread."), `user:${m.user.id}`);
+      expect((await load(m.thread("general").context)("hi")).options.sections.about).toBe("General: Li likes rye bread.");
+      owner.close();
+    });
   });
 
   it("doesn't offer remember in an unlogged thread, and says so", async () => {
