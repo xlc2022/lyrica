@@ -1,0 +1,5 @@
+{
+  "name": "@lyrica/daemon",
+  "private": true,
+  "type": "module"
+}

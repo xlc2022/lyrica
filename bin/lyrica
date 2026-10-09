@@ -1,0 +1,6 @@
+#!/usr/bin/env node
+// Runs bin/lyrica.ts through tsx so the TypeScript sources need no build step.
+import { register } from "tsx/esm/api";
+
+register();
+await import("./lyrica.ts");

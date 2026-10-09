@@ -42,3 +42,5 @@ persona/       seed, imported into self.db on first run
 evals/         continuity scenarios
 bin/lyrica     one command: serve, chat, admin, mem, dev
 ```
+
+Checks: `npm install`, `npm run typecheck`, `npm test`.
