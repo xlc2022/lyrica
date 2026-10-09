@@ -45,7 +45,8 @@ phone (principle 1).
      beneath; the daemon reports its version (package.json) and build (the
      git commit, set at build time).
    - Notifications with its count in the sidebar's top links, under Search; the user's
-     button and its menu, Settings and Server as
+     button and its menu (Administration only for administrators; the
+     control panel's "Server" section is renamed), Settings and Administration as
      pages with a section list (the control panel's cards move into them),
      and the Notifications page with its API: one list over what waits for
      the user, sortable, filterable, paged, with each item's actions.

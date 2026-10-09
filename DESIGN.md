@@ -132,9 +132,9 @@ Each user has two pools of memory.
     memories go with it; the copy is the recipient's thread from then on, and
     Lyrica remembers it in the recipient's pool. Sharing a private thread
     asks first. Only users on the same server appear in the list.
-  - **The user's button** opens a menu: Settings, Server (administrators),
-    Switch user, Lock and Log out.
-  - **Settings** (the user's own) and **Server** (administrators) are pages
+  - **The user's button** opens a menu: Settings, Administration (shown
+    only to administrators), Switch user, Lock and Log out.
+  - **Settings** (the user's own) and **Administration** (administrators) are pages
     with a list of sections on the left. Notifications is the first section
     of Settings.
   - **Notifications:** one page for everything waiting for the user: sleep
