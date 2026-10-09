@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { connect } from "node:net";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -134,6 +135,20 @@ describe("ssh targets", () => {
   });
 });
 
+/** Waits until something accepts connections on `port`, or `server` exits. */
+async function listening(port: number, server: ReturnType<typeof spawn>, log: () => string): Promise<void> {
+  for (let i = 0; i < 100; i++) {
+    if (server.exitCode !== null) throw new Error(`sshd exited: ${log()}`);
+    const up = await new Promise<boolean>((resolve) => {
+      const s = connect(port, "127.0.0.1", () => { s.end(); resolve(true); });
+      s.on("error", () => resolve(false));
+    });
+    if (up) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error(`sshd isn't listening: ${log()}`);
+}
+
 // A real round trip against a throwaway sshd, run as the current user. Skipped
 // where sshd isn't installed or the tests run as root.
 const sshd = "/usr/sbin/sshd";
@@ -148,9 +163,11 @@ describe.skipIf(!existsSync(sshd) || process.getuid?.() === 0)("an ssh target", 
     mkdirSync(join(dir, "root"));
     const port = 20000 + Math.floor(Math.random() * 20000);
     const server = spawn(sshd, ["-D", "-e", "-p", String(port), "-h", join(dir, "host_key"), "-o", `AuthorizedKeysFile=${join(dir, "authorized_keys")}`,
-      "-o", "StrictModes=no", "-o", "UsePAM=no", "-o", `PidFile=${join(dir, "pid")}`, "-o", "ListenAddress=127.0.0.1"], { stdio: "ignore" });
+      "-o", "StrictModes=no", "-o", "UsePAM=no", "-o", `PidFile=${join(dir, "pid")}`, "-o", "ListenAddress=127.0.0.1"], { stdio: ["ignore", "ignore", "pipe"] });
+    let log = "";
+    server.stderr.on("data", (d: Buffer) => { log += d.toString(); });
     try {
-      await new Promise((r) => setTimeout(r, 500));
+      await listening(port, server, () => log);
       const seen: string[] = [];
       const target = new SshTarget({
         name: "local", host: "127.0.0.1", port, username: userInfo().username, privateKey: key.privateKey, root: join(dir, "root"), hostKey: null,
