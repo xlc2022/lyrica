@@ -78,6 +78,16 @@ export class Workspace {
     return dir;
   }
 
+  /** One thread's target, settings, internet switch and folders, each read fresh when called. */
+  forThread(t: WorkspaceThread) {
+    return {
+      target: () => this.targetFor(t),
+      settings: () => this.settings(t.userId).thread(t.threadId),
+      network: () => this.settings(t.userId).network(t.threadId, t.pool),
+      folders: () => this.folders(t),
+    };
+  }
+
   /** A subagent's thread gets its parent's settings, or stricter ones. See WorkspaceSettings.inheritSettings. */
   inheritSettings(parent: WorkspaceThread, childThreadId: string, narrower?: Parameters<WorkspaceSettings["inheritSettings"]>[3]): ThreadWorkspace {
     return this.settings(parent.userId).inheritSettings(parent.threadId, childThreadId, parent.pool, narrower);

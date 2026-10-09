@@ -7,6 +7,7 @@ import { TopicRouter, type RoutedTopic } from "./routing.ts";
 export * from "./assemble.ts";
 export * from "./memory.ts";
 export * from "./routing.ts";
+export * from "./workspace.ts";
 
 export interface ThreadContext {
   user: User;
@@ -22,6 +23,8 @@ export interface LyricaOptions {
   persona: () => Persona;
   /** The user's current profile; called every turn so a rename applies at once. */
   profile: () => Profile;
+  /** The thread's granted folders, read every turn. Workspace supplies them; defaults to none. */
+  folders?: () => string[];
   /** Show routed topics and the assembled prompt each turn. */
   debugPrompt?: boolean;
   budgets?: Budgets;
