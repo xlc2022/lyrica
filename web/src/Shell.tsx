@@ -139,7 +139,7 @@ function ThreadRow({ t, userId, current }: { t: ThreadSummary; userId: string; c
 }
 
 function ThreadLink({ t, userId, on }: { t: ThreadSummary; userId: string; on: boolean }) {
-  const when = (t as ThreadSummary & { updatedAt?: string }).updatedAt ?? t.createdAt;
+  const when = t.updatedAt;
   return (
     <a className="thread" href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })} aria-current={on ? "page" : undefined}>
       <span className="pool-dot" data-pool={t.pool} title={t.pool} />
