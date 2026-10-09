@@ -29,13 +29,23 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
 
   Each has a character budget (`DEFAULT_BUDGETS`) and is cut at a line break
   when it's over.
-- **`memory.ts`** is a stub: WAKE, page index, recall and last-talk time come
-  back empty until the Memory thread fills them in from the `PoolView`.
+- **`memory.ts`** reads the thread's `PoolView`: an unlogged notice, WAKE, the
+  page index and pages about the thread's `folders()` go in the system
+  prompt; recall hits for the message (labelled "added by Li" for a user's
+  own memories) and the time since the user last spoke go in the turn
+  message.
+- **`tools.ts`** registers `remember`, `recall` and `read_memory`, each with a
+  snippet and guidelines. In an unlogged thread `remember` is taken out of the
+  active tools.
+- **`record.ts`** stores Pi's entries in the thread (`recordEntries`,
+  `entryRecorder`).
+- The factory throws unless `thread.view` came from `openThreadView` for the
+  thread's pool.
 - With `debugPrompt: true`, each turn shows the routed topics, section sizes,
   and the full system prompt plus the turn message (a TUI notification, or stderr in
   print mode).
 
-No tools or commands yet.
+No commands yet.
 
 ## Running it: `bin/lyrica`
 
@@ -54,4 +64,7 @@ bin/lyrica dev --runtime <dir> --user <login> [--debug-prompt] [-- <pi args>]
   Pi's TUI with `--no-session` and `--no-builtin-tools`, with no context
   files, skills, prompt templates, MCP or other extensions. It uses Pi's own
   model configuration.
+  - Each run is a new general-pool thread in the development runtime, and its
+    entries are recorded there, so `remember` and `recall` carry over between
+    bench sessions.
 - `serve`, `chat` and `mem` are stubs that name the thread that builds them.

@@ -4,10 +4,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { main as pi } from "@earendil-works/pi-coding-agent";
 import {
-  Keyring, PersonaStore, PRONOUN_PRESETS, pronounLabel, Users,
+  Keyring, Memory, PersonaStore, PRONOUN_PRESETS, pronounLabel, Users,
   type Profile, type Pronouns, type User,
 } from "@lyrica/core";
-import { createLyricaExtension } from "@lyrica/extension";
+import { createLyricaExtension, entryRecorder } from "@lyrica/extension";
 
 const USAGE = `usage:
   lyrica admin init
@@ -28,7 +28,7 @@ const DEV_MARKER = "LYRICA_DEVELOPMENT_RUNTIME";
 const STUBS: Record<string, string> = {
   serve: "lyrica serve starts lyricad, which the Web thread builds.",
   chat: "lyrica chat is a client of lyricad, which the Web thread builds.",
-  mem: "lyrica mem is built by the Memory thread.",
+  mem: "lyrica mem is a client of lyricad, which the Web thread builds.",
 };
 
 async function run(argv: string[]): Promise<void> {
@@ -125,13 +125,17 @@ async function dev(args: string[]): Promise<void> {
   const users = new Users(keyring);
   const user = await users.authenticate(login, await ask(`Password for ${login}: `, true));
   const persona = new PersonaStore(keyring.self());
+  // Each bench session is a new general-pool thread; its entries go to general.db,
+  // so what she remembers carries over to the next bench session.
+  const view = new Memory(keyring, users).openThreadView(user.id, "general");
+  const thread = view.own.createThread({ interface: "cli", title: "lyrica dev" });
   const extension = createLyricaExtension(
     {
       user,
       pool: "general",
       interface: "cli",
-      threadId: `cli:${randomUUID()}`,
-      view: { pool: "general" }, // the Memory thread replaces this with openThreadView
+      threadId: thread.id,
+      view,
       call: { userId: user.id, pool: "general", localOnly: false },
     },
     { persona: () => persona.read(), profile: () => users.get(user.id)!.profile, debugPrompt: own.includes("--debug-prompt") },
@@ -140,9 +144,10 @@ async function dev(args: string[]): Promise<void> {
     await pi(
       ["--no-session", "--no-context-files", "--no-builtin-tools", "--no-skills",
        "--no-prompt-templates", "--no-extensions", "--no-mcp", ...piArgs],
-      { extensionFactories: [{ name: "lyrica", factory: extension }] },
+      { extensionFactories: [{ name: "lyrica", factory: extension }, { name: "lyrica-record", factory: entryRecorder(view.own, thread.id) }] },
     );
   } finally {
+    view.close();
     keyring.lockUser(user.id);
   }
 }

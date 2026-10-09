@@ -72,8 +72,15 @@ users.
 - **Backups** are encrypted (restic or borg). Memory never goes into a git
   repository.
 
-Tables in a pool database, roughly: `threads`, `entries`, `notes`, `pages`,
-`wake`, `journal`, `citations`, `revisions`, `tombstones`, plus FTS tables.
+Tables in a pool database (`core/src/store/schema.ts`, one line of reason
+each): `threads`, `entries`, `notes`, `pages`, `wake`, `journal`,
+`revisions`, `citations`, `tombstones`, and the FTS5 table `search`.
+`citations` and `search` are derived from the text. Deleting runs with
+`secure_delete` on and merges the index, so removed text doesn't linger in
+free pages.
+
+IDs: `t:<thread>`, `e:<thread>#<n>`, `n:<date>-<hex>`, `p:<slug>`,
+`j:<date>-<hex>` and `wake`. Thread IDs look like `web/3f7a2c9b`.
 
 A note's text carries inline citations such as `[e:web/3f7a2c#41]`, and a
 page's text carries citations such as `[n:20261009-k3f9]`. The `citations`
@@ -156,7 +163,14 @@ The cheapest mechanism comes first:
    `read_memory(id)` opens a page, a note, or a window of a past thread around an
    entry.
 
-Search starts as FTS5 (BM25). Embeddings (hybrid search) get added if the
+Search is FTS5 (BM25). A query is its words, minus common stopwords, OR'd
+together; a user's name in it adds that user's token as one more alternative.
+Indexed: notes, pages, the journal, and logged thread entries (what was said,
+tool calls, and the first 2,000 characters of each tool result). Not indexed:
+entries written unlogged, exported copies, the per-turn context message, and
+calls to the memory tools themselves, so recall never finds its own echoes.
+Automatic recall leaves out superseded notes and the current thread.
+Embeddings (hybrid search) get added if the
 continuity evals show lexical search missing paraphrases. The embedding model
 follows the same local/cloud rules as every other model call.
 
@@ -182,7 +196,7 @@ follows the same local/cloud rules as every other model call.
   in `revisions`, with an author of `lyrica`, `sleep` or `user:<id>`.
 
 Model-facing memory tools: `remember`, `recall`, `read_memory`. That's three of the
-eight-tool budget.
+30-tool budget.
 
 ## Workspace activity is memory too
 
@@ -316,9 +330,34 @@ The web UI gets a memory browser:
   conversation or a model's context. Those use thread views only.
 
 Until the browser exists, `lyrica mem search|show|add|edit|delete` covers review.
+It is a client of `lyricad`, so it arrives with the daemon.
 `edit` reads the new text at the terminal prompt, never through a temporary
 file, so decrypted text doesn't touch disk. Users can also ask Lyrica to
 correct a memory in conversation.
+
+## In code
+
+- **`core/src/store/`**: `Memory` opens the pool databases with
+  `keyring.subkey(userId, "pool:…")`.
+  - `openThreadView(userId, pool)` returns a `PoolView`: `own` is a
+    `PoolStore` for the thread's pool, and `reads` holds general memory as a
+    read-only `PoolReader` (a read-only SQLite connection) in a private view,
+    and nothing in a general view. `searchView`, `resolve` and `readView` read
+    across a view's pools, with `general/` on IDs from the other pool.
+  - `openOwnerView(userId)` returns both pools for the user. The extension
+    refuses any view `openThreadView` didn't make (`isThreadView`).
+  - A thread view writes only as `lyrica` or `sleep`; an owner view only as
+    `user:<id>`. Notes and pages a user added can't be changed or deleted by
+    `lyrica` or `sleep` (sleep may extend a user's page).
+  - A deletion's tombstone keeps every source that any revision cited.
+    Deleting general memory from the owner view flags general pages only, not
+    private pages that cite it.
+- **`extension/src/`**: `tools.ts` registers the three tools; `memory.ts`
+  builds the prompt sections (an unlogged notice, WAKE, page index, pages for
+  `folders()`) and the recall hits; `record.ts` copies Pi entries into the
+  thread at each turn end (`recordEntries` for a hosted session,
+  `entryRecorder` as an extension for the bench). Pi entry IDs make copying
+  idempotent.
 
 ## Guarantees, in one sentence
 
