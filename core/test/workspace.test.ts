@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { connect } from "node:net";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
@@ -223,6 +223,16 @@ describe.skipIf(!existsSync(sshd) || process.getuid?.() === 0)("an ssh target", 
       await ops.write.writeFile(file, "buy milk\n");
       await ops.edit.access(file);
       expect((await ops.read.readFile(file)).toString()).toBe("buy milk\n");
+      // Writes replace the file in one rename, keep its mode and leave no temp file behind.
+      chmodSync(file, 0o640);
+      await Promise.all([ops.write.writeFile(file, "x".repeat(1 << 20)), ...Array.from({ length: 8 }, () =>
+        ops.read.readFile(file).then((b) => expect(["buy milk\n", "x".repeat(1 << 20)]).toContain(b.toString())))]);
+      expect(statSync(file).mode & 0o777).toBe(0o640);
+      expect(readdirSync(join(dir, "root"))).toEqual(["todo.txt"]);
+      symlinkSync(file, join(dir, "root", "link.txt"));
+      await expect(ops.write.writeFile(join(dir, "root", "link.txt"), "no")).rejects.toThrow(/is a symlink/);
+      rmSync(join(dir, "root", "link.txt"));
+      await ops.write.writeFile(file, "buy milk\n");
       let out = "";
       const { exitCode } = await ops.bash.exec("pwd && cat todo.txt", "/elsewhere", { onData: (d) => { out += d.toString(); } });
       expect(exitCode).toBe(0);
