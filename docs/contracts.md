@@ -345,13 +345,27 @@ One model-facing tool: `delegate({ action?, ... })`.
   `workflow: name`. Any of these can be `background: true`. She picks a tier,
   never a model; only saved workflows, which users write, may name one.
 - The other actions are `status`, `wait`, `stop` and `message`, each on a
-  run ID, and only on runs the calling thread started. (Planned, Delegation
-  2: `message` replaces `steer` and `answer`. It joins a working
-  subagent's turn, answers its open question, or continues a finished or
-  interrupted one in its own thread.)
-- A subagent also has `ask_parent({ question, wait? })` (planned: `wait:
-  false` sends a note and keeps working), and read-only memory
-  (`registerMemoryTools({ readOnly: true })`).
+  run ID, and only on runs the calling thread started. `message({ id,
+  message, thread? })` joins a working subagent's turn, answers its open
+  question, or continues a finished, failed, stopped or interrupted one in
+  its own thread, with its model and workspace worked out again from the
+  parent's current settings. A task may set `fork: true` to start from a
+  copy of the parent's conversation.
+- A subagent also has `ask_parent({ question, wait? })` (`wait: false`
+  sends a note and keeps working, up to `limits.notes` per stretch), and
+  read-only memory (`registerMemoryTools({ readOnly: true })`).
+- `new Delegation({ ..., approve? })`: a subagent's tool calls ask under its
+  parent's current permission mode, or its own if stricter
+  (`stricterMode`), through `approve(SubagentApproval, signal)`, which
+  `lyricad` shows in the subagent's thread and its parent's; the first answer
+  wins, and a timeout, Stop or abort refuses. With no `approve`, the call is
+  refused.
+- `delegation.message(parent, runId, { text, from? }, { thread?, budget })`
+  is also how a user's message reaches a subagent, from its card in the
+  parent's chat; the parent gets a note. `subagent_runs` records `pick` and
+  `narrowing` so a subagent can be continued.
+- Subagents aren't listed in the thread list; child threads (forks, copies)
+  nest under their parent.
 - Planned (Child threads): one more model-facing tool, `threads({ action,
   ... })`: `start` (`title`, `task`, optional narrower `folders`,
   `readOnly`, `internet`), `message` (to a child, or `to: "parent"` from a
@@ -370,10 +384,6 @@ One model-facing tool: `delegate({ action?, ... })`.
   user's encrypted home. `rewindFiles(thread, fromN, { apply })` reports and
   then deletes created files and restores changed ones that are unchanged
   since. Snapshots expire after 30 days.
-- Planned (Delegation 2): a user's message in a subagent's thread goes to
-  the subagent, marked as theirs, and a note goes to the parent thread. A
-  subagent's tool approvals go through the same `ThreadTools.approve`
-  prompt, shown in its thread and its parent's.
 
 Every run:
 - creates a child thread with `createThread({ parent, subagent: true })`;
