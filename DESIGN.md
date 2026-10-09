@@ -177,9 +177,11 @@ Details in [docs/sleep.md](docs/sleep.md).
   active thread is a Pi session object inside `lyricad`, not a separate `pi`
   process. All interfaces go through it, with the same extension, and it is the
   only process that writes Lyrica's databases.
-- **Pi's built-in coding tools (`bash`, `read`, `write`, `edit`) are off** in
-  Lyrica's sessions. She has only her own tools. Letting her run commands or
-  edit her own code later needs its own sandboxed design.
+- **She works like a coding agent.** She has Pi's `read`, `write`, `edit` and
+  `bash`, but they never run inside `lyricad`. Each operation goes to a
+  bubblewrap sandbox that sees only the directories granted to the thread, or
+  to a named SSH target. See [docs/workspace.md](docs/workspace.md), which is
+  still a proposal.
 - **Deployment:** `lyricad` runs as a systemd service, in practice inside an
   LXC container or VM on Li's Proxmox. No Docker.
 - **One command, `lyrica`**, written in TypeScript like the rest of the

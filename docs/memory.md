@@ -152,7 +152,7 @@ The cheapest mechanism comes first:
    threads in the pool using Li's message, and inject the top few hits as
    short snippets with their IDs (about 1.5k tokens).
 3. **Deliberate lookup** through tools. `recall(query)` searches.
-   `read(id)` opens a page, a note, or a window of a past thread around an
+   `read_memory(id)` opens a page, a note, or a window of a past thread around an
    entry.
 
 Search starts as FTS5 (BM25). Embeddings (hybrid search) get added if the
@@ -178,7 +178,7 @@ follows the same local/cloud rules as every other model call.
 - Each change to a note or page keeps the previous text in `revisions`, with
   an author of `lyrica`, `sleep` or `user:<id>`.
 
-Model-facing memory tools: `remember`, `recall`, `read`. That's three of the
+Model-facing memory tools: `remember`, `recall`, `read_memory`. That's three of the
 eight-tool budget.
 
 ## Deletion

@@ -154,13 +154,14 @@ The extension is created with a `ThreadContext`:
   and "who you're talking with": the user's current display name, pronouns,
   and previous names with dates. Each section has a size budget.
 - **Tools** (at most 8 in total; see principle 8):
-  - `remember`, `recall` and `read` (Memory thread);
+  - `remember`, `recall` and `read_memory` (Memory thread);
   - `delegate` (Models thread);
   - `calendar` and `sort` (Integrations thread);
   - `web_search` and `web_fetch` (research, carried over from v1 or taken from
     a Pi package).
 
-  That uses all 8.
+  That uses all 8. [workspace.md](workspace.md) proposes adding `read`,
+  `write`, `edit` and `bash`, for 12 in total.
 - **Commands:** `/sleep`, and others only within the budget.
 - Lyrica's sessions **never** load project context files (`AGENTS.md`,
   `CLAUDE.md`). Her self-primer is a routed topic.
@@ -171,9 +172,11 @@ The extension is created with a `ThreadContext`:
   `SessionManager.inMemory(cwd, opts, view.own.loadEntries(threadId))`, the
   router's `modelRuntimeFor`, and a `DefaultResourceLoader` that has the inline
   Lyrica extension and context-file discovery turned off.
-  - Built-in tools are disabled with `noTools: "builtin"`, so only the
-    extension's tools exist. `noTools: "all"` would remove the extension's
-    tools too.
+  - Pi's built-in tools are disabled with `noTools: "builtin"`. Lyrica
+    registers her own `read`, `write`, `edit` and `bash`, built with Pi's
+    `create*Tool(cwd, { operations })` and routed to the thread's execution
+    target ([workspace.md](workspace.md)). Never use `noTools: "all"`, which
+    also removes extension tools.
   - Sessions run in-process, with no `pi` subprocesses.
   - Each `message_end` calls `appendEntry`.
 - **Unlocking:** when started as a service, `lyricad` starts locked, and the
