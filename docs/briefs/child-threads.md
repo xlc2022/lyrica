@@ -120,8 +120,19 @@ structural.
      turns are gone; the sweep removes old snapshots and orphaned worktrees;
      nothing outside the granted folders is ever touched; no text reaches a
      log.
+6d. **Pinned messages.**
+   - Store: pin and unpin an entry (`pinned` on the entry; listed per thread
+     and across a pool), copied with a branch, removed with the entry.
+   - Context: a `pinned` section in `assemble` (budget 2,000 tokens, in
+     `DEFAULT_BUDGETS`) holding pinned entries verbatim; compaction leaves
+     pinned entries out of what it summarises. Over budget, the oldest pins
+     are summarised and the thread's header says so.
+   - Sleep: pinned entries in the material are marked as pinned.
+   - Tests: a pinned message survives compaction word for word; the budget
+     holds; a branch keeps pins; removing a pinned turn is reported; pins of
+     a private thread never appear in a general view.
 7. **Web UI.**
-   - Every message's menu: **Branch from here**, **Delete from here**; on
+   - Every message's menu: **Pin**, **Branch from here**, **Delete from here**; on
      Lyrica's replies **Regenerate** and **Regenerate with…** (a model
      picker); on the user's messages **Edit**; and **Delete** on the last
      turn. Removing turns confirms with the file and branch list (ticked by
