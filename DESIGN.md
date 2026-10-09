@@ -192,6 +192,26 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - **Management API.** Each host serves an OpenAI-compatible endpoint plus a
     small, authenticated management API: list, load, unload, status, and
     download models. Lyrica can start, stop and switch models on it.
+  - **Placement.** The same package runs on every GPU machine, and an
+    administrator decides what runs where. By default, images run on the
+    Blackwell machine. The 3090 VM keeps the small, always-ready text models
+    (titles, embeddings, cheap subagents) and runs images only as a fallback.
+  - **The host manages each GPU's VRAM.** No program can grab a GPU behind its
+    back:
+    - Each GPU has a role set in the control panel: a whole GPU for vLLM (which
+      reserves a fixed share), or a **shared** GPU for llama.cpp models and
+      ComfyUI.
+    - On a shared GPU, models can be **pinned** (always loaded, such as the
+      embedding and title models). Every other model is loaded on demand.
+    - When a model needs room, the host unloads idle models, least recently
+      used first. It never unloads a pinned model or one in use, and asks
+      ComfyUI to free its memory after it has been idle a while.
+    - Requests wait in a queue per GPU. Interactive chat comes first, then
+      images, then background work (sleep, cheap subagents). If a request
+      can't fit, it fails with a plain reason, such as "the GPU is busy with a
+      chat model", rather than running out of memory.
+    - Each model's VRAM use is measured on its first load and remembered. The
+      control panel shows each GPU's use, what is loaded, and the queue.
 
 ## Images
 
