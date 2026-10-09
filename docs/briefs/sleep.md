@@ -54,9 +54,16 @@ becomes understanding (principle 5), and where she wakes up continuous
      `PersonaProposals.propose(view, threadId, …)`, so it is a draft in the
      user's own `user.db` unless the user is an administrator.
 5. **Wake.** Write WAKE, 400–800 words in her voice, last: where things stand,
-   what's in motion, what's unresolved (including consolidation's questions),
-   and anything from the dream she wants to bring up. The next new thread
-   starts with it, plus how long it has been.
+   what's in motion, and what's unresolved. It is orientation only, with no
+   dream content. The next new thread starts with it, plus how long it has
+   been.
+   - **Items.** She also writes a few things she'd like to raise: a thought
+     from the dream, a question from consolidation, a persona suggestion.
+     Each item is stored in the pool with a link to its source.
+   - A new thread can be started **from an item**. That thread gets the item
+     in its context, and she opens with it.
+   - Items never enter other threads, which is the structural rule; dreams
+     reach them only through recall.
 6. **Pools.**
    - Private sleep reads general memory as background and writes only to the
      private pool.
@@ -96,6 +103,8 @@ becomes understanding (principle 5), and where she wakes up continuous
     - list runs per pool;
     - a run's detail: status and skip reason, notes added, pages changed with
       a diff, questions, the dream, the WAKE;
+    - items, with new ones marked, plus "start a chat from this item" (which
+      creates the thread and has her open it) and "dismiss";
     - start a run now;
     - progress events on a stream.
 12. **Limits and logs.**
@@ -117,6 +126,8 @@ becomes understanding (principle 5), and where she wakes up continuous
 - Tests, with a scripted fake model server and a temporary runtime, show that:
   - a run consolidates notes into pages with citations, writes a dream marked
     as reflection, and writes WAKE last, which the next new thread loads;
+  - WAKE has no dream content, and items appear in no thread except one
+    started from that item, where she opens with it;
   - `p:about-user` is created from notes, updated on the next run, and keeps a
     user's own text untouched, raising a question instead;
   - private sleep writes only to private and can cite general; general sleep

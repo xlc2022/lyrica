@@ -35,6 +35,9 @@ phone (principle 1).
    - The thread's model badge shows which model actually answered, and when
      a fallback was used.
 2. **The Sleep section** in the sidebar, as docs/sleep.md describes:
+   - her **items** at the top: what she'd like to raise after a night, each
+     with **Start a chat** and **Dismiss**, and a badge on the section while
+     any are new;
    - for each run, per pool: its status (or why it was skipped), notes added,
      pages changed with a diff, questions, the dream and the WAKE, each
      linking into the memory browser;

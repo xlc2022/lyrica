@@ -447,9 +447,18 @@ Details in [docs/sleep.md](docs/sleep.md).
 - **Skipping:** sleep skips a user whose key isn't available, or a pool whose
   endpoint is offline, and tries again at the next due time. Nothing is lost.
   The next sleep just covers a longer period.
-- **Dreams:** she may bring them up in conversation, as her persona inclines
-  her to.
-- **UI:** a **Sleep** section in the sidebar shows what she did each night.
+- **What she'd like to raise** after a night (a thought from the dream, a
+  question from consolidation, a persona suggestion) never opens a
+  conversation by itself.
+  - Each becomes an item in the **Sleep** section of the sidebar, with a
+    badge. **Start a chat** opens a new thread in that pool where she begins
+    with it. Items can also be dismissed.
+  - WAKE is orientation only: where things stand and what's in motion. It
+    holds no dream content, so a new thread doesn't open with her dreams.
+  - Otherwise dreams come up only through recall, for example when asked how
+    she slept.
+- **UI:** the **Sleep** section in the sidebar shows these items, and what she
+  did each night.
 
 ## Persona
 

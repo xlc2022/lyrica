@@ -40,8 +40,8 @@ working implementation (`config/extensions/stateful-memory/memory-sleep.js`).
 | Sleep saved as experience | yes | **Keep.** Sleep sessions are threads in a "sleep" area of the pool, so dreams can be recalled. |
 | Trigger | manual | **Add** nightly at 04:00 for each pool with new activity, plus manual `/sleep`. A setting restores Monika's manual-only behavior. |
 | Phase order | WAKE, FACTS, dream | **Change** to consolidate, dream, wake. WAKE is written last so it can carry what she thought about overnight. |
-| Dreams in conversation | only via recall | **Change.** WAKE may include something from the dream she wants to bring up. Her persona decides how and when. |
-| Persona proposals | in the journal, reviewed out of band | **Change.** A proposal from a pool's dream is a draft in that user's own `user.db` (`PersonaProposals.propose`): the user can edit, drop or send it on, and only what they send reaches the administrators, who approve or reject it. A proposal from an administrator's own dream is sent at once. She may still mention one in WAKE. |
+| Dreams in conversation | only via recall | **Keep, and add items.** Dreams reach a conversation only through recall. What she'd like to raise becomes an item in the Sleep section, and the user can start a chat from it. She never opens a thread with it. |
+| Persona proposals | in the journal, reviewed out of band | **Change.** A proposal from a pool's dream is a draft in that user's own `user.db` (`PersonaProposals.propose`): the user can edit, drop or send it on, and only what they send reaches the administrators, who approve or reject it. A proposal from an administrator's own dream is sent at once. It also appears as an item in the Sleep section. |
 | Fallback to other providers | yes | **Change.** Retries only within the models the pool allows. Never across the local/cloud line. |
 | Tools during sleep | everything | **Narrow** to memory tools only: no shell or web. |
 | Scope | one user | **Add** users and pools. Each pool sleeps separately. Private sleep reads general memory but writes only to the private pool. |
@@ -58,12 +58,15 @@ working implementation (`config/extensions/stateful-memory/memory-sleep.js`).
    She never edits or deletes a memory a user wrote.
 2. **Dream.** Free reflection, as in Monika, written into the journal. It's
    marked as reflection, so nothing in a dream becomes a fact by itself.
-3. **Wake.** Write WAKE: where things stand, what's in motion, what's
-   unresolved, anything from the dream she wants to bring up, and any persona
-   proposal she wants to raise.
+3. **Wake.** Write WAKE: where things stand, what's in motion, and what's
+   unresolved. It is orientation only and holds no dream content. Separately,
+   she lists the few things she'd like to raise (a thought from the dream, a
+   question from consolidation, a persona suggestion) as **items** for the
+   Sleep section.
 
 **Waking up.** A new thread starts with persona, WAKE, the page index, and how
-long it has been since she last talked in this pool.
+long it has been since she last talked in this pool. Items are not in it. A
+thread started from an item also gets that item, and she opens with it.
 
 **Watermark.** Sleep processes only entries written before it started. Web chat
 threads never really "end," so an open thread just keeps going, and the next
@@ -120,7 +123,10 @@ shows:
 - the dream;
 - the new WAKE.
 
-Each item links into the memory browser.
+Above the runs are her **items**, with a badge on the section while any are
+new. Each item has **Start a chat**, which opens a new thread in that pool
+where she begins with it, and **Dismiss**. Everything links into the memory
+browser.
 
 ## Keys
 
