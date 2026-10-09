@@ -348,6 +348,13 @@ Details in [docs/sleep.md](docs/sleep.md).
       HTTPS, with a certificate `lyricad` makes and the panel shows for
       pinning in the proxy. Plain HTTP never crosses the LAN. The panel gives
       a Caddyfile snippet for the proxy.
+    - In external mode, `lyricad` keeps the extra listener's settings and its
+      TLS key in a file only its service user can read, as Caddy does with
+      its own keys. That way the unlock page is reachable while `lyricad` is
+      locked. Until unlock, that listener serves only the unlock page.
+  - A change never locks the administrator out. The old setup keeps serving
+    until the new one has a valid certificate, and it comes back if the new one
+    doesn't get one.
   - The DNS credentials are stored encrypted in `self.db`. Caddy keeps its own
     copy with its certificates, readable only by Caddy's service user, so it
     goes on serving, and the unlock page stays reachable, while `lyricad` is
