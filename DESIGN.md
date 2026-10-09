@@ -509,14 +509,30 @@ it's off.
       host). A file with no template for its architecture is kept as a file.
     - Hugging Face, ModelScope and links, as for text models.
     - Unlike Invoke, parts are fixed in the recipe rather than chosen for
-      each image, because Lyrica, not a person, makes the call. A part can be
-      swapped only for another of the same role and slot.
+      each image, because Lyrica, not a person, makes the call.
+  - **Editing a recipe.**
+    - **Change** on a text encoder or VAE lists every file on that host with
+      the same role, slot and architecture, from Lyrica's downloads or the
+      shared folder, plus **Download another**. A custom VAE or encoder is
+      chosen this way.
+    - **Add a part** adds a LoRA with its strength, or a VAE or text encoder
+      used instead of a checkpoint's own. A VAE or encoder keeps the model
+      the same. A LoRA changes the results, so by default it saves a new
+      model linked to the original, which stays as it was.
+    - LoRAs and added parts can be removed again.
   - **The image library** lists recipes, and by type (checkpoints, diffusion
     models, text encoders, VAEs, LoRAs, unused files), filtered by
     architecture. Deleting a recipe deletes only the parts Lyrica downloaded
     that no other recipe uses, and says which it keeps and why.
   - Quantized GGUF diffusion models run through one more pinned custom node
     (ComfyUI-GGUF), so smaller GPUs can use them.
+- **Upscaling** uses **SeedVR2**, through its pinned ComfyUI node
+  (ComfyUI-SeedVR2_VideoUpscaler). It's an image model like the others: a
+  recipe of its DiT (3B or 7B, at FP16, FP8 or GGUF) and its VAE, with
+  defaults such as the scale and the largest size. The task
+  `image.upscale` has its own list in each profile (7B on the Blackwell,
+  3B on the 3090), and the `image` tool gains `upscale`. Photos of you
+  follow the same rule as for edits. Video is out of scope.
 - **Cloud image services** are cloud endpoints like any other: OpenAI's image
   API first, then others (for example Black Forest Labs, Krea, Google, and
   aggregators such as fal or Replicate). They're used only where cloud is

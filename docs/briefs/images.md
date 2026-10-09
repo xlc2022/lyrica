@@ -37,6 +37,9 @@ of how she works with Li, from storyboards to edits of Li's own photos.
      with the thread's `CallContext`, using the ordered fallbacks.
    - Private and local-only threads get local models only.
    - `fast` and `quality` are the two tiers of `image.create`.
+   - `upscale` resolves `image.upscale` (SeedVR2 on the hosts). It takes an
+     image from the thread or the user's photos, so the photos-of-you rule
+     applies as for edits.
 3. **Providers.**
    - **Model host:** its image API, which takes a confirmed recipe and
      parameters. The recipe's defaults (steps, CFG, sampler, size) apply

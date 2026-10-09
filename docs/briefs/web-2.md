@@ -35,7 +35,9 @@ phone (principle 1).
    - **Image models**, a tab of its own: recipes, and parts by type
      (checkpoints, diffusion models, text encoders, VAEs, LoRAs, unused
      files), filtered by architecture; each recipe opens to its copies and
-     their parts, with Change within a slot, proposals to confirm, missing
+     their parts, with Change within a slot (and Download another), Add a
+     part (a LoRA with strength, or a VAE or encoder for a checkpoint),
+     removing parts, proposals to confirm, missing
      parts to download, and Delete that says what it keeps; Download model
      with Starter recipes, Hugging Face, Link and Scan folder.
    - **Text models**: one row per model, opening to its copies with their raw

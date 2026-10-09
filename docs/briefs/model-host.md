@@ -28,8 +28,8 @@ games on, so the host has to be easy to live with and hard to misuse.
    - `host-api`: ours, built in CI. It is the only service with a published
      port.
    - `comfyui`: ours, built in CI from pinned ComfyUI and custom-node
-     commits (including ComfyUI-GGUF), with a CUDA and a ROCm variant. It
-     has no plugin manager.
+     commits (including ComfyUI-GGUF and ComfyUI-SeedVR2_VideoUpscaler),
+     with a CUDA and a ROCm variant. It has no plugin manager.
    - vLLM and llama.cpp: their official images, pinned by digest, with a
      CUDA and a ROCm variant (and Vulkan for llama.cpp where useful).
    - `fetch`: ours, small, for downloads (item 9).
@@ -66,7 +66,10 @@ games on, so the host has to be easy to live with and hard to misuse.
      **recipe** and gives its parameters, never a workflow;
    - **recipes**, as in DESIGN ("Image models are recipes"), kept in the
      host's data folder: list, confirm or ignore a proposal, swap a part for
-     another of the same role and slot, delete. Starter recipes for each
+     another of the same role and slot, add or remove a LoRA (with strength)
+     or a VAE or encoder in place of a checkpoint's own, save as a new
+     recipe, delete. An upscale template for SeedVR2 (scale, largest size,
+     colour matching), with starter recipes for 3B and 7B. Starter recipes for each
      supported architecture live in `host/recipes/`, with each part's file
      and checksum;
    - management: status (GPUs, VRAM, loaded and pinned models, queue,

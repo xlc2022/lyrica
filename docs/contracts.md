@@ -220,7 +220,7 @@ are enforced in the store:
 ```ts
 type Task = "chat" | "subagent.cheap" | "subagent.strong" | "compaction"
           | "title" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
-          | "image.create" | "image.edit";    // the image tasks come with the Images thread
+          | "image.create" | "image.edit" | "image.upscale";    // the image tasks come with the Images thread
 
 interface Endpoint {
   id: string;                              // "<name>" for a user's own, "shared.<name>" for a shared one
@@ -308,7 +308,10 @@ openThreadSession({ thread, models, cwd, extensions, settings? })  // one thread
     `{ arch, template, parts: { role, slot?, file }[], loras: { file,
     strength }[], defaults }`, stored on the host. Parts are files the host
     reports by role, slot, architecture, precision and size. A proposed
-    recipe is listed but never resolves until it is confirmed.
+    recipe is listed but never resolves until it is confirmed. Capabilities
+    gain `upscale`. Swapping a part keeps the role, slot and architecture;
+    adding a LoRA makes a new recipe linked to its base unless the user
+    chooses otherwise.
 - A local endpoint is still declared, not inferred. `probe` warns, without
   blocking, when one resolves outside loopback, private or tailnet ranges.
 - **Shared endpoints** live in `self.db`. Only an administrator can change
