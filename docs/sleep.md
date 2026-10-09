@@ -41,7 +41,7 @@ working implementation (`config/extensions/stateful-memory/memory-sleep.js`).
 | Trigger | manual | **Add** nightly at 04:00 for each pool with new activity, plus manual `/sleep`. A setting restores Monika's manual-only behavior. |
 | Phase order | WAKE, FACTS, dream | **Change** to consolidate, dream, wake. WAKE is written last so it can carry what she thought about overnight. |
 | Dreams in conversation | only via recall | **Change.** WAKE may include something from the dream she wants to bring up. Her persona decides how and when. |
-| Persona proposals | in the journal, reviewed out of band | **Change.** They go into WAKE as something she wants to talk about. She raises them, an administrator decides in conversation, and the change is applied with confirmation. |
+| Persona proposals | in the journal, reviewed out of band | **Change.** A proposal from a pool's dream is a draft in that user's own `user.db` (`PersonaProposals.propose`): the user can edit, drop or send it on, and only what they send reaches the administrators, who approve or reject it. A proposal from an administrator's own dream is sent at once. She may still mention one in WAKE. |
 | Fallback to other providers | yes | **Change.** Retries only within the models the pool allows. Never across the local/cloud line. |
 | Tools during sleep | everything | **Narrow** to memory tools only: no shell or web. |
 | Scope | one user | **Add** users and pools. Each pool sleeps separately. Private sleep reads general memory but writes only to the private pool. |
