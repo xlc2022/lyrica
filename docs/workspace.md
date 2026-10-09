@@ -172,7 +172,8 @@ How it is enforced:
   `nft flush ruleset`, and a connection the rules block. If any of it works,
   or a networked sandbox can't start, network modes are refused: every thread
   runs with network off and `networkRefused` says why. `lyricad` runs it at
-  startup, and `lyrica dev` prints the reason.
+  startup (administrators see the reason in the control panel), and
+  `lyrica dev` prints it.
 - IPv4 only for now: sandboxes run `pasta --ipv4-only`, and IPv6 host
   entries are refused until IPv6 is supported end to end.
 - SSH targets don't depend on these switches: `lyricad`'s SSH client reaches
@@ -208,7 +209,9 @@ judgment and make review easy. Each thread has a **permission mode**:
 
 "Ask before commands" asks before `bash`. "Ask before changes" asks before
 `bash`, `write` and `edit`, since a command can change files too. The
-extension enforces both in Pi's `tool_call` event; with no one to ask, the
+extension enforces both in Pi's `tool_call` event, asking through the
+`approve` callback `lyricad` passes in (every open view of the thread sees the
+request; see [daemon.md](daemon.md#permission-prompts)); with no one to ask, the
 call is blocked.
 
 Anything irreversible that leaves the server, such as sending a message,
@@ -252,8 +255,8 @@ VM needs nothing special.
    succeeds. On Ubuntu 24.04 or later, if it fails with "Permission denied",
    set `kernel.apparmor_restrict_unprivileged_userns=0` on the Proxmox host.
 5. As the service user, `pasta --config-net -- true` succeeds.
-6. Check the self-test passes: `lyricad` reports it at startup, and until
-   `lyricad` exists, `lyrica dev` against a development runtime prints
-   "network is off for every thread" with the reason if it fails. Until it's
-   fixed, her tools have no network.
+6. Check the self-test passes: if it fails, `lyricad` logs "network is off
+   for every thread" with the reason when it unlocks (`journalctl -u
+   lyricad`), and the control panel shows it. Until it's fixed, her tools
+   have no network.
 7. `LYRICA_HOME` is on a normal filesystem owned by the service user.

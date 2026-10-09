@@ -1,7 +1,7 @@
 import { existsSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { LoginResponse, Me, MessagePage, State, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { LoginResponse, Me, MemoryDetail, MemoryHit, State, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime, systemdStart } from "./helpers.ts";
 
 describe("lyricad, locked", () => {
@@ -148,5 +148,33 @@ describe("settings", () => {
     expect((await li.patch(gurl, { models: { chat: { endpointId: "openrouter", modelId: "deepseek" } } })).status).toBe(200);
     expect((await li.patch(gurl, { localOnly: true })).status).toBe(400);
     expect((await li.patch(gurl, { localOnly: true, models: { chat: null } })).status).toBe(200);
+  });
+});
+
+describe("the memory browser", () => {
+  it("adds, edits and restores a user's memory, keeping mention tokens", async () => {
+    const rt = await runtime();
+    const { base } = await daemon(rt);
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const li = await login(base, "li", "pw");
+    const m = `/api/u/${rt.li.id}/memory`;
+    const added = await li.post<MemoryDetail>(`${m}/general/notes`, { text: "{user} grows tomatoes" });
+    expect(added.status).toBe(200);
+    const { item } = added.body;
+    expect(item).toMatchObject({ origin: "user", text: `[[u:${rt.li.id}]] grows tomatoes` });
+    expect(added.body.users[rt.li.id]!.displayName).toBe("Li");
+
+    const hits = (await li.get<MemoryHit[]>(`${m}/search?q=tomatoes`)).body;
+    expect(hits.map((h) => [h.pool, h.id])).toEqual([["general", item.id]]);
+    expect(hits[0]!.snippet).toContain("Li");
+
+    const url = `${m}/general/${enc(item.id)}`;
+    await li.patch(url, { text: `[[u:${rt.li.id}]] grows tomatoes and basil` });
+    const edited = (await li.get<MemoryDetail>(url)).body;
+    expect(edited.revisions).toHaveLength(2);
+    await li.post(`${url}/restore`, { revision: edited.revisions[0]!.id });
+    expect((await li.get<MemoryDetail>(url)).body.item.text).toBe(`[[u:${rt.li.id}]] grows tomatoes`);
+    expect((await li.del(url)).status).toBe(200);
+    expect((await li.get(url)).status).toBe(404);
   });
 });

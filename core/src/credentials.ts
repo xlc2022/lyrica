@@ -82,5 +82,6 @@ export const systemdSeal: Seal = (id, secret, out) => new Promise((resolve, reje
   child.stderr.on("data", (d) => (err += d));
   child.on("error", reject);
   child.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`systemd-creds encrypt failed: ${err.trim() || `exit ${code}`}`))));
+  child.stdin.on("error", () => {}); // the exit code says why
   child.stdin.end(secret);
 });

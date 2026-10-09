@@ -102,6 +102,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         d.limiter.fail(keys);
         throw new HttpError(401, "the current password is wrong");
       }
+      d.limiter.succeed(keys);
       return { ok: true };
     }),
     route("PUT", `${u}/me/credentials`, async (r) => {
@@ -280,7 +281,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const last = (r.req.headers["last-event-id"] as string | undefined) ?? r.query.get("lastEventId") ?? undefined;
       const stop = hosted.subscribe((id, event) => {
         res.write(`id: ${id}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
-        if (event.type === "reset" && !d.services) res.end();
+        if (event.type === "reset" && hosted.closed) res.end(); // Lock or shutdown: the stream is over
       }, last);
       const beat = setInterval(() => res.write(": keep-alive\n\n"), 25_000);
       res.on("close", () => { clearInterval(beat); stop(); });
