@@ -106,7 +106,21 @@ cheap request (such as listing models).
 Cloud and general sleep never fall back to a different model. Retries stay
 within the pool's configured models.
 
+## Sleep in the UI (D-022)
+
+The web UI has a **Sleep** section in the sidebar. For each run, per pool, it
+shows:
+
+- the status (complete, partial, or skipped and why);
+- notes she added;
+- pages created or changed, with a diff;
+- the dream;
+- the new WAKE.
+
+Each item links into the memory browser.
+
 ## Open questions
 
-1. **Notification.** Should a nightly sleep leave anything visible in the UI
-   (for example, "slept at 04:02, updated 3 pages, wrote a dream")?
+1. **Keys during sleep.** If each user's databases are encrypted with a key
+   derived from that user's password, sleep can't run for a user whose key
+   isn't available at 04:00. See the design thread.

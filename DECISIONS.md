@@ -248,3 +248,29 @@ reach the cloud belongs in a private space.
 - If a pool's endpoint is offline when sleep is due, that pool is skipped until
   the next due time. Skipped and partial runs are recorded, and the watermark
   doesn't advance past unprocessed material.
+
+## D-021 — Personas are users with their own credentials (2026-10-09, accepted)
+
+**Context.** This supersedes the "no logins" part of D-002 and lifts D-001's
+ban on accounts.
+
+**Decision.** Each of Xu's personas is a separate user with its own password,
+its own databases, its own endpoint and model settings, and its own general
+and private memory pools (D-019). Lyrica's persona is the only thing shared
+between users. Accounts stay minimal: local users, Argon2id password hashes and
+a web login cookie. No roles or identity providers.
+
+**Open:** whether any memory is shared between users, and how sleep gets each
+user's key (see [docs/sleep.md](docs/sleep.md)).
+
+## D-022 — Sleep is visible in the UI (2026-10-09, accepted)
+
+**Decision.** A Sleep section in the sidebar shows each run per pool: status,
+notes added, page diffs, the dream and the new WAKE.
+
+## D-023 — Local-only in general threads (2026-10-09, accepted)
+
+**Decision.** Xu accepts the consequence described in D-019. In a general
+thread, the local-only checkbox keeps only that conversation's own model calls
+local. Its memories may later be processed by cloud models during general
+sleep.

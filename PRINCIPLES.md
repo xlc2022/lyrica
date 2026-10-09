@@ -34,19 +34,19 @@ real use has run into a real wall.
   (see [Evaluation](#evaluation-does-she-remember)), not from a list of things
   that could go wrong.
 
-### 2. One person, one server, one trust boundary
+### 2. One operator, one server, simple boundaries
 
-Lyrica serves Xu on a server Xu administers. Anyone with a shell on that server
-can read everything. The README says so once, and after that we stop designing
-around it.
+Lyrica serves Xu on a server Xu administers. Xu's personas are separate
+**users** with their own credentials and their own encrypted databases (D-021).
+The server's administrator is trusted.
 
-- No accounts, passwords, ACLs or non-enumerability until a second person is
-  actually invited. At that point it becomes a separate project with its own
-  design, not a retrofit.
-- Xu's separate personas are *spaces* (D-002). Spaces keep contexts apart; they
-  are not a security system.
-- Sensitive work is handled by choosing where the model runs, not by a tiered
-  storage architecture.
+- A boundary is enforced by the structure of the system (separate databases,
+  separate keys, no cloud model offered in a private pool), never by
+  instructions to the model.
+- Accounts stay minimal: local users, passwords and a login cookie. No roles,
+  identity providers or sharing ACLs until a real need appears.
+- Sensitive work is handled by where the model runs and which pool the memory
+  lives in, nothing more elaborate.
 
 ### 3. Lean on Pi
 

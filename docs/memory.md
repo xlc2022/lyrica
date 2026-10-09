@@ -37,10 +37,16 @@ Memory lives in encrypted SQLite (SQLCipher), with one database per space
 
 ```text
 runtime/
-  self.db              shared: persona (with revisions), settings, model config
-  spaces/general.db    threads, entries, notes, pages, WAKE, journal, index
-  spaces/private.db    (one file per private space)
+  self.db                      shared: Lyrica's persona (with revisions), global settings
+  users/<user-id>/
+    user.db                    credentials hash, endpoint and model settings
+    general.db                 threads, entries, notes, pages, WAKE, journal, index
+    private.db                 same tables, private pool
 ```
+
+Each user (one of Xu's personas, D-021) has their own databases, endpoint
+settings and memory pools. Lyrica's persona is the only thing shared between
+users.
 
 - **Two kinds of space (D-019).** A **general** space may use cloud models or a
   custom endpoint. A **private** space may use only a custom endpoint. Nothing
