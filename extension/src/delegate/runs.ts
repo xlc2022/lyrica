@@ -673,7 +673,8 @@ export class Delegation {
     try {
       const sub = await this.spawn(run, step, narrowing, worktrees);
       try {
-        reply = await this.ask(sub, { text: withWorktrees(step.task, worktrees) });
+        const task = step.fork ? `The conversation above is Lyrica's, copied for you. You are her subagent now, with this task:\n\n${step.task}` : step.task;
+        reply = await this.ask(sub, { text: withWorktrees(task, worktrees) });
         sub.close("finished");
       } catch (err) {
         sub.close(err instanceof Stopped ? "stopped" : "failed");
@@ -801,11 +802,11 @@ export class Delegation {
     });
   }
 
-  /** A new subagent of the run, on a thread of its own. */
+  /** A new subagent of the run, on a thread of its own: empty, or a fork of the parent's conversation. */
   private spawn(run: Run, step: Step, narrowing: Narrowing, worktrees: Worktree[] = []): Promise<Subagent> {
     const role = this.role(run.parent.user.id, step.role, "worker");
     const pick: ModelPick = step.model ? { model: parseRef(step.model) } : { tier: step.tier ?? role.tier };
-    return this.open(run, role, pick, narrowing, undefined, step.task, worktrees);
+    return this.open(run, role, pick, narrowing, undefined, step.task, worktrees, !!step.fork);
   }
 
   /**
@@ -814,11 +815,13 @@ export class Delegation {
    * (`earlier`). Each counts against the request's budget. A writer without
    * worktrees first waits until no other writer is in the parent's folders.
    */
-  private async open(run: Run, role: Role, pick: ModelPick, narrowing: Narrowing, earlier: SubagentRecord | undefined, task = "", worktrees: Worktree[] = []): Promise<Subagent> {
+  private async open(run: Run, role: Role, pick: ModelPick, narrowing: Narrowing, earlier: SubagentRecord | undefined, task = "", worktrees: Worktree[] = [], fork = false): Promise<Subagent> {
     const { parent } = run;
     const { models, workspace } = this.o;
     const writer = !!workspace && !role.readOnly && !narrowing.readOnly;
-    const parentCall = this.parentCall(run);
+    let parentCall = this.parentCall(run);
+    // A subagent that started local-only (a fork of a local-only conversation, say) stays local-only.
+    if (earlier && isRestricted(models.callContext(parent.user.id, parent.pool, earlier.thread))) parentCall = { ...parentCall, localOnly: true };
     // Refuse a model before anything is written.
     if ("tier" in pick) models.resolveModel(`subagent.${pick.tier}`, parentCall);
     else if (!models.allowed(parentCall).some((a) => a.endpoint.id === pick.model.endpointId && a.models.some((m) => m.modelId === pick.model.modelId))) {
@@ -833,6 +836,7 @@ export class Delegation {
       const child = earlier ? view.own.getThread(earlier.thread)
         : view.own.createThread({ interface: parent.interface, parent: parent.threadId, subagent: true, title: `${role.name}: ${task.split("\n")[0]!.slice(0, 80)}` });
       if (!child) throw new Error("that subagent's thread was forgotten");
+      if (fork) forkConversation(view.own, parent.threadId, child.id);
       const parentThread = view.own.getThread(parent.threadId)!;
       if (parentThread.unlogged && !child.unlogged) throw new Error("its parent thread is no longer logged");
       const call = models.childContext(parentCall, child.id, pick);
@@ -939,6 +943,20 @@ export function outcome(run: Run): string {
   }
   if (run.status === "failed") return `${head} failed: ${run.result}`;
   return `${head} is still running.`;
+}
+
+/**
+ * Copies a parent's stored conversation into a fork's new thread, entry for
+ * entry, so its compaction applies as it does for the parent. A trailing
+ * call still waiting for its results (the `delegate` call making the fork) is left out.
+ */
+export function forkConversation(store: PoolStore, from: string, to: string): void {
+  const entries = store.loadEntries(from) as (SessionEntry & { message?: { role: string; content?: unknown } })[];
+  const answered = new Set(entries.map((e) => (e.message as { toolCallId?: string } | undefined)?.toolCallId).filter(Boolean));
+  const waiting = (e: (typeof entries)[number]) => e.type === "message" && e.message?.role === "assistant" && Array.isArray(e.message.content)
+    && (e.message.content as { type: string; id?: string }[]).some((p) => p.type === "toolCall" && !answered.has(p.id));
+  while (entries.length && waiting(entries.at(-1)!)) entries.pop();
+  for (const e of entries) store.appendEntry(to, toStoredEntry(e), e.timestamp);
 }
 
 /**

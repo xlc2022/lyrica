@@ -22,9 +22,14 @@ export interface Live {
   reload: number;
   /** How many of `items` are stored and go once the reload arrives. */
   ended: number;
+  /** Bumped, per subagent thread, when its stored work changes, so an open transcript reloads. */
+  subagents: Record<string, number>;
 }
 
-export const initialLive: Live = { busy: false, queued: [], permissions: [], items: [], errors: [], reload: 0, ended: 0 };
+export const initialLive: Live = { busy: false, queued: [], permissions: [], items: [], errors: [], reload: 0, ended: 0, subagents: {} };
+
+/** A subagent's events that mean its thread has new stored messages. */
+const STORED: string[] = ["started", "usage", "question", "note", "finished", "stopped", "interrupted"];
 
 export type LiveAction =
   | ThreadEvent
@@ -92,8 +97,11 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       return { ...s, items: [...s.items, { role: "notice", text: e.text, status: e.status, threads: e.threads }] };
     case "refresh":
       return { ...s, reload: s.reload + 1, ended: s.items.length };
+    case "delegation": {
+      const { threadId, type } = e.event;
+      return STORED.includes(type) ? { ...s, subagents: { ...s.subagents, [threadId]: (s.subagents[threadId] ?? 0) + 1 } } : s;
+    }
     case "usage":
-    case "delegation":
       return s;
   }
 }

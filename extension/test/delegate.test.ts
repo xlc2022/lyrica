@@ -581,6 +581,51 @@ describe("talking with subagents", () => {
     expect(JSON.stringify(s.cloud.requests.at(-1)!.messages)).toContain("sent all the notes you can");
   });
 
+  it("forks a subagent from the parent's conversation, and keeps a fork of a restricted parent local", async () => {
+    const s = await setup();
+    s.cloud.respond((r) => {
+      if (isSub(r)) return { text: JSON.stringify(r.messages).includes("SPRUCE") ? "Fork knows SPRUCE." : "Fork knows nothing." };
+      if (JSON.stringify(r.messages).includes("try two ways")) {
+        if (r.messages.at(-1)!.role === "tool") return { text: "Both forks reported." };
+        return { tools: [{ name: "delegate", args: { tasks: [{ task: "way A", fork: true }, { task: "way B", role: "scout" }] } }] };
+      }
+      return { text: "Noted." };
+    });
+    const parent = s.thread();
+    const p = await s.open(parent);
+    try {
+      await p.session.prompt("The password is SPRUCE.");
+      await p.session.prompt("Now try two ways.");
+    } finally {
+      p.dispose();
+    }
+    const subs = s.cloud.requests.filter(isSub);
+    const forked = subs.find((r) => told(r).includes("way A"))!;
+    expect(told(forked)).toContain("copied for you");
+    expect(JSON.stringify(forked.messages)).toContain("SPRUCE");
+    // It is still a subagent: its own preamble, read-only memory, no remember.
+    expect(forked.tools!.map((t) => t.function.name)).not.toContain("remember");
+    // Without fork, it sees only its task.
+    expect(JSON.stringify(subs.find((r) => told(r).includes("way B"))!.messages)).not.toContain("SPRUCE");
+
+    // A fork of a private or local-only conversation runs on local models, now and when continued.
+    s.local.respond((r) => ({ text: JSON.stringify(r.messages).includes("HEMLOCK") ? "local fork knows HEMLOCK" : "local" }));
+    for (const restricted of [s.thread("private"), s.thread("general", { localOnly: true })]) {
+      const q = await s.open(restricted);
+      try { await q.session.prompt("The other password is HEMLOCK."); } finally { q.dispose(); }
+      const run = await s.run(restricted, { task: "recall it", fork: true });
+      expect(run.result).toBe("local fork knows HEMLOCK");
+      const [row] = s.delegation.status(restricted);
+      expect(s.models.callContext(s.li.id, restricted.pool, row!.thread).localOnly).toBe(true);
+      if (restricted.pool === "general") s.models.setLocalOnly(s.li.id, "general", restricted.threadId, false);
+      const again = s.delegation.message(restricted, run.id, { text: "once more" }, { budget: s.delegation.newBudget() });
+      await again.opened;
+      await again.run.checkpoint();
+      expect(again.run.result).toBe("local fork knows HEMLOCK");
+    }
+    expect(JSON.stringify(s.cloud.requests)).not.toContain("HEMLOCK");
+  });
+
   it("offers message, and no longer steer or answer", async () => {
     const s = await setup();
     const parent = s.thread();

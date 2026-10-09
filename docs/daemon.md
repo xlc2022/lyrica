@@ -111,8 +111,9 @@ Each active thread is one Pi session from `openThreadSession`, with
 - Forgetting a thread forgets its subagents' threads with it, deepest first,
   stopping their runs and dropping their records (`Delegation.forget`).
 - Thread lists are per interface (`web` by default), filtered by the user's
-  display settings, most recently active first, with subagents nested under
-  their parent. Memory search honours the same pool filters; `?all=1` ignores
+  display settings, most recently active first, with child threads (forks,
+  copies) nested under their parent. Subagents aren't listed: they live in
+  their parent's `delegate` cards. Memory search honours the same pool filters; `?all=1` ignores
   them in both.
 
 ## The event stream
@@ -139,7 +140,8 @@ follow-up if she is busy. With no live session it goes into the stored
 thread. `GET …/threads/:pool/:threadId/subagents` lists a thread's runs and
 their total tokens.
 
-**Writing in a subagent's thread.** `POST …/messages` on a subagent's thread
+**Writing to a subagent.** `POST …/messages` on a subagent's thread (what
+its card's message box does)
 goes to `Delegation.message` as the user's message, never to a session of its
 own: it joins the subagent's work, answers its question, or continues it,
 and the parent thread gets a note. Only the owner of the parent thread gets

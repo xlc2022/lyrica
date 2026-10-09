@@ -28,7 +28,7 @@ const background = (task: string) => ({ tools: [{ name: "delegate", args: { task
 
 describe("delegation in lyricad", () => {
   it("streams a background run's events, and delivers its result into the live thread", async () => {
-    const { rt, li, parent, sub, path, thread } = await setup();
+    const { rt, d, li, parent, sub, path, thread } = await setup();
     parent.reply(background("find the seed list"), { text: "I've sent a scout." });
     sub.reply({ text: "The seed list is in the shed." });
     const stream = li.events(`${path}/events`);
@@ -55,8 +55,13 @@ describe("delegation in lyricad", () => {
     const subs = (await li.get<Subagents>(`${path}/subagents`)).body;
     expect(subs.runs).toEqual([expect.objectContaining({ role: "scout", status: "finished", thread: started.event.threadId })]);
     expect(subs.usage.inputTokens).toBeGreaterThan(0);
+    // Subagents live in their delegate cards, not the thread list; a child thread (a fork) nests under its parent.
+    const own = d.services!.memory.openThreadView(rt.li.id, "general");
+    const fork = own.own.createThread({ interface: "web", parent: thread.id, title: "a fork" });
+    own.close();
     const list = (await li.get<ThreadSummary[]>(`/api/u/${rt.li.id}/threads`)).body;
-    expect(list.find((t) => t.id === thread.id)!.children.map((c) => c.id)).toEqual([started.event.threadId]);
+    expect(list.map((t) => t.id)).toEqual([thread.id]);
+    expect(list[0]!.children.map((c) => c.id)).toEqual([fork.id]);
 
     // Her next turn sees the result.
     parent.reply({ text: "It's in the shed." });

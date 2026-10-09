@@ -15,6 +15,7 @@ const Step = Type.Object({
   task: Type.String({ description: "What to do, with everything the subagent needs: it sees none of this conversation." }),
   role: Type.Optional(Type.String({ description: "A role; worker if not given." })),
   tier: Type.Optional(Tier),
+  fork: Type.Optional(Type.Boolean({ description: "Start the subagent from a copy of this conversation, not just its task." })),
 });
 
 const Params = Type.Object({
@@ -46,7 +47,7 @@ function request(p: Params): Request {
   const given = WORK.filter((k) => p[k] !== undefined);
   if (given.length !== 1) throw new Error(`give exactly one of ${WORK.join(", ")}`);
   const narrowing = { folders: p.folders, readOnly: p.readOnly, internet: p.internet };
-  if (p.task !== undefined) return { ...narrowing, task: p.task, role: p.role, tier: p.tier };
+  if (p.task !== undefined) return { ...narrowing, task: p.task, role: p.role, tier: p.tier, ...(p.fork ? { fork: true } : {}) };
   if (p.workflow !== undefined) return { ...narrowing, workflow: p.workflow, input: p.input };
   const k = given[0] as "tasks" | "chain" | "loop" | "council";
   return { ...narrowing, [k]: p[k] } as Request;
@@ -116,12 +117,12 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
       promptSnippet: "hand work to subagents, in the foreground or background",
       promptGuidelines: [
         "Pick a delegate tier by the work, never a model: cheap for searching, reading, summarizing and checking; strong for writing, judgment, and changing code or files. A role brings its own tier.",
-        "A subagent sees none of this conversation, so put everything it needs into its task.",
+        "A subagent sees none of this conversation, so put everything it needs into its task. Only when it truly needs the whole conversation (trying approaches side by side, say) use fork: true; it costs the whole conversation again for each fork.",
         "Use background: true for long work, and carry on; its result arrives as a message on a later turn.",
         "Talk to a subagent with delegate action message: it joins the work in progress, answers its question, or continues one that has ended with everything it knew. Ask the person you're talking with first if a question is theirs to decide.",
       ],
       parameters: Params,
-      async execute(_id, p, signal) {
+      async execute(_id, p, signal, _onUpdate, ctx) {
         const action = p.action ?? "run";
         if (action === "status") {
           const rows = delegation.status(thread).filter((r) => !p.id || r.run === p.id);
@@ -129,7 +130,10 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
           return text(`${formatStatus(rows.slice(0, 20), (id) => { try { return delegation.get(thread, id); } catch { return undefined; } })}\nAll subagents of this thread: ${u.inputTokens + u.outputTokens} tokens.`);
         }
         if (action === "run") {
-          const run = delegation.start(thread, request(p), { background: !!p.background, budget: requestBudget });
+          const req = request(p);
+          // A fork copies the stored conversation, so this turn's messages are stored first.
+          syncEntries(ctx.sessionManager, thread.view.own, thread.threadId);
+          const run = delegation.start(thread, req, { background: !!p.background, budget: requestBudget });
           if (p.background) return text(`Started run ${run.id} in the background. Its result will arrive as a message.`, { runId: run.id, status: run.status });
           const stop = () => run.stop();
           signal?.addEventListener("abort", stop, { once: true });

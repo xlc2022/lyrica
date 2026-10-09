@@ -22,7 +22,7 @@ subagent:
 - is a Pi session inside the same process (`openThreadSession`), never a
   separate `pi` process;
 - has its own thread, created with `createThread({ parent, subagent: true })`,
-  so it lists under its parent and the UI can nest it. Its entries are
+  so it belongs to its parent and the UI shows it in its `delegate` card. Its entries are
   recorded like any thread's;
 - gets its model from `childContext(parent, child, { tier } | { model })`,
   with the parent's `CallContext` as it is when the subagent starts: the
@@ -54,6 +54,14 @@ of:
 Any of them can add `background: true`, `folders`, `readOnly: true` or
 `internet: false`.
 
+**Fork.** A task with `fork: true` starts its subagent from a copy of the
+parent's stored conversation (entry for entry, so it is compacted as the
+parent's is; the `delegate` call still waiting for its result is left out),
+then its task. The tool stores the parent's current turn first. It keeps its
+role's tools and prompt, and the parent's pool, rules and model limits. A fork
+of a private or local-only parent is local-only itself, and stays so when
+continued. Off by default: each fork costs the whole conversation again.
+
 The other actions take a run `id`:
 - `status`: this thread's runs (role, status, thread, model, tokens),
   any open questions, which can be continued, and the total for the thread;
@@ -83,7 +91,8 @@ the run a message (`Delegation.message`):
   one more against `runsPerRequest`. Its model and workspace are worked out
   again from the parent's settings as they are now, from the tier (or named
   model) and narrowing recorded when it started: a parent turned local-only
-  gives a local model, and a forgotten or unlogged parent refuses. A writer
+  gives a local model (as does a subagent that was local-only itself), and
+  a forgotten or unlogged parent refuses. A writer
   takes the parent's folders again (no worktree). This works after a
   restart, from the stored thread: what a subagent is told is stored as soon
   as it is sent.

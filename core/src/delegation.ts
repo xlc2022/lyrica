@@ -21,8 +21,11 @@ export interface Role {
   thinking: Thinking;
 }
 
-/** One step of work: a task, with an optional role and a tier or a named `endpoint/model`. */
-export interface Step { task: string; role?: string; tier?: Tier; model?: string }
+/**
+ * One step of work: a task, with an optional role and a tier or a named
+ * `endpoint/model`. `fork` starts the subagent from a copy of the parent's conversation.
+ */
+export interface Step { task: string; role?: string; tier?: Tier; model?: string; fork?: boolean }
 export interface LoopSpec { task: string; worker?: string; reviewer?: string; rounds?: number }
 export interface CouncilSpec { question: string; models?: string[] }
 

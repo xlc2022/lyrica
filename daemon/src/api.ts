@@ -223,15 +223,15 @@ export interface ThreadSummary {
   updatedAt: string;
   /** A turn is running. */
   busy: boolean;
-  /** Subagents' threads, nested under their parent. */
+  /** Child threads (forks, copies), nested under their parent. Subagents aren't listed. */
   children: ThreadSummary[];
 }
 
 /**
  * GET /api/u/:userId/threads?interface=web → ThreadSummary[]
  * One interface's threads (default `web`), most recently active first. Honours the user's
- * display filters (pools, hidden); `?all=1` ignores them. Subagents appear
- * only under their parent.
+ * display filters (pools, hidden); `?all=1` ignores them. Child threads
+ * appear only under their parent; subagents not at all (their delegate cards show them).
  */
 /** POST /api/u/:userId/threads → ThreadSummary. Its interface is `web`. */
 export interface NewThread { pool: Pool; title?: string }

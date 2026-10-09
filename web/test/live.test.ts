@@ -70,6 +70,10 @@ describe("the live view of a thread's stream", () => {
     expect(s.permissions).toEqual([sub]);
     const refreshed = run([{ type: "refresh" }], s);
     expect(refreshed.reload).toBe(s.reload + 1);
+    // A subagent's stored work changed: its transcript in a delegate card reloads.
+    const ref = { userId: "u", pool: "general" as const, parentThreadId: "t1", runId: "d-1", threadId: "t2" };
+    const worked = run([{ type: "delegation", event: { ...ref, type: "output", delta: "x" } }, { type: "delegation", event: { ...ref, type: "finished", status: "finished" } }], s);
+    expect(worked.subagents).toEqual({ t2: 1 });
   });
 
   it("reloads after a reconnect finds the turn over, and after a reset", () => {

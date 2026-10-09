@@ -5,10 +5,8 @@ import { upload } from "./api.ts";
 
 interface Upload { id: number; name: string; progress: number; error?: string }
 
-export function Composer({ base, busy, placeholder, restored, onSend, onStop }: {
+export function Composer({ base, busy, restored, onSend, onStop }: {
   base: string; busy: boolean; onSend: (text: string) => Promise<boolean>; onStop: () => void;
-  /** What the empty composer says when no turn runs. */
-  placeholder: string;
   /** Text handed back, such as follow-ups that Stop dropped. */
   restored: string;
 }) {
@@ -77,7 +75,7 @@ export function Composer({ base, busy, placeholder, restored, onSend, onStop }: 
         ref={area}
         rows={1}
         aria-label="Message"
-        placeholder={busy ? "Add a follow-up" : placeholder}
+        placeholder={busy ? "Add a follow-up" : "Message Lyrica"}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onPaste={(e) => { if (e.clipboardData.files.length) { e.preventDefault(); attach(e.clipboardData.files); } }}

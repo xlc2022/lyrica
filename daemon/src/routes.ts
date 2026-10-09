@@ -797,12 +797,17 @@ function sleepRunDetail(d: Lyricad, o: OwnerView, pool: Pool, runId: string): Ap
 }
 
 
-/** A thread with its subagents nested under it. */
+/**
+ * A thread with its child threads (forks, copies) nested under it. Subagents
+ * aren't listed: they live inline, in their parent's delegate cards.
+ */
 function tree(d: Lyricad, user: User, pool: Pool, store: PoolStore, threads: Thread[]): Api.ThreadSummary[] {
+  const listed = threads.filter((th) => !th.subagent);
   const children = new Map<string, Thread[]>();
-  for (const th of threads) if (th.subagent && th.parent) children.set(th.parent, [...(children.get(th.parent) ?? []), th]);
+  const nested = (th: Thread) => !!th.parent && listed.some((p) => p.id === th.parent);
+  for (const th of listed) if (nested(th)) children.set(th.parent!, [...(children.get(th.parent!) ?? []), th]);
   const build = (th: Thread): Api.ThreadSummary => summary(d, user, pool, store, th, (children.get(th.id) ?? []).map(build));
-  return threads.filter((th) => !th.subagent || !threads.some((p) => p.id === th.parent)).map(build);
+  return listed.filter((th) => !nested(th)).map(build);
 }
 
 function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Thread, children: Api.ThreadSummary[]): Api.ThreadSummary {
