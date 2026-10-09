@@ -398,6 +398,15 @@ Details in [docs/memory.md](docs/memory.md).
 - **Lineage:** each layer cites the one below it by ID, inline. "Where did this
   come from" and "what was it consolidated into" are both answered from those
   citations.
+- **About you.** Each pool has one page about its user, `p:about-user`: who
+  they are, what they prefer and dislike, and what they care about, citing the
+  notes behind it. It is loaded every turn as its own section next to WAKE,
+  with its own budget, so a stated dislike isn't forgotten in an unrelated
+  conversation.
+  - A private thread loads the private page first, then the general one if
+    there is room. A general thread loads only the general page.
+  - Sleep keeps it up to date. Until Sleep exists, the user can write it in the
+    memory browser. User edits are authoritative, as for any memory.
 - **Writes:** she saves notes without asking, one fact per note, and is told
   to save liberally. Sleep reports how many notes it had to catch up on, which
   shows whether she's noting too little. Pages change only during sleep. Every
