@@ -51,8 +51,11 @@ Keys, users and the persona store. No Pi dependency.
   - `Workspace` mounts each user's gocryptfs home (`mountHome`,
     `unmountHome`), gives a thread its target (`targetFor`), folders,
     `inheritSettings` for subagents, and `saveUpload`.
-  - `WorkspaceSettings` keeps allowed folders, thread settings and SSH targets
-    in the user's `user.db`.
+  - `AllowedPaths` keeps the folders each user may grant in `self.db`; only
+    an administrator changes them. `WorkspaceSettings` keeps thread settings,
+    network defaults and SSH targets in the user's `user.db`.
+  - `net.ts` builds the `pasta` options and the nftables rules for a
+    sandbox's network.
   - `Sandbox` (bubblewrap) and `SshTarget` (ssh2) implement Pi's tool
     operations without depending on Pi.
 - **`models/`**: endpoints, profiles and the model router. See
@@ -62,8 +65,9 @@ Keys, users and the persona store. No Pi dependency.
 On disk, under `LYRICA_HOME`:
 
 ```text
-self.db                 users (login, admin, profile, wrapped key), persona_revisions, shared endpoints
-users/<id>/user.db      settings: endpoints, model profiles and thread models, workspace folders,
+self.db                 users (login, admin, profile, wrapped key), persona_revisions, workspace_paths,
+                        shared endpoints
+users/<id>/user.db      settings (incl. network defaults), endpoints, model profiles and thread models,
                         thread workspaces, SSH targets
 users/<id>/general.db   general pool: threads, entries, notes, pages, WAKE, journal, index
 users/<id>/private.db   private pool, same tables
@@ -74,14 +78,14 @@ users/<id>/home/        where it is mounted while the user is unlocked
 ## Sandbox tests
 
 `test/sandbox.test.ts` and `bin/test/bench.test.ts` need bubblewrap,
-gocryptfs and FUSE, and must run as an unprivileged user, because root hides
-permission bugs. As root they are skipped. CI runs them as its normal user,
-with `LYRICA_SANDBOX_TESTS=require` so they can't be skipped. In a root cloud
+gocryptfs, FUSE, pasta and nft, and must run as an unprivileged user,
+because root hides permission bugs. As root they are skipped. CI runs them as
+its normal user, with `LYRICA_SANDBOX_TESTS=require` so they can't be skipped. In a root cloud
 session, create a user and run them as that user from a copy of the checkout:
 
 ```sh
-apt-get install -y bubblewrap gocryptfs fuse3 openssh-server
-chmod 666 /dev/fuse        # some containers ship it 0600
+apt-get install -y bubblewrap gocryptfs fuse3 openssh-server passt nftables
+chmod 666 /dev/fuse /dev/net/tun   # some containers ship them 0600
 useradd -m lyricatest
 rsync -a --exclude .git ./ /home/lyricatest/lyrica/ && chown -R lyricatest: /home/lyricatest/lyrica
 su lyricatest -c 'cd ~/lyrica && LYRICA_SANDBOX_TESTS=require npx vitest --run'

@@ -8,9 +8,8 @@ import { syncEntries } from "./record.ts";
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }], details: undefined });
 
-/** With readOnly (subagents), remember isn't registered at all. */
-export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () => Omit<MemoryContext, "folders">, opts: { readOnly?: boolean } = {}): void {
-  if (!opts.readOnly) pi.registerTool({
+export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () => Omit<MemoryContext, "folders">): void {
+  pi.registerTool({
     name: "remember",
     label: "Remember",
     description:

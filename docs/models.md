@@ -2,14 +2,13 @@
 
 Every model call goes through one router, which picks the model for each task
 from the user's profiles and the thread's own choices. Code:
-`core/src/models/` (no Pi), `extension/src/models.ts`, `session.ts` and
-`delegate.ts`.
+`core/src/models/` (no Pi), `extension/src/models.ts` and `session.ts`.
 
 ## Guarantee
 
 A private or local-only thread's Pi session holds only local endpoints, so
-nothing in it can call a cloud model: not the conversation, not a subagent,
-not Pi's compaction or retries. Anything sent to a cloud endpoint from a
+nothing in it can call a cloud model: not the conversation, not a child
+thread, not Pi's compaction or retries. Anything sent to a cloud endpoint from a
 general thread is outside this.
 
 ## Endpoints
@@ -26,7 +25,10 @@ it, never inferred), an OpenAI-compatible base URL and an optional API key.
   context (`meta.n_ctx`); LM Studio and KoboldCpp report neither, so enter
   them by hand.
 - `probe(userId, endpointId)` is `up` when `/v1/models` answers within 5
-  seconds.
+  seconds. For a local endpoint it also warns, without blocking, when the
+  host resolves outside Li's own network: loopback, RFC 1918, `fd00::/8`, or
+  the Tailscale tailnet (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`). `*.ts.net`
+  names resolve through the host's resolver.
 
 Tables: `endpoints` and `endpoint_models` (in both `self.db` and `user.db`);
 `model_profiles`, `thread_models` and `local_only_threads` (in `user.db`).
@@ -70,24 +72,17 @@ holding its recorded models.
 
 `openThreadSession` hosts one thread with that runtime and its chat model.
 
-## Delegate
+## Child threads
 
-`delegate({ task, tier, folders?, readOnly?, internet? })` hands a task to a
-subagent and returns its final text as the tool result.
+`childContext(parent, childThreadId, { tier } | { model })` gives a child
+thread, such as a subagent's, its `CallContext`:
+- the parent's local-only switch and model choices;
+- as its chat model, the parent's `subagent.cheap` or `subagent.strong`
+  model, or a named model the parent's context allows.
 
-- **Tier, not model.** The tool's guidelines tell her: cheap for searching,
-  reading, summarizing and checking; strong for writing, judgment and
-  changing files. The parent's `subagent.<tier>` model is resolved through
-  the parent's `CallContext`, so a private parent can only get a local model.
-- **Thread.** The child is created with `parent` and `subagent` set, and is
-  unlogged if the parent is. It inherits the parent's local-only switch and
-  model choices, with its chat set to the tier's model.
-- **Workspace.** `inheritSettings` gives it the parent's folders, internet and
-  permission mode, narrowed by `folders`, `readOnly` and `internet`.
-- **Worker.** A short worker prompt instead of the persona, the workspace
-  tools, and `recall` and `read_memory`. `remember` and `delegate` aren't
-  registered at all, so subagents can't delegate (depth 1).
-- **Limit.** Two subagents at once per thread; more calls fail until one ends.
+A private or local-only parent can only give its child a local model. A
+refusal throws before anything is written. `delegate` itself belongs to the
+Delegation thread ([delegation.md](delegation.md)).
 
 ## Commands
 
@@ -100,6 +95,6 @@ lyrica admin models profile set cloud|local <task> <endpoint>/<model>|none --use
 ```
 
 API keys are typed at a hidden prompt. `add` and `probe` re-read the
-endpoint's model list. `lyrica dev --private` or `--local-only` starts a bench
+endpoint's model list and print any address warning. `lyrica dev --private` or `--local-only` starts a bench
 thread with local-only enforced, and prints the model and endpoint chosen for
 each task.

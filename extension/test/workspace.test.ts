@@ -43,8 +43,8 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
     },
     fauxAssistantMessage("done"),
   ]);
-  const settings: ThreadWorkspace = { grants: [{ path: "/srv/music", writable: false }], network: false, mode, target: "sandbox", parent: null };
-  const workspace = createWorkspaceExtension({ target: () => fakeTarget(files, commands), settings: () => settings, network: () => false });
+  const settings: ThreadWorkspace = { grants: [{ path: "/srv/music", writable: false }], internet: false, services: false, hosts: [], mode, target: "sandbox", parent: null };
+  const workspace = createWorkspaceExtension({ target: () => fakeTarget(files, commands), settings: () => settings, network: () => ({ internet: false, services: false, hosts: ["nas.lan:8080"] }) });
   const loader = new DefaultResourceLoader({
     cwd: dir, agentDir: dir, noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true,
     extensionFactories: [(pi) => pi.registerProvider(faux.provider), workspace],
@@ -75,7 +75,8 @@ describe("workspace tools in a Pi session", () => {
     expect(files.get("/workspace/new.md")).toBe("hello");
     expect(commands).toEqual(["ls"]);
     expect(system).toContain("/srv/music (read-only)");
-    expect(system).toContain("Internet access for commands: off.");
+    expect(system).toContain("Internet for commands: off.");
+    expect(system).toContain("Hosts you may reach: nas.lan:8080.");
   });
 
   it("ask before changes, and block them when no one can answer", async () => {

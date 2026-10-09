@@ -16,9 +16,9 @@ async function setup() {
   m.models.setProfile(m.li.id, "cloud", "chat", m.cloudRef);
   m.models.setProfile(m.li.id, "local", "chat", m.localRef);
   const memory = new Memory(m.keyring, m.users);
-  const thread = (pool: Pool, opts: { localOnly?: boolean } = {}): ThreadContext => {
+  const thread = (pool: Pool, opts: { localOnly?: boolean; unlogged?: boolean } = {}): ThreadContext => {
     const view = memory.openThreadView(m.li.id, pool);
-    const { id } = view.own.createThread({ interface: "cli" });
+    const { id } = view.own.createThread({ interface: "cli", unlogged: opts.unlogged });
     if (opts.localOnly) m.models.setLocalOnly(m.li.id, pool, id, true);
     return { user: m.li, pool, interface: "cli", threadId: id, view, call: m.models.callContext(m.li.id, pool, id) };
   };
@@ -105,5 +105,26 @@ describe("the model runtime", () => {
     expect(second!.messages.some((msg) => msg.role === "tool")).toBe(true);
     expect(session.messages.at(-1)).toMatchObject({ role: "assistant", content: [{ type: "text", text: "Nothing about Miso yet." }] });
     expect(s.local.requests).toHaveLength(0);
+  });
+
+  it("runs a subagent's thread under its parent, local-only and unlogged like the parent", async () => {
+    const s = await setup();
+    s.models.setProfile(s.li.id, "cloud", "subagent.strong", s.cloudRef);
+    const parent = s.thread("private", { unlogged: true });
+    const { id } = parent.view.own.createThread({ interface: "cli", parent: parent.threadId, subagent: true });
+    const call = s.models.childContext(parent.call, id, { tier: "strong" });
+    const { session, runtime, chat, dispose } = await s.open({ ...parent, threadId: id, call });
+    try {
+      expect(chat).toEqual(s.localRef);
+      expect(runtime.getProviders().map((p) => p.id)).toEqual(["gpu"]);
+      await session.prompt("check the list");
+    } finally {
+      dispose();
+    }
+    expect(parent.view.own.listThreads({ parent: parent.threadId })).toEqual([
+      expect.objectContaining({ id, parent: parent.threadId, subagent: true, unlogged: true }),
+    ]);
+    expect(s.cloud.requests).toHaveLength(0);
+    expect(s.local.requests).toHaveLength(1);
   });
 });

@@ -3,7 +3,8 @@ import { closeSync, constants, existsSync, lstatSync, openSync, readlinkSync } f
 import { posix } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { capOutput, sniffImage, type ExecutionTarget, type ToolOps } from "./ops.ts";
-import { cleanPath, within, type Grant } from "./settings.ts";
+import { nftRules, pastaArgs, resolveHosts, SANDBOX_GATEWAY } from "./net.ts";
+import { cleanPath, within, type Grant, type Network } from "./settings.ts";
 
 /** The thread's folder in the home workspace, as she sees it. */
 export const WORKDIR = "/workspace";
@@ -12,23 +13,29 @@ export interface SandboxSpec {
   /** Host path of the thread's folder in the home workspace. Mounted read-write at /workspace. */
   workdir: string;
   grants: Grant[];
-  network: boolean;
+  network: Network;
+  /** Ports never reachable on any address, whatever the switches say: lyricad's own. */
+  exclude?: number[];
   /**
    * Called with each grant's real path just before it is mounted, so the
    * grant can be checked against the current settings. Throws to refuse.
    */
   check?: (grant: Grant) => void;
   bwrap?: string;
+  pasta?: string;
 }
 
 // A minimal read-only system. /etc is picked file by file, so host secrets
 // that happen to be world-readable stay out.
 const SYSTEM_DIRS = ["/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64"];
 const ETC = [
-  "alternatives", "ssl", "ca-certificates", "pki", "resolv.conf", "hosts", "nsswitch.conf", "localtime",
+  "alternatives", "ssl", "ca-certificates", "pki", "nsswitch.conf", "localtime",
   "passwd", "group", "ld.so.cache", "ld.so.conf", "ld.so.conf.d", "os-release",
 ].map((f) => `/etc/${f}`);
-const ENV = { PATH: "/usr/local/bin:/usr/bin:/bin", HOME: WORKDIR, LANG: "C.UTF-8", TERM: "dumb" };
+// /usr/sbin is for nft, which runs before bwrap; the sandbox's PATH is the same.
+const ENV = { PATH: "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin", HOME: WORKDIR, LANG: "C.UTF-8", TERM: "dumb" };
+// Loads the firewall into pasta's namespace, then starts bwrap. Fails closed if nft fails.
+const LOAD_RULES = 'printf "%s" "$1" | nft -f - || exit 125; shift; exec "$@"';
 
 export class SandboxDenied extends Error {}
 
@@ -71,21 +78,39 @@ export class Sandbox implements ExecutionTarget {
   }
 
   /** Runs argv inside a fresh sandbox. */
-  run(argv: string[], o: RunOptions = {}): Promise<{ code: number | null; signal: NodeJS.Signals | null; stdout: Buffer; stderr: Buffer }> {
+  async run(argv: string[], o: RunOptions = {}): Promise<{ code: number | null; signal: NodeJS.Signals | null; stdout: Buffer; stderr: Buffer }> {
+    const { internet, services, hosts } = this.spec.network;
+    const networked = internet || services || hosts.length > 0;
+    const resolved = await resolveHosts(hosts);
+    // Files written into the sandbox's /etc. Hostnames are pinned when it starts;
+    // with internet off there is no resolver at all, so DNS can't carry data out.
+    const data = [
+      ["/etc/hosts", ["127.0.0.1 localhost", "::1 localhost", ...resolved.pinned].join("\n") + "\n"],
+      ["/etc/resolv.conf", internet ? `nameserver ${SANDBOX_GATEWAY}\n` : ""],
+    ] as const;
     const fds: number[] = [];
     let args: string[];
     try {
-      args = this.args(fds, o.cwd ?? WORKDIR);
+      args = this.args(fds, o.cwd ?? WORKDIR, networked);
     } catch (err) {
       for (const fd of fds) closeSync(fd);
-      return Promise.reject(err);
+      throw err;
+    }
+    data.forEach(([dest], i) => args.push("--ro-bind-data", String(3 + fds.length + i), dest));
+    let cmd = [this.spec.bwrap ?? "bwrap", ...args, "--", ...argv];
+    if (networked) {
+      const exclude = this.spec.exclude ?? [];
+      const rules = nftRules(internet, resolved.rules, exclude);
+      cmd = [this.spec.pasta ?? "pasta", ...pastaArgs({ internet, services, hosts: hosts.length > 0 }, exclude),
+        "--", "sh", "-c", LOAD_RULES, "sh", rules, ...cmd];
     }
     return new Promise((resolve, reject) => {
-      const child = spawn(this.spec.bwrap ?? "bwrap", [...args, "--", ...argv], {
+      const child = spawn(cmd[0]!, cmd.slice(1), {
         env: ENV,
-        stdio: ["pipe", "pipe", "pipe", ...fds],
+        stdio: ["pipe", "pipe", "pipe", ...fds, ...data.map(() => "pipe" as const)],
       });
       for (const fd of fds) closeSync(fd);
+      data.forEach(([, text], i) => (child.stdio[3 + fds.length + i] as Writable).end(text));
       const { stdin, stdout, stderr } = child as unknown as { stdin: Writable; stdout: Readable; stderr: Readable };
       const out: Buffer[] = [];
       const err: Buffer[] = [];
@@ -110,9 +135,11 @@ export class Sandbox implements ExecutionTarget {
   }
 
   /** bwrap arguments. Opens each folder to mount and appends its fd to `fds` (child fd 3, 4, …). */
-  private args(fds: number[], cwd: string): string[] {
+  private args(fds: number[], cwd: string, networked: boolean): string[] {
     const args = ["--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL"];
-    if (this.spec.network) args.push("--share-net");
+    // With network on, bwrap runs inside pasta's own namespace and keeps it.
+    // The host's network is never shared.
+    if (networked) args.push("--share-net");
     for (const dir of SYSTEM_DIRS) {
       if (!existsSync(dir)) continue;
       const stat = lstatSync(dir);

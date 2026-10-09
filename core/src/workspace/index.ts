@@ -6,10 +6,13 @@ import type { Users } from "../users.ts";
 import { isMounted, mountGocryptfs, unmountGocryptfs } from "./home.ts";
 import type { ExecutionTarget } from "./ops.ts";
 import { Sandbox, WORKDIR } from "./sandbox.ts";
-import { checkGrant, WorkspaceSettings, type Grant, type ThreadWorkspace } from "./settings.ts";
+import { checkGrant, WorkspaceSettings, type Grant, type Network, type ThreadWorkspace } from "./settings.ts";
+import { AllowedPaths } from "./paths.ts";
 import { SshTarget } from "./ssh.ts";
 
 export * from "./home.ts";
+export * from "./net.ts";
+export * from "./paths.ts";
 export * from "./ops.ts";
 export * from "./sandbox.ts";
 export * from "./settings.ts";
@@ -27,20 +30,32 @@ const safeName = (name: string, what: string) => {
   return name;
 };
 
+export interface WorkspaceOptions {
+  /** lyricad's own ports (its HTTP API): never reachable from a sandbox, on any address. */
+  excludePorts?: number[];
+  bwrap?: string;
+  pasta?: string;
+}
+
 /**
  * Where Lyrica's file and command tools run, and what they may touch. One per
- * lyricad. Settings come from each user's user.db, so the user must be unlocked.
+ * lyricad. Thread settings come from each user's user.db, so the user must be
+ * unlocked; the folders each user may grant are in self.db.
  */
 export class Workspace {
   private readonly settingsByUser = new Map<string, WorkspaceSettings>();
   private readonly sshTargets = new Map<string, SshTarget>();
+  /** Which folders each user may grant. Only administrators change them. */
+  readonly allowedPaths: AllowedPaths;
 
-  constructor(private readonly keyring: Keyring, private readonly users: Users, private readonly opts: { bwrap?: string } = {}) {}
+  constructor(private readonly keyring: Keyring, private readonly users: Users, private readonly opts: WorkspaceOptions = {}) {
+    this.allowedPaths = new AllowedPaths(keyring.self(), users, keyring.home);
+  }
 
   settings(userId: string): WorkspaceSettings {
     let s = this.settingsByUser.get(userId);
     if (!s) {
-      s = new WorkspaceSettings(this.users.openUserDb(userId), this.keyring.home);
+      s = new WorkspaceSettings(this.users.openUserDb(userId), () => this.allowedPaths.list(userId));
       this.settingsByUser.set(userId, s);
     }
     return s;
@@ -73,8 +88,10 @@ export class Workspace {
     const home = this.homeDir(t.userId);
     if (!isMounted(home)) throw new Locked("the home workspace is not mounted");
     const id = this.settings(t.userId).folderThread(t.threadId);
-    // Memory's thread IDs are `<interface>/<hex>`: one folder per segment.
-    const dir = join(home, "threads", ...id.split("/").map((part) => safeName(part, "thread id")));
+    // Thread IDs may contain "/"; encoding keeps each one a single path component.
+    const name = encodeURIComponent(id);
+    if (!name || name === "." || name === "..") throw new Error(`unusable thread id: ${id}`);
+    const dir = join(home, "threads", name);
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     return dir;
   }
@@ -84,7 +101,7 @@ export class Workspace {
     return {
       target: () => this.targetFor(t),
       settings: () => this.settings(t.userId).thread(t.threadId),
-      network: () => this.settings(t.userId).network(t.threadId, t.pool),
+      network: (): Network => this.settings(t.userId).network(t.threadId, t.pool),
       folders: () => this.folders(t),
     };
   }
@@ -113,8 +130,10 @@ export class Workspace {
       workdir: this.threadDir(t),
       grants: tw.grants,
       network: s.network(t.threadId, t.pool),
+      exclude: this.opts.excludePorts,
       check: (g) => checkGrant(s.allowed(), t.pool, g),
       bwrap: this.opts.bwrap,
+      pasta: this.opts.pasta,
     });
   }
 
@@ -134,7 +153,7 @@ export class Workspace {
   /** Saves an uploaded file into the thread's uploads/ folder, from inside a sandbox. Returns the path she sees. */
   async saveUpload(t: WorkspaceThread, name: string, bytes: Buffer): Promise<string> {
     safeName(name, "file name");
-    const box = new Sandbox({ workdir: this.threadDir(t), grants: [], network: false, bwrap: this.opts.bwrap });
+    const box = new Sandbox({ workdir: this.threadDir(t), grants: [], network: { internet: false, services: false, hosts: [] }, bwrap: this.opts.bwrap });
     const r = await box.run(["sh", "-c", 'mkdir -p uploads && cat > "uploads/$1"', "sh", name], { input: bytes });
     if (r.code !== 0) throw new Error(`could not save ${name}: ${r.stderr.toString().trim()}`);
     return `${WORKDIR}/uploads/${name}`;

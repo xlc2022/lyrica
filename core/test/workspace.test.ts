@@ -18,15 +18,16 @@ async function setup() {
   const host = realpathSync(mkdtempSync(join(tmpdir(), "lyrica-host-")));
   dirs.push(host);
   for (const d of ["shared", "shared/music", "diary", "both"]) mkdirSync(join(host, d));
-  const settings = new Workspace(keyring, users).settings(li.id);
-  settings.allow("general", join(host, "shared"));
-  settings.allow("private", join(host, "diary"));
-  return { keyring, users, li, host, settings };
+  const workspace = new Workspace(keyring, users);
+  const paths = workspace.allowedPaths;
+  paths.allow(li, li.id, "general", join(host, "shared"));
+  paths.allow(li, li.id, "private", join(host, "diary"));
+  return { keyring, users, li, host, workspace, paths, settings: workspace.settings(li.id) };
 }
 
 describe("grants", () => {
   it("keep general threads out of private folders", async () => {
-    const { host, settings } = await setup();
+    const { li, host, paths, settings } = await setup();
     expect(() => settings.setThread("g1", "general", { grants: [{ path: join(host, "diary"), writable: false }] }))
       .toThrow(/overlaps a private folder/);
     expect(() => settings.setThread("g1", "general", { grants: [{ path: join(host, "shared", "..", "diary"), writable: false }] }))
@@ -34,8 +35,8 @@ describe("grants", () => {
     expect(() => settings.setThread("g1", "general", { grants: [{ path: host, writable: false }] })).toThrow(/overlaps a private folder/);
     expect(() => settings.setThread("g1", "general", { grants: [{ path: "/etc", writable: false }] })).toThrow(/not in this user's general folders/);
     // An administrator can't list one folder in both pools either.
-    expect(() => settings.allow("general", join(host, "diary"))).toThrow(/overlaps/);
-    expect(() => settings.allow("private", host)).toThrow(/overlaps/);
+    expect(() => paths.allow(li, li.id, "general", join(host, "diary"))).toThrow(/overlaps/);
+    expect(() => paths.allow(li, li.id, "private", host)).toThrow(/overlaps/);
 
     const ok = settings.setThread("g1", "general", { grants: [{ path: join(host, "shared", "music"), writable: true }] });
     expect(ok.grants).toEqual([{ path: join(host, "shared", "music"), writable: true }]);
@@ -51,48 +52,64 @@ describe("grants", () => {
   });
 
   it("refuse symlinks, Lyrica's runtime and nested grants", async () => {
-    const { keyring, host, settings } = await setup();
+    const { keyring, li, host, paths, settings } = await setup();
     symlinkSync(join(host, "shared"), join(host, "link"));
-    expect(() => settings.allow("general", join(host, "link"))).toThrow(/symlink/);
-    expect(() => settings.allow("general", keyring.home)).toThrow(/runtime/);
-    expect(() => settings.allow("general", "/")).toThrow(/runtime|overlaps/);
+    expect(() => paths.allow(li, li.id, "general", join(host, "link"))).toThrow(/symlink/);
+    expect(() => paths.allow(li, li.id, "general", keyring.home)).toThrow(/runtime/);
+    expect(() => paths.allow(li, li.id, "general", "/")).toThrow(/runtime|overlaps/);
     expect(() => settings.setThread("g1", "general", {
       grants: [{ path: join(host, "shared"), writable: false }, { path: join(host, "shared", "music"), writable: true }],
     })).toThrow(/inside/);
   });
 
-  it("follow each pool's internet default unless the thread overrides it", async () => {
+  it("are an administrator's to change, not the user's", async () => {
+    const { users, li, host, paths } = await setup();
+    const sam = await users.createUser("sam", "pw", profile("Sam"), { admin: false });
+    expect(() => paths.allow(sam, sam.id, "general", join(host, "shared"))).toThrow(/only an administrator/);
+    expect(() => paths.disallow(sam, li.id, "general", join(host, "shared"))).toThrow(/only an administrator/);
+    paths.allow(li, sam.id, "general", join(host, "shared"));
+    expect(paths.list(sam.id).general).toEqual([join(host, "shared")]);
+    expect(paths.list(li.id).general).toEqual([join(host, "shared")]);
+  });
+
+  it("follow each pool's network defaults unless the thread overrides them", async () => {
     const { settings } = await setup();
-    expect(settings.network("g1", "general")).toBe(true);
-    expect(settings.network("p1", "private")).toBe(false);
-    settings.setThread("g1", "general", { network: false });
-    expect(settings.network("g1", "general")).toBe(false);
-    settings.setThread("p1", "private", { network: true });
-    expect(settings.network("p1", "private")).toBe(true);
-    settings.setDefaultNetwork("private", true);
-    settings.setDefaultNetwork("general", false);
-    expect(settings.network("p2", "private")).toBe(true);
-    expect(settings.network("g2", "general")).toBe(false);
+    expect(settings.network("g1", "general")).toEqual({ internet: true, services: false, hosts: [] });
+    expect(settings.network("p1", "private")).toEqual({ internet: false, services: false, hosts: [] });
+    settings.setThread("g1", "general", { internet: false, services: true });
+    expect(settings.network("g1", "general")).toMatchObject({ internet: false, services: true });
+    settings.setThread("p1", "private", { hosts: ["http://nas.lan:8080/api", "192.168.1.0/24"] });
+    expect(settings.network("p1", "private").hosts).toEqual(["nas.lan:8080", "192.168.1.0/24"]);
+    settings.setDefaultNetwork("private", { internet: true, hosts: ["[fd00::1]:80"] });
+    expect(settings.network("p2", "private")).toEqual({ internet: true, services: false, hosts: ["[fd00::1]:80"] });
+    expect(() => settings.setThread("p1", "private", { hosts: ["not a host"] })).toThrow(/can't read host/);
   });
 
   it("let a subagent have its parent's settings or stricter ones, never wider", async () => {
     const { host, settings } = await setup();
     const music = join(host, "shared", "music");
-    settings.setThread("parent", "general", { grants: [{ path: music, writable: true }], network: false, mode: "ask-commands" });
+    settings.setThread("parent", "general", {
+      grants: [{ path: music, writable: true }], internet: false, services: true, hosts: ["10.0.0.5:80"], mode: "ask-commands",
+    });
 
     const same = settings.inheritSettings("parent", "child", "general");
-    expect(same).toMatchObject({ grants: [{ path: music, writable: true }], network: false, mode: "ask-commands", parent: "parent" });
+    expect(same).toMatchObject({
+      grants: [{ path: music, writable: true }], internet: false, services: true, hosts: ["10.0.0.5:80"], mode: "ask-commands", parent: "parent",
+    });
     const narrow = settings.inheritSettings("parent", "child2", "general", { grants: [{ path: music, writable: false }], mode: "ask-changes" });
     expect(narrow).toMatchObject({ grants: [{ path: music, writable: false }], mode: "ask-changes" });
 
-    expect(() => settings.inheritSettings("parent", "c3", "general", { network: true })).toThrow(/no internet/);
+    expect(() => settings.inheritSettings("parent", "c3", "general", { internet: true })).toThrow(/no internet/);
+    expect(() => settings.inheritSettings("parent", "c6", "general", { hosts: ["10.0.0.5:80", "10.0.0.6"] })).toThrow(/10.0.0.6 isn't in the parent/);
+    expect(settings.inheritSettings("parent", "c7", "general", { hosts: [], services: false })).toMatchObject({ hosts: [], services: false });
     expect(() => settings.inheritSettings("parent", "c4", "general", { mode: "auto" })).toThrow(/permission mode/);
     expect(() => settings.inheritSettings("parent", "c5", "general", { grants: [{ path: join(host, "shared"), writable: false }] }))
       .toThrow(/parent thread's folders/);
     // Widening later, through the thread's own settings, is refused too.
     expect(() => settings.setThread("child2", "general", { grants: [{ path: join(host, "shared"), writable: false }] }))
       .toThrow(/parent thread's folders/);
-    expect(() => settings.setThread("child", "general", { network: null })).toThrow(/no internet/);
+    expect(() => settings.setThread("child", "general", { internet: null })).toThrow(/no internet/);
+    expect(() => settings.setThread("child", "general", { hosts: ["10.0.0.5"] })).toThrow(/isn't in the parent/);
     // Narrowing the parent later narrows what the child may keep.
     settings.setThread("parent", "general", { grants: [{ path: music, writable: false }] });
     expect(() => settings.setThread("child", "general", { grants: [{ path: music, writable: true }] })).toThrow(/read-only in the parent/);

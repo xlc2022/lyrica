@@ -2,10 +2,10 @@ import type { Db } from "../db.ts";
 import type { Keyring } from "../keyring.ts";
 import { TASKS, type CallContext, type ModelRef, type Pool, type Task } from "../types.ts";
 import { Forbidden, type User, type Users } from "../users.ts";
-import { discoverModels, probeUrl } from "./http.ts";
+import { addressesOutside, discoverModels, probeUrl } from "./http.ts";
 import { ENDPOINT_SCHEMA, MODEL_CHOICE_SCHEMA } from "./schema.ts";
 
-export { discoverModels, probeUrl, type DiscoveredModel } from "./http.ts";
+export { addressesOutside, discoverModels, probeUrl, type DiscoveredModel } from "./http.ts";
 
 /** A cloud model was asked for where only local models are allowed. Nothing falls back. */
 export class CloudModelForbidden extends Error {}
@@ -52,6 +52,17 @@ export function checkTask(task: string): Task {
 }
 
 const SHARED = "shared.";
+
+async function localWarning(ep: Endpoint): Promise<string | undefined> {
+  const host = new URL(ep.baseUrl).hostname;
+  try {
+    const outside = await addressesOutside(ep.baseUrl);
+    if (outside.length) return `${ep.id} is declared local, but ${host} resolves to ${outside.join(", ")}, outside loopback, private and tailnet addresses`;
+  } catch {
+    return `${ep.id} is declared local, but ${host} doesn't resolve`;
+  }
+  return undefined;
+}
 
 interface EndpointRow { id: string; name: string; kind: "cloud" | "local"; base_url: string; api_key: string | null }
 interface ModelRow { endpoint: string; model: string; context_window: number | null; tools: number | null; manual: number }
@@ -145,10 +156,15 @@ export class Models {
     return this.models(actor.id, endpointId);
   }
 
-  async probe(userId: string, endpointId: string): Promise<"up" | "down"> {
+  /**
+   * Whether the endpoint answers. For a local endpoint, also a warning when its
+   * host resolves outside Li's own network. It only warns: the kind stays as declared.
+   */
+  async probe(userId: string, endpointId: string): Promise<{ state: "up" | "down"; warning?: string }> {
     const ep = this.endpoint(userId, endpointId);
     if (!ep) throw new Error(`no endpoint ${endpointId}`);
-    return probeUrl(ep.baseUrl, ep.apiKey);
+    const [state, warning] = await Promise.all([probeUrl(ep.baseUrl, ep.apiKey), ep.kind === "local" ? localWarning(ep) : undefined]);
+    return warning ? { state, warning } : { state };
   }
 
   // --- Profiles and thread choices ---
@@ -196,11 +212,20 @@ export class Models {
     });
   }
 
-  /** Copies a thread's choices to a child thread (a subagent). A child of a local-only thread is local-only. */
-  inheritModels(userId: string, pool: Pool, parentId: string, childId: string): void {
-    const parent = this.callContext(userId, pool, parentId);
-    if (parent.localOnly) this.setLocalOnly(userId, pool, childId, true);
-    for (const [task, ref] of Object.entries(parent.overrides ?? {})) this.setThreadModel(userId, pool, childId, task as Task, ref);
+  /**
+   * The CallContext for a child thread, such as a subagent's. It keeps the
+   * parent's local-only switch and model choices, and its chat model is the
+   * parent's `subagent.<tier>` model, or a named model the parent's context
+   * allows. Throws CloudModelForbidden or NoModel before changing anything.
+   */
+  childContext(parent: CallContext, childThreadId: string, pick: { tier: "cheap" | "strong" } | { model: ModelRef }): CallContext {
+    const ref = "tier" in pick ? this.resolveModel(`subagent.${pick.tier}`, parent) : pick.model;
+    if ("model" in pick) this.check(parent.userId, ref, isRestricted(parent));
+    const { userId, pool } = parent;
+    if (parent.localOnly) this.setLocalOnly(userId, pool, childThreadId, true);
+    for (const [task, r] of Object.entries(parent.overrides ?? {})) if (task !== "chat") this.setThreadModel(userId, pool, childThreadId, task as Task, r);
+    this.setThreadModel(userId, pool, childThreadId, "chat", ref);
+    return this.callContext(userId, pool, childThreadId);
   }
 
   // --- The router ---

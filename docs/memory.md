@@ -82,8 +82,8 @@ free pages.
 IDs: `t:<thread>`, `e:<thread>#<n>`, `n:<date>-<hex>`, `p:<slug>`,
 `j:<date>-<hex>` and `wake`. Thread IDs look like `web/3f7a2c9b`.
 
-A thread made by `delegate` has its parent and `subagent` set, so the UI can
-nest it: `listThreads({ parent })` returns a thread's subagents.
+A subagent's thread is created with its parent and `subagent: true`, so the
+UI can nest it: `listThreads({ parent })` returns a thread's subagents.
 
 A note's text carries inline citations such as `[e:web/3f7a2c#41]`, and a
 page's text carries citations such as `[n:20261009-k3f9]`. The `citations`

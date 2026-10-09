@@ -2,14 +2,14 @@ import {
   createBashToolDefinition, createEditToolDefinition, createReadToolDefinition, createWriteToolDefinition,
   type ExtensionContext, type ExtensionFactory, type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { WORKDIR, type ExecutionTarget, type ThreadWorkspace, type ToolOps } from "@lyrica/core";
+import { WORKDIR, type ExecutionTarget, type Network, type ThreadWorkspace, type ToolOps } from "@lyrica/core";
 
 /** What the workspace tools need for one thread. `Workspace` from core provides it. */
 export interface ThreadTools {
   /** Called on every tool call, so a change of target or grants applies at once. */
   target(): ExecutionTarget;
   settings(): ThreadWorkspace;
-  network(): boolean;
+  network(): Network;
 }
 
 type Create = (cwd: string, options: { operations: never }) => ToolDefinition;
@@ -78,6 +78,12 @@ export function describe(tools: ThreadTools): string {
   return [
     `Your file and command tools run in a sandbox. ${WORKDIR} is this conversation's folder; uploads arrive in ${WORKDIR}/uploads.`,
     grants.length ? `Folders you were given: ${grants.join(", ")}.` : "No other folders were given to you in this conversation.",
-    `Internet access for commands: ${tools.network() ? "on" : "off"}.`,
+    network(tools.network()),
   ].join("\n");
+}
+
+function network(n: Network): string {
+  const parts = [`Internet for commands: ${n.internet ? "on" : "off"}.`, `This machine's services: ${n.services ? "on" : "off"}.`];
+  if (n.hosts.length) parts.push(`Hosts you may reach: ${n.hosts.join(", ")}.`);
+  return parts.join(" ");
 }

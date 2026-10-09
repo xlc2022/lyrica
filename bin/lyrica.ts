@@ -2,7 +2,7 @@ import { existsSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  generateSshKey, Keyring, PersonaStore, PRONOUN_PRESETS, pronounLabel, Users, Workspace,
+  generateSshKey, Keyring, parseHost, PersonaStore, PRONOUN_PRESETS, pronounLabel, Users, Workspace,
   type Pool, type Profile, type Pronouns, type User,
 } from "@lyrica/core";
 import { AgentSessionRuntime, InteractiveMode } from "@earendil-works/pi-coding-agent";
@@ -20,6 +20,9 @@ const USAGE = `usage:
   lyrica admin grants list --user <login>
   lyrica admin ssh add --user <login> <name> <account>@<host>[:<port>] [--root <path>]
   lyrica admin ssh list|remove --user <login> [<name>]
+  lyrica admin net show --user <login>
+  lyrica admin net set --user <login> --pool general|private internet|services on|off
+  lyrica admin net hosts add|remove --user <login> --pool general|private <host>
 ${MODELS_USAGE}
   lyrica dev --init <dir>
   lyrica dev --runtime <dir> --user <login> [--private | --local-only] [--debug-prompt]
@@ -72,10 +75,10 @@ async function admin(args: string[], home: string): Promise<void> {
     console.log(`Created ${keyring.selfPath}, imported the persona and added ${first}.`);
     return;
   }
-  if (sub !== "user" && sub !== "grants" && sub !== "ssh" && sub !== "models") throw new Error(USAGE);
+  if (sub !== "user" && sub !== "grants" && sub !== "ssh" && sub !== "net" && sub !== "models") throw new Error(USAGE);
 
   await keyring.unlockSelf(await ask("self.db passphrase: ", true));
-  if (sub === "grants" || sub === "ssh") return workspaceAdmin(users, keyring, sub, args.slice(1));
+  if (sub === "grants" || sub === "ssh" || sub === "net") return workspaceAdmin(users, keyring, sub, args.slice(1));
   if (sub === "models") return modelsAdmin(keyring, users, args.slice(1), ask);
   if (action === "list") {
     for (const u of users.all()) {
@@ -105,7 +108,12 @@ async function admin(args: string[], home: string): Promise<void> {
 }
 
 /** Grants and SSH targets live in the user's own user.db, so their password opens it. */
-async function workspaceAdmin(users: Users, keyring: Keyring, kind: "grants" | "ssh", args: string[]): Promise<void> {
+/**
+ * Allowed folders live in self.db and only an administrator changes them.
+ * Network defaults and SSH targets live in the user's own user.db, so their
+ * password opens it.
+ */
+async function workspaceAdmin(users: Users, keyring: Keyring, kind: "grants" | "ssh" | "net", args: string[]): Promise<void> {
   const take = (name: string) => {
     const i = args.indexOf(name);
     if (i < 0) return undefined;
@@ -118,18 +126,41 @@ async function workspaceAdmin(users: Users, keyring: Keyring, kind: "grants" | "
   const root = take("--root");
   const [action, ...rest] = args;
   if (!login) throw new Error(USAGE);
-  const user = await users.authenticate(login, await ask(`Password for ${login} (to open their settings): `, true));
+  const target = need(users, login);
   const workspace = new Workspace(keyring, users);
-  const settings = workspace.settings(user.id);
   const isPool = (p: string | undefined): p is Pool => p === "general" || p === "private";
 
-  if (kind === "grants" && action === "list") {
-    const allowed = settings.allowed();
-    for (const p of ["general", "private"] as const) console.log(`${p}: ${allowed[p].join(", ") || "(none)"}`);
-  } else if (kind === "grants" && (action === "add" || action === "remove") && isPool(pool) && rest.length === 1) {
-    if (action === "add") settings.allow(pool, rest[0]!);
-    else settings.disallow(pool, rest[0]!);
-    console.log(`${action === "add" ? "Added" : "Removed"} ${rest[0]} ${action === "add" ? "to" : "from"} ${login}'s ${pool} folders.`);
+  if (kind === "grants") {
+    if (action === "list") {
+      const allowed = workspace.allowedPaths.list(target.id);
+      for (const p of ["general", "private"] as const) console.log(`${p}: ${allowed[p].join(", ") || "(none)"}`);
+    } else if ((action === "add" || action === "remove") && isPool(pool) && rest.length === 1) {
+      const actor = await signIn(users, "Administrator login: ");
+      if (action === "add") workspace.allowedPaths.allow(actor, target.id, pool, rest[0]!);
+      else workspace.allowedPaths.disallow(actor, target.id, pool, rest[0]!);
+      console.log(`${action === "add" ? "Added" : "Removed"} ${rest[0]} ${action === "add" ? "to" : "from"} ${login}'s ${pool} folders.`);
+    } else {
+      throw new Error(USAGE);
+    }
+    return;
+  }
+
+  await users.authenticate(login, await ask(`Password for ${login} (to open their settings): `, true));
+  const settings = workspace.settings(target.id);
+  if (kind === "net" && action === "show") {
+    for (const p of ["general", "private"] as const) {
+      const n = settings.defaultNetwork(p);
+      console.log(`${p}: internet ${n.internet ? "on" : "off"}, machine's services ${n.services ? "on" : "off"}, hosts: ${n.hosts.join(", ") || "(none)"}`);
+    }
+  } else if (kind === "net" && action === "set" && isPool(pool) && (rest[0] === "internet" || rest[0] === "services") && (rest[1] === "on" || rest[1] === "off")) {
+    settings.setDefaultNetwork(pool, { [rest[0]]: rest[1] === "on" });
+    console.log(`${login}'s ${pool} threads: ${rest[0]} ${rest[1]} by default.`);
+  } else if (kind === "net" && action === "hosts" && isPool(pool) && (rest[0] === "add" || rest[0] === "remove") && rest[1]) {
+    const hosts = settings.defaultNetwork(pool).hosts;
+    const entry = parseHost(rest[1]).entry;
+    if (rest[0] === "remove" && !hosts.includes(entry)) throw new Error(`${entry} is not in the ${pool} hosts`);
+    settings.setDefaultNetwork(pool, { hosts: rest[0] === "add" ? [...new Set([...hosts, entry])] : hosts.filter((h) => h !== entry) });
+    console.log(`${rest[0] === "add" ? "Added" : "Removed"} ${entry} ${rest[0] === "add" ? "to" : "from"} ${login}'s ${pool} hosts.`);
   } else if (kind === "ssh" && action === "list") {
     for (const t of settings.sshTargets()) {
       console.log(`${t.name}: ${t.username}@${t.host}:${t.port}${t.root ? ` in ${t.root}` : ""}${t.hostKey ? ` (host key ${t.hostKey})` : " (host key not seen yet)"}`);
@@ -147,7 +178,7 @@ async function workspaceAdmin(users: Users, keyring: Keyring, kind: "grants" | "
   } else {
     throw new Error(USAGE);
   }
-  keyring.lockUser(user.id);
+  keyring.lockUser(target.id);
 }
 
 async function dev(args: string[]): Promise<void> {

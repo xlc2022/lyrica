@@ -1,7 +1,7 @@
-import { realpathSync, statSync } from "node:fs";
 import { isAbsolute, posix } from "node:path";
 import type { Db } from "../db.ts";
 import type { Pool } from "../types.ts";
+import { parseHost } from "./net.ts";
 
 /** A folder a thread may touch. It is mounted at the same path inside the sandbox. */
 export interface Grant {
@@ -14,10 +14,22 @@ export type PermissionMode = "auto" | "ask-changes" | "ask-commands";
 export const PERMISSION_MODES: readonly PermissionMode[] = ["auto", "ask-changes", "ask-commands"];
 const MODE_RANK: Record<PermissionMode, number> = { auto: 0, "ask-commands": 1, "ask-changes": 2 };
 
+/** What a thread's tools may reach on the network. */
+export interface Network {
+  /** Anything off this machine. */
+  internet: boolean;
+  /** This machine's loopback services. */
+  services: boolean;
+  /** Hosts reachable even with internet off: IPs, CIDR ranges or hostnames, each with an optional port. */
+  hosts: string[];
+}
+
 export interface ThreadWorkspace {
   grants: Grant[];
-  /** Tools' internet access; null follows the user's default for the pool. */
-  network: boolean | null;
+  /** Overrides of the user's per-pool defaults; null follows the default. */
+  internet: boolean | null;
+  services: boolean | null;
+  hosts: string[] | null;
   mode: PermissionMode;
   /** "sandbox" or "ssh:<name>". */
   target: string;
@@ -38,20 +50,16 @@ export interface SshTargetConfig {
   hostKey: string | null;
 }
 
-/** Workspace tables. They live in the user's user.db; the pool databases belong to Memory. */
+/** Workspace tables in the user's user.db. The pool databases belong to Memory. */
 export const WORKSPACE_SCHEMA = `
--- Host folders an administrator lets this user grant, per pool.
-CREATE TABLE IF NOT EXISTS workspace_paths (
-  pool TEXT NOT NULL,
-  path TEXT NOT NULL,
-  PRIMARY KEY (pool, path)
-);
--- What each thread was given: grants, network override, permission mode, target,
+-- What each thread was given: grants, network overrides, permission mode, target,
 -- and for a subagent the parent thread it can't be wider than.
 CREATE TABLE IF NOT EXISTS thread_workspaces (
   thread_id TEXT PRIMARY KEY,
   grants    TEXT NOT NULL,
-  network   INTEGER,
+  internet  INTEGER,
+  services  INTEGER,
+  hosts     TEXT,
   mode      TEXT NOT NULL,
   target    TEXT NOT NULL,
   parent    TEXT
@@ -68,10 +76,9 @@ CREATE TABLE IF NOT EXISTS ssh_targets (
 );
 `;
 
-
 /** `a` is `b` or lies inside it. */
 export const within = (a: string, b: string): boolean => a === b || a.startsWith(b === "/" ? "/" : `${b}/`);
-const overlaps = (a: string, b: string): boolean => within(a, b) || within(b, a);
+export const overlaps = (a: string, b: string): boolean => within(a, b) || within(b, a);
 
 /** An absolute, normalized path with no trailing slash. */
 export function cleanPath(path: string): string {
@@ -81,7 +88,7 @@ export function cleanPath(path: string): string {
 }
 
 /**
- * Whether `pool` may take `grant`, given the user's allowed paths. Private
+ * Whether `pool` may take `grant`, given the user's allowed folders. Private
  * threads may also read general folders, but never write to them, the same
  * way private memory reads general memory. General threads never touch a
  * folder that overlaps a private one.
@@ -99,63 +106,58 @@ export function checkGrant(allowed: Record<Pool, string[]>, pool: Pool, grant: G
   }
 }
 
-/** One user's workspace settings, in their user.db. */
+/** Defaults when the user hasn't set any: general has internet, private has nothing. */
+const DEFAULTS: Record<Pool, Network> = {
+  general: { internet: true, services: false, hosts: [] },
+  private: { internet: false, services: false, hosts: [] },
+};
+
+/**
+ * One user's workspace settings, in their user.db. The folders the user may
+ * grant are an administrator's, in self.db; `allowed` reads them.
+ */
 export class WorkspaceSettings {
-  /** `runtime` is LYRICA_HOME: no grant may overlap it. */
-  constructor(private readonly db: Db, private readonly runtime: string) {
+  constructor(private readonly db: Db, readonly allowed: () => Record<Pool, string[]>) {
     db.exec(WORKSPACE_SCHEMA);
   }
 
   close(): void { this.db.close(); }
 
-  allowed(): Record<Pool, string[]> {
-    const rows = this.db.prepare("SELECT pool, path FROM workspace_paths ORDER BY path").all() as { pool: Pool; path: string }[];
-    return { general: rows.filter((r) => r.pool === "general").map((r) => r.path), private: rows.filter((r) => r.pool === "private").map((r) => r.path) };
+  private setting(key: string): string | undefined {
+    return (this.db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined)?.value;
   }
 
-  /** Lets the user grant `path` in `pool`. It must be a real directory, with no symlinks on the way. */
-  allow(pool: Pool, path: string): void {
-    path = cleanPath(path);
-    if (!statSync(path).isDirectory()) throw new Error(`${path} is not a directory`);
-    if (realpathSync(path) !== path) throw new Error(`${path} goes through a symlink; use ${realpathSync(path)}`);
-    if (overlaps(path, cleanPath(realpathSync(this.runtime)))) throw new Error(`${path} overlaps Lyrica's runtime directory`);
-    const other = this.allowed()[pool === "general" ? "private" : "general"].find((p) => overlaps(path, p));
-    if (other) throw new Error(`${path} overlaps ${other}, which is in the ${pool === "general" ? "private" : "general"} list`);
-    this.db.prepare("INSERT OR IGNORE INTO workspace_paths (pool, path) VALUES (?, ?)").run(pool, path);
+  /** The user's network defaults for threads in `pool`. */
+  defaultNetwork(pool: Pool): Network {
+    const stored = this.setting(`workspace.network.${pool}`);
+    return stored ? JSON.parse(stored) : DEFAULTS[pool];
   }
 
-  disallow(pool: Pool, path: string): void {
-    const n = this.db.prepare("DELETE FROM workspace_paths WHERE pool = ? AND path = ?").run(pool, cleanPath(path)).changes;
-    if (!n) throw new Error(`${path} is not in the ${pool} list`);
-  }
-
-  /** The user's default for tools' internet access in `pool`: on for general, off for private, unless changed. */
-  defaultNetwork(pool: Pool): boolean {
-    const row = this.db.prepare("SELECT value FROM settings WHERE key = ?").get(`workspace.network.${pool}`) as { value: string } | undefined;
-    return row ? row.value === "on" : pool === "general";
-  }
-
-  setDefaultNetwork(pool: Pool, on: boolean): void {
-    this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`workspace.network.${pool}`, on ? "on" : "off");
+  setDefaultNetwork(pool: Pool, change: Partial<Network>): Network {
+    const next = { ...this.defaultNetwork(pool), ...change };
+    next.hosts = next.hosts.map((h) => parseHost(h).entry);
+    this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`workspace.network.${pool}`, JSON.stringify(next));
+    return next;
   }
 
   thread(threadId: string): ThreadWorkspace {
-    const row = this.db.prepare("SELECT grants, network, mode, target, parent FROM thread_workspaces WHERE thread_id = ?").get(threadId) as
-      | { grants: string; network: number | null; mode: PermissionMode; target: string; parent: string | null } | undefined;
-    if (!row) return { grants: [], network: null, mode: "auto", target: "sandbox", parent: null };
+    const row = this.db.prepare("SELECT * FROM thread_workspaces WHERE thread_id = ?").get(threadId) as ThreadRow | undefined;
+    if (!row) return { grants: [], internet: null, services: null, hosts: null, mode: "auto", target: "sandbox", parent: null };
+    const bool = (v: number | null) => (v === null ? null : v === 1);
     return {
-      grants: JSON.parse(row.grants), network: row.network === null ? null : row.network === 1,
-      mode: row.mode, target: row.target, parent: row.parent,
+      grants: JSON.parse(row.grants), internet: bool(row.internet), services: bool(row.services),
+      hosts: row.hosts === null ? null : JSON.parse(row.hosts), mode: row.mode, target: row.target, parent: row.parent,
     };
   }
 
   /**
    * Changes a thread's workspace. Grants are checked against the allowed
-   * paths for `pool`, and a subagent's settings against its parent's.
+   * folders for `pool`, and a subagent's settings against its parent's.
    */
   setThread(threadId: string, pool: Pool, change: Partial<Omit<ThreadWorkspace, "parent">>): ThreadWorkspace {
     const next = { ...this.thread(threadId), ...change };
     next.grants = next.grants.map((g) => ({ path: cleanPath(g.path), writable: g.writable }));
+    next.hosts = next.hosts?.map((h) => parseHost(h).entry) ?? null;
     const allowed = this.allowed();
     for (const g of next.grants) {
       checkGrant(allowed, pool, g);
@@ -165,23 +167,33 @@ export class WorkspaceSettings {
     if (!PERMISSION_MODES.includes(next.mode)) throw new Error(`unknown permission mode: ${next.mode}`);
     if (next.target !== "sandbox" && !this.ssh(next.target.replace(/^ssh:/, ""))) throw new Error(`unknown target: ${next.target}`);
     if (next.parent) this.checkNarrower(next.parent, pool, next);
-    this.db.prepare("INSERT OR REPLACE INTO thread_workspaces (thread_id, grants, network, mode, target, parent) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(threadId, JSON.stringify(next.grants), next.network === null ? null : next.network ? 1 : 0, next.mode, next.target, next.parent);
+    this.write(threadId, next);
     return next;
   }
 
+  private write(threadId: string, t: ThreadWorkspace): void {
+    const int = (v: boolean | null) => (v === null ? null : v ? 1 : 0);
+    this.db.prepare(`INSERT OR REPLACE INTO thread_workspaces (thread_id, grants, internet, services, hosts, mode, target, parent)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(threadId, JSON.stringify(t.grants), int(t.internet), int(t.services),
+      t.hosts === null ? null : JSON.stringify(t.hosts), t.mode, t.target, t.parent);
+  }
+
   /**
-   * Gives a subagent's thread its parent's folders, internet setting,
-   * permission mode and target, or the stricter ones in `narrower`. It works
-   * in the parent's folder. Anything wider than the parent's is refused.
+   * Gives a subagent's thread its parent's folders, network, permission mode
+   * and target, or the stricter ones in `narrower`. It works in the parent's
+   * folder. Anything wider than the parent's is refused.
    */
-  inheritSettings(parentThreadId: string, childThreadId: string, pool: Pool, narrower: Partial<Pick<ThreadWorkspace, "grants" | "network" | "mode">> = {}): ThreadWorkspace {
+  inheritSettings(parentThreadId: string, childThreadId: string, pool: Pool,
+    narrower: Partial<Pick<ThreadWorkspace, "grants" | "mode">> & Partial<Network> = {}): ThreadWorkspace {
     const parent = this.thread(parentThreadId);
-    this.db.prepare("INSERT OR REPLACE INTO thread_workspaces (thread_id, grants, network, mode, target, parent) VALUES (?, '[]', 0, 'ask-changes', ?, ?)")
-      .run(childThreadId, parent.target, parentThreadId);
+    const net = this.network(parentThreadId, pool);
+    // Start from nothing, so a refused narrowing leaves the child with no access at all.
+    this.write(childThreadId, { grants: [], internet: false, services: false, hosts: [], mode: "ask-changes", target: parent.target, parent: parentThreadId });
     return this.setThread(childThreadId, pool, {
       grants: narrower.grants ?? parent.grants,
-      network: narrower.network ?? this.network(parentThreadId, pool),
+      internet: narrower.internet ?? net.internet,
+      services: narrower.services ?? net.services,
+      hosts: narrower.hosts ?? net.hosts,
       mode: narrower.mode ?? parent.mode,
       target: parent.target,
     });
@@ -203,14 +215,24 @@ export class WorkspaceSettings {
       if (!from) throw new Error(`${g.path} isn't in the parent thread's folders`);
       if (g.writable && !from.writable) throw new Error(`${g.path} is read-only in the parent thread`);
     }
-    if ((child.network ?? this.defaultNetwork(pool)) && !this.network(parentThreadId, pool)) throw new Error("the parent thread has no internet");
+    const mine = this.resolve(child, pool);
+    const theirs = this.network(parentThreadId, pool);
+    if (mine.internet && !theirs.internet) throw new Error("the parent thread has no internet");
+    if (mine.services && !theirs.services) throw new Error("the parent thread can't reach this machine's services");
+    const extra = mine.hosts.find((h) => !theirs.hosts.includes(h));
+    if (extra) throw new Error(`${extra} isn't in the parent thread's hosts`);
     if (MODE_RANK[child.mode] < MODE_RANK[parent.mode]) throw new Error(`the parent thread's permission mode is ${parent.mode}`);
     if (child.target !== parent.target) throw new Error(`a subagent works where its parent does (${parent.target})`);
   }
 
-  /** Whether this thread's tools may reach the network. */
-  network(threadId: string, pool: Pool): boolean {
-    return this.thread(threadId).network ?? this.defaultNetwork(pool);
+  private resolve(t: ThreadWorkspace, pool: Pool): Network {
+    const d = this.defaultNetwork(pool);
+    return { internet: t.internet ?? d.internet, services: t.services ?? d.services, hosts: t.hosts ?? d.hosts };
+  }
+
+  /** What this thread's tools may reach. */
+  network(threadId: string, pool: Pool): Network {
+    return this.resolve(this.thread(threadId), pool);
   }
 
   /** The thread whose folder in the home workspace this one works in: itself, or its first ancestor. */
@@ -248,6 +270,10 @@ export class WorkspaceSettings {
   }
 }
 
+interface ThreadRow {
+  grants: string; internet: number | null; services: number | null; hosts: string | null;
+  mode: PermissionMode; target: string; parent: string | null;
+}
 interface SshRow { name: string; host: string; port: number; username: string; private_key: string; root: string | null; host_key: string | null }
 const toSsh = (r: SshRow): SshTargetConfig =>
   ({ name: r.name, host: r.host, port: r.port, username: r.username, privateKey: r.private_key, root: r.root, hostKey: r.host_key });

@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Memory, Models, PersonaStore, TASKS, Workspace, type Keyring, type Pool, type User, type Users } from "@lyrica/core";
-import { createDelegateExtension, createLyricaExtension, createWorkspaceExtension, openThreadSession, syncEntries, type ThreadContext } from "@lyrica/extension";
+import { createLyricaExtension, createWorkspaceExtension, openThreadSession, syncEntries, type ThreadContext } from "@lyrica/extension";
 
 export interface BenchOptions {
   pool?: Pool;
@@ -12,7 +12,7 @@ export interface BenchOptions {
 
 /**
  * What `lyrica dev` runs: a new thread for the user, with Lyrica, her routed
- * tools, delegate, and a model runtime from the router. The thread gets every folder the
+ * tools and a model runtime from the router. The thread gets every folder the
  * user may grant in its pool, read-write. Headless, the same session drives tests
  * and evals.
  */
@@ -62,7 +62,6 @@ export async function openBench(keyring: Keyring, users: Users, user: User, opts
     extensions: [
       createLyricaExtension(ctx, { persona: () => persona.read(), profile: () => users.get(user.id)!.profile, folders: tools.folders, debugPrompt: opts.debugPrompt }),
       createWorkspaceExtension(tools),
-      createDelegateExtension(ctx, { models, workspace, cwd: join(keyring.home, "bench") }),
       onShutdown,
     ],
   });

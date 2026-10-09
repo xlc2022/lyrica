@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CloudModelForbidden, Forbidden, NoModel } from "../src/index.ts";
+import { addressesOutside, CloudModelForbidden, Forbidden, NoModel } from "../src/index.ts";
 import { deadUrl } from "./fake-openai.ts";
 import { profile, withModels } from "./helpers.ts";
 
@@ -17,9 +17,25 @@ describe("endpoints", () => {
 
   it("probe reports up and down", async () => {
     const { models, li } = await withModels();
-    expect(await models.probe(li.id, "gpu")).toBe("up");
+    expect(await models.probe(li.id, "gpu")).toEqual({ state: "up" });
     models.addEndpoint(li, { name: "off", kind: "local", baseUrl: await deadUrl() });
-    expect(await models.probe(li.id, "off")).toBe("down");
+    expect(await models.probe(li.id, "off")).toEqual({ state: "down" });
+  });
+
+  it("warns when a local endpoint is outside Li's network, and only then", async () => {
+    for (const url of ["http://localhost:1234/v1", "http://192.168.1.20:1234/v1", "http://10.1.2.3/v1", "http://172.20.0.5/v1",
+      "http://100.101.102.103:8080/v1", "http://[fd7a:115c:a1e0::1]:8080/v1", "http://[::1]:8080/v1"]) {
+      expect(await addressesOutside(url)).toEqual([]);
+    }
+    expect(await addressesOutside("http://8.8.8.8/v1")).toEqual(["8.8.8.8"]);
+    expect(await addressesOutside("http://[2001:db8::1]/v1")).toEqual(["2001:db8::1"]);
+    expect(await addressesOutside("http://172.32.0.1/v1")).toEqual(["172.32.0.1"]);
+
+    const { models, li } = await withModels();
+    models.addEndpoint(li, { name: "odd", kind: "local", baseUrl: "http://203.0.113.7:9/v1" });
+    expect((await models.probe(li.id, "odd")).warning).toContain("odd is declared local, but 203.0.113.7 resolves to 203.0.113.7");
+    models.addEndpoint(li, { name: "router", kind: "cloud", baseUrl: "http://203.0.113.7:9/v1" });
+    expect((await models.probe(li.id, "router")).warning).toBeUndefined();
   });
 
   it("shares administrator endpoints with every user, and only administrators change them", async () => {
@@ -83,5 +99,36 @@ describe("the router", () => {
     const { models, li } = await withModels();
     expect(() => models.setProfile(li.id, "cloud", "chat", { endpointId: "gpu", modelId: "nope" })).toThrow(NoModel);
     expect(() => models.setProfile(li.id, "cloud", "chat", { endpointId: "nope", modelId: "m" })).toThrow(NoModel);
+  });
+
+  it("gives a child thread its parent's limits and the tier's model", async () => {
+    const { models, li, cloudRef, localRef, ctx } = await withModels();
+    models.setProfile(li.id, "cloud", "subagent.cheap", localRef);
+    models.setProfile(li.id, "cloud", "subagent.strong", cloudRef);
+    models.setProfile(li.id, "local", "chat", localRef);
+    models.setThreadModel(li.id, "general", "web/p", "title", localRef);
+    const parent = models.callContext(li.id, "general", "web/p");
+
+    const cheap = models.childContext(parent, "web/c1", { tier: "cheap" });
+    expect(models.resolveModel("chat", cheap)).toEqual(localRef);
+    expect(cheap.overrides?.title).toEqual(localRef);
+    expect(models.resolveModel("chat", models.childContext(parent, "web/c2", { tier: "strong" }))).toEqual(cloudRef);
+    expect(models.resolveModel("chat", models.childContext(parent, "web/c3", { model: cloudRef }))).toEqual(cloudRef);
+
+    // A private parent: only local, by tier or by name, and nothing is written when refused.
+    const priv = ctx({ pool: "private", localOnly: true });
+    const child = models.childContext(priv, "web/c4", { tier: "strong" });
+    expect(child.localOnly).toBe(true);
+    expect(models.resolveModel("chat", child)).toEqual(localRef);
+    expect(() => models.childContext(priv, "web/c5", { model: cloudRef })).toThrow(CloudModelForbidden);
+    expect(() => models.childContext({ ...priv, overrides: { "subagent.cheap": cloudRef } }, "web/c5", { tier: "cheap" })).toThrow(CloudModelForbidden);
+    expect(models.callContext(li.id, "private", "web/c5").overrides).toEqual({});
+
+    // A local-only parent's children are local-only.
+    models.setLocalOnly(li.id, "general", "web/lo", true);
+    const lo = models.childContext(models.callContext(li.id, "general", "web/lo"), "web/c6", { tier: "cheap" });
+    expect(lo.localOnly).toBe(true);
+    // It uses the local profile, where strong falls back to the local chat model.
+    expect(models.resolveModel("chat", models.childContext(models.callContext(li.id, "general", "web/lo"), "web/c7", { tier: "strong" }))).toEqual(localRef);
   });
 });

@@ -52,6 +52,8 @@ export async function modelsAdmin(keyring: Keyring, users: Users, args: string[]
       const apiKey = await ask("API key (empty for none): ", true);
       const ep = models.addEndpoint(actor, { name, kind, baseUrl, apiKey }, { shared });
       console.log(`Added ${ep.id} (${ep.kind}).`);
+      const { warning } = await models.probe(actor.id, ep.id);
+      if (warning) console.log(`Warning: ${warning}.`);
       await discover(models, actor, ep.id);
     } else if (what === "endpoints" && action === "list" && rest.length === 0) {
       for (const ep of models.endpoints(actor.id).filter((e) => !shared || e.shared)) {
@@ -62,8 +64,9 @@ export async function modelsAdmin(keyring: Keyring, users: Users, args: string[]
       models.removeEndpoint(actor, id(rest[0]!));
       console.log(`Removed ${id(rest[0]!)}.`);
     } else if (what === "endpoints" && action === "probe" && rest.length === 1) {
-      const state = await models.probe(actor.id, id(rest[0]!));
+      const { state, warning } = await models.probe(actor.id, id(rest[0]!));
       console.log(`${id(rest[0]!)} is ${state}.`);
+      if (warning) console.log(`Warning: ${warning}.`);
       if (state === "up") await discover(models, actor, id(rest[0]!));
     } else if (what === "endpoints" && action === "model" && rest.length === 2) {
       const contextWindow = context === undefined ? undefined : Number(context);

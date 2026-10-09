@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { createServer, type Server } from "node:net";
-import { tmpdir } from "node:os";
+import { connect as connectTcp, createServer, type Server } from "node:net";
+import { lookup } from "node:dns/promises";
+import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { Sandbox, SandboxDenied, Users, Workspace, type Grant } from "../src/index.ts";
+import { Sandbox, SandboxDenied, Users, Workspace, type Grant, type Network } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 // Escaping the sandbox is the main failure. These tests must run as an
@@ -45,7 +46,9 @@ afterAll(() => {
 });
 
 const grants = (): Grant[] => [{ path: p("rw"), writable: true }, { path: p("ro"), writable: false }];
-const box = (network = false, extra: Grant[] = []) => new Sandbox({ workdir: p("work"), grants: [...grants(), ...extra], network });
+const OFF: Network = { internet: false, services: false, hosts: [] };
+const box = (network: Partial<Network> = {}, extra: Grant[] = [], exclude: number[] = []) =>
+  new Sandbox({ workdir: p("work"), grants: [...grants(), ...extra], network: { ...OFF, ...network }, exclude });
 
 async function sh(command: string, sandbox = box()): Promise<{ code: number | null; out: string }> {
   let out = "";
@@ -120,11 +123,11 @@ describe.skipIf(!runnable)("the sandbox", () => {
     const swap: Grant = { path: p("swap"), writable: true };
     rmSync(p("swap"), { recursive: true });
     symlinkSync(p("outside"), p("swap"));
-    await expect(sh("ls", box(false, [swap]))).rejects.toThrow(/O_NOFOLLOW|ELOOP|ENOTDIR|resolves to/);
+    await expect(sh("ls", box({}, [swap]))).rejects.toThrow(/O_NOFOLLOW|ELOOP|ENOTDIR|resolves to/);
     // A symlink earlier in the path is caught too: the opened folder isn't where the grant says.
     mkdirSync(p("outside", "sub"));
     symlinkSync(p("outside"), p("via"));
-    await expect(sh("ls", box(false, [{ path: p("via", "sub"), writable: true }]))).rejects.toThrow(/resolves to/);
+    await expect(sh("ls", box({}, [{ path: p("via", "sub"), writable: true }]))).rejects.toThrow(/resolves to/);
   });
 
   it("has no network when it's off, and the host's when it's on", async () => {
@@ -142,7 +145,6 @@ describe.skipIf(!runnable)("the sandbox", () => {
       expect(r.out, t).not.toMatch(/hello from the host|REACHED/);
     }
     expect((await sh("cat /proc/net/dev | tail -n +3 | cut -d: -f1 | tr -d ' '")).out.trim()).toBe("lo");
-    expect((await sh(`exec 3<>/dev/tcp/127.0.0.1/${port} && cat <&3`, box(true))).out).toContain("hello from the host");
   });
 
   it("keeps long output under Pi's limits, so Pi writes no temp file", async () => {
@@ -189,20 +191,99 @@ describe.skipIf(!homeRunnable)("the home workspace", () => {
   });
 });
 
-describe.skipIf(!homeRunnable)("a thread's internet switch", () => {
-  it("cuts the network in either pool", async () => {
+// The host's own LAN address stands in for a machine on the network: the
+// sandbox has an address of its own, so the host is just another peer to it.
+const lan = Object.values(networkInterfaces()).flat().find((i) => i?.family === "IPv4" && !i.internal)?.address;
+const netRunnable = runnable && has("pasta") && has("nft");
+if (process.env.LYRICA_SANDBOX_TESTS === "require" && (!netRunnable || !lan)) throw new Error("network tests required but pasta, nft or a LAN address is missing");
+
+describe.skipIf(!netRunnable || !lan)("a sandbox's network switches", () => {
+  const servers: Server[] = [];
+  const listen = async (host: string, reply: string) => {
+    const srv = createServer((c) => c.end(`${reply}\n`));
+    servers.push(srv);
+    await new Promise<void>((resolve) => srv.listen(0, host, resolve));
+    return (srv.address() as { port: number }).port;
+  };
+  let peer: number, peerOther: number, lyricad: number, abstract: string;
+  beforeAll(async () => {
+    peer = await listen(lan!, "PEER");
+    peerOther = await listen(lan!, "OTHER");
+    lyricad = await listen("0.0.0.0", "LYRICAD"); // reachable on loopback and the LAN address alike
+    abstract = `lyrica-test-${process.pid}`;
+    const srv = createServer((c) => c.end("ABSTRACT\n"));
+    servers.push(srv);
+    await new Promise<void>((resolve) => srv.listen(`\0${abstract}`, resolve));
+  });
+  afterAll(() => { for (const s of servers) s.close(); });
+
+  const tcp = (host: string, port: number) => `timeout 5 bash -c 'exec 3<>/dev/tcp/${host}/${port} && cat <&3'`;
+  const reach = async (net: Partial<Network>, host: string, port: number, exclude: number[] = []) =>
+    (await sh(tcp(host, port), box(net, [], exclude))).out;
+
+  it("with internet only, reaches the network but not this machine's loopback", async () => {
+    expect(await reach({ internet: true }, lan!, peer)).toContain("PEER");
+    expect(await reach({ internet: true }, "127.0.0.1", port)).not.toContain("hello from the host");
+    expect((await sh("cat /etc/resolv.conf", box({ internet: true }))).out).toMatch(/^nameserver /m);
+  });
+
+  it("with this machine's services only, reaches its loopback but nothing else", async () => {
+    expect(await reach({ services: true }, "127.0.0.1", port)).toContain("hello from the host");
+    expect(await reach({ services: true }, lan!, peer)).not.toContain("PEER");
+    expect((await sh("cat /etc/resolv.conf", box({ services: true }))).out.trim()).toBe("");
+  });
+
+  it("never reaches lyricad's ports, on any address, whatever the switches say", async () => {
+    const all = { internet: true, services: true };
+    expect(await reach(all, "127.0.0.1", port, [lyricad])).toContain("hello from the host");
+    expect(await reach(all, "127.0.0.1", lyricad, [lyricad])).not.toContain("LYRICAD");
+    expect(await reach(all, lan!, lyricad, [lyricad])).not.toContain("LYRICAD");
+    expect(await reach({ hosts: [`${lan}:${lyricad}`, lan!] }, lan!, lyricad, [lyricad])).not.toContain("LYRICAD");
+    expect(await reach(all, lan!, lyricad)).toContain("LYRICAD"); // the control: only the exclusion stops it
+  });
+
+  it("never reaches the host's abstract sockets", async () => {
+    const connect = `python3 -c "import socket; s=socket.socket(socket.AF_UNIX); s.connect('\\0${abstract}'); print(s.recv(99))"`;
+    for (const net of [{}, { internet: true }, { services: true }, { internet: true, services: true }, { hosts: [lan!] }]) {
+      expect((await sh(connect, box(net))).out, JSON.stringify(net)).not.toContain("ABSTRACT");
+    }
+  });
+
+  it("with internet off, reaches a listed host and port and nothing else", async () => {
+    const net = { hosts: [`${lan}:${peer}`] };
+    expect(await reach(net, lan!, peer)).toContain("PEER");
+    expect(await reach(net, lan!, peerOther)).not.toContain("OTHER");
+    expect(await reach(net, "127.0.0.1", port)).not.toContain("hello from the host");
+    expect(await reach({ hosts: [lan!] }, lan!, peerOther)).toContain("OTHER");
+  });
+
+  it("pins a listed hostname in /etc/hosts and gives no DNS", async () => {
+    const pinned = await lookup("github.com").catch(() => undefined);
+    if (!pinned) return; // no DNS where the tests run
+    const r = await sh(`getent hosts github.com; getent hosts example.com || echo NO-DNS; timeout 5 bash -c 'exec 3<>/dev/tcp/github.com/443' && echo HTTPS-OK`,
+      box({ hosts: ["https://github.com"] }));
+    expect(r.out).toMatch(/^\S+\s+github\.com$/m);
+    expect(r.out).toContain("NO-DNS");
+    if (await new Promise((resolve) => { const c = connectTcp(443, pinned.address, () => { c.end(); resolve(true); }); c.on("error", () => resolve(false)); })) {
+      expect(r.out).toContain("HTTPS-OK");
+    }
+  });
+});
+
+describe.skipIf(!homeRunnable || !netRunnable)("a thread's switches", () => {
+  it("cut the network in either pool", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
     const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
     await users.authenticate("li", "pw");
     const workspace = new Workspace(keyring, users);
     const thread = (pool: "general" | "private", threadId: string) => ({ userId: li.id, pool, threadId });
-    workspace.settings(li.id).setThread("general-off", "general", { network: false });
-    workspace.settings(li.id).setThread("private-on", "private", { network: true });
+    workspace.settings(li.id).setThread("general-off", "general", { internet: false });
+    workspace.settings(li.id).setThread("private-on", "private", { services: true });
     const reach = async (t: ReturnType<typeof thread>) => (await sh(`exec 3<>/dev/tcp/127.0.0.1/${port} && cat <&3`, workspace.targetFor(t) as Sandbox)).out;
     await workspace.mountHome(li.id);
     try {
-      expect(await reach(thread("general", "general-default"))).toContain("hello from the host");
+      expect(await reach(thread("general", "general-default"))).not.toContain("hello from the host");
       expect(await reach(thread("general", "general-off"))).not.toContain("hello from the host");
       expect(await reach(thread("private", "private-default"))).not.toContain("hello from the host");
       expect(await reach(thread("private", "private-on"))).toContain("hello from the host");
