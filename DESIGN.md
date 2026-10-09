@@ -133,8 +133,12 @@ Details in [docs/memory.md](docs/memory.md).
   and opening a folder brings back what she knows about it.
 - **Do not log thread in memory** is a checkbox on each thread. An unlogged
   thread isn't indexed, slept or noted from, but she can still read her
-  existing memory in it. Daughter threads (subagents, forks, exports) inherit
-  the setting and can't turn it off.
+  existing memory in it. Daughter threads (forks and exports) inherit the
+  setting and can't turn it off.
+- **Disposable subagents never become memory directly.** Their own threads are
+  always unlogged. Only the result that comes back into the parent thread can
+  become memory, and `delegate` appends the files changed and commands run so
+  their work isn't lost.
 - **Deletion has four levels:** archive, delete a memory, forget a thread, and
   forget a topic. A deleted memory leaves a **tombstone** that holds no text,
   only IDs, so sleep doesn't extract the same fact again from a thread that
