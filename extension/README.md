@@ -56,6 +56,10 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
 - **`session.ts`**: `openThreadSession` hosts one thread in process: its
   stored entries, the given extensions, Pi's built-in tools off, the router's
   runtime and chat model, and entries recorded as turns end.
+- **`delegate/`**: `new Delegation({ users, memory, models, workspace, cwd })`,
+  one per process, runs subagents and emits their events.
+  `createDelegateExtension(thread, delegation)` registers `delegate` for a
+  thread. See [docs/delegation.md](../docs/delegation.md).
 
 No commands yet.
 
@@ -93,7 +97,7 @@ bin/lyrica admin models profile show|set … --user <login>
     keys), no Pi session files, context files, skills, prompt templates, MCP
     or other extensions. It prints the model and endpoint chosen for each
     task at startup.
-  - It loads Lyrica's routed tools, mounts the user's home
+  - It loads Lyrica's routed tools and `delegate`, mounts the user's home
     workspace and grants every folder the user may grant in that pool,
     read-write.
 - `serve`, `chat` and `mem` are stubs that name the thread that builds them.

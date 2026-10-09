@@ -1,57 +1,156 @@
 # Delegation: subagents
 
-**Status: proposal for review.** Lyrica's own `delegate`, built on Pi's SDK,
-covering the `pi-subagents` features that make sense for her. See DESIGN.md
-History for why we don't use the package itself.
+Lyrica hands work to subagents with one tool, `delegate`. It is her own,
+built on Pi's SDK; it borrows the role prompts and feature list of
+`pi-subagents`, not its runtime (see DESIGN.md History). Code:
+`extension/src/delegate/` and `core/src/delegation.ts`.
 
-## What every run is
+## Guarantee
 
-- A subagent is a Pi session inside `lyricad`, never a separate process.
-- Its thread is an ordinary thread nested under its parent. It inherits "Do
-  not log" and the parent's workspace settings, or narrower ones.
-- Its model comes from the router, so private and local-only rules hold for
-  every subagent.
-- It has read-only memory (`recall`, `read_memory`) and the workspace tools
-  its role allows.
+A subagent never reaches more than its parent does: its
+model comes from the router with the parent's rules, its workspace is the
+parent's or narrower, an unlogged parent makes it unlogged, and it can read
+memory but not write it. Effects that already happened (files written,
+commands run) are not undone by stopping a run.
 
-## Features
+## What a run is
 
-| Feature | In Lyrica | Notes |
-|---|---|---|
-| Single delegation | yes | `delegate({ task, role?, tier? })`, which waits for the result. |
-| Roles | yes | scout, researcher, reviewer, worker, oracle (adapted from `pi-subagents`, MIT). Each sets a prompt, a default tier, and whether it may write. |
-| Custom roles | yes | Users add or override roles in settings: prompt, default tier, tools, read-only, thinking level. |
-| Model choice | yes | By tier, following the rule. A role or a single run may name another model, if the thread's router allows it. |
-| Parallel runs | yes | `tasks: [...]` in one call, up to a per-thread concurrency limit. Results come back together. |
-| Chains | yes | `chain: [...]`: each step gets the previous step's output. |
-| Review loop | yes | Worker, then reviewer, then worker, up to N rounds, stopping when the reviewer approves. |
-| Council | yes | The same question to several models in parallel (oracle role), then one synthesis. Models come from the thread's allowed list. |
-| Saved workflows | yes | Named chains, loops and councils stored in settings and run by name. |
-| Background runs | yes | `background: true` returns a run ID at once. When the run finishes, its result arrives in the parent thread as a message she sees on her next turn. |
-| Status, wait, stop, steer | yes | On a run ID: check it, wait for it, stop it, or send it a message mid-run. |
-| Child asks parent | yes | A subagent can stop with a question ("needs a decision"). The parent, and you, see it. A background run pauses until it's answered. |
-| Separate worktrees for parallel writers | yes | Two writers never share a folder. In a git repository, each parallel writer gets its own `git worktree` in the home workspace. Otherwise they run one at a time. |
-| Limits | yes | Depth (default 1, configurable up to 3), concurrency, total runs per request, and a timeout per run. |
-| Cost and tokens | yes | Per run and per parent thread, shown in the UI. |
-| Live view | yes (Web) | Subagent threads stream live under their parent, with status, elapsed time, tokens, and stop and steer buttons. The Web thread draws it; Delegation provides the events. |
-| Durable across restarts | no | A background run that is interrupted by a `lyricad` restart is marked **interrupted**. Its thread is kept and can be resumed by hand. Nothing pretends it finished. |
-| External coding CLIs as subagents (Claude Code, Codex) | no, for now | They would send her work to other tools and vendors outside the router. They could come back later as endpoints. |
-| Watchdog, LSP checks | no | Use the reviewer role or a review loop instead. |
-| Terminal fleet views (Herdr, Ghostty) | no | Lyrica's live view is the web UI. |
-| Missions and schedules | later | These belong with `lyricad`'s scheduler (sleep's), once it exists. |
+A **run** is one `delegate` call. It starts one or more **subagents**. Each
+subagent:
+- is a Pi session inside the same process (`openThreadSession`), never a
+  separate `pi` process;
+- has its own thread, created with `createThread({ parent, subagent: true })`,
+  so it lists under its parent and the UI can nest it. Its entries are
+  recorded like any thread's;
+- gets its model from `childContext(parent.call, child, { tier } | { model })`:
+  the parent's `subagent.cheap` or `subagent.strong` model, or a named model
+  the parent's context allows. In a private or local-only thread that is
+  always a local model. A refused model fails the run before any thread is
+  made;
+- gets its workspace from `inheritSettings`: the parent's folders (or the
+  ones asked for), read-only for a read-only role or `readOnly: true`, and
+  internet off if asked. The workspace refuses anything wider;
+- gets a short preamble plus its role's prompt instead of Lyrica's persona,
+  `recall` and `read_memory` (never `remember`), `ask_parent`, and only the
+  tools its role lists.
 
-## Tools
+## The tool
 
-To stay within the tool budget, delegation is **one** tool:
-`delegate({ action?, ... })`.
-- The default action runs work.
-- The other actions are `status`, `wait`, `stop`, `steer` and `answer` (reply
-  to a child's question), each on a run ID.
+`delegate({ action?, ... })`. The default action, `run`, takes exactly one
+of:
 
-## Honest limits
+| Work | What happens |
+|---|---|
+| `task` (with `role`, `tier` or `model`) | One subagent. |
+| `tasks: [...]` | Several at once, within the concurrency limit. The results come back together, each under its own heading; one failing doesn't stop the others. |
+| `chain: [...]` | Steps in order. Each step's task gets the previous result at `{previous}`, or appended. |
+| `loop: { task, worker?, reviewer?, rounds? }` | A worker does the task and a reviewer checks it, up to `rounds` (default 3, at most 5), until the reviewer's reply says `VERDICT: APPROVED`. Both keep their threads across rounds. |
+| `council: { question, models? }` | The question to several models at once (oracle role), then one strong oracle combines the answers. Without `models`, up to three of the thread's: its subagent models, then others it allows. |
+| `workflow: name` (with `input`) | A saved chain, loop or council, with `{input}` filled in. |
 
-- A subagent can only be as private as its parent.
-- Stopping a run stops future model calls and tool calls. A command already
-  running in the sandbox is killed with it.
-- Effects that already happened, such as files written or remote commands
-  run, are not undone.
+Any of them can add `background: true`, `folders`, `readOnly: true` or
+`internet: false`.
+
+The other actions take a run `id`:
+- `status`: this thread's runs (role, status, thread, model, tokens, cost),
+  any open questions, and the total for the thread;
+- `wait`: until the run asks a question or ends;
+- `stop`: aborts its subagents' model calls and tools, including a command
+  running in the sandbox;
+- `steer`: sends a message to a subagent while it works;
+- `answer`: answers the run's oldest open question.
+
+A **foreground** run returns its result, or its first question, as the tool
+result. **Background** runs return an ID at once. When one asks a question or
+ends, a message is delivered into the parent thread:
+- into the live parent session: appended at once if she is idle, so she sees
+  it on her next turn; as a Pi follow-up if she is busy;
+- with no live session, straight into the stored thread, after its last
+  entry, so her next session on it loads it with the rest.
+
+## Questions
+
+A subagent calls `ask_parent({ question })` and stops. Its run waits for
+`answer`, which becomes the subagent's next message; time spent waiting
+doesn't count against the timeout or hold a concurrency slot.
+
+## Roles
+
+| Role | Tier | Tools | Writes |
+|---|---|---|---|
+| scout | cheap | read, bash, recall, read_memory | no |
+| researcher | cheap | read, bash, recall, read_memory | no |
+| reviewer | cheap | read, bash, recall, read_memory | no |
+| worker | strong | read, write, edit, bash, recall, read_memory | yes |
+| oracle | strong | read, recall, read_memory | no |
+
+Prompts are adapted from `pi-subagents` 0.76.1 (MIT, credited in
+`roles.ts`). A task with no role gets the worker. The parent's prompt lists
+the roles and saved workflows.
+
+**Custom roles and workflows** are stored in the user's `user.db` through
+`DelegationStore` (`setRole`, `removeRole`, `setWorkflow`,
+`removeWorkflow`). A custom role sets its prompt, tier, tools, read-only flag
+and thinking level, and one with a built-in's name overrides it.
+
+## Parallel writers
+
+Two writers never share a folder. When a run starts more than one writer at
+once and every writable folder of the parent is the top of a git repository
+(sandbox target only), each writer gets a `git worktree` of each repository
+under `worktrees/<run>-<n>/` in the parent's folder in the home workspace, on
+branch `lyrica/<run>-<n>`. Git runs where the parent's tools run. The writer's
+grant for the repository becomes its `.git` folder (for commits), and its task
+and result name the worktree and branch. Otherwise, the writers run one at a
+time. Writers share only the thread's scratch folder (`/workspace`).
+
+## Limits and accounting
+
+`new Delegation({ ..., limits })`:
+- `depth`: how deep subagents nest, default 1 (subagents can't delegate), at
+  most 3. Below the limit, a subagent gets `delegate` too;
+- `concurrency`: subagents working at once per parent thread, default 2. The
+  rest wait;
+- `runsPerRequest`: subagents one message to the parent may start, default 8;
+- `timeoutMs`: per stretch of work, default 15 minutes. A timed-out run is
+  stopped.
+
+Each subagent's tokens and cost are recorded as it works. `usage(thread)`
+sums a parent thread's.
+
+## Records and restarts
+
+`user.db` holds `delegate_roles`, `delegate_workflows` and `subagent_runs`
+(one row per subagent: run, parent, role, model, status, tokens, cost,
+times). No conversation text goes there: tasks, answers and results live in
+the threads, in their pool's database.
+
+Runs are not durable. The first time a user's runs are touched in a new
+process, any subagent still recorded as running or asking is marked
+**interrupted**, an `interrupted` event is sent, and the parent thread gets a
+message naming the run and its kept threads. `stopAll(userId?)` stops live
+runs, for Lock and shutdown.
+
+## Events
+
+`delegation.events` is a typed `EventEmitter`. Each event carries `userId`,
+`pool`, `parentThreadId`, `runId` and `threadId`, and is emitted under its
+type and under `"event"`:
+
+| Type | Extra fields |
+|---|---|
+| `started` | `role`, `model`, `title` |
+| `output` | `delta` (text as it streams) |
+| `tool_call` | `toolName`, `args` |
+| `question` | `question` |
+| `finished` | `status`: `finished` or `failed` |
+| `stopped` | `reason`: `stopped` or `timeout` |
+| `interrupted` | |
+| `usage` | `inputTokens`, `outputTokens`, `cost` (running totals) |
+
+## Not here
+
+- External coding CLIs (Claude Code, Codex) as subagents: they would send her
+  work outside the router.
+- A watchdog or LSP checks: use the reviewer role or a loop.
+- Durable runs, missions and schedules.

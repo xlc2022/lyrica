@@ -210,6 +210,8 @@ export class Run {
   readonly abort = new AbortController();
   /** Set once a tool call has handed her the outcome, so it isn't delivered again. */
   delivered = false;
+  /** Settles once the run has ended and its subagents are closed. */
+  ended: Promise<void> = Promise.resolve();
   private readonly asking: { sub: Subagent; answer: (text: string) => void; fail: (err: Error) => void }[] = [];
   private waiters: (() => void)[] = [];
 
@@ -329,7 +331,7 @@ export class Delegation {
     if (this.depth(parent) >= this.limits.depth) throw new Error(`subagents can't start subagents of their own here (depth limit ${this.limits.depth})`);
     const run = new Run(parent, opts.background, opts.budget);
     this.live.set(run.id, run);
-    void this.execute(run, req).then(
+    run.ended = this.execute(run, req).then(
       (result) => run.set("finished", result),
       (err: Error) => run.set(err instanceof Stopped || run.abort.signal.aborted ? "stopped" : "failed", err.message),
     ).finally(() => {
@@ -339,6 +341,13 @@ export class Delegation {
       if (run.background && !run.delivered) try { this.deliver(run.parent, outcome(run), { runId: run.id, status: run.status }); } catch { /* locked */ }
     });
     return run;
+  }
+
+  /** Stops every live run, or one user's, and waits until they have ended. For Lock and shutdown. */
+  async stopAll(userId?: string): Promise<void> {
+    const runs = [...this.live.values()].filter((r) => !userId || r.parent.user.id === userId);
+    for (const r of runs) r.stop();
+    await Promise.all(runs.map((r) => r.ended));
   }
 
   /** Marks runs that a restart left behind as interrupted, and tells their parent threads. Once per user per process. */
