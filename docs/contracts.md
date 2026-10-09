@@ -255,6 +255,10 @@ openThreadSession({ thread, models, cwd, extensions, settings? })  // one thread
   across the local/cloud line.
 - A task with no model set uses the same profile's chat model (except
   `embedding`), never the other profile's.
+- **Planned (model host):** a profile entry becomes an ordered list,
+  `Partial<Record<Task, ModelRef[]>>`. `resolveModel` returns the first whose
+  endpoint is up, the thread shows which one answered, and the list never
+  mixes cloud and local.
 - A local endpoint is still declared, not inferred. `probe` warns, without
   blocking, when one resolves outside loopback, private or tailnet ranges.
 - **Shared endpoints** live in `self.db`. Only an administrator can change
