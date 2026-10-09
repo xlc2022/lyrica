@@ -231,7 +231,7 @@ export class WebAccess {
     if (c.mode !== "off" && c.mode !== "builtin" && c.mode !== "external") throw new Error("the mode is off, builtin or external");
     if (c.mode === "off") return { next: { ...prev, mode: "off" } };
     const name = String(c.name ?? prev.name).trim().toLowerCase();
-    if (!NAME.test(name)) throw new Error("the name is a domain name, like lyrica.example.net");
+    if (!NAME.test(name)) throw new Error("the hostname is a domain name, like lyrica.example.net");
     const mine = this.addresses();
     const kindOf = (a: string) => mine.find((m) => m.address === a)?.kind;
     if (c.mode === "builtin") {
@@ -370,7 +370,7 @@ export class WebAccess {
     const upstream = e.tls
       ? `\treverse_proxy https://${e.address}:${e.port} {\n\t\ttransport http {\n\t\t\t# lyricad's certificate, from the control panel\n\t\t\ttls_trust_pool file /etc/caddy/lyricad.pem\n\t\t}\n\t}`
       : `\treverse_proxy ${e.address}:${e.port}`;
-    const tls = "\t# The certificate has to come by DNS-01: HTTP-01 can't reach a tailnet or split-DNS name.\n"
+    const tls = "\t# The certificate has to come by DNS-01: HTTP-01 can't reach a tailnet or split-DNS hostname.\n"
       + "\t# With your DNS provider's plugin, for example:\n\t# tls {\n\t# \tdns cloudflare {env.CLOUDFLARE_API_TOKEN}\n\t# }\n";
     return `${s.name} {\n${tls}${upstream}\n}\n`;
   }

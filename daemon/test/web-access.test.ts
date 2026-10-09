@@ -155,6 +155,7 @@ describe("web access, built-in Caddy", () => {
 
   it("keeps the previous config when Caddy refuses the new one", async () => {
     const { caddy, li, url, logs } = await setup();
+    expect((await li.put<{ error: string }>(url, builtin("not a host"))).body.error).toMatch(/^the hostname is a domain name/);
     caddy.state.refuse = true;
     const refused = await li.put<{ error: string }>(url, builtin());
     expect(refused.status).toBe(400);
