@@ -232,7 +232,8 @@ probe(endpointId: string): Promise<"up" | "down">
 ## delegate
 
 ```ts
-delegate({ task: string, tier: "cheap" | "strong", folders?: string[], readOnly?: boolean, internet?: boolean })
+delegate({ task: string, role?: "scout" | "researcher" | "reviewer" | "worker" | "oracle",
+           tier?: "cheap" | "strong", folders?: string[], readOnly?: boolean, internet?: boolean })
   → { result: string, threadId: string }
 ```
 
@@ -240,6 +241,10 @@ delegate({ task: string, tier: "cheap" | "strong", folders?: string[], readOnly?
   The thread records that it's a subagent, so the UI can nest it under the
   parent.
 - **Workspace:** calls `workspace.inheritSettings` with any narrowing.
+- **Role:** selects a short prompt and a default tier. Scout, researcher and
+  reviewer default to cheap; worker and oracle to strong. An explicit `tier`
+  overrides the role's default. The prompts are adapted from `pi-subagents`
+  (MIT), with credit.
 - **Model:** uses the thread's `subagent.<tier>` model, resolved through the
   same `CallContext`.
 - **Runs** a Pi session to completion and returns its final text.

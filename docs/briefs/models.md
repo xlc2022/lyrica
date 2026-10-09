@@ -49,6 +49,10 @@ The cloud boundary is the main failure to test against.
 
    The tool's guidelines state the rule: cheap for searching, reading,
    summarizing and checking; strong for writing, judgment and changing files.
+   - Build it yourself on Pi's SDK. Don't depend on `pi-subagents`.
+   - Adapt its MIT-licensed role prompts (`scout`, `researcher`, `reviewer`,
+     `worker`, `oracle`, from `agents/` in the npm package) into short role
+     prompts, with a credit line in the source.
 5. **Admin CLI.**
    - `lyrica admin models endpoints add|list|remove|probe [--shared]`:
      `--shared` signs in as an administrator; otherwise as the user.
@@ -58,6 +62,13 @@ The cloud boundary is the main failure to test against.
    - A `--private` / `--local-only` flag starts a bench thread with local-only
      enforced.
    - A debug line shows the model and endpoint chosen for each task.
+7. **Local addresses and Tailscale.** Endpoints are declared local or cloud
+   by the user.
+   - `probe` also checks where a local endpoint resolves.
+   - It warns, but doesn't block, if the address isn't loopback, private
+     (RFC 1918, `fd00::/8`) or tailnet (`100.64.0.0/10`,
+     `fd7a:115c:a1e0::/48`).
+   - `*.ts.net` names resolve through the host's normal resolver.
 
 ## Out of scope
 

@@ -97,6 +97,12 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
 
   The thread's `subagent.cheap` and `subagent.strong` models decide which
   model that is.
+- **`delegate` is Lyrica's own small tool, built on Pi's SDK.** It isn't the
+  `pi-subagents` package (see History).
+  - It offers **roles**, each a short prompt with a default tier: scout
+    (cheap), researcher (cheap), reviewer (cheap), worker (strong) and oracle
+    (strong).
+  - The role prompts are adapted from `pi-subagents` (MIT, credited).
 - **Subagents** are ordinary threads.
   - They inherit "Do not log" and their parent's workspace settings, or
     narrower ones.
@@ -117,6 +123,13 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - Most of her models will run on a second machine on the LAN, with two RTX
     6000 Pro Blackwell GPUs.
   - Both count as **local**: the data stays on Li's network.
+- **"Local" means on Li's own network:** the LAN, or Li's Tailscale tailnet.
+  - A model host, SSH target or allowed host reached over Tailscale
+    (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`, or a `*.ts.net` name) counts as
+    local, like one on the LAN.
+  - Endpoints are still declared local by the user. As a guard against
+    mistakes, Lyrica warns when a local endpoint resolves to an address
+    outside private, loopback or tailnet ranges.
 - **Later: Lyrica manages her own models.** A small **model host** service
   runs on each GPU machine. It wraps vLLM on the Blackwell machine (both GPUs,
   for the large models) and llama.cpp (`llama-server`) on the 3090 VM (small
@@ -338,6 +351,16 @@ new evidence.
 - **Local-only scope narrowed for general threads (2026-10-09).** In a general
   thread, local-only covers that conversation's own model calls, not its later
   memory.
+- **Own `delegate` rather than `pi-subagents` (2026-10-09).**
+  - `pi-subagents` 0.76 is about 15,500 lines of source.
+  - It writes child transcripts, event logs and run receipts to disk in
+    plaintext, and runs background children in a separate process.
+  - It resolves models outside our router.
+  - Monika needed a 4,800-line patch to fit it to her needs.
+  - Our needs (encrypted storage, `lyricad` as the only writer, the
+    local-only router, sandboxed tools, nested threads in the web UI) fit in
+    a few hundred lines on Pi's SDK.
+  - We borrow its role prompts and ideas, not its runtime.
 - **Tool budget raised from 6 to 8, then to 30 (2026-10-09).** First to make
   room for web research, then because Lyrica works like a coding agent (files,
   commands, SSH). The budget still exists so that every tool has to justify
