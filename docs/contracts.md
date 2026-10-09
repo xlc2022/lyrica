@@ -115,26 +115,42 @@ queryTokens(query: string, profiles: Map<UserId, Profile>): …  // see below
 ## core/store: the privacy boundary lives here
 
 ```ts
-openThreadView(userId: string, pool: Pool): PoolView
-// general: { own: general (read/write), reads: [] }
-// private: { own: private (read/write), reads: [general (read-only)] }
+class Memory {                                // new Memory(keyring, users)
+  openThreadView(userId, pool): PoolView      // conversations, tools and sleep
+  openOwnerView(userId): OwnerView            // memory browser and lyrica mem only
+}
+interface PoolView { pool; own: PoolStore; reads: PoolReader[]; close() }
+// general: own = general.db, reads = []
+// private: own = private.db, reads = [general.db through a read-only connection]
+searchView(view, query, opts) / resolve(view, id) / readView(view, id)   // across a view's pools
 ```
 
 `openThreadView` is the **only** place that hands out store handles for
 conversation work. Context assembly, tools and sleep receive a `PoolView` and
 nothing else. No code path gives a general view a private handle.
+`createLyricaExtension` refuses any view that `openThreadView` didn't make.
 
-`PoolStore` methods, grouped by area:
+`PoolReader` (read-only) and `PoolStore` (adds writes) methods, by area:
 
 | Area | Methods |
 |---|---|
-| Threads | `create({ parent?, unlogged? })`, `list({ includeHidden })`, `get`, `setHidden`, `setUnlogged`, `appendEntry`, `loadEntries`, `forget` |
-| Notes | `add`, `get`, `edit(author)`, `archive`, `delete` |
-| Pages | `index()` (titles and summaries), `get`, `put` (sleep), `edit(author)` (owner), `delete`, `forFolders(paths)` |
-| WAKE and journal | `getWake`, `putWake(author)`, `addJournal`, `editJournal(author)`, `listJournal` |
+| Threads | `createThread({ interface, parent?, unlogged?, title? })`, `listThreads({ includeHidden })`, `getThread`, `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `exportThread`, `forgetThread` |
+| Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal` |
+| Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
+| Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `userIntroduced` |
 | Search | `search(query, { kinds, limit })`, returning `{ id, kind, snippet, score }` |
-| Lineage | `cameFrom(id)`, `usedIn(id)`, `revisions(id)`, `isTombstoned(entryId)` |
-| Sleep | `watermark()`, `recordSleepRun(run)`, `listSleepRuns()` |
+| Lineage | `cameFrom`, `usedIn`, `revisions`, `isTombstoned(entryId)`, `editedSince(since)` |
+| Sleep (Sleep thread) | `watermark`, `recordSleepRun`, `listSleepRuns` |
+
+IDs:
+- `e:<thread>#<n>` for an entry, `t:<thread>` for a thread;
+- `n:<ulid>` for a note, `p:<slug>` for a page;
+- `j:<date>-<hex>` for a journal entry, `wake` for WAKE;
+- from a private view, general memories carry `general/`.
+
+The extension extracts each entry's searchable `text`, which keeps core free
+of Pi. Calls to the memory tools, their results, and the per-turn message
+aren't indexed, so recall doesn't echo itself.
 
 Authors are `lyrica`, `sleep` or `user:<id>`.
 
