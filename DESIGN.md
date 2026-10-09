@@ -73,24 +73,60 @@ Each user has two pools of memory.
 
 ## Models and endpoints
 
-Lyrica runs on a mix of models such as DeepSeek 4.1 Flash, GLM 5.3 Flash,
-Qwen 3.8 27B and Qwen 3.8 Flash Next, reached through public and custom
-endpoints.
+Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
+27B and Qwen 3.8 Flash Next.
+- **Cloud:** through OpenRouter.
+- **Local:** through LM Studio or KoboldCpp. The Qwen models and a local copy
+  of DeepSeek run there.
 
-- Every endpoint is declared **cloud** or **local** by the user. Its API type
-  never decides this.
-- Different tasks use different models: chat, cheap and strong subagents,
-  compaction, titles, embeddings, and each sleep phase.
-- A **control panel** sets default models per task, in a **cloud profile** and
-  a **local profile**. Each thread can override which model handles which
-  task, including the main conversation and its subagents. That applies to
-  every thread, with or without folders.
-- Each user lists the models Lyrica may choose by herself when delegating.
-- In a private or local-only thread, any attempt to use a cloud model, for any
-  purpose, fails with an error. Nothing ever falls back across the local/cloud
-  line.
-- The current model and endpoint, with a clear cloud or local badge, are always
-  visible in a thread. Choosing an endpoint, public or custom, is easy.
+- **Endpoints.** Every endpoint is declared **cloud** or **local** by the user.
+  Its API type never decides this.
+  - A model is an endpoint plus a model ID. The same model on two endpoints is
+    two different entries, one cloud and one local. "DeepSeek" in a private
+    thread can only ever mean the local copy.
+- **Tasks.** Different tasks use different models: chat, cheap and strong
+  subagents, compaction, titles, embeddings, and each sleep phase.
+- **Profiles.** A **control panel** sets default models per task, in a **cloud
+  profile** and a **local profile**. Each thread can override which model
+  handles which task, including the main conversation and its subagents. That
+  applies to every thread, with or without folders.
+- **Delegation.** When Lyrica delegates, she picks a tier, never a model,
+  following a simple rule:
+  - **cheap** for searching, reading, summarizing and checking;
+  - **strong** for writing, judgment, and changing code or files.
+
+  The thread's `subagent.cheap` and `subagent.strong` models decide which
+  model that is.
+- **Subagents** are ordinary threads.
+  - They inherit "Do not log" and their parent's workspace settings, or
+    narrower ones.
+  - In the UI they appear nested under their parent thread, collapsed behind a
+    `>` that expands to show them.
+  - In version one, subagents can't start subagents of their own.
+- **Local-only.** In a private or local-only thread, any attempt to use a cloud
+  model, for any purpose, fails with an error. Nothing ever falls back across
+  the local/cloud line.
+- **Visibility.** The current model and endpoint, with a clear cloud or local
+  badge, are always visible in a thread. Choosing an endpoint, public or
+  custom, is easy.
+- **Shared endpoints.** An administrator can set up endpoints once for every
+  user, such as OpenRouter or the GPU machine. These live in `self.db`. Users
+  can also add their own in their `user.db`.
+- **Hardware.**
+  - Lyrica runs in a VM with an RTX 3090 (24 GB).
+  - Most of her models will run on a second machine on the LAN, with two RTX
+    6000 Pro Blackwell GPUs.
+  - Both count as **local**: the data stays on Li's network.
+- **Later: Lyrica manages her own models.** A small **model host** service
+  runs on each GPU machine. It wraps vLLM on the Blackwell machine (both GPUs,
+  for the large models) and llama.cpp (`llama-server`) on the 3090 VM (small
+  fast models: titles, embeddings, cheap subagents).
+  - Each model host serves an OpenAI-compatible endpoint plus a small,
+    authenticated management API: list, load, unload, status.
+  - Lyrica connects to it as a local endpoint she can also start, stop and
+    switch models on.
+  - LAN only, authenticated with a token.
+  - This is a separate thread, after the web UI.
 
 ## Storage, encryption and unlocking
 
@@ -203,13 +239,29 @@ Details in [docs/sleep.md](docs/sleep.md).
   - Each operation goes either to a bubblewrap sandbox, which sees only the
     folders granted to the thread, or to a named SSH target.
   - An administrator decides which folders each user may grant, with separate
-    lists for the general and private pools.
+    lists for the general and private pools. The lists live in `self.db`, so
+    the user's password isn't needed and users can't extend their own.
   - Shared drives (Samba, NFS) are host mounts, granted like any other folder.
   - Each user has an encrypted home workspace (gocryptfs) for uploads and
     working files, unlocked with that user's key.
-  - Every thread has an internet switch for its tools. It is on by default in
-    the general pool and off by default in the private pool, with per-user
-    defaults and per-thread overrides.
+  - Every thread has two network switches for its tools: **internet** (on by
+    default in general, off in private) and **this machine's services** (off
+    by default in both). There are per-user defaults and per-thread
+    overrides.
+  - Each thread can also have an **allowed hosts** list: IP addresses,
+    address ranges (CIDR), hostnames, or URLs, each optionally limited to a
+    port. Listed hosts are reachable even with internet off, so a private
+    thread can use one service on another machine on your network and
+    nothing else. Each user sets a default list per pool, and subagents get
+    their parent's list or less.
+  - Hostnames are resolved when the sandbox starts and pinned in its
+    `/etc/hosts`. With internet off, the sandbox has no DNS at all, so a
+    lookup can't be used to smuggle data out.
+  - When any of this is on, the sandbox gets its own isolated network
+    (`pasta` plus firewall rules inside the sandbox's namespace), never the
+    host's.
+  - `lyricad`'s own API (on every address) and the host's Unix sockets are
+    never reachable, even if listed.
   - A workspace is just a thread with folders granted. It has the same
     settings as any other thread: models for the main conversation and
     subagents, local-only, internet, folders and permission mode.
@@ -217,7 +269,7 @@ Details in [docs/sleep.md](docs/sleep.md).
     settings, never widen them.
 - **Deployment:** `lyricad` runs as a systemd service, in practice inside an
   LXC container or VM on Li's Proxmox. No Docker. The host needs bubblewrap,
-  gocryptfs, FUSE and unprivileged user namespaces. In an LXC container, that
+  gocryptfs, pasta, FUSE and unprivileged user namespaces. In an LXC container, that
   means turning on the nesting and FUSE features.
 - **One command, `lyrica`**, written in TypeScript like the rest of the
   project:

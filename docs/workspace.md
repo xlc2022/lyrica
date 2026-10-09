@@ -76,9 +76,11 @@ so it never touches disk, and no system `ssh` agent is involved.
   - A private thread may also take general folders, read-only, the same way
     private memory reads general memory.
   - One thread's grants don't nest inside each other.
-- `lyrica admin grants add|list|remove --user <u> --pool <pool> <path>` edits
-  the lists. They live in the user's `user.db`, so the command asks for that
-  user's password as well as the `self.db` passphrase.
+- The lists live in `self.db` (`workspace_paths`, keyed by user ID), and only
+  an administrator can change them, so no user can widen their own.
+  `lyrica admin grants add|remove --user <u> --pool <pool> <path>` signs in as
+  an administrator; `lyrica admin grants list --user <u>` needs only the
+  `self.db` passphrase.
 - **Shared drives (Samba, NFS):** the system mounts them on the host (systemd
   mount units, with credentials in system config). Once mounted, they're
   ordinary paths an administrator can add to a user's grant lists. Lyrica never
@@ -122,17 +124,49 @@ values are always visible next to the model badge:
 
 ## Network access from tools
 
-- **Every thread has an internet switch** for its tools. Each user sets a
-  default for each pool, and each thread can override it.
-  - In the **general** pool, internet is on by default.
-  - In the **private** pool, internet is **off by default**. Otherwise a `curl`
-    command could send private content to the internet.
-- When it is off, the sandbox has no network at all (`--unshare-net`).
-  - SSH targets still work, because `lyricad`'s SSH client reaches them, not
-    the sandbox.
-  - Model calls also come from `lyricad`, not from tools, so local-only and
-    the internet switch are independent.
-- An allowlist of LAN hosts can be added later if it's needed.
+Every thread has two switches and a list:
+- **Internet:** anything off this machine.
+- **This machine's services:** whatever listens on the host's loopback, TCP
+  and UDP.
+- **Allowed hosts:** IPs, CIDR ranges or hostnames (a URL is reduced to its
+  host and port), each with an optional port. They are reachable even with
+  internet off: a private thread can use one service on another PC on Li's
+  LAN and nothing else.
+
+Each user has defaults per pool, and each thread can override them. General
+threads default to internet on, services off; private threads to everything
+off, because otherwise a `curl` could send private content out.
+`lyrica admin net show|set|hosts …` edits a user's defaults; per-thread
+overrides go through `WorkspaceSettings.setThread` (the Web thread's UI).
+
+How it is enforced:
+- **Everything off:** bwrap's `--unshare-net`. The sandbox has only its own
+  loopback.
+- **Anything on:** `pasta` (from passt) gives the sandbox a network namespace
+  of its own, with its own address (`10.255.255.2`), so the host's LAN
+  address is just another machine to it. Inside that namespace, before the
+  command starts, `nft` loads a default-deny output ruleset. It allows, in
+  order:
+  - replies on connections already made;
+  - nothing to `lyricad`'s own ports, on any address (`Workspace`'s
+    `excludePorts`; `lyricad` passes its HTTP port);
+  - the sandbox's loopback, where pasta forwards exactly the host's loopback
+    ports, minus the excluded ones, when the services switch is on;
+  - everything else, if internet is on;
+  - each allowed host and port.
+- bwrap then starts inside that namespace with every capability dropped, so
+  the command can't change the rules or the namespace. The host's own network
+  is never shared; bwrap's `--share-net` here keeps pasta's namespace.
+- **Names:** allowed hostnames are resolved when the sandbox starts and pinned
+  in its `/etc/hosts`. With internet off its `/etc/resolv.conf` is empty, so
+  there is no DNS to carry data out. With internet on, DNS goes through
+  pasta's forwarder to the host's resolver.
+- Host abstract Unix sockets belong to the host's network namespace, so the
+  sandbox never sees them. `lyricad`'s local socket is a file it never mounts.
+- IPv4 only for now.
+- SSH targets don't depend on these switches: `lyricad`'s SSH client reaches
+  them, not the sandbox. Model calls also come from `lyricad`, so local-only
+  and the switches are independent.
 
 ## Subagents
 
@@ -140,8 +174,8 @@ A subagent works in its parent thread's workspace, under the same or stricter
 settings:
 - **Folders:** the parent's grants or a subset. Read-write can be narrowed to
   read-only, never the reverse.
-- **Internet:** off if the parent's is off. When the parent's is on, the
-  subagent's can be off.
+- **Network:** each switch off if the parent's is off; the allowed hosts a
+  subset of the parent's.
 - **Models:** chosen from the thread's subagent models, or from the user's
   delegation list when Lyrica picks one herself. In a local-only or private
   thread, only local models are available (see contracts, `core/models`).
@@ -185,6 +219,7 @@ The machine running `lyricad` needs:
 - bubblewrap;
 - gocryptfs;
 - FUSE (`/dev/fuse` and `fusermount3`);
+- passt (for `pasta`), nftables, and `/dev/net/tun`;
 - unprivileged user namespaces.
 
 In a Proxmox LXC container, turn on the **nesting** and **FUSE** features. A
@@ -192,10 +227,18 @@ VM needs nothing special.
 
 **Checklist for Li's LXC container:**
 1. In Proxmox, under the container's Options → Features, turn on `nesting`
-   and `fuse` (or `features: nesting=1,fuse=1` in its config), then restart it.
-2. In the container: `apt install bubblewrap gocryptfs fuse3`.
-3. `ls -l /dev/fuse` shows `crw-rw-rw-`, and `fusermount3` is setuid root.
+   and `fuse` (or `features: nesting=1,fuse=1` in its config). For `pasta`,
+   also pass the tun device through, in `/etc/pve/lxc/<id>.conf`:
+   ```text
+   lxc.cgroup2.devices.allow: c 10:200 rwm
+   lxc.mount.entry: /dev/net/tun dev/net/tun none bind,create=file
+   ```
+   Then restart the container.
+2. In the container: `apt install bubblewrap gocryptfs fuse3 passt nftables`.
+3. `ls -l /dev/fuse /dev/net/tun` shows `crw-rw-rw-` for both, and
+   `fusermount3` is setuid root.
 4. As the service user, `bwrap --unshare-all --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib64 /lib64 -- /bin/true`
    succeeds. On Ubuntu 24.04 or later, if it fails with "Permission denied",
    set `kernel.apparmor_restrict_unprivileged_userns=0` on the Proxmox host.
-5. `LYRICA_HOME` is on a normal filesystem owned by the service user.
+5. As the service user, `pasta --config-net -- true` succeeds.
+6. `LYRICA_HOME` is on a normal filesystem owned by the service user.

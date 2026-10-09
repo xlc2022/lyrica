@@ -16,7 +16,7 @@ jobs:
       # Ubuntu 24.04's AppArmor blocks unprivileged user namespaces by default.
       - run: |
           sudo apt-get update
-          sudo apt-get install -y bubblewrap gocryptfs fuse3 openssh-server
+          sudo apt-get install -y bubblewrap gocryptfs fuse3 openssh-server passt nftables
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - run: npm ci
       - run: npm run typecheck

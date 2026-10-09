@@ -29,8 +29,18 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
 
   Each has a character budget (`DEFAULT_BUDGETS`) and is cut at a line break
   when it's over.
-- **`memory.ts`** is a stub: WAKE, page index, recall and last-talk time come
-  back empty until the Memory thread fills them in from the `PoolView`.
+- **`memory.ts`** reads the thread's `PoolView`: an unlogged notice, WAKE, the
+  page index and pages about the thread's `folders()` go in the system
+  prompt; recall hits for the message (labelled "added by Li" for a user's
+  own memories) and the time since the user last spoke go in the turn
+  message.
+- **`tools.ts`** registers `remember`, `recall` and `read_memory`, each with a
+  snippet and guidelines. In an unlogged thread `remember` is taken out of the
+  active tools.
+- **`record.ts`** stores Pi's entries in the thread (`recordEntries`,
+  `entryRecorder`).
+- The factory throws unless `thread.view` came from `openThreadView` for the
+  thread's pool.
 - With `debugPrompt: true`, each turn shows the routed topics, section sizes,
   and the full system prompt plus the turn message (a TUI notification, or stderr in
   print mode).
@@ -56,6 +66,9 @@ bin/lyrica admin grants add|remove --user <login> --pool general|private <path>
 bin/lyrica admin grants list --user <login>
 bin/lyrica admin ssh add --user <login> <name> <account>@<host>[:<port>] [--root <path>]
 bin/lyrica admin ssh list|remove --user <login> [<name>]
+bin/lyrica admin net show --user <login>
+bin/lyrica admin net set --user <login> --pool general|private internet|services on|off
+bin/lyrica admin net hosts add|remove --user <login> --pool general|private <host>
 ```
 
 - Admin commands use `--runtime <dir>`, else `LYRICA_HOME`, else `./runtime`.
@@ -65,7 +78,10 @@ bin/lyrica admin ssh list|remove --user <login> [<name>]
   Pi's TUI with `--no-session` and `--no-builtin-tools`, with no context
   files, skills, prompt templates, MCP or other extensions. It uses Pi's own
   model configuration.
-- `dev` loads Lyrica's routed tools (`bin/bench.ts`) for one thread,
-  `cli-dev`. It mounts the user's home workspace and grants every general
-  folder the user may grant, read-write.
+  - Each run is a new general-pool thread in the development runtime, and its
+    entries are recorded there, so `remember` and `recall` carry over between
+    bench sessions.
+  - It also loads Lyrica's routed tools (`bin/bench.ts`) for that thread,
+    mounts the user's home workspace, and grants every general folder the
+    user may grant, read-write.
 - `serve`, `chat` and `mem` are stubs that name the thread that builds them.

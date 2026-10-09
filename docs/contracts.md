@@ -115,26 +115,42 @@ queryTokens(query: string, profiles: Map<UserId, Profile>): …  // see below
 ## core/store: the privacy boundary lives here
 
 ```ts
-openThreadView(userId: string, pool: Pool): PoolView
-// general: { own: general (read/write), reads: [] }
-// private: { own: private (read/write), reads: [general (read-only)] }
+class Memory {                                // new Memory(keyring, users)
+  openThreadView(userId, pool): PoolView      // conversations, tools and sleep
+  openOwnerView(userId): OwnerView            // memory browser and lyrica mem only
+}
+interface PoolView { pool; own: PoolStore; reads: PoolReader[]; close() }
+// general: own = general.db, reads = []
+// private: own = private.db, reads = [general.db through a read-only connection]
+searchView(view, query, opts) / resolve(view, id) / readView(view, id)   // across a view's pools
 ```
 
 `openThreadView` is the **only** place that hands out store handles for
 conversation work. Context assembly, tools and sleep receive a `PoolView` and
 nothing else. No code path gives a general view a private handle.
+`createLyricaExtension` refuses any view that `openThreadView` didn't make.
 
-`PoolStore` methods, grouped by area:
+`PoolReader` (read-only) and `PoolStore` (adds writes) methods, by area:
 
 | Area | Methods |
 |---|---|
-| Threads | `create({ parent?, unlogged? })`, `list({ includeHidden })`, `get`, `setHidden`, `setUnlogged`, `appendEntry`, `loadEntries`, `forget` |
-| Notes | `add`, `get`, `edit(author)`, `archive`, `delete` |
-| Pages | `index()` (titles and summaries), `get`, `put` (sleep), `edit(author)` (owner), `delete`, `forFolders(paths)` |
-| WAKE and journal | `getWake`, `putWake(author)`, `addJournal`, `editJournal(author)`, `listJournal` |
+| Threads | `createThread({ interface, parent?, unlogged?, title? })`, `listThreads({ includeHidden })`, `getThread`, `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `exportThread`, `forgetThread` |
+| Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal` |
+| Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
+| Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `userIntroduced` |
 | Search | `search(query, { kinds, limit })`, returning `{ id, kind, snippet, score }` |
-| Lineage | `cameFrom(id)`, `usedIn(id)`, `revisions(id)`, `isTombstoned(entryId)` |
-| Sleep | `watermark()`, `recordSleepRun(run)`, `listSleepRuns()` |
+| Lineage | `cameFrom`, `usedIn`, `revisions`, `isTombstoned(entryId)`, `editedSince(since)` |
+| Sleep (Sleep thread) | `watermark`, `recordSleepRun`, `listSleepRuns` |
+
+IDs:
+- `e:<thread>#<n>` for an entry, `t:<thread>` for a thread;
+- `n:<ulid>` for a note, `p:<slug>` for a page;
+- `j:<date>-<hex>` for a journal entry, `wake` for WAKE;
+- from a private view, general memories carry `general/`.
+
+The extension extracts each entry's searchable `text`, which keeps core free
+of Pi. Calls to the memory tools, their results, and the per-turn message
+aren't indexed, so recall doesn't echo itself.
 
 Authors are `lyrica`, `sleep` or `user:<id>`.
 
@@ -177,28 +193,62 @@ are enforced in the store:
 type Task = "chat" | "subagent.cheap" | "subagent.strong" | "compaction"
           | "title" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake";
 
+interface Endpoint {
+  id: string; name: string;
+  kind: "cloud" | "local";                 // declared by the user, never inferred
+  api: "openai-compatible";                // OpenRouter, LM Studio, KoboldCpp, llama-server
+  baseUrl: string; apiKey?: string;        // the key is stored in the user's user.db
+}
+interface ModelRef { endpointId: string; modelId: string }   // same model on two endpoints = two refs
+
 interface CallContext {
   userId: string;
   pool: Pool;
   localOnly: boolean;       // thread checkbox; always true for private
-  overrides?: Partial<Record<Task, string>>;
+  overrides?: Partial<Record<Task, ModelRef>>;
 }
 
-resolveModel(task: Task, ctx: CallContext): Model         // throws CloudModelForbidden
+resolveModel(task: Task, ctx: CallContext): ModelRef      // throws CloudModelForbidden
 modelRuntimeFor(ctx: CallContext): ModelRuntime           // Pi runtime with only the allowed models
 probe(endpointId: string): Promise<"up" | "down">
 ```
 
-- Every endpoint is declared `cloud` or `local`. Its API type never decides
-  this.
 - When `ctx.pool === "private"` or `ctx.localOnly` is set, Pi sessions are
   built with `modelRuntimeFor(ctx)`, which contains **no cloud models at all**.
-  Even Pi's own compaction then has nothing cloud-based to pick. Asking for a
-  cloud model throws `CloudModelForbidden`. Nothing falls back across the
-  local/cloud line.
-- Each user has settings for their endpoints, task-to-model defaults in a
-  cloud profile and a local profile, and the list of models allowed for
-  automatic delegation.
+  Even Pi's own compaction then has nothing cloud-based to pick.
+- Asking for a cloud model throws `CloudModelForbidden`. Nothing falls back
+  across the local/cloud line.
+- **Shared endpoints** live in `self.db`. Only an administrator can change
+  them, and their API keys are encrypted with the rest of `self.db`. Every
+  user can use them in their profiles. A user's own endpoints live in their
+  `user.db`.
+- **What each user stores** in `user.db`:
+  - endpoints;
+  - a cloud profile and a local profile, mapping each task to a model;
+  - per-thread model overrides and the local-only flag.
+
+  Workspace's thread settings live in `user.db` too, in separate tables.
+
+## delegate
+
+```ts
+delegate({ task: string, tier: "cheap" | "strong", folders?: string[], readOnly?: boolean, internet?: boolean })
+  → { result: string, threadId: string }
+```
+
+- **Thread:** creates a child thread with `createThread({ parent, interface })`.
+  The thread records that it's a subagent, so the UI can nest it under the
+  parent.
+- **Workspace:** calls `workspace.inheritSettings` with any narrowing.
+- **Model:** uses the thread's `subagent.<tier>` model, resolved through the
+  same `CallContext`.
+- **Runs** a Pi session to completion and returns its final text.
+- **Subagents** get a short worker prompt with the task, the workspace tools,
+  and read-only memory (`recall`, `read_memory`), but not `remember`. Their
+  threads are ordinary threads, so sleep still learns from them unless they
+  are unlogged.
+- **Limits:** depth 1 (subagents can't delegate), and a per-thread limit on
+  concurrent subagents.
 
 ## extension
 
@@ -232,7 +282,7 @@ The extension is created with a `ThreadContext`:
   - `read`, `write`, `edit` and `bash` (Workspace thread; see
     [workspace.md](workspace.md));
   - `remember`, `recall` and `read_memory` (Memory thread);
-  - `delegate` (Models thread);
+  - `delegate` (Models thread; see [delegate](#delegate));
   - `calendar` and `sort` (Integrations thread);
   - `web_search` and `web_fetch` (research, carried over from v1 or taken from
     a Pi package).
@@ -300,12 +350,26 @@ unmountHome(userId): Promise<void>
 
 - Every sandbox run receives exactly `grantsFor(ctx)`, the thread's folder in
   the home workspace, and a read-only system.
-- **Workspace settings live in the user's `user.db`:** allowed paths per pool,
-  each thread's grants, network setting and permission mode, and SSH targets.
+- **Workspace settings live in the user's `user.db`:** each thread's grants,
+  network switches and permission mode, and SSH targets. The exception is
+  allowed paths, which live in `self.db` (below).
   Workspace never adds tables to the pool databases, which belong to Memory.
-- The network is unshared unless the thread's internet switch is on. Every
-  thread has the switch. The defaults are per user and per pool (general on,
-  private off), with a per-thread override.
+- **Network:** every thread has two switches (internet, and this machine's
+  services) and an **allowed hosts** list. Each has per-user, per-pool
+  defaults and a per-thread override.
+  - Nothing on, list empty: `--unshare-net`.
+  - Otherwise: an isolated namespace through `pasta`, with default-deny
+    output rules set inside the namespace before the command runs. They
+    allow the internet if that switch is on, the host's loopback if the
+    machine's-services switch is on, and each allowed host (IP, CIDR, or a
+    hostname resolved at start, each with an optional port).
+  - `lyricad`'s own ports on every address are always rejected. Never
+    `--share-net`.
+  - Allowed hostnames are written to the sandbox's `/etc/hosts`. With
+    internet off there is no DNS resolver inside the sandbox.
+  - `inheritSettings` may only shrink the list.
+- **Allowed paths** live in `self.db` (`workspace_paths`, keyed by user ID)
+  and change only with an administrator actor.
 - See [workspace.md](workspace.md).
 
 ## integrations

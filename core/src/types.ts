@@ -1,5 +1,5 @@
-// Shared vocabulary from docs/contracts.md. The Memory and Models threads fill
-// in PoolView and the router; Core only needs their shapes.
+// Shared vocabulary from docs/contracts.md. The Models thread fills in the
+// router; Core only needs its shapes.
 
 export type Pool = "general" | "private";
 export type Interface = "web" | "cli" | "matrix" | "forum" | "sleep";
@@ -13,9 +13,4 @@ export interface CallContext {
   pool: Pool;
   localOnly: boolean;
   overrides?: Partial<Record<Task, string>>;
-}
-
-/** Store handles for one thread. Only `openThreadView` (Memory thread) hands these out. */
-export interface PoolView {
-  readonly pool: Pool;
 }

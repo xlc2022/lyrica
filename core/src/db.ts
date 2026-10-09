@@ -5,9 +5,9 @@ export type Db = Database.Database;
 
 export type DbKey = { passphrase: string } | { raw: Buffer };
 
-/** Opens (or creates) a SQLCipher database. Throws if the key is wrong. */
-export function openEncrypted(path: string, key: DbKey): Db {
-  const db = new Database(path);
+/** Opens (or creates) a SQLCipher database. Throws if the key is wrong. A read-only open never creates or writes. */
+export function openEncrypted(path: string, key: DbKey, opts: { readonly?: boolean } = {}): Db {
+  const db = new Database(path, { readonly: opts.readonly ?? false, fileMustExist: opts.readonly ?? false });
   try {
     db.pragma("cipher = 'sqlcipher'");
     db.pragma("legacy = 4");
@@ -18,6 +18,7 @@ export function openEncrypted(path: string, key: DbKey): Db {
       db.pragma(`key = '${key.passphrase.replaceAll("'", "''")}'`);
     }
     db.prepare("SELECT count(*) FROM sqlite_master").get();
+    if (opts.readonly) return db;
     chmodSync(path, 0o600);
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");
