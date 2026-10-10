@@ -85,4 +85,11 @@ describe("the live view of a thread's stream", () => {
     expect(reset.items).toEqual([]);
     expect(reset.reload).toBe(mid.reload + 1);
   });
+
+  it("reloads when the stream opens on an idle thread, in case a turn ended after the messages were fetched", () => {
+    // A child thread opened as its first turn ends: fetched while busy, the stream opens idle with nothing live.
+    const opened = run([{ type: "hello", busy: false, queued: [], permissions: [] }]);
+    expect(opened.reload).toBe(1);
+    expect(run([{ type: "hello", busy: true, queued: [], permissions: [] }]).reload).toBe(0);
+  });
 });

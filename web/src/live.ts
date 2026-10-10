@@ -47,10 +47,11 @@ export type LiveAction =
 export function liveReducer(s: Live, e: LiveAction): Live {
   switch (e.type) {
     case "hello": {
-      // A turn that ended while we were away: reload to pick it up.
-      const missed = !e.busy && s.items.length > 0;
+      // Idle: any turn that ended before the stream opened, or while we were
+      // away, is stored now, but the messages may have been fetched before it
+      // ended. Reload to pick it up.
       return { ...s, busy: e.busy, queued: e.queued, permissions: e.permissions,
-        ...(missed && { reload: s.reload + 1, ended: s.items.length }) };
+        ...(!e.busy && { reload: s.reload + 1, ended: s.items.length }) };
     }
     case "reset":
       return { ...s, items: [], ended: 0, reload: s.reload + 1 };
