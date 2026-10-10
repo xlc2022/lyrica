@@ -293,9 +293,15 @@ needs an administrator.
 ## Host management
 
 `manageHost` passes on the host's own management calls (loading,
-unloading and pinning models, GPU settings and placements, scanning, usage)
-as the host defines them; other paths are refused, and a shared host needs
-an administrator. `hostDashboard` gives the dashboard's address, which has
+unloading, pinning and reloading models, their placement and serving
+settings, GPU settings, scanning, usage) as the host defines them; other
+paths are refused, and a shared host needs an administrator.
+
+`servingSettings`, `setServingSettings` and `reloadModel` read and save one
+host model's placement and serving settings and apply them now. The host
+refuses a placement that can't work, with its reason. The context a host
+serves a model with is the offering's context window, over one set by hand
+or discovered; compaction and group fitting plan by it. `hostDashboard` gives the dashboard's address, which has
 its own password away from the machine.
 
 ## How it answers
@@ -310,8 +316,8 @@ to four stop strings (`core/src/models/settings.ts`).
   shared one's, for them alone.
 - `offeringSettings(userId, offeringId)` gives the values that apply to that
   user, each with its source (shared or yours; anything absent is the
-  server's default), and the context window with its source (by hand or
-  discovered). Compaction and group fitting use that context window.
+  server's default), and the context window with its source (the host's
+  serving settings, by hand, or discovered). Compaction and group fitting use that context window.
 - Every request to the offering carries the values that are set, added to
   Pi's request payload; unset values are never sent. The repeat penalty is
   `repeat_penalty` for plain local servers (llama.cpp) and

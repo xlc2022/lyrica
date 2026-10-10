@@ -253,6 +253,13 @@ export function apiRoutes(d: Lyricad): Route[] {
       if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(m.method)) throw new HttpError(400, "method is GET, POST, PUT, PATCH or DELETE");
       return s().models.manageHost(d.userFor(r), r.params.endpointId!, m.method, String(m.path ?? ""), m.body);
     }),
+    route("GET", `${u}/offerings/:offeringId/serving`, async (r): Promise<Api.ServingSettings> => s().models.servingSettings(d.userFor(r).id, r.params.offeringId!)),
+    route("PUT", `${u}/offerings/:offeringId/serving`, async (r) => {
+      const b = await r.json<{ settings?: unknown } | null>();
+      if (!b || typeof b.settings !== "object" || !b.settings || Array.isArray(b.settings)) throw new HttpError(400, "send { settings }");
+      return s().models.setServingSettings(d.userFor(r), r.params.offeringId!, b.settings as Record<string, unknown>);
+    }),
+    route("POST", `${u}/offerings/:offeringId/reload`, async (r) => s().models.reloadModel(d.userFor(r), r.params.offeringId!)),
     route("GET", `${u}/hosts/:endpointId/dashboard`, (r) => ({ url: s().models.hostDashboard(d.userFor(r).id, r.params.endpointId!) })),
     route("GET", `${u}/models/page`, async (r): Promise<Api.ModelsPage> => {
       const user = d.userFor(r);

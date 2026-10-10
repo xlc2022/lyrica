@@ -131,7 +131,7 @@ export interface LibraryEntry {
 }
 
 /** Host management paths passed through (host/API.md). */
-const MANAGE = [/^\/host\/v1\/models\/(load|unload|pin)$/, /^\/host\/v1\/gpus(\/\d+)?$/, /^\/host\/v1\/placements(\/[^/?#]+)?$/, /^\/host\/v1\/scan$/, /^\/host\/v1\/usage$/];
+const MANAGE = [/^\/host\/v1\/models\/(load|unload|pin|reload|settings)$/, /^\/host\/v1\/gpus\/\d+$/, /^\/host\/v1\/scan$/, /^\/host\/v1\/usage$/];
 
 export interface CleanupItem {
   /** For a stale endpoint, its uses are those of all its models. */
@@ -248,7 +248,10 @@ const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
-  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; separate?: boolean } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; separate?: boolean; servedContext?: number } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  // A host's serving settings decide its context window, over one set by hand and one discovered.
+  const served = (JSON.parse(r.found) as { servedContext?: number }).servedContext;
+  if (served) caps.contextWindow = served;
   const gone = !!r.missing_since && now - Date.parse(r.missing_since) >= GONE_DAYS * DAY;
   return {
     id: r.id, endpointId: r.endpoint, modelId: r.model, manual: r.manual === 1,
@@ -654,8 +657,44 @@ export class Models {
    * Only these paths; a shared host needs an administrator.
    */
   async manageHost(actor: User, hostId: string, method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<unknown> {
-    if (!MANAGE.some((re) => re.test(path))) throw new Error(`${path} isn't host management Lyrica passes on`);
+    if (!MANAGE.some((re) => re.test(path.split("?")[0]!))) throw new Error(`${path} isn't host management Lyrica passes on`);
     return this.hostCall(this.manageable(actor, hostId), method, path, body);
+  }
+
+  /**
+   * A host model's placement and serving settings (host/API.md), with the
+   * context length it is served with. Anyone who can use the host may read them.
+   */
+  async servingSettings(userId: string, offeringId: string): Promise<{ model: string; settings: Record<string, unknown>; contextLength: number }> {
+    const { endpoint, offering } = this.hostOffering(userId, offeringId);
+    return this.hostCall(endpoint, "GET", `/host/v1/models/settings?${new URLSearchParams({ model: offering.modelId })}`) as Promise<{ model: string; settings: Record<string, unknown>; contextLength: number }>;
+  }
+
+  /**
+   * Saves a host model's settings, whole; the host refuses a placement that
+   * can't work, with the reason. The served context becomes the offering's
+   * context window at once. A shared host needs an administrator.
+   */
+  async setServingSettings(actor: User, offeringId: string, settings: Record<string, unknown>): Promise<unknown> {
+    const { endpoint, offering } = this.hostOffering(actor.id, offeringId);
+    this.manageable(actor, endpoint.id);
+    const entry = await this.hostCall(endpoint, "PUT", "/host/v1/models/settings", { model: offering.modelId, settings });
+    await this.discover(actor, endpoint.id).catch(() => {});
+    return entry;
+  }
+
+  /** Applies a host model's saved settings now (Reload now). A shared host needs an administrator. */
+  async reloadModel(actor: User, offeringId: string): Promise<unknown> {
+    const { endpoint, offering } = this.hostOffering(actor.id, offeringId);
+    this.manageable(actor, endpoint.id);
+    return this.hostCall(endpoint, "POST", "/host/v1/models/reload", { model: offering.modelId });
+  }
+
+  private hostOffering(userId: string, offeringId: string): { endpoint: Endpoint; offering: Offering } {
+    const o = this.offering(userId, offeringId);
+    if (!o || o.endpoint.api !== "host") throw new NoModel(`no model ${offeringId} on a model host`);
+    if (o.offering.recipe) throw new Error("an image recipe has no serving settings");
+    return o;
   }
 
   /** A host's dashboard, opened directly (it has its own password away from the machine). */
@@ -687,7 +726,7 @@ export class Models {
     values: AnswerSettings; sources: Partial<Record<keyof AnswerSettings, SettingSource>>;
     /** Saved values this endpoint's API doesn't take, so they aren't sent. */
     dropped: (keyof AnswerSettings)[];
-    contextWindow?: { value: number; source: "hand" | "discovered" };
+    contextWindow?: { value: number; source: "host" | "hand" | "discovered" };
   } {
     const o = this.offering(userId, offeringId);
     if (!o) throw new NoModel(`no model ${offeringId}`);
@@ -704,10 +743,11 @@ export class Models {
       : this.withUser(userId, (u) => u.prepare("SELECT found, hand FROM offerings WHERE id = ?").get(offeringId))) as { found: string; hand: string };
     const hand = JSON.parse(raw.hand).contextWindow as number | undefined;
     const found = JSON.parse(raw.found).contextWindow as number | undefined;
+    const served = JSON.parse(raw.found).servedContext as number | undefined;
     const accepted = acceptedSettings(o.endpoint);
     return {
       values, sources, dropped: ANSWER_SETTINGS.filter((k) => values[k] !== undefined && !accepted.includes(k)),
-      ...(hand ? { contextWindow: { value: hand, source: "hand" as const } } : found ? { contextWindow: { value: found, source: "discovered" as const } } : {}),
+      ...(served ? { contextWindow: { value: served, source: "host" as const } } : hand ? { contextWindow: { value: hand, source: "hand" as const } } : found ? { contextWindow: { value: found, source: "discovered" as const } } : {}),
     };
   }
 
@@ -855,7 +895,7 @@ export class Models {
       const reasoning = levels.filter((l): l is "low" | "medium" | "high" => ["low", "medium", "high"].includes(l));
       return {
         modelId: m.id,
-        ...(m.contextLength ? { contextWindow: m.contextLength } : {}),
+        ...(m.contextLength ? { servedContext: m.contextLength } : {}),
         ...(m.capabilities?.tools !== undefined ? { tools: !!m.capabilities.tools } : {}),
         ...(m.capabilities?.vision !== undefined ? { vision: !!m.capabilities.vision } : {}),
         ...(m.capabilities?.embedding || m.kind === "embedding" ? { embedding: true } : {}),

@@ -32,6 +32,8 @@ export interface DiscoveredModel {
   size?: number;
   /** An image model: a confirmed recipe, by its name. */
   recipe?: string;
+  /** The context window a host serves the model with, which wins over one set by hand. */
+  servedContext?: number;
 }
 
 /** A model's identity as a host reads it: GGUF metadata and the hub's model card. */

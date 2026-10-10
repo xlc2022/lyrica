@@ -252,7 +252,8 @@ export interface OfferingSettings {
   sources: Partial<Record<keyof AnswerSettings, "shared" | "yours">>;
   /** Saved values this endpoint's API doesn't take (OpenAI's has no top-k, for one), so they aren't sent. */
   dropped: (keyof AnswerSettings)[];
-  contextWindow?: { value: number; source: "hand" | "discovered" };
+  /** The context window Lyrica plans by: a host's serving settings, else set by hand, else discovered. */
+  contextWindow?: { value: number; source: "host" | "hand" | "discovered" };
 }
 /**
  * PUT /api/u/:userId/offerings/:offeringId/settings → OfferingSettings.
@@ -303,6 +304,10 @@ export type RecipeAction = { do: "confirm" | "ignore" | "download-parts" | "dele
 /** POST /api/u/:userId/hosts/:endpointId/manage → the host's answer. Loading, pinning, GPU settings, placements, scan, usage only. */
 export interface HostManage { method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; path: string; body?: unknown }
 /** GET /api/u/:userId/hosts/:endpointId/dashboard → { url } */
+/** A host model's placement and serving settings, as host/API.md defines them. */
+export interface ServingSettings { model: string; settings: Record<string, unknown>; contextLength: number }
+/** GET /api/u/:userId/offerings/:offeringId/serving → ServingSettings. PUT { settings } → the host's model entry; a placement that can't work is refused with the host's reason. */
+/** POST /api/u/:userId/offerings/:offeringId/reload → the host's answer: applies saved settings now. A shared host needs an administrator. */
 /** GET /api/u/:userId/models/page → ModelsPage: what the Models page shows, endpoints with live status. */
 export interface ModelsPage {
   endpoints: (EndpointInfo & Probe)[];

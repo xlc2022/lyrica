@@ -136,10 +136,30 @@ describe("the image library", () => {
   });
 });
 
+describe("serving settings", () => {
+  it("reads and saves a host model's settings, plans by the context it serves, and passes on the host's refusal", async () => {
+    const s = await setup();
+    const q8 = s.offering("Qwen3-8B-Q8_0.gguf");
+    s.models.setCapabilities(s.li, q8.id, { contextWindow: 8192 });
+    // The host's served context wins over one set by hand.
+    expect(s.models.offering(s.li.id, q8.id)!.offering.contextWindow).toBe(32768);
+    expect(s.models.offeringSettings(s.li.id, q8.id).contextWindow).toEqual({ value: 32768, source: "host" });
+    expect(await s.models.servingSettings(s.bob.id, q8.id)).toEqual({ model: q8.modelId, settings: { placement: { mode: "auto" } }, contextLength: 32768 });
+    await expect(s.models.setServingSettings(s.bob, q8.id, { contextLength: 16384 })).rejects.toThrow(Forbidden);
+    await expect(s.models.setServingSettings(s.li, q8.id, { placement: { mode: "gpus", gpus: [2] } })).rejects.toThrow("GPU 2 doesn't allow vLLM.");
+    await s.models.setServingSettings(s.li, q8.id, { placement: { mode: "auto" }, contextLength: 16384 });
+    expect(s.models.offering(s.li.id, q8.id)!.offering.contextWindow).toBe(16384);
+    await expect(s.models.reloadModel(s.bob, q8.id)).rejects.toThrow(Forbidden);
+    expect(await s.models.reloadModel(s.li, q8.id)).toEqual({ ok: true, body: { model: q8.modelId } });
+  });
+});
+
 describe("host management", () => {
   it("passes on only host management paths, and only an administrator manages a shared host", async () => {
     const s = await setup();
     expect(await s.models.manageHost(s.li, s.bigEp.id, "POST", "/host/v1/models/load", { model: "x" })).toEqual({ ok: true, body: { model: "x" } });
+    expect(await s.models.manageHost(s.li, s.bigEp.id, "POST", "/host/v1/models/pin", { model: "x", pinned: true })).toEqual({ ok: true, body: { model: "x", pinned: true } });
+    await expect(s.models.manageHost(s.li, s.bigEp.id, "PUT", "/host/v1/placements/x", {})).rejects.toThrow(/isn't host management/);
     await expect(s.models.manageHost(s.li, s.bigEp.id, "POST", "/pair/v1", {})).rejects.toThrow(/isn't host management/);
     await expect(s.models.manageHost(s.li, s.bigEp.id, "GET", "/host/v1/files")).rejects.toThrow(/isn't host management/);
     await expect(s.models.manageHost(s.bob, s.bigEp.id, "POST", "/host/v1/models/unload", { model: "x" })).rejects.toThrow(Forbidden);

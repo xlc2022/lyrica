@@ -31,6 +31,7 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
   const pinned = new Map<string, string>();
   const chats: { model: string; reasoning_effort?: unknown; chat_template_kwargs?: unknown; client: string }[] = [];
   const recipes: Recipe[] = [];
+  const served = new Map<string, unknown>();
   const parts: { file: string; role: string; downloaded: boolean }[] = [];
   const tokens: (string | undefined)[] = [];
   const downloads: { id: string; path: string; state: string }[] = [];
@@ -121,7 +122,18 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
           return json(res, 200, { deleted, kept });
         }
       }
-      if (req.method === "POST" && /^\/host\/v1\/models\/(load|unload|pin)$/.test(url.pathname)) return json(res, 200, { ok: true, body: JSON.parse(raw || "{}") });
+      if (url.pathname === "/host/v1/models/settings") {
+        const id = req.method === "GET" ? url.searchParams.get("model") : (JSON.parse(raw) as { model: string }).model;
+        const m = models.find((x) => x.id === id);
+        if (!m) return json(res, 404, { error: { code: "not_found", message: "No such model." } });
+        if (req.method === "GET") return json(res, 200, { model: m.id, settings: served.get(m.id) ?? { placement: { mode: "auto" } }, contextLength: m.contextLength ?? 32768 });
+        const { settings } = JSON.parse(raw) as { settings: { contextLength?: number; placement?: { gpus?: number[] } } };
+        if (settings.placement?.gpus?.includes(2)) return json(res, 400, { error: { code: "invalid", message: "GPU 2 doesn't allow vLLM." } });
+        served.set(m.id, settings);
+        if (settings.contextLength) m.contextLength = settings.contextLength;
+        return json(res, 200, { id: m.id, contextLength: m.contextLength });
+      }
+      if (req.method === "POST" && /^\/host\/v1\/models\/(load|unload|pin|reload)$/.test(url.pathname)) return json(res, 200, { ok: true, body: JSON.parse(raw || "{}") });
       if (req.method === "POST" && url.pathname === "/v1/chat/completions") {
         if (paused) return json(res, 503, { error: { code: "paused", message: "The model host is paused." } });
         const chat = JSON.parse(raw) as { model: string; reasoning_effort?: unknown; chat_template_kwargs?: unknown };
