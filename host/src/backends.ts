@@ -2,14 +2,16 @@
 // (a preset file plus /models/load and /models/unload), and vLLM through a
 // small supervisor that starts and stops one server per GPU as a file says.
 // Never the Docker socket.
-import { writeFileSync, renameSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { HostError } from "./http.ts";
 import type { TextModel } from "./library.ts";
+import { contextOf, type ModelSettings, type Option } from "./placement.ts";
 
 export interface Backend {
-  /** Loads the model on the GPU and resolves when it answers. */
-  load(model: TextModel, gpu: number): Promise<void>;
+  /** Loads the model on the placement's GPUs with its settings, and resolves when it answers. */
+  load(model: TextModel, placement: Option, settings: ModelSettings): Promise<void>;
   unload(model: TextModel): Promise<void>;
   /** Base URL for the model's OpenAI-compatible API. */
   url(model: TextModel): string;
@@ -33,21 +35,28 @@ async function poll(check: () => Promise<boolean>, timeoutMs: number, what: stri
   throw unavailable(what);
 }
 
+/** A chat template override, written once to the serving folder by its hash; returns its path there. */
+function templateFile(serving: string, template: string): string {
+  const name = `${createHash("sha256").update(template).digest("hex").slice(0, 16)}.jinja`;
+  mkdirSync(join(serving, "templates"), { recursive: true });
+  writeAtomic(join(serving, "templates", name), template);
+  return join(serving, "templates", name);
+}
+
 export interface LlamaCppOptions {
   url: string; // the router, e.g. http://llamacpp:8080
   serving: string; // folder shared read-only with the router
   models: string; // the models folder as the router sees it
   device: (gpu: number) => string; // CUDA0, ROCm0, Vulkan0
-  contextCap?: number;
   loadTimeoutMs?: number;
 }
 
 export class LlamaCpp implements Backend {
   private readonly o: Required<LlamaCppOptions>;
-  private readonly placed = new Map<string, { model: TextModel; gpu: number }>();
+  private readonly placed = new Map<string, { model: TextModel; at: Option; settings: ModelSettings }>();
 
   constructor(o: LlamaCppOptions) {
-    this.o = { contextCap: 32768, loadTimeoutMs: 10 * 60_000, ...o };
+    this.o = { loadTimeoutMs: 10 * 60_000, ...o };
     this.writePreset();
   }
 
@@ -55,19 +64,24 @@ export class LlamaCpp implements Backend {
     return join(this.o.serving, "llamacpp.ini");
   }
 
-  /** One section per placed model: its file, GPU and settings. */
+  /** One section per placed model: its file, GPUs and serving settings. */
   private writePreset(): void {
-    const lines = ["version = 1", "", "[*]", "n-gpu-layers = 999", "split-mode = none", "jinja = true", "flash-attn = auto", "no-webui = true", ""];
-    for (const { model, gpu } of this.placed.values()) {
-      lines.push(`[${model.id}]`, `model = ${this.o.models}/${model.id}`, `device = ${this.o.device(gpu)}`);
-      lines.push(`c = ${Math.min(model.contextLength ?? 8192, this.o.contextCap)}`);
+    const lines = ["version = 1", "", "[*]", "jinja = true", "no-webui = true", ""];
+    for (const { model, at, settings: s } of this.placed.values()) {
+      lines.push(`[${model.id}]`, `model = ${this.o.models}/${model.id}`, `device = ${at.gpus.map(this.o.device).join(",")}`);
+      if (at.split) lines.push("split-mode = layer", `tensor-split = ${at.split.map((r) => +r.toFixed(3)).join(",")}`);
+      else lines.push("split-mode = none");
+      lines.push(`c = ${contextOf(model, s)}`, `n-gpu-layers = ${s.gpuLayers ?? 999}`, `flash-attn = ${s.flashAttention ?? "auto"}`);
+      if (s.kvCacheType) lines.push(`cache-type-k = ${s.kvCacheType}`, `cache-type-v = ${s.kvCacheType}`);
+      if (s.parallel) lines.push(`parallel = ${s.parallel}`);
+      if (s.batchSize) lines.push(`batch-size = ${s.batchSize}`);
+      if (s.chatTemplate) lines.push(`chat-template-file = ${templateFile(this.o.serving, s.chatTemplate)}`);
       if (model.kind === "embedding") lines.push("embeddings = true");
       if (model.mmproj) lines.push(`mmproj = ${this.o.models}/${model.mmproj}`);
       lines.push("");
     }
     writeAtomic(this.presetPath, lines.join("\n"));
   }
-
   private async status(id: string): Promise<{ value: string; failed?: boolean } | null> {
     const res = await fetch(`${this.o.url}/models`);
     const body = (await res.json()) as { data: { id: string; status: { value: string; failed?: boolean } }[] };
@@ -85,8 +99,8 @@ export class LlamaCpp implements Backend {
     throw new HostError(503, "unavailable", res.status === 400 ? "llama.cpp doesn't know this model." : "llama.cpp didn't answer.");
   }
 
-  async load(model: TextModel, gpu: number): Promise<void> {
-    this.placed.set(model.id, { model, gpu });
+  async load(model: TextModel, at: Option, settings: ModelSettings): Promise<void> {
+    this.placed.set(model.id, { model, at, settings });
     this.writePreset();
     try {
       // ?reload=1 makes the router read the preset file again.
@@ -137,10 +151,14 @@ export interface VllmOptions {
   loadTimeoutMs?: number;
 }
 
-/** vLLM: one server per GPU with the vllm role, started by host/vllm/supervisor.py. */
+/**
+ * vLLM: each model is its own server process, started by
+ * host/vllm/supervisor.py on the GPUs of its placement with its memory
+ * share, so one GPU can hold several.
+ */
 export class Vllm implements Backend {
   private readonly o: Required<VllmOptions>;
-  private readonly placed = new Map<number, TextModel>();
+  private readonly placed = new Map<string, { model: TextModel; at: Option; settings: ModelSettings; port: number }>();
   private generation = 0;
 
   constructor(o: VllmOptions) {
@@ -152,65 +170,71 @@ export class Vllm implements Backend {
     return join(this.o.serving, "vllm.json");
   }
 
-  private port(gpu: number): number {
-    return this.o.basePort + gpu;
-  }
-
-  private gpuOf(model: TextModel): number | undefined {
-    for (const [gpu, m] of this.placed) if (m.id === model.id) return gpu;
-    return undefined;
+  private freePort(): number {
+    const used = new Set([...this.placed.values()].map((p) => p.port));
+    let port = this.o.basePort;
+    while (used.has(port)) port++;
+    return port;
   }
 
   private write(): void {
-    const gpus: Record<string, unknown> = {};
-    for (const [gpu, m] of this.placed) {
-      gpus[gpu] = { model: `${this.o.models}/${m.id}`, name: m.id, port: this.port(gpu), embedding: m.kind === "embedding", maxModelLen: m.contextLength };
+    const servers: Record<string, unknown> = {};
+    for (const { model: m, at, settings: s, port } of this.placed.values()) {
+      servers[m.id] = {
+        model: `${this.o.models}/${m.id}`, name: m.id, port, gpus: at.gpus, embedding: m.kind === "embedding",
+        tensorParallel: at.parallel === "tensor" ? at.gpus.length : 1,
+        pipelineParallel: at.parallel === "pipeline" ? at.gpus.length : 1,
+        memoryShare: at.share, maxModelLen: contextOf(m, s),
+        maxNumSeqs: s.maxSeqs ?? null, maxNumBatchedTokens: s.batchSize ?? null, dtype: s.dtype ?? null,
+        chatTemplate: s.chatTemplate ? templateFile(this.o.serving, s.chatTemplate) : null,
+      };
     }
-    writeAtomic(this.statePath, JSON.stringify({ generation: this.generation, gpus }, null, 2));
+    writeAtomic(this.statePath, JSON.stringify({ generation: this.generation, servers }, null, 2));
   }
 
-  private base(gpu: number): string {
-    return this.o.url.replace("{port}", String(this.port(gpu)));
+  private base(port: number): string {
+    return this.o.url.replace("{port}", String(port));
   }
 
-  async load(model: TextModel, gpu: number): Promise<void> {
+  async load(model: TextModel, at: Option, settings: ModelSettings): Promise<void> {
     if (model.remoteCode) throw new HostError(403, "refused", "This model needs trust_remote_code, which the host never allows.");
-    this.placed.set(gpu, model);
+    const port = this.freePort();
+    this.placed.set(model.id, { model, at, settings, port });
     this.write();
     try {
       await poll(async () => {
-        const res = await fetch(`${this.base(gpu)}/v1/models`);
+        const res = await fetch(`${this.base(port)}/v1/models`);
         const body = (await res.json()) as { data: { id: string }[] };
         return body.data.some((m) => m.id === model.id);
       }, this.o.loadTimeoutMs, "vLLM", 2000);
     } catch (e) {
       // Take it out of the supervisor's file, so it stops retrying.
-      this.placed.delete(gpu);
+      this.placed.delete(model.id);
       this.write();
       throw e;
     }
   }
 
   async unload(model: TextModel): Promise<void> {
-    const gpu = this.gpuOf(model);
-    if (gpu === undefined) return;
-    this.placed.delete(gpu);
+    const p = this.placed.get(model.id);
+    if (!p) return;
+    this.placed.delete(model.id);
     this.write();
-    await poll(async () => !(await fetch(`${this.base(gpu)}/v1/models`).then(() => true, () => false)), 120_000, "vLLM");
+    await poll(async () => !(await fetch(`${this.base(p.port)}/v1/models`).then(() => true, () => false)), 120_000, "vLLM");
   }
 
   url(model: TextModel): string {
-    const gpu = this.gpuOf(model);
-    if (gpu === undefined) throw unavailable("vLLM");
-    return this.base(gpu);
+    const p = this.placed.get(model.id);
+    if (!p) throw unavailable("vLLM");
+    return this.base(p.port);
   }
 
   /** Stops every server and waits until each is gone. */
   async reset(): Promise<void> {
-    const gpus = [...this.placed.keys()];
+    const ports = [...this.placed.values()].map((p) => p.port);
     this.placed.clear();
     this.generation++;
     this.write();
-    for (const gpu of gpus) await poll(async () => !(await fetch(`${this.base(gpu)}/v1/models`).then(() => true, () => false)), 120_000, "vLLM");
+    for (const port of ports) await poll(async () => !(await fetch(`${this.base(port)}/v1/models`).then(() => true, () => false)), 120_000, "vLLM");
   }
 }

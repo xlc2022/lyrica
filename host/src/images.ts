@@ -320,7 +320,7 @@ export class Images {
       id: `recipe:${r.id}`, kind: "image", server: "comfyui", format: "safetensors", size,
       identity: { basename: r.name, sizeLabel: null, finetune: null, baseModels: [] },
       capabilities: { tools: false, vision: false, embedding: false, reasoning: null },
-      contextLength: null, mmproj: null, remoteCode: false,
+      contextLength: null, kvPerToken: null, mmproj: null, remoteCode: false,
     };
   }
 }

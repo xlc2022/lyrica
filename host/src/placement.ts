@@ -1,0 +1,219 @@
+// Where a model runs, and how (DESIGN, "The host manages each GPU's VRAM").
+// Each model has a placement and serving settings; each GPU says which
+// servers it allows, how much to keep free, or that it's left out. A
+// placement that can't work is refused when saved, with the reason.
+import { HostError, invalid } from "./http.ts";
+import type { Gpu } from "./gpus.ts";
+import type { TextModel } from "./library.ts";
+
+export type Server = "llamacpp" | "vllm" | "images";
+export const SERVERS: Server[] = ["llamacpp", "vllm", "images"];
+
+export type Placement =
+  | { mode: "auto" }
+  | { mode: "gpus"; gpus: number[]; split?: number[]; parallel?: "tensor" | "pipeline" };
+
+export interface ModelSettings {
+  placement: Placement;
+  contextLength?: number;
+  /** llama.cpp */
+  kvCacheType?: "f16" | "q8_0" | "q4_0";
+  flashAttention?: "auto" | "on" | "off";
+  gpuLayers?: number;
+  parallel?: number;
+  /** llama.cpp's batch size, or vLLM's batched tokens. */
+  batchSize?: number;
+  /** vLLM */
+  memoryShare?: number;
+  maxSeqs?: number;
+  dtype?: "auto" | "bfloat16" | "float16";
+  /** A Jinja chat template used instead of the model's own. */
+  chatTemplate?: string;
+}
+
+export interface GpuSettings {
+  servers: Server[];
+  /** Bytes always left free on this GPU. */
+  keepFree: number;
+  excluded: boolean;
+}
+
+export const DEFAULT_CONTEXT = 32768;
+const GIB = 1024 ** 3;
+/** Each GPU a model uses needs room for the server's own buffers. */
+const OVERHEAD = GIB / 2;
+const KV_BYTES = { f16: 2, q8_0: 1.0625, q4_0: 0.5625 };
+
+export const defaultGpu = (): GpuSettings => ({ servers: [...SERVERS], keepFree: GIB / 2, excluded: false });
+
+export function serverOf(model: TextModel): Server {
+  return model.server === "comfyui" ? "images" : model.server;
+}
+
+/** The context the model is served with: its setting, else 32k, never past what it was trained for. */
+export function contextOf(model: TextModel, s: ModelSettings): number {
+  return Math.min(s.contextLength ?? DEFAULT_CONTEXT, model.contextLength ?? Infinity);
+}
+
+/** Bytes for the weights, and for the KV cache at the model's context. */
+export function sizes(model: TextModel, s: ModelSettings): { weights: number; kv: number } {
+  if (model.kind === "image") return { weights: Math.round(model.size * 1.1), kv: 0 };
+  const context = model.kind === "embedding" ? Math.min(contextOf(model, s), 8192) : contextOf(model, s);
+  const perToken = model.kvPerToken !== null ? model.kvPerToken * KV_BYTES[s.kvCacheType ?? "f16"] : (2 * GIB) / DEFAULT_CONTEXT;
+  return { weights: Math.round(model.size * 1.05), kv: Math.round(perToken * context) };
+}
+
+/** One way to run a model: its GPUs, and what it takes on each. */
+export interface Option {
+  gpus: number[];
+  /** llama.cpp's tensor split, as ratios. */
+  split: number[] | null;
+  parallel: "tensor" | "pipeline" | null;
+  /** vLLM's memory share on each of its GPUs. */
+  share: number | null;
+  need: Record<number, number>;
+}
+
+const room = (g: Gpu, gs: GpuSettings) => g.total - gs.keepFree;
+const matching = (gpus: Gpu[]) => gpus.every((g) => g.name === gpus[0]!.name && g.total === gpus[0]!.total);
+const powerOfTwo = (n: number) => (n & (n - 1)) === 0;
+
+function option(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings, split?: number[], parallel?: "tensor" | "pipeline"): Option {
+  const { weights, kv } = sizes(model, s);
+  const total = weights + kv;
+  const ids = gpus.map((g) => g.index);
+  if (serverOf(model) === "vllm") {
+    const par = gpus.length === 1 ? null : parallel ?? (matching(gpus) && powerOfTwo(gpus.length) ? "tensor" : "pipeline");
+    // vLLM reserves a share of each GPU: the one set, or what the model needs, in steps of 5%.
+    const smallest = Math.min(...gpus.map((g) => g.total));
+    const share = s.memoryShare ?? Math.min(0.95, Math.max(0.1, Math.ceil(((total / gpus.length + OVERHEAD) / smallest) * 20) / 20));
+    return { gpus: ids, split: null, parallel: par, share, need: Object.fromEntries(gpus.map((g) => [g.index, Math.round(share * g.total)])) };
+  }
+  // llama.cpp splits by ratio: the one set, or by each GPU's room.
+  const ratios = split ?? gpus.map((g) => room(g, settings(g.index)));
+  const sum = ratios.reduce((a, b) => a + b, 0);
+  return {
+    gpus: ids,
+    split: gpus.length > 1 ? ratios : null,
+    parallel: null,
+    share: null,
+    need: Object.fromEntries(gpus.map((g, i) => [g.index, Math.round((total * ratios[i]!) / sum + OVERHEAD)])),
+  };
+}
+
+/**
+ * The ways a model may run, in order of preference. A chosen placement has
+ * one; Auto tries each GPU that allows its server, largest first, then all
+ * of them together.
+ */
+export function options(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings): Option[] {
+  const server = serverOf(model);
+  const allowed = gpus.filter((g) => !settings(g.index).excluded && settings(g.index).servers.includes(server));
+  const p = s.placement;
+  if (p.mode === "gpus") {
+    const chosen = p.gpus.map((i) => allowed.find((g) => g.index === i)).filter((g): g is Gpu => !!g);
+    return chosen.length === p.gpus.length ? [option(model, s, chosen, settings, p.split, p.parallel)] : [];
+  }
+  const singles = [...allowed].sort((a, b) => room(b, settings(b.index)) - room(a, settings(a.index))).map((g) => option(model, s, [g], settings));
+  return allowed.length > 1 ? [...singles, option(model, s, allowed, settings)] : singles;
+}
+
+/** Why an option can never fit, even with its GPUs empty; null if it can. */
+export function neverFits(model: TextModel, s: ModelSettings, o: Option, gpus: Gpu[], settings: (i: number) => GpuSettings): string | null {
+  const gb = (n: number) => (n / GIB).toFixed(1);
+  for (const i of o.gpus) {
+    const g = gpus.find((x) => x.index === i)!;
+    const has = room(g, settings(i));
+    if (o.need[i]! <= has) continue;
+    const { kv } = sizes(model, s);
+    const withoutKv = o.need[i]! - (kv * o.need[i]!) / Object.values(o.need).reduce((a, b) => a + b, 0);
+    if (serverOf(model) !== "vllm" && withoutKv <= has) {
+      return `A context of ${contextOf(model, s)} tokens needs about ${gb(o.need[i]! - has)} GB more than GPU ${i} has; lower the context length.`;
+    }
+    return `This model needs about ${gb(o.need[i]!)} GB on GPU ${i}, which has ${gb(has)} GB to give.`;
+  }
+  return null;
+}
+
+const int = (v: unknown, min: number, max: number, what: string) => {
+  if (v === undefined) return;
+  if (typeof v !== "number" || !Number.isInteger(v) || v < min || v > max) throw invalid(`${what} must be a whole number from ${min} to ${max}.`);
+};
+const oneOf = (v: unknown, values: readonly string[], what: string) => {
+  if (v !== undefined && !values.includes(v as string)) throw invalid(`${what} must be one of ${values.join(", ")}.`);
+};
+
+const LLAMA_ONLY = ["kvCacheType", "flashAttention", "gpuLayers", "parallel"] as const;
+const VLLM_ONLY = ["memoryShare", "maxSeqs", "dtype"] as const;
+const KEYS = ["placement", "contextLength", "batchSize", "chatTemplate", ...LLAMA_ONLY, ...VLLM_ONLY];
+
+/** Checks settings as they are saved: their shape, and that the placement can work on these GPUs. */
+export function validate(model: TextModel, body: Record<string, unknown>, gpus: Gpu[], settings: (i: number) => GpuSettings): ModelSettings {
+  for (const k of Object.keys(body)) if (!KEYS.includes(k)) throw invalid(`Unknown setting: ${k}.`);
+  const server = serverOf(model);
+  if (server === "images") throw invalid("Image recipes run on ComfyUI's GPU and have no settings here.");
+  for (const k of server === "vllm" ? LLAMA_ONLY : VLLM_ONLY) {
+    if (body[k] !== undefined) throw invalid(`${k} is for ${server === "vllm" ? "llama.cpp" : "vLLM"} models.`);
+  }
+  int(body.contextLength, 512, 1_048_576, "contextLength");
+  if (typeof body.contextLength === "number" && model.contextLength && body.contextLength > model.contextLength) {
+    throw invalid(`This model was trained for ${model.contextLength} tokens of context at most.`);
+  }
+  oneOf(body.kvCacheType, ["f16", "q8_0", "q4_0"], "kvCacheType");
+  oneOf(body.flashAttention, ["auto", "on", "off"], "flashAttention");
+  int(body.gpuLayers, 0, 999, "gpuLayers");
+  int(body.parallel, 1, 64, "parallel");
+  int(body.batchSize, 32, 65536, "batchSize");
+  int(body.maxSeqs, 1, 1024, "maxSeqs");
+  oneOf(body.dtype, ["auto", "bfloat16", "float16"], "dtype");
+  if (body.memoryShare !== undefined && (typeof body.memoryShare !== "number" || body.memoryShare < 0.05 || body.memoryShare > 0.95)) {
+    throw invalid("memoryShare must be from 0.05 to 0.95.");
+  }
+  if (body.chatTemplate !== undefined && (typeof body.chatTemplate !== "string" || body.chatTemplate.length > 64 * 1024)) {
+    throw invalid("chatTemplate must be text, at most 64 kB.");
+  }
+
+  const p = body.placement as Placement | undefined;
+  if (!p || typeof p !== "object") throw invalid("placement is needed: { mode: \"auto\" } or { mode: \"gpus\", gpus: [...] }.");
+  if (p.mode === "gpus") {
+    const chosen = p.gpus;
+    if (!Array.isArray(chosen) || !chosen.length || chosen.some((i) => !Number.isInteger(i)) || new Set(chosen).size !== chosen.length) {
+      throw invalid("gpus must list one or more GPUs, each once.");
+    }
+    for (const i of chosen) {
+      const g = gpus.find((x) => x.index === i);
+      if (!g) throw invalid(`There's no GPU ${i}.`);
+      const gs = settings(i);
+      if (gs.excluded) throw invalid(`GPU ${i} is left out.`);
+      if (!gs.servers.includes(server)) throw invalid(`GPU ${i} doesn't allow ${server === "vllm" ? "vLLM" : "llama.cpp"}.`);
+    }
+    if (p.split !== undefined) {
+      if (server !== "llamacpp") throw invalid("split is for llama.cpp; vLLM splits evenly.");
+      if (!Array.isArray(p.split) || p.split.length !== chosen.length || p.split.some((r) => typeof r !== "number" || r <= 0)) {
+        throw invalid("split must give a positive ratio for each GPU.");
+      }
+    }
+    if (p.parallel !== undefined) {
+      if (server !== "vllm") throw invalid("parallel is for vLLM; llama.cpp splits by ratio.");
+      oneOf(p.parallel, ["tensor", "pipeline"], "parallel");
+      const picked = chosen.map((i) => gpus.find((x) => x.index === i)!);
+      if (p.parallel === "tensor" && (!matching(picked) || !powerOfTwo(picked.length))) {
+        throw invalid("Tensor parallel needs matching GPUs, two, four or eight of them; use pipeline parallel.");
+      }
+    }
+    for (const k of Object.keys(p)) if (!["mode", "gpus", "split", "parallel"].includes(k)) throw invalid(`Unknown placement field: ${k}.`);
+  } else if (p.mode !== "auto" || Object.keys(p).length !== 1) {
+    throw invalid("placement is { mode: \"auto\" } or { mode: \"gpus\", gpus: [...] }.");
+  }
+
+  const s = body as unknown as ModelSettings;
+  const opts = options(model, s, gpus, settings);
+  if (!opts.length) throw invalid(`No GPU allows ${server === "vllm" ? "vLLM" : "llama.cpp"}.`);
+  // Auto needs one way that can work; a chosen placement must work as chosen.
+  const reasons = opts.map((o) => neverFits(model, s, o, gpus, settings));
+  if (reasons.every((r) => r !== null)) throw new HostError(400, "too_big", reasons.at(-1)!);
+  return s;
+}
+
+/** A key for remembering measured VRAM per placement. */
+export const placementKey = (o: Option) => `${o.gpus.join("+")}${o.split ? `:${o.split.join(",")}` : ""}${o.share ? `@${o.share}` : ""}`;

@@ -59,25 +59,25 @@ describe("the GPU queue", () => {
     const { scheduler, llamacpp, state } = setup([24]);
     await scheduler.start([]);
     const pinned = textModel("pinned", 4);
-    await scheduler.pin(pinned, 0, true);
+    await scheduler.pin(pinned, true);
     const busy = hold(scheduler, textModel("busy", 4));
     await busy.started;
     await scheduler.run(textModel("older", 4), "chat", async () => {});
     await scheduler.run(textModel("newer", 4), "chat", async () => {});
-    // 24 GB, 1 GB baseline, 4 models of about 4.4 GB: a 5 GB model needs one gone.
+    // 24 GB, 1 GB baseline and 0.5 GB kept free; 4 models of about 5.2 GB: a 5 GB model needs one gone.
     await scheduler.run(textModel("next", 5), "chat", async () => {});
     expect(llamacpp.calls.filter((c) => c.startsWith("unload"))).toEqual(["unload older"]);
-    expect(state.get().pins).toEqual([{ model: "pinned", gpu: 0 }]);
+    expect(state.get().pins).toEqual(["pinned"]);
     busy.release();
   });
 
   it("fails at once with a plain reason when a model can never fit", async () => {
     const { scheduler } = setup([24]);
     await scheduler.start([]);
-    await scheduler.pin(textModel("pinned", 10), 0, true);
+    await scheduler.pin(textModel("pinned", 10), true);
     const err = await scheduler.run(textModel("huge", 15), "chat", async () => {}).catch((e) => e);
     expect(err.code).toBe("too_big");
-    expect(err.message).toMatch(/needs about 18\.0 GB; GPU 0 has 24\.0 GB, of which 11\.0 GB is pinned/);
+    expect(err.message).toMatch(/needs about 16\.8 GB on GPU 0; it has 24\.0 GB, of which 11\.5 GB is pinned and 1\.0 GB is used by other programs/);
   });
 
   it("says what the GPU is busy with when the wait runs out", async () => {
@@ -95,24 +95,46 @@ describe("the GPU queue", () => {
     const { scheduler, state } = setup([24]);
     await scheduler.start([]);
     await scheduler.loadNow(textModel("m", 10));
-    expect(state.get().vram.m).toBe(Math.round(10 * GIB * 1.1));
+    // Weights, a KV cache for its 8k context, and the server's buffers, measured on GPU 0.
+    expect(state.get().vram["m@0"]).toEqual({ 0: Math.round(10 * GIB * 1.05) + GIB / 2 + GIB / 2 });
   });
 
-  it("swaps the model on a vLLM GPU only when it is idle", async () => {
-    const { scheduler, vllm } = setup([80, 24]);
+  it("runs two vLLM models side by side on one GPU, within their memory shares", async () => {
+    const { scheduler, vllm, state } = setup([80, 24]);
     await scheduler.start([]);
-    await scheduler.setRole(0, "vllm");
-    const a = textModel("a", 30, { server: "vllm", format: "safetensors" });
-    const b = textModel("b", 30, { server: "vllm", format: "safetensors" });
-    const holder = hold(scheduler, a);
+    const models = ["a", "b", "c"].map((id) => textModel(id, 10, { server: "vllm", format: "safetensors" }));
+    for (const m of models) scheduler.saveSettings(m, { placement: { mode: "gpus", gpus: [0] }, memoryShare: 0.4 });
+    await scheduler.loadNow(models[0]!);
+    await scheduler.loadNow(models[1]!);
+    expect(vllm.calls).toEqual(["load a@0", "load b@0"]);
+    expect(vllm.placements.get("b")!.share).toBe(0.4);
+    // A third doesn't fit beside them: the least recently used goes.
+    await scheduler.loadNow(models[2]!);
+    expect(vllm.calls).toEqual(["load a@0", "load b@0", "unload a", "load c@0"]);
+    void state;
+  });
+
+  it("splits a model too big for one GPU over two, only when both have room, and frees both", async () => {
+    const { scheduler, gpus, llamacpp } = setup([24, 24]);
+    await scheduler.start([]);
+    const small = textModel("small", 10);
+    scheduler.saveSettings(small, { placement: { mode: "gpus", gpus: [1] } });
+    const holder = hold(scheduler, small);
     await holder.started;
+    const big = textModel("big", 30);
     let ran = false;
-    const second = scheduler.run(b, "chat", async () => void (ran = true));
-    await new Promise((r) => setTimeout(r, 20));
+    const split = scheduler.run(big, "chat", async () => void (ran = true));
+    await new Promise((r) => setTimeout(r, 30));
+    // GPU 0 has room but GPU 1 doesn't while the small model is busy: it waits for both.
     expect(ran).toBe(false);
+    expect(gpus.on("big")).toEqual([]);
     holder.release();
-    await second;
-    expect(vllm.calls).toEqual(["load a@0", "unload a", "load b@0"]);
+    await split;
+    expect(gpus.on("big")).toEqual([0, 1]);
+    expect(llamacpp.placements.get("big")!.split).toEqual([23.5 * GIB, 23.5 * GIB]);
+    expect(llamacpp.calls).toEqual(["load small@1", "unload small", "load big@0+1"]);
+    await scheduler.unloadNow("big");
+    expect(gpus.on("big")).toEqual([]);
   });
 
   it("refuses a model that needs remote code", async () => {
@@ -145,7 +167,7 @@ describe("pause", () => {
     const first = setup([24]);
     await first.scheduler.start([]);
     const pinned = textModel("pinned", 2);
-    await first.scheduler.pin(pinned, 0, true);
+    await first.scheduler.pin(pinned, true);
     await first.scheduler.pause();
     await until(() => first.scheduler.runState === "paused");
 
@@ -191,7 +213,7 @@ describe("pause", () => {
     const { scheduler, gpus } = setup([24]);
     await scheduler.start([]);
     const pinned = textModel("pinned", 2);
-    await scheduler.pin(pinned, 0, true);
+    await scheduler.pin(pinned, true);
     await scheduler.pause();
     await scheduler.resume([pinned]);
     await until(() => gpus.loaded.has("pinned"));
@@ -217,9 +239,20 @@ describe("requests", () => {
   it("refuses a vLLM model too big for its GPU", async () => {
     const { scheduler } = setup([24]);
     await scheduler.start([]);
-    await scheduler.setRole(0, "vllm");
     const err = await scheduler.run(textModel("huge", 30, { server: "vllm" }), "chat", async () => {}).catch((e) => e);
     expect(err.code).toBe("too_big");
+  });
+
+  it("puts nothing on a GPU that is left out or doesn't allow the server", async () => {
+    const { scheduler, gpus } = setup([24, 24]);
+    await scheduler.start([]);
+    await scheduler.setGpu(0, { servers: ["llamacpp"], keepFree: GIB / 2, excluded: true });
+    await scheduler.setGpu(1, { servers: ["images"], keepFree: GIB / 2, excluded: false });
+    const err = await scheduler.run(textModel("m", 4), "chat", async () => {}).catch((e) => e);
+    expect(err.message).toBe("No GPU allows llama.cpp for this model.");
+    await scheduler.setGpu(1, { servers: ["llamacpp"], keepFree: GIB / 2, excluded: false });
+    await scheduler.loadNow(textModel("m", 4));
+    expect(gpus.on("m")).toEqual([1]);
   });
 });
 

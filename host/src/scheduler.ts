@@ -1,31 +1,37 @@
-// Who gets each GPU's memory. Each GPU has a role (a whole GPU for one vLLM
-// model, or shared by llama.cpp models), a queue served chat first, then
-// images, then background work, and its loaded models. Idle models are
-// unloaded least recently used first, never a pinned one or one in use. A
-// model that can't fit fails with a plain reason instead of running out of
-// memory.
+// Who gets each GPU's memory (DESIGN, "The host manages each GPU's VRAM").
+// Each model has a placement: one GPU, several, or Auto. A GPU can hold
+// several models of any mix; a model split over several GPUs counts against
+// each and loads only when all have room. Requests wait in one queue, served
+// chat first, then images, then background work; a request waiting for room
+// holds its GPUs against lower ones. Idle models are unloaded least recently
+// used first, never a pinned one or one in use. A model that can't fit fails
+// with a plain reason instead of running out of memory.
 import { HostError } from "./http.ts";
 import type { Backend } from "./backends.ts";
 import type { Gpu, GpuMonitor } from "./gpus.ts";
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
+import {
+  defaultGpu, neverFits, options, placementKey, serverOf, sizes,
+  type GpuSettings, type ModelSettings, type Option,
+} from "./placement.ts";
 import type { StateFile } from "./state.ts";
 
 export type Priority = "chat" | "image" | "background";
 export const PRIORITIES: Priority[] = ["chat", "image", "background"];
-export type Role = "vllm" | "shared";
 
 const RANK: Record<Priority, number> = { chat: 0, image: 1, background: 2 };
 const GIB = 1024 ** 3;
-/** Kept free on a shared GPU for the servers' own buffers. */
-const HEADROOM = GIB / 2;
 
 export const paused = () => new HostError(503, "paused", "The model host is paused.");
 const restarting = () => new HostError(503, "restarting", "The model host is restarting.");
+const cancelled = () => new HostError(499, "cancelled", "The request was cancelled.");
 
 interface Loaded {
   model: TextModel;
-  vram: number;
+  option: Option;
+  /** Bytes it takes on each of its GPUs: measured, else expected. */
+  vram: Record<number, number>;
   ready: boolean;
   active: number;
   lastUsed: number;
@@ -34,20 +40,14 @@ interface Loaded {
 interface Job {
   model: TextModel;
   priority: Priority;
-  at: number;
   seq: number;
-  resolve: () => void;
+  /** A fixed GPU (ComfyUI's), instead of the model's placement. */
+  gpu?: number;
+  resolve: (l: Loaded) => void;
   reject: (e: Error) => void;
   timer: NodeJS.Timeout;
-}
-
-interface Slot {
-  index: number;
-  loaded: Map<string, Loaded>;
-  queue: Job[];
-  pumping: boolean;
-  /** A load or unload is under way. */
-  changing: boolean;
+  /** The GPUs it is waiting for, once known: for the queue counts and the busy message. */
+  waitingOn: number[];
 }
 
 export interface SchedulerOptions {
@@ -56,19 +56,25 @@ export interface SchedulerOptions {
   state: StateFile;
   log: Logger;
   now?: () => number;
-  /** Longest wait in a queue, per priority, in ms. */
+  /** Longest wait in the queue, per priority, in ms. */
   waitLimits?: Record<Priority, number>;
 }
 
 export type HostRunState = "running" | "pausing" | "paused" | "restarting";
 
+type Plan = { option: Option; evict: Loaded[] } | { wait: number[] } | HostError;
+
 export class Scheduler {
   private readonly o: SchedulerOptions;
   private readonly now: () => number;
   private readonly limits: Record<Priority, number>;
-  private readonly slots = new Map<number, Slot>();
+  private readonly loaded = new Map<string, Loaded>();
+  private queue: Job[] = [];
   private gpus: Gpu[] = [];
   private seq = 0;
+  private pumping = false;
+  private again = false;
+  private changing = 0;
   runState: HostRunState = "running";
   /** What went wrong the last time the host paused, restarted or reset: shown in the status. */
   problems: string[] = [];
@@ -84,18 +90,21 @@ export class Scheduler {
   /** Reads the GPUs, clears the servers, and loads pinned models unless paused. */
   async start(models: TextModel[]): Promise<void> {
     this.gpus = await this.o.monitor.read();
-    for (const g of this.gpus) this.slots.set(g.index, { index: g.index, loaded: new Map(), queue: [], pumping: false, changing: false });
-    await Promise.all([this.o.backends.llamacpp.reset(), this.o.backends.vllm.reset()]).catch(() => {});
+    await Promise.all(Object.values(this.o.backends).map((b) => b?.reset())).catch(() => {});
     if (this.o.state.get().paused) this.runState = "paused";
     else await this.loadPins(models);
   }
 
-  role(gpu: number): Role {
-    return this.o.state.get().roles[gpu] ?? "shared";
+  gpuSettings(index: number): GpuSettings {
+    return this.o.state.get().gpuSettings[index] ?? defaultGpu();
   }
 
-  private pinned(id: string, gpu?: number): boolean {
-    return this.o.state.get().pins.some((p) => p.model === id && (gpu === undefined || p.gpu === gpu));
+  settings(model: TextModel): ModelSettings {
+    return this.o.state.get().models[model.id] ?? { placement: { mode: "auto" } };
+  }
+
+  private pinned(id: string): boolean {
+    return this.o.state.get().pins.includes(id);
   }
 
   private backend(model: TextModel): Backend {
@@ -106,96 +115,65 @@ export class Scheduler {
     return model.server === "vllm" ? this.o.backends.vllm : this.o.backends.llamacpp;
   }
 
-  /**
-   * What the model is expected to take: measured once loaded, else an
-   * estimate of its weights, buffers and a KV cache for its context (up to
-   * the 32k cap, about 2 GB).
-   */
-  private need(model: TextModel): number {
-    const kv = model.kind === "chat" ? (Math.min(model.contextLength ?? 8192, 32768) / 32768) * 2 * GIB : 0;
-    return this.o.state.get().vram[model.id] ?? Math.round(model.size * 1.1 + GIB + kv);
+  private async readGpus(): Promise<Gpu[]> {
+    this.gpus = await this.o.monitor.read().catch(() => this.gpus);
+    return this.gpus;
   }
 
-  private async gpu(index: number): Promise<Gpu> {
-    this.gpus = await this.o.monitor.read();
-    const g = this.gpus.find((x) => x.index === index);
-    if (!g) throw new HostError(503, "unavailable", "That GPU isn't there any more.");
-    return g;
+  /** The ways this job's model may run. */
+  private optionsFor(job: { model: TextModel; gpu?: number }): Option[] {
+    const s = this.settings(job.model);
+    if (job.gpu === undefined) return options(job.model, s, this.gpus, (i) => this.gpuSettings(i));
+    // ComfyUI: its one GPU, which must allow images.
+    const g = this.gpus.find((x) => x.index === job.gpu);
+    const gs = this.gpuSettings(job.gpu);
+    if (!g || gs.excluded || !gs.servers.includes(serverOf(job.model))) return [];
+    return [{ gpus: [g.index], split: null, parallel: null, share: null, need: { [g.index]: sizes(job.model, s).weights + GIB / 2 } }];
   }
 
-  private where(id: string): Slot | undefined {
-    for (const s of this.slots.values()) if (s.loaded.has(id)) return s;
-    return undefined;
-  }
-
-  /** Picks a GPU for a model that isn't loaded. */
-  private place(model: TextModel, prefer?: number): Slot {
-    const pin = this.o.state.get().pins.find((p) => p.model === model.id);
-    const want: Role = model.server === "vllm" ? "vllm" : "shared";
-    const fits = [...this.slots.values()].filter((s) => this.role(s.index) === want);
-    if (!fits.length) {
-      throw new HostError(413, "too_big", want === "vllm" ? "No GPU is set aside for vLLM models." : "No GPU is shared for llama.cpp models.");
-    }
-    const chosen = prefer ?? pin?.gpu;
-    if (chosen !== undefined) {
-      const slot = fits.find((s) => s.index === chosen);
-      if (!slot) throw new HostError(400, "invalid", `GPU ${chosen} doesn't take this kind of model.`);
-      return slot;
-    }
-    if (want === "vllm") return fits.find((s) => [...s.loaded.values()].every((l) => l.active === 0)) ?? fits[0]!;
-    // The shared GPU with the most memory free or freeable now.
-    const room = (s: Slot) => {
-      const g = this.gpus.find((x) => x.index === s.index);
-      const idle = [...s.loaded.values()].filter((l) => !this.pinned(l.model.id) && l.active === 0).reduce((n, l) => n + l.vram, 0);
-      return g ? g.total - g.used + idle : 0;
-    };
-    return fits.reduce((a, b) => (room(b) > room(a) ? b : a));
+  /** What a model takes on each GPU of an option: measured with that placement, else expected. */
+  private needOf(model: TextModel, o: Option): Record<number, number> {
+    return this.o.state.get().vram[`${model.id}@${placementKey(o)}`] ?? o.need;
   }
 
   /**
    * Runs `fn` with the model loaded and counted as in use, after waiting its
-   * turn in the GPU's queue.
+   * turn in the queue.
    */
   async run<T>(model: TextModel, priority: Priority, fn: (url: string) => Promise<T>, gpu?: number, signal?: AbortSignal): Promise<T> {
     if (this.runState === "paused" || this.runState === "pausing") throw paused();
     if (this.runState === "restarting") throw restarting();
     if (model.remoteCode) throw new HostError(403, "refused", "This model needs trust_remote_code, which the host never allows.");
-    const slot = this.where(model.id) ?? this.place(model, gpu);
-    await new Promise<void>((resolve, reject) => {
+    const loaded = await new Promise<Loaded>((resolve, reject) => {
+      if (signal?.aborted) return reject(cancelled());
       const job: Job = {
-        model,
-        priority,
-        at: this.now(),
-        seq: this.seq++,
-        resolve,
-        reject,
+        model, priority, gpu, seq: this.seq++, resolve, reject, waitingOn: [],
         timer: setTimeout(() => {
-          slot.queue = slot.queue.filter((j) => j !== job);
-          reject(new HostError(503, "busy", `The GPU is busy with ${this.busyWith(slot)}.`));
-          void this.pump(slot);
+          this.queue = this.queue.filter((j) => j !== job);
+          reject(new HostError(503, "busy", `The GPU is busy with ${this.busyWith(job.waitingOn)}.`));
+          this.kick();
         }, this.limits[priority]),
       };
       // A request whose client has gone leaves the queue and loads nothing.
       signal?.addEventListener("abort", () => {
-        if (slot.queue.includes(job)) this.finish(slot, job, new HostError(499, "cancelled", "The request was cancelled."));
+        if (this.queue.includes(job)) this.finish(job, cancelled());
       });
-      if (signal?.aborted) return reject(new HostError(499, "cancelled", "The request was cancelled."));
-      slot.queue.push(job);
-      slot.queue.sort((a, b) => RANK[a.priority] - RANK[b.priority] || a.seq - b.seq);
-      void this.pump(slot);
+      this.queue.push(job);
+      this.queue.sort((a, b) => RANK[a.priority] - RANK[b.priority] || a.seq - b.seq);
+      this.kick();
     });
-    const loaded = slot.loaded.get(model.id)!;
     try {
       return await fn(this.backend(model).url(model));
     } finally {
       loaded.active--;
       loaded.lastUsed = this.now();
-      void this.pump(slot);
+      this.kick();
     }
   }
 
-  private busyWith(slot: Slot): string {
-    const kinds = [...slot.loaded.values()].filter((l) => l.active > 0 || !l.ready).map((l) => l.model.kind);
+  private busyWith(gpus: number[]): string {
+    const on = [...this.loaded.values()].filter((l) => (l.active > 0 || !l.ready) && l.option.gpus.some((g) => !gpus.length || gpus.includes(g)));
+    const kinds = on.map((l) => l.model.kind);
     if (kinds.includes("chat")) return "a chat model";
     if (kinds.includes("embedding")) return "an embedding model";
     if (kinds.includes("image")) return "image generation";
@@ -204,191 +182,235 @@ export class Scheduler {
 
   private activeCount(): number {
     let n = 0;
-    for (const s of this.slots.values()) for (const l of s.loaded.values()) n += l.active;
+    for (const l of this.loaded.values()) n += l.active;
     return n;
   }
 
-  /** Starts what can start, in priority order. Only one pump runs per GPU. */
-  private async pump(slot: Slot): Promise<void> {
-    if (slot.pumping) return;
-    slot.pumping = true;
-    try {
-      while (slot.queue.length) {
-        const job = slot.queue[0]!;
-        const loaded = slot.loaded.get(job.model.id);
-        if (loaded?.ready) {
-          this.begin(slot, job, loaded);
-          continue;
-        }
-        // Nothing loads unless the host is running.
-        if (this.runState !== "running") {
-          this.finish(slot, job, this.runState === "restarting" ? restarting() : paused());
-          continue;
-        }
-        // The head needs its model loaded; everything behind it waits.
-        const plan = await this.makeRoom(slot, job.model);
-        if (plan === "wait") break;
-        if (plan instanceof HostError) {
-          this.finish(slot, job, plan);
-          continue;
-        }
-        try {
-          await this.load(slot, job.model);
-        } catch (e) {
-          this.finish(slot, job, e instanceof HostError ? e : new HostError(503, "unavailable", "The model server couldn't load this model."));
-        }
-      }
-    } finally {
-      slot.pumping = false;
+  private kick(): void {
+    void this.pump();
+  }
+
+  /** Starts what can start, in priority order. One pump at a time; it runs again if asked meanwhile. */
+  private async pump(): Promise<void> {
+    if (this.pumping) {
+      this.again = true;
+      return;
     }
-  }
-
-  private begin(slot: Slot, job: Job, loaded: Loaded): void {
-    loaded.active++;
-    loaded.lastUsed = this.now();
-    this.finish(slot, job);
-  }
-
-  private finish(slot: Slot, job: Job, error?: HostError): void {
-    clearTimeout(job.timer);
-    slot.queue = slot.queue.filter((j) => j !== job);
-    if (error) job.reject(error);
-    else job.resolve();
+    this.pumping = true;
+    try {
+      do {
+        this.again = false;
+        await this.readGpus();
+        // GPUs a higher-priority request is waiting for, which lower ones may not take.
+        const held = new Set<number>();
+        for (const job of [...this.queue]) {
+          if (!this.queue.includes(job)) continue;
+          const l = this.loaded.get(job.model.id);
+          if (l?.ready) {
+            this.begin(job, l);
+            continue;
+          }
+          if (l) {
+            job.waitingOn = l.option.gpus;
+            l.option.gpus.forEach((g) => held.add(g));
+            continue;
+          }
+          // Nothing loads unless the host is running.
+          if (this.runState !== "running") {
+            this.finish(job, this.runState === "restarting" ? restarting() : paused());
+            continue;
+          }
+          const plan = this.plan(job, held);
+          if (plan instanceof HostError) {
+            this.finish(job, plan);
+            continue;
+          }
+          if ("wait" in plan) {
+            job.waitingOn = plan.wait;
+            plan.wait.forEach((g) => held.add(g));
+            continue;
+          }
+          try {
+            for (const e of plan.evict) await this.unload(e);
+            await this.load(job.model, plan.option);
+          } catch (e) {
+            this.finish(job, e instanceof HostError ? e : new HostError(503, "unavailable", "The model server couldn't load this model."));
+          }
+          this.again = true; // memory changed: look at the queue again from the top
+          break;
+        }
+      } while (this.again);
+    } finally {
+      this.pumping = false;
+    }
   }
 
   /**
-   * Makes room for `model` on the GPU: unloads idle models, least recently
-   * used first, if that is enough. Returns "wait" when only busy models
-   * stand in the way, or the error when it can never fit.
+   * Where the job's model can load now, unloading idle models least recently
+   * used first; or which GPUs it must wait for; or why it can never fit.
    */
-  private async makeRoom(slot: Slot, model: TextModel): Promise<"ready" | "wait" | HostError> {
-    const all = [...slot.loaded.values()];
-    if (this.role(slot.index) === "vllm") {
-      const g = await this.gpu(slot.index);
-      // vLLM reserves 90% of the GPU; the weights must fit in it with room for a KV cache.
-      if (model.size * 1.1 > g.total * 0.9) {
-        return new HostError(413, "too_big", `This model needs about ${(model.size * 1.1 / GIB).toFixed(1)} GB; vLLM on GPU ${slot.index} has ${(g.total * 0.9 / GIB).toFixed(1)} GB.`);
+  private plan(job: Job, held: Set<number>): Plan {
+    const model = job.model;
+    const opts = this.optionsFor(job);
+    const s = this.settings(model);
+    if (!opts.length) {
+      const what = serverOf(model) === "vllm" ? "vLLM" : serverOf(model) === "images" ? "images" : "llama.cpp";
+      return new HostError(413, "too_big", job.gpu !== undefined ? `GPU ${job.gpu} doesn't allow images.` : `No GPU allows ${what} for this model.`);
+    }
+    const loadedOn = (g: number) => [...this.loaded.values()].filter((l) => l.option.gpus.includes(g));
+    const free = (g: number) => {
+      const gpu = this.gpus.find((x) => x.index === g)!;
+      return gpu.total - gpu.used - this.gpuSettings(g).keepFree;
+    };
+    let waitFor: number[] | null = null;
+    for (const o of opts) {
+      if (o.gpus.some((g) => held.has(g))) continue;
+      const need = this.needOf(model, o);
+      const deficit = (evicted: Set<Loaded>) => o.gpus.some((g) => need[g]! > free(g) + [...evicted].reduce((n, l) => n + (l.vram[g] ?? 0), 0));
+      const idle = [...new Set(o.gpus.flatMap(loadedOn))].filter((l) => l.ready && l.active === 0 && !this.pinned(l.model.id)).sort((a, b) => a.lastUsed - b.lastUsed);
+      const evict = new Set<Loaded>();
+      for (const l of idle) {
+        if (!deficit(evict)) break;
+        evict.add(l);
       }
-      if (all.some((l) => l.active > 0)) return "wait";
-      for (const l of all) await this.unload(slot, l);
-      return "ready";
+      if (!deficit(evict)) return { option: o, evict: [...evict] };
+      // Would it fit once the busy models are done?
+      const all = new Set([...new Set(o.gpus.flatMap(loadedOn))].filter((l) => !this.pinned(l.model.id)));
+      if (!deficit(all) && !waitFor) waitFor = o.gpus;
     }
-    const g = await this.gpu(slot.index);
-    const need = this.need(model);
-    const idle = all.filter((l) => l.active === 0 && l.ready && !this.pinned(l.model.id)).sort((a, b) => a.lastUsed - b.lastUsed);
-    const busy = all.filter((l) => (l.active > 0 || !l.ready) && !this.pinned(l.model.id));
-    const free = g.total - g.used - HEADROOM;
-    const idleRoom = idle.reduce((n, l) => n + l.vram, 0);
-    const busyRoom = busy.reduce((n, l) => n + l.vram, 0);
-    if (need > free + idleRoom + busyRoom) {
-      const pinned = all.filter((l) => this.pinned(l.model.id)).reduce((n, l) => n + l.vram, 0);
-      const gb = (n: number) => (n / GIB).toFixed(1);
-      return new HostError(413, "too_big", `This model needs about ${gb(need)} GB; GPU ${slot.index} has ${gb(g.total)} GB, of which ${gb(pinned)} GB is pinned and ${gb(g.used - all.reduce((n, l) => n + l.vram, 0))} GB is used by other programs.`);
-    }
-    let room = free;
-    for (const l of idle) {
-      if (room >= need) break;
-      await this.unload(slot, l);
-      room += l.vram;
-    }
-    return room >= need ? "ready" : "wait";
+    if (waitFor) return { wait: waitFor };
+    if (opts.every((o) => o.gpus.some((g) => held.has(g)))) return { wait: [] };
+    // It can never fit: say why, for the first way it could have run.
+    const o = opts[0]!;
+    const reason = neverFits(model, s, o, this.gpus, (i) => this.gpuSettings(i));
+    if (reason) return new HostError(413, "too_big", reason);
+    const gb = (n: number) => (n / GIB).toFixed(1);
+    const need = this.needOf(model, o);
+    const g = o.gpus.find((i) => need[i]! > free(i) + loadedOn(i).filter((l) => !this.pinned(l.model.id)).reduce((n, l) => n + (l.vram[i] ?? 0), 0)) ?? o.gpus[0]!;
+    const gpu = this.gpus.find((x) => x.index === g)!;
+    const pinned = loadedOn(g).filter((l) => this.pinned(l.model.id)).reduce((n, l) => n + (l.vram[g] ?? 0), 0);
+    const others = gpu.used - loadedOn(g).reduce((n, l) => n + (l.vram[g] ?? 0), 0);
+    return new HostError(413, "too_big", `This model needs about ${gb(need[g]!)} GB on GPU ${g}; it has ${gb(gpu.total)} GB, of which ${gb(pinned)} GB is pinned and ${gb(Math.max(others, 0))} GB is used by other programs.`);
   }
 
-  private async load(slot: Slot, model: TextModel): Promise<void> {
-    const before = (await this.gpu(slot.index)).used;
-    const entry: Loaded = { model, vram: this.need(model), ready: false, active: 0, lastUsed: this.now() };
-    slot.loaded.set(model.id, entry);
-    slot.changing = true;
+  private begin(job: Job, l: Loaded): void {
+    l.active++;
+    l.lastUsed = this.now();
+    clearTimeout(job.timer);
+    this.queue = this.queue.filter((j) => j !== job);
+    job.resolve(l);
+  }
+
+  private finish(job: Job, error: HostError): void {
+    clearTimeout(job.timer);
+    this.queue = this.queue.filter((j) => j !== job);
+    job.reject(error);
+  }
+
+  private async load(model: TextModel, o: Option): Promise<void> {
+    const before = Object.fromEntries((await this.readGpus()).map((g) => [g.index, g.used]));
+    const key = `${model.id}@${placementKey(o)}`;
+    const entry: Loaded = { model, option: o, vram: { ...this.needOf(model, o) }, ready: false, active: 0, lastUsed: this.now() };
+    this.loaded.set(model.id, entry);
+    this.changing++;
     try {
-      await this.backend(model).load(model, slot.index);
+      await this.backend(model).load(model, o, this.settings(model));
     } catch (e) {
-      slot.loaded.delete(model.id);
+      this.loaded.delete(model.id);
       throw e;
     } finally {
-      slot.changing = false;
+      this.changing--;
     }
     entry.ready = true;
-    if (this.o.state.get().vram[model.id] === undefined && this.role(slot.index) === "shared") {
-      const measured = (await this.gpu(slot.index)).used - before;
-      if (measured > 0) {
+    // Measured per GPU on the first load with this placement. vLLM's share is what it reserves.
+    if (this.o.state.get().vram[key] === undefined && model.server !== "vllm") {
+      const after = await this.readGpus();
+      const measured: Record<number, number> = {};
+      for (const g of o.gpus) measured[g] = (after.find((x) => x.index === g)?.used ?? 0) - (before[g] ?? 0);
+      if (Object.values(measured).every((n) => n > 0)) {
         entry.vram = measured;
         this.o.state.update((s) => {
-          s.vram[model.id] = measured;
+          s.vram[key] = measured;
         });
       }
     }
-    this.o.log("loaded", { model: model.id, gpu: slot.index, vram: entry.vram });
+    this.o.log("loaded", { model: model.id, gpus: o.gpus.join(",") });
   }
 
-  private async unload(slot: Slot, l: Loaded): Promise<void> {
-    slot.changing = true;
+  private async unload(l: Loaded): Promise<void> {
+    this.changing++;
     try {
       await this.backend(l.model).unload(l.model);
     } finally {
-      slot.changing = false;
+      this.changing--;
     }
-    slot.loaded.delete(l.model.id);
-    this.o.log("unloaded", { model: l.model.id, gpu: slot.index });
+    this.loaded.delete(l.model.id);
+    this.o.log("unloaded", { model: l.model.id });
   }
 
   /** Loads a model now (the load API), queued like a chat request. */
-  async loadNow(model: TextModel, gpu?: number): Promise<void> {
-    await this.run(model, "chat", async () => {}, gpu);
+  async loadNow(model: TextModel): Promise<void> {
+    await this.run(model, "chat", async () => {});
   }
 
   async unloadNow(id: string): Promise<void> {
-    const slot = this.where(id);
-    const l = slot?.loaded.get(id);
-    if (!slot || !l) return;
+    const l = this.loaded.get(id);
+    if (!l) return;
     if (l.active > 0 || !l.ready) throw new HostError(409, "in_use", "The model is in use.");
-    await this.unload(slot, l);
+    await this.unload(l);
   }
 
-  async pin(model: TextModel, gpu: number, pinned: boolean): Promise<void> {
-    if (!pinned) {
-      this.o.state.update((s) => {
-        s.pins = s.pins.filter((p) => p.model !== model.id);
-      });
-      return;
-    }
-    if (model.server !== "llamacpp" || this.role(gpu) !== "shared") throw new HostError(400, "invalid", "Only llama.cpp models on a shared GPU can be pinned.");
-    const at = this.where(model.id);
-    if (at && at.index !== gpu) await this.unloadNow(model.id);
+  /** Applies a model's saved settings now: unloads it if idle and loads it again. */
+  async reload(model: TextModel): Promise<void> {
+    if (!this.loaded.has(model.id)) return;
+    await this.unloadNow(model.id);
+    await this.loadNow(model);
+  }
+
+  async pin(model: TextModel, pinned: boolean): Promise<void> {
     this.o.state.update((s) => {
-      s.pins = s.pins.filter((p) => p.model !== model.id);
-      s.pins.push({ model: model.id, gpu });
+      s.pins = s.pins.filter((p) => p !== model.id);
+      if (pinned) s.pins.push(model.id);
     });
-    if (this.runState === "running") await this.loadNow(model, gpu);
+    if (pinned && this.runState === "running") await this.loadNow(model);
   }
 
   private async loadPins(models: TextModel[]): Promise<void> {
-    for (const p of this.o.state.get().pins) {
-      const model = models.find((m) => m.id === p.model);
-      if (!model || !this.slots.has(p.gpu)) continue;
-      await this.loadNow(model, p.gpu).catch((e) => this.o.log("pin not loaded", { model: p.model, code: e instanceof HostError ? e.code : "error" }));
+    for (const id of this.o.state.get().pins) {
+      const model = models.find((m) => m.id === id);
+      if (!model) continue;
+      await this.loadNow(model).catch((e) => this.o.log("pin not loaded", { model: id, code: e instanceof HostError ? e.code : "error" }));
     }
   }
 
-  async setRole(gpu: number, role: Role): Promise<void> {
-    const slot = this.slots.get(gpu);
-    if (!slot) throw new HostError(404, "not_found", "No such GPU.");
-    if ([...slot.loaded.values()].some((l) => l.active > 0 || !l.ready)) throw new HostError(409, "in_use", "The GPU is in use.");
-    for (const l of [...slot.loaded.values()]) await this.unload(slot, l);
+  /** Changes a GPU's settings; models it may no longer hold are unloaded first. */
+  async setGpu(index: number, next: GpuSettings): Promise<void> {
+    if (!this.gpus.some((g) => g.index === index)) throw new HostError(404, "not_found", "No such GPU.");
+    const leaving = [...this.loaded.values()].filter((l) => l.option.gpus.includes(index) && (next.excluded || !next.servers.includes(serverOf(l.model))));
+    if (leaving.some((l) => l.active > 0 || !l.ready)) throw new HostError(409, "in_use", "A model on that GPU is in use.");
+    for (const l of leaving) await this.unload(l);
     this.o.state.update((s) => {
-      s.roles[gpu] = role;
-      s.pins = s.pins.filter((p) => p.gpu !== gpu);
+      s.gpuSettings[index] = next;
     });
   }
 
+  saveSettings(model: TextModel, s: ModelSettings): void {
+    this.o.state.update((st) => {
+      st.models[model.id] = s;
+    });
+  }
+
+  get knownGpus(): Gpu[] {
+    return this.gpus;
+  }
+
   private rejectQueued(error: () => HostError): void {
-    for (const slot of this.slots.values()) for (const job of [...slot.queue]) this.finish(slot, job, error());
+    for (const job of [...this.queue]) this.finish(job, error());
   }
 
   /** Resolves when nothing is running, loading or unloading. */
   private async idle(): Promise<void> {
-    while (this.activeCount() > 0 || [...this.slots.values()].some((s) => s.changing || s.pumping)) {
-      await new Promise((r) => setTimeout(r, 50));
-    }
+    while (this.activeCount() > 0 || this.changing > 0 || this.pumping) await new Promise((r) => setTimeout(r, 50));
   }
 
   private serial(step: () => Promise<void>): Promise<void> {
@@ -400,10 +422,11 @@ export class Scheduler {
   /** Unloads every model on every GPU, noting what couldn't be. */
   private async unloadAll(): Promise<void> {
     this.problems = [];
-    for (const slot of this.slots.values()) {
-      for (const l of [...slot.loaded.values()]) {
-        await this.unload(slot, l).catch(() => this.problems.push(`GPU ${slot.index}: couldn't unload ${l.model.id}; it may still hold memory.`));
-      }
+    for (const l of [...this.loaded.values()]) {
+      await this.unload(l).catch(() => {
+        this.loaded.delete(l.model.id);
+        this.problems.push(`GPU ${l.option.gpus.join(" and ")}: couldn't unload ${l.model.id}; it may still hold memory.`);
+      });
     }
     for (const [name, b] of Object.entries(this.o.backends)) {
       await b?.reset().catch((e: Error) => this.problems.push(`${name}: ${e.message}`));
@@ -411,9 +434,9 @@ export class Scheduler {
   }
 
   /**
-   * Refuses new work at once, lets the running jobs finish, then unloads
-   * every model. Answers right away; the state is "pausing" until then.
-   * Survives a restart.
+   * Refuses new work at once, lets the running jobs and loads finish, then
+   * unloads every model. Answers right away; the state is "pausing" until
+   * then. Survives a restart.
    */
   async pause(): Promise<void> {
     if (this.runState === "paused" || this.runState === "pausing") return;
@@ -456,26 +479,28 @@ export class Scheduler {
   }
 
   async status(): Promise<object[]> {
-    this.gpus = await this.o.monitor.read().catch(() => this.gpus);
+    await this.readGpus();
     return this.gpus.map((g) => {
-      const slot = this.slots.get(g.index);
       const queue = { chat: 0, image: 0, background: 0 };
-      for (const j of slot?.queue ?? []) queue[j.priority]++;
+      for (const j of this.queue) if (j.waitingOn.includes(g.index)) queue[j.priority]++;
       return {
         index: g.index,
         name: g.name,
         vendor: g.vendor,
-        role: this.role(g.index),
+        settings: this.gpuSettings(g.index),
         vram: { total: g.total, used: g.used },
-        models: [...(slot?.loaded.values() ?? [])].map((l) => ({
-          id: l.model.id,
-          kind: l.model.kind,
-          state: l.ready ? "loaded" : "loading",
-          pinned: this.pinned(l.model.id),
-          busy: l.active > 0,
-          vram: this.o.state.get().vram[l.model.id] ?? null,
-          lastUsed: new Date(l.lastUsed).toISOString(),
-        })),
+        models: [...this.loaded.values()]
+          .filter((l) => l.option.gpus.includes(g.index))
+          .map((l) => ({
+            id: l.model.id,
+            kind: l.model.kind,
+            state: l.ready ? "loaded" : "loading",
+            gpus: l.option.gpus,
+            pinned: this.pinned(l.model.id),
+            busy: l.active > 0,
+            vram: l.vram[g.index] ?? null,
+            lastUsed: new Date(l.lastUsed).toISOString(),
+          })),
         queue,
       };
     });
@@ -483,17 +508,14 @@ export class Scheduler {
 
   /** Unloads models of a kind idle for longer than `ms` (ComfyUI keeps its parts in memory after a job). */
   async unloadIdle(kind: TextModel["kind"], ms: number): Promise<void> {
-    for (const slot of this.slots.values()) {
-      for (const l of [...slot.loaded.values()]) {
-        if (l.model.kind === kind && l.ready && l.active === 0 && this.now() - l.lastUsed > ms) await this.unload(slot, l).catch(() => {});
-      }
+    for (const l of [...this.loaded.values()]) {
+      if (l.model.kind === kind && l.ready && l.active === 0 && this.now() - l.lastUsed > ms) await this.unload(l).catch(() => {});
     }
   }
 
   /** Where a model is, for the library listing. */
-  placement(id: string): { state: "loading" | "loaded"; gpu: number } | null {
-    const slot = this.where(id);
-    const l = slot?.loaded.get(id);
-    return slot && l ? { state: l.ready ? "loaded" : "loading", gpu: slot.index } : null;
+  placement(id: string): { state: "loading" | "loaded"; gpus: number[] } | null {
+    const l = this.loaded.get(id);
+    return l ? { state: l.ready ? "loaded" : "loading", gpus: l.option.gpus } : null;
   }
 }

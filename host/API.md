@@ -52,8 +52,8 @@ A queued request waits at most 120 seconds (`chat`), 300 (`image`) or 900
 ## OpenAI-compatible: `/v1`
 
 Only for a paired client: the dashboard gets `refused`. Passed to the
-server holding the model (llama.cpp for GGUF on a shared GPU, vLLM on a vLLM
-GPU), loading it first if needed. Request and response bodies are passed
+server holding the model (llama.cpp for GGUF, vLLM for a safetensors
+folder), loading it first where its placement says. Request and response bodies are passed
 through unchanged, including streaming (`text/event-stream`) and tool calls.
 A client that disconnects cancels its request, queued or running; an answer
 the model server cuts short is cut short too.
@@ -78,12 +78,13 @@ the model server cuts short is cut short too.
     "index": 0,
     "name": "NVIDIA GeForce RTX 3090",
     "vendor": "nvidia",
-    "role": "shared",
+    "settings": { "servers": ["llamacpp", "vllm", "images"], "keepFree": 536870912, "excluded": false },
     "vram": { "total": 25769803776, "used": 9663676416 },
     "models": [{
       "id": "lyrica/huggingface/Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf",
       "kind": "embedding",
       "state": "loaded",
+      "gpus": [0],
       "pinned": true,
       "busy": false,
       "vram": 805306368,
@@ -102,10 +103,15 @@ the model server cuts short is cut short too.
 - `problems`: plain sentences about what the last pause or restart couldn't
   do, such as "GPU 0: couldn't unload … it may still hold memory." Empty
   when all went well.
-- `role`: `vllm` (one vLLM model holds the GPU) or `shared` (llama.cpp
-  models and ComfyUI, loaded on demand).
-- A model's `kind` is `chat`, `embedding` or `image`; `state` is `loading`
-  or `loaded`; `vram` is measured on its first load (`null` until then).
+- `settings`: what the GPU may run (`llamacpp`, `vllm`, `images`), the
+  bytes it always keeps free, and whether it is left out entirely (see
+  GPUs below).
+- A GPU lists every model on it, including one split over several GPUs
+  (`gpus` names them all). A model's `kind` is `chat`, `embedding` or
+  `image`; `state` is `loading` or `loaded`; `vram` is what it takes on
+  this GPU, measured on its first load with this placement.
+- `queue` counts the requests waiting for this GPU; a request for a split
+  model waits for all of its GPUs.
 - `modelsFolder.path` is the folder on the host machine.
 
 ### Models
@@ -128,11 +134,13 @@ the model server cuts short is cut short too.
       "card": { "baseModel": ["Qwen/Qwen3-8B"], "baseModelRelation": "quantized" }
     },
     "capabilities": { "tools": true, "vision": false, "embedding": false, "reasoning": ["off", "on"] },
-    "contextLength": 40960,
+    "contextLength": 32768,
+    "maxContextLength": 40960,
     "state": "unloaded",
-    "gpu": null,
+    "gpus": null,
+    "placement": { "mode": "auto" },
     "pinned": false,
-    "vram": null
+    "vram": { "0": { "0": 7516192768 } }
   }
   ```
 
@@ -145,25 +153,89 @@ the model server cuts short is cut short too.
   - `capabilities` are what the host can tell from the file (the chat
     template's tool and thinking support, a vision projector next to it,
     pooling for embeddings). `reasoning` is `null` or the levels it takes.
-  - `state`: `unloaded`, `loading` or `loaded`.
+  - `contextLength` is the context it is served with (its setting, else
+    32768, never more than `maxContextLength`, what it was trained for).
+    Lyrica plans her context by it.
+  - `state`: `unloaded`, `loading` or `loaded`; `gpus` lists where it is
+    loaded.
+  - `vram`: bytes measured on each GPU, per placement it has been loaded
+    with (keyed like `0`, `0+1:1,1` or `2@0.4`).
 - `POST /host/v1/scan`: reads the models folder again (text models and image
   parts). Returns `{ "models": 12, "parts": 30, "proposals": 2 }`. The host
   also scans at start and after each download.
-- `POST /host/v1/models/load` `{ "model": "<id>", "gpu": 0 }`: loads it
-  (`gpu` optional; the host picks otherwise). Waits until loaded. Errors:
-  `too_big`, `busy`, `paused`, `refused` (a vLLM model that would need
-  `trust_remote_code`, or a GGUF model on a vLLM GPU).
-- `POST /host/v1/models/unload` `{ "model": "<id>" }`: `in_use` while a
-  request is running on it.
-- `POST /host/v1/models/pin` `{ "model": "<id>", "gpu": 0, "pinned": true }`:
-  a pinned model is loaded now and kept loaded; it is never unloaded to make
-  room. Only on a `shared` GPU. Pins survive a restart.
+- `POST /host/v1/models/load` `{ "model": "<id>" }`: loads it where its
+  placement says, and waits until it is loaded. Errors: `too_big`, `busy`,
+  `paused`, `refused` (a vLLM model that would need `trust_remote_code`).
+- `POST /host/v1/models/unload` `{ "model": "<id>" }`: unloads it from all
+  its GPUs; `in_use` while a request is running on it.
+- `POST /host/v1/models/reload` `{ "model": "<id>" }`: applies its saved
+  settings now, by unloading and loading it again; `in_use` while busy.
+  Nothing happens to a model that isn't loaded.
+- `POST /host/v1/models/pin` `{ "model": "<id>", "pinned": true }`: a pinned
+  model is loaded now, where its placement says, and kept loaded; it is
+  never unloaded to make room. Pins survive a restart.
+
+### Placement and serving settings
+
+Each model has a placement and serving settings, kept in the host's data
+volume. They apply at its next load, or at once with Reload.
+
+- `GET /host/v1/models/settings?model=<id>` answers
+  `{ "model": "<id>", "settings": { ... }, "contextLength": 32768 }`. A model
+  never set has `{ "placement": { "mode": "auto" } }`.
+- `PUT /host/v1/models/settings` `{ "model": "<id>", "settings": { ... } }`
+  saves them, whole, and answers with the model's entry. A placement that
+  can't work is refused (`invalid`, or `too_big` when it's about memory)
+  with the reason, such as "GPU 2 doesn't allow vLLM.", "This model needs
+  about 41.2 GB on GPU 0, which has 23.5 GB to give." or "A context of
+  131072 tokens needs about 9.0 GB more than GPU 0 has; lower the context
+  length."
+
+`settings`:
+
+```json
+{
+  "placement": { "mode": "gpus", "gpus": [0, 1], "split": [3, 1] },
+  "contextLength": 32768,
+  "kvCacheType": "q8_0", "flashAttention": "auto", "gpuLayers": 999,
+  "parallel": 2, "batchSize": 2048,
+  "chatTemplate": "{% for message in messages %}...{% endfor %}"
+}
+```
+
+- `placement`:
+  - `{ "mode": "auto" }`, the default: one GPU that has room (the largest
+    first), else split over every GPU that allows its server.
+  - `{ "mode": "gpus", "gpus": [...] }`: these GPUs. For llama.cpp, several
+    GPUs split by `split` ratios (default: each GPU's memory less what it
+    keeps free). For vLLM, `"parallel": "tensor"` (matching GPUs, two, four
+    or eight) or `"pipeline"`; by default tensor where the GPUs match, else
+    pipeline.
+- `contextLength`: 512 up to what the model was trained for; 32768 by
+  default.
+- llama.cpp only: `kvCacheType` (`f16`, `q8_0`, `q4_0`), `flashAttention`
+  (`auto`, `on`, `off`), `gpuLayers` (0 to 999), `parallel` (requests
+  served at once, 1 to 64).
+- vLLM only: `memoryShare` (0.05 to 0.95 of each of its GPUs; by default
+  what the model needs, in steps of 5%, so several vLLM models can share a
+  GPU), `maxSeqs` (1 to 1024), `dtype` (`auto`, `bfloat16`, `float16`).
+- Both: `batchSize` (32 to 65536: llama.cpp's batch size, vLLM's batched
+  tokens), `chatTemplate` (a Jinja template, at most 64 kB, used instead of
+  the model's own).
+- A setting for the other server, or one not listed, is `invalid`.
 
 ### GPUs
 
-- `PUT /host/v1/gpus/<index>` `{ "role": "vllm" | "shared" }`: changing a
-  role unloads what's on the GPU first (`in_use` while a request runs on it)
-  and drops its pins.
+- `PUT /host/v1/gpus/<index>`
+  `{ "servers": ["llamacpp", "vllm", "images"], "keepFree": 536870912, "excluded": false }`:
+  what the GPU may run, the bytes it always keeps free, or that it is left
+  out entirely (a GPU kept for the display, for example). Every field is
+  optional; the defaults are all servers, 512 MiB, and not left out.
+  Models it may no longer hold are unloaded first (`in_use` while a request
+  runs on one). Answers `{ "settings": { ... } }`.
+- A GPU can hold several models of any mix. A model split over several GPUs
+  loads only when each has room, counts against each, and unloads from all
+  at once.
 
 ### Pause, resume, restart
 

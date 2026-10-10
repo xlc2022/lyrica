@@ -5,6 +5,7 @@ import type { RecordEntry } from "./downloads.ts";
 import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./http.ts";
 import { scanTextModels, type TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
+import { SERVERS, contextOf, validate, type Server } from "./placement.ts";
 import { PRIORITIES, type Priority, type Scheduler } from "./scheduler.ts";
 import type { StateFile, Usage } from "./state.ts";
 
@@ -148,20 +149,38 @@ export class Runtime {
       return true;
     }
     const s = this.scheduler;
+    if (pathname === "/host/v1/models/settings" && method === "GET") {
+      const model = this.find(new URL(req.url ?? "/", "http://host").searchParams.get("model"));
+      sendJson(res, 200, { model: model.id, settings: s.settings(model), contextLength: contextOf(model, s.settings(model)) });
+      return true;
+    }
+    if (pathname === "/host/v1/models/settings" && method === "PUT") {
+      const body = await readJson(req);
+      onlyFields(body, ["model", "settings"]);
+      const model = this.find(body.model);
+      if (!body.settings || typeof body.settings !== "object") throw invalid("settings is needed.");
+      // Refused when saved if the placement can't work, with the reason. Applies at the next load, or on Reload.
+      const saved = validate(model, body.settings as Record<string, unknown>, s.knownGpus, (i) => s.gpuSettings(i));
+      s.saveSettings(model, saved);
+      sendJson(res, 200, this.describe(model));
+      return true;
+    }
     if (method === "POST" && pathname.startsWith("/host/v1/models/")) {
       const body = await readJson(req);
       const action = pathname.slice("/host/v1/models/".length);
       if (action === "load") {
-        onlyFields(body, ["model", "gpu"]);
-        if (body.gpu !== undefined && typeof body.gpu !== "number") throw invalid("gpu must be a number.");
-        await s.loadNow(this.find(body.model), body.gpu as number | undefined);
+        onlyFields(body, ["model"]);
+        await s.loadNow(this.find(body.model));
       } else if (action === "unload") {
         onlyFields(body, ["model"]);
         await s.unloadNow(this.find(body.model).id);
+      } else if (action === "reload") {
+        onlyFields(body, ["model"]);
+        await s.reload(this.find(body.model));
       } else if (action === "pin") {
-        onlyFields(body, ["model", "gpu", "pinned"]);
-        if (typeof body.gpu !== "number" || typeof body.pinned !== "boolean") throw invalid("gpu and pinned are needed.");
-        await s.pin(this.find(body.model), body.gpu, body.pinned);
+        onlyFields(body, ["model", "pinned"]);
+        if (typeof body.pinned !== "boolean") throw invalid("pinned is needed.");
+        await s.pin(this.find(body.model), body.pinned);
       } else throw notFound();
       sendJson(res, 200, this.describe(this.find(body.model)));
       return true;
@@ -169,10 +188,14 @@ export class Runtime {
     const gpu = pathname.match(/^\/host\/v1\/gpus\/(\d+)$/);
     if (gpu && method === "PUT") {
       const body = await readJson(req);
-      onlyFields(body, ["role"]);
-      if (body.role !== "vllm" && body.role !== "shared") throw invalid("role must be vllm or shared.");
-      await s.setRole(Number(gpu[1]), body.role);
-      sendJson(res, 200, {});
+      onlyFields(body, ["servers", "keepFree", "excluded"]);
+      const servers = body.servers ?? SERVERS;
+      if (!Array.isArray(servers) || servers.some((x) => !SERVERS.includes(x as Server))) throw invalid(`servers lists any of ${SERVERS.join(", ")}.`);
+      const keepFree = body.keepFree ?? 512 * 1024 * 1024;
+      if (typeof keepFree !== "number" || keepFree < 0) throw invalid("keepFree is bytes, 0 or more.");
+      if (body.excluded !== undefined && typeof body.excluded !== "boolean") throw invalid("excluded is true or false.");
+      await s.setGpu(Number(gpu[1]), { servers: [...new Set(servers as Server[])], keepFree, excluded: body.excluded === true });
+      sendJson(res, 200, { settings: s.gpuSettings(Number(gpu[1])) });
       return true;
     }
     if (method === "POST" && ["/host/v1/pause", "/host/v1/resume", "/host/v1/restart"].includes(pathname)) {
@@ -200,11 +223,14 @@ export class Runtime {
       downloaded: !!(entry ?? folder),
       identity: { ...m.identity, card: (entry ?? folder)?.card ?? null },
       capabilities: m.capabilities,
-      contextLength: m.contextLength,
+      // The context it is served with; maxContextLength is what it was trained for.
+      contextLength: m.kind === "image" ? null : contextOf(m, this.scheduler.settings(m)),
+      maxContextLength: m.contextLength,
       state: at?.state ?? "unloaded",
-      gpu: at?.gpu ?? null,
-      pinned: s.pins.some((p) => p.model === m.id),
-      vram: s.vram[m.id] ?? null,
+      gpus: at?.gpus ?? null,
+      placement: this.scheduler.settings(m).placement,
+      pinned: s.pins.includes(m.id),
+      vram: Object.fromEntries(Object.entries(s.vram).filter(([k]) => k.startsWith(`${m.id}@`)).map(([k, v]) => [k.slice(m.id.length + 1), v])),
     };
   }
 

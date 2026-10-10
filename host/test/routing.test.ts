@@ -121,7 +121,7 @@ describe("routing /v1 to the model servers", () => {
     expect(plain.body.choices[0].message.content).toBe(`echo: ${MARKER}`);
 
     // llama.cpp got a preset for the model on GPU 0.
-    expect(readFileSync(join(s.serving, "llamacpp.ini"), "utf8")).toContain(`[${id}]\nmodel = /models/${id}\ndevice = CUDA0\nc = 32768`);
+    expect(readFileSync(join(s.serving, "llamacpp.ini"), "utf8")).toContain(`[${id}]\nmodel = /models/${id}\ndevice = CUDA0\nsplit-mode = none\nc = 32768\nn-gpu-layers = 999\nflash-attn = auto`);
     const status = await call({ port: s.tls, path: "/host/v1/status", identity: s.me, pinned });
     expect(status.body.gpus[0].models[0]).toMatchObject({ id, state: "loaded", busy: false });
 
@@ -191,6 +191,25 @@ describe("routing /v1 to the model servers", () => {
       r.end();
     });
     expect(status).toBe(403);
+  });
+
+  it("saves a model's settings, refuses an impossible placement, and applies them on Reload", async () => {
+    const s = await stack();
+    const pinned = await paired(s);
+    const id = "lyrica/huggingface/Qwen/Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf";
+    const put = (settings: object) => call({ port: s.tls, path: "/host/v1/models/settings", method: "PUT", identity: s.me, pinned, body: { model: id, settings } });
+    expect((await put({ placement: { mode: "gpus", gpus: [3] } })).body.error.message).toBe("There's no GPU 3.");
+    const saved = await put({ placement: { mode: "gpus", gpus: [0] }, contextLength: 16384, kvCacheType: "q8_0", parallel: 2 });
+    expect(saved.body).toMatchObject({ contextLength: 16384, maxContextLength: 40960, placement: { mode: "gpus", gpus: [0] } });
+    const got = await call({ port: s.tls, path: `/host/v1/models/settings?model=${encodeURIComponent(id)}`, identity: s.me, pinned });
+    expect(got.body.settings).toEqual({ placement: { mode: "gpus", gpus: [0] }, contextLength: 16384, kvCacheType: "q8_0", parallel: 2 });
+    await call({ port: s.tls, path: "/host/v1/models/load", identity: s.me, pinned, body: { model: id } });
+    await put({ placement: { mode: "gpus", gpus: [0] }, contextLength: 8192 });
+    // Saved settings wait for the next load; Reload applies them now.
+    expect(readFileSync(join(s.serving, "llamacpp.ini"), "utf8")).toContain("c = 16384");
+    await call({ port: s.tls, path: "/host/v1/models/reload", identity: s.me, pinned, body: { model: id } });
+    expect(readFileSync(join(s.serving, "llamacpp.ini"), "utf8")).toContain("c = 8192");
+    expect(readFileSync(join(s.serving, "llamacpp.ini"), "utf8")).not.toContain("cache-type-k");
   });
 
   it("refuses a model that would need remote code", async () => {

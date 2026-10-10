@@ -7,24 +7,30 @@ import type { Backend } from "../src/backends.ts";
 import type { Gpu, GpuMonitor } from "../src/gpus.ts";
 import { makeIdentity } from "../src/identity.ts";
 import type { TextModel } from "../src/library.ts";
+import type { Option } from "../src/placement.ts";
 
 export const GIB = 1024 ** 3;
 
-/** GPUs whose used memory is a baseline plus what the fake backend loaded. */
+/** GPUs whose used memory is a baseline plus what the fake backend loaded on each. */
 export class FakeGpus implements GpuMonitor {
   readonly gpus: Gpu[];
-  readonly loaded = new Map<string, { gpu: number; bytes: number }>();
+  readonly loaded = new Map<string, Record<number, number>>();
 
-  constructor(totals: number[], baseline = GIB) {
-    this.gpus = totals.map((t, index) => ({ index, name: `Fake GPU ${index}`, vendor: "nvidia", total: t * GIB, used: baseline }));
+  constructor(totals: number[], baseline = GIB, names?: string[]) {
+    this.gpus = totals.map((t, index) => ({ index, name: names?.[index] ?? `Fake GPU ${index}`, vendor: "nvidia", total: t * GIB, used: baseline }));
   }
 
   async read(): Promise<Gpu[]> {
-    return this.gpus.map((g) => ({ ...g, used: g.used + [...this.loaded.values()].filter((l) => l.gpu === g.index).reduce((n, l) => n + l.bytes, 0) }));
+    return this.gpus.map((g) => ({ ...g, used: g.used + [...this.loaded.values()].reduce((n, l) => n + (l[g.index] ?? 0), 0) }));
+  }
+
+  /** The GPUs a model is on. */
+  on(id: string): number[] {
+    return Object.keys(this.loaded.get(id) ?? {}).map(Number);
   }
 }
 
-/** A backend that "loads" a model by taking its size (plus 10%) on the fake GPU. */
+/** A backend that "loads" a model by taking what its placement expects on each of its GPUs. */
 export class FakeBackend implements Backend {
   readonly calls: string[] = [];
   readonly gpus: FakeGpus;
@@ -35,10 +41,13 @@ export class FakeBackend implements Backend {
     this.gpus = gpus;
   }
 
-  async load(model: TextModel, gpu: number) {
-    this.calls.push(`load ${model.id}@${gpu}`);
+  readonly placements = new Map<string, Option>();
+
+  async load(model: TextModel, at: Option) {
+    this.calls.push(`load ${model.id}@${at.gpus.join("+")}`);
     await new Promise((r) => setTimeout(r, this.loadMs));
-    this.gpus.loaded.set(model.id, { gpu, bytes: Math.round(model.size * 1.1) });
+    this.placements.set(model.id, at);
+    this.gpus.loaded.set(model.id, { ...at.need });
   }
   async unload(model: TextModel) {
     this.calls.push(`unload ${model.id}`);
@@ -68,6 +77,7 @@ export function textModel(id: string, gb: number, over: Partial<TextModel> = {})
     identity: { basename: id, sizeLabel: null, finetune: null, baseModels: [] },
     capabilities: { tools: true, vision: false, embedding: false, reasoning: null },
     contextLength: 8192,
+    kvPerToken: null,
     mmproj: null,
     remoteCode: false,
     ...over,
