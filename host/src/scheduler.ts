@@ -52,7 +52,7 @@ interface Slot {
 
 export interface SchedulerOptions {
   monitor: GpuMonitor;
-  backends: { llamacpp: Backend; vllm: Backend };
+  backends: { llamacpp: Backend; vllm: Backend; comfyui?: Backend };
   state: StateFile;
   log: Logger;
   now?: () => number;
@@ -96,6 +96,10 @@ export class Scheduler {
   }
 
   private backend(model: TextModel): Backend {
+    if (model.server === "comfyui") {
+      if (!this.o.backends.comfyui) throw new HostError(503, "unavailable", "This host has no image server.");
+      return this.o.backends.comfyui;
+    }
     return model.server === "vllm" ? this.o.backends.vllm : this.o.backends.llamacpp;
   }
 
@@ -182,6 +186,7 @@ export class Scheduler {
     const kinds = [...slot.loaded.values()].filter((l) => l.active > 0 || !l.ready).map((l) => l.model.kind);
     if (kinds.includes("chat")) return "a chat model";
     if (kinds.includes("embedding")) return "an embedding model";
+    if (kinds.includes("image")) return "image generation";
     return "other work";
   }
 
@@ -372,7 +377,7 @@ export class Scheduler {
     void this.idle().then(async () => {
       if (this.runState !== "pausing") return; // resumed meanwhile
       for (const slot of this.slots.values()) {
-        for (const l of [...slot.loaded.values()]) if (l.model.server === "llamacpp") await this.unload(slot, l).catch(() => {});
+        for (const l of [...slot.loaded.values()]) if (l.model.server !== "vllm") await this.unload(slot, l).catch(() => {});
       }
       await this.o.backends.vllm.sleep().catch(() => {});
       if (this.runState === "pausing") this.runState = "paused";
@@ -399,7 +404,7 @@ export class Scheduler {
     this.rejectQueued(restarting);
     await this.idle();
     for (const slot of this.slots.values()) slot.loaded.clear();
-    await Promise.all([this.o.backends.llamacpp.reset(), this.o.backends.vllm.reset()]).catch(() => {});
+    await Promise.all([this.o.backends.llamacpp.reset(), this.o.backends.vllm.reset(), this.o.backends.comfyui?.reset()]).catch(() => {});
     this.runState = was === "running" ? "running" : "paused";
     if (this.runState === "running") await this.loadPins(models);
   }
@@ -428,6 +433,15 @@ export class Scheduler {
         queue,
       };
     });
+  }
+
+  /** Unloads models of a kind idle for longer than `ms` (ComfyUI keeps its parts in memory after a job). */
+  async unloadIdle(kind: TextModel["kind"], ms: number): Promise<void> {
+    for (const slot of this.slots.values()) {
+      for (const l of [...slot.loaded.values()]) {
+        if (l.model.kind === kind && l.ready && l.active === 0 && this.now() - l.lastUsed > ms) await this.unload(slot, l).catch(() => {});
+      }
+    }
   }
 
   /** Where a model is, for the library listing. */

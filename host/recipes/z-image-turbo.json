@@ -1,0 +1,38 @@
+{
+  "name": "Z-Image Turbo",
+  "template": "z-image",
+  "parts": [
+    {
+      "role": "diffusion",
+      "source": "huggingface",
+      "repo": "Comfy-Org/z_image_turbo",
+      "path": "split_files/diffusion_models/z_image_turbo_bf16.safetensors",
+      "sha256": ""
+    },
+    {
+      "role": "text_encoder",
+      "slot": "qwen3",
+      "source": "huggingface",
+      "repo": "Comfy-Org/z_image_turbo",
+      "path": "split_files/text_encoders/qwen_3_4b.safetensors",
+      "sha256": ""
+    },
+    {
+      "role": "vae",
+      "source": "huggingface",
+      "repo": "Comfy-Org/z_image_turbo",
+      "path": "split_files/vae/ae.safetensors",
+      "sha256": ""
+    }
+  ],
+  "loras": [],
+  "defaults": {
+    "steps": 8,
+    "cfg": 1,
+    "sampler": "res_multistep",
+    "scheduler": "simple",
+    "width": 1024,
+    "height": 1024,
+    "shift": 3
+  }
+}

@@ -63,6 +63,8 @@ export class Runtime {
   models: TextModel[] = [];
   /** The download record, by path, from the fetch service. */
   record = new Map<string, RecordEntry>();
+  /** Scans image parts too (set when the host has ComfyUI). */
+  afterScan: (() => { parts: number; proposals: number }) | null = null;
   readonly scheduler: Scheduler;
   private readonly modelsDir: string;
   private readonly state: StateFile;
@@ -79,10 +81,11 @@ export class Runtime {
     this.flusher.unref();
   }
 
-  scan(): number {
+  scan(): { models: number; parts: number; proposals: number } {
     this.models = scanTextModels(this.modelsDir);
-    this.log("scanned", { models: this.models.length });
-    return this.models.length;
+    const images = this.afterScan?.() ?? { parts: 0, proposals: 0 };
+    this.log("scanned", { models: this.models.length, ...images });
+    return { models: this.models.length, ...images };
   }
 
   async start(): Promise<void> {
@@ -135,7 +138,7 @@ export class Runtime {
       return true;
     }
     if (pathname === "/host/v1/scan" && method === "POST") {
-      sendJson(res, 200, { models: this.scan(), parts: 0, proposals: 0 });
+      sendJson(res, 200, this.scan());
       return true;
     }
     if (pathname === "/host/v1/usage" && method === "GET") {

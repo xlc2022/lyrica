@@ -1,0 +1,26 @@
+{
+  "name": "SeedVR2 7B",
+  "template": "seedvr2",
+  "parts": [
+    {
+      "role": "upscaler",
+      "source": "huggingface",
+      "repo": "numz/SeedVR2_comfyUI",
+      "path": "seedvr2_ema_7b_fp16.safetensors",
+      "sha256": "7b8241aa957606ab6cfb66edabc96d43234f9819c5392b44d2492d9f0b0bbe4a"
+    },
+    {
+      "role": "vae",
+      "source": "huggingface",
+      "repo": "numz/SeedVR2_comfyUI",
+      "path": "ema_vae_fp16.safetensors",
+      "sha256": "20678548f420d98d26f11442d3528f8b8c94e57ee046ef93dbb7633da8612ca1"
+    }
+  ],
+  "loras": [],
+  "defaults": {
+    "scale": 2,
+    "maxSize": 4096,
+    "colorMatch": "lab"
+  }
+}

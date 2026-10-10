@@ -1,0 +1,23 @@
+{
+  "name": "FLUX.1 schnell",
+  "template": "flux",
+  "parts": [
+    {
+      "role": "checkpoint",
+      "source": "huggingface",
+      "repo": "Comfy-Org/flux1-schnell",
+      "path": "flux1-schnell-fp8.safetensors",
+      "sha256": ""
+    }
+  ],
+  "loras": [],
+  "defaults": {
+    "steps": 4,
+    "cfg": 1,
+    "sampler": "euler",
+    "scheduler": "simple",
+    "width": 1024,
+    "height": 1024,
+    "guidance": 3.5
+  }
+}
