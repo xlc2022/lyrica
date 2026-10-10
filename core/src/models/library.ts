@@ -17,7 +17,7 @@ export interface CopyIdentity { key: string; name: string; base?: { key: string;
 const fileWords = (modelId: string) => baseName(modelId).split("-").filter(Boolean);
 const nameOf = (basename: string, size?: string | null) => baseName([basename, size].filter(Boolean).join("-"));
 /** Words that don't tell models apart: versions and the like. */
-const NOISE = /^(v?\d+(\.\d+)*|it|chat|instruct|base|hf|model|gguf|ggml)$/;
+const NOISE = /^(v?\d+(\.\d+)*|it|chat|instruct|hf|model|gguf|ggml)$/;
 
 export function copyIdentity(c: CopyFacts): CopyIdentity {
   const file = baseName(c.modelId);
@@ -29,16 +29,20 @@ export function copyIdentity(c: CopyFacts): CopyIdentity {
   if (cardBase && relation === "quantized") return { key: `name:${baseName(cardBase)}`, name: baseName(cardBase) };
   if (cardBase && relation) return { key: `name:${file}`, name: file, base: { key: `name:${baseName(cardBase)}`, name: baseName(cardBase) } };
   const id = c.identity;
+  // The file's own base_model.* names the model it was made from, when it was.
+  const fileBase = id?.baseModels?.map((b) => b.name).find((n): n is string => !!n);
   if (id?.basename) {
     const base = nameOf(id.basename, id.sizeLabel);
     if (id.finetune) {
       const name = baseName([id.basename, id.sizeLabel, id.finetune].filter(Boolean).join("-"));
-      return { key: `name:${name}`, name, base: { key: `name:${base}`, name: base } };
+      const from = fileBase ? baseName(fileBase) : base;
+      return { key: `name:${name}`, name, base: { key: `name:${from}`, name: from } };
     }
     // No finetune recorded, but the file name says more than the model's name: it may be a finetune. It stays apart, flagged.
     const extra = fileWords(c.modelId).filter((w) => !base.split("-").includes(w) && !NOISE.test(w));
     if (extra.length) return { key: `name:${file}`, name: file, base: { key: `name:${base}`, name: base }, flagged: `Its file name has words its model's name doesn't (${extra.join(", ")}). Check whether it's ${base} or a model of its own.` };
-    return { key: `name:${base}`, name: base };
+    const from = fileBase && baseName(fileBase) !== base ? baseName(fileBase) : undefined;
+    return { key: `name:${base}`, name: base, ...(from ? { base: { key: `name:${from}`, name: from } } : {}) };
   }
   return { key: `name:${file}`, name: file };
 }

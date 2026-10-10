@@ -131,7 +131,7 @@ export interface LibraryEntry {
 }
 
 /** Host management paths passed through (host/API.md). */
-const MANAGE = [/^\/host\/v1\/models\/(load|unload|pin|reload|settings)$/, /^\/host\/v1\/gpus\/\d+$/, /^\/host\/v1\/scan$/, /^\/host\/v1\/usage$/];
+const MANAGE = [/^\/host\/v1\/models\/(load|unload|pin|reload)$/, /^\/host\/v1\/gpus\/\d+$/, /^\/host\/v1\/scan$/, /^\/host\/v1\/usage$/];
 
 export interface CleanupItem {
   /** For a stale endpoint, its uses are those of all its models. */
@@ -295,6 +295,8 @@ export class Models {
   private readonly health = new Map<string, { up: boolean; at: number }>();
   /** Each host's pinned fetch, by endpoint, key and addresses. */
   private readonly fetches = new Map<string, typeof fetch>();
+  /** The address each host last answered on, for its dashboard link. */
+  private readonly reached = new Map<string, string>();
   /** Finished downloads already read as offerings, by host and download ID. */
   private readonly discovered = new Set<string>();
 
@@ -575,7 +577,8 @@ export class Models {
   /** Starts downloads on a host (host/API.md): files from a repository, or one https link. */
   async startDownload(actor: User, hostId: string, body: { source: Hub; repo: string; revision?: string; files: string[] } | { source: "url"; url: string; sha256?: string }): Promise<unknown> {
     const ep = this.manageable(actor, hostId);
-    return this.hostCall(ep, "POST", "/host/v1/downloads", body, body.source === "url" ? undefined : this.hubHeader(actor.id, body.source));
+    const checked = downloadBody(body);
+    return this.hostCall(ep, "POST", "/host/v1/downloads", checked, checked.source === "url" ? undefined : this.hubHeader(actor.id, checked.source));
   }
 
   /**
@@ -605,19 +608,30 @@ export class Models {
    * record go; anything else (a shared models folder) is refused. The
    * offering leaves a tombstone, so every list skips it.
    */
-  async deleteCopy(actor: User, offeringId: string, opts: { confirm?: boolean } = {}): Promise<{ usedIn: Use[]; deleted?: string[] }> {
+  async deleteCopy(actor: User, offeringId: string, opts: { confirm?: boolean } = {}): Promise<{ usedIn: Use[]; deleted?: string[]; left?: { files: string[]; reason: string } }> {
     const o = this.offering(actor.id, offeringId);
     if (!o) throw new NoModel(`no model ${offeringId}`);
     const ep = this.manageable(actor, o.endpoint.id);
     const usedIn = [...(this.uses(actor.id).get(offeringId) ?? []), ...(collectRefs(this.self()).get(offeringId) ?? [])];
     if (!opts.confirm) return { usedIn };
     const record = (await this.hostCall(ep, "GET", "/host/v1/files")) as { path: string }[] | { files?: { path: string }[] };
-    const files = (Array.isArray(record) ? record : record.files ?? []).map((f) => f.path)
-      .filter((p) => p === o.offering.modelId || p.startsWith(`${o.offering.modelId}/`));
+    const files = (Array.isArray(record) ? record : record.files ?? []).map((f) => f.path).filter((p) => copyFile(o.offering.modelId, p));
     if (!files.length) throw new HostRefused("refused", "Only files Lyrica downloaded can be deleted.");
-    for (const path of files) await this.hostCall(ep, "DELETE", `/host/v1/files?${new URLSearchParams({ path })}`);
+    // A split GGUF is offered as its first shard; every shard goes. If one can't, the copy is gone anyway: say what's left.
+    const deleted: string[] = [];
+    let left: { files: string[]; reason: string } | undefined;
+    for (const path of files) {
+      try {
+        await this.hostCall(ep, "DELETE", `/host/v1/files?${new URLSearchParams({ path })}`);
+        deleted.push(path);
+      } catch (e) {
+        if (!deleted.length) throw e;
+        left = { files: files.filter((f) => !deleted.includes(f)), reason: (e as Error).message };
+        break;
+      }
+    }
     this.removeOffering(actor, offeringId);
-    return { usedIn, deleted: files };
+    return { usedIn, deleted, ...(left ? { left } : {}) };
   }
 
   /** A host's image library: its recipes (with proposals and missing parts) and its parts by role. */
@@ -643,7 +657,8 @@ export class Models {
     const result = action.do === "delete" ? await this.hostCall(ep, "DELETE", path)
       : action.do === "change" ? await this.hostCall(ep, "PATCH", path, action.change)
         : action.do === "copy" ? await this.hostCall(ep, "POST", `${path}/copy`, { name: action.name })
-          : await this.hostCall(ep, "POST", `${path}/${action.do}`);
+          : action.do === "download-parts" ? await this.hostCall(ep, "POST", `${path}/download-parts`, undefined, await this.partsHeader(actor.id, ep, path))
+            : await this.hostCall(ep, "POST", `${path}/${action.do}`);
     // A recipe deleted here leaves a tombstone, like a deleted copy, so lists skip it at once.
     const gone = action.do === "delete" ? this.offerings(actor.id, hostId).find((o) => o.modelId === `recipe/${recipeId}`) : undefined;
     if (gone) this.removeOffering(actor, gone.id);
@@ -697,9 +712,11 @@ export class Models {
     return o;
   }
 
-  /** A host's dashboard, opened directly (it has its own password away from the machine). */
+  /** A host's dashboard, opened directly (it has its own password away from the machine), at the address it last answered on. */
   hostDashboard(userId: string, hostId: string): string {
-    return `${hostOrigin(this.needHost(userId, hostId).addresses![0]!)}/`;
+    const origins = (this.needHost(userId, hostId).addresses ?? []).map(hostOrigin);
+    const last = this.reached.get(hostId);
+    return `${last && origins.includes(last) ? last : origins[0]}/`;
   }
 
   /** A host the actor may manage: any they can see, but a shared one only as an administrator. */
@@ -707,6 +724,14 @@ export class Models {
     const ep = this.needHost(actor.id, hostId);
     if (ep.shared && !this.users.get(actor.id)?.admin) throw new Forbidden("only an administrator can manage a shared model host");
     return ep;
+  }
+
+  /** The token for a recipe's missing parts: the hub they come from (Hugging Face when they come from both). */
+  private async partsHeader(userId: string, ep: Endpoint, path: string): Promise<Record<string, string> | undefined> {
+    const r = (await this.hostCall(ep, "GET", path)) as { parts?: { missing?: { source?: string } | null }[] };
+    const hubs = new Set((r.parts ?? []).map((p) => p.missing?.source).filter((h): h is Hub => h === "huggingface" || h === "modelscope"));
+    const hub = hubs.has("huggingface") ? "huggingface" : hubs.has("modelscope") ? "modelscope" : undefined;
+    return hub ? this.hubHeader(userId, hub) : undefined;
   }
 
   private hubHeader(userId: string, hub: string): Record<string, string> | undefined {
@@ -823,7 +848,7 @@ export class Models {
     const key = `${ep.id}\u0000${ep.fingerprint}\u0000${(ep.addresses ?? []).join(",")}`;
     let f = this.fetches.get(key);
     if (!f) {
-      f = hostFetch(lyricaIdentity(this.self()), { addresses: ep.addresses ?? [], pin: ep.fingerprint ?? "" }, () => this.reportDown(ep.id));
+      f = hostFetch(lyricaIdentity(this.self()), { addresses: ep.addresses ?? [], pin: ep.fingerprint ?? "" }, () => this.reportDown(ep.id), (origin) => this.reached.set(ep.id, origin));
       this.fetches.set(key, f);
     }
     return f;
@@ -832,6 +857,35 @@ export class Models {
   /** A host's status (host/API.md): GPUs, roles, loaded and pinned models, VRAM, queue. Anyone who can use the host may read it. */
   async hostStatus(userId: string, id: string): Promise<unknown> {
     return this.hostCall(this.needHost(userId, id), "GET", "/host/v1/status");
+  }
+
+  /**
+   * An endpoint's state for the Models page, within a budget: one the router
+   * saw down in the last HEALTH_MS isn't asked again, and nothing waits more
+   * than `budgetMs`, so a host that's off doesn't hold the page.
+   */
+  async pageStatus(userId: string, endpointId: string, budgetMs = 3000): Promise<{ state: "up" | "down"; warning?: string; status?: unknown; error?: string }> {
+    const ep = this.endpoint(userId, endpointId);
+    if (!ep) throw new Error(`no endpoint ${endpointId}`);
+    const h = this.health.get(ep.id);
+    if (h && !h.up && Date.now() - h.at < HEALTH_MS) return { state: "down", error: `${ep.name} is down` };
+    const warning = ep.kind === "local" ? Promise.race([localWarning(ep), new Promise<undefined>((r) => setTimeout(() => r(undefined), budgetMs).unref())]) : undefined;
+    if (ep.api !== "host") {
+      const state = await probeUrl(ep.baseUrl, ep.apiKey, budgetMs);
+      this.seen(ep, state === "up", userId);
+      const w = await warning;
+      return w ? { state, warning: w } : { state };
+    }
+    try {
+      const status = await this.hostCall(ep, "GET", "/host/v1/status", undefined, undefined, budgetMs);
+      const state = (status as { state?: string }).state === "running" ? "up" : "down";
+      this.seen(ep, state === "up", userId);
+      const w = await warning;
+      return { state, status, ...(w ? { warning: w } : {}) };
+    } catch (e) {
+      this.seen(ep, false, userId);
+      return { state: "down", error: (e as Error).message };
+    }
   }
 
   /** Pauses, resumes or restarts a host. A shared host needs an administrator. */
@@ -851,9 +905,9 @@ export class Models {
   }
 
   /** One call to a host's API, with its error as a plain reason. */
-  private async hostCall(ep: Endpoint, method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<unknown> {
+  private async hostCall(ep: Endpoint, method: string, path: string, body?: unknown, headers?: Record<string, string>, timeoutMs = 30_000): Promise<unknown> {
     const res = await this.fetchFor(ep)!(`${hostOrigin(ep.addresses![0]!)}${path}`, {
-      method, signal: AbortSignal.timeout(30_000),
+      method, signal: AbortSignal.timeout(timeoutMs),
       headers: { ...(body === undefined ? {} : { "content-type": "application/json" }), ...headers },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     }).catch((e: Error) => {
@@ -1864,4 +1918,32 @@ const clean = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(
 function addNotice(db: Db, lines: string[]): void {
   const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(NOTICE) as { value: string } | undefined;
   db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(NOTICE, JSON.stringify([...(row ? JSON.parse(row.value) : []), ...lines]));
+}
+
+/** A download request checked as the host would (host/API.md "Downloads"), so a bad one is refused here with the reason. */
+function downloadBody(b: unknown): { source: Hub; repo: string; revision?: string; files: string[] } | { source: "url"; url: string; sha256?: string } {
+  if (!b || typeof b !== "object" || Array.isArray(b)) throw new Error("send { source, repo, files } or { source: \"url\", url }");
+  const d = b as Record<string, unknown>;
+  if (d.source === "url") {
+    const url = typeof d.url === "string" ? d.url : "";
+    let u: URL;
+    try { u = new URL(url); } catch { throw new Error("that isn't a link"); }
+    if (u.protocol !== "https:") throw new Error("a link must be https");
+    if (url.length > 1024) throw new Error("a link is at most 1024 characters");
+    if (u.username || u.password) throw new Error("a link can't carry a user name or password");
+    if (d.sha256 !== undefined && (typeof d.sha256 !== "string" || !/^[0-9a-f]{64}$/i.test(d.sha256))) throw new Error("sha256 is 64 hex characters");
+    return { source: "url", url, ...(d.sha256 ? { sha256: d.sha256 as string } : {}) };
+  }
+  if (d.source !== "huggingface" && d.source !== "modelscope") throw new Error("source is huggingface, modelscope or url");
+  if (typeof d.repo !== "string" || !d.repo.trim()) throw new Error("say which repository");
+  if (!Array.isArray(d.files) || !d.files.length || !d.files.every((f) => typeof f === "string" && f)) throw new Error("say which files");
+  if (d.revision !== undefined && (typeof d.revision !== "string" || !d.revision)) throw new Error("revision is a branch, tag or commit");
+  return { source: d.source, repo: d.repo.trim(), files: d.files as string[], ...(d.revision ? { revision: d.revision as string } : {}) };
+}
+
+/** Whether a file in the download record belongs to a copy: its file, a file in its folder, or another shard of a split GGUF. */
+function copyFile(modelId: string, path: string): boolean {
+  if (path === modelId || path.startsWith(`${modelId}/`)) return true;
+  const split = /^(.*)-00001-of-(\d{5})\.gguf$/.exec(modelId);
+  return !!split && new RegExp(`^${split[1]!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-\\d{5}-of-${split[2]}\\.gguf$`).test(path);
 }

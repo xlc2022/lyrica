@@ -290,7 +290,12 @@ export interface TextLibrary { total: number; entries: LibraryEntry[] }
 /** PUT /api/u/:userId/offerings/:offeringId/star { starred } → Ok. Per user. */
 /** PUT /api/u/:userId/offerings/:offeringId/separate { separate } → Ok. "Not this model"; an administrator for a shared endpoint. */
 /** POST /api/u/:userId/offerings/:offeringId/delete-copy { confirm? } → DeleteCopy. Without confirm, only where it's used. */
-export interface DeleteCopy { usedIn: ModelUse[]; deleted?: string[] }
+export interface DeleteCopy {
+  usedIn: ModelUse[];
+  deleted?: string[];
+  /** Shards of a split file the host wouldn't delete (say, in use), with its reason. The copy is gone from every list anyway. */
+  left?: { files: string[]; reason: string };
+}
 /** A hub token as the API shows it: never more than its last four characters. */
 export interface HubTokenInfo { hub: Hub; shared: boolean; last4: string }
 /** GET /api/u/:userId/hub-tokens → HubTokenInfo[]. PUT …/hub-tokens/:hub → HubTokenInfo[]. DELETE …/hub-tokens/:hub?shared=1 → HubTokenInfo[]. */
@@ -308,7 +313,7 @@ export interface HostManage { method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE
 export interface ServingSettings { model: string; settings: Record<string, unknown>; contextLength: number }
 /** GET /api/u/:userId/offerings/:offeringId/serving → ServingSettings. PUT { settings } → the host's model entry; a placement that can't work is refused with the host's reason. */
 /** POST /api/u/:userId/offerings/:offeringId/reload → the host's answer: applies saved settings now. A shared host needs an administrator. */
-/** GET /api/u/:userId/models/page → ModelsPage: what the Models page shows, endpoints with live status. */
+/** GET /api/u/:userId/models/page → ModelsPage: what the Models page shows, endpoints with live status. An endpoint seen down in the last 30 s isn't asked again, and each gets 3 s. */
 export interface ModelsPage {
   endpoints: (EndpointInfo & Probe)[];
   hosts: ({ endpointId: string; status: HostStatus } | { endpointId: string; error: string })[];

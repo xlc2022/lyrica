@@ -13,7 +13,7 @@ export interface HostModel {
   id: string; kind?: "chat" | "embedding"; contextLength?: number; tools?: boolean; reasoning?: string[] | null; sha256?: string | null;
   downloaded?: boolean; identity?: Record<string, unknown> | null;
 }
-export interface Recipe { id: string; name: string; state: "proposed" | "confirmed" | "ignored"; does: string[]; parts: { role: string; file: string | null }[] }
+export interface Recipe { id: string; name: string; state: "proposed" | "confirmed" | "ignored"; does: string[]; parts: { role: string; file: string | null; missing?: { source: string; repo: string; path: string } }[] }
 
 /**
  * A model host as host/PAIRING.md and host/API.md describe it, on 127.0.0.1:
@@ -35,6 +35,9 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
   const parts: { file: string; role: string; downloaded: boolean }[] = [];
   const tokens: (string | undefined)[] = [];
   const downloads: { id: string; path: string; state: string }[] = [];
+  /** More files in the download record (a split model's other shards), and files a running request holds. */
+  const record: string[] = [];
+  const busy = new Set<string>();
   const models: HostModel[] = opts.models ?? [{ id: "lyrica/huggingface/Qwen/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf", kind: "chat", contextLength: 32768, tools: true, reasoning: ["off", "on"], sha256: "ab".repeat(32) }];
   let requests = 0;
 
@@ -79,12 +82,13 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
       if (req.method === "POST" && url.pathname === "/host/v1/pause") { paused = true; return json(res, 200, status()); }
       if (req.method === "POST" && url.pathname === "/host/v1/resume") { paused = false; return json(res, 200, status()); }
       // The download record: files the host downloaded.
-      if (req.method === "GET" && url.pathname === "/host/v1/files") return json(res, 200, models.filter((m) => m.downloaded).map((m) => ({ path: m.id, size: 1, sha256: m.sha256 ?? "00", verified: true })));
+      if (req.method === "GET" && url.pathname === "/host/v1/files") return json(res, 200, [...models.filter((m) => m.downloaded).map((m) => m.id), ...record].map((path) => ({ path, size: 1, sha256: "00", verified: true })));
       if (req.method === "DELETE" && url.pathname === "/host/v1/files") {
         const path = url.searchParams.get("path");
+        if (busy.has(path!)) return json(res, 409, { error: { code: "in_use", message: "A request is running on this file." } });
         const i = models.findIndex((m) => m.id === path && m.downloaded);
-        if (i < 0) return json(res, 403, { error: { code: "refused", message: "Only files the host downloaded can be deleted." } });
-        models.splice(i, 1);
+        if (i < 0 && !record.includes(path!)) return json(res, 403, { error: { code: "refused", message: "Only files the host downloaded can be deleted." } });
+        if (i >= 0) models.splice(i, 1); else record.splice(record.indexOf(path!), 1);
         return json(res, 200, { deleted: path, unloaded: [] });
       }
       if (req.method === "GET" && url.pathname === "/host/v1/hub/files") {
@@ -104,10 +108,15 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
         return json(res, 200, recipes.filter((r) => !state || r.state === state));
       }
       if (req.method === "GET" && url.pathname === "/host/v1/parts") return json(res, 200, parts.map((p) => ({ ...p, usedBy: recipes.filter((r) => r.parts.some((x) => x.file === p.file)).map((r) => r.id) })));
-      const recipe = /^\/host\/v1\/recipes\/([^/]+)(?:\/(confirm|ignore))?$/.exec(url.pathname);
+      const recipe = /^\/host\/v1\/recipes\/([^/]+)(?:\/(confirm|ignore|download-parts))?$/.exec(url.pathname);
       if (recipe) {
         const r = recipes.find((x) => x.id === recipe[1]);
         if (!r) return json(res, 404, { error: { code: "not_found", message: "No such recipe." } });
+        if (req.method === "GET" && !recipe[2]) return json(res, 200, r);
+        if (req.method === "POST" && recipe[2] === "download-parts") {
+          tokens.push(req.headers["x-hub-token"] as string | undefined);
+          return json(res, 202, { downloads: [] });
+        }
         if (req.method === "POST" && recipe[2]) { r.state = recipe[2] === "confirm" ? "confirmed" : "ignored"; return json(res, 200, r); }
         if (req.method === "DELETE") {
           recipes.splice(recipes.indexOf(r), 1);
@@ -174,6 +183,8 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
     parts,
     tokens,
     downloads,
+    record,
+    busy,
     /** Shows a new pairing code on the "dashboard", as typed by a person. */
     newCode(): string {
       const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";

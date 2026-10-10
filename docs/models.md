@@ -67,7 +67,9 @@ administrator pairs or manages them; a personal host lives in its user's
   `pairHost(…, { endpointId })` pairs a host again after its key changed,
   keeping every ID.
 - **Addresses** (`setHostAddresses`) can change at any time; trust and IDs
-  stay. Each request tries them in order.
+  stay. Each request tries them in order. A GET or HEAD is sent once more,
+  on a fresh connection, when a kept-alive socket the host already closed
+  resets.
 - **Calls** go through `fetchFor(endpoint)`: undici, with a connector that
   checks the host's key before handing over the socket, so nothing is sent
   to a host whose key changed. That ends the call at once with "This host's
@@ -90,9 +92,12 @@ administrator pairs or manages them; a personal host lives in its user's
   and thinking. A thinking switch in the chat template is one level, sent as
   `chat_template_kwargs.enable_thinking`; a host model that reports levels
   gets `reasoning_effort` like any OpenAI-compatible endpoint.
-- `hostStatus` returns the host's status (GPUs, roles, loaded and pinned
-  models, VRAM, queue) to anyone who can use it; `hostControl` pauses,
-  resumes or restarts it.
+- `hostStatus` returns the host's status (GPUs, placements, loaded and
+  pinned models, VRAM, queue) to anyone who can use it; `hostControl`
+  pauses, resumes or restarts it.
+- `pageStatus` is an endpoint's state for the Models page: one seen down in
+  the last 30 seconds isn't asked again, and nothing waits more than 3
+  seconds, so a host that's off doesn't hold the page.
 - Unpairing is removing the endpoint; the host keeps listing this server
   until it is revoked there.
 - Every user who can use a shared host sees its addresses, fingerprint and
@@ -257,16 +262,21 @@ whether the user starred it (`star`, per user, starred first).
 - **What counts as the same model:** base name, size and finetune, from a
   host's GGUF metadata, the hub's model card, or the model ID. Only a card's
   `quantized` relation joins a copy to its base; a finetune, merge or
-  adapter is an entry of its own linked to its base. A copy whose file
-  records no finetune but whose name has words its model's name doesn't is
-  kept apart, flagged for a check, and never suggested for its base's group.
+  adapter is an entry of its own linked to its base, the model its file's
+  `base_model.*` names when it names one. A copy whose file records no
+  finetune but whose name has words its model's name doesn't (versions,
+  `instruct`, `chat` and the like aside; `base` counts, so a base model
+  isn't filed under its instruct model) is kept apart, flagged for a check,
+  and never suggested for its base's group. Weak group suggestions match on
+  this identity.
 - **Not this model** (`notThisModel`) moves a copy to an entry of its own;
   an administrator decides for a shared endpoint, the owner for a personal
   one.
 
 **Image models** (`imageLibrary`, `recipe`): a host's recipes (with
 proposals and missing parts) and parts by role, as the host reports them.
-Confirm, ignore, download missing parts, change (swap a part within its role
+Confirm, ignore, download missing parts (with the hub token for the hub
+they come from), change (swap a part within its role
 and slot, LoRAs, defaults, rename), copy or delete; the host keeps every part
 another recipe uses. Only confirmed recipes become offerings (`recipe/<id>`,
 with `image` or `edit`), so a proposal never resolves; a recipe deleted here
@@ -279,7 +289,10 @@ needs an administrator.
 
 - `hubFiles` lists a repository's files (present, fitting the free space);
   `startDownload`, `downloads` and `cancelDownload` start, follow and
-  cancel. A download that finished since the last look is read as an
+  cancel. A download is checked as the host would before it's sent: a
+  source of `huggingface`, `modelscope` or `url`, a repository and files, or
+  a link that is https, at most 1024 characters, with no user name or
+  password. A download that finished since the last look is read as an
   offering at once, and the group suggestions pick it up.
 - **Hub tokens** for Hugging Face and ModelScope: a user's own in `user.db`,
   or one an administrator shares in `self.db` (`hub_tokens`). The API shows
@@ -288,21 +301,26 @@ needs an administrator.
   shared one, and never into a response, a log or a call record.
 - `deleteCopy` first says where a copy is used; confirmed, it deletes only
   files in the host's download record (anything else, such as a shared
-  models folder, is refused) and leaves a tombstone, so lists skip it.
+  models folder, is refused) and leaves a tombstone, so lists skip it. A
+  split GGUF is offered as its first shard, and every shard goes; if the
+  host refuses one (say, in use), it stops there, the copy still leaves
+  every list, and `left` names the files still there with the reason.
 
 ## Host management
 
 `manageHost` passes on the host's own management calls (loading,
-unloading, pinning and reloading models, their placement and serving
-settings, GPU settings, scanning, usage) as the host defines them; other
-paths are refused, and a shared host needs an administrator.
+unloading, pinning and reloading models, GPU settings and placements,
+scanning, usage) as the host defines them; other paths are refused, and a
+shared host needs an administrator. Serving settings go only through
+`setServingSettings`, which reads the model again after saving.
 
 `servingSettings`, `setServingSettings` and `reloadModel` read and save one
 host model's placement and serving settings and apply them now. The host
 refuses a placement that can't work, with its reason. The context a host
 serves a model with is the offering's context window, over one set by hand
-or discovered; compaction and group fitting plan by it. `hostDashboard` gives the dashboard's address, which has
-its own password away from the machine.
+or discovered; compaction and group fitting plan by it. `hostDashboard` gives a link to the host's dashboard, at the address
+it last answered on, and the dashboard keeps its own password away from the
+machine.
 
 ## How it answers
 

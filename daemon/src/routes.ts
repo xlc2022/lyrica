@@ -265,10 +265,12 @@ export function apiRoutes(d: Lyricad): Route[] {
       const user = d.userFor(r);
       const m = s().models;
       const eps = m.endpoints(user.id);
-      const live = await Promise.all(eps.map(async (e) => ({ ...endpointInfo(d, user.id, e.id), ...(await m.probe(user.id, e.id).catch(() => ({ state: "down" as const }))) })));
-      const hosts = await Promise.all(eps.filter((e) => e.api === "host").map(async (e) => {
-        try { return { endpointId: e.id, status: (await m.hostStatus(user.id, e.id)) as Api.HostStatus }; } catch (err) { return { endpointId: e.id, error: (err as Error).message }; }
-      }));
+      // One look per endpoint, within 3 s, so a host that's off doesn't hold the page.
+      const looks = await Promise.all(eps.map(async (e) => ({ e, look: await m.pageStatus(user.id, e.id).catch((err: Error) => ({ state: "down" as const, error: err.message, status: undefined, warning: undefined })) })));
+      const live = looks.map(({ e, look }) => ({ ...endpointInfo(d, user.id, e.id), state: look.state, ...(look.warning ? { warning: look.warning } : {}) }));
+      const hosts = looks.filter(({ e }) => e.api === "host").map(({ e, look }) => look.status
+        ? { endpointId: e.id, status: look.status as Api.HostStatus }
+        : { endpointId: e.id, error: look.error ?? `${e.name} is down` });
       return { endpoints: live, hosts, profiles: profiles(d, user.id), calls: m.recentCalls(user.id, { limit: 20 }), notice: m.notice(user.id), cleanup: m.cleanup(user.id).length };
     }),
     route("POST", `${u}/hosts/:endpointId/:action`, async (r) => {

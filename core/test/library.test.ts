@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Forbidden, HostRefused, NoModel } from "../src/index.ts";
+import { createServer } from "node:net";
+import { copyIdentity } from "../src/models/library.ts";
 import { fakeHost, type HostModel } from "./fake-host.ts";
 import { profile, withModels } from "./helpers.ts";
 
@@ -74,6 +76,17 @@ describe("the text library", () => {
   });
 });
 
+describe("a copy's identity", () => {
+  it("keeps a base model apart from its instruct model, and takes the base a file names", () => {
+    const qwen3 = { basename: "Qwen3", sizeLabel: "8B", finetune: null };
+    expect(copyIdentity({ id: "a", modelId: "Qwen3-8B-Instruct-Q4_K_M.gguf", identity: qwen3 })).toEqual({ key: "name:qwen3-8b", name: "qwen3-8b" });
+    expect(copyIdentity({ id: "b", modelId: "Qwen3-8B-Base-Q4_K_M.gguf", identity: qwen3 })).toMatchObject({ key: "name:qwen3-8b-base", flagged: expect.stringMatching(/base/) });
+    // GGUF base_model.*: a finetune links to the model it was made from.
+    expect(copyIdentity({ id: "c", modelId: "Hermes-Q4.gguf", identity: { basename: "Hermes", sizeLabel: "8B", finetune: "Pro", baseModels: [{ name: "Llama 3.1 8B" }] } }))
+      .toMatchObject({ key: "name:hermes-8b-pro", base: { name: "llama-3.1-8b" } });
+  });
+});
+
 describe("hub tokens and downloads", () => {
   it("returns only a token's last four characters, and sends it with the requests that need it", async () => {
     const s = await setup();
@@ -94,6 +107,45 @@ describe("hub tokens and downloads", () => {
     s.big.models.push({ id: d.path, kind: "chat", downloaded: true, identity: { basename: "Qwen3", sizeLabel: "14B", finetune: null } });
     await s.models.downloads(s.li, s.bigEp.id);
     expect(s.models.offerings(s.li.id, s.bigEp.id).some((o) => o.modelId === d.path)).toBe(true);
+  });
+
+  it("refuses a download the host would refuse, and sends the token for a recipe's missing parts", async () => {
+    const s = await setup();
+    const start = (body: unknown) => s.models.startDownload(s.li, s.bigEp.id, body as never);
+    await expect(start(null)).rejects.toThrow(/send/);
+    await expect(start({ source: "github", repo: "x", files: ["a"] })).rejects.toThrow(/source/);
+    await expect(start({ source: "url", url: "http://example.com/m.gguf" })).rejects.toThrow(/https/);
+    await expect(start({ source: "url", url: `https://example.com/${"a".repeat(1024)}.gguf` })).rejects.toThrow(/1024/);
+    await expect(start({ source: "url", url: "https://me:pw@example.com/m.gguf" })).rejects.toThrow(/user name/);
+    await expect(start({ source: "huggingface", repo: "Qwen/Qwen3-8B-GGUF", files: [] })).rejects.toThrow(/files/);
+    expect(s.big.downloads).toHaveLength(0);
+    // Filling a recipe's missing parts from a gated repository needs the token: the user's own, else the shared one.
+    s.big.recipes.push({ id: "r9", name: "Z", state: "confirmed", does: ["create"], parts: [{ role: "vae", file: null, missing: { source: "huggingface", repo: "Comfy-Org/z", path: "vae/ae.safetensors" } }] });
+    s.models.setHubToken(s.li, "huggingface", "hf_sharedtoken9999", { shared: true });
+    await s.models.recipe(s.li, s.bigEp.id, "r9", { do: "download-parts" });
+    s.models.setHubToken(s.li, "huggingface", "hf_lisecrettoken5678");
+    await s.models.recipe(s.li, s.bigEp.id, "r9", { do: "download-parts" });
+    expect(s.big.tokens).toEqual(["hf_sharedtoken9999", "hf_lisecrettoken5678"]);
+  });
+
+  it("deletes every shard of a split copy, and says what's left when one is in use", async () => {
+    const s = await setup();
+    const shard = (n: number) => `lyrica/huggingface/Qwen/Qwen3-32B-GGUF/Qwen3-32B-Q4_K_M-0000${n}-of-00003.gguf`;
+    s.big.models.push({ id: shard(1), kind: "chat", downloaded: true, identity: { basename: "Qwen3", sizeLabel: "32B", finetune: null } });
+    s.big.record.push(shard(2), shard(3), "lyrica/huggingface/Qwen/Qwen3-32B-GGUF/Qwen3-32B-Q8_0-00002-of-00003.gguf");
+    await s.models.discover(s.li, s.bigEp.id);
+    const split = s.offering("Qwen3-32B-Q4_K_M-00001-of-00003.gguf");
+    expect((await s.models.deleteCopy(s.li, split.id, { confirm: true })).deleted).toEqual([shard(1), shard(2), shard(3)]);
+    expect(s.big.record).toEqual(["lyrica/huggingface/Qwen/Qwen3-32B-GGUF/Qwen3-32B-Q8_0-00002-of-00003.gguf"]);
+    // Another, with its last shard held by a running request: what went is gone, the copy leaves every list, and what's left is named.
+    const other = (n: number) => `lyrica/huggingface/Qwen/Qwen3-14B-GGUF/Qwen3-14B-Q4_K_M-0000${n}-of-00002.gguf`;
+    s.big.models.push({ id: other(1), kind: "chat", downloaded: true, identity: { basename: "Qwen3", sizeLabel: "14B", finetune: null } });
+    s.big.record.push(other(2));
+    s.big.busy.add(other(2));
+    await s.models.discover(s.li, s.bigEp.id);
+    const held = s.offering("Qwen3-14B-Q4_K_M-00001-of-00002.gguf");
+    expect(await s.models.deleteCopy(s.li, held.id, { confirm: true })).toMatchObject({ deleted: [other(1)], left: { files: [other(2)], reason: "A request is running on this file." } });
+    expect(s.models.offerings(s.li.id, s.bigEp.id).some((o) => o.id === held.id)).toBe(false);
   });
 
   it("deletes only a copy Lyrica downloaded, says where it's used first, and leaves every list working", async () => {
@@ -163,6 +215,37 @@ describe("host management", () => {
     await expect(s.models.manageHost(s.li, s.bigEp.id, "POST", "/pair/v1", {})).rejects.toThrow(/isn't host management/);
     await expect(s.models.manageHost(s.li, s.bigEp.id, "GET", "/host/v1/files")).rejects.toThrow(/isn't host management/);
     await expect(s.models.manageHost(s.bob, s.bigEp.id, "POST", "/host/v1/models/unload", { model: "x" })).rejects.toThrow(Forbidden);
+    // Serving settings go through setServingSettings, which reads the model again.
+    await expect(s.models.manageHost(s.li, s.bigEp.id, "PUT", "/host/v1/models/settings", {})).rejects.toThrow(/isn't host management/);
     expect(s.models.hostDashboard(s.bob.id, s.bigEp.id)).toBe(`https://${s.big.address}/`);
+  });
+
+  it("links the dashboard at the address the host last answered on", async () => {
+    const s = await setup();
+    const closed = await new Promise<number>((r) => { const srv = createServer().listen(0, "127.0.0.1", () => { const p = (srv.address() as { port: number }).port; srv.close(() => r(p)); }); });
+    s.models.setHostAddresses(s.li, s.bigEp.id, [`127.0.0.1:${closed}`, s.big.address]);
+    await s.models.hostStatus(s.li.id, s.bigEp.id);
+    expect(s.models.hostDashboard(s.li.id, s.bigEp.id)).toBe(`https://${s.big.address}/`);
+  });
+
+  it("gives the Models page an answer within its budget when a host is off, and doesn't ask again while it's down", async () => {
+    const s = await setup();
+    // A machine that takes the connection and never answers, like a workstation booted into another system.
+    const sockets: import("node:net").Socket[] = [];
+    const silent = createServer((c) => sockets.push(c));
+    await new Promise<void>((r) => silent.listen(0, "127.0.0.1", r));
+    try {
+      s.models.setHostAddresses(s.li, s.bigEp.id, [`127.0.0.1:${(silent.address() as { port: number }).port}`]);
+      let t = Date.now();
+      expect(await s.models.pageStatus(s.li.id, s.bigEp.id, 500)).toMatchObject({ state: "down" });
+      expect(Date.now() - t).toBeLessThan(1500);
+      t = Date.now();
+      expect(await s.models.pageStatus(s.li.id, s.bigEp.id, 500)).toEqual({ state: "down", error: "blackwell is down" });
+      expect(Date.now() - t).toBeLessThan(100);
+      expect(await s.models.pageStatus(s.li.id, s.smallEp.id)).toMatchObject({ state: "up", status: { state: "running" } });
+    } finally {
+      for (const c of sockets) c.destroy();
+      silent.close();
+    }
   });
 });

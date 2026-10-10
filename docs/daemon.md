@@ -195,7 +195,8 @@ display settings (in `user.db`), passwords, endpoints, model hosts (pair,
 pair again, addresses, status, pause, resume, restart, management,
 downloads, the image library), the text library, hub tokens (last four
 characters only), the Models page overview (`GET …/models/page`, endpoints
-with live status), offerings, model
+with live status, at most 3 seconds each, and none asked again while it was
+seen down in the last 30 seconds), offerings, model
 groups, Clean up and the models notice, the three profiles with the default
 profile and thinking level, recent calls, network
 defaults, SSH targets, and for administrators users, allowed paths, shared

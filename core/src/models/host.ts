@@ -160,9 +160,10 @@ const AWAY = new Set(["paused", "busy", "restarting", "unavailable", "unpaired"]
  * A fetch for one paired host: each request tries the addresses in order with
  * the pinned key. A changed key ends it at once with the plain reason, never
  * trying the next address. A host that is unreachable, paused, busy,
- * restarting or that no longer knows this server is reported `away`.
+ * restarting or that no longer knows this server is reported `away`; the
+ * address that answered is `reached`.
  */
-export function hostFetch(id: Identity, host: { addresses: string[]; pin: string }, away: (reason: string) => void): typeof fetch {
+export function hostFetch(id: Identity, host: { addresses: string[]; pin: string }, away: (reason: string) => void, reached?: (origin: string) => void): typeof fetch {
   const dispatcher = pinnedAgent(id, host.pin);
   const origins = host.addresses.map(hostOrigin);
   return (async (input: string | URL | Request, init?: RequestInit) => {
@@ -176,6 +177,7 @@ export function hostFetch(id: Identity, host: { addresses: string[]; pin: string
         try {
           // undici's own fetch, so the dispatcher and the fetch are the same version.
           const res = (await undiciFetch(new URL(url.pathname + url.search, origin), { ...(init as object), dispatcher })) as unknown as Response;
+          reached?.(origin);
           const err = await hostError(res);
           if (err && AWAY.has(err.code)) away(err.message);
           return res;
