@@ -169,11 +169,19 @@ Each active thread is one Pi session from `openThreadSession`, with
   in a subagent's thread. A missing message is `404`; a subagent's thread
   can't be branched (`409`).
 - Forgetting a thread forgets its subagents' threads with it, deepest first,
-  stopping their runs and dropping their records (`Delegation.forget`).
+  stopping their runs and dropping their records (`Delegation.forget`). With
+  `{ children: true }` (`ForgetThread`) its child threads go too; otherwise
+  they are kept as threads of their own and detached from its workspace.
+- **Child threads** (`ChildThreads`, [delegation.md](delegation.md#child-threads)):
+  every hosted thread gets the `threads` tool. A child is hosted like any
+  thread; `ThreadHost.status` says working, waiting or idle, and
+  `onTurn` keeps its record. Its summary has `child`, `status` and `unseen`
+  (updates not yet seen; reading its messages sees them). Lock stops working
+  children before the key goes.
 - Thread lists are per interface (`web` by default), filtered by the user's
-  display settings, most recently active first, with child threads (forks,
-  copies) nested under their parent. Subagents aren't listed: they live in
-  their parent's `delegate` cards. Child threads include branches. Memory search honours the same pool filters; `?all=1` ignores
+  display settings, most recently active first, with child threads (Lyrica's,
+  branches, forks, copies) nested under their parent. Subagents aren't listed: they live in
+  their parent's `delegate` cards. Memory search honours the same pool filters; `?all=1` ignores
   them in both.
 
 ## The event stream

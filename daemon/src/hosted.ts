@@ -4,8 +4,8 @@ import {
   CloudModelForbidden, NoModel, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  ContextMeter, createDelegateExtension, createLyricaExtension, createWorkspaceExtension, DELEGATE_MESSAGE, OPENING, openThreadSession, piModelFor,
-  type ApprovalRequest, type Delegation, type DelegationEvent, type SubagentApproval, type ThreadContext,
+  ContextMeter, createDelegateExtension, createLyricaExtension, createThreadsExtension, createWorkspaceExtension, DELEGATE_MESSAGE, FROM_PARENT, fromParent, OPENING, openThreadSession, piModelFor,
+  type ApprovalRequest, type ChildStatus, type ThreadsHost, type Delegation, type DelegationEvent, type SubagentApproval, type ThreadContext,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
@@ -27,6 +27,10 @@ export interface HostOptions {
   permissionMs: number;
   /** For failures that aren't the user's: never message text. */
   log: (line: string) => void;
+  /** Child threads: every hosted thread gets the `threads` tool. */
+  threads?: ThreadsHost;
+  /** A turn started or ended in a thread. */
+  onTurn?: (userId: string, pool: Pool, threadId: string, working: boolean) => void;
 }
 
 /** Events kept for reconnecting streams. Older ones reload from stored entries. */
@@ -104,6 +108,17 @@ export class ThreadHost {
     this.threads.get(`${userId}/${pool}/${threadId}`)?.reload();
   }
 
+  /** Working (a turn runs), waiting (for an approval) or idle, without creating a record. */
+  status(userId: string, pool: Pool, threadId: string): ChildStatus {
+    const t = this.threads.get(`${userId}/${pool}/${threadId}`);
+    return t?.waiting ? "waiting" : t?.busy ? "working" : "idle";
+  }
+
+  /** Something was delivered into the thread: its open views see it, once, however it got there. */
+  delivered(userId: string, pool: Pool, threadId: string, content: string, details: unknown): void {
+    this.threads.get(`${userId}/${pool}/${threadId}`)?.delivered(content, details);
+  }
+
   /** Whether a turn is running in the thread, without creating a record. */
   busy(userId: string, pool: Pool, threadId: string): boolean {
     return this.threads.get(`${userId}/${pool}/${threadId}`)?.busy ?? false;
@@ -148,6 +163,7 @@ export class HostedThread {
   private stale = false;
   /** Closed by Lock, forgetting or shutdown. */
   closed = false;
+  private closing = false;
   busy = false;
 
   constructor(private readonly o: HostOptions, readonly userId: string, readonly pool: Pool, readonly threadId: string,
@@ -187,9 +203,19 @@ export class HostedThread {
 
   // --- Turns ---
 
-  /** Starts a turn, or queues the message while one runs. Throws, with the reason, if the session can't open. */
-  async send(text: string): Promise<{ queued: boolean }> {
+  /**
+   * Starts a turn, or queues the message while one runs. Throws, with the
+   * reason, if the session can't open. Only a child's parent sends with
+   * `fromParent`: anyone else's text can't carry the line that marks it.
+   */
+  async send(text: string, opts: { fromParent?: string } = {}): Promise<{ queued: boolean }> {
     if (!text.trim()) throw new Error("the message is empty");
+    if (FROM_PARENT.test(text)) throw new MarkedText("a message can't start with a [From t:…] line");
+    return this.post(opts.fromParent ? `${fromParent(opts.fromParent)}${text}` : text);
+  }
+
+  /** The text as it goes to the session, its marks already checked. */
+  private async post(text: string): Promise<{ queued: boolean }> {
     if (this.busy) {
       this.queued.push(text);
       this.emit({ type: "queue", queued: [...this.queued] });
@@ -204,13 +230,22 @@ export class HostedThread {
       this.emit({ type: "error", message });
       throw new Error(message);
     }
-    void this.run(text);
+    this.running = this.run(text);
     return { queued: false };
   }
+
+  private running: Promise<void> = Promise.resolve();
+
+  /** Resolves when the running turn, and the messages queued behind it, are done. */
+  settled(): Promise<void> { return this.running; }
+
+  /** Waiting for an answer to a permission request. */
+  get waiting(): boolean { return this.pending.size > 0; }
 
   private async run(text: string): Promise<void> {
     this.stopIdle();
     let aborted = false;
+    this.o.onTurn?.(this.userId, this.pool, this.threadId, true);
     try {
       for (let next: string | undefined = text; next !== undefined && !this.closed;) {
         const opened = await this.open();
@@ -236,6 +271,8 @@ export class HostedThread {
     } finally {
       this.busy = false;
       this.aborted = false;
+      // Shutdown, Lock or forgetting closes it: a child keeps its record of working, so a restart tells its parent.
+      if (!this.closing) this.o.onTurn?.(this.userId, this.pool, this.threadId, false);
       this.startIdle();
     }
   }
@@ -297,16 +334,17 @@ export class HostedThread {
     const next = [then, ...waiting].filter((t): t is string => t !== undefined);
     if (!next.length) return;
     try {
-      await this.send(next[0]!);
+      await this.post(next[0]!);
     } catch (err) {
-      // The session couldn't open: keep the rest for the next message rather than dropping them.
-      if (next.length > 1) {
-        this.queued.unshift(...next.slice(1));
+      // The session couldn't open: keep the queued messages for the next one rather than dropping them.
+      const kept = then === undefined ? next : next.slice(1);
+      if (kept.length) {
+        this.queued.unshift(...kept);
         this.emit({ type: "queue", queued: [...this.queued] });
       }
       throw err;
     }
-    for (const t of next.slice(1)) await this.send(t);
+    for (const t of next.slice(1)) await this.post(t);
   }
 
   /** Stop: aborts the running turn, denies waiting permission requests and drops queued messages. */
@@ -395,6 +433,8 @@ export class HostedThread {
           createLyricaExtension(ctx, { persona: () => persona.read(), profile: () => users.get(this.userId)!.profile, folders: tools.folders, meter }),
           createWorkspaceExtension({ ...tools, approve: (r) => this.approve(r) }),
           ...(canDelegate ? [createDelegateExtension(ctx, delegation)] : []),
+          // Child threads, as delegate, are never a subagent's: a subagent works for its run, not on streams of its own.
+          ...(this.o.threads && !thread.subagent ? [createThreadsExtension(ctx, this.o.threads)] : []),
         ],
       });
       const unsubscribe = session.subscribe((e) => this.forward(e));
@@ -491,10 +531,12 @@ export class HostedThread {
 
   private readonly noticed = new Set<string>();
 
-  /** A delivered run result, once, however Pi reported it. */
+  /** A delivered result or update, once, however Pi reported it. */
   private notice(content: unknown, details: unknown): void {
     const { type: _part, ...notice } = delegationPart(content, details);
-    const key = JSON.stringify(notice);
+    // Two deliveries may say the same thing; each has its own ID.
+    const id = (details as { id?: unknown } | undefined)?.id;
+    const key = typeof id === "string" ? id : JSON.stringify(notice);
     if (this.noticed.has(key)) return;
     this.noticed.add(key);
     if (this.noticed.size > 100) this.noticed.delete(this.noticed.values().next().value!);
@@ -520,6 +562,9 @@ export class HostedThread {
     else this.dispose();
   }
 
+  /** Delivered into the stored thread or the live session: shown once either way. */
+  delivered(content: unknown, details: unknown): void { this.notice(content, details); }
+
   /** A forwarded event from elsewhere, such as Delegation's runs. */
   publish(event: ThreadEvent): void { this.emit(event); }
 
@@ -544,6 +589,7 @@ export class HostedThread {
 
   /** Stops the turn and disposes the session. Streams are told to reset. */
   async close(): Promise<void> {
+    this.closing = true;
     await this.stop().catch(() => {});
     this.closed = true;
     this.stopIdle();
@@ -556,6 +602,9 @@ export class HostedThread {
 
 /** The thread is in a turn, so it can't be changed now. */
 export class Busy extends Error {}
+
+/** A message carries a mark only lyricad may put on it. */
+export class MarkedText extends Error {}
 
 function refusal(err: unknown): string {
   const message = (err as Error)?.message ?? String(err);

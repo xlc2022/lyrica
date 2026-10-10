@@ -1,6 +1,7 @@
-# Delegation: subagents
+# Delegation: subagents and child threads
 
-Lyrica hands work to subagents with one tool, `delegate`. It is her own,
+Lyrica hands work to subagents with one tool, `delegate`, and starts child
+threads with another, `threads` ([below](#child-threads)). `delegate` is her own,
 built on Pi's SDK; it borrows the role prompts and feature list of
 `pi-subagents`, not its runtime (see DESIGN.md History). Code:
 `extension/src/delegate/` and `core/src/delegation.ts`.
@@ -233,8 +234,67 @@ type and under `"event"`:
 | `interrupted` | |
 | `usage` | `inputTokens`, `outputTokens` (running totals) |
 
+## Child threads
+
+A subagent gives her a bounded answer she needs to carry on. A **child
+thread** is a stream of work of its own, which the user can open, follow and
+steer: full Lyrica (persona, memory tools, `delegate` and the tools its
+settings allow), hosted by `lyricad` like any thread, working in the
+background. Her tool guidance gives the rule; `evals/subagent-or-child.eval.ts`
+checks it reaches her, and with a real model which she picks. Code:
+`extension/src/threads.ts` (the tool) and `daemon/src/children.ts` (hosting).
+
+**The tool**, `threads({ action, ... })`:
+- `start({ title, task, folders?, readOnly?, internet? })` creates the child
+  (`createThread({ parent, child: true })`) and sends it the task, then
+  returns its ID and link at once. It gets the parent's model context
+  (`models.inheritContext`: pool, local-only, profile, thinking, models) and
+  workspace (`inheritSettings`, narrowed by `folders`, `readOnly` and
+  `internet: false`); the workspace refuses anything wider, and a folder the
+  parent doesn't have is refused. It inherits "Do not log" from the store.
+  If the child's first turn can't start, the child is forgotten.
+- `message({ id, text })` to one of the thread's children: sent as its next
+  turn (or queued behind the running one), marked as from the parent with a
+  first line `[From t:<parent>]`. Only `ChildThreads` sends it
+  (`HostedThread.send(text, { fromParent })`); `send` refuses any other text
+  that starts with it, so a user can't type it, and the UI shows it as hers
+  only in a child thread. `message({ to: "parent", text })` from a child posts an update:
+  delivered like a background subagent's result (`Delegation.deliver`, a
+  `notice` with status `update` naming the child), into the live parent or
+  its stored thread, without starting a turn there.
+- `list`: the children, with status (working, waiting for approval, idle)
+  and last update.
+
+A subagent's thread never gets the tool. In a child thread it only messages the parent, and her prompt says it
+is a child thread and to post updates at milestones and when done, not after
+every step. **Depth 1:** the store refuses a child of a child; a child can
+delegate. The user talks in a child like any thread, and the parent isn't
+told. Its approvals work as in any thread.
+
+**Limits:** `start`s per message to the parent (`perRequest`, default 3,
+counted before each start so parallel calls can't slip past), and children
+working at once per user (`concurrency`, default 2), checked by `start` and
+by a parent's message that wakes an idle child; `LyricadOptions.threads`.
+
+**Records and restarts.** `user.db` has `child_threads`: pool, thread,
+parent, whether a turn was running, and unseen updates (no text). A turn's
+start and end set `working`; a thread closed by shutdown keeps it. When a
+user's key first becomes available in a new process, any child still marked
+working becomes idle, is never resumed, and its parent gets a note naming it.
+Lock stops working children first, and tells their parents the same way; a
+parent mid-turn is stopped before the note, so the note is stored. Each
+update has its own ID, so two identical updates both show. Opening a
+child's messages sees its updates.
+
+**Forgetting** a parent forgets its child threads too when asked (the
+default in the UI); otherwise they are kept as threads of their own, detached
+from the parent's workspace, with the settings they have; a kept child is no
+longer a child (`child` is cleared, its `child_threads` row dropped), so it may
+start child threads of its own.
+
 ## Not here
 
+- Child threads of child threads, moving a child to another pool.
 - External coding CLIs (Claude Code, Codex) as subagents: they would send her
   work outside the router.
 - A watchdog or LSP checks: use the reviewer role or a loop.

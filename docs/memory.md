@@ -84,7 +84,9 @@ IDs: `t:<thread>`, `e:<thread>#<n>`, `n:<date>-<hex>`, `p:<slug>`,
 `j:<date>-<hex>` and `wake`. Thread IDs look like `web/3f7a2c9b`.
 
 A subagent's thread is created with its parent and `subagent: true`, so the
-UI can nest it: `listThreads({ parent })` returns a thread's subagents.
+UI can nest it: `listThreads({ parent })` returns a thread's subagents, and
+`listThreads({ parent, children: true })` its other daughters. A child thread
+Lyrica starts has `child: true`; the store refuses a child of a child.
 
 Entry numbers are never reused: after a rewind removes the last entries, the
 next one takes a number past them (`threads.cut`), so a tombstone or a
@@ -271,7 +273,7 @@ material.
 |---|---|
 | **Archive** | She stops using the memory. It is kept, and archiving can be undone. |
 | **Delete a memory** | The text and its revisions are removed. A tombstone is left. Pages that cited it are flagged, and the next sleep rewrites them. |
-| **Forget a thread** | The thread and its entries are deleted, along with notes whose only sources were in it, and its subagents' threads the same way. Each deleted note leaves a tombstone, and pages that cited them are flagged. |
+| **Forget a thread** | The thread and its entries are deleted, along with notes whose only sources were in it, and its subagents' threads the same way. Each deleted note leaves a tombstone, and pages that cited them are flagged. Its child threads (Lyrica's, branches, copies) go too with `forgetThread(id, author, { children: true })`; otherwise they are kept, with no parent. |
 | **Forget a topic** | Search, review the matches, then delete them in bulk. |
 | **Remove turns** | A rewind (Delete from here, Regenerate, Edit) removes entries from one onwards as forgetting does (`truncateThread`): notes whose only sources were in them go with tombstones, pages citing those notes or the entries are flagged, and subagent threads started in them are forgotten. An entry a branch still holds a copy of keeps its notes and search row, and its citations resolve through the copy. |
 

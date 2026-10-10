@@ -15,6 +15,8 @@ export interface Thread {
   parent?: string;
   /** Delegated by its parent: the UI nests it there. */
   subagent: boolean;
+  /** Started by Lyrica from its parent with `threads start`: one level deep, never a parent of another. */
+  child: boolean;
   title?: string;
   hidden: boolean;
   unlogged: boolean;
@@ -191,9 +193,9 @@ export class PoolReader {
     return row && toThread(row);
   }
 
-  /** With `parent`, only that thread's subagents. */
-  listThreads(opts: { includeHidden?: boolean; parent?: string } = {}): Thread[] {
-    const where = [opts.includeHidden ? "" : "hidden = 0", opts.parent === undefined ? "" : "parent = @parent AND subagent = 1"].filter(Boolean);
+  /** With `parent`, only that thread's subagents, or with `children` its other daughters (child threads, branches, copies). */
+  listThreads(opts: { includeHidden?: boolean; parent?: string; children?: boolean } = {}): Thread[] {
+    const where = [opts.includeHidden ? "" : "hidden = 0", opts.parent === undefined ? "" : `parent = @parent AND subagent = ${opts.children ? 0 : 1}`].filter(Boolean);
     const rows = this.db.prepare(`SELECT * FROM threads ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at`)
       .all(opts.parent === undefined ? {} : { parent: opts.parent }) as ThreadRow[];
     return rows.map(toThread);
@@ -460,15 +462,16 @@ export class PoolStore extends PoolReader {
   // Threads and entries
 
   /** A daughter of an unlogged thread is always unlogged. */
-  createThread(opts: { interface: Interface; parent?: string; subagent?: boolean; unlogged?: boolean; title?: string }): Thread {
+  createThread(opts: { interface: Interface; parent?: string; subagent?: boolean; child?: boolean; unlogged?: boolean; title?: string }): Thread {
     const parent = opts.parent === undefined ? undefined : this.getThread(opts.parent);
     if (opts.parent !== undefined && !parent) throw new Error(`no such thread: ${opts.parent}`);
-    if (opts.subagent && !parent) throw new Error("a subagent's thread needs its parent");
+    if ((opts.subagent || opts.child) && !parent) throw new Error("a subagent's or child thread needs its parent");
+    if (opts.child && (opts.subagent || parent!.child || parent!.subagent)) throw new Error("a child thread can't start child threads of its own");
     let id: string;
     do id = `${opts.interface}/${randomBytes(4).toString("hex")}`; while (this.getThread(id));
     const unlogged = !!opts.unlogged || !!parent?.unlogged;
-    this.db.prepare("INSERT INTO threads (id, interface, parent, subagent, title, unlogged, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .run(id, opts.interface, parent?.id ?? null, opts.subagent ? 1 : 0, opts.title ?? null, unlogged ? 1 : 0, now());
+    this.db.prepare("INSERT INTO threads (id, interface, parent, subagent, child, title, unlogged, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(id, opts.interface, parent?.id ?? null, opts.subagent ? 1 : 0, opts.child ? 1 : 0, opts.title ?? null, unlogged ? 1 : 0, now());
     return this.getThread(id)!;
   }
 
@@ -605,13 +608,19 @@ export class PoolStore extends PoolReader {
   /**
    * Deletes the thread and its entries, and the notes whose only sources were
    * in it (each leaves a tombstone, and pages citing them are flagged). Its
-   * subagents' threads hold its tasks and results, so they go first.
+   * subagents' threads hold its tasks and results, so they go first. Its
+   * other daughters (child threads, branches, copies) go too with `children`;
+   * otherwise they are kept as threads of their own, with the settings they
+   * have (a kept child thread is no longer a child).
    */
-  forgetThread(threadId: string, author: Author): void {
+  forgetThread(threadId: string, author: Author, opts: { children?: boolean } = {}): void {
     this.checkAuthor(author);
     this.mustThread(threadId);
-    for (const child of this.listThreads({ includeHidden: true, parent: threadId })) this.forgetThread(child.id, author);
+    for (const sub of this.listThreads({ includeHidden: true, parent: threadId })) this.forgetThread(sub.id, author);
+    if (opts.children) for (const child of this.listThreads({ includeHidden: true, parent: threadId, children: true })) this.forgetThread(child.id, author, opts);
     this.tx(() => {
+      // A kept daughter is a thread of its own: a kept child thread is no longer a child, so it may start its own.
+      this.db.prepare("UPDATE threads SET parent = NULL, child = 0 WHERE parent = ? AND subagent = 0").run(threadId);
       const inThread = (dst: string) => dst === `t:${threadId}` || dst.startsWith(`e:${threadId}#`);
       const candidates = this.db.prepare("SELECT DISTINCT src FROM citations WHERE src LIKE 'n:%' AND (dst = ? OR dst LIKE ?)")
         .all(`t:${threadId}`, `e:${threadId}#%`) as { src: string }[];
@@ -914,7 +923,7 @@ function bodyOf(item: Item): Body {
   return body;
 }
 
-interface ThreadRow { id: string; interface: Interface; parent: string | null; subagent?: number; title: string | null; hidden: number; unlogged: number; created_at: string }
+interface ThreadRow { id: string; interface: Interface; parent: string | null; subagent?: number; child?: number; title: string | null; hidden: number; unlogged: number; created_at: string }
 interface EntryRow { thread: string; n: number; role: string; text: string; unlogged: number; orig: string | null; created_at: string }
 interface NoteRow { text: string; about: string; origin: string; author: string; superseded_by: string | null; archived: number; created_at: string; updated_at: string }
 interface PageRow { slug: string; title: string; summary: string; text: string; folders: string; origin: string; author: string; archived: number; flagged: number; created_at: string; updated_at: string }
@@ -924,7 +933,7 @@ interface RevisionRow { id: number; item: string; body: string; author: string; 
 
 function toThread(r: ThreadRow): Thread {
   return {
-    id: r.id, interface: r.interface, parent: r.parent ?? undefined, subagent: r.subagent === 1, title: r.title ?? undefined,
+    id: r.id, interface: r.interface, parent: r.parent ?? undefined, subagent: r.subagent === 1, child: r.child === 1, title: r.title ?? undefined,
     hidden: r.hidden === 1, unlogged: r.unlogged === 1, createdAt: r.created_at,
   };
 }

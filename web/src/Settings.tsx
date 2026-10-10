@@ -85,8 +85,10 @@ function ModelPicker({ base, settings, task, onChange }: {
   );
 }
 
-export function SettingsDrawer({ ctx, base, summary, settings, onSettings, onSummary, onClose }: {
+export function SettingsDrawer({ ctx, base, summary, settings, onSettings, onSummary, onClose, children = 0 }: {
   ctx: ShellContext; base: string; summary: ThreadSummary; settings: ThreadSettings;
+  /** Its child threads listed under it: forgetting asks whether they go too. */
+  children?: number;
   onSettings: (s: ThreadSettings) => void; onSummary: (s: ThreadSummary) => void; onClose: () => void;
 }) {
   const userId = ctx.user.id;
@@ -166,9 +168,9 @@ export function SettingsDrawer({ ctx, base, summary, settings, onSettings, onSum
           <div className="row">
             <button type="button" onClick={() => changeThread({ hidden: !summary.hidden })}>{summary.hidden ? "Unhide" : "Hide"}</button>
             {!sub && (
-              <Confirm label="Forget this thread" danger confirm="Forget it"
-                question="Forget this thread? Its messages are deleted, along with what was learned only from it. This can't be undone."
-                onConfirm={() => run(async () => { await del(base); ctx.refreshThreads(); go({ page: "home", userId }); })} />
+              <Forget children={children} onForget={(withChildren) => run(async () => {
+                await del(base, { children: withChildren }); ctx.refreshThreads(); go({ page: "home", userId });
+              })} />
             )}
           </div>
         </fieldset>
@@ -262,5 +264,14 @@ function Folders({ grants, allowed, onChange }: { grants: Grant[]; allowed: stri
         </form>
       ) : <span className="muted small">An administrator hasn't allowed any folders for this pool.</span>}
     </>
+  );
+}
+
+/** Forgetting a thread asks first, and whether its child threads go too (ticked). */
+function Forget({ children, onForget }: { children: number; onForget: (withChildren: boolean) => void }) {
+  return (
+    <Confirm label="Forget this thread" danger confirm="Forget it" onConfirm={onForget}
+      question="Forget this thread? Its messages are deleted, along with what was learned only from it. This can't be undone."
+      {...(children > 0 ? { option: `Also forget its ${children === 1 ? "child thread" : `${children} child threads`}` } : {})} />
   );
 }

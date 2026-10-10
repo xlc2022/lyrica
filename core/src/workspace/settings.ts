@@ -201,6 +201,11 @@ export class WorkspaceSettings {
     });
   }
 
+  /** A daughter kept when its parent is forgotten: its settings stay as they are, now its own. */
+  detach(threadId: string): void {
+    this.db.prepare("UPDATE thread_workspaces SET parent = NULL WHERE thread_id = ?").run(threadId);
+  }
+
   /** Throws if a subagent's thread is now wider than its parent's, say because the parent was narrowed. */
   checkInherited(threadId: string, pool: Pool): void {
     const t = this.thread(threadId);

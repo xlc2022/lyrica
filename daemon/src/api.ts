@@ -485,7 +485,13 @@ export interface ThreadSummary {
   updatedAt: string;
   /** A turn is running. */
   busy: boolean;
-  /** Child threads (forks, copies), nested under their parent. Subagents aren't listed. */
+  /** Started by Lyrica from its parent (`threads start`). */
+  child: boolean;
+  /** A child thread's state: working, waiting for an approval, or idle. */
+  status?: "working" | "waiting" | "idle";
+  /** A child thread's updates to its parent that the user hasn't seen: opening the child sees them. */
+  unseen?: number;
+  /** Child threads (Lyrica's, branches, forks, copies), nested under their parent. Subagents aren't listed. */
   children: ThreadSummary[];
 }
 
@@ -500,7 +506,12 @@ export interface NewThread { pool: Pool; title?: string }
 /** GET /api/u/:userId/threads/:pool/:threadId → ThreadSummary */
 /** PATCH /api/u/:userId/threads/:pool/:threadId → ThreadSummary. Rename, hide or unhide. */
 export interface ThreadChange { title?: string; hidden?: boolean }
-/** DELETE /api/u/:userId/threads/:pool/:threadId → Ok. Forgets the thread (memory.md, "Deletion"). */
+/**
+ * DELETE /api/u/:userId/threads/:pool/:threadId → Ok. Forgets the thread (memory.md, "Deletion"),
+ * with its subagents. Its child threads (Lyrica's, branches, copies) go too with `children`,
+ * and are otherwise kept as threads of their own.
+ */
+export interface ForgetThread { children?: boolean }
 
 /** Where a thread's model for one task comes from. */
 export interface TaskModel {
@@ -609,9 +620,10 @@ export interface Message {
   role: "user" | "assistant" | "notice";
   /**
    * In a subagent's thread, who sent a "user" message: Lyrica, or a user who
-   * wrote in the thread (with their current name).
+   * wrote in the thread (with their current name). In a child thread, a
+   * message from its parent thread.
    */
-  from?: { kind: "lyrica" } | { kind: "user"; userId: string; name: string };
+  from?: { kind: "lyrica" } | { kind: "user"; userId: string; name: string } | { kind: "parent"; threadId: string };
   parts: MessagePart[];
   createdAt: string;
   /** The model that wrote an assistant message. */
