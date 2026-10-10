@@ -61,6 +61,8 @@ export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; lab
     /** Answers every request the queue doesn't. */
     respond: (fn: Responder) => { responder = fn; },
     get modelLists() { return modelLists; },
+    /** Goes away, as a machine that was switched off. */
+    stop: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }),
   };
 }
 
