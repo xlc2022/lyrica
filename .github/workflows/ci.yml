@@ -3,9 +3,12 @@ on:
   pull_request:
   push:
     branches: [main]
+# The jobs run on Li's own runner (docs/ci.md), so their token can only read.
+permissions:
+  contents: read
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,7 +33,7 @@ jobs:
       - run: npm run e2e -w @lyrica/web
   # The model host's Compose stack, without a GPU: install, then check the networks.
   host-stack:
-    runs-on: ubuntu-latest
+    runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4
       # Docker forwards outside names to a loopback resolver from its own
@@ -47,4 +50,8 @@ jobs:
       - run: host/test/stack/network.sh
       - if: failure()
         run: docker compose logs
+        working-directory: host
+      # The runner is kept between jobs: don't leave the stack running.
+      - if: always()
+        run: docker compose down --remove-orphans || true
         working-directory: host

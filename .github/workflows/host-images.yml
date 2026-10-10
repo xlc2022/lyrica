@@ -8,9 +8,12 @@ on:
   push:
     branches: [main]
     paths: ["host/comfyui/**", "host/compose.nvidia.yaml", "host/compose.amd.yaml", "host/recipes/**"]
+# The jobs run on Li's own runner (docs/ci.md), so their token can only read.
+permissions:
+  contents: read
 jobs:
   comfyui:
-    runs-on: ubuntu-latest
+    runs-on: lyrica-ci
     strategy:
       fail-fast: false
       matrix:
@@ -20,8 +23,10 @@ jobs:
       # The ROCm base image is about 12 GB compressed and over 30 GB unpacked.
       # Free the runner's disk, and use Docker's classic overlay2 store, which
       # drops each compressed layer once it is unpacked (the containerd store
-      # keeps both).
+      # keeps both). Only on GitHub's runners: Li's runner has the disk, and
+      # keeps its Docker cache between builds.
       - name: Make room
+        if: runner.environment == 'github-hosted'
         run: |
           sudo swapoff -a && sudo rm -f /mnt/swapfile /swapfile
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost /opt/microsoft \
@@ -39,7 +44,7 @@ jobs:
           echo "base: $base"
           docker buildx build -f host/comfyui/Dockerfile --build-arg "BASE=$base" --output type=cacheonly .
   starters:
-    runs-on: ubuntu-latest
+    runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
