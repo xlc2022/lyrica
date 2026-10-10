@@ -26,6 +26,10 @@ expect no  "the models network doesn't get the local dashboard" probe-models wge
 expect no  "host-api can't reach the internet by address" host-api node -e "$(tcp 1.1.1.1 443)"
 expect no  "host-api can't reach the internet by name" host-api node -e "$(tcp example.com 443)"
 gateway=$(docker network inspect lyrica-host_edge --format '{{(index .IPAM.Config 0).Gateway}}')
+if [[ -z $gateway ]]; then # some Docker versions leave it out when only the subnet is given: read the bridge
+  edge_id=$(docker network inspect lyrica-host_edge --format '{{.Id}}')
+  gateway=$(ip -4 -o addr show "br-${edge_id:0:12}" | awk '{print $4}' | cut -d/ -f1)
+fi
 # A port that does listen on this machine, so "blocked" isn't just "nothing there".
 python3 -m http.server --bind "$gateway" 18765 >/dev/null 2>&1 &
 listener=$!
