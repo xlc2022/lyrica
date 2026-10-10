@@ -14,7 +14,7 @@ for (const f of readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
   for (const p of starter.parts) {
     if (!trees.has(p.repo)) {
       const res = await fetch(`https://huggingface.co/api/models/${p.repo}/tree/main?recursive=true`);
-      trees.set(p.repo, res.ok ? await res.json() : []);
+      trees.set(p.repo, res.ok ? ((await res.json()) as { path: string; lfs?: { oid: string; size: number } }[]) : []);
     }
     const hub = trees.get(p.repo)!.find((x) => x.path === p.path)?.lfs;
     const line = `${f}: ${p.repo}/${p.path}`;

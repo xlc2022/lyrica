@@ -338,6 +338,10 @@ and gives parameters; she never names parts, LoRAs or workflows.
   as `Q4_K`.
 - Only the safetensors header (or GGUF metadata) is read, never the
   weights. Files are used where they are.
+- Architectures with templates: `sdxl` and `flux` (a checkpoint, or
+  diffusion model, encoders and VAE), `z-image`, `qwen-image` (create, and
+  edit for a diffusion model whose file name says "edit"), and `seedvr2`
+  (upscale).
 
 ### Recipes
 
@@ -434,11 +438,13 @@ the action is `invalid`.
 
   Only `recipe` and `prompt` are required; the rest fall back to the
   recipe's defaults. `count` is 1 to 4. `width` and `height` are multiples
-  of 16 from 256 to 2048. `references` only for a template that takes them
-  (otherwise `invalid`).
-- `POST /host/v1/images/edit`: as create, plus `"image": "<base64>"` and an
-  optional `"mask": "<base64>"` (white is changed). Size defaults to the
-  image's.
+  of 16 from 256 to 2048. `steps` is 1 to 150, `cfg` 0 to 30, `seed` 0 to
+  2^48 (random when left out; every image of one request shares it).
+  `references` only for a template that takes them (otherwise `invalid`).
+- `POST /host/v1/images/edit`: as create without `width` and `height`, plus
+  `"image": "<base64>"` and an optional `"mask": "<base64>"` (its white
+  part is changed). The result follows the image's shape, at about one
+  megapixel. Up to two `references` for Qwen-Image-Edit.
 - `POST /host/v1/images/upscale`
 
   ```json
@@ -446,7 +452,8 @@ the action is `invalid`.
     "colorMatch": "lab", "seed": 1234 }
   ```
 
-  `scale` is 1 to 4; `maxSize` caps the longer side; `colorMatch` is
+  `scale` (1 to 4) multiplies the shorter side; `maxSize` (256 to 8192)
+  caps the longer one; `colorMatch` is
   `lab`, `wavelet`, `wavelet_adaptive`, `hsv`, `adain` or `none`. Defaults
   come from the recipe.
 
