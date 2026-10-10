@@ -50,6 +50,23 @@ phone (principle 1).
      pages with a section list (the control panel's cards move into them),
      and the Notifications page with its API: one list over what waits for
      the user, sortable, filterable, paged, with each item's actions.
+   - **The thread's Files and Images panel**, as in DESIGN, with its API in
+     `daemon/src/api.ts`. Everything goes through `Workspace` in a sandbox,
+     so paths and symlinks can't leave the thread's folder and its grants:
+     - list one folder at a time (grants can be large), search names (capped);
+     - serve a file (the Images route), and a thumbnail made by the daemon
+       and cached in the thread's folder under `.lyrica/thumbs/`, which the
+       panel doesn't list;
+     - upload to a folder, make a folder, rename, delete several, and
+       download several as a zip streamed straight to the response, never
+       written to disk;
+     - read-only grants refuse every change;
+     - a names-only note of files added or removed since her last turn,
+       placed in her next turn.
+     Tests: `..` and symlinks can't escape for upload, rename or delete; a
+     read-only grant refuses changes; the zip leaves no temp file; a panel
+     upload reaches her next turn as names only; another user's thread files
+     are refused.
    - The thread view's message actions, mode picker, "+" switches, thinking
      control, pins and the removal confirmation come with the back-end briefs
      that add them (Modes, Child threads, Models 2).

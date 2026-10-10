@@ -147,6 +147,28 @@ Each user has two pools of memory.
     the daemon reports its version and build.
   - **Welcome:** a greeting, the message box with General or Private, her
     items from last night, what's waiting, and what's answering now.
+  - **Files and images, in every thread.** **Files** in the thread header
+    opens a side panel (full screen on a phone) with two tabs:
+    - **Files:** a searchable tree of the thread's folder (uploads, images
+      she made, her notes and scratch files) and each granted folder.
+      Clicking a file shows it.
+    - **Images:** thumbnails of the images in the thread's folder, with All,
+      Uploaded and Made by Lyrica. Clicking one opens it large.
+    - Actions are in a right-click menu (a long press on a phone, or ⋯):
+      Attach to message, Show in thread, Download, Copy path, Rename and
+      Delete on a file; Upload and New folder on a folder or empty space.
+    - Ctrl- or Cmd-click and Shift-click select several (Select in the menu
+      on a phone). The menu then acts on all of them: Attach, Download as
+      zip, Copy paths, Delete.
+    - Uploading from the panel, or dropping files on it, adds them to the
+      thread's folder without sending a message. Her next turn gets one line
+      naming the files added or removed since her last turn. Files attached
+      in the message box go to `uploads/` and show in the panel too.
+    - Rename and Delete work in the thread's folder and in read-write
+      grants, never in read-only ones. Deleting is permanent, and deleting
+      in a grant says it deletes on the server.
+    - A panel upload belongs to the thread, not to a message, so removing
+      turns never deletes it.
 - **Each interface keeps its own threads.** Lyrica is continuous across
   interfaces because she remembers, not because threads are mirrored. Moving a
   thread to another interface is an explicit export that copies it. Nothing
