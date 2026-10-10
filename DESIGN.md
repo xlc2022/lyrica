@@ -467,8 +467,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     compact now; fifteen points before that, and never later than 75%, to
     finish the step, save what matters to memory and compact with a
     summary. From 32k up that is exactly 90% and 75%.
-  - She compacts herself with the `compact` tool, giving her own summary
-    (it becomes an action of the `threads` tool once that lands). lyricad hands it to Pi's compaction, which cuts
+  - She compacts herself with the `threads` tool's `compact` action, giving
+    her own summary. lyricad hands it to Pi's compaction, which cuts
     the old entries and keeps the recent ones; pinned messages stay. It
     shows as a marker, **Compacted · 41k → 6k**, expanding to the summary.
     Pi's automatic compaction stays on at the window's edge as the safety
@@ -975,7 +975,8 @@ Details in [docs/sleep.md](docs/sleep.md).
     the mode the user picks, and she carries on.
   - Irreversible actions that leave the server always ask, whatever the
     mode. Subagents and child threads get the parent's mode or a stricter
-    one; a Plan-mode parent's subagents are read-only. Enforced in the
+    one, and follow the parent when it is made stricter later, at any
+    depth; a Plan-mode parent's subagents are read-only. Enforced in the
     `tool_call` hook and by which tools are active, never by instructions.
 - **Switches in the message box,** as in Open WebUI: a "+" beside the
   message box turns tools on or off for this thread, without opening its
@@ -983,7 +984,7 @@ Details in [docs/sleep.md](docs/sleep.md).
   commands** (the sandbox's internet switch) and **Images** (the `image`
   tool). A switch that's off removes the tools from the session, so she
   can't use them; a subagent or child thread can't turn back on what its
-  parent turned off. Local-only and the pool are not switches here: they
+  parent turned off, even later. Local-only and the pool are not switches here: they
   stay in the thread's settings, where changing them is deliberate.
 - **Deployment:** `lyricad` runs as a systemd service, in practice inside an
   LXC container or VM on Li's Proxmox. No Docker. The host needs bubblewrap,

@@ -159,7 +159,7 @@ nothing else. No code path gives a general view a private handle.
 
 | Area | Methods |
 |---|---|
-| Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title? })` (a child of a child is refused), `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared), `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)` |
+| Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title? })` (a child of a child is refused), `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared), `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)`, `copyEntries(from, to, { upTo? })` (a thread's entries into another, for forks and branches), `entriesMentioning(needle)` → `{ thread, n }[]` (where an upload is still mentioned) |
 | Pins | `pinEntry(threadId, n, pinned)`, `pins(threadId?)` → `PinnedEntry[]` (one thread's, or the pool's), oldest first |
 | Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
@@ -430,9 +430,9 @@ One model-facing tool: `delegate({ action?, ... })`.
 - A subagent also has `ask_parent({ question, wait? })` (`wait: false`
   sends a note and keeps working, up to `limits.notes` per stretch), and
   read-only memory (`registerMemoryTools({ readOnly: true })`).
-- `new Delegation({ ..., approve? })`: a subagent's tool calls ask under its
-  parent's current permission mode, or its own if stricter
-  (`stricterMode`), through `approve(SubagentApproval, signal)`, which
+- `new Delegation({ ..., approve? })`: a subagent's tool calls ask under the
+  strictest mode of its thread and its ancestors, read at each call
+  (`effective`), through `approve(SubagentApproval, signal)`, which
   `lyricad` shows in the subagent's thread and its parent's; the first answer
   wins, and a timeout, Stop or abort refuses. With no `approve`, the call is
   refused.
@@ -442,7 +442,7 @@ One model-facing tool: `delegate({ action?, ... })`.
   `narrowing` so a subagent can be continued.
 - Subagents aren't listed in the thread list; child threads (forks, copies)
   nest under their parent.
-- **Child threads** (`createThreadsExtension(thread, host: ThreadsHost)`,
+- **Child threads** (`createThreadsExtension(thread, host?: ThreadsHost, meter?)`,
   never in a subagent's thread): one model-facing tool, `threads({ action,
   ... })`: `start` (`title`, `task`, optional narrower `folders`,
   `readOnly`, `internet`), `message` (to a child, or `to: "parent"` from a
@@ -456,19 +456,9 @@ One model-facing tool: `delegate({ action?, ... })`.
   `fromParent(id)` (`FROM_PARENT`), which only `lyricad` writes; a child's
   update reaches the parent through `Delegation.deliver` as a notice with
   status `update`, and every delivery's details carry an `id`.
-- Planned (Modes): the permission mode values become `ask`, `acceptEdits`,
-  `auto` and `plan` (migrating "ask before changes" to `ask` and "ask before
-  commands" to `acceptEdits`). `plan` leaves only read-only tools active and
-  adds a `propose_plan({ plan })` tool whose approval sets the next mode.
-  Thread settings gain `webSearch` and `images` switches beside `internet`;
-  each one off removes its tools from the session, and children can only
-  narrow them.
-- Planned (Child threads, rewinding): the workspace's `write` and `edit`
-  operations record each change per entry (path, created or changed, content
-  hash after) and keep a snapshot of a changed file's earlier content in the
-  user's encrypted home. `rewindFiles(thread, fromN, { apply })` reports and
-  then deletes created files and restores changed ones that are unchanged
-  since. Snapshots expire after 30 days.
+- **Modes:** a thread in Plan mode starts only read-only roles; anything
+  else is refused before a thread is made. A read-only subagent there runs
+  in Plan mode itself.
 
 Every run:
 - creates a child thread with `createThread({ parent, subagent: true })`;
@@ -541,7 +531,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `remember`, `recall` and `read_memory` (Memory thread);
   - `delegate`, and `ask_parent` in subagents (Delegation thread; see
     [delegate](#delegate));
-  - `threads`, in every hosted thread but a subagent's (Child threads; see
+  - `threads`, in every hosted thread but a subagent's
+    (`createThreadsExtension(thread, host?, meter?)`; Child threads; see
     [delegate](#delegate));
   - `calendar` and `sort` (Integrations thread);
   - `image`, with `create` and `edit` (Images thread);
@@ -549,9 +540,36 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     a Pi package);
   - in sleep sessions only: `write_page`, `write_journal`, `write_wake`,
     `raise` and `propose_persona` (Sleep thread; see [sleep.md](sleep.md)).
-  - `compact`, with her summary as its one argument (Models 2's context
-    work); it runs after the turn and answers Pi's `session_before_compact`
-    with the summary. It becomes an action of `threads` when that lands.
+  - `propose_plan({ plan })`, only in Plan mode and never in a subagent
+    (Modes; see [workspace.md](workspace.md));
+  - compacting is `threads({ action: "compact", summary })`
+    (`askCompaction`, `COMPACT_GUIDELINES`): it runs after the turn and
+    answers Pi's `session_before_compact` with her summary. There's no
+    separate `compact` tool.
+- **Which tools are on** (`extension/src/gate.ts`): `setToolsOff(pi, ctx,
+  reason, names)`. The unlogged rule, a subagent's role and the workspace's
+  mode and switches each say which tools their reason has off; a tool is
+  active only while no reason has it off, and comes back only if a reason
+  took it away.
+- **Workspace extension** (`createWorkspaceExtension(tools: ThreadTools)`):
+  - `ThreadTools` is `{ target(), settings(), network(), approve?,
+    setMode?, proposePlan?(PlanRequest), recordChange?(NewChange) }`.
+    `settings()` is the thread's effective settings.
+  - `toolsOff(settings, registered)`: Plan mode leaves only `PLAN_TOOLS`
+    (`read`, `recall`, `read_memory`, `web_search`, `web_fetch`,
+    `delegate`, `ask_parent`, `threads`, `propose_plan`); outside Plan
+    mode `propose_plan` is off. `SWITCHED_TOOLS`: `webSearch` turns off
+    `web_search` and `web_fetch`, `images` turns off `image`. The gate runs
+    on `session_start`, `before_agent_start` and right after a plan is
+    approved, and `tool_call` refuses a tool that's off.
+  - `propose_plan` asks `proposePlan`, which answers a `GoAhead` (one of
+    `GO_AHEAD`: `ask`, `acceptEdits`, `auto`) or undefined to keep
+    planning; then `setMode`. Without lyricad, Pi's UI asks; with no UI,
+    she keeps planning.
+  - A tool annotated `openWorldHint` and not `readOnlyHint` always asks,
+    even in Auto.
+  - `recording(target, ops, toolCall, record?)` wraps the `write` and
+    `edit` operations so each change reaches `recordChange`.
 - **Commands:** `/sleep`, and others only within the budget.
 - Lyrica's sessions **never** load project context files (`AGENTS.md`,
   `CLAUDE.md`). Her self-primer is a routed topic.
@@ -609,7 +627,18 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   restart left working are marked idle and their parents told.
 - **Permission prompts:** the workspace extension's `tool_call` hook calls
   `ThreadTools.approve?(request)`; `lyricad` supplies it and waits for an
-  answer from any open view, denying on timeout or Stop.
+  answer from any open view, denying on timeout or Stop. `proposePlan`
+  takes the same path: `PermissionAnswer { allow, mode?: GoAhead }`, and
+  approving a plan without `mode` is `400`. A plan switching the mode, or a
+  settings change, sends the thread a `{ type: "settings" }` event.
+- **Sweep** (`Lyricad.sweep`, nightly, before sleep): `sweepUser(services,
+  userId)` for each user whose home workspace is mounted clears snapshots
+  and change records older than 30 days (`SWEEP_AGE_MS`), the folders of
+  threads that no longer exist (younger than 60 s are left), and the
+  worktrees of subagent runs that aren't live (`DelegationStore.liveRuns`)
+  and haven't changed in 30 days. `forgetWorktree(path, allowed)` removes a
+  worktree's git record only when it is in a folder the user may grant,
+  reached with no symlinks, and names that worktree back. Logs counts only.
 - **Web access** (`LyricadOptions.web`): built-in Caddy, configured through
   its admin socket `/run/lyrica-caddy/admin.sock`, or an external proxy, with
   an extra listener whose settings and TLS key are in
@@ -637,7 +666,17 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - messages (send, stream; `POST …/messages/:n/branch` → `ThreadSummary`;
     `POST …/messages/:n/rewind` with `RewindRequest` `delete`, `regenerate`
     with an optional `model`, or `edit` with `text`, `409` while a turn runs;
-    the `rewound` event carries `from` and `resend`, never text);
+    `preview: true` answers a `RemovalPlan` (`messages`, `pins`,
+    `subagents`, `files: PlanFile[]`, `branches: PlanBranch[]`, `commands`)
+    and changes nothing; `skip` lists the plan items left as they are;
+    `RewindResponse` gains `files` and `branches`, the counts undone
+    (`removalPlan` and `applyRemoval` in `daemon/src/removal.ts`; uploads
+    found with `PoolStore.entriesMentioning`); the `rewound` event carries
+    `from` and `resend`, never text);
+  - modes: `GET`/`PUT /api/u/:userId/mode` (`ModeDefault`), the mode new
+    threads start in; `ThreadSettings` and `ThreadSettingsChange` gain
+    `webSearch` and `images`, and their mode and switches are the effective
+    ones;
   - models (paths under `/api/u/:userId/`):
     - **Endpoints:** `GET`/`POST endpoints`; `PATCH`/`DELETE endpoints/:id`;
       `POST endpoints/:id/discover`, `…/reset-ids`, `…/merge` (→ `EndpointInfo`),
@@ -739,14 +778,18 @@ interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
   ops(): { read; write; edit; bash };     // Pi's tool operations
   folders(): string[];                    // host folders, or "<ssh name>:<root>"
 }
-forThread(t)  // { target(), settings(), network(), folders() }, each read fresh
+forThread(t)  // { target(), settings(), setMode(), network(), folders(), recordChange() }, each read fresh; settings() is effective
+changes(userId): FileChanges              // her write and edit calls' changes, for removing turns
 targetFor(t): ExecutionTarget
 grantsFor(t): Grant[]                     // { path, writable }
 folders(t): string[]
 network(t): Network
-inheritSettings(parent, childThreadId, narrower?)  // subagents and child threads: same or stricter, never wider
+inheritSettings(parent, childThreadId, narrower?)  // subagents and child threads: same or stricter (folders, network, mode, webSearch, images), never wider
 settings(userId).detach(threadId)          // a kept child, once its parent is forgotten: no longer narrowed by it
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, SSH targets
+settings(userId).defaultMode() / setDefaultMode(mode)  // the mode new threads start in (default auto)
+settings(userId).startThread(threadId, pool)           // fixes the default mode on a new thread
+settings(userId).effective(threadId): ThreadWorkspace  // strictest mode and switches of it and its ancestors
 allowedPaths.allow(actor, userId, pool, path) / disallow(...) / list(userId)
 saveUpload(t, name, bytes): Promise<string>  // cleans the name (cleanUploadName), never overwrites
 mountHome(userId) / unmountHome(userId)   // gocryptfs; mount when the user's key becomes available
@@ -756,7 +799,8 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
 - Every sandbox run receives exactly the thread's grants, the thread's folder
   in the home workspace, and a read-only system.
 - **Workspace settings live in the user's `user.db`:** each thread's grants,
-  network switches, permission mode and target, and the SSH targets. Allowed
+  network switches, permission mode, `webSearch` and `images` switches and
+  target, and the SSH targets. Allowed
   paths are the exception (below). Workspace never adds tables to the pool
   databases, which belong to Memory.
 - **Network:** every thread has two switches (internet, and this machine's
@@ -781,6 +825,17 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   - If `selfTest()` finds that a sandbox could undo its firewall, or can't
     start one, every thread runs with network off and the reason is kept in
     `networkRefused` for the UI.
+- **Modes:** `PermissionMode` is `"auto" | "acceptEdits" | "ask" | "plan"`,
+  strictest first plan, ask, acceptEdits, auto. Stored `ask-changes` and
+  `ask-commands` migrate in place to `ask` and `acceptEdits`. A thread with
+  no row is `auto`. A thread's ancestors changed later still narrow it, at
+  any depth, because `effective` is read at each call.
+- **File changes** (`FileChanges`, `FileChange`, `NewChange`, `sha256`):
+  `user.db` `file_changes` holds each change's thread, tool call, target,
+  path, whether it created the file and the hash it left, never content. A
+  changed file's earlier content is a snapshot in the encrypted home
+  workspace's `snapshots/`. Target operations' `writeFile` takes `string |
+  Buffer`, so a snapshot is put back byte for byte.
 - **Allowed paths** live in `self.db` (`workspace_paths`, keyed by user ID)
   and change only with an administrator actor. Paths overlapping
   `NEVER_GRANTED` (`/run/lyrica-caddy`) are refused, because sandboxes run with

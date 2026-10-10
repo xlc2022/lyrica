@@ -47,8 +47,8 @@ host (#28, #31, #32, #33, #38, #39, #42, #45), Child threads 1/3 (#44),
 |---|---|---|
 | Models 2 | done | context and pace merged in #46 |
 | Model host | done | AMD and integrated GPUs merged in #45; hardware checks listed in its handoff notes |
-| Child threads | `feature/child-threads-4` | #47 and #48 merged; #51 (undoing removed turns, the nightly sweep, `compact` folded into `threads`) in review |
-| Modes | `feature/modes` | #50 in review; non-UI round verified, waiting on the UI review |
+| Child threads | done | #47, #48, #51 and #53 merged |
+| Modes | done | #50 merged; the chat's pending bar in #55 |
 | Images | not started | docs/briefs/images.md |
 | Web UI 2 | not started | docs/briefs/web-2.md; reads docs/ux.md first |
 
@@ -74,9 +74,8 @@ is green. The PR review thread then records contracts, DESIGN and
 docs/ux.md changes in a docs-only PR.
 
 - Settled in review: subagents and child threads follow their parent's
-  later narrowing of mode and switches at once (Modes, #50).
-- The `threads` tool replaces `compact` in Plan mode's tools once #50 and
-  #51 have both landed (whichever merges second).
+  later narrowing of mode and switches at once (Modes, #50). Recorded in
+  DESIGN and the contracts.
 
 Earlier notes from the design thread:
 
