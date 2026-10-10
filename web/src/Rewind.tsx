@@ -1,6 +1,6 @@
 // Each message's menu: pin, branch, regenerate, edit and delete. Deleting waits a few seconds, so it can be undone.
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ModelRef, Pins, RewindRequest, ThreadSettings } from "./api.ts";
+import type { ModelRef, Pins, RemovalPlan, RewindRequest, ThreadSettings } from "./api.ts";
 import { useDismiss } from "./ui.tsx";
 
 /** What a thread lets its messages do. Absent in a subagent's thread. */
@@ -138,5 +138,76 @@ export function PinnedBadge({ pins, you }: { pins: Pins; you: string }) {
         </div>
       )}
     </span>
+  );
+}
+
+/** Whether a removal has anything to confirm: files, branches, commands, pins or subagents. */
+export function hasConsequences(p: RemovalPlan): boolean {
+  return p.files.length + p.branches.length + p.commands.length + p.pins + p.subagents > 0;
+}
+
+/**
+ * Before turns that did things are removed: what goes with them, each undo
+ * ticked by default and untickable. Files changed since, and branches with
+ * commits of their own, are listed but kept unless ticked.
+ */
+export function RemovalConfirm({ plan, onConfirm, onCancel }: { plan: RemovalPlan; onConfirm: (skip: string[]) => void; onCancel: () => void }) {
+  const [ticked, setTicked] = useState(() => new Set([...plan.files, ...plan.branches].filter((x) => x.ticked).map((x) => x.id)));
+  const toggle = (id: string, on: boolean) => setTicked((t) => { const n = new Set(t); if (on) n.add(id); else n.delete(id); return n; });
+  const ref = useRef<HTMLDivElement>(null);
+  useDismiss(ref, true, onCancel);
+  const undoable = [...plan.files.filter((f) => f.action !== "keep"), ...plan.branches];
+  const kept = plan.files.filter((f) => f.action === "keep");
+  const num = (n: number) => <span className="num">{n}</span>;
+  return (
+    <div className="confirm removal" role="group" aria-label="Remove messages" ref={ref}>
+      {/* The one sentence Remove answers; the lists' headings say the rest. */}
+      <p>
+        Remove {num(plan.messages)} {plan.messages === 1 ? "message" : "messages"}
+        {plan.subagents > 0 && <> and {num(plan.subagents)} {plan.subagents === 1 ? "subagent thread" : "subagent threads"}</>}?
+        {plan.pins > 0 && <> {num(plan.pins)} {plan.pins === 1 ? "is" : "are"} pinned.</>}
+      </p>
+      {undoable.length > 0 && (
+        <div className="removal-list">
+          <h4 title="Untick to keep">Undone</h4>
+          {plan.files.filter((f) => f.action !== "keep").map((f) => (
+            <label key={f.id} className="check">
+              <input type="checkbox" checked={ticked.has(f.id)} onChange={(e) => toggle(f.id, e.target.checked)} />
+              <span>{f.action === "delete" ? "Delete" : "Put back"} <code>{f.path}</code></span>
+            </label>
+          ))}
+          {plan.branches.map((b) => (
+            <label key={b.id} className="check">
+              <input type="checkbox" checked={ticked.has(b.id)} onChange={(e) => toggle(b.id, e.target.checked)} />
+              <span>Delete branch <code>{b.branch}</code> in <code>{b.repo}</code>{b.commits && <span className="badge" title="It has commits no other branch has">has commits</span>}</span>
+            </label>
+          ))}
+        </div>
+      )}
+      {kept.length > 0 && (
+        <div className="removal-list">
+          <h4>Kept</h4>
+          {kept.map((f) => (
+            <div key={f.id} className="kept">
+              <code>{f.path}</code>
+              <span className="badge" title={f.reason === "changed since" ? "Something else changed it since" : "This thread's files can't be reached now"}>{f.reason}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {plan.commands.length > 0 && (
+        <div className="removal-list">
+          <h4 title="What commands changed isn't tracked">Not undone</h4>
+          <details className="removal-commands">
+            <summary>{num(plan.commands.length)} {plan.commands.length === 1 ? "command" : "commands"} ▾</summary>
+            {plan.commands.map((c, i) => <code key={i}>{c}</code>)}
+          </details>
+        </div>
+      )}
+      <div className="row">
+        <button type="button" className="danger solid" onClick={() => onConfirm([...plan.files, ...plan.branches].filter((x) => !ticked.has(x.id)).map((x) => x.id))}>Remove</button>
+        <button type="button" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
   );
 }

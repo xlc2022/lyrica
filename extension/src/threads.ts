@@ -1,9 +1,11 @@
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
+import { askCompaction, COMPACT_GUIDELINES, type ContextMeter } from "./context.ts";
 import type { ThreadContext } from "./index.ts";
 
 // Child threads: streams of work Lyrica starts under the thread she's in. Each
 // is a thread like any other, hosted by lyricad, which supplies `ThreadsHost`.
+// The same tool compacts the thread she's in, with her own summary.
 
 /** What a parent's message to its child starts with, so the child's thread can show it as hers. Only lyricad writes it. */
 export const fromParent = (parentThreadId: string) => `[From t:${parentThreadId}]\n\n`;
@@ -34,7 +36,7 @@ export interface ThreadsHost {
 }
 
 const Params = Type.Object({
-  action: Type.Union([Type.Literal("start"), Type.Literal("message"), Type.Literal("list")]),
+  action: Type.Union([Type.Literal("start"), Type.Literal("message"), Type.Literal("list"), Type.Literal("compact")]),
   title: Type.Optional(Type.String({ description: "For start: the child thread's title." })),
   task: Type.Optional(Type.String({ description: "For start: what to work on, with everything it needs. It starts with your persona and memory, but none of this conversation." })),
   folders: Type.Optional(Type.Array(Type.String(), { description: "For start: only these of this thread's folders." })),
@@ -43,6 +45,7 @@ const Params = Type.Object({
   id: Type.Optional(Type.String({ description: "For message: the child thread's ID." })),
   to: Type.Optional(Type.Literal("parent", { description: "For message from a child thread: to its parent." })),
   text: Type.Optional(Type.String({ description: "For message: what to say." })),
+  summary: Type.Optional(Type.String({ description: "For compact: what the next stretch needs: what you're doing, decisions, open questions, paths and names." })),
 });
 type Params = Static<typeof Params>;
 
@@ -51,9 +54,10 @@ const text = (t: string, details?: unknown) => ({ content: [{ type: "text" as co
 /**
  * The `threads` tool. In a thread Lyrica can start children from, it
  * starts, messages and lists them; in a child thread, it only messages the
- * parent: children are one level deep.
+ * parent: children are one level deep. With `meter` (a hosted thread), it
+ * also compacts this thread; without `host`, that is all it does.
  */
-export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost): ExtensionFactory {
+export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost | undefined, meter?: ContextMeter): ExtensionFactory {
   const self = thread.view.own.getThread(thread.threadId);
   if (!self) throw new Error("no such thread");
   if (self.subagent) throw new Error("a subagent's thread can't start or message child threads");
@@ -77,17 +81,26 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost)
     pi.registerTool({
       name: "threads",
       label: "Threads",
-      description: child
-        ? "Send your parent thread a short update: threads({ action: \"message\", to: \"parent\", text })."
-        : "Child threads: start one on a stream of work of its own, which works in the background and which the person can open and steer; message one; list them.",
-      promptSnippet: child ? "post an update to the parent thread" : "start, message and list child threads",
-      promptGuidelines: child ? [] : [
+      description: [
+        !host ? "" : child
+          ? "Send your parent thread a short update: threads({ action: \"message\", to: \"parent\", text })."
+          : "Child threads: start one on a stream of work of its own, which works in the background and which the person can open and steer; message one; list them.",
+        meter ? "When your context is filling up, compact this thread: threads({ action: \"compact\", summary }) replaces the older part of the conversation with your summary when this turn ends; recent messages stay." : "",
+      ].filter(Boolean).join(" "),
+      promptSnippet: [!host ? "" : child ? "post an update to the parent thread" : "start, message and list child threads", meter ? "compact this thread with your own summary" : ""].filter(Boolean).join("; "),
+      promptGuidelines: [...(child || !host ? [] : [
         "Use a subagent (delegate) when you need an answer to carry on and the task is bounded: searching, reading, reviewing, checking.",
         "Start a child thread (threads start) when the work is a stream of its own that outlasts this conversation, that the person may want to follow or steer, or that needs a long context of its own, such as \"I'll keep going on the homelab migration in its own thread.\" Say so, with its link.",
         "A child thread posts updates here as it goes. Message it with threads message; the person can also talk to it directly.",
-      ],
+      ]), ...(meter ? COMPACT_GUIDELINES : [])],
       parameters: Params,
-      async execute(_id, p: Params) {
+      async execute(_id, p: Params, _signal, _update, ctx) {
+        if (p.action === "compact") {
+          if (!meter) throw new Error("this thread can't compact");
+          const r = askCompaction(meter, String(p.summary ?? ""), ctx.model?.contextWindow ?? 0);
+          return { ...text(r.text), ...(r.isError ? { isError: true } : {}) };
+        }
+        if (!host) throw new Error("child threads aren't available here");
         if (p.action === "message") {
           if (!p.text?.trim()) throw new Error("message needs text");
           if (child) {

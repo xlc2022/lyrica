@@ -212,7 +212,7 @@ export class Sandbox implements ExecutionTarget {
   }
 
   /** Runs a file operation and throws its error output if it fails. */
-  private async file(argv: string[], input?: string): Promise<Buffer> {
+  private async file(argv: string[], input?: string | Buffer): Promise<Buffer> {
     const r = await this.run(argv, { input });
     if (r.code !== 0) throw new Error(r.stderr.toString().trim() || `${argv[0]} failed`);
     return r.stdout;
@@ -220,7 +220,7 @@ export class Sandbox implements ExecutionTarget {
 
   ops(): ToolOps {
     const readFile = async (p: string) => this.file(["cat", "--", this.allow(p, false)]);
-    const writeFile = async (p: string, content: string) => {
+    const writeFile = async (p: string, content: string | Buffer) => {
       await this.file(["sh", "-c", WRITE, "sh", this.allow(p, true)], content);
     };
     return {

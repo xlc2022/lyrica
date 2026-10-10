@@ -344,10 +344,11 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
 - **Pinned messages.** Any message, the user's or Lyrica's, can be pinned.
   - A pinned message is easy to find again: each thread's header lists its
     pins, and the sidebar's search has a Pinned view across threads.
-  - It stays in Lyrica's context word for word: compaction keeps pinned
-    messages instead of summarising them, in a `pinned` section of the
-    prompt within a budget of 2,000 tokens (oldest pins are summarised first
-    when over, and the thread's header says so).
+  - It stays in Lyrica's context word for word, in a `pinned` section of
+    the prompt read from the thread itself, so compaction can't summarise
+    it away. The section has a budget of 2,000 tokens: when over, the
+    oldest pins are cut to their first line, then left out, and the
+    thread's header says so.
   - Sleep treats a pin as a sign the message matters when it consolidates.
   - Pins live with the thread, in its pool. A branch keeps the pins in the
     turns it copies. Removing turns that hold a pin says so in the

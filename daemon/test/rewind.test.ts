@@ -1,7 +1,13 @@
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { EndpointInfo, MessagePage, Pins, RewindResponse, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { EndpointInfo, MessagePage, Pins, RemovalPlan, RewindResponse, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
+
+const has = (cmd: string) => { try { execFileSync("which", [cmd], { stdio: "ignore" }); return true; } catch { return false; } };
+const homeRunnable = process.getuid?.() !== 0 && has("bwrap") && has("gocryptfs") && has("fusermount3");
 
 /** Li with a local chat model, subagent models on a second server, and one general thread. */
 async function setup() {
@@ -177,6 +183,54 @@ describe("pinning a message", () => {
     expect((await li.put(`${path}/messages/1/pin`, {})).status).toBe(400);
     expect((await li.put(`${path}/messages/99/pin`, {})).status).toBe(404);
     expect((await li.del(`${path}/messages/${first.n}/pin`)).status).toBe(200);
+  });
+});
+
+describe("removing turns that did things", () => {
+  it("previews what goes without changing anything, and lists commands and pins", async () => {
+    const { li, model, path, say, messages, said } = await setup();
+    model.reply({ tools: [{ name: "bash", args: { command: "git switch -c tidy && echo done" } }] }, { text: "Ran it." });
+    await say("tidy up");
+    const first = (await messages())[0]!;
+    await li.put(`${path}/messages/${first.n}/pin`, {});
+    const before = await said();
+
+    const plan = (await li.post<RemovalPlan>(`${path}/messages/${first.n}/rewind`, { action: "delete", preview: true })).body;
+    expect(plan).toMatchObject({ pins: 1, subagents: 0, commands: ["git switch -c tidy && echo done"] });
+    expect(plan.messages).toBeGreaterThan(1);
+    expect(await said()).toEqual(before);
+    expect((await li.post<RewindResponse>(`${path}/messages/${first.n}/rewind`, { action: "delete", skip: ["nothing"] })).body).toMatchObject({ pins: 1, files: 0, branches: 0 });
+    expect(await said()).toEqual([]);
+  });
+});
+
+describe.skipIf(!homeRunnable)("removing turns that changed files", () => {
+  it("deletes what they made, puts back what they changed, keeps what changed since, and the sweep clears snapshots", async () => {
+    const { rt, d, li, model, path, thread, say, messages, logs } = await setup();
+    const call = (p: string, content: string) => ({ name: "write", args: { path: `/workspace/${p}`, content } });
+    model.reply({ tools: [call("base.txt", "v1")] }, { text: "Wrote v1." });
+    await say("write base");
+    model.reply({ tools: [call("base.txt", "v2"), call("new.txt", "fresh"), call("other.txt", "hers")] }, { text: "Wrote more." });
+    await say("write more");
+    const dir = d.services!.workspace.threadDir({ userId: rt.li.id, pool: "general", threadId: thread.id });
+    writeFileSync(join(dir, "other.txt"), "someone else's");
+
+    const second = (await messages()).filter((m) => m.role === "user")[1]!;
+    const plan = (await li.post<RemovalPlan>(`${path}/messages/${second.n}/rewind`, { action: "delete", preview: true })).body;
+    expect(plan.files.map(({ path: p, action, ticked }) => [p, action, ticked]).sort()).toEqual([
+      ["/workspace/base.txt", "restore", true],
+      ["/workspace/new.txt", "delete", true],
+      ["/workspace/other.txt", "keep", false],
+    ]);
+    expect((await li.post<RewindResponse>(`${path}/messages/${second.n}/rewind`, { action: "delete" })).body).toMatchObject({ files: 2 });
+    expect(readFileSync(join(dir, "base.txt"), "utf8")).toBe("v1");
+    expect(existsSync(join(dir, "new.txt"))).toBe(false);
+    expect(readFileSync(join(dir, "other.txt"), "utf8")).toBe("someone else's");
+
+    // base.txt's first write is still undoable; a month on, the sweep clears it, and logs counts only.
+    d.sweep(new Date(Date.now() + 31 * 864e5));
+    expect(logs.find((l) => l.startsWith("sweep:"))).toMatch(/^sweep: \d+ snapshots, 1 change records, \d+ thread folders, \d+ worktrees removed$/);
+    expect(logs.join("\n")).not.toMatch(/base\.txt|v1|fresh/);
   });
 });
 

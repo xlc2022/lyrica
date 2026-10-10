@@ -170,6 +170,34 @@ test("a pinned message shows in the header's Pinned popover, and unpinning remov
   await expect(page.locator(".msg.user .who").getByText("pinned", { exact: true })).toHaveCount(0);
 });
 
+test("removing turns that did things asks first, with what goes", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "the shed key is under the pot");
+  await expect(page.getByText("You said: the shed key is under the pot")).toBeVisible();
+  const menu = (i: number) => page.getByRole("button", { name: "Message actions" }).nth(i);
+  await menu(0).click();
+  await page.getByRole("menuitem", { name: "Pin", exact: true }).click();
+  await expect(page.locator(".msg.user .who").getByText("Pinned")).toBeVisible();
+
+  // Deleting the turn takes the pin, so it asks; Cancel keeps everything.
+  await menu(1).click();
+  await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+  const confirm = page.getByRole("group", { name: "Remove messages" });
+  await expect(confirm).toContainText("Remove 2 messages? 1 is pinned.");
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/removal-${page.viewportSize()!.width}.png` });
+  await confirm.getByRole("button", { name: "Cancel" }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect(page.getByText("the shed key is under the pot", { exact: true })).toBeVisible();
+
+  await menu(1).click();
+  await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+  await confirm.getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByText("the shed key is under the pot", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /pinned/ })).toHaveCount(0, { timeout: 15_000 });
+});
+
 test("a child thread nests under its parent, opens from its card, and goes with its parent when asked", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");

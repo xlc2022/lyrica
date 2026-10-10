@@ -449,8 +449,8 @@ export class HostedThread {
             setMode: (mode) => { tools.setMode(mode); this.emit({ type: "settings" }); },
           }),
           ...(canDelegate ? [createDelegateExtension(ctx, delegation)] : []),
-          // Child threads, as delegate, are never a subagent's: a subagent works for its run, not on streams of its own.
-          ...(this.o.threads && !thread.subagent ? [createThreadsExtension(ctx, this.o.threads)] : []),
+          // Child threads and compacting. Never a subagent's: a subagent works for its run, not on streams of its own.
+          ...(!thread.subagent ? [createThreadsExtension(ctx, this.o.threads, meter)] : []),
         ],
       });
       const unsubscribe = session.subscribe((e) => this.forward(e));

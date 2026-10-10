@@ -1,11 +1,10 @@
 import { buildSessionContext, estimateTokens, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { speeds, type Pace } from "@lyrica/core";
-import { Type } from "typebox";
 import type { Section } from "./assemble.ts";
 
 // Context and pace: how full her context is and how fast her model answers,
 // measured each turn; the lines that tell her to prepare and to compact; and
-// the `compact` tool, with her own summary. Counts and times only,
+// compacting with her own summary (an action of the `threads` tool). Counts and times only,
 // never text.
 
 /** What the context holds, as the breakdown shows it. */
@@ -141,8 +140,8 @@ export function prepareLine(r: ContextReport): string | undefined {
   const at = linesFor(r.window);
   // To a tenth of a point, as the lines are set.
   const used = Math.round((r.tokens / r.window) * 1000) / 10;
-  if (used >= at.compact) return "Your context is nearly full. Compact now: call compact with a summary of what the next stretch needs.";
-  if (used >= at.prepare) return "Your context is filling up. Finish the current step, save what matters with remember, then call compact with a summary of what the next stretch needs.";
+  if (used >= at.compact) return "Your context is nearly full. Compact now: call threads with action \"compact\" and a summary of what the next stretch needs.";
+  if (used >= at.prepare) return "Your context is filling up. Finish the current step, save what matters with remember, then call threads with action \"compact\" and a summary of what the next stretch needs.";
   return undefined;
 }
 
@@ -153,7 +152,6 @@ export function contextLines(meter: ContextMeter): string {
   return [statusLine(r), prepareLine(r)].filter(Boolean).join("\n");
 }
 
-const text = (t: string, isError = false) => ({ content: [{ type: "text" as const, text: t }], details: undefined, ...(isError ? { isError } : {}) });
 
 /** Every message in her context now, estimated, without this turn's context message (counted in its parts). */
 function conversationTokens(ctx: ExtensionContext): number {
@@ -162,8 +160,34 @@ function conversationTokens(ctx: ExtensionContext): number {
   return messages.reduce((a, m, i) => a + (i === lastTurn ? 0 : estimateTokens(m)), 0);
 }
 
+/** How she compacts, in the `threads` tool's guidance. */
+export const COMPACT_GUIDELINES = [
+  "Your turn context carries a status line: how full your context is, how much is free, and how fast your model answers.",
+  "When it tells you your context is filling up, finish the step you're on, save what matters with remember, then call threads with action \"compact\". " +
+    "Write the summary for yourself: what you're doing, decisions made, open questions, and the paths and names you'll need.",
+  "Your summary replaces any earlier one, so carry forward what still matters from it.",
+];
+
 /**
- * Feeds the meter from Pi's events, adds the `compact` tool, and
+ * `threads({ action: "compact", summary })`: the older part of the
+ * conversation is replaced with her summary when the turn ends; recent
+ * messages stay. A short one becomes notes for Pi's own summary.
+ */
+export function askCompaction(meter: ContextMeter, summary: string, window: number): { text: string; isError?: true } {
+  summary = summary.trim();
+  // The summary takes the place of the old messages, within Pi's reserve.
+  const most = reserveFor(window) - 512;
+  if (window && chars(summary.length) > most) return { text: `That summary is too long: keep it under about ${Math.floor(most * 0.75)} words.`, isError: true };
+  if (summary.length < MIN_SUMMARY) {
+    meter.pending = { notes: summary };
+    return { text: "The thread compacts when this turn ends. Your summary was short, so Pi writes one, with yours as its notes." };
+  }
+  meter.pending = { summary };
+  return { text: "The thread compacts with your summary when this turn ends." };
+}
+
+/**
+ * Feeds the meter from Pi's events, and
  * answers `session_before_compact` with her summary when she
  * asked for one. Pi's automatic compaction (threshold or overflow) runs as Pi
  * makes it: its summary keeps the goal, progress and next steps.
@@ -194,38 +218,6 @@ export function registerContext(pi: ExtensionAPI, meter: ContextMeter): void {
     const window = ctx.model?.contextWindow ?? 0;
     const pace = turn.calls ? speeds({ promptTokens: turn.prompt, outputTokens: turn.output, window, ttftMs: turn.ttft, genMs: turn.gen, processed: turn.processed }) : undefined;
     meter.measure(ctx.getContextUsage()?.tokens, window, conversationTokens(ctx), pace);
-  });
-
-  pi.registerTool({
-    // Its own tool until the Child threads thread's `threads` tool lands, which takes it as an action.
-    name: "compact",
-    label: "Compact",
-    description:
-      "When your context is filling up, replace the older part of this conversation with your own summary. " +
-      "Recent messages are kept as they are. The thread compacts when this turn ends.",
-    promptSnippet: "compact this thread with your own summary",
-    promptGuidelines: [
-      "Your turn context carries a status line: how full your context is, how much is free, and how fast your model answers.",
-      "When it tells you your context is filling up, finish the step you're on, save what matters with remember, then call compact. " +
-        "Write the summary for yourself: what you're doing, decisions made, open questions, and the paths and names you'll need.",
-      "Your summary replaces any earlier one, so carry forward what still matters from it.",
-    ],
-    parameters: Type.Object({
-      summary: Type.String({ description: "What the next stretch needs: what you're doing, decisions, open questions, paths and names." }),
-    }),
-    async execute(_id, params, _signal, _update, ctx) {
-      const summary = String(params.summary ?? "").trim();
-      const window = ctx.model?.contextWindow ?? 0;
-      // The summary takes the place of the old messages, within Pi's reserve.
-      const most = reserveFor(window) - 512;
-      if (window && chars(summary.length) > most) return text(`That summary is too long: keep it under about ${Math.floor(most * 0.75)} words.`, true);
-      if (summary.length < MIN_SUMMARY) {
-        meter.pending = { notes: summary };
-        return text("The thread compacts when this turn ends. Your summary was short, so Pi writes one, with yours as its notes.");
-      }
-      meter.pending = { summary };
-      return text("The thread compacts with your summary when this turn ends.");
-    },
   });
 
   pi.on("session_before_compact", (e) => {

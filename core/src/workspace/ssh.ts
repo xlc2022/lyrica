@@ -137,7 +137,7 @@ export class SshTarget implements ExecutionTarget {
    * files in is written in place, so it keeps its owner. A symlink at the
    * target is refused.
    */
-  private async write(path: string, content: string): Promise<void> {
+  private async write(path: string, content: string | Buffer): Promise<void> {
     const old = await this.sftp<Stats | undefined>((s, done) =>
       s.lstat(path, (err, st) => done((err as { code?: number } | undefined)?.code === 2 ? undefined : err, st)));
     if (old?.isSymbolicLink()) throw new Error(`${path} is a symlink; not writing through it`);
@@ -177,7 +177,7 @@ export class SshTarget implements ExecutionTarget {
 
   ops(): ToolOps {
     const readFile = async (p: string) => { const q = await this.inside(p); return this.sftp<Buffer>((s, done) => s.readFile(q, done)); };
-    const writeFile = async (p: string, content: string) => this.write(await this.inside(p), content);
+    const writeFile = async (p: string, content: string | Buffer) => this.write(await this.inside(p), content);
     return {
       read: {
         readFile,

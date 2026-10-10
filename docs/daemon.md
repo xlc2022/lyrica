@@ -127,9 +127,10 @@ Each active thread is one Pi session from `openThreadSession`, with
   the step, save what matters and compact with a summary, then to compact
   now. They follow Pi's edge (100% − reserve): "compact now" 2 points before
   it, the first line 15 before that, at most 90% and 75%. From 32k up that is
-  75% and 90%; on 8k, 70.5% and 85.5%. The `compact` tool's guidelines say once what the line means.
-- **Compacting herself.** The `compact` tool takes her summary. It's its own
-  tool until the Child threads `threads` tool takes it as an action.
+  75% and 90%; on 8k, 70.5% and 85.5%. The `threads` tool's guidelines say once what the line means.
+- **Compacting herself.** `threads({ action: "compact", summary })` takes her
+  summary. Every hosted thread but a subagent's has the tool, a child thread
+  too.
   - A summary too long for Pi's reserve is refused with the limit. A short one
     (under 400 characters) becomes the notes for Pi's own summary.
   - The compaction runs when the turn ends, since Pi's `compact()` would stop
@@ -173,7 +174,20 @@ Each active thread is one Pi session from `openThreadSession`, with
   (`Delegation.forgetSubagents`), the entries go (`truncateThread`), and
   every view gets `rewound` (the first removed number, and whether a message
   is sent in their place). Messages sent meanwhile wait and go after it. Not
-  in a subagent's thread. A missing message is `404`; a subagent's thread
+  in a subagent's thread.
+- **What removed turns did** (`daemon/src/removal.ts`). With `preview` the
+  rewind changes nothing and answers a `RemovalPlan`: how many messages,
+  pins and subagent threads go; the files her write and edit calls made or
+  changed in those turns and their subagents' (delete, restore, or keep
+  because something changed them since or the thread works elsewhere now);
+  uploads only the removed messages mention (sandbox only); git branches
+  made by their commands or their subagents' worktrees, ticked unless they
+  hold commits no other branch has; and their first 20 commands, listed, not
+  tracked. The rewind itself undoes every ticked item not in `skip`, in its
+  held turn before the entries go, and drops the change records.
+  `RewindResponse` counts the pins, files and branches. Branches are found
+  by a pattern on her commands (`git checkout -b`, `switch -c`, `branch`),
+  best effort. A missing message is `404`; a subagent's thread
   can't be branched (`409`).
 - Forgetting a thread forgets its subagents' threads with it, deepest first,
   stopping their runs and dropping their records (`Delegation.forget`). With
@@ -302,7 +316,8 @@ drafted against: if the file has changed since, approving it needs
   (`Lyricad.sleepNight`). A user in manual mode is left out; a user without
   a key, or a pool with nothing new, is skipped with the reason.
   Before that, it prunes gone models nothing names (`Models.prune`,
-  [models.md](models.md)).
+  [models.md](models.md)), and sweeps each mounted user's home workspace
+  ([workspace.md](workspace.md), "The nightly sweep").
 - **`/sleep`.** `POST …/sleep/:pool`, or the text `/sleep` sent to a thread
   (which sleeps the thread's pool and starts no turn). In manual mode it
   answers `confirm` unless confirmed, and once the run ends a fresh thread
