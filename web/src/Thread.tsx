@@ -209,20 +209,19 @@ function PendingBar({ scroller, deps }: { scroller: React.RefObject<HTMLDivEleme
   );
 }
 
-/** Keeps the conversation scrolled to the bottom while new text arrives, unless she has scrolled up. */
+/**
+ * Keeps the conversation scrolled to the bottom while new text arrives, unless she has scrolled up.
+ * Whether she was at the bottom is judged against the height before this update, not from the
+ * last scroll event, which may not have fired yet when an update lands right after she scrolls.
+ */
 function useStickyScroll(deps: unknown[]) {
   const ref = useRef<HTMLDivElement>(null);
-  const stuck = useRef(true);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const on = () => { stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; };
-    el.addEventListener("scroll", on, { passive: true });
-    return () => el.removeEventListener("scroll", on);
-  }, []);
+  const height = useRef(0);
   useLayoutEffect(() => {
     const el = ref.current;
-    if (el && stuck.current) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    if (height.current - el.scrollTop - el.clientHeight < 80) el.scrollTop = el.scrollHeight;
+    height.current = el.scrollHeight;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
   return ref;
