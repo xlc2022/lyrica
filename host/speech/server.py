@@ -219,6 +219,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send(404, {"error": {"code": "not_found", "message": "Not found."}})
 
     def do_POST(self):
+        self.streaming = False
         try:
             self.route(self.body())
         except Refused as e:
@@ -226,6 +227,10 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass  # the client went away: stop
         except Exception as e:  # noqa: BLE001
+            if self.streaming:
+                # The audio has started: cut it short rather than put an error in it.
+                self.close_connection = True
+                return
             # The kind of failure only, never the text.
             try:
                 self.send(503, {"error": {"code": "model_unavailable", "message": f"The speech server failed ({type(e).__name__})."}})
@@ -278,6 +283,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("transfer-encoding", "chunked")
         self.send_header("cache-control", "no-store")
         self.end_headers()
+        self.streaming = True
         for chunk in [first] if first else []:
             self.chunk(chunk)
         for chunk in audio:
