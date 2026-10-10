@@ -3,8 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CloudModelForbidden, Memory, PRONOUN_PRESETS, type Persona, type Pool } from "@lyrica/core";
 import { afterEach, describe, expect, it } from "vitest";
+import { deadUrl } from "../../core/test/fake-openai.ts";
 import { withModels } from "../../core/test/helpers.ts";
-import { createLyricaExtension, modelRuntimeFor, openThreadSession, piModelFor, type ThreadContext } from "../src/index.ts";
+import { createLyricaExtension, modelRuntimeFor, openThreadSession, piModelFor, toStoredEntry, type ThreadContext } from "../src/index.ts";
 
 const persona: Persona = { core: [{ path: "SOUL.md", text: "She is Lyrica." }], topics: [] };
 const dirs: string[] = [];
@@ -56,7 +57,7 @@ describe("the model runtime", () => {
     const s = await setup();
     const t = s.thread("private");
     const runtime = await modelRuntimeFor(s.models, t.call);
-    expect(() => piModelFor(runtime, s.models, "chat", { ...t.call, overrides: { chat: s.cloudRef } })).toThrow(CloudModelForbidden);
+    expect(() => piModelFor(runtime, s.models, "chat", { ...t.call, overrides: { chat: [s.cloudRef] } })).toThrow(CloudModelForbidden);
     // Even a cloud Model object from a general runtime can't be used through it.
     const cloudModel = (await modelRuntimeFor(s.models, s.thread("general").call)).getModel(s.openrouter.id, "deepseek/deepseek-4.1-flash")!;
     const { session, dispose } = await s.open(t);
@@ -140,5 +141,71 @@ describe("the model runtime", () => {
       dispose();
     }
     expect(s.models.endpoint(s.li.id, s.gpu.id)!.downSince).toBeUndefined();
+  });
+});
+
+describe("each turn's model", () => {
+  it("falls back to the next model when the first one's machine is off, and records it", async () => {
+    const s = await setup();
+    const off = s.models.addEndpoint(s.li, { name: "off", kind: "local", baseUrl: await deadUrl() });
+    const first = { offeringId: s.models.addModel(s.li, off.id, { modelId: "qwen3.8-27b" }).id };
+    s.models.setProfile(s.li.id, "local", "chat", [first, s.localRef]);
+    const t = s.thread("private");
+    const { session, prepare, dispose } = await s.open(t);
+    try {
+      const r = await prepare();
+      expect(r.label).toBe("gpu/qwen3.8-27b");
+      await session.prompt("hello");
+    } finally {
+      dispose();
+    }
+    expect(s.local.requests).toHaveLength(1);
+    expect(s.models.recentCalls(s.li.id, { threadId: t.threadId })[0]).toMatchObject({ label: "gpu/qwen3.8-27b", kind: "local", fallback: expect.stringContaining("off/qwen3.8-27b was skipped (off is down)") });
+  });
+
+  it("passes the thread's thinking level to a model that thinks, and none to one that doesn't, noting it", async () => {
+    const s = await setup();
+    s.models.setCapabilities(s.li, s.cloudRef.offeringId, { reasoning: ["low", "medium", "high"] });
+    s.models.setDefaultThinking(s.li.id, "high");
+    for (const t of [s.thread("general"), s.thread("private")]) {
+      const { session, prepare, dispose } = await s.open(t);
+      try {
+        await prepare();
+        await session.prompt("think about it");
+      } finally {
+        dispose();
+      }
+    }
+    expect((s.cloud.requests[0] as unknown as Record<string, unknown>).reasoning_effort).toBe("high");
+    const local = s.local.requests[0] as unknown as Record<string, unknown>;
+    expect(local.reasoning_effort).toBeUndefined();
+    expect(local.chat_template_kwargs).toBeUndefined();
+    const [plain, thought] = s.models.recentCalls(s.li.id);
+    expect(plain!.note).toBe("gpu/qwen3.8-27b can't think, so it answered without thinking");
+    expect(thought!.note).toBeUndefined();
+  });
+
+  it("leaves a subagent role's own thinking level alone", async () => {
+    const s = await setup();
+    s.models.setCapabilities(s.li, s.localRef.offeringId, { reasoning: ["low", "medium", "high"] });
+    s.models.setDefaultThinking(s.li.id, "low");
+    const { session, prepare, dispose } = await s.open(s.thread("private"));
+    try {
+      session.setThinkingLevel("high");
+      await prepare({ thinking: false });
+      expect(session.thinkingLevel).toBe("high");
+      await prepare();
+      expect(session.thinkingLevel).toBe("low");
+    } finally {
+      dispose();
+    }
+  });
+
+  it("never makes thinking text searchable", () => {
+    const stored = toStoredEntry({
+      type: "message", id: "e1", parentId: null, timestamp: new Date().toISOString(),
+      message: { role: "assistant", content: [{ type: "thinking", thinking: "a private chain of thought about Miso" }, { type: "text", text: "Miso is fine." }] },
+    } as never);
+    expect(stored.text).toBe("Miso is fine.");
   });
 });

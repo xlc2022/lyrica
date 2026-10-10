@@ -2,9 +2,9 @@ import {
   createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager,
   type AgentSession, type ExtensionFactory, type ModelRuntime,
 } from "@earendil-works/pi-coding-agent";
-import type { ModelRef, Models } from "@lyrica/core";
+import type { Models, Resolution } from "@lyrica/core";
 import type { ThreadContext } from "./index.ts";
-import { modelRuntimeFor, piModelFor } from "./models.ts";
+import { modelRuntimeFor, piModelFor, prepareTurn } from "./models.ts";
 import { recordEntries } from "./record.ts";
 
 type Settings = Parameters<typeof SettingsManager.inMemory>[0];
@@ -25,7 +25,17 @@ export interface ThreadSessionOptions {
  * router, so the session can only reach the models its CallContext allows.
  * Entries are recorded into the thread as turns end.
  */
-export async function openThreadSession(o: ThreadSessionOptions): Promise<{ session: AgentSession; runtime: ModelRuntime; chat: ModelRef; dispose(): void }> {
+export interface ThreadSession {
+  session: AgentSession;
+  runtime: ModelRuntime;
+  /** The chat model it opened with. */
+  chat: { offeringId: string };
+  /** Before each turn: the chat model again, with fallbacks and the thinking level, recorded as a call. */
+  prepare(opts?: { thinking?: boolean }): Promise<Resolution>;
+  dispose(): void;
+}
+
+export async function openThreadSession(o: ThreadSessionOptions): Promise<ThreadSession> {
   const { thread } = o;
   const runtime = await modelRuntimeFor(o.models, thread.call);
   const { ref: chat, model } = piModelFor(runtime, o.models, "chat", thread.call);
@@ -47,5 +57,6 @@ export async function openThreadSession(o: ThreadSessionOptions): Promise<{ sess
   const answered = session.subscribe((e) => {
     if (e.type === "message_end" && e.message.role === "assistant" && e.message.stopReason !== "error" && session.model) o.models.reportUp(thread.user.id, session.model.provider);
   });
-  return { session, runtime, chat, dispose: () => { stop(); answered(); session.dispose(); } };
+  const prepare = (opts: { thinking?: boolean } = {}) => prepareTurn({ session, runtime, models: o.models, call: o.models.callContext(thread.user.id, thread.pool, thread.threadId), pool: thread.pool, threadId: thread.threadId, ...opts });
+  return { session, runtime, chat, prepare, dispose: () => { stop(); answered(); session.dispose(); } };
 }

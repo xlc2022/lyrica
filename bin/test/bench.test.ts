@@ -40,7 +40,8 @@ async function setup() {
   const models = new Models(keyring, users);
   const gpu = models.addEndpoint(tester, { name: "gpu", kind: "local", baseUrl: server.baseUrl });
   const [m1] = await models.discover(tester, gpu.id);
-  models.setProfile(tester.id, "cloud", "chat", { offeringId: m1!.id });
+  for (const p of ["local", "custom"] as const) models.setProfile(tester.id, p, "chat", { offeringId: m1!.id });
+  models.setDefaultProfile(tester.id, "custom");
   return { host, keyring, users, tester, server, models };
 }
 

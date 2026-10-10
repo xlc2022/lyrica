@@ -21,13 +21,17 @@ export type Pool = "general" | "private";
 export type Interface = "web" | "cli" | "matrix" | "forum" | "sleep";
 export type Task =
   | "chat" | "subagent.cheap" | "subagent.strong" | "compaction"
-  | "title" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake";
+  | "title" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
+  | "image.create" | "image.edit";
 /** The tasks a thread can choose models for. */
 export const THREAD_TASKS = ["chat", "subagent.cheap", "subagent.strong", "compaction", "title"] as const satisfies readonly Task[];
 export type ThreadTask = (typeof THREAD_TASKS)[number];
 
-/** One model on one endpoint, by its permanent offering ID. */
-export interface ModelRef { offeringId: string }
+/** One model on one endpoint, by its permanent offering ID, or a model group, which expands into its members in order. */
+export type ModelRef = { offeringId: string } | { groupId: string };
+export type ThinkingLevel = "off" | "low" | "medium" | "high";
+/** A profile's entry for a task: an ordered list, or another task's list (Same as). */
+export type ProfileEntry = ModelRef[] | { same: Task };
 export interface Pronouns { subj: string; obj: string; poss: string; possPro: string; refl: string }
 export type Theme = "device" | "light" | "dark";
 /** "ask-commands" asks before bash; "ask-changes" before bash, write and edit. */
@@ -151,7 +155,11 @@ export interface CredentialsChange { save: boolean }
 // --- Endpoints and model profiles ---
 
 /** What a model can do: discovered where the endpoint says, else set by hand. */
-export interface Capabilities { contextWindow?: number; tools?: boolean; vision?: boolean; embedding?: boolean; image?: boolean; edit?: boolean }
+export interface Capabilities {
+  contextWindow?: number; tools?: boolean; vision?: boolean; embedding?: boolean; image?: boolean; edit?: boolean;
+  /** The thinking levels it offers, besides off. */
+  reasoning?: ("low" | "medium" | "high")[];
+}
 
 /** One model an endpoint offers. */
 export interface OfferingInfo extends Capabilities {
@@ -209,14 +217,16 @@ export interface ReplaceInput { with: string }
 
 /** Where one of the user's lists names a model. */
 export type ModelUse =
-  | { where: "profile"; profile: "cloud" | "local"; task: Task }
+  | { where: "profile"; profile: "cloud" | "local" | "custom"; task: Task }
   | { where: "thread"; pool: Pool; threadId: string; task: Task }
-  | { where: "workflow"; name: string };
+  | { where: "workflow"; name: string }
+  | { where: "group"; groupId: string; name: string };
 
-/** A stale endpoint (no offering) or a gone model, with where it is still used. */
+/** A stale endpoint (no offering), a gone model, or a group left empty, with where it is still used. */
 export interface CleanupItem {
-  endpoint: { id: string; name: string; shared: boolean; downSince?: string };
+  endpoint?: { id: string; name: string; shared: boolean; downSince?: string };
   offering?: OfferingInfo;
+  group?: { id: string; name: string; shared: boolean };
   label: string;
   usedIn: ModelUse[];
   /** How many other users' lists name it (shared only). */
@@ -229,13 +239,54 @@ export interface CleanupItem {
 export interface ModelsNotice { lines: string[] }
 /** DELETE /api/u/:userId/models/notice → Ok */
 
+/** Offerings from different endpoints declared the same model, in order. */
+export interface GroupInfo { id: string; name: string; shared: boolean; members: string[] }
+/** GET /api/u/:userId/groups → GroupInfo[] (own, then shared) */
+/** POST /api/u/:userId/groups → GroupInfo. `shared` needs an administrator and shared members. */
+export interface GroupInput { name: string; members: string[]; shared?: boolean }
+/** PATCH /api/u/:userId/groups/:groupId → GroupInfo. Rename, or reorder, add or remove members. */
+export interface GroupChange { name?: string; members?: string[] }
+/** DELETE /api/u/:userId/groups/:groupId → Ok. Lists that named it drop it. */
+/** GET /api/u/:userId/groups/:groupId → GroupDetail: how its copies differ. */
+export interface GroupDetail {
+  group: GroupInfo;
+  members: (OfferingInfo & { kind: "cloud" | "local"; stale: boolean })[];
+  warnings: string[];
+}
+/** GET /api/u/:userId/groups/suggestions → GroupSuggestion[]. Never made automatically. */
+export interface GroupSuggestion { name: string; members: string[]; strength: "strong" | "weak" }
+
 /** GET /api/u/:userId/profiles → Profiles */
 export interface Profiles {
-  cloud: Partial<Record<Task, ModelRef>>;
-  local: Partial<Record<Task, ModelRef>>;
+  local: Partial<Record<Task, ProfileEntry>>;
+  cloud: Partial<Record<Task, ProfileEntry>>;
+  custom: Partial<Record<Task, ProfileEntry>>;
+  /** Which profile general threads use unless they choose. */
+  default: "cloud" | "custom";
+  /** The thinking level threads use unless they choose. */
+  thinking: ThinkingLevel;
 }
-/** PUT /api/u/:userId/profiles/:profile/:task → Profiles. The local profile takes local models only. */
-export interface ProfileModelChange { model: ModelRef | null }
+/**
+ * PUT /api/u/:userId/profiles/:profile/:task → Profiles. Local takes local
+ * models only, cloud cloud models only, custom both. `same` names a task
+ * of the same kind that doesn't itself follow another. `model` sets a
+ * one-model list; null or an empty list clears the entry.
+ */
+export type ProfileEntryChange = { models: ModelRef[] | null } | { same: Task } | { model: ModelRef | null };
+/** PATCH /api/u/:userId/profiles → Profiles */
+export interface ProfilesChange { default?: "cloud" | "custom"; thinking?: ThinkingLevel }
+
+/** Which model answered a call. Never any of the conversation's text. */
+export interface CallInfo {
+  at: string; pool: Pool; threadId: string; task: Task; offeringId: string;
+  /** Kept with the ID, so history reads correctly after the model is gone. */
+  label: string; endpointName: string; kind: "cloud" | "local";
+  /** Why the first model in the list didn't answer, when it didn't. */
+  fallback?: string;
+  /** Such as a model that couldn't think. */
+  note?: string;
+}
+/** GET /api/u/:userId/models/calls → CallInfo[], newest first. */
 
 // --- Workspace defaults ---
 
@@ -298,7 +349,10 @@ export interface ThreadChange { title?: string; hidden?: boolean }
 
 /** Where a thread's model for one task comes from. */
 export interface TaskModel {
-  model?: ModelRef;
+  /** The model that answers now. */
+  model?: { offeringId: string };
+  /** The thread's own list, when it has one. */
+  list?: ModelRef[];
   /** `<endpoint>/<model>`, kept readable after the model is gone. */
   label?: string;
   modelId?: string;
@@ -312,6 +366,15 @@ export interface TaskModel {
 
 export interface ThreadSettings {
   models: Record<ThreadTask, TaskModel>;
+  /** Local in a private or local-only thread; otherwise the thread's choice or the user's default. */
+  profile: "local" | "cloud" | "custom";
+  /** Set when the thread chose its profile rather than following the default. */
+  profileChoice: "cloud" | "custom" | null;
+  thinking: ThinkingLevel;
+  /** The levels the current chat model offers (always including off). */
+  thinkingLevels: ThinkingLevel[];
+  /** The last call in this thread: which model answered, and any fallback. */
+  answered?: CallInfo;
   /** Always true in a private thread. */
   localOnly: boolean;
   /** Overrides of the user's per-pool defaults; null follows the default. */
@@ -340,8 +403,12 @@ export interface ThreadSettings {
  * outside the allowed paths, a subagent wider than its parent.
  */
 export interface ThreadSettingsChange {
-  /** null clears the thread's choice, so the profile's applies. */
-  models?: Partial<Record<ThreadTask, ModelRef | null>>;
+  /** A model or an ordered list; null clears the thread's choice, so the profile's applies. */
+  models?: Partial<Record<ThreadTask, ModelRef | ModelRef[] | null>>;
+  /** General threads only; null follows the user's default. */
+  profile?: "cloud" | "custom" | null;
+  /** null follows the user's default. */
+  thinking?: ThinkingLevel | null;
   localOnly?: boolean;
   internet?: boolean | null;
   services?: boolean | null;

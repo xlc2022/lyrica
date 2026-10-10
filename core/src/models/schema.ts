@@ -31,6 +31,13 @@ CREATE TABLE IF NOT EXISTS offerings (
   created_at    TEXT NOT NULL,
   UNIQUE (endpoint, model)
 );
+-- Offerings declared the same model, in preferred order (members: a JSON list of offering IDs).
+CREATE TABLE IF NOT EXISTS model_groups (
+  id         TEXT PRIMARY KEY,
+  name       TEXT NOT NULL,
+  members    TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
 `;
 
 /** Redirects and their bookkeeping, in self.db only. */
@@ -89,6 +96,26 @@ CREATE TABLE IF NOT EXISTS thread_models (
 -- General threads switched to local-only. Private threads are always local-only.
 CREATE TABLE IF NOT EXISTS local_only_threads (
   thread TEXT PRIMARY KEY
+);
+-- A thread's own profile (cloud or custom, general threads only) and thinking setting.
+CREATE TABLE IF NOT EXISTS thread_choices (
+  thread   TEXT PRIMARY KEY,
+  profile  TEXT,
+  thinking TEXT
+);
+-- Which model answered each call, and why a fallback was used. Never prompt text.
+CREATE TABLE IF NOT EXISTS model_calls (
+  id       INTEGER PRIMARY KEY,
+  at       TEXT NOT NULL,
+  pool     TEXT NOT NULL,
+  thread   TEXT NOT NULL,
+  task     TEXT NOT NULL,
+  offering TEXT NOT NULL,
+  label    TEXT NOT NULL,
+  endpoint TEXT NOT NULL,
+  kind     TEXT NOT NULL,
+  fallback TEXT,
+  note     TEXT
 );
 `;
 

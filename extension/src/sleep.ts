@@ -216,10 +216,10 @@ export class Sleep {
   }
 
   /** The context for a sleep phase: the pool's rules, and that phase's model as its chat model. */
-  private context(userId: string, pool: Pool, phase: SleepPhase): { call: CallContext; ref: ModelRef } {
-    const base: CallContext = { userId, pool, localOnly: pool === "private" };
+  private context(userId: string, pool: Pool, phase: SleepPhase): { call: CallContext; ref: { offeringId: string } } {
+    const base: CallContext = { userId, pool, localOnly: pool === "private", ...(pool === "general" ? { profile: this.o.models.defaultProfile(userId) } : {}) };
     const ref = this.o.models.resolveModel(`sleep.${phase}`, base);
-    return { ref, call: { ...base, overrides: { chat: ref, compaction: ref } } };
+    return { ref, call: { ...base, overrides: { chat: [ref], compaction: [ref] } } };
   }
 
   /** A cheap check of each phase's endpoint. Returns why it can't run, if it can't. */

@@ -199,7 +199,7 @@ describe("endpoints and offerings", () => {
     expect((await sam.patch(`${samU}/offerings/${qwen!.id}`, { tools: true })).status).toBe(403);
     expect((await li.patch<OfferingInfo>(`/api/u/${rt.li.id}/offerings/${qwen!.id}`, { tools: true, contextWindow: 32768 })).body).toMatchObject({ tools: true, contextWindow: 32768 });
     expect((await li.post(`/api/u/${rt.li.id}/offerings/${qwen!.id}/replace`, { with: flash!.id })).status).toBe(200);
-    expect((await sam.get<Profiles>(`${samU}/profiles`)).body.local).toEqual({ chat: { offeringId: flash!.id } });
+    expect((await sam.get<Profiles>(`${samU}/profiles`)).body.local.chat).toEqual([{ offeringId: flash!.id }]);
     expect((await sam.get<ModelsNotice>(`${samU}/models/notice`)).body.lines).toEqual([
       "shared.blackwell/qwen3.8-27b was replaced by shared.blackwell/qwen3.8-flash in the local profile's chat.",
     ]);
