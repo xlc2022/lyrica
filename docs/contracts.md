@@ -232,6 +232,20 @@ thread's pool: a branch's `copyEntries` copies them, `truncateThread`
 removes and counts them, and `sleepMaterial` lists each thread's new pinned
 entries (`threads[].pinned`).
 
+**Planned (Projects,** [briefs/projects.md](briefs/projects.md)**):**
+`createThread({ ..., project? })` and `setProject(id)` (top-level threads
+only; a child or subagent is refused, and there is no way back);
+`Thread.project` and `Thread.goal` (Li's text, so in the pool with the
+title); `pageForProject(threadId)` → the page `p:project-<id>`, whose
+instructions part is User introduced; `projectNotes(threadId, since)`: notes
+that cite an entry of the project chat or one of its threads. `branchThread`
+of a project's thread makes a thread of the same project (`child`, parent
+the project chat, anchored at the source's anchor), so depth stays 1; a
+branch of the project chat is a project thread anchored where it branched.
+`forgetThread`
+on a project with `children` also forgets the project page and the notes
+that came only from it. `sleepMaterial` marks each thread's project.
+
 ## core/models: the cloud boundary lives here
 
 ```ts
@@ -316,8 +330,9 @@ class Models {                                              // new Models(keyrin
   callContext(userId, pool, threadId): CallContext
   childContext(parent, childThreadId, { tier } | { model }): CallContext   // a child under its parent's rules
   inheritContext(parent, childThreadId, { chat? }): CallContext          // a branch: the parent's local-only, profile, thinking and lists
-  resolve(task, ctx, need?): Resolution                     // throws CloudModelForbidden or NoModel
-  resolveLive(task, ctx, need?, { probeMs? }): Promise<Resolution>   // probes first when there is a fallback
+  resolve(task, ctx, need?, { evenIfDown?, except? }?): Resolution   // throws CloudModelForbidden, NoModel or Offline
+  resolveLive(task, ctx, need?, { probeMs?, probeLast? }): Promise<Resolution>   // probes first when there is a fallback; asks again before Offline
+  callWithFallback(task, ctx, need, call: (r) => Promise<T>, { probeMs? }?): Promise<T>   // the next model on isUnreachable; Offline when none answers
   resolveModel(task, ctx, need?): { offeringId }             // resolve(…).ref
   allowed(ctx): { endpoint; offerings }[]                   // local endpoints only when restricted
   // Thinking and call records
@@ -345,7 +360,8 @@ class Models {                                              // new Models(keyrin
   servingSettings(userId, offeringId) / setServingSettings(actor, offeringId, settings) / reloadModel(actor, offeringId)
   hostDashboard(userId, hostId): string                     // a direct link, at the address that last answered
 }
-// Also exported: CloudModelForbidden, NoModel, HostRefused (with `code`), PairingFailed, HostIdentityChanged;
+// Also exported: CloudModelForbidden, NoModel, Offline (a NoModel: code "offline", task, tried), isUnreachable(err),
+// HostRefused (with `code`), PairingFailed, HostIdentityChanged;
 // STALE_DAYS, GONE_DAYS, HEALTH_MS, CAPABILITIES, ANSWER_SETTINGS, TASKS, THINKING_LEVELS; isRestricted, profileFor,
 // checkTask, refId, baseName, acceptedSettings(endpoint), payloadFields(…); fingerprint, normaliseCode, pairingProofs,
 // hostOrigin; probeUrl(baseUrl, apiKey, timeoutMs?, fetchImpl?), discoverModels, addressesOutside.
@@ -359,6 +375,20 @@ class Models {                                              // new Models(keyrin
   named directly throws `CloudModelForbidden`. Nothing falls back across the
   local/cloud line: outside Custom a list keeps to one kind (local where
   restricted, cloud in the cloud profile, else its first model's).
+- **Offline** is the one shape for "every model in a task's list is away",
+  for chat, images and speech alike: `Offline extends NoModel` with
+  `code: "offline"`, the `task`, and `tried` (labels and reasons, in list
+  order, never text). `resolve` throws it when the list is set and a model
+  was skipped only because its machine is down (health cache) or stale;
+  a list where nothing fits the call stays `NoModel`. `resolveLive` asks
+  the down machines again, once, in order, before throwing it, so one that
+  has come back answers. `callWithFallback` runs a call on each model in
+  turn: an `isUnreachable` failure (connection refused, reset or timed out,
+  a reply cut off, a host's `unreachable`, `paused`, `busy`, `restarting`,
+  `unavailable`, `unpaired` or `identity_changed`) marks it down and tries
+  the next (a host's `model_unavailable` marks only that model down, for
+  HEALTH_MS, and the host stays up for its others); any other failure is thrown as is; when none answers it throws
+  `Offline` naming every model tried, and never goes round twice.
 - **Kind is pinned** where an endpoint is made: `addEndpoint` takes it as
   declared, `pairHost` makes a host local, `editEndpoint` can't change it,
   and `replace` and `merge` refuse to cross kinds. `probe` only warns when a
@@ -469,6 +499,16 @@ One model-facing tool: `delegate({ action?, ... })`.
 - **Modes:** a thread in Plan mode starts only read-only roles; anything
   else is refused before a thread is made. A read-only subagent there runs
   in Plan mode itself.
+- **Planned (Projects):** in a project, `threads.start` records the anchor
+  (the project chat's entry it hangs off) and returns `queued` past the
+  at-once limit instead of refusing; `message({ to: "parent", text,
+  needsYou? })`; `message({ id, text })` from a project's thread to another
+  thread of the same project, marked `fromThread(id)` (`FROM_THREAD`, which
+  only `lyricad` writes and `send` refuses from a user), at most 3 per turn;
+  new actions `suggest({ threads: { title, task }[] })` (a card, no thread
+  made), `resolve({ id? })` and `reopen({ id })` (in a project's thread,
+  `resolve` with no `id` acts on itself). `user.db` `child_threads` gains
+  `anchor`, `resolved` and `needs_you` (no text). Still one tool.
 
 Every run:
 - creates a child thread with `createThread({ parent, subagent: true })`;
@@ -604,6 +644,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `thinkingFormat: "qwen-chat-template"`; any other model with levels gets
   `reasoning_effort`. Local endpoints and hosts are sent `system` and
   `max_tokens`.
+- **Planned (Projects):** a `project` section in `assemble`, with its own
+  `DEFAULT_BUDGETS.project` (2,000 tokens to start): the goal and
+  instructions first, then project notes since the last sleep, then the
+  project page, then (in the project chat only) its threads with their
+  state. Filled for a project chat and each of its threads; empty elsewhere.
 
 ## daemon
 
@@ -663,12 +708,28 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `ThreadSettings.context` (`ContextInfo`: used, window, parts, reserve,
     free, measured at), `CallInfo.pace`, the `context` and `compacted`
     thread events, and a `compacted` message part (the stored notice);
+  - offline: an `offline` thread event (`task`, `tried`) when no model for a
+    turn can be reached; a turn that hadn't started keeps its message in
+    `queue` and sends it when a model answers. Any call that throws `Offline`
+    answers `502` (503 is reserved for locked) with `{ error, code: "offline", task, tried }`;
   - child threads: `ThreadSummary.child`, `status` and `unseen`;
     `Message.from: { kind: "parent", threadId }` in a child thread only; a
     user's send or edit starting with the parent's mark is `400`;
     `ForgetThread` / `DELETE …?children=1`; `ThreadHost.status`,
     `delivered`, `HostedThread.waiting`, `send(text, { fromParent })` and
     `settled()`;
+  - **planned (Projects):** `POST threads` with `project`; `PATCH
+    threads/:id` with `project`, `goal`, `paused` and the threads model and
+    thinking; `POST …/messages/:n/thread` (Start a thread) →
+    `ThreadSummary`; `POST threads/:id/resolve` and `…/reopen`; `POST
+    …/suggestions/:id/start` (one, or all with no id); `GET
+    threads/:id/overview` (its threads by state, the waiting dot, total
+    tokens); `models/calls?project=`. `ThreadSummary` gains `project`,
+    `anchor`, `state` (`working`, `waiting`, `queued`, `idle`, `resolved`),
+    `needsYou` and `outputs` (file names); a `child` event updates a card in
+    place. A Notifications type `waiting`. The nightly tick resolves a
+    project's threads idle for 7 days; Paused and Hide stop a project's
+    working threads the way Lock stops children;
   - pins: `PUT`/`DELETE …/messages/:n/pin` (the user's messages and her
     replies only, `400` otherwise, `409` in a subagent's thread), `GET
     …/pins` → `Pins { pins: Pin[], shortened }`, `Message.pinned`,
@@ -727,7 +788,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       gains `profile` and `thinking`. `DELETE` on a thread calls
       `Models.forgetThread` for it and each subagent thread under it.
     - **Errors from core** (`statusOf`): `CloudModelForbidden`, `NoModel` and
-      `PairingFailed` are `400`; `Forbidden` is `403`. A `HostRefused` keeps the
+      `PairingFailed` are `400`; `Offline` is `502`; `Forbidden` is `403`. A `HostRefused` keeps the
       host's meaning by `code`: `invalid` 400, `refused` 403, `not_found` 404,
       `in_use` 409, `too_big` 413, `no_space` 507; any other code (`unreachable`,
       `paused`, `busy`, `unpaired`, `identity_changed`, …) is `502` with the
@@ -778,6 +839,9 @@ sleep.events                       // started, phase, finished: IDs only, never 
   `no-key` skip is recorded once the key is back, since the pool can't be
   written without it.
 - Full details: [sleep.md](sleep.md).
+- **Planned (Projects):** sleep keeps the "what she knows" part of each
+  project's page from its notes and threads, and keeps the instructions part
+  word for word ([briefs/projects-sleep.md](briefs/projects-sleep.md)).
 
 ## core/workspace
 
@@ -803,6 +867,7 @@ folders(t): string[]
 network(t): Network
 inheritSettings(parent, childThreadId, narrower?)  // subagents and child threads: same or stricter (folders, network, mode, webSearch, images), never wider
 settings(userId).detach(threadId)          // a kept child, once its parent is forgotten: no longer narrowed by it
+// Planned (Projects): inheritSettings also grants a project's thread its project chat's folder (read-only for a read-only thread)
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, SSH targets
 settings(userId).defaultMode() / setDefaultMode(mode)  // the mode new threads start in (default auto)
 settings(userId).startThread(threadId, pool)           // fixes the default mode on a new thread

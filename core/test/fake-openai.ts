@@ -17,7 +17,7 @@ afterEach(async () => { await Promise.all(servers.splice(0).map((s) => new Promi
  * POST /v1/chat/completions. It records every chat request. Replies come from
  * the queue, then the responder, then a default text.
  */
-export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; label?: string } = {}) {
+export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; label?: string; port?: number } = {}) {
   const requests: ChatRequest[] = [];
   const queue: (Reply | Responder)[] = [];
   let responder: Responder | undefined;
@@ -60,9 +60,11 @@ export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; lab
     });
   });
   servers.push(server);
-  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  // A port given back: the same machine, switched on again.
+  await new Promise<void>((r) => server.listen(opts.port ?? 0, "127.0.0.1", r));
   const { port } = server.address() as AddressInfo;
   return {
+    port,
     baseUrl: `http://127.0.0.1:${port}/v1`,
     requests,
     reply: (...r: (Reply | Responder)[]) => { queue.push(...r); },

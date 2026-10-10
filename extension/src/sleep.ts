@@ -215,25 +215,25 @@ export class Sleep {
     return any ? { phases: [...PHASES], until, material } : undefined;
   }
 
-  /** The context for a sleep phase: the pool's rules, and that phase's model as its chat model. */
-  private context(userId: string, pool: Pool, phase: SleepPhase): { call: CallContext; ref: { offeringId: string } } {
+  /**
+   * The context for a sleep phase: the pool's rules, and that phase's model as
+   * its chat model. The model's machine is asked first, so a list falls back
+   * past one that is off; throws Offline when none answers.
+   */
+  private async context(userId: string, pool: Pool, phase: SleepPhase): Promise<{ call: CallContext; ref: { offeringId: string } }> {
     const base: CallContext = { userId, pool, localOnly: pool === "private", ...(pool === "general" ? { profile: this.o.models.defaultProfile(userId) } : {}) };
-    const ref = this.o.models.resolveModel(`sleep.${phase}`, base);
+    const { ref } = await this.o.models.resolveLive(`sleep.${phase}`, base, {}, { probeLast: true });
     return { ref, call: { ...base, overrides: { chat: [ref], compaction: [ref] } } };
   }
 
-  /** A cheap check of each phase's endpoint. Returns why it can't run, if it can't. */
+  /** A cheap check of each phase's model. Returns why it can't run, if it can't. */
   private async probe(userId: string, pool: Pool, phases: SleepPhase[]): Promise<string | undefined> {
-    const endpoints = new Set<string>();
     try {
-      for (const p of phases) endpoints.add(this.o.models.offering(userId, this.context(userId, pool, p).ref.offeringId)!.endpoint.id);
+      for (const p of phases) await this.context(userId, pool, p);
     } catch (err) {
+      // Offline (every machine in the list is away) is a NoModel.
       if (err instanceof NoModel || err instanceof CloudModelForbidden) return (err as Error).message;
       throw err;
-    }
-    for (const id of endpoints) {
-      const { state } = await this.o.models.probe(userId, id).catch(() => ({ state: "down" as const }));
-      if (state === "down") return `the sleep model's endpoint ${this.o.models.endpoint(userId, id)?.name ?? id} is down`;
     }
     return undefined;
   }
@@ -245,7 +245,7 @@ export class Sleep {
     const done: SleepTools["done"] = { wake: false };
     let ok = false;
     try {
-      const { call } = this.context(userId, pool, phase);
+      const { call } = await this.context(userId, pool, phase);
       const ctx: ThreadContext = { user, pool, interface: "sleep", threadId: thread.id, view, call };
       const tools: SleepTools = { view, runId, threadId: thread.id, proposals: this.o.proposals, done };
       const { session, dispose } = await openThreadSession({

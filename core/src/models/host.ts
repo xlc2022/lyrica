@@ -6,7 +6,8 @@ import { createHash, createHmac, generateKeyPairSync, hkdfSync, randomBytes, sig
 import { isIP } from "node:net";
 import { request } from "node:http";
 import { connect, type TLSSocket } from "node:tls";
-import { Agent, fetch as undiciFetch } from "undici";
+import { EventEmitter } from "node:events";
+import { Agent, Client, Pool, fetch as undiciFetch, type Dispatcher } from "undici";
 import type { Db } from "../db.ts";
 
 /** The host presented a key other than the pinned one. The connection is closed before anything is sent. */
@@ -126,7 +127,10 @@ export function hostOrigin(address: string): string {
  * connection presents and checks a certificate.
  */
 function pinnedAgent(id: Identity, pin: string): Agent {
-  return new Agent({
+  return quiet(new Agent({
+    // undici can emit "error" on a client while it ends a body cut off mid-stream. The request
+    // still fails through its own promise; with no listener the event would end the process.
+    factory: (origin, opts) => quiet(new Pool(origin, { ...opts, factory: (o, c) => quiet(new Client(o, c)) })),
     connect: (opts, callback) => {
       const host = String(opts.hostname);
       open(id, `https://${isIP(host) === 6 ? `[${host}]` : host}:${Number(opts.port) || HOST_PORT}`).then(({ socket, fingerprint: fp }) => {
@@ -137,7 +141,13 @@ function pinnedAgent(id: Identity, pin: string): Agent {
         callback(null, socket as never);
       }, (err: Error) => callback(err, null));
     },
-  });
+  }));
+}
+
+function quiet<D extends Dispatcher>(d: D): D {
+  // Dispatcher's typings list only its own events; it is an EventEmitter all the same.
+  EventEmitter.prototype.on.call(d, "error", () => {});
+  return d;
 }
 
 /** The host error a call failed with, when it is one of the host's own (host/API.md "Errors"). */

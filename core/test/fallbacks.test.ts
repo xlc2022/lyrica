@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CloudModelForbidden, NoModel, type CallContext } from "../src/index.ts";
+import { CloudModelForbidden, HostRefused, isUnreachable, NoModel, Offline, type CallContext } from "../src/index.ts";
 import { deadUrl, fakeOpenAI } from "./fake-openai.ts";
 import { profile, withModels } from "./helpers.ts";
 
@@ -94,7 +94,8 @@ describe("ordered fallbacks", () => {
 
   it("keeps image tasks resolvable, to models that make or edit images, with no chat fallback", async () => {
     const s = await setup();
-    s.models.setProfile(s.li.id, "local", "chat", [s.blackwell.ref]);
+    const other = { offeringId: s.models.addModel(s.li, s.blackwell.ep.id, { modelId: "other-model" }).id };
+    s.models.setProfile(s.li.id, "local", "chat", [other]);
     const priv = s.ctx({ pool: "private", localOnly: true });
     expect(() => s.models.resolveModel("image.create", priv)).toThrow(NoModel);
     const comfy = s.models.addModel(s.li, s.blackwell.ep.id, { modelId: "z-image", image: true });
@@ -265,5 +266,76 @@ describe("thinking", () => {
     expect(s.models.callContext(s.li.id, "general", "web/t").thinking).toBe("medium");
     s.models.setThinking(s.li.id, "web/t", "off");
     expect(s.models.callContext(s.li.id, "general", "web/t").thinking).toBe("off");
+  });
+});
+
+describe("every model away", () => {
+  it("is Offline, not NoModel's unset, and a machine that comes back answers the next call", async () => {
+    const s = await setup();
+    s.models.setProfile(s.li.id, "local", "chat", [s.blackwell.ref, s.spare.ref]);
+    const priv = s.ctx({ pool: "private", localOnly: true });
+    s.models.reportDown(s.blackwell.ep.id);
+    s.models.reportDown(s.spare.ep.id);
+    const err = (() => { try { s.models.resolve("chat", priv); } catch (e) { return e; } })();
+    expect(err).toBeInstanceOf(Offline);
+    expect(err).toBeInstanceOf(NoModel);
+    expect((err as Offline).tried).toEqual([
+      { label: "blackwell/qwen3.8-27b", reason: "blackwell is down" }, { label: "spare/Qwen3.8-27B-Q4_K_M.gguf", reason: "spare is down" },
+    ]);
+    // Both are actually up again: resolveLive asks rather than trusting the cache, in list order.
+    expect((await s.models.resolveLive("chat", priv)).ref).toEqual(s.blackwell.ref);
+    // Unfit for the call is NoModel, never Offline.
+    const unfit = (() => { try { s.models.resolve("chat", priv, { tokens: 200_000 }); } catch (e) { return e; } })();
+    expect(unfit).toBeInstanceOf(NoModel);
+    expect(unfit).not.toBeInstanceOf(Offline);
+  });
+
+  it("falls back through a call's models and names every one tried when none answers", async () => {
+    const s = await setup();
+    s.models.setProfile(s.li.id, "local", "title", [s.blackwell.ref, s.spare.ref]);
+    const priv = s.ctx({ pool: "private", localOnly: true });
+    const refused = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:1"), { name: "TypeError" });
+    const seen: string[] = [];
+    const out = await s.models.callWithFallback("title", priv, {}, async (r) => {
+      seen.push(r.label);
+      if (r.endpoint.name === "blackwell") throw new TypeError("fetch failed", { cause: refused });
+      return "ok";
+    });
+    expect([out, seen]).toEqual(["ok", ["blackwell/qwen3.8-27b", "spare/Qwen3.8-27B-Q4_K_M.gguf"]]);
+    // The model's own refusal isn't a reason to try the next one.
+    await expect(s.models.callWithFallback("title", priv, {}, async () => { throw new Error("400 bad request"); })).rejects.toThrow("400 bad request");
+    // Both machines answer probes but every call fails: Offline, once round, never a loop.
+    const all = await s.models.callWithFallback("title", priv, {}, async () => { throw refused; }).catch((e: unknown) => e);
+    expect(all).toBeInstanceOf(Offline);
+    expect((all as Offline).task).toBe("title");
+    expect((all as Offline).tried.map((t) => t.label).sort()).toEqual(["blackwell/qwen3.8-27b", "spare/Qwen3.8-27B-Q4_K_M.gguf"]);
+  });
+
+  it("passes over one model its host couldn't run, keeping the host's other models", async () => {
+    const s = await setup();
+    s.models.setProfile(s.li.id, "local", "title", [s.blackwell.ref, s.spare.ref]);
+    const other = { offeringId: s.models.addModel(s.li, s.blackwell.ep.id, { modelId: "other-model" }).id };
+    s.models.setProfile(s.li.id, "local", "chat", [other]);
+    const priv = s.ctx({ pool: "private", localOnly: true });
+    const seen: string[] = [];
+    await s.models.callWithFallback("title", priv, {}, async (r) => {
+      seen.push(r.label);
+      if (r.endpoint.name === "blackwell") throw new HostRefused("model_unavailable", "the model isn't loaded");
+      return "ok";
+    });
+    expect(seen).toEqual(["blackwell/qwen3.8-27b", "spare/Qwen3.8-27B-Q4_K_M.gguf"]);
+    expect(s.models.resolve("title", priv).ref).toEqual(s.spare.ref);
+    expect(s.models.resolve("chat", priv).ref).toEqual(other);
+  });
+
+  it("tells a machine that's away from a model that refused", () => {
+    expect(isUnreachable("Connection error.")).toBe(true);
+    expect(isUnreachable("terminated")).toBe(true);
+    expect(isUnreachable(new HostRefused("paused", "paused"))).toBe(true);
+    expect(isUnreachable(new HostRefused("not_found", "no such model"))).toBe(false);
+    expect(isUnreachable(Object.assign(new Error("Body Timeout Error"), { code: "UND_ERR_BODY_TIMEOUT" }))).toBe(true);
+    expect(isUnreachable(new Error("400 context length exceeded"))).toBe(false);
+    expect(isUnreachable("The client disconnected before the tool could connect to the sandbox")).toBe(false);
+    expect(isUnreachable("connect ECONNREFUSED 10.0.0.2:8080")).toBe(true);
   });
 });

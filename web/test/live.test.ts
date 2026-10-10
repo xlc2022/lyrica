@@ -56,6 +56,25 @@ describe("the live view of a thread's stream", () => {
     expect(s.items).toEqual([{ role: "user", text: "one" }]);
   });
 
+  it("shows a message no model took as waiting, once, until a turn starts", () => {
+    const tried = [{ label: "gpu/qwen", reason: "gpu is down" }];
+    const s = run([
+      { type: "hello", busy: false, queued: [], permissions: [] },
+      { type: "sent", text: "hi" },
+      { type: "queue", queued: ["hi"] },
+      { type: "offline", task: "chat", tried },
+    ]);
+    expect([s.items, s.queued, s.offline]).toEqual([[], ["hi"], { task: "chat", tried }]);
+    // A message sent while one was held goes with it, joined: neither shows twice.
+    const joined = run([{ type: "sent", text: "there" }, { type: "queue", queued: ["hi\n\nthere"] }, { type: "offline", task: "chat", tried }], s);
+    expect([joined.items, joined.queued]).toEqual([[], ["hi\n\nthere"]]);
+    // One message with a blank line in it, held on its own, shows once too.
+    const lines = run([{ type: "sent", text: "a\n\nb" }, { type: "queue", queued: ["a\n\nb"] }, { type: "offline", task: "chat", tried }]);
+    expect([lines.items, lines.queued]).toEqual([[], ["a\n\nb"]]);
+    const back = run([{ type: "queue", queued: [] }, { type: "turn_start" }], s);
+    expect([back.items, back.offline]).toEqual([[{ role: "user", text: "hi" }], undefined]);
+  });
+
   it("tracks permission prompts until they are answered", () => {
     const req = { requestId: "r1", toolCallId: "c1", tool: "bash", args: {}, expiresAt: "2026-10-09T00:00:00Z" };
     const asked = run([{ type: "permission", ...req }]);
