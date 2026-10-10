@@ -27,6 +27,9 @@ const name = env.HOST_NAME || "lyrica-host";
 const modelsDir = env.MODELS_DIR || "/models";
 const serving = env.SERVING_DIR || "/serving";
 const vendor = env.GPU_VENDOR || "none";
+// How the model servers reach the GPUs: CUDA, ROCm, or Vulkan (llama.cpp only,
+// for AMD GPUs that ROCm doesn't support).
+const backend = vendor === "nvidia" ? "cuda" : vendor === "amd" ? (env.GPU_BACKEND === "vulkan" ? "vulkan" : "rocm") : null;
 
 const host = new Host({
   dataDir: env.DATA_DIR || "/data",
@@ -42,9 +45,11 @@ const host = new Host({
 
 const comfy = new Comfy(env.COMFYUI_URL || "http://comfyui:8188");
 const scheduler = new Scheduler({
-  monitor: vendor === "nvidia" ? nvidiaMonitor : vendor === "amd" ? amdMonitor() : noGpus,
+  monitor: vendor === "nvidia" ? nvidiaMonitor : vendor === "amd" ? amdMonitor("/sys", { order: backend === "vulkan" ? "pci" : "kfd" }) : noGpus,
+  gpuBackend: backend,
+  servers: backend === "vulkan" ? ["llamacpp"] : undefined,
   backends: {
-    llamacpp: new LlamaCpp({ url: env.LLAMACPP_URL || "http://llamacpp:8080", serving, models: modelsDir, device: (i) => `${vendor === "amd" ? "ROCm" : "CUDA"}${i}` }),
+    llamacpp: new LlamaCpp({ url: env.LLAMACPP_URL || "http://llamacpp:8080", serving, models: modelsDir, device: (i) => `${backend === "vulkan" ? "Vulkan" : backend === "rocm" ? "ROCm" : "CUDA"}${i}` }),
     vllm: new Vllm({ url: env.VLLM_URL || "http://vllm:{port}", serving, models: modelsDir }),
     comfyui: comfy,
   },

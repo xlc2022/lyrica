@@ -38,7 +38,8 @@ async function refresh() {
   if (status.problems?.length) $("status").textContent += ` Problems: ${status.problems.join(" ")}`;
   $("pause").hidden = status.state !== "running";
   $("resume").hidden = status.state === "running" || status.state === "restarting";
-  renderGpus(status.gpus);
+  if (status.backend) $("status").textContent += ` GPUs through ${{ cuda: "CUDA", rocm: "ROCm", vulkan: "Vulkan (llama.cpp models only)" }[status.backend]}.`;
+  renderGpus(status.gpus, status.servers);
   const { models } = await api("/host/v1/models");
   renderModels(models, status.gpus);
   await renderDownloads();
@@ -66,17 +67,17 @@ function button(label, onclick) {
 
 const post = (path, body = {}) => api(path, { method: "POST", body: JSON.stringify(body) });
 
-function renderGpus(gpus) {
+function renderGpus(gpus, servers) {
   const box = $("gpus");
   box.replaceChildren();
   if (!gpus.length) box.textContent = "No GPUs found.";
   for (const g of gpus) {
     const div = document.createElement("div");
     const head = document.createElement("p");
-    head.textContent = `GPU ${g.index}: ${g.name}, ${gib(g.vram.used)} of ${gib(g.vram.total)} used. Queue: ${g.queue.chat} chat, ${g.queue.image} image, ${g.queue.background} background. `;
+    head.textContent = `GPU ${g.index}: ${g.name}${g.integrated ? " (integrated, shared memory)" : ""}, ${gib(g.vram.used)} of ${gib(g.vram.total)} used. Queue: ${g.queue.chat} chat, ${g.queue.image} image, ${g.queue.background} background. `;
     // What it may run, how much it keeps free, or left out entirely.
     const put = (change) => api(`/host/v1/gpus/${g.index}`, { method: "PUT", body: JSON.stringify({ ...g.settings, ...change }) }).then(refresh, (e) => { show(e); refresh(); });
-    for (const [server, label] of [["llamacpp", "llama.cpp"], ["vllm", "vLLM"], ["images", "images"]]) {
+    for (const [server, label] of [["llamacpp", "llama.cpp"], ["vllm", "vLLM"], ["images", "images"]].filter(([s]) => servers.includes(s))) {
       const box = document.createElement("input");
       box.type = "checkbox";
       box.checked = g.settings.servers.includes(server);

@@ -12,8 +12,8 @@ import type { Gpu, GpuMonitor } from "./gpus.ts";
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
 import {
-  defaultGpu, neverFits, options, placementKey, serverOf, sizes,
-  type GpuSettings, type ModelSettings, type Option,
+  defaultGpu, neverFits, options, placementKey, serverOf, sizes, SERVERS,
+  type GpuSettings, type ModelSettings, type Option, type Server,
 } from "./placement.ts";
 import type { StateFile } from "./state.ts";
 
@@ -58,6 +58,10 @@ export interface SchedulerOptions {
   now?: () => number;
   /** Longest wait in the queue, per priority, in ms. */
   waitLimits?: Record<Priority, number>;
+  /** The servers this host runs (a Vulkan host runs llama.cpp only). */
+  servers?: Server[];
+  /** How the servers reach the GPUs, for the status. */
+  gpuBackend?: "cuda" | "rocm" | "vulkan" | null;
 }
 
 export type HostRunState = "running" | "pausing" | "paused" | "restarting";
@@ -95,8 +99,21 @@ export class Scheduler {
     else await this.loadPins(models);
   }
 
+  get gpuBackend(): "cuda" | "rocm" | "vulkan" | null {
+    return this.o.gpuBackend ?? null;
+  }
+
+  /** The servers this host runs. */
+  get servers(): Server[] {
+    return this.o.servers ?? [...SERVERS];
+  }
+
   gpuSettings(index: number): GpuSettings {
-    return this.o.state.get().gpuSettings[index] ?? defaultGpu();
+    // An integrated GPU beside a discrete one is left out unless it's chosen:
+    // it shares system memory, and the server may not support it.
+    const integrated = this.gpus.find((g) => g.index === index)?.integrated === true && this.gpus.some((g) => !g.integrated);
+    const saved = this.o.state.get().gpuSettings[index] ?? { ...defaultGpu(), excluded: integrated };
+    return { ...saved, servers: saved.servers.filter((s) => this.servers.includes(s)) };
   }
 
   settings(model: TextModel): ModelSettings {
@@ -498,6 +515,7 @@ export class Scheduler {
         index: g.index,
         name: g.name,
         vendor: g.vendor,
+        integrated: g.integrated === true,
         settings: this.gpuSettings(g.index),
         vram: { total: g.total, used: g.used },
         models: [...this.loaded.values()]

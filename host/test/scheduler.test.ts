@@ -6,13 +6,13 @@ import { Scheduler, type Priority } from "../src/scheduler.ts";
 import { StateFile } from "../src/state.ts";
 import { FakeBackend, FakeGpus, GIB, textModel } from "./fakes.ts";
 
-function setup(totals = [24], opts: { waitLimits?: Record<Priority, number>; dir?: string } = {}) {
+function setup(totals = [24], opts: { waitLimits?: Record<Priority, number>; dir?: string; servers?: ("llamacpp" | "vllm" | "images")[] } = {}) {
   const dir = opts.dir ?? mkdtempSync(join(tmpdir(), "lyrica-sched-"));
   const gpus = new FakeGpus(totals);
   const llamacpp = new FakeBackend(gpus);
   const vllm = new FakeBackend(gpus);
   const state = new StateFile(dir);
-  const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp, vllm }, state, log: () => {}, waitLimits: opts.waitLimits });
+  const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp, vllm }, state, log: () => {}, waitLimits: opts.waitLimits, servers: opts.servers });
   return { dir, gpus, llamacpp, vllm, state, scheduler };
 }
 
@@ -289,6 +289,28 @@ describe("requests", () => {
     await scheduler.setGpu(1, { servers: ["llamacpp"], keepFree: GIB / 2, excluded: false });
     await scheduler.loadNow(textModel("m", 4));
     expect(gpus.on("m")).toEqual([1]);
+  });
+
+  it("leaves an integrated GPU out beside a discrete one, until it's included", async () => {
+    const { scheduler, gpus } = setup([16, 32]);
+    gpus.gpus[1]!.integrated = true;
+    await scheduler.start([]);
+    expect(scheduler.gpuSettings(1).excluded).toBe(true);
+    expect(scheduler.gpuSettings(0).excluded).toBe(false);
+    // 20 GB fits only on the integrated GPU, which is left out.
+    expect((await scheduler.run(textModel("big", 20), "chat", async () => {}).catch((e) => e)).code).toBe("too_big");
+    await scheduler.setGpu(1, { servers: ["llamacpp"], keepFree: GIB / 2, excluded: false });
+    await scheduler.loadNow(textModel("big", 20));
+    expect(gpus.on("big")).toEqual([1]);
+  });
+
+  it("on a Vulkan host, offers llama.cpp only", async () => {
+    const { scheduler } = setup([24], { servers: ["llamacpp"] });
+    await scheduler.start([]);
+    expect(scheduler.gpuSettings(0).servers).toEqual(["llamacpp"]);
+    const err = await scheduler.run(textModel("v", 4, { server: "vllm", format: "safetensors" }), "chat", async () => {}).catch((e) => e);
+    expect(err.message).toBe("No GPU allows vLLM for this model.");
+    await scheduler.loadNow(textModel("m", 4));
   });
 });
 

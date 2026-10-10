@@ -248,7 +248,7 @@ describe("the vLLM backend", () => {
 
 describe("the compose files", () => {
   it("give every model server the none log driver and keep their scratch space in memory", () => {
-    for (const vendor of ["nvidia", "amd"]) {
+    for (const vendor of ["nvidia", "amd", "vulkan"]) {
       const text = readFileSync(new URL(`../compose.${vendor}.yaml`, import.meta.url), "utf8");
       const anchor = text.split("\nservices:")[0]!;
       expect(anchor, vendor).toMatch(/logging: \{ driver: none \}/);
@@ -260,7 +260,7 @@ describe("the compose files", () => {
         expect(block, `${vendor} ${name}`).toContain("<<: *server");
         expect(block, `${vendor} ${name}`).toMatch(/tmpfs:/);
       }
-      expect(services.length, vendor).toBeGreaterThanOrEqual(2);
+      expect(services.length, vendor).toBeGreaterThanOrEqual(vendor === "vulkan" ? 1 : 2);
     }
   });
 });

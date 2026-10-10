@@ -31,6 +31,22 @@ host/install.sh
 To upgrade, or to change a setting, run it again: `git pull && host/install.sh`.
 Options: `host/install.sh --help`.
 
+### AMD GPUs
+
+ROCm runs llama.cpp, vLLM and images, but only on the GPUs its images are
+built for: gfx908, gfx90a, gfx942, gfx1030 (RX 6800/6900), gfx1100–1102 (RX
+7000), gfx1150–1151 and gfx1200–1201 (RX 9000). For any other AMD GPU, such as
+Vega or a Radeon 780M, `install.sh` picks **Vulkan**. It serves llama.cpp
+models only: no vLLM and no images.
+- `--amd-backend rocm|vulkan` chooses one yourself.
+- `--hsa-override 11.0.0` runs a GPU on ROCm as a close one it supports: a
+  780M (gfx1103) as gfx1100. AMD doesn't support this; it works on some
+  machines and not others. `--hsa-override none` clears it.
+- An integrated GPU's memory is shared with the system. The host counts it
+  (GTT, as well as the BIOS carve-out), so set what it keeps free on the
+  dashboard to leave the system enough. Beside a discrete GPU, an integrated
+  one is left out until you include it on the dashboard.
+
 With `--tailscale NAME`, the stack joins your tailnet as a device of its own,
 named `NAME`. It asks once for an auth key, which is removed from `.env` once
 the device has joined. With `--no-lan` as well, the host is reachable only
@@ -171,8 +187,9 @@ revoked. A revoked server must pair again.
     published on every interface, because Docker's published ports bypass
     the machine's firewall.
 - The model servers are the official llama.cpp and vLLM images, pinned by
-  digest. `compose.nvidia.yaml` uses CUDA images and `compose.amd.yaml` uses
-  ROCm; `install.sh` picks one. They log nothing (Docker's `none` log
+  digest. `compose.nvidia.yaml` uses CUDA images, `compose.amd.yaml` ROCm,
+  and `compose.vulkan.yaml` Vulkan (llama.cpp only); `install.sh` picks one,
+  and adds `compose.hsa.yaml` for `--hsa-override`. They log nothing (Docker's `none` log
   driver).
   - llama.cpp runs in router mode. host-api writes its preset file (each
     model's file, GPU and context), then loads and unloads models through
@@ -183,7 +200,9 @@ revoked. A revoked server must pair again.
     exited in the `vllm-status` volume, so a load that can't start fails at
     once.
   - host-api reads VRAM with `nvidia-smi`, through NVIDIA's `utility`
-    capability, or from AMD's sysfs.
+    capability, or from AMD's sysfs (with GTT for an integrated GPU). With
+    ROCm, AMD GPUs are numbered as ROCm numbers them; with Vulkan, by PCI
+    address.
 - `fetch` (`src/fetch/`) does the downloads. It is the same image as
   host-api, with another command.
   - It is the only container that goes out, on the `egress` network,

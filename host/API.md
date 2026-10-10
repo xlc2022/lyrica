@@ -74,10 +74,13 @@ the model server cuts short is cut short too.
   "version": "0.1.0",
   "fingerprint": "<host key fingerprint>",
   "state": "running",
+  "backend": "cuda",
+  "servers": ["llamacpp", "vllm", "images"],
   "gpus": [{
     "index": 0,
     "name": "NVIDIA GeForce RTX 3090",
     "vendor": "nvidia",
+    "integrated": false,
     "settings": { "servers": ["llamacpp", "vllm", "images"], "keepFree": 536870912, "excluded": false },
     "vram": { "total": 25769803776, "used": 9663676416 },
     "models": [{
@@ -100,6 +103,13 @@ the model server cuts short is cut short too.
 
 - `state`: `running`, `pausing` (finishing the current job), `paused` or
   `restarting`.
+- `backend`: how the model servers reach the GPUs: `cuda`, `rocm`, `vulkan`,
+  or `null` with no GPU. `servers`: what this host runs. A Vulkan host (AMD
+  GPUs that ROCm doesn't support) runs `llamacpp` only, so vLLM models and
+  image recipes can't be placed there.
+- `integrated`: an integrated GPU (an APU). Its `vram` counts the shared
+  system memory it can use (GTT) as well as its carve-out. Beside a
+  discrete GPU it is left out (`settings.excluded`) until it's included.
 - `problems`: plain sentences about what the last pause or restart couldn't
   do, such as "GPU 0: couldn't unload … it may still hold memory." Empty
   when all went well.
@@ -237,7 +247,9 @@ volume. They apply at its next load, or at once with Reload.
   `{ "servers": ["llamacpp", "vllm", "images"], "keepFree": 536870912, "excluded": false }`:
   what the GPU may run, the bytes it always keeps free, or that it is left
   out entirely (a GPU kept for the display, for example). Every field is
-  optional; the defaults are all servers, 512 MiB, and not left out.
+  optional; the defaults are all the servers this host runs, 512 MiB, and
+  not left out (left out for an integrated GPU beside a discrete one). A
+  server the host doesn't run is `invalid`.
   `keepFree` must be less than the GPU's memory.
   Models it may no longer hold are unloaded first (`in_use` while a request
   runs on one). Answers `{ "settings": { ... } }`.

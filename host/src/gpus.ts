@@ -9,6 +9,8 @@ export interface Gpu {
   index: number;
   name: string;
   vendor: "nvidia" | "amd";
+  /** An integrated GPU (an APU): its memory is shared with the system. */
+  integrated?: boolean;
   total: number;
   used: number;
 }
@@ -34,44 +36,75 @@ export const nvidiaMonitor: GpuMonitor = {
 };
 
 /**
- * AMD GPUs, numbered as ROCm numbers them: the GPU nodes of the KFD
- * topology, in order. Each node's PCI address leads to its memory readings
- * in sysfs, so an integrated GPU that ROCm skips can't shift the numbers.
- * Without a KFD topology, falls back to DRM card order.
+ * AMD integrated GPUs (APUs), by their gfx target: Raven, Picasso, Renoir,
+ * Van Gogh, Rembrandt, Raphael, Mendocino, Phoenix and Hawk Point (780M),
+ * Strix and Strix Halo, Krackan.
  */
-export function amdMonitor(sys = "/sys"): GpuMonitor {
+const AMD_APUS = new Set(["gfx902", "gfx909", "gfx90c", "gfx1033", "gfx1035", "gfx1036", "gfx1037", "gfx1103", "gfx1150", "gfx1151", "gfx1152", "gfx1153"]);
+
+/** KFD's gfx_target_version (e.g. 110003) as a gfx name (gfx1103). */
+export function gfxName(version: number): string {
+  const major = Math.floor(version / 10000);
+  const minor = Math.floor(version / 100) % 100;
+  const step = version % 100;
+  return `gfx${major}${minor.toString(16)}${step.toString(16)}`;
+}
+
+/**
+ * AMD GPUs. With ROCm they are numbered as ROCm numbers them: the GPU nodes
+ * of the KFD topology, in order, so an integrated GPU that ROCm skips can't
+ * shift the numbers. With Vulkan (`order: "pci"`) they are numbered by PCI
+ * address, the order the Vulkan container is told to use. Without a KFD
+ * topology, falls back to DRM card order.
+ *
+ * An integrated GPU's VRAM is only the BIOS carve-out; the memory it really
+ * uses is shared system memory (GTT), so both are counted.
+ */
+export function amdMonitor(sys = "/sys", opts: { order?: "kfd" | "pci" } = {}): GpuMonitor {
   const read = (path: string) => readFileSync(path, "utf8").trim();
-  const devices = (): string[] => {
+  const devices = (): { dev: string; gfx: string | null }[] => {
     const nodes = join(sys, "class/kfd/kfd/topology/nodes");
     if (existsSync(nodes)) {
-      const out: string[] = [];
+      const out: { dev: string; gfx: string | null; addr: string }[] = [];
       for (const n of readdirSync(nodes).sort((a, b) => Number(a) - Number(b))) {
         try {
           if (read(join(nodes, n, "gpu_id")) === "0") continue; // a CPU node
           const props = Object.fromEntries(read(join(nodes, n, "properties")).split("\n").map((l) => l.split(/\s+/) as [string, string]));
           const loc = Number(props.location_id);
           const addr = `${Number(props.domain ?? 0).toString(16).padStart(4, "0")}:${(loc >> 8).toString(16).padStart(2, "0")}:${((loc >> 3) & 0x1f).toString(16).padStart(2, "0")}.${loc & 7}`;
-          out.push(join(sys, "bus/pci/devices", addr));
+          const version = Number(props.gfx_target_version);
+          out.push({ dev: join(sys, "bus/pci/devices", addr), gfx: version ? gfxName(version) : null, addr });
         } catch {}
       }
+      if (opts.order === "pci") out.sort((a, b) => (a.addr < b.addr ? -1 : a.addr > b.addr ? 1 : 0));
       if (out.length) return out;
     }
     const drm = join(sys, "class/drm");
     return readdirSync(drm)
       .filter((c) => /^card\d+$/.test(c))
       .sort((a, b) => Number(a.slice(4)) - Number(b.slice(4)))
-      .map((c) => join(drm, c, "device"));
+      .map((c) => ({ dev: join(drm, c, "device"), gfx: null }));
+  };
+  const num = (path: string) => {
+    try {
+      return Number(read(path)) || 0;
+    } catch {
+      return 0;
+    }
   };
   return {
     async read() {
       return devices()
-        .filter((dev) => existsSync(join(dev, "mem_info_vram_total")))
-        .map((dev, index) => {
+        .filter(({ dev }) => existsSync(join(dev, "mem_info_vram_total")))
+        .map(({ dev, gfx }, index) => {
           let name = "AMD GPU";
           try {
             name = read(join(dev, "product_name")) || name;
           } catch {}
-          return { index, name, vendor: "amd" as const, total: Number(read(join(dev, "mem_info_vram_total"))), used: Number(read(join(dev, "mem_info_vram_used"))) };
+          const integrated = gfx !== null && AMD_APUS.has(gfx);
+          const total = num(join(dev, "mem_info_vram_total")) + (integrated ? num(join(dev, "mem_info_gtt_total")) : 0);
+          const used = num(join(dev, "mem_info_vram_used")) + (integrated ? num(join(dev, "mem_info_gtt_used")) : 0);
+          return { index, name, vendor: "amd" as const, ...(integrated ? { integrated: true } : {}), total, used };
         });
     },
   };
