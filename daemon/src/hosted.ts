@@ -256,7 +256,17 @@ export class HostedThread {
     const waiting = this.queued.splice(0);
     if (waiting.length) this.emit({ type: "queue", queued: [] });
     const next = [then, ...waiting].filter((t): t is string => t !== undefined);
-    if (next.length) await this.send(next[0]!);
+    if (!next.length) return;
+    try {
+      await this.send(next[0]!);
+    } catch (err) {
+      // The session couldn't open: keep the rest for the next message rather than dropping them.
+      if (next.length > 1) {
+        this.queued.unshift(...next.slice(1));
+        this.emit({ type: "queue", queued: [...this.queued] });
+      }
+      throw err;
+    }
     for (const t of next.slice(1)) await this.send(t);
   }
 
