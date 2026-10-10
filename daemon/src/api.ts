@@ -23,8 +23,8 @@ export type Task =
   | "chat" | "subagent.cheap" | "subagent.strong" | "compaction"
   | "title" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
   | "image.create" | "image.edit";
-/** The tasks a thread can choose models for. */
-export const THREAD_TASKS = ["chat", "subagent.cheap", "subagent.strong", "compaction", "title"] as const satisfies readonly Task[];
+/** The tasks a thread can choose models for. Compaction isn't one: Pi compacts with the thread's chat model. */
+export const THREAD_TASKS = ["chat", "subagent.cheap", "subagent.strong", "title"] as const satisfies readonly Task[];
 export type ThreadTask = (typeof THREAD_TASKS)[number];
 
 /** One model on one endpoint, by its permanent offering ID, or a model group, which expands into its members in order. */
@@ -173,6 +173,22 @@ export interface OfferingInfo extends Capabilities {
   /** missing: the endpoint stopped listing it; gone: missing for 30 days, so fallbacks skip it. */
   status: "listed" | "missing" | "gone";
   missingSince?: string;
+  /** The file's checksum, from a host: the strong group suggestion. */
+  digest?: string;
+  /** What the model is, from a host's GGUF metadata or the hub's model card. */
+  identity?: {
+    basename?: string | null; sizeLabel?: string | null; finetune?: string | null;
+    baseModels?: { name?: string; organization?: string; repoUrl?: string }[] | null;
+    card?: { baseModel?: string[]; baseModelRelation?: string | null } | null;
+  };
+  /** The host downloaded it itself, so it can be deleted. */
+  downloaded?: boolean;
+  /** Bytes, from a host. */
+  size?: number;
+  /** An image model on a host: the confirmed recipe's name. */
+  recipe?: string;
+  /** Moved to a library entry of its own (Not this model). */
+  separate?: boolean;
 }
 
 export interface EndpointInfo {
@@ -283,6 +299,8 @@ export interface LibraryEntry {
     /** Why it may not be this model. */
     flagged?: string;
     size?: number;
+    /** Its median speeds over the user's last twenty measured calls to it. */
+    speed?: { tokPerSec?: number; promptTokPerSec?: number };
   }[];
 }
 /** GET /api/u/:userId/library/text?search=&kind=&endpoint=&capability=&groups=1&offset=&limit= → TextLibrary. Starred first. */
@@ -392,6 +410,25 @@ export type ProfileEntryChange = { models: ModelRef[] | null } | { same: Task } 
 /** PATCH /api/u/:userId/profiles → Profiles */
 export interface ProfilesChange { default?: "cloud" | "custom"; thinking?: ThinkingLevel }
 
+/**
+ * One turn's counts and times. `promptTokens` is the whole prompt of its last
+ * request; `processed` is the prompt tokens read (not cached); times are in ms.
+ */
+export interface PaceInfo {
+  promptTokens: number; outputTokens: number; window: number; ttftMs: number; genMs: number; processed: number;
+  tokPerSec?: number; promptTokPerSec?: number;
+}
+
+/** A thread's context: used of window, Pi's compaction reserve, what's free before it, and the parts. */
+export interface ContextInfo {
+  tokens: number; window: number; percent: number; reserve: number; free: number;
+  /** persona, about, memory, pinned, recall, tools, conversation (estimated, scaled to the measured total), then reserve and free. */
+  parts: { name: "persona" | "about" | "memory" | "pinned" | "recall" | "tools" | "conversation" | "reserve" | "free"; tokens: number }[];
+  measuredAt: string;
+  /** The last turn's speed. */
+  pace?: PaceInfo;
+}
+
 /** Which model answered a call. Never any of the conversation's text. */
 export interface CallInfo {
   at: string; pool: Pool; threadId: string; task: Task; offeringId: string;
@@ -401,6 +438,8 @@ export interface CallInfo {
   fallback?: string;
   /** Such as a model that couldn't think. */
   note?: string;
+  /** The turn's counts, times and speeds (tok/s and prompt tok/s), once it ended. */
+  pace?: PaceInfo;
 }
 /** GET /api/u/:userId/models/calls → CallInfo[], newest first. */
 
@@ -502,6 +541,11 @@ export interface ThreadSettings {
   thinkingLevels: ThinkingLevel[];
   /** The last call in this thread: which model answered, and any fallback. */
   answered?: CallInfo;
+  /**
+   * How full the context is. From the open session, with the breakdown; from
+   * the last call record otherwise (no parts). Absent before the first measured turn.
+   */
+  context?: ContextInfo;
   /** Always true in a private thread. */
   localOnly: boolean;
   /** Overrides of the user's per-pool defaults; null follows the default. */
@@ -560,7 +604,9 @@ export type MessagePart =
    * result or question, a note, or what a user wrote to one of its subagents.
    * `status` says which ("finished", "question", "note", "user_message", …).
    */
-  | { type: "delegation"; text: string; runId?: string; status?: string; threads?: ThreadRef[] };
+  | { type: "delegation"; text: string; runId?: string; status?: string; threads?: ThreadRef[] }
+  /** The thread was compacted: tokens before and (estimated) after, and the summary that replaced the older messages. */
+  | { type: "compacted"; before: number; after?: number; summary: string };
 
 /** A `delegate` call's subagent threads, so its card can open them. */
 export interface ThreadRef { pool: Pool; id: string }
@@ -695,6 +741,10 @@ export type ThreadEvent =
   | { type: "title"; title: string }
   /** The turn is over; the messages are stored. */
   | { type: "turn_end"; aborted: boolean }
+  /** After each turn: the context as it now stands. */
+  | { type: "context"; context: ContextInfo }
+  /** The thread was compacted, by her or by Pi at the window's edge (also stored, as a `notice` message). */
+  | { type: "compacted"; before: number; after?: number; summary: string }
   /**
    * A subagent run's event. It goes to the parent thread's stream and to the
    * subagent's own thread's stream.

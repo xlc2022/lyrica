@@ -7,13 +7,12 @@ import {
 } from "./api.ts";
 import { go } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
-import { ErrorText, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { Confirm, ErrorText, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 export const TASK_LABELS: Record<ThreadTask, string> = {
   chat: "Main conversation",
   "subagent.cheap": "Cheap subagents",
   "subagent.strong": "Strong subagents",
-  compaction: "Compaction",
   title: "Titles",
 };
 
@@ -270,20 +269,9 @@ function Folders({ grants, allowed, onChange }: { grants: Grant[]; allowed: stri
 
 /** Forgetting a thread asks first, and whether its child threads go too (ticked). */
 function Forget({ children, onForget }: { children: number; onForget: (withChildren: boolean) => void }) {
-  const [open, setOpen] = useState(false);
-  const [withChildren, setWithChildren] = useState(true);
-  if (!open) return <button type="button" className="danger" onClick={() => setOpen(true)}>Forget this thread</button>;
   return (
-    <div className="confirm" role="group" aria-label="Forget this thread">
-      <p>Forget this thread? Its messages are deleted, along with what was learned only from it. This can't be undone.</p>
-      {children > 0 && (
-        <label className="check"><input type="checkbox" checked={withChildren} onChange={(e) => setWithChildren(e.target.checked)} />
-          {" "}Also forget its {children === 1 ? "child thread" : `${children} child threads`}</label>
-      )}
-      <div className="row">
-        <button type="button" className="danger solid" onClick={() => { setOpen(false); onForget(children > 0 && withChildren); }}>Forget it</button>
-        <button type="button" onClick={() => setOpen(false)}>Cancel</button>
-      </div>
-    </div>
+    <Confirm label="Forget this thread" danger confirm="Forget it" onConfirm={onForget}
+      question="Forget this thread? Its messages are deleted, along with what was learned only from it. This can't be undone."
+      {...(children > 0 ? { option: `Also forget its ${children === 1 ? "child thread" : `${children} child threads`}` } : {})} />
   );
 }

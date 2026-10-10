@@ -83,7 +83,7 @@ export interface SubagentThread { userName(userId: string): string }
  * calls; recall joins the reply it fed. In a subagent's thread, each "user"
  * message says whether Lyrica or a user sent it.
  */
-export function toMessages(threadId: string, pool: Pool, entries: { n: number; data: unknown; createdAt: string; pinned?: boolean }[], runThreads?: RunThreads, subagent?: SubagentThread): Message[] {
+export function toMessages(threadId: string, pool: Pool, entries: { n: number; data: unknown; createdAt: string; pinned?: boolean }[], runThreads?: RunThreads, subagent?: SubagentThread, opts: { child?: boolean } = {}): Message[] {
   const out: Message[] = [];
   const calls = new Map<string, { part: Extract<MessagePart, { type: "tool" }>; owner: Message }>();
   let pendingRecall: string[] = [];
@@ -107,12 +107,20 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
       out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "user", from: { kind: "user", userId, name: subagent?.userName(userId) ?? "" }, parts: [{ type: "text", text }] });
       continue;
     }
+    if (e.type === "compaction") {
+      // Hers or Pi's: a marker, Compacted · 41k → 6k, that expands to the summary.
+      const c = e as unknown as { summary?: string; tokensBefore?: number; details?: { after?: unknown } };
+      const after = typeof c.details?.after === "number" ? c.details.after : undefined;
+      out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "notice", parts: [{ type: "compacted", before: c.tokensBefore ?? 0, ...(after !== undefined ? { after } : {}), summary: c.summary ?? "" }] });
+      continue;
+    }
     const m = e.type === "message" ? e.message : undefined;
     if (!m) continue;
     const base = { id: `e:${threadId}#${n}`, n, createdAt, ...(pinned ? { pinned: true } : {}) };
     if (m.role === "user") {
       if (textOf(m.content) === OPENING) continue; // a thread started from a sleep item: she speaks first
-      const parent = FROM_PARENT.exec(textOf(m.content));
+      // Only a child thread has a parent's messages; lyricad refuses the mark on anything else.
+      const parent = opts.child ? FROM_PARENT.exec(textOf(m.content)) : null;
       if (parent) {
         out.push({ ...base, role: "user", from: { kind: "parent", threadId: parent[1]! }, parts: [{ type: "text", text: textOf(m.content).slice(parent[0].length) }] });
         continue;

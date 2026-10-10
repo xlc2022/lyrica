@@ -56,6 +56,7 @@ const text = (t: string, details?: unknown) => ({ content: [{ type: "text" as co
 export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost): ExtensionFactory {
   const self = thread.view.own.getThread(thread.threadId);
   if (!self) throw new Error("no such thread");
+  if (self.subagent) throw new Error("a subagent's thread can't start or message child threads");
   // A child whose parent was forgotten, and kept, is a thread of its own.
   const child = self.child && !!self.parent;
   return (pi) => {
