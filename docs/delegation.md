@@ -28,7 +28,7 @@ subagent:
   with the parent's `CallContext` as it is when the subagent starts: the
   parent's `subagent.cheap` or `subagent.strong` model. She picks a tier,
   never a model; only a saved workflow, which a user writes, may name a model
-  the parent allows. In a private or local-only thread it is always a local
+  the parent allows, by its offering ID or as `<endpoint>/<model>`. In a private or local-only thread it is always a local
   model. A refused model fails the run before any thread is made;
 - gets its workspace from `inheritSettings`: the parent's folders (or the
   ones asked for), read-only for a read-only role or `readOnly: true`, and
@@ -194,7 +194,7 @@ thread's. There is no cost yet: models are declared free to Pi.
 ## Records and restarts
 
 `user.db` holds `delegate_roles`, `delegate_workflows` and `subagent_runs`
-(one row per subagent: run, parent, role, model, status, tokens, times, and
+(one row per subagent: run, parent, role, model label and offering ID, status, tokens, times, and
 how to continue it: its tier or named model and its run's narrowing). No
 conversation text goes there: tasks, answers and results live in the
 threads, in their pool's database.

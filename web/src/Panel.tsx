@@ -232,8 +232,7 @@ function ProfilesSection({ ctx }: { ctx: ShellContext }) {
   const [run, , error] = useAction();
   if (!profiles.data) return <Section title="Model profiles"><ErrorText error={profiles.error} /></Section>;
   const set = (profile: "cloud" | "local", task: Task, value: string) => run(async () => {
-    const [endpointId, modelId] = value.split("\u0000");
-    profiles.set(await put<Profiles>(u(userId, "profiles", profile, task), { model: endpointId && modelId ? { endpointId, modelId } : null }));
+    profiles.set(await put<Profiles>(u(userId, "profiles", profile, task), { model: value ? { offeringId: value } : null }));
   });
   return (
     <Section title="Model profiles">
@@ -247,11 +246,11 @@ function ProfilesSection({ ctx }: { ctx: ShellContext }) {
               const cur = profiles.data![profile][task];
               return (
                 <label key={task} className="field"><span>{label}</span>
-                  <select value={cur ? `${cur.endpointId}\u0000${cur.modelId}` : ""} onChange={(e) => set(profile, task, e.target.value)}>
+                  <select value={cur?.offeringId ?? ""} onChange={(e) => set(profile, task, e.target.value)}>
                     <option value="">Not set</option>
                     {(eps.data ?? []).filter((ep) => profile === "cloud" || ep.kind === "local").map((ep) => (
                       <optgroup key={ep.id} label={`${ep.name} (${ep.kind})`}>
-                        {ep.models.map((m) => <option key={m.modelId} value={`${ep.id}\u0000${m.modelId}`}>{m.modelId}</option>)}
+                        {ep.models.map((m) => <option key={m.id} value={m.id}>{m.modelId}</option>)}
                       </optgroup>
                     ))}
                   </select>
