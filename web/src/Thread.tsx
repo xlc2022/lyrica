@@ -1,6 +1,6 @@
 // One thread: header with its badges, the conversation, and the composer.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { get, post, threadPath, type Pool, type SendResponse, type ThreadSettings, type ThreadSummary } from "./api.ts";
+import { get, patch, post, threadPath, type Pool, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary } from "./api.ts";
 import { useThread } from "./stream.ts";
 import { Conversation, MessageBox } from "./Messages.tsx";
 import { Composer } from "./Composer.tsx";
@@ -22,7 +22,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
   useEffect(() => { if (t.live.title) { summary.reload(); refreshThreads(); } }, [t.live.title, summary.reload, refreshThreads]);
   useEffect(() => { if (t.live.reload) refreshThreads(); }, [t.live.reload, refreshThreads]);
   // The badge follows the profile, which may change elsewhere: refresh it after each turn and on focus.
-  useEffect(() => { if (t.live.reload) settings.reload(); }, [t.live.reload, settings.reload]);
+  useEffect(() => { if (t.live.reload || t.live.settings) settings.reload(); }, [t.live.reload, t.live.settings, settings.reload]);
   useEffect(() => {
     addEventListener("focus", settings.reload);
     return () => removeEventListener("focus", settings.reload);
@@ -39,6 +39,18 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
       return false;
     }
   }, [base, t.dispatch]);
+  // The mode and switches beside the message box: shown at once, so Shift+Tab pressed again cycles on from here.
+  // Only the latest change's answer is shown, so answers arriving out of order can't step back.
+  const latest = useRef(0);
+  const changeSettings = useCallback((change: ThreadSettingsChange) => {
+    setSendError("");
+    const n = ++latest.current;
+    if (settings.data && change.internet === undefined) settings.set({ ...settings.data, ...(change as Partial<ThreadSettings>) });
+    patch<ThreadSettings>(`${base}/settings`, change).then(
+      (s) => { if (n === latest.current) settings.set(s); },
+      (e: Error) => { setSendError(e.message); settings.reload(); },
+    );
+  }, [base, settings.data, settings.set, settings.reload]);
   // Stop drops queued follow-ups, so their text goes back into the composer.
   const [restored, setRestored] = useState("");
   const stop = () => {
@@ -87,7 +99,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
       {/* A subagent's thread is its transcript and a message box, as in its delegate card. */}
       {s?.subagent
         ? <div className="composer sub-composer"><MessageBox thread={{ pool, id: threadId }} env={{ userId }} onSent={() => t.dispatch({ type: "refresh" })} /></div>
-        : <Composer base={base} busy={t.live.busy} onSend={send} onStop={stop} restored={restored} />}
+        : <Composer base={base} busy={t.live.busy} onSend={send} onStop={stop} restored={restored} settings={settings.data} onSettings={changeSettings} />}
       {drawer && settings.data && s && !s.subagent && (
         <SettingsDrawer
           ctx={ctx} base={base} summary={s} settings={settings.data}

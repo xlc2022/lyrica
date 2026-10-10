@@ -90,7 +90,7 @@ describe("a conversation", () => {
 
   it("queues a message sent during a turn and runs it next", async () => {
     const { li, model, path } = await setup({ permissionMs: 5_000 });
-    await li.patch(`${path}/settings`, { mode: "ask-commands" });
+    await li.patch(`${path}/settings`, { mode: "acceptEdits" });
     model.reply({ tools: [{ name: "bash", args: { command: "true" } }] }, { text: "done" }, { text: "second answer" });
     const stream = li.events(`${path}/events`);
     await li.post(`${path}/messages`, { text: "run it" });
@@ -127,7 +127,7 @@ describe("idle threads", () => {
 describe("permission prompts", () => {
   it("in an ask mode, bash waits for approval, and deny stops it", async () => {
     const { li, model, path } = await setup();
-    await li.patch(`${path}/settings`, { mode: "ask-commands" });
+    await li.patch(`${path}/settings`, { mode: "acceptEdits" });
     model.reply({ tools: [{ name: "bash", args: { command: "echo hi" } }] }, { text: "I won't, then." });
     const stream = li.events(`${path}/events`);
     await li.post(`${path}/messages`, { text: "run echo" });
@@ -154,7 +154,7 @@ describe("permission prompts", () => {
 
   it("denies when nobody answers in time", async () => {
     const { li, model, path } = await setup({ permissionMs: 300 });
-    await li.patch(`${path}/settings`, { mode: "ask-changes" });
+    await li.patch(`${path}/settings`, { mode: "ask" });
     model.reply({ tools: [{ name: "write", args: { path: "/workspace/a.txt", content: "x" } }] }, { text: "ok" });
     const stream = li.events(`${path}/events`);
     await li.post(`${path}/messages`, { text: "write a file" });
@@ -165,7 +165,7 @@ describe("permission prompts", () => {
 
   it("Stop aborts the turn and denies a waiting request", async () => {
     const { li, model, path } = await setup();
-    await li.patch(`${path}/settings`, { mode: "ask-commands" });
+    await li.patch(`${path}/settings`, { mode: "acceptEdits" });
     model.reply({ tools: [{ name: "bash", args: { command: "sleep 100" } }] });
     const stream = li.events(`${path}/events`);
     await li.post(`${path}/messages`, { text: "go" });
@@ -174,6 +174,48 @@ describe("permission prompts", () => {
     await stream.until(is("turn_end"));
     expect(stream.events.find((e) => e.event.type === "permission_end")!.event).toMatchObject({ allowed: false, reason: "stopped" });
     stream.close();
+  });
+});
+
+describe("modes and switches", () => {
+  it("shows a plan as a request any view can answer; approving it switches the mode and she carries on", async () => {
+    const { li, model, path } = await setup({ permissionMs: 5_000 });
+    await li.patch(`${path}/settings`, { mode: "plan" });
+    model.reply({ tools: [{ name: "propose_plan", args: { plan: "1. Run the tests" } }] }, { tools: [{ name: "bash", args: { command: "npm test" } }] }, { text: "ok" });
+    const stream = li.events(`${path}/events`);
+    await li.post(`${path}/messages`, { text: "plan it" });
+    await stream.until(is("permission"));
+    const offered = (n: number) => model.requests[n]!.tools!.map((t) => t.function.name);
+    expect(offered(0)).toContain("propose_plan");
+    expect(offered(0)).not.toContain("bash");
+    const plan = stream.events.find((e) => e.event.type === "permission")!.event as { requestId: string; tool: string; args: unknown };
+    expect(plan).toMatchObject({ tool: "propose_plan", args: { plan: "1. Run the tests" } });
+    // Approving needs a mode to go ahead in.
+    expect((await li.post(`${path}/permissions/${plan.requestId}`, { allow: true })).status).toBe(400);
+    await li.post(`${path}/permissions/${plan.requestId}`, { allow: true, mode: "acceptEdits" });
+    await stream.until(is("settings"));
+    expect((await li.get<ThreadSettings>(`${path}/settings`)).body.mode).toBe("acceptEdits");
+    // In the same turn, bash is on offer again, and asks, as Accept edits does.
+    await stream.until((e) => e.type === "permission" && e.tool === "bash");
+    expect(offered(1)).toContain("bash");
+    expect(offered(1)).not.toContain("propose_plan");
+    const bash = stream.events.filter((e) => e.event.type === "permission").at(-1)!.event as { requestId: string };
+    await li.post(`${path}/permissions/${bash.requestId}`, { allow: false });
+    await stream.until(is("turn_end"));
+    stream.close();
+  });
+
+  it("starts new threads in the user's default mode, and keeps the switches in the thread's settings", async () => {
+    const { rt, li, path } = await setup();
+    expect((await li.get(`/api/u/${rt.li.id}/mode`)).body).toEqual({ mode: "auto" });
+    expect((await li.put(`/api/u/${rt.li.id}/mode`, { mode: "ask" })).body).toEqual({ mode: "ask" });
+    expect((await li.put(`/api/u/${rt.li.id}/mode`, { mode: "ask-changes" })).status).toBe(400);
+    const fresh = (await li.post<ThreadSummary>(`/api/u/${rt.li.id}/threads`, { pool: "general" })).body;
+    expect((await li.get<ThreadSettings>(`/api/u/${rt.li.id}/threads/general/${enc(fresh.id)}/settings`)).body.mode).toBe("ask");
+    // A thread made before keeps its mode.
+    expect((await li.get<ThreadSettings>(`${path}/settings`)).body).toMatchObject({ mode: "auto", webSearch: true, images: true });
+    expect((await li.patch<ThreadSettings>(`${path}/settings`, { webSearch: false })).body).toMatchObject({ webSearch: false, images: true });
+    expect((await li.patch(`${path}/settings`, { images: "no" })).status).toBe(400);
   });
 });
 

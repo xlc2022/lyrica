@@ -3,7 +3,8 @@
 // Usage: tsx web/e2e/serve.ts <lyricad port> <model port>
 //
 // The fake model answers from the last user message: "run: <command>" calls
-// bash with that command (then says "The command finished."), anything else
+// bash with that command (then says "The command finished."), "plan: <plan>"
+// calls propose_plan with that plan (then says "On it."), anything else
 // gets a few streamed sentences that echo it. /local/v1 serves "local-model"
 // and /cloud/v1 "cloud-model".
 import { mkdtempSync, rmSync } from "node:fs";
@@ -41,11 +42,13 @@ function fakeModel() {
       const send = (delta: unknown, finish: string | null = null) => res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`);
       res.writeHead(200, { "content-type": "text/event-stream" });
       const command = /run: (.+)/.exec(said)?.[1];
-      if (command && last?.role !== "tool") {
-        send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: { name: "bash", arguments: JSON.stringify({ command }) } }] });
+      const plan = /plan: (.+)/.exec(said)?.[1];
+      const call = command ? { name: "bash", arguments: JSON.stringify({ command }) } : plan ? { name: "propose_plan", arguments: JSON.stringify({ plan }) } : undefined;
+      if (call && last?.role !== "tool") {
+        send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: call }] });
         send({}, "tool_calls");
       } else {
-        const text = command ? "The command finished." : `You said: ${said.slice(0, 200)}. This reply comes from the fake ${chat.model}, in a few pieces.`;
+        const text = command ? "The command finished." : plan ? "On it." : `You said: ${said.slice(0, 200)}. This reply comes from the fake ${chat.model}, in a few pieces.`;
         for (const piece of text.match(/.{1,12}/gs) ?? []) {
           send({ role: "assistant", content: piece });
           await new Promise((r) => setTimeout(r, 30));

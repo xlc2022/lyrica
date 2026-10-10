@@ -1,14 +1,18 @@
 // Writing a message: Enter sends (Shift+Enter for a new line, except on touch
-// keyboards), files attach by button, drag or paste.
+// keyboards), files attach from the "+" menu, by drag or paste. Beside it, the
+// thread's mode (Shift+Tab cycles) and its tool switches.
 import { useEffect, useRef, useState } from "react";
-import { upload } from "./api.ts";
+import { upload, type ThreadSettings, type ThreadSettingsChange } from "./api.ts";
+import { ModePicker, nextMode, ToolsMenu } from "./Modes.tsx";
 
 interface Upload { id: number; name: string; progress: number; error?: string }
 
-export function Composer({ base, busy, restored, onSend, onStop }: {
+export function Composer({ base, busy, restored, onSend, onStop, settings, onSettings }: {
   base: string; busy: boolean; onSend: (text: string) => Promise<boolean>; onStop: () => void;
   /** Text handed back, such as follow-ups that Stop dropped. */
   restored: string;
+  settings?: ThreadSettings;
+  onSettings: (change: ThreadSettingsChange) => void;
 }) {
   const [draft, setDraft] = useState("");
   const [uploads, setUploads] = useState<Upload[]>([]);
@@ -69,7 +73,7 @@ export function Composer({ base, busy, restored, onSend, onStop }: {
           ))}
         </ul>
       )}
-      <button type="button" className="attach" aria-label="Attach a file" onClick={() => picker.current?.click()}>+</button>
+      <ToolsMenu settings={settings} onAttach={() => picker.current?.click()} onChange={onSettings} />
       <input ref={picker} type="file" multiple hidden onChange={(e) => { attach(e.target.files ?? []); e.target.value = ""; }} />
       <textarea
         ref={area}
@@ -80,12 +84,14 @@ export function Composer({ base, busy, restored, onSend, onStop }: {
         onChange={(e) => setDraft(e.target.value)}
         onPaste={(e) => { if (e.clipboardData.files.length) { e.preventDefault(); attach(e.clipboardData.files); } }}
         onKeyDown={(e) => {
+          if (e.key === "Tab" && e.shiftKey && settings && !settings.parent) { e.preventDefault(); onSettings({ mode: nextMode(settings.mode) }); return; }
           const touch = matchMedia("(pointer: coarse)").matches;
           if (e.key === "Enter" && !e.shiftKey && !touch && !e.nativeEvent.isComposing) { e.preventDefault(); void submit(); }
         }}
       />
       {busy && <button type="button" className="stop" onClick={onStop}>Stop</button>}
       <button type="submit" className="primary send" disabled={!draft.trim()}>{busy ? "Queue" : "Send"}</button>
+      {settings && <div className="composer-bar"><ModePicker mode={settings.mode} disabled={!!settings.parent} onChange={(mode) => onSettings({ mode })} /></div>}
     </form>
   );
 }

@@ -140,9 +140,13 @@ test("private and local-only threads offer only local models", async ({ page, ba
 test("in an ask mode, a command can be allowed, and denying it stops the tool", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");
+  // The mode picker beside the message box, with each mode's number key.
+  await page.locator(".mode-picker").getByRole("button").click();
+  await expect(page.getByRole("menu", { name: "Mode" }).getByRole("menuitemradio")).toHaveCount(4);
+  await page.keyboard.press("2");
+  await expect(page.locator(".mode-picker")).toContainText("Accept edits");
   const drawer = await openSettings(page);
-  await drawer.getByLabel("Permission mode").selectOption("ask-commands");
-  await expect(drawer.getByLabel("Permission mode")).toHaveValue("ask-commands");
+  await expect(drawer.getByRole("combobox", { name: /^Mode/ })).toHaveValue("acceptEdits");
   await drawer.getByRole("button", { name: "Close" }).click();
 
   await send(page, "run: echo allowed");
@@ -159,6 +163,32 @@ test("in an ask mode, a command can be allowed, and denying it stops the tool", 
   await expect(marker).toContainText("failed");
   await marker.getByRole("button").click();
   await expect(marker).toContainText("Not approved");
+});
+
+test("Plan mode: Shift+Tab gets there, the plan shows as a card, and going ahead switches the mode", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  const message = page.getByLabel("Message", { exact: true });
+  await message.focus();
+  // Auto, then Ask, Accept edits, Plan.
+  for (let i = 0; i < 3; i++) await message.press("Shift+Tab");
+  await expect(page.locator(".mode-picker")).toContainText("Plan");
+
+  await send(page, "plan: Check the logs, then fix the config");
+  const card = page.getByRole("group", { name: "Lyrica's plan" });
+  await expect(card).toContainText("Check the logs, then fix the config");
+  await card.getByRole("button", { name: "Accept edits" }).click();
+  await expect(page.getByText("On it.")).toBeVisible();
+  await expect(page.locator(".mode-picker")).toContainText("Accept edits");
+
+  // The "+" menu's switches turn tools off for this thread.
+  await page.getByRole("button", { name: "Attach or switch tools" }).click();
+  const menu = page.getByRole("menu", { name: "Attach and tools" });
+  await menu.getByLabel("Web search").click();
+  await expect(menu.getByLabel("Web search")).not.toBeChecked();
+  await page.keyboard.press("Escape");
+  const drawer = await openSettings(page);
+  await expect(drawer.getByLabel("Web search")).not.toBeChecked();
 });
 
 test("an uploaded file's path goes into the message", async ({ page, baseURL }) => {
@@ -288,7 +318,7 @@ test("no horizontal scrolling and big enough tap targets on a phone", async ({ p
   await noHorizontalScroll(page);
   for (const button of [
     page.getByRole("button", { name: "Show threads" }), page.getByRole("button", { name: "Thread settings" }),
-    page.getByRole("button", { name: /^Model:/ }), page.getByRole("button", { name: "Attach a file" }),
+    page.getByRole("button", { name: /^Model:/ }), page.getByRole("button", { name: "Attach or switch tools" }),
     page.getByRole("button", { name: "Send" }),
   ]) {
     const box = await button.boundingBox();

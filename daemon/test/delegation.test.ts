@@ -153,7 +153,7 @@ describe("talking with subagents in lyricad", () => {
 
   it("asks for a writer subagent's command in its thread and its parent's; the first answer wins", async () => {
     const { rt, li, parent, sub, path } = await setup();
-    await li.patch(`${path}/settings`, { mode: "ask-commands" });
+    await li.patch(`${path}/settings`, { mode: "acceptEdits" });
     parent.reply({ tools: [{ name: "delegate", args: { task: "run two commands", role: "worker", background: true } }] }, { text: "A worker is on it." });
     sub.respond((r) => {
       const results = r.messages.filter((m) => m.role === "tool").length;
@@ -194,7 +194,7 @@ describe("talking with subagents in lyricad", () => {
 
   it("refuses a subagent's call nobody answers in time", async () => {
     const { li, parent, sub, path } = await setup({ permissionMs: 300 });
-    await li.patch(`${path}/settings`, { mode: "ask-changes" });
+    await li.patch(`${path}/settings`, { mode: "ask" });
     parent.reply({ tools: [{ name: "delegate", args: { task: "write it", role: "worker" } }] }, { text: "Done." });
     sub.reply({ tools: [{ name: "write", args: { path: "/workspace/a.txt", content: "x" } }] }, { text: "Couldn't write it." });
     const stream = li.events(`${path}/events`);

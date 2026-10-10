@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { AgentSession, ExtensionFactory, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
-  DelegationStore, isRestricted, LIVE_STATUSES, refId, stricterMode,
+  DelegationStore, isRestricted, LIVE_STATUSES, refId,
   type CouncilSpec, type Grant, type LoopSpec, type Memory, type ModelRef, type Models, type Pool, type PoolStore, type Role,
   type Step, type SubagentRecord, type SubagentStatus, type Tier, type Usage, type User, type Users, type Workflow, type WorkflowSpec, type Workspace,
 } from "@lyrica/core";
@@ -828,6 +828,9 @@ export class Delegation {
     const { parent } = run;
     const { models, workspace } = this.o;
     const writer = !!workspace && !role.readOnly && !narrowing.readOnly;
+    if (workspace && !role.readOnly && workspace.forThread({ userId: parent.user.id, pool: parent.pool, threadId: parent.threadId }).settings().mode === "plan") {
+      throw new Error(`the thread is in Plan mode, where only read-only roles run; ${role.name} isn't one`);
+    }
     let parentCall = this.parentCall(run);
     // A subagent that started local-only (a fork of a local-only conversation, say) stays local-only.
     if (earlier && isRestricted(models.callContext(parent.user.id, parent.pool, earlier.thread))) parentCall = { ...parentCall, localOnly: true };
@@ -862,16 +865,9 @@ export class Delegation {
         if (role.readOnly || narrowing.readOnly) grants = grants.map((g) => ({ ...g, writable: false }));
         if (worktrees.length) grants = worktreeGrants(grants, worktrees);
         workspace.inheritSettings(p, child.id, { grants, ...(narrowing.internet === false ? { internet: false } : {}) });
-        const tools = workspace.forThread({ ...p, threadId: child.id });
-        extensions.push(createWorkspaceExtension({
-          ...tools,
-          // It asks as its parent would now, or as its own settings say if they are stricter.
-          settings: () => {
-            const mine = tools.settings();
-            return { ...mine, mode: stricterMode(mine.mode, workspace.settings(parent.user.id).thread(parent.threadId).mode) };
-          },
-          approve: (r) => this.approve(sub!, r),
-        }));
+        // Its settings follow its parent's as they are now (the stricter mode, switches off where theirs are); it can't leave Plan mode itself.
+        const { setMode: _own, ...tools } = workspace.forThread({ ...p, threadId: child.id });
+        extensions.push(createWorkspaceExtension({ ...tools, approve: (r) => this.approve(sub!, r) }));
       }
       const nested = this.depth(ctx) < this.limits.depth;
       if (nested) extensions.push(createDelegateExtension(ctx, this, run.budget));

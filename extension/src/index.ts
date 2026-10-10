@@ -1,11 +1,13 @@
 import type { BuildSystemPromptOptions, ExtensionCommandContext, ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { isThreadView, type CallContext, type Interface, type Persona, type Pool, type PoolView, type Profile, type User } from "@lyrica/core";
 import { assemble, type Budgets, type Section } from "./assemble.ts";
+import { setToolsOff } from "./gate.ts";
 import { memorySections } from "./memory.ts";
 import { TopicRouter, type RoutedTopic } from "./routing.ts";
 import { registerMemoryTools } from "./tools.ts";
 
 export * from "./assemble.ts";
+export * from "./gate.ts";
 export * from "./memory.ts";
 export * from "./record.ts";
 export * from "./routing.ts";
@@ -54,12 +56,8 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
       const persona = opts.persona();
       const topics = router.route(persona.topics, event.prompt);
       const memory = await memorySections(view, event.prompt, { ...who(), folders: opts.folders?.() ?? [] });
-      // An unlogged thread isn't offered remember at all. Tools keep their order, so the prompt prefix stays the same.
-      const active = pi.getActiveTools();
-      if (opts.memoryTools !== "read" && active.includes("remember") === !!memory.notice) {
-        const want = new Set(memory.notice ? active.filter((t) => t !== "remember") : [...active, "remember"]);
-        pi.setActiveTools(pi.getAllTools().map((t) => t.name).filter((t) => want.has(t)));
-      }
+      // An unlogged thread isn't offered remember at all.
+      if (opts.memoryTools !== "read") setToolsOff(pi, ctx, "unlogged", memory.notice ? ["remember"] : []);
       const { customPrompt, sections, turn, report } = assemble(
         { persona, topics, memory, profile: opts.profile(), now: opts.now?.() ?? new Date() },
         opts.budgets,

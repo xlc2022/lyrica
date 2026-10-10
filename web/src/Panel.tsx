@@ -2,9 +2,10 @@
 import { useState } from "react";
 import {
   del, get, patch, post, put, u,
-  type AdminStatus, type AllowedPaths, type EndpointInfo, type Me, type NetworkDefaults, type PersonaProposal,
+  type AdminStatus, type AllowedPaths, type EndpointInfo, type Me, type ModeDefault, type NetworkDefaults, type PersonaProposal,
   type Pool, type Probe, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type SshTargetInfo, type Task, type Theme, type UserCard,
 } from "./api.ts";
+import { MODE_ORDER, MODES } from "./Modes.tsx";
 import type { ShellContext } from "./Shell.tsx";
 import { WebAccessSection } from "./WebAccess.tsx";
 import { Confirm, ErrorText, Switch, useAction, useLoad } from "./ui.tsx";
@@ -268,6 +269,7 @@ function ProfilesSection({ ctx }: { ctx: ShellContext }) {
 function NetworkSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const net = useLoad(() => get<NetworkDefaults>(u(userId, "network")), [userId]);
+  const mode = useLoad(() => get<ModeDefault>(u(userId, "mode")), [userId]);
   const [run, , error] = useAction();
   const [host, setHost] = useState<Record<Pool, string>>({ general: "", private: "" });
   if (!net.data) return <Section title="Network"><ErrorText error={net.error} /></Section>;
@@ -276,6 +278,13 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
     <Section title="Network">
       <p className="muted">Defaults for new threads' tools. Each thread can change them in its settings.</p>
       <ErrorText error={error} />
+      {mode.data && (
+        <label className="field"><span>Mode</span>
+          <select value={mode.data.mode} onChange={(e) => run(async () => mode.set(await put<ModeDefault>(u(userId, "mode"), { mode: e.target.value })))}>
+            {MODE_ORDER.map((m) => <option key={m} value={m} title={MODES[m].description}>{MODES[m].label}</option>)}
+          </select>
+        </label>
+      )}
       <div className="profiles">
         {(["general", "private"] as const).map((pool) => {
           const n = net.data![pool];

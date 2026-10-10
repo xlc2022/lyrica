@@ -1,7 +1,8 @@
 // The conversation: stored messages, then what's streaming now.
 import { useEffect, useState } from "react";
-import { get, post, threadPath, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type SendResponse, type ThreadRef } from "./api.ts";
+import { get, post, threadPath, type GoAhead, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type SendResponse, type ThreadRef } from "./api.ts";
 import type { LiveItem } from "./live.ts";
+import { MODES } from "./Modes.tsx";
 import { href, idHref } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
 import type { useThread } from "./stream.ts";
@@ -296,10 +297,30 @@ function summarizeArgs(args: unknown): string {
   return typeof main === "string" ? main.split("\n")[0]! : JSON.stringify(main ?? "");
 }
 
+const GO_AHEAD: GoAhead[] = ["ask", "acceptEdits", "auto"];
+
 function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest; env: Env }) {
   const [run, busy, error] = useAction();
-  const answer = (allow: boolean) => run(() => post(`${base}/permissions/${encodeURIComponent(p.requestId)}`, { allow }));
+  const answer = (allow: boolean, mode?: GoAhead) => run(() => post(`${base}/permissions/${encodeURIComponent(p.requestId)}`, { allow, mode }));
   const left = useCountdown(p.expiresAt);
+  if (p.tool === "propose_plan" && !p.subagent) {
+    // Her plan, from Plan mode: going ahead switches the thread to the mode picked.
+    return (
+      <div className="permission plan" role="group" aria-label="Lyrica's plan">
+        <p>Lyrica's plan:</p>
+        <div className="prose"><Prose text={String((p.args as { plan?: unknown } | null)?.plan ?? "")} /></div>
+        <div className="row">
+          <span>Go ahead in</span>
+          {GO_AHEAD.map((m) => (
+            <button key={m} type="button" className={m === "acceptEdits" ? "primary" : ""} disabled={busy} title={MODES[m].description} onClick={() => answer(true, m)}>{MODES[m].label}</button>
+          ))}
+          <button type="button" disabled={busy} onClick={() => answer(false)}>Keep planning</button>
+          <span className="muted">{left}</span>
+        </div>
+        <ErrorText error={error} />
+      </div>
+    );
+  }
   const sub = p.subagent;
   // A subagent's request shows here and in its parent's thread; the first answer counts.
   const who = !sub ? <>Lyrica wants</>
