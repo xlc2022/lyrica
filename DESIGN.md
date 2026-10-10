@@ -169,6 +169,11 @@ Each user has two pools of memory.
       in a grant says it deletes on the server.
     - A panel upload belongs to the thread, not to a message, so removing
       turns never deletes it.
+  - **Later: voice**, as in Claude. The message box has a mic for dictation,
+    and when it's empty a voice-conversation button sits where Send goes.
+    Her messages have **Read aloud**. The mockup shows them; nothing is
+    built yet. When they are, speech is a model task like any other, so
+    private and local-only threads use local speech models only.
 - **Each interface keeps its own threads.** Lyrica is continuous across
   interfaces because she remembers, not because threads are mirrored. Moving a
   thread to another interface is an explicit export that copies it. Nothing

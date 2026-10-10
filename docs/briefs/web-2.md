@@ -136,6 +136,8 @@ phone (principle 1).
 
 - The back ends.
 - The host's own dashboard (Model host thread).
+- Voice (dictation, voice conversation, Read aloud): the mockup's buttons
+  are placeholders, not built here.
 
 ## Done when
 
