@@ -124,14 +124,15 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   event drops the removed messages from every open view. A new branch opens,
   under "Branched from" its parent, and its settings can be changed within
   its parent's.
-- **Pinned messages** say "Pinned" beside the sender's name. The header's
-  "N pinned ▾" badge opens a popover listing them; choosing one scrolls to
-  it. When the pins are over their budget the badge adds "shortened", with
+- **Pinned messages** carry a "pinned" badge after the sender's name. The
+  header's "N pinned ▾" badge (the number in mono) opens a popover listing
+  them by sender and first line; choosing one scrolls to it and outlines it
+  for a second. When the pins are over their budget the badge adds "shortened", with
   a tooltip saying the oldest reach her as their first line only.
 - A `threads` call is a card: the child thread started (title and task) or
   messaged, linking to it. A child's update shows in the parent as a card
   headed "Child thread", linking to it. In a child thread, what the parent
-  sent shows as "Lyrica, from the parent thread", with the message menu
+  sent shows as "Lyrica · from <parent title>", with the message menu
   (Branch, Delete; not Edit). Forgetting a thread with child threads asks
   whether to forget them too, ticked, in the shared `Confirm` with one option.
 - Files attach with the button, by dragging onto the composer, or by pasting.

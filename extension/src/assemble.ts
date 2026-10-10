@@ -141,10 +141,13 @@ export function pinnedBlock(pins: PinnedText[], budget: number): { text: string;
     const body = short && first.length < p.text.trim().length ? `${first} …` : p.text.trim();
     return `[${p.id}] ${p.role === "user" ? "User" : "You"}: ${body}`;
   };
-  const render = (short: number) => pins.map((p, i) => block(p, i < short)).join("\n\n");
+  // The oldest are shortened first, then, once all are, the oldest left out, so the newest stay whole longest.
+  const render = (short: number, dropped = 0) => pins.slice(dropped).map((p, i) => block(p, i + dropped < short)).join("\n\n");
   let short = 0;
+  let dropped = 0;
   let text = render(0);
   while (text.length > budget && short < pins.length) text = render(++short);
+  while (text.length > budget && dropped < pins.length - 1) text = render(short, ++dropped);
   const fitted = fit(text, budget);
   return { text: fitted, shortened: short > 0 || fitted !== text };
 }

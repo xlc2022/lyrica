@@ -179,7 +179,7 @@ The cheapest mechanism comes first:
    oldest first (`pins(threadId)`, a `pinned` section of about 2,000
    tokens). They're read from the store, not from what Pi keeps, so
    compaction can't summarise them away; the context meter counts them as its `pinned` part. Over budget, the oldest are cut to
-   their first line. Pins live on the entry (`pinned`), in the thread's pool:
+   their first line, and if that isn't enough the oldest are left out. Pins live on the entry (`pinned`), in the thread's pool:
    a branch copies them, removing the entry removes the pin and the rewind
    counts it, and sleep's material lists which new entries were pinned, as
    a sign they matter.

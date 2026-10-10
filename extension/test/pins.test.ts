@@ -37,6 +37,12 @@ describe("pinned messages", () => {
     expect(tight.text.length).toBeLessThanOrEqual(120);
     expect(tight.text).toBe("[e:t#1] User: first line …\n\n[e:t#2] You: the newest, kept whole");
     expect(tight.shortened).toBe(true);
+    // Too many even shortened: the oldest go whole, never the newest.
+    const many = Array.from({ length: 40 }, (_, i): PinnedText => ({ id: `e:t#${i + 1}`, role: "user", text: `pin ${i + 1} ${"x".repeat(60)}\nmore` }));
+    const crowded = pinnedBlock(many, 1000);
+    expect(crowded.text.length).toBeLessThanOrEqual(1000);
+    expect(crowded.text).toContain("[e:t#40]");
+    expect(crowded.text).not.toContain("[e:t#1]");
   });
 
   it("are copied with a branch, removed with their turn, and counted when they go", async () => {
