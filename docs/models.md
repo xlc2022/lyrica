@@ -230,7 +230,8 @@ the call is a plain `NoModel`. Before throwing it, `resolveLive` asks those
 machines again, in order, so one that has just come back answers at once.
 `callWithFallback` runs a call that isn't a Pi turn (a title, and speech and
 images when they come) on each model in turn: a machine that can't be
-reached or is away (`isUnreachable`) is marked down and the next tries, any
+reached or is away (`isUnreachable`) is marked down and the next tries (a
+host's `model_unavailable` marks only that model down), any
 other failure is the call's own, and when none answers it throws `Offline`
 with every model tried.
 `resolveModel` returns just the chosen `{ offeringId }`.
@@ -314,7 +315,8 @@ other endpoint they are set by hand (`setCapabilities`).
   (the endpoint can't be reached or doesn't answer in time, a host answers
   one of its away codes, or another endpoint answers 5xx or 429), the
   endpoint is marked down and the next model in the list answers, within
-  one kind. A refusal (4xx) is passed on plainly. When a list is set but
+  one kind. A host's `model_unavailable` (its speech server is off) marks
+  only that model, so the host's chat models keep answering. A refusal (4xx) is passed on plainly. When a list is set but
   nothing in it can answer, `Offline`; with no list, `NoModel`. Neither is
   ever a crash. For Read aloud, the fallback covers the call up to its
   first bytes; a model that fails later ends that piece of audio.

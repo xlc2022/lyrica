@@ -45,7 +45,7 @@ export class Offline extends NoModel {
 // "terminated" is a reply cut off mid-stream when its connection dropped; the timeouts are a machine that stopped answering.
 const UNREACHABLE = /ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|fetch failed|socket hang up|connect|^terminated$|other side closed|timed out|Timeout Error|UND_ERR_(HEADERS|BODY|CONNECT)_TIMEOUT/i;
 /** A model host's answers that mean another model should answer for a while. */
-const AWAY_CODES = new Set(["unreachable", "paused", "busy", "restarting", "unavailable", "unpaired", "identity_changed"]);
+const AWAY_CODES = new Set(["unreachable", "paused", "busy", "restarting", "unavailable", "unpaired", "identity_changed", "model_unavailable"]);
 
 /**
  * Whether a failed call (or a reply's error message) means its machine couldn't
@@ -376,6 +376,8 @@ export class Models {
   private readonly ready = new Set<string>();
   /** Endpoint ID → whether it answered lately, from probes and calls. */
   private readonly health = new Map<string, { up: boolean; at: number }>();
+  /** Models whose host answered but couldn't run them (`model_unavailable`), skipped for HEALTH_MS without marking the host down. */
+  private readonly modelDown = new Map<string, number>();
   /** Each host's pinned fetch, by endpoint, key and addresses. */
   private readonly fetches = new Map<string, typeof fetch>();
   /** The address each host last answered on, for its dashboard link. */
@@ -1586,7 +1588,7 @@ export class Models {
       // Unfit first: a model that couldn't take the call even with its machine up doesn't make the task offline.
       const why = this.unfit(task, o, ep, need);
       if (why) { skipped.push({ label, reason: why }); continue; }
-      const gone = this.away(ep, opts);
+      const gone = this.away(ep, opts, o);
       if (gone) { skipped.push({ label, reason: gone }); away = true; continue; }
       return { ref: { offeringId: o.id }, endpoint: ep, offering: o, label, profile, source: found.source, skipped, remaining: unique.length - i - 1 };
     }
@@ -1674,7 +1676,9 @@ export class Models {
         return out;
       } catch (err) {
         if (!isUnreachable(err)) throw err;
-        this.reportDown(r.endpoint.id);
+        // A host that answered but couldn't run this one model stays up for its others.
+        if (err instanceof HostRefused && err.code === "model_unavailable") this.modelDown.set(r.offering.id, Date.now());
+        else this.reportDown(r.endpoint.id);
         tried.push({ label: r.label, reason: "it couldn't be reached" });
       }
     }
@@ -1849,8 +1853,10 @@ export class Models {
   }
 
   /** Why a model's machine is away now, if it is: stale, or down in the health cache. */
-  private away(ep: Endpoint, opts: ResolveOptions): string | undefined {
+  private away(ep: Endpoint, opts: ResolveOptions, o: Offering): string | undefined {
     if (ep.stale) return `${ep.name} hasn't answered for ${STALE_DAYS} days`;
+    const m = this.modelDown.get(o.id);
+    if (m !== undefined && Date.now() - m < HEALTH_MS) return `${ep.name} couldn't run it`;
     if (opts.except?.has(ep.id)) return `${ep.name} is down`;
     const h = this.health.get(ep.id);
     if (!opts.evenIfDown && h && !h.up && Date.now() - h.at < HEALTH_MS) return `${ep.name} is down`;

@@ -171,7 +171,7 @@ describe("speaking", () => {
     expect(() => s.models.setOfferingSettings(s.li, tts.offeringId, { voices: { chinese: "x" } })).toThrow(/language tags/);
   });
 
-  it("reads a host's speech models from its discovery, calls them over its pinned connection, and falls back when its speech server is off", async () => {
+  it("reads a host's speech models from its discovery, calls them over its pinned connection, and falls back when its speech server is off, leaving chat on the host", async () => {
     const s = await setup();
     const host = await fakeHost({ name: "lyrica-3090", models: [
       { id: "lyrica/huggingface/Qwen/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf", kind: "chat", contextLength: 32768 },
@@ -194,10 +194,12 @@ describe("speaking", () => {
     expect(await read((await s.models.speak(ctx, "Hello.")).audio)).toBe(4800);
     expect(host.speech).toEqual(["/v1/audio/transcriptions", "/v1/audio/speech"]);
 
-    // The host's speech server is off: Read aloud falls back to the next voice model, and Dictation, with no other, is offline.
+    // The host's speech server is off: Read aloud falls back to the next voice model, Dictation, with no other, is
+    // offline, and chat stays on the host.
     host.speechOff();
     expect((await s.models.speak(ctx, "Hello.")).resolution.label).toBe("speech/kokoro");
     await expect(s.models.transcribe(ctx, wav(1))).rejects.toThrow(Offline);
+    expect(s.models.resolve("chat", ctx).endpoint.id).toBe(ep.id);
     // The whole host off: the thread's settings say so before anything is tried.
     await host.stop();
     s.models.reportDown(ep.id);

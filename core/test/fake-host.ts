@@ -42,9 +42,9 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
   const busy = new Set<string>();
   const models: HostModel[] = opts.models ?? [{ id: "lyrica/huggingface/Qwen/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf", kind: "chat", contextLength: 32768, tools: true, reasoning: ["off", "on"], sha256: "ab".repeat(32) }];
   let requests = 0;
-  /** Speech requests, by path; while `speechDown`, the speech server is off and they answer unavailable. */
+  /** Speech requests, by path; while `speechDown`, the speech server is off and they answer with that code. */
   const speech: string[] = [];
-  let speechDown = false;
+  let speechDown: string | false = false;
 
   const json = (res: import("node:http").ServerResponse, status: number, body: unknown) => {
     res.writeHead(status, { "content-type": "application/json" });
@@ -154,7 +154,7 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
       if (req.method === "POST" && (url.pathname === "/v1/audio/speech" || url.pathname === "/v1/audio/transcriptions")) {
         speech.push(url.pathname);
         if (paused) return json(res, 503, { error: { code: "paused", message: "The host is paused." } });
-        if (speechDown) return json(res, 503, { error: { code: "unavailable", message: "The speech server isn't running." } });
+        if (speechDown) return json(res, 503, { error: { code: speechDown, message: "The speech server isn't running." } });
         if (url.pathname === "/v1/audio/transcriptions") return json(res, 200, { text: "heard on the host" });
         res.writeHead(200, { "content-type": "audio/pcm" });
         return res.end(Buffer.alloc(4800));
@@ -210,7 +210,8 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
     },
     pause(on = true) { paused = on; },
     speech,
-    speechOff(on = true) { speechDown = on; },
+    /** The speech server is off: requests answer `code` (model_unavailable, or unavailable for an older host). */
+    speechOff(code: string | false = "model_unavailable") { speechDown = code; },
     /** Answers pairing with the wrong proof, as a machine in the middle would. */
     lie() { badProof = true; },
     /** The same host on another port (it moved). */

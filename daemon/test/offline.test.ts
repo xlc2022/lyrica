@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
 import type { MessagePage, ThreadEvent, ThreadSummary } from "../src/api.ts";
+import { Offline } from "@lyrica/core";
+import { statusOf } from "../src/http.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 const is = (type: ThreadEvent["type"]) => (e: ThreadEvent) => e.type === type;
@@ -71,5 +73,9 @@ describe("every chat model offline", () => {
     expect((await li.post(`${path}/stop`)).status).toBe(200);
     expect((await li.get(`/api/u/${rt.li.id}/threads`)).status).toBe(200);
     stream.close();
+  });
+
+  it("answers an offline call 502, since 503 sends the web UI to unlock", () => {
+    expect(statusOf(new Offline("chat", []))).toBe(502);
   });
 });

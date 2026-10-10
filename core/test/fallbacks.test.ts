@@ -94,7 +94,8 @@ describe("ordered fallbacks", () => {
 
   it("keeps image tasks resolvable, to models that make or edit images, with no chat fallback", async () => {
     const s = await setup();
-    s.models.setProfile(s.li.id, "local", "chat", [s.blackwell.ref]);
+    const other = { offeringId: s.models.addModel(s.li, s.blackwell.ep.id, { modelId: "other-model" }).id };
+    s.models.setProfile(s.li.id, "local", "chat", [other]);
     const priv = s.ctx({ pool: "private", localOnly: true });
     expect(() => s.models.resolveModel("image.create", priv)).toThrow(NoModel);
     const comfy = s.models.addModel(s.li, s.blackwell.ep.id, { modelId: "z-image", image: true });
@@ -308,6 +309,23 @@ describe("every model away", () => {
     expect(all).toBeInstanceOf(Offline);
     expect((all as Offline).task).toBe("title");
     expect((all as Offline).tried.map((t) => t.label).sort()).toEqual(["blackwell/qwen3.8-27b", "spare/Qwen3.8-27B-Q4_K_M.gguf"]);
+  });
+
+  it("passes over one model its host couldn't run, keeping the host's other models", async () => {
+    const s = await setup();
+    s.models.setProfile(s.li.id, "local", "title", [s.blackwell.ref, s.spare.ref]);
+    const other = { offeringId: s.models.addModel(s.li, s.blackwell.ep.id, { modelId: "other-model" }).id };
+    s.models.setProfile(s.li.id, "local", "chat", [other]);
+    const priv = s.ctx({ pool: "private", localOnly: true });
+    const seen: string[] = [];
+    await s.models.callWithFallback("title", priv, {}, async (r) => {
+      seen.push(r.label);
+      if (r.endpoint.name === "blackwell") throw new HostRefused("model_unavailable", "the model isn't loaded");
+      return "ok";
+    });
+    expect(seen).toEqual(["blackwell/qwen3.8-27b", "spare/Qwen3.8-27B-Q4_K_M.gguf"]);
+    expect(s.models.resolve("title", priv).ref).toEqual(s.spare.ref);
+    expect(s.models.resolve("chat", priv).ref).toEqual(other);
   });
 
   it("tells a machine that's away from a model that refused", () => {
