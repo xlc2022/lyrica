@@ -129,18 +129,32 @@ revoked. A revoked server must pair again.
     one model.
   - Folders with a `config.json` and safetensors are served by vLLM. A model
     whose config asks for remote code is listed but never loaded.
-- **Each GPU has a role**, set on the dashboard:
-  - **Shared** (the default) holds llama.cpp models, loaded on demand.
-  - **vLLM** holds one vLLM model at a time.
-- **Pinned** models (on a shared GPU) are loaded at start and never unloaded
-  to make room.
+- **Each model has a placement** and serving settings, set on the dashboard
+  or through the API:
+  - Auto (the default): one GPU with room, preferring one where nothing
+    must be unloaded, else split over every GPU that allows its server.
+  - Or chosen GPUs: one, or several, split by ratio (llama.cpp) or by
+    tensor or pipeline parallel (vLLM).
+  - Its context length (32k by default), KV-cache type, flash attention, GPU
+    layers, parallel requests, batch size, a chat template, and for vLLM a
+    memory share, so several vLLM models can share one GPU (each is its own
+    server).
+  - Settings apply at the next load, or now with Reload. A placement that
+    can't work is refused when it's saved, with the reason.
+- **Each GPU** says which servers it may run (llama.cpp, vLLM, images), how
+  much memory to keep free, or that it is left out. It can hold several
+  models of any mix; a split model loads only when all its GPUs have room
+  and unloads from all at once.
+- **Pinned** models are loaded at start and never unloaded to make room.
 - **Making room.** When a model needs room, idle models are unloaded, least
   recently used first. A pinned model or one in use is never unloaded.
   A model that can never fit fails at once, saying why.
 - **Queues.** Requests wait in a queue per GPU: chat first, then images,
   then background work. A request that waits too long fails with "The GPU
   is busy with …".
-- **VRAM** use is measured on each model's first load (an image recipe's on its first job) and remembered.
+- **VRAM** use is measured per GPU on each model's first load with a
+  placement (an image recipe's on its first job), and remembered until its
+  settings change.
 - **Pause** refuses new work, lets the current job finish, then unloads
   every model and stops vLLM, so nothing of the host's stays in VRAM. What
   couldn't be unloaded shows on the dashboard. Until Resume, new work gets
@@ -164,8 +178,10 @@ revoked. A revoked server must pair again.
     model's file, GPU and context), then loads and unloads models through
     its API.
   - vLLM runs under `vllm/supervisor.py`, which starts one server per vLLM
-    GPU as host-api asks in a file, in its own process group, with a growing
-    wait between restarts of one that crashes.
+    model on its GPUs as host-api asks in a file, in its own process group, with a growing
+    wait between restarts of one that crashes. It reports servers that
+    exited in the `vllm-status` volume, so a load that can't start fails at
+    once.
   - host-api reads VRAM with `nvidia-smi`, through NVIDIA's `utility`
     capability, or from AMD's sysfs.
 - `fetch` (`src/fetch/`) does the downloads. It is the same image as
@@ -200,9 +216,22 @@ revoked. A revoked server must pair again.
     (`tailscale-api`). It runs with no capabilities. All sign-ins over
     Tailscale come from its address, so they share one rate limit.
 - No container mounts the Docker socket.
+- Volumes:
+  - `data`: host-api's key, certificate and state (below).
+  - `fetch-data`: fetch's download record and list.
+  - `serving`: what host-api asks of the model servers (llama.cpp's preset,
+    vLLM's wanted servers, chat templates, SeedVR2's links); read-only for
+    them.
+  - `vllm-status`: the vLLM supervisor's report of servers that exited;
+    read-only for host-api.
+  - `tailscale` (with Tailscale only): the tailscale container's node
+    state, so the machine keeps its tailnet identity across restarts.
+  - The models folder is mounted read-only everywhere except its `lyrica/`
+    subfolder, which only fetch writes.
 - The host's key, certificate and state are in the `data` volume, readable
   only by host-api's user. The state is paired clients, the password hash,
-  pause, GPU roles, pins, measured VRAM and usage counts. Prompts are never stored, and host-api's log has no text: only
+  pause, GPU settings, model placements and serving settings, pins,
+  measured VRAM and usage counts. Prompts are never stored, and host-api's log has no text: only
   event names, IDs and counts, plus the pairing code while it's valid.
 - Images are pinned by digest. `host-api` is built from this checkout by
   `install.sh`, and CI builds it on every pull request.

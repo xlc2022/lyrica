@@ -326,7 +326,7 @@ export class Images {
     });
     const scheduler = this.runtime.scheduler;
     const pngs = await scheduler.run(model, "image", () =>
-      scheduler.measuring(model, this.comfyGpu, () =>
+      scheduler.measuring(model, () =>
         this.comfy.run(uploads, (names) => {
           const parts = recipe.parts.filter((p): p is typeof p & { file: string } => !!p.file);
           return fill(template, parts, recipe.loras, { ...values, ...names });
@@ -354,7 +354,7 @@ export class Images {
       id: `recipe:${r.id}`, kind: "image", server: "comfyui", format: "safetensors", size,
       identity: { basename: r.name, sizeLabel: null, finetune: null, baseModels: [] },
       capabilities: { tools: false, vision: false, embedding: false, reasoning: null },
-      contextLength: null, mmproj: null, remoteCode: false,
+      contextLength: null, kvPerToken: null, mmproj: null, remoteCode: false,
     };
   }
 }

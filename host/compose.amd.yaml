@@ -33,6 +33,7 @@ services:
     volumes:
       - ${MODELS_DIR}:/models:ro
       - serving:/serving:ro
+      - vllm-status:/status
       - ./vllm:/lyrica:ro
     tmpfs: [/tmp, /root/.cache]
 

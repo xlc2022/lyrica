@@ -28,7 +28,10 @@ export interface TextModel {
   size: number;
   identity: Identity;
   capabilities: Capabilities;
+  /** The longest context the model was trained for, if known. */
   contextLength: number | null;
+  /** KV-cache elements per token (keys and values, all layers), to size the cache; null if unknown. */
+  kvPerToken: number | null;
   /** A vision projector next to a GGUF model, relative like `id`. */
   mmproj: string | null;
   /** A vLLM model whose config asks for remote code: never loaded. */
@@ -82,9 +85,22 @@ function ggufModel(root: string, path: string, siblings: string[]): TextModel | 
     },
     capabilities: { ...templateCapabilities(embedding ? null : str(meta["tokenizer.chat_template"])), vision: !!mmproj && !embedding, embedding },
     contextLength: context === undefined || context === null ? null : Number(context),
+    kvPerToken: kvElements(
+      Number(meta[`${arch}.block_count`]),
+      Number(meta[`${arch}.embedding_length`]),
+      Number(meta[`${arch}.attention.head_count`]),
+      Number(meta[`${arch}.attention.head_count_kv`] ?? meta[`${arch}.attention.head_count`]),
+    ),
     mmproj: mmproj ? relative(root, join(dirname(path), mmproj)).split("\\").join("/") : null,
     remoteCode: false,
   };
+}
+
+/** 2 × layers × KV heads × head size, or null when the header doesn't say. */
+function kvElements(layers: number, width: number, heads: number, kvHeads: number, headDim?: number): number | null {
+  const dim = headDim ?? width / heads;
+  const n = 2 * layers * kvHeads * dim;
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 function readJson(path: string): any {
@@ -118,6 +134,7 @@ function vllmModel(root: string, dir: string, files: string[]): TextModel | null
     identity: { basename: basename(dir), sizeLabel: null, finetune: null, baseModels: [] },
     capabilities: { ...templateCapabilities(embedding ? null : template), vision: !!config.vision_config && !embedding, embedding },
     contextLength: typeof text.max_position_embeddings === "number" ? text.max_position_embeddings : null,
+    kvPerToken: kvElements(text.num_hidden_layers, text.hidden_size, text.num_attention_heads, text.num_key_value_heads ?? text.num_attention_heads, text.head_dim),
     mmproj: null,
     remoteCode: !!config.auto_map,
   };
