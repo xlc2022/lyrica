@@ -37,7 +37,8 @@ export class Offline extends NoModel {
 }
 
 // "terminated" is a reply cut off mid-stream when its connection dropped; the timeouts are a machine that stopped answering.
-const UNREACHABLE = /ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|fetch failed|socket hang up|connect|^terminated$|other side closed|timed out|Timeout Error|UND_ERR_(HEADERS|BODY|CONNECT)_TIMEOUT/i;
+// Anchored: a provider's own error text that merely mentions connecting mustn't mark a healthy endpoint down.
+const UNREACHABLE = /ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|fetch failed|socket hang up|^Connection error\.?$|connect(ion)? (refused|reset|timed out|timeout)|^terminated$|other side closed|timed out|Timeout Error|UND_ERR_(HEADERS|BODY|CONNECT)_TIMEOUT/i;
 /** A model host's answers that mean another model should answer for a while. */
 const AWAY_CODES = new Set(["unreachable", "paused", "busy", "restarting", "unavailable", "unpaired", "identity_changed", "model_unavailable"]);
 
