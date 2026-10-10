@@ -1,7 +1,8 @@
 import { existsSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { fakeHost } from "../../core/test/fake-host.ts";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { CleanupItem, EndpointInfo, LoginResponse, Me, ModelsNotice, OfferingInfo, Profiles, MemoryDetail, MemoryHit, State, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { CleanupItem, EndpointInfo, HostStatus, LoginResponse, Me, ModelsNotice, OfferingInfo, Profiles, MemoryDetail, MemoryHit, State, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime, systemdStart } from "./helpers.ts";
 
 describe("lyricad, locked", () => {
@@ -206,6 +207,33 @@ describe("endpoints and offerings", () => {
     await sam.del(`${samU}/models/notice`);
     expect((await sam.get<ModelsNotice>(`${samU}/models/notice`)).body.lines).toEqual([]);
     expect((await sam.get<CleanupItem[]>(`${samU}/models/cleanup`)).body).toEqual([]);
+  });
+});
+
+describe("model hosts", () => {
+  it("pairs a shared host, shows its status to everyone, and lets only administrators manage it", async () => {
+    const rt = await runtime();
+    const { base } = await daemon(rt);
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const li = await login(base, "li", "pw");
+    const sam = await login(base, "sam", "pw2");
+    const host = await fakeHost({ name: "lyrica-blackwell" });
+    const bad = await li.post<{ error: string }>(`/api/u/${rt.li.id}/hosts`, { name: "blackwell", addresses: [host.address], code: "0000-0000-0000-0000", shared: true });
+    expect(bad).toMatchObject({ status: 400, body: { error: expect.stringMatching(/no pairing code/) } });
+    const ep = (await li.post<EndpointInfo>(`/api/u/${rt.li.id}/hosts`, { name: "blackwell", addresses: [host.address], code: host.newCode(), shared: true })).body;
+    expect(ep).toMatchObject({ api: "host", kind: "local", shared: true, fingerprint: host.fingerprint, addresses: [host.address] });
+    expect(ep.models.map((m) => m.modelId)).toEqual(["lyrica/huggingface/Qwen/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf"]);
+
+    const samU = `/api/u/${rt.sam.id}`;
+    expect((await sam.get<HostStatus>(`${samU}/hosts/${ep.id}/status`)).body).toMatchObject({ name: "lyrica-blackwell", state: "running" });
+    expect((await sam.post(`${samU}/hosts/${ep.id}/pause`)).status).toBe(403);
+    expect((await sam.put(`${samU}/hosts/${ep.id}/addresses`, { addresses: ["127.0.0.1:1"] })).status).toBe(403);
+    expect((await li.post<HostStatus>(`/api/u/${rt.li.id}/hosts/${ep.id}/pause`)).body.state).toBe("paused");
+
+    // Another key at the same address: refused in plain words.
+    await host.replaceKey();
+    const changed = await li.get<{ error: string }>(`/api/u/${rt.li.id}/hosts/${ep.id}/status`);
+    expect(changed).toMatchObject({ status: 502, body: { error: "This host's identity changed. Pair it again." } });
   });
 });
 

@@ -190,7 +190,8 @@ request. Memories are sent in stored form, with mention tokens, plus a map of
 users, so the UI renders current names and edits keep the tokens. It covers
 search, lineage, edit, restore, the four deletion levels and user-introduced
 notes and pages. The settings API covers profiles (with accent and monogram),
-display settings (in `user.db`), passwords, endpoints, offerings, model
+display settings (in `user.db`), passwords, endpoints, model hosts (pair,
+pair again, addresses, status, pause, resume, restart), offerings, model
 groups, Clean up and the models notice, the three profiles with the default
 profile and thinking level, recent calls, network
 defaults, SSH targets, and for administrators users, allowed paths, shared

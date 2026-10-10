@@ -14,7 +14,10 @@ CREATE TABLE IF NOT EXISTS endpoints (
   api_key    TEXT,
   created_at TEXT NOT NULL,
   -- The first failed check since the last one that answered; NULL while it answers.
-  down_since TEXT
+  down_since TEXT,
+  -- A model host (api 'host'): its addresses in order (JSON) and its pinned key fingerprint.
+  addresses  TEXT,
+  pin        TEXT
 );
 -- Each model an endpoint offers, with a permanent id. found: what discovery
 -- reported (context window, capabilities); hand: what was set by hand, which
@@ -123,6 +126,13 @@ const hasColumn = (db: Db, table: string, column: string) =>
   !!db.prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = ?").get(table, column);
 const hasTable = (db: Db, table: string) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
 
+/** Adds the columns later versions gave `endpoints`, to a table made before them. */
+export function upgradeEndpoints(db: Db): void {
+  for (const [column, type] of [["down_since", "TEXT"], ["addresses", "TEXT"], ["pin", "TEXT"]] as const) {
+    if (!hasColumn(db, "endpoints", column)) db.exec(`ALTER TABLE endpoints ADD COLUMN ${column} ${type}`);
+  }
+}
+
 type Pair = { endpoint: string; model: string; offering: string };
 
 /**
@@ -137,8 +147,8 @@ type Pair = { endpoint: string; model: string; offering: string };
 export function migrate(db: Db, o: { legacy?: (pairs: Pair[]) => void; shared?: (endpoint: string, model: string) => string | undefined } = {}): string[] {
   const endpoints = hasTable(db, "endpoint_models");
   const choices = hasTable(db, "model_profiles") && hasColumn(db, "model_profiles", "endpoint");
+  upgradeEndpoints(db);
   if (!endpoints && !choices) return [];
-  if (endpoints && !hasColumn(db, "endpoints", "down_since")) db.exec("ALTER TABLE endpoints ADD COLUMN down_since TEXT");
   db.pragma("foreign_keys = OFF");
   try {
     return db.transaction(() => {

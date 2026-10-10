@@ -5,18 +5,24 @@ import type { Keyring } from "../keyring.ts";
 import { TASKS, THINKING_LEVELS, type CallContext, type ModelRef, type Pool, type Task, type ThinkingLevel } from "../types.ts";
 import { Forbidden, type User, type Users } from "../users.ts";
 import { addressesOutside, discoverModels, probeUrl, type DiscoveredModel } from "./http.ts";
+import { hostError, hostFetch, hostOrigin, lyricaIdentity, pair } from "./host.ts";
 import { baseName } from "./identity.ts";
 import { collectRefs, isList, mapMembers, refId, rewrite, type Entry, type ProfileName, type Use } from "./refs.ts";
 import { ENDPOINT_SCHEMA, migrate, MODEL_CHOICE_SCHEMA, REDIRECT_SCHEMA } from "./schema.ts";
 
 export { addressesOutside, discoverModels, probeUrl, type DiscoveredModel } from "./http.ts";
 export { baseName } from "./identity.ts";
+export { fingerprint, HostIdentityChanged, hostOrigin, normaliseCode, PairingFailed, pairingProofs } from "./host.ts";
 export { refId, type Entry, type ProfileName, type Use } from "./refs.ts";
 
 /** A cloud model was asked for where only local models are allowed. Nothing falls back. */
 export class CloudModelForbidden extends Error {}
 /** No usable model is set for a task, or the one set no longer exists. */
 export class NoModel extends Error {}
+/** A model host refused a call, with its error code and plain message. */
+export class HostRefused extends Error {
+  constructor(readonly code: string, message: string) { super(message); }
+}
 
 /** An endpoint unreachable this long is stale; a model missing this long is gone. */
 export const STALE_DAYS = 14;
@@ -35,10 +41,16 @@ export interface Endpoint {
   /** A label that can change. */
   name: string;
   kind: "cloud" | "local";
-  api: "openai-compatible";
+  /** A plain OpenAI-compatible server, or a paired model host. */
+  api: "openai-compatible" | "host";
+  /** For a host, its first address's `/v1`. */
   baseUrl: string;
   apiKey?: string;
   shared: boolean;
+  /** A host's addresses, tried in order. */
+  addresses?: string[];
+  /** A host's pinned key fingerprint. */
+  fingerprint?: string;
   /** A local endpoint served over plain HTTP outside this machine and the tailnet. */
   unencrypted: boolean;
   /** When it stopped answering, while it doesn't. */
@@ -71,6 +83,8 @@ export interface Offering extends Capabilities {
   /** listed; missing (the endpoint stopped listing it); gone (missing for GONE_DAYS, so fallbacks skip it). */
   status: "listed" | "missing" | "gone";
   missingSince?: string;
+  /** The file's SHA-256, where a host reports it. */
+  digest?: string;
 }
 
 /** Offerings from different endpoints declared the same model, in preferred order. */
@@ -168,38 +182,44 @@ function nearby(host: string): boolean {
 }
 
 async function localWarning(ep: Endpoint): Promise<string | undefined> {
-  const host = new URL(ep.baseUrl).hostname;
-  try {
-    const outside = await addressesOutside(ep.baseUrl);
-    if (outside.length) return `${ep.name} is declared local, but ${host} resolves to ${outside.join(", ")}, outside loopback, private and tailnet addresses`;
-  } catch {
-    return `${ep.name} is declared local, but ${host} doesn't resolve`;
+  const urls = ep.api === "host" ? (ep.addresses ?? []).map(hostOrigin) : [ep.baseUrl];
+  const warnings: string[] = [];
+  for (const url of urls) {
+    const host = new URL(url).hostname;
+    try {
+      const outside = await addressesOutside(url);
+      if (outside.length) warnings.push(`${host} resolves to ${outside.join(", ")}`);
+    } catch {
+      warnings.push(`${host} doesn't resolve`);
+    }
   }
-  return undefined;
+  return warnings.length ? `${ep.name} is declared local, but ${warnings.join(", and ")}, outside loopback, private and tailnet addresses` : undefined;
 }
 
-interface EndpointRow { id: string; name: string; kind: "cloud" | "local"; base_url: string; api_key: string | null; down_since: string | null }
+interface EndpointRow { id: string; name: string; kind: "cloud" | "local"; api: string; base_url: string; api_key: string | null; down_since: string | null; addresses: string | null; pin: string | null }
 interface OfferingRow { id: string; endpoint: string; model: string; found: string; hand: string; manual: number; missing_since: string | null }
 interface GroupRow { id: string; name: string; members: string }
 
 const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint => {
   const url = new URL(r.base_url);
   return {
-    id: r.id, name: r.name, kind: r.kind, api: "openai-compatible", baseUrl: r.base_url, shared,
+    id: r.id, name: r.name, kind: r.kind, api: r.api === "host" ? "host" : "openai-compatible", baseUrl: r.base_url, shared,
     ...(r.api_key ? { apiKey: r.api_key } : {}),
+    ...(r.api === "host" ? { addresses: JSON.parse(r.addresses ?? "[]") as string[], fingerprint: r.pin ?? "" } : {}),
     unencrypted: r.kind === "local" && url.protocol === "http:" && !nearby(url.hostname),
     ...(r.down_since ? { downSince: r.down_since } : {}),
     stale: !!r.down_since && now - Date.parse(r.down_since) >= STALE_DAYS * DAY,
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
-  const caps: Capabilities = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  const caps: Capabilities & { digest?: string } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
   const gone = !!r.missing_since && now - Date.parse(r.missing_since) >= GONE_DAYS * DAY;
   return {
     id: r.id, endpointId: r.endpoint, modelId: r.model, manual: r.manual === 1,
     ...Object.fromEntries(CAPABILITIES.filter((k) => caps[k] !== undefined).map((k) => [k, caps[k]])),
     status: gone ? "gone" : r.missing_since ? "missing" : "listed",
     ...(r.missing_since ? { missingSince: r.missing_since } : {}),
+    ...(typeof caps.digest === "string" ? { digest: caps.digest } : {}),
   };
 };
 const toGroup = (r: GroupRow, shared: boolean): Group => ({ id: r.id, name: r.name, shared, members: JSON.parse(r.members) });
@@ -229,6 +249,8 @@ export class Models {
   private readonly ready = new Set<string>();
   /** Endpoint ID → whether it answered lately, from probes and calls. */
   private readonly health = new Map<string, { up: boolean; at: number }>();
+  /** Each host's pinned fetch, by endpoint, key and addresses. */
+  private readonly fetches = new Map<string, typeof fetch>();
 
   constructor(private readonly keyring: Keyring, private readonly users: Users) {}
 
@@ -250,6 +272,7 @@ export class Models {
   /** Renames an endpoint or changes its URL or key. Its IDs, and its models' IDs, never change. A null key removes it. */
   editEndpoint(actor: User, id: string, change: { name?: string; baseUrl?: string; apiKey?: string | null }): Endpoint {
     if (change.name !== undefined) checkName(change.name);
+    if ((change.baseUrl !== undefined || change.apiKey !== undefined) && this.endpoint(actor.id, id)?.api === "host") throw new Error("a model host has addresses and a pinned key, not a URL or an API key");
     const baseUrl = change.baseUrl === undefined ? undefined : checkUrl(change.baseUrl);
     this.write(actor, id, (db) => {
       const current = db.prepare("SELECT * FROM endpoints WHERE id = ?").get(id) as EndpointRow;
@@ -362,7 +385,7 @@ export class Models {
     if (!ep) throw new Error(`no endpoint ${endpointId}`);
     let found: DiscoveredModel[];
     try {
-      found = await discoverModels(ep.baseUrl, ep.apiKey);
+      found = ep.api === "host" ? await this.hostModels(ep) : await discoverModels(ep.baseUrl, ep.apiKey);
     } catch (err) {
       this.seen(ep, false, actor.id);
       throw err;
@@ -392,9 +415,131 @@ export class Models {
   async probe(userId: string, endpointId: string, timeoutMs?: number): Promise<{ state: "up" | "down"; warning?: string }> {
     const ep = this.endpoint(userId, endpointId);
     if (!ep) throw new Error(`no endpoint ${endpointId}`);
-    const [state, warning] = await Promise.all([probeUrl(ep.baseUrl, ep.apiKey, timeoutMs), ep.kind === "local" ? localWarning(ep) : undefined]);
+    const [state, warning] = await Promise.all([
+      ep.api === "host" ? this.hostUp(ep, timeoutMs) : probeUrl(ep.baseUrl, ep.apiKey, timeoutMs),
+      ep.kind === "local" ? localWarning(ep) : undefined,
+    ]);
     this.seen(ep, state === "up", userId);
     return warning ? { state, warning } : { state };
+  }
+
+  // --- Model hosts ---
+
+  /**
+   * Pairs a model host (host/PAIRING.md) from its addresses and the code its
+   * dashboard shows, and pins its key. Hosts are always local. A shared host
+   * needs an administrator; a personal one is visible to its user only.
+   * With `endpointId`, pairs an existing host again (its key changed),
+   * keeping every ID.
+   */
+  async pairHost(actor: User, input: { name: string; addresses: string[]; code: string }, opts: { shared?: boolean; endpointId?: string } = {}): Promise<Endpoint> {
+    checkName(input.name);
+    const addresses = checkAddresses(input.addresses);
+    const existing = opts.endpointId ? this.endpoint(actor.id, opts.endpointId) : undefined;
+    if (opts.endpointId && existing?.api !== "host") throw new Error(`no model host ${opts.endpointId}`);
+    const shared = existing ? existing.shared : !!opts.shared;
+    if (shared && !this.users.get(actor.id)?.admin) throw new Forbidden("only an administrator can pair a shared model host");
+    const paired = await pair(lyricaIdentity(this.self()), addresses, input.code, `Lyrica (${input.name})`);
+    const baseUrl = `${hostOrigin(addresses[0]!)}/v1`;
+    const id = existing?.id ?? randomUUID();
+    this.place(actor, shared, (db) => {
+      if (existing) {
+        db.prepare("UPDATE endpoints SET addresses = ?, pin = ?, base_url = ?, down_since = NULL WHERE id = ?").run(JSON.stringify(addresses), paired.fingerprint, baseUrl, id);
+        return;
+      }
+      if (db.prepare("SELECT 1 FROM endpoints WHERE name = ?").get(input.name)) throw new Error(`endpoint ${input.name} already exists`);
+      db.prepare("INSERT INTO endpoints (id, name, kind, api, base_url, api_key, created_at, addresses, pin) VALUES (?, ?, 'local', 'host', ?, NULL, ?, ?, ?)")
+        .run(id, input.name, baseUrl, new Date().toISOString(), JSON.stringify(addresses), paired.fingerprint);
+    });
+    this.health.delete(id);
+    return this.endpoint(actor.id, id)!;
+  }
+
+  /** Changes a host's addresses. Trust stays with its key, and its IDs stay as they are. */
+  setHostAddresses(actor: User, id: string, addresses: string[]): Endpoint {
+    const list = checkAddresses(addresses);
+    this.write(actor, id, (db) => {
+      if ((db.prepare("SELECT api FROM endpoints WHERE id = ?").get(id) as { api: string }).api !== "host") throw new Error("only a model host has addresses");
+      db.prepare("UPDATE endpoints SET addresses = ?, base_url = ? WHERE id = ?").run(JSON.stringify(list), `${hostOrigin(list[0]!)}/v1`, id);
+    });
+    this.health.delete(id);
+    return this.endpoint(actor.id, id)!;
+  }
+
+  /** The fetch that reaches a host over mutual TLS with its pinned key; undefined for a plain endpoint. */
+  fetchFor(ep: Endpoint): typeof fetch | undefined {
+    if (ep.api !== "host") return undefined;
+    const key = `${ep.id}\u0000${ep.fingerprint}\u0000${(ep.addresses ?? []).join(",")}`;
+    let f = this.fetches.get(key);
+    if (!f) {
+      f = hostFetch(lyricaIdentity(this.self()), { addresses: ep.addresses ?? [], pin: ep.fingerprint ?? "" }, () => this.reportDown(ep.id));
+      this.fetches.set(key, f);
+    }
+    return f;
+  }
+
+  /** A host's status (host/API.md): GPUs, roles, loaded and pinned models, VRAM, queue. Anyone who can use the host may read it. */
+  async hostStatus(userId: string, id: string): Promise<unknown> {
+    return this.hostCall(this.needHost(userId, id), "GET", "/host/v1/status");
+  }
+
+  /** Pauses, resumes or restarts a host. A shared host needs an administrator. */
+  async hostControl(actor: User, id: string, action: "pause" | "resume" | "restart"): Promise<unknown> {
+    const ep = this.needHost(actor.id, id);
+    if (ep.shared && !this.users.get(actor.id)?.admin) throw new Forbidden("only an administrator can manage a shared model host");
+    if (!["pause", "resume", "restart"].includes(action)) throw new Error("a host can be paused, resumed or restarted");
+    const status = await this.hostCall(ep, "POST", `/host/v1/${action}`);
+    if (action === "pause") this.reportDown(ep.id); else this.health.delete(ep.id);
+    return status;
+  }
+
+  private needHost(userId: string, id: string): Endpoint {
+    const ep = this.endpoint(userId, id);
+    if (!ep || ep.api !== "host") throw new NoModel(`no model host ${id}`);
+    return ep;
+  }
+
+  /** One call to a host's API, with its error as a plain reason. */
+  private async hostCall(ep: Endpoint, method: string, path: string, body?: unknown): Promise<unknown> {
+    const res = await this.fetchFor(ep)!(`${hostOrigin(ep.addresses![0]!)}${path}`, {
+      method, signal: AbortSignal.timeout(30_000),
+      ...(body === undefined ? {} : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+    });
+    const err = await hostError(res);
+    if (err) throw new HostRefused(err.code, err.message);
+    if (!res.ok) throw new HostRefused("error", `${ep.name} answered ${res.status}`);
+    return res.json();
+  }
+
+  /** Up when the host answers its status and is running; paused, pausing and restarting count as down. */
+  private async hostUp(ep: Endpoint, timeoutMs = 5000): Promise<"up" | "down"> {
+    try {
+      const res = await this.fetchFor(ep)!(`${hostOrigin(ep.addresses![0]!)}/host/v1/status`, { signal: AbortSignal.timeout(timeoutMs) });
+      if (!res.ok) return "down";
+      return ((await res.json()) as { state?: string }).state === "running" ? "up" : "down";
+    } catch {
+      return "down";
+    }
+  }
+
+  /** A host's text models, from its library (host/API.md "Models"). */
+  private async hostModels(ep: Endpoint): Promise<DiscoveredModel[]> {
+    const list = (await this.hostCall(ep, "GET", "/host/v1/models")) as { id: string; kind?: string; sha256?: string | null; contextLength?: number | null; capabilities?: { tools?: boolean; vision?: boolean; embedding?: boolean; reasoning?: string[] | null } }[];
+    if (!Array.isArray(list)) throw new Error(`${ep.name} didn't return a model list`);
+    return list.filter((m) => typeof m?.id === "string" && m.kind !== "image").map((m) => {
+      const levels = (m.capabilities?.reasoning ?? []).filter((l) => l !== "off");
+      // A thinking switch in the chat template is on or off: one level.
+      const reasoning = levels.filter((l): l is "low" | "medium" | "high" => ["low", "medium", "high"].includes(l));
+      return {
+        modelId: m.id,
+        ...(m.contextLength ? { contextWindow: m.contextLength } : {}),
+        ...(m.capabilities?.tools !== undefined ? { tools: !!m.capabilities.tools } : {}),
+        ...(m.capabilities?.vision !== undefined ? { vision: !!m.capabilities.vision } : {}),
+        ...(m.capabilities?.embedding || m.kind === "embedding" ? { embedding: true } : {}),
+        ...(levels.length ? { reasoning: reasoning.length ? reasoning : ["medium"] as "medium"[] } : {}),
+        ...(m.sha256 ? { digest: m.sha256 } : {}),
+      } as DiscoveredModel;
+    });
   }
 
   /** A call to the endpoint failed to connect or was refused as away: the router skips it for HEALTH_MS. */
@@ -516,7 +661,7 @@ export class Models {
         if (one.length > 1 && !covered(ids) && !out.some((s) => ids.every((id) => s.members.includes(id)))) out.push({ name: baseName(one[0]!.modelId), members: ids, strength });
       }
     };
-    bucket((o) => (o as Offering & { digest?: string }).digest, "strong");
+    bucket((o) => o.digest, "strong");
     bucket((o) => baseName(o.modelId), "weak");
     return out;
   }
@@ -910,6 +1055,8 @@ export class Models {
     const levels = r.offering.reasoning ?? [];
     if (!levels.length) return { level: "off", note: `${r.label} can't think, so it answered without thinking` };
     if ((levels as string[]).includes(asked)) return { level: asked };
+    // A thinking switch (one level) is simply on.
+    if (levels.length === 1) return { level: levels[0]! };
     const at = THINKING_LEVELS.indexOf(asked);
     const level = [...levels].sort((a, b) => Math.abs(THINKING_LEVELS.indexOf(a) - at) - Math.abs(THINKING_LEVELS.indexOf(b) - at))[0]!;
     return { level, note: `${r.label} doesn't think at ${asked}, so it thought at ${level}` };
@@ -1297,6 +1444,13 @@ function splitCloudProfile(db: Db, self: Db): void {
 
 function checkName(name: string): void {
   if (!NAME.test(name)) throw new Error("endpoint names use lowercase letters, digits and '-'");
+}
+
+function checkAddresses(addresses: string[]): string[] {
+  const list = (Array.isArray(addresses) ? addresses : []).map((a) => String(a).trim()).filter(Boolean);
+  if (!list.length) throw new Error("a model host needs at least one address");
+  for (const a of list) hostOrigin(a);
+  return list;
 }
 
 function checkGroupName(name: string): string {

@@ -11,13 +11,16 @@ const DEFAULT_CONTEXT = 32_768;
 const LOCAL_COMPAT = { supportsDeveloperRole: false, supportsStore: false, supportsReasoningEffort: false, maxTokensField: "max_tokens" } as const;
 
 // A model that thinks gets `reasoning_effort` (OpenAI-compatible endpoints) at the thread's level.
+// A model host's llama.cpp and vLLM models think through the chat template's switch instead.
 function piModel(ep: Endpoint, m: Offering): ProviderModelConfig {
   const contextWindow = m.contextWindow ?? DEFAULT_CONTEXT;
   const reasoning = !!m.reasoning?.length;
+  const compat = ep.api === "host" ? { ...LOCAL_COMPAT, ...(reasoning ? { thinkingFormat: "qwen-chat-template" as const } : {}) }
+    : ep.kind === "local" ? { ...LOCAL_COMPAT, supportsReasoningEffort: reasoning } : undefined;
   return {
     id: m.modelId, name: m.modelId, input: m.vision ? ["text", "image"] : ["text"], cost: FREE, reasoning,
     contextWindow, maxTokens: Math.min(8192, Math.floor(contextWindow / 4)),
-    ...(ep.kind === "local" ? { compat: { ...LOCAL_COMPAT, supportsReasoningEffort: reasoning } } : {}),
+    ...(compat ? { compat } : {}),
   };
 }
 
@@ -37,6 +40,18 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
   internals.rebuildProviders();
 
   const allowed = models.allowed(ctx);
+  // A model host is reached over mutual TLS with its pinned key: its requests get the host's own fetch.
+  const fetches = new Map(allowed.flatMap(({ endpoint }) => { const f = models.fetchFor(endpoint); return f ? [[endpoint.id, f] as const] : []; }));
+  if (fetches.size) {
+    const r = runtime as unknown as { prepareRequest(model: Model<Api>, options?: object): Promise<{ options: { fetch?: typeof fetch } }> };
+    const prepare = r.prepareRequest.bind(runtime);
+    r.prepareRequest = async (model, options) => {
+      const prepared = await prepare(model, options);
+      const f = fetches.get(model.provider);
+      if (f) prepared.options.fetch = f;
+      return prepared;
+    };
+  }
   for (const { endpoint, offerings: list } of allowed) {
     if (!list.length) continue;
     runtime.registerProvider(endpoint.id, {

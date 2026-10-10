@@ -223,9 +223,13 @@ describe("thinking", () => {
     expect(s.models.thinkingFor(think, "high")).toEqual({ level: "high" });
     const plain = s.models.resolve("chat", { ...s.ctx(), overrides: { chat: [s.blackwell.ref] } });
     expect(s.models.thinkingFor(plain, "medium")).toEqual({ level: "off", note: "blackwell/qwen3.8-27b can't think, so it answered without thinking" });
-    s.models.setCapabilities(s.li, s.blackwell.ref.offeringId, { reasoning: ["high"] });
+    s.models.setCapabilities(s.li, s.blackwell.ref.offeringId, { reasoning: ["medium", "high"] });
     const some = s.models.resolve("chat", { ...s.ctx(), overrides: { chat: [s.blackwell.ref] } });
-    expect(s.models.thinkingFor(some, "low")).toEqual({ level: "high", note: "blackwell/qwen3.8-27b doesn't think at low, so it thought at high" });
+    expect(s.models.thinkingFor(some, "low")).toEqual({ level: "medium", note: "blackwell/qwen3.8-27b doesn't think at low, so it thought at medium" });
+    // A thinking switch (one level) is just on.
+    s.models.setCapabilities(s.li, s.blackwell.ref.offeringId, { reasoning: ["medium"] });
+    const one = s.models.resolve("chat", { ...s.ctx(), overrides: { chat: [s.blackwell.ref] } });
+    expect(s.models.thinkingFor(one, "high")).toEqual({ level: "medium" });
     // Per thread, with a per-user default.
     s.models.setDefaultThinking(s.li.id, "medium");
     expect(s.models.callContext(s.li.id, "general", "web/t").thinking).toBe("medium");
