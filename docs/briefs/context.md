@@ -1,6 +1,6 @@
 # Brief: Context and pace (the meter, prepared compaction, speed)
 
-**Status:** proposed, awaiting Li. **Thread:** Models 2, after #40 (it owns
+**Thread:** Models 2, after #40 (it owns
 `prepare()`, call records and the Pi runtime hooks). **Branch:**
 `feature/context`. The meter's UI goes to the Web UI 2 thread.
 

@@ -481,6 +481,28 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     cloud or local, and a call that fell back to cloud says so.
   - Private and local-only threads never see the Custom profile, so this can
     never reach them.
+- **Context and pace.** Lyrica and the user both see how full her context
+  is and how fast her model answers.
+  - After every turn lyricad records prompt and output tokens, the window,
+    time to first token and generation time, in the call record. Counts and
+    times only.
+  - lyricad assembles the prompt, so it can break the total down: persona,
+    the page about the user, pinned messages, memories recalled this turn,
+    tool definitions, the conversation, Pi's compaction reserve, free space.
+    The thread's facts line shows **Context 21%**, opening a popover with
+    one bar, the parts, used of window, and the last turn's speed.
+  - Her turn context carries one line of numbers: context used and free,
+    tokens per second, prompt tokens per second. At 75% lyricad adds a line
+    telling her to finish the step, save what matters to memory and compact
+    with a summary; at 90%, to compact now.
+  - She compacts herself with the `compact` action of the `threads` tool,
+    giving her own summary. lyricad hands it to Pi's compaction, which cuts
+    the old entries and keeps the recent ones; pinned messages stay. It
+    shows as a marker, **Compacted · 41k → 6k**, expanding to the summary.
+    Pi's automatic compaction stays on at the window's edge as the safety
+    net.
+  - Recent calls and the text library show measured speed; nothing acts on
+    it automatically yet.
 - **Reasoning level.** For models that support it, the message box has a
   thinking control (Off, Low, Medium, High, showing only the levels the
   current model offers), as in Claude and ChatGPT.
