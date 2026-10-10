@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import type { Db } from "../db.ts";
 import type { Keyring } from "../keyring.ts";
-import { TASKS, THINKING_LEVELS, type CallContext, type ModelRef, type Pool, type Task, type ThinkingLevel } from "../types.ts";
+import { TASK_NAMES, TASKS, THINKING_LEVELS, type CallContext, type ModelRef, type Pool, type Task, type ThinkingLevel } from "../types.ts";
 import { Forbidden, type User, type Users } from "../users.ts";
 import { addressesOutside, discoverModels, probeUrl, type DiscoveredModel, type ModelIdentity } from "./http.ts";
 import { hostError, hostFetch, HostRefused, hostOrigin, lyricaIdentity, pair } from "./host.ts";
@@ -14,8 +14,6 @@ import { ENDPOINT_SCHEMA, migrate, MODEL_CHOICE_SCHEMA, REDIRECT_SCHEMA, upgrade
 import { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, speakAt, transcribeAt, VoiceCloudOff, wavSeconds, type SpeechTarget } from "./speech.ts";
 
 export type SpeechTask = "speech.transcribe" | "speech.speak";
-/** The tasks as the Models page names them. */
-const SPEECH_NAMES: Record<SpeechTask, string> = { "speech.transcribe": "Dictation", "speech.speak": "Read aloud" };
 
 export { addressesOutside, discoverModels, probeUrl, type DiscoveredModel, type ModelIdentity } from "./http.ts";
 export { baseName } from "./identity.ts";
@@ -38,7 +36,7 @@ export class Offline extends NoModel {
   readonly code = "offline";
   override readonly name = "Offline";
   constructor(readonly task: Task, readonly tried: { label: string; reason: string }[]) {
-    super(`no model for ${task} can be reached now${tried.length ? ` (${tried.map((t) => `${t.label}: ${t.reason}`).join("; ")})` : ""}`);
+    super(`no model for ${TASK_NAMES[task]} can be reached now${tried.length ? ` (${tried.map((t) => `${t.label}: ${t.reason}`).join("; ")})` : ""}`);
   }
 }
 
@@ -1560,7 +1558,7 @@ export class Models {
     const c = this.catalog(ctx.userId);
     const profile = profileFor(ctx);
     const found = this.listFor(task, ctx, c);
-    if (!found) throw new NoModel(`no model is set for ${task} in the ${profile} profile`);
+    if (!found) throw new NoModel(`no model is set for ${TASK_NAMES[task]} in the ${profile} profile`);
     const restricted = isRestricted(ctx);
     const fixKind = profile !== "custom";
     const candidates: { id: string; grouped: boolean }[] = [];
@@ -1596,7 +1594,7 @@ export class Models {
     // Something would answer once its machine is back: offline, not unset.
     if (away) throw new Offline(task, skipped);
     const reasons = skipped.map((s) => `${s.label}: ${s.reason}`).join("; ");
-    throw new NoModel(`no model for ${task} can answer now${reasons ? ` (${reasons})` : ""}`);
+    throw new NoModel(`no model for ${TASK_NAMES[task]} can answer now${reasons ? ` (${reasons})` : ""}`);
   }
 
   /**
@@ -1741,10 +1739,10 @@ export class Models {
       if (task === "speech.transcribe" && r.endpoint.kind === "cloud" && !ctx.voiceCloud) return { reason: "voiceCloud", problem: `${r.label} is a cloud model, and Voice to cloud is off` };
       return { label: r.label, kind: r.endpoint.kind };
     } catch (e) {
-      if (e instanceof Offline) return { reason: "down", problem: `${SPEECH_NAMES[task]} can't be reached now` };
+      if (e instanceof Offline) return { reason: "down", problem: `${TASK_NAMES[task]} can't be reached now` };
       if (e instanceof CloudModelForbidden) return { reason: "none", problem: e.message };
       if (!(e instanceof NoModel)) throw e;
-      if (!this.listFor(task, ctx)?.list.length) return { reason: "none", problem: `No ${SPEECH_NAMES[task]} model is set${isRestricted(ctx) ? " in the local profile" : ""}` };
+      if (!this.listFor(task, ctx)?.list.length) return { reason: "none", problem: `No ${TASK_NAMES[task]} model is set${isRestricted(ctx) ? " in the local profile" : ""}` };
       return { reason: "none", problem: e.message };
     }
   }
