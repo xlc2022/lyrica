@@ -364,10 +364,6 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
           </select>
         </label>
       )}
-      {profiles.data && (
-        <Switch label="Voice to cloud" hint="What you dictate may be sent to a cloud model."
-          checked={profiles.data.voiceCloud} onChange={(voiceCloud) => run(async () => profiles.set(await patch<Profiles>(u(userId, "profiles"), { voiceCloud })))} />
-      )}
       <div className="profiles">
         {(["general", "private"] as const).map((pool) => {
           const n = net.data![pool];
@@ -387,6 +383,10 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
           );
         })}
       </div>
+      {profiles.data && (
+        <Switch label="Voice to cloud" hint="What you dictate may be sent to a cloud model."
+          checked={profiles.data.voiceCloud} onChange={(voiceCloud) => run(async () => profiles.set(await patch<Profiles>(u(userId, "profiles"), { voiceCloud })))} />
+      )}
     </Section>
   );
 }
