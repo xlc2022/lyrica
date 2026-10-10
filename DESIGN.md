@@ -530,14 +530,15 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - **Containers.**
     - The model host ships as a Docker Compose file with pinned images, run
       with Docker or Podman on Linux.
-    - Containers keep the GPU stacks (CUDA or ROCm, vLLM) pinned and apart
+    - Containers keep the GPU stacks (CUDA, ROCm or Vulkan, vLLM) pinned and apart
       from the rest of the machine, which matters on a personal workstation.
     - Windows isn't a model host: when the workstation is booted into
       Windows, it is simply away.
     - `lyricad` itself stays a native service (see Deployment).
   - **NVIDIA and AMD**, through a compose profile per vendor (CUDA or ROCm
-    images). The machine needs only the GPU driver and the container
-    runtime's GPU support.
+    images; Vulkan for llama.cpp on AMD GPUs ROCm's images don't cover, and
+    integrated GPUs count their shared memory). The machine needs only the
+    GPU driver and the container runtime's GPU support.
   - **Our images, pinned by digest.** The host API and ComfyUI images are ours,
     built in CI from pinned versions. vLLM and llama.cpp use their official
     images, also pinned by digest. Nothing is pulled as `latest`.
