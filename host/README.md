@@ -224,6 +224,8 @@ revoked. A revoked server must pair again.
     them.
   - `vllm-status`: the vLLM supervisor's report of servers that exited;
     read-only for host-api.
+  - `tailscale` (with Tailscale only): the tailscale container's node
+    state, so the machine keeps its tailnet identity across restarts.
   - The models folder is mounted read-only everywhere except its `lyrica/`
     subfolder, which only fetch writes.
 - The host's key, certificate and state are in the `data` volume, readable
