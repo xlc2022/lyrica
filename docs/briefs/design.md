@@ -36,24 +36,20 @@ own handoff, so a fresh session (or a project conversation) can take over.
 - The interface follows docs/ux.md. Labels are nouns, no captions, numbers
   typed with their maximum shown, one idiom for everything.
 
-## Where things stand (10 October 2026)
+## Where things stand (10 October 2026, evening)
 
 Merged on `main`: Core, Memory, Workspace, Models, Delegation, Daemon, Web
-UI, Sleep, Delegation 2, Models 2 (#30, #34, #36, #37, #40) and Model host
-(#28, #31, #32, #33, #38, #39).
+UI, Sleep, Delegation 2, Models 2 (#30, #34, #36, #37, #40, #41, #46), Model
+host (#28, #31, #32, #33, #38, #39, #42, #45) and Child threads 1/3 (#44).
 
 | Thread | Branch | State |
 |---|---|---|
-| Models 2 | `feature/context` | building docs/briefs/context.md; ships `compact` as its own tool until `threads` lands |
-| Model host | done | handoff notes in #42; its AMD/iGPU question answered to Li directly |
-| Child threads | `feature/child-threads` | building docs/briefs/child-threads.md; owns the `threads` tool |
-| Modes | `feature/modes` | building docs/briefs/modes.md; was stopped by a session limit, resumes on its own |
+| Models 2 | done | context and pace merged in #46 |
+| Model host | done | AMD and integrated GPUs merged in #45; hardware checks listed in its handoff notes |
+| Child threads | `feature/child-threads-2`, `feature/child-threads-3` | #47 (2/3) has a fix round open: a kept child still marked as a child, the working-at-once limit bypassed by messages, a spoofable parent marker; 3/3 being redone |
+| Modes | `feature/modes` | building docs/briefs/modes.md; no pull request yet |
 | Images | not started | docs/briefs/images.md |
 | Web UI 2 | not started | docs/briefs/web-2.md; reads docs/ux.md first |
-
-Open pull requests: #41 (Models 2 docs follow-up) and #42 (Model host
-handoff notes), both reviewed and waiting for Li's OK; the design pull
-request carrying this brief and the contracts for Models 2.
 
 ## Open questions for Li
 
@@ -70,4 +66,18 @@ From reading the merged Models 2 code against its pull requests:
 
 ## Handoff notes
 
-(The thread fills this in if it stops before it's done.)
+The design work moves to the Lyrica project chat on claude.ai, which picks
+up reviews and merges from here.
+
+- Next: verify #47's fix round, then record its contracts (the PR body
+  lists them: `threads.child`, `forgetThread` detaching kept daughters,
+  `listThreads` children, `ChildStatus`/`ChildInfo`/`StartRequest`,
+  DELETE `?children=1`, notice status `update`, `Services.children`,
+  `HostedThread.waiting`) and give the child-thread card a home in
+  docs/ux.md section 6.
+- To settle in DESIGN: whether a child follows its parent's later switch
+  to local-only or "Do not log" (today it keeps the values it was started
+  with), and depth through a user's branch of a child.
+- Small leftovers for the threads' next PRs: a failed resend after a
+  rewind still drops the first queued message (#44); a tool turn's
+  fallback context reads a little high (#46, noted in docs/daemon.md).

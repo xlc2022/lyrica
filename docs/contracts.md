@@ -159,7 +159,7 @@ nothing else. No code path gives a general view a private handle.
 
 | Area | Methods |
 |---|---|
-| Threads | `createThread({ interface, parent?, subagent?, unlogged?, title? })`, `listThreads({ includeHidden?, parent? })`, `getThread`, `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage`, `setTitle`, `exportThread`, `forgetThread` (also forgets its subagents' threads) |
+| Threads | `createThread({ interface, parent?, subagent?, unlogged?, title? })`, `listThreads({ includeHidden?, parent? })`, `getThread`, `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage`, `setTitle`, `exportThread`, `forgetThread` (also forgets its subagents' threads), `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, subagents }`, `subagentsSince(threadId, fromN)` |
 | Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
 | Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `userIntroduced` |
@@ -213,6 +213,17 @@ are enforced in the store:
   `setUnlogged(false)` is refused on a thread whose parent is unlogged.
 - Entries record whether they were written while unlogged. Search, sleep and
   catch-up never see those entries.
+- **Removing turns.** `truncateThread` deletes entries from `fromN` on the
+  way forgetting does: index rows go, notes whose sources are all gone are
+  deleted with tombstones, pages citing them are flagged, and subagent
+  threads started in those turns are forgotten. An entry that still has a
+  copy in a branch keeps its notes and search rows, and `entryWindow` finds
+  it through the copy. Entry numbers are never reused: `threads.cut` holds
+  the highest removed number and `appendEntry` numbers past it.
+- **Branches.** `branchThread` makes a child thread (not a subagent) holding
+  the entries up to and including `n`, plus that reply's tool results,
+  copied as an export copies them (`orig` keeps the source ID). The source
+  is unchanged; a branch of an unlogged thread is unlogged.
 - Notes can't be written from an unlogged thread.
 
 ## core/models: the cloud boundary lives here
@@ -254,7 +265,8 @@ interface CallContext {
 interface Need { tools?: boolean; tokens?: number }        // what the call needs from a model
 interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: ProfileName;
                        source: "thread" | "profile"; skipped: { label; reason }[]; remaining: number }
-interface CallRecord { at; pool; threadId; task; offeringId; label; endpointName; kind; fallback?; note? }
+interface Pace { promptTokens; outputTokens; window; ttftMs; genMs; processed }   // counts and times only
+interface CallRecord { at; pool; threadId; task; offeringId; label; endpointName; kind; fallback?; note?; pace?: Pace }
 interface AnswerSettings { temperature?; topP?; topK?; minP?; repeatPenalty?; presencePenalty?;
                            frequencyPenalty?; maxTokens?; seed?; stop?: string[] }
 type SettingSource = "shared" | "yours";                   // absent: the server's default
@@ -297,6 +309,7 @@ class Models {                                              // new Models(keyrin
   setLocalOnly(userId, pool, threadId, on) / forgetThread(userId, pool, threadId)
   callContext(userId, pool, threadId): CallContext
   childContext(parent, childThreadId, { tier } | { model }): CallContext   // a child under its parent's rules
+  inheritContext(parent, childThreadId, { chat? }): CallContext          // a branch: the parent's local-only, profile, thinking and lists
   resolve(task, ctx, need?): Resolution                     // throws CloudModelForbidden or NoModel
   resolveLive(task, ctx, need?, { probeMs? }): Promise<Resolution>   // probes first when there is a fallback
   resolveModel(task, ctx, need?): { offeringId }             // resolve(…).ref
@@ -305,6 +318,7 @@ class Models {                                              // new Models(keyrin
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
   thinkingFor(resolution, asked): { level; note? }
   recordCall(userId, { pool, threadId, task, resolution, note? }, { retry? }) / recentCalls(userId, { limit?, threadId? }): CallRecord[]
+  recordPace(userId, pool, threadId, task, pace) / speedsByOffering(userId): Map<offeringId, { tokPerS?; promptTokPerS? }>   // medians over the last 20 calls
   // Hosts and pairing
   pairHost(actor, { name, addresses, code }, { shared?, endpointId? }): Promise<Endpoint>   // endpointId: pair again, IDs kept
   setHostAddresses(actor, id, addresses): Endpoint / fetchFor(endpoint): typeof fetch | undefined   // undefined for a plain endpoint
@@ -391,6 +405,7 @@ createDelegateExtension(thread, delegation, budget?)   // adds `delegate` (and `
 delegation.events                                      // typed EventEmitter for the live view
 delegation.store                                       // roles and saved workflows, in user.db
 delegation.forget(userId, pool, threadId)              // before forgetThread: stops its runs
+delegation.forgetSubagents(userId, pool, threads)      // before truncateThread: stops runs with a subagent among them
 delegation.stopAll(userId?)                            // Lock and shutdown
 ```
 
@@ -465,6 +480,7 @@ piModelFor(runtime, models, task, ctx, resolution?): { ref; model; resolution }
 prepareTurn({ session, runtime, models, call, pool, threadId, task?, thinking?, retry? }): Promise<Resolution>
 openThreadSession({ thread, models, cwd, extensions, settings? }): Promise<ThreadSession>
 interface ThreadSession { session; runtime; chat: { offeringId }; prepare(opts?: { thinking?; retry? }): Promise<Resolution>; dispose() }
+interface ContextMeter { report(): ContextInfo | undefined; contextLines(): string; pending?: { summary } }   // LyricaOptions.meter
 ```
 
 - The factory is `createLyricaExtension(thread: ThreadContext, opts:
@@ -510,6 +526,9 @@ interface ThreadSession { session; runtime; chat: { offeringId }; prepare(opts?:
     a Pi package);
   - in sleep sessions only: `write_page`, `write_journal`, `write_wake`,
     `raise` and `propose_persona` (Sleep thread; see [sleep.md](sleep.md)).
+  - `compact`, with her summary as its one argument (Models 2's context
+    work); it runs after the turn and answers Pi's `session_before_compact`
+    with the summary. It becomes an action of `threads` when that lands.
 - **Commands:** `/sleep`, and others only within the budget.
 - Lyrica's sessions **never** load project context files (`AGENTS.md`,
   `CLAUDE.md`). Her self-primer is a routed topic.
@@ -574,7 +593,13 @@ interface ThreadSession { session; runtime; chat: { offeringId }; prepare(opts?:
   [daemon.md](daemon.md). The web UI imports its types from there:
   - auth;
   - threads (list, create, hide, forget);
-  - messages (send, stream);
+  - `ThreadSettings.context` (`ContextInfo`: used, window, parts, reserve,
+    free, measured at), `CallInfo.pace`, the `context` and `compacted`
+    thread events, and a `compacted` message part (the stored notice);
+  - messages (send, stream; `POST …/messages/:n/branch` → `ThreadSummary`;
+    `POST …/messages/:n/rewind` with `RewindRequest` `delete`, `regenerate`
+    with an optional `model`, or `edit` with `text`, `409` while a turn runs;
+    the `rewound` event carries `from` and `resend`, never text);
   - models (paths under `/api/u/:userId/`):
     - **Endpoints:** `GET`/`POST endpoints`; `PATCH`/`DELETE endpoints/:id`;
       `POST endpoints/:id/discover`, `…/reset-ids`, `…/merge` (→ `EndpointInfo`),
