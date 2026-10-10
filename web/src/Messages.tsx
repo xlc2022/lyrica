@@ -85,7 +85,7 @@ function StoredMessage({ m, env, you }: { m: Message; env: Env; you: string }) {
   if (m.role === "notice") {
     return <>{m.parts.map((p, i) => (p.type === "delegation"
       ? <Notice key={i} text={p.text} status={p.status} threads={p.threads} env={env} />
-      : <Notice key={i} text={p.type === "text" ? p.text : ""} env={env} />))}</>;
+      : <Notice key={i} text={p.type === "text" ? p.text : p.type === "compacted" ? compactedLabel(p) : ""} env={env} />))}</>;
   }
   return (
     <>
@@ -370,4 +370,10 @@ function useCountdown(iso: string) {
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
   const s = Math.max(0, Math.round((Date.parse(iso) - now) / 1000));
   return s > 0 ? `Denied in ${s >= 60 ? `${Math.floor(s / 60)} min ` : ""}${s % 60} s if nobody answers` : "Denying…";
+}
+
+const tokens = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
+/** A compaction as one line until the Web UI 2 thread's marker, which expands to the summary. */
+function compactedLabel(p: { before: number; after?: number }): string {
+  return `Compacted · ${tokens(p.before)}${p.after !== undefined ? ` → ${tokens(p.after)}` : ""}`;
 }

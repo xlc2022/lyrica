@@ -134,9 +134,23 @@ CREATE TABLE IF NOT EXISTS model_calls (
   endpoint TEXT NOT NULL,
   kind     TEXT NOT NULL,
   fallback TEXT,
-  note     TEXT
+  note     TEXT,
+  -- The turn's counts and times, once it ends: never text.
+  prompt_tokens INTEGER,
+  output_tokens INTEGER,
+  window        INTEGER,
+  ttft_ms       INTEGER,
+  gen_ms        INTEGER,
+  processed     INTEGER
 );
 `;
+
+/** Adds the turn measurements to a `model_calls` table made before them. */
+export function upgradeCalls(db: Db): void {
+  for (const c of ["prompt_tokens", "output_tokens", "window", "ttft_ms", "gen_ms", "processed"]) {
+    if (!hasColumn(db, "model_calls", c)) db.exec(`ALTER TABLE model_calls ADD COLUMN ${c} INTEGER`);
+  }
+}
 
 const hasColumn = (db: Db, table: string, column: string) =>
   !!db.prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = ?").get(table, column);

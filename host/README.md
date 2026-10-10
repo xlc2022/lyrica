@@ -31,6 +31,32 @@ host/install.sh
 To upgrade, or to change a setting, run it again: `git pull && host/install.sh`.
 Options: `host/install.sh --help`.
 
+### AMD GPUs
+
+ROCm runs llama.cpp, vLLM and images, but only on the GPUs its images are
+built for: gfx908, gfx90a, gfx942, gfx1030 (RX 6800/6900), gfx1100–1102 (RX
+7000), gfx1150–1151 and gfx1200–1201 (RX 9000). For any other AMD GPU, such as
+Vega or a Radeon 780M, `install.sh` picks **Vulkan**. It serves llama.cpp
+models only: no vLLM and no images.
+- `--amd-backend rocm|vulkan` chooses one yourself. It's kept in `.env` as
+  `GPU_BACKEND`; empty it and run `install.sh` again to go back to choosing
+  automatically.
+- `--hsa-override 11.0.0` runs a GPU on ROCm as a close one it supports: a
+  780M (gfx1103) as gfx1100. AMD doesn't support this; it works on some
+  machines and not others. It applies to every GPU, so `install.sh` warns
+  when a discrete GPU ROCm already supports is there too.
+  `--hsa-override none` clears it.
+- An integrated GPU has a small BIOS carve-out and can also use shared
+  system memory (GTT). Which one a server can use:
+  - llama.cpp on Vulkan: both.
+  - llama.cpp on ROCm: both on an APU without a discrete GPU (`install.sh`
+    turns on unified memory, `compose.apu.yaml`); otherwise the carve-out.
+  - vLLM and images: the carve-out only. On ROCm an integrated GPU runs
+    llama.cpp only unless you allow more on the dashboard.
+
+  Set what it keeps free on the dashboard to leave the system enough memory.
+  Beside a discrete GPU, an integrated one is left out until you include it.
+
 With `--tailscale NAME`, the stack joins your tailnet as a device of its own,
 named `NAME`. It asks once for an auth key, which is removed from `.env` once
 the device has joined. With `--no-lan` as well, the host is reachable only
@@ -171,8 +197,10 @@ revoked. A revoked server must pair again.
     published on every interface, because Docker's published ports bypass
     the machine's firewall.
 - The model servers are the official llama.cpp and vLLM images, pinned by
-  digest. `compose.nvidia.yaml` uses CUDA images and `compose.amd.yaml` uses
-  ROCm; `install.sh` picks one. They log nothing (Docker's `none` log
+  digest. `compose.nvidia.yaml` uses CUDA images, `compose.amd.yaml` ROCm,
+  and `compose.vulkan.yaml` Vulkan (llama.cpp only); `install.sh` picks one,
+  and for ROCm adds `compose.hsa.yaml` for `--hsa-override` and
+  `compose.apu.yaml` (unified memory) on an APU alone. They log nothing (Docker's `none` log
   driver).
   - llama.cpp runs in router mode. host-api writes its preset file (each
     model's file, GPU and context), then loads and unloads models through
@@ -183,7 +211,10 @@ revoked. A revoked server must pair again.
     exited in the `vllm-status` volume, so a load that can't start fails at
     once.
   - host-api reads VRAM with `nvidia-smi`, through NVIDIA's `utility`
-    capability, or from AMD's sysfs.
+    capability, or from AMD's sysfs (with GTT for an integrated GPU). With
+    ROCm, AMD GPUs are numbered as ROCm numbers them; with Vulkan, by PCI
+    address. Without a KFD topology (no `/dev/kfd`), integrated GPUs can't be
+    recognised, so their shared memory isn't counted.
 - `fetch` (`src/fetch/`) does the downloads. It is the same image as
   host-api, with another command.
   - It is the only container that goes out, on the `egress` network,

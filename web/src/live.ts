@@ -103,7 +103,10 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       const { threadId, type } = e.event;
       return STORED.includes(type) ? { ...s, subagents: { ...s.subagents, [threadId]: (s.subagents[threadId] ?? 0) + 1 } } : s;
     }
+    // The context meter and the compaction marker are the Web UI 2 thread's to show; a compaction appears when the messages reload.
     case "usage":
+    case "context":
+    case "compacted":
       return s;
   }
 }

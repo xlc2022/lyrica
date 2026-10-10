@@ -13,7 +13,6 @@ export const TASK_LABELS: Record<ThreadTask, string> = {
   chat: "Main conversation",
   "subagent.cheap": "Cheap subagents",
   "subagent.strong": "Strong subagents",
-  compaction: "Compaction",
   title: "Titles",
 };
 

@@ -107,6 +107,13 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
       out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "user", from: { kind: "user", userId, name: subagent?.userName(userId) ?? "" }, parts: [{ type: "text", text }] });
       continue;
     }
+    if (e.type === "compaction") {
+      // Hers or Pi's: a marker, Compacted · 41k → 6k, that expands to the summary.
+      const c = e as unknown as { summary?: string; tokensBefore?: number; details?: { after?: unknown } };
+      const after = typeof c.details?.after === "number" ? c.details.after : undefined;
+      out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "notice", parts: [{ type: "compacted", before: c.tokensBefore ?? 0, ...(after !== undefined ? { after } : {}), summary: c.summary ?? "" }] });
+      continue;
+    }
     const m = e.type === "message" ? e.message : undefined;
     if (!m) continue;
     const base = { id: `e:${threadId}#${n}`, n, createdAt };

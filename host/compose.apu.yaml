@@ -1,0 +1,10 @@
+# ROCm on an APU with no discrete GPU: llama.cpp allocates unified memory, so
+# it can use the shared system memory (GTT) as well as the BIOS carve-out.
+# install.sh adds this file and sets LLAMA_UNIFIED_MEMORY=1 in .env, which
+# tells host-api that llama.cpp may plan with the shared memory. vLLM and
+# ComfyUI still see the carve-out only. It isn't used beside a discrete GPU,
+# where unified memory would slow every allocation.
+services:
+  llamacpp:
+    environment:
+      GGML_CUDA_ENABLE_UNIFIED_MEMORY: "1"
