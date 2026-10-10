@@ -21,12 +21,9 @@ Work through these in order. Most additions end at step 1 or 2.
 2. **Is it a fact, a state or an action?** Facts go in the line beneath a
    name, in plain text. State is a badge or a dot with a word, at most two
    per row. Actions are buttons, links or menu items, and look like it.
-3. **Could it be a tooltip or nothing?** Explanations, hints and reminders
-   are not shown. If a word truly needs explaining, the explanation is a
-   tooltip on that word.
-4. **Does it work on a phone?** At 390 px wide, with no sideways scrolling,
+3. **Does it work on a phone?** At 390 px wide, with no sideways scrolling,
    and with a long press where a desktop right-clicks.
-5. **Does it use what's already there?** The icon set, the three button
+4. **Does it use what's already there?** The icon set, the three button
    looks, the segmented control, the drawer, the context menu, the
    confirmation dialog. A new widget is a design change, not a feature.
 
