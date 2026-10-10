@@ -15,7 +15,7 @@ Usage: host/install.sh [options]
   --vendor nvidia|amd  The GPU vendor (default: detected)
   --tailscale NAME     Also join the tailnet as device NAME (asks for an auth key)
   --no-tailscale       Leave the tailnet
-  --no-gpu             Skip the GPU checks (for testing the stack without a GPU)
+  --no-gpu             No GPU and no model servers: host-api alone (for testing)
   --yes                Don't ask questions; use defaults and flags
   --no-start           Write .env only
 EOF
@@ -120,6 +120,8 @@ fi
 [[ $WANT_LAN == 1 || -n $TS_HOSTNAME ]] || fail "with --no-lan, use --tailscale: otherwise nothing can reach the host."
 
 FILES=compose.yaml
+[[ $VENDOR == nvidia || $VENDOR == amd ]] && FILES+=:compose.$VENDOR.yaml
+RENDER_GID=$(getent group render 2>/dev/null | cut -d: -f3 || true)
 [[ $WANT_LAN == 1 ]] && FILES+=:compose.lan.yaml
 [[ -n $TS_HOSTNAME ]] && FILES+=:compose.tailscale.yaml
 VERSION=$(git describe --always --dirty 2>/dev/null || echo dev)
@@ -131,7 +133,7 @@ HOST_NAME=$NAME
 LAN_ADDRESS=$LAN
 MODELS_DIR=$MODELS
 GPU_VENDOR=$VENDOR
-COMPOSE_PROFILES=$VENDOR
+RENDER_GID=${RENDER_GID:-}
 COMPOSE_FILE=$FILES
 HOST_VERSION=$VERSION
 TS_HOSTNAME=$TS_HOSTNAME

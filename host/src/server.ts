@@ -13,6 +13,7 @@ import { HostError, invalid, notFound, onlyFields, readJson, refused, sendError,
 import { loadIdentity, type Identity } from "./identity.ts";
 import type { Logger } from "./log.ts";
 import { PairingCodes, fingerprint } from "./pairing.ts";
+import type { Runtime } from "./runtime.ts";
 import { StateFile } from "./state.ts";
 
 export interface HostOptions {
@@ -58,6 +59,7 @@ export class Host {
   readonly sessions: Sessions;
   readonly tls: https.Server;
   readonly local: http.Server;
+  runtime: Runtime | null = null;
   private readonly limit: LoginLimit;
   private readonly isOurs: (name: string) => boolean;
 
@@ -89,6 +91,7 @@ export class Host {
   }
 
   async close(): Promise<void> {
+    this.runtime?.close();
     this.tls.closeAllConnections();
     this.local.closeAllConnections();
     await Promise.all([new Promise((r) => this.tls.close(r)), new Promise((r) => this.local.close(r))]);
@@ -177,11 +180,12 @@ export class Host {
       return this.dashboard(req, res, pathname, method, access);
     }
 
-    if (pathname === "/host/v1/status" && method === "GET") return sendJson(res, 200, this.status());
+    if (pathname === "/host/v1/status" && method === "GET") return sendJson(res, 200, await this.status());
+    if (this.runtime && (await this.runtime.route(req, res, pathname, method))) return;
     throw notFound();
   }
 
-  status() {
+  async status() {
     let free: number | null = null;
     try {
       const s = statfsSync(this.opts.modelsDir);
@@ -191,8 +195,8 @@ export class Host {
       name: this.opts.name,
       version: this.opts.version,
       fingerprint: this.identity.fingerprint,
-      state: this.state.get().paused ? "paused" : "running",
-      gpus: [],
+      state: this.runtime?.scheduler.runState ?? (this.state.get().paused ? "paused" : "running"),
+      gpus: (await this.runtime?.scheduler.status()) ?? [],
       downloads: { active: 0 },
       modelsFolder: { path: this.opts.modelsHostPath, free },
     };

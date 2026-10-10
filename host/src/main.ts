@@ -1,6 +1,10 @@
 // host-api's entry point, run in its container.
 import { readFileSync } from "node:fs";
+import { LlamaCpp, Vllm } from "./backends.ts";
+import { amdMonitor, noGpus, nvidiaMonitor } from "./gpus.ts";
 import { stdoutLog } from "./log.ts";
+import { Runtime } from "./runtime.ts";
+import { Scheduler } from "./scheduler.ts";
 import { Host } from "./server.ts";
 
 /** Docker's gateway on our default route: where the published loopback port arrives from. */
@@ -14,6 +18,10 @@ function defaultGateway(): string[] {
 
 const env = process.env;
 const name = env.HOST_NAME || "lyrica-host";
+const modelsDir = env.MODELS_DIR || "/models";
+const serving = env.SERVING_DIR || "/serving";
+const vendor = env.GPU_VENDOR || "none";
+
 const host = new Host({
   dataDir: env.DATA_DIR || "/data",
   name,
@@ -21,9 +29,22 @@ const host = new Host({
   names: [name, ...(env.HOST_NAMES ?? "").split(",")].map((n) => n.trim()).filter(Boolean),
   tailnetName: env.TAILNET_NAME || undefined,
   localPeers: env.LOCAL_PEERS ? env.LOCAL_PEERS.split(",") : defaultGateway(),
-  modelsDir: env.MODELS_DIR || "/models",
-  modelsHostPath: env.MODELS_HOST_PATH || "/models",
+  modelsDir,
+  modelsHostPath: env.MODELS_HOST_PATH || modelsDir,
   log: stdoutLog,
 });
+
+const scheduler = new Scheduler({
+  monitor: vendor === "nvidia" ? nvidiaMonitor : vendor === "amd" ? amdMonitor() : noGpus,
+  backends: {
+    llamacpp: new LlamaCpp({ url: env.LLAMACPP_URL || "http://llamacpp:8080", serving, models: modelsDir, device: (i) => `${vendor === "amd" ? "ROCm" : "CUDA"}${i}` }),
+    vllm: new Vllm({ url: env.VLLM_URL || "http://vllm:{port}", serving, models: modelsDir }),
+  },
+  state: host.state,
+  log: stdoutLog,
+});
+host.runtime = new Runtime({ scheduler, modelsDir, state: host.state, log: stdoutLog });
+
 await host.listen(Number(env.TLS_PORT || 7443), Number(env.LOCAL_PORT || 7080));
+await host.runtime.start();
 for (const signal of ["SIGTERM", "SIGINT"] as const) process.on(signal, () => void host.close().then(() => process.exit(0)));
