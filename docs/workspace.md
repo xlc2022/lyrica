@@ -240,8 +240,8 @@ judgment and make review easy. Each thread has a **mode**:
   can change files too.
 - **Accept edits** (`acceptEdits`): asks before `bash`.
 - **Plan** (`plan`): only `read`, `recall`, `read_memory`, `web_search`,
-  `web_fetch`, `delegate` with read-only roles, `compact` and `propose_plan`
-  are active.
+  `web_fetch`, `delegate` with read-only roles, a subagent's `ask_parent`,
+  `compact` and `propose_plan` are active.
 - **Auto** (`auto`, the default): works freely inside the grants.
 
 A new thread starts in the user's default mode (`defaultMode`,

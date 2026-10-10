@@ -170,6 +170,8 @@ describe("modes and switches", () => {
     expect(settings.thread("t1").mode).toBe("plan");
     expect(settings.startThread("t2", "general").mode).toBe("ask");
     expect(() => settings.setDefaultMode("ask-changes" as never)).toThrow(/unknown permission mode/);
+    // A thread from before modes were saved keeps Auto, whatever the default.
+    expect(settings.thread("old").mode).toBe("auto");
   });
 
   it("give a subagent or child thread its parent's mode and switches or stricter ones, also when the parent changes later", async () => {

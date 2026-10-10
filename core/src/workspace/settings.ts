@@ -173,7 +173,8 @@ export class WorkspaceSettings {
 
   thread(threadId: string): ThreadWorkspace {
     const row = this.db.prepare("SELECT * FROM thread_workspaces WHERE thread_id = ?").get(threadId) as ThreadRow | undefined;
-    if (!row) return { grants: [], internet: null, services: null, hosts: null, mode: this.defaultMode(), webSearch: true, images: true, target: "sandbox", parent: null };
+    // A thread from before modes were saved for every new thread: Auto, as it had then. New threads get the default from startThread.
+    if (!row) return { grants: [], internet: null, services: null, hosts: null, mode: "auto", webSearch: true, images: true, target: "sandbox", parent: null };
     const bool = (v: number | null) => (v === null ? null : v === 1);
     return {
       grants: JSON.parse(row.grants), internet: bool(row.internet), services: bool(row.services),

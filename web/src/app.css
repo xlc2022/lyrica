@@ -206,14 +206,14 @@ main > .head, .composer, .subnote, .offline { flex: none; }
 .composer textarea { resize: none; min-height: max(42px, var(--tap)); max-height: 40vh; border-radius: var(--radius); padding: 9px 12px; }
 .attach { width: max(42px, var(--tap)); min-height: max(42px, var(--tap)); padding: 0; font-size: 1.2rem; border-radius: var(--radius); }
 .send, .stop { min-height: max(42px, var(--tap)); border-radius: var(--radius); }
-.composer-bar { grid-column: 2 / -1; display: flex; gap: 12px; align-items: center; margin-top: -4px; font-size: 0.85rem; }
+.composer-bar { grid-column: 2 / -1; display: flex; gap: 12px; align-items: center; margin-top: -4px; font-size: 13px; }
 .tools-menu, .mode-picker { position: relative; }
 .menu.up { top: auto; bottom: calc(100% + 4px); right: auto; min-width: 260px; max-width: calc(100vw - 2 * var(--gutter)); }
 .tools-menu .menu .switch { padding: 0 10px; }
 .mode-picker .menu button { align-items: flex-start; padding-block: 8px; }
 .mode-picker .menu button[aria-checked="true"] { background: var(--bg); }
-.mode-picker .menu small { display: block; color: var(--muted); font-size: 0.8rem; }
-.mode-picker kbd { font-family: "IBM Plex Mono", monospace; font-size: 0.78rem; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
+.mode-picker .menu small { display: block; color: var(--muted); font-size: 12px; }
+.mode-picker kbd { font-family: var(--mono); font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
 button.link { border: 0; background: transparent; color: var(--accent); padding: 0 2px; min-height: 30px; }
 button.link:hover { text-decoration: underline; }
 .uploads { grid-column: 1 / -1; list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 0.85rem; }

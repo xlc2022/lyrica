@@ -1115,6 +1115,8 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
   const { models, workspace } = d.services!;
   const ctx = models.callContext(user.id, pool, threadId);
   const tw = workspace.settings(user.id).thread(threadId);
+  // The mode and switches her tools follow: a parent's later narrowing included.
+  const applies = workspace.settings(user.id).effective(threadId);
   const isUnlogged = owner(d, user, (o) => o[pool].getThread(threadId)?.unlogged ?? false);
   let thinkingLevels: Api.ThinkingLevel[] = ["off"];
   const taskModel = (task: Api.ThreadTask): Api.TaskModel => {
@@ -1142,7 +1144,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     localOnly: ctx.localOnly,
     internet: tw.internet, services: tw.services, hosts: tw.hosts,
     network: workspace.network({ userId: user.id, pool, threadId }),
-    grants: tw.grants, target: tw.target, mode: tw.mode, webSearch: tw.webSearch, images: tw.images, unlogged: isUnlogged, parent: tw.parent,
+    grants: tw.grants, target: tw.target, mode: applies.mode, webSearch: applies.webSearch, images: applies.images, unlogged: isUnlogged, parent: tw.parent,
     allowed: models.allowed(ctx).map(({ endpoint }) => endpointInfo(d, user.id, endpoint.id)),
   };
 }

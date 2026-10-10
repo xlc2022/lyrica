@@ -84,14 +84,14 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, onSet
         onChange={(e) => setDraft(e.target.value)}
         onPaste={(e) => { if (e.clipboardData.files.length) { e.preventDefault(); attach(e.clipboardData.files); } }}
         onKeyDown={(e) => {
-          if (e.key === "Tab" && e.shiftKey && settings && !settings.parent) { e.preventDefault(); onSettings({ mode: nextMode(settings.mode) }); return; }
+          if (e.key === "Tab" && e.shiftKey && settings) { e.preventDefault(); onSettings({ mode: nextMode(settings.mode) }); return; }
           const touch = matchMedia("(pointer: coarse)").matches;
           if (e.key === "Enter" && !e.shiftKey && !touch && !e.nativeEvent.isComposing) { e.preventDefault(); void submit(); }
         }}
       />
       {busy && <button type="button" className="stop" onClick={onStop}>Stop</button>}
       <button type="submit" className="primary send" disabled={!draft.trim()}>{busy ? "Queue" : "Send"}</button>
-      {settings && <div className="composer-bar"><ModePicker mode={settings.mode} disabled={!!settings.parent} onChange={(mode) => onSettings({ mode })} /></div>}
+      {settings && <div className="composer-bar"><ModePicker mode={settings.mode} onChange={(mode) => onSettings({ mode })} /></div>}
     </form>
   );
 }

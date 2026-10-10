@@ -139,6 +139,10 @@ test("a message's menu regenerates, edits, deletes with Undo, and branches", asy
   await expect(page.getByRole("heading", { level: 1, name: /\(branch\)$/ })).toBeVisible();
   await expect(page.getByText("Branched from")).toBeVisible();
   await expect(page.getByText("You said: an edited question")).toBeVisible();
+  // A branch has its own mode, and its picker changes it.
+  await page.locator(".mode-picker > button").click();
+  await page.keyboard.press("1");
+  await expect(page.locator(".mode-picker > button")).toContainText("Ask");
   await noHorizontalScroll(page);
 });
 

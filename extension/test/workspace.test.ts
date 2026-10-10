@@ -166,6 +166,20 @@ describe("workspace tools in a Pi session", () => {
     expect(offered[3]).toContain("write");
   });
 
+  it("keeps another extension's tools off when a plan is approved", async () => {
+    // An unlogged thread has remember off; going from Plan to Auto mustn't bring it back.
+    const unlogged: ExtensionFactory = (pi) => {
+      pi.on("before_agent_start", (_e, ctx) => { setToolsOff(pi, ctx, "unlogged", ["remember"]); });
+    };
+    const { offered, settings } = await run("plan", [], {
+      steps: [[fauxToolCall("propose_plan", { plan: "1. Look" }, { id: "1" })]],
+      extensions: [unlogged], proposePlan: async () => "auto",
+    });
+    expect(settings.mode).toBe("auto");
+    expect(offered[1]).toContain("write");
+    expect(offered[1]).not.toContain("remember");
+  });
+
   it("keeps planning when the plan isn't approved", async () => {
     const { offered, results, settings } = await run("plan", [fauxToolCall("propose_plan", { plan: "1. Write" }, { id: "1" })], { proposePlan: async () => undefined });
     expect(results[0]).toContain("keep planning");

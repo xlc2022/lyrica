@@ -557,7 +557,7 @@ export interface ThreadSettings {
   images: boolean;
   /** "Do not log thread in memory". */
   unlogged: boolean;
-  /** Set for a subagent: its settings are its parent's or stricter, and the UI shows them read-only. */
+  /** Set for a subagent or a branch: its settings are its parent's or stricter. A subagent's UI shows them read-only. */
   parent: string | null;
   /** The endpoints and models this thread may choose from (local only when restricted). */
   allowed: EndpointInfo[];

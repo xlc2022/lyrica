@@ -15,7 +15,7 @@ export const MODES: Record<PermissionMode, { label: string; description: string 
 
 export const nextMode = (m: PermissionMode) => MODE_ORDER[(MODE_ORDER.indexOf(m) + 1) % MODE_ORDER.length]!;
 
-export function ModePicker({ mode, disabled, onChange }: { mode: PermissionMode; disabled?: boolean; onChange: (m: PermissionMode) => void }) {
+export function ModePicker({ mode, onChange }: { mode: PermissionMode; onChange: (m: PermissionMode) => void }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -33,7 +33,7 @@ export function ModePicker({ mode, disabled, onChange }: { mode: PermissionMode;
   });
   return (
     <div className="mode-picker" ref={anchor}>
-      <button type="button" className="link" disabled={disabled} aria-haspopup="menu" aria-expanded={open}
+      <button type="button" className="link" aria-haspopup="menu" aria-expanded={open}
         title="Shift+Tab in the message box cycles" onClick={() => setOpen(!open)}>
         {MODES[mode].label} <span aria-hidden="true">▾</span>
       </button>
@@ -67,9 +67,9 @@ export function ToolsMenu({ settings, onAttach, onChange }: {
           <button type="button" role="menuitem" onClick={() => { setOpen(false); onAttach(); }}>Attach a file…</button>
           {settings && (
             <>
-              <Switch label="Web search" checked={settings.webSearch} disabled={!!settings.parent} onChange={(webSearch) => onChange({ webSearch })} />
-              <Switch label="Internet for commands" checked={settings.network.internet} disabled={!!settings.parent} onChange={(internet) => onChange({ internet })} />
-              <Switch label="Images" checked={settings.images} disabled={!!settings.parent} onChange={(images) => onChange({ images })} />
+              <Switch label="Web search" checked={settings.webSearch} onChange={(webSearch) => onChange({ webSearch })} />
+              <Switch label="Internet for commands" checked={settings.network.internet} onChange={(internet) => onChange({ internet })} />
+              <Switch label="Images" checked={settings.images} onChange={(images) => onChange({ images })} />
             </>
           )}
         </div>
