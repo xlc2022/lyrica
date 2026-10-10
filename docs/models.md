@@ -183,12 +183,12 @@ members are skipped. General threads use the user's default
 (`setThreadProfile`). A thread's own lists (`setThreadModel`) beat the
 profile, and outside Custom they keep to one kind.
 
-`same` names a task of the same kind (text, embeddings, images) that doesn't
+`same` names a task of the same kind (text, embeddings, images, speech) that doesn't
 itself follow another, so it is one level deep. A profile's first entry
 brings the defaults: titles and compaction follow cheap subagents, and the
 sleep phases follow strong subagents. The compaction entry is stored but
 unused, since compaction uses the thread's chat model. A task with no list follows chat,
-except embeddings and the image tasks.
+except embeddings, the image tasks and the speech tasks.
 
 Profiles used to be cloud and local, with local models allowed in the cloud
 profile. A cloud profile that named a local model was copied to Custom,
@@ -205,7 +205,10 @@ the ones it skipped and why. A model is skipped when:
 - its endpoint is known to be down: the health cache holds each probe's
   result and each failed connection (`reportDown`) for 30 seconds;
 - it can't handle the call: no tools when tools are needed, a context window
-  smaller than the conversation, or, for image tasks, no image capability;
+  smaller than the conversation, or, for image and speech tasks, not the
+  capability the task needs;
+- for 30 seconds after it alone couldn't answer while its endpoint could (a
+  host's `model_unavailable`, see Speech);
 - outside Custom, it is of the other kind than the list (local in a private
   or local-only thread, cloud in the cloud profile, else the list's first
   model's), so nothing falls back across the local/cloud line.
@@ -221,7 +224,7 @@ isn't known lately and there is a later model to fall back to.
 `resolveModel` returns just the chosen `{ offeringId }`.
 
 `callContext(userId, pool, threadId)` reads a thread's local-only switch,
-profile, thinking level and lists from `user.db`.
+profile, thinking level, Voice to cloud switch and lists from `user.db`.
 
 ## Each turn
 
@@ -265,6 +268,53 @@ was asked; on a plain endpoint, a single level is the nearest level, with the
 note. Pi passes it as `reasoning_effort` to OpenAI-compatible
 endpoints. Subagent roles keep their own level. Thinking text is stored with
 the thread but never made searchable.
+
+## Speech
+
+Two tasks, **Dictation** (`speech.transcribe`) and **Read aloud**
+(`speech.speak`), with lists of their own (they never follow chat). A model
+can do them when it has the capability: `transcribe: true`, or `speak:
+{ voices: [{ id, language }] }` (a language tag such as `en` or `zh`). A host
+reports both in `/host/v1/models` (`kind` `transcribe` or `speak`); for any
+other endpoint they are set by hand (`setCapabilities`).
+
+- `transcribe(ctx, wav, { language?, signal? })` sends a 16 kHz mono WAV
+  clip (at most 10 minutes) to `/v1/audio/transcriptions` and gives back
+  `{ text, resolution, audioSeconds }`.
+- `speak(ctx, text, { voice?, speed?, language?, signal? })` asks
+  `/v1/audio/speech` for one piece of text with `response_format: "pcm"`
+  and gives back `{ audio, resolution, voice }`: a stream of raw PCM,
+  s16le mono at 24 kHz (`SPEECH_FORMAT`). Cancelling the stream, or
+  `signal`, cancels the request.
+- Both are the only way audio reaches a model, through the router: a
+  private or local-only context uses local models only, and a host is
+  called through `fetchFor`. The caller records the call
+  (`recordCall(…, { audioSeconds })`), never with text.
+- **Voice to cloud** (`ctx.voiceCloud`): `transcribe` refuses a cloud model
+  with `VoiceCloudOff` before any byte is sent unless it is on. It is a
+  per-user default, off (`setDefaultVoiceCloud`), and a thread's own choice
+  (`setThreadVoiceCloud`, null follows the default; `thread_choices`). A
+  branch keeps its parent's when it differs from the default. Read aloud
+  sends message text, so it follows the router's rules alone.
+- **Fallbacks.** When a call can't be made (the endpoint can't be reached,
+  answers 5xx or 429, or a host answers one of its away codes), the
+  endpoint is marked down and the router picks the next model in the list,
+  within one kind. A host's `model_unavailable` marks only that model, so
+  the host's other models keep answering. A refusal (4xx) is passed on
+  plainly. When a list is set but nothing in it can answer, `SpeechDown`
+  ("Dictation can't be reached now (…)"); with no list, `NoModel`. Neither
+  is ever a crash. For Read aloud, the fallback covers the call up to its
+  first bytes; a model that fails later ends that piece of audio.
+- **Voice and speed** are per-copy settings (Sampling): `voices`, a voice
+  per language tag, and `speed` (0.25 to 4). Yours for one language leaves
+  the shared one for another. Without a setting, the model's first voice
+  for the language is used, else its first voice.
+- `speechModel(task, ctx)` says without calling anything whether a task can
+  be used: its model's label and kind, or a reason (`none`, `voiceCloud`,
+  `down`) and a plain sentence.
+
+Audio is held in memory and passed straight through: no file, no log. Call
+records hold the model and `audioSeconds`.
 
 ## The libraries
 
@@ -344,7 +394,9 @@ machine.
 
 Each offering can have saved sampling settings (the Sampling tab): temperature, top-p, top-k, min-p,
 repeat, presence and frequency penalties, the longest reply, a seed and up
-to four stop strings (`core/src/models/settings.ts`).
+to four stop strings (`core/src/models/settings.ts`). A speech model's
+voice per language and speed are kept the same way (see Speech) and are
+never sent with a chat request.
 
 - A shared offering's values live in `self.db` and only an administrator
   sets them (`setOfferingSettings(…, "shared")`). A user's own values live in

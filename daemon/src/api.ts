@@ -164,8 +164,10 @@ export interface Capabilities {
   /** Speech to text (Dictation). */
   transcribe?: boolean;
   /** Text to speech (Read aloud): its voices, each with the language it speaks ("en", "zh"). */
-  speak?: { voices: { id: string; language: string }[] };
+  speak?: { voices: Voice[] };
 }
+/** One of a speech model's voices, with the language it speaks: a primary tag such as "en" or "zh". */
+export interface Voice { id: string; language: string }
 
 /** One model an endpoint offers. */
 export interface OfferingInfo extends Capabilities {

@@ -1013,8 +1013,8 @@ function offeringInfo(d: Lyricad, userId: string, id: string): Api.OfferingInfo 
 }
 
 /** Only known capabilities, of the right types. With `clearing`, null clears one. */
-function capabilities(input: object, clearing = false): Record<string, number | boolean | string[] | null> {
-  const out: Record<string, number | boolean | string[] | null> = {};
+function capabilities(input: object, clearing = false): Record<string, number | boolean | string[] | { voices: Api.Voice[] } | null> {
+  const out: Record<string, number | boolean | string[] | { voices: Api.Voice[] } | null> = {};
   const levels = ["low", "medium", "high"];
   for (const k of CAPABILITIES) {
     const v = (input as Record<string, unknown>)[k];
@@ -1022,8 +1022,10 @@ function capabilities(input: object, clearing = false): Record<string, number | 
     if (v === null && clearing) out[k] = null;
     else if (k === "contextWindow" && typeof v === "number" && v > 0) out[k] = Math.floor(v);
     else if (k === "reasoning" && Array.isArray(v) && v.every((l) => levels.includes(l))) out[k] = levels.filter((l) => v.includes(l));
-    else if (k !== "contextWindow" && k !== "reasoning" && typeof v === "boolean") out[k] = v;
-    else throw new HttpError(400, `${k} must be ${k === "contextWindow" ? "a number of tokens" : k === "reasoning" ? "a list of low, medium and high" : "true or false"}`);
+    // Each voice is checked in core.
+    else if (k === "speak" && v && typeof v === "object" && Array.isArray((v as { voices?: unknown }).voices)) out[k] = { voices: (v as { voices: Api.Voice[] }).voices };
+    else if (k !== "contextWindow" && k !== "reasoning" && k !== "speak" && typeof v === "boolean") out[k] = v;
+    else throw new HttpError(400, `${k} must be ${k === "contextWindow" ? "a number of tokens" : k === "reasoning" ? "a list of low, medium and high" : k === "speak" ? "{ voices: [{ id, language }] }" : "true or false"}`);
   }
   return out;
 }
