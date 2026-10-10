@@ -323,8 +323,13 @@ describe("threads", () => {
     const t = own.createThread({ interface: "web" });
     const keep = own.appendEntry(t.id, { piId: "u1", role: "user", data: {}, text: "the boat is blue" });
     own.appendEntry(t.id, { piId: "a1", role: "assistant", data: {}, text: "lovely" });
-    const gone = own.appendEntry(t.id, { piId: "u2", role: "user", data: {}, text: "the shed is red" }, new Date(Date.now() + 5).toISOString());
-    own.appendEntry(t.id, { piId: "a2", role: "assistant", data: {}, text: "noted" });
+    // A subagent started before the removed turn, and one started in it.
+    const earlier = own.createThread({ interface: "web", parent: t.id, subagent: true });
+    const at = new Date(Date.now() + 50).toISOString();
+    const gone = own.appendEntry(t.id, { piId: "u2", role: "user", data: {}, text: "the shed is red" }, at);
+    own.appendEntry(t.id, { piId: "a2", role: "assistant", data: {}, text: "noted" }, at);
+    await new Promise((r) => setTimeout(r, 80));
+    const later = own.createThread({ interface: "web", parent: t.id, subagent: true });
     const [kept, removed, mixed] = own.addNotes([
       { text: "the boat is blue", source: keep },
       { text: "the shed is red", source: gone },
@@ -333,9 +338,6 @@ describe("threads", () => {
     own.putPage({ slug: "home", title: "Home", summary: "x", text: `Red shed [${removed}].` }, "sleep");
     own.putPage({ slug: "talk", title: "Talk", summary: "x", text: `Said so [${gone}].` }, "sleep");
     own.putPage({ slug: "boat", title: "Boat", summary: "x", text: `Blue [${kept}].` }, "sleep");
-    const earlier = own.createThread({ interface: "web", parent: t.id, subagent: true });
-    await new Promise((r) => setTimeout(r, 10));
-    const later = own.createThread({ interface: "web", parent: t.id, subagent: true });
 
     expect(own.subagentsSince(t.id, 3)).toEqual([later.id]);
     expect(own.truncateThread(t.id, 3, "lyrica")).toEqual({ removed: 2, subagents: [later.id] });

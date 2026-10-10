@@ -208,7 +208,10 @@ message naming the run and its kept threads, unless it was forgotten. A
 
 Forgetting a thread forgets its subagents' threads too (`forgetThread`), since
 they hold its tasks and results. `forget(userId, pool, threadId)`, called
-first, stops the runs it started and drops their records.
+first, stops the runs it started and drops their records. Removing turns
+(a rewind) forgets the subagent threads started in them the same way:
+`forgetSubagents(userId, pool, threads)` stops every run with a subagent
+among them, with reason `parent_changed`, and drops their records.
 
 ## Events
 

@@ -108,12 +108,26 @@ Each active thread is one Pi session from `openThreadSession`, with
   model in a private or local-only thread, a private thread made not
   local-only, a subagent wider than its parent, a folder outside the allowed
   paths, a host that matches everything.
+- **Branch from here** (`POST …/messages/:n/branch`) makes a child thread
+  with the conversation up to message `n` (`branchThread`), and gives it
+  the thread's models, local-only switch and workspace settings, which it
+  can then only narrow.
+- **Rewinding** (`POST …/messages/:n/rewind`, `RewindRequest`): `delete`
+  removes message `n` and everything after it; `regenerate` removes her
+  reply's turn from its user message and sends that message again;
+  `edit` removes from the user's message `n` and sends the new text.
+  `Regenerate with…` first sets the thread's chat model, which the router
+  checks, so a cloud model in a local-only thread is refused before anything
+  is removed. It holds the thread's turn (`409` while one runs): the session
+  closes, subagents started in the removed turns are stopped and forgotten
+  (`Delegation.forgetSubagents`), the entries go (`truncateThread`), and
+  every view gets `rewound`. Not in a subagent's thread.
 - Forgetting a thread forgets its subagents' threads with it, deepest first,
   stopping their runs and dropping their records (`Delegation.forget`).
 - Thread lists are per interface (`web` by default), filtered by the user's
   display settings, most recently active first, with child threads (forks,
   copies) nested under their parent. Subagents aren't listed: they live in
-  their parent's `delegate` cards. Memory search honours the same pool filters; `?all=1` ignores
+  their parent's `delegate` cards. Child threads include branches. Memory search honours the same pool filters; `?all=1` ignores
   them in both.
 
 ## The event stream
