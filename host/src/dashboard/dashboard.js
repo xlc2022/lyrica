@@ -115,7 +115,15 @@ async function renderDownloads() {
   table.replaceChildren();
   for (const d of downloads) {
     const row = table.insertRow();
-    row.insertCell().textContent = d.path;
+    const what = row.insertCell();
+    what.textContent = d.path;
+    if (d.source === "url" && d.url) {
+      const link = document.createElement("div");
+      link.className = "mono muted";
+      link.style.wordBreak = "break-all";
+      link.textContent = d.url;
+      what.append(link);
+    }
     const pct = d.size ? ` ${Math.floor((100 * d.received) / d.size)}%` : "";
     row.insertCell().textContent = d.state === "downloading" ? `downloading${pct}` : d.state === "done" && d.verified === false ? "done, unverified" : d.error ?? d.state;
     row.insertCell().append(button(["queued", "downloading", "verifying"].includes(d.state) ? "Cancel" : "Clear", () => api(`/host/v1/downloads/${d.id}`, { method: "DELETE" })));

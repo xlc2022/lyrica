@@ -62,7 +62,8 @@ export class Host {
   readonly local: http.Server;
   runtime: Runtime | null = null;
   /** Addresses host-api never talks to, whatever they send: fetch's, which goes out to the internet. */
-  refusedPeers = new Set<string>();
+  /** Peers that may not call in (fetch), checked on every request. */
+  refusePeer: (address: string) => Promise<boolean> = async () => false;
   downloads: Downloads | null = null;
   private readonly limit: LoginLimit;
   private readonly isOurs: (name: string) => boolean;
@@ -85,11 +86,6 @@ export class Host {
       (req, res) => void this.handle(req, res, "tls"),
     );
     this.local = http.createServer((req, res) => void this.handle(req, res, "local"));
-    for (const server of [this.tls, this.local]) {
-      server.on("connection", (socket) => {
-        if (this.refusedPeers.has(plainAddress(socket.remoteAddress))) socket.destroy();
-      });
-    }
   }
 
   async listen(tlsPort: number, localPort: number, address = "0.0.0.0"): Promise<{ tls: number; local: number }> {
@@ -136,6 +132,10 @@ export class Host {
 
   private async handle(req: IncomingMessage, res: ServerResponse, via: "tls" | "local"): Promise<void> {
     try {
+      if (await this.refusePeer(plainAddress(req.socket.remoteAddress))) {
+        res.socket?.destroy();
+        return;
+      }
       if (via === "local" && !this.opts.localPeers.includes(plainAddress(req.socket.remoteAddress))) {
         res.socket?.destroy();
         return;

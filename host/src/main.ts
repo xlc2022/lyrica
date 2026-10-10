@@ -51,11 +51,11 @@ await host.listen(Number(env.TLS_PORT || 7443), Number(env.LOCAL_PORT || 7080));
 host.downloads = new Downloads({ url: env.FETCH_URL || "http://fetch:7300", runtime: host.runtime, log: stdoutLog });
 await host.downloads.start();
 await host.runtime.start();
-// fetch shares a network with host-api (for host-api's calls to it) and may not call back.
-const refuseFetch = async () => {
+// fetch shares a network with host-api (for host-api's calls to it) and may not
+// call back. Its address is looked up on every request, so a restart that moves
+// it leaves no window.
+host.refusePeer = async (address) => {
   const found = await lookup(env.FETCH_HOST || "fetch", { all: true }).catch(() => []);
-  host.refusedPeers = new Set(found.map((a) => a.address));
+  return found.some((a) => a.address === address);
 };
-await refuseFetch();
-setInterval(() => void refuseFetch(), 30_000).unref();
 for (const signal of ["SIGTERM", "SIGINT"] as const) process.on(signal, () => void host.close().then(() => process.exit(0)));

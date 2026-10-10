@@ -71,7 +71,9 @@ subfolder, under `lyrica/<source>/<repository>/`.
   appears. A link without a checksum is kept, marked unverified.
 - Links and redirects must go to public addresses: never this machine, the
   LAN or the tailnet. A link must say its size, and a signed link's query
-  string is never written down.
+  string is never written down. Links are short (1024 characters), one at
+  a time, and Downloads shows each in full while it downloads: a link is a
+  way data could leave this machine, so check ones you don't recognise.
 - A gated repository's token is used for that download only, and never
   written down. A gated download interrupted by a restart must be started
   again; it resumes from its partial file.

@@ -31,7 +31,7 @@ on `/v1`, where OpenAI clients read `error.message`.
 | 401 | `unpaired` | The client certificate isn't pinned, or was revoked. |
 | 403 | `refused` | Not allowed: a pickle file, a delete outside the download record, a dashboard-only action. |
 | 404 | `not_found` | No such model, recipe, download or file. |
-| 409 | `in_use` | The model or file is in use by a running request. |
+| 409 | `in_use` | The model or file is in use by a running request, or a link is already downloading. |
 | 413 | `too_big` | The model can't fit on any GPU it may use, even with everything idle unloaded. |
 | 503 | `paused` | The host is paused. Lyrica uses her fallbacks. |
 | 503 | `busy` | It could fit, but not within the wait limit, because the GPU is busy. The message names what with: "The GPU is busy with a chat model." |
@@ -217,8 +217,14 @@ servers) has a route out.
   IPv6, only global unicast is allowed.
 - A link must say its size (`Content-Length`), and free space is checked
   against it and every download already queued. No download is written past
-  its size. A link's query string is kept in memory for the transfer only,
-  never listed or recorded.
+  its size. A link's query string is kept in memory for the transfer only
+  and never recorded; while the link downloads, its `url` shows it in full.
+- A link is at most 1024 characters, https, with no user name or
+  password, and only one downloads at a time (`in_use` otherwise).
+- **Known channel.** A paired client can still carry data out of the host
+  in a link's path or query: a little at a time, one link at once, and
+  each shown in full on the dashboard's Downloads. These limits make it
+  slow and visible, not impossible.
 - A file must be what its name says (a GGUF header, a readable safetensors
   header) before it appears.
 - A sharded model is offered once all its shards are here.
