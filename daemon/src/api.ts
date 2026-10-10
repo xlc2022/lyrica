@@ -279,15 +279,15 @@ export interface ThreadSummary {
   updatedAt: string;
   /** A turn is running. */
   busy: boolean;
-  /** Subagents' threads, nested under their parent. */
+  /** Child threads (forks, copies), nested under their parent. Subagents aren't listed. */
   children: ThreadSummary[];
 }
 
 /**
  * GET /api/u/:userId/threads?interface=web → ThreadSummary[]
  * One interface's threads (default `web`), most recently active first. Honours the user's
- * display filters (pools, hidden); `?all=1` ignores them. Subagents appear
- * only under their parent.
+ * display filters (pools, hidden); `?all=1` ignores them. Child threads
+ * appear only under their parent; subagents not at all (their delegate cards show them).
  */
 /** POST /api/u/:userId/threads → ThreadSummary. Its interface is `web`. */
 export interface NewThread { pool: Pool; title?: string }
@@ -361,7 +361,11 @@ export type MessagePart =
   | { type: "tool"; toolCallId: string; name: string; args: unknown; result?: string; isError?: boolean; threads?: ThreadRef[] }
   | { type: "recall"; ids: string[] }
   | { type: "remember"; ids: string[] }
-  /** A background subagent run's result or question, delivered into the thread. */
+  /**
+   * Something a subagent run delivered into the thread: a background run's
+   * result or question, a note, or what a user wrote to one of its subagents.
+   * `status` says which ("finished", "question", "note", "user_message", …).
+   */
   | { type: "delegation"; text: string; runId?: string; status?: string; threads?: ThreadRef[] };
 
 /** A `delegate` call's subagent threads, so its card can open them. */
@@ -374,6 +378,11 @@ export interface Message {
   n: number;
   /** "notice": something delivered into the thread, such as a background run's result. */
   role: "user" | "assistant" | "notice";
+  /**
+   * In a subagent's thread, who sent a "user" message: Lyrica, or a user who
+   * wrote in the thread (with their current name).
+   */
+  from?: { kind: "lyrica" } | { kind: "user"; userId: string; name: string };
   parts: MessagePart[];
   createdAt: string;
   /** The model that wrote an assistant message. */
@@ -389,7 +398,10 @@ export interface MessagePage { messages: Message[]; hasMore: boolean }
 
 /**
  * POST /api/u/:userId/threads/:pool/:threadId/messages → SendResponse.
- * Starts a turn, or waits as a follow-up while one runs.
+ * Starts a turn, or waits as a follow-up while one runs. In a subagent's
+ * thread it goes to the subagent, as Lyrica's `message` does (joining its
+ * work, answering its question, or continuing it), marked as the user's, and
+ * a note goes to the parent thread. A subagent that can't take it is `409`.
  */
 export interface SendRequest {
   text: string;
@@ -452,7 +464,7 @@ export type ThreadEvent =
    */
   | { type: "delegation"; event: DelegationEvent }
   /** A background run's result or question, just delivered into this thread (also stored, as a `notice` message). */
-  | { type: "notice"; text: string; runId?: string; status?: string };
+  | { type: "notice"; text: string; runId?: string; status?: string; threads?: ThreadRef[] };
 
 /** Which run and subagent thread an event is about, and its parent thread. */
 export interface RunRef { userId: string; pool: Pool; parentThreadId: string; runId: string; threadId: string }
@@ -461,6 +473,8 @@ export type DelegationEvent =
   | (RunRef & { type: "output"; delta: string })
   | (RunRef & { type: "tool_call"; toolName: string; args: unknown })
   | (RunRef & { type: "question"; question: string })
+  /** `ask_parent` with `wait: false`: it keeps working. */
+  | (RunRef & { type: "note"; note: string })
   | (RunRef & { type: "finished"; status: "finished" | "failed" })
   | (RunRef & { type: "stopped"; reason: "stopped" | "timeout" | "parent_changed" })
   | (RunRef & { type: "interrupted" })
@@ -473,6 +487,11 @@ export interface PermissionRequest {
   args: unknown;
   /** When it is denied if nobody answers (ISO time). */
   expiresAt: string;
+  /**
+   * Set for a subagent's tool call. The same request shows in the subagent's
+   * thread and its parent's; either can answer it, and the first answer wins.
+   */
+  subagent?: { runId: string; threadId: string; parentThreadId: string; role: string };
 }
 
 // --- Subagents ---
