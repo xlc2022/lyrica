@@ -33,6 +33,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Docker forwards outside names to a loopback resolver from its own
+      # namespace: the case host-api's blackhole DNS setting must cover.
+      - name: Docker with a loopback DNS resolver
+        run: |
+          echo '{"dns": ["127.0.0.53"]}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
       - run: mkdir -p "$RUNNER_TEMP/models"
       - run: host/install.sh --no-gpu --yes --models "$RUNNER_TEMP/models" --name ci-host
       - run: host/test/stack/network.sh

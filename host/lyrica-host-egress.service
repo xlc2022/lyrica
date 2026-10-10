@@ -1,15 +1,17 @@
 # Installed by host/install.sh: keeps host-api without a route out after a
-# reboot or a Docker restart (see egress.sh).
+# reboot or a Docker restart (see egress.sh). It runs before Docker, so the
+# rules are there before Docker brings the containers back; Docker keeps an
+# existing DOCKER-USER chain. After a firewall reload that flushes INPUT,
+# run: systemctl restart lyrica-host-egress
 [Unit]
 Description=Lyrica model host: no outbound connections from host-api
-After=docker.service
+Before=docker.service
 PartOf=docker.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=@HOST_DIR@/egress.sh apply
-ExecStop=@HOST_DIR@/egress.sh remove
 
 [Install]
 WantedBy=docker.service
