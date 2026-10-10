@@ -143,7 +143,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
         <p className="subnote">{s?.subagent ? "Subagent of" : s?.child ? "Child thread of" : "Branched from"} <a href={`#/u/${encodeURIComponent(userId)}/t/${pool}/${encodeURIComponent(parent.id)}`}>{parent.title || "the parent thread"}</a></p>
       )}
       <div className="scroll" ref={scroller}>
-        <PendingBar scroller={scroller} deps={[t.messages, t.live]} />
+        <PendingBar scroller={scroller} deps={[t.messages, t.live.permissions]} />
         <ErrorText error={summary.error || t.loadError} />
         {settings.error && <ErrorText error={`This thread's settings didn't load: ${settings.error}`} />}
         <Conversation ctx={ctx} pool={pool} base={base} threadId={threadId} subagent={!!s?.subagent} thread={t} rewinder={rewinder} hideFrom={pending?.hide} parentTitle={s?.child ? parent?.title : undefined} />
