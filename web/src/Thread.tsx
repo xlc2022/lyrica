@@ -143,6 +143,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
         <p className="subnote">{s?.subagent ? "Subagent of" : s?.child ? "Child thread of" : "Branched from"} <a href={`#/u/${encodeURIComponent(userId)}/t/${pool}/${encodeURIComponent(parent.id)}`}>{parent.title || "the parent thread"}</a></p>
       )}
       <div className="scroll" ref={scroller}>
+        <PendingBar scroller={scroller} deps={[t.messages, t.live]} />
         <ErrorText error={summary.error || t.loadError} />
         {settings.error && <ErrorText error={`This thread's settings didn't load: ${settings.error}`} />}
         <Conversation ctx={ctx} pool={pool} base={base} threadId={threadId} subagent={!!s?.subagent} thread={t} rewinder={rewinder} hideFrom={pending?.hide} parentTitle={s?.child ? parent?.title : undefined} />
@@ -182,6 +183,30 @@ function findThread(list: ThreadSummary[], pool: Pool, id: string): ThreadSummar
     if (c) return c;
   }
   return undefined;
+}
+
+/**
+ * When the latest card waiting for her answer (a plan, an approval) has
+ * scrolled out of view, a thin bar across the top of the conversation names
+ * it and jumps to it.
+ */
+function PendingBar({ scroller, deps }: { scroller: React.RefObject<HTMLDivElement | null>; deps: unknown[] }) {
+  const [kind, setKind] = useState("");
+  const latest = () => [...scroller.current?.querySelectorAll<HTMLElement>("[data-pending]") ?? []].at(-1);
+  useEffect(() => {
+    const card = latest();
+    if (!card) { setKind(""); return; }
+    const seen = new IntersectionObserver(([e]) => setKind(e!.isIntersecting ? "" : card.dataset.pending ?? ""), { root: scroller.current });
+    seen.observe(card);
+    return () => seen.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+  if (!kind) return null;
+  return (
+    <button type="button" className="pending-bar" onClick={() => latest()?.scrollIntoView({ block: "center", behavior: "smooth" })}>
+      {kind} waiting for your answer
+    </button>
+  );
 }
 
 /** Keeps the conversation scrolled to the bottom while new text arrives, unless she has scrolled up. */
