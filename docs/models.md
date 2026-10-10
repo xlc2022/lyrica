@@ -85,7 +85,9 @@ administrator pairs or manages them; a personal host lives in its user's
   the name is free before using up the code.
 - **Away.** A host that can't be reached, or answers `paused`, `busy`,
   `restarting`, `unavailable` or `unpaired`, is marked down in the health
-  cache, so the next model in the list answers. `probe` reads
+  cache, so the next model in the list answers. The host's undici dispatcher
+  and its connections have an `error` listener, so a reply cut off mid-stream
+  fails its call rather than the process. `probe` reads
   `/host/v1/status` and counts only `running` as up.
 - **Discovery** reads `/host/v1/models`: context length, tools, vision,
   embeddings, the file's checksum (`digest`, for strong group suggestions)
@@ -217,7 +219,19 @@ replacement or merge never changes a model's kind. A private thread is
 always local-only.
 
 `resolveLive` first probes the chosen endpoint (2 seconds) when its health
-isn't known lately and there is a later model to fall back to.
+isn't known lately and there is a later model to fall back to (or always,
+with `probeLast`, as sleep asks).
+
+**Every model away.** When a task's list is set but every model in it was
+skipped because its machine is down or stale, `resolve` throws `Offline`
+(a `NoModel`, with the task and what was tried); a list where nothing fits
+the call is a plain `NoModel`. Before throwing it, `resolveLive` asks those
+machines again, in order, so one that has just come back answers at once.
+`callWithFallback` runs a call that isn't a Pi turn (a title, and speech and
+images when they come) on each model in turn: a machine that can't be
+reached or is away (`isUnreachable`) is marked down and the next tries, any
+other failure is the call's own, and when none answers it throws `Offline`
+with every model tried.
 `resolveModel` returns just the chosen `{ offeringId }`.
 
 `callContext(userId, pool, threadId)` reads a thread's local-only switch,
@@ -232,7 +246,9 @@ and records the call. A connection error during a turn, including a reply
 cut off mid-stream, marks that endpoint down, and when Pi retries, the chat
 model is chosen again first (`prepare({ retry: true })`, probing for at most
 a second, inside Pi's two-second pause), so the retry goes to the next model
-in the list. The retry rewrites the turn's call record, so a turn is one
+in the list; when none is left, the retry is called off and the turn ends.
+A session opens on its chat model even when that machine is down
+(`evenIfDown`), since each turn chooses again. The retry rewrites the turn's call record, so a turn is one
 call. `resolveLive`'s probe only asks
 whether the endpoint answers; the address check never holds up a turn.
 Tools are asked of a model only when the thread has tools.

@@ -17,6 +17,8 @@ export interface Live {
   items: LiveItem[];
   /** Plain-words errors from the latest turn. */
   errors: string[];
+  /** No model could be reached: what was tried. Any waiting message is in `queued`, and goes when one answers. */
+  offline?: { task: string; tried: { label: string; reason: string }[] };
   title?: string;
   /** Bumped when stored messages must be reloaded (turn end, reset). */
   reload: number;
@@ -60,7 +62,7 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     case "sent":
       return { ...s, items: [...s.items, { role: "user", text: e.text }] };
     case "turn_start":
-      return { ...s, busy: true, errors: [] };
+      return { ...s, busy: true, errors: [], offline: undefined };
     case "message_start":
       return { ...s, items: [...s.items, { role: "assistant", model: e.model, parts: [] }] };
     case "text":
@@ -89,6 +91,9 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     }
     case "error":
       return { ...s, errors: [...s.errors, e.message] };
+    case "offline":
+      // A message she sent that no model took now waits in the queue, so it isn't shown twice.
+      return { ...s, offline: { task: e.task, tried: e.tried }, items: s.items.filter((i, n) => n < s.ended || i.role !== "user" || !s.queued.includes(i.text)) };
     case "title":
       return { ...s, title: e.title };
     case "settings":
@@ -99,7 +104,7 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     case "stored":
       return { ...s, items: s.items.slice(s.ended), ended: 0 };
     case "stopping":
-      return { ...s, queued: [] };
+      return { ...s, queued: [], offline: undefined };
     case "notice":
       return { ...s, items: [...s.items, { role: "notice", text: e.text, status: e.status, threads: e.threads }] };
     case "refresh":

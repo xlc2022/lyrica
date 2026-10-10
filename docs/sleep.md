@@ -104,8 +104,10 @@ code therefore never needs to open a private database.
 Before a pool's sleep starts, `lyricad` checks the pool's sleep model with a
 cheap request (such as listing models).
 
-- **Endpoint unreachable:** skip that pool, record "skipped: endpoint offline,"
-  and try again at the next due time. The watermark doesn't move, so nothing is
+- **Endpoint unreachable:** each phase's machine is asked first, so a sleep
+  list falls back past one that is off. With none answering, skip that
+  pool, record "skipped: endpoint offline," and try again at the next due
+  time. The watermark doesn't move, so nothing is
   lost. The next sleep simply covers a longer period.
 - **Endpoint drops partway through:** phases already finished stay finished,
   and the remaining phases run next time.

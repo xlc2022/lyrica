@@ -1,7 +1,7 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, normalize, sep } from "node:path";
-import { AuthError, CloudModelForbidden, Forbidden, HostRefused, Locked, NoModel, PairingFailed, WrongPassword } from "@lyrica/core";
+import { AuthError, CloudModelForbidden, Forbidden, HostRefused, Locked, NoModel, Offline, PairingFailed, WrongPassword } from "@lyrica/core";
 import { COOKIE } from "./auth.ts";
 
 /** An error with an HTTP status. Its message is shown to the user. */
@@ -147,6 +147,7 @@ export function statusOf(err: unknown): number {
   if (err instanceof HttpError) return err.status;
   if (err instanceof Locked) return 503;
   if (err instanceof Forbidden) return 403;
+  if (err instanceof Offline) return 503;
   if (err instanceof AuthError || err instanceof WrongPassword) return 401;
   if (err instanceof CloudModelForbidden || err instanceof NoModel || err instanceof PairingFailed) return 400;
   // A model host's refusal keeps its meaning; anything else from it is a bad gateway.

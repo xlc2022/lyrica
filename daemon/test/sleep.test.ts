@@ -109,7 +109,7 @@ describe("sleep in lyricad", () => {
     const m = (await s.li.post<OfferingInfo>(`${s.u}/endpoints/${dead.id}/models`, { modelId: "m" })).body;
     await s.li.put(`${s.u}/profiles/custom/sleep.wake`, { model: { offeringId: m.id } });
     const down = await s.li.post(`${s.u}/sleep/general`, {});
-    expect(down).toMatchObject({ status: 409, body: { error: "Sleep can't run now: no model for sleep.wake can answer now (dead/m: dead is down)." } });
+    expect(down).toMatchObject({ status: 409, body: { error: "Sleep can't run now: no model for sleep.wake can be reached now (dead/m: dead is down)." } });
     expect((await s.li.get<SleepOverview>(`${s.u}/sleep`)).body.runs.map((r) => r.skipReason)).toEqual(["endpoint-down", "no-activity"]);
   });
 

@@ -22,6 +22,38 @@ export { refId, type Entry, type ProfileName, type Use } from "./refs.ts";
 export class CloudModelForbidden extends Error {}
 /** No usable model is set for a task, or the one set no longer exists. */
 export class NoModel extends Error {}
+/**
+ * Every model that could take a task's call is away (its machine down, paused
+ * or stale) or failed to answer: nothing can answer now, though something may
+ * once a machine is back. A NoModel, so whatever handles one handles this.
+ * `tried` holds labels and reasons, never text.
+ */
+export class Offline extends NoModel {
+  readonly code = "offline";
+  override readonly name = "Offline";
+  constructor(readonly task: Task, readonly tried: { label: string; reason: string }[]) {
+    super(`no model for ${task} can be reached now${tried.length ? ` (${tried.map((t) => `${t.label}: ${t.reason}`).join("; ")})` : ""}`);
+  }
+}
+
+// "terminated" is a reply cut off mid-stream when its connection dropped; the timeouts are a machine that stopped answering.
+const UNREACHABLE = /ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|fetch failed|socket hang up|connect|^terminated$|other side closed|timed out|Timeout Error|UND_ERR_(HEADERS|BODY|CONNECT)_TIMEOUT/i;
+/** A model host's answers that mean another model should answer for a while. */
+const AWAY_CODES = new Set(["unreachable", "paused", "busy", "restarting", "unavailable", "unpaired", "identity_changed"]);
+
+/**
+ * Whether a failed call (or a reply's error message) means its machine couldn't
+ * be reached or is away, so the next model should try, rather than that the
+ * model refused this request.
+ */
+export function isUnreachable(err: unknown): boolean {
+  if (err instanceof HostRefused) return AWAY_CODES.has(err.code);
+  if (typeof err === "string") return UNREACHABLE.test(err);
+  const e = err as { name?: string; message?: string; code?: string; cause?: unknown } | undefined;
+  if (!e) return false;
+  if (e.name === "TimeoutError" || UNREACHABLE.test(e.message ?? "") || UNREACHABLE.test(e.code ?? "")) return true;
+  return e.cause !== undefined && e.cause !== err && isUnreachable(e.cause);
+}
 
 /** An endpoint unreachable this long is stale; a model missing this long is gone. */
 export const STALE_DAYS = 14;
@@ -152,6 +184,8 @@ export interface CleanupItem {
 
 /** What a call needs from a model: tools, and room for the conversation. */
 export interface Need { tools?: boolean; tokens?: number }
+/** `evenIfDown`: ignore the health cache (stale still counts). `except`: endpoints to treat as down. */
+export interface ResolveOptions { evenIfDown?: boolean; except?: ReadonlySet<string> }
 
 /** The model chosen for a call, and why earlier ones in the list were passed over. */
 export interface Resolution {
@@ -1472,7 +1506,7 @@ export class Models {
    * private or local-only context, a group's cloud members are skipped and a
    * cloud model named directly throws CloudModelForbidden.
    */
-  resolve(task: Task, ctx: CallContext, need: Need = {}): Resolution {
+  resolve(task: Task, ctx: CallContext, need: Need = {}, opts: ResolveOptions = {}): Resolution {
     const c = this.catalog(ctx.userId);
     const profile = profileFor(ctx);
     const found = this.listFor(task, ctx, c);
@@ -1490,6 +1524,7 @@ export class Models {
     const firstKind = unique.map((x) => c.endpoints.get(c.offerings.get(x.id)?.endpointId ?? "")?.kind).find(Boolean);
     const kind = restricted ? "local" : !fixKind ? undefined : found.source === "profile" ? "cloud" : firstKind;
     const skipped: { label: string; reason: string }[] = [];
+    let away = false;
     for (let i = 0; i < unique.length; i++) {
       const { id, grouped } = unique[i]!;
       const o = c.offerings.get(id);
@@ -1501,29 +1536,100 @@ export class Models {
         continue;
       }
       if (fixKind && kind && ep.kind !== kind) { skipped.push({ label, reason: `it is ${ep.kind}, and this list won't cross to ${ep.kind}` }); continue; }
+      // Unfit first: a model that couldn't take the call even with its machine up doesn't make the task offline.
       const why = this.unfit(task, o, ep, need);
       if (why) { skipped.push({ label, reason: why }); continue; }
+      const gone = this.away(ep, opts);
+      if (gone) { skipped.push({ label, reason: gone }); away = true; continue; }
       return { ref: { offeringId: o.id }, endpoint: ep, offering: o, label, profile, source: found.source, skipped, remaining: unique.length - i - 1 };
     }
+    // Something would answer once its machine is back: offline, not unset.
+    if (away) throw new Offline(task, skipped);
     const reasons = skipped.map((s) => `${s.label}: ${s.reason}`).join("; ");
     throw new NoModel(`no model for ${task} can answer now${reasons ? ` (${reasons})` : ""}`);
   }
 
   /**
    * Like `resolve`, but first probes a chosen endpoint whose health isn't
-   * known lately, when there is a later model to fall back to, so a machine
-   * that is off is passed over before the call rather than after.
+   * known lately, when there is a later model to fall back to (or always, with
+   * `probeLast`), so a machine that is off is passed over before the call
+   * rather than after. When the health cache says every machine is away, it
+   * asks them again, once, in order, so one that has just come back answers.
+   * Throws Offline when none does.
    */
-  async resolveLive(task: Task, ctx: CallContext, need: Need = {}, opts: { probeMs?: number } = {}): Promise<Resolution> {
+  async resolveLive(task: Task, ctx: CallContext, need: Need = {}, opts: { probeMs?: number; probeLast?: boolean } = {}): Promise<Resolution> {
+    const ms = opts.probeMs ?? PROBE_MS;
+    let revived = false;
     for (;;) {
-      const r = this.resolve(task, ctx, need);
+      let r: Resolution;
+      try {
+        r = this.resolve(task, ctx, need);
+      } catch (err) {
+        if (!(err instanceof Offline) || revived) throw err;
+        revived = true;
+        if (!(await this.revive(task, ctx, need, ms))) throw err;
+        continue;
+      }
       const h = this.health.get(r.endpoint.id);
-      if (!r.remaining || (h && Date.now() - h.at < HEALTH_MS)) return r;
+      if ((!r.remaining && !opts.probeLast) || (h && Date.now() - h.at < HEALTH_MS)) return r;
       // Only whether it answers, never the address check: a slow resolver mustn't hold up a turn.
-      const state = await (r.endpoint.api === "host" ? this.hostUp(r.endpoint, opts.probeMs ?? PROBE_MS) : probeUrl(r.endpoint.baseUrl, r.endpoint.apiKey, opts.probeMs ?? PROBE_MS)).catch(() => "down" as const);
-      this.seen(r.endpoint, state === "up", ctx.userId);
-      if (state === "down") this.reportDown(r.endpoint.id);
-      if (state === "up") return r;
+      const up = (await this.answers(r.endpoint, ms)) === "up";
+      this.seen(r.endpoint, up, ctx.userId);
+      if (up) return r;
+    }
+  }
+
+  /** Asks the task's machines that the health cache calls down, in order, until one answers. */
+  private async revive(task: Task, ctx: CallContext, need: Need, ms: number): Promise<boolean> {
+    const except = new Set<string>();
+    for (;;) {
+      let r: Resolution;
+      try {
+        r = this.resolve(task, ctx, need, { evenIfDown: true, except });
+      } catch {
+        return false;
+      }
+      except.add(r.endpoint.id);
+      const up = (await this.answers(r.endpoint, ms)) === "up";
+      this.seen(r.endpoint, up, ctx.userId);
+      if (up) return true;
+    }
+  }
+
+  /** Whether an endpoint answers, within `ms`. Never throws. */
+  private answers(ep: Endpoint, ms: number): Promise<"up" | "down"> {
+    return (ep.api === "host" ? this.hostUp(ep, ms) : probeUrl(ep.baseUrl, ep.apiKey, ms)).catch(() => "down" as const);
+  }
+
+  /**
+   * One call, on the task's models in turn: a model whose machine can't be
+   * reached or is away (`isUnreachable`) is marked down and the next one
+   * tries. Any other failure is the call's own and is thrown as is. When none
+   * answers, throws Offline naming every model tried. The call records itself.
+   */
+  async callWithFallback<T>(task: Task, ctx: CallContext, need: Need, call: (r: Resolution) => Promise<T>, opts: { probeMs?: number } = {}): Promise<T> {
+    const tried: { label: string; reason: string }[] = [];
+    const used = new Set<string>();
+    for (;;) {
+      let r: Resolution;
+      try {
+        r = await this.resolveLive(task, ctx, need, opts);
+      } catch (err) {
+        if (err instanceof Offline && tried.length) throw new Offline(task, [...tried, ...err.tried.filter((t) => !tried.some((x) => x.label === t.label))]);
+        throw err;
+      }
+      // A machine that answers its probe but fails every call: don't go round again.
+      if (used.has(r.offering.id)) throw new Offline(task, tried);
+      used.add(r.offering.id);
+      try {
+        const out = await call(r);
+        this.reportUp(ctx.userId, r.endpoint.id);
+        return out;
+      } catch (err) {
+        if (!isUnreachable(err)) throw err;
+        this.reportDown(r.endpoint.id);
+        tried.push({ label: r.label, reason: "it couldn't be reached" });
+      }
     }
   }
 
@@ -1624,12 +1730,18 @@ export class Models {
     return of(task) ?? (OWN_LIST_ONLY.includes(task) ? undefined : of("chat"));
   }
 
+  /** Why a model's machine is away now, if it is: stale, or down in the health cache. */
+  private away(ep: Endpoint, opts: ResolveOptions): string | undefined {
+    if (ep.stale) return `${ep.name} hasn't answered for ${STALE_DAYS} days`;
+    if (opts.except?.has(ep.id)) return `${ep.name} is down`;
+    const h = this.health.get(ep.id);
+    if (!opts.evenIfDown && h && !h.up && Date.now() - h.at < HEALTH_MS) return `${ep.name} is down`;
+    return undefined;
+  }
+
   /** Why a model can't take this call now, if it can't. */
   private unfit(task: Task, o: Offering, ep: Endpoint, need: Need): string | undefined {
     if (o.status === "gone") return `it has been missing from ${ep.name} for ${GONE_DAYS} days`;
-    if (ep.stale) return `${ep.name} hasn't answered for ${STALE_DAYS} days`;
-    const h = this.health.get(ep.id);
-    if (h && !h.up && Date.now() - h.at < HEALTH_MS) return `${ep.name} is down`;
     if (task === "image.create" && !o.image) return "it doesn't make images";
     if (task === "image.edit" && !o.edit) return "it doesn't edit images";
     if (need.tools && o.tools === false) return "it can't use tools";
