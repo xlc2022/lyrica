@@ -1,4 +1,4 @@
-// "How it answers": sampling settings saved per offering and sent with every
+// Sampling: the settings saved per offering and sent with every
 // call to it. Unset values are never sent, so the server's own default applies.
 
 /** Settings an offering answers with. */

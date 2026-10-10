@@ -218,115 +218,170 @@ are enforced in the store:
 ## core/models: the cloud boundary lives here
 
 ```ts
-type Task = "chat" | "subagent.cheap" | "subagent.strong" | "compaction"
-          | "title" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
-          | "image.create" | "image.edit" | "image.upscale";    // the image tasks come with the Images thread
+type Task = "chat" | "subagent.cheap" | "subagent.strong" | "compaction" | "title" | "embedding"
+          | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "image.create" | "image.edit";
+type ThinkingLevel = "off" | "low" | "medium" | "high";
 
 interface Endpoint {
-  id: string;                              // "<name>" for a user's own, "shared.<name>" for a shared one
+  id: string;                               // permanent (UUID); the name is a label
   name: string;
-  kind: "cloud" | "local";                 // declared by the user, never inferred
-  api: "openai-compatible";                // OpenRouter, LM Studio, KoboldCpp, llama-server
-  baseUrl: string; apiKey?: string;
+  kind: "cloud" | "local";                  // declared by whoever adds it, never inferred
+  api: "openai-compatible" | "host";        // a paired model host; always local
+  baseUrl: string; apiKey?: string;         // a host: its first address's /v1, and no key
   shared: boolean;
+  addresses?: string[]; fingerprint?: string;   // a host's addresses, in order, and its pinned key
+  unencrypted: boolean;                     // local, plain HTTP, outside this machine and the tailnet
+  downSince?: string; stale: boolean;       // stale: unreachable for STALE_DAYS (14)
 }
-interface ModelRef { endpointId: string; modelId: string }   // same model on two endpoints = two refs
+interface Capabilities { contextWindow?; tools?; vision?; embedding?; image?; edit?; reasoning?: ("low" | "medium" | "high")[] }
+interface Offering extends Capabilities {   // one model on one endpoint, with a permanent id
+  id; endpointId; modelId; manual: boolean;
+  status: "listed" | "missing" | "gone"; missingSince?;      // gone: missing for GONE_DAYS (30)
+  digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; separate?;   // reported by a host
+}
+type ModelRef = { offeringId: string } | { groupId: string };
+interface Group { id; name; shared; members: string[] }      // offering IDs, in order, one per endpoint
+type ProfileName = "cloud" | "local" | "custom";
+type Entry = ModelRef[] | { same: Task };                   // an ordered list, or another task's list
+type Profiles = Partial<Record<Task, Entry>>;
 
 interface CallContext {
-  userId: string;
-  pool: Pool;
-  localOnly: boolean;       // thread checkbox; always true for private
-  overrides?: Partial<Record<Task, ModelRef>>;
+  userId; pool; localOnly: boolean;         // always true for private
+  profile?: "cloud" | "custom";             // general threads only; ignored where localOnly
+  overrides?: Partial<Record<Task, ModelRef[]>>;   // the thread's own lists, which beat the profile
+  thinking?: ThinkingLevel;
 }
+interface Need { tools?: boolean; tokens?: number }        // what the call needs from a model
+interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: ProfileName;
+                       source: "thread" | "profile"; skipped: { label; reason }[]; remaining: number }
+interface CallRecord { at; pool; threadId; task; offeringId; label; endpointName; kind; fallback?; note? }
+interface AnswerSettings { temperature?; topP?; topK?; minP?; repeatPenalty?; presencePenalty?;
+                           frequencyPenalty?; maxTokens?; seed?; stop?: string[] }
+type SettingSource = "shared" | "yours";                   // absent: the server's default
+type Hub = "huggingface" | "modelscope";
+interface ModelIdentity { basename?; sizeLabel?; finetune?; baseModels?: { name?; organization?; repoUrl? }[]; card?: { baseModel?: string[]; baseModelRelation? } }
+interface LibraryEntry { key; name; base?: { key; name }; starred; groups: string[]; copies: { offeringId; label; rawName;
+                         endpointId; endpointName; kind; shared; status; downloaded; capabilities; groups; flagged?; size? }[] }
+type Use = { where: "profile"; profile; task } | { where: "thread"; pool; threadId; task }
+         | { where: "workflow"; name } | { where: "group"; groupId; name };
+interface CleanupItem { endpoint?; offering?; group?; label; usedIn: Use[]; otherUsers: number; suggestion?: { offeringId; label } }
 
 class Models {                                              // new Models(keyring, users)
-  addEndpoint(actor, input, { shared? }) / removeEndpoint(actor, id)   // shared: administrators only
-  endpoints(userId) / models(userId, endpointId) / addModel(actor, endpointId, m) / discover(actor, endpointId)
-  probe(userId, endpointId): Promise<{ state: "up" | "down"; warning?: string }>
-  profile(userId, "cloud" | "local") / setProfile(userId, name, task, ref?)
-  setThreadModel(userId, pool, threadId, task, ref?) / setLocalOnly(userId, pool, threadId, on)
+  // Endpoints and IDs
+  addEndpoint(actor, { name, kind, baseUrl, apiKey? }, { shared? }): Endpoint   // shared: administrators only
+  editEndpoint(actor, id, { name?, baseUrl?, apiKey?: string | null }): Endpoint   // never touches an ID; not a host's URL or key
+  removeEndpoint(actor, id)                                 // each model leaves a tombstone; for a host, this is unpairing
+  endpoints(userId) / endpoint(userId, id) / offerings(userId, endpointId) / offering(userId, offeringId)
+  label(userId, id) / find(userId, idOrLabel): ModelRef? / findEndpoint(userId, idOrLabel)
+  addModel(actor, endpointId, { modelId } & Capabilities): Offering
+  setCapabilities(actor, offeringId, { [cap]?: value | null }): Offering   // by hand wins over discovery
+  // Discovery and health
+  discover(actor, endpointId): Promise<Offering[]>          // GET /v1/models; a host's /host/v1/models and confirmed recipes
+  probe(userId, endpointId, timeoutMs?): Promise<{ state: "up" | "down"; warning? }>
+  pageStatus(userId, endpointId, budgetMs = 3000): Promise<{ state; warning?; status?; error? }>
+  reportUp(userId, endpointId) / reportDown(endpointId)     // the health cache: HEALTH_MS = 30 s
+  sameModel(userId, offeringId): { offeringId }[]           // same base name and kind, other endpoints
+  // Redirects and clean-up
+  replace(actor, fromId, toId) / removeOffering(actor, offeringId) / resetIds(actor, endpointId): string / merge(actor, fromId, intoId)
+  cleanup(userId): CleanupItem[] / prune(now?) / notice(userId): string[] / dismissNotice(userId)
+  workflowSpec(userId, spec) / reindex(userId)              // Delegation: labels to offering IDs; re-index shared_refs
+  // Groups
+  groups(userId) / group(userId, id) / addGroup(actor, { name, members }, { shared? }) / editGroup(actor, id, { name?, members? }) / removeGroup(actor, id)
+  groupDetail(userId, id): { group; members: (Offering & { label; kind; stale })[]; warnings: string[] }
+  groupSuggestions(userId): { name; members; strength: "strong" | "weak" }[]   // never made automatically
+  // Profiles, thread choices and resolve
+  profile(userId, name): Profiles / setProfile(userId, name, task, value?: Entry | ModelRef)   // a single ref is a one-model list
+  defaultProfile(userId) / setDefaultProfile(userId, "cloud" | "custom")
+  setThreadModel(userId, pool, threadId, task, list?: ModelRef[] | ModelRef) / checkThreadList(ctx, task, list): ModelRef[]
+  setThreadProfile(userId, pool, threadId, "cloud" | "custom" | null) / threadProfile(userId, threadId)
+  setLocalOnly(userId, pool, threadId, on) / forgetThread(userId, pool, threadId)
   callContext(userId, pool, threadId): CallContext
   childContext(parent, childThreadId, { tier } | { model }): CallContext   // a child under its parent's rules
-  resolveModel(task, ctx): ModelRef                         // throws CloudModelForbidden
-  allowed(ctx): { endpoint, models }[]
+  resolve(task, ctx, need?): Resolution                     // throws CloudModelForbidden or NoModel
+  resolveLive(task, ctx, need?, { probeMs? }): Promise<Resolution>   // probes first when there is a fallback
+  resolveModel(task, ctx, need?): { offeringId }             // resolve(…).ref
+  allowed(ctx): { endpoint; offerings }[]                   // local endpoints only when restricted
+  // Thinking and call records
+  defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
+  thinkingFor(resolution, asked): { level; note? }
+  recordCall(userId, { pool, threadId, task, resolution, note? }, { retry? }) / recentCalls(userId, { limit?, threadId? }): CallRecord[]
+  // Hosts and pairing
+  pairHost(actor, { name, addresses, code }, { shared?, endpointId? }): Promise<Endpoint>   // endpointId: pair again, IDs kept
+  setHostAddresses(actor, id, addresses): Endpoint / fetchFor(endpoint): typeof fetch | undefined   // undefined for a plain endpoint
+  hostStatus(userId, id) / hostControl(actor, id, "pause" | "resume" | "restart")
+  // Settings
+  offeringSettings(userId, offeringId): { values: AnswerSettings; sources: Partial<Record<keyof AnswerSettings, SettingSource>>;
+                                          dropped: (keyof AnswerSettings)[]; contextWindow?: { value; source: "host" | "hand" | "discovered" } }
+  setOfferingSettings(actor, offeringId, change, scope: "shared" | "mine" = "mine")   // null clears a value
+  // Library, tokens, downloads, delete
+  textLibrary(userId, { search?, kind?, endpointId?, capability?, groupsOnly?, offset?, limit? }): { total; entries: LibraryEntry[] }
+  star(userId, offeringId, on) / notThisModel(actor, offeringId, separate = true)
+  hubTokens(userId): { hub; shared; last4 }[] / setHubToken(actor, hub, token, { shared? }) / removeHubToken(actor, hub, { shared? })
+  hubFiles(actor, hostId, { source, repo, revision? }) / startDownload(actor, hostId, body) / downloads(actor, hostId) / cancelDownload(actor, hostId, downloadId)
+  deleteCopy(actor, offeringId, { confirm? }): Promise<{ usedIn: Use[]; deleted?: string[]; left?: { files; reason } }>
+  imageLibrary(userId, hostId): { recipes; parts (by role) } / recipe(actor, hostId, recipeId, action)
+  // Host management and serving
+  manageHost(actor, hostId, method, path, body?)            // only models/load|unload|pin|reload, gpus/<n>, scan, usage
+  servingSettings(userId, offeringId) / setServingSettings(actor, offeringId, settings) / reloadModel(actor, offeringId)
+  hostDashboard(userId, hostId): string                     // a direct link, at the address that last answered
 }
-
-// extension/, because core has no Pi dependency:
-modelRuntimeFor(models, ctx): Promise<ModelRuntime>       // Pi runtime with only the allowed models
-openThreadSession({ thread, models, cwd, extensions, settings? })  // one thread's Pi session, in process
+// Also exported: CloudModelForbidden, NoModel, HostRefused (with `code`), PairingFailed, HostIdentityChanged;
+// STALE_DAYS, GONE_DAYS, HEALTH_MS, CAPABILITIES, ANSWER_SETTINGS, TASKS, THINKING_LEVELS; isRestricted, profileFor,
+// checkTask, refId, baseName, acceptedSettings(endpoint), payloadFields(…); fingerprint, normaliseCode, pairingProofs,
+// hostOrigin; probeUrl(baseUrl, apiKey, timeoutMs?, fetchImpl?), discoverModels, addressesOutside.
 ```
 
-- When `ctx.pool === "private"` or `ctx.localOnly` is set, Pi sessions are
-  built with `modelRuntimeFor(models, ctx)`, which contains **no cloud models at all**.
-  Even Pi's own compaction then has nothing cloud-based to pick.
-- Asking for a cloud model throws `CloudModelForbidden`. Nothing falls back
-  across the local/cloud line.
-- A task with no model set uses the same profile's chat model (except
-  `embedding`), never the other profile's.
-- **Planned (Models 2):**
-  - Endpoints get a permanent `id` (a UUID), with the name as a label.
-  - Each model an endpoint offers gets a permanent `offeringId` (a UUID).
-    `ModelRef` becomes `{ offeringId }`, and existing `{ endpointId, modelId }`
-    pairs are migrated. An offering the endpoint no longer lists is kept and
-    marked `missing`.
-  - Editing an endpoint never changes its IDs.
-  - **Redirects and tombstones** (`offering_redirects`, from → to or
-    `removed`) live where the endpoint lives: `self.db` for shared, `user.db`
-    for personal. `resolveModel` follows them.
-    - Each user's references (profiles, overrides, saved workflows) are
-      rewritten when that user unlocks.
-    - A redirect is deleted once no user still refers to it, which is
-      tracked per user.
-  - Endpoint states: `stale` (unreachable for 14 days) and `gone` (missing for
-    30 days). Gone offerings nothing refers to are pruned.
-  - `resetIds(endpoint)` and `merge(from, into)` work through redirects.
-  - Call records keep the name and endpoint label with the ID.
-  - **Model groups:** `{ groupId, name, members: offeringId[] }`, shared in
-    `self.db` or personal in `user.db`.
-    - `ModelRef` is `{ offeringId } | { groupId }`. A group expands in place,
-      in order, filtered by the thread's allowed kinds and by each member's
-      fitness for the call (tools, context window).
-    - Redirects and tombstones apply to members.
-  - A profile entry becomes an ordered list or a pointer to another task's
-    list: `Partial<Record<Task, ModelRef[] | { same: Task }>>`, in three
-    profiles: `local`, `cloud` and `custom`. `same` must name a task with its
-    own list and the same capability, so it is one level deep. A task with
-    neither follows `chat`, as now. `resolveModel` returns the first model
-    whose endpoint is up, and the thread shows which one answered.
-  - Local and cloud lists never mix kinds. Custom may, and is never offered
-    to private or local-only threads.
-  - Offerings carry capabilities (`tools`, `vision`, `embedding`, `image`,
-    `edit`, and `reasoning` with its levels), and pickers filter by the task.
-  - A thread's settings gain `thinking` (off, low, medium, high), with a
-    per-user default; the router passes it as Pi's thinking level when the
-    resolved model offers it, and reports when it can't.
-  - Downloads go through a paired host's management API (`host/API.md`):
-    list a repository's files, start, progress, cancel, and delete a file
-    under `lyrica/`. Shared hosts need an administrator. A gated
-    repository's token comes with each request from the hub tokens: a
-    user's in `user.db`, or a shared one in `self.db`, encrypted like
-    endpoint keys.
-  - Deleting an offering leaves a `removed` redirect, like Clean up.
-  - An offering for `image.create` or `image.edit` on a host is a **recipe**:
-    `{ arch, template, parts: { role, slot?, file }[], loras: { file,
-    strength }[], defaults }`, stored on the host. Parts are files the host
-    reports by role, slot, architecture, precision and size. A proposed
-    recipe is listed but never resolves until it is confirmed. Capabilities
-    gain `upscale`. Swapping a part keeps the role, slot and architecture;
-    adding a LoRA makes a new recipe linked to its base unless the user
-    chooses otherwise.
-- A local endpoint is still declared, not inferred. `probe` warns, without
-  blocking, when one resolves outside loopback, private or tailnet ranges.
-- **Shared endpoints** live in `self.db`. Only an administrator can change
-  them, and their API keys are encrypted with the rest of `self.db`. Every
-  user can use them in their profiles. A user's own endpoints live in their
-  `user.db`.
-- **What each user stores** in `user.db`:
-  - endpoints;
-  - a cloud profile and a local profile, mapping each task to a model;
-  - per-thread model overrides and the local-only flag.
-
-  Workspace's thread settings live in `user.db` too, in separate tables.
+- **The boundary.** `isRestricted(ctx)` is `pool === "private" || localOnly`,
+  and a private thread is always local-only (`setLocalOnly(…, false)` and
+  `setThreadProfile` on one throw). In a restricted context `allowed`
+  returns local endpoints only, `resolve` uses the local profile whatever
+  `ctx.profile` says, a group's cloud members are skipped, and a cloud model
+  named directly throws `CloudModelForbidden`. Nothing falls back across the
+  local/cloud line: outside Custom a list keeps to one kind (local where
+  restricted, cloud in the cloud profile, else its first model's).
+- **Kind is pinned** where an endpoint is made: `addEndpoint` takes it as
+  declared, `pairHost` makes a host local, `editEndpoint` can't change it,
+  and `replace` and `merge` refuse to cross kinds. `probe` only warns when a
+  local endpoint resolves outside loopback, private or tailnet ranges.
+- **What never crosses.** API keys stay in core (`EndpointInfo.hasApiKey`).
+  Hub tokens leave core only as `X-Hub-Token` to a host, never in a response,
+  log or call record. Call records hold model metadata, never prompt text.
+- **Lists.** The entry that decides a task is the thread's list, else the
+  profile's after one level of `same`, else chat's (not for `embedding` or
+  the image tasks). `resolve` expands groups in place, follows redirects,
+  drops tombstoned entries, and skips a model that is gone, on a stale or
+  down endpoint, or unfit for the `need` (tools, context window, image or
+  edit). `checkThreadList` and `setProfile` refuse a list the router would
+  refuse, before anything is written.
+- **Hosts** are called only through `fetchFor`: undici, with a connector that
+  checks the pinned key before any byte is sent, no session resumption,
+  addresses tried in order. A changed key ends the call with
+  `HostIdentityChanged`'s message and marks the host down; `paused`, `busy`,
+  `restarting`, `unavailable` and `unpaired` answers mark it down too. A
+  host's refusal is a `HostRefused` carrying the host's own `code`. Lyrica's
+  key and certificate live in `self.db` (`host_identity`). `undici` 8.10.2
+  is a direct dependency of core for this.
+- **Settings** per offering are layered: a shared offering's values in
+  `self.db` (administrators), the user's own in `user.db` over them. Only
+  values that are set are sent, and only those the endpoint's API takes
+  (`acceptedSettings`: everything for local endpoints, hosts and OpenRouter;
+  OpenAI's set for other cloud endpoints); `dropped` names the rest.
+  Settings follow redirects and are pruned with their offerings.
+- **Where things live.** In `self.db`: `endpoints`, `offerings`,
+  `model_groups`, `offering_settings`, `hub_tokens` (shared), plus
+  `offering_redirects`, `redirect_pending`, `shared_refs`,
+  `shared_refs_indexed`, `legacy_refs` and `host_identity`. In each
+  `user.db`: the same first five (the user's own), `model_profiles`,
+  `thread_models`, `thread_choices`, `local_only_threads`,
+  `starred_offerings` and `model_calls`, with the default profile, default
+  thinking level and the notice in its `settings`. Shared rows change only
+  with an administrator actor. A `user.db` is migrated, has pending shared
+  redirects applied, and is indexed into `shared_refs` the first time it is
+  opened in a process.
+- **Planned:** `X-Lyrica-Priority: background` for sleep and cheap subagents
+  (not sent; hosts use their defaults; it needs the task in Pi's request
+  preparation), and clearing `redirect_pending` rows when a user is deleted,
+  once users can be.
 
 ## delegate
 
@@ -403,6 +458,15 @@ Every run:
 The extension is created with a `ThreadContext`:
 `{ user, pool, interface, threadId, view: PoolView, call: CallContext }`.
 
+```ts
+// extension/, because core has no Pi dependency:
+modelRuntimeFor(models, ctx): Promise<ModelRuntime>       // Pi runtime holding only models.allowed(ctx), sealed
+piModelFor(runtime, models, task, ctx, resolution?): { ref; model; resolution }
+prepareTurn({ session, runtime, models, call, pool, threadId, task?, thinking?, retry? }): Promise<Resolution>
+openThreadSession({ thread, models, cwd, extensions, settings? }): Promise<ThreadSession>
+interface ThreadSession { session; runtime; chat: { offeringId }; prepare(opts?: { thinking?; retry? }): Promise<Resolution>; dispose() }
+```
+
 - The factory is `createLyricaExtension(thread: ThreadContext, opts:
   LyricaOptions)`. The options are:
   - `persona()` and `profile()`, read every turn;
@@ -449,6 +513,27 @@ The extension is created with a `ThreadContext`:
 - **Commands:** `/sleep`, and others only within the budget.
 - Lyrica's sessions **never** load project context files (`AGENTS.md`,
   `CLAUDE.md`). Her self-primer is a routed topic.
+- `openThreadSession` returns `prepare()`, which `lyricad` runs before every
+  turn and Delegation once per subagent (with `thinking: false`, so a role
+  keeps its own level). It calls `prepareTurn`: `resolveLive` for the chat
+  model with the session's active tools and context usage as the `need`,
+  `session.setModel` when the model changed, `setThinkingLevel` from
+  `thinkingFor`, and `recordCall`. `prepare({ retry: true })` probes for at
+  most one second and rewrites the turn's call record. Each successful
+  assistant message calls `reportUp` for its provider.
+- `modelRuntimeFor` wraps `ModelRuntime.prepareRequest`, an internal of Pi
+  1.1.0 (as are `defaultBuiltins`, `builtins` and `rebuildProviders`, used to
+  empty the catalog); re-check them when Pi is upgraded. The wrapper gives a
+  host provider its `fetchFor` fetch, and for every offering adds an
+  `onPayload` that merges `payloadFields(offeringSettings(…).values, …)` into
+  the request: `repeat_penalty` for plain local servers,
+  `repetition_penalty` for hosts and cloud; `max_tokens` or
+  `max_completion_tokens` never above the room Pi left. Settings are read at
+  each request, so a change applies without reopening the session.
+- A host model whose only thinking level is a chat-template switch gets Pi's
+  `thinkingFormat: "qwen-chat-template"`; any other model with levels gets
+  `reasoning_effort`. Local endpoints and hosts are sent `system` and
+  `max_tokens`.
 
 ## daemon
 
@@ -463,6 +548,11 @@ The extension is created with a `ThreadContext`:
     also removes extension tools.
   - Sessions run in-process, with no `pi` subprocesses.
   - Entries are recorded with `appendEntry` as each turn ends (`recordEntries`).
+  - Before each turn `lyricad` awaits `prepare()`; on an
+    `auto_retry_start` whose error looks like a connection failure it calls
+    `reportDown` and `prepare({ retry: true })`, and a `message_end` error of that
+    shape calls `reportDown`. The nightly tick calls `Models.prune()` before
+    `sleepNight`.
 - **Startup:** once unlocked, `lyricad` builds `Workspace` with its own
   listening ports as `excludePorts` and its front door as `frontDoor`, and calls
   `selfTest()` before serving threads. It builds one `Delegation`, adds
@@ -485,7 +575,51 @@ The extension is created with a `ThreadContext`:
   - auth;
   - threads (list, create, hide, forget);
   - messages (send, stream);
-  - settings (endpoints, model profiles);
+  - models (paths under `/api/u/:userId/`):
+    - **Endpoints:** `GET`/`POST endpoints`; `PATCH`/`DELETE endpoints/:id`;
+      `POST endpoints/:id/discover`, `…/reset-ids`, `…/merge` (→ `EndpointInfo`),
+      `…/models` (→ `OfferingInfo`); `GET …/probe`. Types: `EndpointInfo` (`api`,
+      `addresses`, `fingerprint`, `hasApiKey`, `unencrypted`, `stale`,
+      `downSince`, `models: OfferingInfo[]`), `OfferingInfo` (with `label`),
+      `EndpointInput`, `EndpointChange`, `ModelInput`, `Probe`, `MergeInput`.
+    - **Hosts:** `POST hosts` (pair, then discover); `POST hosts/:id/pair`
+      (again, same addresses); `PUT …/addresses`; `GET …/status`; `POST
+      …/pause|resume|restart`; `GET …/dashboard` (→ `{ url }`); `POST …/manage`;
+      `GET …/hub/files`; `POST`/`GET …/downloads`, `DELETE …/downloads/:id`;
+      `GET …/images`; `POST …/recipes/:recipeId`. Unpair is `DELETE
+      endpoints/:id`. Types: `HostInput`, `HostRepair`, `HostAddresses`,
+      `HostStatus`, `HostManage`, `DownloadInput`, `RecipeAction`.
+    - **Offerings:** `PATCH`/`DELETE offerings/:id`; `POST …/replace`; `GET
+      …/same`; `GET`/`PUT …/settings`; `PUT …/star`; `PUT …/separate`; `POST
+      …/delete-copy`; `GET`/`PUT …/serving`; `POST …/reload`. Types:
+      `CapabilitiesChange`, `ReplaceInput`, `AnswerSettings`, `OfferingSettings`
+      (`sources`, `dropped`, `contextWindow` with its source),
+      `OfferingSettingsChange` (`scope: "shared" | "mine"`), `DeleteCopy`
+      (`usedIn`, `deleted`, `left`), `ServingSettings`.
+    - **Groups and profiles:** `GET`/`POST groups`; `GET groups/suggestions`;
+      `GET`/`PATCH`/`DELETE groups/:id`; `GET`/`PATCH profiles` (`default`,
+      `thinking`); `PUT profiles/:profile/:task` with `{ models }`, `{ same }` or
+      `{ model }`. Types: `GroupInfo`, `GroupInput`, `GroupChange`,
+      `GroupDetail`, `GroupSuggestion`, `Profiles` (all three plus `default` and
+      `thinking`), `ProfileEntryChange`, `ProfilesChange`.
+    - **Models page, library, tokens:** `GET models/page` (→ `ModelsPage`:
+      endpoints with `pageStatus`, hosts' status, profiles, the last 20 calls,
+      the notice, the Clean up count); `GET models/cleanup`; `GET`/`DELETE
+      models/notice`; `GET models/calls`; `GET library/text`; `GET hub-tokens`,
+      `PUT`/`DELETE hub-tokens/:hub` (`?shared=1`). Types: `ModelsPage`,
+      `CleanupItem`, `ModelUse`, `ModelsNotice`, `CallInfo`, `TextLibrary`,
+      `LibraryEntry`, `HubTokenInfo` (last four characters), `HubTokenInput`.
+    - **Threads:** `ThreadSettings` gains `profile`, `profileChoice`, `thinking`,
+      `thinkingLevels` and `answered`; `TaskModel` gains `list`, `label` and
+      `modelId`. `ThreadSettingsChange.models` takes a ref, a list or null, and
+      gains `profile` and `thinking`. `DELETE` on a thread calls
+      `Models.forgetThread` for it and each subagent thread under it.
+    - **Errors from core** (`statusOf`): `CloudModelForbidden`, `NoModel` and
+      `PairingFailed` are `400`; `Forbidden` is `403`. A `HostRefused` keeps the
+      host's meaning by `code`: `invalid` 400, `refused` 403, `not_found` 404,
+      `in_use` 409, `too_big` 413, `no_space` 507; any other code (`unreachable`,
+      `paused`, `busy`, `unpaired`, `identity_changed`, …) is `502` with the
+      host's plain message.
   - users and admin;
   - memory browser;
   - sleep: overview, run detail, items (start a chat, dismiss), `sleep.mode`,
