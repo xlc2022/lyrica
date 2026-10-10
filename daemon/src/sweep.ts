@@ -39,7 +39,8 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
     const dir = join(threadsDir, name);
     let id: string;
     try { id = decodeURIComponent(name); } catch { continue; }
-    if (!exists(id)) {
+    // A thread made since the list was read may have a new folder already.
+    if (!exists(id) && statSync(dir).mtimeMs < now.getTime() - 60_000) {
       rmSync(dir, { recursive: true, force: true });
       counts.folders++;
       continue;

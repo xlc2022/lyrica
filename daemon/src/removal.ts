@@ -37,10 +37,11 @@ const NEW_BRANCH = /(?:^|[;&|]\s*|&&\s*)(?:cd\s+(\S+)\s*&&\s*)?git\s+(?:-C\s+(\S
 export async function removalPlan(c: RemovalContext): Promise<RemovalPlan & { changes: FileChange[] }> {
   const removed = c.removed;
   const calls = [...removed.flatMap(toolCalls), ...c.subagents.flatMap((s) => s.entries.flatMap(toolCalls))];
+  // In time order, so a file's first change is the earliest, whoever made it.
   const changes = [
     ...c.changes.forCalls(c.pool, c.thread, calls.map((x) => x.id), removed[0]?.createdAt),
     ...c.subagents.flatMap((s) => c.changes.forThreads(c.pool, [s.thread])),
-  ];
+  ].sort((a, b) => a.at.localeCompare(b.at));
   const plan: RemovalPlan = {
     // The messages as the thread shows them; its other entries (turn records, tool results) go with them unseen.
     messages: toMessages(c.thread, c.pool, removed.map((e) => ({ ...e, createdAt: e.createdAt ?? "" }))).filter((m) => m.role !== "notice").length,

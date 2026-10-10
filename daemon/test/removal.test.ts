@@ -85,7 +85,20 @@ describe("removing turns that changed files", () => {
     expect(changes.forCalls("general", "web/t", ["c1", "c2"])).toEqual([]);
   });
 
-  it("leaves an unticked item as it is", async () => {
+  it("puts back what a file held before the earliest change, a subagent's or hers", async () => {
+    const { ws, ctx, target, changes } = await setup();
+    const shared = join(ws, "shared.txt");
+    writeFileSync(shared, "original\n");
+    // Her subagent changes it first, then she does.
+    await recording(target, target.ops().write, "s1", (c) => changes.record("general", "web/sub", c)).writeFile(shared, "subagent's");
+    await new Promise((r) => setTimeout(r, 5));
+    await recording(target, target.ops().write, "c1", (c) => changes.record("general", "web/t", c)).writeFile(shared, "hers");
+    const plan = await removalPlan(ctx([reply(3, { id: "c1", name: "write", args: {} })], { subagents: [{ thread: "web/sub", entries: [] }] }));
+    await applyRemoval(plan, target, changes, new Set());
+    expect(readFileSync(shared, "utf8")).toBe("original\n");
+  });
+
+    it("leaves an unticked item as it is", async () => {
     const { ws, write, ctx, target, changes } = await setup();
     const made = join(ws, "made.txt");
     await write("c1", made, "new file");
