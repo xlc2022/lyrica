@@ -2,7 +2,7 @@
 // network and answers only host-api's address.
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import { DownloadError, plainError } from "./net.ts";
-import { shown, type Downloader } from "./downloads.ts";
+import type { Downloader } from "./downloads.ts";
 
 async function body(req: IncomingMessage): Promise<any> {
   const chunks: Buffer[] = [];
@@ -36,13 +36,13 @@ export function fetchServer(d: Downloader, isCaller: (address: string) => Promis
       }
       if (path === "/downloads" && method === "POST") {
         const { token, ...request } = await body(req);
-        return send(res, 202, { downloads: (await d.request(request, token)).map(shown) });
+        return send(res, 202, { downloads: (await d.request(request, token)).map((x) => d.shown(x)) });
       }
-      if (path === "/downloads" && method === "GET") return send(res, 200, { downloads: d.list().map(shown) });
+      if (path === "/downloads" && method === "GET") return send(res, 200, { downloads: d.list().map((x) => d.shown(x)) });
       const one = path.match(/^\/downloads\/([0-9a-f-]{36})$/);
       if (one && method === "GET") {
         const found = d.get(one[1]!);
-        return found ? send(res, 200, shown(found)) : send(res, 404, { error: { code: "not_found", message: "No such download." } });
+        return found ? send(res, 200, d.shown(found)) : send(res, 404, { error: { code: "not_found", message: "No such download." } });
       }
       if (one && method === "DELETE") {
         d.cancel(one[1]!);
@@ -59,6 +59,7 @@ export function fetchServer(d: Downloader, isCaller: (address: string) => Promis
         : err.status === 404 ? [404, "not_found"]
         : err.status === 507 ? [507, "no_space"]
         : err.status === 503 ? [503, "unavailable"]
+        : err.status === 409 ? [409, "in_use"]
         : [400, "invalid"];
       send(res, http, { error: { code, message: err.message } });
     }

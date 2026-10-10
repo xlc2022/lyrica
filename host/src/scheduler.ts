@@ -462,8 +462,9 @@ export class Scheduler {
       this.problems = [];
       this.runState = "running";
       this.o.log("resumed", {});
+      // Inside the same step, so a pause that follows waits for these loads, then unloads them.
+      await this.loadPins(models);
     });
-    void this.loadPins(models);
   }
 
   async restart(models: TextModel[]): Promise<void> {
@@ -473,9 +474,10 @@ export class Scheduler {
       this.rejectQueued(restarting);
       await this.idle();
       await this.unloadAll();
-      this.runState = was === "running" ? "running" : "paused";
+      // A pause asked for during the restart wins.
+      this.runState = was === "running" && !this.o.state.get().paused ? "running" : "paused";
+      if (this.runState === "running") await this.loadPins(models);
     });
-    if (this.runState === "running") await this.loadPins(models);
   }
 
   async status(): Promise<object[]> {
@@ -504,6 +506,30 @@ export class Scheduler {
         queue,
       };
     });
+  }
+
+  /**
+   * Measures a model whose server loads during the job (ComfyUI), from the
+   * memory used before it: `fn` runs the job, and the first run with its
+   * placement is measured.
+   */
+  async measuring<T>(model: TextModel, fn: () => Promise<T>): Promise<T> {
+    const entry = this.loaded.get(model.id);
+    if (!entry) return fn();
+    const key = `${model.id}@${placementKey(entry.option)}`;
+    if (this.o.state.get().vram[key] !== undefined) return fn();
+    const before = Object.fromEntries((await this.readGpus()).map((g) => [g.index, g.used]));
+    const result = await fn();
+    const after = await this.readGpus();
+    const measured: Record<number, number> = {};
+    for (const g of entry.option.gpus) measured[g] = (after.find((x) => x.index === g)?.used ?? 0) - (before[g] ?? 0);
+    if (Object.values(measured).every((n) => n > 0)) {
+      entry.vram = measured;
+      this.o.state.update((s) => {
+        s.vram[key] = measured;
+      });
+    }
+    return result;
   }
 
   /** Unloads models of a kind idle for longer than `ms` (ComfyUI keeps its parts in memory after a job). */

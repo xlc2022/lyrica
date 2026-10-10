@@ -203,9 +203,9 @@ export const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAA
  * A fake ComfyUI: /upload/image, /prompt, /history, /free, and a websocket
  * that sends one PNG per batch item and then "executing" with node null.
  */
-export async function fakeComfy() {
+export async function fakeComfy(o: { hang?: boolean } = {}) {
   const { createHash } = await import("node:crypto");
-  const seen = { uploads: [] as string[], prompts: [] as any[], historyCleared: 0, freed: 0 };
+  const seen = { uploads: [] as string[], uploadBodies: [] as Buffer[], prompts: [] as any[], historyCleared: 0, freed: 0, interrupted: [] as string[], deleted: [] as string[] };
   const sockets = new Map<string, import("node:net").Socket>();
   const frame = (op: number, data: Buffer) => {
     const head = data.length < 126 ? Buffer.from([0x80 | op, data.length]) : Buffer.from([0x80 | op, 126, data.length >> 8, data.length & 0xff]);
@@ -219,10 +219,19 @@ export async function fakeComfy() {
     if (url.pathname === "/upload/image") {
       const name = body.toString("latin1").match(/filename="([^"]+)"/)?.[1] ?? "x.png";
       seen.uploads.push(name);
+      seen.uploadBodies.push(body);
       return res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ name }));
     }
     if (url.pathname === "/history") {
       if (JSON.parse(body.toString()).clear) seen.historyCleared++;
+      return res.writeHead(200).end();
+    }
+    if (url.pathname === "/interrupt") {
+      seen.interrupted.push(JSON.parse(body.toString()).prompt_id);
+      return res.writeHead(200).end();
+    }
+    if (url.pathname === "/queue") {
+      seen.deleted.push(...JSON.parse(body.toString()).delete);
       return res.writeHead(200).end();
     }
     if (url.pathname === "/free") {
@@ -234,6 +243,7 @@ export async function fakeComfy() {
       seen.prompts.push(prompt);
       const id = `p${seen.prompts.length}`;
       res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ prompt_id: id }));
+      if (o.hang) return;
       const ws = sockets.get(client_id);
       const latent = Object.values(prompt as Record<string, { class_type: string; inputs: Record<string, unknown> }>).find((n) => /Latent/.test(n.class_type) && ("batch_size" in n.inputs || "amount" in n.inputs));
       const count = Number(latent?.inputs.batch_size ?? latent?.inputs.amount ?? 1);

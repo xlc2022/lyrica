@@ -177,9 +177,9 @@ export class Vllm implements Backend {
     return port;
   }
 
-  private write(): void {
+  private write(placed: typeof this.placed = this.placed): void {
     const servers: Record<string, unknown> = {};
-    for (const { model: m, at, settings: s, port } of this.placed.values()) {
+    for (const { model: m, at, settings: s, port } of placed.values()) {
       servers[m.id] = {
         model: `${this.o.models}/${m.id}`, name: m.id, port, gpus: at.gpus, embedding: m.kind === "embedding",
         tensorParallel: at.parallel === "tensor" ? at.gpus.length : 1,
@@ -232,9 +232,10 @@ export class Vllm implements Backend {
   /** Stops every server and waits until each is gone. */
   async reset(): Promise<void> {
     const ports = [...this.placed.values()].map((p) => p.port);
-    this.placed.clear();
     this.generation++;
-    this.write();
+    this.write(new Map());
+    // Forget them only once each server is gone, so a failure stays counted.
     for (const port of ports) await poll(async () => !(await fetch(`${this.base(port)}/v1/models`).then(() => true, () => false)), 120_000, "vLLM");
+    this.placed.clear();
   }
 }

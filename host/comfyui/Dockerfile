@@ -19,14 +19,18 @@ RUN set -eux; \
     fetch numz/ComfyUI-SeedVR2_VideoUpscaler /opt/comfyui/custom_nodes/ComfyUI-SeedVR2_VideoUpscaler "$SEEDVR2_COMMIT"; \
     rm -f /opt/comfyui/custom_nodes/example_node.py.example
 
-# The base image's torch stays: torch lines are dropped from the requirements.
-# Its Python is the system's, so pip is told it may install there (this is an image, not a machine).
-RUN set -eux; cd /opt/comfyui; \
-    cat requirements.txt custom_nodes/ComfyUI-GGUF/requirements.txt custom_nodes/ComfyUI-SeedVR2_VideoUpscaler/requirements.txt \
-      | grep -vE '^\s*(#|$)' | grep -viE '^(torch|torchvision|torchaudio)\b' > /tmp/requirements.txt; \
-    python3 -m pip install --no-cache-dir --break-system-packages -r /tmp/requirements.txt; \
+# The packages go into a venv that also sees the base image's torch. Every
+# package is pinned with its hash in requirements.txt (made by lock.sh), and
+# none is resolved here. The system pip installs into the venv (--python), so
+# the venv needs no pip of its own.
+COPY host/comfyui/requirements.txt /tmp/requirements.txt
+RUN set -eux; \
+    python3 -m venv --system-site-packages --without-pip /opt/venv; \
+    python3 -m pip --python /opt/venv/bin/python install --no-cache-dir --require-hashes --no-deps -r /tmp/requirements.txt; \
     rm /tmp/requirements.txt; \
-    python3 -m compileall -q /opt/comfyui
+    /opt/venv/bin/python -c "import torch, torchsde, spandrel, kornia, gguf, diffusers, cv2, av"; \
+    /opt/venv/bin/python -m compileall -q /opt/comfyui
+ENV PATH=/opt/venv/bin:$PATH
 
 COPY host/comfyui/extra_model_paths.yaml /opt/comfyui/extra_model_paths.yaml
 RUN useradd --uid 10002 --no-create-home --home-dir /tmp comfy
@@ -37,7 +41,7 @@ ENV HOME=/tmp HF_HUB_OFFLINE=1 DO_NOT_TRACK=1
 # Folders in /tmp are tmpfs (see the compose files): prompts and images live in memory only.
 # Only the three custom nodes load; metadata saving and previews are off;
 # API nodes (paid cloud services) are disabled.
-ENTRYPOINT ["sh", "-c", "mkdir -p /tmp/comfy/input /tmp/comfy/output /tmp/comfy/temp /tmp/comfy/user && exec python3 main.py \
+ENTRYPOINT ["sh", "-c", "mkdir -p /tmp/comfy/input /tmp/comfy/output /tmp/comfy/temp /tmp/comfy/user && exec /opt/venv/bin/python main.py \
   --listen 0.0.0.0 --port 8188 --disable-auto-launch --disable-metadata --disable-api-nodes --preview-method none \
   --disable-all-custom-nodes --whitelist-custom-nodes websocket_image_save.py ComfyUI-GGUF ComfyUI-SeedVR2_VideoUpscaler \
   --input-directory /tmp/comfy/input --output-directory /tmp/comfy/output --temp-directory /tmp/comfy/temp \

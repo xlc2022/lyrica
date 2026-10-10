@@ -11,7 +11,8 @@ Docker Compose stack that Lyrica reaches over mutual TLS after pairing.
 The machine needs:
 - Debian or Ubuntu (other Linux distributions should work), with iptables;
 - the GPU driver;
-- Docker with the compose plugin, or Podman with a compose provider;
+- Docker with the compose plugin, and its iptables firewall backend (the
+  default). Podman isn't supported yet;
 - the container runtime's GPU support. For NVIDIA, that's
   `nvidia-container-toolkit`.
 
@@ -70,7 +71,9 @@ subfolder, under `lyrica/<source>/<repository>/`.
   appears. A link without a checksum is kept, marked unverified.
 - Links and redirects must go to public addresses: never this machine, the
   LAN or the tailnet. A link must say its size, and a signed link's query
-  string is never written down.
+  string is never written down. Links are short (1024 characters), one at
+  a time, and Downloads shows each in full while it downloads: a link is a
+  way data could leave this machine, so check ones you don't recognise.
 - A gated repository's token is used for that download only, and never
   written down. A gated download interrupted by a restart must be started
   again; it resumes from its partial file.
@@ -100,7 +103,9 @@ fills the recipe's template in `workflows/` (one per architecture).
   no other recipe uses.
 - ComfyUI is our image (`comfyui/Dockerfile`, CUDA or ROCm), built from
   pinned commits of ComfyUI, ComfyUI-GGUF and the SeedVR2 upscaler, with no
-  plugin manager. Only those nodes load. It has no route out, logs nothing,
+  plugin manager. Only those nodes load. Their Python packages go into a
+  venv, each pinned with its hash in `comfyui/requirements.txt`
+  (`comfyui/lock.sh` remakes it); torch is the base image's. It has no route out, logs nothing,
   keeps its input, output and temp folders in memory, saves no metadata,
   and its history is cleared after every job. It uses one GPU,
   `COMFY_GPU` in `.env`, and frees its memory after ten idle minutes.
@@ -148,7 +153,7 @@ revoked. A revoked server must pair again.
   then background work. A request that waits too long fails with "The GPU
   is busy with …".
 - **VRAM** use is measured per GPU on each model's first load with a
-  placement, and remembered.
+  placement (an image recipe's on its first job), and remembered.
 - **Pause** refuses new work, lets the current job finish, then unloads
   every model and stops vLLM, so nothing of the host's stays in VRAM. What
   couldn't be unloaded shows on the dashboard. Until Resume, new work gets
@@ -196,8 +201,10 @@ revoked. A revoked server must pair again.
       every connection host-api starts, to the internet or to this
       machine, including DNS for outside names.
     - `install.sh` applies the rules before starting the stack, and installs
-      `lyrica-host-egress.service`, which applies them again after every
-      reboot and Docker restart.
+      `lyrica-host-egress.service`, which applies them before Docker starts
+      at boot, and again on every Docker restart.
+    - host-api's DNS server is a blackhole address: container names still
+      resolve, outside names never do. Its networks have no IPv6.
     - Without systemd, run `host/egress.sh apply` yourself after each.
     - `install.sh` checks that host-api can't connect out, and stops it
       if it can.
@@ -215,6 +222,6 @@ revoked. A revoked server must pair again.
   `install.sh`, and CI builds it on every pull request.
 - `test/stack/network.sh` checks the network layout on a running stack.
 
-Podman is supported by `install.sh` but hasn't been tested. The local
-dashboard's address check and the egress rules assume Docker's port
-publishing and its iptables firewall backend.
+The local dashboard's address check and the egress rules assume Docker's
+port publishing and its iptables firewall backend. After a firewall reload
+that flushes INPUT, run `systemctl restart lyrica-host-egress`.

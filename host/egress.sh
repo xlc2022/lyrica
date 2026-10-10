@@ -13,6 +13,8 @@ ip=${2:-$(sed -n 's/^HOST_API_IP=//p' .env)}
 chain=LYRICA-HOST-API
 case ${1:-apply} in
   apply)
+    # Before Docker starts, its chain may not exist yet: make it; Docker keeps it.
+    iptables -N DOCKER-USER 2>/dev/null || true
     iptables -N "$chain" 2>/dev/null || iptables -F "$chain"
     iptables -A "$chain" -s "$ip" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
     iptables -A "$chain" -s "$ip" -j DROP

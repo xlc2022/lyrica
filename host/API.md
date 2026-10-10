@@ -31,7 +31,7 @@ on `/v1`, where OpenAI clients read `error.message`.
 | 401 | `unpaired` | The client certificate isn't pinned, or was revoked. |
 | 403 | `refused` | Not allowed: a pickle file, a delete outside the download record, a dashboard-only action. |
 | 404 | `not_found` | No such model, recipe, download or file. |
-| 409 | `in_use` | The model or file is in use by a running request. |
+| 409 | `in_use` | The model or file is in use by a running request, or a link is already downloading. |
 | 413 | `too_big` | The model can't fit on any GPU it may use, even with everything idle unloaded. |
 | 503 | `paused` | The host is paused. Lyrica uses her fallbacks. |
 | 503 | `busy` | It could fit, but not within the wait limit, because the GPU is busy. The message names what with: "The GPU is busy with a chat model." |
@@ -289,8 +289,14 @@ servers) has a route out.
   IPv6, only global unicast is allowed.
 - A link must say its size (`Content-Length`), and free space is checked
   against it and every download already queued. No download is written past
-  its size. A link's query string is kept in memory for the transfer only,
-  never listed or recorded.
+  its size. A link's query string is kept in memory for the transfer only
+  and never recorded; while the link downloads, its `url` shows it in full.
+- A link is at most 1024 characters, https, with no user name or
+  password, and only one downloads at a time (`in_use` otherwise).
+- **Known channel.** A paired client can still carry data out of the host
+  in a link's path or query: a little at a time, one link at once, and
+  each shown in full on the dashboard's Downloads. These limits make it
+  slow and visible, not impossible.
 - A file must be what its name says (a GGUF header, a readable safetensors
   header) before it appears.
 - A sharded model is offered once all its shards are here.
@@ -387,6 +393,10 @@ A **download**:
 Image models are **recipes** of **parts**. Lyrica names a confirmed recipe
 and gives parameters; she never names parts, LoRAs or workflows.
 
+Every call here is open to any paired client, including installing,
+confirming and deleting. The host doesn't know who is behind a client:
+lyricad decides which of these only an administrator may ask for.
+
 ### Parts
 
 `GET /host/v1/parts`: every image model file found in the models folder.
@@ -460,14 +470,16 @@ Calls:
 - `POST /host/v1/starters/<starter>/install`: downloads the missing parts
   (as `POST /host/v1/downloads`, with `X-Hub-Token` if needed) and creates
   the recipe as `confirmed`; it becomes `ready` when they finish. Answers
-  `{ "recipe": <recipe>, "downloads": [<download>] }`.
+  `{ "recipe": <recipe>, "downloads": [<download>] }`. Installing it again
+  answers with the same recipe, downloading only the parts neither here
+  nor already downloading.
 - `POST /host/v1/recipes/<id>/confirm`, `POST /host/v1/recipes/<id>/ignore`:
   for proposals. Several at once: `POST /host/v1/recipes/confirm` or
   `/ignore` with `{ "ids": ["<id>", ...] }`.
 - `POST /host/v1/recipes/<id>/download-parts`: downloads the missing parts
   it knows the source of.
 - `POST /host/v1/recipes/<id>/copy` `{ "name": "Z-Image Turbo, watercolour" }`:
-  saves a confirmed copy with `base` set to `<id>`. Lyrica copies before
+  saves a copy, in the same state as its source, with `base` set to `<id>`. Lyrica copies before
   adding a LoRA unless the user chose to change the recipe itself.
 - `PATCH /host/v1/recipes/<id>` with one change:
   - `{ "op": "swap", "role": "text_encoder", "slot": "t5", "file": "<path>" }`:
@@ -481,7 +493,9 @@ Calls:
     `{ "op": "removeLora", "file": "<path>" }`: the LoRA's architecture
     must match;
   - `{ "op": "defaults", "defaults": { "steps": 30 } }`: merged into the
-    defaults;
+    defaults. Each must be one a request could give (the ranges below;
+    `shift` 0 to 20, `guidance` 0 to 30, `sampler` and `scheduler` ComfyUI
+    names, `negativePrompt` at most 4096 characters);
   - `{ "op": "rename", "name": "..." }`.
 
   Answers with the recipe.
@@ -495,7 +509,8 @@ Calls:
 
 All three answer `{ "images": [{ "png": "<base64>", "width": 1024,
 "height": 1024, "seed": 1234 }], "seconds": 6.2 }`. Input images are base64
-PNG, JPEG or WebP, at most 20 MB each. Any field not listed is `invalid`.
+PNG, JPEG or WebP, at most 20 MB each and, by their header, at most 8192
+pixels a side and 36 megapixels. Any field not listed is `invalid`.
 A recipe that isn't confirmed and ready is `not_found`; one that doesn't do
 the action is `invalid`.
 
@@ -529,5 +544,17 @@ the action is `invalid`.
   `lab`, `wavelet`, `wavelet_adaptive`, `hsv`, `adain` or `none`. Defaults
   come from the recipe.
 
+For upscale, the shorter side's target (`scale` times the shorter side) is
+capped at 4096.
+
+A client that closes its connection cancels its job, queued or running. A
+job that fails, times out (30 minutes) or is cancelled is interrupted in
+ComfyUI and removed from its queue.
+
 Prompts and images exist only in memory for the job: ComfyUI's folders are
-`tmpfs`, metadata saving is off, and its history is cleared after each job.
+`tmpfs`, metadata saving is off, uploaded images are overwritten with a
+blank one and its history is cleared after each job. ComfyUI itself has no
+authentication: anything on the `models` network could call it, which is
+why only the model servers are there and none of them has a route out.
+
+A recipe's memory is measured after its first job, as for text models.

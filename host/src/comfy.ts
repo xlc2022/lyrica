@@ -5,6 +5,9 @@ import { randomUUID } from "node:crypto";
 import { HostError } from "./http.ts";
 import type { Backend } from "./backends.ts";
 
+/** A 1×1 PNG, written over each upload after its job. */
+const BLANK = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+
 const unavailable = () => new HostError(503, "unavailable", "ComfyUI didn't answer.");
 
 export class Comfy implements Backend {
@@ -36,73 +39,98 @@ export class Comfy implements Backend {
   }
 
   /**
-   * Uploads the images (each under a fixed name, overwriting the last job's),
-   * runs the workflow made by `build` from their names, and returns the PNGs.
+   * Uploads the images (each under a fixed name), runs the workflow made by
+   * `build` from their names, and returns the PNGs. Afterwards the uploads are
+   * overwritten with a blank image and the history is cleared; a job that
+   * fails, times out or is cancelled is interrupted and taken off the queue.
    */
-  run(images: Record<string, Buffer>, build: (names: Record<string, string>) => object): Promise<Buffer[]> {
+  run(images: Record<string, Buffer>, build: (names: Record<string, string>) => object, signal?: AbortSignal): Promise<Buffer[]> {
     return this.serial(async () => {
+      signal?.throwIfAborted();
       const names: Record<string, string> = {};
-      for (const [key, data] of Object.entries(images)) names[key] = await this.upload(`lyrica-${key}.png`, data);
-      const prompt = build(names);
-      const clientId = randomUUID();
-      const ws = new WebSocket(`${this.base.replace(/^http/, "ws")}/ws?clientId=${clientId}`);
-      ws.binaryType = "arraybuffer";
       const pngs: Buffer[] = [];
       let promptId: string | null = null;
+      let finished = false;
+      let ws: WebSocket | null = null;
       try {
+        for (const [key, data] of Object.entries(images)) names[key] = await this.upload(`lyrica-${key}.png`, data);
+        const prompt = build(names);
+        const clientId = randomUUID();
+        const socket = new WebSocket(`${this.base.replace(/^http/, "ws")}/ws?clientId=${clientId}`);
+        ws = socket;
+        socket.binaryType = "arraybuffer";
         await new Promise<void>((resolve, reject) => {
-          ws.onopen = () => resolve();
-          ws.onerror = () => reject(unavailable());
+          socket.onopen = () => resolve();
+          socket.onerror = () => reject(unavailable());
         });
+        let timer: NodeJS.Timeout | undefined;
+        let onAbort = () => {};
         const done = new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(() => reject(new HostError(503, "busy", "The image took too long.")), this.timeoutMs);
-          ws.onmessage = (e) => {
+          timer = setTimeout(() => reject(new HostError(503, "busy", "The image took too long.")), this.timeoutMs);
+          onAbort = () => reject(new HostError(503, "unavailable", "The request was cancelled."));
+          signal?.addEventListener("abort", onAbort, { once: true });
+          socket.onmessage = (e) => {
             if (e.data instanceof ArrayBuffer) {
               // 4 bytes event type, 4 bytes image format (2 = PNG), then the image.
               const view = Buffer.from(e.data);
               if (view.length > 8 && view.readUInt32BE(0) === 1 && view.readUInt32BE(4) === 2) pngs.push(view.subarray(8));
               return;
             }
-            const msg = JSON.parse(String(e.data));
+            let msg: { type?: string; data?: { prompt_id?: string; node?: unknown } };
+            try {
+              msg = JSON.parse(String(e.data));
+            } catch {
+              return;
+            }
             // Only this client's messages arrive here; skip any for another prompt.
             if (promptId && msg.data?.prompt_id && msg.data.prompt_id !== promptId) return;
-            if (msg.type === "execution_error") {
-              clearTimeout(timer);
-              reject(new HostError(503, "unavailable", "ComfyUI failed to make the image."));
-            } else if (msg.type === "executing" && msg.data.node === null) {
-              clearTimeout(timer);
-              resolve();
-            }
+            if (msg.type === "execution_error") reject(new HostError(503, "unavailable", "ComfyUI failed to make the image."));
+            else if (msg.type === "executing" && msg.data?.node === null) resolve();
           };
-          ws.onclose = () => reject(unavailable());
+          socket.onclose = () => reject(unavailable());
         });
-        const res = await fetch(`${this.base}/prompt`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ prompt, client_id: clientId }),
-        }).catch(() => {
-          throw unavailable();
-        });
-        if (!res.ok) throw new HostError(503, "unavailable", "ComfyUI refused the workflow.");
-        promptId = ((await res.json()) as { prompt_id: string }).prompt_id;
-        await done;
-        return pngs;
+        done.catch(() => {});
+        try {
+          const res = await fetch(`${this.base}/prompt`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ prompt, client_id: clientId }),
+          }).catch(() => {
+            throw unavailable();
+          });
+          if (!res.ok) throw new HostError(503, "unavailable", "ComfyUI refused the workflow.");
+          promptId = ((await res.json()) as { prompt_id: string }).prompt_id;
+          await done;
+          finished = true;
+          return pngs;
+        } finally {
+          clearTimeout(timer);
+          signal?.removeEventListener("abort", onAbort);
+        }
       } finally {
-        ws.onclose = null;
-        ws.close();
-        // No history of what was asked.
-        await fetch(`${this.base}/history`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ clear: true }) }).catch(() => {});
+        if (ws) {
+          ws.onclose = null;
+          ws.close();
+        }
+        // A job that didn't finish stops now, and doesn't run later.
+        if (promptId && !finished) {
+          await this.post("/interrupt", { prompt_id: promptId });
+          await this.post("/queue", { delete: [promptId] });
+        }
+        // Nothing of what was asked stays: the uploads become blank, and the history goes.
+        for (const key of Object.keys(names)) await this.upload(`lyrica-${key}.png`, BLANK).catch(() => {});
+        await this.post("/history", { clear: true });
       }
     });
   }
 
+  private async post(path: string, body: object): Promise<void> {
+    await fetch(`${this.base}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => {});
+  }
+
   /** Frees ComfyUI's GPU memory. */
   async free(): Promise<void> {
-    await fetch(`${this.base}/free`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ unload_models: true, free_memory: true }),
-    }).catch(() => {});
+    await this.post("/free", { unload_models: true, free_memory: true });
   }
 
   // As a scheduler backend: ComfyUI loads parts during the job, and /free unloads them.

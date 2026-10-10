@@ -128,10 +128,3 @@ export function fill(t: Template, parts: FilledPart[], loras: { file: string; st
   }
   return { ...nodes, ...graph };
 }
-
-/** For templates that load their own parts by file name (SeedVR2 finds them in its folder). */
-export function partNames(parts: FilledPart[]): Values {
-  const out: Values = {};
-  for (const p of parts) out[`${p.role}Name`] = basename(p.file);
-  return out;
-}
