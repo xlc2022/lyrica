@@ -162,7 +162,7 @@ Each user has two pools of memory.
   - **Header:** "Lyrica (ver. …, build …)" with the date and time beneath;
     the daemon reports its version and build.
   - **Welcome:** a greeting, the message box with General or Private, her
-    items from last night, what's waiting, and what's answering now.
+    items from last night, Notifications, and Backend (what answers now).
   - **Files and images, in every thread.** **Files** in the thread header
     opens a side panel (full screen on a phone) with two tabs:
     - **Files:** a searchable tree of the thread's folder (uploads, images
@@ -409,7 +409,7 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   the local/cloud line.
 - **Models page.** One area covers everything about models, with its own
   list of pages: **Overview** (one alert, four tiles: endpoints up, what's
-  answering chat, downloads, what's waiting; compact hosts; the last calls),
+  Backend, downloads, Notifications; compact hosts; the last calls),
   **Tasks**, **Text models**, **Image models**, **Hosts and endpoints**,
   **Downloads**, **Clean up** and **Recent calls**. Downloading a model,
   scanning and pairing are pages; a confirmation is a dialog. It covers:
