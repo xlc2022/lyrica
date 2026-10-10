@@ -9,7 +9,7 @@ import type { ChatRequest } from "../../core/test/fake-openai.ts";
 import { withModels } from "../../core/test/helpers.ts";
 import {
   createDelegateExtension, createLyricaExtension, Delegation, openThreadSession,
-  type DelegationEvent, type Limits, type Request, type ThreadContext,
+  type DelegationEvent, type DelegationOptions, type Limits, type Request, type ThreadContext,
 } from "../src/index.ts";
 
 // Delegation against fake model servers: Li's cloud endpoint ("openrouter")
@@ -37,14 +37,14 @@ function gate() {
 }
 
 /** Li with cloud subagent models, a Memory, and a Delegation over them. */
-async function setup(o: { limits?: Partial<Limits>; workspace?: (m: Awaited<ReturnType<typeof withModels>>) => Workspace } = {}) {
+async function setup(o: { limits?: Partial<Limits>; workspace?: (m: Awaited<ReturnType<typeof withModels>>) => Workspace; approve?: DelegationOptions["approve"] } = {}) {
   const m = await withModels();
   for (const task of ["chat", "subagent.cheap", "subagent.strong"] as const) m.models.setProfile(m.li.id, "cloud", task, m.cloudRef);
   m.models.setProfile(m.li.id, "local", "chat", m.localRef);
   const memory = new Memory(m.keyring, m.users);
   const cwd = tempDir();
   const workspace = o.workspace?.(m);
-  const options = { users: m.users, memory, models: m.models, cwd, limits: o.limits, workspace };
+  const options = { users: m.users, memory, models: m.models, cwd, limits: o.limits, workspace, approve: o.approve };
   const delegation = new Delegation(options);
   const thread = (pool: Pool = "general", t: { localOnly?: boolean; unlogged?: boolean } = {}): ThreadContext => {
     const view = memory.openThreadView(m.li.id, pool);
@@ -76,7 +76,7 @@ describe("delegate", () => {
       expect(run.status).toBe("finished");
       expect(run.result).toBe("checked locally");
       // Naming a cloud model is refused before any thread is made.
-      const named = await s.run(parent, { task: "check it", model: `openrouter/${s.cloudRef.modelId}` });
+      const named = await s.run(parent, { task: "check it", model: "openrouter/deepseek/deepseek-4.1-flash" });
       expect(named.status).toBe("failed");
       expect(named.result).toContain("isn't one of this thread's models");
       expect(parent.view.own.listThreads({ parent: parent.threadId })).toHaveLength(1);
@@ -110,10 +110,6 @@ describe("delegate", () => {
     const outside = await s.run(parent, { task: "read there", role: "scout", folders: [join(host, "b")] });
     expect(outside.status).toBe("failed");
     expect(outside.result).toContain("isn't one of this thread's folders");
-    // A subagent can't ask for approval yet, so no writer where the parent asks first.
-    const asks = await s.run(parent, { task: "change it", role: "worker" });
-    expect(asks.result).toContain("this thread asks before commands");
-
     await s.run(parent, { task: "look", role: "scout" });
     ws.settings(s.li.id).setThread(parent.threadId, "general", { mode: "auto" });
     await s.run(parent, { task: "change it", role: "worker" });
@@ -178,7 +174,7 @@ describe("delegate", () => {
     const s = await setup();
     s.local.respond(() => ({ text: "local says plant tomatoes" }));
     s.cloud.respond((r) => ({ text: told(r).includes("Several advisers") ? "Combined: tomatoes, then beans." : "cloud says plant beans" }));
-    const run = await s.run(s.thread(), { council: { question: "What should I plant?", models: [`openrouter/${s.cloudRef.modelId}`, "gpu/qwen3.8-27b"] } });
+    const run = await s.run(s.thread(), { council: { question: "What should I plant?", models: ["openrouter/deepseek/deepseek-4.1-flash", "gpu/qwen3.8-27b"] } });
     expect(run.result).toContain("Combined: tomatoes, then beans.");
     const synthesis = told(s.cloud.requests.find((r) => told(r).includes("Several advisers"))!);
     expect(synthesis).toContain("local says plant tomatoes");
@@ -456,5 +452,254 @@ describe("delegate", () => {
     expect(run.result).toContain("this request has already started 2 subagents");
     const [child] = parent.view.own.listThreads({ parent: parent.threadId });
     expect(parent.view.own.listThreads({ parent: child!.id })).toHaveLength(1);
+  });
+});
+
+describe("talking with subagents", () => {
+  const stored = (t: ThreadContext) => JSON.stringify(t.view.own.loadEntries(t.threadId));
+
+  it("message joins a working subagent's turn, answers its question, and continues one that has ended", async () => {
+    const s = await setup();
+    const g = gate();
+    s.cloud.respond(async (r) => {
+      const all = JSON.stringify(r.messages);
+      if (told(r).includes("paint")) return { tools: [{ name: "ask_parent", args: { question: "Which colour?" } }] };
+      if (told(r) === "Blue.") return { text: "Painted it blue." };
+      if (told(r).includes("anything else")) return { text: all.includes("also look in the shed") ? "Only the trowel, from the shed." : "nothing" };
+      if (all.includes("also look in the shed")) return { text: "Found the trowel in the shed." };
+      await g.opened;
+      return { text: "Nothing in the house." };
+    });
+    const parent = s.thread();
+    const budget = () => s.delegation.newBudget();
+
+    // Working: the message joins the turn in progress.
+    const run = s.delegation.start(parent, { task: "find the trowel", role: "scout" }, { background: false, budget: budget() });
+    await until(() => s.cloud.requests.length === 1);
+    const joined = s.delegation.message(parent, run.id, { text: "also look in the shed" }, { budget: budget() });
+    expect(joined.how).toBe("joined");
+    g.open();
+    await run.checkpoint();
+    expect(run.result).toBe("Found the trowel in the shed.");
+
+    // Asking: the message is its answer.
+    const paint = await s.run(parent, { task: "paint the shed" });
+    expect(paint.status).toBe("question");
+    expect(s.delegation.message(parent, paint.id, { text: "Blue." }, { budget: budget() }).how).toBe("answered");
+    await paint.checkpoint();
+    expect(paint.result).toBe("Painted it blue.");
+
+    // Ended: it continues in its own thread, with what it knew, under the same run, and counts once more.
+    const before = s.cloud.requests.length;
+    const more = s.delegation.message(parent, run.id, { text: "anything else?" }, { budget: budget() });
+    expect(more.how).toBe("continued");
+    await more.opened;
+    await more.run.checkpoint();
+    expect(more.run.id).toBe(run.id);
+    expect(more.run.result).toBe("Only the trowel, from the shed.");
+    const sent = JSON.stringify(s.cloud.requests[before]!.messages);
+    for (const earlier of ["find the trowel", "also look in the shed", "Found the trowel in the shed."]) expect(sent).toContain(earlier);
+    expect(s.delegation.status(parent).find((r) => r.run === run.id)).toMatchObject({ status: "finished", thread: more.threadId });
+    await expect(s.delegation.message(parent, run.id, { text: "and?" }, { budget: { left: 0 } }).opened).rejects.toThrow("already started");
+
+    // Only this thread's runs, and the subagent must be clear.
+    expect(() => s.delegation.message(s.thread(), run.id, { text: "hi" }, { budget: budget() })).toThrow(`no run ${run.id} in this thread`);
+    const two = await s.run(parent, { tasks: [{ task: "one", role: "scout" }, { task: "two", role: "scout" }] });
+    expect(() => s.delegation.message(parent, two.id, { text: "hi" }, { budget: budget() })).toThrow("say which with thread");
+    const [, second] = s.delegation.status(parent).filter((r) => r.run === two.id);
+    const picked = s.delegation.message(parent, two.id, { text: "anything else?" }, { thread: `t:${second!.thread}`, budget: budget() });
+    expect(picked.threadId).toBe(second!.thread);
+    await picked.run.ended;
+  });
+
+  it("continues a subagent interrupted by a restart from its thread", async () => {
+    const s = await setup();
+    const g = gate();
+    s.cloud.respond(async (r) => {
+      if (told(r) === "long job") { await g.opened; return { text: "never seen" }; }
+      return { text: JSON.stringify(r.messages).includes("long job") ? "Picking up the long job." : "lost" };
+    });
+    const parent = s.thread();
+    const run = s.delegation.start(parent, { task: "long job" }, { background: true, budget: s.delegation.newBudget() });
+    await until(() => s.cloud.requests.length === 1);
+
+    const after = new Delegation(s.options);
+    after.recover(s.li.id);
+    const [row] = after.status(parent);
+    expect(row).toMatchObject({ status: "interrupted" });
+    expect(stored(parent)).toContain("To go on, send it a message");
+    const go = after.message(parent, run.id, { text: "carry on" }, { budget: after.newBudget() });
+    await go.opened;
+    await go.run.ended;
+    // A background run's reply arrives in the parent thread.
+    expect(go.run.result).toBe("Picking up the long job.");
+    expect(stored(parent)).toContain("Picking up the long job.");
+    expect(after.status(parent)[0]).toMatchObject({ status: "finished" });
+    run.stop();
+    g.open();
+  });
+
+  it("works a continued subagent's model out again: local once its parent is local-only, refused once it is forgotten", async () => {
+    const s = await setup();
+    s.local.respond(() => ({ text: "local reply" }));
+    const parent = s.thread();
+    const run = await s.run(parent, { task: "plan the beds", tier: "strong" });
+    expect(s.delegation.status(parent)[0]!.model).toBe("openrouter/deepseek/deepseek-4.1-flash");
+
+    s.models.setLocalOnly(s.li.id, "general", parent.threadId, true);
+    const local = s.delegation.message(parent, run.id, { text: "and the paths?" }, { budget: s.delegation.newBudget() });
+    await local.opened;
+    await local.run.checkpoint();
+    expect(local.run.result).toBe("local reply");
+    expect(s.delegation.status(parent)[0]!.model).toBe("gpu/qwen3.8-27b");
+    expect(JSON.stringify(s.cloud.requests)).not.toContain("and the paths?");
+
+    parent.view.own.forgetThread(parent.threadId, "lyrica");
+    const gone = s.delegation.message(parent, run.id, { text: "still there?" }, { budget: s.delegation.newBudget() });
+    await expect(gone.opened).rejects.toThrow(/forgotten/);
+    expect(JSON.stringify([s.cloud.requests, s.local.requests])).not.toContain("still there?");
+  });
+
+  it("delivers notes from a subagent that keeps working, a few per stretch", async () => {
+    const s = await setup({ limits: { notes: 2 } });
+    s.cloud.respond((r) => {
+      if (r.messages.at(-1)!.role === "tool") return { text: "Weeded all three beds." };
+      return { tools: [1, 2, 3].map((i) => ({ name: "ask_parent", args: { question: `bed ${i} is done`, wait: false } })) };
+    });
+    const events: DelegationEvent[] = [];
+    s.delegation.events.on("note", (e) => events.push(e));
+    const parent = s.thread();
+    const run = await s.run(parent, { task: "weed the beds" }, true);
+    await run.ended;
+    expect(run.status).toBe("finished");
+    expect(run.result).toBe("Weeded all three beds.");
+    expect(events.map((e) => (e as { note: string }).note)).toEqual(["bed 1 is done", "bed 2 is done"]);
+    const text = stored(parent);
+    expect(text).toContain("bed 1 is done");
+    expect(text).toContain("bed 2 is done");
+    expect(text).not.toContain("bed 3 is done");
+    expect(JSON.stringify(s.cloud.requests.at(-1)!.messages)).toContain("sent all the notes you can");
+  });
+
+  it("forks a subagent from the parent's conversation, and keeps a fork of a restricted parent local", async () => {
+    const s = await setup();
+    s.cloud.respond((r) => {
+      if (isSub(r)) return { text: JSON.stringify(r.messages).includes("SPRUCE") ? "Fork knows SPRUCE." : "Fork knows nothing." };
+      if (JSON.stringify(r.messages).includes("try two ways")) {
+        if (r.messages.at(-1)!.role === "tool") return { text: "Both forks reported." };
+        return { tools: [{ name: "delegate", args: { tasks: [{ task: "way A", fork: true }, { task: "way B", role: "scout" }] } }] };
+      }
+      return { text: "Noted." };
+    });
+    const parent = s.thread();
+    const p = await s.open(parent);
+    try {
+      await p.session.prompt("The password is SPRUCE.");
+      await p.session.prompt("Now try two ways.");
+    } finally {
+      p.dispose();
+    }
+    const subs = s.cloud.requests.filter(isSub);
+    const forked = subs.find((r) => told(r).includes("way A"))!;
+    expect(told(forked)).toContain("copied for you");
+    expect(JSON.stringify(forked.messages)).toContain("SPRUCE");
+    // It is still a subagent: its own preamble, read-only memory, no remember.
+    expect(forked.tools!.map((t) => t.function.name)).not.toContain("remember");
+    // Without fork, it sees only its task.
+    expect(JSON.stringify(subs.find((r) => told(r).includes("way B"))!.messages)).not.toContain("SPRUCE");
+    // The copies point at their originals: search finds the parent's entry once, and sleep doesn't read them again.
+    const forkThread = s.delegation.status(parent).find((r) => r.role === "worker")!.thread;
+    const said = parent.view.own.search("password SPRUCE").filter((h) => h.id.startsWith("e:"));
+    const original = said.filter((h) => h.snippet.includes("The password is SPRUCE"));
+    expect(original.map((h) => h.id)).toEqual([expect.stringMatching(new RegExp(`^e:${parent.threadId}#`))]);
+    const copied = parent.view.own.entryPage(forkThread, { limit: 1000 }).entries.length - (parent.view.own.sleepMaterial(undefined, "9999").threads.find((t) => t.id === forkThread)?.entries ?? 0);
+    expect(copied).toBeGreaterThan(0);
+    const material = parent.view.own.sleepMaterial(undefined, "9999").threads.find((t) => t.id === forkThread)!;
+    expect(Number(material.first.split("#")[1])).toBeGreaterThan(copied);
+
+    // A fork of a private or local-only conversation runs on local models, now and when continued.
+    s.local.respond((r) => ({ text: JSON.stringify(r.messages).includes("HEMLOCK") ? "local fork knows HEMLOCK" : "local" }));
+    for (const restricted of [s.thread("private"), s.thread("general", { localOnly: true })]) {
+      const q = await s.open(restricted);
+      try { await q.session.prompt("The other password is HEMLOCK."); } finally { q.dispose(); }
+      const run = await s.run(restricted, { task: "recall it", fork: true });
+      expect(run.result).toBe("local fork knows HEMLOCK");
+      const [row] = s.delegation.status(restricted);
+      expect(s.models.callContext(s.li.id, restricted.pool, row!.thread).localOnly).toBe(true);
+      if (restricted.pool === "general") s.models.setLocalOnly(s.li.id, "general", restricted.threadId, false);
+      const again = s.delegation.message(restricted, run.id, { text: "once more" }, { budget: s.delegation.newBudget() });
+      await again.opened;
+      await again.run.checkpoint();
+      expect(again.run.result).toBe("local fork knows HEMLOCK");
+    }
+    expect(JSON.stringify(s.cloud.requests)).not.toContain("HEMLOCK");
+  });
+
+  it("offers message, and no longer steer or answer", async () => {
+    const s = await setup();
+    const parent = s.thread();
+    const p = await s.open(parent);
+    try {
+      await p.session.prompt("hello");
+    } finally {
+      p.dispose();
+    }
+    const tool = JSON.stringify(s.cloud.requests[0]!.tools!.find((t) => t.function.name === "delegate"));
+    expect(tool).toContain('"message"');
+    expect(tool).not.toContain('"steer"');
+    expect(tool).not.toContain('"answer"');
+  });
+
+  it("asks before a writer's commands where its parent asks, and refuses on deny or stop", async () => {
+    const scratch = tempDir();
+    const target: ExecutionTarget = { name: "sandbox", cwd: async () => scratch, ops: () => ({ bash: createLocalBashOperations() } as unknown as ToolOps), folders: () => [] };
+    let answer: (r: { tool: string; role: string; threadId: string; runId: string; input: Record<string, unknown> }) => Promise<boolean> = async () => true;
+    const asked: { tool: string; role: string; threadId: string; parentThreadId: string; runId: string }[] = [];
+    let ws!: Workspace;
+    const s = await setup({
+      workspace: (m) => (ws = new (class extends Workspace { override targetFor(_t: WorkspaceThread) { return target; } })(m.keyring, m.users, { excludePorts: [] })),
+      approve: async (r, signal) => {
+        asked.push(r);
+        if (signal.aborted) return false;
+        return answer(r);
+      },
+    });
+    s.cloud.respond((r) => {
+      if (r.messages.at(-1)!.role === "tool") return { text: `result: ${said(r.messages.at(-1)!)}` };
+      return { tools: [{ name: "bash", args: { command: `echo hi > ${told(r)}.txt` } }] };
+    });
+    const parent = s.thread();
+    ws.settings(s.li.id).setThread(parent.threadId, "general", { mode: "ask-commands" });
+
+    const allowed = await s.run(parent, { task: "yes", role: "worker" });
+    expect(allowed.status).toBe("finished");
+    expect(existsSync(join(scratch, "yes.txt"))).toBe(true);
+    expect(asked).toEqual([expect.objectContaining({ tool: "bash", role: "worker", runId: allowed.id, parentThreadId: parent.threadId, threadId: s.delegation.status(parent)[0]!.thread })]);
+
+    answer = async () => false;
+    const denied = await s.run(parent, { task: "no", role: "worker" });
+    expect(denied.result).toContain("Not approved");
+    expect(existsSync(join(scratch, "no.txt"))).toBe(false);
+
+    // Writers working side by side each ask for their own calls, named by thread.
+    const pair = await s.run(parent, { tasks: [{ task: "left" }, { task: "right" }] });
+    expect(pair.status).toBe("finished");
+    expect(new Set(asked.slice(2).map((r) => r.threadId)).size).toBe(2);
+    asked.splice(2);
+
+    // Stopped while it waits: that call is refused, and nothing runs.
+    answer = () => new Promise(() => {});
+    const waiting = s.delegation.start(parent, { task: "stop", role: "worker" }, { background: true, budget: s.delegation.newBudget() });
+    await until(() => asked.length === 3);
+    waiting.stop();
+    await waiting.ended;
+    expect(waiting.status).toBe("stopped");
+    expect(existsSync(join(scratch, "stop.txt"))).toBe(false);
+
+    // In "auto", nothing is asked.
+    ws.settings(s.li.id).setThread(parent.threadId, "general", { mode: "auto" });
+    await s.run(parent, { task: "auto", role: "worker" });
+    expect(asked).toHaveLength(3);
+    expect(existsSync(join(scratch, "auto.txt"))).toBe(true);
   });
 });

@@ -1,11 +1,11 @@
 import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import type { Role, SubagentRecord } from "@lyrica/core";
+import { LIVE_STATUSES, type Role, type SubagentRecord } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import { toolGuidance, type ThreadContext } from "../index.ts";
 import { syncEntries } from "../record.ts";
 import { registerMemoryTools } from "../tools.ts";
 import { SUBAGENT_PREAMBLE } from "./roles.ts";
-import { DELEGATE_MESSAGE, outcome, Stopped, type Delegation, type Deliver, type Request, type Run } from "./runs.ts";
+import { DELEGATE_MESSAGE, outcome, Stopped, type Delegation, type Deliver, type Request, type Run, type SubagentHooks } from "./runs.ts";
 
 const text = (t: string, details?: unknown) => ({ content: [{ type: "text" as const, text: t }], details });
 
@@ -15,10 +15,11 @@ const Step = Type.Object({
   task: Type.String({ description: "What to do, with everything the subagent needs: it sees none of this conversation." }),
   role: Type.Optional(Type.String({ description: "A role; worker if not given." })),
   tier: Type.Optional(Tier),
+  fork: Type.Optional(Type.Boolean({ description: "Start the subagent from a copy of this conversation, not just its task." })),
 });
 
 const Params = Type.Object({
-  action: Type.Optional(Type.Union([Type.Literal("run"), Type.Literal("status"), Type.Literal("wait"), Type.Literal("stop"), Type.Literal("steer"), Type.Literal("answer")], { description: "run (the default) starts work; the others act on a run ID." })),
+  action: Type.Optional(Type.Union([Type.Literal("run"), Type.Literal("status"), Type.Literal("wait"), Type.Literal("stop"), Type.Literal("message")], { description: "run (the default) starts work; the others act on a run ID." })),
   ...Step.properties,
   task: Type.Optional(Step.properties.task),
   tasks: Type.Optional(Type.Array(Step, { minItems: 1, description: "Several tasks at once; the results come back together." })),
@@ -34,8 +35,9 @@ const Params = Type.Object({
   folders: Type.Optional(Type.Array(Type.String(), { description: "Only these of this thread's folders." })),
   readOnly: Type.Optional(Type.Boolean({ description: "The subagents may read the folders but not change them." })),
   internet: Type.Optional(Type.Literal(false, { description: "false cuts the subagents off from the internet." })),
-  id: Type.Optional(Type.String({ description: "The run ID, for status, wait, stop, steer and answer." })),
-  message: Type.Optional(Type.String({ description: "For steer, what to tell the running subagent; for answer, the answer to its question." })),
+  id: Type.Optional(Type.String({ description: "The run ID, for status, wait, stop and message." })),
+  message: Type.Optional(Type.String({ description: "For message: joins a working subagent's work, answers its question, or continues one that has ended, in its own thread." })),
+  thread: Type.Optional(Type.String({ description: "For message, which subagent of the run (its thread), where it has several and none or more than one is waiting." })),
 });
 type Params = Static<typeof Params>;
 
@@ -45,7 +47,7 @@ function request(p: Params): Request {
   const given = WORK.filter((k) => p[k] !== undefined);
   if (given.length !== 1) throw new Error(`give exactly one of ${WORK.join(", ")}`);
   const narrowing = { folders: p.folders, readOnly: p.readOnly, internet: p.internet };
-  if (p.task !== undefined) return { ...narrowing, task: p.task, role: p.role, tier: p.tier };
+  if (p.task !== undefined) return { ...narrowing, task: p.task, role: p.role, tier: p.tier, ...(p.fork ? { fork: true } : {}) };
   if (p.workflow !== undefined) return { ...narrowing, workflow: p.workflow, input: p.input };
   const k = given[0] as "tasks" | "chain" | "loop" | "council";
   return { ...narrowing, [k]: p[k] } as Request;
@@ -57,7 +59,8 @@ function formatStatus(rows: SubagentRecord[], live: (id: string) => Run | undefi
   return rows.map((r) => {
     const tokens = r.inputTokens + r.outputTokens;
     const asking = live(r.run)?.questions.find((q) => q.sub.ctx.threadId === r.thread);
-    return `${r.run} ${r.role} ${r.status}${r.background ? " (background)" : ""}, t:${r.thread}, ${r.model}, ${tokens} tokens${asking ? `\n  asks: ${asking.question}` : ""}`;
+    const more = LIVE_STATUSES.includes(r.status) ? "" : ", can be continued with message";
+    return `${r.run} ${r.role} ${r.status}${r.background ? " (background)" : ""}, t:${r.thread}, ${r.model}, ${tokens} tokens${more}${asking ? `\n  asks: ${asking.question}` : ""}`;
   }).join("\n");
 }
 
@@ -110,16 +113,16 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
       name: "delegate",
       label: "Delegate",
       description: "Hand work to subagents: one task, several at once, a chain, a review loop, a council, or a saved workflow. "
-        + "Each works in its own thread under this one, with this thread's folders or fewer. Also: status, wait, stop, steer and answer on a run ID.",
+        + "Each works in its own thread under this one, with this thread's folders or fewer. Also: status, wait, stop and message on a run ID.",
       promptSnippet: "hand work to subagents, in the foreground or background",
       promptGuidelines: [
         "Pick a delegate tier by the work, never a model: cheap for searching, reading, summarizing and checking; strong for writing, judgment, and changing code or files. A role brings its own tier.",
-        "A subagent sees none of this conversation, so put everything it needs into its task.",
+        "A subagent sees none of this conversation, so put everything it needs into its task. Only when it truly needs the whole conversation (trying approaches side by side, say) use fork: true; it costs the whole conversation again for each fork.",
         "Use background: true for long work, and carry on; its result arrives as a message on a later turn.",
-        "When a subagent asks a question, answer it with delegate action answer, or ask the person you're talking with first if it's theirs to decide.",
+        "Talk to a subagent with delegate action message: it joins the work in progress, answers its question, or continues one that has ended with everything it knew. Ask the person you're talking with first if a question is theirs to decide.",
       ],
       parameters: Params,
-      async execute(_id, p, signal) {
+      async execute(_id, p, signal, _onUpdate, ctx) {
         const action = p.action ?? "run";
         if (action === "status") {
           const rows = delegation.status(thread).filter((r) => !p.id || r.run === p.id);
@@ -127,7 +130,10 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
           return text(`${formatStatus(rows.slice(0, 20), (id) => { try { return delegation.get(thread, id); } catch { return undefined; } })}\nAll subagents of this thread: ${u.inputTokens + u.outputTokens} tokens.`);
         }
         if (action === "run") {
-          const run = delegation.start(thread, request(p), { background: !!p.background, budget: requestBudget });
+          const req = request(p);
+          // A fork copies the stored conversation, so this turn's messages are stored first.
+          syncEntries(ctx.sessionManager, thread.view.own, thread.threadId);
+          const run = delegation.start(thread, req, { background: !!p.background, budget: requestBudget });
           if (p.background) return text(`Started run ${run.id} in the background. Its result will arrive as a message.`, { runId: run.id, status: run.status });
           const stop = () => run.stop();
           signal?.addEventListener("abort", stop, { once: true });
@@ -138,22 +144,25 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
           }
           return report(run);
         }
-        const run = delegation.get(thread, p.id);
+        let run: Run;
+        if (action === "message") {
+          if (!p.message) throw new Error("message needs a message");
+          const sent = delegation.message(thread, p.id, { text: p.message }, { thread: p.thread, budget: requestBudget });
+          await sent.opened;
+          run = sent.run;
+          const who = `${sent.role} (t:${sent.threadId})`;
+          if (sent.how === "joined") return text(`Sent to ${who} in run ${run.id}; it joins the work in progress.`, { runId: run.id, threads: [sent.threadId] });
+          if (run.background) {
+            return text(sent.how === "answered" ? `Answered ${who}. Run ${run.id} carries on in the background.`
+              : `${who} continues in its thread, in the background. Its reply will arrive as a message.`, { runId: run.id, status: run.status, threads: [sent.threadId] });
+          }
+        } else {
+          run = delegation.get(thread, p.id);
+        }
         if (action === "stop") {
           run.stop();
           await run.checkpoint().catch(() => {});
           return text(`Stopped run ${run.id}.`);
-        }
-        if (action === "steer") {
-          const sub = run.subagents.find((s) => s.status === "running");
-          if (!sub || !p.message) throw new Error(sub ? "steer needs a message" : `run ${run.id} has no subagent working right now`);
-          sub.steer(p.message);
-          return text(`Sent to ${sub.role.name} in run ${run.id}.`);
-        }
-        if (action === "answer") {
-          if (!p.message) throw new Error("answer needs a message");
-          run.answer(p.message);
-          if (run.background) return text(`Answered. Run ${run.id} carries on in the background.`);
         }
         try {
           // wait, or an answer to a foreground run: until the next question or the end.
@@ -172,17 +181,25 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
  * A subagent's own extension: the preamble and its role's prompt, read-only
  * memory, ask_parent, and only the tools its role allows.
  */
-export function createSubagentExtension(thread: ThreadContext, role: Role, hooks: { question(q: string): void }, allowed: Set<string>): ExtensionFactory {
+export function createSubagentExtension(thread: ThreadContext, role: Role, hooks: SubagentHooks, allowed: Set<string>): ExtensionFactory {
   const who = () => ({ threadId: thread.threadId, user: { id: thread.user.id, profile: thread.user.profile } });
   return (pi) => {
     registerMemoryTools(pi, thread.view, who, { readOnly: true });
     pi.registerTool({
       name: "ask_parent",
       label: "Ask Lyrica",
-      description: "Stop and ask Lyrica one question you can't go on without. Her answer arrives as your next message.",
-      promptSnippet: "ask Lyrica a question you can't go on without, then stop",
-      parameters: Type.Object({ question: Type.String() }),
+      description: "Stop and ask Lyrica one question you can't go on without; her answer arrives as your next message. "
+        + "With wait: false, send her a short note instead and keep working.",
+      promptSnippet: "ask Lyrica a question you can't go on without, then stop; or send her a note and keep working",
+      parameters: Type.Object({
+        question: Type.String({ description: "The question, or the note." }),
+        wait: Type.Optional(Type.Boolean({ description: "true (the default) stops until she answers; false sends a note and you keep working." })),
+      }),
       async execute(_id, p) {
+        if (p.wait === false) {
+          if (!hooks.note(p.question)) throw new Error("You've sent all the notes you can for now. Keep working, and put the rest in your final reply.");
+          return text("Your note was sent. Keep working.");
+        }
         hooks.question(p.question);
         return { ...text("Your question was sent. Stop here; the answer will come as the next message."), terminate: true };
       },

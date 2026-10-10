@@ -180,7 +180,8 @@ Search is FTS5 (BM25). A query is its words, minus common stopwords, OR'd
 together; a user's name in it adds that user's token as one more alternative.
 Indexed: notes, pages, the journal, and logged thread entries (what was said,
 tool calls, and the first 2,000 characters of each tool result). Not indexed:
-entries written unlogged, exported copies, the per-turn context message, and
+entries written unlogged, copied entries (exports and forks, `copyEntries`),
+the per-turn context message, and
 calls to the memory tools themselves, so recall never finds its own echoes.
 Automatic recall leaves out superseded notes and the current thread.
 Embeddings (hybrid search) get added if the

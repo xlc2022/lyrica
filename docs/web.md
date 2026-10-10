@@ -20,7 +20,7 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   because another browser still holds them.
 - **Sidebar:** the user, the Show general, Show private and Show hidden
   threads filters (saved per user), New thread (general or private), the
-  thread list with subagents behind `›`, and links to Memory and the Control
+  thread list with child threads (forks, copies) behind `›`, and links to Memory and the Control
   panel. Private threads carry a small lock in the private colour.
 - **Hidden pools:** with Show general or Show private off, a thread or
   memory from that pool shows "General is hidden" or "Private is hidden"
@@ -32,8 +32,12 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   this machine's services switches (each following the user's default until
   changed), allowed hosts, folders from the allowed paths (read-only or
   read-write), where commands run (sandbox or an SSH target), permission
-  mode, "Do not log", rename, hide, and forget. A subagent's thread shows
-  them read-only. `lyricad` validates every change and its reason is shown.
+  mode, "Do not log", rename, hide, and forget. `lyricad` validates every
+  change and its reason is shown.
+- **Subagents live inline**, not in the sidebar: see the `delegate` card
+  under Chat. Opening a subagent's thread by link shows the same thing as
+  its card: a link to its parent, its transcript and a message box, never
+  the composer or settings.
 - **Memory:** search filtered by pool, layer and User introduced; a memory
   with its lineage as links, edit (each edit a revision), history with
   restore, archive and delete; forgetting selected results as a topic; and
@@ -72,11 +76,19 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
 - Thinking, recalls, saved notes and tool calls are one-line markers that
   expand when tapped. An expanded tool call stays open when the turn ends
   and the stored copy replaces the live one.
-- A `delegate` call is a card that opens its subagents' threads (the tool
-  part's `threads`). A background run's result or question, delivered later
-  as a `notice` event and stored as a `notice` message, shows as a card
-  with the same links.
-- Permission requests appear inline with Allow and Deny and the time left.
+- A `delegate` call is a card for its subagents (the tool part's
+  `threads`). Each expands to its work: the stored transcript, read-only,
+  where each message says who sent it (Lyrica, the user by name, or the
+  subagent's own work), reloaded as the subagent works; its waiting
+  approvals; and a message box that writes to it as the user (Lyrica is
+  told). What a run delivers later (a result, a question, a note, or what
+  someone wrote to a subagent), as a `notice` event and stored as a
+  `notice` message, shows as a card headed by what it is, linking to the
+  subagent.
+- Permission requests appear inline with Allow and Deny and the time left. A
+  subagent's request shows in its parent's thread (in its card, when that
+  is open) and on its own page, naming the subagent, and stays past the
+  parent's turn; the first answer wins and the other view updates.
 - Errors from the stream (a refused model, an endpoint that's down) are shown
   as sent, in plain words.
 - A message sent during a turn waits as a follow-up and shows as waiting.
