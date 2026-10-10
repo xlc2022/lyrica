@@ -10,7 +10,7 @@ the thread menu, the Sort menu and the Notifications page.
 - DESIGN.md: "Projects" and "How the web UI looks" / "Where things are";
 - docs/web.md; the API in `daemon/src/api.ts`;
 - the app mockup (https://claude.ai/artifact/96BoPXPoxL2LDBg8eLxjHx),
-  version 21 or later: the project chat at `#t/p1`, the Threads popover from
+  version 22 or later: the project chat at `#t/p1`, the Threads popover from
   its facts line, and the settings page at `#project/p1/general`, `/memory`
   and `/files`.
 
@@ -47,11 +47,13 @@ desktop and at 390 px (principle 1). Every control has its row in ux.md §6.
 5. **Start a thread** in a message's menu, in a project chat only. A
    resolved thread's message box is replaced by one **Reopen** link.
 6. **Project settings page** (Settings in the project chat's header), its
-   own address, sections on the left: **General** (the project chat's own
-   settings rows first, then Goal, Threads model and thinking, Paused),
-   **Memory** (Instructions; a link to the project page in the memory
-   browser), **Files** and **Images** (the project folder: upload, new
-   folder, rename, move, delete, download, through the Files panel's API).
+   own address, sections on the left: **General** (Goal, Threads model and
+   thinking, Paused; then the project chat's own rows under a **This chat**
+   head: Model, Mode, Group; one Save at the foot), **Memory**
+   (Instructions; a link to the project page in the memory browser), and
+   **Files and images**, one section with the Files | Images segmented
+   control (the project folder: upload, new folder, rename, move, delete,
+   download, through the Files panel's API).
 7. **Notifications:** the **Waiting on you** type, with Open.
 8. **Recent calls** filtered to a project, linked from the tokens fact.
 9. **Docs:** docs/web.md; the PR lists which ux.md rule each control

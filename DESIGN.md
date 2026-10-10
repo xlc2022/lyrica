@@ -938,10 +938,10 @@ the work and keeps track of. Agreed 2026-10-10; not built yet. The briefs are
     the chat's pending bar. **Suggested threads** is a card like the plan
     card, with **Start** per thread and **Start all**.
   - **Project settings** is a page with sections: General (Goal; Threads,
-    the model and thinking new threads start with; Paused; and the project
-    chat's own settings), Memory (Instructions, and a link to the project
-    page in the memory browser), and Files and Images, where the project
-    folder is managed. Files in the header stays the quick view.
+    the model and thinking new threads start with; Paused; then the project
+    chat's own settings under **This chat**), Memory (Instructions, and a
+    link to the project page in the memory browser), and **Files and
+    images** (Files | Images), where the project folder is managed. Files in the header stays the quick view.
   - **Paused** stops the project's working threads and starts nothing new.
     **Hide** stops it too. **Delete** forgets the project chat, its threads,
     its page, the notes that came only from it, and its folder.
