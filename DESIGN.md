@@ -462,10 +462,10 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     one bar, the parts, used of window, and the last turn's speed.
   - Her turn context carries one line of numbers: context used and free,
     tokens per second, prompt tokens per second. Two points before Pi's
-    own edge (90% on a 32k window and up, where its reserve is 8%) lyricad
-    adds a line telling her to compact now; fifteen points before that, to
+    own edge, and never later than 90%, lyricad adds a line telling her to
+    compact now; fifteen points before that, and never later than 75%, to
     finish the step, save what matters to memory and compact with a
-    summary.
+    summary. From 32k up that is exactly 90% and 75%.
   - She compacts herself with the `compact` tool, giving her own summary
     (it becomes an action of the `threads` tool once that lands). lyricad hands it to Pi's compaction, which cuts
     the old entries and keeps the recent ones; pinned messages stay. It
