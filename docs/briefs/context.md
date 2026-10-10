@@ -103,5 +103,6 @@ compaction marker shown as one line in the web UI.
   marker that expands: Web UI 2.
 - **Exact counts** from a host's llama.cpp `/tokenize`.
 
-**Open questions:** none blocking. The `threads` tool has only `compact` until
-child threads add `start`, `message` and `list`.
+**Open questions:** none blocking. `compact` is its own tool, with her summary
+as its one argument, until the Child threads thread's `threads` tool takes it
+as an action.

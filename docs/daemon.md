@@ -123,9 +123,9 @@ Each active thread is one Pi session from `openThreadSession`, with
   `Context 64% of 32k · 9.1k free · 38 tok/s · 2.1k tok/s prompt`. Free is
   what's left before Pi's own compaction. At 75% a second line tells her to
   finish the step, save what matters and compact with a summary; at 90%, to
-  compact now. The `threads` tool's guidelines say once what the line means.
-- **Compacting herself.** The `threads` tool's `compact` action takes her
-  summary.
+  compact now. The `compact` tool's guidelines say once what the line means.
+- **Compacting herself.** The `compact` tool takes her summary. It's its own
+  tool until the Child threads `threads` tool takes it as an action.
   - A summary too long for Pi's reserve is refused with the limit. A short one
     (under 400 characters) becomes the notes for Pi's own summary.
   - The compaction runs when the turn ends, since Pi's `compact()` would stop

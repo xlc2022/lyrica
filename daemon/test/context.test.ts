@@ -72,7 +72,7 @@ describe("her context", () => {
     await turn(long("FIRST-MARK"));
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));
-    model.reply({ tools: [{ name: "threads", args: { action: "compact", summary: SUMMARY } }] }, { text: "Compacting now." });
+    model.reply({ tools: [{ name: "compact", args: { summary: SUMMARY } }] }, { text: "Compacting now." });
     await turn("let's tidy up before the next part");
     const compacted = stream.events.find((e) => e.event.type === "compacted")?.event as Extract<ThreadEvent, { type: "compacted" }>;
     expect(compacted.summary).toBe(SUMMARY);
@@ -98,7 +98,7 @@ describe("her context", () => {
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));
     model.reply(
-      { tools: [{ name: "threads", args: { action: "compact", summary: "NOTES-MARK keep the migration plan" } }] },
+      { tools: [{ name: "compact", args: { summary: "NOTES-MARK keep the migration plan" } }] },
       { text: "Compacting." },
       { text: "PI-SUMMARY-MARK: the migration plan, decided and open points." },
     );

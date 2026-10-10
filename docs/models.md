@@ -257,8 +257,11 @@ Offerings carry `reasoning`, the levels they offer besides off: discovered
 from OpenRouter's `supported_parameters`, or set by hand. Threads have a
 thinking setting (off, low, medium, high, `setThinking`) with a per-user
 default (`setDefaultThinking`, off unless set). `thinkingFor` maps it to
-what the model offers: the nearest level it has, or off with a note when it
-can't think. Pi passes it as `reasoning_effort` to OpenAI-compatible
+what the model offers: the nearest level it has, with a note, or off with a
+note when it can't think. A model host's model with one level (a thinking
+switch in its chat template) simply runs at it, with no note, whatever level
+was asked; on a plain endpoint, a single level is the nearest level, with the
+note. Pi passes it as `reasoning_effort` to OpenAI-compatible
 endpoints. Subagent roles keep their own level. Thinking text is stored with
 the thread but never made searchable.
 

@@ -40,7 +40,7 @@ export interface LyricaOptions {
   hide?: (id: string) => boolean;
   /** The /sleep command, where the host offers it (the bench). */
   sleep?: (ctx: ExtensionCommandContext) => Promise<void>;
-  /** lyricad's meter for this thread: measures each turn, adds her status line, and the `threads` tool's compact. */
+  /** lyricad's meter for this thread: measures each turn, adds her status line, and the `compact` tool. */
   meter?: ContextMeter;
 }
 

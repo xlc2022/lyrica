@@ -173,6 +173,22 @@ export interface OfferingInfo extends Capabilities {
   /** missing: the endpoint stopped listing it; gone: missing for 30 days, so fallbacks skip it. */
   status: "listed" | "missing" | "gone";
   missingSince?: string;
+  /** The file's checksum, from a host: the strong group suggestion. */
+  digest?: string;
+  /** What the model is, from a host's GGUF metadata or the hub's model card. */
+  identity?: {
+    basename?: string | null; sizeLabel?: string | null; finetune?: string | null;
+    baseModels?: { name?: string; organization?: string; repoUrl?: string }[] | null;
+    card?: { baseModel?: string[]; baseModelRelation?: string | null } | null;
+  };
+  /** The host downloaded it itself, so it can be deleted. */
+  downloaded?: boolean;
+  /** Bytes, from a host. */
+  size?: number;
+  /** An image model on a host: the confirmed recipe's name. */
+  recipe?: string;
+  /** Moved to a library entry of its own (Not this model). */
+  separate?: boolean;
 }
 
 export interface EndpointInfo {
