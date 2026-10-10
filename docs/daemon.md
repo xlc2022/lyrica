@@ -157,6 +157,11 @@ Each active thread is one Pi session from `openThreadSession`, with
   with the conversation up to message `n` (`branchThread`), and gives it
   the thread's models, local-only switch and workspace settings, which it
   can then only narrow.
+- **Pins** (`PUT` and `DELETE …/messages/:n/pin`) pin or unpin one of the
+  user's messages or her replies (`400` for any other entry, `409` in a
+  subagent's thread). `GET …/pins` lists the thread's pins, oldest first,
+  and whether they're over the pinned budget (`shortened`). Messages carry
+  `pinned`.
 - **Rewinding** (`POST …/messages/:n/rewind`, `RewindRequest`): `delete`
   removes message `n` and everything after it; `regenerate` removes her
   reply's turn from its user message and sends that message again;
@@ -171,11 +176,19 @@ Each active thread is one Pi session from `openThreadSession`, with
   in a subagent's thread. A missing message is `404`; a subagent's thread
   can't be branched (`409`).
 - Forgetting a thread forgets its subagents' threads with it, deepest first,
-  stopping their runs and dropping their records (`Delegation.forget`).
+  stopping their runs and dropping their records (`Delegation.forget`). With
+  `{ children: true }` (`ForgetThread`) its child threads go too; otherwise
+  they are kept as threads of their own and detached from its workspace.
+- **Child threads** (`ChildThreads`, [delegation.md](delegation.md#child-threads)):
+  every hosted thread gets the `threads` tool. A child is hosted like any
+  thread; `ThreadHost.status` says working, waiting or idle, and
+  `onTurn` keeps its record. Its summary has `child`, `status` and `unseen`
+  (updates not yet seen; reading its messages sees them). Lock stops working
+  children before the key goes.
 - Thread lists are per interface (`web` by default), filtered by the user's
-  display settings, most recently active first, with child threads (forks,
-  copies) nested under their parent. Subagents aren't listed: they live in
-  their parent's `delegate` cards. Child threads include branches. Memory search honours the same pool filters; `?all=1` ignores
+  display settings, most recently active first, with child threads (Lyrica's,
+  branches, forks, copies) nested under their parent. Subagents aren't listed: they live in
+  their parent's `delegate` cards. Memory search honours the same pool filters; `?all=1` ignores
   them in both.
 
 ## The event stream

@@ -653,6 +653,8 @@ export class Delegation {
    * parent's stored thread, for its next session. Nothing, if the parent was forgotten.
    */
   private deliverTo(userId: string, pool: Pool, threadId: string, content: string, details: unknown): void {
+    // An ID, so the thread shows each delivery once, however it hears of it.
+    if (details && typeof details === "object" && !("id" in details)) details = { ...details, id: randomBytes(8).toString("hex") };
     const live = this.parents.get(threadKey(userId, pool, threadId));
     if (live?.({ content, details })) return;
     const view = this.o.memory.openThreadView(userId, pool);

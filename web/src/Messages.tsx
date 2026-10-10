@@ -21,9 +21,11 @@ interface Props {
   rewinder?: Rewinder;
   /** Messages from here on are being deleted (waiting for Undo). */
   hideFrom?: number;
+  /** A child thread's parent's title, for what the parent sent. */
+  parentTitle?: string;
 }
 
-export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewinder, hideFrom }: Props) {
+export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewinder, hideFrom, parentTitle }: Props) {
   const { messages, live, hasMore, loadOlder, loaded } = thread;
   const [run, loading, error] = useAction();
   // Expanded tool markers, by call ID, so they stay open when the stored copy replaces the live one.
@@ -34,7 +36,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   const show = (id: string, on: boolean) => setShown((o) => { const n = new Set(o); if (on) n.add(id); else n.delete(id); return n; });
   const env: Env = {
     userId: ctx.user.id, you: ctx.user.displayName, pool, base, threadId, subagent, openTools, toggleTool,
-    permissions: live.permissions, ticks: live.subagents, show, rewinder,
+    permissions: live.permissions, ticks: live.subagents, show, rewinder, parentTitle,
   };
   const shownMessages = hideFrom === undefined ? messages : messages.filter((m) => m.n < hideFrom);
   return (
@@ -62,6 +64,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
 
 interface Env {
   userId: string;
+  parentTitle?: string;
   you: string;
   pool: Pool;
   /** The open thread's API path, where its permission requests are answered. */
@@ -79,6 +82,7 @@ interface Env {
 
 function StoredMessage({ m, env, you }: { m: Message; env: Env; you: string }) {
   if (m.role === "user") {
+    if (m.from?.kind === "parent") return <FromParent text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} parent={m.from.threadId} env={env} n={m.n} />;
     const who = m.from?.kind === "lyrica" ? "Lyrica" : m.from?.kind === "user" ? (m.from.name || you) : you;
     return <UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} />;
   }
@@ -105,8 +109,8 @@ function UserMessage({ text, you, n, rewinder }: { text: string; you: string; n?
   const [editing, setEditing] = useState(false);
   const menu = rewinder && n !== undefined;
   return (
-    <div className="msg user">
-      <div className="who">{you}{menu && <MessageMenu n={n} role="user" rewinder={rewinder} onEdit={() => setEditing(true)} />}</div>
+    <div className="msg user" id={n !== undefined ? `m-${n}` : undefined}>
+      <div className="who">{you}{menu && rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}{menu && <MessageMenu n={n} role="user" rewinder={rewinder} onEdit={() => setEditing(true)} />}</div>
       {editing && menu
         ? <EditBox text={text} onCancel={() => setEditing(false)} onSend={(t) => { setEditing(false); rewinder.rewind(n, { action: "edit", text: t }, n); }} />
         : <div className="body">{text}</div>}
@@ -140,9 +144,10 @@ function Parts({ parts, env, model, streaming, n }: { parts: MessagePart[]; env:
   // In a subagent's thread, the replies are the subagent's own work.
   const who = env.subagent ? "Subagent" : "Lyrica";
   return (
-    <section className="turn" aria-label={model ? `${who} (${model})` : who}>
+    <section className="turn" id={n !== undefined ? `m-${n}` : undefined} aria-label={model ? `${who} (${model})` : who}>
       <div className="who">
         {who}{model && <span className="muted"> · {model}</span>}
+        {env.rewinder && n !== undefined && env.rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}
         {env.rewinder && n !== undefined && <MessageMenu n={n} role="assistant" rewinder={env.rewinder} />}
       </div>
       {out}
@@ -157,6 +162,7 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" }>; e
   if (part.type === "tool" && part.name === "delegate") return <SubagentCard part={part} env={env} />;
   // While her plan waits for an answer, its card shows it; the marker would be a second copy.
   if (part.type === "tool" && part.name === "propose_plan" && part.result === undefined) return null;
+  if (part.type === "tool" && part.name === "threads") return <ThreadsCard part={part} env={env} />;
   if (part.type === "delegation") return <Notice text={part.text} status={part.status} threads={part.threads} env={env} />;
   let label: React.ReactNode;
   let body: React.ReactNode;
@@ -205,6 +211,40 @@ function SubagentCard({ part, env }: { part: Extract<MessagePart, { type: "tool"
       </div>
       {args.task && <p>{args.task}</p>}
       {part.threads?.map((t, i) => <SubagentWork key={t.id} thread={t} label={part.threads!.length > 1 ? `Subagent ${i + 1}` : "Its work"} env={env} />)}
+    </div>
+  );
+}
+
+/** A `threads` call: a child thread started, messaged or listed, linking to it. */
+function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" }>; env: Env }) {
+  const args = (part.args ?? {}) as { action?: string; title?: string; task?: string; text?: string; to?: string };
+  const state = part.result === undefined ? "running" : part.isError ? "failed" : "done";
+  const head = args.action === "start" ? `Child thread: ${args.title ?? ""}` : args.action === "list" ? "Child threads"
+    : args.to === "parent" ? "Update to the parent thread" : "Message to a child thread";
+  return (
+    <div className="subagent threads-card">
+      <div className="sub-head">
+        <span className="status" data-state={state} aria-label={state} />
+        {/* A thread's title is as the user wrote it, so this head isn't capitalised as a role's is. */}
+        <b className="as-is">{head}</b>
+        {args.to === "parent" ? null : <ThreadLinks threads={part.threads} env={env} />}
+      </div>
+      {(args.task ?? args.text) && <p>{args.task ?? args.text}</p>}
+      {part.isError && <p className="error">{part.result}</p>}
+    </div>
+  );
+}
+
+/** In a child thread, what its parent thread sent: its task, or a message. */
+function FromParent({ text, parent, env, n }: { text: string; parent: string; env: Env; n?: number }) {
+  return (
+    <div className="msg user">
+      <div className="who">
+        Lyrica<span className="muted"> · from <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: parent })}>{env.parentTitle || "its parent thread"}</a></span>
+        {/* Branch and delete, as any message; it isn't hers to edit. */}
+        {env.rewinder && n !== undefined && <MessageMenu n={n} role="user" rewinder={env.rewinder} />}
+      </div>
+      <div className="body">{text}</div>
     </div>
   );
 }
@@ -266,6 +306,7 @@ function ThreadLinks({ threads, env }: { threads?: ThreadRef[]; env: Env }) {
 
 const NOTICE_HEADS: Record<string, string> = {
   question: "Subagent asks", note: "Subagent note", user_message: "Message to a subagent", interrupted: "Subagent interrupted",
+  update: "Child thread",
 };
 
 /** Something a subagent run delivered into the thread: a result, a question, a note, or what someone wrote to one. */

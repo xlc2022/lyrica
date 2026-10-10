@@ -246,8 +246,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     breaks. The same mechanism **merges** two endpoints that turned out to be
     the same server.
 - **Tasks.** Different tasks use different models: chat, cheap and strong
-  subagents, compaction, titles, embeddings, each sleep phase, and creating
-  and editing images.
+  subagents, titles, embeddings, each sleep phase, and creating and editing
+  images. Compaction always uses the thread's chat model (Pi has no
+  separate setting for it), so it isn't a task to pick.
 - **Profiles.** A **control panel** sets default models per task in three
   profiles:
   - **Local:** local models only. Private and local-only threads always use
@@ -324,7 +325,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   models often need a few tries:
   - **Regenerate** on any of Lyrica's replies removes it and everything after
     it, then asks again. **Regenerate with…** does the same with another model
-    the thread may use (local only in a private or local-only thread).
+    the thread may use (local only in a private or local-only thread), and
+    the thread keeps that model from then on.
   - **Delete** removes the last turn, as in LM Studio, again and again until
     the one to retry; **Delete from here** removes a message and everything
     after it.
@@ -393,8 +395,7 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     what answers that task right now and opens a side panel with its ordered
     list of models. A task can instead
     use another task's list (**Same as**), one level deep: by default titles
-    and compaction follow cheap subagents, and sleep follows strong
-    subagents. A task with no list of its own follows Chat, as before;
+    follow cheap subagents, and sleep follows strong subagents. A task with no list of its own follows Chat, as before;
   - two libraries, **Text models** and **Image models**, because the two
     are managed differently. The image library is described under Images.
   - a **Downloads** page, with a count while anything is downloading: the
@@ -460,11 +461,13 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     The thread's facts line shows **Context 21%**, opening a popover with
     one bar, the parts, used of window, and the last turn's speed.
   - Her turn context carries one line of numbers: context used and free,
-    tokens per second, prompt tokens per second. At 75% lyricad adds a line
-    telling her to finish the step, save what matters to memory and compact
-    with a summary; at 90%, to compact now.
-  - She compacts herself with the `compact` action of the `threads` tool,
-    giving her own summary. lyricad hands it to Pi's compaction, which cuts
+    tokens per second, prompt tokens per second. Two points before Pi's
+    own edge, and never later than 90%, lyricad adds a line telling her to
+    compact now; fifteen points before that, and never later than 75%, to
+    finish the step, save what matters to memory and compact with a
+    summary. From 32k up that is exactly 90% and 75%.
+  - She compacts herself with the `compact` tool, giving her own summary
+    (it becomes an action of the `threads` tool once that lands). lyricad hands it to Pi's compaction, which cuts
     the old entries and keeps the recent ones; pinned messages stay. It
     shows as a marker, **Compacted · 41k → 6k**, expanding to the summary.
     Pi's automatic compaction stays on at the window's edge as the safety
@@ -529,14 +532,15 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - **Containers.**
     - The model host ships as a Docker Compose file with pinned images, run
       with Docker or Podman on Linux.
-    - Containers keep the GPU stacks (CUDA or ROCm, vLLM) pinned and apart
+    - Containers keep the GPU stacks (CUDA, ROCm or Vulkan, vLLM) pinned and apart
       from the rest of the machine, which matters on a personal workstation.
     - Windows isn't a model host: when the workstation is booted into
       Windows, it is simply away.
     - `lyricad` itself stays a native service (see Deployment).
   - **NVIDIA and AMD**, through a compose profile per vendor (CUDA or ROCm
-    images). The machine needs only the GPU driver and the container
-    runtime's GPU support.
+    images; Vulkan for llama.cpp on AMD GPUs ROCm's images don't cover, and
+    integrated GPUs count their shared memory). The machine needs only the
+    GPU driver and the container runtime's GPU support.
   - **Our images, pinned by digest.** The host API and ComfyUI images are ours,
     built in CI from pinned versions. vLLM and llama.cpp use their official
     images, also pinned by digest. Nothing is pulled as `latest`.

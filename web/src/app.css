@@ -143,6 +143,11 @@ button.badge { min-height: 0; padding: 2px 9px; }
 button.badge.model:hover { border-color: var(--accent); }
 .badge.model { cursor: pointer; }
 .badge .warn { color: var(--cloud); }
+/* Pinned is state, so a badge after the sender's name, not part of it. */
+.who .pin-badge { margin-left: 6px; font-size: 12px; text-transform: none; letter-spacing: normal; padding: 0 7px; vertical-align: 1px; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.msg.flash, .turn.flash { animation: flash 1s ease-out; border-radius: 8px; }
+@keyframes flash { from { outline: 2px solid var(--accent); outline-offset: 4px; } to { outline: 2px solid transparent; outline-offset: 4px; } }
 .gear { flex: none; white-space: nowrap; }
 .subnote { margin: 0; padding: 6px var(--gutter); font-size: 0.85rem; color: var(--muted); border-bottom: 1px solid var(--line); }
 .picker-anchor { position: relative; display: inline-flex; max-width: 100%; }
@@ -158,6 +163,8 @@ button.badge.model:hover { border-color: var(--accent); }
 .scroll > * { width: 100%; max-width: 80ch; justify-self: center; }
 .older { justify-self: center; width: auto; }
 .who { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+/* The eyebrow carries names; the facts after them read as written. */
+.who .muted { text-transform: none; letter-spacing: normal; }
 .msg { display: grid; gap: 4px; min-width: 0; }
 .msg.user .body { background: var(--user-block); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .msg.user.queued { opacity: 0.65; }
@@ -188,6 +195,7 @@ button.badge.model:hover { border-color: var(--accent); }
 .subagent { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: var(--radius); background: var(--panel); padding: 10px 12px; display: grid; gap: 4px; }
 .sub-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 0.85rem; }
 .sub-head b { text-transform: capitalize; }
+.sub-head b.as-is { text-transform: none; }
 .sub-head .open { margin-left: auto; }
 .subagent p { margin: 0; font-size: 0.9rem; }
 .status { width: 8px; height: 8px; border-radius: 50%; background: var(--local); }
@@ -369,3 +377,5 @@ textarea.code { font: 0.82rem/1.5 var(--mono); white-space: pre; }
 .msg-menu .menu .sub-item { padding-left: 24px; }
 .edit-box { display: grid; gap: 6px; }
 .edit-box textarea { width: 100%; font: inherit; border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; background: var(--panel); color: var(--fg); }
+/* A child thread's updates nobody has seen yet. */
+.count { font: 500 11px/18px var(--mono); height: 18px; min-width: 18px; text-align: center; border-radius: 999px; padding: 0 5px; background: var(--accent); color: var(--bg); font-variant-numeric: tabular-nums; }

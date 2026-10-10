@@ -3,7 +3,8 @@
 // Usage: tsx web/e2e/serve.ts <lyricad port> <model port>
 //
 // The fake model answers from the last user message: "run: <command>" calls
-// bash with that command (then says "The command finished."), "plan: <plan>"
+// bash with that command (then says "The command finished."), "start: <title>"
+// starts a child thread with that title (then says "Started it."), "plan: <plan>"
 // calls propose_plan with that plan (then says "On it."), anything else
 // gets a few streamed sentences that echo it. /local/v1 serves "local-model"
 // and /cloud/v1 "cloud-model".
@@ -43,8 +44,16 @@ function fakeModel() {
       res.writeHead(200, { "content-type": "text/event-stream" });
       const command = /run: (.+)/.exec(said)?.[1];
       const plan = /plan: (.+)/.exec(said)?.[1];
-      const call = command ? { name: "bash", arguments: JSON.stringify({ command }) } : plan ? { name: "propose_plan", arguments: JSON.stringify({ plan }) } : undefined;
-      if (call && last?.role !== "tool") {
+      const child = /^start: (.+)/.exec(said)?.[1];
+      if (child && last?.role !== "tool") {
+        const args = { action: "start", title: child, task: `Work on ${child}.` };
+        send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: { name: "threads", arguments: JSON.stringify(args) } }] });
+        send({}, "tool_calls");
+      } else if (child) {
+        send({ role: "assistant", content: "Started it." });
+        send({}, "stop");
+      } else if ((command || plan) && last?.role !== "tool") {
+        const call = command ? { name: "bash", arguments: JSON.stringify({ command }) } : { name: "propose_plan", arguments: JSON.stringify({ plan }) };
         send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: call }] });
         send({}, "tool_calls");
       } else {

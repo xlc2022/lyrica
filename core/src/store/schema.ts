@@ -1,13 +1,14 @@
 /** A pool database (general.db or private.db). Owned by the Memory component alone. */
 export const POOL_SCHEMA = `
 -- One conversation. parent: the thread it was forked, branched, delegated or exported from;
--- subagent: delegated, so the UI shows it in its parent's chat; cut: the highest entry number
--- a rewind removed, so entry IDs are never reused.
+-- subagent: delegated, so the UI shows it in its parent's chat; child: started by Lyrica from its
+-- parent (threads start); cut: the highest entry number a rewind removed, so entry IDs are never reused.
 CREATE TABLE IF NOT EXISTS threads (
   id         TEXT PRIMARY KEY,
   interface  TEXT NOT NULL,
   parent     TEXT,
   subagent   INTEGER NOT NULL DEFAULT 0,
+  child      INTEGER NOT NULL DEFAULT 0,
   title      TEXT,
   hidden     INTEGER NOT NULL DEFAULT 0,
   unlogged   INTEGER NOT NULL DEFAULT 0,
@@ -15,7 +16,8 @@ CREATE TABLE IF NOT EXISTS threads (
   created_at TEXT NOT NULL
 );
 -- Pi session entries, as Pi wrote them. unlogged: written while the thread wasn't logged;
--- orig: the entry this one was copied from by an export.
+-- orig: the entry this one was copied from by an export; pinned: the user pinned it, so it stays in
+-- her context word for word.
 CREATE TABLE IF NOT EXISTS entries (
   thread     TEXT NOT NULL REFERENCES threads (id) ON DELETE CASCADE,
   n          INTEGER NOT NULL,
@@ -25,6 +27,7 @@ CREATE TABLE IF NOT EXISTS entries (
   text       TEXT NOT NULL,
   unlogged   INTEGER NOT NULL,
   orig       TEXT,
+  pinned     INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   PRIMARY KEY (thread, n),
   UNIQUE (thread, pi_id)
@@ -126,5 +129,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS search USING fts5 (
 /** Brings an older pool database up to POOL_SCHEMA. */
 export const POOL_UPGRADES = [
   { check: "SELECT 1 FROM pragma_table_info('threads') WHERE name = 'subagent'", sql: "ALTER TABLE threads ADD COLUMN subagent INTEGER NOT NULL DEFAULT 0" },
+  { check: "SELECT 1 FROM pragma_table_info('threads') WHERE name = 'child'", sql: "ALTER TABLE threads ADD COLUMN child INTEGER NOT NULL DEFAULT 0" },
   { check: "SELECT 1 FROM pragma_table_info('threads') WHERE name = 'cut'", sql: "ALTER TABLE threads ADD COLUMN cut INTEGER NOT NULL DEFAULT 0" },
+  { check: "SELECT 1 FROM pragma_table_info('entries') WHERE name = 'pinned'", sql: "ALTER TABLE entries ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0" },
 ];

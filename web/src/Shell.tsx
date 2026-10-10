@@ -145,7 +145,7 @@ function ThreadRow({ t, userId, current }: { t: ThreadSummary; userId: string; c
     <li>
       <div className="row">
         {t.children.length > 0
-          ? <button type="button" className="chev" aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} subagents`} onClick={() => setOpen(!open)}>›</button>
+          ? <button type="button" className="chev" aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} child threads`} onClick={() => setOpen(!open)}>›</button>
           : <span className="chev" />}
         <ThreadLink t={t} userId={userId} on={current === key} />
       </div>
@@ -160,6 +160,12 @@ function ThreadRow({ t, userId, current }: { t: ThreadSummary; userId: string; c
 
 function ThreadLink({ t, userId, on }: { t: ThreadSummary; userId: string; on: boolean }) {
   const when = t.updatedAt;
+  // At most two badges, most pressing first (ux.md §5): waiting on her, then new updates, then hidden.
+  const badges = [
+    t.status === "waiting" && <span key="w" className="flag">waiting</span>,
+    !!t.unseen && <span key="u" className="count" aria-label={`${t.unseen} new ${t.unseen === 1 ? "update" : "updates"}`}>{t.unseen}</span>,
+    t.hidden && <span key="h" className="flag">hidden</span>,
+  ].filter(Boolean).slice(0, 2);
   return (
     <a className="thread" href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })} aria-current={on ? "page" : undefined}>
       {t.pool === "private"
@@ -168,7 +174,7 @@ function ThreadLink({ t, userId, on }: { t: ThreadSummary; userId: string; on: b
       <span className="title">{t.title || "New thread"}</span>
       <span className="when">
         {t.busy && <span className="busy" title="Working" />}
-        {t.hidden && <span className="flag">hidden</span>}
+        {badges}
         {shortTime(when)}
       </span>
       {t.pool === "private" && <span className="sr-only">private</span>}

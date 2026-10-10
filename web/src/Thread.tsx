@@ -1,7 +1,7 @@
 // One thread: header with its badges, the conversation, and the composer.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { get, patch, post, threadPath, type Pool, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary } from "./api.ts";
-import { useUndo, type Rewinder } from "./Rewind.tsx";
+import { del, get, patch, post, put, threadPath, type Pins, type Pool, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary } from "./api.ts";
+import { PinnedBadge, useUndo, type Rewinder } from "./Rewind.tsx";
 import { go } from "./route.ts";
 import { useThread } from "./stream.ts";
 import { Conversation, MessageBox } from "./Messages.tsx";
@@ -15,6 +15,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
   const base = threadPath(userId, pool, threadId);
   const summary = useLoad(() => get<ThreadSummary>(base), [base]);
   const settings = useLoad(() => get<ThreadSettings>(`${base}/settings`), [base]);
+  const pins = useLoad(() => get<Pins>(`${base}/pins`), [base]);
   const t = useThread(userId, pool, threadId);
   const [drawer, setDrawer] = useState(false);
   const [sendError, setSendError] = useState("");
@@ -23,6 +24,9 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
   // A new title, or a finished turn, may change the sidebar.
   useEffect(() => { if (t.live.title) { summary.reload(); refreshThreads(); } }, [t.live.title, summary.reload, refreshThreads]);
   useEffect(() => { if (t.live.reload) refreshThreads(); }, [t.live.reload, refreshThreads]);
+  // A child thread's update changes its badge in the sidebar.
+  const updates = t.live.items.filter((x) => x.role === "notice").length;
+  useEffect(() => { if (updates) refreshThreads(); }, [updates, refreshThreads]);
   // The badge follows the profile, which may change elsewhere: refresh it after each turn and on focus.
   // A refresh that a change overtakes is dropped, so it can't undo a Shift+Tab pressed meanwhile.
   const latest = useRef(0);
@@ -32,6 +36,8 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
     get<ThreadSettings>(`${base}/settings`).then((s) => { if (n === latest.current && !inFlight.current) settings.set(s); }, () => {});
   }, [base, settings.set]);
   useEffect(() => { if (t.live.reload || t.live.settings) refreshSettings(); }, [t.live.reload, t.live.settings, refreshSettings]);
+  // A rewind may take pinned messages with it.
+  useEffect(() => { if (t.live.reload) pins.reload(); }, [t.live.reload, pins.reload]);
   useEffect(() => {
     addEventListener("focus", refreshSettings);
     return () => removeEventListener("focus", refreshSettings);
@@ -76,6 +82,11 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
     settings: settings.data,
     busy: t.live.busy,
     lastTurn: t.messages.findLast((m) => m.role === "user")?.n,
+    pinned: new Set(pins.data?.pins.map((p) => p.n)),
+    pin: (n, on) => {
+      setSendError("");
+      (on ? put(`${base}/messages/${n}/pin`, {}) : del(`${base}/messages/${n}/pin`)).then(pins.reload, (e: Error) => setSendError(e.message));
+    },
     branch: (n) => {
       setSendError("");
       post<ThreadSummary>(`${base}/messages/${n}/branch`).then((b) => { refreshThreads(); go({ page: "thread", userId, pool, threadId: b.id }); },
@@ -107,6 +118,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
           <div className="badges">
             <span className="badge" data-kind={pool === "private" ? "private" : "general"}><span className="k">{pool}</span></span>
             {settings.data && <ModelBadge base={base} settings={settings.data} onChange={settings.set} readOnly={!!s?.subagent} />}
+            {pins.data && !s?.subagent && <PinnedBadge pins={pins.data} you={ctx.user.displayName} />}
             {settings.data?.localOnly && pool === "general" && <span className="badge"><span className="k local">local-only</span></span>}
             {settings.data?.grants.map((g) => (
               <span key={g.path} className="badge folder" title={g.path}>{g.path} <span className="muted">{g.writable ? "rw" : "ro"}</span></span>
@@ -121,12 +133,12 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
         )}
       </header>
       {parent && (
-        <p className="subnote">{s?.subagent ? "Subagent of" : "Branched from"} <a href={`#/u/${encodeURIComponent(userId)}/t/${pool}/${encodeURIComponent(parent.id)}`}>{parent.title || "its thread"}</a></p>
+        <p className="subnote">{s?.subagent ? "Subagent of" : s?.child ? "Child thread of" : "Branched from"} <a href={`#/u/${encodeURIComponent(userId)}/t/${pool}/${encodeURIComponent(parent.id)}`}>{parent.title || "its thread"}</a></p>
       )}
       <div className="scroll" ref={scroller}>
         <ErrorText error={summary.error || t.loadError} />
         {settings.error && <ErrorText error={`This thread's settings didn't load: ${settings.error}`} />}
-        <Conversation ctx={ctx} pool={pool} base={base} threadId={threadId} subagent={!!s?.subagent} thread={t} rewinder={rewinder} hideFrom={pending?.hide} />
+        <Conversation ctx={ctx} pool={pool} base={base} threadId={threadId} subagent={!!s?.subagent} thread={t} rewinder={rewinder} hideFrom={pending?.hide} parentTitle={s?.child ? parent?.title : undefined} />
         <ErrorText error={sendError} />
       </div>
       {!t.connected && <p className="offline" role="status">Reconnecting…</p>}
@@ -142,7 +154,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
         : <Composer base={base} busy={t.live.busy} onSend={send} onStop={stop} restored={restored} settings={settings.data} onSettings={changeSettings} />}
       {drawer && settings.data && s && !s.subagent && (
         <SettingsDrawer
-          ctx={ctx} base={base} summary={s} settings={settings.data}
+          ctx={ctx} base={base} summary={s} settings={settings.data} children={findThread(threads, pool, threadId)?.children.length ?? 0}
           onSettings={settings.set} onSummary={(x) => { summary.set(x); refreshThreads(); }}
           onClose={() => setDrawer(false)}
         />

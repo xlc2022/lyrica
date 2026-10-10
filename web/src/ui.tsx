@@ -63,16 +63,19 @@ export function Switch({ label, hint, checked, disabled, onChange }: {
 }
 
 /** Asks before doing something that can't be undone, in place rather than in a browser dialog. */
-export function Confirm({ label, question, confirm, danger, onConfirm }: {
-  label: string; question: string; confirm: string; danger?: boolean; onConfirm: () => void;
+/** A control that asks before it acts, in place. `option` adds one checkbox (ticked by default); `onConfirm` gets its state. */
+export function Confirm({ label, question, confirm, danger, option, onConfirm }: {
+  label: string; question: string; confirm: string; danger?: boolean; option?: string; onConfirm: (option: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [ticked, setTicked] = useState(true);
   if (!open) return <button type="button" className={danger ? "danger" : ""} onClick={() => setOpen(true)}>{label}</button>;
   return (
     <div className="confirm" role="group" aria-label={label}>
       <p>{question}</p>
+      {option && <label className="check"><input type="checkbox" checked={ticked} onChange={(e) => setTicked(e.target.checked)} />{" "}{option}</label>}
       <div className="row">
-        <button type="button" className={danger ? "danger solid" : "primary"} onClick={() => { setOpen(false); onConfirm(); }}>{confirm}</button>
+        <button type="button" className={danger ? "danger solid" : "primary"} onClick={() => { setOpen(false); onConfirm(!!option && ticked); }}>{confirm}</button>
         <button type="button" onClick={() => setOpen(false)}>Cancel</button>
       </div>
     </div>

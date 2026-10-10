@@ -15,6 +15,8 @@ export interface Thread {
   parent?: string;
   /** Delegated by its parent: the UI nests it there. */
   subagent: boolean;
+  /** Started by Lyrica from its parent with `threads start`: one level deep, never a parent of another. */
+  child: boolean;
   title?: string;
   hidden: boolean;
   unlogged: boolean;
@@ -36,6 +38,12 @@ export interface StoredEntry {
   text: string;
   unlogged: boolean;
   createdAt: string;
+}
+
+/** A pinned entry, with where it is. */
+export interface PinnedEntry extends StoredEntry {
+  thread: string;
+  n: number;
 }
 
 export interface NoteInput {
@@ -144,8 +152,8 @@ export interface SleepItem {
 
 /** What a sleep run has to work with: everything after the watermark and before the run started. */
 export interface SleepMaterial {
-  /** Logged threads with new entries (not sleep's own threads, not exported copies). */
-  threads: { id: string; title?: string; entries: number; first: string; last: string }[];
+  /** Logged threads with new entries (not sleep's own threads, not exported copies), and which of them the user pinned. */
+  threads: { id: string; title?: string; entries: number; first: string; last: string; pinned?: string[] }[];
   /** Notes written in conversation or by a user. */
   notes: Item[];
   /** Memories a user changed or added. */
@@ -191,9 +199,9 @@ export class PoolReader {
     return row && toThread(row);
   }
 
-  /** With `parent`, only that thread's subagents. */
-  listThreads(opts: { includeHidden?: boolean; parent?: string } = {}): Thread[] {
-    const where = [opts.includeHidden ? "" : "hidden = 0", opts.parent === undefined ? "" : "parent = @parent AND subagent = 1"].filter(Boolean);
+  /** With `parent`, only that thread's subagents, or with `children` its other daughters (child threads, branches, copies). */
+  listThreads(opts: { includeHidden?: boolean; parent?: string; children?: boolean } = {}): Thread[] {
+    const where = [opts.includeHidden ? "" : "hidden = 0", opts.parent === undefined ? "" : `parent = @parent AND subagent = ${opts.children ? 0 : 1}`].filter(Boolean);
     const rows = this.db.prepare(`SELECT * FROM threads ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at`)
       .all(opts.parent === undefined ? {} : { parent: opts.parent }) as ThreadRow[];
     return rows.map(toThread);
@@ -206,11 +214,11 @@ export class PoolReader {
   }
 
   /** A page of the thread's raw entries, oldest first: the newest `limit`, or those before entry `before`. */
-  entryPage(threadId: string, opts: { before?: number; limit: number }): { entries: { n: number; data: unknown; createdAt: string }[]; hasMore: boolean } {
-    const rows = this.db.prepare("SELECT n, data, created_at FROM entries WHERE thread = ? AND n < ? ORDER BY n DESC LIMIT ?")
-      .all(threadId, opts.before ?? Number.MAX_SAFE_INTEGER, opts.limit + 1) as { n: number; data: string; created_at: string }[];
+  entryPage(threadId: string, opts: { before?: number; limit: number }): { entries: { n: number; data: unknown; createdAt: string; pinned: boolean }[]; hasMore: boolean } {
+    const rows = this.db.prepare("SELECT n, data, created_at, pinned FROM entries WHERE thread = ? AND n < ? ORDER BY n DESC LIMIT ?")
+      .all(threadId, opts.before ?? Number.MAX_SAFE_INTEGER, opts.limit + 1) as { n: number; data: string; created_at: string; pinned: number }[];
     const hasMore = rows.length > opts.limit;
-    return { entries: rows.slice(0, opts.limit).reverse().map((r) => ({ n: r.n, data: json(r.data), createdAt: r.created_at })), hasMore };
+    return { entries: rows.slice(0, opts.limit).reverse().map((r) => ({ n: r.n, data: json(r.data), createdAt: r.created_at, pinned: r.pinned === 1 })), hasMore };
   }
 
   /** Pi entry IDs already stored for the thread. */
@@ -343,7 +351,11 @@ export class PoolReader {
       FROM entries e JOIN threads t ON t.id = e.thread
       WHERE e.unlogged = 0 AND e.orig IS NULL AND t.interface != 'sleep' AND e.text != '' AND e.created_at >= ? AND e.created_at < ?
       GROUP BY e.thread ORDER BY min(e.created_at)`).all(from, until) as { id: string; title: string | null; entries: number; first: number; last: number }[])
-      .map((r) => ({ id: r.id, ...(r.title ? { title: r.title } : {}), entries: r.entries, first: entryId(r.id, r.first), last: entryId(r.id, r.last) }));
+      .map((r) => {
+        const pinned = (this.db.prepare("SELECT n FROM entries WHERE thread = ? AND pinned = 1 AND unlogged = 0 AND n BETWEEN ? AND ? ORDER BY n")
+          .all(r.id, r.first, r.last) as { n: number }[]).map((p) => entryId(r.id, p.n));
+        return { id: r.id, ...(r.title ? { title: r.title } : {}), entries: r.entries, first: entryId(r.id, r.first), last: entryId(r.id, r.last), ...(pinned.length ? { pinned } : {}) };
+      });
     const notes = (this.db.prepare("SELECT id FROM notes WHERE origin != 'sleep' AND archived = 0 AND created_at >= ? AND created_at < ? ORDER BY created_at")
       .all(from, until) as { id: string }[]).map((r) => this.get(r.id)!);
     const edited = this.editedSince(from).filter((e) => e.at < until);
@@ -460,15 +472,16 @@ export class PoolStore extends PoolReader {
   // Threads and entries
 
   /** A daughter of an unlogged thread is always unlogged. */
-  createThread(opts: { interface: Interface; parent?: string; subagent?: boolean; unlogged?: boolean; title?: string }): Thread {
+  createThread(opts: { interface: Interface; parent?: string; subagent?: boolean; child?: boolean; unlogged?: boolean; title?: string }): Thread {
     const parent = opts.parent === undefined ? undefined : this.getThread(opts.parent);
     if (opts.parent !== undefined && !parent) throw new Error(`no such thread: ${opts.parent}`);
-    if (opts.subagent && !parent) throw new Error("a subagent's thread needs its parent");
+    if ((opts.subagent || opts.child) && !parent) throw new Error("a subagent's or child thread needs its parent");
+    if (opts.child && (opts.subagent || parent!.child || parent!.subagent)) throw new Error("a child thread can't start child threads of its own");
     let id: string;
     do id = `${opts.interface}/${randomBytes(4).toString("hex")}`; while (this.getThread(id));
     const unlogged = !!opts.unlogged || !!parent?.unlogged;
-    this.db.prepare("INSERT INTO threads (id, interface, parent, subagent, title, unlogged, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .run(id, opts.interface, parent?.id ?? null, opts.subagent ? 1 : 0, opts.title ?? null, unlogged ? 1 : 0, now());
+    this.db.prepare("INSERT INTO threads (id, interface, parent, subagent, child, title, unlogged, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(id, opts.interface, parent?.id ?? null, opts.subagent ? 1 : 0, opts.child ? 1 : 0, opts.title ?? null, unlogged ? 1 : 0, now());
     return this.getThread(id)!;
   }
 
@@ -530,8 +543,8 @@ export class PoolStore extends PoolReader {
     this.mustThread(from);
     this.mustThread(to);
     if ((this.db.prepare("SELECT count(*) AS c FROM entries WHERE thread = ?").get(to) as { c: number }).c) throw new Error("entries are copied only into an empty thread");
-    this.db.prepare(`INSERT INTO entries (thread, n, pi_id, role, data, text, unlogged, orig, created_at)
-      SELECT ?, n, pi_id, role, data, text, unlogged, coalesce(orig, 'e:' || thread || '#' || n), created_at FROM entries WHERE thread = ? AND n <= ?`)
+    this.db.prepare(`INSERT INTO entries (thread, n, pi_id, role, data, text, unlogged, orig, pinned, created_at)
+      SELECT ?, n, pi_id, role, data, text, unlogged, coalesce(orig, 'e:' || thread || '#' || n), pinned, created_at FROM entries WHERE thread = ? AND n <= ?`)
       .run(to, from, opts.upTo ?? Number.MAX_SAFE_INTEGER);
   }
 
@@ -559,6 +572,20 @@ export class PoolStore extends PoolReader {
     });
   }
 
+  /** Pins or unpins entry `n`: a pinned entry stays in her context word for word. Throws if there's no such entry. */
+  pinEntry(threadId: string, n: number, pinned: boolean): void {
+    this.mustThread(threadId);
+    const changed = this.db.prepare("UPDATE entries SET pinned = ? WHERE thread = ? AND n = ?").run(pinned ? 1 : 0, threadId, n).changes;
+    if (!changed) throw new Error(`no entry ${n} in ${threadId}`);
+  }
+
+  /** Pinned entries, oldest first: one thread's, or every thread's in this pool. */
+  pins(threadId?: string): PinnedEntry[] {
+    const rows = this.db.prepare(`SELECT * FROM entries WHERE pinned = 1 ${threadId === undefined ? "" : "AND thread = ?"} ORDER BY created_at, n`)
+      .all(...(threadId === undefined ? [] : [threadId])) as EntryRow[];
+    return rows.map((r) => ({ ...toEntry(r), thread: r.thread, n: r.n }));
+  }
+
   /** The subagent threads started in entry `fromN` or later: a rewind from there takes them with it. */
   subagentsSince(threadId: string, fromN: number): string[] {
     const from = this.db.prepare("SELECT created_at FROM entries WHERE thread = ? AND n >= ? ORDER BY n LIMIT 1").get(threadId, fromN) as { created_at: string } | undefined;
@@ -574,17 +601,17 @@ export class PoolStore extends PoolReader {
    * flagged), as are pages citing the entries directly; subagent threads
    * started in them are forgotten. Entry numbers are never reused. An entry a
    * branch still holds a copy of keeps its notes and search row, and reading
-   * it opens the copy. Returns how many entries went, and the subagent
-   * threads.
+   * it opens the copy. Returns how many entries went, how many of them were
+   * pinned, and the subagent threads.
    */
-  truncateThread(threadId: string, fromN: number, author: Author): { removed: number; subagents: string[] } {
+  truncateThread(threadId: string, fromN: number, author: Author): { removed: number; pins: number; subagents: string[] } {
     this.checkAuthor(author);
     this.mustThread(threadId);
     return this.tx(() => {
       const subagents = this.subagentsSince(threadId, fromN);
       for (const id of subagents) this.forgetThread(id, author);
-      const rows = this.db.prepare("SELECT n FROM entries WHERE thread = ? AND n >= ? ORDER BY n").all(threadId, fromN) as { n: number }[];
-      if (!rows.length) return { removed: 0, subagents };
+      const rows = this.db.prepare("SELECT n, pinned FROM entries WHERE thread = ? AND n >= ? ORDER BY n").all(threadId, fromN) as { n: number; pinned: number }[];
+      if (!rows.length) return { removed: 0, pins: 0, subagents };
       // An entry a branch still holds a copy of keeps its notes and search row: the copy still says it.
       const removed = rows.map((r) => entryId(threadId, r.n));
       const copied = new Set((this.db.prepare("SELECT DISTINCT orig FROM entries WHERE orig IN (SELECT value FROM json_each(?))")
@@ -598,20 +625,26 @@ export class PoolStore extends PoolReader {
       this.db.prepare("DELETE FROM entries WHERE thread = ? AND n >= ?").run(threadId, fromN);
       this.db.prepare("UPDATE threads SET cut = max(cut, ?) WHERE id = ?").run(rows.at(-1)!.n, threadId);
       this.optimize();
-      return { removed: rows.length, subagents };
+      return { removed: rows.length, pins: rows.filter((r) => r.pinned).length, subagents };
     });
   }
 
   /**
    * Deletes the thread and its entries, and the notes whose only sources were
    * in it (each leaves a tombstone, and pages citing them are flagged). Its
-   * subagents' threads hold its tasks and results, so they go first.
+   * subagents' threads hold its tasks and results, so they go first. Its
+   * other daughters (child threads, branches, copies) go too with `children`;
+   * otherwise they are kept as threads of their own, with the settings they
+   * have (a kept child thread is no longer a child).
    */
-  forgetThread(threadId: string, author: Author): void {
+  forgetThread(threadId: string, author: Author, opts: { children?: boolean } = {}): void {
     this.checkAuthor(author);
     this.mustThread(threadId);
-    for (const child of this.listThreads({ includeHidden: true, parent: threadId })) this.forgetThread(child.id, author);
+    for (const sub of this.listThreads({ includeHidden: true, parent: threadId })) this.forgetThread(sub.id, author);
+    if (opts.children) for (const child of this.listThreads({ includeHidden: true, parent: threadId, children: true })) this.forgetThread(child.id, author, opts);
     this.tx(() => {
+      // A kept daughter is a thread of its own: a kept child thread is no longer a child, so it may start its own.
+      this.db.prepare("UPDATE threads SET parent = NULL, child = 0 WHERE parent = ? AND subagent = 0").run(threadId);
       const inThread = (dst: string) => dst === `t:${threadId}` || dst.startsWith(`e:${threadId}#`);
       const candidates = this.db.prepare("SELECT DISTINCT src FROM citations WHERE src LIKE 'n:%' AND (dst = ? OR dst LIKE ?)")
         .all(`t:${threadId}`, `e:${threadId}#%`) as { src: string }[];
@@ -914,7 +947,7 @@ function bodyOf(item: Item): Body {
   return body;
 }
 
-interface ThreadRow { id: string; interface: Interface; parent: string | null; subagent?: number; title: string | null; hidden: number; unlogged: number; created_at: string }
+interface ThreadRow { id: string; interface: Interface; parent: string | null; subagent?: number; child?: number; title: string | null; hidden: number; unlogged: number; created_at: string }
 interface EntryRow { thread: string; n: number; role: string; text: string; unlogged: number; orig: string | null; created_at: string }
 interface NoteRow { text: string; about: string; origin: string; author: string; superseded_by: string | null; archived: number; created_at: string; updated_at: string }
 interface PageRow { slug: string; title: string; summary: string; text: string; folders: string; origin: string; author: string; archived: number; flagged: number; created_at: string; updated_at: string }
@@ -924,7 +957,7 @@ interface RevisionRow { id: number; item: string; body: string; author: string; 
 
 function toThread(r: ThreadRow): Thread {
   return {
-    id: r.id, interface: r.interface, parent: r.parent ?? undefined, subagent: r.subagent === 1, title: r.title ?? undefined,
+    id: r.id, interface: r.interface, parent: r.parent ?? undefined, subagent: r.subagent === 1, child: r.child === 1, title: r.title ?? undefined,
     hidden: r.hidden === 1, unlogged: r.unlogged === 1, createdAt: r.created_at,
   };
 }
