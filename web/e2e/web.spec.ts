@@ -38,12 +38,14 @@ async function enter(page: Page, baseURL: string): Promise<string> {
   const endpoints = await api("GET", "/endpoints") as unknown[];
   if (!endpoints.length) {
     const models = `http://127.0.0.1:${Number(new URL(baseURL).port) + 10}`;
-    await api("POST", "/endpoints", { name: "gpu", kind: "local", baseUrl: `${models}/local/v1` });
-    await api("POST", "/endpoints", { name: "router", kind: "cloud", baseUrl: `${models}/cloud/v1` });
-    await api("POST", "/endpoints/gpu/discover");
-    await api("POST", "/endpoints/router/discover");
-    await api("PUT", "/profiles/cloud/chat", { model: { endpointId: "router", modelId: "cloud-model" } });
-    await api("PUT", "/profiles/local/chat", { model: { endpointId: "gpu", modelId: "local-model" } });
+    type Ep = { id: string; models: { id: string; modelId: string }[] };
+    const add = async (name: string, kind: string, path: string, model: string) => {
+      const ep = await api("POST", "/endpoints", { name, kind, baseUrl: `${models}/${path}/v1` }) as Ep;
+      const found = await api("POST", `/endpoints/${ep.id}/discover`) as Ep;
+      return { offeringId: found.models.find((m) => m.modelId === model)!.id };
+    };
+    await api("PUT", "/profiles/local/chat", { model: await add("gpu", "local", "local", "local-model") });
+    await api("PUT", "/profiles/cloud/chat", { model: await add("router", "cloud", "cloud", "cloud-model") });
   }
   return userId;
 }

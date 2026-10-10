@@ -1,7 +1,7 @@
 import { existsSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { LoginResponse, Me, MemoryDetail, MemoryHit, State, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { CleanupItem, EndpointInfo, LoginResponse, Me, ModelsNotice, OfferingInfo, Profiles, MemoryDetail, MemoryHit, State, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime, systemdStart } from "./helpers.ts";
 
 describe("lyricad, locked", () => {
@@ -153,26 +153,59 @@ describe("settings", () => {
     const li = await login(base, "li", "pw");
     const cloud = await fakeOpenAI({ models: [{ id: "deepseek" }] });
     const local = await fakeOpenAI();
-    await li.post(`/api/u/${rt.li.id}/endpoints`, { name: "openrouter", kind: "cloud", baseUrl: cloud.baseUrl });
-    await localModel(li, rt.li.id, local.baseUrl, "m1");
+    const deepseek = { offeringId: (await li.post<EndpointInfo>(`/api/u/${rt.li.id}/endpoints`, { name: "openrouter", kind: "cloud", baseUrl: cloud.baseUrl })).body.models[0]!.id };
+    const m1 = await localModel(li, rt.li.id, local.baseUrl, "m1");
     const t = (await li.post<ThreadSummary>(`/api/u/${rt.li.id}/threads`, { pool: "private", title: "p" })).body;
     const url = `/api/u/${rt.li.id}/threads/private/${enc(t.id)}/settings`;
-    const refused = await li.patch<{ error: string }>(url, { models: { chat: { endpointId: "openrouter", modelId: "deepseek" } } });
+    const refused = await li.patch<{ error: string }>(url, { models: { chat: deepseek } });
     expect(refused.status).toBe(400);
     expect(refused.body.error).toMatch(/cloud model/);
     expect((await li.patch(url, { localOnly: false })).status).toBe(400);
     // Nothing was written; the allowed list offers only local models.
     const s = (await li.get<ThreadSettings>(url)).body;
-    expect(s.models.chat).toMatchObject({ model: { endpointId: "gpu", modelId: "m1" }, source: "profile", kind: "local" });
-    expect(s.allowed.map((e) => e.id)).toEqual(["gpu"]);
+    expect(s.models.chat).toMatchObject({ model: m1, label: "gpu/m1", source: "profile", kind: "local" });
+    expect(s.allowed.map((e) => e.name)).toEqual(["gpu"]);
     // A folder outside the allowed paths is refused too.
     expect((await li.patch(url, { grants: [{ path: "/etc", writable: false }] })).status).toBe(400);
     // A general thread switched to local-only refuses the cloud model as well.
     const g = (await li.post<ThreadSummary>(`/api/u/${rt.li.id}/threads`, { pool: "general", title: "g" })).body;
     const gurl = `/api/u/${rt.li.id}/threads/general/${enc(g.id)}/settings`;
-    expect((await li.patch(gurl, { models: { chat: { endpointId: "openrouter", modelId: "deepseek" } } })).status).toBe(200);
+    expect((await li.patch(gurl, { models: { chat: deepseek } })).status).toBe(200);
     expect((await li.patch(gurl, { localOnly: true })).status).toBe(400);
     expect((await li.patch(gurl, { localOnly: true, models: { chat: null } })).status).toBe(200);
+  });
+});
+
+describe("endpoints and offerings", () => {
+  it("keeps IDs through an edit, never returns a key, lets only administrators change shared ones, and tells a user what was rewritten", async () => {
+    const rt = await runtime();
+    const { base } = await daemon(rt);
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const li = await login(base, "li", "pw");
+    const sam = await login(base, "sam", "pw2");
+    const local = await fakeOpenAI({ models: [{ id: "qwen3.8-27b" }, { id: "qwen3.8-flash" }] });
+    const lan = (await li.post<EndpointInfo>(`/api/u/${rt.li.id}/endpoints`, { name: "lan", kind: "local", baseUrl: local.baseUrl, apiKey: "sk-secret", shared: true })).body;
+    expect(lan).toMatchObject({ name: "lan", hasApiKey: true, shared: true, unencrypted: false, stale: false });
+    expect(JSON.stringify(lan)).not.toContain("sk-secret");
+    const [qwen, flash] = lan.models;
+    const edited = (await li.patch<EndpointInfo>(`/api/u/${rt.li.id}/endpoints/${lan.id}`, { name: "blackwell", apiKey: null })).body;
+    expect(edited).toMatchObject({ id: lan.id, name: "blackwell", hasApiKey: false });
+    expect(edited.models.map((m) => [m.id, m.label])).toEqual([[qwen!.id, "shared.blackwell/qwen3.8-27b"], [flash!.id, "shared.blackwell/qwen3.8-flash"]]);
+
+    const samU = `/api/u/${rt.sam.id}`;
+    expect((await sam.put(`${samU}/profiles/local/chat`, { model: { offeringId: qwen!.id } })).status).toBe(200);
+    expect((await sam.patch(`${samU}/endpoints/${lan.id}`, { name: "mine" })).status).toBe(403);
+    expect((await sam.del(`${samU}/offerings/${qwen!.id}`)).status).toBe(403);
+    expect((await sam.patch(`${samU}/offerings/${qwen!.id}`, { tools: true })).status).toBe(403);
+    expect((await li.patch<OfferingInfo>(`/api/u/${rt.li.id}/offerings/${qwen!.id}`, { tools: true, contextWindow: 32768 })).body).toMatchObject({ tools: true, contextWindow: 32768 });
+    expect((await li.post(`/api/u/${rt.li.id}/offerings/${qwen!.id}/replace`, { with: flash!.id })).status).toBe(200);
+    expect((await sam.get<Profiles>(`${samU}/profiles`)).body.local).toEqual({ chat: { offeringId: flash!.id } });
+    expect((await sam.get<ModelsNotice>(`${samU}/models/notice`)).body.lines).toEqual([
+      "shared.blackwell/qwen3.8-27b was replaced by shared.blackwell/qwen3.8-flash in the local profile's chat.",
+    ]);
+    await sam.del(`${samU}/models/notice`);
+    expect((await sam.get<ModelsNotice>(`${samU}/models/notice`)).body.lines).toEqual([]);
+    expect((await sam.get<CleanupItem[]>(`${samU}/models/cleanup`)).body).toEqual([]);
   });
 });
 

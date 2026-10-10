@@ -39,8 +39,8 @@ export async function openBench(keyring: Keyring, users: Users, user: User, opts
   const report = [...(refused ? [`[lyrica] network is off for every thread: ${refused}`] : []), ...TASKS.map((task) => {
     try {
       const ref = models.resolveModel(task, call);
-      const ep = models.endpoint(user.id, ref.endpointId)!;
-      return `[lyrica] ${task}: ${ref.modelId} on ${ep.name} (${ep.kind})`;
+      const { endpoint: ep, offering } = models.offering(user.id, ref.offeringId)!;
+      return `[lyrica] ${task}: ${offering.modelId} on ${ep.name} (${ep.kind})`;
     } catch (err) {
       return `[lyrica] ${task}: ${(err as Error).message}`;
     }

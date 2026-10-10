@@ -1,6 +1,6 @@
 import { InMemoryCredentialStore, type Api, type Model } from "@earendil-works/pi-ai";
 import { ModelRuntime, type ProviderModelConfig } from "@earendil-works/pi-coding-agent";
-import { CloudModelForbidden, isRestricted, type CallContext, type Endpoint, type EndpointModel, type ModelRef, type Models, type Task } from "@lyrica/core";
+import { CloudModelForbidden, isRestricted, type CallContext, type Endpoint, type ModelRef, type Models, type Offering, type Task } from "@lyrica/core";
 
 const FREE = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const DEFAULT_CONTEXT = 32_768;
@@ -9,7 +9,7 @@ const DEFAULT_CONTEXT = 32_768;
 // `max_tokens`; they don't all know `developer`, `store` or `max_completion_tokens`.
 const LOCAL_COMPAT = { supportsDeveloperRole: false, supportsStore: false, supportsReasoningEffort: false, maxTokensField: "max_tokens" } as const;
 
-function piModel(ep: Endpoint, m: EndpointModel): ProviderModelConfig {
+function piModel(ep: Endpoint, m: Offering): ProviderModelConfig {
   const contextWindow = m.contextWindow ?? DEFAULT_CONTEXT;
   return {
     id: m.modelId, name: m.modelId, input: ["text"], cost: FREE, reasoning: false,
@@ -34,7 +34,7 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
   internals.rebuildProviders();
 
   const allowed = models.allowed(ctx);
-  for (const { endpoint, models: list } of allowed) {
+  for (const { endpoint, offerings: list } of allowed) {
     if (!list.length) continue;
     runtime.registerProvider(endpoint.id, {
       name: `${endpoint.name} (${endpoint.kind})`, baseUrl: endpoint.baseUrl, api: "openai-completions",
@@ -57,7 +57,8 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
 /** The Pi model for a task, resolved through the router. Throws CloudModelForbidden like resolveModel. */
 export function piModelFor(runtime: ModelRuntime, models: Models, task: Task, ctx: CallContext): { ref: ModelRef; model: Model<Api> } {
   const ref = models.resolveModel(task, ctx);
-  const model = runtime.getModel(ref.endpointId, ref.modelId);
-  if (!model) throw new CloudModelForbidden(`${ref.endpointId}/${ref.modelId} is not in this thread's model runtime`);
+  const o = models.offering(ctx.userId, ref.offeringId);
+  const model = o && runtime.getModel(o.endpoint.id, o.offering.modelId);
+  if (!model) throw new CloudModelForbidden(`${models.label(ctx.userId, ref.offeringId) ?? ref.offeringId} is not in this thread's model runtime`);
   return { ref, model };
 }

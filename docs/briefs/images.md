@@ -37,15 +37,20 @@ of how she works with Li, from storyboards to edits of Li's own photos.
      with the thread's `CallContext`, using the ordered fallbacks.
    - Private and local-only threads get local models only.
    - `fast` and `quality` are the two tiers of `image.create`.
+   - `upscale` resolves `image.upscale` (SeedVR2 on the hosts). It takes an
+     image from the thread or the user's photos, so the photos-of-you rule
+     applies as for edits.
 3. **Providers.**
-   - **Model host:** its image API, which takes a template name and
-     parameters.
+   - **Model host:** its image API, which takes a confirmed recipe and
+     parameters. The recipe's defaults (steps, CFG, sampler, size) apply
+     unless the tool asks for a size or count. The tool never names parts or
+     LoRAs: those live in the recipe.
    - **Cloud:** OpenAI's image API first (generate and edit), declared as a
      cloud endpoint with a key.
    - Further providers (Black Forest Labs, Krea, Google, fal, Replicate) come
      through one small provider table, like the DNS providers in web access.
      Add one or two if they're cheap; the table matters more than the count.
-4. **Photos of you.**
+4. **Portrait photos.**
    - Each user has a `photos-of-me/` folder in their encrypted home, managed
      from the UI.
    - A per-user setting in `user.db`: **Never**, **Ask once a day** (the

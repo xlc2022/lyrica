@@ -509,11 +509,23 @@ export class PoolStore extends PoolReader {
     const source = this.mustThread(threadId);
     return this.tx(() => {
       const copy = this.createThread({ interface: to, parent: source.id, title: source.title });
-      this.db.prepare(`INSERT INTO entries (thread, n, pi_id, role, data, text, unlogged, orig, created_at)
-        SELECT ?, n, pi_id, role, data, text, unlogged, coalesce(orig, 'e:' || thread || '#' || n), created_at FROM entries WHERE thread = ?`)
-        .run(copy.id, source.id);
+      this.copyEntries(source.id, copy.id);
       return copy;
     });
+  }
+
+  /**
+   * Copies a thread's entries, or those up to entry `upTo`, into an empty
+   * thread (an export, a fork). Each copy keeps its original's ID in `orig`
+   * and isn't indexed again, so search and sleep see it once, at its source.
+   */
+  copyEntries(from: string, to: string, opts: { upTo?: number } = {}): void {
+    this.mustThread(from);
+    this.mustThread(to);
+    if ((this.db.prepare("SELECT count(*) AS c FROM entries WHERE thread = ?").get(to) as { c: number }).c) throw new Error("entries are copied only into an empty thread");
+    this.db.prepare(`INSERT INTO entries (thread, n, pi_id, role, data, text, unlogged, orig, created_at)
+      SELECT ?, n, pi_id, role, data, text, unlogged, coalesce(orig, 'e:' || thread || '#' || n), created_at FROM entries WHERE thread = ? AND n <= ?`)
+      .run(to, from, opts.upTo ?? Number.MAX_SAFE_INTEGER);
   }
 
   /**
