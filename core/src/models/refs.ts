@@ -75,6 +75,7 @@ export function moveSettings(db: Db, map: Map<string, string | null>): void {
   if (!hasTable(db, "offering_settings")) return;
   for (const [from, to] of map) {
     if (!db.prepare("SELECT 1 FROM offering_settings WHERE offering = ?").get(from)) continue;
+    // When the target already has its own values, they stay and the source's are dropped: someone set them for that model.
     if (to && !db.prepare("SELECT 1 FROM offering_settings WHERE offering = ?").get(to)) db.prepare("UPDATE offering_settings SET offering = ? WHERE offering = ?").run(to, from);
     else db.prepare("DELETE FROM offering_settings WHERE offering = ?").run(from);
   }

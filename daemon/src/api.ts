@@ -252,7 +252,8 @@ export interface OfferingSettings {
   sources: Partial<Record<keyof AnswerSettings, "shared" | "yours">>;
   /** Saved values this endpoint's API doesn't take (OpenAI's has no top-k, for one), so they aren't sent. */
   dropped: (keyof AnswerSettings)[];
-  contextWindow?: { value: number; source: "hand" | "discovered" };
+  /** The context window Lyrica plans by: a host's serving settings, else set by hand, else discovered. */
+  contextWindow?: { value: number; source: "host" | "hand" | "discovered" };
 }
 /**
  * PUT /api/u/:userId/offerings/:offeringId/settings → OfferingSettings.
@@ -260,6 +261,68 @@ export interface OfferingSettings {
  * `mine` (the default) sets your own. null clears a value.
  */
 export interface OfferingSettingsChange { scope?: "shared" | "mine"; values: { [K in keyof AnswerSettings]?: AnswerSettings[K] | null } }
+
+// --- The model libraries, downloads and host management ---
+
+export type Hub = "huggingface" | "modelscope";
+/** One model in the text library, with its copies on every endpoint. */
+export interface LibraryEntry {
+  key: string; name: string;
+  /** For a finetune, merge or adapter, or a copy flagged as maybe one: the model it derives from. */
+  base?: { key: string; name: string };
+  starred: boolean; groups: string[];
+  copies: {
+    offeringId: string; label: string;
+    /** The file under the models folder, or the endpoint's model ID. */
+    rawName: string;
+    endpointId: string; endpointName: string; kind: "cloud" | "local"; shared: boolean;
+    status: "listed" | "missing" | "gone";
+    /** Lyrica downloaded it, so it can be deleted. */
+    downloaded: boolean;
+    capabilities: Capabilities; groups: string[];
+    /** Why it may not be this model. */
+    flagged?: string;
+    size?: number;
+  }[];
+}
+/** GET /api/u/:userId/library/text?search=&kind=&endpoint=&capability=&groups=1&offset=&limit= → TextLibrary. Starred first. */
+export interface TextLibrary { total: number; entries: LibraryEntry[] }
+/** PUT /api/u/:userId/offerings/:offeringId/star { starred } → Ok. Per user. */
+/** PUT /api/u/:userId/offerings/:offeringId/separate { separate } → Ok. "Not this model"; an administrator for a shared endpoint. */
+/** POST /api/u/:userId/offerings/:offeringId/delete-copy { confirm? } → DeleteCopy. Without confirm, only where it's used. */
+export interface DeleteCopy {
+  usedIn: ModelUse[];
+  deleted?: string[];
+  /** Shards of a split file the host wouldn't delete (say, in use), with its reason. The copy is gone from every list anyway. */
+  left?: { files: string[]; reason: string };
+}
+/** A hub token as the API shows it: never more than its last four characters. */
+export interface HubTokenInfo { hub: Hub; shared: boolean; last4: string }
+/** GET /api/u/:userId/hub-tokens → HubTokenInfo[]. PUT …/hub-tokens/:hub → HubTokenInfo[]. DELETE …/hub-tokens/:hub?shared=1 → HubTokenInfo[]. */
+export interface HubTokenInput { token: string; shared?: boolean }
+/** GET /api/u/:userId/hosts/:endpointId/hub/files?source=&repo=&revision= → the host's answer (host/API.md). A shared host needs an administrator. */
+/** POST /api/u/:userId/hosts/:endpointId/downloads → the host's answer. GET lists them (a finished one becomes an offering at once); DELETE …/downloads/:id cancels or clears. */
+export type DownloadInput = { source: Hub; repo: string; revision?: string; files: string[] } | { source: "url"; url: string; sha256?: string };
+/** GET /api/u/:userId/hosts/:endpointId/images → { recipes, parts by role }, as the host reports them. */
+/** POST /api/u/:userId/hosts/:endpointId/recipes/:recipeId → the host's answer. Confirmed recipes become image offerings. */
+export type RecipeAction = { do: "confirm" | "ignore" | "download-parts" | "delete" } | { do: "change"; change: Record<string, unknown> } | { do: "copy"; name: string };
+/** POST /api/u/:userId/hosts/:endpointId/manage → the host's answer. Loading, pinning, GPU settings, placements, scan, usage only. */
+export interface HostManage { method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; path: string; body?: unknown }
+/** GET /api/u/:userId/hosts/:endpointId/dashboard → { url } */
+/** A host model's placement and serving settings, as host/API.md defines them. */
+export interface ServingSettings { model: string; settings: Record<string, unknown>; contextLength: number }
+/** GET /api/u/:userId/offerings/:offeringId/serving → ServingSettings. PUT { settings } → the host's model entry; a placement that can't work is refused with the host's reason. */
+/** POST /api/u/:userId/offerings/:offeringId/reload → the host's answer: applies saved settings now. A shared host needs an administrator. */
+/** GET /api/u/:userId/models/page → ModelsPage: what the Models page shows, endpoints with live status. An endpoint seen down in the last 30 s isn't asked again, and each gets 3 s. */
+export interface ModelsPage {
+  endpoints: (EndpointInfo & Probe)[];
+  hosts: ({ endpointId: string; status: HostStatus } | { endpointId: string; error: string })[];
+  profiles: Profiles;
+  calls: CallInfo[];
+  notice: string[];
+  /** How many items Clean up lists. */
+  cleanup: number;
+}
 
 /** PATCH /api/u/:userId/offerings/:offeringId → OfferingInfo. Sets capabilities by hand; null clears one. */
 export type CapabilitiesChange = { [K in keyof Capabilities]?: Capabilities[K] | null };

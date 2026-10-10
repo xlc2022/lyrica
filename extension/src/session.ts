@@ -31,7 +31,7 @@ export interface ThreadSession {
   /** The chat model it opened with. */
   chat: { offeringId: string };
   /** Before each turn: the chat model again, with fallbacks and the thinking level, recorded as a call. */
-  prepare(opts?: { thinking?: boolean }): Promise<Resolution>;
+  prepare(opts?: { thinking?: boolean; retry?: boolean }): Promise<Resolution>;
   dispose(): void;
 }
 
@@ -57,6 +57,6 @@ export async function openThreadSession(o: ThreadSessionOptions): Promise<Thread
   const answered = session.subscribe((e) => {
     if (e.type === "message_end" && e.message.role === "assistant" && e.message.stopReason !== "error" && session.model) o.models.reportUp(thread.user.id, session.model.provider);
   });
-  const prepare = (opts: { thinking?: boolean } = {}) => prepareTurn({ session, runtime, models: o.models, call: o.models.callContext(thread.user.id, thread.pool, thread.threadId), pool: thread.pool, threadId: thread.threadId, ...opts });
+  const prepare = (opts: { thinking?: boolean; retry?: boolean } = {}) => prepareTurn({ session, runtime, models: o.models, call: o.models.callContext(thread.user.id, thread.pool, thread.threadId), pool: thread.pool, threadId: thread.threadId, ...opts });
   return { session, runtime, chat, prepare, dispose: () => { stop(); answered(); session.dispose(); } };
 }

@@ -2,7 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { fakeHost } from "../../core/test/fake-host.ts";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { CleanupItem, EndpointInfo, HostStatus, LoginResponse, Me, ModelsNotice, OfferingInfo, Profiles, MemoryDetail, MemoryHit, State, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { CleanupItem, EndpointInfo, HostStatus, HubTokenInfo, ModelsPage, LoginResponse, Me, ModelsNotice, OfferingInfo, Profiles, MemoryDetail, MemoryHit, State, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime, systemdStart } from "./helpers.ts";
 
 describe("lyricad, locked", () => {
@@ -237,6 +237,33 @@ describe("model hosts", () => {
     await host.replaceKey();
     const changed = await li.get<{ error: string }>(`/api/u/${rt.li.id}/hosts/${ep.id}/status`);
     expect(changed).toMatchObject({ status: 502, body: { error: "This host's identity changed. Pair it again." } });
+  });
+});
+
+describe("hub tokens", () => {
+  it("never shows a token in an API response, a log or a call record, and sends it to the host with the request", async () => {
+    const rt = await runtime();
+    const { base, logs } = await daemon(rt);
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const li = await login(base, "li", "pw");
+    const u = `/api/u/${rt.li.id}`;
+    const host = await fakeHost({ name: "lyrica-blackwell" });
+    const ep = (await li.post<EndpointInfo>(`${u}/hosts`, { name: "blackwell", addresses: [host.address], code: host.newCode(), shared: true })).body;
+    const token = "hf_TOPSECRETvalue4321";
+    const saved = await li.put<HubTokenInfo[]>(`${u}/hub-tokens/huggingface`, { token });
+    expect(saved.body).toEqual([{ hub: "huggingface", shared: false, last4: "4321" }]);
+    const files = await li.get(`${u}/hosts/${ep.id}/hub/files?source=huggingface&repo=Qwen/Qwen3-8B-GGUF`);
+    expect(files.status).toBe(200);
+    await li.post(`${u}/hosts/${ep.id}/downloads`, { source: "huggingface", repo: "Qwen/Qwen3-8B-GGUF", files: ["m-Q4_K_M.gguf"] });
+    expect(host.tokens).toEqual([token, token]);
+    const everything = [
+      saved, files, await li.get(`${u}/hub-tokens`), await li.get(`${u}/models/calls`), await li.get(`${u}/models/page`), await li.get(`${u}/hosts/${ep.id}/downloads`),
+    ].map((r) => JSON.stringify(r.body)).join("\n");
+    expect(everything).not.toContain("TOPSECRET");
+    expect(logs.join("\n")).not.toContain("TOPSECRET");
+    const page = (await li.get<ModelsPage>(`${u}/models/page`)).body;
+    expect(page.endpoints.find((e) => e.id === ep.id)).toMatchObject({ api: "host", state: "up" });
+    expect(page.hosts).toEqual([{ endpointId: ep.id, status: expect.objectContaining({ state: "running" }) }]);
   });
 });
 

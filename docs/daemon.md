@@ -102,8 +102,9 @@ Each active thread is one Pi session from `openThreadSession`, with
 - Before each turn the chat model is chosen again (`prepare`,
   [models.md](models.md)): a machine that is away is passed over for the next
   model in the list, the thinking level is set, and the call is recorded. A
-  connection error marks that endpoint down, and Pi's retry goes to the next
-  model in the list.
+  connection error, or a reply cut off mid-stream, marks that endpoint down,
+  and Pi's retry goes to the next model in the list. The next turn waits for
+  that choice to finish.
 - Changing a thread's models or local-only switch reopens its session after
   the current turn. Workspace settings are read on every tool call, so they
   apply at once.
@@ -192,7 +193,11 @@ users, so the UI renders current names and edits keep the tokens. It covers
 search, lineage, edit, restore, the four deletion levels and user-introduced
 notes and pages. The settings API covers profiles (with accent and monogram),
 display settings (in `user.db`), passwords, endpoints, model hosts (pair,
-pair again, addresses, status, pause, resume, restart), offerings, model
+pair again, addresses, status, pause, resume, restart, management,
+downloads, the image library), the text library, hub tokens (last four
+characters only), the Models page overview (`GET …/models/page`, endpoints
+with live status, at most 3 seconds each, and none asked again while it was
+seen down in the last 30 seconds), offerings, model
 groups, Clean up and the models notice, the three profiles with the default
 profile and thinking level, recent calls, network
 defaults, SSH targets, and for administrators users, allowed paths, shared

@@ -40,6 +40,12 @@ CREATE TABLE IF NOT EXISTS offering_settings (
   offering TEXT PRIMARY KEY,
   settings TEXT NOT NULL
 );
+-- Access tokens for gated repositories, by hub (huggingface, modelscope). In
+-- self.db, one an administrator shares; in user.db, the user's own.
+CREATE TABLE IF NOT EXISTS hub_tokens (
+  hub   TEXT PRIMARY KEY,
+  token TEXT NOT NULL
+);
 -- Offerings declared the same model, in preferred order (members: a JSON list of offering IDs).
 CREATE TABLE IF NOT EXISTS model_groups (
   id         TEXT PRIMARY KEY,
@@ -101,6 +107,10 @@ CREATE TABLE IF NOT EXISTS thread_models (
   task   TEXT NOT NULL,
   entry  TEXT NOT NULL,
   PRIMARY KEY (pool, thread, task)
+);
+-- Models the user starred; pickers show them first.
+CREATE TABLE IF NOT EXISTS starred_offerings (
+  offering TEXT PRIMARY KEY
 );
 -- General threads switched to local-only. Private threads are always local-only.
 CREATE TABLE IF NOT EXISTS local_only_threads (

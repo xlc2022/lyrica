@@ -25,6 +25,24 @@ export interface DiscoveredModel {
   reasoning?: ("low" | "medium" | "high")[];
   /** The file's SHA-256, where a host reports it: the same file on two hosts is the same model. */
   digest?: string;
+  /** What a host read from the file or its model card, for the library. */
+  identity?: ModelIdentity;
+  /** The host downloaded it itself (only those can be deleted). */
+  downloaded?: boolean;
+  size?: number;
+  /** An image model: a confirmed recipe, by its name. */
+  recipe?: string;
+  /** The context window a host serves the model with, which wins over one set by hand. */
+  servedContext?: number;
+}
+
+/** A model's identity as a host reads it: GGUF metadata and the hub's model card. */
+export interface ModelIdentity {
+  basename?: string | null;
+  sizeLabel?: string | null;
+  finetune?: string | null;
+  baseModels?: { name?: string; organization?: string; repoUrl?: string }[] | null;
+  card?: { baseModel?: string[]; baseModelRelation?: string | null } | null;
 }
 
 const headers = (apiKey?: string): Record<string, string> => (apiKey ? { authorization: `Bearer ${apiKey}` } : {});

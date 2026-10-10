@@ -4,14 +4,15 @@ import type { Db } from "../db.ts";
 import type { Keyring } from "../keyring.ts";
 import { TASKS, THINKING_LEVELS, type CallContext, type ModelRef, type Pool, type Task, type ThinkingLevel } from "../types.ts";
 import { Forbidden, type User, type Users } from "../users.ts";
-import { addressesOutside, discoverModels, probeUrl, type DiscoveredModel } from "./http.ts";
+import { addressesOutside, discoverModels, probeUrl, type DiscoveredModel, type ModelIdentity } from "./http.ts";
 import { hostError, hostFetch, HostRefused, hostOrigin, lyricaIdentity, pair } from "./host.ts";
 import { baseName } from "./identity.ts";
+import { copyIdentity } from "./library.ts";
 import { acceptedSettings, ANSWER_SETTINGS, checkSettings, type AnswerSettings, type SettingSource } from "./settings.ts";
 import { collectRefs, isList, mapMembers, moveSettings, refId, rewrite, type Entry, type ProfileName, type Use } from "./refs.ts";
 import { ENDPOINT_SCHEMA, migrate, MODEL_CHOICE_SCHEMA, REDIRECT_SCHEMA } from "./schema.ts";
 
-export { addressesOutside, discoverModels, probeUrl, type DiscoveredModel } from "./http.ts";
+export { addressesOutside, discoverModels, probeUrl, type DiscoveredModel, type ModelIdentity } from "./http.ts";
 export { baseName } from "./identity.ts";
 export { acceptedSettings, ANSWER_SETTINGS, payloadFields, type AnswerSettings, type SettingSource } from "./settings.ts";
 export { fingerprint, HostIdentityChanged, HostRefused, hostOrigin, normaliseCode, PairingFailed, pairingProofs } from "./host.ts";
@@ -83,6 +84,15 @@ export interface Offering extends Capabilities {
   missingSince?: string;
   /** The file's SHA-256, where a host reports it. */
   digest?: string;
+  /** What a host read from the file or its model card. */
+  identity?: ModelIdentity;
+  /** The host downloaded it itself, so it can be deleted. */
+  downloaded?: boolean;
+  size?: number;
+  /** An image model on a host: a confirmed recipe's name. */
+  recipe?: string;
+  /** "Not this model": kept out of the entry its name would put it in. */
+  separate?: boolean;
 }
 
 /** Offerings from different endpoints declared the same model, in preferred order. */
@@ -95,6 +105,33 @@ export interface Group {
 }
 
 export type Profiles = Partial<Record<Task, Entry>>;
+export type Hub = "huggingface" | "modelscope";
+
+/** One model in the text library, with its copies on every endpoint. */
+export interface LibraryEntry {
+  key: string;
+  name: string;
+  /** For a finetune, merge or adapter (or a copy flagged as maybe one): the model it derives from. */
+  base?: { key: string; name: string };
+  starred: boolean;
+  groups: string[];
+  copies: {
+    offeringId: string; label: string;
+    /** The file under the models folder, or the endpoint's model ID. */
+    rawName: string;
+    endpointId: string; endpointName: string; kind: "cloud" | "local"; shared: boolean;
+    status: Offering["status"];
+    /** Lyrica downloaded it, so it can be deleted. */
+    downloaded: boolean;
+    capabilities: Capabilities;
+    groups: string[];
+    flagged?: string;
+    size?: number;
+  }[];
+}
+
+/** Host management paths passed through (host/API.md). */
+const MANAGE = [/^\/host\/v1\/models\/(load|unload|pin|reload)$/, /^\/host\/v1\/gpus\/\d+$/, /^\/host\/v1\/scan$/, /^\/host\/v1\/usage$/];
 
 export interface CleanupItem {
   /** For a stale endpoint, its uses are those of all its models. */
@@ -211,7 +248,10 @@ const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
-  const caps: Capabilities & { digest?: string } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; separate?: boolean; servedContext?: number } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  // A host's serving settings decide its context window, over one set by hand and one discovered.
+  const served = (JSON.parse(r.found) as { servedContext?: number }).servedContext;
+  if (served) caps.contextWindow = served;
   const gone = !!r.missing_since && now - Date.parse(r.missing_since) >= GONE_DAYS * DAY;
   return {
     id: r.id, endpointId: r.endpoint, modelId: r.model, manual: r.manual === 1,
@@ -219,6 +259,11 @@ const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
     status: gone ? "gone" : r.missing_since ? "missing" : "listed",
     ...(r.missing_since ? { missingSince: r.missing_since } : {}),
     ...(typeof caps.digest === "string" ? { digest: caps.digest } : {}),
+    ...(caps.identity ? { identity: caps.identity } : {}),
+    ...(caps.downloaded !== undefined ? { downloaded: caps.downloaded } : {}),
+    ...(caps.size ? { size: caps.size } : {}),
+    ...(caps.recipe ? { recipe: caps.recipe } : {}),
+    ...(caps.separate ? { separate: true } : {}),
   };
 };
 const toGroup = (r: GroupRow, shared: boolean): Group => ({ id: r.id, name: r.name, shared, members: JSON.parse(r.members) });
@@ -250,6 +295,10 @@ export class Models {
   private readonly health = new Map<string, { up: boolean; at: number }>();
   /** Each host's pinned fetch, by endpoint, key and addresses. */
   private readonly fetches = new Map<string, typeof fetch>();
+  /** The address each host last answered on, for its dashboard link. */
+  private readonly reached = new Map<string, string>();
+  /** Finished downloads already read as offerings, by host and download ID. */
+  private readonly discovered = new Set<string>();
 
   constructor(private readonly keyring: Keyring, private readonly users: Users) {}
 
@@ -422,6 +471,274 @@ export class Models {
     return warning ? { state, warning } : { state };
   }
 
+  // --- The text model library ---
+
+  /**
+   * The text library: one entry per model with its copies on every endpoint,
+   * the groups they're in, and whether the user starred it. Search matches
+   * names and raw names; filters by kind, endpoint, capability, groups only.
+   * Starred entries come first. Image recipes are in the image library.
+   */
+  textLibrary(userId: string, q: { search?: string; kind?: "cloud" | "local"; endpointId?: string; capability?: "tools" | "vision" | "embedding" | "image"; groupsOnly?: boolean; offset?: number; limit?: number } = {}): { total: number; entries: LibraryEntry[] } {
+    const c = this.catalog(userId);
+    const starred = this.withUser(userId, (db) => new Set((db.prepare("SELECT offering FROM starred_offerings").all() as { offering: string }[]).map((r) => r.offering)));
+    const inGroups = new Map<string, string[]>();
+    for (const g of c.groups.values()) for (const m of g.members) inGroups.set(m, [...(inGroups.get(m) ?? []), g.id]);
+    const entries = new Map<string, LibraryEntry>();
+    for (const o of c.offerings.values()) {
+      if (o.recipe) continue;
+      const ep = c.endpoints.get(o.endpointId)!;
+      const id = copyIdentity(o);
+      const e = entries.get(id.key) ?? { key: id.key, name: id.name, ...(id.base ? { base: id.base } : {}), starred: false, copies: [], groups: [] };
+      e.copies.push({
+        offeringId: o.id, label: labelOf(ep, o), rawName: o.modelId, endpointId: ep.id, endpointName: ep.name, kind: ep.kind, shared: ep.shared,
+        status: o.status, downloaded: !!o.downloaded, capabilities: Object.fromEntries(CAPABILITIES.filter((k) => o[k] !== undefined).map((k) => [k, o[k]])) as Capabilities,
+        groups: inGroups.get(o.id) ?? [], ...(id.flagged ? { flagged: id.flagged } : {}), ...(o.size ? { size: o.size } : {}),
+      });
+      for (const g of inGroups.get(o.id) ?? []) if (!e.groups.includes(g)) e.groups.push(g);
+      if (starred.has(o.id)) e.starred = true;
+      entries.set(id.key, e);
+    }
+    const needle = q.search?.toLowerCase().trim();
+    const list = [...entries.values()].filter((e) => {
+      if (needle && !e.name.includes(needle) && !e.copies.some((x) => x.rawName.toLowerCase().includes(needle) || x.label.toLowerCase().includes(needle))) return false;
+      if (q.kind && !e.copies.some((x) => x.kind === q.kind)) return false;
+      if (q.endpointId && !e.copies.some((x) => x.endpointId === q.endpointId)) return false;
+      if (q.capability && !e.copies.some((x) => x.capabilities[q.capability!])) return false;
+      if (q.groupsOnly && !e.groups.length) return false;
+      return true;
+    }).sort((a, b) => Number(b.starred) - Number(a.starred) || a.name.localeCompare(b.name));
+    const offset = Math.max(0, q.offset ?? 0);
+    return { total: list.length, entries: list.slice(offset, offset + Math.min(200, Math.max(1, q.limit ?? 50))) };
+  }
+
+  /** Stars (or unstars) a model for this user; pickers show starred models first. */
+  star(userId: string, offeringId: string, on: boolean): void {
+    if (!this.offering(userId, offeringId)) throw new NoModel(`no model ${offeringId}`);
+    this.withUser(userId, (db) => {
+      if (on) db.prepare("INSERT OR IGNORE INTO starred_offerings (offering) VALUES (?)").run(offeringId);
+      else db.prepare("DELETE FROM starred_offerings WHERE offering = ?").run(offeringId);
+    });
+  }
+
+  /**
+   * "Not this model": moves a copy to an entry of its own (or back, with
+   * false). An administrator decides for a shared endpoint, its owner for a
+   * personal one.
+   */
+  notThisModel(actor: User, offeringId: string, separate = true): void {
+    const o = this.offering(actor.id, offeringId);
+    if (!o) throw new NoModel(`no model ${offeringId}`);
+    this.write(actor, o.endpoint.id, (db) => {
+      const row = db.prepare("SELECT hand FROM offerings WHERE id = ?").get(offeringId) as { hand: string };
+      const hand = JSON.parse(row.hand) as Record<string, unknown>;
+      if (separate) hand.separate = true; else delete hand.separate;
+      db.prepare("UPDATE offerings SET hand = ? WHERE id = ?").run(JSON.stringify(hand), offeringId);
+    });
+  }
+
+  // --- Hub tokens ---
+
+  /** The hub tokens this user can use, as the last four characters only: their own, and a shared one an administrator saved. */
+  hubTokens(userId: string): { hub: Hub; shared: boolean; last4: string }[] {
+    const read = (db: Db, shared: boolean) => (db.prepare("SELECT hub, token FROM hub_tokens ORDER BY hub").all() as { hub: Hub; token: string }[])
+      .map((r) => ({ hub: r.hub, shared, last4: r.token.slice(-4) }));
+    return [...this.withUser(userId, (db) => read(db, false)), ...read(this.self(), true)];
+  }
+
+  /** Saves or replaces a token for Hugging Face or ModelScope: the user's own, or (administrators) one shared with every user. */
+  setHubToken(actor: User, hub: Hub, token: string, opts: { shared?: boolean } = {}): void {
+    if (hub !== "huggingface" && hub !== "modelscope") throw new Error("tokens are for huggingface or modelscope");
+    const t = String(token ?? "").trim();
+    if (t.length < 8 || /\s/.test(t)) throw new Error("that doesn't look like an access token");
+    this.place(actor, !!opts.shared, (db) => db.prepare("INSERT OR REPLACE INTO hub_tokens (hub, token) VALUES (?, ?)").run(hub, t));
+  }
+
+  removeHubToken(actor: User, hub: Hub, opts: { shared?: boolean } = {}): void {
+    this.place(actor, !!opts.shared, (db) => db.prepare("DELETE FROM hub_tokens WHERE hub = ?").run(hub));
+  }
+
+  /** The token sent with a request to `hub`: the user's own, else the shared one. Never returned by the API. */
+  private tokenFor(userId: string, hub: string): string | undefined {
+    const sql = "SELECT token FROM hub_tokens WHERE hub = ?";
+    return (this.withUser(userId, (db) => db.prepare(sql).get(hub)) as { token: string } | undefined)?.token
+      ?? (this.self().prepare(sql).get(hub) as { token: string } | undefined)?.token;
+  }
+
+  // --- Downloads, deleting, and the image library, through a host's management API ---
+
+  /** A repository's files on a host: which are there already and which are too big for its free space. */
+  async hubFiles(actor: User, hostId: string, q: { source: Hub; repo: string; revision?: string }): Promise<unknown> {
+    const ep = this.manageable(actor, hostId);
+    const params = new URLSearchParams({ source: q.source, repo: q.repo, ...(q.revision ? { revision: q.revision } : {}) });
+    return this.hostCall(ep, "GET", `/host/v1/hub/files?${params}`, undefined, this.hubHeader(actor.id, q.source));
+  }
+
+  /** Starts downloads on a host (host/API.md): files from a repository, or one https link. */
+  async startDownload(actor: User, hostId: string, body: { source: Hub; repo: string; revision?: string; files: string[] } | { source: "url"; url: string; sha256?: string }): Promise<unknown> {
+    const ep = this.manageable(actor, hostId);
+    const checked = downloadBody(body);
+    return this.hostCall(ep, "POST", "/host/v1/downloads", checked, checked.source === "url" ? undefined : this.hubHeader(actor.id, checked.source));
+  }
+
+  /**
+   * A host's downloads. A download that finished since the last look is read
+   * as a new offering at once, and the group suggestions pick it up.
+   */
+  async downloads(actor: User, hostId: string): Promise<{ downloads: { id: string; state: string }[] }> {
+    const ep = this.manageable(actor, hostId);
+    const list = (await this.hostCall(ep, "GET", "/host/v1/downloads")) as { downloads?: { id: string; state: string }[] } | { id: string; state: string }[];
+    const downloads = Array.isArray(list) ? list : list.downloads ?? [];
+    const fresh = downloads.filter((d) => d.state === "done" && !this.discovered.has(`${hostId}/${d.id}`));
+    if (fresh.length) {
+      await this.discover(actor, hostId);
+      for (const d of fresh) this.discovered.add(`${hostId}/${d.id}`);
+    }
+    return { downloads };
+  }
+
+  /** Cancels an unfinished download (its partial file goes), or clears a finished one from the list. */
+  async cancelDownload(actor: User, hostId: string, downloadId: string): Promise<unknown> {
+    return this.hostCall(this.manageable(actor, hostId), "DELETE", `/host/v1/downloads/${encodeURIComponent(downloadId)}`);
+  }
+
+  /**
+   * Deletes a copy Lyrica downloaded, from its host. Without `confirm`, it
+   * only says where the copy is used. Only files in the host's download
+   * record go; anything else (a shared models folder) is refused. The
+   * offering leaves a tombstone, so every list skips it.
+   */
+  async deleteCopy(actor: User, offeringId: string, opts: { confirm?: boolean } = {}): Promise<{ usedIn: Use[]; deleted?: string[]; left?: { files: string[]; reason: string } }> {
+    const o = this.offering(actor.id, offeringId);
+    if (!o) throw new NoModel(`no model ${offeringId}`);
+    const ep = this.manageable(actor, o.endpoint.id);
+    const usedIn = [...(this.uses(actor.id).get(offeringId) ?? []), ...(collectRefs(this.self()).get(offeringId) ?? [])];
+    if (!opts.confirm) return { usedIn };
+    const record = (await this.hostCall(ep, "GET", "/host/v1/files")) as { path: string }[] | { files?: { path: string }[] };
+    const files = (Array.isArray(record) ? record : record.files ?? []).map((f) => f.path).filter((p) => copyFile(o.offering.modelId, p));
+    if (!files.length) throw new HostRefused("refused", "Only files Lyrica downloaded can be deleted.");
+    // A split GGUF is offered as its first shard; every shard goes. If one can't, the copy is gone anyway: say what's left.
+    const deleted: string[] = [];
+    let left: { files: string[]; reason: string } | undefined;
+    for (const path of files) {
+      try {
+        await this.hostCall(ep, "DELETE", `/host/v1/files?${new URLSearchParams({ path })}`);
+        deleted.push(path);
+      } catch (e) {
+        if (!deleted.length) throw e;
+        left = { files: files.filter((f) => !deleted.includes(f)), reason: (e as Error).message };
+        break;
+      }
+    }
+    this.removeOffering(actor, offeringId);
+    return { usedIn, deleted, ...(left ? { left } : {}) };
+  }
+
+  /** A host's image library: its recipes (with proposals and missing parts) and its parts by role. */
+  async imageLibrary(userId: string, hostId: string): Promise<{ recipes: unknown[]; parts: Record<string, unknown[]> }> {
+    const ep = this.needHost(userId, hostId);
+    const recipes = (await this.hostCall(ep, "GET", "/host/v1/recipes")) as unknown[];
+    const parts = (await this.hostCall(ep, "GET", "/host/v1/parts")) as { role?: string }[];
+    const byRole: Record<string, unknown[]> = {};
+    for (const p of parts) (byRole[p.role ?? "unknown"] ??= []).push(p);
+    return { recipes, parts: byRole };
+  }
+
+  /**
+   * Changes a host's image library: confirm or ignore a proposal, download
+   * its missing parts, change it (swap a part within its role and slot, add
+   * or remove a LoRA, defaults, rename), copy it, or delete it, which keeps
+   * every part another recipe uses. A shared host needs an administrator.
+   * Confirmed recipes become image offerings at once.
+   */
+  async recipe(actor: User, hostId: string, recipeId: string, action: { do: "confirm" | "ignore" | "download-parts" | "delete" } | { do: "change"; change: Record<string, unknown> } | { do: "copy"; name: string }): Promise<unknown> {
+    const ep = this.manageable(actor, hostId);
+    const path = `/host/v1/recipes/${encodeURIComponent(recipeId)}`;
+    const result = action.do === "delete" ? await this.hostCall(ep, "DELETE", path)
+      : action.do === "change" ? await this.hostCall(ep, "PATCH", path, action.change)
+        : action.do === "copy" ? await this.hostCall(ep, "POST", `${path}/copy`, { name: action.name })
+          : action.do === "download-parts" ? await this.hostCall(ep, "POST", `${path}/download-parts`, undefined, await this.partsHeader(actor.id, ep, path))
+            : await this.hostCall(ep, "POST", `${path}/${action.do}`);
+    // A recipe deleted here leaves a tombstone, like a deleted copy, so lists skip it at once.
+    const gone = action.do === "delete" ? this.offerings(actor.id, hostId).find((o) => o.modelId === `recipe/${recipeId}`) : undefined;
+    if (gone) this.removeOffering(actor, gone.id);
+    await this.discover(actor, hostId).catch(() => {});
+    return result;
+  }
+
+  /**
+   * Host management passed through as the host defines it: loading,
+   * unloading and pinning models, GPU settings and placements, scanning.
+   * Only these paths; a shared host needs an administrator.
+   */
+  async manageHost(actor: User, hostId: string, method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<unknown> {
+    if (!MANAGE.some((re) => re.test(path.split("?")[0]!))) throw new Error(`${path} isn't host management Lyrica passes on`);
+    return this.hostCall(this.manageable(actor, hostId), method, path, body);
+  }
+
+  /**
+   * A host model's placement and serving settings (host/API.md), with the
+   * context length it is served with. Anyone who can use the host may read them.
+   */
+  async servingSettings(userId: string, offeringId: string): Promise<{ model: string; settings: Record<string, unknown>; contextLength: number }> {
+    const { endpoint, offering } = this.hostOffering(userId, offeringId);
+    return this.hostCall(endpoint, "GET", `/host/v1/models/settings?${new URLSearchParams({ model: offering.modelId })}`) as Promise<{ model: string; settings: Record<string, unknown>; contextLength: number }>;
+  }
+
+  /**
+   * Saves a host model's settings, whole; the host refuses a placement that
+   * can't work, with the reason. The served context becomes the offering's
+   * context window at once. A shared host needs an administrator.
+   */
+  async setServingSettings(actor: User, offeringId: string, settings: Record<string, unknown>): Promise<unknown> {
+    const { endpoint, offering } = this.hostOffering(actor.id, offeringId);
+    this.manageable(actor, endpoint.id);
+    const entry = await this.hostCall(endpoint, "PUT", "/host/v1/models/settings", { model: offering.modelId, settings });
+    await this.discover(actor, endpoint.id).catch(() => {});
+    return entry;
+  }
+
+  /** Applies a host model's saved settings now (Reload now). A shared host needs an administrator. */
+  async reloadModel(actor: User, offeringId: string): Promise<unknown> {
+    const { endpoint, offering } = this.hostOffering(actor.id, offeringId);
+    this.manageable(actor, endpoint.id);
+    return this.hostCall(endpoint, "POST", "/host/v1/models/reload", { model: offering.modelId });
+  }
+
+  private hostOffering(userId: string, offeringId: string): { endpoint: Endpoint; offering: Offering } {
+    const o = this.offering(userId, offeringId);
+    if (!o || o.endpoint.api !== "host") throw new NoModel(`no model ${offeringId} on a model host`);
+    if (o.offering.recipe) throw new Error("an image recipe has no serving settings");
+    return o;
+  }
+
+  /** A host's dashboard, opened directly (it has its own password away from the machine), at the address it last answered on. */
+  hostDashboard(userId: string, hostId: string): string {
+    const origins = (this.needHost(userId, hostId).addresses ?? []).map(hostOrigin);
+    const last = this.reached.get(hostId);
+    return `${last && origins.includes(last) ? last : origins[0]}/`;
+  }
+
+  /** A host the actor may manage: any they can see, but a shared one only as an administrator. */
+  private manageable(actor: User, hostId: string): Endpoint {
+    const ep = this.needHost(actor.id, hostId);
+    if (ep.shared && !this.users.get(actor.id)?.admin) throw new Forbidden("only an administrator can manage a shared model host");
+    return ep;
+  }
+
+  /** The token for a recipe's missing parts: the hub they come from (Hugging Face when they come from both). */
+  private async partsHeader(userId: string, ep: Endpoint, path: string): Promise<Record<string, string> | undefined> {
+    const r = (await this.hostCall(ep, "GET", path)) as { parts?: { missing?: { source?: string } | null }[] };
+    const hubs = new Set((r.parts ?? []).map((p) => p.missing?.source).filter((h): h is Hub => h === "huggingface" || h === "modelscope"));
+    const hub = hubs.has("huggingface") ? "huggingface" : hubs.has("modelscope") ? "modelscope" : undefined;
+    return hub ? this.hubHeader(userId, hub) : undefined;
+  }
+
+  private hubHeader(userId: string, hub: string): Record<string, string> | undefined {
+    const token = this.tokenFor(userId, hub);
+    return token ? { "x-hub-token": token } : undefined;
+  }
+
   // --- How it answers ---
 
   /**
@@ -434,7 +751,7 @@ export class Models {
     values: AnswerSettings; sources: Partial<Record<keyof AnswerSettings, SettingSource>>;
     /** Saved values this endpoint's API doesn't take, so they aren't sent. */
     dropped: (keyof AnswerSettings)[];
-    contextWindow?: { value: number; source: "hand" | "discovered" };
+    contextWindow?: { value: number; source: "host" | "hand" | "discovered" };
   } {
     const o = this.offering(userId, offeringId);
     if (!o) throw new NoModel(`no model ${offeringId}`);
@@ -451,10 +768,11 @@ export class Models {
       : this.withUser(userId, (u) => u.prepare("SELECT found, hand FROM offerings WHERE id = ?").get(offeringId))) as { found: string; hand: string };
     const hand = JSON.parse(raw.hand).contextWindow as number | undefined;
     const found = JSON.parse(raw.found).contextWindow as number | undefined;
+    const served = JSON.parse(raw.found).servedContext as number | undefined;
     const accepted = acceptedSettings(o.endpoint);
     return {
       values, sources, dropped: ANSWER_SETTINGS.filter((k) => values[k] !== undefined && !accepted.includes(k)),
-      ...(hand ? { contextWindow: { value: hand, source: "hand" as const } } : found ? { contextWindow: { value: found, source: "discovered" as const } } : {}),
+      ...(served ? { contextWindow: { value: served, source: "host" as const } } : hand ? { contextWindow: { value: hand, source: "hand" as const } } : found ? { contextWindow: { value: found, source: "discovered" as const } } : {}),
     };
   }
 
@@ -530,7 +848,7 @@ export class Models {
     const key = `${ep.id}\u0000${ep.fingerprint}\u0000${(ep.addresses ?? []).join(",")}`;
     let f = this.fetches.get(key);
     if (!f) {
-      f = hostFetch(lyricaIdentity(this.self()), { addresses: ep.addresses ?? [], pin: ep.fingerprint ?? "" }, () => this.reportDown(ep.id));
+      f = hostFetch(lyricaIdentity(this.self()), { addresses: ep.addresses ?? [], pin: ep.fingerprint ?? "" }, () => this.reportDown(ep.id), (origin) => this.reached.set(ep.id, origin));
       this.fetches.set(key, f);
     }
     return f;
@@ -539,6 +857,35 @@ export class Models {
   /** A host's status (host/API.md): GPUs, roles, loaded and pinned models, VRAM, queue. Anyone who can use the host may read it. */
   async hostStatus(userId: string, id: string): Promise<unknown> {
     return this.hostCall(this.needHost(userId, id), "GET", "/host/v1/status");
+  }
+
+  /**
+   * An endpoint's state for the Models page, within a budget: one the router
+   * saw down in the last HEALTH_MS isn't asked again, and nothing waits more
+   * than `budgetMs`, so a host that's off doesn't hold the page.
+   */
+  async pageStatus(userId: string, endpointId: string, budgetMs = 3000): Promise<{ state: "up" | "down"; warning?: string; status?: unknown; error?: string }> {
+    const ep = this.endpoint(userId, endpointId);
+    if (!ep) throw new Error(`no endpoint ${endpointId}`);
+    const h = this.health.get(ep.id);
+    if (h && !h.up && Date.now() - h.at < HEALTH_MS) return { state: "down", error: `${ep.name} is down` };
+    const warning = ep.kind === "local" ? Promise.race([localWarning(ep), new Promise<undefined>((r) => setTimeout(() => r(undefined), budgetMs).unref())]) : undefined;
+    if (ep.api !== "host") {
+      const state = await probeUrl(ep.baseUrl, ep.apiKey, budgetMs);
+      this.seen(ep, state === "up", userId);
+      const w = await warning;
+      return w ? { state, warning: w } : { state };
+    }
+    try {
+      const status = await this.hostCall(ep, "GET", "/host/v1/status", undefined, undefined, budgetMs);
+      const state = (status as { state?: string }).state === "running" ? "up" : "down";
+      this.seen(ep, state === "up", userId);
+      const w = await warning;
+      return { state, status, ...(w ? { warning: w } : {}) };
+    } catch (e) {
+      this.seen(ep, false, userId);
+      return { state: "down", error: (e as Error).message };
+    }
   }
 
   /** Pauses, resumes or restarts a host. A shared host needs an administrator. */
@@ -558,10 +905,11 @@ export class Models {
   }
 
   /** One call to a host's API, with its error as a plain reason. */
-  private async hostCall(ep: Endpoint, method: string, path: string, body?: unknown): Promise<unknown> {
+  private async hostCall(ep: Endpoint, method: string, path: string, body?: unknown, headers?: Record<string, string>, timeoutMs = 30_000): Promise<unknown> {
     const res = await this.fetchFor(ep)!(`${hostOrigin(ep.addresses![0]!)}${path}`, {
-      method, signal: AbortSignal.timeout(30_000),
-      ...(body === undefined ? {} : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+      method, signal: AbortSignal.timeout(timeoutMs),
+      headers: { ...(body === undefined ? {} : { "content-type": "application/json" }), ...headers },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     }).catch((e: Error) => {
       // A host that can't be reached, or doesn't answer in time, is a plain reason, not an internal error.
       throw new HostRefused("unreachable", `${ep.name} can't be reached${e.name === "TimeoutError" ? " (it didn't answer in time)" : ""}.`);
@@ -585,22 +933,33 @@ export class Models {
 
   /** A host's text models, from its library (host/API.md "Models"). */
   private async hostModels(ep: Endpoint): Promise<DiscoveredModel[]> {
-    const list = (await this.hostCall(ep, "GET", "/host/v1/models")) as { id: string; kind?: string; sha256?: string | null; contextLength?: number | null; capabilities?: { tools?: boolean; vision?: boolean; embedding?: boolean; reasoning?: string[] | null } }[];
+    const list = (await this.hostCall(ep, "GET", "/host/v1/models")) as {
+      id: string; kind?: string; sha256?: string | null; contextLength?: number | null; size?: number; downloaded?: boolean; identity?: ModelIdentity | null;
+      capabilities?: { tools?: boolean; vision?: boolean; embedding?: boolean; reasoning?: string[] | null };
+    }[];
     if (!Array.isArray(list)) throw new Error(`${ep.name} didn't return a model list`);
-    return list.filter((m) => typeof m?.id === "string" && m.kind !== "image").map((m) => {
+    // Image models are recipes: only confirmed ones become offerings, so a proposal never resolves.
+    const recipes = ((await this.hostCall(ep, "GET", "/host/v1/recipes?state=confirmed").catch(() => [])) as { id: string; name: string; state: string; does?: string[] }[])
+      .filter((r) => r?.state === "confirmed").map((r) => ({
+        modelId: `recipe/${r.id}`, recipe: r.name, ...(r.does?.includes("create") ? { image: true } : {}), ...(r.does?.includes("edit") ? { edit: true } : {}),
+      } as DiscoveredModel));
+    return [...list.filter((m) => typeof m?.id === "string" && m.kind !== "image").map((m) => {
       const levels = (m.capabilities?.reasoning ?? []).filter((l) => l !== "off");
       // A thinking switch in the chat template is on or off: one level.
       const reasoning = levels.filter((l): l is "low" | "medium" | "high" => ["low", "medium", "high"].includes(l));
       return {
         modelId: m.id,
-        ...(m.contextLength ? { contextWindow: m.contextLength } : {}),
+        ...(m.contextLength ? { servedContext: m.contextLength } : {}),
         ...(m.capabilities?.tools !== undefined ? { tools: !!m.capabilities.tools } : {}),
         ...(m.capabilities?.vision !== undefined ? { vision: !!m.capabilities.vision } : {}),
         ...(m.capabilities?.embedding || m.kind === "embedding" ? { embedding: true } : {}),
         ...(levels.length ? { reasoning: reasoning.length ? reasoning : ["medium"] as "medium"[] } : {}),
         ...(m.sha256 ? { digest: m.sha256 } : {}),
+        ...(m.identity ? { identity: m.identity } : {}),
+        ...(m.downloaded !== undefined ? { downloaded: !!m.downloaded } : {}),
+        ...(m.size ? { size: m.size } : {}),
       } as DiscoveredModel;
-    });
+    }), ...recipes];
   }
 
   /** A call to the endpoint failed to connect or was refused as away: the router skips it for HEALTH_MS. */
@@ -717,13 +1076,15 @@ export class Models {
         by.set(b, [...(by.get(b) ?? []), o]);
       }
       for (const list of by.values()) {
-        const one = [...new Map(list.map((o) => [o.endpointId, o])).values()];
+        // One copy per endpoint: the first.
+        const one = list.filter((o, i) => list.findIndex((x) => x.endpointId === o.endpointId) === i);
         const ids = one.map((o) => o.id);
         if (one.length > 1 && !covered(ids) && !out.some((s) => ids.every((id) => s.members.includes(id)))) out.push({ name: baseName(one[0]!.modelId), members: ids, strength });
       }
     };
     bucket((o) => o.digest, "strong");
-    bucket((o) => baseName(o.modelId), "weak");
+    // Same entry in the library, never a flagged or separated copy: a finetune is never suggested for its base's group.
+    bucket((o) => { const id = copyIdentity(o); return id.flagged || id.key.startsWith("copy:") ? undefined : id.key; }, "weak");
     return out;
   }
 
@@ -1107,13 +1468,13 @@ export class Models {
    * known lately, when there is a later model to fall back to, so a machine
    * that is off is passed over before the call rather than after.
    */
-  async resolveLive(task: Task, ctx: CallContext, need: Need = {}): Promise<Resolution> {
+  async resolveLive(task: Task, ctx: CallContext, need: Need = {}, opts: { probeMs?: number } = {}): Promise<Resolution> {
     for (;;) {
       const r = this.resolve(task, ctx, need);
       const h = this.health.get(r.endpoint.id);
       if (!r.remaining || (h && Date.now() - h.at < HEALTH_MS)) return r;
       // Only whether it answers, never the address check: a slow resolver mustn't hold up a turn.
-      const state = await (r.endpoint.api === "host" ? this.hostUp(r.endpoint, PROBE_MS) : probeUrl(r.endpoint.baseUrl, r.endpoint.apiKey, PROBE_MS)).catch(() => "down" as const);
+      const state = await (r.endpoint.api === "host" ? this.hostUp(r.endpoint, opts.probeMs ?? PROBE_MS) : probeUrl(r.endpoint.baseUrl, r.endpoint.apiKey, opts.probeMs ?? PROBE_MS)).catch(() => "down" as const);
       this.seen(r.endpoint, state === "up", ctx.userId);
       if (state === "down") this.reportDown(r.endpoint.id);
       if (state === "up") return r;
@@ -1133,13 +1494,25 @@ export class Models {
     return { level, note: `${r.label} doesn't think at ${asked}, so it thought at ${level}` };
   }
 
-  /** Records which model answered a call. Never any of the conversation's text. */
-  recordCall(userId: string, call: { pool: Pool; threadId: string; task: Task; resolution: Resolution; note?: string }): void {
+  /**
+   * Records which model answered a call. Never any of the conversation's
+   * text. A retry within the turn (`retry`) rewrites that turn's record, so
+   * a turn is one call.
+   */
+  recordCall(userId: string, call: { pool: Pool; threadId: string; task: Task; resolution: Resolution; note?: string }, opts: { retry?: boolean } = {}): void {
     const r = call.resolution;
     const first = r.skipped[0];
     const fallback = first && `${first.label} was skipped (${first.reason.replace(/^it /, "")}), so ${r.label} answered${r.endpoint.kind === "cloud" && r.profile === "custom" ? ", a cloud model" : ""}`;
-    this.withUser(userId, (db) => db.prepare("INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, fallback, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(new Date().toISOString(), call.pool, call.threadId, call.task, r.offering.id, r.label, r.endpoint.name, r.endpoint.kind, fallback ?? null, call.note ?? null));
+    this.withUser(userId, (db) => {
+      const last = opts.retry ? (db.prepare("SELECT max(id) AS id FROM model_calls WHERE thread = ? AND task = ?").get(call.threadId, call.task) as { id: number | null }).id : null;
+      if (last !== null) {
+        db.prepare("UPDATE model_calls SET offering = ?, label = ?, endpoint = ?, kind = ?, fallback = ?, note = ? WHERE id = ?")
+          .run(r.offering.id, r.label, r.endpoint.name, r.endpoint.kind, fallback ?? null, call.note ?? null, last);
+        return;
+      }
+      db.prepare("INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, fallback, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(new Date().toISOString(), call.pool, call.threadId, call.task, r.offering.id, r.label, r.endpoint.name, r.endpoint.kind, fallback ?? null, call.note ?? null);
+    });
   }
 
   /** The user's recent calls, newest first. With a thread, that thread's only. */
@@ -1229,13 +1602,14 @@ export class Models {
       }
     }
     if (opts.kind === "single" && kinds.size > 1) throw new Error("a list here can't mix local and cloud models; only the custom profile can");
-    // A group in a one-kind list needs a copy of that kind.
-    const [only] = kinds;
-    if (opts.kind === "single" && only) {
-      for (const r of out) {
-        if (!("groupId" in r)) continue;
-        const g = c.groups.get(r.groupId)!;
-        if (!g.members.some((m) => c.endpoints.get(c.offerings.get(m)?.endpointId ?? "")?.kind === only)) throw new Error(`the group ${g.name} has no ${only} copy, and a list here can't mix local and cloud models`);
+    // A one-kind list needs one kind every entry has: each group a copy of it, even a list made only of groups.
+    if (opts.kind === "single") {
+      const groups = out.filter((r): r is { groupId: string } => "groupId" in r).map((r) => c.groups.get(r.groupId)!);
+      const has = (g: Group, k: string) => g.members.some((m) => c.endpoints.get(c.offerings.get(m)?.endpointId ?? "")?.kind === k);
+      const candidates = kinds.size ? [...kinds] : ["local", "cloud"];
+      if (groups.length && !candidates.some((k) => groups.every((g) => has(g, k)))) {
+        const g = groups.find((x) => !has(x, candidates[0]!))!;
+        throw new Error(kinds.size ? `the group ${g.name} has no ${candidates[0]} copy, and a list here can't mix local and cloud models` : "these groups have no kind in common, and a list here can't mix local and cloud models");
       }
     }
     return out;
@@ -1557,4 +1931,32 @@ const clean = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(
 function addNotice(db: Db, lines: string[]): void {
   const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(NOTICE) as { value: string } | undefined;
   db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(NOTICE, JSON.stringify([...(row ? JSON.parse(row.value) : []), ...lines]));
+}
+
+/** A download request checked as the host would (host/API.md "Downloads"), so a bad one is refused here with the reason. */
+function downloadBody(b: unknown): { source: Hub; repo: string; revision?: string; files: string[] } | { source: "url"; url: string; sha256?: string } {
+  if (!b || typeof b !== "object" || Array.isArray(b)) throw new Error("send { source, repo, files } or { source: \"url\", url }");
+  const d = b as Record<string, unknown>;
+  if (d.source === "url") {
+    const url = typeof d.url === "string" ? d.url : "";
+    let u: URL;
+    try { u = new URL(url); } catch { throw new Error("that isn't a link"); }
+    if (u.protocol !== "https:") throw new Error("a link must be https");
+    if (url.length > 1024) throw new Error("a link is at most 1024 characters");
+    if (u.username || u.password) throw new Error("a link can't carry a user name or password");
+    if (d.sha256 !== undefined && (typeof d.sha256 !== "string" || !/^[0-9a-f]{64}$/i.test(d.sha256))) throw new Error("sha256 is 64 hex characters");
+    return { source: "url", url, ...(d.sha256 ? { sha256: d.sha256 as string } : {}) };
+  }
+  if (d.source !== "huggingface" && d.source !== "modelscope") throw new Error("source is huggingface, modelscope or url");
+  if (typeof d.repo !== "string" || !d.repo.trim()) throw new Error("say which repository");
+  if (!Array.isArray(d.files) || !d.files.length || !d.files.every((f) => typeof f === "string" && f)) throw new Error("say which files");
+  if (d.revision !== undefined && (typeof d.revision !== "string" || !d.revision)) throw new Error("revision is a branch, tag or commit");
+  return { source: d.source, repo: d.repo.trim(), files: d.files as string[], ...(d.revision ? { revision: d.revision as string } : {}) };
+}
+
+/** Whether a file in the download record belongs to a copy: its file, a file in its folder, or another shard of a split GGUF. */
+function copyFile(modelId: string, path: string): boolean {
+  if (path === modelId || path.startsWith(`${modelId}/`)) return true;
+  const split = /^(.*)-00001-of-(\d{5})\.gguf$/.exec(modelId);
+  return !!split && new RegExp(`^${split[1]!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-\\d{5}-of-${split[2]}\\.gguf$`).test(path);
 }

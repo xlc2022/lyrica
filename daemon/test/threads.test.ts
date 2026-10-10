@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createServer } from "node:http";
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
 import type { CallInfo, EndpointInfo, MessagePage, ThreadEvent, ThreadSettings, ThreadSummary, UploadResponse } from "../src/api.ts";
@@ -227,6 +228,51 @@ describe("a machine that goes away", () => {
     expect(calls[0]).toMatchObject({ label: "gpu/qwen3.8-27b", fallback: expect.stringContaining("blackwell is down") });
     stream.close();
   });
+});
+
+describe("a machine that dies mid-reply", () => {
+  it("falls back for the rest of the turn and the next, and records one call per turn", async () => {
+    const { rt, li, model, path } = await setup();
+    const u = `/api/u/${rt.li.id}`;
+    // A server that starts its answer, then its machine goes: the socket resets mid-stream and nothing listens after.
+    let chats = 0;
+    const dying = createServer((req, res) => {
+      if (req.url === "/v1/models") { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ object: "list", data: [{ id: "big" }] })); }
+      chats++;
+      req.resume();
+      req.on("end", () => {
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        const chunk = (content: string) => res.write(`data: ${JSON.stringify({ id: "c", object: "chat.completion.chunk", created: 0, model: "big", choices: [{ index: 0, delta: { role: "assistant", content }, finish_reason: null }] })}\n\n`);
+        chunk("Once ");
+        chunk("upon ");
+        setTimeout(() => { dying.close(); res.socket?.resetAndDestroy(); }, 50);
+      });
+    });
+    await new Promise<void>((r) => dying.listen(0, "127.0.0.1", r));
+    const ep = (await li.post<EndpointInfo>(`${u}/endpoints`, { name: "blackwell", kind: "local", baseUrl: `http://127.0.0.1:${(dying.address() as { port: number }).port}/v1` })).body;
+    const gpu = (await li.get<EndpointInfo[]>(`${u}/endpoints`)).body.find((e) => e.name === "gpu")!;
+    await li.put(`${u}/profiles/custom/chat`, { models: [{ offeringId: ep.models[0]!.id }, { offeringId: gpu.models[0]!.id }] });
+    const stream = li.events(`${path}/events`);
+    await stream.ready;
+    const turn = async (text: string) => {
+      const ends = stream.events.filter((e) => e.event.type === "turn_end").length;
+      await li.post(`${path}/messages`, { text });
+      await stream.until((e) => e.type === "turn_end" && stream.events.filter((x) => x.event.type === "turn_end").length > ends, 0, 20_000);
+    };
+    const t = Date.now();
+    await turn("tell me a story");
+    // Pi's first retry, two seconds on, already goes to the next model.
+    expect(Date.now() - t).toBeLessThan(4000);
+    expect(chats).toBe(1);
+    expect(model.requests).toHaveLength(1);
+    await turn("and another");
+    expect(chats).toBe(1);
+    expect(model.requests).toHaveLength(2);
+    const calls = (await li.get<CallInfo[]>(`${u}/models/calls`)).body.filter((c) => c.task === "chat");
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toMatchObject({ label: "gpu/qwen3.8-27b", fallback: expect.stringContaining("blackwell is down") });
+    stream.close();
+  }, 30_000);
 });
 
 describe("errors and logs", () => {

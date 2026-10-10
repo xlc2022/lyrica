@@ -195,6 +195,84 @@ export function apiRoutes(d: Lyricad): Route[] {
       return endpointInfo(d, user.id, r.params.endpointId!);
     }),
     route("GET", `${u}/hosts/:endpointId/status`, async (r) => (await s().models.hostStatus(d.userFor(r).id, r.params.endpointId!)) as Api.HostStatus),
+    // --- The model libraries, downloads and host management ---
+    route("GET", `${u}/library/text`, (r): Api.TextLibrary => {
+      const q = r.query;
+      const kind = q.get("kind");
+      const capability = q.get("capability");
+      if (kind && kind !== "cloud" && kind !== "local") throw new HttpError(400, "kind is cloud or local");
+      if (capability && !["tools", "vision", "embedding", "image"].includes(capability)) throw new HttpError(400, "capability is tools, vision, embedding or image");
+      return s().models.textLibrary(d.userFor(r).id, {
+        ...(q.get("search") ? { search: q.get("search")! } : {}), ...(kind ? { kind: kind as "cloud" | "local" } : {}),
+        ...(q.get("endpoint") ? { endpointId: q.get("endpoint")! } : {}), ...(capability ? { capability: capability as "tools" } : {}),
+        groupsOnly: q.get("groups") === "1", offset: Number(q.get("offset") ?? 0) || 0, limit: Number(q.get("limit") ?? 50) || 50,
+      });
+    }),
+    route("PUT", `${u}/offerings/:offeringId/star`, async (r) => {
+      const { starred } = await r.json<{ starred: boolean }>();
+      s().models.star(d.userFor(r).id, r.params.offeringId!, !!starred);
+      return { ok: true };
+    }),
+    route("PUT", `${u}/offerings/:offeringId/separate`, async (r) => {
+      const { separate } = await r.json<{ separate: boolean }>();
+      s().models.notThisModel(d.userFor(r), r.params.offeringId!, !!separate);
+      return { ok: true };
+    }),
+    route("POST", `${u}/offerings/:offeringId/delete-copy`, async (r): Promise<Api.DeleteCopy> => {
+      const { confirm } = await r.json<{ confirm?: boolean }>();
+      return s().models.deleteCopy(d.userFor(r), r.params.offeringId!, { confirm: !!confirm });
+    }),
+    route("GET", `${u}/hub-tokens`, (r): Api.HubTokenInfo[] => s().models.hubTokens(d.userFor(r).id)),
+    route("PUT", `${u}/hub-tokens/:hub`, async (r): Promise<Api.HubTokenInfo[]> => {
+      const user = d.userFor(r);
+      const t = await r.json<Api.HubTokenInput>();
+      s().models.setHubToken(user, r.params.hub as Api.Hub, String(t.token ?? ""), { shared: !!t.shared });
+      return s().models.hubTokens(user.id);
+    }),
+    route("DELETE", `${u}/hub-tokens/:hub`, (r): Api.HubTokenInfo[] => {
+      const user = d.userFor(r);
+      s().models.removeHubToken(user, r.params.hub as Api.Hub, { shared: r.query.get("shared") === "1" });
+      return s().models.hubTokens(user.id);
+    }),
+    route("GET", `${u}/hosts/:endpointId/hub/files`, async (r) => {
+      const source = r.query.get("source");
+      if (source !== "huggingface" && source !== "modelscope") throw new HttpError(400, "source is huggingface or modelscope");
+      return s().models.hubFiles(d.userFor(r), r.params.endpointId!, { source, repo: String(r.query.get("repo") ?? ""), ...(r.query.get("revision") ? { revision: r.query.get("revision")! } : {}) });
+    }),
+    route("POST", `${u}/hosts/:endpointId/downloads`, async (r) => s().models.startDownload(d.userFor(r), r.params.endpointId!, await r.json<Api.DownloadInput>())),
+    route("GET", `${u}/hosts/:endpointId/downloads`, async (r) => s().models.downloads(d.userFor(r), r.params.endpointId!)),
+    route("DELETE", `${u}/hosts/:endpointId/downloads/:downloadId`, async (r) => s().models.cancelDownload(d.userFor(r), r.params.endpointId!, r.params.downloadId!)),
+    route("GET", `${u}/hosts/:endpointId/images`, async (r) => s().models.imageLibrary(d.userFor(r).id, r.params.endpointId!)),
+    route("POST", `${u}/hosts/:endpointId/recipes/:recipeId`, async (r) => {
+      const a = await r.json<Api.RecipeAction>();
+      if (!["confirm", "ignore", "download-parts", "delete", "change", "copy"].includes(a.do)) throw new HttpError(400, "a recipe can be confirmed, ignored, changed, copied, deleted, or have its parts downloaded");
+      return s().models.recipe(d.userFor(r), r.params.endpointId!, r.params.recipeId!, a as never);
+    }),
+    route("POST", `${u}/hosts/:endpointId/manage`, async (r) => {
+      const m = await r.json<Api.HostManage>();
+      if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(m.method)) throw new HttpError(400, "method is GET, POST, PUT, PATCH or DELETE");
+      return s().models.manageHost(d.userFor(r), r.params.endpointId!, m.method, String(m.path ?? ""), m.body);
+    }),
+    route("GET", `${u}/offerings/:offeringId/serving`, async (r): Promise<Api.ServingSettings> => s().models.servingSettings(d.userFor(r).id, r.params.offeringId!)),
+    route("PUT", `${u}/offerings/:offeringId/serving`, async (r) => {
+      const b = await r.json<{ settings?: unknown } | null>();
+      if (!b || typeof b.settings !== "object" || !b.settings || Array.isArray(b.settings)) throw new HttpError(400, "send { settings }");
+      return s().models.setServingSettings(d.userFor(r), r.params.offeringId!, b.settings as Record<string, unknown>);
+    }),
+    route("POST", `${u}/offerings/:offeringId/reload`, async (r) => s().models.reloadModel(d.userFor(r), r.params.offeringId!)),
+    route("GET", `${u}/hosts/:endpointId/dashboard`, (r) => ({ url: s().models.hostDashboard(d.userFor(r).id, r.params.endpointId!) })),
+    route("GET", `${u}/models/page`, async (r): Promise<Api.ModelsPage> => {
+      const user = d.userFor(r);
+      const m = s().models;
+      const eps = m.endpoints(user.id);
+      // One look per endpoint, within 3 s, so a host that's off doesn't hold the page.
+      const looks = await Promise.all(eps.map(async (e) => ({ e, look: await m.pageStatus(user.id, e.id).catch((err: Error) => ({ state: "down" as const, error: err.message, status: undefined, warning: undefined })) })));
+      const live = looks.map(({ e, look }) => ({ ...endpointInfo(d, user.id, e.id), state: look.state, ...(look.warning ? { warning: look.warning } : {}) }));
+      const hosts = looks.filter(({ e }) => e.api === "host").map(({ e, look }) => look.status
+        ? { endpointId: e.id, status: look.status as Api.HostStatus }
+        : { endpointId: e.id, error: look.error ?? `${e.name} is down` });
+      return { endpoints: live, hosts, profiles: profiles(d, user.id), calls: m.recentCalls(user.id, { limit: 20 }), notice: m.notice(user.id), cleanup: m.cleanup(user.id).length };
+    }),
     route("POST", `${u}/hosts/:endpointId/:action`, async (r) => {
       const action = r.params.action;
       if (action !== "pause" && action !== "resume" && action !== "restart") throw new HttpError(404, "a host can be paused, resumed or restarted");
