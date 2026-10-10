@@ -65,6 +65,12 @@ describe("the live view of a thread's stream", () => {
       { type: "offline", task: "chat", tried },
     ]);
     expect([s.items, s.queued, s.offline]).toEqual([[], ["hi"], { task: "chat", tried }]);
+    // A message sent while one was held goes with it, joined: neither shows twice.
+    const joined = run([{ type: "sent", text: "there" }, { type: "queue", queued: ["hi\n\nthere"] }, { type: "offline", task: "chat", tried }], s);
+    expect([joined.items, joined.queued]).toEqual([[], ["hi\n\nthere"]]);
+    // One message with a blank line in it, held on its own, shows once too.
+    const lines = run([{ type: "sent", text: "a\n\nb" }, { type: "queue", queued: ["a\n\nb"] }, { type: "offline", task: "chat", tried }]);
+    expect([lines.items, lines.queued]).toEqual([[], ["a\n\nb"]]);
     const back = run([{ type: "queue", queued: [] }, { type: "turn_start" }], s);
     expect([back.items, back.offline]).toEqual([[{ role: "user", text: "hi" }], undefined]);
   });
