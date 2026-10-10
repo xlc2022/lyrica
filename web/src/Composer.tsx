@@ -5,8 +5,8 @@ import { upload } from "./api.ts";
 
 interface Upload { id: number; name: string; progress: number; error?: string }
 
-export function Composer({ base, busy, readOnly, restored, onSend, onStop }: {
-  base: string; busy: boolean; readOnly: boolean; onSend: (text: string) => Promise<boolean>; onStop: () => void;
+export function Composer({ base, busy, restored, onSend, onStop }: {
+  base: string; busy: boolean; onSend: (text: string) => Promise<boolean>; onStop: () => void;
   /** Text handed back, such as follow-ups that Stop dropped. */
   restored: string;
 }) {
@@ -47,8 +47,6 @@ export function Composer({ base, busy, readOnly, restored, onSend, onStop }: {
     setDraft("");
     if (!(await onSend(text))) setDraft(text);
   };
-
-  if (readOnly) return <div className="composer readonly muted">A subagent's thread is read-only.</div>;
 
   return (
     <form

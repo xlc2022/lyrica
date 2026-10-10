@@ -5,7 +5,7 @@ import {
 } from "@lyrica/core";
 import {
   createDelegateExtension, createLyricaExtension, createWorkspaceExtension, DELEGATE_MESSAGE, OPENING, openThreadSession, piModelFor,
-  type ApprovalRequest, type Delegation, type DelegationEvent, type ThreadContext,
+  type ApprovalRequest, type Delegation, type DelegationEvent, type SubagentApproval, type ThreadContext,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
@@ -35,6 +35,7 @@ const BUFFER = 500;
 const EPOCH = randomBytes(4).toString("hex");
 
 type Client = (id: string, event: ThreadEvent) => void;
+type Outcome = "answered" | "timeout" | "stopped";
 
 interface Opened { session: AgentSession; view: PoolView; dispose(): void; title(): Promise<string | undefined> }
 
@@ -62,6 +63,36 @@ export class ThreadHost {
       this.threads.set(key, t);
     }
     return t;
+  }
+
+  /**
+   * A subagent's tool call: one request, shown in the subagent's thread and
+   * its parent's. The first answer from either wins and both views update; a
+   * timeout, Stop in either thread, or the subagent being stopped refuses it.
+   */
+  approveSubagent(r: SubagentApproval, signal: AbortSignal): Promise<boolean> {
+    const request: PermissionRequest = {
+      requestId: randomBytes(8).toString("hex"), toolCallId: r.toolCallId, tool: r.tool, args: r.input,
+      expiresAt: new Date(Date.now() + this.opts.permissionMs).toISOString(),
+      subagent: { runId: r.runId, threadId: r.threadId, parentThreadId: r.parentThreadId, role: r.role },
+    };
+    const threads = [r.parentThreadId, r.threadId].map((id) => this.get(r.userId, r.pool, id));
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = (allowed: boolean, reason: Outcome) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal.removeEventListener("abort", stopped);
+        for (const t of threads) t.endPermission(request.requestId, allowed, reason);
+        resolve(allowed);
+      };
+      const timer = setTimeout(() => done(false, "timeout"), this.opts.permissionMs);
+      const stopped = () => done(false, "stopped");
+      signal.addEventListener("abort", stopped, { once: true });
+      for (const t of threads) t.addPermission(request, done);
+      if (signal.aborted) stopped();
+    });
   }
 
   /** Settings changed: an open session reopens with them. A thread with no record needs nothing. */
@@ -99,7 +130,7 @@ export class HostedThread {
   private readonly buffer: { n: number; event: ThreadEvent }[] = [];
   private n = 0;
   private readonly clients = new Set<Client>();
-  private readonly pending = new Map<string, { request: PermissionRequest; done(allowed: boolean, reason: "answered" | "timeout" | "stopped"): void }>();
+  private readonly pending = new Map<string, { request: PermissionRequest; done(allowed: boolean, reason: Outcome): void }>();
   private queued: string[] = [];
   private idle: NodeJS.Timeout | undefined;
   /** Settings changed during a turn: reopen the session once it ends. */
@@ -218,15 +249,27 @@ export class HostedThread {
     };
     return new Promise((resolve) => {
       const timer = setTimeout(() => done(false, "timeout"), this.o.permissionMs);
-      const done = (allowed: boolean, reason: "answered" | "timeout" | "stopped") => {
-        if (!this.pending.delete(requestId)) return;
+      const done = (allowed: boolean, reason: Outcome) => {
+        if (!this.pending.has(requestId)) return;
         clearTimeout(timer);
-        this.emit({ type: "permission_end", requestId, allowed, reason });
+        this.endPermission(requestId, allowed, reason);
         resolve(allowed);
       };
-      this.pending.set(requestId, { request, done });
-      this.emit({ type: "permission", ...request });
+      this.addPermission(request, done);
     });
+  }
+
+  /** Shows a request in this thread's views; `done` settles it, here and wherever else it shows. */
+  addPermission(request: PermissionRequest, done: (allowed: boolean, reason: Outcome) => void): void {
+    this.pending.set(request.requestId, { request, done });
+    this.emit({ type: "permission", ...request });
+  }
+
+  /** The request was settled: its prompt goes from this thread's views. */
+  endPermission(requestId: string, allowed: boolean, reason: Outcome): void {
+    if (!this.pending.delete(requestId)) return;
+    this.emit({ type: "permission_end", requestId, allowed, reason });
+    if (!this.busy && !this.pending.size && !this.clients.size) this.startIdle();
   }
 
   /** Answers a permission request. Returns false if it's no longer waiting. */
@@ -347,7 +390,8 @@ export class HostedThread {
     if (this.noticed.has(key)) return;
     this.noticed.add(key);
     if (this.noticed.size > 100) this.noticed.delete(this.noticed.values().next().value!);
-    this.emit({ type: "notice", ...notice });
+    const threads = delegateThreads("delegate", details, this.pool);
+    this.emit({ type: "notice", ...notice, ...(threads ? { threads } : {}) });
   }
 
   private async maybeTitle(opened: Opened): Promise<void> {

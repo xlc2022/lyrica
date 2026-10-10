@@ -1,6 +1,6 @@
 // The conversation: stored messages, then what's streaming now.
 import { useEffect, useState } from "react";
-import { post, type Message, type MessagePart, type PermissionRequest, type Pool, type ThreadRef } from "./api.ts";
+import { get, post, threadPath, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type SendResponse, type ThreadRef } from "./api.ts";
 import type { LiveItem } from "./live.ts";
 import { href, idHref } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
@@ -11,16 +11,25 @@ interface Props {
   ctx: ShellContext;
   pool: Pool;
   base: string;
+  threadId: string;
+  /** A subagent's thread: its messages say who sent them, and its replies are the subagent's. */
+  subagent: boolean;
   thread: ReturnType<typeof useThread>;
 }
 
-export function Conversation({ ctx, pool, base, thread }: Props) {
+export function Conversation({ ctx, pool, base, threadId, subagent, thread }: Props) {
   const { messages, live, hasMore, loadOlder, loaded } = thread;
   const [run, loading, error] = useAction();
   // Expanded tool markers, by call ID, so they stay open when the stored copy replaces the live one.
   const [openTools, setOpenTools] = useState<ReadonlySet<string>>(new Set());
   const toggleTool = (id: string) => setOpenTools((o) => { const n = new Set(o); if (!n.delete(id)) n.add(id); return n; });
-  const env = { userId: ctx.user.id, pool, openTools, toggleTool };
+  // Subagents whose work is shown in their delegate card here: their approvals show there too.
+  const [shown, setShown] = useState<ReadonlySet<string>>(new Set());
+  const show = (id: string, on: boolean) => setShown((o) => { const n = new Set(o); if (on) n.add(id); else n.delete(id); return n; });
+  const env: Env = {
+    userId: ctx.user.id, you: ctx.user.displayName, pool, base, threadId, subagent, openTools, toggleTool,
+    permissions: live.permissions, ticks: live.subagents, show,
+  };
   return (
     <>
       {hasMore && <button type="button" className="older" disabled={loading} onClick={() => run(loadOlder)}>Show earlier messages</button>}
@@ -31,7 +40,8 @@ export function Conversation({ ctx, pool, base, thread }: Props) {
         <LiveMessage key={`live-${i}`} item={item} env={env} you={ctx.user.displayName} streaming={live.busy && i === live.items.length - 1} />
       ))}
       {live.busy && !live.items.some((x) => x.role === "assistant") && <p className="thinking-dots" role="status">Lyrica is thinking…</p>}
-      {live.permissions.map((p) => <PermissionPrompt key={p.requestId} base={base} p={p} />)}
+      {live.permissions.filter((p) => !p.subagent || !shown.has(p.subagent.threadId) || p.subagent.threadId === threadId)
+        .map((p) => <PermissionPrompt key={p.requestId} base={base} p={p} env={env} />)}
       {live.errors.map((e, i) => <p key={i} className="error turn-error" role="alert">{e}</p>)}
       {live.queued.map((q, i) => (
         <div key={`q-${i}`} className="msg user queued">
@@ -43,12 +53,31 @@ export function Conversation({ ctx, pool, base, thread }: Props) {
   );
 }
 
-interface Env { userId: string; pool: Pool; openTools: ReadonlySet<string>; toggleTool: (id: string) => void }
+interface Env {
+  userId: string;
+  you: string;
+  pool: Pool;
+  /** The open thread's API path, where its permission requests are answered. */
+  base: string;
+  threadId: string;
+  subagent: boolean;
+  openTools: ReadonlySet<string>;
+  toggleTool: (id: string) => void;
+  permissions: PermissionRequest[];
+  ticks: Record<string, number>;
+  /** A delegate card shows or hides a subagent's work. */
+  show: (threadId: string, on: boolean) => void;
+}
 
 function StoredMessage({ m, env, you }: { m: Message; env: Env; you: string }) {
-  if (m.role === "user") return <UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={you} />;
+  if (m.role === "user") {
+    const who = m.from?.kind === "lyrica" ? "Lyrica" : m.from?.kind === "user" ? (m.from.name || you) : you;
+    return <UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} />;
+  }
   if (m.role === "notice") {
-    return <>{m.parts.map((p, i) => <Notice key={i} text={p.type === "delegation" || p.type === "text" ? p.text : ""} threads={p.type === "delegation" ? p.threads : undefined} env={env} />)}</>;
+    return <>{m.parts.map((p, i) => (p.type === "delegation"
+      ? <Notice key={i} text={p.text} status={p.status} threads={p.threads} env={env} />
+      : <Notice key={i} text={p.type === "text" ? p.text : ""} env={env} />))}</>;
   }
   return (
     <>
@@ -60,7 +89,7 @@ function StoredMessage({ m, env, you }: { m: Message; env: Env; you: string }) {
 
 function LiveMessage({ item, env, you, streaming }: { item: LiveItem; env: Env; you: string; streaming: boolean }) {
   if (item.role === "user") return <UserMessage text={item.text} you={you} />;
-  if (item.role === "notice") return <Notice text={item.text} env={env} />;
+  if (item.role === "notice") return <Notice text={item.text} status={item.status} threads={item.threads} env={env} />;
   return <Parts parts={item.parts} env={env} model={item.model} streaming={streaming} />;
 }
 
@@ -96,9 +125,11 @@ function Parts({ parts, env, model, streaming }: { parts: MessagePart[]; env: En
   });
   flush(parts.length, true);
   if (streaming && parts.at(-1)?.type !== "text") out.push(<span key="caret" className="caret alone" aria-hidden="true" />);
+  // In a subagent's thread, the replies are the subagent's own work.
+  const who = env.subagent ? "Subagent" : "Lyrica";
   return (
-    <section className="turn" aria-label={model ? `Lyrica (${model})` : "Lyrica"}>
-      <div className="who">Lyrica{model && <span className="muted"> · {model}</span>}</div>
+    <section className="turn" aria-label={model ? `${who} (${model})` : who}>
+      <div className="who">{who}{model && <span className="muted"> · {model}</span>}</div>
       {out}
     </section>
   );
@@ -109,7 +140,7 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" }>; e
   const open = part.type === "tool" ? env.openTools.has(part.toolCallId) : localOpen;
   const toggle = () => (part.type === "tool" ? env.toggleTool(part.toolCallId) : setLocalOpen(!localOpen));
   if (part.type === "tool" && part.name === "delegate") return <SubagentCard part={part} env={env} />;
-  if (part.type === "delegation") return <Notice text={part.text} threads={part.threads} env={env} />;
+  if (part.type === "delegation") return <Notice text={part.text} status={part.status} threads={part.threads} env={env} />;
   let label: React.ReactNode;
   let body: React.ReactNode;
   switch (part.type) {
@@ -156,6 +187,48 @@ function SubagentCard({ part, env }: { part: Extract<MessagePart, { type: "tool"
         <ThreadLinks threads={part.threads} env={env} />
       </div>
       {args.task && <p>{args.task}</p>}
+      {part.threads?.map((t, i) => <SubagentWork key={t.id} thread={t} label={part.threads!.length > 1 ? `Subagent ${i + 1}` : "Its work"} env={env} />)}
+    </div>
+  );
+}
+
+/** A subagent's work, inline: its transcript, its waiting approvals, and a message box. */
+function SubagentWork({ thread, label, env }: { thread: ThreadRef; label: string; env: Env }) {
+  const [open, setOpen] = useState(false);
+  const toggle = () => { env.show(thread.id, !open); setOpen(!open); };
+  useEffect(() => () => env.show(thread.id, false), [thread.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="sub-work">
+      <button type="button" className="quiet" aria-expanded={open} onClick={toggle}>{open ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}</button>
+      {open && (
+        <>
+          <Transcript thread={thread} env={env} />
+          {env.permissions.filter((p) => p.subagent?.threadId === thread.id).map((p) => <PermissionPrompt key={p.requestId} base={env.base} p={p} env={env} />)}
+          <MessageBox thread={thread} env={env} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/** A subagent's stored thread, read-only, reloaded as it works. */
+function Transcript({ thread, env }: { thread: ThreadRef; env: Env }) {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [error, setError] = useState("");
+  const tick = env.ticks[thread.id] ?? 0;
+  useEffect(() => {
+    let current = true;
+    get<MessagePage>(threadPath(env.userId, thread.pool, thread.id, "messages")).then(
+      (page) => { if (current) { setMessages(page.messages); setError(""); } },
+      (e: Error) => current && setError(e.message),
+    );
+    return () => { current = false; };
+  }, [env.userId, thread.pool, thread.id, tick]);
+  const inner = { ...env, pool: thread.pool, threadId: thread.id, subagent: true };
+  return (
+    <div className="transcript" aria-label="The subagent's work">
+      <ErrorText error={error} />
+      {messages.map((m) => <StoredMessage key={m.id} m={m} env={inner} you={env.you} />)}
     </div>
   );
 }
@@ -174,13 +247,44 @@ function ThreadLinks({ threads, env }: { threads?: ThreadRef[]; env: Env }) {
   );
 }
 
-/** Something delivered into the thread: a background subagent run's result or question. */
-function Notice({ text, threads, env }: { text: string; threads?: ThreadRef[]; env: Env }) {
+const NOTICE_HEADS: Record<string, string> = {
+  question: "Subagent asks", note: "Subagent note", user_message: "Message to a subagent", interrupted: "Subagent interrupted",
+};
+
+/** Something a subagent run delivered into the thread: a result, a question, a note, or what someone wrote to one. */
+function Notice({ text, status, threads, env }: { text: string; status?: string; threads?: ThreadRef[]; env: Env }) {
   return (
-    <div className="subagent delivered">
-      <div className="sub-head"><b>Subagent result</b><ThreadLinks threads={threads} env={env} /></div>
+    <div className="subagent delivered" data-status={status}>
+      <div className="sub-head"><b>{NOTICE_HEADS[status ?? ""] ?? "Subagent result"}</b><ThreadLinks threads={threads} env={env} /></div>
       <div className="prose"><Prose text={text} /></div>
     </div>
+  );
+}
+
+/**
+ * Writes to a subagent as the user: it joins its work, answers its question,
+ * or continues it, and Lyrica is told.
+ */
+export function MessageBox({ thread, env, onSent }: { thread: ThreadRef; env: Pick<Env, "userId">; onSent?: () => void }) {
+  const [text, setText] = useState("");
+  const [sent, setSent] = useState(false);
+  const [run, busy, error] = useAction();
+  const send = () => run(async () => {
+    await post<SendResponse>(threadPath(env.userId, thread.pool, thread.id, "messages"), { text: text.trim() });
+    setText("");
+    setSent(true);
+    onSent?.();
+  });
+  return (
+    <form className="sub-message" onSubmit={(e) => { e.preventDefault(); if (text.trim()) send(); }}>
+      <textarea rows={2} aria-label="Message to the subagent" placeholder="Message the subagent (Lyrica is told)" value={text}
+        onChange={(e) => { setText(e.target.value); setSent(false); }} />
+      <div className="row">
+        <button type="submit" className="primary" disabled={busy || !text.trim()}>Send</button>
+        {sent && <span className="muted" role="status">Sent.</span>}
+      </div>
+      <ErrorText error={error} />
+    </form>
   );
 }
 
@@ -192,13 +296,18 @@ function summarizeArgs(args: unknown): string {
   return typeof main === "string" ? main.split("\n")[0]! : JSON.stringify(main ?? "");
 }
 
-function PermissionPrompt({ base, p }: { base: string; p: PermissionRequest }) {
+function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest; env: Env }) {
   const [run, busy, error] = useAction();
   const answer = (allow: boolean) => run(() => post(`${base}/permissions/${encodeURIComponent(p.requestId)}`, { allow }));
   const left = useCountdown(p.expiresAt);
+  const sub = p.subagent;
+  // A subagent's request shows here and in its parent's thread; the first answer counts.
+  const who = !sub ? <>Lyrica wants</>
+    : sub.threadId === env.threadId ? <>This subagent ({sub.role}) wants</>
+    : <>Her <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: sub.threadId })}>{sub.role} subagent</a> wants</>;
   return (
-    <div className="permission" role="group" aria-label={`Allow ${p.tool}?`}>
-      <p>Lyrica wants to use <b>{p.tool}</b>:</p>
+    <div className="permission" role="group" aria-label={`Allow ${p.tool}${sub ? ` for the ${sub.role} subagent` : ""}?`}>
+      <p>{who} to use <b>{p.tool}</b>:</p>
       <pre>{typeof p.args === "object" && p.args && "command" in p.args ? String((p.args as { command: unknown }).command) : JSON.stringify(p.args, null, 2)}</pre>
       <div className="row">
         <button type="button" className="primary" disabled={busy} onClick={() => answer(true)}>Allow</button>
