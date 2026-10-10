@@ -31,7 +31,7 @@ phone (principle 1).
      thread's header or a right-click / long-press menu), saved per user (a small
      API and a `thread_groups` table in `user.db`; a thread's group is a
      per-user setting, never in the pool). One Sort menu holds the sort
-     choices and the Show general / private / hidden checkboxes.
+     choices and the General / Private / Hidden checkboxes.
    - The thread menu (right-click or long press, letter shortcuts): Pin,
      Mark as unread, Rename, Share with ›, Move to group ›, Hide, Delete.
      **Share with** sends a copy to another user on the server: a
@@ -97,7 +97,7 @@ phone (principle 1).
      progress with Cancel, finished downloads and deletions, Clear finished.
    - **Text models**: one row per model, opening to its copies with their raw
      names, where groups are made, reordered and undone; finetunes in rows of
-     their own, linked to their base; flagged copies and **Not this model**;
+     their own, linked to their base; flagged copies and **Separate**;
      search, filters and stars; each copy's **Settings**: how it answers
      (with each value's source and a per-user override) and, on a model
      host, how it's served, with its placement and Reload now;

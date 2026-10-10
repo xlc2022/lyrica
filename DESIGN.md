@@ -100,9 +100,14 @@ Each user has two pools of memory.
   - **Actions:** three looks only: primary, secondary (bordered) and link.
     Nothing pressable is plain grey text. Badges carry state only, at most
     two per row; facts go in the line beneath the name.
-  - **Words:** no explanatory captions under headings or in page headers.
-    Headers state facts (counts, status); a sentence of explanation appears
-    only where an action has a consequence, such as a delete.
+  - **Words:** labels are short nouns (Sampling, Serving, Pinned, Excluded),
+    never descriptions of what a thing does. No explanatory captions under
+    headings, in page headers or at the foot of a form; where a word needs
+    explaining, the explanation is a tooltip. A sentence appears only where
+    an action has a consequence, such as a delete.
+  - **Numbers are typed, not picked:** a context length or a layer count is
+    a number field showing the model's maximum beside it, and a value past
+    the maximum becomes the maximum.
   - **Familiar shapes first**, from ChatGPT, Claude and Open WebUI, unless
     Lyrica has a reason to differ (pools, privacy, model hosts, subagents).
   - **One icon set:** 16 px line icons from one family, never text glyphs
@@ -130,7 +135,7 @@ Each user has two pools of memory.
     choice and the groups are saved per user, in `user.db`. A group can hold
     general and private threads; hiding a pool still hides its threads.
   - **One Sort menu** above the threads holds the sort choices and, below
-    a line, the Show general, Show private and Show hidden threads
+    a line, the General, Private and Hidden
     checkboxes. Nothing on screen says that hidden content exists.
   - **The thread menu** opens by right-clicking a thread (a long press on a
     phone), with a letter shortcut for each item: Pin (P), Mark as unread
@@ -192,9 +197,9 @@ Each user has two pools of memory.
 - A thread belongs to one user, one pool and one interface, all chosen when it
   is created.
 - **Visibility:**
-  - Two checkboxes in the Sort menu, **Show general** and **Show private**,
+  - Two checkboxes in the Sort menu, **General** and **Private**,
     show or hide all content from a pool.
-  - Any thread can be hidden, and **Show hidden threads** reveals them.
+  - Any thread can be hidden, and **Hidden** reveals them.
   - These settings are saved per user. They only affect what's displayed:
     hiding doesn't change what Lyrica remembers.
 
@@ -442,7 +447,7 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       adapter is a model of its own with a link to its base: never listed
       under it, never suggested for its group. A copy whose file records no
       finetune but whose name has words the model's name doesn't is flagged
-      for a check, and **Not this model** moves any copy to a row of its
+      for a check, and **Separate** moves any copy to a row of its
       own;
     - search, and filters by kind, endpoint and what a model can do (chat
       with tools, vision, embeddings, images), or groups only;
@@ -490,13 +495,13 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     collapsed marker. It isn't indexed for recall.
 - **Model settings, saved per copy.** Each copy of a model has settings
   that last between uses, edited from its row in the library:
-  - **How it answers**, for any endpoint: temperature, top-p, top-k, min-p,
+  - **Sampling**, for any endpoint: temperature, top-p, top-k, min-p,
     repeat, presence and frequency penalties, maximum reply length, seed and
     stop strings. They go with every call to that copy; an empty one means
     the endpoint's default. An administrator sets them for shared
     endpoints, and each user can override them for themselves, in
     `user.db`. The library shows each value and where it comes from.
-  - **How it's served**, for models on a model host: context length,
+  - **Serving**, for models on a model host: context length,
     KV-cache type, flash attention, GPU layers, parallel requests and batch
     size, plus for vLLM its memory share, maximum sequences and dtype, and a
     chat-template override. They are saved on the host with the model's
