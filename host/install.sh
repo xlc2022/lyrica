@@ -48,6 +48,7 @@ MODELS=$(env_value MODELS_DIR)
 VENDOR=$(env_value GPU_VENDOR)
 AMD_BACKEND=$(env_value GPU_BACKEND)
 HSA_OVERRIDE=$(env_value HSA_OVERRIDE_GFX_VERSION)
+AMD_FLAGS=0 APU_ONLY=0 DISCRETE_SUPPORTED=0
 COMFY_GPU=$(env_value COMFY_GPU)
 TS_HOSTNAME=$(env_value TS_HOSTNAME)
 TS_AUTHKEY=$(env_value TS_AUTHKEY)
@@ -62,8 +63,8 @@ while [[ $# -gt 0 ]]; do
     --no-lan) WANT_LAN=0; LAN= ;;
     --models) MODELS=$2; shift ;;
     --vendor) VENDOR=$2; shift ;;
-    --amd-backend) AMD_BACKEND=$2; shift ;;
-    --hsa-override) HSA_OVERRIDE=$2; [[ $HSA_OVERRIDE == none ]] && HSA_OVERRIDE=; shift ;;
+    --amd-backend) AMD_BACKEND=$2; AMD_FLAGS=1; shift ;;
+    --hsa-override) HSA_OVERRIDE=$2; AMD_FLAGS=1; [[ $HSA_OVERRIDE == none ]] && HSA_OVERRIDE=; shift ;;
     --tailscale) TS_HOSTNAME=$2; shift ;;
     --no-tailscale) TS_HOSTNAME= TS_AUTHKEY= ;;
     --no-gpu) CHECK_GPU=0; VENDOR=none ;;
@@ -107,7 +108,12 @@ amd_targets() {
 choose_amd_backend() {
   local targets unsupported=() t discrete=0
   targets=$(amd_targets)
-  for t in $targets; do [[ $APU_TARGETS == *" $t "* ]] || discrete=1; done
+  for t in $targets; do
+    [[ $APU_TARGETS == *" $t "* ]] && continue
+    discrete=1
+    [[ $ROCM_TARGETS == *" $t "* ]] && DISCRETE_SUPPORTED=1
+  done
+  [[ -n $targets && $discrete == 0 ]] && APU_ONLY=1
   for t in $targets; do
     [[ $ROCM_TARGETS == *" $t "* ]] && continue
     [[ $discrete == 1 && $APU_TARGETS == *" $t "* ]] && { say "The integrated $t is left out by default (it can be included on the dashboard)."; continue; }
@@ -130,6 +136,8 @@ choose_amd_backend() {
     *) fail "--amd-backend must be rocm or vulkan." ;;
   esac
   [[ -z $HSA_OVERRIDE || $HSA_OVERRIDE =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "--hsa-override looks like 11.0.0."
+  [[ -n $HSA_OVERRIDE && $DISCRETE_SUPPORTED == 1 ]] &&
+    say "Warning: the override applies to every GPU, including the discrete GPU ROCm already supports, which it may break. Leave it unset unless every GPU needs it."
   say "AMD backend: $AMD_BACKEND${HSA_OVERRIDE:+ (HSA_OVERRIDE_GFX_VERSION=$HSA_OVERRIDE)}"
 }
 
@@ -191,11 +199,18 @@ fi
 [[ $WANT_LAN == 1 || -n $TS_HOSTNAME ]] || fail "with --no-lan, use --tailscale: otherwise nothing can reach the host."
 
 FILES=compose.yaml
-[[ $VENDOR == amd ]] || AMD_BACKEND= HSA_OVERRIDE=
+if [[ $VENDOR != amd ]]; then
+  [[ $AMD_FLAGS == 0 ]] || fail "--amd-backend and --hsa-override are for AMD GPUs only."
+  AMD_BACKEND= HSA_OVERRIDE=
+fi
+# An APU alone on ROCm: llama.cpp uses unified memory to reach the shared memory.
+UNIFIED=
+[[ $VENDOR == amd && $AMD_BACKEND == rocm && $APU_ONLY == 1 ]] && UNIFIED=1
 [[ $VENDOR == nvidia ]] && FILES+=:compose.nvidia.yaml
 [[ $VENDOR == amd && $AMD_BACKEND == vulkan ]] && FILES+=:compose.vulkan.yaml
 [[ $VENDOR == amd && $AMD_BACKEND != vulkan ]] && FILES+=:compose.amd.yaml
 [[ -n $HSA_OVERRIDE ]] && FILES+=:compose.hsa.yaml
+[[ -n $UNIFIED ]] && FILES+=:compose.apu.yaml
 RENDER_GID=$(getent group render 2>/dev/null | cut -d: -f3 || true)
 [[ $WANT_LAN == 1 ]] && FILES+=:compose.lan.yaml
 [[ -n $TS_HOSTNAME ]] && FILES+=:compose.tailscale.yaml
@@ -225,6 +240,7 @@ MODELS_DIR=$MODELS
 GPU_VENDOR=$VENDOR
 GPU_BACKEND=$AMD_BACKEND
 HSA_OVERRIDE_GFX_VERSION=$HSA_OVERRIDE
+LLAMA_UNIFIED_MEMORY=$UNIFIED
 COMFY_GPU=${COMFY_GPU:-0}
 RENDER_GID=${RENDER_GID:-}
 COMPOSE_FILE=$FILES

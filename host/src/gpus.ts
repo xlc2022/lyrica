@@ -1,8 +1,8 @@
 // What each GPU has and uses, read without touching the Docker socket: NVML's
 // nvidia-smi (host-api gets NVIDIA's "utility" capability only) or AMD's sysfs.
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { basename, join } from "node:path";
 import { promisify } from "node:util";
 
 export interface Gpu {
@@ -11,8 +11,11 @@ export interface Gpu {
   vendor: "nvidia" | "amd";
   /** An integrated GPU (an APU): its memory is shared with the system. */
   integrated?: boolean;
+  /** All the memory it can use: for an integrated GPU, its carve-out and shared memory (GTT). */
   total: number;
   used: number;
+  /** An integrated GPU's BIOS carve-out alone: all a server that can't use shared memory sees. */
+  carveOut?: { total: number; used: number };
 }
 
 export interface GpuMonitor {
@@ -55,10 +58,12 @@ export function gfxName(version: number): string {
  * of the KFD topology, in order, so an integrated GPU that ROCm skips can't
  * shift the numbers. With Vulkan (`order: "pci"`) they are numbered by PCI
  * address, the order the Vulkan container is told to use. Without a KFD
- * topology, falls back to DRM card order.
+ * topology, DRM's cards are used: by card number, or by PCI address for
+ * Vulkan. Without KFD, integrated GPUs can't be told apart.
  *
- * An integrated GPU's VRAM is only the BIOS carve-out; the memory it really
- * uses is shared system memory (GTT), so both are counted.
+ * An integrated GPU's VRAM is only the BIOS carve-out; it can also use shared
+ * system memory (GTT). `total` counts both, and `carveOut` the carve-out
+ * alone, for servers that can't use shared memory.
  */
 export function amdMonitor(sys = "/sys", opts: { order?: "kfd" | "pci" } = {}): GpuMonitor {
   const read = (path: string) => readFileSync(path, "utf8").trim();
@@ -80,10 +85,20 @@ export function amdMonitor(sys = "/sys", opts: { order?: "kfd" | "pci" } = {}): 
       if (out.length) return out;
     }
     const drm = join(sys, "class/drm");
-    return readdirSync(drm)
+    const cards = readdirSync(drm)
       .filter((c) => /^card\d+$/.test(c))
       .sort((a, b) => Number(a.slice(4)) - Number(b.slice(4)))
       .map((c) => ({ dev: join(drm, c, "device"), gfx: null }));
+    if (opts.order !== "pci") return cards;
+    // The device link ends in the PCI address.
+    const pci = (dev: string) => {
+      try {
+        return basename(realpathSync(dev));
+      } catch {
+        return dev;
+      }
+    };
+    return cards.sort((a, b) => (pci(a.dev) < pci(b.dev) ? -1 : pci(a.dev) > pci(b.dev) ? 1 : 0));
   };
   const num = (path: string) => {
     try {
@@ -102,9 +117,14 @@ export function amdMonitor(sys = "/sys", opts: { order?: "kfd" | "pci" } = {}): 
             name = read(join(dev, "product_name")) || name;
           } catch {}
           const integrated = gfx !== null && AMD_APUS.has(gfx);
-          const total = num(join(dev, "mem_info_vram_total")) + (integrated ? num(join(dev, "mem_info_gtt_total")) : 0);
-          const used = num(join(dev, "mem_info_vram_used")) + (integrated ? num(join(dev, "mem_info_gtt_used")) : 0);
-          return { index, name, vendor: "amd" as const, ...(integrated ? { integrated: true } : {}), total, used };
+          const vram = { total: num(join(dev, "mem_info_vram_total")), used: num(join(dev, "mem_info_vram_used")) };
+          if (!integrated) return { index, name, vendor: "amd" as const, ...vram };
+          return {
+            index, name, vendor: "amd" as const, integrated: true,
+            total: vram.total + num(join(dev, "mem_info_gtt_total")),
+            used: vram.used + num(join(dev, "mem_info_gtt_used")),
+            carveOut: vram,
+          };
         });
     },
   };

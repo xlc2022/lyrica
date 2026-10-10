@@ -108,7 +108,16 @@ the model server cuts short is cut short too.
   GPUs that ROCm doesn't support) runs `llamacpp` only, so vLLM models and
   image recipes can't be placed there.
 - `integrated`: an integrated GPU (an APU). Its `vram` counts the shared
-  system memory it can use (GTT) as well as its carve-out. Beside a
+  system memory it can use (GTT) as well as its BIOS carve-out, and
+  `vram.carveOut` (`{ total, used }`) gives the carve-out alone. Which a
+  server can use:
+  - llama.cpp on Vulkan: all of it.
+  - llama.cpp on ROCm: all of it on an APU without a discrete GPU (unified
+    memory); otherwise the carve-out.
+  - vLLM and images: the carve-out only.
+
+  Placements are planned and refused against what the server can use. On
+  ROCm an integrated GPU allows `llamacpp` only by default. Beside a
   discrete GPU it is left out (`settings.excluded`) until it's included.
 - `problems`: plain sentences about what the last pause or restart couldn't
   do, such as "GPU 0: couldn't unload … it may still hold memory." Empty

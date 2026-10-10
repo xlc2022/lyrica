@@ -47,7 +47,7 @@ describe("AMD GPUs", () => {
     gpu(sys, 1, 0xc5, 110003, { vram: 2 * GIB, gtt: 30 * GIB }, "Radeon 780M");
     gpu(sys, 2, 0x03, 90006, { vram: 16 * GIB, gtt: 30 * GIB }, "Radeon VII");
     expect(await amdMonitor(sys).read()).toEqual([
-      { index: 0, name: "Radeon 780M", vendor: "amd", integrated: true, total: 32 * GIB, used: GIB / 4 + GIB },
+      { index: 0, name: "Radeon 780M", vendor: "amd", integrated: true, total: 32 * GIB, used: GIB / 4 + GIB, carveOut: { total: 2 * GIB, used: GIB / 4 } },
       { index: 1, name: "Radeon VII", vendor: "amd", total: 16 * GIB, used: GIB / 4 },
     ]);
     // For Vulkan, numbered by PCI address instead.

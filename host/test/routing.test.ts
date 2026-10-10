@@ -247,6 +247,14 @@ describe("the vLLM backend", () => {
 });
 
 describe("the compose files", () => {
+  it("add only environment variables in the ROCm overlays", () => {
+    for (const overlay of ["hsa", "apu"]) {
+      const text = readFileSync(new URL(`../compose.${overlay}.yaml`, import.meta.url), "utf8");
+      const keys = text.split("\n").filter((l) => /^ {4}[a-z_]+:/.test(l)).map((l) => l.trim().split(":")[0]);
+      expect(new Set(keys), overlay).toEqual(new Set(["environment"]));
+    }
+  });
+
   it("give every model server the none log driver and keep their scratch space in memory", () => {
     for (const vendor of ["nvidia", "amd", "vulkan"]) {
       const text = readFileSync(new URL(`../compose.${vendor}.yaml`, import.meta.url), "utf8");

@@ -48,6 +48,9 @@ const scheduler = new Scheduler({
   monitor: vendor === "nvidia" ? nvidiaMonitor : vendor === "amd" ? amdMonitor("/sys", { order: backend === "vulkan" ? "pci" : "kfd" }) : noGpus,
   gpuBackend: backend,
   servers: backend === "vulkan" ? ["llamacpp"] : undefined,
+  // llama.cpp can use an integrated GPU's shared memory on Vulkan, or on ROCm
+  // when install.sh turned on unified memory (an APU without a discrete GPU).
+  sharedMemory: backend === "vulkan" || (backend === "rocm" && env.LLAMA_UNIFIED_MEMORY === "1") ? ["llamacpp"] : [],
   backends: {
     llamacpp: new LlamaCpp({ url: env.LLAMACPP_URL || "http://llamacpp:8080", serving, models: modelsDir, device: (i) => `${backend === "vulkan" ? "Vulkan" : backend === "rocm" ? "ROCm" : "CUDA"}${i}` }),
     vllm: new Vllm({ url: env.VLLM_URL || "http://vllm:{port}", serving, models: modelsDir }),

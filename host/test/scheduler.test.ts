@@ -6,13 +6,14 @@ import { Scheduler, type Priority } from "../src/scheduler.ts";
 import { StateFile } from "../src/state.ts";
 import { FakeBackend, FakeGpus, GIB, textModel } from "./fakes.ts";
 
-function setup(totals = [24], opts: { waitLimits?: Record<Priority, number>; dir?: string; servers?: ("llamacpp" | "vllm" | "images")[] } = {}) {
+type Srv = "llamacpp" | "vllm" | "images";
+function setup(totals = [24], opts: { waitLimits?: Record<Priority, number>; dir?: string; servers?: Srv[]; gpuBackend?: "rocm" | "vulkan"; sharedMemory?: Srv[] } = {}) {
   const dir = opts.dir ?? mkdtempSync(join(tmpdir(), "lyrica-sched-"));
   const gpus = new FakeGpus(totals);
   const llamacpp = new FakeBackend(gpus);
   const vllm = new FakeBackend(gpus);
   const state = new StateFile(dir);
-  const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp, vllm }, state, log: () => {}, waitLimits: opts.waitLimits, servers: opts.servers });
+  const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp, vllm }, state, log: () => {}, waitLimits: opts.waitLimits, servers: opts.servers, gpuBackend: opts.gpuBackend, sharedMemory: opts.sharedMemory });
   return { dir, gpus, llamacpp, vllm, state, scheduler };
 }
 
@@ -302,6 +303,26 @@ describe("requests", () => {
     await scheduler.setGpu(1, { servers: ["llamacpp"], keepFree: GIB / 2, excluded: false });
     await scheduler.loadNow(textModel("big", 20));
     expect(gpus.on("big")).toEqual([1]);
+  });
+
+  it("on ROCm, plans an integrated GPU's shared memory only for llama.cpp with unified memory", async () => {
+    // A 780M alone: a 2 GB carve-out and 30 GB of shared memory.
+    const { scheduler, gpus } = setup([32], { gpuBackend: "rocm", sharedMemory: ["llamacpp"] });
+    Object.assign(gpus.gpus[0]!, { integrated: true, used: 0, carveOut: { total: 2 * GIB, used: 0 } });
+    await scheduler.start([]);
+    expect(scheduler.gpuSettings(0).servers).toEqual(["llamacpp"]);
+    await scheduler.loadNow(textModel("m", 10));
+    expect(gpus.on("m")).toEqual([0]);
+    // vLLM, allowed by hand, sees the carve-out only.
+    await scheduler.setGpu(0, { servers: ["llamacpp", "vllm"], keepFree: GIB / 2, excluded: false });
+    const err = await scheduler.run(textModel("v", 4, { server: "vllm", format: "safetensors" }), "chat", async () => {}).catch((e) => e);
+    expect(err.code).toBe("too_big");
+    expect(scheduler.gpusFor("vllm")[0]!.total).toBe(2 * GIB);
+    // Without unified memory, llama.cpp sees the carve-out only too.
+    const plain = setup([32], { gpuBackend: "rocm" });
+    Object.assign(plain.gpus.gpus[0]!, { integrated: true, used: 0, carveOut: { total: 2 * GIB, used: 0 } });
+    await plain.scheduler.start([]);
+    expect((await plain.scheduler.run(textModel("m", 10), "chat", async () => {}).catch((e) => e)).code).toBe("too_big");
   });
 
   it("on a Vulkan host, offers llama.cpp only", async () => {

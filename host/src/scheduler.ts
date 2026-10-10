@@ -62,6 +62,11 @@ export interface SchedulerOptions {
   servers?: Server[];
   /** How the servers reach the GPUs, for the status. */
   gpuBackend?: "cuda" | "rocm" | "vulkan" | null;
+  /**
+   * The servers that can use an integrated GPU's shared memory: llama.cpp on
+   * Vulkan, or on ROCm with unified memory. The others see its carve-out only.
+   */
+  sharedMemory?: Server[];
 }
 
 export type HostRunState = "running" | "pausing" | "paused" | "restarting";
@@ -108,11 +113,24 @@ export class Scheduler {
     return this.o.servers ?? [...SERVERS];
   }
 
+  /**
+   * The GPUs as one server sees them: an integrated GPU offers a server that
+   * can't use shared memory its carve-out only.
+   */
+  gpusFor(server: Server): Gpu[] {
+    if (this.o.sharedMemory?.includes(server)) return this.gpus;
+    return this.gpus.map((g) => (g.carveOut ? { ...g, total: g.carveOut.total, used: g.carveOut.used } : g));
+  }
+
   gpuSettings(index: number): GpuSettings {
+    const gpu = this.gpus.find((g) => g.index === index);
     // An integrated GPU beside a discrete one is left out unless it's chosen:
-    // it shares system memory, and the server may not support it.
-    const integrated = this.gpus.find((g) => g.index === index)?.integrated === true && this.gpus.some((g) => !g.integrated);
-    const saved = this.o.state.get().gpuSettings[index] ?? { ...defaultGpu(), excluded: integrated };
+    // it shares system memory, and the server may not support it. On ROCm it
+    // runs llama.cpp only by default: vLLM and images would see its carve-out
+    // alone.
+    const beside = gpu?.integrated === true && this.gpus.some((g) => !g.integrated);
+    const servers = gpu?.integrated && this.gpuBackend === "rocm" ? (["llamacpp"] as Server[]) : defaultGpu().servers;
+    const saved = this.o.state.get().gpuSettings[index] ?? { ...defaultGpu(), servers, excluded: beside };
     return { ...saved, servers: saved.servers.filter((s) => this.servers.includes(s)) };
   }
 
@@ -140,9 +158,10 @@ export class Scheduler {
   /** The ways this job's model may run. */
   private optionsFor(job: { model: TextModel; gpu?: number }): Option[] {
     const s = this.settings(job.model);
-    if (job.gpu === undefined) return options(job.model, s, this.gpus, (i) => this.gpuSettings(i));
+    const gpus = this.gpusFor(serverOf(job.model));
+    if (job.gpu === undefined) return options(job.model, s, gpus, (i) => this.gpuSettings(i));
     // ComfyUI: its one GPU, which must allow images.
-    const g = this.gpus.find((x) => x.index === job.gpu);
+    const g = gpus.find((x) => x.index === job.gpu);
     const gs = this.gpuSettings(job.gpu);
     if (!g || gs.excluded || !gs.servers.includes(serverOf(job.model))) return [];
     return [{ gpus: [g.index], split: null, parallel: null, share: null, need: { [g.index]: sizes(job.model, s).weights + GIB / 2 } }];
@@ -275,15 +294,21 @@ export class Scheduler {
       return new HostError(413, "too_big", job.gpu !== undefined ? `GPU ${job.gpu} doesn't allow images.` : `No GPU allows ${what} for this model.`);
     }
     const loadedOn = (g: number) => [...this.loaded.values()].filter((l) => l.option.gpus.includes(g));
+    const view = this.gpusFor(serverOf(model));
     const free = (g: number) => {
-      const gpu = this.gpus.find((x) => x.index === g)!;
+      const gpu = view.find((x) => x.index === g)!;
       return gpu.total - gpu.used - this.gpuSettings(g).keepFree;
     };
     const deficitOf = (o: Option) => {
       const need = this.needOf(model, o);
       return (evicted: Set<Loaded>) => o.gpus.some((g) => need[g]! > free(g) + [...evicted].reduce((n, l) => n + (l.vram[g] ?? 0), 0));
     };
-    const usable = opts.filter((o) => !o.gpus.some((g) => held.has(g)));
+    // A way that can't work even on empty GPUs is out, whatever unloading
+    // could free (on an integrated GPU, a model may sit in shared memory that
+    // this server can't use).
+    const possible = opts.filter((o) => !neverFits(model, s, o, view, (i) => this.gpuSettings(i)));
+    if (!possible.length) return new HostError(413, "too_big", neverFits(model, s, opts[0]!, view, (i) => this.gpuSettings(i))!);
+    const usable = possible.filter((o) => !o.gpus.some((g) => held.has(g)));
     // A way that needs no unloading beats one that does, whatever its order.
     const roomy = usable.find((o) => !deficitOf(o)(new Set()));
     if (roomy) return { option: roomy, evict: [] };
@@ -303,15 +328,15 @@ export class Scheduler {
     }
     if (waitFor) return { wait: waitFor };
     // Every way is on GPUs held for others: wait for those, so it's counted in their queues.
-    if (!usable.length) return { wait: [...new Set(opts.flatMap((o) => o.gpus))] };
+    if (!usable.length) return { wait: [...new Set(possible.flatMap((o) => o.gpus))] };
     // It can never fit: say why, for the first way it could have run.
     const o = opts[0]!;
-    const reason = neverFits(model, s, o, this.gpus, (i) => this.gpuSettings(i));
+    const reason = neverFits(model, s, o, view, (i) => this.gpuSettings(i));
     if (reason) return new HostError(413, "too_big", reason);
     const gb = (n: number) => (n / GIB).toFixed(1);
     const need = this.needOf(model, o);
     const g = o.gpus.find((i) => need[i]! > free(i) + loadedOn(i).filter((l) => !this.pinned(l.model.id)).reduce((n, l) => n + (l.vram[i] ?? 0), 0)) ?? o.gpus[0]!;
-    const gpu = this.gpus.find((x) => x.index === g)!;
+    const gpu = view.find((x) => x.index === g)!;
     const pinned = loadedOn(g).filter((l) => this.pinned(l.model.id)).reduce((n, l) => n + (l.vram[g] ?? 0), 0);
     const others = gpu.used - loadedOn(g).reduce((n, l) => n + (l.vram[g] ?? 0), 0);
     return new HostError(413, "too_big", `This model needs about ${gb(need[g]!)} GB on GPU ${g}; it has ${gb(gpu.total)} GB, of which ${gb(pinned)} GB is pinned and ${gb(Math.max(others, 0))} GB is used by other programs.`);
@@ -517,7 +542,7 @@ export class Scheduler {
         vendor: g.vendor,
         integrated: g.integrated === true,
         settings: this.gpuSettings(g.index),
-        vram: { total: g.total, used: g.used },
+        vram: { total: g.total, used: g.used, ...(g.carveOut ? { carveOut: g.carveOut } : {}) },
         models: [...this.loaded.values()]
           .filter((l) => l.option.gpus.includes(g.index))
           .map((l) => ({
