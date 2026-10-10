@@ -237,7 +237,7 @@ function FromParent({ text, parent, env, n }: { text: string; parent: string; en
   return (
     <div className="msg user">
       <div className="who">
-        Lyrica<span className="muted"> · from <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: parent })}>{env.parentTitle || "its parent thread"}</a></span>
+        Lyrica<span className="muted"> · from <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: parent })}>{env.parentTitle || "the parent thread"}</a></span>
         {/* Branch and delete, as any message; it isn't hers to edit. */}
         {env.rewinder && n !== undefined && <MessageMenu n={n} role="user" rewinder={env.rewinder} />}
       </div>

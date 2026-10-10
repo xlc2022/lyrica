@@ -121,7 +121,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
         )}
       </header>
       {parent && (
-        <p className="subnote">{s?.subagent ? "Subagent of" : s?.child ? "Child thread of" : "Branched from"} <a href={`#/u/${encodeURIComponent(userId)}/t/${pool}/${encodeURIComponent(parent.id)}`}>{parent.title || "its thread"}</a></p>
+        <p className="subnote">{s?.subagent ? "Subagent of" : s?.child ? "Child thread of" : "Branched from"} <a href={`#/u/${encodeURIComponent(userId)}/t/${pool}/${encodeURIComponent(parent.id)}`}>{parent.title || "the parent thread"}</a></p>
       )}
       <div className="scroll" ref={scroller}>
         <ErrorText error={summary.error || t.loadError} />
