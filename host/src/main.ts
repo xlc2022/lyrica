@@ -61,11 +61,11 @@ const book = new RecipeBook(dataDir, loadTemplates(new URL("../workflows/", impo
 host.images = new Images({ book, runtime: host.runtime, comfy, downloads: host.downloads, modelsDir, serving, comfyGpu: Number(env.COMFY_GPU || 0), log: stdoutLog });
 host.runtime.afterScan = () => host.images!.scan();
 await host.runtime.start();
-// fetch shares a network with host-api (for host-api's calls to it) and may not call back.
-const refuseFetch = async () => {
+// fetch shares a network with host-api (for host-api's calls to it) and may not
+// call back. Its address is looked up on every request, so a restart that moves
+// it leaves no window.
+host.refusePeer = async (address) => {
   const found = await lookup(env.FETCH_HOST || "fetch", { all: true }).catch(() => []);
-  host.refusedPeers = new Set(found.map((a) => a.address));
+  return found.some((a) => a.address === address);
 };
-await refuseFetch();
-setInterval(() => void refuseFetch(), 30_000).unref();
 for (const signal of ["SIGTERM", "SIGINT"] as const) process.on(signal, () => void host.close().then(() => process.exit(0)));

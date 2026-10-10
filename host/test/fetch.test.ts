@@ -217,6 +217,21 @@ describe("tokens and sizes", () => {
   });
 });
 
+describe("links", () => {
+  it("keeps links short, https, without credentials, one at a time, and shown in full while in flight", async () => {
+    const hub = await fakeHub();
+    const { d } = setup(hub);
+    const base = `${hub.base}/org/repo/resolve/abc123/model-Q4_K_M.gguf`;
+    await expect(d.request({ source: "url", url: `${base}?q=${"x".repeat(1024)}` })).rejects.toThrow("at most 1024");
+    await expect(d.request({ source: "url", url: base.replace("https://", "https://me:pw@") })).rejects.toThrow("user name or password");
+    const [x] = await d.request({ source: "url", url: `${base}?tag=visible` });
+    expect(d.shown(x!)).toMatchObject({ url: `${base}?tag=visible` });
+    await expect(d.request({ source: "url", url: `${base}?again=1` })).rejects.toThrow("already downloading");
+    await settle(d);
+    expect(d.shown(d.get(x!.id)!)).toMatchObject({ state: "done", url: base });
+  });
+});
+
 describe("deleting", () => {
   async function downloaded() {
     const hub = await fakeHub();

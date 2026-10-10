@@ -59,8 +59,9 @@ export type DownloadRequest =
 const MARGIN = 1024 ** 3;
 const PUBLIC_FIELDS = ["id", "source", "repo", "revision", "url", "path", "size", "received", "state", "verified", "error", "startedAt", "finishedAt"] as const;
 
-export function shown(d: Download) {
-  return Object.fromEntries(PUBLIC_FIELDS.map((k) => [k, d[k]]));
+export function shown(d: Download, link?: string) {
+  // While a link downloads, its full form (query included) is shown, so what it carries is visible.
+  return { ...Object.fromEntries(PUBLIC_FIELDS.map((k) => [k, d[k]])), ...(link ? { url: link } : {}) };
 }
 
 const partName = (path: string) => join(dirname(path), `.${basename(path)}.lyrica-part`);
@@ -128,6 +129,11 @@ export class Downloader {
     return [...this.downloads].reverse();
   }
 
+  /** A download as listed: a link in flight shows its full form. */
+  shown(d: Download) {
+    return shown(d, this.links.get(d.id));
+  }
+
   get(id: string): Download | undefined {
     return this.downloads.find((d) => d.id === id);
   }
@@ -180,6 +186,12 @@ export class Downloader {
     const made: Download[] = [];
     const base = { received: 0, state: "queued" as const, verified: null, error: null, startedAt: now, finishedAt: null };
     if (req.source === "url") {
+      // A link could carry data out of the host in its path or query, so links
+      // are kept short, one at a time, and shown in full in the downloads list.
+      if (typeof req.url !== "string" || req.url.length > 1024) throw new DownloadError("A link may be at most 1024 characters.", 403);
+      if (this.downloads.some((d) => d.source === "url" && ["queued", "downloading", "verifying"].includes(d.state))) {
+        throw new DownloadError("A link is already downloading; start this one when it's done.", 409);
+      }
       let url: URL;
       try {
         url = new URL(req.url);
@@ -187,6 +199,7 @@ export class Downloader {
         throw new DownloadError("That isn't a link.");
       }
       if (url.protocol !== "https:") throw new DownloadError("Only https links are allowed.");
+      if (url.username || url.password) throw new DownloadError("A link may not carry a user name or password.", 403);
       let name: string;
       try {
         name = decodeURIComponent(url.pathname.split("/").pop() ?? "");
@@ -201,10 +214,10 @@ export class Downloader {
       // kept in memory for the transfer, never written down or shown.
       const shownUrl = `${url.protocol}//${url.host}${url.pathname}`;
       const id = randomUUID();
-      if (url.search || url.username || url.password) this.links.set(id, url.href);
+      if (url.search) this.links.set(id, url.href);
       made.push({
         ...base, id, source: "url", repo: null, revision: null, url: shownUrl, path, size: 0,
-        from: shownUrl, sha256: req.sha256?.toLowerCase() ?? null, gitSha1: null, gated: !!(url.search || url.username || url.password), card: null, tokenHost: null,
+        from: shownUrl, sha256: req.sha256?.toLowerCase() ?? null, gitSha1: null, gated: !!url.search, card: null, tokenHost: null,
       });
     } else {
       const hub = this.hub(req.source);

@@ -439,8 +439,9 @@ export class Scheduler {
       this.problems = [];
       this.runState = "running";
       this.o.log("resumed", {});
+      // Inside the same step, so a pause that follows waits for these loads, then unloads them.
+      await this.loadPins(models);
     });
-    void this.loadPins(models);
   }
 
   async restart(models: TextModel[]): Promise<void> {
@@ -450,9 +451,10 @@ export class Scheduler {
       this.rejectQueued(restarting);
       await this.idle();
       await this.unloadAll();
-      this.runState = was === "running" ? "running" : "paused";
+      // A pause asked for during the restart wins.
+      this.runState = was === "running" && !this.o.state.get().paused ? "running" : "paused";
+      if (this.runState === "running") await this.loadPins(models);
     });
-    if (this.runState === "running") await this.loadPins(models);
   }
 
   async status(): Promise<object[]> {

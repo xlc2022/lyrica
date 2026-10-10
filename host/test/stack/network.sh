@@ -26,7 +26,16 @@ expect no  "the models network doesn't get the local dashboard" probe-models wge
 expect no  "host-api can't reach the internet by address" host-api node -e "$(tcp 1.1.1.1 443)"
 expect no  "host-api can't reach the internet by name" host-api node -e "$(tcp example.com 443)"
 gateway=$(docker network inspect lyrica-host_edge --format '{{(index .IPAM.Config 0).Gateway}}')
-expect no  "host-api can't open a connection to this machine" host-api node -e "$(tcp "$gateway" 22)"
+# A port that does listen on this machine, so "blocked" isn't just "nothing there".
+python3 -m http.server --bind "$gateway" 18765 >/dev/null 2>&1 &
+listener=$!
+sleep 1
+if curl -fsS -o /dev/null "http://$gateway:18765/"; then
+  expect no "host-api can't open a connection to this machine" host-api node -e "$(tcp "$gateway" 18765)"
+else
+  echo "FAIL: couldn't start a listener on $gateway"; failed=1
+fi
+kill $listener
 if compose ps --services | grep -qx tailscale; then
   expect yes "tailscale reaches host-api" tailscale nc -z -w 5 host-api 7443
   expect no  "tailscale doesn't get the local dashboard" tailscale wget -q -T 5 -O /dev/null http://host-api:7080/dashboard/me
