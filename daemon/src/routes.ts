@@ -609,7 +609,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       let source: SpeechSource;
       const thread = owner(d, user, (o) => threadOf(o, r));
       if (r.params.n === "live") {
-        const live = s().host.get(user.id, pool, thread.id).following();
+        const live = s().host.peek(user.id, pool, thread.id)?.following();
         if (!live) throw new HttpError(404, "she isn't writing a message now");
         let read = "";
         let at = -1;
@@ -1267,6 +1267,11 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
 
   for (const k of ["webSearch", "images"] as const) if (change[k] !== undefined && typeof change[k] !== "boolean") throw new Error(`${k} is true or false`);
   if (change.voiceCloud !== undefined && change.voiceCloud !== null && typeof change.voiceCloud !== "boolean") throw new Error("voiceCloud is true, false or null");
+  // Under a parent with Voice to cloud off, a branch can only keep it off, or follow the default when the parent does too.
+  if (parent && change.voiceCloud !== undefined && change.voiceCloud !== false && !models.callContext(user.id, pool, parent).voiceCloud
+    && !(change.voiceCloud === null && models.threadVoiceCloud(user.id, parent) === null)) {
+    throw new Error("the parent thread keeps Voice to cloud off, so this one does too");
+  }
   // The workspace checks grants, hosts, mode, switches, target and the parent's limits, and writes only if all pass.
   const wsChange = pick(change, ["grants", "internet", "services", "hosts", "mode", "webSearch", "images", "target"]);
   if (Object.keys(wsChange).length) ws.setThread(thread.id, pool, wsChange);

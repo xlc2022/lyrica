@@ -6,9 +6,6 @@ import { hostError, HostRefused } from "./host.ts";
 
 /** Voice to cloud is off, and the model that would hear the audio is a cloud model. Nothing was sent. */
 export class VoiceCloudOff extends Error {}
-/** Every speech model set for the task can't be reached now. The caller can show it and try again later. */
-export class SpeechDown extends Error {}
-
 /** The audio Read aloud streams: raw PCM, signed 16-bit little-endian, mono, at 24 kHz. */
 export const SPEECH_FORMAT = { encoding: "s16le", sampleRate: 24_000, channels: 1 } as const;
 export const SPEECH_CONTENT_TYPE = "audio/pcm;rate=24000;encoding=s16le;channels=1";
@@ -18,26 +15,17 @@ export const MAX_CLIP_BYTES = MAX_CLIP_SECONDS * 16_000 * 2 + 1024;
 /** The longest text one speech request takes (OpenAI's limit). */
 export const MAX_SPEAK_CHARS = 4096;
 
-/**
- * The endpoint can't answer now: it is unreachable, away, overloaded or
- * failing. The caller marks it down and the router tries the next model.
- */
-export class SpeechAway extends Error {
-  /** "model" when only this model can't answer (the host answered `model_unavailable`), so the endpoint's other models still can. */
-  constructor(message: string, readonly scope: "endpoint" | "model" = "endpoint") { super(message); }
-}
-
-/** Codes from a host after which another model should answer (host.ts AWAY, plus unreachable). */
-const AWAY = new Set(["paused", "busy", "restarting", "unavailable", "unpaired", "unreachable", "identity_changed"]);
-
 const auth = (apiKey?: string): Record<string, string> => (apiKey ? { authorization: `Bearer ${apiKey}` } : {});
 
-/** A failed answer as an error: away (fall back) for 5xx, 429 and a host's away codes; otherwise the reason, plainly. */
+/**
+ * A failed answer as an error: a host's own (its away codes fall back, see
+ * `isUnreachable`), 5xx and 429 from any other endpoint as away too, and
+ * anything else as the reason, plainly.
+ */
 async function failure(res: Response, what: string): Promise<Error> {
   const host = await hostError(res);
-  if (host?.code === "model_unavailable") return new SpeechAway(host.message, "model");
-  if (host) return AWAY.has(host.code) ? new SpeechAway(host.message) : new HostRefused(host.code, host.message);
-  if (res.status >= 500 || res.status === 429) return new SpeechAway(`${what} answered ${res.status}`);
+  if (host) return new HostRefused(host.code, host.message);
+  if (res.status >= 500 || res.status === 429) return new HostRefused("unavailable", `${what} answered ${res.status}`);
   let message = "";
   try {
     const body = (await res.json()) as { error?: { message?: unknown } | string };
@@ -46,12 +34,6 @@ async function failure(res: Response, what: string): Promise<Error> {
   return new Error(`${what} refused the request (${res.status}${message ? `: ${message.slice(0, 200)}` : ""})`);
 }
 
-/** A fetch that failed before an answer: away, unless the caller stopped it. */
-function unreachable(e: unknown, what: string): Error {
-  const name = (e as Error)?.name;
-  if (name === "AbortError") return e as Error;
-  return new SpeechAway(`${what} can't be reached${name === "TimeoutError" ? " (it didn't answer in time)" : ""}`);
-}
 
 /** A multipart/form-data body, built in memory so it can be sent again at a host's next address. */
 function multipart(fields: Record<string, string>, file: { name: string; type: string; data: Uint8Array }): { body: Uint8Array<ArrayBuffer>; type: string } {
@@ -83,10 +65,10 @@ export async function transcribeAt(t: SpeechTarget, wav: Uint8Array, opts: { lan
   const res = await t.fetch(`${t.baseUrl}/audio/transcriptions`, {
     method: "POST", headers: { ...auth(t.apiKey), "content-type": form.type }, body: form.body,
     signal: opts.signal ? AbortSignal.any([opts.signal, AbortSignal.timeout(120_000)]) : AbortSignal.timeout(120_000),
-  }).catch((e) => { throw unreachable(e, t.name); });
+  });
   if (!res.ok) throw await failure(res, t.name);
   const body = (await res.json().catch(() => undefined)) as { text?: unknown } | undefined;
-  if (typeof body?.text !== "string") throw new SpeechAway(`${t.name} didn't send a transcription back`);
+  if (typeof body?.text !== "string") throw new Error(`${t.name} didn't send a transcription back`);
   return body.text.trim();
 }
 
@@ -107,7 +89,8 @@ export async function speakAt(t: SpeechTarget, text: string, opts: { voice?: str
       body: JSON.stringify({ model: t.modelId, input: text, ...(opts.voice ? { voice: opts.voice } : {}), ...(opts.speed !== undefined ? { speed: opts.speed } : {}), response_format: "pcm" }),
     });
   } catch (e) {
-    throw unreachable(stop.signal.aborted && !opts.signal?.aborted ? Object.assign(new Error("timeout"), { name: "TimeoutError" }) : e, t.name);
+    // No audio in time: a machine that stopped answering, so the next model tries.
+    throw stop.signal.aborted && !opts.signal?.aborted ? Object.assign(new Error(`${t.name} didn't answer in time`), { name: "TimeoutError" }) : e;
   } finally {
     clearTimeout(first);
   }

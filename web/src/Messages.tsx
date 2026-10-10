@@ -57,6 +57,11 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
       {live.permissions.filter((p) => !p.subagent || !shown.has(p.subagent.threadId) || p.subagent.threadId === threadId)
         .map((p) => <PermissionPrompt key={p.requestId} base={base} p={p} env={env} />)}
       {live.errors.map((e, i) => <p key={i} className="error turn-error" role="alert">{e}</p>)}
+      {live.offline && (
+        <p className="turn-error" role="status" title={live.offline.tried.map((t) => `${t.label}: ${t.reason}`).join("\n")}>
+          No model can be reached.{live.queued.length ? " Your message goes when one is back." : ""}
+        </p>
+      )}
       {live.queued.map((q, i) => (
         <div key={`q-${i}`} className="msg user queued">
           <div className="who">{ctx.user.displayName} · waiting</div>

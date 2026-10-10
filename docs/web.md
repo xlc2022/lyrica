@@ -93,7 +93,10 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   is open) and on its own page, naming the subagent, and stays past the
   parent's turn; the first answer wins and the other view updates.
 - Errors from the stream (a refused model, an endpoint that's down) are shown
-  as sent, in plain words.
+  as sent, in plain words. When no model can be reached, one line says so
+  ("No model can be reached. Your message goes when one is back."), with
+  the models tried in its tooltip; the message shows as waiting, not as
+  sent, until a turn starts.
 - A stored compaction shows as a one-line notice, **Compacted · 41k → 6k**.
   The context meter, the stream's `context` events and a marker that expands
   to the summary are the Web UI 2 thread's.

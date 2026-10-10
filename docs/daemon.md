@@ -105,6 +105,16 @@ Each active thread is one Pi session from `openThreadSession`, with
   connection error, or a reply cut off mid-stream, marks that endpoint down,
   and Pi's retry goes to the next model in the list. The next turn waits for
   that choice to finish.
+- **No model reachable.** When every model in the chat list is away, the
+  stream gets `offline` (the task and what was tried) instead of an error.
+  If the turn hadn't started, nothing is stored: the message waits in the
+  queue, and every 30 seconds (`offlineRetryMs`) lyricad asks the machines
+  again and sends it as soon as one answers, or at once when the thread's
+  settings change. A new message goes with it; Stop drops it. If the machine went away mid-turn, Pi's retry is called
+  off and the turn ends. A title whose models are all away is tried again
+  after a later turn.
+- `lyrica serve` logs an unhandled rejection (its class and first line) and
+  keeps running, so one thread's failure never takes the others down.
 - **Context and pace.** Each hosted thread has a `ContextMeter`
   (`extension/src/context.ts`), fed by the Lyrica extension from Pi's events:
   - Per request: time to first token, generation time and usage.
@@ -211,7 +221,8 @@ Each active thread is one Pi session from `openThreadSession`, with
 carries text and thinking deltas, tool calls (start with arguments; end with
 the first lines of the result), recall and remember markers, permission
 requests and their outcome, usage, errors in plain words (a model the router
-refused, an endpoint that didn't answer), the queue, the title, `settings`
+refused, an endpoint that didn't answer), `offline` when no model could be
+reached, the queue, the title, `settings`
 when the thread's settings changed (an approved plan switching its mode),
 and turn end, then the thread's `context` after each turn and a `compacted`
 marker when it compacts.
@@ -298,13 +309,15 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
   its end. Closing the connection, Logout or Lock stops it and cancels the
   model's work. One call record per reading, with the seconds of audio.
 - Refusals come before any audio, as JSON: `VoiceCloudOff`, `NoModel` and
-  `CloudModelForbidden` are 400, `SpeechDown` (every model set is down) is
+  `CloudModelForbidden` are 400, `Offline` (every model set is down) is
   502; a message that isn't hers is 400, a missing one 404.
 - `ThreadSettings.speech` (and `GET /api/u/:userId/speech?pool=` before a
   thread exists) says whether each task can be used now, or why not, for
   the mic's and Read aloud's state. `ThreadSettings.voiceCloud` is the
   thread's switch (null follows the default), changed with
   `ThreadSettingsChange.voiceCloud`; the default is `Profiles.voiceCloud`.
+  Under a parent with it off, a branch can only keep it off, or follow the
+  default when the parent does too.
 - `ThreadSettings.answered` skips speech calls, so the context meter reads
   the chat call.
 
@@ -353,8 +366,9 @@ drafted against: if the file has changed since, approving it needs
   (which sleeps the thread's pool and starts no turn). In manual mode it
   answers `confirm` unless confirmed, and once the run ends a fresh thread
   opens in that pool (a `thread` event). Whatever would stop the run at once
-  (no key, endpoint down, nothing new) is a `409` in plain words, and the
-  skip is recorded.
+  (no key, every sleep model's machine down, nothing new) is a `409` in
+  plain words, and the skip is recorded. Each phase's machine is asked
+  first, so a sleep list falls back past one that is off.
 - **The Sleep section.** `GET …/sleep` gives the mode (`sleep.mode` in
   `user.db`, set with `PUT …/sleep/mode`), the time, open items and recent
   runs of both pools. `GET …/sleep/:pool/runs/:runId` gives one run: notes she

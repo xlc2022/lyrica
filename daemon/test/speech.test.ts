@@ -126,12 +126,27 @@ describe("dictation", () => {
     expect((await s.li.get<Speech>(`${s.u}/speech?pool=general`)).body).toMatchObject({ voiceCloud: true, transcribe: { available: true, kind: "cloud" } });
   });
 
+  it("keeps Voice to cloud off in a branch of a thread that has it off, even after the default is turned on", async () => {
+    const s = await setup("general");
+    await s.turn("Hello.");
+    await s.li.patch(`${s.path}/settings`, { voiceCloud: false });
+    const branch = (await s.li.post<{ id: string }>(`${s.path}/messages/${await s.nOf("assistant")}/branch`, {})).body;
+    const child = `${s.u}/threads/general/${enc(branch.id)}`;
+    expect((await s.li.get<ThreadSettings>(`${child}/settings`)).body.voiceCloud).toBe(false);
+    for (const voiceCloud of [true, null]) {
+      expect(await s.li.patch(`${child}/settings`, { voiceCloud })).toMatchObject({ status: 400, body: { error: "the parent thread keeps Voice to cloud off, so this one does too" } });
+    }
+    await s.li.patch(`${s.u}/profiles`, { voiceCloud: true });
+    expect((await s.li.get<ThreadSettings>(`${child}/settings`)).body).toMatchObject({ voiceCloud: false, speech: { voiceCloud: false } });
+  });
+
   it("says plainly when every speech model is down, and the daemon carries on", async () => {
     const s = await setup();
     await s.speech.stop();
-    const r = await s.li.post<{ error: string }>(`${s.path}/transcribe`, wav(1), { "content-type": "audio/wav" });
+    const r = await s.li.post<{ error: string; code: string }>(`${s.path}/transcribe`, wav(1), { "content-type": "audio/wav" });
     expect(r.status).toBe(502);
-    expect(r.body.error).toMatch(/^Dictation can't be reached now/);
+    expect(r.body.error).toMatch(/^no model for speech.transcribe can be reached now/);
+    expect(r.body).toMatchObject({ code: "offline", task: "speech.transcribe", tried: [{ label: "speech/whisper-large-v3-turbo" }] });
     const settings = (await s.li.get<ThreadSettings>(`${s.path}/settings`)).body;
     expect(settings.speech.transcribe).toEqual({ available: false, reason: "down", problem: "Dictation can't be reached now" });
     expect(settings.speech.speak).toMatchObject({ available: false, reason: "down" });
@@ -139,7 +154,7 @@ describe("dictation", () => {
     await s.turn("Hello there.");
     const read = await s.audio(`${s.path}/messages/${await s.nOf("assistant")}/speech`);
     expect(read.status).toBe(502);
-    expect(((await read.json()) as { error: string }).error).toMatch(/^Read aloud can't be reached now/);
+    expect(((await read.json()) as { error: string }).error).toMatch(/^no model for speech.speak can be reached now/);
     // The daemon is fine: chat still works.
     await s.turn("Still here.");
     const page = (await s.li.get<MessagePage>(`${s.path}/messages`)).body;

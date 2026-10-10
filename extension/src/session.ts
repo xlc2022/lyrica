@@ -39,7 +39,8 @@ export interface ThreadSession {
 export async function openThreadSession(o: ThreadSessionOptions): Promise<ThreadSession> {
   const { thread } = o;
   const runtime = await modelRuntimeFor(o.models, thread.call);
-  const { ref: chat, model } = piModelFor(runtime, o.models, "chat", thread.call);
+  // Any model will do to open with, even one whose machine is down: each turn picks again (prepare).
+  const { ref: chat, model } = piModelFor(runtime, o.models, "chat", thread.call, o.models.resolve("chat", thread.call, {}, { evenIfDown: true }));
   // Pi's compaction reserve and kept tail follow each model's window, and her two lines follow that edge (linesFor).
   const modelOverrides = Object.fromEntries(o.models.allowed(thread.call).flatMap(({ endpoint, offerings }) => offerings.flatMap((off) => {
     const w = runtime.getModel(endpoint.id, off.modelId)?.contextWindow;

@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
-  CloudModelForbidden, NoModel, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
+  CloudModelForbidden, HEALTH_MS, isUnreachable, NoModel, Offline, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
   ContextMeter, createDelegateExtension, createLyricaExtension, createThreadsExtension, createWorkspaceExtension, DELEGATE_MESSAGE, FROM_PARENT, fromParent, OPENING, openThreadSession, piModelFor,
@@ -29,6 +29,8 @@ export interface HostOptions {
   log: (line: string) => void;
   /** Child threads: every hosted thread gets the `threads` tool. */
   threads?: ThreadsHost;
+  /** How often a thread whose message waits for a model asks the machines again. Default HEALTH_MS. */
+  offlineRetryMs?: number;
   /** A turn started or ended in a thread. */
   onTurn?: (userId: string, pool: Pool, threadId: string, working: boolean) => void;
 }
@@ -42,10 +44,6 @@ type Client = (id: string, event: ThreadEvent) => void;
 type Outcome = "answered" | "timeout" | "stopped";
 type Done = (allowed: boolean, reason: Outcome, mode?: GoAhead) => void;
 
-/** Errors that mean the endpoint couldn't be reached, rather than that it refused the request. */
-// "terminated" is a reply cut off mid-stream when its connection dropped.
-const UNREACHABLE = /ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|fetch failed|socket hang up|connect|^terminated$|other side closed/i;
-
 interface Opened { session: AgentSession; view: PoolView; meter: ContextMeter; dispose(): void; title(): Promise<string | undefined>; prepare(opts?: { retry?: boolean }): Promise<unknown> }
 
 /** The threads lyricad hosts, keyed by user, pool and thread. A record is light; its Pi session opens on first use. */
@@ -58,6 +56,11 @@ export class ThreadHost {
       const event: Api.DelegationEvent = e;
       for (const id of new Set([e.parentThreadId, e.threadId])) this.threads.get(`${e.userId}/${e.pool}/${id}`)?.publish({ type: "delegation", event });
     });
+  }
+
+  /** The thread's record if it has one now; unlike `get`, never makes one. */
+  peek(userId: string, pool: Pool, threadId: string): HostedThread | undefined {
+    return this.threads.get(`${userId}/${pool}/${threadId}`);
   }
 
   get(userId: string, pool: Pool, threadId: string): HostedThread {
@@ -162,6 +165,8 @@ export class HostedThread {
   private readonly pending = new Map<string, { request: PermissionRequest; done: Done }>();
   private queued: string[] = [];
   private idle: NodeJS.Timeout | undefined;
+  /** No model could be reached: the queued messages wait, and this asks again until one answers. */
+  private held: NodeJS.Timeout | undefined;
   /** Settings changed during a turn: reopen the session once it ends. */
   private stale = false;
   /** Closed by Lock, forgetting or shutdown. */
@@ -256,11 +261,21 @@ export class HostedThread {
       this.emit({ type: "queue", queued: [...this.queued] });
       return { queued: true };
     }
+    // Messages held while no model could be reached go first, with this one.
+    if (this.queued.length) {
+      text = [...this.queued.splice(0), text].join("\n\n");
+      this.emit({ type: "queue", queued: [] });
+    }
+    this.unhold();
     this.busy = true;
     try {
       await this.open();
     } catch (err) {
       this.busy = false;
+      if (err instanceof Offline) {
+        this.hold(text, err);
+        return { queued: true };
+      }
       const message = plainError(refusal(err));
       this.emit({ type: "error", message });
       throw new Error(message);
@@ -285,7 +300,14 @@ export class HostedThread {
       for (let next: string | undefined = text; next !== undefined && !this.closed;) {
         const opened = await this.open();
         await this.retrying;
-        await opened.prepare();
+        try {
+          await opened.prepare();
+        } catch (err) {
+          if (!(err instanceof Offline)) throw err;
+          // Nothing is stored yet: the message waits, and goes once a model answers again.
+          this.hold([next, ...this.queued.splice(0)].join("\n\n"), err);
+          break;
+        }
         this.emit({ type: "turn_start" });
         // A compaction belongs to the turn that asked for it, even one that failed.
         opened.meter.pending = undefined;
@@ -313,6 +335,37 @@ export class HostedThread {
   }
 
   private aborted = false;
+
+  /**
+   * No model for the thread's chat can be reached: the text waits in the
+   * queue, the views are told once, and every HEALTH_MS lyricad asks the
+   * machines again (resolveLive), sending it as soon as one answers. Stop,
+   * or a new message (which goes with it), ends the wait.
+   */
+  private hold(text: string, err: Offline): void {
+    this.queued = [text];
+    this.emit({ type: "queue", queued: [...this.queued] });
+    this.emit({ type: "offline", task: err.task, tried: err.tried });
+    this.waitForModel();
+  }
+
+  private waitForModel(ms = this.o.offlineRetryMs ?? HEALTH_MS): void {
+    this.unhold();
+    this.held = setTimeout(() => {
+      this.held = undefined;
+      if (this.closed || this.busy || !this.queued.length) return;
+      const send = () => { if (!this.closed && !this.busy && this.queued.length) void this.post(this.queued.splice(0).join("\n\n")).catch(() => {}); };
+      // Anything but Offline (the list was changed to one that can't work, say) is said by the turn itself.
+      this.o.models.resolveLive("chat", this.o.models.callContext(this.userId, this.pool, this.threadId))
+        .then(send, (err) => (err instanceof Offline ? this.waitForModel() : send()));
+    }, ms);
+    this.held.unref();
+  }
+
+  private unhold(): void {
+    if (this.held) clearTimeout(this.held);
+    this.held = undefined;
+  }
 
   /** The thread's context now, from its open session. */
   context(): Api.ContextInfo | undefined {
@@ -384,6 +437,7 @@ export class HostedThread {
 
   /** Stop: aborts the running turn, denies waiting permission requests and drops queued messages. */
   async stop(): Promise<void> {
+    this.unhold();
     for (const p of [...this.pending.values()]) p.done(false, "stopped");
     if (this.queued.length) {
       this.queued = [];
@@ -487,13 +541,18 @@ export class HostedThread {
       });
       const unsubscribe = session.subscribe((e) => this.forward(e));
       // The thread's title, by the `title` task model through the thread's own CallContext.
+      // Its machine away: the next title model tries; with none left, the thread stays untitled until a later turn.
       const title = async () => {
-        const { model, resolution } = piModelFor(runtime, models, "title", call);
-        models.recordCall(this.userId, { pool: this.pool, threadId: this.threadId, task: "title", resolution });
         const said = view.own.loadEntries(this.threadId).map(conversationLine).filter(Boolean).slice(0, 4).join("\n");
-        const reply = await runtime.completeSimple(model, {
-          systemPrompt: "Write a short title, at most six words, for the conversation below. Reply with the title only, no quotes.",
-          messages: [{ role: "user", content: said, timestamp: Date.now() }],
+        const reply = await models.callWithFallback("title", call, {}, async (resolution) => {
+          const { model } = piModelFor(runtime, models, "title", call, resolution);
+          models.recordCall(this.userId, { pool: this.pool, threadId: this.threadId, task: "title", resolution });
+          const r = await runtime.completeSimple(model, {
+            systemPrompt: "Write a short title, at most six words, for the conversation below. Reply with the title only, no quotes.",
+            messages: [{ role: "user", content: said, timestamp: Date.now() }],
+          });
+          if (r.stopReason === "error") throw new Error(r.errorMessage ?? "the title model failed");
+          return r;
         });
         const text = reply.content.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join("").trim();
         return text.replace(/^["'“]+|["'”.]+$/g, "").split("\n")[0]!.slice(0, 80) || undefined;
@@ -530,9 +589,10 @@ export class HostedThread {
           const u = m.usage;
           if (u) this.emit({ type: "usage", input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite, total: u.totalTokens });
           if (m.stopReason === "error" && m.errorMessage) {
-            // A machine that is off or away: the next turn falls back past it.
-            if (UNREACHABLE.test(m.errorMessage) && this.opened) this.o.models.reportDown(this.opened.session.model?.provider ?? "");
-            this.emit({ type: "error", message: plainError(m.errorMessage) });
+            // A machine that is off or away: the next turn falls back past it, and when none is left the views say so.
+            const offline = isUnreachable(m.errorMessage) && this.opened ? this.wentAway(this.opened.session.model?.provider ?? "") : undefined;
+            if (offline) this.emit({ type: "offline", task: offline.task, tried: offline.tried });
+            else this.emit({ type: "error", message: plainError(m.errorMessage) });
           }
         }
         break;
@@ -556,9 +616,11 @@ export class HostedThread {
       case "auto_retry_start": {
         // Pi is about to retry a model whose machine couldn't be reached: send the retry to the next model in the list instead.
         // Pi doesn't wait for listeners, but pauses two seconds before retrying; prepare probes for at most one, so it's done first.
-        if (UNREACHABLE.test(e.errorMessage) && this.opened) {
+        if (isUnreachable(e.errorMessage) && this.opened) {
           this.o.models.reportDown(this.opened.session.model?.provider ?? "");
-          this.retrying = this.opened.prepare({ retry: true }).catch(() => {});
+          // With no model left to try, retrying the one that's away only keeps her waiting: the turn ends, and says so.
+          const session = this.opened.session;
+          this.retrying = this.opened.prepare({ retry: true }).catch((err) => { if (err instanceof Offline) session.abortRetry(); });
         }
         break;
       }
@@ -574,6 +636,17 @@ export class HostedThread {
         for (const m of markersFor(e.toolName, (e as { args?: unknown }).args, full)) this.emit(m);
         break;
       }
+    }
+  }
+
+  /** The endpoint couldn't be reached: marks it down, and returns the chat's Offline when no model is left. */
+  private wentAway(endpointId: string): Offline | undefined {
+    this.o.models.reportDown(endpointId);
+    try {
+      this.o.models.resolve("chat", this.o.models.callContext(this.userId, this.pool, this.threadId));
+      return undefined;
+    } catch (err) {
+      return err instanceof Offline ? err : undefined;
     }
   }
 
@@ -608,6 +681,8 @@ export class HostedThread {
   reload(): void {
     if (this.busy) this.stale = true;
     else this.dispose();
+    // A message waiting for a model tries the new settings at once.
+    if (this.held) this.waitForModel(0);
   }
 
   /** Delivered into the stored thread or the live session: shown once either way. */
@@ -626,6 +701,7 @@ export class HostedThread {
   private startIdle(): void {
     this.stopIdle();
     this.idle = setTimeout(() => {
+      if (this.held) return this.startIdle();
       if (this.busy || this.pending.size || this.opening) return;
       this.dispose();
       if (!this.clients.size) this.release();
@@ -640,6 +716,7 @@ export class HostedThread {
     this.closing = true;
     await this.stop().catch(() => {});
     this.closed = true;
+    this.unhold();
     this.stopIdle();
     await this.opening?.catch(() => {});
     this.dispose();

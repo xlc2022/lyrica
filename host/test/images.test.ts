@@ -1,5 +1,6 @@
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import http from "node:http";
+import net, { type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -200,6 +201,21 @@ describe("ComfyUI jobs", () => {
     huge.writeUInt32BE(8000, 20);
     expect(() => inputImage(huge.toString("base64"), "image")).toThrow("36 megapixels");
     expect(inputImage(PNG.toString("base64"), "image")).toEqual(PNG);
+  });
+
+  it("fails a job when ComfyUI is off or hangs, and the next job still runs", async () => {
+    // Accepts connections and never answers, as a ComfyUI stuck loading.
+    const sockets: net.Socket[] = [];
+    const stuck = net.createServer((sock) => sockets.push(sock));
+    await new Promise<void>((r) => stuck.listen(0, "127.0.0.1", r));
+    open.push({ close: () => { for (const x of sockets) x.destroy(); stuck.close(); } });
+    const comfy = new Comfy(`http://127.0.0.1:${(stuck.address() as AddressInfo).port}`, 60_000, 100);
+    await expect(comfy.run({ image: PNG }, () => ({}))).rejects.toThrow("didn't answer");
+    await expect(comfy.run({}, () => ({}))).rejects.toThrow("didn't answer");
+    // Off entirely.
+    stuck.close();
+    for (const x of sockets) x.destroy();
+    await expect(comfy.run({ image: PNG }, () => ({}))).rejects.toThrow("didn't answer");
   });
 
   it("interrupts and dequeues a job that times out or is cancelled", async () => {

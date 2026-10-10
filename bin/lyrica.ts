@@ -81,6 +81,9 @@ async function serve(home: string, port: number): Promise<void> {
   };
   process.on("SIGTERM", () => void stop());
   process.on("SIGINT", () => void stop());
+  // A promise nothing waited on failed, such as a model call whose machine went away: one thread's
+  // failure, never a reason to take every user's threads down. Logged like a 500, never with text.
+  process.on("unhandledRejection", (err) => console.error(`unhandled rejection: ${(err as Error)?.name ?? typeof err}: ${String((err as Error)?.message ?? "").split("\n")[0]}`));
   await daemon.start();
   for (let tries = 0; daemon.locked && process.stdin.isTTY && tries < 3; tries++) {
     try {

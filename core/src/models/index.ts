@@ -11,7 +11,7 @@ import { copyIdentity } from "./library.ts";
 import { acceptedSettings, ANSWER_SETTINGS, checkSettings, type AnswerSettings, type SettingSource } from "./settings.ts";
 import { collectRefs, isList, mapMembers, moveSettings, refId, rewrite, type Entry, type ProfileName, type Use } from "./refs.ts";
 import { ENDPOINT_SCHEMA, migrate, MODEL_CHOICE_SCHEMA, REDIRECT_SCHEMA, upgradeCalls } from "./schema.ts";
-import { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, speakAt, SpeechAway, SpeechDown, transcribeAt, VoiceCloudOff, wavSeconds, type SpeechTarget } from "./speech.ts";
+import { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, speakAt, transcribeAt, VoiceCloudOff, wavSeconds, type SpeechTarget } from "./speech.ts";
 
 export type SpeechTask = "speech.transcribe" | "speech.speak";
 /** The tasks as the Models page names them. */
@@ -22,12 +22,44 @@ export { baseName } from "./identity.ts";
 export { acceptedSettings, ANSWER_SETTINGS, payloadFields, type AnswerSettings, type SettingSource } from "./settings.ts";
 export { fingerprint, HostIdentityChanged, HostRefused, hostOrigin, normaliseCode, PairingFailed, pairingProofs } from "./host.ts";
 export { refId, type Entry, type ProfileName, type Use } from "./refs.ts";
-export { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, pcmSeconds, SPEECH_CONTENT_TYPE, SPEECH_FORMAT, SpeechDown, VoiceCloudOff, wavData, wavSeconds } from "./speech.ts";
+export { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, pcmSeconds, SPEECH_CONTENT_TYPE, SPEECH_FORMAT, VoiceCloudOff, wavData, wavSeconds } from "./speech.ts";
 
 /** A cloud model was asked for where only local models are allowed. Nothing falls back. */
 export class CloudModelForbidden extends Error {}
 /** No usable model is set for a task, or the one set no longer exists. */
 export class NoModel extends Error {}
+/**
+ * Every model that could take a task's call is away (its machine down, paused
+ * or stale) or failed to answer: nothing can answer now, though something may
+ * once a machine is back. A NoModel, so whatever handles one handles this.
+ * `tried` holds labels and reasons, never text.
+ */
+export class Offline extends NoModel {
+  readonly code = "offline";
+  override readonly name = "Offline";
+  constructor(readonly task: Task, readonly tried: { label: string; reason: string }[]) {
+    super(`no model for ${task} can be reached now${tried.length ? ` (${tried.map((t) => `${t.label}: ${t.reason}`).join("; ")})` : ""}`);
+  }
+}
+
+// "terminated" is a reply cut off mid-stream when its connection dropped; the timeouts are a machine that stopped answering.
+const UNREACHABLE = /ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|fetch failed|socket hang up|connect|^terminated$|other side closed|timed out|Timeout Error|UND_ERR_(HEADERS|BODY|CONNECT)_TIMEOUT/i;
+/** A model host's answers that mean another model should answer for a while. */
+const AWAY_CODES = new Set(["unreachable", "paused", "busy", "restarting", "unavailable", "unpaired", "identity_changed", "model_unavailable"]);
+
+/**
+ * Whether a failed call (or a reply's error message) means its machine couldn't
+ * be reached or is away, so the next model should try, rather than that the
+ * model refused this request.
+ */
+export function isUnreachable(err: unknown): boolean {
+  if (err instanceof HostRefused) return AWAY_CODES.has(err.code);
+  if (typeof err === "string") return UNREACHABLE.test(err);
+  const e = err as { name?: string; message?: string; code?: string; cause?: unknown } | undefined;
+  if (!e) return false;
+  if (e.name === "TimeoutError" || UNREACHABLE.test(e.message ?? "") || UNREACHABLE.test(e.code ?? "")) return true;
+  return e.cause !== undefined && e.cause !== err && isUnreachable(e.cause);
+}
 
 /** An endpoint unreachable this long is stale; a model missing this long is gone. */
 export const STALE_DAYS = 14;
@@ -164,6 +196,8 @@ export interface CleanupItem {
 
 /** What a call needs from a model: tools, and room for the conversation. */
 export interface Need { tools?: boolean; tokens?: number }
+/** `evenIfDown`: ignore the health cache (stale still counts). `except`: endpoints to treat as down. */
+export interface ResolveOptions { evenIfDown?: boolean; except?: ReadonlySet<string> }
 
 /** The model chosen for a call, and why earlier ones in the list were passed over. */
 export interface Resolution {
@@ -340,10 +374,10 @@ export class Models {
   private selfReady = false;
   /** Users whose user.db was migrated and indexed since this process started. */
   private readonly ready = new Set<string>();
-  /** Offering ID → when it last couldn't answer while its endpoint could (a host's speech server down, say). */
-  private readonly modelDown = new Map<string, number>();
   /** Endpoint ID → whether it answered lately, from probes and calls. */
   private readonly health = new Map<string, { up: boolean; at: number }>();
+  /** Models whose host answered but couldn't run them (`model_unavailable`), skipped for HEALTH_MS without marking the host down. */
+  private readonly modelDown = new Map<string, number>();
   /** Each host's pinned fetch, by endpoint, key and addresses. */
   private readonly fetches = new Map<string, typeof fetch>();
   /** The address each host last answered on, for its dashboard link. */
@@ -1492,8 +1526,8 @@ export class Models {
     if (parent.localOnly) this.setLocalOnly(userId, pool, childThreadId, true);
     if (pool === "general" && parent.profile) this.setThreadProfile(userId, pool, childThreadId, parent.profile);
     if (parent.thinking) this.setThinking(userId, childThreadId, parent.thinking);
-    // Never wider than the parent: a branch of a thread with Voice to cloud off keeps it off.
-    if (parent.voiceCloud !== undefined && parent.voiceCloud !== this.defaultVoiceCloud(userId)) this.setThreadVoiceCloud(userId, childThreadId, parent.voiceCloud);
+    // Never wider than the parent: a branch of a thread with Voice to cloud off keeps it off, even if the default is turned on later.
+    if (parent.voiceCloud === false || (parent.voiceCloud && !this.defaultVoiceCloud(userId))) this.setThreadVoiceCloud(userId, childThreadId, !!parent.voiceCloud);
     for (const [task, r] of Object.entries(parent.overrides ?? {})) {
       if (task !== "chat" || opts.chat !== false) this.setThreadModel(userId, pool, childThreadId, task as Task, r);
     }
@@ -1521,7 +1555,7 @@ export class Models {
    * private or local-only context, a group's cloud members are skipped and a
    * cloud model named directly throws CloudModelForbidden.
    */
-  resolve(task: Task, ctx: CallContext, need: Need = {}): Resolution {
+  resolve(task: Task, ctx: CallContext, need: Need = {}, opts: ResolveOptions = {}): Resolution {
     const c = this.catalog(ctx.userId);
     const profile = profileFor(ctx);
     const found = this.listFor(task, ctx, c);
@@ -1539,6 +1573,7 @@ export class Models {
     const firstKind = unique.map((x) => c.endpoints.get(c.offerings.get(x.id)?.endpointId ?? "")?.kind).find(Boolean);
     const kind = restricted ? "local" : !fixKind ? undefined : found.source === "profile" ? "cloud" : firstKind;
     const skipped: { label: string; reason: string }[] = [];
+    let away = false;
     for (let i = 0; i < unique.length; i++) {
       const { id, grouped } = unique[i]!;
       const o = c.offerings.get(id);
@@ -1550,29 +1585,102 @@ export class Models {
         continue;
       }
       if (fixKind && kind && ep.kind !== kind) { skipped.push({ label, reason: `it is ${ep.kind}, and this list won't cross to ${ep.kind}` }); continue; }
+      // Unfit first: a model that couldn't take the call even with its machine up doesn't make the task offline.
       const why = this.unfit(task, o, ep, need);
       if (why) { skipped.push({ label, reason: why }); continue; }
+      const gone = this.away(ep, opts, o);
+      if (gone) { skipped.push({ label, reason: gone }); away = true; continue; }
       return { ref: { offeringId: o.id }, endpoint: ep, offering: o, label, profile, source: found.source, skipped, remaining: unique.length - i - 1 };
     }
+    // Something would answer once its machine is back: offline, not unset.
+    if (away) throw new Offline(task, skipped);
     const reasons = skipped.map((s) => `${s.label}: ${s.reason}`).join("; ");
     throw new NoModel(`no model for ${task} can answer now${reasons ? ` (${reasons})` : ""}`);
   }
 
   /**
    * Like `resolve`, but first probes a chosen endpoint whose health isn't
-   * known lately, when there is a later model to fall back to, so a machine
-   * that is off is passed over before the call rather than after.
+   * known lately, when there is a later model to fall back to (or always, with
+   * `probeLast`), so a machine that is off is passed over before the call
+   * rather than after. When the health cache says every machine is away, it
+   * asks them again, once, in order, so one that has just come back answers.
+   * Throws Offline when none does.
    */
-  async resolveLive(task: Task, ctx: CallContext, need: Need = {}, opts: { probeMs?: number } = {}): Promise<Resolution> {
+  async resolveLive(task: Task, ctx: CallContext, need: Need = {}, opts: { probeMs?: number; probeLast?: boolean } = {}): Promise<Resolution> {
+    const ms = opts.probeMs ?? PROBE_MS;
+    let revived = false;
     for (;;) {
-      const r = this.resolve(task, ctx, need);
+      let r: Resolution;
+      try {
+        r = this.resolve(task, ctx, need);
+      } catch (err) {
+        if (!(err instanceof Offline) || revived) throw err;
+        revived = true;
+        if (!(await this.revive(task, ctx, need, ms))) throw err;
+        continue;
+      }
       const h = this.health.get(r.endpoint.id);
-      if (!r.remaining || (h && Date.now() - h.at < HEALTH_MS)) return r;
+      if ((!r.remaining && !opts.probeLast) || (h && Date.now() - h.at < HEALTH_MS)) return r;
       // Only whether it answers, never the address check: a slow resolver mustn't hold up a turn.
-      const state = await (r.endpoint.api === "host" ? this.hostUp(r.endpoint, opts.probeMs ?? PROBE_MS) : probeUrl(r.endpoint.baseUrl, r.endpoint.apiKey, opts.probeMs ?? PROBE_MS)).catch(() => "down" as const);
-      this.seen(r.endpoint, state === "up", ctx.userId);
-      if (state === "down") this.reportDown(r.endpoint.id);
-      if (state === "up") return r;
+      const up = (await this.answers(r.endpoint, ms)) === "up";
+      this.seen(r.endpoint, up, ctx.userId);
+      if (up) return r;
+    }
+  }
+
+  /** Asks the task's machines that the health cache calls down, in order, until one answers. */
+  private async revive(task: Task, ctx: CallContext, need: Need, ms: number): Promise<boolean> {
+    const except = new Set<string>();
+    for (;;) {
+      let r: Resolution;
+      try {
+        r = this.resolve(task, ctx, need, { evenIfDown: true, except });
+      } catch {
+        return false;
+      }
+      except.add(r.endpoint.id);
+      const up = (await this.answers(r.endpoint, ms)) === "up";
+      this.seen(r.endpoint, up, ctx.userId);
+      if (up) return true;
+    }
+  }
+
+  /** Whether an endpoint answers, within `ms`. Never throws. */
+  private answers(ep: Endpoint, ms: number): Promise<"up" | "down"> {
+    return (ep.api === "host" ? this.hostUp(ep, ms) : probeUrl(ep.baseUrl, ep.apiKey, ms)).catch(() => "down" as const);
+  }
+
+  /**
+   * One call, on the task's models in turn: a model whose machine can't be
+   * reached or is away (`isUnreachable`) is marked down and the next one
+   * tries. Any other failure is the call's own and is thrown as is. When none
+   * answers, throws Offline naming every model tried. The call records itself.
+   */
+  async callWithFallback<T>(task: Task, ctx: CallContext, need: Need, call: (r: Resolution) => Promise<T>, opts: { probeMs?: number } = {}): Promise<T> {
+    const tried: { label: string; reason: string }[] = [];
+    const used = new Set<string>();
+    for (;;) {
+      let r: Resolution;
+      try {
+        r = await this.resolveLive(task, ctx, need, opts);
+      } catch (err) {
+        if (err instanceof Offline && tried.length) throw new Offline(task, [...tried, ...err.tried.filter((t) => !tried.some((x) => x.label === t.label))]);
+        throw err;
+      }
+      // A machine that answers its probe but fails every call: don't go round again.
+      if (used.has(r.offering.id)) throw new Offline(task, tried);
+      used.add(r.offering.id);
+      try {
+        const out = await call(r);
+        this.reportUp(ctx.userId, r.endpoint.id);
+        return out;
+      } catch (err) {
+        if (!isUnreachable(err)) throw err;
+        // A host that answered but couldn't run this one model stays up for its others.
+        if (err instanceof HostRefused && err.code === "model_unavailable") this.modelDown.set(r.offering.id, Date.now());
+        else this.reportDown(r.endpoint.id);
+        tried.push({ label: r.label, reason: "it couldn't be reached" });
+      }
     }
   }
 
@@ -1583,7 +1691,8 @@ export class Models {
    * a user's audio reaches a model. A cloud model needs Voice to cloud on
    * (`ctx.voiceCloud`); otherwise VoiceCloudOff is thrown before any byte is
    * sent. An endpoint that can't answer is marked down and the next model
-   * in the list is tried, within the list's kind; when none can, NoModel.
+   * in the list is tried, within the list's kind (`callWithFallback`); when
+   * none can, Offline.
    * The audio is held in memory only. The caller records the call.
    */
   async transcribe(ctx: CallContext, wav: Uint8Array, opts: { language?: string; signal?: AbortSignal } = {}): Promise<{ text: string; resolution: Resolution; audioSeconds?: number }> {
@@ -1591,11 +1700,11 @@ export class Models {
     if (wav.length > MAX_CLIP_BYTES) throw new Error(`a clip is at most ${MAX_CLIP_SECONDS / 60} minutes`);
     const seconds = wavSeconds(wav);
     if (seconds === undefined) throw new Error("the clip isn't PCM WAV audio");
-    return this.withFallback("speech.transcribe", ctx, async (r) => {
+    return this.callWithFallback("speech.transcribe", ctx, {}, async (r) => {
       if (r.endpoint.kind === "cloud" && !ctx.voiceCloud) throw new VoiceCloudOff(`${r.label} is a cloud model, and Voice to cloud is off, so the clip wasn't sent`);
       const text = await transcribeAt(this.speechTarget(r), wav, opts);
       return { text, resolution: r, audioSeconds: seconds };
-    }, opts.signal);
+    });
   }
 
   /**
@@ -1610,7 +1719,7 @@ export class Models {
     if (!text.trim()) throw new Error("there is nothing to read");
     if (text.length > MAX_SPEAK_CHARS) throw new Error(`a piece of text to speak is at most ${MAX_SPEAK_CHARS} characters`);
     if (opts.speed !== undefined && !(opts.speed >= 0.25 && opts.speed <= 4)) throw new Error("speed is a number from 0.25 to 4");
-    return this.withFallback("speech.speak", ctx, async (r) => {
+    return this.callWithFallback("speech.speak", ctx, {}, async (r) => {
       const settings = this.offeringSettings(ctx.userId, r.offering.id).values;
       const voices = r.offering.speak?.voices ?? [];
       const lang = opts.language?.toLowerCase();
@@ -1618,7 +1727,7 @@ export class Models {
       const speed = opts.speed ?? settings.speed;
       const audio = await speakAt(this.speechTarget(r), text, { ...(voice ? { voice } : {}), ...(speed !== undefined ? { speed } : {}), ...(opts.signal ? { signal: opts.signal } : {}) });
       return { audio, resolution: r, ...(voice ? { voice } : {}) };
-    }, opts.signal);
+    });
   }
 
   /**
@@ -1631,44 +1740,11 @@ export class Models {
       if (task === "speech.transcribe" && r.endpoint.kind === "cloud" && !ctx.voiceCloud) return { reason: "voiceCloud", problem: `${r.label} is a cloud model, and Voice to cloud is off` };
       return { label: r.label, kind: r.endpoint.kind };
     } catch (e) {
+      if (e instanceof Offline) return { reason: "down", problem: `${SPEECH_NAMES[task]} can't be reached now` };
       if (e instanceof CloudModelForbidden) return { reason: "none", problem: e.message };
       if (!(e instanceof NoModel)) throw e;
       if (!this.listFor(task, ctx)?.list.length) return { reason: "none", problem: `No ${SPEECH_NAMES[task]} model is set${isRestricted(ctx) ? " in the local profile" : ""}` };
-      return { reason: "down", problem: `${SPEECH_NAMES[task]} can't be reached now` };
-    }
-  }
-
-  /**
-   * Calls `fn` with the model the router picks, and when its endpoint can't
-   * answer (unreachable, away, failing), marks it down and asks the router
-   * again, so the next model in the list answers. Ends with NoModel when
-   * none can, never with a crash. A refusal (a bad request) isn't retried,
-   * and neither is a call the caller stopped.
-   */
-  private async withFallback<T>(task: Task, ctx: CallContext, fn: (r: Resolution) => Promise<T>, signal?: AbortSignal): Promise<T> {
-    const tried: string[] = [];
-    for (;;) {
-      signal?.throwIfAborted();
-      let r: Resolution;
-      try {
-        r = await this.resolveLive(task, ctx);
-      } catch (e) {
-        // A list is set, and nothing in it can answer: down, not missing.
-        if (e instanceof NoModel && (tried.length || this.listFor(task, ctx)?.list.length)) {
-          const why = tried.length ? tried.join("; ") : /\((.*)\)$/.exec(e.message)?.[1];
-          throw new SpeechDown(`${SPEECH_NAMES[task as SpeechTask]} can't be reached now${why ? ` (${why})` : ""}`);
-        }
-        throw e;
-      }
-      try {
-        const out = await fn(r);
-        this.seen(r.endpoint, true, ctx.userId);
-        return out;
-      } catch (e) {
-        if (!(e instanceof SpeechAway) || signal?.aborted) throw e;
-        tried.push(`${r.label}: ${e.message}`);
-        if (e.scope === "model") this.modelDown.set(r.offering.id, Date.now()); else this.reportDown(r.endpoint.id);
-      }
+      return { reason: "none", problem: e.message };
     }
   }
 
@@ -1776,14 +1852,20 @@ export class Models {
     return of(task) ?? (OWN_LIST_ONLY.includes(task) ? undefined : of("chat"));
   }
 
+  /** Why a model's machine is away now, if it is: stale, or down in the health cache. */
+  private away(ep: Endpoint, opts: ResolveOptions, o: Offering): string | undefined {
+    if (ep.stale) return `${ep.name} hasn't answered for ${STALE_DAYS} days`;
+    const m = this.modelDown.get(o.id);
+    if (m !== undefined && Date.now() - m < HEALTH_MS) return `${ep.name} couldn't run it`;
+    if (opts.except?.has(ep.id)) return `${ep.name} is down`;
+    const h = this.health.get(ep.id);
+    if (!opts.evenIfDown && h && !h.up && Date.now() - h.at < HEALTH_MS) return `${ep.name} is down`;
+    return undefined;
+  }
+
   /** Why a model can't take this call now, if it can't. */
   private unfit(task: Task, o: Offering, ep: Endpoint, need: Need): string | undefined {
     if (o.status === "gone") return `it has been missing from ${ep.name} for ${GONE_DAYS} days`;
-    if (ep.stale) return `${ep.name} hasn't answered for ${STALE_DAYS} days`;
-    const h = this.health.get(ep.id);
-    if (h && !h.up && Date.now() - h.at < HEALTH_MS) return `${ep.name} is down`;
-    const down = this.modelDown.get(o.id);
-    if (down && Date.now() - down < HEALTH_MS) return "it couldn't answer just now";
     if (task === "image.create" && !o.image) return "it doesn't make images";
     if (task === "image.edit" && !o.edit) return "it doesn't edit images";
     if (task === "speech.transcribe" && !o.transcribe) return "it doesn't transcribe speech";
