@@ -105,6 +105,43 @@ Each active thread is one Pi session from `openThreadSession`, with
   connection error, or a reply cut off mid-stream, marks that endpoint down,
   and Pi's retry goes to the next model in the list. The next turn waits for
   that choice to finish.
+- **Context and pace.** Each hosted thread has a `ContextMeter`
+  (`extension/src/context.ts`), fed by the Lyrica extension from Pi's events:
+  - Per request: time to first token, generation time and usage.
+  - At the turn's end: the measured total from `getContextUsage()` and an
+    estimate of each part, using Pi's `estimateTokens` and the prompt sections
+    `assemble` made. The parts are persona (with topics, who she's talking
+    with and the time), about, memory (WAKE, the page index, folder pages),
+    pinned (0 until pins exist), recall, tools (definitions and guidance) and
+    the conversation. They're scaled to add up to the measured total, then
+    Pi's reserve and the free space fill the window.
+  - After each turn `lyricad` records the pace on the call (`recordPace`) and
+    sends a `context` event. `GET …/settings` returns `context`, from the open
+    session or, with no breakdown, from the last call record: its last prompt
+    plus its output. The record keeps the output for the whole turn, so after
+    a turn with tool calls this reads a little high.
+- **Her status line.** Each turn's context message carries one line of
+  numbers in `<context>`, such as
+  `Context 64% of 32k · 9.1k free · 38 tok/s · 2.1k tok/s prompt`. Free is
+  what's left before Pi's own compaction. A second line tells her to finish
+  the step, save what matters and compact with a summary, then to compact
+  now. They follow Pi's edge (100% − reserve): "compact now" 2 points before
+  it, the first line 15 before that, at most 90% and 75%. From 32k up that is
+  75% and 90%; on 8k, 70.5% and 85.5%. The `compact` tool's guidelines say once what the line means.
+- **Compacting herself.** The `compact` tool takes her summary. It's its own
+  tool until the Child threads `threads` tool takes it as an action.
+  - A summary too long for Pi's reserve is refused with the limit. A short one
+    (under 400 characters) becomes the notes for Pi's own summary.
+  - The compaction runs when the turn ends, since Pi's `compact()` would stop
+    the turn that asked for it. If the turn was stopped, it doesn't run: Stop
+    means stop. `session_before_compact` hands Pi her summary
+    as the result, and Pi cuts the old entries and keeps the recent ones.
+  - The compaction is stored, and the stream gets a `compacted` event with the
+    tokens before and (estimated) after and the summary. The message list
+    shows it as a `notice` with a `compacted` part.
+  - Pi's automatic compaction at the window's edge stays on as the safety net,
+    with Pi's own summary, which keeps the goal, progress and next steps. It
+    shows the same marker.
 - Changing a thread's models or local-only switch reopens its session after
   the current turn. Workspace settings are read on every tool call, so they
   apply at once.
@@ -114,12 +151,29 @@ Each active thread is one Pi session from `openThreadSession`, with
   model in a private or local-only thread, a private thread made not
   local-only, a subagent wider than its parent, a folder outside the allowed
   paths, a host that matches everything.
+- **Branch from here** (`POST …/messages/:n/branch`) makes a child thread
+  with the conversation up to message `n` (`branchThread`), and gives it
+  the thread's models, local-only switch and workspace settings, which it
+  can then only narrow.
+- **Rewinding** (`POST …/messages/:n/rewind`, `RewindRequest`): `delete`
+  removes message `n` and everything after it; `regenerate` removes her
+  reply's turn from its user message and sends that message again;
+  `edit` removes from the user's message `n` and sends the new text.
+  `Regenerate with…` first sets the thread's chat model, which the router
+  checks, so a cloud model in a local-only thread is refused before anything
+  is removed. It holds the thread's turn (`409` while one runs): the session
+  closes, subagents started in the removed turns are stopped and forgotten
+  (`Delegation.forgetSubagents`), the entries go (`truncateThread`), and
+  every view gets `rewound` (the first removed number, and whether a message
+  is sent in their place). Messages sent meanwhile wait and go after it. Not
+  in a subagent's thread. A missing message is `404`; a subagent's thread
+  can't be branched (`409`).
 - Forgetting a thread forgets its subagents' threads with it, deepest first,
   stopping their runs and dropping their records (`Delegation.forget`).
 - Thread lists are per interface (`web` by default), filtered by the user's
   display settings, most recently active first, with child threads (forks,
   copies) nested under their parent. Subagents aren't listed: they live in
-  their parent's `delegate` cards. Memory search honours the same pool filters; `?all=1` ignores
+  their parent's `delegate` cards. Child threads include branches. Memory search honours the same pool filters; `?all=1` ignores
   them in both.
 
 ## The event stream
@@ -128,7 +182,9 @@ Each active thread is one Pi session from `openThreadSession`, with
 carries text and thinking deltas, tool calls (start with arguments; end with
 the first lines of the result), recall and remember markers, permission
 requests and their outcome, usage, errors in plain words (a model the router
-refused, an endpoint that didn't answer), the queue, the title and turn end.
+refused, an endpoint that didn't answer), the queue, the title and turn end,
+then the thread's `context` after each turn and a `compacted` marker when it
+compacts.
 A subagent run's events (started, output, tool calls, questions, notes,
 usage, finished, stopped, interrupted) go out as `delegation` to the parent
 thread's stream and to the subagent's own thread's stream. What a run

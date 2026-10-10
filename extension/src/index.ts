@@ -1,11 +1,13 @@
 import type { BuildSystemPromptOptions, ExtensionCommandContext, ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { isThreadView, type CallContext, type Interface, type Persona, type Pool, type PoolView, type Profile, type User } from "@lyrica/core";
 import { assemble, type Budgets, type Section } from "./assemble.ts";
+import { contextLines, registerContext, type ContextMeter } from "./context.ts";
 import { memorySections } from "./memory.ts";
 import { TopicRouter, type RoutedTopic } from "./routing.ts";
 import { registerMemoryTools } from "./tools.ts";
 
 export * from "./assemble.ts";
+export * from "./context.ts";
 export * from "./memory.ts";
 export * from "./record.ts";
 export * from "./routing.ts";
@@ -38,6 +40,8 @@ export interface LyricaOptions {
   hide?: (id: string) => boolean;
   /** The /sleep command, where the host offers it (the bench). */
   sleep?: (ctx: ExtensionCommandContext) => Promise<void>;
+  /** lyricad's meter for this thread: measures each turn, adds her status line, and the `compact` tool. */
+  meter?: ContextMeter;
 }
 
 /** The Lyrica Pi extension for one thread. */
@@ -49,6 +53,7 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
   return (pi) => {
     const router = new TopicRouter();
     registerMemoryTools(pi, view, who, { readOnly: opts.memoryTools === "read" });
+    if (opts.meter) registerContext(pi, opts.meter);
     if (opts.sleep) pi.registerCommand("sleep", { description: "Sleep now: consolidate, dream and wake, for this pool", handler: (_args, ctx) => opts.sleep!(ctx) });
     pi.on("before_agent_start", async (event, ctx) => {
       const persona = opts.persona();
@@ -72,8 +77,17 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
       options.customPrompt = customPrompt;
       options.sections = { ...(tools ? { tools } : {}), ...options.sections, ...sections };
 
-      if (opts.debugPrompt) showDebug(ctx, topics, report, `${event.systemPrompt}\n\n--- this turn ---\n${turn}`);
-      return turn ? { message: { customType: "lyrica-turn", content: turn, display: false } } : undefined;
+      // Her status line, from the last turn's measurement, and the line telling her to prepare or compact.
+      let full = turn;
+      if (opts.meter) {
+        const defs = pi.getAllTools().filter((t) => pi.getActiveTools().includes(t.name)).map((t) => ({ name: t.name, description: t.description, parameters: t.parameters }));
+        opts.meter.setPrompt(report, tools.length + JSON.stringify(defs).length);
+        const lines = contextLines(opts.meter);
+        if (lines) full = [turn, `<context>\n${lines}\n</context>`].filter(Boolean).join("\n\n");
+      }
+
+      if (opts.debugPrompt) showDebug(ctx, topics, report, `${event.systemPrompt}\n\n--- this turn ---\n${full}`);
+      return full ? { message: { customType: "lyrica-turn", content: full, display: false } } : undefined;
     });
   };
 }

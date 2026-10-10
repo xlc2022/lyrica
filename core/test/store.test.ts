@@ -283,6 +283,107 @@ describe("threads", () => {
     expect(own.search("harbour").map((h) => h.id)).toEqual([s.entry]);
   });
 
+  it("branches: the turns up to the chosen one, copied, with the source unchanged", async () => {
+    const { memory, li } = await setup();
+    const { own } = memory.openThreadView(li.id, "general");
+    const t = own.createThread({ interface: "web", title: "Garden", unlogged: false });
+    const add = (piId: string, role: string, text: string) => own.appendEntry(t.id, { piId, role, data: { id: piId }, text });
+    add("u1", "user", "plant tulips");
+    const reply = add("a1", "assistant", "read(\"beds.md\")");
+    add("r1", "toolResult", "read: beds.md");
+    add("a2", "assistant", "tulips in bed two");
+    add("u2", "user", "and roses?");
+    const [note] = own.addNotes([{ text: "{user} plants tulips", source: reply }], { author: "lyrica", thread: t.id });
+    const before = own.loadEntries(t.id);
+
+    // From a reply that called a tool: its result comes along, nothing after it.
+    const branch = own.branchThread(t.id, 2);
+    expect(branch).toMatchObject({ parent: t.id, subagent: false, title: "Garden (branch)" });
+    expect(own.loadEntries(branch.id)).toEqual(before.slice(0, 3));
+    expect(own.loadEntries(t.id)).toEqual(before);
+    // Copies keep their originals' IDs: a note citing one resolves, and search and sleep see it once.
+    expect(own.lastEntry(branch.id)!.id).toBe(`e:${t.id}#3`);
+    expect(own.cameFrom(note!)).toContain(reply);
+    expect(own.entryWindow(reply, 0).map((e) => e.text)).toEqual(['read("beds.md")']);
+    expect(own.search("tulips").filter((h) => h.kind === "entry").map((h) => h.id).sort()).toEqual([`e:${t.id}#1`, `e:${t.id}#4`]);
+    expect(own.sleepMaterial(undefined, new Date(Date.now() + 1000).toISOString()).threads.map((x) => x.id)).toEqual([t.id]);
+    // It goes on from there as a thread of its own.
+    own.appendEntry(branch.id, { piId: "u9", role: "user", data: {}, text: "lilies instead" });
+    expect(own.lastEntry(branch.id)!.id).toBe(`e:${branch.id}#4`);
+
+    const quiet = own.createThread({ interface: "web", unlogged: true });
+    own.appendEntry(quiet.id, { piId: "q", role: "user", data: {}, text: "hush" });
+    expect(own.branchThread(quiet.id, 1, { title: "Mine" })).toMatchObject({ unlogged: true, title: "Mine" });
+    expect(() => own.branchThread(t.id, 99)).toThrow(/no entry 99/);
+  });
+
+  it("rewinds: removed turns go as forgotten ones do, and their numbers aren't reused", async () => {
+    const { memory, li } = await setup();
+    const { own } = memory.openThreadView(li.id, "general");
+    const t = own.createThread({ interface: "web" });
+    const keep = own.appendEntry(t.id, { piId: "u1", role: "user", data: {}, text: "the boat is blue" });
+    own.appendEntry(t.id, { piId: "a1", role: "assistant", data: {}, text: "lovely" });
+    // A subagent started before the removed turn, and one started in it.
+    const earlier = own.createThread({ interface: "web", parent: t.id, subagent: true });
+    const at = new Date(Date.now() + 50).toISOString();
+    const gone = own.appendEntry(t.id, { piId: "u2", role: "user", data: {}, text: "the shed is red" }, at);
+    own.appendEntry(t.id, { piId: "a2", role: "assistant", data: {}, text: "noted" }, at);
+    await new Promise((r) => setTimeout(r, 80));
+    const later = own.createThread({ interface: "web", parent: t.id, subagent: true });
+    const [kept, removed, mixed] = own.addNotes([
+      { text: "the boat is blue", source: keep },
+      { text: "the shed is red", source: gone },
+      { text: `both [${keep}]`, source: gone },
+    ], { author: "lyrica", thread: t.id });
+    own.putPage({ slug: "home", title: "Home", summary: "x", text: `Red shed [${removed}].` }, "sleep");
+    own.putPage({ slug: "talk", title: "Talk", summary: "x", text: `Said so [${gone}].` }, "sleep");
+    own.putPage({ slug: "boat", title: "Boat", summary: "x", text: `Blue [${kept}].` }, "sleep");
+
+    expect(own.subagentsSince(t.id, 3)).toEqual([later.id]);
+    expect(own.truncateThread(t.id, 3, "lyrica")).toEqual({ removed: 2, subagents: [later.id] });
+    expect(own.loadEntries(t.id)).toHaveLength(2);
+    expect(own.get(removed!)).toBeUndefined();
+    expect(own.isTombstoned(gone)).toBe(true);
+    expect(own.get(kept!)).toBeDefined();
+    expect(own.get(mixed!)).toBeDefined();
+    expect(own.search("shed").filter((h) => h.kind === "entry")).toEqual([]);
+    expect(own.get("p:home")!.flagged).toBe(true);
+    expect(own.get("p:talk")!.flagged).toBe(true);
+    expect(own.get("p:boat")!.flagged).toBe(false);
+    expect(own.getThread(later.id)).toBeUndefined();
+    expect(own.getThread(earlier.id)).toBeDefined();
+    const material = own.sleepMaterial(undefined, new Date(Date.now() + 1000).toISOString());
+    expect(material.threads.find((x) => x.id === t.id)).toMatchObject({ entries: 2, last: `e:${t.id}#2` });
+    // The next entry is #5, never #3 again: a tombstone for #3 can't mean the new one.
+    expect(own.appendEntry(t.id, { piId: "u3", role: "user", data: {}, text: "try again" })).toBe(`e:${t.id}#5`);
+    expect(own.isTombstoned(`e:${t.id}#5`)).toBe(false);
+    // Delete from the end, again and again.
+    expect(own.truncateThread(t.id, 5, "lyrica").removed).toBe(1);
+    expect(own.truncateThread(t.id, 2, "lyrica").removed).toBe(1);
+    expect(own.truncateThread(t.id, 2, "lyrica").removed).toBe(0);
+    expect(own.loadEntries(t.id)).toHaveLength(1);
+  });
+
+  it("rewinds turns a branch still holds: their notes stay, and citations resolve through the copy", async () => {
+    const { memory, li } = await setup();
+    const { own } = memory.openThreadView(li.id, "general");
+    const t = own.createThread({ interface: "web" });
+    own.appendEntry(t.id, { piId: "u1", role: "user", data: {}, text: "the kettle is copper" });
+    const kept = own.appendEntry(t.id, { piId: "a1", role: "assistant", data: {}, text: "a copper kettle" });
+    const branch = own.branchThread(t.id, 2);
+    const [note] = own.addNotes([{ text: "{user} has a copper kettle", source: kept }], { author: "lyrica", thread: t.id });
+    own.setUnlogged(branch.id, true);
+    own.appendEntry(branch.id, { piId: "u2", role: "user", data: {}, text: "off the record" });
+
+    expect(own.truncateThread(t.id, 1, "lyrica").removed).toBe(2);
+    expect(own.get(note!)).toBeDefined();
+    expect(own.isTombstoned(kept)).toBe(false);
+    expect(own.entryWindow(kept, 0).map((e) => [e.id, e.text])).toEqual([[kept, "a copper kettle"]]);
+    expect(own.entryWindow(kept, 4, t.id).map((e) => e.text)).toEqual(["the kettle is copper", "a copper kettle"]);
+    expect(own.search("copper").filter((h) => h.kind === "entry").map((h) => h.id).sort()).toEqual([`e:${t.id}#1`, kept]);
+    expect(own.loadEntries(branch.id)).toHaveLength(3);
+  });
+
   it("brings back pages about granted folders", async () => {
     const { memory, li } = await setup();
     const { own } = memory.openThreadView(li.id, "general");

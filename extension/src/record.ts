@@ -28,7 +28,7 @@ export function syncEntries(source: EntrySource, store: PoolStore, threadId: str
 /** For lyricad: records a hosted session's entries as they finish. Returns the unsubscribe function. */
 export function recordEntries(session: AgentSession, store: PoolStore, threadId: string): () => void {
   return session.subscribe((event) => {
-    if (event.type === "turn_end" || event.type === "agent_end") syncEntries(session.sessionManager, store, threadId);
+    if (event.type === "turn_end" || event.type === "agent_end" || event.type === "compaction_end") syncEntries(session.sessionManager, store, threadId);
   });
 }
 
