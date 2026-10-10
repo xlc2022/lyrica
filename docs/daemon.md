@@ -115,8 +115,9 @@ Each active thread is one Pi session from `openThreadSession`, with
 - Forgetting a thread forgets its subagents' threads with it, deepest first,
   stopping their runs and dropping their records (`Delegation.forget`).
 - Thread lists are per interface (`web` by default), filtered by the user's
-  display settings, most recently active first, with subagents nested under
-  their parent. Memory search honours the same pool filters; `?all=1` ignores
+  display settings, most recently active first, with child threads (forks,
+  copies) nested under their parent. Subagents aren't listed: they live in
+  their parent's `delegate` cards. Memory search honours the same pool filters; `?all=1` ignores
   them in both.
 
 ## The event stream
@@ -126,11 +127,12 @@ carries text and thinking deltas, tool calls (start with arguments; end with
 the first lines of the result), recall and remember markers, permission
 requests and their outcome, usage, errors in plain words (a model the router
 refused, an endpoint that didn't answer), the queue, the title and turn end.
-A subagent run's events (started, output, tool calls, questions, usage,
-finished, stopped, interrupted) go out as `delegation` to the parent thread's
-stream and to the subagent's own thread's stream. A background run's result
-or question, delivered into the thread, goes out as `notice`, and is stored:
-the message list shows it as a `notice` message.
+A subagent run's events (started, output, tool calls, questions, notes,
+usage, finished, stopped, interrupted) go out as `delegation` to the parent
+thread's stream and to the subagent's own thread's stream. What a run
+delivers into the thread (a background result or question, a note, a user's
+message to a subagent) goes out as `notice`, with its status and threads,
+and is stored: the message list shows it as a `notice` message.
 
 ## Subagents
 
@@ -140,7 +142,17 @@ thread under the depth limit gets the `delegate` tool
 background run's result reaches her at once: appended if she is idle, as a
 follow-up if she is busy. With no live session it goes into the stored
 thread. `GET …/threads/:pool/:threadId/subagents` lists a thread's runs and
-their total tokens. `…/roles` and `…/workflows` read and change the user's
+their total tokens.
+
+**Writing to a subagent.** `POST …/messages` on a subagent's thread (what
+its card's message box does)
+goes to `Delegation.message` as the user's message, never to a session of its
+own: it joins the subagent's work, answers its question, or continues it,
+and the parent thread gets a note. Only the owner of the parent thread gets
+there (the subagent's thread is in their pool), and a parent that's gone, or
+a subagent that can't take the message now, is `409` with the reason. Its
+stored messages carry `from`: Lyrica, or the user by their current name.
+Stop in a subagent's thread denies its waiting requests and stops its work. `…/roles` and `…/workflows` read and change the user's
 custom roles and saved workflows (`DelegationStore`, in `user.db`).
 
 Event IDs are `<epoch>-<n>`; the epoch changes with every start. A reconnect
@@ -155,6 +167,13 @@ In "ask before commands" and "ask before changes", the workspace tools'
 `lyricad` sends a `permission` event to every open view and waits for
 `POST …/permissions/:requestId` with `allow`. Nobody answering in 5 minutes,
 or Stop, denies. A view that opens later sees waiting requests in `hello`.
+
+A subagent's request (`ThreadHost.approveSubagent`, given to `Delegation` as
+`approve`) is one request shown in its own thread and its parent's, with
+`subagent` naming the run, thread and role. Either thread's views may answer;
+the first answer wins, and both get `permission_end` (a later answer is
+`404`). A timeout, Stop in either thread, or the subagent being stopped
+denies it.
 
 ## Uploads
 

@@ -23,7 +23,8 @@ it, never inferred), an OpenAI-compatible base URL and an optional API key.
   endpoint, or changing its URL or key (`editEndpoint`), keeps every ID.
 - **Labels.** People and Lyrica name a model as `<endpoint>/<model>`, with
   `shared.` before a shared endpoint's name, so the two never collide.
-  `find(userId, idOrLabel)` takes either form; saved workflows may use both.
+  `find(userId, idOrLabel)` takes either form. A saved workflow's models are
+  stored by offering ID (`workflowSpec`), so renaming breaks nothing.
 - **Shared** endpoints live in `self.db`. Only an administrator can add,
   change or remove them. Every user can use them. A user's **own**
   endpoints live in their `user.db`.
@@ -49,8 +50,9 @@ it, never inferred), an OpenAI-compatible base URL and an optional API key.
 
 ## Cleaning up
 
-- An endpoint that hasn't answered a probe or discovery for 14 days is
-  **stale**; an offering missing for 30 days is **gone**. The router skips
+- An endpoint whose probes, discovery and calls have all failed for 14 days
+  is **stale**: any reply that comes back clears it (`reportUp`, from every
+  Pi session); an offering missing for 30 days is **gone**. The router skips
   both.
 - `prune` runs nightly. It removes gone offerings no list names: a shared one
   only once every user's lists have been indexed and none names it, a
@@ -61,7 +63,8 @@ it, never inferred), an OpenAI-compatible base URL and an optional API key.
   another endpoint, if there is one.
 - `replace(actor, from, to)` deletes an offering and leaves a **redirect** to
   another of the same kind (a shared one for a shared one).
-  `removeOffering` and `removeEndpoint` leave **tombstones**. `resetIds`
+  `removeOffering` and `removeEndpoint` leave **tombstones**. A new redirect
+  repoints earlier ones at its target, so chains are one hop long. `resetIds`
   gives an endpoint and its offerings fresh IDs, and `merge` folds one
   endpoint into another of the same kind and place; both leave redirects.
 - **Shared redirects** live in `self.db` (`offering_redirects`), and the
@@ -77,7 +80,7 @@ it, never inferred), an OpenAI-compatible base URL and an optional API key.
   lists name (models and groups), for Clean up and pruning. It holds IDs
   only.
 - Existing `{ endpoint, model }` choices were migrated to offerings when a
-  `user.db` was first opened; references to models that no longer existed
+  `user.db` was first opened, in one transaction with its endpoints; references to models that no longer existed
   were dropped and named in the notice.
 
 Redirects and tombstones apply to group members too: shared groups change

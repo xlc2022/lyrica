@@ -2,14 +2,14 @@ import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { AgentSession, ExtensionFactory, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
-  DelegationStore, isRestricted, LIVE_STATUSES, refId,
+  DelegationStore, isRestricted, LIVE_STATUSES, refId, stricterMode,
   type CouncilSpec, type Grant, type LoopSpec, type Memory, type ModelRef, type Models, type Pool, type PoolStore, type Role,
-  type Step, type SubagentRecord, type SubagentStatus, type Tier, type Usage, type Users, type Workflow, type WorkflowSpec, type Workspace,
+  type Step, type SubagentRecord, type SubagentStatus, type Tier, type Usage, type User, type Users, type Workflow, type WorkflowSpec, type Workspace,
 } from "@lyrica/core";
 import type { ThreadContext } from "../index.ts";
-import { toStoredEntry } from "../record.ts";
+import { syncEntries, toStoredEntry } from "../record.ts";
 import { openThreadSession } from "../session.ts";
-import { createWorkspaceExtension } from "../workspace.ts";
+import { createWorkspaceExtension, type ApprovalRequest } from "../workspace.ts";
 import { rolesFor } from "./roles.ts";
 import { createDelegateExtension, createSubagentExtension } from "./tool.ts";
 import { makeWorktrees, removeWorktrees, worktreeGrants, worktreeNote, type Worktree } from "./worktree.ts";
@@ -26,8 +26,10 @@ export interface Limits {
   runsPerRequest: number;
   /** Longest a subagent may work on one stretch, in milliseconds. Time waiting for an answer doesn't count. */
   timeoutMs: number;
+  /** Notes (`ask_parent` with `wait: false`) a subagent may send per stretch of work. */
+  notes: number;
 }
-export const DEFAULT_LIMITS: Limits = { depth: 1, concurrency: 2, runsPerRequest: 8, timeoutMs: 15 * 60_000 };
+export const DEFAULT_LIMITS: Limits = { depth: 1, concurrency: 2, runsPerRequest: 8, timeoutMs: 15 * 60_000, notes: 3 };
 
 export type DelegateWorkspace = Pick<Workspace, "inheritSettings" | "forThread" | "settings">;
 
@@ -40,7 +42,30 @@ export interface DelegationOptions {
   /** Pi's working directory for subagent sessions. Nothing is discovered from it. */
   cwd: string;
   limits?: Partial<Limits>;
+  /**
+   * Asks whoever watches the subagent's thread and its parent's whether a
+   * tool call may run, where the parent's permission mode asks. lyricad
+   * supplies it. Without it, every such call is refused. The signal aborts
+   * when the subagent is stopped: the answer is then a refusal.
+   */
+  approve?: (request: SubagentApproval, signal: AbortSignal) => Promise<boolean>;
 }
+
+/** A subagent's tool call waiting for approval: which subagent, and what exactly. */
+export type SubagentApproval = RunRef & ApprovalRequest & { role: string };
+
+/** The parent thread a run belongs to. */
+export type Parent = Pick<ThreadContext, "user" | "pool" | "interface" | "threadId">;
+
+/** A message to a subagent: from Lyrica, or from a user typing in its thread. */
+export interface Said { text: string; from?: User }
+
+/** A user's message in a subagent's thread: a custom message, so only lyricad can make one. */
+export const USER_MESSAGE = "lyrica-user-message";
+const userMessage = (said: Said) => ({
+  customType: USER_MESSAGE, display: true, details: { userId: said.from!.id },
+  content: `${said.from!.profile.displayName} writes to you directly, in your thread (Lyrica is told):\n\n${said.text}`,
+});
 
 /** Narrowing that applies to every subagent of a run. Nothing here can widen the parent's settings. */
 export interface Narrowing { folders?: string[]; readOnly?: boolean; internet?: false }
@@ -63,6 +88,7 @@ export type DelegationEvent =
   | (RunRef & { type: "output"; delta: string })
   | (RunRef & { type: "tool_call"; toolName: string; args: unknown })
   | (RunRef & { type: "question"; question: string })
+  | (RunRef & { type: "note"; note: string })
   | (RunRef & { type: "finished"; status: "finished" | "failed" })
   | (RunRef & { type: "stopped"; reason: StopReason })
   | (RunRef & { type: "interrupted" })
@@ -119,8 +145,13 @@ export type StopReason = "stopped" | "timeout" | "parent_changed";
 export class Subagent {
   status: SubagentStatus = "running";
   question?: string;
-  readonly usage: Usage = { inputTokens: 0, outputTokens: 0 };
+  /** Notes sent in this stretch of work. */
+  notes = 0;
+  readonly usage: Usage;
   private stopped?: { reason: StopReason; message: string };
+  /** Messages that arrived between its turns; they go next, in order. */
+  private readonly queued: Said[] = [];
+  private readonly aborter = new AbortController();
 
   constructor(
     private readonly d: Delegation, readonly run: Run, readonly ctx: ThreadContext, readonly role: Role, readonly model: string,
@@ -128,8 +159,15 @@ export class Subagent {
     readonly cloud: boolean, readonly session: AgentSession, private readonly dispose: () => void,
     /** Releases the parent's folders, for a writer without worktrees. */
     private readonly releaseFolders: () => void,
+    /** Tokens it used before, for a subagent that is continued. */
+    usage: Usage = { inputTokens: 0, outputTokens: 0 },
   ) {
+    this.usage = { ...usage };
     session.subscribe((e) => {
+      // What it was told is stored at once (Pi saves it just after this event), so a subagent cut off by a restart can be continued with it.
+      if (e.type === "message_end" && e.message.role !== "assistant") {
+        setImmediate(() => { try { syncEntries(session.sessionManager, ctx.view.own, ctx.threadId); } catch { /* closed meanwhile */ } });
+      }
       if (e.type === "message_update" && e.assistantMessageEvent.type === "text_delta") this.emit({ type: "output", delta: e.assistantMessageEvent.delta });
       else if (e.type === "tool_execution_start") this.emit({ type: "tool_call", toolName: e.toolName, args: e.args });
       else if (e.type === "message_end" && e.message.role === "assistant") {
@@ -147,19 +185,28 @@ export class Subagent {
 
   emit(e: DistributiveOmit<DelegationEvent, keyof RunRef>): void { this.d.events.send({ ...this.ref, ...e } as DelegationEvent); }
 
+  /** Aborts when it or its run is stopped: a pending approval is then refused. */
+  get signal(): AbortSignal { return AbortSignal.any([this.aborter.signal, this.run.abort.signal]); }
+
   /**
    * One stretch of work, holding one of the parent's concurrency slots. Returns
    * the reply, or the question with status "question". First checks that the
    * parent still allows this subagent; if not, the whole run stops.
    */
-  async turn(text: string): Promise<string> {
+  async turn(said: Said): Promise<string> {
     this.guard();
     const release = await this.d.slot(this.run).acquire(this.run.abort.signal);
     this.set("running");
     this.question = undefined;
+    this.notes = 0;
     const timer = setTimeout(() => this.stop("timeout", `timed out after ${Math.round(this.d.limits.timeoutMs / 1000)} s`), this.d.limits.timeoutMs);
     try {
-      await this.session.prompt(text);
+      await this.send(said);
+      // Messages that came between turns go next, each after the same check.
+      while (this.queued.length && !this.stopped && this.question === undefined) {
+        this.guard();
+        await this.send(this.queued.shift()!);
+      }
     } finally {
       clearTimeout(timer);
       release();
@@ -179,14 +226,27 @@ export class Subagent {
   stop(reason: StopReason, message: string = reason): void {
     if (LIVE_STATUSES.includes(this.status) && !this.stopped) {
       this.stopped = { reason, message };
+      this.aborter.abort(new Stopped(message));
       void this.session.abort();
     }
   }
 
-  steer(text: string): void {
+  private async send(said: Said): Promise<void> {
+    if (!said.from) return this.session.prompt(said.text);
+    await this.session.sendCustomMessage(userMessage(said), { triggerTurn: true });
+    await this.session.waitForIdle();
+  }
+
+  /** A message while it works: joins the turn in progress, or waits for its next turn. */
+  tell(said: Said): void {
     this.guard();
-    if (this.status !== "running" || !this.session.isStreaming) throw new Error("that subagent isn't working right now");
-    void this.session.steer(text);
+    if (this.status !== "running") throw new Error("that subagent isn't working right now");
+    if (!this.session.isStreaming) {
+      this.queued.push(said);
+      return;
+    }
+    const sent = said.from ? this.session.sendCustomMessage(userMessage(said), { deliverAs: "steer" }) : this.session.steer(said.text);
+    sent.catch(() => this.queued.push(said));
   }
 
   /** Stops the run if the parent thread is gone, stopped being logged, or went local-only while this runs on a cloud model. */
@@ -220,19 +280,29 @@ export type RunStatus = "running" | "question" | "finished" | "failed" | "stoppe
 
 /** One delegate call and the subagents it started. */
 export class Run {
-  readonly id = `d-${randomBytes(4).toString("hex")}`;
+  readonly id: string;
   status: RunStatus = "running";
   result = "";
   readonly subagents: Subagent[] = [];
   readonly abort = new AbortController();
   /** Set once a tool call has handed her the outcome, so it isn't delivered again. */
   delivered = false;
+  /**
+   * Whether its questions and outcome are delivered into the parent thread:
+   * a background run's, and any run a user has messaged, since no tool call
+   * waits for what that brings.
+   */
+  notify: boolean;
   /** Settles once the run has ended and its subagents are closed. */
   ended: Promise<void> = Promise.resolve();
-  private readonly asking: { sub: Subagent; answer: (text: string) => void; fail: (err: Error) => void }[] = [];
+  private readonly asking: { sub: Subagent; answer: (said: Said) => void; fail: (err: Error) => void }[] = [];
   private waiters: (() => void)[] = [];
 
-  constructor(readonly parent: ThreadContext, readonly background: boolean, readonly budget: { left: number }) {}
+  /** `id` is given when a subagent of an earlier run is continued. */
+  constructor(readonly parent: Parent, readonly background: boolean, readonly budget: { left: number }, id?: string) {
+    this.id = id ?? `d-${randomBytes(4).toString("hex")}`;
+    this.notify = background;
+  }
 
   get done(): boolean { return this.status !== "running" && this.status !== "question"; }
   get questions(): { sub: Subagent; question: string }[] { return this.asking.map((a) => ({ sub: a.sub, question: a.sub.question ?? "" })); }
@@ -253,19 +323,30 @@ export class Run {
     if (status !== "running") for (const w of this.waiters.splice(0)) w();
   }
 
-  /** Waits for `answer` on a subagent's question. */
-  waitForAnswer(sub: Subagent): Promise<string> {
+  /** Waits for an answer to a subagent's question. */
+  waitForAnswer(sub: Subagent): Promise<Said> {
     return new Promise((answer, fail) => {
       this.asking.push({ sub, answer, fail });
       this.set("question");
     });
   }
 
-  answer(text: string): void {
-    const next = this.asking.shift();
-    if (!next) throw new Error(`run ${this.id} has no question waiting`);
+  /** Answers a subagent's question, or the oldest one. */
+  answer(said: Said | string, sub?: Subagent): void {
+    const i = sub ? this.asking.findIndex((a) => a.sub === sub) : 0;
+    const [next] = i >= 0 ? this.asking.splice(i, 1) : [];
+    if (!next) throw new Error(`run ${this.id} has no question waiting${sub ? " from that subagent" : ""}`);
     if (!this.asking.length) this.set("running");
-    next.answer(text);
+    next.answer(typeof said === "string" ? { text: said } : said);
+  }
+
+  /** Ends one subagent's wait for an answer, as stopped. */
+  cancel(sub: Subagent, message: string): void {
+    const i = this.asking.findIndex((a) => a.sub === sub);
+    if (i < 0) return;
+    const [a] = this.asking.splice(i, 1);
+    if (!this.asking.length && this.status === "question") this.set("running");
+    a!.fail(new Stopped(message));
   }
 
   stop(reason: StopReason = "stopped", message: string = reason): void {
@@ -350,17 +431,150 @@ export class Delegation {
     this.recover(parent.user.id);
     if (this.depth(parent) >= this.limits.depth) throw new Error(`subagents can't start subagents of their own here (depth limit ${this.limits.depth})`);
     const run = new Run(parent, opts.background, opts.budget);
+    this.track(run, this.execute(run, req));
+    return run;
+  }
+
+  /** Keeps a run live while `work` goes on; then closes its subagents and, if asked, tells the parent. */
+  private track(run: Run, work: Promise<string>): void {
     this.live.set(run.id, run);
-    run.ended = this.execute(run, req).then(
+    run.ended = work.then(
       (result) => run.set("finished", result),
       (err: Error) => run.set(err instanceof Stopped || run.abort.signal.aborted ? "stopped" : "failed", err.message),
     ).finally(() => {
       for (const s of run.subagents) s.close(run.status === "stopped" ? "stopped" : "failed");
-      this.live.delete(run.id);
+      // A continuation may already have taken its place.
+      if (this.live.get(run.id) === run) this.live.delete(run.id);
       // A user locked meanwhile can't be told; the run's records still say how it ended.
-      if (run.background && !run.delivered) try { this.deliver(run.parent, outcome(run), { runId: run.id, status: run.status }); } catch { /* locked */ }
+      if (run.notify && !run.delivered) try { this.deliver(run.parent, outcome(run), { runId: run.id, status: run.status, threads: run.subagents.map((s) => s.ctx.threadId) }); } catch { /* locked */ }
     });
-    return run;
+  }
+
+  /**
+   * A message to one subagent of a run this parent thread started. It joins
+   * a working subagent's turn, answers its open question, or continues a
+   * subagent that has ended in its own thread, as a new stretch of work under
+   * the same run, with its model and workspace worked out again from the
+   * parent's current settings. `thread` picks the subagent where the run has
+   * several. A message from a user is told to the parent thread too.
+   * `opened` settles once the message has reached the subagent, or rejects
+   * with the reason it couldn't.
+   */
+  message(parent: Parent, id: string | undefined, said: Said, opts: { thread?: string; budget: { left: number }; background?: boolean }): Messaged {
+    this.recover(parent.user.id);
+    if (!said.text.trim()) throw new Error("the message is empty");
+    // A run that has ended but not yet closed is as good as over.
+    const found = id ? this.live.get(id) : undefined;
+    if (found && !sameThread(found.parent, parent)) throw new Error(`no run ${id} in this thread`);
+    const live = found && !found.done ? found : undefined;
+    const rows = id ? this.store.runs(parent.user.id, parent.pool, { run: id }).filter((r) => r.parent === parent.threadId) : [];
+    if (!rows.length) throw new Error(live ? `run ${id} hasn't started a subagent yet` : `no run ${id ?? "(no id given)"} in this thread`);
+    const row = this.pickSubagent(rows, live, opts.thread?.replace(/^t:/, ""));
+    const done = (run: Run, how: Messaged["how"], opened: Promise<void> = Promise.resolve()): Messaged => {
+      const from = said.from;
+      if (from) {
+        run.notify = true;
+        // The parent hears of it once it has reached the subagent.
+        opened.then(() => this.deliver(parent, `${from.profile.displayName} wrote to subagent ${row.role} (run ${row.run}, t:${row.thread}):\n${said.text}`,
+          { runId: row.run, status: "user_message", threads: [row.thread], userId: from.id })).catch(() => {});
+      }
+      return { run, threadId: row.thread, role: row.role, how, opened };
+    };
+    if (live) {
+      const sub = live.subagents.find((x) => x.ctx.threadId === row.thread && LIVE_STATUSES.includes(x.status));
+      if (sub?.status === "question" && live.questions.some((q) => q.sub === sub)) {
+        live.answer(said, sub);
+        return done(live, "answered");
+      }
+      if (sub) {
+        sub.tell(said);
+        return done(live, "joined");
+      }
+      throw new Error(`that subagent has ${row.status === "running" ? "not started yet" : "ended"}, but run ${id} is still working; message it once the run ends`);
+    }
+    const run = new Run(parent, opts.background ?? row.background, opts.budget, row.run);
+    let opened!: { resolve: () => void; reject: (err: Error) => void };
+    const ready = new Promise<void>((resolve, reject) => { opened = { resolve, reject }; });
+    ready.catch(() => {});
+    this.track(run, this.resume(run, row, said, opened));
+    return done(run, "continued", ready);
+  }
+
+  /** The subagent a message is for: the one named, the one waiting, or the only one. */
+  private pickSubagent(rows: SubagentRecord[], live: Run | undefined, thread: string | undefined): SubagentRecord {
+    const list = () => rows.map((r) => `${r.thread} (${r.role}, ${r.status})`).join(", ");
+    if (thread) {
+      const row = rows.find((r) => r.thread === thread);
+      if (!row) throw new Error(`run ${rows[0]!.run} has no subagent in thread ${thread}; its threads are ${list()}`);
+      return row;
+    }
+    const asking = live?.questions ?? [];
+    if (asking.length === 1) return rows.find((r) => r.thread === asking[0]!.sub.ctx.threadId)!;
+    if (rows.length === 1) return rows[0]!;
+    throw new Error(`run ${rows[0]!.run} has ${rows.length} subagents; say which with thread: ${list()}`);
+  }
+
+  /** A subagent that had ended, continued in its own thread. */
+  private async resume(run: Run, row: SubagentRecord, said: Said, opened: { resolve: () => void; reject: (err: Error) => void }): Promise<string> {
+    let sub: Subagent;
+    try {
+      const role = this.role(run.parent.user.id, row.role, "worker");
+      const pick: ModelPick = row.pick && "model" in row.pick ? { model: this.named(run.parent.user.id, row.pick.model) } : { tier: row.pick?.tier ?? role.tier };
+      sub = await this.open(run, role, pick, row.narrowing ?? {}, row);
+      opened.resolve();
+    } catch (err) {
+      // Its caller is told at once, so it isn't delivered again.
+      run.delivered = true;
+      opened.reject(err as Error);
+      throw err;
+    }
+    try {
+      const reply = await this.ask(sub, said);
+      sub.close("finished");
+      return reply;
+    } catch (err) {
+      sub.close(err instanceof Stopped ? "stopped" : "failed");
+      throw err;
+    }
+  }
+
+  /** Stops the subagent working in a thread, if one is: Stop pressed in its own thread. */
+  stopThread(userId: string, pool: Pool, threadId: string): boolean {
+    for (const run of this.live.values()) {
+      if (run.parent.user.id !== userId || run.parent.pool !== pool) continue;
+      const sub = run.subagents.find((x) => x.ctx.threadId === threadId && LIVE_STATUSES.includes(x.status));
+      if (sub) {
+        sub.stop("stopped");
+        // A subagent waiting on its question has no turn to abort: its wait ends instead.
+        run.cancel(sub, "stopped");
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** A note from a subagent that keeps working, delivered like a background result. False once it has sent its few for this stretch. */
+  note(sub: Subagent, text: string): boolean {
+    if (sub.notes >= this.limits.notes) return false;
+    sub.notes++;
+    sub.emit({ type: "note", note: text });
+    try {
+      this.deliver(sub.run.parent, `Subagent run ${sub.run.id} (${sub.role.name}, t:${sub.ctx.threadId}) sends a note and keeps working:\n${text}`,
+        { runId: sub.run.id, status: "note", threads: [sub.ctx.threadId] });
+    } catch { /* locked */ }
+    return true;
+  }
+
+  /** Asks about a subagent's tool call, through lyricad. Refused if nobody can be asked, or once it is stopped. */
+  private async approve(sub: Subagent, r: ApprovalRequest): Promise<boolean> {
+    const signal = sub.signal;
+    if (!this.o.approve || signal.aborted) return false;
+    const refused = new Promise<false>((resolve) => signal.addEventListener("abort", () => resolve(false), { once: true }));
+    try {
+      return await Promise.race([this.o.approve({ ...sub.ref, role: sub.role.name, ...r }, signal), refused]) && !signal.aborted;
+    } catch {
+      return false;
+    }
   }
 
   /** Stops every live run, or one user's, and waits until they have ended. For Lock and shutdown. */
@@ -401,7 +615,8 @@ export class Delegation {
       const { pool, parent } = list[0]!;
       for (const r of list) this.events.send({ type: "interrupted", userId, pool, parentThreadId: parent, runId, threadId: r.thread });
       const threads = list.map((r) => `t:${r.thread}`).join(", ");
-      this.deliverTo(userId, pool, parent, `Subagent run ${runId} was interrupted when Lyrica restarted, and didn't finish. Its threads are kept: ${threads}.`, { runId, status: "interrupted" });
+      this.deliverTo(userId, pool, parent, `Subagent run ${runId} was interrupted when Lyrica restarted, and didn't finish. Its threads are kept: ${threads}. `
+        + `To go on, send it a message: delegate({ action: "message", id: "${runId}", message: … }).`, { runId, status: "interrupted", threads: list.map((r) => r.thread) });
     }
   }
 
@@ -416,7 +631,7 @@ export class Delegation {
 
   // --- Delivery ---
 
-  deliver(parent: ThreadContext, content: string, details: unknown): void {
+  deliver(parent: Parent, content: string, details: unknown): void {
     this.deliverTo(parent.user.id, parent.pool, parent.threadId, content, details);
   }
 
@@ -458,7 +673,8 @@ export class Delegation {
     try {
       const sub = await this.spawn(run, step, narrowing, worktrees);
       try {
-        reply = await this.ask(sub, withWorktrees(step.task, worktrees));
+        const task = step.fork ? `The conversation above is Lyrica's, copied for you. You are her subagent now, with this task:\n\n${step.task}` : step.task;
+        reply = await this.ask(sub, { text: withWorktrees(task, worktrees) });
         sub.close("finished");
       } catch (err) {
         sub.close(err instanceof Stopped ? "stopped" : "failed");
@@ -475,11 +691,15 @@ export class Delegation {
     return this.o.workspace!.forThread({ userId: run.parent.user.id, pool: run.parent.pool, threadId: run.parent.threadId }).target();
   }
 
-  /** Sends text and keeps going through any questions, until the subagent replies. */
-  private async ask(sub: Subagent, text: string): Promise<string> {
-    let reply = await sub.turn(text);
+  /** Sends a message and keeps going through any questions, until the subagent replies. */
+  private async ask(sub: Subagent, said: Said): Promise<string> {
+    let reply = await sub.turn(said);
     while (sub.status === "question") {
-      if (sub.run.background) this.deliver(sub.run.parent, `Subagent run ${sub.run.id} (${sub.role.name}, t:${sub.ctx.threadId}) asks:\n${reply}\n\nAnswer with delegate({ action: "answer", id: "${sub.run.id}", message: … }).`, { runId: sub.run.id, status: "question" });
+      if (sub.run.notify) {
+        try {
+          this.deliver(sub.run.parent, `${asks(sub, reply)}\n\n${answerWith(sub)}`, { runId: sub.run.id, status: "question", threads: [sub.ctx.threadId] });
+        } catch { /* locked */ }
+      }
       const answer = await sub.run.waitForAnswer(sub);
       reply = await sub.turn(answer);
     }
@@ -494,7 +714,6 @@ export class Delegation {
     let worktrees: Worktree[][] | undefined;
     let turns = "";
     if (writers > 1 && this.o.workspace) {
-      this.checkWriters(run);
       const made = await makeWorktrees(this.target(run), this.grants(run, narrowing), run.id, writers, run.abort.signal);
       if (typeof made === "string") turns = `The writers ran one at a time: ${made}.\n\n`;
       else worktrees = made;
@@ -521,14 +740,14 @@ export class Delegation {
     const worker = await this.spawn(run, { task: spec.task, role: spec.worker ?? "worker" }, narrowing);
     let reviewer: Subagent | undefined;
     try {
-      let work = await this.ask(worker, spec.task);
+      let work = await this.ask(worker, { text: spec.task });
       reviewer = await this.spawn(run, { task: `Review: ${spec.task}`, role: spec.reviewer ?? "reviewer" }, narrowing);
       let review = "";
       let round = 1;
       for (; ; round++) {
-        review = await this.ask(reviewer, round === 1 ? reviewTask(spec.task, work) : `The worker revised the result:\n\n${work}\n\nReview it again. ${VERDICT}`);
+        review = await this.ask(reviewer, { text: round === 1 ? reviewTask(spec.task, work) : `The worker revised the result:\n\n${work}\n\nReview it again. ${VERDICT}` });
         if (approved(review) || round === rounds) break;
-        work = await this.ask(worker, `A reviewer asked for changes:\n\n${review}\n\nMake them, then reply with the revised result in full.`);
+        work = await this.ask(worker, { text: `A reviewer asked for changes:\n\n${review}\n\nMake them, then reply with the revised result in full.` });
       }
       worker.close("finished");
       reviewer.close("finished");
@@ -581,12 +800,6 @@ export class Delegation {
     return this.o.models.callContext(run.parent.user.id, run.parent.pool, run.parent.threadId);
   }
 
-  /** Subagents can't ask for approval yet, so a writer is refused where the parent asks before changes or commands. */
-  private checkWriters(run: Run): void {
-    const mode = this.o.workspace?.settings(run.parent.user.id).thread(run.parent.threadId).mode ?? "auto";
-    if (mode !== "auto") throw new Error(`this thread asks before ${mode === "ask-commands" ? "commands" : "changes"}, and a subagent can't ask yet: use a read-only role or readOnly: true`);
-  }
-
   /** The parent's grants, narrowed to `folders` if given. */
   private grants(run: Run, narrowing: Narrowing): Grant[] {
     const from = this.o.workspace!.settings(run.parent.user.id).thread(run.parent.threadId).grants;
@@ -598,32 +811,50 @@ export class Delegation {
     });
   }
 
+  /** A new subagent of the run, on a thread of its own: empty, or a fork of the parent's conversation. */
+  private spawn(run: Run, step: Step, narrowing: Narrowing, worktrees: Worktree[] = []): Promise<Subagent> {
+    const role = this.role(run.parent.user.id, step.role, "worker");
+    const pick: ModelPick = step.model ? { model: this.named(run.parent.user.id, step.model) } : { tier: step.tier ?? role.tier };
+    return this.open(run, role, pick, narrowing, undefined, step.task, worktrees, !!step.fork);
+  }
+
   /**
-   * A new subagent: its thread, model, workspace and session. A writer
-   * without worktrees first waits until no other writer is in the parent's folders.
+   * A subagent's model, workspace and session, from the parent's settings as
+   * they are now: on a new thread, or on the thread of one being continued
+   * (`earlier`). Each counts against the request's budget. A writer without
+   * worktrees first waits until no other writer is in the parent's folders.
    */
-  private async spawn(run: Run, step: Step, narrowing: Narrowing, worktrees: Worktree[] = []): Promise<Subagent> {
+  private async open(run: Run, role: Role, pick: ModelPick, narrowing: Narrowing, earlier: SubagentRecord | undefined, task = "", worktrees: Worktree[] = [], fork = false): Promise<Subagent> {
     const { parent } = run;
     const { models, workspace } = this.o;
-    const role = this.role(parent.user.id, step.role, "worker");
     const writer = !!workspace && !role.readOnly && !narrowing.readOnly;
-    if (writer) this.checkWriters(run);
-    const parentCall = this.parentCall(run);
-    const pick: ModelPick = step.model ? { model: this.named(parent.user.id, step.model) } : { tier: step.tier ?? role.tier };
+    let parentCall = this.parentCall(run);
+    // A subagent that started local-only (a fork of a local-only conversation, say) stays local-only.
+    if (earlier && isRestricted(models.callContext(parent.user.id, parent.pool, earlier.thread))) parentCall = { ...parentCall, localOnly: true };
     // Refuse a model before anything is written.
     if ("tier" in pick) models.resolveModel(`subagent.${pick.tier}`, parentCall);
     else if ("offeringId" in pick.model && !models.allowed(parentCall).some((a) => a.offerings.some((m) => "offeringId" in pick.model && m.id === pick.model.offeringId))) {
-      throw new Error(`${step.model} isn't one of this thread's models`);
+      throw new Error(`${models.label(parent.user.id, refId(pick.model)) ?? refId(pick.model)} isn't one of this thread's models`);
     }
     if (run.budget.left <= 0) throw new Error(`this request has already started ${this.limits.runsPerRequest} subagents`);
     run.budget.left--;
     const release = writer && !worktrees.length ? await this.lock(this.writers, run, 1).acquire(run.abort.signal) : () => {};
     const view = this.o.memory.openThreadView(parent.user.id, parent.pool);
     try {
-      const child = view.own.createThread({ interface: parent.interface, parent: parent.threadId, subagent: true, title: `${role.name}: ${step.task.split("\n")[0]!.slice(0, 80)}` });
+      if (!view.own.getThread(parent.threadId)) throw new Error("its parent thread was forgotten");
+      const child = earlier ? view.own.getThread(earlier.thread)
+        : view.own.createThread({ interface: parent.interface, parent: parent.threadId, subagent: true, title: `${role.name}: ${task.split("\n")[0]!.slice(0, 80)}` });
+      if (!child) throw new Error("that subagent's thread was forgotten");
+      if (fork) forkConversation(view.own, parent.threadId, child.id);
+      const parentThread = view.own.getThread(parent.threadId)!;
+      if (parentThread.unlogged && !child.unlogged) throw new Error("its parent thread is no longer logged");
       const call = models.childContext(parentCall, child.id, pick);
       const ctx: ThreadContext = { user: parent.user, pool: parent.pool, interface: parent.interface, threadId: child.id, view, call };
-      const hooks = { question: (_q: string) => {} };
+      let sub: Subagent | undefined;
+      const hooks: SubagentHooks = {
+        question: (q) => { sub!.question = q; },
+        note: (text) => this.note(sub!, text),
+      };
       const extensions: ExtensionFactory[] = [];
       if (workspace) {
         const p = { userId: parent.user.id, pool: parent.pool, threadId: parent.threadId };
@@ -632,7 +863,15 @@ export class Delegation {
         if (worktrees.length) grants = worktreeGrants(grants, worktrees);
         workspace.inheritSettings(p, child.id, { grants, ...(narrowing.internet === false ? { internet: false } : {}) });
         const tools = workspace.forThread({ ...p, threadId: child.id });
-        extensions.push(createWorkspaceExtension(tools));
+        extensions.push(createWorkspaceExtension({
+          ...tools,
+          // It asks as its parent would now, or as its own settings say if they are stricter.
+          settings: () => {
+            const mine = tools.settings();
+            return { ...mine, mode: stricterMode(mine.mode, workspace.settings(parent.user.id).thread(parent.threadId).mode) };
+          },
+          approve: (r) => this.approve(sub!, r),
+        }));
       }
       const nested = this.depth(ctx) < this.limits.depth;
       if (nested) extensions.push(createDelegateExtension(ctx, this, run.budget));
@@ -642,13 +881,18 @@ export class Delegation {
       opened.session.setThinkingLevel(role.thinking);
       // Passes over a model whose machine is away, and records the call. The role keeps its own thinking level.
       const chat = await opened.prepare({ thinking: false }).catch((err) => { opened.dispose(); throw err; });
-      const sub = new Subagent(this, run, ctx, role, chat.label, chat.endpoint.kind !== "local", opened.session, opened.dispose, release);
-      hooks.question = (q) => { sub.question = q; };
+      const before = earlier ? { inputTokens: earlier.inputTokens, outputTokens: earlier.outputTokens } : undefined;
+      sub = new Subagent(this, run, ctx, role, chat.label, chat.endpoint.kind !== "local", opened.session, opened.dispose, release, before);
       run.subagents.push(sub);
-      this.store.record(parent.user.id, {
-        pool: parent.pool, thread: child.id, run: run.id, parent: parent.threadId, role: role.name, model: sub.model,
-        background: run.background, status: "running", startedAt: new Date().toISOString(),
-      });
+      if (earlier) {
+        this.store.update(parent.user.id, parent.pool, child.id, { status: "running", model: sub.model, offeringId: chat.ref.offeringId });
+      } else {
+        this.store.record(parent.user.id, {
+          pool: parent.pool, thread: child.id, run: run.id, parent: parent.threadId, role: role.name, model: sub.model, offeringId: chat.ref.offeringId,
+          background: run.background, status: "running", startedAt: new Date().toISOString(),
+          pick: "tier" in pick ? pick : { model: refId(pick.model) }, narrowing: compact(narrowing),
+        });
+      }
       sub.emit({ type: "started", role: role.name, model: sub.model, title: child.title ?? "" });
       if (run.abort.signal.aborted) sub.stop("stopped", stopped(run.abort.signal).message);
       return sub;
@@ -659,6 +903,31 @@ export class Delegation {
     }
   }
 }
+
+/** What `message` did, and on which subagent. */
+export interface Messaged {
+  run: Run;
+  threadId: string;
+  role: string;
+  how: "joined" | "answered" | "continued";
+  /** Settles once the message has reached the subagent; rejects with the reason a continued one couldn't open. */
+  opened: Promise<void>;
+}
+
+/** What a subagent's tools report back to its run. */
+export interface SubagentHooks {
+  question(q: string): void;
+  /** False once it has sent its few notes for this stretch. */
+  note(text: string): boolean;
+}
+
+const sameThread = (a: Parent, b: Parent) => a.user.id === b.user.id && a.pool === b.pool && a.threadId === b.threadId;
+const compact = (n: Narrowing): Narrowing | undefined => {
+  const out = Object.fromEntries(Object.entries(n).filter(([, v]) => v !== undefined)) as Narrowing;
+  return Object.keys(out).length ? out : undefined;
+};
+const asks = (sub: Subagent, question: string) => `Subagent run ${sub.run.id} (${sub.role.name}, t:${sub.ctx.threadId}) asks:\n${question}`;
+const answerWith = (sub: Subagent) => `Answer with delegate({ action: "message", id: "${sub.run.id}", thread: "${sub.ctx.threadId}", message: … }).`;
 
 const VERDICT = "End your reply with a line that says exactly VERDICT: APPROVED, or VERDICT: CHANGES NEEDED followed by what must change.";
 const reviewTask = (task: string, work: string) => `Review this result against its task.\n\nTask:\n${task}\n\nResult:\n${work}\n\n${VERDICT}`;
@@ -680,11 +949,26 @@ export function outcome(run: Run): string {
   if (run.status === "finished") return `${head} finished:\n\n${run.result}`;
   if (run.status === "stopped") return `${head} was stopped${run.result && run.result !== "stopped" ? ` (${run.result})` : ""}.`;
   if (run.status === "question") {
-    return run.questions.map((q) => `${head} (${q.sub.role.name}, t:${q.sub.ctx.threadId}) asks:\n${q.question}`).join("\n\n")
-      + `\n\nAnswer with delegate({ action: "answer", id: "${run.id}", message: … }).`;
+    return run.questions.map((q) => `${asks(q.sub, q.question)}\n${answerWith(q.sub)}`).join("\n\n");
   }
   if (run.status === "failed") return `${head} failed: ${run.result}`;
   return `${head} is still running.`;
+}
+
+/**
+ * Copies a parent's stored conversation into a fork's new thread, entry for
+ * entry, so its compaction applies as it does for the parent. The copies
+ * point at their originals and aren't indexed again (`copyEntries`). A
+ * trailing call still waiting for its results (the `delegate` call making the fork) is left out.
+ */
+export function forkConversation(store: PoolStore, from: string, to: string): void {
+  type Entry = { type?: string; message?: { role: string; content?: unknown; toolCallId?: string } };
+  const entries = store.entryPage(from, { limit: Number.MAX_SAFE_INTEGER }).entries as { n: number; data: Entry }[];
+  const answered = new Set(entries.map((e) => e.data.message?.toolCallId).filter(Boolean));
+  const waiting = ({ data: e }: { data: Entry }) => e.type === "message" && e.message?.role === "assistant" && Array.isArray(e.message.content)
+    && (e.message.content as { type: string; id?: string }[]).some((p) => p.type === "toolCall" && !answered.has(p.id));
+  while (entries.length && waiting(entries.at(-1)!)) entries.pop();
+  if (entries.length) store.copyEntries(from, to, { upTo: entries.at(-1)!.n });
 }
 
 /**

@@ -123,65 +123,72 @@ const hasColumn = (db: Db, table: string, column: string) =>
   !!db.prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = ?").get(table, column);
 const hasTable = (db: Db, table: string) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
 
+type Pair = { endpoint: string; model: string; offering: string };
+
 /**
- * Moves endpoints named by their label and their `endpoint_models` to
- * permanent IDs. Returns the old (endpoint, model) pairs and their offerings.
+ * Moves a database from endpoints named by their label, `endpoint_models`
+ * and `{ endpoint, model }` choices to permanent IDs and lists of offerings,
+ * all in one transaction, so an interrupted migration leaves the old tables
+ * as they were. `legacy` receives the old pairs and their offerings inside
+ * that transaction (self.db keeps them for users still locked); `shared`
+ * maps a pair this database doesn't hold. Returns the choices whose models
+ * no longer existed, which are dropped, for the notice.
  */
-export function migrateEndpoints(db: Db): { endpoint: string; model: string; offering: string }[] {
-  if (!hasTable(db, "endpoint_models")) return [];
-  if (!hasColumn(db, "endpoints", "down_since")) db.exec("ALTER TABLE endpoints ADD COLUMN down_since TEXT");
-  const now = new Date().toISOString();
-  const pairs: { endpoint: string; model: string; offering: string }[] = [];
+export function migrate(db: Db, o: { legacy?: (pairs: Pair[]) => void; shared?: (endpoint: string, model: string) => string | undefined } = {}): string[] {
+  const endpoints = hasTable(db, "endpoint_models");
+  const choices = hasTable(db, "model_profiles") && hasColumn(db, "model_profiles", "endpoint");
+  if (!endpoints && !choices) return [];
+  if (endpoints && !hasColumn(db, "endpoints", "down_since")) db.exec("ALTER TABLE endpoints ADD COLUMN down_since TEXT");
   db.pragma("foreign_keys = OFF");
   try {
-    db.transaction(() => {
-      const ids = new Map((db.prepare("SELECT id FROM endpoints").all() as { id: string }[]).map((r) => [r.id, randomUUID()]));
-      const insert = db.prepare("INSERT INTO offerings (id, endpoint, model, found, hand, manual, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)");
-      const rows = db.prepare("SELECT * FROM endpoint_models").all() as { endpoint: string; model: string; context_window: number | null; tools: number | null; manual: number }[];
-      for (const r of rows) {
-        const endpoint = ids.get(r.endpoint);
-        if (!endpoint) continue;
-        const facts = JSON.stringify({ ...(r.context_window ? { contextWindow: r.context_window } : {}), ...(r.tools === null ? {} : { tools: r.tools === 1 }) });
-        const offering = randomUUID();
-        insert.run(offering, endpoint, r.model, r.manual ? "{}" : facts, r.manual ? facts : "{}", r.manual, now);
-        pairs.push({ endpoint: r.endpoint, model: r.model, offering });
-      }
-      const rename = db.prepare("UPDATE endpoints SET id = ? WHERE id = ?");
-      for (const [old, fresh] of ids) rename.run(fresh, old);
-      db.exec("DROP TABLE endpoint_models");
+    return db.transaction(() => {
+      const pairs = endpoints ? moveEndpoints(db) : [];
+      o.legacy?.(pairs);
+      const own = new Map(pairs.map((p) => [`${p.endpoint}\u0000${p.model}`, p.offering]));
+      return choices ? moveChoices(db, (e, m) => own.get(`${e}\u0000${m}`) ?? o.shared?.(e, m)) : [];
     })();
   } finally {
     db.pragma("foreign_keys = ON");
   }
+}
+
+function moveEndpoints(db: Db): Pair[] {
+  const now = new Date().toISOString();
+  const pairs: Pair[] = [];
+  const ids = new Map((db.prepare("SELECT id FROM endpoints").all() as { id: string }[]).map((r) => [r.id, randomUUID()]));
+  const insert = db.prepare("INSERT INTO offerings (id, endpoint, model, found, hand, manual, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)");
+  const rows = db.prepare("SELECT * FROM endpoint_models").all() as { endpoint: string; model: string; context_window: number | null; tools: number | null; manual: number }[];
+  for (const r of rows) {
+    const endpoint = ids.get(r.endpoint);
+    if (!endpoint) continue;
+    const facts = JSON.stringify({ ...(r.context_window ? { contextWindow: r.context_window } : {}), ...(r.tools === null ? {} : { tools: r.tools === 1 }) });
+    const offering = randomUUID();
+    insert.run(offering, endpoint, r.model, r.manual ? "{}" : facts, r.manual ? facts : "{}", r.manual, now);
+    pairs.push({ endpoint: r.endpoint, model: r.model, offering });
+  }
+  const rename = db.prepare("UPDATE endpoints SET id = ? WHERE id = ?");
+  for (const [old, fresh] of ids) rename.run(fresh, old);
+  db.exec("DROP TABLE endpoint_models");
   return pairs;
 }
 
-/**
- * Moves a user's profiles and thread choices from `{ endpoint, model }`
- * columns to lists of offerings. `lookup` maps an old pair to its offering;
- * pairs it doesn't know (models that were already gone) are dropped and
- * returned, for the notice.
- */
-export function migrateChoices(db: Db, lookup: (endpoint: string, model: string) => string | undefined): string[] {
-  if (!hasTable(db, "model_profiles") || !hasColumn(db, "model_profiles", "endpoint")) return [];
+function moveChoices(db: Db, lookup: (endpoint: string, model: string) => string | undefined): string[] {
   const dropped: string[] = [];
   const entry = (endpoint: string, model: string) => {
     const offering = lookup(endpoint, model);
     if (!offering) dropped.push(`${endpoint}/${model}`);
     return offering && JSON.stringify([{ offeringId: offering }]);
   };
-  db.transaction(() => {
-    db.exec("ALTER TABLE model_profiles RENAME TO model_profiles_v1; ALTER TABLE thread_models RENAME TO thread_models_v1");
-    db.exec(MODEL_CHOICE_SCHEMA);
-    for (const r of db.prepare("SELECT * FROM model_profiles_v1").all() as { profile: string; task: string; endpoint: string; model: string }[]) {
-      const e = entry(r.endpoint, r.model);
-      if (e) db.prepare("INSERT INTO model_profiles (profile, task, entry) VALUES (?, ?, ?)").run(r.profile, r.task, e);
-    }
-    for (const r of db.prepare("SELECT * FROM thread_models_v1").all() as { pool: string; thread: string; task: string; endpoint: string; model: string }[]) {
-      const e = entry(r.endpoint, r.model);
-      if (e) db.prepare("INSERT INTO thread_models (pool, thread, task, entry) VALUES (?, ?, ?, ?)").run(r.pool, r.thread, r.task, e);
-    }
-    db.exec("DROP TABLE model_profiles_v1; DROP TABLE thread_models_v1");
-  })();
+  db.exec("ALTER TABLE model_profiles RENAME TO model_profiles_v1; ALTER TABLE thread_models RENAME TO thread_models_v1");
+  db.exec(MODEL_CHOICE_SCHEMA);
+  for (const r of db.prepare("SELECT * FROM model_profiles_v1").all() as { profile: string; task: string; endpoint: string; model: string }[]) {
+    const e = entry(r.endpoint, r.model);
+    if (e) db.prepare("INSERT INTO model_profiles (profile, task, entry) VALUES (?, ?, ?)").run(r.profile, r.task, e);
+  }
+  for (const r of db.prepare("SELECT * FROM thread_models_v1").all() as { pool: string; thread: string; task: string; endpoint: string; model: string }[]) {
+    const e = entry(r.endpoint, r.model);
+    if (e) db.prepare("INSERT INTO thread_models (pool, thread, task, entry) VALUES (?, ?, ?, ?)").run(r.pool, r.thread, r.task, e);
+  }
+  db.exec("DROP TABLE model_profiles_v1; DROP TABLE thread_models_v1");
   return dropped;
 }
