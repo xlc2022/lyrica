@@ -198,10 +198,42 @@ export class HostedThread {
   private id(n: number): string { return `${EPOCH}-${n}`; }
 
   private emit(event: ThreadEvent): void {
+    this.track(event);
     const n = ++this.n;
     this.buffer.push({ n, event });
     if (this.buffer.length > BUFFER) this.buffer.shift();
     for (const c of this.clients) c(this.id(n), event);
+  }
+
+  // --- Her message as it is written, for Read aloud ---
+
+  /** Her message being written now: its text so far (in memory only), and who is following it. */
+  private live: { text: string; done: boolean; wake: Set<() => void> } | undefined;
+
+  private track(event: ThreadEvent): void {
+    const end = () => { if (this.live) { this.live.done = true; for (const w of this.live.wake) w(); } };
+    if (event.type === "message_start") { end(); this.live = { text: "", done: false, wake: new Set() }; }
+    else if (event.type === "text" && this.live && !this.live.done) { this.live.text += event.delta; for (const w of this.live.wake) w(); }
+    else if (event.type === "turn_end" || event.type === "rewound" || event.type === "reset") { end(); this.live = undefined; }
+  }
+
+  /**
+   * Follows her message still being written: its text so far, and a wait
+   * for more. Undefined when nothing is being written.
+   */
+  following(): { text: () => string; done: () => boolean; more: (signal: AbortSignal) => Promise<void> } | undefined {
+    const live = this.live;
+    if (!live || live.done) return undefined;
+    return {
+      text: () => live.text,
+      done: () => live.done || this.closed,
+      more: (signal) => new Promise<void>((resolve) => {
+        if (live.done || signal.aborted) return resolve();
+        const wake = () => { live.wake.delete(wake); signal.removeEventListener("abort", wake); resolve(); };
+        live.wake.add(wake);
+        signal.addEventListener("abort", wake, { once: true });
+      }),
+    };
   }
 
   // --- Turns ---

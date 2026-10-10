@@ -6,7 +6,7 @@ export type Interface = "web" | "cli" | "matrix" | "forum" | "sleep";
 export const TASKS = [
   "chat", "subagent.cheap", "subagent.strong", "compaction",
   "title", "embedding", "sleep.consolidate", "sleep.dream", "sleep.wake",
-  "image.create", "image.edit",
+  "image.create", "image.edit", "speech.transcribe", "speech.speak",
 ] as const;
 export type Task = (typeof TASKS)[number];
 
@@ -32,4 +32,6 @@ export interface CallContext {
   overrides?: Partial<Record<Task, ModelRef[]>>;
   /** The thread's thinking setting. */
   thinking?: ThinkingLevel;
+  /** Voice to cloud: the user's audio may go to a cloud model. Absent is off. */
+  voiceCloud?: boolean;
 }

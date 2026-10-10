@@ -22,7 +22,7 @@ export type Interface = "web" | "cli" | "matrix" | "forum" | "sleep";
 export type Task =
   | "chat" | "subagent.cheap" | "subagent.strong" | "compaction"
   | "title" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
-  | "image.create" | "image.edit";
+  | "image.create" | "image.edit" | "speech.transcribe" | "speech.speak";
 /** The tasks a thread can choose models for. Compaction isn't one: Pi compacts with the thread's chat model. */
 export const THREAD_TASKS = ["chat", "subagent.cheap", "subagent.strong", "title"] as const satisfies readonly Task[];
 export type ThreadTask = (typeof THREAD_TASKS)[number];
@@ -161,7 +161,13 @@ export interface Capabilities {
   contextWindow?: number; tools?: boolean; vision?: boolean; embedding?: boolean; image?: boolean; edit?: boolean;
   /** The thinking levels it offers, besides off. */
   reasoning?: ("low" | "medium" | "high")[];
+  /** Speech to text (Dictation). */
+  transcribe?: boolean;
+  /** Text to speech (Read aloud): its voices, each with the language it speaks ("en", "zh"). */
+  speak?: { voices: Voice[] };
 }
+/** One of a speech model's voices, with the language it speaks: a primary tag such as "en" or "zh". */
+export interface Voice { id: string; language: string }
 
 /** One model an endpoint offers. */
 export interface OfferingInfo extends Capabilities {
@@ -262,6 +268,10 @@ export interface HostStatus {
 export interface AnswerSettings {
   temperature?: number; topP?: number; topK?: number; minP?: number; repeatPenalty?: number;
   presencePenalty?: number; frequencyPenalty?: number; maxTokens?: number; seed?: number; stop?: string[];
+  /** A speech model's voice per language tag, from its `speak.voices`: { en: "af_heart", zh: "zf_xiaobei" }. Yours for one language leaves the shared one for another. */
+  voices?: Record<string, string>;
+  /** A speech model's speed, 0.25 to 4. */
+  speed?: number;
 }
 /** GET /api/u/:userId/offerings/:offeringId/settings → OfferingSettings: each value with its source. */
 export interface OfferingSettings {
@@ -401,6 +411,8 @@ export interface Profiles {
   default: "cloud" | "custom";
   /** The thinking level threads use unless they choose. */
   thinking: ThinkingLevel;
+  /** Voice to cloud, unless a thread chooses: whether the user's audio may go to a cloud model. Off by default. */
+  voiceCloud: boolean;
 }
 /**
  * PUT /api/u/:userId/profiles/:profile/:task → Profiles. Local takes local
@@ -410,7 +422,7 @@ export interface Profiles {
  */
 export type ProfileEntryChange = { models: ModelRef[] | null } | { same: Task } | { model: ModelRef | null };
 /** PATCH /api/u/:userId/profiles → Profiles */
-export interface ProfilesChange { default?: "cloud" | "custom"; thinking?: ThinkingLevel }
+export interface ProfilesChange { default?: "cloud" | "custom"; thinking?: ThinkingLevel; voiceCloud?: boolean }
 
 /**
  * One turn's counts and times. `promptTokens` is the whole prompt of its last
@@ -442,6 +454,8 @@ export interface CallInfo {
   note?: string;
   /** The turn's counts, times and speeds (tok/s and prompt tok/s), once it ended. */
   pace?: PaceInfo;
+  /** A speech call's seconds of audio, heard or spoken. */
+  audioSeconds?: number;
 }
 /** GET /api/u/:userId/models/calls → CallInfo[], newest first. */
 
@@ -568,6 +582,10 @@ export interface ThreadSettings {
   images: boolean;
   /** "Do not log thread in memory". */
   unlogged: boolean;
+  /** Voice to cloud: the thread's choice, or null to follow the user's default. */
+  voiceCloud: boolean | null;
+  /** Whether Dictation and Read aloud can be used here now, and why not. */
+  speech: Speech;
   /** Set for a subagent or a branch: its settings are its parent's or stricter. A subagent's UI shows them read-only. */
   parent: string | null;
   /** The endpoints and models this thread may choose from (local only when restricted). */
@@ -598,7 +616,52 @@ export interface ThreadSettingsChange {
   webSearch?: boolean;
   images?: boolean;
   unlogged?: boolean;
+  /** null follows the user's default. */
+  voiceCloud?: boolean | null;
 }
+
+// --- Speech: Dictation and Read aloud ---
+
+/**
+ * Whether a speech task can be used now: the model the router would pick,
+ * or the plain reason there is none (no model set, a private thread with no
+ * local one, Voice to cloud off for a cloud one, every model down). The mic
+ * or Read aloud is disabled with `problem` as its tooltip.
+ */
+export type SpeechState = { available: true; label: string; kind: "cloud" | "local" }
+  /** reason: "none" nothing usable is set here; "voiceCloud" the model is cloud and Voice to cloud is off; "down" every model set can't be reached now. */
+  | { available: false; reason: "none" | "voiceCloud" | "down"; problem: string };
+export interface Speech { transcribe: SpeechState; speak: SpeechState; voiceCloud: boolean }
+/** GET /api/u/:userId/speech?pool= → Speech: for the welcome page, before a thread exists (the user's defaults). */
+
+/**
+ * POST /api/u/:userId/threads/:pool/:threadId/transcribe?language= → Transcription
+ * POST /api/u/:userId/transcribe?pool=&language= → Transcription (the welcome page)
+ *
+ * The body is the clip: `audio/wav`, 16 kHz mono 16-bit PCM, at most 10
+ * minutes (413 beyond). `language` ("en", "zh") is optional; without it the
+ * model detects it. Refusals, each with a plain sentence for the error line:
+ * 400 VoiceCloudOff (a cloud model and Voice to cloud off: nothing was sent),
+ * 400 CloudModelForbidden or NoModel (none set, or none allowed here), 502
+ * SpeechDown when every Dictation model set can't be reached now. The audio is
+ * never stored; call records hold the model and the seconds only.
+ */
+export interface Transcription { text: string; seconds: number; model: string }
+
+/**
+ * GET /api/u/:userId/threads/:pool/:threadId/messages/:n/speech → audio
+ * GET /api/u/:userId/threads/:pool/:threadId/messages/live/speech → audio (her message still streaming)
+ *
+ * Reads one of her messages aloud: lyricad reads it from the store (the
+ * client never sends text), skips code, tables, links and markdown, and
+ * speaks it sentence by sentence, one ahead. The body is raw PCM, signed
+ * 16-bit little-endian mono at 24 kHz (`audio/pcm;rate=24000;encoding=s16le;channels=1`),
+ * streamed as it is made; closing the connection stops it. `live` follows
+ * the message being written to its end. Before any audio, refusals are JSON
+ * as for transcribe (404 for no such message or no live message, 400 for
+ * one that isn't hers or has nothing to read). A model that fails midway
+ * ends the stream early.
+ */
 
 // --- Messages ---
 
