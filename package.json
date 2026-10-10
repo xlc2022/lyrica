@@ -2,7 +2,7 @@
   "name": "lyrica",
   "private": true,
   "type": "module",
-  "workspaces": ["core", "extension", "daemon", "web"],
+  "workspaces": ["core", "extension", "daemon", "web", "host"],
   "engines": { "node": ">=22" },
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p web",
