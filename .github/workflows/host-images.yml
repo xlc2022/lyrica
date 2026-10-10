@@ -17,9 +17,16 @@ jobs:
         vendor: [nvidia, amd]
     steps:
       - uses: actions/checkout@v4
-      # The ROCm base image alone is about 12 GB compressed.
+      # The ROCm base image alone is about 12 GB compressed: free the root disk,
+      # and keep Docker's images on the runner's larger /mnt disk.
       - name: Make room
-        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h /
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost /opt/microsoft
+          sudo systemctl stop docker docker.socket
+          sudo mkdir -p /mnt/docker
+          echo '{"data-root": "/mnt/docker"}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl start docker
+          df -h / /mnt
       - name: Build
         run: |
           base=$(sed -n 's/^ *BASE: //p' host/compose.${{ matrix.vendor }}.yaml)
