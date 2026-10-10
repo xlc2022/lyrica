@@ -317,17 +317,18 @@ scanning, usage) as the host defines them; other paths are refused, and a
 shared host needs an administrator. Serving settings go only through
 `setServingSettings`, which reads the model again after saving.
 
-`servingSettings`, `setServingSettings` and `reloadModel` read and save one
-host model's placement and serving settings and apply them now. The host
+**Serving** (the Serving tab): `servingSettings`, `setServingSettings` and
+`reloadModel` read and save one host model's placement and serving settings
+and apply them now. The host
 refuses a placement that can't work, with its reason. The context a host
 serves a model with is the offering's context window, over one set by hand
 or discovered; compaction and group fitting plan by it. `hostDashboard` gives a link to the host's dashboard, at the address
 it last answered on, and the dashboard keeps its own password away from the
 machine.
 
-## How it answers
+## Sampling
 
-Each offering can have saved settings: temperature, top-p, top-k, min-p,
+Each offering can have saved sampling settings (the Sampling tab): temperature, top-p, top-k, min-p,
 repeat, presence and frequency penalties, the longest reply, a seed and up
 to four stop strings (`core/src/models/settings.ts`).
 
