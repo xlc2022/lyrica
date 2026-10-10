@@ -95,7 +95,8 @@ Rules:
   Settings, Administration, Files, Images, Pinned, Branch, Regenerate,
   Share with, Move to group, Sampling, Serving, Placement, Memory,
   Throughput, Template, Pinned, Excluded, Servers, Keep free, Not this
-  model, Group, Add…, Reset.
+  model, Group, Add…, Reset, Dictation, Dictate, Read aloud, Stop reading,
+  Voice to cloud, Voice, Speed.
 - Numbers get units beside the field (GB, %, tokens), and a maximum shown
   where one exists ("of 128k").
 
@@ -131,6 +132,10 @@ Rules:
 | The app's version | the header, "Lyrica (ver. …, build …)" |
 | Lyrica's inner workings (recall, tools, notes) | one-line **markers** in the conversation that expand when tapped |
 | A subagent | a **card** in the conversation that expands to its work and takes messages |
+| Dictating a message | the mic in the message box's row; the box's placeholder while listening |
+| Hearing a message read aloud | her message's actions |
+| Voice to cloud | the thread's Privacy and network switches |
+| A speech model's voice and speed | its Settings drawer in Models |
 | A child thread | nested under its parent in the **sidebar**, with its state and unseen count as badges; its updates as a **card** in the parent's conversation that links to it |
 
 If your thing isn't in this table, it needs the design thread, not a new

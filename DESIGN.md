@@ -154,11 +154,9 @@ Each user has two pools of memory.
       in a grant says it deletes on the server.
     - A panel upload belongs to the thread, not to a message, so removing
       turns never deletes it.
-  - **Later: voice**, as in Claude. The message box has a mic for dictation,
-    and when it's empty a voice-conversation button sits where Send goes.
-    Her messages have **Read aloud**. The mockup shows them; nothing is
-    built yet. When they are, speech is a model task like any other, so
-    private and local-only threads use local speech models only.
+  - **Voice**, as in Claude: a mic in the message box for dictation, and
+    **Read aloud** on her messages; later, voice conversation. See
+    [Voice](#voice).
 - **Each interface keeps its own threads.** Lyrica is continuous across
   interfaces because she remembers, not because threads are mirrored. Moving a
   thread to another interface is an explicit export that copies it. Nothing
@@ -246,8 +244,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     breaks. The same mechanism **merges** two endpoints that turned out to be
     the same server.
 - **Tasks.** Different tasks use different models: chat, cheap and strong
-  subagents, titles, embeddings, each sleep phase, and creating and editing
-  images. Compaction always uses the thread's chat model (Pi has no
+  subagents, titles, embeddings, each sleep phase, creating and editing
+  images, and speech (dictation and Read aloud). Compaction always uses the thread's chat model (Pi has no
   separate setting for it), so it isn't a task to pick.
 - **Profiles.** A **control panel** sets default models per task in three
   profiles:
@@ -572,7 +570,7 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       It can write only to the `lyrica` subfolder, and has no GPU and no way
       to the other containers. `host-api` asks it to list a repository's
       files and to download one, so nothing needs the Docker socket.
-    - Only GGUF and safetensors files are accepted. Pickle formats (`.bin`,
+    - Only GGUF, safetensors and ONNX files are accepted. Pickle formats (`.bin`,
       `.pt`, `.ckpt`) can run code when they load, so they are refused. A
       model that needs `trust_remote_code` is never run.
     - Each file is checked against the checksum its hub publishes, or one
@@ -803,6 +801,55 @@ it's off.
   rendered to an image by a headless browser in her sandbox. Image models are
   poor at exact layouts and text. Storyboards suit the image models, with
   reference images keeping characters consistent.
+
+## Voice
+
+Li talks to her and hears her answer, in English and Mandarin. Speech is
+two model tasks, **Dictation** (`speech.transcribe`) and **Read aloud**
+(`speech.speak`), resolved by the router like any other task, so private and
+local-only threads use local speech models only.
+
+- **Where it runs.** `lyricad` routes each call and holds the audio only in
+  memory; it runs no models. Locally, dictation runs Whisper
+  (large-v3-turbo) on the model host's vLLM, and her voice runs in a
+  **speech** container on the host, contained like ComfyUI: our image,
+  pinned by digest, no internet, `tmpfs`, no logs. Both are pinned on the
+  always-on 3090. Cloud speech is a cloud endpoint like any other (OpenAI
+  first). The browser's own speech features are never used: Chrome sends
+  dictation to Google, which can't keep the local/cloud line.
+- **A user's voice is personal data.** Even in a general thread, audio
+  goes to a cloud model only when the **Voice to cloud** switch is on: a
+  per-user default, off unless the user turns it on, with a per-thread
+  override. `lyricad` checks it before the router is asked. Her text read
+  aloud is message text and follows the router's rules alone.
+- **Nothing is kept but text.** Audio is never written to disk or logged,
+  in `lyricad`, on the host or in the browser. What the user says becomes
+  their message's text; call records hold the model and the seconds of
+  audio, never text.
+- **Dictation.** The mic records until it is pressed again; the clip is
+  transcribed and the text goes into the box at the caret, to edit and send.
+  Escape throws the clip away. A clip is at most 10 minutes.
+- **Read aloud** on one of her messages reads it sentence by sentence as the
+  audio arrives, skipping code, tables and links. Stop reading, the mic,
+  sending, another Read aloud or leaving the thread stops it; only one thing
+  plays at a time.
+- **Her voice.** Each speech model's copy offers voices; the voice for each
+  language and the speed are per-copy settings. An administrator sets the
+  shared voice and each user can choose their own. Cloning a voice from a
+  recording is out of scope.
+- **Later: voice conversation.** A state of the message box in any thread,
+  never a kind of thread and never saved. The wave button in the empty box
+  turns it on; End or Escape turns it off, and so do switching threads,
+  leaving the page or locking a phone. Mute stops the mic and stays in it.
+  - The box keeps its shape: placeholder "Listening…", and Mute, End and
+    the elapsed time in the row beneath, in place of "+" and the mode word.
+  - Typing pauses listening; a typed message is a normal turn, and her
+    reply is still spoken. A spoken message is stored as its text with a
+    `spoken` flag.
+  - While it is on, her turn context says the user is listening, so she
+    answers in speakable sentences. Speaking over her stops her turn as
+    Stop does, and what was said becomes the next turn.
+  - Reading every reply aloud happens only here, never as a setting.
 
 ## Storage, encryption and unlocking
 
