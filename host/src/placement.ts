@@ -121,6 +121,20 @@ export function options(model: TextModel, s: ModelSettings, gpus: Gpu[], setting
 /** Why an option can never fit, even with its GPUs empty; null if it can. */
 export function neverFits(model: TextModel, s: ModelSettings, o: Option, gpus: Gpu[], settings: (i: number) => GpuSettings): string | null {
   const gb = (n: number) => (n / GIB).toFixed(1);
+  if (serverOf(model) === "vllm") {
+    // vLLM must fit the weights and the KV cache for its context inside its share of each GPU.
+    const { weights, kv } = sizes(model, s);
+    for (const i of o.gpus) {
+      const g = gpus.find((x) => x.index === i)!;
+      const share = o.share! * g.total;
+      if (weights / o.gpus.length + OVERHEAD > share) {
+        return `This model's weights need about ${gb(weights / o.gpus.length + OVERHEAD)} GB on GPU ${i}, more than vLLM's share of ${gb(share)} GB; raise the memory share or use more GPUs.`;
+      }
+      if ((weights + kv) / o.gpus.length + OVERHEAD > share) {
+        return `A context of ${contextOf(model, s)} tokens needs about ${gb((weights + kv) / o.gpus.length + OVERHEAD - share)} GB more than vLLM's share of GPU ${i}; lower the context length.`;
+      }
+    }
+  }
   for (const i of o.gpus) {
     const g = gpus.find((x) => x.index === i)!;
     const has = room(g, settings(i));
@@ -161,6 +175,10 @@ export function validate(model: TextModel, body: Record<string, unknown>, gpus: 
   }
   oneOf(body.kvCacheType, ["f16", "q8_0", "q4_0"], "kvCacheType");
   oneOf(body.flashAttention, ["auto", "on", "off"], "flashAttention");
+  // llama.cpp needs flash attention for a quantized V cache.
+  if ((body.kvCacheType === "q8_0" || body.kvCacheType === "q4_0") && body.flashAttention !== "on") {
+    throw invalid("A q8_0 or q4_0 KV cache needs flashAttention set to on.");
+  }
   int(body.gpuLayers, 0, 999, "gpuLayers");
   int(body.parallel, 1, 64, "parallel");
   int(body.batchSize, 32, 65536, "batchSize");
@@ -189,8 +207,8 @@ export function validate(model: TextModel, body: Record<string, unknown>, gpus: 
     }
     if (p.split !== undefined) {
       if (server !== "llamacpp") throw invalid("split is for llama.cpp; vLLM splits evenly.");
-      if (!Array.isArray(p.split) || p.split.length !== chosen.length || p.split.some((r) => typeof r !== "number" || r <= 0)) {
-        throw invalid("split must give a positive ratio for each GPU.");
+      if (!Array.isArray(p.split) || p.split.length !== chosen.length || p.split.some((r) => typeof r !== "number" || !Number.isFinite(r) || r < 0.01 || r > 1000)) {
+        throw invalid("split must give a ratio from 0.01 to 1000 for each GPU.");
       }
     }
     if (p.parallel !== undefined) {

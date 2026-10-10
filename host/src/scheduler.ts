@@ -262,11 +262,17 @@ export class Scheduler {
       const gpu = this.gpus.find((x) => x.index === g)!;
       return gpu.total - gpu.used - this.gpuSettings(g).keepFree;
     };
-    let waitFor: number[] | null = null;
-    for (const o of opts) {
-      if (o.gpus.some((g) => held.has(g))) continue;
+    const deficitOf = (o: Option) => {
       const need = this.needOf(model, o);
-      const deficit = (evicted: Set<Loaded>) => o.gpus.some((g) => need[g]! > free(g) + [...evicted].reduce((n, l) => n + (l.vram[g] ?? 0), 0));
+      return (evicted: Set<Loaded>) => o.gpus.some((g) => need[g]! > free(g) + [...evicted].reduce((n, l) => n + (l.vram[g] ?? 0), 0));
+    };
+    const usable = opts.filter((o) => !o.gpus.some((g) => held.has(g)));
+    // A way that needs no unloading beats one that does, whatever its order.
+    const roomy = usable.find((o) => !deficitOf(o)(new Set()));
+    if (roomy) return { option: roomy, evict: [] };
+    let waitFor: number[] | null = null;
+    for (const o of usable) {
+      const deficit = deficitOf(o);
       const idle = [...new Set(o.gpus.flatMap(loadedOn))].filter((l) => l.ready && l.active === 0 && !this.pinned(l.model.id)).sort((a, b) => a.lastUsed - b.lastUsed);
       const evict = new Set<Loaded>();
       for (const l of idle) {
@@ -279,7 +285,8 @@ export class Scheduler {
       if (!deficit(all) && !waitFor) waitFor = o.gpus;
     }
     if (waitFor) return { wait: waitFor };
-    if (opts.every((o) => o.gpus.some((g) => held.has(g)))) return { wait: [] };
+    // Every way is on GPUs held for others: wait for those, so it's counted in their queues.
+    if (!usable.length) return { wait: [...new Set(opts.flatMap((o) => o.gpus))] };
     // It can never fit: say why, for the first way it could have run.
     const o = opts[0]!;
     const reason = neverFits(model, s, o, this.gpus, (i) => this.gpuSettings(i));
@@ -397,6 +404,8 @@ export class Scheduler {
   saveSettings(model: TextModel, s: ModelSettings): void {
     this.o.state.update((st) => {
       st.models[model.id] = s;
+      // Context, KV type, layers and batch change what it takes: measure again.
+      for (const k of Object.keys(st.vram)) if (k.startsWith(`${model.id}@`)) delete st.vram[k];
     });
   }
 

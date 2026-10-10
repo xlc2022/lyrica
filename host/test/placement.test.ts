@@ -36,6 +36,22 @@ describe("placements, as they are saved", () => {
     expect(() => validate(vllm, { placement: { mode: "gpus", gpus: [0, 2], parallel: "pipeline" } }, gpus, all)).not.toThrow();
   });
 
+  it("refuses a vLLM context that doesn't fit in its memory share", () => {
+    const one = { mode: "gpus", gpus: [0] };
+    expect(() => validate(vllm, { placement: one, memoryShare: 0.5 }, gpus, all)).toThrow(/weights need about .* more than vLLM's share of 12\.0 GB; raise the memory share/);
+    // 20 GB of weights fit in 95% of 24 GB; 128k of KV cache beside them doesn't.
+    expect(() => validate(vllm, { placement: one, memoryShare: 0.95, contextLength: 8192 }, gpus, all)).not.toThrow();
+    expect(() => validate(vllm, { placement: one, memoryShare: 0.95, contextLength: 131072 }, gpus, all)).toThrow(/A context of 131072 tokens needs about .* GB more than vLLM's share of GPU 0; lower the context length\./);
+  });
+
+  it("bounds split ratios, and needs flash attention for a quantized KV cache", () => {
+    for (const split of [[1e400, 1], [0, 1], [0.001, 1], [1, -1]]) {
+      expect(() => validate(llama, { placement: { mode: "gpus", gpus: [0, 1], split } }, gpus, all)).toThrow("split must give a ratio from 0.01 to 1000");
+    }
+    expect(() => validate(llama, { placement: { mode: "auto" }, kvCacheType: "q8_0" }, gpus, all)).toThrow("needs flashAttention set to on");
+    expect(() => validate(llama, { placement: { mode: "auto" }, kvCacheType: "q4_0", flashAttention: "on" }, gpus, all)).not.toThrow();
+  });
+
   it("refuses settings for the other server, and unknown ones", () => {
     expect(() => validate(vllm, { placement: { mode: "auto" }, gpuLayers: 40 }, gpus, all)).toThrow("gpuLayers is for llama.cpp models.");
     expect(() => validate(llama, { placement: { mode: "auto" }, memoryShare: 0.5 }, gpus, all)).toThrow("memoryShare is for vLLM models.");

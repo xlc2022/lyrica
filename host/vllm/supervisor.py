@@ -13,6 +13,8 @@ import sys
 import time
 
 STATE = os.environ.get("VLLM_STATE", "/serving/vllm.json")
+# What failed to start, for host-api: it stops waiting on a load that crashed.
+STATUS = os.environ.get("VLLM_STATUS", "/status/vllm.json")
 COMMAND = os.environ.get("VLLM_COMMAND", "vllm").split()
 
 
@@ -69,6 +71,17 @@ def stop(proc):
         pass
 
 
+def report(failed):
+    """Writes {name: {"attempt", "exitCode", "crashes"}} for servers that exited."""
+    try:
+        tmp = STATUS + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"failed": failed}, f)
+        os.replace(tmp, STATUS)
+    except OSError:
+        pass
+
+
 def wanted():
     try:
         with open(STATE) as f:
@@ -81,7 +94,9 @@ def wanted():
 def main():
     running = {}  # model name -> (spec, process, started)
     failures = {}  # model name -> crashes in a row, for the backoff
+    failed = {}  # model name -> what host-api is told about its last exit
     generation = None
+    report(failed)
     stopping = []
     signal.signal(signal.SIGTERM, lambda *_: stopping.append(True))
     while not stopping:
@@ -94,17 +109,25 @@ def main():
                     stop(proc)
                     del running[name]
             generation = gen
+            before = dict(failed)
+            for name in list(failed):
+                if name not in running and name not in servers:
+                    del failed[name]
             for name, spec in servers.items():
                 current = running.get(name)
                 if current is None:
                     failures.pop(name, None)
+                    failed.pop(name, None)
                     running[name] = (spec, start(spec), time.time())
                 elif current[1].poll() is not None:
+                    failed[name] = {"attempt": spec.get("attempt"), "exitCode": current[1].returncode, "crashes": failures.get(name, 0) + 1}
                     # Restart a crashed server, waiting longer each time: 10 s, 20 s, ... up to 5 minutes.
                     wait = min(10 * 2 ** failures.get(name, 0), 300)
                     if time.time() - current[2] > wait:
                         failures[name] = failures.get(name, 0) + 1
                         running[name] = (spec, start(spec), time.time())
+            if failed != before:
+                report(failed)
         time.sleep(1)
     for _, proc, _ in running.values():
         stop(proc)

@@ -43,4 +43,26 @@ describe.skipIf(!python)("the vLLM supervisor", () => {
       await new Promise((r) => proc.once("exit", r));
     }
   });
+
+  it("reports a server that exited, with the attempt it was started for", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-vllm-"));
+    const fake = join(dir, "fake-vllm");
+    writeFileSync(fake, "#!/bin/sh\nexit 3\n");
+    chmodSync(fake, 0o755);
+    const state = join(dir, "vllm.json");
+    const status = join(dir, "status.json");
+    writeFileSync(state, JSON.stringify({ generation: 0, servers: { a: { model: "/models/a", name: "a", attempt: "x1", port: 8000, gpus: [0] } } }));
+    const proc = spawn("python3", [SUPERVISOR], { env: { ...process.env, VLLM_STATE: state, VLLM_STATUS: status, VLLM_COMMAND: fake }, stdio: "ignore" });
+    try {
+      const read = () => (existsSync(status) ? JSON.parse(readFileSync(status, "utf8")) : {});
+      await until(() => read().failed?.a !== undefined);
+      expect(read().failed.a).toMatchObject({ attempt: "x1", exitCode: 3 });
+      // Taken out of the state file, it is no longer reported.
+      writeFileSync(state, JSON.stringify({ generation: 0, servers: {} }));
+      await until(() => read().failed && read().failed.a === undefined);
+    } finally {
+      proc.kill("SIGTERM");
+      await new Promise((r) => proc.once("exit", r));
+    }
+  });
 });

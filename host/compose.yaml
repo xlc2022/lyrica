@@ -35,6 +35,8 @@ volumes:
   fetch-data: {}
   # host-api writes the model servers' wanted state here; they read it.
   serving: {}
+  # The vLLM supervisor's report of servers that exited; host-api reads it.
+  vllm-status: {}
 
 services:
   host-api:
@@ -57,6 +59,7 @@ services:
     volumes:
       - data:/data
       - serving:/serving
+      - vllm-status:/vllm-status:ro
       - ${MODELS_DIR}:/models:ro
     healthcheck:
       test: ["CMD", "node", "-e", "require('fs').accessSync('/serving/llamacpp.ini')"]

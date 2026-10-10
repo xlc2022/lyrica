@@ -99,6 +99,24 @@ describe("the GPU queue", () => {
     expect(state.get().vram["m@0"]).toEqual({ 0: Math.round(10 * GIB * 1.05) + GIB / 2 + GIB / 2 });
   });
 
+  it("measures again after a model's settings change", async () => {
+    const { scheduler, state } = setup([24]);
+    await scheduler.start([]);
+    const m = textModel("m", 10);
+    await scheduler.loadNow(m);
+    expect(state.get().vram["m@0"]).toBeDefined();
+    scheduler.saveSettings(m, { placement: { mode: "auto" }, contextLength: 16384 });
+    expect(state.get().vram["m@0"]).toBeUndefined();
+  });
+
+  it("on Auto, uses a GPU with room before unloading anything from a bigger one", async () => {
+    const { scheduler, llamacpp } = setup([48, 24]);
+    await scheduler.start([]);
+    await scheduler.loadNow(textModel("big", 40));
+    await scheduler.run(textModel("small", 8), "chat", async () => {});
+    expect(llamacpp.calls).toEqual(["load big@0", "load small@1"]);
+  });
+
   it("runs two vLLM models side by side on one GPU, within their memory shares", async () => {
     const { scheduler, vllm, state } = setup([80, 24]);
     await scheduler.start([]);

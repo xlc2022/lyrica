@@ -192,7 +192,10 @@ export class Runtime {
       const servers = body.servers ?? SERVERS;
       if (!Array.isArray(servers) || servers.some((x) => !SERVERS.includes(x as Server))) throw invalid(`servers lists any of ${SERVERS.join(", ")}.`);
       const keepFree = body.keepFree ?? 512 * 1024 * 1024;
-      if (typeof keepFree !== "number" || keepFree < 0) throw invalid("keepFree is bytes, 0 or more.");
+      const total = s.knownGpus.find((g) => g.index === Number(gpu[1]))?.total ?? Infinity;
+      if (typeof keepFree !== "number" || !Number.isFinite(keepFree) || keepFree < 0 || keepFree >= total) {
+        throw invalid("keepFree is bytes, from 0 to less than the GPU's memory.");
+      }
       if (body.excluded !== undefined && typeof body.excluded !== "boolean") throw invalid("excluded is true or false.");
       await s.setGpu(Number(gpu[1]), { servers: [...new Set(servers as Server[])], keepFree, excluded: body.excluded === true });
       sendJson(res, 200, { settings: s.gpuSettings(Number(gpu[1])) });

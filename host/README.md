@@ -131,8 +131,8 @@ revoked. A revoked server must pair again.
     whose config asks for remote code is listed but never loaded.
 - **Each model has a placement** and serving settings, set on the dashboard
   or through the API:
-  - Auto (the default): one GPU with room, else split over every GPU that
-    allows its server.
+  - Auto (the default): one GPU with room, preferring one where nothing
+    must be unloaded, else split over every GPU that allows its server.
   - Or chosen GPUs: one, or several, split by ratio (llama.cpp) or by
     tensor or pipeline parallel (vLLM).
   - Its context length (32k by default), KV-cache type, flash attention, GPU
@@ -153,7 +153,8 @@ revoked. A revoked server must pair again.
   then background work. A request that waits too long fails with "The GPU
   is busy with …".
 - **VRAM** use is measured per GPU on each model's first load with a
-  placement (an image recipe's on its first job), and remembered.
+  placement (an image recipe's on its first job), and remembered until its
+  settings change.
 - **Pause** refuses new work, lets the current job finish, then unloads
   every model and stops vLLM, so nothing of the host's stays in VRAM. What
   couldn't be unloaded shows on the dashboard. Until Resume, new work gets
@@ -178,7 +179,9 @@ revoked. A revoked server must pair again.
     its API.
   - vLLM runs under `vllm/supervisor.py`, which starts one server per vLLM
     model on its GPUs as host-api asks in a file, in its own process group, with a growing
-    wait between restarts of one that crashes.
+    wait between restarts of one that crashes. It reports servers that
+    exited in the `vllm-status` volume, so a load that can't start fails at
+    once.
   - host-api reads VRAM with `nvidia-smi`, through NVIDIA's `utility`
     capability, or from AMD's sysfs.
 - `fetch` (`src/fetch/`) does the downloads. It is the same image as

@@ -159,7 +159,8 @@ the model server cuts short is cut short too.
   - `state`: `unloaded`, `loading` or `loaded`; `gpus` lists where it is
     loaded.
   - `vram`: bytes measured on each GPU, per placement it has been loaded
-    with (keyed like `0`, `0+1:1,1` or `2@0.4`).
+    with (keyed like `0`, `0+1:1,1` or `2@0.4`). Saving its settings
+    forgets these, and it is measured again at its next load.
 - `POST /host/v1/scan`: reads the models folder again (text models and image
   parts). Returns `{ "models": 12, "parts": 30, "proposals": 2 }`. The host
   also scans at start and after each download.
@@ -204,21 +205,27 @@ volume. They apply at its next load, or at once with Reload.
 ```
 
 - `placement`:
-  - `{ "mode": "auto" }`, the default: one GPU that has room (the largest
-    first), else split over every GPU that allows its server.
+  - `{ "mode": "auto" }`, the default: one GPU that has room without
+    unloading anything (the largest first), else one where idle models can
+    be unloaded, else split over every GPU that allows its server.
   - `{ "mode": "gpus", "gpus": [...] }`: these GPUs. For llama.cpp, several
-    GPUs split by `split` ratios (default: each GPU's memory less what it
-    keeps free). For vLLM, `"parallel": "tensor"` (matching GPUs, two, four
+    GPUs split by `split` ratios, each 0.01 to 1000 (default: each GPU's
+    memory less what it keeps free). For vLLM, `"parallel": "tensor"` (matching GPUs, two, four
     or eight) or `"pipeline"`; by default tensor where the GPUs match, else
     pipeline.
 - `contextLength`: 512 up to what the model was trained for; 32768 by
   default.
 - llama.cpp only: `kvCacheType` (`f16`, `q8_0`, `q4_0`), `flashAttention`
   (`auto`, `on`, `off`), `gpuLayers` (0 to 999), `parallel` (requests
-  served at once, 1 to 64).
+  served at once, 1 to 64). A `q8_0` or `q4_0` KV cache needs
+  `flashAttention` set to `on`.
 - vLLM only: `memoryShare` (0.05 to 0.95 of each of its GPUs; by default
   what the model needs, in steps of 5%, so several vLLM models can share a
   GPU), `maxSeqs` (1 to 1024), `dtype` (`auto`, `bfloat16`, `float16`).
+  The weights and the KV cache for the context must fit in the share of
+  each GPU (`too_big` otherwise, saying to lower the context length or
+  raise the share). A vLLM server that exits while starting fails its load
+  at once (`unavailable`), rather than after the load timeout.
 - Both: `batchSize` (32 to 65536: llama.cpp's batch size, vLLM's batched
   tokens), `chatTemplate` (a Jinja template, at most 64 kB, used instead of
   the model's own).
@@ -231,6 +238,7 @@ volume. They apply at its next load, or at once with Reload.
   what the GPU may run, the bytes it always keeps free, or that it is left
   out entirely (a GPU kept for the display, for example). Every field is
   optional; the defaults are all servers, 512 MiB, and not left out.
+  `keepFree` must be less than the GPU's memory.
   Models it may no longer hold are unloaded first (`in_use` while a request
   runs on one). Answers `{ "settings": { ... } }`.
 - A GPU can hold several models of any mix. A model split over several GPUs

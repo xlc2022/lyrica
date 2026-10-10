@@ -44,12 +44,15 @@ export class StateFile {
 
   constructor(dir: string) {
     this.path = join(dir, "state.json");
-    this.state = existsSync(this.path) ? { ...EMPTY, ...JSON.parse(readFileSync(this.path, "utf8")) } : structuredClone(EMPTY);
+    const stored = existsSync(this.path) ? readFileSync(this.path, "utf8") : null;
+    this.state = stored ? { ...EMPTY, ...JSON.parse(stored) } : structuredClone(EMPTY);
     if (!this.state.usageSince) this.state.usageSince = new Date().toISOString();
     // From before placements: pins named a GPU, and VRAM was one number per model.
     this.state.pins = this.state.pins.map((p) => (typeof p === "string" ? p : (p as { model: string }).model));
     for (const [k, v] of Object.entries(this.state.vram)) if (typeof v === "number" || !k.includes("@")) delete this.state.vram[k];
     delete (this.state as { roles?: unknown }).roles;
+    // Written back once, so the file on disk is in today's shape.
+    if (stored !== null && JSON.stringify(JSON.parse(stored)) !== JSON.stringify(this.state)) this.update(() => {});
   }
 
   get(): Readonly<HostState> {

@@ -91,7 +91,16 @@ function renderGpus(gpus) {
     out.onchange = () => put({ excluded: out.checked });
     const outLabel = document.createElement("label");
     outLabel.append(out, " left out ");
-    head.append(outLabel, ` keeps ${gib(g.settings.keepFree)} free`);
+    const keep = document.createElement("input");
+    keep.type = "number";
+    keep.min = "0";
+    keep.step = "0.5";
+    keep.style.width = "5em";
+    keep.value = (g.settings.keepFree / 1024 ** 3).toFixed(1);
+    keep.onchange = () => put({ keepFree: Math.round(Number(keep.value) * 1024 ** 3) });
+    const keepLabel = document.createElement("label");
+    keepLabel.append(" keep ", keep, " GiB free");
+    head.append(outLabel, keepLabel);
     div.append(head);
     const list = document.createElement("ul");
     for (const m of g.models) {
