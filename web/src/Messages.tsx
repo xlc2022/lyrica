@@ -78,14 +78,14 @@ interface Env {
 
 function StoredMessage({ m, env, you }: { m: Message; env: Env; you: string }) {
   if (m.role === "user") {
-    if (m.from?.kind === "parent") return <FromParent text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} parent={m.from.threadId} env={env} />;
+    if (m.from?.kind === "parent") return <FromParent text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} parent={m.from.threadId} env={env} n={m.n} />;
     const who = m.from?.kind === "lyrica" ? "Lyrica" : m.from?.kind === "user" ? (m.from.name || you) : you;
     return <UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} />;
   }
   if (m.role === "notice") {
     return <>{m.parts.map((p, i) => (p.type === "delegation"
       ? <Notice key={i} text={p.text} status={p.status} threads={p.threads} env={env} />
-      : <Notice key={i} text={p.type === "text" ? p.text : ""} env={env} />))}</>;
+      : <Notice key={i} text={p.type === "text" ? p.text : p.type === "compacted" ? compactedLabel(p) : ""} env={env} />))}</>;
   }
   return (
     <>
@@ -229,10 +229,14 @@ function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" 
 }
 
 /** In a child thread, what its parent thread sent: its task, or a message. */
-function FromParent({ text, parent, env }: { text: string; parent: string; env: Env }) {
+function FromParent({ text, parent, env, n }: { text: string; parent: string; env: Env; n?: number }) {
   return (
     <div className="msg user">
-      <div className="who">Lyrica, from <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: parent })}>the parent thread</a></div>
+      <div className="who">
+        Lyrica, from <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: parent })}>the parent thread</a>
+        {/* Branch and delete, as any message; it isn't hers to edit. */}
+        {env.rewinder && n !== undefined && <MessageMenu n={n} role="user" rewinder={env.rewinder} />}
+      </div>
       <div className="body">{text}</div>
     </div>
   );
@@ -371,4 +375,10 @@ function useCountdown(iso: string) {
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
   const s = Math.max(0, Math.round((Date.parse(iso) - now) / 1000));
   return s > 0 ? `Denied in ${s >= 60 ? `${Math.floor(s / 60)} min ` : ""}${s % 60} s if nobody answers` : "Denying…";
+}
+
+const tokens = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
+/** A compaction as one line until the Web UI 2 thread's marker, which expands to the summary. */
+function compactedLabel(p: { before: number; after?: number }): string {
+  return `Compacted · ${tokens(p.before)}${p.after !== undefined ? ` → ${tokens(p.after)}` : ""}`;
 }

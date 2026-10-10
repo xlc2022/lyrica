@@ -186,7 +186,8 @@ profile, and outside Custom they keep to one kind.
 `same` names a task of the same kind (text, embeddings, images) that doesn't
 itself follow another, so it is one level deep. A profile's first entry
 brings the defaults: titles and compaction follow cheap subagents, and the
-sleep phases follow strong subagents. A task with no list follows chat,
+sleep phases follow strong subagents. The compaction entry is stored but
+unused, since compaction uses the thread's chat model. A task with no list follows chat,
 except embeddings and the image tasks.
 
 Profiles used to be cloud and local, with local models allowed in the cloud
@@ -241,14 +242,27 @@ thread, task, the answering model's ID with its label, endpoint and kind,
 the fallback taken and why, and a note such as a model that couldn't think.
 Never prompt text. The latest 500 per user are kept.
 
+Once a turn ends, `recordPace` adds its counts and times to the record
+(`pace`): the last request's prompt tokens (the context used), output tokens,
+the window, time to first token and generation time, and the prompt tokens
+the server actually read rather than took from its cache. From those come
+tokens per second and prompt tokens per second (`speeds`; left out when a
+time is under 50 ms). `speedsByOffering` gives each copy's median speeds over
+the user's last twenty measured calls; the text library shows them on each
+copy (`speed`). Counts and times only, so a "Do not log" thread records them
+too. Nothing acts on speed yet.
+
 ## Thinking
 
 Offerings carry `reasoning`, the levels they offer besides off: discovered
 from OpenRouter's `supported_parameters`, or set by hand. Threads have a
 thinking setting (off, low, medium, high, `setThinking`) with a per-user
 default (`setDefaultThinking`, off unless set). `thinkingFor` maps it to
-what the model offers: the nearest level it has, or off with a note when it
-can't think. Pi passes it as `reasoning_effort` to OpenAI-compatible
+what the model offers: the nearest level it has, with a note, or off with a
+note when it can't think. A model host's model with one level (a thinking
+switch in its chat template) simply runs at it, with no note, whatever level
+was asked; on a plain endpoint, a single level is the nearest level, with the
+note. Pi passes it as `reasoning_effort` to OpenAI-compatible
 endpoints. Subagent roles keep their own level. Thinking text is stored with
 the thread but never made searchable.
 
@@ -370,8 +384,14 @@ API `openai-completions` holding its offerings.
 - Local endpoints are sent `system` rather than `developer`, and `max_tokens`
   rather than `max_completion_tokens`. LM Studio, KoboldCpp and llama-server
   don't all accept the newer fields.
-- Pi compacts with the session's own model, so in practice the `compaction`
-  task is the chat model.
+- Compaction uses the thread's chat model: Pi summarises with the session's
+  own model. A stored profile may still name a `compaction` list; it's
+  accepted and unused, and the pickers don't offer it.
+- `openThreadSession` sets Pi's compaction per model: a reserve of 8% of the
+  window (1,024 to 16,384 tokens), so Pi compacts on its own once used plus
+  reserve reaches the window, and Lyrica's two lines start 17 and 2 points
+  before that edge (at most 75% and 90%); and a kept tail of a quarter of the window (at
+  most 20,000). A caller's own compaction settings win.
 
 `openThreadSession` hosts one thread with that runtime and its chat model.
 

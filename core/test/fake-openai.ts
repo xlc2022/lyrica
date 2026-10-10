@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach } from "vitest";
 
 /** What the fake answers to one chat request: text, a tool call, or an HTTP error. */
-export type Reply = { text: string } | { tools: { name: string; args: unknown; id?: string }[] } | { status: number };
+export type Reply = { text: string; slowMs?: number } | { tools: { name: string; args: unknown; id?: string }[] } | { status: number };
 /** Picks the reply from the request, and may take its time. */
 export type Responder = (chat: ChatRequest) => Reply | Promise<Reply>;
 
@@ -45,9 +45,17 @@ export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; lab
       const finish = "text" in reply ? "stop" : "tool_calls";
       res.writeHead(200, { "content-type": "text/event-stream" });
       const send = (o: unknown) => res.write(`data: ${JSON.stringify(o)}\n\n`);
-      send({ ...base, choices: [{ index: 0, delta, finish_reason: null }] });
+      if ("text" in reply && reply.slowMs) {
+        // A model that takes its time: the first word, a pause, then the rest.
+        const [head, ...rest] = reply.text.split(" ");
+        send({ ...base, choices: [{ index: 0, delta: { role: "assistant", content: head }, finish_reason: null }] });
+        await new Promise((r) => setTimeout(r, reply.slowMs));
+        send({ ...base, choices: [{ index: 0, delta: { content: rest.length ? ` ${rest.join(" ")}` : "" }, finish_reason: null }] });
+      } else send({ ...base, choices: [{ index: 0, delta, finish_reason: null }] });
       send({ ...base, choices: [{ index: 0, delta: {}, finish_reason: finish }] });
-      send({ ...base, choices: [], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } });
+      // About a token per four characters of the request, as a real server would count it.
+      const prompt = Math.ceil(body.length / 4);
+      send({ ...base, choices: [], usage: { prompt_tokens: prompt, completion_tokens: 5, total_tokens: prompt + 5 } });
       res.end("data: [DONE]\n\n");
     });
   });

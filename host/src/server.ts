@@ -213,6 +213,8 @@ export class Host {
       version: this.opts.version,
       fingerprint: this.identity.fingerprint,
       state: this.runtime?.scheduler.runState ?? (this.state.get().paused ? "paused" : "running"),
+      backend: this.runtime?.scheduler.gpuBackend ?? null,
+      servers: this.runtime?.scheduler.servers ?? [],
       gpus: (await this.runtime?.scheduler.status()) ?? [],
       problems: this.runtime?.scheduler.problems ?? [],
       downloads: { active: this.downloads?.active ?? 0 },

@@ -4,7 +4,7 @@ import {
   CloudModelForbidden, NoModel, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  createDelegateExtension, createLyricaExtension, createThreadsExtension, createWorkspaceExtension, DELEGATE_MESSAGE, OPENING, openThreadSession, piModelFor,
+  ContextMeter, createDelegateExtension, createLyricaExtension, createThreadsExtension, createWorkspaceExtension, DELEGATE_MESSAGE, FROM_PARENT, fromParent, OPENING, openThreadSession, piModelFor,
   type ApprovalRequest, type ChildStatus, type ThreadsHost, type Delegation, type DelegationEvent, type SubagentApproval, type ThreadContext,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
@@ -45,7 +45,7 @@ type Outcome = "answered" | "timeout" | "stopped";
 // "terminated" is a reply cut off mid-stream when its connection dropped.
 const UNREACHABLE = /ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|fetch failed|socket hang up|connect|^terminated$|other side closed/i;
 
-interface Opened { session: AgentSession; view: PoolView; dispose(): void; title(): Promise<string | undefined>; prepare(opts?: { retry?: boolean }): Promise<unknown> }
+interface Opened { session: AgentSession; view: PoolView; meter: ContextMeter; dispose(): void; title(): Promise<string | undefined>; prepare(opts?: { retry?: boolean }): Promise<unknown> }
 
 /** The threads lyricad hosts, keyed by user, pool and thread. A record is light; its Pi session opens on first use. */
 export class ThreadHost {
@@ -124,6 +124,11 @@ export class ThreadHost {
     return this.threads.get(`${userId}/${pool}/${threadId}`)?.busy ?? false;
   }
 
+  /** A hosted thread's context now, if its session is open. */
+  context(userId: string, pool: Pool, threadId: string): Api.ContextInfo | undefined {
+    return this.threads.get(`${userId}/${pool}/${threadId}`)?.context();
+  }
+
   /** Stops and drops every thread of the user (Lock), or of everyone. */
   async close(userId?: string): Promise<void> {
     const mine = [...this.threads].filter(([k]) => !userId || k.startsWith(`${userId}/`));
@@ -198,9 +203,19 @@ export class HostedThread {
 
   // --- Turns ---
 
-  /** Starts a turn, or queues the message while one runs. Throws, with the reason, if the session can't open. */
-  async send(text: string): Promise<{ queued: boolean }> {
+  /**
+   * Starts a turn, or queues the message while one runs. Throws, with the
+   * reason, if the session can't open. Only a child's parent sends with
+   * `fromParent`: anyone else's text can't carry the line that marks it.
+   */
+  async send(text: string, opts: { fromParent?: string } = {}): Promise<{ queued: boolean }> {
     if (!text.trim()) throw new Error("the message is empty");
+    if (FROM_PARENT.test(text)) throw new MarkedText("a message can't start with a [From t:…] line");
+    return this.post(opts.fromParent ? `${fromParent(opts.fromParent)}${text}` : text);
+  }
+
+  /** The text as it goes to the session, its marks already checked. */
+  private async post(text: string): Promise<{ queued: boolean }> {
     if (this.busy) {
       this.queued.push(text);
       this.emit({ type: "queue", queued: [...this.queued] });
@@ -215,9 +230,14 @@ export class HostedThread {
       this.emit({ type: "error", message });
       throw new Error(message);
     }
-    void this.run(text);
+    this.running = this.run(text);
     return { queued: false };
   }
+
+  private running: Promise<void> = Promise.resolve();
+
+  /** Resolves when the running turn, and the messages queued behind it, are done. */
+  settled(): Promise<void> { return this.running; }
 
   /** Waiting for an answer to a permission request. */
   get waiting(): boolean { return this.pending.size > 0; }
@@ -232,8 +252,11 @@ export class HostedThread {
         await this.retrying;
         await opened.prepare();
         this.emit({ type: "turn_start" });
+        // A compaction belongs to the turn that asked for it, even one that failed.
+        opened.meter.pending = undefined;
         await opened.session.prompt(next);
         aborted = this.aborted;
+        await this.afterTurn(opened, aborted);
         this.emit({ type: "turn_end", aborted });
         this.aborted = false;
         void this.maybeTitle(opened);
@@ -255,6 +278,37 @@ export class HostedThread {
   }
 
   private aborted = false;
+
+  /** The thread's context now, from its open session. */
+  context(): Api.ContextInfo | undefined {
+    return this.opened?.meter.report();
+  }
+
+  /**
+   * After a turn: its counts and times go on the call record (never text, so
+   * a "Do not log" thread records them too), a compaction she asked for runs
+   * unless the turn was stopped, and the stream gets the context as it now stands.
+   */
+  private async afterTurn(opened: Opened, aborted: boolean): Promise<void> {
+    const pace = opened.meter.takePace();
+    if (pace) this.o.models.recordPace(this.userId, this.threadId, pace);
+    const asked = opened.meter.pending;
+    opened.meter.pending = undefined;
+    // Stop means stop: a stopped turn's compaction is dropped.
+    if (asked && !aborted) {
+      opened.meter.running = asked;
+      try {
+        // With her summary, session_before_compact hands it to Pi; without, Pi writes one with her notes.
+        await opened.session.compact(asked.summary ? undefined : asked.notes || undefined);
+      } catch (err) {
+        this.emit({ type: "error", message: `The thread couldn't compact: ${plainError((err as Error).message)}` });
+      } finally {
+        opened.meter.running = undefined;
+      }
+    }
+    const context = opened.meter.report();
+    if (context) this.emit({ type: "context", context });
+  }
 
   /**
    * Changes the stored thread while holding its turn, so nothing runs
@@ -280,16 +334,17 @@ export class HostedThread {
     const next = [then, ...waiting].filter((t): t is string => t !== undefined);
     if (!next.length) return;
     try {
-      await this.send(next[0]!);
+      await this.post(next[0]!);
     } catch (err) {
-      // The session couldn't open: keep the rest for the next message rather than dropping them.
-      if (next.length > 1) {
-        this.queued.unshift(...next.slice(1));
+      // The session couldn't open: keep the queued messages for the next one rather than dropping them.
+      const kept = then === undefined ? next : next.slice(1);
+      if (kept.length) {
+        this.queued.unshift(...kept);
         this.emit({ type: "queue", queued: [...this.queued] });
       }
       throw err;
     }
-    for (const t of next.slice(1)) await this.send(t);
+    for (const t of next.slice(1)) await this.post(t);
   }
 
   /** Stop: aborts the running turn, denies waiting permission requests and drops queued messages. */
@@ -371,13 +426,15 @@ export class HostedThread {
       const ctx: ThreadContext = { user, pool: this.pool, interface: thread.interface, threadId: this.threadId, view, call };
       // delegate is offered where the depth limit allows; it attaches itself, so background results reach this session.
       const canDelegate = delegation.depth(ctx) < delegation.limits.depth;
+      const meter = new ContextMeter();
       const { session, runtime, prepare, dispose } = await openThreadSession({
         thread: ctx, models, cwd: this.o.cwd,
         extensions: [
-          createLyricaExtension(ctx, { persona: () => persona.read(), profile: () => users.get(this.userId)!.profile, folders: tools.folders }),
+          createLyricaExtension(ctx, { persona: () => persona.read(), profile: () => users.get(this.userId)!.profile, folders: tools.folders, meter }),
           createWorkspaceExtension({ ...tools, approve: (r) => this.approve(r) }),
           ...(canDelegate ? [createDelegateExtension(ctx, delegation)] : []),
-          ...(this.o.threads ? [createThreadsExtension(ctx, this.o.threads)] : []),
+          // Child threads, as delegate, are never a subagent's: a subagent works for its run, not on streams of its own.
+          ...(this.o.threads && !thread.subagent ? [createThreadsExtension(ctx, this.o.threads)] : []),
         ],
       });
       const unsubscribe = session.subscribe((e) => this.forward(e));
@@ -393,7 +450,7 @@ export class HostedThread {
         const text = reply.content.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join("").trim();
         return text.replace(/^["'“]+|["'”.]+$/g, "").split("\n")[0]!.slice(0, 80) || undefined;
       };
-      return { session, view, title, prepare: (opts?: { retry?: boolean }) => prepare(opts), dispose: () => { unsubscribe(); dispose(); view.close(); } };
+      return { session, view, meter, title, prepare: (opts?: { retry?: boolean }) => prepare(opts), dispose: () => { unsubscribe(); dispose(); view.close(); } };
     } catch (err) {
       view.close();
       throw err;
@@ -438,6 +495,16 @@ export class HostedThread {
         if (entry.type === "custom_message" && entry.customType === DELEGATE_MESSAGE) this.notice(entry.content, entry.details);
         break;
       }
+      case "compaction_end": {
+        // Hers, or Pi's own at the window's edge: a marker that expands to the summary.
+        const r = e.result;
+        if (!r || e.aborted) break;
+        // Her compaction stores its estimate with the entry, so the live marker and the stored one agree.
+        const after = (r.details as { after?: number } | undefined)?.after ?? r.estimatedTokensAfter;
+        if (after !== undefined) this.opened?.meter.compacted(after);
+        this.emit({ type: "compacted", before: r.tokensBefore, ...(after !== undefined ? { after } : {}), summary: r.summary });
+        break;
+      }
       case "auto_retry_start": {
         // Pi is about to retry a model whose machine couldn't be reached: send the retry to the next model in the list instead.
         // Pi doesn't wait for listeners, but pauses two seconds before retrying; prepare probes for at most one, so it's done first.
@@ -464,10 +531,12 @@ export class HostedThread {
 
   private readonly noticed = new Set<string>();
 
-  /** A delivered run result, once, however Pi reported it. */
+  /** A delivered result or update, once, however Pi reported it. */
   private notice(content: unknown, details: unknown): void {
     const { type: _part, ...notice } = delegationPart(content, details);
-    const key = JSON.stringify(notice);
+    // Two deliveries may say the same thing; each has its own ID.
+    const id = (details as { id?: unknown } | undefined)?.id;
+    const key = typeof id === "string" ? id : JSON.stringify(notice);
     if (this.noticed.has(key)) return;
     this.noticed.add(key);
     if (this.noticed.size > 100) this.noticed.delete(this.noticed.values().next().value!);
@@ -533,6 +602,9 @@ export class HostedThread {
 
 /** The thread is in a turn, so it can't be changed now. */
 export class Busy extends Error {}
+
+/** A message carries a mark only lyricad may put on it. */
+export class MarkedText extends Error {}
 
 function refusal(err: unknown): string {
   const message = (err as Error)?.message ?? String(err);

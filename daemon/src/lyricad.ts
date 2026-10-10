@@ -227,6 +227,12 @@ export class Lyricad {
     } catch (err) {
       this.log(`the home workspace didn't mount: ${(err as Error).message.split("\n")[0]}`);
     }
+    // Child threads a restart left working are idle now, and their parents are told.
+    try {
+      this.services!.children.recover(userId);
+    } catch (err) {
+      this.log(`recovering child threads failed: ${(err as Error).message.split("\n")[0]}`);
+    }
   }
 
   /**

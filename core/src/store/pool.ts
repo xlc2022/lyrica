@@ -640,7 +640,7 @@ export class PoolStore extends PoolReader {
    * subagents' threads hold its tasks and results, so they go first. Its
    * other daughters (child threads, branches, copies) go too with `children`;
    * otherwise they are kept as threads of their own, with the settings they
-   * have.
+   * have (a kept child thread is no longer a child).
    */
   forgetThread(threadId: string, author: Author, opts: { children?: boolean } = {}): void {
     this.checkAuthor(author);
@@ -648,7 +648,8 @@ export class PoolStore extends PoolReader {
     for (const sub of this.listThreads({ includeHidden: true, parent: threadId })) this.forgetThread(sub.id, author);
     if (opts.children) for (const child of this.listThreads({ includeHidden: true, parent: threadId, children: true })) this.forgetThread(child.id, author, opts);
     this.tx(() => {
-      this.db.prepare("UPDATE threads SET parent = NULL WHERE parent = ? AND subagent = 0").run(threadId);
+      // A kept daughter is a thread of its own: a kept child thread is no longer a child, so it may start its own.
+      this.db.prepare("UPDATE threads SET parent = NULL, child = 0 WHERE parent = ? AND subagent = 0").run(threadId);
       const inThread = (dst: string) => dst === `t:${threadId}` || dst.startsWith(`e:${threadId}#`);
       const candidates = this.db.prepare("SELECT DISTINCT src FROM citations WHERE src LIKE 'n:%' AND (dst = ? OR dst LIKE ?)")
         .all(`t:${threadId}`, `e:${threadId}#%`) as { src: string }[];

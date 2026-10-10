@@ -6,7 +6,7 @@ import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
 import { Sessions } from "./auth.ts";
 import { HttpError, route, type Request, type Route } from "./http.ts";
-import { DEFAULT_BUDGETS, OPENING, pinnedBlock, pinnedOf } from "@lyrica/extension";
+import { DEFAULT_BUDGETS, FROM_PARENT, OPENING, pinnedBlock, pinnedOf, reserveFor } from "@lyrica/extension";
 import { Busy } from "./hosted.ts";
 import { card, type Lyricad, type Services } from "./lyricad.ts";
 import { toMessages } from "./messages.ts";
@@ -474,7 +474,8 @@ export function apiRoutes(d: Lyricad): Route[] {
         s().models.forgetThread(user.id, pool, id);
       }
       s().children.forget(user.id, pool, doomed);
-      for (const id of kept) s().workspace.settings(user.id).detach(id);
+      // A kept child is a thread of its own now: its next turn opens with its own tools and workspace.
+      for (const id of kept) { s().workspace.settings(user.id).detach(id); s().host.reload(user.id, pool, id); }
       return { ok: true };
     }),
     route("GET", `${t}/subagents`, (r): Api.Subagents => {
@@ -511,7 +512,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         const page = o[poolOf(r)].entryPage(thread.id, { before: before ? Number(before) : undefined, limit });
         const names = thread.subagent ? { userName: (id: string) => s().users.get(id)?.profile.displayName ?? "a user" } : undefined;
         return { messages: toMessages(thread.id, poolOf(r), page.entries,
-          (run) => s().delegation.store.runs(user.id, poolOf(r), { run }).map((x) => x.thread), names), hasMore: page.hasMore };
+          (run) => s().delegation.store.runs(user.id, poolOf(r), { run }).map((x) => x.thread), names, { child: thread.child }), hasMore: page.hasMore };
       });
     }),
     route("POST", `${t}/messages`, async (r) => {
@@ -520,7 +521,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const thread = owner(d, user, (o) => threadOf(o, r));
       if (thread.subagent) return toSubagent(d, user, poolOf(r), thread, String(text ?? ""));
       if (String(text ?? "").trim() === "/sleep") return { queued: false, sleep: await startSleep(d, user, poolOf(r), confirm === true) };
-      return s().host.get(user.id, poolOf(r), thread.id).send(String(text ?? ""));
+      return s().host.get(user.id, poolOf(r), thread.id).send(unmarked(String(text ?? "")));
     }),
     route("POST", `${t}/messages/:n/branch`, async (r) => {
       const user = d.userFor(r);
@@ -1119,6 +1120,21 @@ function childInfo(d: Lyricad, user: User, pool: Pool, id: string): Pick<Api.Thr
   return { status: info?.status ?? d.services!.host.status(user.id, pool, id), unseen: info?.unseen ?? 0 };
 }
 
+/** The thread's context: from its open session, else what its last call record measured (no breakdown). */
+function contextOf(d: Lyricad, user: User, pool: Pool, threadId: string, answered?: Api.CallInfo): { context: Api.ContextInfo } | undefined {
+  const live = d.services!.host.context(user.id, pool, threadId);
+  if (live) return { context: live };
+  const p = answered?.pace;
+  if (!p?.window) return undefined;
+  // The last prompt plus the reply, as the live meter counts it. The record's output is the whole turn's, so a tool turn reads a little high.
+  const tokens = p.promptTokens + p.outputTokens;
+  const reserve = Math.max(0, Math.min(reserveFor(p.window), p.window - tokens));
+  return { context: {
+    tokens, window: p.window, percent: Math.round((tokens / p.window) * 100), reserve,
+    free: Math.max(0, p.window - tokens - reserve), parts: [], measuredAt: answered!.at, pace: p,
+  } };
+}
+
 function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): Api.ThreadSettings {
   const { models, workspace } = d.services!;
   const ctx = models.callContext(user.id, pool, threadId);
@@ -1146,6 +1162,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     models: Object.fromEntries(THREAD_TASKS.map((task) => [task, taskModel(task)])) as Api.ThreadSettings["models"],
     profile: profileFor(ctx), profileChoice: models.threadProfile(user.id, threadId), thinking: ctx.thinking ?? "off", thinkingLevels,
     ...(answered ? { answered } : {}),
+    ...(contextOf(d, user, pool, threadId, answered) ?? {}),
     localOnly: ctx.localOnly,
     internet: tw.internet, services: tw.services, hosts: tw.hosts,
     network: workspace.network({ userId: user.id, pool, threadId }),
@@ -1237,6 +1254,12 @@ function pin(d: Lyricad, user: User, r: Request, pinned: boolean): Api.Ok {
   });
 }
 
+/** A user's text can't carry the line that marks a parent's message to its child thread. */
+function unmarked(text: string): string {
+  if (FROM_PARENT.test(text)) throw new HttpError(400, "a message can't start with a [From t:…] line");
+  return text;
+}
+
 /**
  * Delete from here, Regenerate and Edit. The thread's turn is held while its
  * subagents from those turns are stopped and the entries removed, so nothing
@@ -1259,7 +1282,7 @@ async function rewind(d: Lyricad, user: User, r: Request, req: Api.RewindRequest
       const text = String(req.text ?? "");
       if (userText(at.data) === undefined) throw new HttpError(400, "only your own messages can be edited");
       if (!text.trim()) throw new HttpError(400, "the message is empty");
-      return { from: n, then: text };
+      return { from: n, then: unmarked(text) };
     }
     if (req.action !== "regenerate") throw new HttpError(400, "the action is delete, regenerate or edit");
     const asked = entries.filter((e) => e.n <= n && userText(e.data) !== undefined).at(-1);
