@@ -398,6 +398,16 @@ class Models {                                              // new Models(keyrin
   with an administrator actor. A `user.db` is migrated, has pending shared
   redirects applied, and is indexed into `shared_refs` the first time it is
   opened in a process.
+- **Planned (Speech):** `Task` gains `"speech.transcribe" | "speech.speak"`,
+  both own-list only (neither follows Chat). `Capabilities` gains
+  `transcribe?: boolean` and `speak?: { voices: { id; language }[] }`,
+  reported by a host or set by hand. `Models.transcribe(ctx, audio,
+  { language? }): Promise<{ text }>` and `Models.speak(ctx, text, { voice?,
+  speed? }): ReadableStream<Uint8Array>` are the only ways audio reaches a
+  model; they follow the same boundary as `resolve`. A speak model's
+  per-copy settings gain `voices` (one per language) and `speed`, layered
+  shared then yours. `CallRecord` gains `audioSeconds`. Never audio or
+  text in a record or log.
 - **Planned:** `X-Lyrica-Priority: background` for sleep and cheap subagents
   (not sent; hosts use their defaults; it needs the task in Pi's request
   preparation), and clearing `redirect_pending` rows when a user is deleted,
@@ -724,6 +734,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       host's plain message.
   - users and admin;
   - memory browser;
+  - planned (Speech): `POST …/threads/:id/transcribe` and
+    `POST …/transcribe?pool=` (an `audio/wav` body, `{ text }` back);
+    `GET …/threads/:id/messages/:n/speech`, streaming audio, with the
+    message read from the store, never sent by the client; `voiceCloud`,
+    a per-user default with a per-thread override in `ThreadSettings`,
+    like `internet`; a new `VoiceCloudOff` refusal (`400`), checked before
+    the router;
   - sleep: overview, run detail, items (start a chat, dismiss), `sleep.mode`,
     start a run, and an event stream. `/sleep` typed in a thread is
     `SendRequest.confirm` and `SendResponse.sleep`.
