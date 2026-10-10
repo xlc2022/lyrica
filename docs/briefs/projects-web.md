@@ -9,8 +9,10 @@ the thread menu, the Sort menu and the Notifications page.
 - AGENTS.md, and docs/ux.md every time;
 - DESIGN.md: "Projects" and "How the web UI looks" / "Where things are";
 - docs/web.md; the API in `daemon/src/api.ts`;
-- the app mockup (https://claude.ai/artifact/96BoPXPoxL2LDBg8eLxjHx), with
-  the projects frame the UI review thread drew.
+- the app mockup (https://claude.ai/artifact/96BoPXPoxL2LDBg8eLxjHx),
+  version 21 or later: the project chat at `#t/p1`, the Threads popover from
+  its facts line, and the settings page at `#project/p1/general`, `/memory`
+  and `/files`.
 
 ## Goal
 
@@ -63,12 +65,6 @@ desktop and at 390 px (principle 1). Every control has its row in ux.md §6.
 
 - `npm run typecheck` and `npm test` pass; UI review and PR review both say
   verified.
-
-## Follow-up
-
-If the mockup frame for projects isn't in the app mockup when this starts,
-ask the UI review thread for it before building the sidebar row and the
-card.
 
 ## Handoff notes
 

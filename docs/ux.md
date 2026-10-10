@@ -152,6 +152,10 @@ Rules:
 | A project's settings, files and images | the **Project settings** page (Settings in the project chat's header), sections on the left: General, Memory, Files, Images. Files in the header stays the quick view; the page manages the folder |
 | A project's usage | a fact in the project chat's facts line ("312k tokens"); the breakdown in Models → Recent calls, filtered to the project |
 
+The project rows are drawn in the app mockup
+(https://claude.ai/artifact/96BoPXPoxL2LDBg8eLxjHx, at `#t/p1` and
+`#project/p1/general`).
+
 If your thing isn't in this table, it needs the design thread, not a new
 spot.
 
