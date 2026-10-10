@@ -11,12 +11,18 @@ import { copyIdentity } from "./library.ts";
 import { acceptedSettings, ANSWER_SETTINGS, checkSettings, type AnswerSettings, type SettingSource } from "./settings.ts";
 import { collectRefs, isList, mapMembers, moveSettings, refId, rewrite, type Entry, type ProfileName, type Use } from "./refs.ts";
 import { ENDPOINT_SCHEMA, migrate, MODEL_CHOICE_SCHEMA, REDIRECT_SCHEMA, upgradeCalls } from "./schema.ts";
+import { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, speakAt, SpeechAway, SpeechDown, transcribeAt, VoiceCloudOff, wavSeconds, type SpeechTarget } from "./speech.ts";
+
+export type SpeechTask = "speech.transcribe" | "speech.speak";
+/** The tasks as the Models page names them. */
+const SPEECH_NAMES: Record<SpeechTask, string> = { "speech.transcribe": "Dictation", "speech.speak": "Read aloud" };
 
 export { addressesOutside, discoverModels, probeUrl, type DiscoveredModel, type ModelIdentity } from "./http.ts";
 export { baseName } from "./identity.ts";
 export { acceptedSettings, ANSWER_SETTINGS, payloadFields, type AnswerSettings, type SettingSource } from "./settings.ts";
 export { fingerprint, HostIdentityChanged, HostRefused, hostOrigin, normaliseCode, PairingFailed, pairingProofs } from "./host.ts";
 export { refId, type Entry, type ProfileName, type Use } from "./refs.ts";
+export { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, pcmSeconds, SPEECH_CONTENT_TYPE, SPEECH_FORMAT, SpeechDown, VoiceCloudOff, wavData, wavSeconds } from "./speech.ts";
 
 /** A cloud model was asked for where only local models are allowed. Nothing falls back. */
 export class CloudModelForbidden extends Error {}
@@ -68,8 +74,14 @@ export interface Capabilities {
   edit?: boolean;
   /** The thinking levels it offers, besides off. */
   reasoning?: Exclude<ThinkingLevel, "off">[];
+  /** Speech to text (Dictation). */
+  transcribe?: boolean;
+  /** Text to speech (Read aloud), with its voices and the language each speaks. */
+  speak?: { voices: Voice[] };
 }
-export const CAPABILITIES = ["contextWindow", "tools", "vision", "embedding", "image", "edit", "reasoning"] as const satisfies readonly (keyof Capabilities)[];
+/** One of a speech model's voices. `language` is a primary language tag, such as "en" or "zh". */
+export interface Voice { id: string; language: string }
+export const CAPABILITIES = ["contextWindow", "tools", "vision", "embedding", "image", "edit", "reasoning", "transcribe", "speak"] as const satisfies readonly (keyof Capabilities)[];
 
 /** One model on one endpoint, with a permanent ID. */
 export interface Offering extends Capabilities {
@@ -183,6 +195,8 @@ export interface CallRecord {
   note?: string;
   /** How the turn went, once it ended: counts and times only. */
   pace?: Pace;
+  /** A speech call's seconds of audio, heard or spoken. */
+  audioSeconds?: number;
 }
 
 /**
@@ -223,10 +237,11 @@ export function checkTask(task: string): Task {
   return task as Task;
 }
 
-/** What a task needs: text models, embeddings, or images. `same` stays within one. */
-const capability = (t: Task) => (t === "embedding" ? "embedding" : t === "image.create" ? "image" : t === "image.edit" ? "edit" : "text");
+/** What a task needs: text models, embeddings, images or speech. `same` stays within one. */
+const capability = (t: Task) => (t === "embedding" ? "embedding" : t === "image.create" ? "image" : t === "image.edit" ? "edit"
+  : t === "speech.transcribe" ? "transcribe" : t === "speech.speak" ? "speak" : "text");
 /** Tasks with no list of their own follow chat, except these. */
-const OWN_LIST_ONLY: readonly Task[] = ["embedding", "image.create", "image.edit"];
+const OWN_LIST_ONLY: readonly Task[] = ["embedding", "image.create", "image.edit", "speech.transcribe", "speech.speak"];
 /** A new profile starts with these following other tasks. */
 const NEW_PROFILE: Partial<Record<Task, { same: Task }>> = {
   title: { same: "subagent.cheap" }, compaction: { same: "subagent.cheap" },
@@ -234,6 +249,8 @@ const NEW_PROFILE: Partial<Record<Task, { same: Task }>> = {
 };
 
 const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
+/** A primary language tag: "en", "zh", "yue". */
+export const LANGUAGE = /^[a-zA-Z]{2,3}$/;
 const SHARED = "shared.";
 const NOTICE = "models_notice";
 
@@ -323,6 +340,8 @@ export class Models {
   private selfReady = false;
   /** Users whose user.db was migrated and indexed since this process started. */
   private readonly ready = new Set<string>();
+  /** Offering ID → when it last couldn't answer while its endpoint could (a host's speech server down, say). */
+  private readonly modelDown = new Map<string, number>();
   /** Endpoint ID → whether it answered lately, from probes and calls. */
   private readonly health = new Map<string, { up: boolean; at: number }>();
   /** Each host's pinned fetch, by endpoint, key and addresses. */
@@ -446,6 +465,8 @@ export class Models {
     const o = this.offering(actor.id, offeringId);
     if (!o) throw new NoModel(`no model ${offeringId}`);
     if (caps.reasoning?.some((l) => !THINKING_LEVELS.includes(l) || (l as string) === "off")) throw new Error("reasoning levels are low, medium and high");
+    if (caps.transcribe !== undefined && caps.transcribe !== null && typeof caps.transcribe !== "boolean") throw new Error("transcribe is true or false");
+    if (caps.speak) caps = { ...caps, speak: { voices: checkVoices(caps.speak.voices) } };
     this.write(actor, o.endpoint.id, (db) => {
       const row = db.prepare("SELECT hand FROM offerings WHERE id = ?").get(offeringId) as { hand: string };
       const hand: Record<string, unknown> = JSON.parse(row.hand);
@@ -511,7 +532,7 @@ export class Models {
    * names and raw names; filters by kind, endpoint, capability, groups only.
    * Starred entries come first. Image recipes are in the image library.
    */
-  textLibrary(userId: string, q: { search?: string; kind?: "cloud" | "local"; endpointId?: string; capability?: "tools" | "vision" | "embedding" | "image"; groupsOnly?: boolean; offset?: number; limit?: number } = {}): { total: number; entries: LibraryEntry[] } {
+  textLibrary(userId: string, q: { search?: string; kind?: "cloud" | "local"; endpointId?: string; capability?: "tools" | "vision" | "embedding" | "image" | "transcribe" | "speak"; groupsOnly?: boolean; offset?: number; limit?: number } = {}): { total: number; entries: LibraryEntry[] } {
     const c = this.catalog(userId);
     const starred = this.withUser(userId, (db) => new Set((db.prepare("SELECT offering FROM starred_offerings").all() as { offering: string }[]).map((r) => r.offering)));
     const inGroups = new Map<string, string[]>();
@@ -796,6 +817,8 @@ export class Models {
     const shared = o.endpoint.shared ? read(this.self()) : {};
     const yours = this.withUser(userId, read);
     const values: AnswerSettings = { ...shared, ...yours };
+    // A voice is chosen per language: yours for one language leaves the shared one for another.
+    if (shared.voices && yours.voices) values.voices = { ...shared.voices, ...yours.voices };
     const sources = Object.fromEntries(ANSWER_SETTINGS.filter((k) => values[k] !== undefined).map((k) => [k, k in yours ? "yours" : "shared"]));
     const db = o.endpoint.shared ? this.self() : undefined;
     const raw = (db ? db.prepare("SELECT found, hand FROM offerings WHERE id = ?").get(offeringId)
@@ -969,7 +992,7 @@ export class Models {
   private async hostModels(ep: Endpoint): Promise<DiscoveredModel[]> {
     const list = (await this.hostCall(ep, "GET", "/host/v1/models")) as {
       id: string; kind?: string; sha256?: string | null; contextLength?: number | null; size?: number; downloaded?: boolean; identity?: ModelIdentity | null;
-      capabilities?: { tools?: boolean; vision?: boolean; embedding?: boolean; reasoning?: string[] | null };
+      capabilities?: { tools?: boolean; vision?: boolean; embedding?: boolean; reasoning?: string[] | null; transcribe?: boolean; speak?: { voices?: unknown } | null };
     }[];
     if (!Array.isArray(list)) throw new Error(`${ep.name} didn't return a model list`);
     // Image models are recipes: only confirmed ones become offerings, so a proposal never resolves.
@@ -987,6 +1010,8 @@ export class Models {
         ...(m.capabilities?.tools !== undefined ? { tools: !!m.capabilities.tools } : {}),
         ...(m.capabilities?.vision !== undefined ? { vision: !!m.capabilities.vision } : {}),
         ...(m.capabilities?.embedding || m.kind === "embedding" ? { embedding: true } : {}),
+        ...(m.capabilities?.transcribe || m.kind === "transcribe" ? { transcribe: true } : {}),
+        ...(m.capabilities?.speak ? { speak: { voices: hostVoices(m.capabilities.speak.voices) } } : {}),
         ...(levels.length ? { reasoning: reasoning.length ? reasoning : ["medium"] as "medium"[] } : {}),
         ...(m.sha256 ? { digest: m.sha256 } : {}),
         ...(m.identity ? { identity: m.identity } : {}),
@@ -1339,6 +1364,27 @@ export class Models {
     this.setSetting(userId, "thinking", checkThinking(level));
   }
 
+  /** Voice to cloud: whether the user's audio may go to a cloud model, unless a thread says otherwise. Off by default. */
+  defaultVoiceCloud(userId: string): boolean {
+    return this.setting(userId, "voice_cloud") === "on";
+  }
+
+  setDefaultVoiceCloud(userId: string, on: boolean): void {
+    if (typeof on !== "boolean") throw new Error("voiceCloud is true or false");
+    this.setSetting(userId, "voice_cloud", on ? "on" : "off");
+  }
+
+  /** A thread's own Voice to cloud switch; null follows the user's default. */
+  setThreadVoiceCloud(userId: string, threadId: string, on: boolean | null): void {
+    if (on !== null && typeof on !== "boolean") throw new Error("voiceCloud is true, false or null");
+    this.threadChoice(userId, threadId, "voice_cloud", on === null ? null : on ? 1 : 0);
+  }
+
+  threadVoiceCloud(userId: string, threadId: string): boolean | null {
+    const v = this.withUser(userId, (db) => (db.prepare("SELECT voice_cloud FROM thread_choices WHERE thread = ?").get(threadId) as { voice_cloud: number | null } | undefined)?.voice_cloud);
+    return v === 1 ? true : v === 0 ? false : null;
+  }
+
   /** Sets (or clears) one thread's ordered list for a task. A private or local-only thread takes local models only. */
   setThreadModel(userId: string, pool: Pool, threadId: string, task: Task, list?: ModelRef[] | ModelRef): void {
     const refs = list === undefined ? undefined : Array.isArray(list) ? list : [list];
@@ -1404,12 +1450,13 @@ export class Models {
     return this.withUser(userId, (db) => {
       const rows = db.prepare("SELECT task, entry FROM thread_models WHERE pool = ? AND thread = ?").all(pool, threadId) as { task: Task; entry: string }[];
       const localOnly = pool === "private" || !!db.prepare("SELECT 1 FROM local_only_threads WHERE thread = ?").get(threadId);
-      const choice = db.prepare("SELECT profile, thinking FROM thread_choices WHERE thread = ?").get(threadId) as { profile: string | null; thinking: string | null } | undefined;
+      const choice = db.prepare("SELECT profile, thinking, voice_cloud FROM thread_choices WHERE thread = ?").get(threadId) as { profile: string | null; thinking: string | null; voice_cloud: number | null } | undefined;
       const setting = (key: string) => (db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined)?.value;
       const profile = (choice?.profile ?? setting("general_profile")) === "custom" ? "custom" : "cloud";
       const thinking = (choice?.thinking ?? setting("thinking") ?? "off") as ThinkingLevel;
+      const voiceCloud = choice?.voice_cloud !== null && choice?.voice_cloud !== undefined ? choice.voice_cloud === 1 : setting("voice_cloud") === "on";
       return {
-        userId, pool, localOnly, ...(pool === "general" ? { profile } : {}), thinking: THINKING_LEVELS.includes(thinking) ? thinking : "off",
+        userId, pool, localOnly, ...(pool === "general" ? { profile } : {}), thinking: THINKING_LEVELS.includes(thinking) ? thinking : "off", voiceCloud,
         overrides: Object.fromEntries(rows.map((r) => [r.task, JSON.parse(r.entry) as ModelRef[]])),
       };
     });
@@ -1445,6 +1492,8 @@ export class Models {
     if (parent.localOnly) this.setLocalOnly(userId, pool, childThreadId, true);
     if (pool === "general" && parent.profile) this.setThreadProfile(userId, pool, childThreadId, parent.profile);
     if (parent.thinking) this.setThinking(userId, childThreadId, parent.thinking);
+    // Never wider than the parent: a branch of a thread with Voice to cloud off keeps it off.
+    if (parent.voiceCloud !== undefined && parent.voiceCloud !== this.defaultVoiceCloud(userId)) this.setThreadVoiceCloud(userId, childThreadId, parent.voiceCloud);
     for (const [task, r] of Object.entries(parent.overrides ?? {})) {
       if (task !== "chat" || opts.chat !== false) this.setThreadModel(userId, pool, childThreadId, task as Task, r);
     }
@@ -1527,6 +1576,107 @@ export class Models {
     }
   }
 
+  // --- Speech ---
+
+  /**
+   * Transcribes a WAV clip with the context's Dictation model: the only way
+   * a user's audio reaches a model. A cloud model needs Voice to cloud on
+   * (`ctx.voiceCloud`); otherwise VoiceCloudOff is thrown before any byte is
+   * sent. An endpoint that can't answer is marked down and the next model
+   * in the list is tried, within the list's kind; when none can, NoModel.
+   * The audio is held in memory only. The caller records the call.
+   */
+  async transcribe(ctx: CallContext, wav: Uint8Array, opts: { language?: string; signal?: AbortSignal } = {}): Promise<{ text: string; resolution: Resolution; audioSeconds?: number }> {
+    if (opts.language !== undefined && !LANGUAGE.test(opts.language)) throw new Error("language is a tag such as en or zh");
+    if (wav.length > MAX_CLIP_BYTES) throw new Error(`a clip is at most ${MAX_CLIP_SECONDS / 60} minutes`);
+    const seconds = wavSeconds(wav);
+    if (seconds === undefined) throw new Error("the clip isn't PCM WAV audio");
+    return this.withFallback("speech.transcribe", ctx, async (r) => {
+      if (r.endpoint.kind === "cloud" && !ctx.voiceCloud) throw new VoiceCloudOff(`${r.label} is a cloud model, and Voice to cloud is off, so the clip wasn't sent`);
+      const text = await transcribeAt(this.speechTarget(r), wav, opts);
+      return { text, resolution: r, audioSeconds: seconds };
+    }, opts.signal);
+  }
+
+  /**
+   * Speaks one piece of text (a sentence of a message) with the context's
+   * Read aloud model, as raw PCM (SPEECH_FORMAT). The voice is `voice`,
+   * else this user's setting for `language`, else the model's first voice
+   * for that language, else its first voice; the speed likewise. Falls back
+   * like `transcribe`, up to the first bytes of audio. Cancelling the stream
+   * (or `signal`) cancels the request. The caller records the call.
+   */
+  async speak(ctx: CallContext, text: string, opts: { voice?: string; speed?: number; language?: string; signal?: AbortSignal } = {}): Promise<{ audio: ReadableStream<Uint8Array>; resolution: Resolution; voice?: string }> {
+    if (!text.trim()) throw new Error("there is nothing to read");
+    if (text.length > MAX_SPEAK_CHARS) throw new Error(`a piece of text to speak is at most ${MAX_SPEAK_CHARS} characters`);
+    if (opts.speed !== undefined && !(opts.speed >= 0.25 && opts.speed <= 4)) throw new Error("speed is a number from 0.25 to 4");
+    return this.withFallback("speech.speak", ctx, async (r) => {
+      const settings = this.offeringSettings(ctx.userId, r.offering.id).values;
+      const voices = r.offering.speak?.voices ?? [];
+      const lang = opts.language?.toLowerCase();
+      const voice = opts.voice ?? (lang ? settings.voices?.[lang] ?? voices.find((v) => v.language === lang)?.id : undefined) ?? voices[0]?.id;
+      const speed = opts.speed ?? settings.speed;
+      const audio = await speakAt(this.speechTarget(r), text, { ...(voice ? { voice } : {}), ...(speed !== undefined ? { speed } : {}), ...(opts.signal ? { signal: opts.signal } : {}) });
+      return { audio, resolution: r, ...(voice ? { voice } : {}) };
+    }, opts.signal);
+  }
+
+  /**
+   * Whether a context has a model for a speech task now, without calling it:
+   * the model's label and kind, or the plain reason it has none.
+   */
+  speechModel(task: SpeechTask, ctx: CallContext): { label: string; kind: "cloud" | "local" } | { reason: "none" | "voiceCloud" | "down"; problem: string } {
+    try {
+      const r = this.resolve(task, ctx);
+      if (task === "speech.transcribe" && r.endpoint.kind === "cloud" && !ctx.voiceCloud) return { reason: "voiceCloud", problem: `${r.label} is a cloud model, and Voice to cloud is off` };
+      return { label: r.label, kind: r.endpoint.kind };
+    } catch (e) {
+      if (e instanceof CloudModelForbidden) return { reason: "none", problem: e.message };
+      if (!(e instanceof NoModel)) throw e;
+      if (!this.listFor(task, ctx)?.list.length) return { reason: "none", problem: `No ${SPEECH_NAMES[task]} model is set${isRestricted(ctx) ? " in the local profile" : ""}` };
+      return { reason: "down", problem: `${SPEECH_NAMES[task]} can't be reached now` };
+    }
+  }
+
+  /**
+   * Calls `fn` with the model the router picks, and when its endpoint can't
+   * answer (unreachable, away, failing), marks it down and asks the router
+   * again, so the next model in the list answers. Ends with NoModel when
+   * none can, never with a crash. A refusal (a bad request) isn't retried,
+   * and neither is a call the caller stopped.
+   */
+  private async withFallback<T>(task: Task, ctx: CallContext, fn: (r: Resolution) => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const tried: string[] = [];
+    for (;;) {
+      signal?.throwIfAborted();
+      let r: Resolution;
+      try {
+        r = await this.resolveLive(task, ctx);
+      } catch (e) {
+        // A list is set, and nothing in it can answer: down, not missing.
+        if (e instanceof NoModel && (tried.length || this.listFor(task, ctx)?.list.length)) {
+          const why = tried.length ? tried.join("; ") : /\((.*)\)$/.exec(e.message)?.[1];
+          throw new SpeechDown(`${SPEECH_NAMES[task as SpeechTask]} can't be reached now${why ? ` (${why})` : ""}`);
+        }
+        throw e;
+      }
+      try {
+        const out = await fn(r);
+        this.seen(r.endpoint, true, ctx.userId);
+        return out;
+      } catch (e) {
+        if (!(e instanceof SpeechAway) || signal?.aborted) throw e;
+        tried.push(`${r.label}: ${e.message}`);
+        if (e.scope === "model") this.modelDown.set(r.offering.id, Date.now()); else this.reportDown(r.endpoint.id);
+      }
+    }
+  }
+
+  private speechTarget(r: Resolution): SpeechTarget {
+    const ep = r.endpoint;
+    return { fetch: this.fetchFor(ep) ?? fetch, baseUrl: ep.baseUrl, ...(ep.apiKey ? { apiKey: ep.apiKey } : {}), modelId: r.offering.modelId, name: ep.name };
+  }
+
   /** The thinking level a model runs at for a requested one, and a note when it can't think at that level. */
   thinkingFor(r: Pick<Resolution, "offering" | "label"> & { endpoint?: Pick<Endpoint, "api"> }, asked: ThinkingLevel = "off"): { level: ThinkingLevel; note?: string } {
     if (asked === "off") return { level: "off" };
@@ -1545,7 +1695,7 @@ export class Models {
    * text. A retry within the turn (`retry`) rewrites that turn's record, so
    * a turn is one call.
    */
-  recordCall(userId: string, call: { pool: Pool; threadId: string; task: Task; resolution: Resolution; note?: string }, opts: { retry?: boolean } = {}): void {
+  recordCall(userId: string, call: { pool: Pool; threadId: string; task: Task; resolution: Resolution; note?: string; audioSeconds?: number }, opts: { retry?: boolean } = {}): void {
     const r = call.resolution;
     const first = r.skipped[0];
     const fallback = first && `${first.label} was skipped (${first.reason.replace(/^it /, "")}), so ${r.label} answered${r.endpoint.kind === "cloud" && r.profile === "custom" ? ", a cloud model" : ""}`;
@@ -1556,8 +1706,9 @@ export class Models {
           .run(r.offering.id, r.label, r.endpoint.name, r.endpoint.kind, fallback ?? null, call.note ?? null, last);
         return;
       }
-      db.prepare("INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, fallback, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .run(new Date().toISOString(), call.pool, call.threadId, call.task, r.offering.id, r.label, r.endpoint.name, r.endpoint.kind, fallback ?? null, call.note ?? null);
+      const seconds = call.audioSeconds !== undefined && Number.isFinite(call.audioSeconds) ? Math.max(0, Math.round(call.audioSeconds * 10) / 10) : null;
+      db.prepare("INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, fallback, note, audio_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(new Date().toISOString(), call.pool, call.threadId, call.task, r.offering.id, r.label, r.endpoint.name, r.endpoint.kind, fallback ?? null, call.note ?? null, seconds);
     });
   }
 
@@ -1572,9 +1723,10 @@ export class Models {
       .run(n(pace.promptTokens), n(pace.outputTokens), n(pace.window), n(pace.ttftMs), n(pace.genMs), n(pace.processed), threadId, task));
   }
 
-  /** The user's recent calls, newest first. With a thread, that thread's only. */
-  recentCalls(userId: string, opts: { limit?: number; threadId?: string } = {}): CallRecord[] {
-    const rows = this.withUser(userId, (db) => db.prepare(`SELECT * FROM model_calls ${opts.threadId ? "WHERE thread = ?" : ""} ORDER BY id DESC LIMIT ?`)
+  /** The user's recent calls, newest first. With a thread, that thread's only; with `speech: false`, no Dictation or Read aloud. */
+  recentCalls(userId: string, opts: { limit?: number; threadId?: string; speech?: false } = {}): CallRecord[] {
+    const where = [...(opts.threadId ? ["thread = ?"] : []), ...(opts.speech === false ? ["task NOT LIKE 'speech.%'"] : [])];
+    const rows = this.withUser(userId, (db) => db.prepare(`SELECT * FROM model_calls ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY id DESC LIMIT ?`)
       .all(...(opts.threadId ? [opts.threadId] : []), opts.limit ?? 50)) as CallRow[];
     return rows.map(toCall);
   }
@@ -1630,8 +1782,12 @@ export class Models {
     if (ep.stale) return `${ep.name} hasn't answered for ${STALE_DAYS} days`;
     const h = this.health.get(ep.id);
     if (h && !h.up && Date.now() - h.at < HEALTH_MS) return `${ep.name} is down`;
+    const down = this.modelDown.get(o.id);
+    if (down && Date.now() - down < HEALTH_MS) return "it couldn't answer just now";
     if (task === "image.create" && !o.image) return "it doesn't make images";
     if (task === "image.edit" && !o.edit) return "it doesn't edit images";
+    if (task === "speech.transcribe" && !o.transcribe) return "it doesn't transcribe speech";
+    if (task === "speech.speak" && !o.speak?.voices.length) return "it doesn't speak";
     if (need.tools && o.tools === false) return "it can't use tools";
     if (need.tokens && o.contextWindow && o.contextWindow < need.tokens) return `its context window (${o.contextWindow} tokens) is smaller than the conversation`;
     return undefined;
@@ -1646,7 +1802,8 @@ export class Models {
     const c = this.catalog(userId);
     const out: ModelRef[] = [];
     const kinds = new Set<string>();
-    const fits = (o: Offering) => (opts.task === "image.create" ? !!o.image : opts.task === "image.edit" ? !!o.edit : true);
+    const fits = (o: Offering) => (opts.task === "image.create" ? !!o.image : opts.task === "image.edit" ? !!o.edit
+      : opts.task === "speech.transcribe" ? !!o.transcribe : opts.task === "speech.speak" ? !!o.speak?.voices.length : true);
     for (const ref of list) {
       const id = ref && typeof ref === "object" ? refId(ref) : undefined;
       if (!id || typeof id !== "string") throw new NoModel("a list holds models or groups");
@@ -1792,7 +1949,7 @@ export class Models {
     this.withUser(userId, (db) => db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, value));
   }
 
-  private threadChoice(userId: string, threadId: string, column: "profile" | "thinking", value: string | null): void {
+  private threadChoice(userId: string, threadId: string, column: "profile" | "thinking" | "voice_cloud", value: string | number | null): void {
     this.withUser(userId, (db) => {
       db.prepare("INSERT OR IGNORE INTO thread_choices (thread) VALUES (?)").run(threadId);
       db.prepare(`UPDATE thread_choices SET ${column} = ? WHERE thread = ?`).run(value, threadId);
@@ -1993,6 +2150,22 @@ function checkThinking(level: string): ThinkingLevel {
   return level as ThinkingLevel;
 }
 
+/** A speech model's voices, set by hand: each an ID and a language tag, at most 200. */
+function checkVoices(voices: unknown): Voice[] {
+  if (!Array.isArray(voices) || voices.length > 200) throw new Error("voices is a list of up to 200 { id, language }");
+  return voices.map((v) => {
+    const { id, language } = (v ?? {}) as { id?: unknown; language?: unknown };
+    if (typeof id !== "string" || !id || id.length > 100) throw new Error("a voice's id is up to 100 characters");
+    if (typeof language !== "string" || !LANGUAGE.test(language)) throw new Error("a voice's language is a tag such as en or zh");
+    return { id, language: language.toLowerCase() };
+  });
+}
+
+/** A host's voices, as discovery reports them; anything malformed is left out. */
+function hostVoices(voices: unknown): Voice[] {
+  return (Array.isArray(voices) ? voices : []).flatMap((v) => { try { return checkVoices([v]); } catch { return []; } }).slice(0, 200);
+}
+
 function checkUrl(baseUrl: string): string {
   const url = new URL(baseUrl);
   if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("the base URL must be http or https");
@@ -2037,10 +2210,12 @@ function copyFile(modelId: string, path: string): boolean {
 type CallRow = {
   at: string; pool: Pool; thread: string; task: Task; offering: string; label: string; endpoint: string; kind: "cloud" | "local"; fallback: string | null; note: string | null;
   prompt_tokens: number | null; output_tokens: number | null; window: number | null; ttft_ms: number | null; gen_ms: number | null; processed: number | null;
+  audio_seconds?: number | null;
 };
 
 const toCall = (r: CallRow): CallRecord => ({
   at: r.at, pool: r.pool, threadId: r.thread, task: r.task, offeringId: r.offering, label: r.label, endpointName: r.endpoint, kind: r.kind,
   ...(r.fallback ? { fallback: r.fallback } : {}), ...(r.note ? { note: r.note } : {}),
+  ...(typeof r.audio_seconds === "number" ? { audioSeconds: r.audio_seconds } : {}),
   ...(r.gen_ms !== null ? { pace: speeds({ promptTokens: r.prompt_tokens ?? 0, outputTokens: r.output_tokens ?? 0, window: r.window ?? 0, ttftMs: r.ttft_ms ?? 0, genMs: r.gen_ms, processed: r.processed ?? 0 }) } : {}),
 });

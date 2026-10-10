@@ -10,6 +10,7 @@ import { DEFAULT_BUDGETS, FROM_PARENT, OPENING, pinnedBlock, pinnedOf, reserveFo
 import { Busy } from "./hosted.ts";
 import { card, type Lyricad, type Services } from "./lyricad.ts";
 import { toMessages } from "./messages.ts";
+import { messageText, readAloud, readClip, speechState, storedSource, transcribeClip, type SpeechSource } from "./speech.ts";
 import { applyRemoval, entriesFrom, removalPlan, uploadsIn, type RemovalContext } from "./removal.ts";
 
 const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, showPrivate: true, showHidden: false };
@@ -327,6 +328,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const c = await r.json<Api.ProfilesChange>();
       if (c.default !== undefined) s().models.setDefaultProfile(user.id, c.default);
       if (c.thinking !== undefined) s().models.setDefaultThinking(user.id, c.thinking);
+      if (c.voiceCloud !== undefined) s().models.setDefaultVoiceCloud(user.id, c.voiceCloud);
       return profiles(d, user.id);
     }),
     route("PUT", `${u}/profiles/:profile/:task`, async (r) => {
@@ -581,6 +583,52 @@ export function apiRoutes(d: Lyricad): Route[] {
       const bytes = await r.bytes(d.opts.uploadLimit ?? 50 * 1024 * 1024);
       const path = await s().workspace.saveUpload({ userId: user.id, pool: poolOf(r), threadId: thread.id }, name, bytes);
       return { path };
+    }),
+    // --- Speech: Dictation and Read aloud ---
+    route("GET", `${u}/speech`, (r): Api.Speech => {
+      const user = d.userFor(r);
+      return speechState(s().models, s().models.callContext(user.id, checkPool(r.query.get("pool") ?? "general"), ""));
+    }),
+    route("POST", `${u}/transcribe`, async (r): Promise<Api.Transcription> => {
+      const user = d.userFor(r);
+      const pool = checkPool(r.query.get("pool") ?? "general");
+      // Before a thread exists: the user's defaults for a new thread in this pool.
+      const ctx = s().models.callContext(user.id, pool, "");
+      return transcribeClip(s().models, ctx, pool, "", await readClip(r), r.query.get("language"), stopOnClose(r));
+    }),
+    route("POST", `${t}/transcribe`, async (r): Promise<Api.Transcription> => {
+      const user = d.userFor(r);
+      const pool = poolOf(r);
+      const thread = owner(d, user, (o) => threadOf(o, r));
+      const ctx = s().models.callContext(user.id, pool, thread.id);
+      return transcribeClip(s().models, ctx, pool, thread.id, await readClip(r), r.query.get("language"), stopOnClose(r));
+    }),
+    route("GET", `${t}/messages/:n/speech`, async (r) => {
+      const user = d.userFor(r);
+      const pool = poolOf(r);
+      let source: SpeechSource;
+      const thread = owner(d, user, (o) => threadOf(o, r));
+      if (r.params.n === "live") {
+        const live = s().host.get(user.id, pool, thread.id).following();
+        if (!live) throw new HttpError(404, "she isn't writing a message now");
+        let read = "";
+        let at = -1;
+        // Made speakable as it grows; the text stays in memory only.
+        source = { text: () => { const raw = live.text(); if (raw.length !== at) { at = raw.length; read = messageText([{ type: "text", text: raw }]); } return read; }, done: live.done, more: live.more };
+      } else {
+        const n = entryN(r);
+        const text = owner(d, user, (o) => {
+          const entries = o[pool].entryPage(thread.id, { before: n + 1, limit: 1 }).entries.filter((e) => e.n === n);
+          const message = toMessages(thread.id, pool, entries)[0];
+          if (!message) throw new HttpError(404, "no such message");
+          if (message.role !== "assistant") throw new HttpError(400, "only her messages are read aloud");
+          return messageText(message.parts);
+        });
+        source = storedSource(text);
+      }
+      const allowed = () => !!d.sessions.users(r.cookie)?.has(user.id) && d.keyring.hasUserKey(user.id);
+      await readAloud({ models: s().models, ctx: s().models.callContext(user.id, pool, thread.id), pool, threadId: thread.id, source, res: r.res, allowed });
+      return undefined;
     }),
     route("GET", `${t}/events`, (r) => {
       const user = d.userFor(r);
@@ -988,7 +1036,7 @@ function profiles(d: Lyricad, userId: string): Api.Profiles {
   const m = d.services!.models;
   return {
     local: m.profile(userId, "local"), cloud: m.profile(userId, "cloud"), custom: m.profile(userId, "custom"),
-    default: m.defaultProfile(userId), thinking: m.defaultThinking(userId),
+    default: m.defaultProfile(userId), thinking: m.defaultThinking(userId), voiceCloud: m.defaultVoiceCloud(userId),
   };
 }
 
@@ -1168,7 +1216,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
       return { ...list, ...(label ? { label } : {}), source: override?.length ? "thread" : "none", problem: (err as Error).message };
     }
   };
-  const answered = models.recentCalls(user.id, { threadId, limit: 1 })[0];
+  const answered = models.recentCalls(user.id, { threadId, limit: 1, speech: false })[0];
   return {
     models: Object.fromEntries(THREAD_TASKS.map((task) => [task, taskModel(task)])) as Api.ThreadSettings["models"],
     profile: profileFor(ctx), profileChoice: models.threadProfile(user.id, threadId), thinking: ctx.thinking ?? "off", thinkingLevels,
@@ -1178,6 +1226,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     internet: tw.internet, services: tw.services, hosts: tw.hosts,
     network: workspace.network({ userId: user.id, pool, threadId }),
     grants: tw.grants, target: tw.target, mode: applies.mode, webSearch: applies.webSearch, images: applies.images, unlogged: isUnlogged, parent: tw.parent,
+    voiceCloud: models.threadVoiceCloud(user.id, threadId), speech: speechState(models, ctx),
     allowed: models.allowed(ctx).map(({ endpoint }) => endpointInfo(d, user.id, endpoint.id)),
   };
 }
@@ -1215,6 +1264,7 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
   }
 
   for (const k of ["webSearch", "images"] as const) if (change[k] !== undefined && typeof change[k] !== "boolean") throw new Error(`${k} is true or false`);
+  if (change.voiceCloud !== undefined && change.voiceCloud !== null && typeof change.voiceCloud !== "boolean") throw new Error("voiceCloud is true, false or null");
   // The workspace checks grants, hosts, mode, switches, target and the parent's limits, and writes only if all pass.
   const wsChange = pick(change, ["grants", "internet", "services", "hosts", "mode", "webSearch", "images", "target"]);
   if (Object.keys(wsChange).length) ws.setThread(thread.id, pool, wsChange);
@@ -1224,6 +1274,14 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
   if (change.thinking !== undefined) models.setThinking(user.id, thread.id, change.thinking);
   for (const task of Object.keys(change.models ?? {})) models.setThreadModel(user.id, pool, thread.id, task as Api.ThreadTask, overrides[task as Api.ThreadTask]);
   if (change.unlogged !== undefined) owner(d, user, (o) => o[pool].setUnlogged(thread.id, !!change.unlogged));
+  if (change.voiceCloud !== undefined) models.setThreadVoiceCloud(user.id, thread.id, change.voiceCloud);
+}
+
+/** A signal that stops when the client goes away before the answer is sent. */
+function stopOnClose(r: Request): AbortSignal {
+  const stop = new AbortController();
+  r.res.on("close", () => { if (!r.res.writableEnded) stop.abort(); });
+  return stop.signal;
 }
 
 function entryN(r: Request): number {
