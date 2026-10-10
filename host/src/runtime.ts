@@ -359,7 +359,7 @@ export class Runtime {
       const url = new URL(base + path);
       const upstream = await new Promise<IncomingMessage>((resolve, reject) => {
         const r = http.request(url, { method: "POST", headers: { "content-type": type, "content-length": raw.length }, signal: abort.signal }, resolve);
-        r.on("error", () => reject(new HostError(503, "unavailable", `The ${SERVER_NAMES[serverOf(model)]} server didn't answer.`)));
+        r.on("error", () => reject(new HostError(503, "model_unavailable", `The ${SERVER_NAMES[serverOf(model)]} server didn't answer.`)));
         r.end(raw);
       });
       res.writeHead(upstream.statusCode ?? 502, { "content-type": upstream.headers["content-type"] ?? "application/json", "cache-control": "no-store" });

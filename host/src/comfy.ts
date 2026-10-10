@@ -8,7 +8,7 @@ import type { Backend } from "./backends.ts";
 /** A 1×1 PNG, written over each upload after its job. */
 const BLANK = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 
-const unavailable = () => new HostError(503, "unavailable", "ComfyUI didn't answer.");
+const unavailable = () => new HostError(503, "model_unavailable", "ComfyUI didn't answer.");
 /** How long one request to ComfyUI may take, outside the job itself: a ComfyUI that hangs fails the job rather than the queue. */
 const CALL_MS = 30_000;
 
@@ -72,7 +72,7 @@ export class Comfy implements Backend {
         let onAbort = () => {};
         const done = new Promise<void>((resolve, reject) => {
           timer = setTimeout(() => reject(new HostError(503, "busy", "The image took too long.")), this.timeoutMs);
-          onAbort = () => reject(new HostError(503, "unavailable", "The request was cancelled."));
+          onAbort = () => reject(new HostError(503, "model_unavailable", "The request was cancelled."));
           signal?.addEventListener("abort", onAbort, { once: true });
           socket.onmessage = (e) => {
             if (e.data instanceof ArrayBuffer) {
@@ -89,7 +89,7 @@ export class Comfy implements Backend {
             }
             // Only this client's messages arrive here; skip any for another prompt.
             if (promptId && msg.data?.prompt_id && msg.data.prompt_id !== promptId) return;
-            if (msg.type === "execution_error") reject(new HostError(503, "unavailable", "ComfyUI failed to make the image."));
+            if (msg.type === "execution_error") reject(new HostError(503, "model_unavailable", "ComfyUI failed to make the image."));
             else if (msg.type === "executing" && msg.data?.node === null) resolve();
           };
           socket.onclose = () => reject(unavailable());
@@ -106,7 +106,7 @@ export class Comfy implements Backend {
           }).catch(() => {
             throw unavailable();
           });
-          if (!res.ok) throw new HostError(503, "unavailable", "ComfyUI refused the workflow.");
+          if (!res.ok) throw new HostError(503, "model_unavailable", "ComfyUI refused the workflow.");
           promptId = ((await res.json()) as { prompt_id: string }).prompt_id;
           await done;
           finished = true;

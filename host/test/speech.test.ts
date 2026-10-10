@@ -242,7 +242,7 @@ describe("/v1/audio", () => {
 });
 
 describe("the speech server's client", () => {
-  it("loads on a GPU or the CPU, and answers unavailable when the server fails or is gone", async () => {
+  it("loads on a GPU or the CPU, and answers model_unavailable when the server fails or is gone", async () => {
     const sent: unknown[] = [];
     const server = http.createServer(async (req, res) => {
       let d = "";
@@ -261,8 +261,8 @@ describe("the speech server's client", () => {
       { path: "/load", name: KOKORO, folder: `/models/${KOKORO}`, file: "onnx/model.onnx", device: 1 },
       { path: "/load", name: KOKORO, folder: `/models/${KOKORO}`, file: "onnx/model.onnx", device: "cpu" },
     ]);
-    await expect(speech.load({ ...kokoro, id: "broken" }, CPU_OPTION)).rejects.toMatchObject({ status: 503, code: "unavailable", message: "The voice model has no vocabulary." });
+    await expect(speech.load({ ...kokoro, id: "broken" }, CPU_OPTION)).rejects.toMatchObject({ status: 503, code: "model_unavailable", message: "The voice model has no vocabulary." });
     const gone = new Speech({ url: "http://127.0.0.1:1", models: "/models" });
-    await expect(gone.unload(kokoro)).rejects.toMatchObject({ status: 503, code: "unavailable" });
+    await expect(gone.unload(kokoro)).rejects.toMatchObject({ status: 503, code: "model_unavailable" });
   });
 });

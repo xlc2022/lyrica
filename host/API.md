@@ -36,7 +36,8 @@ on `/v1`, where OpenAI clients read `error.message`.
 | 503 | `paused` | The host is paused. Lyrica uses her fallbacks. |
 | 503 | `busy` | It could fit, but not within the wait limit, because the GPU is busy. The message names what with: "The GPU is busy with a chat model." |
 | 503 | `restarting` | A restart is under way. |
-| 503 | `unavailable` | The server for this model isn't running or didn't answer. |
+| 503 | `model_unavailable` | The server for this model (llama.cpp, vLLM, ComfyUI or the speech server) isn't running, didn't answer or couldn't load it. The host itself is up: its other models may still work. |
+| 503 | `unavailable` | A part of the host itself isn't running, such as the download service. |
 | 507 | `no_space` | Not enough free space for a download. |
 
 ## Priority
@@ -278,7 +279,7 @@ volume. They apply at its next load, or at once with Reload.
   The weights and the KV cache for the context must fit in the share of
   each GPU (`too_big` otherwise, saying to lower the context length or
   raise the share). A vLLM server that exits while starting fails its load
-  at once (`unavailable`), rather than after the load timeout.
+  at once (`model_unavailable`), rather than after the load timeout.
 - Both: `batchSize` (32 to 65536: llama.cpp's batch size, vLLM's batched
   tokens), `chatTemplate` (a Jinja template, at most 64 kB, used instead of
   the model's own).

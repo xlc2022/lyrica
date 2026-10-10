@@ -101,7 +101,7 @@ class Model:
             providers = ["CPUExecutionProvider"]
         else:
             if "CUDAExecutionProvider" not in ort.get_available_providers():
-                raise Refused(503, "unavailable", "This speech server has no GPU support; it runs voices on the CPU.")
+                raise Refused(503, "model_unavailable", "This speech server has no GPU support; it runs voices on the CPU.")
             providers = [("CUDAExecutionProvider", {"device_id": int(device)}), "CPUExecutionProvider"]
         self.folder = folder
         options = ort.SessionOptions()
@@ -127,7 +127,7 @@ class Model:
                     return v
             except (OSError, KeyError, TypeError, ValueError):
                 continue
-        raise Refused(503, "unavailable", "The voice model has no vocabulary.")
+        raise Refused(503, "model_unavailable", "The voice model has no vocabulary.")
 
     def style(self, voice):
         if voice not in self.styles:
@@ -228,7 +228,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             # The kind of failure only, never the text.
             try:
-                self.send(503, {"error": {"code": "unavailable", "message": f"The speech server failed ({type(e).__name__})."}})
+                self.send(503, {"error": {"code": "model_unavailable", "message": f"The speech server failed ({type(e).__name__})."}})
             except OSError:
                 pass
 
@@ -263,7 +263,7 @@ class Handler(BaseHTTPRequestHandler):
         with LOCK:
             model = MODELS.get(b.get("model"))
         if model is None:
-            raise Refused(503, "unavailable", "That voice model isn't loaded.")
+            raise Refused(503, "model_unavailable", "That voice model isn't loaded.")
         text, voice, speed = b.get("input"), b.get("voice"), b.get("speed", 1)
         if not isinstance(text, str) or not text.strip() or len(text) > 4096:
             raise Refused(400, "invalid", "input is the text to read, 1 to 4096 characters.")

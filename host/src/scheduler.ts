@@ -158,11 +158,11 @@ export class Scheduler {
 
   private backend(model: TextModel): Backend {
     if (model.server === "comfyui") {
-      if (!this.o.backends.comfyui) throw new HostError(503, "unavailable", "This host has no image server.");
+      if (!this.o.backends.comfyui) throw new HostError(503, "model_unavailable", "This host has no image server.");
       return this.o.backends.comfyui;
     }
     if (model.server === "speech") {
-      if (!this.o.backends.speech) throw new HostError(503, "unavailable", "This host has no speech server.");
+      if (!this.o.backends.speech) throw new HostError(503, "model_unavailable", "This host has no speech server.");
       return this.o.backends.speech;
     }
     return model.server === "vllm" ? this.o.backends.vllm : this.o.backends.llamacpp;
@@ -290,7 +290,7 @@ export class Scheduler {
             for (const e of plan.evict) await this.unload(e);
             await this.load(job.model, plan.option);
           } catch (e) {
-            this.finish(job, e instanceof HostError ? e : new HostError(503, "unavailable", "The model server couldn't load this model."));
+            this.finish(job, e instanceof HostError ? e : new HostError(503, "model_unavailable", "The model server couldn't load this model."));
           }
           this.again = true; // memory changed: look at the queue again from the top
           break;

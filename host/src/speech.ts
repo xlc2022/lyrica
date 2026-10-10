@@ -12,7 +12,7 @@ export interface SpeechOptions {
   loadTimeoutMs?: number;
 }
 
-const unavailable = (message = "The speech server didn't answer.") => new HostError(503, "unavailable", message);
+const unavailable = (message = "The speech server didn't answer.") => new HostError(503, "model_unavailable", message);
 
 export class Speech implements Backend {
   private readonly o: Required<SpeechOptions>;
