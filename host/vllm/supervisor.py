@@ -26,6 +26,7 @@ def argv(spec):
         "--enable-sleep-mode",
         "--gpu-memory-utilization", "0.9",
         "--disable-uvicorn-access-log",
+        "--load-format", "safetensors",
     ]
     if spec.get("embedding"):
         args += ["--runner", "pooling"]
@@ -38,17 +39,25 @@ def start(gpu, spec):
     env = dict(os.environ, VLLM_SERVER_DEV_MODE="1")
     for var in ("CUDA_VISIBLE_DEVICES", "HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES"):
         env[var] = str(gpu)
-    return subprocess.Popen(argv(spec), env=env)
+    # Its own process group, so stopping it also stops vLLM's engine processes.
+    return subprocess.Popen(argv(spec), env=env, start_new_session=True)
 
 
 def stop(proc):
     if proc.poll() is None:
-        proc.terminate()
         try:
+            os.killpg(proc.pid, signal.SIGTERM)
             proc.wait(30)
         except subprocess.TimeoutExpired:
-            proc.kill()
+            os.killpg(proc.pid, signal.SIGKILL)
             proc.wait()
+        except ProcessLookupError:
+            pass
+    # Whatever the group left behind.
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
 
 
 def wanted():
@@ -62,6 +71,7 @@ def wanted():
 
 def main():
     running = {}  # gpu -> (spec, process, started)
+    failures = {}  # gpu -> crashes in a row, for the backoff
     generation = None
     stopping = []
     signal.signal(signal.SIGTERM, lambda *_: stopping.append(True))
@@ -77,9 +87,15 @@ def main():
             generation = gen
             for gpu, spec in gpus.items():
                 current = running.get(gpu)
-                # Start what's missing; restart a crashed server after 10 seconds.
-                if current is None or (current[1].poll() is not None and time.time() - current[2] > 10):
+                if current is None:
+                    failures.pop(gpu, None)
                     running[gpu] = (spec, start(gpu, spec), time.time())
+                elif current[1].poll() is not None:
+                    # Restart a crashed server, waiting longer each time: 10 s, 20 s, ... up to 5 minutes.
+                    wait = min(10 * 2 ** failures.get(gpu, 0), 300)
+                    if time.time() - current[2] > wait:
+                        failures[gpu] = failures.get(gpu, 0) + 1
+                        running[gpu] = (spec, start(gpu, spec), time.time())
         time.sleep(1)
     for _, proc, _ in running.values():
         stop(proc)

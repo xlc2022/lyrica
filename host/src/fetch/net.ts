@@ -32,7 +32,7 @@ export function plainError(e: unknown): DownloadError {
 export interface Get {
   url: string;
   token?: string;
-  /** Sends the token to this host only (the hub's own). */
+  /** The hub's own host: the token goes there and nowhere else, never to a CDN it redirects to. */
   tokenHost?: string;
   headers?: Record<string, string>;
   signal?: AbortSignal;
@@ -58,7 +58,7 @@ export class Net {
       const literal = url.hostname.replace(/^\[|\]$/g, "");
       if (isIP(literal) && !this.allowed(literal)) throw new DownloadError(`${literal} is a private or local address, which downloads may not use.`);
       const headers: Record<string, string> = { "user-agent": "lyrica-host-fetch", ...g.headers };
-      if (g.token && url.hostname === (g.tokenHost ?? new URL(g.url).hostname)) headers.authorization = `Bearer ${g.token}`;
+      if (g.token && g.tokenHost && url.hostname === g.tokenHost) headers.authorization = `Bearer ${g.token}`;
       const res = await new Promise<IncomingMessage>((resolve, reject) => {
         const req = https.get(url, { headers, lookup: this.lookup as never, ca: this.ca, signal: g.signal, timeout: 60_000 }, resolve);
         req.on("timeout", () => req.destroy(new DownloadError("The server stopped answering.")));

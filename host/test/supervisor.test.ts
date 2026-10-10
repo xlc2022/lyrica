@@ -29,10 +29,10 @@ describe.skipIf(!python)("the vLLM supervisor", () => {
     try {
       const runs = () => (existsSync(join(dir, "runs")) ? readFileSync(join(dir, "runs"), "utf8").trim().split("\n") : []);
       await until(() => runs().length === 1);
-      expect(runs()[0]).toBe("1 1 serve /models/a --served-model-name a --host 0.0.0.0 --port 8001 --enable-sleep-mode --gpu-memory-utilization 0.9 --disable-uvicorn-access-log --max-model-len 32768");
+      expect(runs()[0]).toBe("1 1 serve /models/a --served-model-name a --host 0.0.0.0 --port 8001 --enable-sleep-mode --gpu-memory-utilization 0.9 --disable-uvicorn-access-log --load-format safetensors --max-model-len 32768");
       write({ 1: { model: "/models/b", name: "b", port: 8001, embedding: true, maxModelLen: null } });
       await until(() => runs().length === 2);
-      expect(runs()[1]).toBe("1 1 serve /models/b --served-model-name b --host 0.0.0.0 --port 8001 --enable-sleep-mode --gpu-memory-utilization 0.9 --disable-uvicorn-access-log --runner pooling");
+      expect(runs()[1]).toBe("1 1 serve /models/b --served-model-name b --host 0.0.0.0 --port 8001 --enable-sleep-mode --gpu-memory-utilization 0.9 --disable-uvicorn-access-log --load-format safetensors --runner pooling");
       expect(runs().join("\n")).not.toMatch(/trust-remote-code/);
     } finally {
       proc.kill("SIGTERM");

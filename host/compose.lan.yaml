@@ -3,4 +3,5 @@
 services:
   host-api:
     ports:
-      - "${LAN_ADDRESS:?set LAN_ADDRESS}:7236:7443"
+      # LAN_BIND is the address, in brackets for IPv6.
+      - "${LAN_BIND:?set LAN_BIND}:7236:7443"

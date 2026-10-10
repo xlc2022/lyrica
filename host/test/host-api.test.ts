@@ -178,6 +178,15 @@ describe("dashboard", () => {
     expect((await call({ port: tls, path: "/dashboard/login", headers, body: { password: "correct horse" } })).status).toBe(429);
   });
 
+  it("counts sign-in tries sent in parallel", async () => {
+    const { tls, local: lp } = await host();
+    const headers = { host: "test-host:7236", origin: "https://test-host:7236" };
+    await local(lp, "/dashboard/password", { body: { password: "correct horse" } });
+    const replies = await Promise.all(Array.from({ length: 12 }, () => call({ port: tls, path: "/dashboard/login", headers, body: { password: "wrong" } })));
+    expect(replies.filter((r) => r.status === 401)).toHaveLength(5);
+    expect(replies.filter((r) => r.status === 429)).toHaveLength(7);
+  });
+
   it("signs in remotely with the password", async () => {
     const { tls, local: lp } = await host();
     const headers = { host: "test-host:7236", origin: "https://test-host:7236" };

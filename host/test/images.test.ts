@@ -238,6 +238,6 @@ describe("the image API", () => {
     const z = body.starters.find((st: { id: string }) => st.id === "z-image-turbo");
     // The test folder holds two of its parts at their download paths, but not its diffusion model.
     expect(z.parts.map((p: { present: boolean }) => p.present)).toEqual([false, true, true]);
-    expect(body.starters.map((st: { id: string }) => st.id)).toEqual(["flux-schnell", "qwen-image", "qwen-image-edit", "sdxl", "seedvr2-3b", "seedvr2-7b", "z-image-turbo"]);
+    expect(body.starters.map((st: { id: string }) => st.id)).toEqual(["flux-schnell", "qwen-image-edit", "qwen-image", "sdxl", "seedvr2-3b", "seedvr2-7b", "z-image-turbo"]);
   });
 });

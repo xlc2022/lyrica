@@ -1,6 +1,6 @@
 // The text models and their routes: the OpenAI-compatible /v1, and the
 // management calls in API.md ("Status and control").
-import type { IncomingMessage, ServerResponse } from "node:http";
+import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import type { RecordEntry } from "./downloads.ts";
 import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./http.ts";
 import { scanTextModels, type TextModel } from "./library.ts";
@@ -53,7 +53,7 @@ async function readRaw(req: IncomingMessage): Promise<Buffer> {
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > BODY_LIMIT) throw new HostError(413, "invalid", "The request is too large.");
+    if (size > BODY_LIMIT) throw new HostError(400, "invalid", "The request is too large.");
     chunks.push(chunk as Buffer);
   }
   return Buffer.concat(chunks);
@@ -222,32 +222,37 @@ export class Runtime {
     const header = req.headers["x-lyrica-priority"];
     const priority: Priority = PRIORITIES.includes(header as Priority) ? (header as Priority) : "chat";
     const started = Date.now();
+    // From here on, a client that goes away cancels its request, queued or running.
+    const abort = new AbortController();
+    res.on("close", () => {
+      if (!res.writableFinished) abort.abort();
+    });
 
     await this.scheduler.run(model, priority, async (base) => {
-      const abort = new AbortController();
-      res.on("close", () => {
-        if (!res.writableFinished) abort.abort();
+      // http.request, not fetch: fetch gives up on headers after 300 seconds,
+      // which a long answer that isn't streamed can take.
+      const url = new URL(base + path);
+      const upstream = await new Promise<IncomingMessage>((resolve, reject) => {
+        const r = http.request(url, { method: "POST", headers: { "content-type": "application/json", "content-length": raw.length }, signal: abort.signal }, resolve);
+        r.on("error", () => reject(new HostError(503, "unavailable", "The model server didn't answer.")));
+        r.end(raw);
       });
-      let upstream: Response;
-      try {
-        upstream = await fetch(base + path, { method: "POST", headers: { "content-type": "application/json" }, body: raw, signal: abort.signal });
-      } catch {
-        throw new HostError(503, "unavailable", "The model server didn't answer.");
-      }
-      res.writeHead(upstream.status, { "content-type": upstream.headers.get("content-type") ?? "application/json", "cache-control": "no-store" });
+      res.writeHead(upstream.statusCode ?? 502, { "content-type": upstream.headers["content-type"] ?? "application/json", "cache-control": "no-store" });
       const sniffer = new UsageSniffer(body.stream === true);
-      try {
-        if (upstream.body) {
-          for await (const chunk of upstream.body) {
-            const buf = Buffer.from(chunk);
-            sniffer.feed(buf);
-            res.write(buf);
-          }
-        }
-        res.end();
-      } catch {
-        res.destroy();
-      }
+      // A server that dies half way through ends the answer: "close" always
+      // comes, and an answer cut short isn't "complete".
+      await new Promise<void>((resolve) => {
+        upstream.on("data", (chunk: Buffer) => {
+          sniffer.feed(chunk);
+          res.write(chunk);
+        });
+        upstream.on("error", () => {});
+        upstream.on("close", () => {
+          if (upstream.complete) res.end();
+          else res.destroy();
+          resolve();
+        });
+      });
       sniffer.done();
       this.count(model.id, {
         requests: 1,
@@ -255,6 +260,6 @@ export class Runtime {
         completionTokens: sniffer.usage?.completion_tokens ?? 0,
         seconds: (Date.now() - started) / 1000,
       });
-    });
+    }, undefined, abort.signal);
   }
 }

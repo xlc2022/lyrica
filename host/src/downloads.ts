@@ -86,7 +86,7 @@ export class Downloads {
   }
 
   async request(request: Record<string, unknown>, token: string | undefined): Promise<{ downloads: unknown[] }> {
-    const made = await this.call("/downloads", { body: { ...request, token } });
+    const made = await this.call("/downloads", { body: { ...request, token: request.source === "url" ? undefined : token } });
     await this.refresh().catch(() => {});
     return made;
   }
@@ -124,7 +124,8 @@ export class Downloads {
       const body = await readJson(req);
       onlyFields(body, ["source", "repo", "revision", "files", "url", "sha256"]);
       if (!SOURCES.includes(body.source as string)) throw invalid("source must be huggingface, modelscope or url.");
-      sendJson(res, 202, await this.request(body, this.token(req)));
+      // A hub token is for that hub: never sent along with a link.
+      sendJson(res, 202, await this.request(body, body.source === "url" ? undefined : this.token(req)));
       return true;
     }
     if (path === "/host/v1/downloads" && method === "GET") {

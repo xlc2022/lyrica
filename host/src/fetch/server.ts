@@ -1,4 +1,4 @@
-// fetch's own small API, for host-api only. It listens on the `outside`
+// fetch's own small API, for host-api only. It listens on the internal `fetch-api`
 // network and answers only host-api's address.
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import { DownloadError, plainError } from "./net.ts";

@@ -1,4 +1,5 @@
 // host-api's entry point, run in its container.
+import { lookup } from "node:dns/promises";
 import { readFileSync } from "node:fs";
 import { LlamaCpp, Vllm } from "./backends.ts";
 import { Comfy } from "./comfy.ts";
@@ -60,4 +61,11 @@ const book = new RecipeBook(dataDir, loadTemplates(new URL("../workflows/", impo
 host.images = new Images({ book, runtime: host.runtime, comfy, downloads: host.downloads, modelsDir, serving, comfyGpu: Number(env.COMFY_GPU || 0), log: stdoutLog });
 host.runtime.afterScan = () => host.images!.scan();
 await host.runtime.start();
+// fetch shares a network with host-api (for host-api's calls to it) and may not call back.
+const refuseFetch = async () => {
+  const found = await lookup(env.FETCH_HOST || "fetch", { all: true }).catch(() => []);
+  host.refusedPeers = new Set(found.map((a) => a.address));
+};
+await refuseFetch();
+setInterval(() => void refuseFetch(), 30_000).unref();
 for (const signal of ["SIGTERM", "SIGINT"] as const) process.on(signal, () => void host.close().then(() => process.exit(0)));
