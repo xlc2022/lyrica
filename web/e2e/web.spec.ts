@@ -152,8 +152,9 @@ test("a child thread nests under its parent, opens from its card, and goes with 
   await card.getByRole("link", { name: "Open" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Seed list" })).toBeVisible();
   await expect(page.getByText("Child thread of")).toBeVisible();
-  await expect(page.getByText("Lyrica, from")).toBeVisible();
+  await expect(page.locator(".msg.user .who").getByText("· from")).toBeVisible();
   await expect(page.getByText("Work on Seed list.", { exact: true })).toBeVisible();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/child-${page.viewportSize()!.width}.png` });
   await page.getByText("Child thread of").getByRole("link").click();
 
   const drawer = await openSettings(page);

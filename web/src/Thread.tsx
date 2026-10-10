@@ -110,7 +110,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
       <div className="scroll" ref={scroller}>
         <ErrorText error={summary.error || t.loadError} />
         {settings.error && <ErrorText error={`This thread's settings didn't load: ${settings.error}`} />}
-        <Conversation ctx={ctx} pool={pool} base={base} threadId={threadId} subagent={!!s?.subagent} thread={t} rewinder={rewinder} hideFrom={pending?.hide} />
+        <Conversation ctx={ctx} pool={pool} base={base} threadId={threadId} subagent={!!s?.subagent} thread={t} rewinder={rewinder} hideFrom={pending?.hide} parentTitle={s?.child ? parent?.title : undefined} />
         <ErrorText error={sendError} />
       </div>
       {!t.connected && <p className="offline" role="status">Reconnecting…</p>}

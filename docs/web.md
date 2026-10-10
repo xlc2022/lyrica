@@ -122,7 +122,7 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
 - A `threads` call is a card: the child thread started (title and task) or
   messaged, linking to it. A child's update shows in the parent as a card
   headed "Child thread", linking to it. In a child thread, what the parent
-  sent shows as "Lyrica, from the parent thread", with the message menu
+  sent shows as "Lyrica · from <parent title>", with the message menu
   (Branch, Delete; not Edit). Forgetting a thread with child threads asks
   whether to forget them too, ticked, in the shared `Confirm` with one option.
 - Files attach with the button, by dragging onto the composer, or by pasting.
