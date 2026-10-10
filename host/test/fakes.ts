@@ -151,7 +151,7 @@ export async function fakeHub(opts: { lie?: boolean; redirectTo?: string; gated?
     res.writeHead(200, { "content-length": body.length });
     res.end(body);
   });
-  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  await new Promise<void>((r) => server.listen(0, r));
   const close = () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); });
   return { base: `https://localhost:${(server.address() as AddressInfo).port}`, files, seen, ca: id.cert, close };
 }

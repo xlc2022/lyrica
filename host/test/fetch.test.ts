@@ -25,7 +25,7 @@ function setup(hub: { base: string; ca: string }, free = 100 * 1024 ** 3) {
   const data = mkdtempSync(join(tmpdir(), "lyrica-fetch-data-"));
   const lines: string[] = [];
   // The fake hub is on loopback; everything else follows the real rule.
-  const net = new Net({ allowed: (a) => a === "127.0.0.1" || isPublic(a), ca: hub.ca });
+  const net = new Net({ allowed: (a) => a === "127.0.0.1" || a === "::1" || isPublic(a), ca: hub.ca });
   const make = () =>
     new Downloader({ models, data, net, hubs: { huggingface: huggingFace(net, hub.base), modelscope: modelScope(net, hub.base) }, log: (e, f) => void lines.push(JSON.stringify({ e, ...f })), free: () => free });
   return { models, data, lines, make, d: make() };

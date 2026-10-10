@@ -29,7 +29,7 @@ async function stack(opts: { gated?: boolean } = {}) {
   const models = mkdtempSync(join(tmpdir(), "lyrica-dl-models-"));
   const lines: string[] = [];
   const log = (event: string, fields?: object) => void lines.push(JSON.stringify({ event, ...fields }));
-  const net = new Net({ allowed: (a) => a === "127.0.0.1" || isPublic(a), ca: hub.ca });
+  const net = new Net({ allowed: (a) => a === "127.0.0.1" || a === "::1" || isPublic(a), ca: hub.ca });
   const downloader = new Downloader({
     models, data: mkdtempSync(join(tmpdir(), "lyrica-dl-data-")), net,
     hubs: { huggingface: huggingFace(net, hub.base), modelscope: modelScope(net, hub.base) }, log, free: () => 1e12,
