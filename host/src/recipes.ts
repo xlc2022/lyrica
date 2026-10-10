@@ -48,6 +48,27 @@ export interface Starter {
 
 export const DEFAULT_KEYS = ["steps", "cfg", "sampler", "scheduler", "width", "height", "shift", "guidance", "negativePrompt", "scale", "maxSize", "colorMatch"];
 
+// The same ranges a request may ask for (images.ts), so a default is always one a request could give.
+const DEFAULT_RANGES: Record<string, [number, number, number?]> = {
+  steps: [1, 150, 1], cfg: [0, 30], width: [256, 2048, 16], height: [256, 2048, 16],
+  shift: [0, 20], guidance: [0, 30], scale: [1, 4], maxSize: [256, 8192, 1],
+};
+export const COLOR_MATCH = ["lab", "wavelet", "wavelet_adaptive", "hsv", "adain", "none"];
+
+function checkDefault(k: string, v: unknown): void {
+  const range = DEFAULT_RANGES[k];
+  if (range) {
+    const [min, max, step] = range;
+    if (typeof v !== "number" || !Number.isFinite(v) || v < min || v > max || (step && (!Number.isInteger(v) || v % step !== 0))) {
+      throw invalid(`${k} must be a number from ${min} to ${max}${step && step > 1 ? `, a multiple of ${step}` : step ? ", whole" : ""}.`);
+    }
+  } else if (k === "colorMatch") {
+    if (!COLOR_MATCH.includes(v as string)) throw invalid(`colorMatch must be one of ${COLOR_MATCH.join(", ")}.`);
+  } else if (k === "sampler" || k === "scheduler") {
+    if (typeof v !== "string" || !/^[a-z0-9_]{1,64}$/.test(v)) throw invalid(`${k} must be a ComfyUI ${k} name.`);
+  } else if (typeof v !== "string" || v.length > 4096) throw invalid(`${k} must be text of at most 4096 characters.`);
+}
+
 export function loadStarters(dir: string): Starter[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
@@ -177,7 +198,8 @@ export class RecipeBook {
   copy(id: string, name: unknown): Recipe {
     if (typeof name !== "string" || !name.trim()) throw invalid("name is missing.");
     const from = this.get(id);
-    const copy: Recipe = { ...structuredClone(from), id: randomUUID(), name: name.trim(), state: "confirmed", base: from.id, starter: null };
+    // A copy is in the same state as its source: a copy of a proposal is a proposal.
+    const copy: Recipe = { ...structuredClone(from), id: randomUUID(), name: name.trim(), base: from.id, starter: null };
     this.recipes.push(copy);
     this.save();
     return copy;
@@ -243,7 +265,7 @@ export class RecipeBook {
         if (!d || typeof d !== "object") throw invalid("defaults must be an object.");
         for (const [k, v] of Object.entries(d)) {
           if (!DEFAULT_KEYS.includes(k)) throw invalid(`Unknown default: ${k}.`);
-          if (typeof v !== "string" && typeof v !== "number") throw invalid(`${k} must be a number or text.`);
+          checkDefault(k, v);
         }
         Object.assign(r.defaults, d);
         break;
@@ -276,13 +298,26 @@ export class RecipeBook {
     return { candidates, kept };
   }
 
-  /** A confirmed recipe from a starter, using parts already here (same path, or same checksum). */
-  fromStarter(starter: Starter, have: (p: Starter["parts"][number]) => string | null): { recipe: Recipe; toDownload: Starter["parts"] } {
+  /**
+   * A confirmed recipe from a starter, using parts already here (same path, or
+   * same checksum). Installing a starter again gives back its recipe, with only
+   * the parts neither here nor downloading to download.
+   */
+  fromStarter(
+    starter: Starter,
+    have: (p: Starter["parts"][number]) => string | null,
+    downloading: (p: Starter["parts"][number]) => boolean = () => false,
+  ): { recipe: Recipe; toDownload: Starter["parts"] } {
+    const installed = this.recipes.find((r) => r.starter === starter.id);
+    if (installed) {
+      const files = new Set(installed.parts.map((p) => p.file));
+      return { recipe: installed, toDownload: starter.parts.filter((p) => files.has(starterPath(p)) && !have(p) && !downloading(p)) };
+    }
     const t = this.template(starter);
     const toDownload: Starter["parts"] = [];
     const parts: RecipePart[] = starter.parts.map((p) => {
       const file = have(p);
-      if (!file) toDownload.push(p);
+      if (!file && !downloading(p)) toDownload.push(p);
       return { role: p.role, slot: p.slot ?? null, file: file ?? starterPath(p), added: false };
     });
     const recipe: Recipe = {

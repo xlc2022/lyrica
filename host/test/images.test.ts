@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { Comfy } from "../src/comfy.ts";
-import { Images } from "../src/images.ts";
+import { Images, inputImage } from "../src/images.ts";
 import { scanParts } from "../src/parts.ts";
 import { RecipeBook, loadStarters, type Recipe } from "../src/recipes.ts";
 import { Runtime } from "../src/runtime.ts";
@@ -109,9 +109,26 @@ describe("recipes", () => {
     b.patch(r.id, { op: "swap", role: "text_encoder", slot: "qwen3", file: "q2.safetensors" }, parts);
     const copy = b.copy(r.id, "Z, styled");
     b.patch(copy.id, { op: "addLora", file: "style.safetensors", strength: 0.8 }, parts);
-    expect(b.get(copy.id)).toMatchObject({ base: r.id, state: "confirmed", loras: [{ file: "style.safetensors", strength: 0.8 }] });
+    expect(b.get(copy.id)).toMatchObject({ base: r.id, state: "proposed", loras: [{ file: "style.safetensors", strength: 0.8 }] });
     expect(b.get(r.id).loras).toEqual([]);
     expect(() => b.patch(r.id, { op: "addPart", role: "vae", file: "ae.safetensors" }, parts)).toThrow("checkpoint");
+  });
+
+  it("installs a starter once, and checks defaults against the request ranges", () => {
+    const b = new RecipeBook(mkdtempSync(join(tmpdir(), "lyrica-book-")), TEMPLATES, STARTERS);
+    const starter = STARTERS.find((s) => s.id === "z-image-turbo")!;
+    const first = b.fromStarter(starter, () => null);
+    expect(first.toDownload).toHaveLength(3);
+    const again = b.fromStarter(starter, (p) => (p.role === "vae" ? "here.safetensors" : null), (p) => p.role === "text_encoder");
+    expect(again.recipe.id).toBe(first.recipe.id);
+    expect(again.toDownload.map((p) => p.role)).toEqual(["diffusion"]);
+    expect(b.all()).toHaveLength(1);
+    const id = first.recipe.id;
+    for (const bad of [{ steps: 0 }, { steps: 2.5 }, { width: 1000 }, { cfg: 99 }, { colorMatch: "x" }, { sampler: "a b" }, { negativePrompt: 3 }]) {
+      expect(() => b.patch(id, { op: "defaults", defaults: bad }, [])).toThrow();
+    }
+    b.patch(id, { op: "defaults", defaults: { steps: 30, width: 768, sampler: "dpmpp_2m", colorMatch: "wavelet" } }, []);
+    expect(b.get(id).defaults).toMatchObject({ steps: 30, width: 768, sampler: "dpmpp_2m" });
   });
 
   it("fills a template with loaders, LoRAs and values, and nothing else", () => {
@@ -136,6 +153,41 @@ describe("recipes", () => {
     expect(Object.keys(edit)).not.toContain("ref1");
     expect(edit.pos!.inputs).not.toHaveProperty("image2");
     expect(edit.batch!.inputs.samples).toEqual(["encoded", 0]);
+  });
+});
+
+describe("ComfyUI jobs", () => {
+  it("blanks the uploads and clears the history after a job", async () => {
+    const fake = await fakeComfy();
+    open.push(fake);
+    const pngs = await new Comfy(fake.url).run({ image: PNG }, () => ({}));
+    expect(pngs).toHaveLength(1);
+    expect(fake.seen.uploads).toEqual(["lyrica-image.png", "lyrica-image.png"]);
+    expect(fake.seen.uploadBodies[0]!.includes(PNG)).toBe(true);
+    expect(fake.seen.uploadBodies[1]!.includes(PNG)).toBe(false);
+    expect(fake.seen.historyCleared).toBe(1);
+    expect(fake.seen.interrupted).toEqual([]);
+  });
+
+  it("refuses an image whose header claims too many pixels", () => {
+    const huge = Buffer.from(PNG);
+    huge.writeUInt32BE(9000, 16);
+    expect(() => inputImage(huge.toString("base64"), "image")).toThrow("8192 pixels");
+    huge.writeUInt32BE(8000, 16);
+    huge.writeUInt32BE(8000, 20);
+    expect(() => inputImage(huge.toString("base64"), "image")).toThrow("36 megapixels");
+    expect(inputImage(PNG.toString("base64"), "image")).toEqual(PNG);
+  });
+
+  it("interrupts and dequeues a job that times out or is cancelled", async () => {
+    const fake = await fakeComfy({ hang: true });
+    open.push(fake);
+    await expect(new Comfy(fake.url, 50).run({ image: PNG }, () => ({}))).rejects.toThrow("took too long");
+    expect(fake.seen).toMatchObject({ interrupted: ["p1"], deleted: ["p1"], historyCleared: 1 });
+    const abort = new AbortController();
+    setTimeout(() => abort.abort(), 50);
+    await expect(new Comfy(fake.url).run({}, () => ({}), abort.signal)).rejects.toThrow("cancelled");
+    expect(fake.seen).toMatchObject({ interrupted: ["p1", "p2"], deleted: ["p1", "p2"] });
   });
 });
 

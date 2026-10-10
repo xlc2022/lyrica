@@ -484,6 +484,25 @@ export class Scheduler {
   }
 
   /** Unloads models of a kind idle for longer than `ms` (ComfyUI keeps its parts in memory after a job). */
+  /**
+   * Measures a model whose server loads during the job (ComfyUI), from the
+   * memory used before it: `fn` runs the job, and the first run is measured.
+   */
+  async measuring<T>(model: TextModel, gpu: number, fn: () => Promise<T>): Promise<T> {
+    if (this.o.state.get().vram[model.id] !== undefined) return fn();
+    const before = (await this.gpu(gpu)).used;
+    const result = await fn();
+    const measured = (await this.gpu(gpu).catch(() => null))?.used ?? before;
+    const entry = this.slots.get(gpu)?.loaded.get(model.id);
+    if (measured > before) {
+      if (entry) entry.vram = measured - before;
+      this.o.state.update((s) => {
+        s.vram[model.id] = measured - before;
+      });
+    }
+    return result;
+  }
+
   async unloadIdle(kind: TextModel["kind"], ms: number): Promise<void> {
     for (const slot of this.slots.values()) {
       for (const l of [...slot.loaded.values()]) {

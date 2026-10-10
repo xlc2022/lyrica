@@ -140,7 +140,7 @@ revoked. A revoked server must pair again.
 - **Queues.** Requests wait in a queue per GPU: chat first, then images,
   then background work. A request that waits too long fails with "The GPU
   is busy with …".
-- **VRAM** use is measured on each model's first load and remembered.
+- **VRAM** use is measured on each model's first load (an image recipe's on its first job) and remembered.
 - **Pause** refuses new work, lets the current job finish, then unloads
   every model and stops vLLM, so nothing of the host's stays in VRAM. What
   couldn't be unloaded shows on the dashboard. Until Resume, new work gets

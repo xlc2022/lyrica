@@ -1,6 +1,6 @@
 // The image routes in API.md ("Image models"): parts, recipes, starters, and
 // create, edit and upscale through ComfyUI.
-import { randomInt } from "node:crypto";
+import { createHash, randomInt } from "node:crypto";
 import { mkdirSync, readdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, join } from "node:path";
@@ -10,13 +10,15 @@ import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
 import { scanParts, type Part } from "./parts.ts";
-import { RecipeBook, starterPath, type Recipe, type Starter } from "./recipes.ts";
+import { COLOR_MATCH, RecipeBook, starterPath, type Recipe, type Starter } from "./recipes.ts";
 import type { Runtime } from "./runtime.ts";
-import { fill, partNames, type Action, type Values } from "./templates.ts";
+import { fill, type Action, type Values } from "./templates.ts";
 
 const IMAGE_LIMIT = 20 * 1024 * 1024;
+const MAX_SIDE = 8192;
+const MAX_PIXELS = 36_000_000;
+const MAX_RESOLUTION = 4096;
 const BASE_DEFAULTS: Values = { negativePrompt: "", steps: 20, cfg: 1, sampler: "euler", scheduler: "simple", width: 1024, height: 1024, shift: 3, guidance: 3.5, scale: 2, maxSize: 4096, colorMatch: "lab" };
-const COLOR_MATCH = ["lab", "wavelet", "wavelet_adaptive", "hsv", "adain", "none"];
 const IDLE_FREE_MS = 10 * 60_000;
 
 const FIELDS: Record<Action, string[]> = {
@@ -41,11 +43,17 @@ function num(body: Record<string, unknown>, key: string, min: number, max: numbe
   return v;
 }
 
-function image(value: unknown, key: string): Buffer {
+/** An input image: base64, at most 20 MB, and not too many pixels by its header. */
+export function inputImage(value: unknown, key: string): Buffer {
   if (typeof value !== "string") throw invalid(`${key} must be a base64 image.`);
   const data = Buffer.from(value, "base64");
   if (data.length > IMAGE_LIMIT) throw invalid(`${key} is larger than 20 MB.`);
-  if (!imageSize(data)) throw invalid(`${key} isn't a PNG, JPEG or WebP image.`);
+  const size = imageSize(data);
+  if (!size) throw invalid(`${key} isn't a PNG, JPEG or WebP image.`);
+  // A small file can claim a huge image; the header says how big it decodes.
+  if (size.width < 1 || size.height < 1 || size.width > MAX_SIDE || size.height > MAX_SIDE || size.width * size.height > MAX_PIXELS) {
+    throw invalid(`${key} may be at most ${MAX_SIDE} pixels a side and ${MAX_PIXELS / 1e6} megapixels.`);
+  }
   return data;
 }
 
@@ -60,6 +68,8 @@ export class Images {
   private readonly comfyGpu: number;
   private readonly log: Logger;
   private readonly idleTimer: NodeJS.Timeout;
+  /** Each SeedVR2 part's link name in its folder. */
+  private seedvr2Names = new Map<string, string>();
 
   constructor(o: { book: RecipeBook; runtime: Runtime; comfy: Comfy; downloads: Downloads | null; modelsDir: string; serving: string; comfyGpu: number; log: Logger }) {
     this.book = o.book;
@@ -94,10 +104,15 @@ export class Images {
 
   /**
    * SeedVR2's loaders find files by name in their own folder, so its parts
-   * are linked into one (on the serving volume, read-only for ComfyUI).
+   * are linked into one (on the serving volume, read-only for ComfyUI). Two
+   * parts with the same file name get links prefixed with a hash of their path.
    */
   private linkSeedvr2(): void {
-    const want = new Map(this.parts.filter((p) => p.arch === "seedvr2").map((p) => [basename(p.file), join("/models", p.file)]));
+    const files = this.parts.filter((p) => p.arch === "seedvr2").map((p) => p.file);
+    const count = new Map<string, number>();
+    for (const f of files) count.set(basename(f), (count.get(basename(f)) ?? 0) + 1);
+    this.seedvr2Names = new Map(files.map((f) => [f, count.get(basename(f))! > 1 ? `${createHash("sha256").update(f).digest("hex").slice(0, 8)}-${basename(f)}` : basename(f)]));
+    const want = new Map([...this.seedvr2Names].map(([f, name]) => [name, join("/models", f)]));
     for (const name of readdirSync(this.seedvr2Dir)) {
       let target: string | null = null;
       try {
@@ -140,7 +155,8 @@ export class Images {
     if (install && method === "POST") {
       const starter = this.book.starters.find((s) => s.id === install[1]);
       if (!starter) throw notFound("No such starter.");
-      const { recipe, toDownload } = this.book.fromStarter(starter, (p) => this.have(p));
+      // Installing a starter again returns its recipe, and downloads only what's still missing.
+      const { recipe, toDownload } = this.book.fromStarter(starter, (p) => this.have(p), (p) => this.downloading(p));
       const downloads = await this.download(toDownload, req);
       sendJson(res, 200, { recipe: this.book.describe(recipe, files), downloads });
       return true;
@@ -178,7 +194,10 @@ export class Images {
         const missing = r.parts.filter((p) => !p.file && p.missing);
         const wanted = missing.map((p) => ({ role: p.role, slot: p.slot ?? undefined, ...p.missing!, sha256: p.missing!.sha256 ?? "" }));
         const downloads = await this.download(wanted, req);
-        for (const p of missing) p.file = starterPath(p.missing!);
+        for (const p of missing) {
+          p.file = starterPath(p.missing!);
+          delete p.missing;
+        }
         this.book.save();
         return sendJson(res, 200, { recipe: this.book.describe(r, files), downloads }), true;
       }
@@ -189,6 +208,12 @@ export class Images {
       return true;
     }
     return false;
+  }
+
+  /** Whether a starter part is already queued or downloading. */
+  private downloading(p: Starter["parts"][number]): boolean {
+    const dest = starterPath(p);
+    return !!this.downloads?.inFlight.has(dest);
   }
 
   /** A starter part already here: at its download path, or a downloaded file with its checksum. */
@@ -272,13 +297,13 @@ export class Images {
         if (!Array.isArray(refs) || refs.length > template.references) {
           throw invalid(template.references ? `At most ${template.references} references.` : "This recipe doesn't take reference images.");
         }
-        refs.forEach((r, i) => (uploads[`reference${i + 1}`] = image(r, "references")));
+        refs.forEach((r, i) => (uploads[`reference${i + 1}`] = inputImage(r, "references")));
       }
     }
-    if (action === "edit" || action === "upscale") uploads.image = image(body.image, "image");
+    if (action === "edit" || action === "upscale") uploads.image = inputImage(body.image, "image");
     if (action === "edit" && body.mask !== undefined) {
       if (!template.mask) throw invalid("This recipe doesn't take a mask.");
-      uploads.mask = image(body.mask, "mask");
+      uploads.mask = inputImage(body.mask, "mask");
     }
     if (action === "upscale") {
       const scale = num(body, "scale", 1, 4) ?? Number(values.scale);
@@ -286,19 +311,27 @@ export class Images {
       if (body.colorMatch !== undefined && !COLOR_MATCH.includes(body.colorMatch as string)) throw invalid(`colorMatch must be one of ${COLOR_MATCH.join(", ")}.`);
       values.colorMatch = (body.colorMatch as string) ?? values.colorMatch!;
       const size = imageSize(uploads.image!)!;
-      values.resolution = Math.round(Math.min(size.width, size.height) * scale);
-      Object.assign(values, partNames(recipe.parts.filter((p): p is typeof p & { file: string } => !!p.file)));
+      values.resolution = Math.min(MAX_RESOLUTION, Math.round(Math.min(size.width, size.height) * scale));
+      for (const p of recipe.parts) if (p.file) values[`${p.role}Name`] = this.seedvr2Names.get(p.file) ?? basename(p.file);
     }
     values.seed = int(body, "seed", 0, 2 ** 48) ?? randomInt(2 ** 47);
 
     const started = Date.now();
     const model = this.asModel(recipe);
-    const pngs = await this.runtime.scheduler.run(model, "image", () =>
-      this.comfy.run(uploads, (names) => {
-        const parts = recipe.parts.filter((p): p is typeof p & { file: string } => !!p.file);
-        return fill(template, parts, recipe.loras, { ...values, ...names });
-      }),
+    // A client that goes away cancels its job, queued or running.
+    const abort = new AbortController();
+    res.on("close", () => {
+      if (!res.writableFinished) abort.abort();
+    });
+    const scheduler = this.runtime.scheduler;
+    const pngs = await scheduler.run(model, "image", () =>
+      scheduler.measuring(model, this.comfyGpu, () =>
+        this.comfy.run(uploads, (names) => {
+          const parts = recipe.parts.filter((p): p is typeof p & { file: string } => !!p.file);
+          return fill(template, parts, recipe.loras, { ...values, ...names });
+        }, abort.signal)),
       this.comfyGpu,
+      abort.signal,
     );
     if (!pngs.length) throw new HostError(503, "unavailable", "ComfyUI returned no image.");
     const seconds = (Date.now() - started) / 1000;

@@ -28,6 +28,8 @@ export class Downloads {
   private watching: NodeJS.Timeout | null = null;
   private done = new Set<string>();
   active = 0;
+  /** The paths being downloaded now (queued, downloading or verifying). */
+  inFlight = new Set<string>();
 
   constructor(o: { url: string; runtime: Runtime; log: Logger }) {
     this.url = o.url;
@@ -55,7 +57,9 @@ export class Downloads {
   async refresh(): Promise<void> {
     const [{ files }, { downloads }] = await Promise.all([this.call("/record"), this.call("/downloads")]);
     this.runtime.record = new Map((files as RecordEntry[]).map((r) => [r.path, r]));
-    this.active = (downloads as { state: string }[]).filter((d) => ["queued", "downloading", "verifying"].includes(d.state)).length;
+    const going = (downloads as { state: string; path: string }[]).filter((d) => ["queued", "downloading", "verifying"].includes(d.state));
+    this.active = going.length;
+    this.inFlight = new Set(going.map((d) => d.path));
     const finished = (downloads as { id: string; state: string }[]).filter((d) => d.state === "done" && !this.done.has(d.id));
     if (finished.length) {
       for (const d of finished) this.done.add(d.id);
