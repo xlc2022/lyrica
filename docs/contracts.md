@@ -159,7 +159,8 @@ nothing else. No code path gives a general view a private handle.
 
 | Area | Methods |
 |---|---|
-| Threads | `createThread({ interface, parent?, subagent?, unlogged?, title? })`, `listThreads({ includeHidden?, parent? })`, `getThread`, `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage`, `setTitle`, `exportThread`, `forgetThread` (also forgets its subagents' threads), `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, subagents }`, `subagentsSince(threadId, fromN)` |
+| Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title? })` (a child of a child is refused), `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared), `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)` |
+| Pins | `pinEntry(threadId, n, pinned)`, `pins(threadId?)` → `PinnedEntry[]` (one thread's, or the pool's), oldest first |
 | Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
 | Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `userIntroduced` |
@@ -225,6 +226,11 @@ are enforced in the store:
   copied as an export copies them (`orig` keeps the source ID). The source
   is unchanged; a branch of an unlogged thread is unlogged.
 - Notes can't be written from an unlogged thread.
+
+**Pins** are a column on the entry (`entries.pinned`), so they live in the
+thread's pool: a branch's `copyEntries` copies them, `truncateThread`
+removes and counts them, and `sleepMaterial` lists each thread's new pinned
+entries (`threads[].pinned`).
 
 ## core/models: the cloud boundary lives here
 
@@ -436,11 +442,20 @@ One model-facing tool: `delegate({ action?, ... })`.
   `narrowing` so a subagent can be continued.
 - Subagents aren't listed in the thread list; child threads (forks, copies)
   nest under their parent.
-- Planned (Child threads): one more model-facing tool, `threads({ action,
+- **Child threads** (`createThreadsExtension(thread, host: ThreadsHost)`,
+  never in a subagent's thread): one model-facing tool, `threads({ action,
   ... })`: `start` (`title`, `task`, optional narrower `folders`,
   `readOnly`, `internet`), `message` (to a child, or `to: "parent"` from a
-  child), and `list`. A child thread is `createThread({ parent, child: true
-  })`, hosted like any thread, with inherited settings that can only narrow.
+  child), and `list` (`ChildInfo` with `ChildStatus`). A child thread is
+  `createThread({ parent, child: true })`, hosted like any thread, with the
+  parent's pool, models (`models.inheritContext`) and workspace
+  (`inheritSettings`), which can only narrow. `ThreadsLimits`
+  (`DEFAULT_THREADS_LIMITS`): 3 starts per request, 2 children working at
+  once per user, checked on start and when a parent's message wakes an idle
+  child. A parent's message is the child's next turn, marked with
+  `fromParent(id)` (`FROM_PARENT`), which only `lyricad` writes; a child's
+  update reaches the parent through `Delegation.deliver` as a notice with
+  status `update`, and every delivery's details carry an `id`.
 - Planned (Modes): the permission mode values become `ask`, `acceptEdits`,
   `auto` and `plan` (migrating "ask before changes" to `ask` and "ask before
   commands" to `acceptEdits`). `plan` leaves only read-only tools active and
@@ -500,11 +515,17 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `sleep`: the `/sleep` command, where the host offers it (the bench).
 - Memory sections include `opening`: the sleep item a thread was started
   from. It comes from `itemForThread`, so no other thread ever has it.
+- Memory sections include `pinned` (`pinnedOf(store, threadId)`: the
+  thread's pinned user messages and replies, read from the store, so
+  compaction can't summarise them). `pinnedBlock(pins, budgets.pinned)`
+  keeps them word for word within the budget (8,000 characters): over it,
+  the oldest are cut to their first line, then the oldest dropped, and it
+  reports `shortened`. The context meter counts them as its `pinned` part.
 - **`before_agent_start`** never replaces the whole system prompt. It does two
   things:
   - It edits `event.systemPromptOptions`. The persona core goes in
-    `customPrompt`. Topics, WAKE, the page index, and "who you're talking
-    with" go in `sections`. Pi appends only what changed, so the prompt
+    `customPrompt`. Topics, WAKE, the page index, the thread's pinned
+    messages, and "who you're talking with" go in `sections`. Pi appends only what changed, so the prompt
     prefix stays cacheable (DeepSeek's prefix cache, a local model's KV cache).
   - In Pi 1.1.0, setting `customPrompt` also drops Pi's default tool list and
     rules. The extension therefore rebuilds them from each tool's own snippets
@@ -519,6 +540,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     [workspace.md](workspace.md));
   - `remember`, `recall` and `read_memory` (Memory thread);
   - `delegate`, and `ask_parent` in subagents (Delegation thread; see
+    [delegate](#delegate));
+  - `threads`, in every hosted thread but a subagent's (Child threads; see
     [delegate](#delegate));
   - `calendar` and `sort` (Integrations thread);
   - `image`, with `create` and `edit` (Images thread);
@@ -578,7 +601,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `createDelegateExtension` to each thread's session, forwards
   `delegation.events` to the parent thread's stream, and calls `stopAll` on
   Lock and shutdown. It builds one `Sleep` and calls `stop(userId)` on Lock
-  and shutdown, before the key goes.
+  and shutdown, before the key goes. It builds one `ChildThreads`
+  (`Services.children`, limits from `LyricadOptions.threads`), the
+  `ThreadsHost` every hosted thread's `threads` tool uses: `user.db`
+  `child_threads` (pool, thread, parent, working, unseen; no text). Lock
+  stops working children and tells their parents; at unlock, children a
+  restart left working are marked idle and their parents told.
 - **Permission prompts:** the workspace extension's `tool_call` hook calls
   `ThreadTools.approve?(request)`; `lyricad` supplies it and waits for an
   answer from any open view, denying on timeout or Stop.
@@ -596,6 +624,16 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `ThreadSettings.context` (`ContextInfo`: used, window, parts, reserve,
     free, measured at), `CallInfo.pace`, the `context` and `compacted`
     thread events, and a `compacted` message part (the stored notice);
+  - child threads: `ThreadSummary.child`, `status` and `unseen`;
+    `Message.from: { kind: "parent", threadId }` in a child thread only; a
+    user's send or edit starting with the parent's mark is `400`;
+    `ForgetThread` / `DELETE …?children=1`; `ThreadHost.status`,
+    `delivered`, `HostedThread.waiting`, `send(text, { fromParent })` and
+    `settled()`;
+  - pins: `PUT`/`DELETE …/messages/:n/pin` (the user's messages and her
+    replies only, `400` otherwise, `409` in a subagent's thread), `GET
+    …/pins` → `Pins { pins: Pin[], shortened }`, `Message.pinned`,
+    `RewindResponse.pins`;
   - messages (send, stream; `POST …/messages/:n/branch` → `ThreadSummary`;
     `POST …/messages/:n/rewind` with `RewindRequest` `delete`, `regenerate`
     with an optional `model`, or `edit` with `text`, `409` while a turn runs;
@@ -706,7 +744,8 @@ targetFor(t): ExecutionTarget
 grantsFor(t): Grant[]                     // { path, writable }
 folders(t): string[]
 network(t): Network
-inheritSettings(parent, childThreadId, narrower?)  // subagents: same or stricter, never wider
+inheritSettings(parent, childThreadId, narrower?)  // subagents and child threads: same or stricter, never wider
+settings(userId).detach(threadId)          // a kept child, once its parent is forgotten: no longer narrowed by it
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, SSH targets
 allowedPaths.allow(actor, userId, pool, path) / disallow(...) / list(userId)
 saveUpload(t, name, bytes): Promise<string>  // cleans the name (cleanUploadName), never overwrites
