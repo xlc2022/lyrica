@@ -217,9 +217,11 @@ export class HostedThread {
         await this.retrying;
         await opened.prepare();
         this.emit({ type: "turn_start" });
+        // A compaction belongs to the turn that asked for it, even one that failed.
+        opened.meter.pending = undefined;
         await opened.session.prompt(next);
         aborted = this.aborted;
-        await this.afterTurn(opened);
+        await this.afterTurn(opened, aborted);
         this.emit({ type: "turn_end", aborted });
         this.aborted = false;
         void this.maybeTitle(opened);
@@ -247,15 +249,16 @@ export class HostedThread {
 
   /**
    * After a turn: its counts and times go on the call record (never text, so
-   * a "Do not log" thread records them too), a compaction she asked for runs,
-   * and the stream gets the context as it now stands.
+   * a "Do not log" thread records them too), a compaction she asked for runs
+   * unless the turn was stopped, and the stream gets the context as it now stands.
    */
-  private async afterTurn(opened: Opened): Promise<void> {
+  private async afterTurn(opened: Opened, aborted: boolean): Promise<void> {
     const pace = opened.meter.takePace();
     if (pace) this.o.models.recordPace(this.userId, this.threadId, pace);
     const asked = opened.meter.pending;
-    if (asked) {
-      opened.meter.pending = undefined;
+    opened.meter.pending = undefined;
+    // Stop means stop: a stopped turn's compaction is dropped.
+    if (asked && !aborted) {
       opened.meter.running = asked;
       try {
         // With her summary, session_before_compact hands it to Pi; without, Pi writes one with her notes.

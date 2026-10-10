@@ -29,7 +29,7 @@ export interface ContextReport {
   pace?: Pace;
 }
 
-/** Pi's compaction reserve for a window: 8%, so it compacts at 92%, past the 75% and 90% lines. */
+/** Pi's compaction reserve for a window: 8% (1,024 to 16,384 tokens). Pi compacts on its own once used + reserve reaches the window. */
 export const reserveFor = (window: number) => Math.min(16_384, Math.max(1024, Math.round(window * 0.08)));
 /** How much recent conversation Pi keeps when it compacts: a quarter of the window. */
 export const keepRecentFor = (window: number) => Math.min(20_000, Math.max(2000, Math.round(window * 0.25)));
@@ -124,10 +124,25 @@ export function statusLine(r: ContextReport): string {
   ].join(" · ");
 }
 
-/** The line that tells her to prepare (75%) or to compact (90%), if any. */
+/**
+ * Where her two lines start, as percentages of the window. They follow Pi's
+ * edge (100 − reserve): "compact now" 2 points before it, "prepare" 15 points
+ * before that, and no later than 90% and 75%. From 32k up that is 90 and 75;
+ * on 8k, where the 1,024 floor puts the edge at 87.5%, it is 85.5 and 70.5.
+ */
+export function linesFor(window: number): { prepare: number; compact: number } {
+  const edge = 100 - (reserveFor(window) / window) * 100;
+  const compact = Math.min(90, Math.round((edge - 2) * 10) / 10);
+  return { prepare: Math.min(75, Math.round((compact - 15) * 10) / 10), compact };
+}
+
+/** The line that tells her to prepare or to compact now, if any. */
 export function prepareLine(r: ContextReport): string | undefined {
-  if (r.percent >= 90) return "Your context is nearly full. Compact now: call compact with a summary of what the next stretch needs.";
-  if (r.percent >= 75) return "Your context is filling up. Finish the current step, save what matters with remember, then call compact with a summary of what the next stretch needs.";
+  const at = linesFor(r.window);
+  // To a tenth of a point, as the lines are set.
+  const used = Math.round((r.tokens / r.window) * 1000) / 10;
+  if (used >= at.compact) return "Your context is nearly full. Compact now: call compact with a summary of what the next stretch needs.";
+  if (used >= at.prepare) return "Your context is filling up. Finish the current step, save what matters with remember, then call compact with a summary of what the next stretch needs.";
   return undefined;
 }
 
@@ -193,6 +208,7 @@ export function registerContext(pi: ExtensionAPI, meter: ContextMeter): void {
       "Your turn context carries a status line: how full your context is, how much is free, and how fast your model answers.",
       "When it tells you your context is filling up, finish the step you're on, save what matters with remember, then call compact. " +
         "Write the summary for yourself: what you're doing, decisions made, open questions, and the paths and names you'll need.",
+      "Your summary replaces any earlier one, so carry forward what still matters from it.",
     ],
     parameters: Type.Object({
       summary: Type.String({ description: "What the next stretch needs: what you're doing, decisions, open questions, paths and names." }),

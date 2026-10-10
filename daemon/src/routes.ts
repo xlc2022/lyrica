@@ -1077,10 +1077,12 @@ function contextOf(d: Lyricad, user: User, pool: Pool, threadId: string, answere
   if (live) return { context: live };
   const p = answered?.pace;
   if (!p?.window) return undefined;
-  const reserve = Math.max(0, Math.min(reserveFor(p.window), p.window - p.promptTokens));
+  // The last prompt plus its reply, as the live meter counts it.
+  const tokens = p.promptTokens + p.outputTokens;
+  const reserve = Math.max(0, Math.min(reserveFor(p.window), p.window - tokens));
   return { context: {
-    tokens: p.promptTokens, window: p.window, percent: Math.round((p.promptTokens / p.window) * 100), reserve,
-    free: Math.max(0, p.window - p.promptTokens - reserve), parts: [], measuredAt: answered!.at, pace: p,
+    tokens, window: p.window, percent: Math.round((tokens / p.window) * 100), reserve,
+    free: Math.max(0, p.window - tokens - reserve), parts: [], measuredAt: answered!.at, pace: p,
   } };
 }
 

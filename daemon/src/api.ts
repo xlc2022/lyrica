@@ -23,8 +23,8 @@ export type Task =
   | "chat" | "subagent.cheap" | "subagent.strong" | "compaction"
   | "title" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
   | "image.create" | "image.edit";
-/** The tasks a thread can choose models for. */
-export const THREAD_TASKS = ["chat", "subagent.cheap", "subagent.strong", "compaction", "title"] as const satisfies readonly Task[];
+/** The tasks a thread can choose models for. Compaction isn't one: Pi compacts with the thread's chat model. */
+export const THREAD_TASKS = ["chat", "subagent.cheap", "subagent.strong", "title"] as const satisfies readonly Task[];
 export type ThreadTask = (typeof THREAD_TASKS)[number];
 
 /** One model on one endpoint, by its permanent offering ID, or a model group, which expands into its members in order. */
@@ -299,6 +299,8 @@ export interface LibraryEntry {
     /** Why it may not be this model. */
     flagged?: string;
     size?: number;
+    /** Its median speeds over the user's last twenty measured calls to it. */
+    speed?: { tokPerSec?: number; promptTokPerSec?: number };
   }[];
 }
 /** GET /api/u/:userId/library/text?search=&kind=&endpoint=&capability=&groups=1&offset=&limit= → TextLibrary. Starred first. */

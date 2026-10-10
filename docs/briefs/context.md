@@ -101,6 +101,9 @@ compaction marker shown as one line in the web UI.
   pinned messages" test.
 - **The context meter UI** (the facts line and its popover) and a compaction
   marker that expands: Web UI 2.
+- **Speed in the web UI**, which the API already sends: the tok/s and prompt
+  tok/s columns in Recent calls (each call's `pace`), and each copy's median
+  speed in the text library (a library copy's `speed`). Web UI 2.
 - **Exact counts** from a host's llama.cpp `/tokenize`.
 
 **Open questions:** none blocking. `compact` is its own tool, with her summary

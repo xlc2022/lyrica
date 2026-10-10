@@ -383,11 +383,13 @@ API `openai-completions` holding its offerings.
 - Local endpoints are sent `system` rather than `developer`, and `max_tokens`
   rather than `max_completion_tokens`. LM Studio, KoboldCpp and llama-server
   don't all accept the newer fields.
-- Pi compacts with the session's own model, so in practice the `compaction`
-  task is the chat model.
+- Compaction uses the thread's chat model: Pi summarises with the session's
+  own model. A stored profile may still name a `compaction` list; it's
+  accepted and unused, and the pickers don't offer it.
 - `openThreadSession` sets Pi's compaction per model: a reserve of 8% of the
-  window (1,024 to 16,384 tokens), so Pi compacts on its own at 92%, past
-  Lyrica's 75% and 90% lines; and a kept tail of a quarter of the window (at
+  window (1,024 to 16,384 tokens), so Pi compacts on its own once used plus
+  reserve reaches the window, and Lyrica's two lines start 17 and 2 points
+  before that edge (at most 75% and 90%); and a kept tail of a quarter of the window (at
   most 20,000). A caller's own compaction settings win.
 
 `openThreadSession` hosts one thread with that runtime and its chat model.

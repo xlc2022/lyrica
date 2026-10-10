@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { speeds } from "@lyrica/core";
-import { ContextMeter, contextLines, keepRecentFor, prepareLine, reserveFor, statusLine, type Section } from "../src/index.ts";
+import { ContextMeter, contextLines, keepRecentFor, linesFor, prepareLine, reserveFor, statusLine, type Section } from "../src/index.ts";
 
 const section = (name: Section["name"], chars: number): Section => ({ name, text: "x".repeat(chars), budget: chars, truncated: false, place: "system" });
 
@@ -48,6 +48,19 @@ describe("her context lines", () => {
     expect(contextLines(measured(30_000)).split("\n")).toHaveLength(2);
     // Nothing before the first measured turn.
     expect(contextLines(new ContextMeter())).toBe("");
+  });
+
+  it("follow Pi's edge on small windows, so she hears before Pi compacts", () => {
+    expect(linesFor(32_768)).toEqual({ prepare: 75, compact: 90 });
+    expect(linesFor(1_000_000)).toEqual({ prepare: 75, compact: 90 });
+    // 8k: the 1,024 floor puts Pi's edge at 87.5%.
+    expect(linesFor(8192)).toEqual({ prepare: 70.5, compact: 85.5 });
+    const line = (pct: number) => prepareLine(measured(Math.round((pct / 100) * 8192), 8192).report()!);
+    expect(line(70)).toBeUndefined();
+    expect(line(70.5)).toMatch(/filling up/);
+    expect(line(85)).toMatch(/filling up/);
+    expect(line(85.5)).toMatch(/Compact now/);
+    expect(linesFor(8192).compact).toBeLessThan(100 - (reserveFor(8192) / 8192) * 100);
   });
 
   it("estimate the total after a compaction until the next response measures it", () => {

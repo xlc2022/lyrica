@@ -117,19 +117,23 @@ Each active thread is one Pi session from `openThreadSession`, with
     Pi's reserve and the free space fill the window.
   - After each turn `lyricad` records the pace on the call (`recordPace`) and
     sends a `context` event. `GET …/settings` returns `context`, from the open
-    session or, with no breakdown, from the last call record.
+    session or, with no breakdown, from the last call record (its prompt plus
+    its reply).
 - **Her status line.** Each turn's context message carries one line of
   numbers in `<context>`, such as
   `Context 64% of 32k · 9.1k free · 38 tok/s · 2.1k tok/s prompt`. Free is
-  what's left before Pi's own compaction. At 75% a second line tells her to
-  finish the step, save what matters and compact with a summary; at 90%, to
-  compact now. The `compact` tool's guidelines say once what the line means.
+  what's left before Pi's own compaction. A second line tells her to finish
+  the step, save what matters and compact with a summary, then to compact
+  now. They follow Pi's edge (100% − reserve): "compact now" 2 points before
+  it, the first line 15 before that, at most 90% and 75%. From 32k up that is
+  75% and 90%; on 8k, 70.5% and 85.5%. The `compact` tool's guidelines say once what the line means.
 - **Compacting herself.** The `compact` tool takes her summary. It's its own
   tool until the Child threads `threads` tool takes it as an action.
   - A summary too long for Pi's reserve is refused with the limit. A short one
     (under 400 characters) becomes the notes for Pi's own summary.
   - The compaction runs when the turn ends, since Pi's `compact()` would stop
-    the turn that asked for it. `session_before_compact` hands Pi her summary
+    the turn that asked for it. If the turn was stopped, it doesn't run: Stop
+    means stop. `session_before_compact` hands Pi her summary
     as the result, and Pi cuts the old entries and keeps the recent ones.
   - The compaction is stored, and the stream gets a `compacted` event with the
     tokens before and (estimated) after and the summary. The message list

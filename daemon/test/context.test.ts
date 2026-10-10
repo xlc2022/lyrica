@@ -111,6 +111,26 @@ describe("her context", () => {
     stream.close();
   });
 
+  it("doesn't compact when the turn that asked for it was stopped", async () => {
+    const { li, model, path, stream, turn } = await setup();
+    await turn(long("FIRST-MARK"));
+    await turn(long("SECOND-MARK"));
+    await turn(long("THIRD-MARK"));
+    model.reply({ tools: [{ name: "compact", args: { summary: SUMMARY } }] }, { text: "Compacting now, once I finish this long thought.", slowMs: 5000 });
+    const ends = stream.events.filter((e) => e.event.type === "turn_end").length;
+    const from = stream.events.length;
+    await li.post(`${path}/messages`, { text: "tidy up" });
+    await stream.until((e) => e.type === "tool_end", from);
+    await stream.until((e) => e.type === "message_start", stream.events.length);
+    await li.post(`${path}/stop`);
+    await stream.until((e) => e.type === "turn_end" && stream.events.filter((x) => x.event.type === "turn_end").length > ends, 0, 20_000);
+    expect(stream.events.some((e) => e.event.type === "compacted")).toBe(false);
+    const before = model.requests.length;
+    await turn("go on");
+    expect(sent(model.requests[before]!)).toContain("FIRST-MARK");
+    stream.close();
+  });
+
   it("records counts only in a thread that isn't logged", async () => {
     const { rt, li, path, stream, turn } = await setup();
     expect((await li.patch(`${path}/settings`, { unlogged: true })).status).toBe(200);

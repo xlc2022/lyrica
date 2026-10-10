@@ -40,7 +40,7 @@ export async function openThreadSession(o: ThreadSessionOptions): Promise<Thread
   const { thread } = o;
   const runtime = await modelRuntimeFor(o.models, thread.call);
   const { ref: chat, model } = piModelFor(runtime, o.models, "chat", thread.call);
-  // Pi's compaction reserve and kept tail follow each model's window, so it compacts at 92%: past the 75% and 90% lines.
+  // Pi's compaction reserve and kept tail follow each model's window, and her two lines follow that edge (linesFor).
   const modelOverrides = Object.fromEntries(o.models.allowed(thread.call).flatMap(({ endpoint, offerings }) => offerings.flatMap((off) => {
     const w = runtime.getModel(endpoint.id, off.modelId)?.contextWindow;
     // A caller's own compaction settings win: per-model overrides would outrank them in Pi.
