@@ -170,7 +170,8 @@ function nearby(host: string): boolean {
 async function localWarning(ep: Endpoint): Promise<string | undefined> {
   const host = new URL(ep.baseUrl).hostname;
   try {
-    const outside = await addressesOutside(ep.baseUrl);
+    // A resolver that never answers is no answer.
+    const outside = await Promise.race([addressesOutside(ep.baseUrl), new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000).unref())]);
     if (outside.length) return `${ep.name} is declared local, but ${host} resolves to ${outside.join(", ")}, outside loopback, private and tailnet addresses`;
   } catch {
     return `${ep.name} is declared local, but ${host} doesn't resolve`;
@@ -684,7 +685,9 @@ export class Models {
   setProfile(userId: string, name: ProfileName, task: Task, value?: Entry | ModelRef): void {
     if (name !== "cloud" && name !== "local" && name !== "custom") throw new Error("the profiles are local, cloud and custom");
     const entry: Entry | undefined = value && !Array.isArray(value) && !("same" in value) ? [value] : value as Entry | undefined;
-    const current = this.profile(userId, name);
+    const saved = this.profile(userId, name);
+    // A new profile gets its defaults with this entry, so they count for the one-level rule.
+    const current: Profiles = Object.keys(saved).length ? saved : { ...NEW_PROFILE };
     let stored: Entry | undefined = entry;
     if (entry && !isList(entry)) {
       const target = checkTask(entry.same);
@@ -898,7 +901,9 @@ export class Models {
       const r = this.resolve(task, ctx, need);
       const h = this.health.get(r.endpoint.id);
       if (!r.remaining || (h && Date.now() - h.at < HEALTH_MS)) return r;
-      const { state } = await this.probe(ctx.userId, r.endpoint.id, PROBE_MS).catch(() => ({ state: "down" as const }));
+      // Only whether it answers, never the address check: a slow resolver mustn't hold up a turn.
+      const state = await probeUrl(r.endpoint.baseUrl, r.endpoint.apiKey, PROBE_MS).catch(() => "down" as const);
+      this.seen(r.endpoint, state === "up", ctx.userId);
       if (state === "down") this.reportDown(r.endpoint.id);
       if (state === "up") return r;
     }
@@ -1011,6 +1016,15 @@ export class Models {
       }
     }
     if (opts.kind === "single" && kinds.size > 1) throw new Error("a list here can't mix local and cloud models; only the custom profile can");
+    // A group in a one-kind list needs a copy of that kind.
+    const [only] = kinds;
+    if (opts.kind === "single" && only) {
+      for (const r of out) {
+        if (!("groupId" in r)) continue;
+        const g = c.groups.get(r.groupId)!;
+        if (!g.members.some((m) => c.endpoints.get(c.offerings.get(m)?.endpointId ?? "")?.kind === only)) throw new Error(`the group ${g.name} has no ${only} copy, and a list here can't mix local and cloud models`);
+      }
+    }
     return out;
   }
 
@@ -1149,9 +1163,10 @@ export class Models {
         });
         db.exec(MODEL_CHOICE_SCHEMA);
         if (dropped.length) addNotice(db, [`Models that no longer existed were taken out of your lists: ${dropped.join(", ")}.`]);
-        splitCloudProfile(db, self);
       }
       this.sync(userId, db, self);
+      // After the redirects, so a replaced shared model's kind is known.
+      if (!this.ready.has(userId)) splitCloudProfile(db, self);
       if (!this.ready.has(userId)) { this.index(userId, db); this.ready.add(userId); }
       return fn(db);
     } finally {

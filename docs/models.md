@@ -172,7 +172,10 @@ profile, thinking level and lists from `user.db`.
 turn (and delegation once for each subagent): it resolves the chat model
 with `resolveLive`, switches the session to it, sets the thinking level,
 and records the call. A connection error during a turn marks that endpoint
-down, so the next turn falls back.
+down, and when Pi retries, the chat model is chosen again first, so the
+retry goes to the next model in the list. `resolveLive`'s probe only asks
+whether the endpoint answers; the address check never holds up a turn.
+Tools are asked of a model only when the thread has tools.
 
 **Recent calls** (`recentCalls`, `model_calls` in `user.db`) hold the time,
 thread, task, the answering model's ID with its label, endpoint and kind,

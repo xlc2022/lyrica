@@ -185,6 +185,22 @@ describe("each turn's model", () => {
     expect(thought!.note).toBeUndefined();
   });
 
+  it("leaves a subagent role's own thinking level alone", async () => {
+    const s = await setup();
+    s.models.setCapabilities(s.li, s.localRef.offeringId, { reasoning: ["low", "medium", "high"] });
+    s.models.setDefaultThinking(s.li.id, "low");
+    const { session, prepare, dispose } = await s.open(s.thread("private"));
+    try {
+      session.setThinkingLevel("high");
+      await prepare({ thinking: false });
+      expect(session.thinkingLevel).toBe("high");
+      await prepare();
+      expect(session.thinkingLevel).toBe("low");
+    } finally {
+      dispose();
+    }
+  });
+
   it("never makes thinking text searchable", () => {
     const stored = toStoredEntry({
       type: "message", id: "e1", parentId: null, timestamp: new Date().toISOString(),
