@@ -5,6 +5,7 @@ import {
   type AllowedPaths, type EndpointInfo, type Grant, type ModelRef, type PermissionMode, type SshTargetInfo,
   type TaskModel, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTask,
 } from "./api.ts";
+import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { go } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
 import { Confirm, ErrorText, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
@@ -16,11 +17,6 @@ export const TASK_LABELS: Record<ThreadTask, string> = {
   title: "Titles",
 };
 
-const MODES: Record<PermissionMode, string> = {
-  auto: "Don't ask",
-  "ask-commands": "Ask before commands",
-  "ask-changes": "Ask before commands and changes",
-};
 
 const refKey = (m?: { offeringId: string }) => m?.offeringId ?? "";
 const named = (t: TaskModel) => t.label ?? (t.modelId ? `${t.modelId} · ${t.endpointName}` : "a model that no longer exists");
@@ -150,11 +146,13 @@ export function SettingsDrawer({ ctx, base, summary, settings, onSettings, onSum
 
         <fieldset className="group" disabled={sub || busy}>
           <legend>Behaviour</legend>
-          <label className="field"><span>Permission mode</span>
+          <label className="field"><span>Mode</span>
             <select value={settings.mode} onChange={(e) => change({ mode: e.target.value as PermissionMode })}>
-              {Object.entries(MODES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              {MODE_ORDER.map((m) => <option key={m} value={m} title={MODES[m].description}>{MODES[m].label}</option>)}
             </select>
           </label>
+          <Switch label="Web search" checked={settings.webSearch} onChange={(v) => change({ webSearch: v })} />
+          <Switch label="Images" checked={settings.images} onChange={(v) => change({ images: v })} />
           <Switch label="Do not log thread in memory" hint="She can still read her memory here. Subagents inherit this."
             checked={settings.unlogged} onChange={(v) => change({ unlogged: v })} />
         </fieldset>

@@ -399,6 +399,12 @@ export function apiRoutes(d: Lyricad): Route[] {
       s().workspace.settings(user.id).setDefaultNetwork(poolOf(r), change);
       return networkDefaults(d, user.id);
     }),
+    route("GET", `${u}/mode`, (r): Api.ModeDefault => ({ mode: s().workspace.settings(d.userFor(r).id).defaultMode() })),
+    route("PUT", `${u}/mode`, async (r): Promise<Api.ModeDefault> => {
+      const ws = s().workspace.settings(d.userFor(r).id);
+      ws.setDefaultMode((await r.json<Api.ModeDefault>())?.mode);
+      return { mode: ws.defaultMode() };
+    }),
     route("GET", `${u}/paths`, (r) => s().workspace.allowedPaths.list(d.userFor(r).id)),
     route("GET", `${u}/ssh`, (r) => sshTargets(d, d.userFor(r).id)),
     route("POST", `${u}/ssh`, async (r) => {
@@ -432,6 +438,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const pool = checkPool(input.pool);
       return owner(d, user, (o) => {
         const thread = o[pool].createThread({ interface: "web", title: input.title?.trim() || undefined });
+        s().workspace.settings(user.id).startThread(thread.id, pool);
         return summary(d, user, pool, o[pool], thread, []);
       });
     }),
@@ -562,9 +569,9 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("POST", `${t}/permissions/:requestId`, async (r) => {
       const user = d.userFor(r);
-      const { allow } = await r.json<Api.PermissionAnswer>();
+      const { allow, mode } = await r.json<Api.PermissionAnswer>();
       const thread = owner(d, user, (o) => threadOf(o, r));
-      if (!s().host.get(user.id, poolOf(r), thread.id).answer(r.params.requestId!, allow === true)) throw new HttpError(404, "that request is no longer waiting");
+      if (!s().host.get(user.id, poolOf(r), thread.id).answer(r.params.requestId!, allow === true, mode)) throw new HttpError(404, "that request is no longer waiting");
       return { ok: true };
     }),
     route("POST", `${t}/uploads`, async (r): Promise<Api.UploadResponse> => {
@@ -641,6 +648,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         if (!item || item.dismissed) throw new HttpError(404, "no such item");
         if (item.thread) throw new HttpError(409, "a chat was already started from this item");
         const th = o[pool].createThread({ interface: "web" });
+        s().workspace.settings(user.id).startThread(th.id, pool);
         o[pool].startItem(item.id, th.id);
         return th;
       });
@@ -1045,6 +1053,7 @@ async function startSleep(d: Lyricad, user: User, pool: Pool, confirmed: boolean
   void run.then((done) => {
     if (!manual || done.status === "skipped" || !d.keyring.hasUserKey(user.id)) return;
     const thread = owner(d, user, (o) => o[pool].createThread({ interface: "web" }));
+    d.services!.workspace.settings(user.id).startThread(thread.id, pool);
     sleep.events.emit("event", { type: "thread", userId: user.id, pool, threadId: thread.id });
   }).catch((err: Error) => d.log(`sleep failed: ${err.name}`));
   return { started: true };
@@ -1139,6 +1148,8 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
   const { models, workspace } = d.services!;
   const ctx = models.callContext(user.id, pool, threadId);
   const tw = workspace.settings(user.id).thread(threadId);
+  // The mode and switches her tools follow: a parent's later narrowing included.
+  const applies = workspace.settings(user.id).effective(threadId);
   const isUnlogged = owner(d, user, (o) => o[pool].getThread(threadId)?.unlogged ?? false);
   let thinkingLevels: Api.ThinkingLevel[] = ["off"];
   const taskModel = (task: Api.ThreadTask): Api.TaskModel => {
@@ -1166,7 +1177,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     localOnly: ctx.localOnly,
     internet: tw.internet, services: tw.services, hosts: tw.hosts,
     network: workspace.network({ userId: user.id, pool, threadId }),
-    grants: tw.grants, target: tw.target, mode: tw.mode, unlogged: isUnlogged, parent: tw.parent,
+    grants: tw.grants, target: tw.target, mode: applies.mode, webSearch: applies.webSearch, images: applies.images, unlogged: isUnlogged, parent: tw.parent,
     allowed: models.allowed(ctx).map(({ endpoint }) => endpointInfo(d, user.id, endpoint.id)),
   };
 }
@@ -1203,8 +1214,9 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
     owner(d, user, (o) => { if (o[pool].getThread(thread.parent!)?.unlogged) throw new Error("this thread's parent isn't logged, so it can't be logged either"); });
   }
 
-  // The workspace checks grants, hosts, mode, target and the parent's limits, and writes only if all pass.
-  const wsChange = pick(change, ["grants", "internet", "services", "hosts", "mode", "target"]);
+  for (const k of ["webSearch", "images"] as const) if (change[k] !== undefined && typeof change[k] !== "boolean") throw new Error(`${k} is true or false`);
+  // The workspace checks grants, hosts, mode, switches, target and the parent's limits, and writes only if all pass.
+  const wsChange = pick(change, ["grants", "internet", "services", "hosts", "mode", "webSearch", "images", "target"]);
   if (Object.keys(wsChange).length) ws.setThread(thread.id, pool, wsChange);
 
   if (change.localOnly !== undefined && pool === "general") models.setLocalOnly(user.id, pool, thread.id, change.localOnly);

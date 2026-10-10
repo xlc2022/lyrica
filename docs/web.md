@@ -34,8 +34,8 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
 - **Thread settings drawer:** a model per task (each option says cloud or local first), local-only, the internet and
   this machine's services switches (each following the user's default until
   changed), allowed hosts, folders from the allowed paths (read-only or
-  read-write), where commands run (sandbox or an SSH target), permission
-  mode, "Do not log", rename, hide, and forget. `lyricad` validates every
+  read-write), where commands run (sandbox or an SSH target), the mode, the
+  Web search and Images switches, "Do not log", rename, hide, and forget. `lyricad` validates every
   change and its reason is shown.
 - **Subagents live inline**, not in the sidebar: see the `delegate` card
   under Chat. Opening a subagent's thread by link shows the same thing as
@@ -51,8 +51,8 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   saved credentials, stay unlocked after logout, and `lyricad`'s warning when
   two of these contradict), password, your personas (linking a separate persona needs both
   passwords), your suggestions for Lyrica's persona (edit, send on to the
-  administrators, or drop), endpoints with probe status, both model profiles, network
-  defaults per pool, and SSH targets. Administrators also
+  administrators, or drop), endpoints with probe status, both model profiles, the
+  default mode and network defaults per pool, and SSH targets. Administrators also
   get the server's network self-test result, sleep time, saving the `self.db`
   passphrase, users with the administrator flag and their allowed folders,
   changes to Lyrica's persona that users sent on (who sent them, whether they edited
@@ -137,8 +137,24 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   sent shows as "Lyrica · from <parent title>", with the message menu
   (Branch, Delete; not Edit). Forgetting a thread with child threads asks
   whether to forget them too, ticked, in the shared `Confirm` with one option.
-- Files attach with the button, by dragging onto the composer, or by pasting.
-  Each shows its progress, and its path in the thread goes into the draft.
+- Files attach from the "+" menu, by dragging onto the composer, or by
+  pasting. Each shows its progress, and its path in the thread goes into the
+  draft.
+- **The message box** (`src/Composer.tsx`, `src/Modes.tsx`): a bordered box
+  holding the text and, at the right of it, Send as a borderless up-arrow
+  icon, accent once there is text, or Stop as a square while she works and
+  the box is empty. Under the box, a row of borderless controls: at the left
+  the "+" icon, whose menu attaches a file and, after a separator, has the
+  Web search, Internet for commands and Images switches; at the right the
+  mode, a link with a chevron that opens a menu of the four modes (a check on
+  the current one, its line, its number key). Shift+Tab in the box cycles
+  Ask, Accept edits, Plan, Auto, shown at once; a settings refresh that a
+  change overtakes is dropped. A `settings` event (an approved plan)
+  refreshes them.
+- **The plan card:** a `propose_plan` request shows "Plan", its step count
+  when it has numbered or bulleted steps, the plan as prose, a primary
+  "Go ahead in…" whose menu offers Ask, Accept edits or Auto, Keep planning,
+  and the time left. Its tool marker stays hidden until it is answered.
 
 ## Look
 

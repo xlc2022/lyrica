@@ -34,8 +34,10 @@ export type ThinkingLevel = "off" | "low" | "medium" | "high";
 export type ProfileEntry = ModelRef[] | { same: Task };
 export interface Pronouns { subj: string; obj: string; poss: string; possPro: string; refl: string }
 export type Theme = "device" | "light" | "dark";
-/** "ask-commands" asks before bash; "ask-changes" before bash, write and edit. */
-export type PermissionMode = "auto" | "ask-changes" | "ask-commands";
+/** "auto" works freely inside the grants; "acceptEdits" asks before bash; "ask" before bash, write and edit; "plan" only reads. */
+export type PermissionMode = "auto" | "acceptEdits" | "ask" | "plan";
+/** The modes an approved plan can go ahead in. */
+export type GoAhead = "ask" | "acceptEdits" | "auto";
 export interface Network { internet: boolean; services: boolean; hosts: string[] }
 export interface Grant { path: string; writable: boolean }
 
@@ -450,6 +452,9 @@ export type NetworkDefaults = Record<Pool, Network>;
 /** PATCH /api/u/:userId/network/:pool → NetworkDefaults */
 export type NetworkChange = Partial<Network>;
 
+/** GET /api/u/:userId/mode → ModeDefault; PUT with a ModeDefault → ModeDefault. The mode new threads start in. */
+export interface ModeDefault { mode: PermissionMode }
+
 /** GET /api/u/:userId/paths → AllowedPaths: the folders this user may grant, set by an administrator. */
 export type AllowedPaths = Record<Pool, string[]>;
 
@@ -558,9 +563,12 @@ export interface ThreadSettings {
   /** "sandbox" or "ssh:<name>". */
   target: string;
   mode: PermissionMode;
+  /** Switches: web_search and web_fetch, and the image tool. Off removes them from the session. */
+  webSearch: boolean;
+  images: boolean;
   /** "Do not log thread in memory". */
   unlogged: boolean;
-  /** Set for a subagent: its settings are its parent's or stricter, and the UI shows them read-only. */
+  /** Set for a subagent or a branch: its settings are its parent's or stricter. A subagent's UI shows them read-only. */
   parent: string | null;
   /** The endpoints and models this thread may choose from (local only when restricted). */
   allowed: EndpointInfo[];
@@ -587,6 +595,8 @@ export interface ThreadSettingsChange {
   grants?: Grant[];
   target?: string;
   mode?: PermissionMode;
+  webSearch?: boolean;
+  images?: boolean;
   unlogged?: boolean;
 }
 
@@ -727,8 +737,11 @@ export interface Pin { id: string; n: number; role: "user" | "assistant"; text: 
 
 /** POST /api/u/:userId/threads/:pool/:threadId/stop → Ok. Aborts the running turn. */
 
-/** POST /api/u/:userId/threads/:pool/:threadId/permissions/:requestId → Ok */
-export interface PermissionAnswer { allow: boolean }
+/**
+ * POST /api/u/:userId/threads/:pool/:threadId/permissions/:requestId → Ok.
+ * Approving a plan (`propose_plan`) says which mode to go ahead in; refusing it keeps planning.
+ */
+export interface PermissionAnswer { allow: boolean; mode?: GoAhead }
 
 /**
  * POST /api/u/:userId/threads/:pool/:threadId/uploads?name=<file name> → UploadResponse.
@@ -770,6 +783,8 @@ export type ThreadEvent =
   /** In plain words: a model the router refused, an endpoint that's down, a failed tool setup. */
   | { type: "error"; message: string }
   | { type: "title"; title: string }
+  /** The thread's settings changed (an approved plan switched its mode, say): fetch them again. */
+  | { type: "settings" }
   /** The turn is over; the messages are stored. */
   | { type: "turn_end"; aborted: boolean }
   /** After each turn: the context as it now stands. */
@@ -803,6 +818,7 @@ export type DelegationEvent =
 export interface PermissionRequest {
   requestId: string;
   toolCallId: string;
+  /** "propose_plan" is a plan to approve, with `args` `{ plan }`: the plan card. */
   tool: string;
   args: unknown;
   /** When it is denied if nobody answers (ISO time). */

@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { LIVE_STATUSES, type Role, type SubagentRecord } from "@lyrica/core";
 import { Type, type Static } from "typebox";
+import { setToolsOff } from "../gate.ts";
 import { toolGuidance, type ThreadContext } from "../index.ts";
 import { syncEntries } from "../record.ts";
 import { registerMemoryTools } from "../tools.ts";
@@ -204,8 +205,8 @@ export function createSubagentExtension(thread: ThreadContext, role: Role, hooks
         return { ...text("Your question was sent. Stop here; the answer will come as the next message."), terminate: true };
       },
     });
-    pi.on("session_start", () => {
-      pi.setActiveTools(pi.getAllTools().map((t) => t.name).filter((n) => allowed.has(n)));
+    pi.on("session_start", (_event, ctx) => {
+      setToolsOff(pi, ctx, "role", pi.getAllTools().map((t) => t.name).filter((n) => !allowed.has(n)));
     });
     pi.on("before_agent_start", (event) => {
       const o = event.systemPromptOptions;

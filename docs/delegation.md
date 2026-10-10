@@ -127,10 +127,13 @@ call waits for them.
 ## Approvals
 
 A subagent's file and command tools go through the workspace extension's
-`tool_call` hook with its parent's permission mode as it is now (or its own,
-if stricter). Where that mode asks, the hook calls `DelegationOptions.approve`
+`tool_call` hook with its parent's mode as it is now (or its own, if
+stricter; `WorkspaceSettings.effective`). Where that mode asks, the hook calls `DelegationOptions.approve`
 with the subagent's run, thread, role and the exact call; lyricad shows it in
-the subagent's thread and the parent's. A deny, no answer in time, Stop, or
+the subagent's thread and the parent's. In a thread in Plan mode only
+read-only roles start (a writer fails before any thread is made), and the
+subagent itself is in Plan mode: its `bash` and anything else Plan mode turns
+off isn't offered. The parent's switches apply to it the same way. A deny, no answer in time, Stop, or
 the subagent being stopped refuses that one call, and the subagent is told
 "Not approved", as the parent would be. With no `approve` (no lyricad), every
 such call is refused. So writers run in threads that ask first, and parallel

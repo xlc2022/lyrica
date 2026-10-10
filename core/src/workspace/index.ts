@@ -8,7 +8,7 @@ import { FileChanges, type NewChange } from "./changes.ts";
 import { isMounted, mountGocryptfs, unmountGocryptfs } from "./home.ts";
 import type { ExecutionTarget } from "./ops.ts";
 import { Sandbox, WORKDIR } from "./sandbox.ts";
-import { checkGrant, WorkspaceSettings, type Grant, type Network, type ThreadWorkspace } from "./settings.ts";
+import { checkGrant, WorkspaceSettings, type Grant, type Network, type PermissionMode, type ThreadWorkspace } from "./settings.ts";
 import { AllowedPaths } from "./paths.ts";
 import { SshTarget } from "./ssh.ts";
 
@@ -140,11 +140,17 @@ export class Workspace {
     return dir;
   }
 
-  /** One thread's target, settings, internet switch and folders, each read fresh when called. */
+  /**
+   * One thread's target, settings, internet switch and folders, each read
+   * fresh when called. Its settings are what applies now: the strictest mode
+   * and switches of it and its ancestors.
+   */
   forThread(t: WorkspaceThread) {
     return {
       target: () => this.targetFor(t),
-      settings: () => this.settings(t.userId).thread(t.threadId),
+      settings: () => this.settings(t.userId).effective(t.threadId),
+      /** An approved plan switching the thread's mode. */
+      setMode: (mode: PermissionMode) => { this.settings(t.userId).setThread(t.threadId, t.pool, { mode }); },
       network: (): Network => this.network(t),
       folders: () => this.folders(t),
       /** Called after her write or edit tool changed a file, so removing the turn can undo it. */

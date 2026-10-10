@@ -143,9 +143,11 @@ Each active thread is one Pi session from `openThreadSession`, with
   - Pi's automatic compaction at the window's edge stays on as the safety net,
     with Pi's own summary, which keeps the goal, progress and next steps. It
     shows the same marker.
-- Changing a thread's models or local-only switch reopens its session after
-  the current turn. Workspace settings are read on every tool call, so they
-  apply at once.
+- Changing a thread's settings reopens its session after the current turn,
+  and its open views get `settings`. Workspace settings (mode and switches
+  included) are read on every tool call, so they apply at once.
+- A new thread starts in the user's default mode (`GET`/`PUT
+  /api/u/:userId/mode`).
 - After the first exchange, an untitled thread gets a title from the `title`
   task model, through the thread's own model runtime.
 - Settings are checked when saved, and refused whole with the reason: a cloud
@@ -209,9 +211,10 @@ Each active thread is one Pi session from `openThreadSession`, with
 carries text and thinking deltas, tool calls (start with arguments; end with
 the first lines of the result), recall and remember markers, permission
 requests and their outcome, usage, errors in plain words (a model the router
-refused, an endpoint that didn't answer), the queue, the title and turn end,
-then the thread's `context` after each turn and a `compacted` marker when it
-compacts.
+refused, an endpoint that didn't answer), the queue, the title, `settings`
+when the thread's settings changed (an approved plan switching its mode),
+and turn end, then the thread's `context` after each turn and a `compacted`
+marker when it compacts.
 A subagent run's events (started, output, tool calls, questions, notes,
 usage, finished, stopped, interrupted) go out as `delegation` to the parent
 thread's stream and to the subagent's own thread's stream. What a run
@@ -247,11 +250,17 @@ from `…/messages`, which pages through stored entries.
 
 ## Permission prompts
 
-In "ask before commands" and "ask before changes", the workspace tools'
-`tool_call` hook (`extension/src/workspace.ts`) calls the thread's `approve`.
-`lyricad` sends a `permission` event to every open view and waits for
-`POST …/permissions/:requestId` with `allow`. Nobody answering in 5 minutes,
-or Stop, denies. A view that opens later sees waiting requests in `hello`.
+Where the thread's mode asks (and for irreversible tools in any mode), the
+workspace tools' `tool_call` hook (`extension/src/workspace.ts`) calls the
+thread's `approve`. `lyricad` sends a `permission` event to every open view
+and waits for `POST …/permissions/:requestId` with `allow`. Nobody answering
+in 5 minutes, or Stop, denies. A view that opens later sees waiting requests
+in `hello`.
+
+A plan from Plan mode is a request with `tool: "propose_plan"` and `args: {
+plan }`. Approving it takes `mode` too (`ask`, `acceptEdits` or `auto`;
+without it the answer is refused); `lyricad` switches the thread to it and
+sends `settings`. Denying it, a timeout or Stop keeps planning.
 
 A subagent's request (`ThreadHost.approveSubagent`, given to `Delegation` as
 `approve`) is one request shown in its own thread and its parent's, with

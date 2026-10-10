@@ -4,7 +4,7 @@ import { connect } from "node:net";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { generateSshKey, nftRules, resolveAddresses, SshTarget, Users, Workspace, type SshTargetConfig } from "../src/index.ts";
+import { generateSshKey, nftRules, resolveAddresses, SshTarget, Users, Workspace, WorkspaceSettings, type SshTargetConfig } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -117,15 +117,15 @@ describe("grants", () => {
     const { host, settings } = await setup();
     const music = join(host, "shared", "music");
     settings.setThread("parent", "general", {
-      grants: [{ path: music, writable: true }], internet: false, services: true, hosts: ["10.0.0.5:80"], mode: "ask-commands",
+      grants: [{ path: music, writable: true }], internet: false, services: true, hosts: ["10.0.0.5:80"], mode: "acceptEdits",
     });
 
     const same = settings.inheritSettings("parent", "child", "general");
     expect(same).toMatchObject({
-      grants: [{ path: music, writable: true }], internet: false, services: true, hosts: ["10.0.0.5:80"], mode: "ask-commands", parent: "parent",
+      grants: [{ path: music, writable: true }], internet: false, services: true, hosts: ["10.0.0.5:80"], mode: "acceptEdits", parent: "parent",
     });
-    const narrow = settings.inheritSettings("parent", "child2", "general", { grants: [{ path: music, writable: false }], mode: "ask-changes" });
-    expect(narrow).toMatchObject({ grants: [{ path: music, writable: false }], mode: "ask-changes" });
+    const narrow = settings.inheritSettings("parent", "child2", "general", { grants: [{ path: music, writable: false }], mode: "ask" });
+    expect(narrow).toMatchObject({ grants: [{ path: music, writable: false }], mode: "ask" });
 
     expect(() => settings.inheritSettings("parent", "c3", "general", { internet: true })).toThrow(/no internet/);
     expect(() => settings.inheritSettings("parent", "c6", "general", { hosts: ["10.0.0.5:80", "10.0.0.6"] })).toThrow(/10.0.0.6 isn't in the parent/);
@@ -143,6 +143,52 @@ describe("grants", () => {
     expect(() => settings.setThread("child", "general", { grants: [{ path: music, writable: true }] })).toThrow(/read-only in the parent/);
     expect(() => settings.checkInherited("child", "general")).toThrow(/read-only in the parent/);
     expect(settings.folderThread("child2")).toBe("parent");
+  });
+});
+
+describe("modes and switches", () => {
+  it("renames stored modes in place and adds the switches, on", async () => {
+    const { users, li } = await setup();
+    const db = users.openUserDb(li.id);
+    db.exec(`DROP TABLE IF EXISTS thread_workspaces;
+      CREATE TABLE thread_workspaces (thread_id TEXT PRIMARY KEY, grants TEXT NOT NULL, internet INTEGER, services INTEGER, hosts TEXT, mode TEXT NOT NULL, target TEXT NOT NULL, parent TEXT);
+      INSERT INTO thread_workspaces VALUES ('a', '[]', NULL, NULL, NULL, 'ask-changes', 'sandbox', NULL),
+        ('b', '[]', NULL, NULL, NULL, 'ask-commands', 'sandbox', NULL), ('c', '[]', NULL, NULL, NULL, 'auto', 'sandbox', NULL);`);
+    const settings = new WorkspaceSettings(db, () => ({ general: [], private: [] }));
+    expect(["a", "b", "c"].map((id) => settings.thread(id).mode)).toEqual(["ask", "acceptEdits", "auto"]);
+    expect(settings.thread("a")).toMatchObject({ webSearch: true, images: true });
+    settings.close();
+  });
+
+  it("starts new threads in the user's default mode", async () => {
+    const { settings } = await setup();
+    expect(settings.defaultMode()).toBe("auto");
+    settings.setDefaultMode("plan");
+    expect(settings.startThread("t1", "general").mode).toBe("plan");
+    settings.setDefaultMode("ask");
+    // A thread keeps the mode it started in.
+    expect(settings.thread("t1").mode).toBe("plan");
+    expect(settings.startThread("t2", "general").mode).toBe("ask");
+    expect(() => settings.setDefaultMode("ask-changes" as never)).toThrow(/unknown permission mode/);
+    // A thread from before modes were saved keeps Auto, whatever the default.
+    expect(settings.thread("old").mode).toBe("auto");
+  });
+
+  it("give a subagent or child thread its parent's mode and switches or stricter ones, also when the parent changes later", async () => {
+    const { settings } = await setup();
+    settings.setThread("parent", "general", { mode: "ask", images: false });
+    expect(settings.inheritSettings("parent", "child", "general")).toMatchObject({ mode: "ask", webSearch: true, images: false });
+    // A child of an Ask thread can't run in Auto, or turn back on what its parent has off.
+    expect(() => settings.inheritSettings("parent", "c2", "general", { mode: "auto" })).toThrow(/permission mode is ask/);
+    expect(() => settings.setThread("child", "general", { mode: "acceptEdits" })).toThrow(/permission mode is ask/);
+    expect(() => settings.setThread("child", "general", { images: true })).toThrow(/images off/);
+    expect(settings.setThread("child", "general", { mode: "plan", webSearch: false })).toMatchObject({ mode: "plan", webSearch: false });
+    settings.setThread("child", "general", { mode: "ask", webSearch: true });
+    // What applies follows the parent as it is now, and every ancestor.
+    settings.inheritSettings("child", "grandchild", "general");
+    settings.setThread("parent", "general", { mode: "plan", webSearch: false });
+    expect(settings.effective("grandchild")).toMatchObject({ mode: "plan", webSearch: false, images: false });
+    expect(settings.thread("grandchild")).toMatchObject({ mode: "ask", webSearch: true });
   });
 });
 

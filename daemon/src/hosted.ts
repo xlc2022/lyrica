@@ -5,7 +5,7 @@ import {
 } from "@lyrica/core";
 import {
   ContextMeter, createDelegateExtension, createLyricaExtension, createThreadsExtension, createWorkspaceExtension, DELEGATE_MESSAGE, FROM_PARENT, fromParent, OPENING, openThreadSession, piModelFor,
-  type ApprovalRequest, type ChildStatus, type ThreadsHost, type Delegation, type DelegationEvent, type SubagentApproval, type ThreadContext,
+  GO_AHEAD, type ApprovalRequest, type ChildStatus, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type PlanRequest, type SubagentApproval, type ThreadContext,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
@@ -40,6 +40,7 @@ const EPOCH = randomBytes(4).toString("hex");
 
 type Client = (id: string, event: ThreadEvent) => void;
 type Outcome = "answered" | "timeout" | "stopped";
+type Done = (allowed: boolean, reason: Outcome, mode?: GoAhead) => void;
 
 /** Errors that mean the endpoint couldn't be reached, rather than that it refused the request. */
 // "terminated" is a reply cut off mid-stream when its connection dropped.
@@ -103,9 +104,11 @@ export class ThreadHost {
     });
   }
 
-  /** Settings changed: an open session reopens with them. A thread with no record needs nothing. */
+  /** Settings changed: an open session reopens with them, and open views fetch them again. A thread with no record needs nothing. */
   reload(userId: string, pool: Pool, threadId: string): void {
-    this.threads.get(`${userId}/${pool}/${threadId}`)?.reload();
+    const t = this.threads.get(`${userId}/${pool}/${threadId}`);
+    t?.reload();
+    t?.publish({ type: "settings" });
   }
 
   /** Working (a turn runs), waiting (for an approval) or idle, without creating a record. */
@@ -156,7 +159,7 @@ export class HostedThread {
   private readonly buffer: { n: number; event: ThreadEvent }[] = [];
   private n = 0;
   private readonly clients = new Set<Client>();
-  private readonly pending = new Map<string, { request: PermissionRequest; done(allowed: boolean, reason: Outcome): void }>();
+  private readonly pending = new Map<string, { request: PermissionRequest; done: Done }>();
   private queued: string[] = [];
   private idle: NodeJS.Timeout | undefined;
   /** Settings changed during a turn: reopen the session once it ends. */
@@ -362,26 +365,33 @@ export class HostedThread {
   // --- Permission prompts ---
 
   /** Asks every open view of the thread. A timeout or Stop denies. */
-  private approve(r: ApprovalRequest): Promise<boolean> {
+  private async approve(r: ApprovalRequest): Promise<boolean> {
+    return (await this.ask(r.toolCallId, r.tool, r.input)).allowed;
+  }
+
+  /** A plan, the same way: approving it says which mode to go ahead in; anything else keeps planning. */
+  private async proposePlan(r: PlanRequest): Promise<GoAhead | undefined> {
+    const { allowed, mode } = await this.ask(r.toolCallId, "propose_plan", { plan: r.plan });
+    return allowed ? mode : undefined;
+  }
+
+  private ask(toolCallId: string, tool: string, args: unknown): Promise<{ allowed: boolean; mode?: GoAhead }> {
     const requestId = randomBytes(8).toString("hex");
-    const request: PermissionRequest = {
-      requestId, toolCallId: r.toolCallId, tool: r.tool, args: r.input,
-      expiresAt: new Date(Date.now() + this.o.permissionMs).toISOString(),
-    };
+    const request: PermissionRequest = { requestId, toolCallId, tool, args, expiresAt: new Date(Date.now() + this.o.permissionMs).toISOString() };
     return new Promise((resolve) => {
       const timer = setTimeout(() => done(false, "timeout"), this.o.permissionMs);
-      const done = (allowed: boolean, reason: Outcome) => {
+      const done: Done = (allowed, reason, mode) => {
         if (!this.pending.has(requestId)) return;
         clearTimeout(timer);
         this.endPermission(requestId, allowed, reason);
-        resolve(allowed);
+        resolve({ allowed, mode });
       };
       this.addPermission(request, done);
     });
   }
 
   /** Shows a request in this thread's views; `done` settles it, here and wherever else it shows. */
-  addPermission(request: PermissionRequest, done: (allowed: boolean, reason: Outcome) => void): void {
+  addPermission(request: PermissionRequest, done: Done): void {
     this.pending.set(request.requestId, { request, done });
     this.emit({ type: "permission", ...request });
   }
@@ -393,11 +403,12 @@ export class HostedThread {
     if (!this.busy && !this.pending.size && !this.clients.size) this.startIdle();
   }
 
-  /** Answers a permission request. Returns false if it's no longer waiting. */
-  answer(requestId: string, allow: boolean): boolean {
+  /** Answers a permission request; approving a plan needs the mode to go ahead in. Returns false if it's no longer waiting. */
+  answer(requestId: string, allow: boolean, mode?: GoAhead): boolean {
     const p = this.pending.get(requestId);
     if (!p) return false;
-    p.done(allow, "answered");
+    if (p.request.tool === "propose_plan" && allow && !GO_AHEAD.includes(mode!)) throw new Error("say which mode to go ahead in: ask, acceptEdits or auto");
+    p.done(allow, "answered", allow ? mode : undefined);
     return true;
   }
 
@@ -431,7 +442,12 @@ export class HostedThread {
         thread: ctx, models, cwd: this.o.cwd,
         extensions: [
           createLyricaExtension(ctx, { persona: () => persona.read(), profile: () => users.get(this.userId)!.profile, folders: tools.folders, meter }),
-          createWorkspaceExtension({ ...tools, approve: (r) => this.approve(r) }),
+          createWorkspaceExtension({
+            ...tools,
+            approve: (r) => this.approve(r),
+            proposePlan: (r) => this.proposePlan(r),
+            setMode: (mode) => { tools.setMode(mode); this.emit({ type: "settings" }); },
+          }),
           ...(canDelegate ? [createDelegateExtension(ctx, delegation)] : []),
           // Child threads and compacting. Never a subagent's: a subagent works for its run, not on streams of its own.
           ...(!thread.subagent ? [createThreadsExtension(ctx, this.o.threads, meter)] : []),

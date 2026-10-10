@@ -209,12 +209,52 @@ button.badge.model:hover { border-color: var(--accent); }
 main > .head, .composer, .subnote, .offline { flex: none; }
 .welcome { padding: 24px var(--gutter); }
 
-.composer { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 8px; align-items: end; padding: 10px var(--gutter) max(12px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--panel); }
+.composer { display: grid; justify-items: center; padding: 10px var(--gutter) max(6px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--panel); }
+.composer-wrap { display: grid; gap: 2px; width: 100%; max-width: 76ch; }
 .composer[data-dragging="true"] { outline: 2px dashed var(--accent); outline-offset: -6px; }
-.composer textarea { resize: none; min-height: max(42px, var(--tap)); max-height: 40vh; border-radius: var(--radius); padding: 9px 12px; }
-.attach { width: max(42px, var(--tap)); min-height: max(42px, var(--tap)); padding: 0; font-size: 1.2rem; border-radius: var(--radius); }
-.send, .stop { min-height: max(42px, var(--tap)); border-radius: var(--radius); }
-.uploads { grid-column: 1 / -1; list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 0.85rem; }
+/* The box holds the text and Send; the quiet row under it holds "+" and the mode. Nothing in either has a border but the box. */
+.composer-box { position: relative; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); padding: 5px 44px 5px 10px; }
+.composer-box:focus-within { border-color: var(--accent); }
+.composer-box textarea { display: block; width: 100%; border: 0; background: none; resize: none; min-height: 32px; max-height: 40vh; padding: 5px 4px; font-size: 15px; }
+.composer-box textarea:focus-visible { outline: none; }
+.composer-row { display: flex; align-items: center; gap: 2px; min-height: 28px; padding: 0 6px; }
+.composer-row .spacer { flex: 1; }
+.composer button.icon { width: 28px; min-height: 28px; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--muted); display: inline-grid; place-items: center; }
+.composer button.icon:hover:not(:disabled) { color: var(--accent); }
+.composer button.icon svg { width: 16px; height: 16px; }
+.composer-box button.send { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); }
+.composer-box button.send svg { width: 18px; height: 18px; }
+.composer-box button.send:disabled { opacity: 1; }
+.composer[data-has-text="true"] button.send { color: var(--accent); }
+.mode-picker > button.link { font-size: 13px; padding: 0 6px; min-height: 28px; color: var(--fg); }
+.mode-picker > button.link:hover { color: var(--accent); text-decoration: none; }
+.mode-picker > button.link, .go-ahead > button { display: inline-flex; align-items: center; gap: 2px; }
+.mode-picker .drop, .go-ahead .drop { display: inline-flex; color: inherit; }
+.mode-picker .drop svg, .go-ahead .drop svg { width: 12px; height: 12px; }
+.mode-picker .drop { color: var(--muted); }
+@media (pointer: coarse) {
+  .composer-row { min-height: 44px; }
+  .composer button.icon { width: 44px; min-height: 44px; }
+  .composer-box { padding-right: 52px; }
+  .composer-box button.send { right: 4px; }
+  .mode-picker > button.link { min-height: 44px; }
+}
+.tools-menu, .mode-picker, .go-ahead { position: relative; }
+.menu.up { top: auto; bottom: calc(100% + 4px); right: auto; min-width: 260px; max-width: calc(100vw - 2 * var(--gutter)); }
+.menu.up.end { left: auto; right: 0; }
+.menu .sep { height: 1px; background: var(--line); margin: 4px 0; }
+.tools-menu .menu .switch { padding: 0 10px; font-size: 14px; }
+/* A mode in a menu: check, name with its line, number key at the right edge. */
+.menu button.mode-item { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; padding-block: 6px; font-size: 14px; }
+.mode-item .mk { color: var(--accent); font-weight: 600; }
+.mode-item > span:nth-child(2) { display: grid; gap: 1px; }
+.mode-item small { color: var(--muted); font-size: 12px; }
+.mode-item kbd { font: 12px var(--mono); color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
+.plan-head { display: flex; gap: 8px; align-items: baseline; }
+.plan-head .muted { font-size: 13px; }
+button.link { border: 0; background: transparent; color: var(--accent); padding: 0 2px; min-height: 30px; }
+button.link:hover { text-decoration: underline; }
+.uploads { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 0.85rem; }
 .uploads li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; }
 .uploads .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .uploads progress { width: 120px; accent-color: var(--accent); }

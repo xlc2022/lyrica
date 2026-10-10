@@ -152,7 +152,8 @@ values are always visible next to the model badge:
 | **Local-only** | Whether every model call stays on the custom endpoint. Always on in private threads. |
 | **Internet access for tools** | Whether `bash` and fetches inside the sandbox can reach the network. |
 | **Folders** | The thread's grants, each read-only or read-write. |
-| **Permission mode** | Ask before commands, ask before changes, or auto. |
+| **Mode** | Ask, Accept edits, Plan or Auto (see Approval). |
+| **Web search, Images** | Switches for `web_search` and `web_fetch`, and for `image`. On unless turned off. |
 | **Do not log thread in memory** | See [memory.md](memory.md#threads-that-arent-logged). |
 
 ## Network access from tools
@@ -235,36 +236,65 @@ settings:
 - **Models:** resolved through the router with the child thread's
   `CallContext`. In a local-only or private thread, only local models are
   available (see [models.md](models.md)).
-- **Permission mode:** the parent's or stricter.
+- **Mode:** the parent's or stricter, in the order Plan, Ask, Accept edits,
+  Auto.
+- **Switches:** each off if the parent's is off.
 
 A subagent can never widen what its parent was given. `inheritSettings`
 copies the parent's settings, or the narrower ones it is given, and the
 subagent's settings are checked against its parent's whenever they change and
-before every use. A subagent always uses its parent's target. Parallel
+before every use. What its tools follow is `effective(thread)`: its own
+settings with the strictest mode and switches of every ancestor, read on each
+call, so a parent switched to Plan or with a switch turned off narrows its
+subagents at once. A subagent always uses its parent's target. Parallel
 writers get their own git worktrees (see [delegation.md](delegation.md)).
 
 ## Approval
 
 The sandbox already limits what she can reach. Inside her grants she works
 freely by default, following the principle that the harness should trust her
-judgment and make review easy. Each thread has a **permission mode**:
-- **Ask before commands**
-- **Ask before changes**
-- **Auto** (the default)
+judgment and make review easy. Each thread has a **mode**:
+- **Ask** (`ask`): asks before `bash`, `write` and `edit`, since a command
+  can change files too.
+- **Accept edits** (`acceptEdits`): asks before `bash`.
+- **Plan** (`plan`): only `read`, `recall`, `read_memory`, `web_search`,
+  `web_fetch`, `delegate` with read-only roles, a subagent's `ask_parent`,
+  `threads` (her child threads, and compacting her context) and
+  `propose_plan` are active. A child thread of a Plan-mode thread is in
+  Plan mode too.
+- **Auto** (`auto`, the default): works freely inside the grants.
 
-"Ask before commands" asks before `bash`. "Ask before changes" asks before
-`bash`, `write` and `edit`, since a command can change files too. The
-extension enforces both in Pi's `tool_call` event, asking through the
+A new thread starts in the user's default mode (`defaultMode`,
+`startThread`). Stored modes from before Plan mode are renamed in place:
+"ask before changes" became `ask`, "ask before commands" `acceptEdits`.
+
+The extension enforces the asking in Pi's `tool_call` event, through the
 `approve` callback `lyricad` passes in (every open view of the thread sees the
 request; see [daemon.md](daemon.md#permission-prompts)); with no one to ask, the
 call is blocked.
 
+**Plan mode and the switches** decide which tools the session has
+(`setActiveTools`, through `setToolsOff` in `extension/src/gate.ts`, which
+lets the workspace, the unlogged rule and a subagent's role each turn tools
+off without undoing the others). What's off isn't declared to the model,
+can't be run, and a call to it is refused in `tool_call` as well. Tools are
+set again before every turn and when a plan is approved.
+
+`propose_plan({ plan })` shows the plan through the same path as an approval
+(`proposePlan`): the user picks Ask, Accept edits or Auto to go ahead in, or
+keeps planning. Approving switches the thread's mode (`setMode`), turns the
+tools back on, and she carries on with the plan in the same turn. A branch
+of a thread in Plan mode stays in Plan mode, and she is told so. A subagent
+has no `propose_plan` and can't change its mode. Without `lyricad`, Pi's own
+UI asks; with no UI she keeps planning.
+
 Anything irreversible that leaves the server, such as sending a message,
-deleting remote data or spending money, always asks.
+deleting remote data or spending money, always asks, whatever the mode: a tool
+annotated as reaching outside (`openWorldHint`) and not read-only.
 
 ## Tools
 
-`read`, `write`, `edit` and `bash`, built from Pi's own tool definitions
+`read`, `write`, `edit` and `bash`, and `propose_plan` in a thread that isn't a subagent, built from Pi's own tool definitions
 with the thread's target looked up on every call, so changing a thread's
 settings applies at once. Commands typed with `!` in the terminal go to the
 same target. A short `workspace` prompt section tells her where she works,

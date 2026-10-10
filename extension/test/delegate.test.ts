@@ -105,7 +105,7 @@ describe("delegate", () => {
       return ws;
     } });
     const parent = s.thread();
-    ws.settings(s.li.id).setThread(parent.threadId, "general", { grants: [{ path: join(host, "a"), writable: true }], internet: false, hosts: ["10.0.0.5"], mode: "ask-commands" });
+    ws.settings(s.li.id).setThread(parent.threadId, "general", { grants: [{ path: join(host, "a"), writable: true }], internet: false, hosts: ["10.0.0.5"], mode: "acceptEdits" });
 
     const outside = await s.run(parent, { task: "read there", role: "scout", folders: [join(host, "b")] });
     expect(outside.status).toBe("failed");
@@ -115,7 +115,7 @@ describe("delegate", () => {
     await s.run(parent, { task: "change it", role: "worker" });
     const [worker, scout] = s.delegation.status(parent);
     const child = (thread: string) => ({ ...ws.settings(s.li.id).thread(thread), network: ws.network({ userId: s.li.id, pool: "general", threadId: thread }) });
-    expect(child(scout!.thread)).toMatchObject({ grants: [{ path: join(host, "a"), writable: false }], mode: "ask-commands", parent: parent.threadId, network: { internet: false, services: false, hosts: ["10.0.0.5"] } });
+    expect(child(scout!.thread)).toMatchObject({ grants: [{ path: join(host, "a"), writable: false }], mode: "acceptEdits", parent: parent.threadId, network: { internet: false, services: false, hosts: ["10.0.0.5"] } });
     expect(child(worker!.thread)).toMatchObject({ grants: [{ path: join(host, "a"), writable: true }], network: { internet: false, hosts: ["10.0.0.5"] } });
     // Anything wider is refused by the workspace itself.
     const p = { userId: s.li.id, pool: "general" as const, threadId: parent.threadId };
@@ -669,7 +669,7 @@ describe("talking with subagents", () => {
       return { tools: [{ name: "bash", args: { command: `echo hi > ${told(r)}.txt` } }] };
     });
     const parent = s.thread();
-    ws.settings(s.li.id).setThread(parent.threadId, "general", { mode: "ask-commands" });
+    ws.settings(s.li.id).setThread(parent.threadId, "general", { mode: "acceptEdits" });
 
     const allowed = await s.run(parent, { task: "yes", role: "worker" });
     expect(allowed.status).toBe("finished");
@@ -702,4 +702,30 @@ describe("talking with subagents", () => {
     expect(asked).toHaveLength(3);
     expect(existsSync(join(scratch, "auto.txt"))).toBe(true);
   });
+
+  it("starts only read-only roles from a thread in Plan mode, and they only read", async () => {
+    const scratch = tempDir();
+    const target: ExecutionTarget = { name: "sandbox", cwd: async () => scratch, ops: () => ({ bash: createLocalBashOperations() } as unknown as ToolOps), folders: () => [] };
+    let ws!: Workspace;
+    const s = await setup({ workspace: (m) => (ws = new (class extends Workspace { override targetFor(_t: WorkspaceThread) { return target; } })(m.keyring, m.users, { excludePorts: [] })) });
+    s.cloud.respond((r) => {
+      if (r.messages.at(-1)!.role === "tool") return { text: `result: ${said(r.messages.at(-1)!)}` };
+      return { tools: [{ name: "bash", args: { command: "echo hi > scout.txt" } }] };
+    });
+    const parent = s.thread();
+    ws.settings(s.li.id).setThread(parent.threadId, "general", { mode: "plan" });
+
+    const writer = await s.run(parent, { task: "change it", role: "worker" });
+    expect(writer.status).toBe("failed");
+    expect(writer.result).toContain("Plan mode");
+    expect(parent.view.own.listThreads({ parent: parent.threadId })).toHaveLength(0);
+
+    const scout = await s.run(parent, { task: "look", role: "scout" });
+    expect(scout.status).toBe("finished");
+    // The scout's bash is off in Plan mode: it wasn't offered, and nothing ran.
+    const sub = s.cloud.requests.filter(isSub)[0]!;
+    expect(sub.tools!.map((t) => t.function.name).sort()).toEqual(["ask_parent", "read", "read_memory", "recall"]);
+    expect(existsSync(join(scratch, "scout.txt"))).toBe(false);
+  });
 });
+

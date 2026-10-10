@@ -9,12 +9,19 @@ export interface Grant {
   writable: boolean;
 }
 
-/** "ask-commands" asks before bash; "ask-changes" before bash, write and edit. */
-export type PermissionMode = "auto" | "ask-changes" | "ask-commands";
-export const PERMISSION_MODES: readonly PermissionMode[] = ["auto", "ask-changes", "ask-commands"];
-const MODE_RANK: Record<PermissionMode, number> = { auto: 0, "ask-commands": 1, "ask-changes": 2 };
-/** The mode that asks about more of the two. */
+/**
+ * How much she may do: "auto" works freely inside the grants, "acceptEdits"
+ * asks before bash, "ask" before bash, write and edit, and "plan" leaves only
+ * the tools that read.
+ */
+export type PermissionMode = "auto" | "acceptEdits" | "ask" | "plan";
+/** From the least strict to the most. */
+export const PERMISSION_MODES: readonly PermissionMode[] = ["auto", "acceptEdits", "ask", "plan"];
+const MODE_RANK = Object.fromEntries(PERMISSION_MODES.map((m, i) => [m, i])) as Record<PermissionMode, number>;
+/** The stricter of the two. */
 export const stricterMode = (a: PermissionMode, b: PermissionMode): PermissionMode => (MODE_RANK[a] >= MODE_RANK[b] ? a : b);
+/** The names modes had before Plan mode, and what they became. */
+const OLD_MODES: Record<string, PermissionMode> = { "ask-changes": "ask", "ask-commands": "acceptEdits" };
 
 /** What a thread's tools may reach on the network. */
 export interface Network {
@@ -33,6 +40,9 @@ export interface ThreadWorkspace {
   services: boolean | null;
   hosts: string[] | null;
   mode: PermissionMode;
+  /** Switches: web_search and web_fetch, and the image tool. Off removes the tools from the session. */
+  webSearch: boolean;
+  images: boolean;
   /** "sandbox" or "ssh:<name>". */
   target: string;
   /** Set for a subagent's thread: its settings can only be the parent's or stricter. */
@@ -54,17 +64,19 @@ export interface SshTargetConfig {
 
 /** Workspace tables in the user's user.db. The pool databases belong to Memory. */
 export const WORKSPACE_SCHEMA = `
--- What each thread was given: grants, network overrides, permission mode, target,
--- and for a subagent the parent thread it can't be wider than.
+-- What each thread was given: grants, network overrides, permission mode, switches,
+-- target, and for a subagent the parent thread it can't be wider than.
 CREATE TABLE IF NOT EXISTS thread_workspaces (
-  thread_id TEXT PRIMARY KEY,
-  grants    TEXT NOT NULL,
-  internet  INTEGER,
-  services  INTEGER,
-  hosts     TEXT,
-  mode      TEXT NOT NULL,
-  target    TEXT NOT NULL,
-  parent    TEXT
+  thread_id  TEXT PRIMARY KEY,
+  grants     TEXT NOT NULL,
+  internet   INTEGER,
+  services   INTEGER,
+  hosts      TEXT,
+  mode       TEXT NOT NULL,
+  target     TEXT NOT NULL,
+  parent     TEXT,
+  web_search INTEGER NOT NULL DEFAULT 1,
+  images     INTEGER NOT NULL DEFAULT 1
 );
 -- Remote machines she can work on, with the key she signs in with.
 CREATE TABLE IF NOT EXISTS ssh_targets (
@@ -121,6 +133,7 @@ const DEFAULTS: Record<Pool, Network> = {
 export class WorkspaceSettings {
   constructor(private readonly db: Db, readonly allowed: () => Record<Pool, string[]>) {
     db.exec(WORKSPACE_SCHEMA);
+    migrate(db);
   }
 
   close(): void { this.db.close(); }
@@ -142,14 +155,49 @@ export class WorkspaceSettings {
     return next;
   }
 
+  /** The mode new threads start in. */
+  defaultMode(): PermissionMode {
+    const stored = this.setting("workspace.mode") as PermissionMode | undefined;
+    return stored && PERMISSION_MODES.includes(stored) ? stored : "auto";
+  }
+
+  setDefaultMode(mode: PermissionMode): void {
+    if (!PERMISSION_MODES.includes(mode)) throw new Error(`unknown permission mode: ${mode}`);
+    this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('workspace.mode', ?)").run(mode);
+  }
+
+  /** A new thread's settings: the default mode, everything else as the user's defaults say. */
+  startThread(threadId: string, pool: Pool): ThreadWorkspace {
+    return this.setThread(threadId, pool, { mode: this.defaultMode() });
+  }
+
   thread(threadId: string): ThreadWorkspace {
     const row = this.db.prepare("SELECT * FROM thread_workspaces WHERE thread_id = ?").get(threadId) as ThreadRow | undefined;
-    if (!row) return { grants: [], internet: null, services: null, hosts: null, mode: "auto", target: "sandbox", parent: null };
+    // A thread from before modes were saved for every new thread: Auto, as it had then. New threads get the default from startThread.
+    if (!row) return { grants: [], internet: null, services: null, hosts: null, mode: "auto", webSearch: true, images: true, target: "sandbox", parent: null };
     const bool = (v: number | null) => (v === null ? null : v === 1);
     return {
       grants: JSON.parse(row.grants), internet: bool(row.internet), services: bool(row.services),
-      hosts: row.hosts === null ? null : JSON.parse(row.hosts), mode: row.mode, target: row.target, parent: row.parent,
+      hosts: row.hosts === null ? null : JSON.parse(row.hosts), mode: row.mode, webSearch: row.web_search === 1, images: row.images === 1,
+      target: row.target, parent: row.parent,
     };
+  }
+
+  /**
+   * What applies to the thread now: its own settings, with the strictest mode
+   * and each switch off where any ancestor's is. A parent changed after its
+   * subagent or child thread started narrows it at once.
+   */
+  effective(threadId: string): ThreadWorkspace {
+    const t = this.thread(threadId);
+    for (let id = t.parent, i = 0; id && i < 100; i++) {
+      const up = this.thread(id);
+      t.mode = stricterMode(t.mode, up.mode);
+      t.webSearch &&= up.webSearch;
+      t.images &&= up.images;
+      id = up.parent;
+    }
+    return t;
   }
 
   /**
@@ -175,28 +223,32 @@ export class WorkspaceSettings {
 
   private write(threadId: string, t: ThreadWorkspace): void {
     const int = (v: boolean | null) => (v === null ? null : v ? 1 : 0);
-    this.db.prepare(`INSERT OR REPLACE INTO thread_workspaces (thread_id, grants, internet, services, hosts, mode, target, parent)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(threadId, JSON.stringify(t.grants), int(t.internet), int(t.services),
-      t.hosts === null ? null : JSON.stringify(t.hosts), t.mode, t.target, t.parent);
+    this.db.prepare(`INSERT OR REPLACE INTO thread_workspaces (thread_id, grants, internet, services, hosts, mode, target, parent, web_search, images)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(threadId, JSON.stringify(t.grants), int(t.internet), int(t.services),
+      t.hosts === null ? null : JSON.stringify(t.hosts), t.mode, t.target, t.parent, int(t.webSearch), int(t.images));
   }
 
   /**
-   * Gives a subagent's thread its parent's folders, network, permission mode
-   * and target, or the stricter ones in `narrower`. It works in the parent's
-   * folder. Anything wider than the parent's is refused.
+   * Gives a subagent's thread its parent's folders, network, permission mode,
+   * switches and target, or the stricter ones in `narrower`. It works in the
+   * parent's folder. Anything wider than the parent's is refused.
    */
   inheritSettings(parentThreadId: string, childThreadId: string, pool: Pool,
-    narrower: Partial<Pick<ThreadWorkspace, "grants" | "mode">> & Partial<Network> = {}): ThreadWorkspace {
-    const parent = this.thread(parentThreadId);
+    narrower: Partial<Pick<ThreadWorkspace, "grants" | "mode" | "webSearch" | "images">> & Partial<Network> = {}): ThreadWorkspace {
+    const parent = this.effective(parentThreadId);
     const net = this.network(parentThreadId, pool);
     // Start from nothing, so a refused narrowing leaves the child with no access at all.
-    this.write(childThreadId, { grants: [], internet: false, services: false, hosts: [], mode: "ask-changes", target: parent.target, parent: parentThreadId });
+    this.write(childThreadId, {
+      grants: [], internet: false, services: false, hosts: [], mode: "plan", webSearch: false, images: false, target: parent.target, parent: parentThreadId,
+    });
     return this.setThread(childThreadId, pool, {
       grants: narrower.grants ?? parent.grants,
       internet: narrower.internet ?? net.internet,
       services: narrower.services ?? net.services,
       hosts: narrower.hosts ?? net.hosts,
       mode: narrower.mode ?? parent.mode,
+      webSearch: narrower.webSearch ?? parent.webSearch,
+      images: narrower.images ?? parent.images,
       target: parent.target,
     });
   }
@@ -216,7 +268,7 @@ export class WorkspaceSettings {
   }
 
   private checkNarrower(parentThreadId: string, pool: Pool, child: ThreadWorkspace): void {
-    const parent = this.thread(parentThreadId);
+    const parent = this.effective(parentThreadId);
     for (const g of child.grants) {
       const from = parent.grants.find((p) => within(g.path, p.path));
       if (!from) throw new Error(`${g.path} isn't in the parent thread's folders`);
@@ -229,6 +281,8 @@ export class WorkspaceSettings {
     const extra = mine.hosts.find((h) => !theirs.hosts.includes(h));
     if (extra) throw new Error(`${extra} isn't in the parent thread's hosts`);
     if (MODE_RANK[child.mode] < MODE_RANK[parent.mode]) throw new Error(`the parent thread's permission mode is ${parent.mode}`);
+    if (child.webSearch && !parent.webSearch) throw new Error("the parent thread has web search off");
+    if (child.images && !parent.images) throw new Error("the parent thread has images off");
     if (child.target !== parent.target) throw new Error(`a subagent works where its parent does (${parent.target})`);
   }
 
@@ -279,7 +333,14 @@ export class WorkspaceSettings {
 
 interface ThreadRow {
   grants: string; internet: number | null; services: number | null; hosts: string | null;
-  mode: PermissionMode; target: string; parent: string | null;
+  mode: PermissionMode; target: string; parent: string | null; web_search: number; images: number;
+}
+
+/** Adds the switches to an older table, and renames the old modes in place. */
+function migrate(db: Db): void {
+  const columns = (db.prepare("SELECT name FROM pragma_table_info('thread_workspaces')").all() as { name: string }[]).map((c) => c.name);
+  for (const c of ["web_search", "images"]) if (!columns.includes(c)) db.exec(`ALTER TABLE thread_workspaces ADD COLUMN ${c} INTEGER NOT NULL DEFAULT 1`);
+  for (const [old, mode] of Object.entries(OLD_MODES)) db.prepare("UPDATE thread_workspaces SET mode = ? WHERE mode = ?").run(mode, old);
 }
 interface SshRow { name: string; host: string; port: number; username: string; private_key: string; root: string | null; host_key: string | null }
 const toSsh = (r: SshRow): SshTargetConfig =>

@@ -24,9 +24,11 @@ export interface Live {
   ended: number;
   /** Bumped, per subagent thread, when its stored work changes, so an open transcript reloads. */
   subagents: Record<string, number>;
+  /** Bumped when the thread's settings change elsewhere, such as an approved plan switching its mode. */
+  settings: number;
 }
 
-export const initialLive: Live = { busy: false, queued: [], permissions: [], items: [], errors: [], reload: 0, ended: 0, subagents: {} };
+export const initialLive: Live = { busy: false, queued: [], permissions: [], items: [], errors: [], reload: 0, ended: 0, subagents: {}, settings: 0 };
 
 /** A subagent's events that mean its thread has new stored messages. */
 const STORED: string[] = ["started", "usage", "question", "note", "finished", "stopped", "interrupted"];
@@ -88,6 +90,8 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       return { ...s, errors: [...s.errors, e.message] };
     case "title":
       return { ...s, title: e.title };
+    case "settings":
+      return { ...s, settings: s.settings + 1 };
     case "turn_end":
       // A subagent's request outlives the parent's turn: it ends with its own permission_end.
       return { ...s, busy: false, permissions: s.permissions.filter((p) => p.subagent), reload: s.reload + 1, ended: s.items.length };
