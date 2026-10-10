@@ -394,13 +394,16 @@ describe("threads", () => {
     const kept = own.appendEntry(t.id, { piId: "a1", role: "assistant", data: {}, text: "a copper kettle" });
     const branch = own.branchThread(t.id, 2);
     const [note] = own.addNotes([{ text: "{user} has a copper kettle", source: kept }], { author: "lyrica", thread: t.id });
+    own.setUnlogged(branch.id, true);
+    own.appendEntry(branch.id, { piId: "u2", role: "user", data: {}, text: "off the record" });
 
     expect(own.truncateThread(t.id, 1, "lyrica").removed).toBe(2);
     expect(own.get(note!)).toBeDefined();
     expect(own.isTombstoned(kept)).toBe(false);
     expect(own.entryWindow(kept, 0).map((e) => [e.id, e.text])).toEqual([[kept, "a copper kettle"]]);
+    expect(own.entryWindow(kept, 4, t.id).map((e) => e.text)).toEqual(["the kettle is copper", "a copper kettle"]);
     expect(own.search("copper").filter((h) => h.kind === "entry").map((h) => h.id).sort()).toEqual([`e:${t.id}#1`, kept]);
-    expect(own.loadEntries(branch.id)).toHaveLength(2);
+    expect(own.loadEntries(branch.id)).toHaveLength(3);
   });
 
   it("brings back pages about granted folders", async () => {

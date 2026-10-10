@@ -246,9 +246,10 @@ export class PoolReader {
     const rows = this.db.prepare(`SELECT * FROM entries WHERE thread = ? AND n BETWEEN ? AND ? ${own ? "" : "AND unlogged = 0"} ORDER BY n`)
       .all(thread, Number(n) - radius, Number(n) + radius) as EntryRow[];
     if (rows.some((r) => r.n === Number(n))) return rows.map(toEntry);
-    // Rewound away from its thread, but a branch still holds a copy: read it there.
-    const copy = this.db.prepare(`SELECT thread, n FROM entries WHERE orig = ? ${own ? "" : "AND unlogged = 0"} ORDER BY rowid LIMIT 1`).get(id) as { thread: string; n: number } | undefined;
-    return copy ? this.entryWindow(entryId(copy.thread, copy.n), radius, fromThread === thread ? copy.thread : fromThread) : rows.map(toEntry);
+    // Rewound away from its thread, but a branch still holds a copy: read it there, leaving out
+    // what the branch wrote unlogged (it may have been made unlogged after the copy).
+    const copy = this.db.prepare("SELECT thread, n FROM entries WHERE orig = ? AND unlogged = 0 ORDER BY rowid LIMIT 1").get(id) as { thread: string; n: number } | undefined;
+    return copy ? this.entryWindow(entryId(copy.thread, copy.n), radius) : rows.map(toEntry);
   }
 
   // Memories
@@ -574,10 +575,10 @@ export class PoolStore extends PoolReader {
    * forgetting does. Their index rows go; notes whose only sources were in
    * them are deleted (each leaves a tombstone, and pages citing them are
    * flagged), as are pages citing the entries directly; subagent threads
-   * started in them are forgotten. Entry numbers are never reused. As with
-   * forgetting, a branch's copies of removed entries stay in the branch but
-   * aren't searched or slept. Returns how many entries went, and the
-   * subagent threads.
+   * started in them are forgotten. Entry numbers are never reused. An entry a
+   * branch still holds a copy of keeps its notes and search row, and reading
+   * it opens the copy. Returns how many entries went, and the subagent
+   * threads.
    */
   truncateThread(threadId: string, fromN: number, author: Author): { removed: number; subagents: string[] } {
     this.checkAuthor(author);
