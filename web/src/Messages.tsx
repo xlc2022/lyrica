@@ -20,9 +20,11 @@ interface Props {
   rewinder?: Rewinder;
   /** Messages from here on are being deleted (waiting for Undo). */
   hideFrom?: number;
+  /** A child thread's parent's title, for what the parent sent. */
+  parentTitle?: string;
 }
 
-export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewinder, hideFrom }: Props) {
+export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewinder, hideFrom, parentTitle }: Props) {
   const { messages, live, hasMore, loadOlder, loaded } = thread;
   const [run, loading, error] = useAction();
   // Expanded tool markers, by call ID, so they stay open when the stored copy replaces the live one.
@@ -33,7 +35,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   const show = (id: string, on: boolean) => setShown((o) => { const n = new Set(o); if (on) n.add(id); else n.delete(id); return n; });
   const env: Env = {
     userId: ctx.user.id, you: ctx.user.displayName, pool, base, threadId, subagent, openTools, toggleTool,
-    permissions: live.permissions, ticks: live.subagents, show, rewinder,
+    permissions: live.permissions, ticks: live.subagents, show, rewinder, parentTitle,
   };
   const shownMessages = hideFrom === undefined ? messages : messages.filter((m) => m.n < hideFrom);
   return (
@@ -61,6 +63,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
 
 interface Env {
   userId: string;
+  parentTitle?: string;
   you: string;
   pool: Pool;
   /** The open thread's API path, where its permission requests are answered. */
@@ -219,7 +222,8 @@ function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" 
     <div className="subagent threads-card">
       <div className="sub-head">
         <span className="status" data-state={state} aria-label={state} />
-        <b>{head}</b>
+        {/* A thread's title is as the user wrote it, so this head isn't capitalised as a role's is. */}
+        <b className="as-is">{head}</b>
         {args.to === "parent" ? null : <ThreadLinks threads={part.threads} env={env} />}
       </div>
       {(args.task ?? args.text) && <p>{args.task ?? args.text}</p>}
@@ -233,7 +237,7 @@ function FromParent({ text, parent, env, n }: { text: string; parent: string; en
   return (
     <div className="msg user">
       <div className="who">
-        Lyrica, from <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: parent })}>the parent thread</a>
+        Lyrica<span className="muted"> · from <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: parent })}>{env.parentTitle || "its parent thread"}</a></span>
         {/* Branch and delete, as any message; it isn't hers to edit. */}
         {env.rewinder && n !== undefined && <MessageMenu n={n} role="user" rewinder={env.rewinder} />}
       </div>
