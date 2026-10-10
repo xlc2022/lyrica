@@ -35,7 +35,7 @@ function time(d: Date): Buffer {
 export function makeIdentity(commonName: string): Identity {
   const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
   const serial = randomBytes(16);
-  serial[0]! &= 0x7f;
+  serial[0] = (serial[0]! & 0x7f) | 0x40; // positive, with no leading zero byte (DER wants the shortest form)
   const tbs = seq(
     der(0xa0, der(0x02, Buffer.from([2]))), // v3
     der(0x02, serial),

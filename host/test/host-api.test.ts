@@ -43,6 +43,10 @@ async function code(port: number): Promise<string> {
 }
 
 describe("host identity", () => {
+  it("makes certificates that always parse", () => {
+    for (let i = 0; i < 600; i++) expect(fingerprint(makeIdentity("x").cert)).toMatch(/^[0-9a-f]{64}$/);
+  });
+
   it("makes its key once, readable only by its user", async () => {
     const { host: h, dataDir } = await host();
     expect(statSync(join(dataDir, "host.key")).mode & 0o777).toBe(0o600);
