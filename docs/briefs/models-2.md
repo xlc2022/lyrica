@@ -162,8 +162,9 @@ can be off, paused or busy gaming without Lyrica going dark.
    - endpoints and hosts with live status;
    - each host's GPUs (allowed servers, free margin), each model's
      placement and pin, VRAM and queue, plus pause, resume and a
-     dashboard link, proxied through the paired connection with
-     administrator checks for shared hosts;
+     link to the host's own dashboard (at the address last reached; the
+     host keeps its own password check), the rest proxied through the
+     paired connection with administrator checks for shared hosts;
    - the ordered list for each task in each profile, with reorder, add and
      remove;
    - recent calls for the user: time, thread, task, answering model,
