@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { CloudModelForbidden, Memory, PRONOUN_PRESETS, type Persona, type Pool } from "@lyrica/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { deadUrl } from "../../core/test/fake-openai.ts";
+import { fakeHost } from "../../core/test/fake-host.ts";
 import { withModels } from "../../core/test/helpers.ts";
 import { createLyricaExtension, modelRuntimeFor, openThreadSession, piModelFor, toStoredEntry, type ThreadContext } from "../src/index.ts";
 
@@ -207,5 +208,52 @@ describe("each turn's model", () => {
       message: { role: "assistant", content: [{ type: "thinking", thinking: "a private chain of thought about Miso" }, { type: "text", text: "Miso is fine." }] },
     } as never);
     expect(stored.text).toBe("Miso is fine.");
+  });
+});
+
+describe("a model host", () => {
+  it("is called over mutual TLS with its pinned key, streaming, with thinking through the chat template", async () => {
+    const s = await setup();
+    const host = await fakeHost({ name: "lyrica-blackwell" });
+    const ep = await s.models.pairHost(s.li, { name: "blackwell", addresses: [host.address], code: host.newCode() });
+    const [o] = await s.models.discover(s.li, ep.id);
+    s.models.setProfile(s.li.id, "local", "chat", [{ offeringId: o!.id }]);
+    s.models.setDefaultThinking(s.li.id, "high");
+    const t = s.thread("private");
+    const { session, prepare, dispose } = await s.open(t);
+    try {
+      const r = await prepare();
+      expect(r.endpoint.api).toBe("host");
+      await session.prompt("hello over TLS");
+    } finally {
+      dispose();
+    }
+    expect(session.messages.at(-1)).toMatchObject({ role: "assistant", content: [{ type: "text", text: "ok from lyrica-blackwell" }] });
+    expect(host.chats).toEqual([expect.objectContaining({ model: o!.modelId, chat_template_kwargs: { enable_thinking: true, preserve_thinking: true }, client: [...host.pinned.keys()][0] })]);
+    expect(host.chats[0]!.reasoning_effort).toBeUndefined();
+    expect(s.models.recentCalls(s.li.id)[0]!.note).toBeUndefined();
+  });
+});
+
+describe("thinking on a host", () => {
+  it("sends reasoning_effort to a host model with levels, and the chat-template switch only for one with an on/off switch", async () => {
+    const s = await setup();
+    const host = await fakeHost({ name: "vllm", models: [
+      { id: "Qwen/Qwen3.8-27B", kind: "chat", contextLength: 32768, tools: true, reasoning: ["low", "medium", "high"] },
+    ] });
+    const ep = await s.models.pairHost(s.li, { name: "vllm", addresses: [host.address], code: host.newCode() });
+    const [o] = await s.models.discover(s.li, ep.id);
+    expect(o!.reasoning).toEqual(["low", "medium", "high"]);
+    s.models.setProfile(s.li.id, "local", "chat", [{ offeringId: o!.id }]);
+    s.models.setDefaultThinking(s.li.id, "high");
+    const { session, prepare, dispose } = await s.open(s.thread("private"));
+    try {
+      await prepare();
+      await session.prompt("think hard");
+    } finally {
+      dispose();
+    }
+    expect(host.chats[0]).toMatchObject({ reasoning_effort: "high" });
+    expect(host.chats[0]!.chat_template_kwargs).toBeUndefined();
   });
 });

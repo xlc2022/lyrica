@@ -173,6 +173,33 @@ export function apiRoutes(d: Lyricad): Route[] {
       s().models.merge(user, r.params.endpointId!, String(into ?? ""));
       return endpointInfo(d, user.id, String(into));
     }),
+    route("POST", `${u}/hosts`, async (r) => {
+      const user = d.userFor(r);
+      const h = await r.json<Api.HostInput>();
+      const ep = await s().models.pairHost(user, { name: String(h.name ?? ""), addresses: strings(h.addresses), code: String(h.code ?? "") }, { shared: !!h.shared });
+      await s().models.discover(user, ep.id).catch(() => {}); // a host that's paused now is read later
+      return endpointInfo(d, user.id, ep.id);
+    }),
+    route("POST", `${u}/hosts/:endpointId/pair`, async (r) => {
+      const user = d.userFor(r);
+      const { code } = await r.json<Api.HostRepair>();
+      const ep = s().models.endpoint(user.id, r.params.endpointId!);
+      if (!ep || ep.api !== "host") throw new HttpError(404, "no such model host");
+      await s().models.pairHost(user, { name: ep.name, addresses: ep.addresses ?? [], code: String(code ?? "") }, { endpointId: ep.id });
+      return endpointInfo(d, user.id, ep.id);
+    }),
+    route("PUT", `${u}/hosts/:endpointId/addresses`, async (r) => {
+      const user = d.userFor(r);
+      const { addresses } = await r.json<Api.HostAddresses>();
+      s().models.setHostAddresses(user, r.params.endpointId!, strings(addresses));
+      return endpointInfo(d, user.id, r.params.endpointId!);
+    }),
+    route("GET", `${u}/hosts/:endpointId/status`, async (r) => (await s().models.hostStatus(d.userFor(r).id, r.params.endpointId!)) as Api.HostStatus),
+    route("POST", `${u}/hosts/:endpointId/:action`, async (r) => {
+      const action = r.params.action;
+      if (action !== "pause" && action !== "resume" && action !== "restart") throw new HttpError(404, "a host can be paused, resumed or restarted");
+      return (await s().models.hostControl(d.userFor(r), r.params.endpointId!, action)) as Api.HostStatus;
+    }),
     route("PATCH", `${u}/offerings/:offeringId`, async (r) => {
       const user = d.userFor(r);
       const c = await r.json<Api.CapabilitiesChange>();
@@ -781,7 +808,8 @@ function endpointInfo(d: Lyricad, userId: string, id: string): Api.EndpointInfo 
   const ep = d.services!.models.endpoint(userId, id);
   if (!ep) throw new HttpError(404, `no endpoint ${id}`);
   return {
-    id: ep.id, name: ep.name, kind: ep.kind, baseUrl: ep.baseUrl, hasApiKey: !!ep.apiKey, shared: ep.shared,
+    id: ep.id, name: ep.name, kind: ep.kind, api: ep.api, baseUrl: ep.baseUrl, hasApiKey: !!ep.apiKey, shared: ep.shared,
+    ...(ep.addresses ? { addresses: ep.addresses } : {}), ...(ep.fingerprint ? { fingerprint: ep.fingerprint } : {}),
     unencrypted: ep.unencrypted, stale: ep.stale, ...(ep.downSince ? { downSince: ep.downSince } : {}),
     models: d.services!.models.offerings(userId, ep.id).map((o) => toOfferingInfo(ep, o)),
   };
@@ -837,6 +865,11 @@ function toRef(r: unknown): ModelRef {
 function toRefs(list: unknown): ModelRef[] {
   if (!Array.isArray(list)) throw new HttpError(400, "expected a list of models");
   return list.map(toRef);
+}
+
+function strings(list: unknown): string[] {
+  if (!Array.isArray(list) || list.some((x) => typeof x !== "string")) throw new HttpError(400, "expected a list of addresses");
+  return list as string[];
 }
 
 function ids(list: unknown): string[] {

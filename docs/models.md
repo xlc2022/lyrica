@@ -48,6 +48,57 @@ it, never inferred), an OpenAI-compatible base URL and an optional API key.
   name, ignoring an organisation prefix, a file extension and quantisation
   words (`baseName`), for a suggested fallback or replacement.
 
+## Model hosts
+
+A paired model host (the Model host thread's `host/`) is an endpoint with
+`api: "host"`: always local, with an ordered list of addresses and the
+host's pinned key fingerprint. Shared hosts live in `self.db` and only an
+administrator pairs or manages them; a personal host lives in its user's
+`user.db` and no one else sees it. Code: `core/src/models/host.ts`.
+
+- **Lyrica's key.** Each `lyricad` has one ECDSA P-256 key and self-signed
+  certificate, made on first use and kept in `self.db` (`host_identity`).
+- **Pairing** (`pairHost`) follows `host/PAIRING.md`: the code is normalised
+  and checked before anything is sent; on one TLS 1.3 connection that
+  presents Lyrica's certificate, the host's fingerprint is read, the proof
+  of the code bound to both fingerprints is sent, and the host's proof is
+  checked. Only then is its key pinned. Plain reasons for no code, a wrong
+  code, a host that can't prove it knows the code, or no address reachable.
+  `pairHost(…, { endpointId })` pairs a host again after its key changed,
+  keeping every ID.
+- **Addresses** (`setHostAddresses`) can change at any time; trust and IDs
+  stay. Each request tries them in order.
+- **Calls** go through `fetchFor(endpoint)`: undici, with a connector that
+  checks the host's key before handing over the socket, so nothing is sent
+  to a host whose key changed. That ends the call at once with "This host's
+  identity changed. Pair it again." and never tries the next address. No
+  session resumption. `modelRuntimeFor` gives each host's Pi provider this
+  fetch, so chat, tools and streaming go through the host's `/v1`. It does
+  so by wrapping the runtime's `prepareRequest`, an internal of Pi's
+  `ModelRuntime` checked against Pi 1.1.0; re-check it when Pi is upgraded.
+  The same wrapper adds each offering's saved settings.
+- A host that can't be reached, or doesn't answer within 30 seconds, is a
+  plain reason ("blackwell can't be reached."), a 502 through the daemon.
+  Pairing waits at most 10 seconds for the host's answer, and checks that
+  the name is free before using up the code.
+- **Away.** A host that can't be reached, or answers `paused`, `busy`,
+  `restarting`, `unavailable` or `unpaired`, is marked down in the health
+  cache, so the next model in the list answers. `probe` reads
+  `/host/v1/status` and counts only `running` as up.
+- **Discovery** reads `/host/v1/models`: context length, tools, vision,
+  embeddings, the file's checksum (`digest`, for strong group suggestions)
+  and thinking. A thinking switch in the chat template is one level, sent as
+  `chat_template_kwargs.enable_thinking`; a host model that reports levels
+  gets `reasoning_effort` like any OpenAI-compatible endpoint.
+- `hostStatus` returns the host's status (GPUs, roles, loaded and pinned
+  models, VRAM, queue) to anyone who can use it; `hostControl` pauses,
+  resumes or restarts it.
+- Unpairing is removing the endpoint; the host keeps listing this server
+  until it is revoked there.
+- Every user who can use a shared host sees its addresses, fingerprint and
+  status (including its models folder's path), as they see a plain
+  endpoint's URL. That is deliberate: none of it is a secret.
+
 ## Cleaning up
 
 - An endpoint whose probes, discovery and calls have all failed for 14 days

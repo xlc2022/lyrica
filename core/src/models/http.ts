@@ -20,20 +20,25 @@ export async function addressesOutside(baseUrl: string): Promise<string[]> {
   return addresses.filter((a) => !OWN_NETWORK.check(a, isIP(a) === 6 ? "ipv6" : "ipv4"));
 }
 
-export interface DiscoveredModel { modelId: string; contextWindow?: number; tools?: boolean; vision?: boolean; image?: boolean; reasoning?: ("low" | "medium" | "high")[] }
+export interface DiscoveredModel {
+  modelId: string; contextWindow?: number; tools?: boolean; vision?: boolean; image?: boolean; embedding?: boolean;
+  reasoning?: ("low" | "medium" | "high")[];
+  /** The file's SHA-256, where a host reports it: the same file on two hosts is the same model. */
+  digest?: string;
+}
 
 const headers = (apiKey?: string): Record<string, string> => (apiKey ? { authorization: `Bearer ${apiKey}` } : {});
 
-async function getModels(baseUrl: string, apiKey: string | undefined, timeoutMs: number): Promise<unknown> {
-  const res = await fetch(`${baseUrl}/models`, { headers: headers(apiKey), signal: AbortSignal.timeout(timeoutMs) });
+async function getModels(baseUrl: string, apiKey: string | undefined, timeoutMs: number, fetchImpl: typeof fetch = fetch): Promise<unknown> {
+  const res = await fetchImpl(`${baseUrl}/models`, { headers: headers(apiKey), signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) throw new Error(`${baseUrl}/models answered ${res.status}`);
   return res.json();
 }
 
 /** "up" when GET /models answers 2xx within the timeout. */
-export async function probeUrl(baseUrl: string, apiKey: string | undefined, timeoutMs = 5000): Promise<"up" | "down"> {
+export async function probeUrl(baseUrl: string, apiKey: string | undefined, timeoutMs = 5000, fetchImpl?: typeof fetch): Promise<"up" | "down"> {
   try {
-    await getModels(baseUrl, apiKey, timeoutMs);
+    await getModels(baseUrl, apiKey, timeoutMs, fetchImpl);
     return "up";
   } catch {
     return "down";

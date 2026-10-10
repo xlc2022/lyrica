@@ -181,7 +181,13 @@ export interface EndpointInfo {
   /** A label that can change. */
   name: string;
   kind: "cloud" | "local";
+  /** A plain OpenAI-compatible server, or a paired model host (always local). */
+  api: "openai-compatible" | "host";
   baseUrl: string;
+  /** A host's addresses, tried in order. */
+  addresses?: string[];
+  /** A host's pinned key fingerprint. */
+  fingerprint?: string;
   /** API keys are never sent back. */
   hasApiKey: boolean;
   shared: boolean;
@@ -207,6 +213,32 @@ export interface Probe { state: "up" | "down"; warning?: string }
 /** POST /api/u/:userId/endpoints/:endpointId/reset-ids → EndpointInfo. Fresh IDs, with redirects from the old ones. */
 /** POST /api/u/:userId/endpoints/:endpointId/merge → EndpointInfo (the one merged into). */
 export interface MergeInput { into: string }
+
+/**
+ * POST /api/u/:userId/hosts → EndpointInfo. Pairs a model host with the code
+ * its dashboard shows (host/PAIRING.md), pins its key and reads its models.
+ * `shared` needs an administrator. Unpair with DELETE …/endpoints/:endpointId.
+ */
+export interface HostInput { name: string; addresses: string[]; code: string; shared?: boolean }
+/** POST /api/u/:userId/hosts/:endpointId/pair → EndpointInfo. Pairs again after the host's key changed; every ID stays. */
+export interface HostRepair { code: string }
+/** PUT /api/u/:userId/hosts/:endpointId/addresses → EndpointInfo. Trust stays with the key. */
+export interface HostAddresses { addresses: string[] }
+/** A host's status, as it reports it (host/API.md, GET /host/v1/status). */
+export interface HostStatus {
+  name: string; version: string; fingerprint: string;
+  state: "running" | "pausing" | "paused" | "restarting";
+  gpus: {
+    index: number; name: string; vendor: string; role: "vllm" | "shared";
+    vram: { total: number; used: number };
+    models: { id: string; kind: string; state: string; pinned: boolean; busy: boolean; vram: number | null; lastUsed: string | null }[];
+    queue: { chat: number; image: number; background: number };
+  }[];
+  downloads: { active: number };
+  modelsFolder: { path: string; free: number };
+}
+/** GET /api/u/:userId/hosts/:endpointId/status → HostStatus */
+/** POST /api/u/:userId/hosts/:endpointId/pause|resume|restart → HostStatus. A shared host needs an administrator. */
 
 /** PATCH /api/u/:userId/offerings/:offeringId → OfferingInfo. Sets capabilities by hand; null clears one. */
 export type CapabilitiesChange = { [K in keyof Capabilities]?: Capabilities[K] | null };
