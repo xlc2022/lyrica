@@ -82,29 +82,14 @@ Each user has two pools of memory.
 - **The web UI is React with TypeScript, built with Vite.** Models will write
   and maintain almost all of it, and React is what they know best; `tsc`
   checks its components like the rest of the code.
-- **How the web UI looks:**
-  - Calm and plain, so the conversation comes first. Colour comes from the
-    user's accent, not from decoration.
-  - Her messages run full width as prose. The user's sit in a lightly tinted
-    block. No chat bubbles.
-  - Light or dark follows the device, with an override in settings.
-  - Each user chooses an accent colour and a monogram in settings. No
-    avatar images.
-  - Her inner workings (memories she recalled, notes she saved, tool calls)
-    show as one-line markers that expand when tapped. A subagent shows as a
-    card that expands to its work and takes messages.
-  - **Type:** IBM Plex Sans and IBM Plex Mono (open source, OFL), served by
-    `lyricad` itself, never fetched from elsewhere; system fonts as fallback.
-    Five sizes (22, 15, 14, 13, 12 px, plus 11 for small headings). Every
-    number, size and time is in Plex Mono with tabular figures.
-  - **Actions:** three looks only: primary, secondary (bordered) and link.
-    Nothing pressable is plain grey text. Badges carry state only, at most
-    two per row; facts go in the line beneath the name.
-  - **Words:** no explanatory captions under headings or in page headers.
-    Headers state facts (counts, status); a sentence of explanation appears
-    only where an action has a consequence, such as a delete.
-  - **Familiar shapes first**, from ChatGPT, Claude and Open WebUI, unless
-    Lyrica has a reason to differ (pools, privacy, model hosts, subagents).
+- **How the web UI looks** is set out in [docs/ux.md](docs/ux.md), the
+  rulebook every interface change follows. In short: the conversation comes
+  first and everything else is quiet, familiar and in its one place. IBM
+  Plex, five type sizes, one icon set; three button looks; labels are nouns
+  and explanations are tooltips; badges carry state only; numbers are typed
+  with their maximum shown; editing in context happens in the drawer and
+  dialogs only confirm; a thread's header is its title, one line of facts
+  and two actions; everything works at phone width.
 - **Where things are:**
   - **Sidebar:** New thread, Search (with a Pinned messages view),
     **Notifications** with its count (in orange), Memory, Sleep (with a
@@ -119,7 +104,7 @@ Each user has two pools of memory.
     choice and the groups are saved per user, in `user.db`. A group can hold
     general and private threads; hiding a pool still hides its threads.
   - **One Sort menu** above the threads holds the sort choices and, below
-    a line, the Show general, Show private and Show hidden threads
+    a line, the General, Private and Hidden
     checkboxes. Nothing on screen says that hidden content exists.
   - **The thread menu** opens by right-clicking a thread (a long press on a
     phone), with a letter shortcut for each item: Pin (P), Mark as unread
@@ -146,7 +131,7 @@ Each user has two pools of memory.
   - **Header:** "Lyrica (ver. …, build …)" with the date and time beneath;
     the daemon reports its version and build.
   - **Welcome:** a greeting, the message box with General or Private, her
-    items from last night, what's waiting, and what's answering now.
+    items from last night, Notifications, and Backend (what answers now).
   - **Files and images, in every thread.** **Files** in the thread header
     opens a side panel (full screen on a phone) with two tabs:
     - **Files:** a searchable tree of the thread's folder (uploads, images
@@ -181,9 +166,9 @@ Each user has two pools of memory.
 - A thread belongs to one user, one pool and one interface, all chosen when it
   is created.
 - **Visibility:**
-  - Two checkboxes in the Sort menu, **Show general** and **Show private**,
+  - Two checkboxes in the Sort menu, **General** and **Private**,
     show or hide all content from a pool.
-  - Any thread can be hidden, and **Show hidden threads** reveals them.
+  - Any thread can be hidden, and **Hidden** reveals them.
   - These settings are saved per user. They only affect what's displayed:
     hiding doesn't change what Lyrica remembers.
 
@@ -393,7 +378,7 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   the local/cloud line.
 - **Models page.** One area covers everything about models, with its own
   list of pages: **Overview** (one alert, four tiles: endpoints up, what's
-  answering chat, downloads, what's waiting; compact hosts; the last calls),
+  Backend, downloads, Notifications; compact hosts; the last calls),
   **Tasks**, **Text models**, **Image models**, **Hosts and endpoints**,
   **Downloads**, **Clean up** and **Recent calls**. Downloading a model,
   scanning and pairing are pages; a confirmation is a dialog. It covers:
@@ -464,6 +449,28 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     cloud or local, and a call that fell back to cloud says so.
   - Private and local-only threads never see the Custom profile, so this can
     never reach them.
+- **Context and pace.** Lyrica and the user both see how full her context
+  is and how fast her model answers.
+  - After every turn lyricad records prompt and output tokens, the window,
+    time to first token and generation time, in the call record. Counts and
+    times only.
+  - lyricad assembles the prompt, so it can break the total down: persona,
+    the page about the user, pinned messages, memories recalled this turn,
+    tool definitions, the conversation, Pi's compaction reserve, free space.
+    The thread's facts line shows **Context 21%**, opening a popover with
+    one bar, the parts, used of window, and the last turn's speed.
+  - Her turn context carries one line of numbers: context used and free,
+    tokens per second, prompt tokens per second. At 75% lyricad adds a line
+    telling her to finish the step, save what matters to memory and compact
+    with a summary; at 90%, to compact now.
+  - She compacts herself with the `compact` action of the `threads` tool,
+    giving her own summary. lyricad hands it to Pi's compaction, which cuts
+    the old entries and keeps the recent ones; pinned messages stay. It
+    shows as a marker, **Compacted · 41k → 6k**, expanding to the summary.
+    Pi's automatic compaction stays on at the window's edge as the safety
+    net.
+  - Recent calls and the text library show measured speed; nothing acts on
+    it automatically yet.
 - **Reasoning level.** For models that support it, the message box has a
   thinking control (Off, Low, Medium, High, showing only the levels the
   current model offers), as in Claude and ChatGPT.
@@ -477,6 +484,24 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     badge rather than failing. Subagent roles keep their own level.
   - Thinking text stays in the thread, encrypted like the rest, shown as a
     collapsed marker. It isn't indexed for recall.
+- **Model settings, saved per copy.** Each copy of a model has settings
+  that last between uses, edited from its row in the library:
+  - **Sampling**, for any endpoint: temperature, top-p, top-k, min-p,
+    repeat, presence and frequency penalties, maximum reply length, seed and
+    stop strings. They go with every call to that copy; an empty one means
+    the endpoint's default. An administrator sets them for shared
+    endpoints, and each user can override them for themselves, in
+    `user.db`. The library shows each value and where it comes from.
+  - **Serving**, for models on a model host: context length,
+    KV-cache type, flash attention, GPU layers, parallel requests and batch
+    size, plus for vLLM its memory share, maximum sequences and dtype, and a
+    chat-template override. They are saved on the host with the model's
+    placement (administrators for shared hosts) and apply at its next load,
+    with **Reload now** when it's idle.
+  - The context length is the window Lyrica plans for, used by compaction
+    and when a group skips a member too small for the conversation. For
+    other endpoints it is discovered where the endpoint reports it, or set
+    by hand.
 - **Visibility.** The current model and endpoint, with a clear cloud or local
   badge, are always visible in a thread. Choosing an endpoint, public or
   custom, is easy.
@@ -573,7 +598,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     - usage statistics: requests, tokens, images and time per model. Never
       prompts, results or who asked, and nothing leaves the machine;
     - pause, resume and restart;
-    - the models folder, downloads, and each GPU's role and pinned models.
+    - the models folder, downloads, each GPU's allowed servers and free
+      margin, and each model's placement and pin.
 
     It can be opened three ways:
     - **At the machine:** `http://127.0.0.1:7236`, with no login.
@@ -630,20 +656,38 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     waits until it is back, as with any endpoint that's offline.
   - **The host manages each GPU's VRAM.** No program can grab a GPU behind its
     back:
-    - Each GPU has a role, set on the dashboard or in Lyrica's control
-      panel: a whole GPU for vLLM (which
-      reserves a fixed share), or a **shared** GPU for llama.cpp models and
-      ComfyUI.
-    - On a shared GPU, models can be **pinned** (always loaded, such as the
-      embedding and title models). Every other model is loaded on demand.
+    - **Each model has a placement**, set on the dashboard or in Lyrica's
+      control panel:
+      - **Auto** (the default): one GPU that fits, else split across the
+        GPUs it may use;
+      - **chosen GPUs**: one, or several for a model too big for one GPU,
+        with how it splits (llama.cpp's split by ratio; vLLM's tensor
+        parallel across matching GPUs, else pipeline parallel);
+      - its own **context length** (32k by default), and for vLLM its
+        **memory share**, so one large GPU holds several vLLM models side
+        by side.
+    - **Each GPU says what it may run** (llama.cpp, vLLM, images) and how
+      much memory to **keep free**, or it is left out entirely, such as a
+      GPU kept for the display.
+    - One GPU can hold several models of any mix; vLLM's share is reserved
+      while that model is loaded.
+    - A model split over several GPUs loads only when each has room, counts
+      against each, and unloads from all at once.
+    - Models can be **pinned** (always loaded, such as the embedding and
+      title models). Every other model is loaded on demand.
+    - A placement that can't work is refused when it's saved, with the
+      reason: GPUs that don't allow that server, too little memory even
+      when empty, or vLLM tensor parallel over GPUs that don't match.
     - When a model needs room, the host unloads idle models, least recently
       used first. It never unloads a pinned model or one in use, and asks
       ComfyUI to free its memory after it has been idle a while.
-    - Requests wait in a queue per GPU. Interactive chat comes first, then
+    - Requests wait in a queue per GPU (a split model waits for all of its
+      GPUs). Interactive chat comes first, then
       images, then background work (sleep, cheap subagents). If a request
       can't fit, it fails with a plain reason, such as "the GPU is busy with a
       chat model", rather than running out of memory.
-    - Each model's VRAM use is measured on its first load and remembered. The
+    - Each model's VRAM use is measured per GPU on its first load with each
+      placement, and remembered. The
       control panel shows each GPU's use, what is loaded, and the queue.
 
 ## Images
