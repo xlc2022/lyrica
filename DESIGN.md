@@ -94,7 +94,8 @@ Each user has two pools of memory.
   - **Sidebar:** New thread, Search (with a Pinned messages view),
     **Notifications** with its count (in orange), Memory, Sleep (with a
     count) and Models at the top; then her items from last night; then
-    threads, with child threads nested under their parent; then a line of
+    threads, with child threads nested under their parent and a project's
+    threads under the project (see [Projects](#projects)); then a line of
     host status; then the user's button.
   - **Threads can be sorted** by date (grouped Today, Yesterday, Previous 7
     days, Previous 30 days, the default), by last activity, by start date or
@@ -109,8 +110,10 @@ Each user has two pools of memory.
   - **The thread menu** opens by right-clicking a thread (a long press on a
     phone), with a letter shortcut for each item: Pin (P), Mark as unread
     (U), Rename (R), **Share with ›** (S), **Move to group ›** (M), Hide (H)
-    and Delete (D). Delete confirms, says that what Lyrica learned from the
-    thread is forgotten, and offers to delete its child threads too.
+    and Delete (D); **Make project** (K) on a top-level thread, and
+    **Resolve** or **Reopen** (E) on a project's thread. Delete confirms,
+    says that what Lyrica learned from the thread is forgotten, and offers
+    to delete its child threads too.
   - **Share with** sends another user a copy of the thread as it is now.
     They add it to their General or Private threads, or decline. The
     sender's later messages aren't shared, and none of the sender's
@@ -851,6 +854,102 @@ local-only threads use local speech models only.
     Stop does, and what was said becomes the next turn.
   - Reading every reply aloud happens only here, never as a setting.
 
+## Projects
+
+A **project** is one place for a stream of related work, as in Claude's
+Projects: a running conversation, the **project chat**, where Li drops tasks,
+updates and questions as they come, and **threads** that Lyrica starts for
+the work and keeps track of. Agreed 2026-10-10; not built yet. The briefs are
+`docs/briefs/projects.md`, `projects-web.md` and `projects-sleep.md`.
+
+- **A project is a top-level thread marked as a project**, and its threads
+  are its child threads (see [Models and endpoints](#models-and-endpoints)).
+  So everything a child thread inherits holds: the project's pool,
+  local-only, "Do not log", mode and workspace settings, narrower or the
+  same, never wider. A project is in one pool; a private project is private
+  all the way down. Depth stays 1: a project's thread delegates to
+  subagents but starts no threads, and a project can't hold a project. A
+  thread belongs to its project for good.
+- **Lyrica coordinates in the project chat.** She is the same person
+  there; only her guidance and context differ. She answers a quick question
+  in place, starts a thread for each piece of work (several tasks in one
+  message become several threads), sends a follow-up to the thread already
+  on it and says which, and posts only what needs Li. When Li asks her to
+  propose first, she suggests threads instead of starting them. How Li wants
+  the project run ("two at a time", "only post when something is done") she
+  saves as a project note and follows; it is guidance, not a hard limit.
+- **Threads hang off messages.** Each thread is anchored to the message in
+  the project chat that started it: her reply, or a message Li picks with
+  **Start a thread**. A branch of the project chat is a thread of the
+  project, anchored where it branched. A branch of one of the project's
+  threads is also a thread of the project, beside its source rather than
+  under it (its parent is the project chat, its anchor the source's), so
+  depth stays 1.
+- **Threads talk to each other.** Besides parent and child, any thread of a
+  project can message any other thread of the same project. The message is
+  that thread's next turn, marked as from the sender (a mark only `lyricad`
+  writes), and shows there, so every exchange can be read where it landed.
+  At most 3 such messages per turn, and waking an idle thread counts against
+  the at-once limit. Such a message follows the same rule as a child's
+  update to its parent: local-only covers a thread's own model calls, so a
+  local-only thread's message can reach a thread that uses cloud models,
+  within the one pool.
+- **States:** Working; **Waiting on you** (an approval, an update that asks
+  Li something, or a failed turn); Queued (started past the at-once limit,
+  which stays 2 per user; it waits its turn instead of being refused); Idle;
+  **Resolved**. A thread is resolved by Li, by Lyrica when its work is
+  delivered and nothing is owed, or after 7 days with no activity; a message
+  in it reopens it.
+- **Updates don't start a turn in the project chat**; she speaks there
+  when Li writes. A thread's update changes its card.
+- **Context set once.** Every thread of a project starts with the same
+  project context, assembled each turn in its own budget:
+  - **Goal**: one line Li writes.
+  - **Instructions**: Li's text on the project's page in memory, User
+    introduced, so authoritative and never rewritten by sleep.
+  - **What she knows**: the rest of the project page, kept by sleep from the
+    project's notes and threads, citing them.
+  - **Project notes**: notes she wrote in any of the project's threads since
+    the last sleep (found by their citations, not stored apart), so a
+    decision remembered at noon reaches a thread started at one.
+  - In the project chat, the list of its threads with their state, what
+    each waits on and the first line of its last update.
+
+  All of it is in the project's pool, so a private project's memory never
+  reaches a general context or a cloud model. An unlogged project keeps no
+  notes and no page from sleep; its instructions still apply.
+- **Files.** The project chat's folder is the project folder, granted to
+  each of its threads (read-only to a read-only thread), shown in each
+  thread's Files panel as a root named after the project. Two threads may
+  write one file; her guidance is a subfolder per thread for its outputs.
+- **What Li sees:**
+  - In the sidebar a project is a thread row with a project icon, its
+    threads nested under it with their state and unseen count, resolved ones
+    folded under one **Resolved** row, and an amber dot on the project when a
+    thread waits on Li. Projects sit in the thread list, sorted and grouped
+    like any thread. **New project** is on the context menu of the thread
+    list's empty space; it opens an empty project chat, like New thread.
+  - The project chat's facts line adds **Threads** with a count, opening a
+    popover of its threads grouped by state, and the project's total tokens.
+    Its actions stay **Files** and **Settings**.
+  - **Thread cards:** one per thread, under the message that started it,
+    updated in place: title, state, what it waits on, the first line of its
+    last update, and the files it made. A card waiting on Li is covered by
+    the chat's pending bar. **Suggested threads** is a card like the plan
+    card, with **Start** per thread and **Start all**.
+  - **Project settings** is a page with sections: General (Goal; Threads,
+    the model and thinking new threads start with; Paused; then the project
+    chat's own settings under **This chat**), Memory (Instructions, and a
+    link to the project page in the memory browser), and **Files and
+    images** (Files | Images), where the project folder is managed. Files in the header stays the quick view.
+  - **Paused** stops the project's working threads and starts nothing new.
+    **Hide** stops it too. **Delete** forgets the project chat, its threads,
+    its page, the notes that came only from it, and its folder.
+  - **Waiting on you** is a type in Notifications.
+- **Not in projects, for now:** schedules (routines), moving an existing
+  thread into a project, and sharing a project (Share with copies one
+  thread).
+
 ## Storage, encryption and unlocking
 
 - Each user's memory and threads live in encrypted SQLite (SQLCipher): a
@@ -1110,7 +1209,7 @@ Details in [docs/sleep.md](docs/sleep.md).
 - **Feature threads** are separate Claude Code sessions tagged `project:lyrica`:
   Core, Memory, Workspace, Models, Delegation, Daemon, Web UI, Sleep,
   Integrations, Model host, Models 2, Images, Delegation 2, Child
-  threads and Modes.
+  threads, Modes and Projects.
   - Each works from a brief in `docs/briefs/` on its own branch and ends with a
     pull request.
   - No more than two or three are active at once.
