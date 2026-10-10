@@ -5,27 +5,23 @@ import type { Keyring } from "../keyring.ts";
 import { TASKS, THINKING_LEVELS, type CallContext, type ModelRef, type Pool, type Task, type ThinkingLevel } from "../types.ts";
 import { Forbidden, type User, type Users } from "../users.ts";
 import { addressesOutside, discoverModels, probeUrl, type DiscoveredModel, type ModelIdentity } from "./http.ts";
-import { hostError, hostFetch, hostOrigin, lyricaIdentity, pair } from "./host.ts";
+import { hostError, hostFetch, HostRefused, hostOrigin, lyricaIdentity, pair } from "./host.ts";
 import { baseName } from "./identity.ts";
 import { copyIdentity } from "./library.ts";
-import { ANSWER_SETTINGS, checkSettings, type AnswerSettings, type SettingSource } from "./settings.ts";
-import { collectRefs, isList, mapMembers, refId, rewrite, type Entry, type ProfileName, type Use } from "./refs.ts";
+import { acceptedSettings, ANSWER_SETTINGS, checkSettings, type AnswerSettings, type SettingSource } from "./settings.ts";
+import { collectRefs, isList, mapMembers, moveSettings, refId, rewrite, type Entry, type ProfileName, type Use } from "./refs.ts";
 import { ENDPOINT_SCHEMA, migrate, MODEL_CHOICE_SCHEMA, REDIRECT_SCHEMA } from "./schema.ts";
 
 export { addressesOutside, discoverModels, probeUrl, type DiscoveredModel, type ModelIdentity } from "./http.ts";
 export { baseName } from "./identity.ts";
-export { ANSWER_SETTINGS, payloadFields, type AnswerSettings, type SettingSource } from "./settings.ts";
-export { fingerprint, HostIdentityChanged, hostOrigin, normaliseCode, PairingFailed, pairingProofs } from "./host.ts";
+export { acceptedSettings, ANSWER_SETTINGS, payloadFields, type AnswerSettings, type SettingSource } from "./settings.ts";
+export { fingerprint, HostIdentityChanged, HostRefused, hostOrigin, normaliseCode, PairingFailed, pairingProofs } from "./host.ts";
 export { refId, type Entry, type ProfileName, type Use } from "./refs.ts";
 
 /** A cloud model was asked for where only local models are allowed. Nothing falls back. */
 export class CloudModelForbidden extends Error {}
 /** No usable model is set for a task, or the one set no longer exists. */
 export class NoModel extends Error {}
-/** A model host refused a call, with its error code and plain message. */
-export class HostRefused extends Error {
-  constructor(readonly code: string, message: string) { super(message); }
-}
 
 /** An endpoint unreachable this long is stale; a model missing this long is gone. */
 export const STALE_DAYS = 14;
@@ -226,7 +222,8 @@ async function localWarning(ep: Endpoint): Promise<string | undefined> {
   for (const url of urls) {
     const host = new URL(url).hostname;
     try {
-      const outside = await addressesOutside(url);
+      // A resolver that never answers is no answer.
+      const outside = await Promise.race([addressesOutside(url), new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000).unref())]);
       if (outside.length) warnings.push(`${host} resolves to ${outside.join(", ")}`);
     } catch {
       warnings.push(`${host} doesn't resolve`);
@@ -688,6 +685,8 @@ export class Models {
    */
   offeringSettings(userId: string, offeringId: string): {
     values: AnswerSettings; sources: Partial<Record<keyof AnswerSettings, SettingSource>>;
+    /** Saved values this endpoint's API doesn't take, so they aren't sent. */
+    dropped: (keyof AnswerSettings)[];
     contextWindow?: { value: number; source: "hand" | "discovered" };
   } {
     const o = this.offering(userId, offeringId);
@@ -705,8 +704,9 @@ export class Models {
       : this.withUser(userId, (u) => u.prepare("SELECT found, hand FROM offerings WHERE id = ?").get(offeringId))) as { found: string; hand: string };
     const hand = JSON.parse(raw.hand).contextWindow as number | undefined;
     const found = JSON.parse(raw.found).contextWindow as number | undefined;
+    const accepted = acceptedSettings(o.endpoint);
     return {
-      values, sources,
+      values, sources, dropped: ANSWER_SETTINGS.filter((k) => values[k] !== undefined && !accepted.includes(k)),
       ...(hand ? { contextWindow: { value: hand, source: "hand" as const } } : found ? { contextWindow: { value: found, source: "discovered" as const } } : {}),
     };
   }
@@ -748,6 +748,8 @@ export class Models {
     if (opts.endpointId && existing?.api !== "host") throw new Error(`no model host ${opts.endpointId}`);
     const shared = existing ? existing.shared : !!opts.shared;
     if (shared && !this.users.get(actor.id)?.admin) throw new Forbidden("only an administrator can pair a shared model host");
+    // Before pairing, so a taken name doesn't use up the code and leave the host pinned while Lyrica pins nothing.
+    if (!existing && this.endpoints(actor.id).some((e) => e.name === input.name && e.shared === shared)) throw new Error(`endpoint ${input.name} already exists`);
     const paired = await pair(lyricaIdentity(this.self()), addresses, input.code, `Lyrica (${input.name})`);
     const baseUrl = `${hostOrigin(addresses[0]!)}/v1`;
     const id = existing?.id ?? randomUUID();
@@ -814,6 +816,9 @@ export class Models {
       method, signal: AbortSignal.timeout(30_000),
       headers: { ...(body === undefined ? {} : { "content-type": "application/json" }), ...headers },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    }).catch((e: Error) => {
+      // A host that can't be reached, or doesn't answer in time, is a plain reason, not an internal error.
+      throw new HostRefused("unreachable", `${ep.name} can't be reached${e.name === "TimeoutError" ? " (it didn't answer in time)" : ""}.`);
     });
     const err = await hostError(res);
     if (err) throw new HostRefused(err.code, err.message);
@@ -1106,12 +1111,13 @@ export class Models {
     const self = this.self();
     const gone = (db: Db) => (db.prepare("SELECT * FROM offerings WHERE missing_since IS NOT NULL").all() as OfferingRow[]).filter((r) => toOffering(r, now).status === "gone");
     const allIndexed = this.users.all().every((u) => self.prepare("SELECT 1 FROM shared_refs_indexed WHERE user = ?").get(u.id));
-    self.prepare("DELETE FROM offering_settings WHERE offering NOT IN (SELECT id FROM offerings)").run();
-    const sharedIds = new Set((self.prepare("SELECT id FROM offerings").all() as { id: string }[]).map((r) => r.id));
     if (allIndexed) {
       const inGroups = collectRefs(self);
       for (const r of gone(self)) if (!inGroups.has(r.id) && !self.prepare("SELECT 1 FROM shared_refs WHERE ref = ?").get(r.id)) self.prepare("DELETE FROM offerings WHERE id = ?").run(r.id);
     }
+    // After the shared models are pruned, so their settings, and users' layers over them, go the same night.
+    self.prepare("DELETE FROM offering_settings WHERE offering NOT IN (SELECT id FROM offerings)").run();
+    const sharedIds = new Set((self.prepare("SELECT id FROM offerings").all() as { id: string }[]).map((r) => r.id));
     for (const u of this.users.all()) {
       if (!this.keyring.hasUserKey(u.id)) continue;
       this.withUser(u.id, (db) => {
@@ -1157,7 +1163,9 @@ export class Models {
   setProfile(userId: string, name: ProfileName, task: Task, value?: Entry | ModelRef): void {
     if (name !== "cloud" && name !== "local" && name !== "custom") throw new Error("the profiles are local, cloud and custom");
     const entry: Entry | undefined = value && !Array.isArray(value) && !("same" in value) ? [value] : value as Entry | undefined;
-    const current = this.profile(userId, name);
+    const saved = this.profile(userId, name);
+    // A new profile gets its defaults with this entry, so they count for the one-level rule.
+    const current: Profiles = Object.keys(saved).length ? saved : { ...NEW_PROFILE };
     let stored: Entry | undefined = entry;
     if (entry && !isList(entry)) {
       const target = checkTask(entry.same);
@@ -1371,20 +1379,22 @@ export class Models {
       const r = this.resolve(task, ctx, need);
       const h = this.health.get(r.endpoint.id);
       if (!r.remaining || (h && Date.now() - h.at < HEALTH_MS)) return r;
-      const { state } = await this.probe(ctx.userId, r.endpoint.id, PROBE_MS).catch(() => ({ state: "down" as const }));
+      // Only whether it answers, never the address check: a slow resolver mustn't hold up a turn.
+      const state = await (r.endpoint.api === "host" ? this.hostUp(r.endpoint, PROBE_MS) : probeUrl(r.endpoint.baseUrl, r.endpoint.apiKey, PROBE_MS)).catch(() => "down" as const);
+      this.seen(r.endpoint, state === "up", ctx.userId);
       if (state === "down") this.reportDown(r.endpoint.id);
       if (state === "up") return r;
     }
   }
 
   /** The thinking level a model runs at for a requested one, and a note when it can't think at that level. */
-  thinkingFor(r: Pick<Resolution, "offering" | "label">, asked: ThinkingLevel = "off"): { level: ThinkingLevel; note?: string } {
+  thinkingFor(r: Pick<Resolution, "offering" | "label"> & { endpoint?: Pick<Endpoint, "api"> }, asked: ThinkingLevel = "off"): { level: ThinkingLevel; note?: string } {
     if (asked === "off") return { level: "off" };
     const levels = r.offering.reasoning ?? [];
     if (!levels.length) return { level: "off", note: `${r.label} can't think, so it answered without thinking` };
     if ((levels as string[]).includes(asked)) return { level: asked };
-    // A thinking switch (one level) is simply on.
-    if (levels.length === 1) return { level: levels[0]! };
+    // A host's thinking switch (one level) is simply on.
+    if (levels.length === 1 && r.endpoint?.api === "host") return { level: levels[0]! };
     const at = THINKING_LEVELS.indexOf(asked);
     const level = [...levels].sort((a, b) => Math.abs(THINKING_LEVELS.indexOf(a) - at) - Math.abs(THINKING_LEVELS.indexOf(b) - at))[0]!;
     return { level, note: `${r.label} doesn't think at ${asked}, so it thought at ${level}` };
@@ -1486,6 +1496,15 @@ export class Models {
       }
     }
     if (opts.kind === "single" && kinds.size > 1) throw new Error("a list here can't mix local and cloud models; only the custom profile can");
+    // A group in a one-kind list needs a copy of that kind.
+    const [only] = kinds;
+    if (opts.kind === "single" && only) {
+      for (const r of out) {
+        if (!("groupId" in r)) continue;
+        const g = c.groups.get(r.groupId)!;
+        if (!g.members.some((m) => c.endpoints.get(c.offerings.get(m)?.endpointId ?? "")?.kind === only)) throw new Error(`the group ${g.name} has no ${only} copy, and a list here can't mix local and cloud models`);
+      }
+    }
     return out;
   }
 
@@ -1624,9 +1643,10 @@ export class Models {
         });
         db.exec(MODEL_CHOICE_SCHEMA);
         if (dropped.length) addNotice(db, [`Models that no longer existed were taken out of your lists: ${dropped.join(", ")}.`]);
-        splitCloudProfile(db, self);
       }
       this.sync(userId, db, self);
+      // After the redirects, so a replaced shared model's kind is known.
+      if (!this.ready.has(userId)) splitCloudProfile(db, self);
       if (!this.ready.has(userId)) { this.index(userId, db); this.ready.add(userId); }
       return fn(db);
     } finally {
@@ -1701,6 +1721,7 @@ export class Models {
         }
         change(self);
         const map = new Map(list);
+        moveSettings(self, map);
         for (const g of self.prepare("SELECT id, members FROM model_groups").all() as { id: string; members: string }[]) {
           const next = mapMembers(JSON.parse(g.members), map);
           if (next) self.prepare("UPDATE model_groups SET members = ? WHERE id = ?").run(JSON.stringify(next), g.id);

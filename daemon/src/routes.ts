@@ -278,9 +278,10 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("GET", `${u}/offerings/:offeringId/settings`, (r): Api.OfferingSettings => s().models.offeringSettings(d.userFor(r).id, r.params.offeringId!)),
     route("PUT", `${u}/offerings/:offeringId/settings`, async (r): Promise<Api.OfferingSettings> => {
       const user = d.userFor(r);
-      const c = await r.json<Api.OfferingSettingsChange>();
+      const c = await r.json<Api.OfferingSettingsChange | null>();
+      if (!c || typeof c !== "object" || Array.isArray(c)) throw new HttpError(400, "send { scope, values }");
       if (c.scope !== undefined && c.scope !== "shared" && c.scope !== "mine") throw new HttpError(400, "scope is shared or mine");
-      if (!c.values || typeof c.values !== "object") throw new HttpError(400, "values is an object of settings");
+      if (!c.values || typeof c.values !== "object" || Array.isArray(c.values)) throw new HttpError(400, "values is an object of settings");
       s().models.setOfferingSettings(user, r.params.offeringId!, c.values, c.scope ?? "mine");
       return s().models.offeringSettings(user.id, r.params.offeringId!);
     }),

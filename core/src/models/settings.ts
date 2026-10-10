@@ -16,8 +16,8 @@ export interface AnswerSettings {
   stop?: string[];
 }
 
-/** Where a value comes from: the server's own default (nothing saved), the shared offering's, or the user's own. */
-export type SettingSource = "default" | "shared" | "yours";
+/** Where a value comes from: the shared offering's, or the user's own. Anything absent is the server's default. */
+export type SettingSource = "shared" | "yours";
 
 const RANGES: Record<Exclude<keyof AnswerSettings, "stop">, [number, number, boolean]> = {
   temperature: [0, 5, false], topP: [0, 1, false], topK: [0, 1000, true], minP: [0, 1, false],
@@ -34,7 +34,7 @@ export function checkSettings(change: Record<string, unknown>): { [K in keyof An
     if (v === null || v === undefined) { out[k] = null; continue; }
     if (k === "stop") {
       if (!Array.isArray(v) || v.length > 4 || v.some((s) => typeof s !== "string" || !s || s.length > 100)) throw new Error("stop is up to four strings");
-      out[k] = v;
+      out[k] = v.length ? v : null; // no strings is no setting
       continue;
     }
     const [min, max, whole] = RANGES[k as Exclude<keyof AnswerSettings, "stop">];
@@ -44,12 +44,25 @@ export function checkSettings(change: Record<string, unknown>): { [K in keyof An
   return out as { [K in keyof AnswerSettings]?: AnswerSettings[K] | null };
 }
 
+/** What OpenAI's own API takes; it answers 400 to anything else. */
+const OPENAI: readonly (keyof AnswerSettings)[] = ["temperature", "topP", "presencePenalty", "frequencyPenalty", "maxTokens", "seed", "stop"];
+
+/**
+ * The settings an endpoint's API accepts: everything for llama.cpp, vLLM,
+ * model hosts and OpenRouter; OpenAI's set for any other cloud endpoint.
+ */
+export function acceptedSettings(ep: { kind: "cloud" | "local"; baseUrl: string }): readonly (keyof AnswerSettings)[] {
+  if (ep.kind === "local" || /(^|\.)openrouter\.ai$/i.test(new URL(ep.baseUrl).hostname)) return ANSWER_SETTINGS;
+  return OPENAI;
+}
+
 /**
  * The request fields for an OpenAI-compatible call. `repetition` names the
  * repeat penalty as the server knows it: llama.cpp's `repeat_penalty`, or
  * `repetition_penalty` for vLLM, OpenRouter and model hosts.
  */
-export function payloadFields(s: AnswerSettings, repetition: "repeat_penalty" | "repetition_penalty", params: Record<string, unknown>): Record<string, unknown> {
+export function payloadFields(all: AnswerSettings, repetition: "repeat_penalty" | "repetition_penalty", params: Record<string, unknown>, accepted: readonly (keyof AnswerSettings)[] = ANSWER_SETTINGS): Record<string, unknown> {
+  const s = Object.fromEntries(Object.entries(all).filter(([k]) => accepted.includes(k as keyof AnswerSettings))) as AnswerSettings;
   const out: Record<string, unknown> = {};
   if (s.temperature !== undefined) out.temperature = s.temperature;
   if (s.topP !== undefined) out.top_p = s.topP;
@@ -60,6 +73,11 @@ export function payloadFields(s: AnswerSettings, repetition: "repeat_penalty" | 
   if (s.frequencyPenalty !== undefined) out.frequency_penalty = s.frequencyPenalty;
   if (s.seed !== undefined) out.seed = s.seed;
   if (s.stop?.length) out.stop = s.stop;
-  if (s.maxTokens !== undefined) out["max_completion_tokens" in params ? "max_completion_tokens" : "max_tokens"] = s.maxTokens;
+  if (s.maxTokens !== undefined) {
+    // Never longer than the room Pi left for the reply in the context window.
+    const field = "max_completion_tokens" in params ? "max_completion_tokens" : "max_tokens";
+    const room = params[field];
+    out[field] = typeof room === "number" ? Math.min(room, s.maxTokens) : s.maxTokens;
+  }
   return out;
 }

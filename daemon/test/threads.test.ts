@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { CallInfo, MessagePage, ThreadEvent, ThreadSettings, ThreadSummary, UploadResponse } from "../src/api.ts";
+import type { CallInfo, EndpointInfo, MessagePage, ThreadEvent, ThreadSettings, ThreadSummary, UploadResponse } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 /** An unlocked lyricad, Li logged in, a local model, and one general thread. */
@@ -199,6 +199,33 @@ describe("the thread's model", () => {
     // Forgetting the thread takes its call records with it.
     await li.del(path);
     expect((await li.get<CallInfo[]>(`/api/u/${rt.li.id}/models/calls`)).body.filter((c) => c.threadId === thread.id)).toEqual([]);
+  });
+});
+
+describe("a machine that goes away", () => {
+  it("marks its endpoint down when a turn can't reach it, and sends Pi's retry to the next model in the list", async () => {
+    const { rt, li, model, path } = await setup();
+    const u = `/api/u/${rt.li.id}`;
+    const away = await fakeOpenAI({ label: "away", models: [{ id: "big" }] });
+    const ep = (await li.post<EndpointInfo>(`${u}/endpoints`, { name: "blackwell", kind: "local", baseUrl: away.baseUrl })).body;
+    const gpu = (await li.get<EndpointInfo[]>(`${u}/endpoints`)).body.find((e) => e.name === "gpu")!;
+    await li.put(`${u}/profiles/custom/chat`, { models: [{ offeringId: ep.models[0]!.id }, { offeringId: gpu.models[0]!.id }] });
+    const stream = li.events(`${path}/events`);
+    await stream.ready;
+    const turn = async (text: string) => {
+      const ends = stream.events.filter((e) => e.event.type === "turn_end").length;
+      await li.post(`${path}/messages`, { text });
+      await stream.until((e) => e.type === "turn_end" && stream.events.filter((x) => x.event.type === "turn_end").length > ends);
+    };
+    await turn("first");
+    expect(away.requests).toHaveLength(1);
+    await away.stop();
+    // Pi's retry goes to the next model in the list, so this very turn is answered.
+    await turn("second");
+    expect(model.requests).toHaveLength(1);
+    const calls = (await li.get<CallInfo[]>(`${u}/models/calls`)).body;
+    expect(calls[0]).toMatchObject({ label: "gpu/qwen3.8-27b", fallback: expect.stringContaining("blackwell is down") });
+    stream.close();
   });
 });
 

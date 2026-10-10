@@ -1,7 +1,7 @@
 import { InMemoryCredentialStore, type Api, type Model } from "@earendil-works/pi-ai";
 import { ModelRuntime, type ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import { CloudModelForbidden, isRestricted, payloadFields, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
+import { acceptedSettings, CloudModelForbidden, isRestricted, payloadFields, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
 
 const FREE = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const DEFAULT_CONTEXT = 32_768;
@@ -11,11 +11,12 @@ const DEFAULT_CONTEXT = 32_768;
 const LOCAL_COMPAT = { supportsDeveloperRole: false, supportsStore: false, supportsReasoningEffort: false, maxTokensField: "max_tokens" } as const;
 
 // A model that thinks gets `reasoning_effort` (OpenAI-compatible endpoints) at the thread's level.
-// A model host's llama.cpp and vLLM models think through the chat template's switch instead.
+// A host model with an on/off thinking switch (one level) thinks through the chat template's switch instead.
 function piModel(ep: Endpoint, m: Offering): ProviderModelConfig {
   const contextWindow = m.contextWindow ?? DEFAULT_CONTEXT;
   const reasoning = !!m.reasoning?.length;
-  const compat = ep.api === "host" ? { ...LOCAL_COMPAT, ...(reasoning ? { thinkingFormat: "qwen-chat-template" as const } : {}) }
+  const toggle = ep.api === "host" && m.reasoning?.length === 1;
+  const compat = ep.api === "host" ? { ...LOCAL_COMPAT, ...(toggle ? { thinkingFormat: "qwen-chat-template" as const } : { supportsReasoningEffort: reasoning }) }
     : ep.kind === "local" ? { ...LOCAL_COMPAT, supportsReasoningEffort: reasoning } : undefined;
   return {
     id: m.modelId, name: m.modelId, input: m.vision ? ["text", "image"] : ["text"], cost: FREE, reasoning,
@@ -58,7 +59,7 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
         const repetition = found.endpoint.kind === "local" && found.endpoint.api !== "host" ? "repeat_penalty" : "repetition_penalty";
         prepared.options.onPayload = async (payload, m) => {
           const params = ((await before?.(payload, m)) ?? payload) as Record<string, unknown>;
-          return { ...params, ...payloadFields(values, repetition, params) };
+          return { ...params, ...payloadFields(values, repetition, params, acceptedSettings(found.endpoint)) };
         };
       }
     }
@@ -103,7 +104,9 @@ export async function prepareTurn(o: {
 }): Promise<Resolution> {
   const task = o.task ?? "chat";
   const tokens = o.session.getContextUsage()?.tokens ?? undefined;
-  const r = await o.models.resolveLive(task, o.call, { tools: true, ...(tokens ? { tokens } : {}) });
+  // Tools are asked for only when the thread has them, so a model without tools can still chat.
+  const tools = o.session.getActiveToolNames().length > 0;
+  const r = await o.models.resolveLive(task, o.call, { ...(tools ? { tools } : {}), ...(tokens ? { tokens } : {}) });
   const { model } = piModelFor(o.runtime, o.models, task, o.call, r);
   const current = o.session.model;
   if (!current || current.provider !== model.provider || current.id !== model.id) await o.session.setModel(model);

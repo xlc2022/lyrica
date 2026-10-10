@@ -70,6 +70,16 @@ export function mapMembers(members: string[], map: Map<string, string | null>): 
   return next;
 }
 
+/** Saved settings follow a model to its replacement (which keeps its own if it has some); a removed model's go. */
+export function moveSettings(db: Db, map: Map<string, string | null>): void {
+  if (!hasTable(db, "offering_settings")) return;
+  for (const [from, to] of map) {
+    if (!db.prepare("SELECT 1 FROM offering_settings WHERE offering = ?").get(from)) continue;
+    if (to && !db.prepare("SELECT 1 FROM offering_settings WHERE offering = ?").get(to)) db.prepare("UPDATE offering_settings SET offering = ? WHERE offering = ?").run(to, from);
+    else db.prepare("DELETE FROM offering_settings WHERE offering = ?").run(from);
+  }
+}
+
 /**
  * Rewrites a database's lists through `map`: profiles, thread choices, saved
  * workflows and groups. A list left empty is cleared. Returns the lines for
@@ -108,6 +118,7 @@ export function rewrite(db: Db, map: Map<string, string | null>, oldLabel: (id: 
     for (const m of members) if (map.has(m)) note(places, m, `the group ${r.name}`);
     db.prepare("UPDATE model_groups SET members = ? WHERE id = ?").run(JSON.stringify(next), r.id);
   }
+  moveSettings(db, map);
   const lines: string[] = [];
   for (const [from, to] of map) {
     const where = [...(places.get(from) ?? [])];

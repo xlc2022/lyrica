@@ -186,6 +186,22 @@ describe("each turn's model", () => {
     expect(thought!.note).toBeUndefined();
   });
 
+  it("leaves a subagent role's own thinking level alone", async () => {
+    const s = await setup();
+    s.models.setCapabilities(s.li, s.localRef.offeringId, { reasoning: ["low", "medium", "high"] });
+    s.models.setDefaultThinking(s.li.id, "low");
+    const { session, prepare, dispose } = await s.open(s.thread("private"));
+    try {
+      session.setThinkingLevel("high");
+      await prepare({ thinking: false });
+      expect(session.thinkingLevel).toBe("high");
+      await prepare();
+      expect(session.thinkingLevel).toBe("low");
+    } finally {
+      dispose();
+    }
+  });
+
   it("never makes thinking text searchable", () => {
     const stored = toStoredEntry({
       type: "message", id: "e1", parentId: null, timestamp: new Date().toISOString(),
@@ -240,5 +256,53 @@ describe("how a model answers", () => {
     expect(sent).toMatchObject({ temperature: 0.6, repeat_penalty: 1.1, seed: 7, stop: ["END"], max_tokens: 300 });
     expect(sent.top_p).toBeUndefined();
     expect(sent.top_k).toBeUndefined();
+  });
+});
+
+describe("each model's own settings", () => {
+  it("sends the fallback model its own values, and a cloud API only what it takes", async () => {
+    const s = await setup();
+    const off = s.models.addEndpoint(s.li, { name: "off", kind: "local", baseUrl: await deadUrl() });
+    const first = s.models.addModel(s.li, off.id, { modelId: "qwen3.8-27b" });
+    s.models.setOfferingSettings(s.li, first.id, { temperature: 1.5 });
+    s.models.setOfferingSettings(s.li, s.localRef.offeringId, { temperature: 0.3 });
+    s.models.setProfile(s.li.id, "local", "chat", [{ offeringId: first.id }, s.localRef]);
+    s.models.setOfferingSettings(s.li, s.cloudRef.offeringId, { temperature: 0.9, topK: 20 });
+    for (const t of [s.thread("private"), s.thread("general")]) {
+      const { session, prepare, dispose } = await s.open(t);
+      try {
+        await prepare();
+        await session.prompt("hello");
+      } finally {
+        dispose();
+      }
+    }
+    expect((s.local.requests[0] as unknown as Record<string, unknown>).temperature).toBe(0.3);
+    const cloud = s.cloud.requests[0] as unknown as Record<string, unknown>;
+    expect(cloud.temperature).toBe(0.9);
+    expect(cloud.top_k).toBeUndefined();
+  });
+});
+
+describe("thinking on a host", () => {
+  it("sends reasoning_effort to a host model with levels, and the chat-template switch only for one with an on/off switch", async () => {
+    const s = await setup();
+    const host = await fakeHost({ name: "vllm", models: [
+      { id: "Qwen/Qwen3.8-27B", kind: "chat", contextLength: 32768, tools: true, reasoning: ["low", "medium", "high"] },
+    ] });
+    const ep = await s.models.pairHost(s.li, { name: "vllm", addresses: [host.address], code: host.newCode() });
+    const [o] = await s.models.discover(s.li, ep.id);
+    expect(o!.reasoning).toEqual(["low", "medium", "high"]);
+    s.models.setProfile(s.li.id, "local", "chat", [{ offeringId: o!.id }]);
+    s.models.setDefaultThinking(s.li.id, "high");
+    const { session, prepare, dispose } = await s.open(s.thread("private"));
+    try {
+      await prepare();
+      await session.prompt("think hard");
+    } finally {
+      dispose();
+    }
+    expect(host.chats[0]).toMatchObject({ reasoning_effort: "high" });
+    expect(host.chats[0]!.chat_template_kwargs).toBeUndefined();
   });
 });

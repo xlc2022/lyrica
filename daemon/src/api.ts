@@ -248,8 +248,10 @@ export interface AnswerSettings {
 /** GET /api/u/:userId/offerings/:offeringId/settings → OfferingSettings: each value with its source. */
 export interface OfferingSettings {
   values: AnswerSettings;
-  /** default: nothing saved; shared: the shared model's value; yours: your own, which wins for you only. */
-  sources: Partial<Record<keyof AnswerSettings, "default" | "shared" | "yours">>;
+  /** shared: the shared model's value; yours: your own, which wins for you only. Anything absent is the server's default. */
+  sources: Partial<Record<keyof AnswerSettings, "shared" | "yours">>;
+  /** Saved values this endpoint's API doesn't take (OpenAI's has no top-k, for one), so they aren't sent. */
+  dropped: (keyof AnswerSettings)[];
   contextWindow?: { value: number; source: "hand" | "discovered" };
 }
 /**
