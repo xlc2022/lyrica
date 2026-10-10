@@ -105,6 +105,17 @@ Each user has two pools of memory.
     only where an action has a consequence, such as a delete.
   - **Familiar shapes first**, from ChatGPT, Claude and Open WebUI, unless
     Lyrica has a reason to differ (pools, privacy, model hosts, subagents).
+  - **One icon set:** 16 px line icons from one family, never text glyphs
+    standing in for icons. Icons sit beside words, except in a row of
+    equal-sized icon buttons, which have labels for screen readers.
+  - **Editing one thing in context happens in the drawer** on the right (a
+    task's list, a model's settings, a GPU's settings), with one Save at its
+    foot when saving has a consequence. Dialogs only confirm an action.
+    Settings a user reaches often are a link in the thing's own line, not a
+    button on every row.
+  - **A thread's header** is its title, one line of facts (pool, the model
+    picker, group, folders, pins) and two actions, Files and Settings. One
+    state badge at most, such as a fallback in use.
 - **Where things are:**
   - **Sidebar:** New thread, Search (with a Pinned messages view),
     **Notifications** with its count (in orange), Memory, Sleep (with a
