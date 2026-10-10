@@ -1,7 +1,7 @@
 import { InMemoryCredentialStore, type Api, type Model } from "@earendil-works/pi-ai";
 import { ModelRuntime, type ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import { CloudModelForbidden, isRestricted, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
+import { CloudModelForbidden, isRestricted, payloadFields, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
 
 const FREE = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const DEFAULT_CONTEXT = 32_768;
@@ -40,18 +40,30 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
   internals.rebuildProviders();
 
   const allowed = models.allowed(ctx);
-  // A model host is reached over mutual TLS with its pinned key: its requests get the host's own fetch.
+  // Each request carries the offering's saved settings (only those set), and a model host's requests its pinned fetch.
   const fetches = new Map(allowed.flatMap(({ endpoint }) => { const f = models.fetchFor(endpoint); return f ? [[endpoint.id, f] as const] : []; }));
-  if (fetches.size) {
-    const r = runtime as unknown as { prepareRequest(model: Model<Api>, options?: object): Promise<{ options: { fetch?: typeof fetch } }> };
-    const prepare = r.prepareRequest.bind(runtime);
-    r.prepareRequest = async (model, options) => {
-      const prepared = await prepare(model, options);
-      const f = fetches.get(model.provider);
-      if (f) prepared.options.fetch = f;
-      return prepared;
-    };
-  }
+  const offerings = new Map(allowed.flatMap(({ endpoint, offerings: list }) => list.map((o) => [`${endpoint.id}\u0000${o.modelId}`, { endpoint, offering: o }] as const)));
+  type Prepared = { options: { fetch?: typeof fetch; onPayload?: (payload: unknown, model: Model<Api>) => unknown } };
+  const r = runtime as unknown as { prepareRequest(model: Model<Api>, options?: object): Promise<Prepared> };
+  const prepare = r.prepareRequest.bind(runtime);
+  r.prepareRequest = async (model, options) => {
+    const prepared = await prepare(model, options);
+    const f = fetches.get(model.provider);
+    if (f) prepared.options.fetch = f;
+    const found = offerings.get(`${model.provider}\u0000${model.id}`);
+    if (found) {
+      const values = models.offeringSettings(ctx.userId, found.offering.id).values;
+      if (Object.keys(values).length) {
+        const before = prepared.options.onPayload;
+        const repetition = found.endpoint.kind === "local" && found.endpoint.api !== "host" ? "repeat_penalty" : "repetition_penalty";
+        prepared.options.onPayload = async (payload, m) => {
+          const params = ((await before?.(payload, m)) ?? payload) as Record<string, unknown>;
+          return { ...params, ...payloadFields(values, repetition, params) };
+        };
+      }
+    }
+    return prepared;
+  };
   for (const { endpoint, offerings: list } of allowed) {
     if (!list.length) continue;
     runtime.registerProvider(endpoint.id, {

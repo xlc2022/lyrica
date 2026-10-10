@@ -7,11 +7,13 @@ import { Forbidden, type User, type Users } from "../users.ts";
 import { addressesOutside, discoverModels, probeUrl, type DiscoveredModel } from "./http.ts";
 import { hostError, hostFetch, hostOrigin, lyricaIdentity, pair } from "./host.ts";
 import { baseName } from "./identity.ts";
+import { ANSWER_SETTINGS, checkSettings, type AnswerSettings, type SettingSource } from "./settings.ts";
 import { collectRefs, isList, mapMembers, refId, rewrite, type Entry, type ProfileName, type Use } from "./refs.ts";
 import { ENDPOINT_SCHEMA, migrate, MODEL_CHOICE_SCHEMA, REDIRECT_SCHEMA } from "./schema.ts";
 
 export { addressesOutside, discoverModels, probeUrl, type DiscoveredModel } from "./http.ts";
 export { baseName } from "./identity.ts";
+export { ANSWER_SETTINGS, payloadFields, type AnswerSettings, type SettingSource } from "./settings.ts";
 export { fingerprint, HostIdentityChanged, hostOrigin, normaliseCode, PairingFailed, pairingProofs } from "./host.ts";
 export { refId, type Entry, type ProfileName, type Use } from "./refs.ts";
 
@@ -423,6 +425,60 @@ export class Models {
     return warning ? { state, warning } : { state };
   }
 
+  // --- How it answers ---
+
+  /**
+   * An offering's settings for one user, with where each comes from: the
+   * shared offering's values (self.db), then the user's own (user.db), which
+   * win. Unset values are absent and never sent. Also its context window and
+   * where that comes from.
+   */
+  offeringSettings(userId: string, offeringId: string): {
+    values: AnswerSettings; sources: Partial<Record<keyof AnswerSettings, SettingSource>>;
+    contextWindow?: { value: number; source: "hand" | "discovered" };
+  } {
+    const o = this.offering(userId, offeringId);
+    if (!o) throw new NoModel(`no model ${offeringId}`);
+    const read = (db: Db) => {
+      const row = db.prepare("SELECT settings FROM offering_settings WHERE offering = ?").get(offeringId) as { settings: string } | undefined;
+      return row ? (JSON.parse(row.settings) as AnswerSettings) : {};
+    };
+    const shared = o.endpoint.shared ? read(this.self()) : {};
+    const yours = this.withUser(userId, read);
+    const values: AnswerSettings = { ...shared, ...yours };
+    const sources = Object.fromEntries(ANSWER_SETTINGS.filter((k) => values[k] !== undefined).map((k) => [k, k in yours ? "yours" : "shared"]));
+    const db = o.endpoint.shared ? this.self() : undefined;
+    const raw = (db ? db.prepare("SELECT found, hand FROM offerings WHERE id = ?").get(offeringId)
+      : this.withUser(userId, (u) => u.prepare("SELECT found, hand FROM offerings WHERE id = ?").get(offeringId))) as { found: string; hand: string };
+    const hand = JSON.parse(raw.hand).contextWindow as number | undefined;
+    const found = JSON.parse(raw.found).contextWindow as number | undefined;
+    return {
+      values, sources,
+      ...(hand ? { contextWindow: { value: hand, source: "hand" as const } } : found ? { contextWindow: { value: found, source: "discovered" as const } } : {}),
+    };
+  }
+
+  /**
+   * Saves settings for an offering. `shared` sets a shared offering's values
+   * for everyone (administrators only); `mine` sets the user's own: for their
+   * offering, or over a shared one's for them alone. null clears a value.
+   */
+  setOfferingSettings(actor: User, offeringId: string, change: Record<string, unknown>, scope: "shared" | "mine" = "mine"): void {
+    const o = this.offering(actor.id, offeringId);
+    if (!o) throw new NoModel(`no model ${offeringId}`);
+    const checked = checkSettings(change);
+    if (scope === "shared" && !o.endpoint.shared) throw new Error("only a shared model has shared settings");
+    if (scope === "shared" && !this.users.get(actor.id)?.admin) throw new Forbidden("only an administrator can change a shared model's settings");
+    const apply = (db: Db) => {
+      const row = db.prepare("SELECT settings FROM offering_settings WHERE offering = ?").get(offeringId) as { settings: string } | undefined;
+      const next: Record<string, unknown> = row ? JSON.parse(row.settings) : {};
+      for (const [k, v] of Object.entries(checked)) if (v === null) delete next[k]; else next[k] = v;
+      if (Object.keys(next).length) db.prepare("INSERT OR REPLACE INTO offering_settings (offering, settings) VALUES (?, ?)").run(offeringId, JSON.stringify(next));
+      else db.prepare("DELETE FROM offering_settings WHERE offering = ?").run(offeringId);
+    };
+    if (scope === "shared") apply(this.self()); else this.withUser(actor.id, apply);
+  }
+
   // --- Model hosts ---
 
   /**
@@ -783,6 +839,8 @@ export class Models {
     const self = this.self();
     const gone = (db: Db) => (db.prepare("SELECT * FROM offerings WHERE missing_since IS NOT NULL").all() as OfferingRow[]).filter((r) => toOffering(r, now).status === "gone");
     const allIndexed = this.users.all().every((u) => self.prepare("SELECT 1 FROM shared_refs_indexed WHERE user = ?").get(u.id));
+    self.prepare("DELETE FROM offering_settings WHERE offering NOT IN (SELECT id FROM offerings)").run();
+    const sharedIds = new Set((self.prepare("SELECT id FROM offerings").all() as { id: string }[]).map((r) => r.id));
     if (allIndexed) {
       const inGroups = collectRefs(self);
       for (const r of gone(self)) if (!inGroups.has(r.id) && !self.prepare("SELECT 1 FROM shared_refs WHERE ref = ?").get(r.id)) self.prepare("DELETE FROM offerings WHERE id = ?").run(r.id);
@@ -790,6 +848,9 @@ export class Models {
     for (const u of this.users.all()) {
       if (!this.keyring.hasUserKey(u.id)) continue;
       this.withUser(u.id, (db) => {
+        for (const r of db.prepare("SELECT offering FROM offering_settings WHERE offering NOT IN (SELECT id FROM offerings)").all() as { offering: string }[]) {
+          if (!sharedIds.has(r.offering)) db.prepare("DELETE FROM offering_settings WHERE offering = ?").run(r.offering);
+        }
         const used = collectRefs(db);
         for (const r of gone(db)) if (!used.has(r.id)) db.prepare("DELETE FROM offerings WHERE id = ?").run(r.id);
         db.prepare("DELETE FROM model_calls WHERE id <= (SELECT max(id) FROM model_calls) - ?").run(CALLS_KEPT);

@@ -240,6 +240,25 @@ export interface HostStatus {
 /** GET /api/u/:userId/hosts/:endpointId/status → HostStatus */
 /** POST /api/u/:userId/hosts/:endpointId/pause|resume|restart → HostStatus. A shared host needs an administrator. */
 
+/** How a model answers. Unset values aren't sent, so the server's default applies. */
+export interface AnswerSettings {
+  temperature?: number; topP?: number; topK?: number; minP?: number; repeatPenalty?: number;
+  presencePenalty?: number; frequencyPenalty?: number; maxTokens?: number; seed?: number; stop?: string[];
+}
+/** GET /api/u/:userId/offerings/:offeringId/settings → OfferingSettings: each value with its source. */
+export interface OfferingSettings {
+  values: AnswerSettings;
+  /** default: nothing saved; shared: the shared model's value; yours: your own, which wins for you only. */
+  sources: Partial<Record<keyof AnswerSettings, "default" | "shared" | "yours">>;
+  contextWindow?: { value: number; source: "hand" | "discovered" };
+}
+/**
+ * PUT /api/u/:userId/offerings/:offeringId/settings → OfferingSettings.
+ * `shared` sets a shared model's values for everyone (administrators);
+ * `mine` (the default) sets your own. null clears a value.
+ */
+export interface OfferingSettingsChange { scope?: "shared" | "mine"; values: { [K in keyof AnswerSettings]?: AnswerSettings[K] | null } }
+
 /** PATCH /api/u/:userId/offerings/:offeringId → OfferingInfo. Sets capabilities by hand; null clears one. */
 export type CapabilitiesChange = { [K in keyof Capabilities]?: Capabilities[K] | null };
 /** DELETE /api/u/:userId/offerings/:offeringId → Ok. Leaves a tombstone. */

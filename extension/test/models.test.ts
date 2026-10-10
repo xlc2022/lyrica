@@ -218,3 +218,27 @@ describe("a model host", () => {
     expect(s.models.recentCalls(s.li.id)[0]!.note).toBeUndefined();
   });
 });
+
+describe("how a model answers", () => {
+  it("sends the offering's saved values with every call, only those set, and never another user's", async () => {
+    const s = await setup();
+    const bob = await s.users.createUser("bob", "pw", { displayName: "Bob", pronouns: PRONOUN_PRESETS.he }, { admin: false });
+    await s.users.authenticate("bob", "pw");
+    const lan = s.models.addEndpoint(s.li, { name: "lan", kind: "local", baseUrl: s.local.baseUrl }, { shared: true });
+    const [qwen] = await s.models.discover(s.li, lan.id);
+    s.models.setProfile(s.li.id, "local", "chat", [{ offeringId: qwen!.id }]);
+    s.models.setOfferingSettings(s.li, qwen!.id, { temperature: 0.6, repeatPenalty: 1.1 }, "shared");
+    s.models.setOfferingSettings(s.li, qwen!.id, { seed: 7, stop: ["END"], maxTokens: 300 });
+    s.models.setOfferingSettings(bob, qwen!.id, { temperature: 1.9, topP: 0.5 });
+    const { session, dispose } = await s.open(s.thread("private"));
+    try {
+      await session.prompt("hello");
+    } finally {
+      dispose();
+    }
+    const sent = s.local.requests[0] as unknown as Record<string, unknown>;
+    expect(sent).toMatchObject({ temperature: 0.6, repeat_penalty: 1.1, seed: 7, stop: ["END"], max_tokens: 300 });
+    expect(sent.top_p).toBeUndefined();
+    expect(sent.top_k).toBeUndefined();
+  });
+});

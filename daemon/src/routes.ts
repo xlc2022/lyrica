@@ -206,6 +206,15 @@ export function apiRoutes(d: Lyricad): Route[] {
       s().models.setCapabilities(user, r.params.offeringId!, capabilities(c, true));
       return offeringInfo(d, user.id, r.params.offeringId!);
     }),
+    route("GET", `${u}/offerings/:offeringId/settings`, (r): Api.OfferingSettings => s().models.offeringSettings(d.userFor(r).id, r.params.offeringId!)),
+    route("PUT", `${u}/offerings/:offeringId/settings`, async (r): Promise<Api.OfferingSettings> => {
+      const user = d.userFor(r);
+      const c = await r.json<Api.OfferingSettingsChange>();
+      if (c.scope !== undefined && c.scope !== "shared" && c.scope !== "mine") throw new HttpError(400, "scope is shared or mine");
+      if (!c.values || typeof c.values !== "object") throw new HttpError(400, "values is an object of settings");
+      s().models.setOfferingSettings(user, r.params.offeringId!, c.values, c.scope ?? "mine");
+      return s().models.offeringSettings(user.id, r.params.offeringId!);
+    }),
     route("DELETE", `${u}/offerings/:offeringId`, (r) => {
       s().models.removeOffering(d.userFor(r), r.params.offeringId!);
       return { ok: true };
