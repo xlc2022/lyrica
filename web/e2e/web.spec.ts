@@ -142,6 +142,30 @@ test("a message's menu regenerates, edits, deletes with Undo, and branches", asy
   await noHorizontalScroll(page);
 });
 
+test("a pinned message shows in the header's Pinned popover, and unpinning removes it", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "the gate code is 4417");
+  await expect(page.getByText("You said: the gate code is 4417")).toBeVisible();
+  const menu = (i: number) => page.getByRole("button", { name: "Message actions" }).nth(i);
+
+  await menu(0).click();
+  await page.getByRole("menuitem", { name: "Pin", exact: true }).click();
+  await expect(page.locator(".msg.user .who").getByText("Pinned")).toBeVisible();
+  await page.getByRole("button", { name: /^1 pinned/ }).click();
+  const popover = page.getByRole("dialog", { name: "Pinned" });
+  await expect(popover.getByText("the gate code is 4417")).toBeVisible();
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/pinned-${page.viewportSize()!.width}.png` });
+  await popover.getByRole("button").first().click();
+  await expect(popover).toHaveCount(0);
+
+  await menu(0).click();
+  await page.getByRole("menuitem", { name: "Unpin" }).click();
+  await expect(page.getByRole("button", { name: /pinned/ })).toHaveCount(0);
+  await expect(page.locator(".msg.user .who").getByText("Pinned")).toHaveCount(0);
+});
+
 test("a child thread nests under its parent, opens from its card, and goes with its parent when asked", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");

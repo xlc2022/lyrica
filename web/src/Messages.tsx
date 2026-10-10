@@ -105,8 +105,8 @@ function UserMessage({ text, you, n, rewinder }: { text: string; you: string; n?
   const [editing, setEditing] = useState(false);
   const menu = rewinder && n !== undefined;
   return (
-    <div className="msg user">
-      <div className="who">{you}{menu && <MessageMenu n={n} role="user" rewinder={rewinder} onEdit={() => setEditing(true)} />}</div>
+    <div className="msg user" id={n !== undefined ? `m-${n}` : undefined}>
+      <div className="who">{you}{menu && rewinder.pinned.has(n) && <span className="muted"> · Pinned</span>}{menu && <MessageMenu n={n} role="user" rewinder={rewinder} onEdit={() => setEditing(true)} />}</div>
       {editing && menu
         ? <EditBox text={text} onCancel={() => setEditing(false)} onSend={(t) => { setEditing(false); rewinder.rewind(n, { action: "edit", text: t }, n); }} />
         : <div className="body">{text}</div>}
@@ -140,9 +140,10 @@ function Parts({ parts, env, model, streaming, n }: { parts: MessagePart[]; env:
   // In a subagent's thread, the replies are the subagent's own work.
   const who = env.subagent ? "Subagent" : "Lyrica";
   return (
-    <section className="turn" aria-label={model ? `${who} (${model})` : who}>
+    <section className="turn" id={n !== undefined ? `m-${n}` : undefined} aria-label={model ? `${who} (${model})` : who}>
       <div className="who">
         {who}{model && <span className="muted"> · {model}</span>}
+        {env.rewinder && n !== undefined && env.rewinder.pinned.has(n) && <span className="muted"> · Pinned</span>}
         {env.rewinder && n !== undefined && <MessageMenu n={n} role="assistant" rewinder={env.rewinder} />}
       </div>
       {out}

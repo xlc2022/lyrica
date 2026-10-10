@@ -104,7 +104,7 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   reconnect that finds the turn already over, also reloads the stored
   messages.
 - **Each message has a menu** (a bordered ⋯ icon button by the sender's
-  name; `src/Rewind.tsx`): Branch from here; on her replies Regenerate and
+  name; `src/Rewind.tsx`): Pin or Unpin; Branch from here; on her replies Regenerate and
   Regenerate with… (the models the thread may use); on the user's messages
   Edit, which turns the message into a box (Save, Cancel) whose text is sent
   in its place; Delete on the messages of the last turn, and Delete from
@@ -115,6 +115,10 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   event drops the removed messages from every open view. A new branch opens,
   under "Branched from" its parent, and its settings can be changed within
   its parent's.
+- **Pinned messages** say "Pinned" beside the sender's name. The header's
+  "N pinned ▾" badge opens a popover listing them; choosing one scrolls to
+  it. When the pins are over their budget the badge adds "shortened", with
+  a tooltip saying the oldest reach her as their first line only.
 - A `threads` call is a card: the child thread started (title and task) or
   messaged, linking to it. A child's update shows in the parent as a card
   headed "Child thread", linking to it. In a child thread, what the parent

@@ -1,6 +1,6 @@
-// Each message's menu: branch, regenerate, edit and delete. Deleting waits a few seconds, so it can be undone.
+// Each message's menu: pin, branch, regenerate, edit and delete. Deleting waits a few seconds, so it can be undone.
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ModelRef, RewindRequest, ThreadSettings } from "./api.ts";
+import type { ModelRef, Pins, RewindRequest, ThreadSettings } from "./api.ts";
 import { useDismiss } from "./ui.tsx";
 
 /** What a thread lets its messages do. Absent in a subagent's thread. */
@@ -9,6 +9,9 @@ export interface Rewinder {
   busy: boolean;
   /** The last turn's user message: "Delete" removes from there. */
   lastTurn?: number;
+  /** The pinned messages' numbers. */
+  pinned: ReadonlySet<number>;
+  pin(n: number, on: boolean): void;
   branch(n: number): void;
   /** Removes from message `n` (and sends again, for regenerate and edit). Messages from `hide` on are hidden meanwhile. */
   rewind(n: number, req: RewindRequest, hide: number): void;
@@ -31,6 +34,9 @@ export function MessageMenu({ n, role, rewinder, onEdit }: { n: number; role: "u
       </button>
       {open && (
         <div className="menu" role="menu">
+          {rewinder.pinned.has(n)
+            ? <button type="button" role="menuitem" onClick={act(() => rewinder.pin(n, false))}>Unpin</button>
+            : <button type="button" role="menuitem" onClick={act(() => rewinder.pin(n, true))}>Pin</button>}
           <button type="button" role="menuitem" onClick={act(() => rewinder.branch(n))}>Branch from here</button>
           {role === "assistant" && <button type="button" role="menuitem" disabled={busy} onClick={act(() => regenerate())}>Regenerate</button>}
           {role === "assistant" && (
@@ -96,4 +102,31 @@ export function useUndo() {
     setPending(undefined);
   }, []);
   return { pending, later, undo };
+}
+
+/** "3 pinned ▾" in the thread's header: a popover of the pinned messages, each going to its place in the conversation. */
+export function PinnedBadge({ pins }: { pins: Pins }) {
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLSpanElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(anchor, open, close);
+  if (!pins.pins.length) return null;
+  const show = (n: number) => { close(); document.getElementById(`m-${n}`)?.scrollIntoView({ block: "center", behavior: "smooth" }); };
+  return (
+    <span className="picker-anchor" ref={anchor}>
+      <button type="button" className="badge" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}
+        title={pins.shortened ? "Some pinned messages reach her as their first line only" : undefined}>
+        {pins.pins.length} pinned{pins.shortened && <span className="warn"> · shortened</span>} ▾
+      </button>
+      {open && (
+        <div className="picker" role="dialog" aria-label="Pinned">
+          {pins.pins.map((p) => (
+            <button key={p.n} type="button" className="picker-item pin-item" onClick={() => show(p.n)}>
+              <span className="muted">{p.role === "user" ? "You" : "Lyrica"} · </span>{p.text.length > 140 ? `${p.text.slice(0, 140)}…` : p.text}
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
+  );
 }
