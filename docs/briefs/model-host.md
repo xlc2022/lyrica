@@ -195,4 +195,73 @@ games on, so the host has to be easy to live with and hard to misuse.
 
 ## Handoff notes
 
-(The thread fills this in if it stops before it's done.)
+All of `host/` is on main (#28, #31, #32, #33, #38, #39). CI builds both
+ComfyUI images, runs every test against fake model servers and hubs, and
+checks the network layout on a real Docker stack (`install.sh --no-gpu`,
+then `test/stack/network.sh`). Nothing has run on a GPU, a real model or a
+real hub.
+
+### Try it on the workstation, in this order
+
+Each step depends on the one before. Note what goes wrong against the step.
+
+1. **Install.** `host/install.sh` on the workstation (Docker with the iptables
+   backend, NVIDIA container toolkit or the amdgpu driver). It should end with
+   the dashboard address and the key fingerprint, and its own check that
+   host-api can't connect out should pass. Then run
+   `host/test/stack/network.sh` on the real stack.
+2. **Pair from Lyrica.** On the dashboard (`http://127.0.0.1:7236`), Pair with
+   Lyrica, paste the code into Add model host, and check that the fingerprints
+   match. Set a dashboard password and open the dashboard from another machine.
+3. **A llama.cpp model.** Put a GGUF in the models folder, Scan, and chat with
+   it from Lyrica. Check the context length, that the model unloads when idle,
+   and the VRAM measured after its first load.
+4. **A vLLM model.** A safetensors folder (no remote code). Check that its
+   memory share is what the dashboard says, and that a context too long for
+   the share is refused when saved. Then kill its server (or give it a context
+   that can't start) and check that the load fails at once, not after 30
+   minutes.
+5. **A two-GPU split.** A model too big for one GPU, on Auto and then with
+   chosen GPUs and a split. Check that both GPUs are used, that the model
+   unloads from both, and (vLLM) that tensor parallel is picked for matching
+   GPUs.
+6. **Pause while gaming.** Pause, check `nvidia-smi` or `rocm-smi` shows
+   nothing of the host's, play, then Resume and check pinned models load
+   again.
+7. **A download.** A small GGUF from Hugging Face, then a gated repository
+   with a token, then a link. Check checksums, the record, resume after a
+   restart, and that deleting works only on downloaded files.
+8. **An image.** Install the Z-Image Turbo starter, make an image, then edit
+   (Qwen-Image-Edit) and upscale (SeedVR2). This is the first time ComfyUI
+   runs the templates: expect node or input names to need fixing in
+   `host/workflows/`. Check that a cancelled request stops the job.
+
+### For a future thread
+
+- **Older AMD GPUs and iGPUs aren't supported** (Li's question about Vega and
+  the 780M):
+  - The llama.cpp ROCm image (b11459) is built for gfx908, gfx90a, gfx942,
+    gfx1030, gfx1100–1102, gfx1150–1151 and gfx1200–1201 only. Vega (gfx900,
+    gfx906) isn't there.
+  - The 780M (gfx1103) isn't listed either; it usually runs as gfx1100 with
+    `HSA_OVERRIDE_GFX_VERSION=11.0.0`, which the host never sets.
+  - The vLLM and ComfyUI ROCm images are expected to target Instinct and RDNA
+    3/4 (not checked).
+  - `gpus.ts` reads `mem_info_vram_*`. On an APU that's only the BIOS
+    carve-out; the usable memory is GTT (`mem_info_gtt_*`), so the planner
+    would think a 780M holds almost nothing.
+  - A likely route: a Vulkan llama.cpp variant for GPUs ROCm doesn't cover
+    (`backends.ts` already takes `Vulkan<n>` device names), GTT-aware memory
+    for APUs, and an optional `HSA_OVERRIDE_GFX_VERSION` in `.env`. This is a
+    design decision for Li.
+- **Image VRAM** is measured per recipe, not per part, and unloading one
+  recipe frees all of ComfyUI's memory.
+- **`gpuLayers`** below "all" doesn't shrink the expected memory.
+- **The KV-cache estimate** comes from model headers and hasn't been checked
+  against real servers. If plans are off, compare with the measured VRAM
+  (`vram` in the model list).
+- **The Host images CI job** runs only when the image files change, so it
+  can't be a required check as it stands.
+- **The pinned images** (llama.cpp, vLLM, both ComfyUI bases, Tailscale) are
+  pinned by digest. Updating one means a new digest and a CI build. ComfyUI's
+  Python packages are remade with `host/comfyui/lock.sh`.
