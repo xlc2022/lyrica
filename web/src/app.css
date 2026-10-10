@@ -143,6 +143,11 @@ button.badge { min-height: 0; padding: 2px 9px; }
 button.badge.model:hover { border-color: var(--accent); }
 .badge.model { cursor: pointer; }
 .badge .warn { color: var(--cloud); }
+/* Pinned is state, so a badge after the sender's name, not part of it. */
+.who .pin-badge { margin-left: 6px; font-size: 12px; text-transform: none; letter-spacing: normal; padding: 0 7px; vertical-align: 1px; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.msg.flash, .turn.flash { animation: flash 1s ease-out; border-radius: 8px; }
+@keyframes flash { from { outline: 2px solid var(--accent); outline-offset: 4px; } to { outline: 2px solid transparent; outline-offset: 4px; } }
 .gear { flex: none; white-space: nowrap; }
 .subnote { margin: 0; padding: 6px var(--gutter); font-size: 0.85rem; color: var(--muted); border-bottom: 1px solid var(--line); }
 .picker-anchor { position: relative; display: inline-flex; max-width: 100%; }

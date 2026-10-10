@@ -151,7 +151,7 @@ test("a pinned message shows in the header's Pinned popover, and unpinning remov
 
   await menu(0).click();
   await page.getByRole("menuitem", { name: "Pin", exact: true }).click();
-  await expect(page.locator(".msg.user .who").getByText("Pinned")).toBeVisible();
+  await expect(page.locator(".msg.user .who").getByText("pinned", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: /^1 pinned/ }).click();
   const popover = page.getByRole("dialog", { name: "Pinned" });
   await expect(popover.getByText("the gate code is 4417")).toBeVisible();
@@ -163,7 +163,7 @@ test("a pinned message shows in the header's Pinned popover, and unpinning remov
   await menu(0).click();
   await page.getByRole("menuitem", { name: "Unpin" }).click();
   await expect(page.getByRole("button", { name: /pinned/ })).toHaveCount(0);
-  await expect(page.locator(".msg.user .who").getByText("Pinned")).toHaveCount(0);
+  await expect(page.locator(".msg.user .who").getByText("pinned", { exact: true })).toHaveCount(0);
 });
 
 test("a child thread nests under its parent, opens from its card, and goes with its parent when asked", async ({ page, baseURL }) => {

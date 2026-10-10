@@ -105,24 +105,34 @@ export function useUndo() {
 }
 
 /** "3 pinned ▾" in the thread's header: a popover of the pinned messages, each going to its place in the conversation. */
-export function PinnedBadge({ pins }: { pins: Pins }) {
+export function PinnedBadge({ pins, you }: { pins: Pins; you: string }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(anchor, open, close);
   if (!pins.pins.length) return null;
-  const show = (n: number) => { close(); document.getElementById(`m-${n}`)?.scrollIntoView({ block: "center", behavior: "smooth" }); };
+  const show = (n: number) => {
+    close();
+    const el = document.getElementById(`m-${n}`);
+    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+    // Where it landed, for a moment.
+    el?.classList.remove("flash");
+    void el?.offsetWidth;
+    el?.classList.add("flash");
+  };
+  // One or two lines each: the first line, at most about 90 characters.
+  const preview = (t: string) => { const first = t.trim().split("\n")[0]!; return first.length > 90 ? `${first.slice(0, 90)}…` : first; };
   return (
     <span className="picker-anchor" ref={anchor}>
       <button type="button" className="badge" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}
         title={pins.shortened ? "Some pinned messages reach her as their first line only" : undefined}>
-        {pins.pins.length} pinned{pins.shortened && <span className="warn"> · shortened</span>} ▾
+        <span className="num">{pins.pins.length}</span>&nbsp;pinned{pins.shortened && <span className="warn"> · shortened</span>} ▾
       </button>
       {open && (
         <div className="picker" role="dialog" aria-label="Pinned">
           {pins.pins.map((p) => (
             <button key={p.n} type="button" className="picker-item pin-item" onClick={() => show(p.n)}>
-              <span className="muted">{p.role === "user" ? "You" : "Lyrica"} · </span>{p.text.length > 140 ? `${p.text.slice(0, 140)}…` : p.text}
+              <span className="muted">{p.role === "user" ? you : "Lyrica"} · </span>{preview(p.text)}
             </button>
           ))}
         </div>
