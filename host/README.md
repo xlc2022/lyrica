@@ -103,7 +103,9 @@ fills the recipe's template in `workflows/` (one per architecture).
   no other recipe uses.
 - ComfyUI is our image (`comfyui/Dockerfile`, CUDA or ROCm), built from
   pinned commits of ComfyUI, ComfyUI-GGUF and the SeedVR2 upscaler, with no
-  plugin manager. Only those nodes load. It has no route out, logs nothing,
+  plugin manager. Only those nodes load. Their Python packages go into a
+  venv, each pinned with its hash in `comfyui/requirements.txt`
+  (`comfyui/lock.sh` remakes it); torch is the base image's. It has no route out, logs nothing,
   keeps its input, output and temp folders in memory, saves no metadata,
   and its history is cleared after every job. It uses one GPU,
   `COMFY_GPU` in `.env`, and frees its memory after ten idle minutes.
