@@ -33,22 +33,46 @@ export const nvidiaMonitor: GpuMonitor = {
   },
 };
 
-/** AMD GPUs from /sys/class/drm, in card order (the order ROCm numbers them). */
-export function amdMonitor(drm = "/sys/class/drm"): GpuMonitor {
+/**
+ * AMD GPUs, numbered as ROCm numbers them: the GPU nodes of the KFD
+ * topology, in order. Each node's PCI address leads to its memory readings
+ * in sysfs, so an integrated GPU that ROCm skips can't shift the numbers.
+ * Without a KFD topology, falls back to DRM card order.
+ */
+export function amdMonitor(sys = "/sys"): GpuMonitor {
+  const read = (path: string) => readFileSync(path, "utf8").trim();
+  const devices = (): string[] => {
+    const nodes = join(sys, "class/kfd/kfd/topology/nodes");
+    if (existsSync(nodes)) {
+      const out: string[] = [];
+      for (const n of readdirSync(nodes).sort((a, b) => Number(a) - Number(b))) {
+        try {
+          if (read(join(nodes, n, "gpu_id")) === "0") continue; // a CPU node
+          const props = Object.fromEntries(read(join(nodes, n, "properties")).split("\n").map((l) => l.split(/\s+/) as [string, string]));
+          const loc = Number(props.location_id);
+          const addr = `${Number(props.domain ?? 0).toString(16).padStart(4, "0")}:${(loc >> 8).toString(16).padStart(2, "0")}:${((loc >> 3) & 0x1f).toString(16).padStart(2, "0")}.${loc & 7}`;
+          out.push(join(sys, "bus/pci/devices", addr));
+        } catch {}
+      }
+      if (out.length) return out;
+    }
+    const drm = join(sys, "class/drm");
+    return readdirSync(drm)
+      .filter((c) => /^card\d+$/.test(c))
+      .sort((a, b) => Number(a.slice(4)) - Number(b.slice(4)))
+      .map((c) => join(drm, c, "device"));
+  };
   return {
     async read() {
-      const cards = readdirSync(drm)
-        .filter((c) => /^card\d+$/.test(c) && existsSync(join(drm, c, "device", "mem_info_vram_total")))
-        .sort((a, b) => Number(a.slice(4)) - Number(b.slice(4)));
-      return cards.map((card, index) => {
-        const dev = join(drm, card, "device");
-        const read = (f: string) => readFileSync(join(dev, f), "utf8").trim();
-        let name = "AMD GPU";
-        try {
-          name = read("product_name") || name;
-        } catch {}
-        return { index, name, vendor: "amd" as const, total: Number(read("mem_info_vram_total")), used: Number(read("mem_info_vram_used")) };
-      });
+      return devices()
+        .filter((dev) => existsSync(join(dev, "mem_info_vram_total")))
+        .map((dev, index) => {
+          let name = "AMD GPU";
+          try {
+            name = read(join(dev, "product_name")) || name;
+          } catch {}
+          return { index, name, vendor: "amd" as const, total: Number(read(join(dev, "mem_info_vram_total"))), used: Number(read(join(dev, "mem_info_vram_used"))) };
+        });
     },
   };
 }

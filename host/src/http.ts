@@ -32,7 +32,7 @@ export async function readJson(req: IncomingMessage, limit = 64 * 1024): Promise
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > limit) throw new HostError(413, "invalid", "The request is too large.");
+    if (size > limit) throw new HostError(400, "invalid", "The request is too large.");
     chunks.push(chunk as Buffer);
   }
   let body: unknown;

@@ -89,9 +89,10 @@ revoked. A revoked server must pair again.
   then background work. A request that waits too long fails with "The GPU
   is busy with …".
 - **VRAM** use is measured on each model's first load and remembered.
-- **Pause** finishes the current job, then unloads llama.cpp's models and
-  puts vLLM to sleep. Until Resume, new work gets "The model host is
-  paused." Pause survives a restart.
+- **Pause** refuses new work, lets the current job finish, then unloads
+  every model and stops vLLM, so nothing of the host's stays in VRAM. What
+  couldn't be unloaded shows on the dashboard. Until Resume, new work gets
+  "The model host is paused." Pause survives a restart.
 
 ## How it's put together
 
@@ -111,7 +112,8 @@ revoked. A revoked server must pair again.
     model's file, GPU and context), then loads and unloads models through
     its API.
   - vLLM runs under `vllm/supervisor.py`, which starts one server per vLLM
-    GPU as host-api asks in a file. Pause uses vLLM's own sleep and wake.
+    GPU as host-api asks in a file, in its own process group, with a growing
+    wait between restarts of one that crashes.
   - host-api reads VRAM with `nvidia-smi`, through NVIDIA's `utility`
     capability, or from AMD's sysfs.
 - **host-api has no route out.** It sees every prompt, so it may not start

@@ -51,10 +51,12 @@ A queued request waits at most 120 seconds (`chat`), 300 (`image`) or 900
 
 ## OpenAI-compatible: `/v1`
 
-Passed to the server holding the model (llama.cpp for GGUF on a shared GPU,
-vLLM on a vLLM GPU), loading it first if needed. Request and response bodies
-are passed through unchanged, including streaming (`text/event-stream`) and
-tool calls.
+Only for a paired client: the dashboard gets `refused`. Passed to the
+server holding the model (llama.cpp for GGUF on a shared GPU, vLLM on a vLLM
+GPU), loading it first if needed. Request and response bodies are passed
+through unchanged, including streaming (`text/event-stream`) and tool calls.
+A client that disconnects cancels its request, queued or running; an answer
+the model server cuts short is cut short too.
 
 - `GET /v1/models`: every text and embedding model in the models folder,
   loaded or not, as `{ "object": "list", "data": [{ "id", "object": "model",
@@ -90,12 +92,16 @@ tool calls.
     "queue": { "chat": 0, "image": 1, "background": 2 }
   }],
   "downloads": { "active": 1 },
-  "modelsFolder": { "path": "/srv/models", "free": 512110190592 }
+  "modelsFolder": { "path": "/srv/models", "free": 512110190592 },
+  "problems": []
 }
 ```
 
 - `state`: `running`, `pausing` (finishing the current job), `paused` or
   `restarting`.
+- `problems`: plain sentences about what the last pause or restart couldn't
+  do, such as "GPU 0: couldn't unload … it may still hold memory." Empty
+  when all went well.
 - `role`: `vllm` (one vLLM model holds the GPU) or `shared` (llama.cpp
   models and ComfyUI, loaded on demand).
 - A model's `kind` is `chat`, `embedding` or `image`; `state` is `loading`
@@ -161,10 +167,15 @@ tool calls.
 
 ### Pause, resume, restart
 
-- `POST /host/v1/pause`: answers at once with the status; the current job
-  finishes, then everything is unloaded and the state is `paused`. Queued
-  and new requests get `paused`. Downloads continue. Survives a restart.
-- `POST /host/v1/resume`: back to `running`; pinned models are loaded again.
+- `POST /host/v1/pause`: answers at once with `{ "state": "pausing" }`.
+  Queued and new requests get `paused` at once. The running jobs and any
+  load under way finish, then every model is unloaded (vLLM's servers are
+  stopped) and the state is `paused`: nothing of the host's stays in VRAM.
+  Anything that couldn't be unloaded is listed in `problems`. Downloads
+  continue. Survives a restart.
+- `POST /host/v1/resume`: back to `running`; pinned models are loaded again,
+  and others load on demand. Pause, resume and restart run one after
+  another, never interleaved.
 - `POST /host/v1/restart`: fails queued requests with `restarting`, unloads
   everything, asks each server to reset, and loads pinned models again.
 

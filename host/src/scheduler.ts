@@ -70,7 +70,10 @@ export class Scheduler {
   private gpus: Gpu[] = [];
   private seq = 0;
   runState: HostRunState = "running";
-  private idleWaiters: (() => void)[] = [];
+  /** What went wrong the last time the host paused, restarted or reset: shown in the status. */
+  problems: string[] = [];
+  /** Pause, resume and restart run one after another. */
+  private transition: Promise<unknown> = Promise.resolve();
 
   constructor(o: SchedulerOptions) {
     this.o = o;
@@ -99,9 +102,14 @@ export class Scheduler {
     return model.server === "vllm" ? this.o.backends.vllm : this.o.backends.llamacpp;
   }
 
-  /** What the model is expected to take: measured once loaded, else an estimate. */
+  /**
+   * What the model is expected to take: measured once loaded, else an
+   * estimate of its weights, buffers and a KV cache for its context (up to
+   * the 32k cap, about 2 GB).
+   */
   private need(model: TextModel): number {
-    return this.o.state.get().vram[model.id] ?? Math.round(model.size * 1.1 + GIB);
+    const kv = model.kind === "chat" ? (Math.min(model.contextLength ?? 8192, 32768) / 32768) * 2 * GIB : 0;
+    return this.o.state.get().vram[model.id] ?? Math.round(model.size * 1.1 + GIB + kv);
   }
 
   private async gpu(index: number): Promise<Gpu> {
@@ -144,7 +152,7 @@ export class Scheduler {
    * Runs `fn` with the model loaded and counted as in use, after waiting its
    * turn in the GPU's queue.
    */
-  async run<T>(model: TextModel, priority: Priority, fn: (url: string) => Promise<T>, gpu?: number): Promise<T> {
+  async run<T>(model: TextModel, priority: Priority, fn: (url: string) => Promise<T>, gpu?: number, signal?: AbortSignal): Promise<T> {
     if (this.runState === "paused" || this.runState === "pausing") throw paused();
     if (this.runState === "restarting") throw restarting();
     if (model.remoteCode) throw new HostError(403, "refused", "This model needs trust_remote_code, which the host never allows.");
@@ -163,6 +171,11 @@ export class Scheduler {
           void this.pump(slot);
         }, this.limits[priority]),
       };
+      // A request whose client has gone leaves the queue and loads nothing.
+      signal?.addEventListener("abort", () => {
+        if (slot.queue.includes(job)) this.finish(slot, job, new HostError(499, "cancelled", "The request was cancelled."));
+      });
+      if (signal?.aborted) return reject(new HostError(499, "cancelled", "The request was cancelled."));
       slot.queue.push(job);
       slot.queue.sort((a, b) => RANK[a.priority] - RANK[b.priority] || a.seq - b.seq);
       void this.pump(slot);
@@ -173,7 +186,6 @@ export class Scheduler {
     } finally {
       loaded.active--;
       loaded.lastUsed = this.now();
-      if (this.activeCount() === 0) for (const w of this.idleWaiters.splice(0)) w();
       void this.pump(slot);
     }
   }
@@ -201,6 +213,11 @@ export class Scheduler {
         const loaded = slot.loaded.get(job.model.id);
         if (loaded?.ready) {
           this.begin(slot, job, loaded);
+          continue;
+        }
+        // Nothing loads unless the host is running.
+        if (this.runState !== "running") {
+          this.finish(slot, job, this.runState === "restarting" ? restarting() : paused());
           continue;
         }
         // The head needs its model loaded; everything behind it waits.
@@ -242,6 +259,11 @@ export class Scheduler {
   private async makeRoom(slot: Slot, model: TextModel): Promise<"ready" | "wait" | HostError> {
     const all = [...slot.loaded.values()];
     if (this.role(slot.index) === "vllm") {
+      const g = await this.gpu(slot.index);
+      // vLLM reserves 90% of the GPU; the weights must fit in it with room for a KV cache.
+      if (model.size * 1.1 > g.total * 0.9) {
+        return new HostError(413, "too_big", `This model needs about ${(model.size * 1.1 / GIB).toFixed(1)} GB; vLLM on GPU ${slot.index} has ${(g.total * 0.9 / GIB).toFixed(1)} GB.`);
+      }
       if (all.some((l) => l.active > 0)) return "wait";
       for (const l of all) await this.unload(slot, l);
       return "ready";
@@ -357,11 +379,37 @@ export class Scheduler {
     for (const slot of this.slots.values()) for (const job of [...slot.queue]) this.finish(slot, job, error());
   }
 
-  private idle(): Promise<void> {
-    return this.activeCount() === 0 ? Promise.resolve() : new Promise((r) => this.idleWaiters.push(r));
+  /** Resolves when nothing is running, loading or unloading. */
+  private async idle(): Promise<void> {
+    while (this.activeCount() > 0 || [...this.slots.values()].some((s) => s.changing || s.pumping)) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
   }
 
-  /** Finishes running jobs, then frees every GPU. Survives a restart. */
+  private serial(step: () => Promise<void>): Promise<void> {
+    const run = this.transition.then(step, step);
+    this.transition = run.catch(() => {});
+    return run;
+  }
+
+  /** Unloads every model on every GPU, noting what couldn't be. */
+  private async unloadAll(): Promise<void> {
+    this.problems = [];
+    for (const slot of this.slots.values()) {
+      for (const l of [...slot.loaded.values()]) {
+        await this.unload(slot, l).catch(() => this.problems.push(`GPU ${slot.index}: couldn't unload ${l.model.id}; it may still hold memory.`));
+      }
+    }
+    for (const [name, b] of Object.entries(this.o.backends)) {
+      await b?.reset().catch((e: Error) => this.problems.push(`${name}: ${e.message}`));
+    }
+  }
+
+  /**
+   * Refuses new work at once, lets the running jobs finish, then unloads
+   * every model. Answers right away; the state is "pausing" until then.
+   * Survives a restart.
+   */
   async pause(): Promise<void> {
     if (this.runState === "paused" || this.runState === "pausing") return;
     this.o.state.update((s) => {
@@ -369,38 +417,36 @@ export class Scheduler {
     });
     this.runState = "pausing";
     this.rejectQueued(paused);
-    void this.idle().then(async () => {
-      if (this.runState !== "pausing") return; // resumed meanwhile
-      for (const slot of this.slots.values()) {
-        for (const l of [...slot.loaded.values()]) if (l.model.server === "llamacpp") await this.unload(slot, l).catch(() => {});
-      }
-      await this.o.backends.vllm.sleep().catch(() => {});
-      if (this.runState === "pausing") this.runState = "paused";
-      this.o.log("paused", {});
+    void this.serial(async () => {
+      await this.idle();
+      await this.unloadAll();
+      this.runState = "paused";
+      this.o.log("paused", { problems: this.problems.length });
     });
   }
 
   async resume(models: TextModel[]): Promise<void> {
-    if (this.runState === "running") return;
-    await this.idle();
-    this.o.state.update((s) => {
-      s.paused = false;
+    await this.serial(async () => {
+      if (this.runState === "running") return;
+      this.o.state.update((s) => {
+        s.paused = false;
+      });
+      this.problems = [];
+      this.runState = "running";
+      this.o.log("resumed", {});
     });
-    await this.o.backends.vllm.wake().catch(() => {});
-    this.runState = "running";
-    this.o.log("resumed", {});
     void this.loadPins(models);
   }
 
   async restart(models: TextModel[]): Promise<void> {
-    if (this.runState === "restarting") return;
-    const was = this.runState;
-    this.runState = "restarting";
-    this.rejectQueued(restarting);
-    await this.idle();
-    for (const slot of this.slots.values()) slot.loaded.clear();
-    await Promise.all([this.o.backends.llamacpp.reset(), this.o.backends.vllm.reset()]).catch(() => {});
-    this.runState = was === "running" ? "running" : "paused";
+    await this.serial(async () => {
+      const was = this.runState === "pausing" ? "paused" : this.runState;
+      this.runState = "restarting";
+      this.rejectQueued(restarting);
+      await this.idle();
+      await this.unloadAll();
+      this.runState = was === "running" ? "running" : "paused";
+    });
     if (this.runState === "running") await this.loadPins(models);
   }
 

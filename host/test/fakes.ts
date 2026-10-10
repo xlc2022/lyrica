@@ -98,6 +98,13 @@ export async function fakeLlamaRouter() {
     if (url.pathname === "/v1/chat/completions") {
       if (status.get(body.model) !== "loaded") return json(400, { error: { message: "model not loaded" } });
       const text = `echo: ${body.messages.at(-1).content}`;
+      // Error paths: a server error that repeats the prompt, and a stream cut off half way.
+      if (text.includes("FAIL")) return json(500, { error: { message: `failed on: ${text}` } });
+      if (text.includes("BREAK")) {
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`);
+        return void setTimeout(() => res.socket?.destroy(), 5);
+      }
       const usage = { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 };
       if (!body.stream) return json(200, { choices: [{ message: { role: "assistant", content: text } }], usage });
       res.writeHead(200, { "content-type": "text/event-stream" });

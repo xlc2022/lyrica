@@ -181,6 +181,8 @@ export class Host {
     }
 
     if (pathname === "/host/v1/status" && method === "GET") return sendJson(res, 200, await this.status());
+    // /v1 carries prompts: only a paired Lyrica server may use it.
+    if (pathname.startsWith("/v1/") && access !== "client") throw refused("Only a paired Lyrica server can use /v1.");
     if (this.runtime && (await this.runtime.route(req, res, pathname, method))) return;
     throw notFound();
   }
@@ -197,6 +199,7 @@ export class Host {
       fingerprint: this.identity.fingerprint,
       state: this.runtime?.scheduler.runState ?? (this.state.get().paused ? "paused" : "running"),
       gpus: (await this.runtime?.scheduler.status()) ?? [],
+      problems: this.runtime?.scheduler.problems ?? [],
       downloads: { active: 0 },
       modelsFolder: { path: this.opts.modelsHostPath, free },
     };
