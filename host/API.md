@@ -181,8 +181,9 @@ prompts, results or who asked.
 
 ## Downloads
 
-Fetching is done by the host's `fetch` service, the only part of the host
-with internet access.
+Fetching is done by the host's `fetch` service. It is the only part of
+the host that downloads, and nothing that sees prompts (host-api, the model
+servers) has a route out.
 
 - Sources: `huggingface`, `modelscope`, or `url` (https only).
 - A gated repository's token travels in the `X-Hub-Token` header of the

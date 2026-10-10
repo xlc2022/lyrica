@@ -1,21 +1,25 @@
 // Who may use the dashboard: anyone at the machine, or someone remote with the
 // password, from a page the host served itself (Host and Origin checks).
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
 import type { IncomingMessage } from "node:http";
 
 const N = 1 << 15;
 const SCRYPT = { N, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 
-export function hashPassword(password: string): string {
+// Off the event loop, so a sign-in never stalls /v1.
+const scrypt = promisify(scryptCallback) as (password: string, salt: Buffer, length: number, options: typeof SCRYPT) => Promise<Buffer>;
+
+export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
-  return `scrypt$${N}$${salt.toString("base64")}$${scryptSync(password, salt, 32, SCRYPT).toString("base64")}`;
+  return `scrypt$${N}$${salt.toString("base64")}$${(await scrypt(password, salt, 32, SCRYPT)).toString("base64")}`;
 }
 
-export function checkPassword(password: string, stored: string): boolean {
+export async function checkPassword(password: string, stored: string): Promise<boolean> {
   const [kind, n, salt, hash] = stored.split("$");
   if (kind !== "scrypt" || !salt || !hash) return false;
   const want = Buffer.from(hash, "base64");
-  const got = scryptSync(password, Buffer.from(salt, "base64"), want.length, { ...SCRYPT, N: Number(n) });
+  const got = await scrypt(password, Buffer.from(salt, "base64"), want.length, { ...SCRYPT, N: Number(n) });
   return timingSafeEqual(want, got);
 }
 
@@ -56,25 +60,36 @@ export class Sessions {
   }
 }
 
-/** Failed logins: 5 per address and 20 in all per 15 minutes. */
+/**
+ * Sign-in tries: 5 per address and 20 in all per 15 minutes. A try counts
+ * from the moment it starts, so tries sent in parallel can't get past the
+ * limit while their passwords are being checked.
+ */
 export class LoginLimit {
   static readonly WINDOW_MS = 15 * 60_000;
   private failures: { address: string; at: number }[] = [];
-
+  private inFlight: string[] = [];
   private readonly now: () => number;
 
   constructor(now: () => number = Date.now) {
     this.now = now;
   }
 
-  allowed(address: string): boolean {
+  /** Starts a try, or returns false when the limit is reached. */
+  begin(address: string): boolean {
     const since = this.now() - LoginLimit.WINDOW_MS;
     this.failures = this.failures.filter((f) => f.at > since);
-    return this.failures.length < 20 && this.failures.filter((f) => f.address === address).length < 5;
+    const all = this.failures.length + this.inFlight.length;
+    const mine = this.failures.filter((f) => f.address === address).length + this.inFlight.filter((a) => a === address).length;
+    if (all >= 20 || mine >= 5) return false;
+    this.inFlight.push(address);
+    return true;
   }
 
-  failed(address: string): void {
-    this.failures.push({ address, at: this.now() });
+  /** Ends a try; a wrong one counts for the next 15 minutes. */
+  end(address: string, ok: boolean): void {
+    this.inFlight.splice(this.inFlight.indexOf(address), 1);
+    if (!ok) this.failures.push({ address, at: this.now() });
   }
 }
 

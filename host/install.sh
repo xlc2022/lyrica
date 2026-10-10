@@ -34,6 +34,9 @@ ask() { # ask VAR "question" default
 env_value() { [[ -f .env ]] && sed -n "s/^$1=//p" .env | tail -n 1 || true; }
 NAME=$(env_value HOST_NAME)
 LAN=$(env_value LAN_ADDRESS)
+EDGE_SUBNET=$(env_value EDGE_SUBNET)
+HOST_API_IP=$(env_value HOST_API_IP)
+LAN_GIVEN=0
 MODELS=$(env_value MODELS_DIR)
 VENDOR=$(env_value GPU_VENDOR)
 TS_HOSTNAME=$(env_value TS_HOSTNAME)
@@ -45,7 +48,7 @@ YES=0 START=1 CHECK_GPU=1
 while [[ $# -gt 0 ]]; do
   case $1 in
     --name) NAME=$2; shift ;;
-    --lan) LAN=$2; WANT_LAN=1; shift ;;
+    --lan) LAN=$2; WANT_LAN=1; LAN_GIVEN=1; shift ;;
     --no-lan) WANT_LAN=0; LAN= ;;
     --models) MODELS=$2; shift ;;
     --vendor) VENDOR=$2; shift ;;
@@ -99,9 +102,19 @@ fi
 ask NAME "Host name" "$NAME"
 [[ $NAME =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || fail "the name must be lower-case letters, digits and dashes."
 
+# A private, ULA or CGNAT (tailnet) address: what "the LAN" can mean.
+private() {
+  [[ $1 =~ ^10\. || $1 =~ ^192\.168\. || $1 =~ ^172\.(1[6-9]|2[0-9]|3[01])\. || $1 =~ ^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\. || ${1,,} =~ ^f[cd][0-9a-f]{2}: ]]
+}
+
 if [[ $WANT_LAN == 1 ]]; then
-  [[ -n $LAN ]] || LAN=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')
+  if [[ -z $LAN ]]; then
+    LAN=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')
+    # Docker's published ports skip the firewall, so a guess must be private.
+    private "${LAN:-}" || LAN=
+  fi
   ask LAN "LAN address to publish host-api on" "${LAN:-}"
+  [[ $LAN_GIVEN == 1 || $YES == 0 ]] || private "$LAN" || fail "$LAN isn't a private address. Give it with --lan if you mean it."
   [[ -n $LAN && $LAN != 0.0.0.0 && $LAN != "::" ]] || fail "give a LAN address (--lan), never every interface."
   [[ $LAN =~ ^127\. ]] && fail "a loopback address isn't a LAN address. The dashboard is always on 127.0.0.1:7236."
   ip -o addr show 2>/dev/null | grep -qw "inet ${LAN}" || ip -o addr show 2>/dev/null | grep -q "inet6 ${LAN}/" ||
@@ -125,12 +138,27 @@ RENDER_GID=$(getent group render 2>/dev/null | cut -d: -f3 || true)
 [[ $WANT_LAN == 1 ]] && FILES+=:compose.lan.yaml
 [[ -n $TS_HOSTNAME ]] && FILES+=:compose.tailscale.yaml
 VERSION=$(git describe --always --dirty 2>/dev/null || echo dev)
+LAN_BIND=$LAN
+[[ $LAN == *:* ]] && LAN_BIND="[$LAN]"
+
+# host-api's own bridge, alone on it, at a fixed address the egress rules name.
+if [[ -z $EDGE_SUBNET ]]; then
+  for net in 172.31.236 10.236.236 192.168.236; do
+    ip route 2>/dev/null | grep -q "^$net\." && continue
+    EDGE_SUBNET=$net.0/29 HOST_API_IP=$net.2
+    break
+  done
+  [[ -n $EDGE_SUBNET ]] || fail "no free subnet for host-api's bridge; set EDGE_SUBNET and HOST_API_IP in host/.env."
+fi
 
 umask 077
 cat > .env <<EOF
 # Written by install.sh. Edit, then run install.sh again to apply.
 HOST_NAME=$NAME
 LAN_ADDRESS=$LAN
+LAN_BIND=$LAN_BIND
+EDGE_SUBNET=$EDGE_SUBNET
+HOST_API_IP=$HOST_API_IP
 MODELS_DIR=$MODELS
 GPU_VENDOR=$VENDOR
 RENDER_GID=${RENDER_GID:-}
@@ -142,18 +170,46 @@ EOF
 say "Wrote host/.env."
 [[ $START == 1 ]] || exit 0
 
+SUDO=()
+[[ $(id -u) == 0 ]] || SUDO=(sudo)
+
+# host-api may start no connection: apply the rules before it starts, and keep
+# them across reboots and Docker restarts with a systemd unit.
+command -v iptables >/dev/null || fail "iptables is needed to keep host-api without a route out."
+"${SUDO[@]}" ./egress.sh apply "$HOST_API_IP"
+if [[ -d /run/systemd/system ]]; then
+  sed "s#@HOST_DIR@#$PWD#g" lyrica-host-egress.service | "${SUDO[@]}" tee /etc/systemd/system/lyrica-host-egress.service >/dev/null
+  "${SUDO[@]}" systemctl daemon-reload
+  "${SUDO[@]}" systemctl enable --now lyrica-host-egress.service >/dev/null
+else
+  say "No systemd here: run host/egress.sh apply after every reboot or Docker restart."
+fi
+
 "${COMPOSE[@]}" build
 "${COMPOSE[@]}" up -d --remove-orphans
 
 # Once Tailscale has joined, the auth key isn't needed: drop it from .env.
 if [[ -n $TS_HOSTNAME && -n $TS_AUTHKEY ]]; then
+  JOINED=0
   for _ in $(seq 60); do
-    "${COMPOSE[@]}" exec -T tailscale tailscale status >/dev/null 2>&1 && break
+    if "${COMPOSE[@]}" exec -T tailscale tailscale status --json 2>/dev/null | grep -q '"BackendState": *"Running"'; then JOINED=1; break; fi
     sleep 2
   done
-  sed -i 's/^TS_AUTHKEY=.*/TS_AUTHKEY=/' .env
-  touch .tailscale-joined
+  if [[ $JOINED == 1 ]]; then
+    sed -i 's/^TS_AUTHKEY=.*/TS_AUTHKEY=/' .env
+    touch .tailscale-joined
+  else
+    say "Tailscale hasn't joined yet; the auth key stays in host/.env until it does. See: ${COMPOSE[*]} logs tailscale"
+  fi
 fi
+
+# Self-test: host-api must not reach anything outside, by address or by name.
+for target in "host:'1.1.1.1',port:443" "host:'example.com',port:443"; do
+  if "${COMPOSE[@]}" exec -T host-api node -e "require('net').connect({${target},timeout:5000}).on('connect',()=>process.exit(0)).on('error',()=>process.exit(1)).on('timeout',()=>process.exit(1))" 2>/dev/null; then
+    "${COMPOSE[@]}" stop host-api >/dev/null
+    fail "host-api could open a connection to the internet (${target}), so it was stopped. Check host/egress.sh's rules."
+  fi
+done
 
 for _ in $(seq 30); do
   ME=$(curl -fsS http://127.0.0.1:7236/dashboard/me 2>/dev/null) && break
