@@ -17,16 +17,22 @@ jobs:
         vendor: [nvidia, amd]
     steps:
       - uses: actions/checkout@v4
-      # The ROCm base image alone is about 12 GB compressed: free the root disk,
-      # and keep Docker's images on the runner's larger /mnt disk.
+      # The ROCm base image is about 12 GB compressed and over 30 GB unpacked.
+      # Free the runner's disk, and use Docker's classic overlay2 store, which
+      # drops each compressed layer once it is unpacked (the containerd store
+      # keeps both).
       - name: Make room
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost /opt/microsoft
+          sudo swapoff -a && sudo rm -f /mnt/swapfile /swapfile
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost /opt/microsoft \
+            /usr/local/.ghcup /usr/share/swift /usr/local/julia* /usr/lib/jvm /opt/az /usr/local/share/powershell /opt/google /usr/local/lib/node_modules \
+            /usr/share/miniconda /usr/local/share/chromium /opt/pipx
           sudo systemctl stop docker docker.socket
-          sudo mkdir -p /mnt/docker
-          echo '{"data-root": "/mnt/docker"}' | sudo tee /etc/docker/daemon.json
+          sudo rm -rf /var/lib/docker
+          echo '{"features": {"containerd-snapshotter": false}}' | sudo tee /etc/docker/daemon.json
           sudo systemctl start docker
-          df -h / /mnt
+          docker info --format '{{.Driver}}'
+          df -h /
       - name: Build
         run: |
           base=$(sed -n 's/^ *BASE: //p' host/compose.${{ matrix.vendor }}.yaml)
