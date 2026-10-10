@@ -87,6 +87,29 @@ subfolder, under `lyrica/<source>/<repository>/`.
   symlink on the way, unchanged since it was downloaded. A loaded model is
   unloaded first. Nothing else is ever deleted.
 
+## Image models
+
+Images are made by ComfyUI, from **recipes**: a diffusion model (or a
+checkpoint), its text encoders and VAE, any LoRAs, and default settings.
+Lyrica asks for an image by recipe, never by file or workflow; host-api
+fills the recipe's template in `workflows/` (one per architecture).
+- **Starters** (`recipes/`) are known-good recipes, with each part's
+  checksum. Install downloads only the parts that aren't here.
+- **Scanning** reads each safetensors header (tensor names only) to tell a
+  part's role, slot, architecture and precision, and proposes recipes from
+  matching parts. A proposal does nothing until it is confirmed. A file
+  whose architecture has no template stays a file.
+- Deleting a recipe deletes only parts the host downloaded, unchanged, that
+  no other recipe uses.
+- ComfyUI is our image (`comfyui/Dockerfile`, CUDA or ROCm), built from
+  pinned commits of ComfyUI, ComfyUI-GGUF and the SeedVR2 upscaler, with no
+  plugin manager. Only those nodes load. Their Python packages go into a
+  venv, each pinned with its hash in `comfyui/requirements.txt`
+  (`comfyui/lock.sh` remakes it); torch is the base image's. It has no route out, logs nothing,
+  keeps its input, output and temp folders in memory, saves no metadata,
+  and its history is cleared after every job. It uses one GPU,
+  `COMFY_GPU` in `.env`, and frees its memory after ten idle minutes.
+
 ## Pairing
 
 1. On the dashboard, choose **Pair with Lyrica**. A code like
@@ -117,7 +140,7 @@ revoked. A revoked server must pair again.
 - **Queues.** Requests wait in a queue per GPU: chat first, then images,
   then background work. A request that waits too long fails with "The GPU
   is busy with …".
-- **VRAM** use is measured on each model's first load and remembered.
+- **VRAM** use is measured on each model's first load (an image recipe's on its first job) and remembered.
 - **Pause** refuses new work, lets the current job finish, then unloads
   every model and stops vLLM, so nothing of the host's stays in VRAM. What
   couldn't be unloaded shows on the dashboard. Until Resume, new work gets

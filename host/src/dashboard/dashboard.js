@@ -34,7 +34,7 @@ async function refresh() {
 
   const status = await api("/host/v1/status");
   const states = { running: "Running", pausing: "Pausing: finishing the current job", paused: "Paused", restarting: "Restarting" };
-  $("status").textContent = `${states[status.state] ?? status.state}. Models folder ${status.modelsFolder.path}, ${gib(status.modelsFolder.free)} free.`;
+  $("status").textContent = `${states[status.state] ?? status.state}. Models folder ${status.modelsFolder.path}, ${gib(status.modelsFolder.free)} free (to change it, run host/install.sh --models /new/path on this machine).`;
   if (status.problems?.length) $("status").textContent += ` Problems: ${status.problems.join(" ")}`;
   $("pause").hidden = status.state !== "running";
   $("resume").hidden = status.state === "running" || status.state === "restarting";
@@ -42,6 +42,7 @@ async function refresh() {
   const { models } = await api("/host/v1/models");
   renderModels(models, status.gpus);
   await renderDownloads();
+  await renderRecipes();
   const usage = await api("/host/v1/usage");
   const table = $("usage");
   table.replaceChildren();
@@ -106,6 +107,35 @@ function renderModels(models, gpus) {
         ? button("Unpin", () => post("/host/v1/models/pin", { model: m.id, gpu: m.gpu ?? shared[0].index, pinned: false }))
         : button(`Pin on GPU ${m.gpu ?? shared[0].index}`, () => post("/host/v1/models/pin", { model: m.id, gpu: m.gpu ?? shared[0].index, pinned: true })));
     }
+  }
+}
+
+async function renderRecipes() {
+  const { recipes } = await api("/host/v1/recipes").catch(() => ({ recipes: [] }));
+  const table = $("recipes");
+  table.replaceChildren();
+  if (!recipes.length) table.insertRow().insertCell().textContent = "None yet: install a starter, or put image models in the models folder and scan.";
+  for (const r of recipes.filter((x) => x.state !== "ignored")) {
+    const row = table.insertRow();
+    row.insertCell().textContent = r.name;
+    const missing = r.parts.filter((p) => !p.file || p.missing).length;
+    row.insertCell().textContent = `${r.arch}, ${r.does.join(" and ")}${r.state === "proposed" ? ", proposed" : ""}${r.ready ? "" : missing ? `, ${missing} part${missing > 1 ? "s" : ""} missing` : ", not ready"}`;
+    const actions = row.insertCell();
+    if (r.state === "proposed") {
+      actions.append(button("Use", () => post(`/host/v1/recipes/${r.id}/confirm`)), " ", button("Ignore", () => post(`/host/v1/recipes/${r.id}/ignore`)));
+    }
+    if (missing) actions.append(" ", button("Download parts", () => post(`/host/v1/recipes/${r.id}/download-parts`)));
+    actions.append(" ", button("Delete", () => confirm(`Delete ${r.name}? Parts the host downloaded that no other recipe uses are deleted too.`) && api(`/host/v1/recipes/${r.id}`, { method: "DELETE" })));
+  }
+  const { starters } = await api("/host/v1/starters").catch(() => ({ starters: [] }));
+  const st = $("starters");
+  st.replaceChildren();
+  for (const s of starters) {
+    const row = st.insertRow();
+    row.insertCell().textContent = s.name;
+    const have = s.parts.filter((p) => p.present).length;
+    row.insertCell().textContent = `${have} of ${s.parts.length} parts here`;
+    row.insertCell().append(button("Install", () => post(`/host/v1/starters/${s.id}/install`)));
   }
 }
 

@@ -21,8 +21,9 @@ export interface Capabilities {
 export interface TextModel {
   /** Path relative to the models folder, with `/`. */
   id: string;
-  kind: "chat" | "embedding";
-  server: "llamacpp" | "vllm";
+  kind: "chat" | "embedding" | "image";
+  /** ComfyUI runs image recipes, which the scheduler places like models. */
+  server: "llamacpp" | "vllm" | "comfyui";
   format: "gguf" | "safetensors";
   size: number;
   identity: Identity;

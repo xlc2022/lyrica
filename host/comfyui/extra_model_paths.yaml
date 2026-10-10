@@ -1,0 +1,15 @@
+# Every model type is looked up in the whole models folder, so a recipe's
+# part names are their paths relative to it. SeedVR2 finds its files by name
+# in one folder, which host-api fills with links on the serving volume.
+lyrica:
+  base_path: /models
+  checkpoints: .
+  diffusion_models: .
+  unet: .
+  text_encoders: .
+  clip: .
+  vae: .
+  loras: .
+seedvr2:
+  base_path: /serving
+  seedvr2: seedvr2

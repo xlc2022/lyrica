@@ -52,7 +52,7 @@ interface Slot {
 
 export interface SchedulerOptions {
   monitor: GpuMonitor;
-  backends: { llamacpp: Backend; vllm: Backend };
+  backends: { llamacpp: Backend; vllm: Backend; comfyui?: Backend };
   state: StateFile;
   log: Logger;
   now?: () => number;
@@ -99,6 +99,10 @@ export class Scheduler {
   }
 
   private backend(model: TextModel): Backend {
+    if (model.server === "comfyui") {
+      if (!this.o.backends.comfyui) throw new HostError(503, "unavailable", "This host has no image server.");
+      return this.o.backends.comfyui;
+    }
     return model.server === "vllm" ? this.o.backends.vllm : this.o.backends.llamacpp;
   }
 
@@ -194,6 +198,7 @@ export class Scheduler {
     const kinds = [...slot.loaded.values()].filter((l) => l.active > 0 || !l.ready).map((l) => l.model.kind);
     if (kinds.includes("chat")) return "a chat model";
     if (kinds.includes("embedding")) return "an embedding model";
+    if (kinds.includes("image")) return "image generation";
     return "other work";
   }
 
@@ -476,6 +481,34 @@ export class Scheduler {
         queue,
       };
     });
+  }
+
+  /** Unloads models of a kind idle for longer than `ms` (ComfyUI keeps its parts in memory after a job). */
+  /**
+   * Measures a model whose server loads during the job (ComfyUI), from the
+   * memory used before it: `fn` runs the job, and the first run is measured.
+   */
+  async measuring<T>(model: TextModel, gpu: number, fn: () => Promise<T>): Promise<T> {
+    if (this.o.state.get().vram[model.id] !== undefined) return fn();
+    const before = (await this.gpu(gpu)).used;
+    const result = await fn();
+    const measured = (await this.gpu(gpu).catch(() => null))?.used ?? before;
+    const entry = this.slots.get(gpu)?.loaded.get(model.id);
+    if (measured > before) {
+      if (entry) entry.vram = measured - before;
+      this.o.state.update((s) => {
+        s.vram[model.id] = measured - before;
+      });
+    }
+    return result;
+  }
+
+  async unloadIdle(kind: TextModel["kind"], ms: number): Promise<void> {
+    for (const slot of this.slots.values()) {
+      for (const l of [...slot.loaded.values()]) {
+        if (l.model.kind === kind && l.ready && l.active === 0 && this.now() - l.lastUsed > ms) await this.unload(slot, l).catch(() => {});
+      }
+    }
   }
 
   /** Where a model is, for the library listing. */

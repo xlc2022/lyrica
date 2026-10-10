@@ -47,3 +47,30 @@ services:
       - serving:/serving:ro
       - ./vllm:/lyrica:ro
     tmpfs: [/tmp, /root/.cache]
+
+  # Ours, built from host/comfyui/Dockerfile. It uses one GPU: COMFY_GPU.
+  comfyui:
+    <<: *server
+    build:
+      context: ..
+      dockerfile: host/comfyui/Dockerfile
+      args:
+        BASE: pytorch/pytorch:2.14.0-cuda13.0-cudnn9-runtime@sha256:9c99fafa01edfaa3d16da8c209b38b5970bb6fd6e72725ef60efc901489f70c6
+    image: lyrica-host-comfyui:cuda
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      <<: *server-env
+      CUDA_VISIBLE_DEVICES: ${COMFY_GPU:-0}
+    volumes:
+      - ${MODELS_DIR}:/models:ro
+      - serving:/serving:ro
+    tmpfs: [/tmp]
+    init: true
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8188/system_stats', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 180s
+      retries: 3

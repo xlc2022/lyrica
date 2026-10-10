@@ -1,0 +1,79 @@
+{
+  "arch": "seedvr2",
+  "does": [
+    "upscale"
+  ],
+  "checkpoint": false,
+  "clipType": null,
+  "loaders": "template",
+  "parts": [
+    {
+      "role": "upscaler",
+      "arch": [
+        "seedvr2"
+      ]
+    },
+    {
+      "role": "vae",
+      "arch": [
+        "seedvr2"
+      ]
+    }
+  ],
+  "references": 0,
+  "mask": false,
+  "workflow": {
+    "load": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "$image"
+      }
+    },
+    "dit": {
+      "class_type": "SeedVR2LoadDiTModel",
+      "inputs": {
+        "model": "$upscalerName",
+        "device": "cuda:0"
+      }
+    },
+    "vae": {
+      "class_type": "SeedVR2LoadVAEModel",
+      "inputs": {
+        "model": "$vaeName",
+        "device": "cuda:0"
+      }
+    },
+    "upscale": {
+      "class_type": "SeedVR2VideoUpscaler",
+      "inputs": {
+        "image": [
+          "load",
+          0
+        ],
+        "dit": [
+          "dit",
+          0
+        ],
+        "vae": [
+          "vae",
+          0
+        ],
+        "seed": "$seed",
+        "resolution": "$resolution",
+        "max_resolution": "$maxSize",
+        "batch_size": 1,
+        "uniform_batch_size": false,
+        "color_correction": "$colorMatch"
+      }
+    },
+    "save": {
+      "class_type": "SaveImageWebsocket",
+      "inputs": {
+        "images": [
+          "upscale",
+          0
+        ]
+      }
+    }
+  }
+}

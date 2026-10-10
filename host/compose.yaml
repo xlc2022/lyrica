@@ -53,6 +53,7 @@ services:
       MODELS_HOST_PATH: ${MODELS_DIR:?run install.sh}
       HOST_VERSION: ${HOST_VERSION:-dev}
       GPU_VENDOR: ${GPU_VENDOR:-none}
+      COMFY_GPU: ${COMFY_GPU:-0}
     volumes:
       - data:/data
       - serving:/serving
