@@ -34,6 +34,12 @@ CREATE TABLE IF NOT EXISTS offerings (
   created_at    TEXT NOT NULL,
   UNIQUE (endpoint, model)
 );
+-- "How it answers" per offering (JSON). In self.db, a shared offering's values;
+-- in user.db, the user's own: for their offerings, or over a shared one's.
+CREATE TABLE IF NOT EXISTS offering_settings (
+  offering TEXT PRIMARY KEY,
+  settings TEXT NOT NULL
+);
 -- Offerings declared the same model, in preferred order (members: a JSON list of offering IDs).
 CREATE TABLE IF NOT EXISTS model_groups (
   id         TEXT PRIMARY KEY,

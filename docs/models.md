@@ -244,6 +244,36 @@ can't think. Pi passes it as `reasoning_effort` to OpenAI-compatible
 endpoints. Subagent roles keep their own level. Thinking text is stored with
 the thread but never made searchable.
 
+## How it answers
+
+Each offering can have saved settings: temperature, top-p, top-k, min-p,
+repeat, presence and frequency penalties, the longest reply, a seed and up
+to four stop strings (`core/src/models/settings.ts`).
+
+- A shared offering's values live in `self.db` and only an administrator
+  sets them (`setOfferingSettings(…, "shared")`). A user's own values live in
+  their `user.db` (`offering_settings`): for their own offerings, or over a
+  shared one's, for them alone.
+- `offeringSettings(userId, offeringId)` gives the values that apply to that
+  user, each with its source (shared or yours; anything absent is the
+  server's default), and the context window with its source (by hand or
+  discovered). Compaction and group fitting use that context window.
+- Every request to the offering carries the values that are set, added to
+  Pi's request payload; unset values are never sent. The repeat penalty is
+  `repeat_penalty` for plain local servers (llama.cpp) and
+  `repetition_penalty` for model hosts and cloud endpoints.
+- Only what the endpoint's API takes is sent: everything for local servers,
+  hosts and OpenRouter; OpenAI's set (temperature, top-p, presence and
+  frequency penalties, longest reply, seed, stop) for other cloud endpoints.
+  `offeringSettings` lists the saved values that aren't sent (`dropped`).
+  The longest reply is never more than the room Pi leaves in the context
+  window.
+- Settings follow redirects: a replacement, merge or Reset IDs moves them to
+  the new ID (shared values at once, each user's when their lists are
+  rewritten); a removed model's go.
+- Values are checked (ranges, whole numbers; no stop strings clears them).
+  Settings of offerings that no longer exist are pruned nightly.
+
 ## The Pi runtime
 
 `modelRuntimeFor(models, ctx)` builds a Pi `ModelRuntime` with exactly the
