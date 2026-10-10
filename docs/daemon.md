@@ -127,9 +127,10 @@ Each active thread is one Pi session from `openThreadSession`, with
   the step, save what matters and compact with a summary, then to compact
   now. They follow Pi's edge (100% − reserve): "compact now" 2 points before
   it, the first line 15 before that, at most 90% and 75%. From 32k up that is
-  75% and 90%; on 8k, 70.5% and 85.5%. The `compact` tool's guidelines say once what the line means.
-- **Compacting herself.** The `compact` tool takes her summary. It's its own
-  tool until the Child threads `threads` tool takes it as an action.
+  75% and 90%; on 8k, 70.5% and 85.5%. The `threads` tool's guidelines say once what the line means.
+- **Compacting herself.** `threads({ action: "compact", summary })` takes her
+  summary. Every hosted thread but a subagent's has the tool, a child thread
+  too.
   - A summary too long for Pi's reserve is refused with the limit. A short one
     (under 400 characters) becomes the notes for Pi's own summary.
   - The compaction runs when the turn ends, since Pi's `compact()` would stop

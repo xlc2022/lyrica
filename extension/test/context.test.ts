@@ -41,7 +41,7 @@ describe("her context lines", () => {
     expect(statusLine(measured(21_000).report()!)).toBe("Context 64% of 32k · 9.1k free · 38 tok/s · 2.1k tok/s prompt");
     const line = (pct: number) => prepareLine(measured(Math.round((pct / 100) * 32_768)).report()!);
     expect(line(74)).toBeUndefined();
-    expect(line(75)).toMatch(/^Your context is filling up\. Finish the current step, save what matters with remember, then call compact with a summary/);
+    expect(line(75)).toMatch(/^Your context is filling up\. Finish the current step, save what matters with remember, then call threads with action "compact" and a summary/);
     expect(line(89)).toMatch(/filling up/);
     expect(line(90)).toMatch(/^Your context is nearly full\. Compact now/);
     expect(contextLines(measured(10_000))).not.toMatch(/\n/);

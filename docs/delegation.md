@@ -264,6 +264,8 @@ checks it reaches her, and with a real model which she picks. Code:
   its stored thread, without starting a turn there.
 - `list`: the children, with status (working, waiting for approval, idle)
   and last update.
+- `compact({ summary })`: compacts the thread she's in with her summary
+  (daemon.md, "Compacting herself"). Child threads have it too.
 
 A subagent's thread never gets the tool. In a child thread it only messages the parent, and her prompt says it
 is a child thread and to post updates at milestones and when done, not after
