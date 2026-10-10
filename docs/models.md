@@ -262,8 +262,17 @@ to four stop strings (`core/src/models/settings.ts`).
   Pi's request payload; unset values are never sent. The repeat penalty is
   `repeat_penalty` for plain local servers (llama.cpp) and
   `repetition_penalty` for model hosts and cloud endpoints.
-- Values are checked (ranges, whole numbers). Settings of offerings that no
-  longer exist are pruned nightly.
+- Only what the endpoint's API takes is sent: everything for local servers,
+  hosts and OpenRouter; OpenAI's set (temperature, top-p, presence and
+  frequency penalties, longest reply, seed, stop) for other cloud endpoints.
+  `offeringSettings` lists the saved values that aren't sent (`dropped`).
+  The longest reply is never more than the room Pi leaves in the context
+  window.
+- Settings follow redirects: a replacement, merge or Reset IDs moves them to
+  the new ID (shared values at once, each user's when their lists are
+  rewritten); a removed model's go.
+- Values are checked (ranges, whole numbers; no stop strings clears them).
+  Settings of offerings that no longer exist are pruned nightly.
 
 ## The Pi runtime
 

@@ -259,6 +259,31 @@ describe("how a model answers", () => {
   });
 });
 
+describe("each model's own settings", () => {
+  it("sends the fallback model its own values, and a cloud API only what it takes", async () => {
+    const s = await setup();
+    const off = s.models.addEndpoint(s.li, { name: "off", kind: "local", baseUrl: await deadUrl() });
+    const first = s.models.addModel(s.li, off.id, { modelId: "qwen3.8-27b" });
+    s.models.setOfferingSettings(s.li, first.id, { temperature: 1.5 });
+    s.models.setOfferingSettings(s.li, s.localRef.offeringId, { temperature: 0.3 });
+    s.models.setProfile(s.li.id, "local", "chat", [{ offeringId: first.id }, s.localRef]);
+    s.models.setOfferingSettings(s.li, s.cloudRef.offeringId, { temperature: 0.9, topK: 20 });
+    for (const t of [s.thread("private"), s.thread("general")]) {
+      const { session, prepare, dispose } = await s.open(t);
+      try {
+        await prepare();
+        await session.prompt("hello");
+      } finally {
+        dispose();
+      }
+    }
+    expect((s.local.requests[0] as unknown as Record<string, unknown>).temperature).toBe(0.3);
+    const cloud = s.cloud.requests[0] as unknown as Record<string, unknown>;
+    expect(cloud.temperature).toBe(0.9);
+    expect(cloud.top_k).toBeUndefined();
+  });
+});
+
 describe("thinking on a host", () => {
   it("sends reasoning_effort to a host model with levels, and the chat-template switch only for one with an on/off switch", async () => {
     const s = await setup();

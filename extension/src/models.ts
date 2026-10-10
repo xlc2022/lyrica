@@ -1,7 +1,7 @@
 import { InMemoryCredentialStore, type Api, type Model } from "@earendil-works/pi-ai";
 import { ModelRuntime, type ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import { CloudModelForbidden, isRestricted, payloadFields, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
+import { acceptedSettings, CloudModelForbidden, isRestricted, payloadFields, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
 
 const FREE = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const DEFAULT_CONTEXT = 32_768;
@@ -59,7 +59,7 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
         const repetition = found.endpoint.kind === "local" && found.endpoint.api !== "host" ? "repeat_penalty" : "repetition_penalty";
         prepared.options.onPayload = async (payload, m) => {
           const params = ((await before?.(payload, m)) ?? payload) as Record<string, unknown>;
-          return { ...params, ...payloadFields(values, repetition, params) };
+          return { ...params, ...payloadFields(values, repetition, params, acceptedSettings(found.endpoint)) };
         };
       }
     }

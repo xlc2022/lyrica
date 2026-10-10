@@ -7,13 +7,13 @@ import { Forbidden, type User, type Users } from "../users.ts";
 import { addressesOutside, discoverModels, probeUrl, type DiscoveredModel } from "./http.ts";
 import { hostError, hostFetch, HostRefused, hostOrigin, lyricaIdentity, pair } from "./host.ts";
 import { baseName } from "./identity.ts";
-import { ANSWER_SETTINGS, checkSettings, type AnswerSettings, type SettingSource } from "./settings.ts";
-import { collectRefs, isList, mapMembers, refId, rewrite, type Entry, type ProfileName, type Use } from "./refs.ts";
+import { acceptedSettings, ANSWER_SETTINGS, checkSettings, type AnswerSettings, type SettingSource } from "./settings.ts";
+import { collectRefs, isList, mapMembers, moveSettings, refId, rewrite, type Entry, type ProfileName, type Use } from "./refs.ts";
 import { ENDPOINT_SCHEMA, migrate, MODEL_CHOICE_SCHEMA, REDIRECT_SCHEMA } from "./schema.ts";
 
 export { addressesOutside, discoverModels, probeUrl, type DiscoveredModel } from "./http.ts";
 export { baseName } from "./identity.ts";
-export { ANSWER_SETTINGS, payloadFields, type AnswerSettings, type SettingSource } from "./settings.ts";
+export { acceptedSettings, ANSWER_SETTINGS, payloadFields, type AnswerSettings, type SettingSource } from "./settings.ts";
 export { fingerprint, HostIdentityChanged, HostRefused, hostOrigin, normaliseCode, PairingFailed, pairingProofs } from "./host.ts";
 export { refId, type Entry, type ProfileName, type Use } from "./refs.ts";
 
@@ -432,6 +432,8 @@ export class Models {
    */
   offeringSettings(userId: string, offeringId: string): {
     values: AnswerSettings; sources: Partial<Record<keyof AnswerSettings, SettingSource>>;
+    /** Saved values this endpoint's API doesn't take, so they aren't sent. */
+    dropped: (keyof AnswerSettings)[];
     contextWindow?: { value: number; source: "hand" | "discovered" };
   } {
     const o = this.offering(userId, offeringId);
@@ -449,8 +451,9 @@ export class Models {
       : this.withUser(userId, (u) => u.prepare("SELECT found, hand FROM offerings WHERE id = ?").get(offeringId))) as { found: string; hand: string };
     const hand = JSON.parse(raw.hand).contextWindow as number | undefined;
     const found = JSON.parse(raw.found).contextWindow as number | undefined;
+    const accepted = acceptedSettings(o.endpoint);
     return {
-      values, sources,
+      values, sources, dropped: ANSWER_SETTINGS.filter((k) => values[k] !== undefined && !accepted.includes(k)),
       ...(hand ? { contextWindow: { value: hand, source: "hand" as const } } : found ? { contextWindow: { value: found, source: "discovered" as const } } : {}),
     };
   }
@@ -841,12 +844,13 @@ export class Models {
     const self = this.self();
     const gone = (db: Db) => (db.prepare("SELECT * FROM offerings WHERE missing_since IS NOT NULL").all() as OfferingRow[]).filter((r) => toOffering(r, now).status === "gone");
     const allIndexed = this.users.all().every((u) => self.prepare("SELECT 1 FROM shared_refs_indexed WHERE user = ?").get(u.id));
-    self.prepare("DELETE FROM offering_settings WHERE offering NOT IN (SELECT id FROM offerings)").run();
-    const sharedIds = new Set((self.prepare("SELECT id FROM offerings").all() as { id: string }[]).map((r) => r.id));
     if (allIndexed) {
       const inGroups = collectRefs(self);
       for (const r of gone(self)) if (!inGroups.has(r.id) && !self.prepare("SELECT 1 FROM shared_refs WHERE ref = ?").get(r.id)) self.prepare("DELETE FROM offerings WHERE id = ?").run(r.id);
     }
+    // After the shared models are pruned, so their settings, and users' layers over them, go the same night.
+    self.prepare("DELETE FROM offering_settings WHERE offering NOT IN (SELECT id FROM offerings)").run();
+    const sharedIds = new Set((self.prepare("SELECT id FROM offerings").all() as { id: string }[]).map((r) => r.id));
     for (const u of this.users.all()) {
       if (!this.keyring.hasUserKey(u.id)) continue;
       this.withUser(u.id, (db) => {
@@ -1450,6 +1454,7 @@ export class Models {
         }
         change(self);
         const map = new Map(list);
+        moveSettings(self, map);
         for (const g of self.prepare("SELECT id, members FROM model_groups").all() as { id: string; members: string }[]) {
           const next = mapMembers(JSON.parse(g.members), map);
           if (next) self.prepare("UPDATE model_groups SET members = ? WHERE id = ?").run(JSON.stringify(next), g.id);
