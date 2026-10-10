@@ -67,6 +67,10 @@ describe("ordered fallbacks", () => {
     // A group in a one-kind list needs a copy of that kind.
     const cloudGroup = s.models.addGroup(s.li, { name: "cloud qwen", members: [s.router2.ref.offeringId] });
     expect(() => s.models.setThreadModel(s.li.id, "general", "web/t", "chat", [s.blackwell.ref, { groupId: cloudGroup.id }])).toThrow(/no local copy/);
+    // A list of groups only: two groups of opposite kinds don't make a one-kind list.
+    const localGroup = s.models.addGroup(s.li, { name: "local qwen", members: [s.blackwell.ref.offeringId] });
+    expect(() => s.models.setThreadModel(s.li.id, "general", "web/t", "chat", [{ groupId: localGroup.id }, { groupId: cloudGroup.id }])).toThrow(/no kind in common/);
+    s.models.setThreadModel(s.li.id, "general", "web/t", "chat", [{ groupId: localGroup.id }]);
     s.models.setThreadModel(s.li.id, "general", "web/t", "chat", [s.blackwell.ref, s.spare.ref]);
     expect(s.models.resolveModel("chat", s.models.callContext(s.li.id, "general", "web/t"))).toEqual(s.spare.ref);
   });

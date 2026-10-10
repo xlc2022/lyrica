@@ -38,9 +38,10 @@ type Client = (id: string, event: ThreadEvent) => void;
 type Outcome = "answered" | "timeout" | "stopped";
 
 /** Errors that mean the endpoint couldn't be reached, rather than that it refused the request. */
-const UNREACHABLE = /ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|fetch failed|socket hang up|connect/i;
+// "terminated" is a reply cut off mid-stream when its connection dropped.
+const UNREACHABLE = /ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|fetch failed|socket hang up|connect|^terminated$|other side closed/i;
 
-interface Opened { session: AgentSession; view: PoolView; dispose(): void; title(): Promise<string | undefined>; prepare(): Promise<unknown> }
+interface Opened { session: AgentSession; view: PoolView; dispose(): void; title(): Promise<string | undefined>; prepare(opts?: { retry?: boolean }): Promise<unknown> }
 
 /** The threads lyricad hosts, keyed by user, pool and thread. A record is light; its Pi session opens on first use. */
 export class ThreadHost {
@@ -129,6 +130,8 @@ export class ThreadHost {
  */
 export class HostedThread {
   private opened: Opened | undefined;
+  /** A retry's re-resolution, still running, which the next turn waits for. */
+  private retrying: Promise<unknown> | undefined;
   private opening: Promise<Opened> | undefined;
   private readonly buffer: { n: number; event: ThreadEvent }[] = [];
   private n = 0;
@@ -206,6 +209,7 @@ export class HostedThread {
     try {
       for (let next: string | undefined = text; next !== undefined && !this.closed;) {
         const opened = await this.open();
+        await this.retrying;
         await opened.prepare();
         this.emit({ type: "turn_start" });
         await opened.session.prompt(next);
@@ -330,7 +334,7 @@ export class HostedThread {
         const text = reply.content.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join("").trim();
         return text.replace(/^["'“]+|["'”.]+$/g, "").split("\n")[0]!.slice(0, 80) || undefined;
       };
-      return { session, view, title, prepare: () => prepare(), dispose: () => { unsubscribe(); dispose(); view.close(); } };
+      return { session, view, title, prepare: (opts?: { retry?: boolean }) => prepare(opts), dispose: () => { unsubscribe(); dispose(); view.close(); } };
     } catch (err) {
       view.close();
       throw err;
@@ -377,9 +381,10 @@ export class HostedThread {
       }
       case "auto_retry_start": {
         // Pi is about to retry a model whose machine couldn't be reached: send the retry to the next model in the list instead.
+        // Pi doesn't wait for listeners, but pauses two seconds before retrying; prepare probes for at most one, so it's done first.
         if (UNREACHABLE.test(e.errorMessage) && this.opened) {
           this.o.models.reportDown(this.opened.session.model?.provider ?? "");
-          void this.opened.prepare().catch(() => {});
+          this.retrying = this.opened.prepare({ retry: true }).catch(() => {});
         }
         break;
       }

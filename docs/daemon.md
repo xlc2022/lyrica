@@ -102,8 +102,9 @@ Each active thread is one Pi session from `openThreadSession`, with
 - Before each turn the chat model is chosen again (`prepare`,
   [models.md](models.md)): a machine that is away is passed over for the next
   model in the list, the thinking level is set, and the call is recorded. A
-  connection error marks that endpoint down, and Pi's retry goes to the next
-  model in the list.
+  connection error, or a reply cut off mid-stream, marks that endpoint down,
+  and Pi's retry goes to the next model in the list. The next turn waits for
+  that choice to finish.
 - Changing a thread's models or local-only switch reopens its session after
   the current turn. Workspace settings are read on every tool call, so they
   apply at once.

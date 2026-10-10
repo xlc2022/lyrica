@@ -1468,13 +1468,13 @@ export class Models {
    * known lately, when there is a later model to fall back to, so a machine
    * that is off is passed over before the call rather than after.
    */
-  async resolveLive(task: Task, ctx: CallContext, need: Need = {}): Promise<Resolution> {
+  async resolveLive(task: Task, ctx: CallContext, need: Need = {}, opts: { probeMs?: number } = {}): Promise<Resolution> {
     for (;;) {
       const r = this.resolve(task, ctx, need);
       const h = this.health.get(r.endpoint.id);
       if (!r.remaining || (h && Date.now() - h.at < HEALTH_MS)) return r;
       // Only whether it answers, never the address check: a slow resolver mustn't hold up a turn.
-      const state = await (r.endpoint.api === "host" ? this.hostUp(r.endpoint, PROBE_MS) : probeUrl(r.endpoint.baseUrl, r.endpoint.apiKey, PROBE_MS)).catch(() => "down" as const);
+      const state = await (r.endpoint.api === "host" ? this.hostUp(r.endpoint, opts.probeMs ?? PROBE_MS) : probeUrl(r.endpoint.baseUrl, r.endpoint.apiKey, opts.probeMs ?? PROBE_MS)).catch(() => "down" as const);
       this.seen(r.endpoint, state === "up", ctx.userId);
       if (state === "down") this.reportDown(r.endpoint.id);
       if (state === "up") return r;
@@ -1494,13 +1494,25 @@ export class Models {
     return { level, note: `${r.label} doesn't think at ${asked}, so it thought at ${level}` };
   }
 
-  /** Records which model answered a call. Never any of the conversation's text. */
-  recordCall(userId: string, call: { pool: Pool; threadId: string; task: Task; resolution: Resolution; note?: string }): void {
+  /**
+   * Records which model answered a call. Never any of the conversation's
+   * text. A retry within the turn (`retry`) rewrites that turn's record, so
+   * a turn is one call.
+   */
+  recordCall(userId: string, call: { pool: Pool; threadId: string; task: Task; resolution: Resolution; note?: string }, opts: { retry?: boolean } = {}): void {
     const r = call.resolution;
     const first = r.skipped[0];
     const fallback = first && `${first.label} was skipped (${first.reason.replace(/^it /, "")}), so ${r.label} answered${r.endpoint.kind === "cloud" && r.profile === "custom" ? ", a cloud model" : ""}`;
-    this.withUser(userId, (db) => db.prepare("INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, fallback, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(new Date().toISOString(), call.pool, call.threadId, call.task, r.offering.id, r.label, r.endpoint.name, r.endpoint.kind, fallback ?? null, call.note ?? null));
+    this.withUser(userId, (db) => {
+      const last = opts.retry ? (db.prepare("SELECT max(id) AS id FROM model_calls WHERE thread = ? AND task = ?").get(call.threadId, call.task) as { id: number | null }).id : null;
+      if (last !== null) {
+        db.prepare("UPDATE model_calls SET offering = ?, label = ?, endpoint = ?, kind = ?, fallback = ?, note = ? WHERE id = ?")
+          .run(r.offering.id, r.label, r.endpoint.name, r.endpoint.kind, fallback ?? null, call.note ?? null, last);
+        return;
+      }
+      db.prepare("INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, fallback, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(new Date().toISOString(), call.pool, call.threadId, call.task, r.offering.id, r.label, r.endpoint.name, r.endpoint.kind, fallback ?? null, call.note ?? null);
+    });
   }
 
   /** The user's recent calls, newest first. With a thread, that thread's only. */
@@ -1590,13 +1602,14 @@ export class Models {
       }
     }
     if (opts.kind === "single" && kinds.size > 1) throw new Error("a list here can't mix local and cloud models; only the custom profile can");
-    // A group in a one-kind list needs a copy of that kind.
-    const [only] = kinds;
-    if (opts.kind === "single" && only) {
-      for (const r of out) {
-        if (!("groupId" in r)) continue;
-        const g = c.groups.get(r.groupId)!;
-        if (!g.members.some((m) => c.endpoints.get(c.offerings.get(m)?.endpointId ?? "")?.kind === only)) throw new Error(`the group ${g.name} has no ${only} copy, and a list here can't mix local and cloud models`);
+    // A one-kind list needs one kind every entry has: each group a copy of it, even a list made only of groups.
+    if (opts.kind === "single") {
+      const groups = out.filter((r): r is { groupId: string } => "groupId" in r).map((r) => c.groups.get(r.groupId)!);
+      const has = (g: Group, k: string) => g.members.some((m) => c.endpoints.get(c.offerings.get(m)?.endpointId ?? "")?.kind === k);
+      const candidates = kinds.size ? [...kinds] : ["local", "cloud"];
+      if (groups.length && !candidates.some((k) => groups.every((g) => has(g, k)))) {
+        const g = groups.find((x) => !has(x, candidates[0]!))!;
+        throw new Error(kinds.size ? `the group ${g.name} has no ${candidates[0]} copy, and a list here can't mix local and cloud models` : "these groups have no kind in common, and a list here can't mix local and cloud models");
       }
     }
     return out;

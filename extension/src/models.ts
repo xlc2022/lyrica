@@ -101,12 +101,14 @@ export function piModelFor(runtime: ModelRuntime, models: Models, task: Task, ct
  */
 export async function prepareTurn(o: {
   session: AgentSession; runtime: ModelRuntime; models: Models; call: CallContext; pool: Pool; threadId: string; task?: Task; thinking?: boolean;
+  /** Pi is retrying within the turn: probe for at most a second (its pause before the retry is two), and rewrite the turn's call record. */
+  retry?: boolean;
 }): Promise<Resolution> {
   const task = o.task ?? "chat";
   const tokens = o.session.getContextUsage()?.tokens ?? undefined;
   // Tools are asked for only when the thread has them, so a model without tools can still chat.
   const tools = o.session.getActiveToolNames().length > 0;
-  const r = await o.models.resolveLive(task, o.call, { ...(tools ? { tools } : {}), ...(tokens ? { tokens } : {}) });
+  const r = await o.models.resolveLive(task, o.call, { ...(tools ? { tools } : {}), ...(tokens ? { tokens } : {}) }, o.retry ? { probeMs: 1000 } : {});
   const { model } = piModelFor(o.runtime, o.models, task, o.call, r);
   const current = o.session.model;
   if (!current || current.provider !== model.provider || current.id !== model.id) await o.session.setModel(model);
@@ -116,6 +118,6 @@ export async function prepareTurn(o: {
     o.session.setThinkingLevel(t.level);
     note = t.note;
   }
-  o.models.recordCall(o.call.userId, { pool: o.pool, threadId: o.threadId, task, resolution: r, ...(note ? { note } : {}) });
+  o.models.recordCall(o.call.userId, { pool: o.pool, threadId: o.threadId, task, resolution: r, ...(note ? { note } : {}) }, { retry: !!o.retry });
   return r;
 }
