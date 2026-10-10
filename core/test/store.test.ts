@@ -340,7 +340,7 @@ describe("threads", () => {
     own.putPage({ slug: "boat", title: "Boat", summary: "x", text: `Blue [${kept}].` }, "sleep");
 
     expect(own.subagentsSince(t.id, 3)).toEqual([later.id]);
-    expect(own.truncateThread(t.id, 3, "lyrica")).toEqual({ removed: 2, subagents: [later.id] });
+    expect(own.truncateThread(t.id, 3, "lyrica")).toEqual({ removed: 2, pins: 0, subagents: [later.id] });
     expect(own.loadEntries(t.id)).toHaveLength(2);
     expect(own.get(removed!)).toBeUndefined();
     expect(own.isTombstoned(gone)).toBe(true);
