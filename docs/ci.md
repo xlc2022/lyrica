@@ -15,8 +15,18 @@ minutes on a private repository are billed past the plan's allowance.
 - The jobs install their own packages with sudo, so the VM is theirs to
   change. It holds nothing else: never the lyricad machine (Li's memory) or
   the model host (the host-stack job installs its own model host stack).
+- The host-stack job removes what it installed (the stack and its volumes,
+  the egress unit and rules, Docker's daemon.json) when it ends.
 - One runner runs one job at a time. A weekly cron job clears Docker images
   and build cache unused for a week.
+
+## Where it sits on the network
+
+Every job, and every package a job installs, runs as root on the VM, and the
+machines beside it hold Li's memory and the model host. So the VM's own
+firewall rules (Proxmox's, for that VM) let it reach the internet and nothing
+else: outbound to 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 and the tailnet's
+100.64.0.0/10 is denied, except the gateway. It never joins the tailnet.
 
 ## Who can run code on it
 

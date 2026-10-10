@@ -51,7 +51,16 @@ jobs:
       - if: failure()
         run: docker compose logs
         working-directory: host
-      # The runner is kept between jobs: don't leave the stack running.
+      # The runner is kept between jobs: leave nothing for the next run, not
+      # the stack and its volumes, the egress unit and rules, or the Docker
+      # setting from the first step (setup.sh leaves no daemon.json).
       - if: always()
-        run: docker compose down --remove-orphans || true
         working-directory: host
+        run: |
+          docker compose down -v --remove-orphans || true
+          sudo systemctl disable --now lyrica-host-egress.service || true
+          sudo rm -f /etc/systemd/system/lyrica-host-egress.service
+          sudo systemctl daemon-reload
+          sudo ./egress.sh remove || true
+          sudo rm -f /etc/docker/daemon.json
+          sudo systemctl restart docker

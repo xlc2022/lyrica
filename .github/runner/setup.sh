@@ -2,7 +2,9 @@
 # Makes this machine Lyrica's CI runner: a GitHub Actions self-hosted runner
 # labelled lyrica-ci, running as a systemd service (see docs/ci.md).
 #
-# Run it as root on a fresh Ubuntu 24.04 VM that holds nothing else:
+# Run it as root on a fresh Ubuntu 24.04 VM that holds nothing else, and
+# whose firewall lets it reach the internet but nothing on the LAN or the
+# tailnet (see docs/ci.md):
 #   sudo bash setup.sh TOKEN
 # TOKEN is the one shown on
 # https://github.com/xlc2022/lyrica/settings/actions/runners/new (valid for an
