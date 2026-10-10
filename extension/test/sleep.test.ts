@@ -274,7 +274,9 @@ describe("a night's sleep", () => {
     const sam = await s.users.createUser("sam", "pw2", profile("Sam"), { admin: false });
     await s.users.authenticate("sam", "pw2");
     const gpu = s.models.addEndpoint(sam, { name: "gpu", kind: "local", baseUrl: s.local.baseUrl });
-    s.models.setProfile(sam.id, "cloud", "chat", { offeringId: (await s.models.discover(sam, gpu.id))[0]!.id });
+    s.models.setProfile(sam.id, "local", "chat", { offeringId: (await s.models.discover(sam, gpu.id))[0]!.id });
+    s.models.setProfile(sam.id, "custom", "chat", s.models.profile(sam.id, "local").chat!);
+    s.models.setDefaultProfile(sam.id, "custom");
     const v = s.view("general", sam.id);
     s.talk(v, "Tell me about friendship.", "{user} asked about friendship");
     s.script({ dream: [call("propose_persona", { path: "persona_topics/friends.md", text: "Friends are chosen family.", reason: "a dream about Sam" })] });

@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { AgentSession, ExtensionFactory, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
-  DelegationStore, isRestricted, LIVE_STATUSES,
+  DelegationStore, isRestricted, LIVE_STATUSES, refId,
   type CouncilSpec, type Grant, type LoopSpec, type Memory, type ModelRef, type Models, type Pool, type PoolStore, type Role,
   type Step, type SubagentRecord, type SubagentStatus, type Tier, type Usage, type Users, type Workflow, type WorkflowSpec, type Workspace,
 } from "@lyrica/core";
@@ -543,8 +543,8 @@ export class Delegation {
   private async council(run: Run, spec: CouncilSpec, narrowing: Narrowing): Promise<string> {
     const userId = run.parent.user.id;
     const refs = spec.models?.length ? spec.models.map((m) => this.named(userId, m)) : this.councilModels(run);
-    const label = (ref: ModelRef) => this.o.models.label(userId, ref.offeringId) ?? ref.offeringId;
-    const answers = await Promise.allSettled(refs.map((ref) => this.single(run, { task: spec.question, role: "oracle", model: ref.offeringId }, narrowing)));
+    const label = (ref: ModelRef) => this.o.models.label(userId, refId(ref)) ?? refId(ref);
+    const answers = await Promise.allSettled(refs.map((ref) => this.single(run, { task: spec.question, role: "oracle", model: refId(ref) }, narrowing)));
     if (run.abort.signal.aborted) throw stopped(run.abort.signal);
     const got = answers.map((a, i) => ({ model: label(refs[i]!), text: a.status === "fulfilled" ? a.value : undefined })).filter((a) => a.text !== undefined);
     if (!got.length) throw new Error(`no member of the council answered: ${(answers.find((a) => a.status === "rejected") as PromiseRejectedResult).reason.message}`);
@@ -567,7 +567,7 @@ export class Delegation {
   private councilModels(run: Run): ModelRef[] {
     const { models } = this.o;
     const call = this.parentCall(run);
-    const picks: ModelRef[] = [];
+    const picks: { offeringId: string }[] = [];
     for (const task of ["subagent.strong", "subagent.cheap", "chat"] as const) {
       try { picks.push(models.resolveModel(task, call)); } catch { /* not set */ }
     }
@@ -612,7 +612,7 @@ export class Delegation {
     const pick: ModelPick = step.model ? { model: this.named(parent.user.id, step.model) } : { tier: step.tier ?? role.tier };
     // Refuse a model before anything is written.
     if ("tier" in pick) models.resolveModel(`subagent.${pick.tier}`, parentCall);
-    else if (!models.allowed(parentCall).some((a) => a.offerings.some((m) => m.id === pick.model.offeringId))) {
+    else if ("offeringId" in pick.model && !models.allowed(parentCall).some((a) => a.offerings.some((m) => "offeringId" in pick.model && m.id === pick.model.offeringId))) {
       throw new Error(`${step.model} isn't one of this thread's models`);
     }
     if (run.budget.left <= 0) throw new Error(`this request has already started ${this.limits.runsPerRequest} subagents`);
@@ -640,9 +640,9 @@ export class Delegation {
       extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed));
       const opened = await openThreadSession({ thread: ctx, models, cwd: this.o.cwd, extensions });
       opened.session.setThinkingLevel(role.thinking);
-      const chat = models.offering(parent.user.id, opened.chat.offeringId);
-      const cloud = chat?.endpoint.kind !== "local";
-      const sub = new Subagent(this, run, ctx, role, models.label(parent.user.id, opened.chat.offeringId) ?? opened.chat.offeringId, cloud, opened.session, opened.dispose, release);
+      // Passes over a model whose machine is away, and records the call. The role keeps its own thinking level.
+      const chat = await opened.prepare({ thinking: false }).catch((err) => { opened.dispose(); throw err; });
+      const sub = new Subagent(this, run, ctx, role, chat.label, chat.endpoint.kind !== "local", opened.session, opened.dispose, release);
       hooks.question = (q) => { sub.question = q; };
       run.subagents.push(sub);
       this.store.record(parent.user.id, {

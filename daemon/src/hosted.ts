@@ -36,7 +36,10 @@ const EPOCH = randomBytes(4).toString("hex");
 
 type Client = (id: string, event: ThreadEvent) => void;
 
-interface Opened { session: AgentSession; view: PoolView; dispose(): void; title(): Promise<string | undefined> }
+/** Errors that mean the endpoint couldn't be reached, rather than that it refused the request. */
+const UNREACHABLE = /ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|fetch failed|socket hang up|connect/i;
+
+interface Opened { session: AgentSession; view: PoolView; dispose(): void; title(): Promise<string | undefined>; prepare(): Promise<unknown> }
 
 /** The threads lyricad hosts, keyed by user, pool and thread. A record is light; its Pi session opens on first use. */
 export class ThreadHost {
@@ -172,6 +175,7 @@ export class HostedThread {
     try {
       for (let next: string | undefined = text; next !== undefined && !this.closed;) {
         const opened = await this.open();
+        await opened.prepare();
         this.emit({ type: "turn_start" });
         await opened.session.prompt(next);
         aborted = this.aborted;
@@ -262,7 +266,7 @@ export class HostedThread {
       const ctx: ThreadContext = { user, pool: this.pool, interface: thread.interface, threadId: this.threadId, view, call };
       // delegate is offered where the depth limit allows; it attaches itself, so background results reach this session.
       const canDelegate = delegation.depth(ctx) < delegation.limits.depth;
-      const { session, runtime, dispose } = await openThreadSession({
+      const { session, runtime, prepare, dispose } = await openThreadSession({
         thread: ctx, models, cwd: this.o.cwd,
         extensions: [
           createLyricaExtension(ctx, { persona: () => persona.read(), profile: () => users.get(this.userId)!.profile, folders: tools.folders }),
@@ -273,7 +277,8 @@ export class HostedThread {
       const unsubscribe = session.subscribe((e) => this.forward(e));
       // The thread's title, by the `title` task model through the thread's own CallContext.
       const title = async () => {
-        const { model } = piModelFor(runtime, models, "title", call);
+        const { model, resolution } = piModelFor(runtime, models, "title", call);
+        models.recordCall(this.userId, { pool: this.pool, threadId: this.threadId, task: "title", resolution });
         const said = view.own.loadEntries(this.threadId).map(conversationLine).filter(Boolean).slice(0, 4).join("\n");
         const reply = await runtime.completeSimple(model, {
           systemPrompt: "Write a short title, at most six words, for the conversation below. Reply with the title only, no quotes.",
@@ -282,7 +287,7 @@ export class HostedThread {
         const text = reply.content.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join("").trim();
         return text.replace(/^["'“]+|["'”.]+$/g, "").split("\n")[0]!.slice(0, 80) || undefined;
       };
-      return { session, view, title, dispose: () => { unsubscribe(); dispose(); view.close(); } };
+      return { session, view, title, prepare: () => prepare(), dispose: () => { unsubscribe(); dispose(); view.close(); } };
     } catch (err) {
       view.close();
       throw err;
@@ -313,7 +318,11 @@ export class HostedThread {
         if (m.role === "assistant") {
           const u = m.usage;
           if (u) this.emit({ type: "usage", input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite, total: u.totalTokens });
-          if (m.stopReason === "error" && m.errorMessage) this.emit({ type: "error", message: plainError(m.errorMessage) });
+          if (m.stopReason === "error" && m.errorMessage) {
+            // A machine that is off or away: the next turn falls back past it.
+            if (UNREACHABLE.test(m.errorMessage) && this.opened) this.o.models.reportDown(this.opened.session.model?.provider ?? "");
+            this.emit({ type: "error", message: plainError(m.errorMessage) });
+          }
         }
         break;
       }

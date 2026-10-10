@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { MessagePage, ThreadEvent, ThreadSummary, UploadResponse } from "../src/api.ts";
+import type { CallInfo, MessagePage, ThreadEvent, ThreadSettings, ThreadSummary, UploadResponse } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 /** An unlocked lyricad, Li logged in, a local model, and one general thread. */
@@ -176,10 +176,36 @@ describe("permission prompts", () => {
   });
 });
 
+describe("the thread's model", () => {
+  it("shows the profile, the thinking levels on offer and which model answered; recent calls hold no prompt text", async () => {
+    const { rt, li, model, path, thread } = await setup();
+    model.reply({ text: "A reply about Miso." });
+    const stream = li.events(`${path}/events`);
+    await stream.ready;
+    await li.post(`${path}/messages`, { text: "tell me about Miso the cat" });
+    await stream.until(is("turn_end"));
+    stream.close();
+    const settings = (await li.get<ThreadSettings>(`${path}/settings`)).body;
+    expect(settings).toMatchObject({ profile: "custom", profileChoice: null, thinking: "off", thinkingLevels: ["off"], answered: { label: "gpu/qwen3.8-27b", kind: "local", task: "chat" } });
+    const calls = (await li.get<CallInfo[]>(`/api/u/${rt.li.id}/models/calls`)).body;
+    expect(calls[0]).toMatchObject({ threadId: thread.id, label: "gpu/qwen3.8-27b" });
+    expect(JSON.stringify(calls)).not.toMatch(/Miso/);
+
+    expect((await li.patch<ThreadSettings>(`${path}/settings`, { thinking: "high", profile: "cloud" })).body).toMatchObject({ thinking: "high", profile: "cloud", profileChoice: "cloud" });
+    const priv = (await li.post<ThreadSummary>(`/api/u/${rt.li.id}/threads`, { pool: "private" })).body;
+    const privPath = `/api/u/${rt.li.id}/threads/private/${enc(priv.id)}/settings`;
+    expect((await li.patch(privPath, { profile: "custom" })).status).toBe(400);
+    expect((await li.get<ThreadSettings>(privPath)).body.profile).toBe("local");
+    // Forgetting the thread takes its call records with it.
+    await li.del(path);
+    expect((await li.get<CallInfo[]>(`/api/u/${rt.li.id}/models/calls`)).body.filter((c) => c.threadId === thread.id)).toEqual([]);
+  });
+});
+
 describe("errors and logs", () => {
   it("reports a refused model in plain words, on the stream and in the response", async () => {
     const { li, path, rt } = await setup();
-    await li.put(`/api/u/${rt.li.id}/profiles/cloud/chat`, { model: null });
+    await li.put(`/api/u/${rt.li.id}/profiles/custom/chat`, { model: null });
     const stream = li.events(`${path}/events`);
     await stream.ready;
     const sent = await li.post<{ error: string }>(`${path}/messages`, { text: "hello?" });

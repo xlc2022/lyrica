@@ -149,14 +149,15 @@ export async function login(base: string, login: string, password: string): Prom
   return b;
 }
 
-/** Gives the user a local endpoint on `baseUrl` and makes its model the chat model of both profiles. */
+/** Gives the user a local endpoint on `baseUrl` and makes its model the chat model of the local and custom profiles, and Custom their default. */
 export async function localModel(b: Browser, userId: string, baseUrl: string, modelId = "qwen3.8-27b") {
   const ep = await b.post<EndpointInfo>(`/api/u/${userId}/endpoints`, { name: "gpu", kind: "local", baseUrl });
   if (ep.status !== 200) throw new Error(JSON.stringify(ep.body));
   const offering = ep.body.models.find((m) => m.modelId === modelId);
   if (!offering) throw new Error(`gpu doesn't list ${modelId}`);
   const ref = { offeringId: offering.id };
-  for (const p of ["cloud", "local"]) await b.put(`/api/u/${userId}/profiles/${p}/chat`, { model: ref });
+  for (const p of ["custom", "local"]) await b.put(`/api/u/${userId}/profiles/${p}/chat`, { model: ref });
+  await b.patch(`/api/u/${userId}/profiles`, { default: "custom" });
   return ref;
 }
 

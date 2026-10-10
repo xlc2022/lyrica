@@ -31,8 +31,9 @@ it, never inferred), an OpenAI-compatible base URL and an optional API key.
   endpoint stops listing keeps its offering, marked `missing`, and gets it
   back if it returns. Models can be added by hand (`addModel`) and are never
   marked missing.
-- **Capabilities:** context window, tools, vision, embedding, image and edit.
-  OpenRouter reports the context and tools; llama-server reports the context
+- **Capabilities:** context window, tools, vision, embedding, image, edit
+  and thinking levels. OpenRouter reports the context, tools, thinking and
+  modalities; llama-server reports the context
   (`meta.n_ctx`); LM Studio and KoboldCpp report neither. Anything can be
   set by hand (`setCapabilities`), which wins over discovery.
 - `probe(userId, endpointId)` is `up` when `/v1/models` answers within 5
@@ -54,9 +55,9 @@ it, never inferred), an OpenAI-compatible base URL and an optional API key.
 - `prune` runs nightly. It removes gone offerings no list names: a shared one
   only once every user's lists have been indexed and none names it, a
   user's own while they are unlocked.
-- `cleanup(userId)` lists the stale endpoints and gone models the user can
-  see, where the user's own lists use each (profile, thread or saved
-  workflow), how many other users' lists name it, and the same model on
+- `cleanup(userId)` lists the stale endpoints, gone models and empty groups
+  the user can see, where they are used (the user's profiles, threads, saved
+  workflows and groups, and shared groups), how many other users' lists name it, and the same model on
   another endpoint, if there is one.
 - `replace(actor, from, to)` deletes an offering and leaves a **redirect** to
   another of the same kind (a shared one for a shared one).
@@ -65,7 +66,7 @@ it, never inferred), an OpenAI-compatible base URL and an optional API key.
   endpoint into another of the same kind and place; both leave redirects.
 - **Shared redirects** live in `self.db` (`offering_redirects`), and the
   router follows them at once. Each user's lists (profiles, thread choices,
-  saved workflows) are rewritten the next time their `user.db` is opened,
+  saved workflows, groups) are rewritten the next time their `user.db` is opened,
   which is at their next unlock if they are locked now, with a one-time
   notice (`notice`, `dismissNotice`) naming the old label. A list left
   empty is cleared. `redirect_pending` records who hasn't rewritten yet; a
@@ -73,39 +74,118 @@ it, never inferred), an OpenAI-compatible base URL and an optional API key.
 - A **personal** endpoint's redirects are applied to its owner's lists at
   once, so they aren't stored.
 - `shared_refs` in `self.db` records which shared offerings each user's
-  lists name, for Clean up and pruning. It holds IDs only.
+  lists name (models and groups), for Clean up and pruning. It holds IDs
+  only.
 - Existing `{ endpoint, model }` choices were migrated to offerings when a
   `user.db` was first opened; references to models that no longer existed
   were dropped and named in the notice.
 
-Tables: `endpoints` and `offerings` (in both `self.db` and `user.db`);
-`offering_redirects`, `redirect_pending`, `shared_refs`,
+Redirects and tombstones apply to group members too: shared groups change
+at once, a user's own groups when their lists are rewritten. A group left
+empty is listed in Clean up.
+
+A forgotten thread's lists, choices and call records go with it (`forgetThread`).
+
+Tables: `endpoints`, `offerings` and `model_groups` (in both `self.db` and
+`user.db`); `offering_redirects`, `redirect_pending`, `shared_refs`,
 `shared_refs_indexed` and `legacy_refs` (in `self.db`); `model_profiles`,
-`thread_models` and `local_only_threads` (in `user.db`), whose entries are
-JSON lists of `ModelRef`. See `core/src/models/schema.ts`.
+`thread_models`, `thread_choices`, `local_only_threads` and `model_calls`
+(in `user.db`). See `core/src/models/schema.ts`.
+
+## Model groups
+
+A group is offerings from different endpoints that a user declares the same
+model, in their preferred order, with a permanent ID. Administrators make
+shared groups, in `self.db`, from shared models only; any user can make
+their own from their own and shared models.
+
+- A list can name a group (`ModelRef` is `{ offeringId }` or `{ groupId }`).
+  It expands in place into its members, in order.
+- `groupDetail` shows the members side by side, with warnings where they
+  differ: kind, context window, tools, vision, thinking, or a member that is
+  missing, gone or on a stale endpoint.
+- `groupSuggestions` proposes groups, never makes them: copies of the same
+  kind on different endpoints with the same file checksum (strong, once
+  hosts report one) or the same base name (weak).
+
+## Profiles and lists
+
+Each user has three profiles, each mapping a task to an ordered list of
+models or groups, or to another task's list (`{ same: task }`):
+
+- **local:** local models only. Private and local-only threads always use it.
+- **cloud:** cloud models only.
+- **custom:** local and cloud mixed. Only general threads that aren't
+  local-only use it.
+
+A group in a local or cloud list needs a member of that kind; its other
+members are skipped. General threads use the user's default
+(`setDefaultProfile`: cloud, unless set to custom) or their own choice
+(`setThreadProfile`). A thread's own lists (`setThreadModel`) beat the
+profile, and outside Custom they keep to one kind.
+
+`same` names a task of the same kind (text, embeddings, images) that doesn't
+itself follow another, so it is one level deep. A profile's first entry
+brings the defaults: titles and compaction follow cheap subagents, and the
+sleep phases follow strong subagents. A task with no list follows chat,
+except embeddings and the image tasks.
+
+Profiles used to be cloud and local, with local models allowed in the cloud
+profile. A cloud profile that named a local model was copied to Custom,
+which became that user's default, with a notice.
 
 ## Choosing a model
 
-`resolveModel(task, ctx)`:
-1. The thread's own choice for the task (`ctx.overrides`), else
-2. the profile's: the **local** profile for a private or local-only thread,
-   the **cloud** profile otherwise. The cloud profile may name local models
-   too.
-3. A task with neither uses the chat model by the same rule, except
-   `embedding`, which must be set.
+`resolve(task, ctx, need?)` walks the list that decides the task (the
+thread's, else the profile's after `same`, else chat's), expanding groups
+and following redirects, and returns the first model that can answer, with
+the ones it skipped and why. A model is skipped when:
 
-Redirects are followed, and a removed model counts as not set. A gone
-model or a stale endpoint fails with the reason.
+- it is gone, or its endpoint is stale;
+- its endpoint is known to be down: the health cache holds each probe's
+  result and each failed connection (`reportDown`) for 30 seconds;
+- it can't handle the call: no tools when tools are needed, a context window
+  smaller than the conversation, or, for image tasks, no image capability;
+- outside Custom, it is of the other kind than the list (local in a private
+  or local-only thread, cloud in the cloud profile, else the list's first
+  model's), so nothing falls back across the local/cloud line.
 
-In a private or local-only context a cloud model throws
-`CloudModelForbidden`, wherever it came from. Nothing falls back across the
-line: with no local model set, the call fails. The settings refuse a cloud
-model where it can't be used (the local profile, a private or local-only
-thread), and a replacement or merge never changes a model's kind. A private
-thread is always local-only.
+In a private or local-only context, a group's cloud members are skipped and
+a cloud model named directly throws `CloudModelForbidden`, wherever it came
+from. The settings refuse a cloud model where it can't be used, and a
+replacement or merge never changes a model's kind. A private thread is
+always local-only.
 
-`callContext(userId, pool, threadId)` reads a thread's local-only switch and
-overrides from `user.db`.
+`resolveLive` first probes the chosen endpoint (2 seconds) when its health
+isn't known lately and there is a later model to fall back to.
+`resolveModel` returns just the chosen `{ offeringId }`.
+
+`callContext(userId, pool, threadId)` reads a thread's local-only switch,
+profile, thinking level and lists from `user.db`.
+
+## Each turn
+
+`openThreadSession` returns `prepare()`, which `lyricad` runs before every
+turn (and delegation once for each subagent): it resolves the chat model
+with `resolveLive`, switches the session to it, sets the thinking level,
+and records the call. A connection error during a turn marks that endpoint
+down, so the next turn falls back.
+
+**Recent calls** (`recentCalls`, `model_calls` in `user.db`) hold the time,
+thread, task, the answering model's ID with its label, endpoint and kind,
+the fallback taken and why, and a note such as a model that couldn't think.
+Never prompt text. The latest 500 per user are kept.
+
+## Thinking
+
+Offerings carry `reasoning`, the levels they offer besides off: discovered
+from OpenRouter's `supported_parameters`, or set by hand. Threads have a
+thinking setting (off, low, medium, high, `setThinking`) with a per-user
+default (`setDefaultThinking`, off unless set). `thinkingFor` maps it to
+what the model offers: the nearest level it has, or off with a note when it
+can't think. Pi passes it as `reasoning_effort` to OpenAI-compatible
+endpoints. Subagent roles keep their own level. Thinking text is stored with
+the thread but never made searchable.
 
 ## The Pi runtime
 
@@ -139,9 +219,9 @@ llama-server, so enter it with `endpoints model … --context`.
 
 `childContext(parent, childThreadId, { tier } | { model })` gives a child
 thread, such as a subagent's, its `CallContext`:
-- the parent's local-only switch and model choices;
-- as its chat model, the parent's `subagent.cheap` or `subagent.strong`
-  model, or a named model the parent's context allows.
+- the parent's local-only switch, profile, thinking level and model choices;
+- as its chat list, the parent's `subagent.cheap` or `subagent.strong`
+  list, or a named model or group the parent's context allows.
 
 A private or local-only parent can only give its child a local model. A
 refusal throws before anything is written. `delegate` itself belongs to the
@@ -154,7 +234,8 @@ lyrica admin models endpoints add <name> cloud|local <base-url> [--shared | --us
 lyrica admin models endpoints list|remove|probe [<name>] [--shared | --user <login>]
 lyrica admin models endpoints model <name> <model-id> [--context <tokens>] [--tools] [--shared | --user <login>]
 lyrica admin models profile show --user <login>
-lyrica admin models profile set cloud|local <task> <endpoint>/<model>|none --user <login>
+lyrica admin models profile set local|cloud|custom <task> <endpoint>/<model>[,…]|same:<task>|none --user <login>
+lyrica admin models profile default cloud|custom --user <login>
 ```
 
 Endpoints are named by their label (`<name>`, or `<name>` with `--shared`).

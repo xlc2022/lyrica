@@ -1,6 +1,7 @@
 import { InMemoryCredentialStore, type Api, type Model } from "@earendil-works/pi-ai";
 import { ModelRuntime, type ProviderModelConfig } from "@earendil-works/pi-coding-agent";
-import { CloudModelForbidden, isRestricted, type CallContext, type Endpoint, type ModelRef, type Models, type Offering, type Task } from "@lyrica/core";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { CloudModelForbidden, isRestricted, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
 
 const FREE = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const DEFAULT_CONTEXT = 32_768;
@@ -9,12 +10,14 @@ const DEFAULT_CONTEXT = 32_768;
 // `max_tokens`; they don't all know `developer`, `store` or `max_completion_tokens`.
 const LOCAL_COMPAT = { supportsDeveloperRole: false, supportsStore: false, supportsReasoningEffort: false, maxTokensField: "max_tokens" } as const;
 
+// A model that thinks gets `reasoning_effort` (OpenAI-compatible endpoints) at the thread's level.
 function piModel(ep: Endpoint, m: Offering): ProviderModelConfig {
   const contextWindow = m.contextWindow ?? DEFAULT_CONTEXT;
+  const reasoning = !!m.reasoning?.length;
   return {
-    id: m.modelId, name: m.modelId, input: ["text"], cost: FREE, reasoning: false,
+    id: m.modelId, name: m.modelId, input: m.vision ? ["text", "image"] : ["text"], cost: FREE, reasoning,
     contextWindow, maxTokens: Math.min(8192, Math.floor(contextWindow / 4)),
-    ...(ep.kind === "local" ? { compat: LOCAL_COMPAT } : {}),
+    ...(ep.kind === "local" ? { compat: { ...LOCAL_COMPAT, supportsReasoningEffort: reasoning } } : {}),
   };
 }
 
@@ -55,10 +58,34 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
 }
 
 /** The Pi model for a task, resolved through the router. Throws CloudModelForbidden like resolveModel. */
-export function piModelFor(runtime: ModelRuntime, models: Models, task: Task, ctx: CallContext): { ref: ModelRef; model: Model<Api> } {
-  const ref = models.resolveModel(task, ctx);
-  const o = models.offering(ctx.userId, ref.offeringId);
-  const model = o && runtime.getModel(o.endpoint.id, o.offering.modelId);
-  if (!model) throw new CloudModelForbidden(`${models.label(ctx.userId, ref.offeringId) ?? ref.offeringId} is not in this thread's model runtime`);
-  return { ref, model };
+export function piModelFor(runtime: ModelRuntime, models: Models, task: Task, ctx: CallContext, resolution?: Resolution): { ref: { offeringId: string }; model: Model<Api>; resolution: Resolution } {
+  const r = resolution ?? models.resolve(task, ctx);
+  const model = runtime.getModel(r.endpoint.id, r.offering.modelId);
+  if (!model) throw new CloudModelForbidden(`${r.label} is not in this thread's model runtime`);
+  return { ref: r.ref, model, resolution: r };
+}
+
+/**
+ * Before a turn: picks the chat model again, passing over any whose machine
+ * is away (probed when there is a fallback), switches the session to it,
+ * sets the thinking level it can do, and records which model answers and why.
+ * With `thinking: false` the session keeps its own level (a subagent role's).
+ */
+export async function prepareTurn(o: {
+  session: AgentSession; runtime: ModelRuntime; models: Models; call: CallContext; pool: Pool; threadId: string; task?: Task; thinking?: boolean;
+}): Promise<Resolution> {
+  const task = o.task ?? "chat";
+  const tokens = o.session.getContextUsage()?.tokens ?? undefined;
+  const r = await o.models.resolveLive(task, o.call, { tools: true, ...(tokens ? { tokens } : {}) });
+  const { model } = piModelFor(o.runtime, o.models, task, o.call, r);
+  const current = o.session.model;
+  if (!current || current.provider !== model.provider || current.id !== model.id) await o.session.setModel(model);
+  let note: string | undefined;
+  if (o.thinking !== false) {
+    const t = o.models.thinkingFor(r, o.call.thinking);
+    o.session.setThinkingLevel(t.level);
+    note = t.note;
+  }
+  o.models.recordCall(o.call.userId, { pool: o.pool, threadId: o.threadId, task, resolution: r, ...(note ? { note } : {}) });
+  return r;
 }

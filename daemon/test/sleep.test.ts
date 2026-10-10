@@ -107,9 +107,9 @@ describe("sleep in lyricad", () => {
     await s.talk();
     const dead = (await s.li.post<EndpointInfo>(`${s.u}/endpoints`, { name: "dead", kind: "local", baseUrl: "http://127.0.0.1:9/v1" })).body;
     const m = (await s.li.post<OfferingInfo>(`${s.u}/endpoints/${dead.id}/models`, { modelId: "m" })).body;
-    await s.li.put(`${s.u}/profiles/cloud/sleep.wake`, { model: { offeringId: m.id } });
+    await s.li.put(`${s.u}/profiles/custom/sleep.wake`, { model: { offeringId: m.id } });
     const down = await s.li.post(`${s.u}/sleep/general`, {});
-    expect(down).toMatchObject({ status: 409, body: { error: "Sleep can't run now: the sleep model's endpoint dead is down." } });
+    expect(down).toMatchObject({ status: 409, body: { error: "Sleep can't run now: no model for sleep.wake can answer now (dead/m: dead is down)." } });
     expect((await s.li.get<SleepOverview>(`${s.u}/sleep`)).body.runs.map((r) => r.skipReason)).toEqual(["endpoint-down", "no-activity"]);
   });
 
