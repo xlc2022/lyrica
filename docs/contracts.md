@@ -165,7 +165,8 @@ nothing else. No code path gives a general view a private handle.
 | Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `userIntroduced` |
 | Search | `search(query, { kinds, limit })`, returning `{ id, kind, snippet, score }` |
 | Lineage | `cameFrom`, `usedIn`, `revisions`, `isTombstoned(entryId)`, `editedSince(since)` |
-| Sleep (Sleep thread) | `watermark`, `recordSleepRun`, `listSleepRuns` |
+| Sleep runs | `startSleepRun`, `updateSleepRun`, `recordSleepRun` (a skip), `listSleepRuns`, `getSleepRun`, `watermark`, `sleepMaterial(since, until)`, `sleepChanges(from, to)` |
+| Sleep items | `addItem`, `listItems`, `getItem`, `startItem(id, threadId)`, `dismissItem`, `itemForThread` |
 
 IDs:
 - `e:<thread>#<n>` for an entry, `t:<thread>` for a thread;
@@ -193,7 +194,9 @@ authoritative.
 `pages.add` accept `author: user:<id>` and text with any inline links (`t:`,
 `e:`, `n:`, `p:`) or none. Each memory records its origin (`lyrica`, `sleep`
 or `user`), and the browser filters on it. Sleep may cite user memories but
-never edits or deletes them.
+never edits or deletes them. On a page a user wrote or edited, the store
+refuses a sleep edit that doesn't keep the latest user-written text word for
+word: sleep can only add around it.
 
 **Owner view.** `openOwnerView(userId)` gives the signed-in user read and write
 access to both of their own pools, for the memory browser and `lyrica mem`.
@@ -217,7 +220,7 @@ are enforced in the store:
 ```ts
 type Task = "chat" | "subagent.cheap" | "subagent.strong" | "compaction"
           | "title" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
-          | "image.create" | "image.edit";    // the image tasks come with the Images thread
+          | "image.create" | "image.edit" | "image.upscale";    // the image tasks come with the Images thread
 
 interface Endpoint {
   id: string;                              // "<name>" for a user's own, "shared.<name>" for a shared one
@@ -260,10 +263,58 @@ openThreadSession({ thread, models, cwd, extensions, settings? })  // one thread
   across the local/cloud line.
 - A task with no model set uses the same profile's chat model (except
   `embedding`), never the other profile's.
-- **Planned (model host):** a profile entry becomes an ordered list,
-  `Partial<Record<Task, ModelRef[]>>`. `resolveModel` returns the first whose
-  endpoint is up, the thread shows which one answered, and the list never
-  mixes cloud and local.
+- **Planned (Models 2):**
+  - Endpoints get a permanent `id` (a UUID), with the name as a label.
+  - Each model an endpoint offers gets a permanent `offeringId` (a UUID).
+    `ModelRef` becomes `{ offeringId }`, and existing `{ endpointId, modelId }`
+    pairs are migrated. An offering the endpoint no longer lists is kept and
+    marked `missing`.
+  - Editing an endpoint never changes its IDs.
+  - **Redirects and tombstones** (`offering_redirects`, from → to or
+    `removed`) live where the endpoint lives: `self.db` for shared, `user.db`
+    for personal. `resolveModel` follows them.
+    - Each user's references (profiles, overrides, saved workflows) are
+      rewritten when that user unlocks.
+    - A redirect is deleted once no user still refers to it, which is
+      tracked per user.
+  - Endpoint states: `stale` (unreachable for 14 days) and `gone` (missing for
+    30 days). Gone offerings nothing refers to are pruned.
+  - `resetIds(endpoint)` and `merge(from, into)` work through redirects.
+  - Call records keep the name and endpoint label with the ID.
+  - **Model groups:** `{ groupId, name, members: offeringId[] }`, shared in
+    `self.db` or personal in `user.db`.
+    - `ModelRef` is `{ offeringId } | { groupId }`. A group expands in place,
+      in order, filtered by the thread's allowed kinds and by each member's
+      fitness for the call (tools, context window).
+    - Redirects and tombstones apply to members.
+  - A profile entry becomes an ordered list or a pointer to another task's
+    list: `Partial<Record<Task, ModelRef[] | { same: Task }>>`, in three
+    profiles: `local`, `cloud` and `custom`. `same` must name a task with its
+    own list and the same capability, so it is one level deep. A task with
+    neither follows `chat`, as now. `resolveModel` returns the first model
+    whose endpoint is up, and the thread shows which one answered.
+  - Local and cloud lists never mix kinds. Custom may, and is never offered
+    to private or local-only threads.
+  - Offerings carry capabilities (`tools`, `vision`, `embedding`, `image`,
+    `edit`, and `reasoning` with its levels), and pickers filter by the task.
+  - A thread's settings gain `thinking` (off, low, medium, high), with a
+    per-user default; the router passes it as Pi's thinking level when the
+    resolved model offers it, and reports when it can't.
+  - Downloads go through a paired host's management API (`host/API.md`):
+    list a repository's files, start, progress, cancel, and delete a file
+    under `lyrica/`. Shared hosts need an administrator. A gated
+    repository's token comes with each request from the hub tokens: a
+    user's in `user.db`, or a shared one in `self.db`, encrypted like
+    endpoint keys.
+  - Deleting an offering leaves a `removed` redirect, like Clean up.
+  - An offering for `image.create` or `image.edit` on a host is a **recipe**:
+    `{ arch, template, parts: { role, slot?, file }[], loras: { file,
+    strength }[], defaults }`, stored on the host. Parts are files the host
+    reports by role, slot, architecture, precision and size. A proposed
+    recipe is listed but never resolves until it is confirmed. Capabilities
+    gain `upscale`. Swapping a part keeps the role, slot and architecture;
+    adding a LoRA makes a new recipe linked to its base unless the user
+    chooses otherwise.
 - A local endpoint is still declared, not inferred. `probe` warns, without
   blocking, when one resolves outside loopback, private or tailnet ranges.
 - **Shared endpoints** live in `self.db`. Only an administrator can change
@@ -293,10 +344,46 @@ One model-facing tool: `delegate({ action?, ... })`.
   or `tasks: [...]` (parallel), `chain: [...]`, `loop`, `council`, or
   `workflow: name`. Any of these can be `background: true`. She picks a tier,
   never a model; only saved workflows, which users write, may name one.
-- The other actions are `status`, `wait`, `stop`, `steer` and `answer`, each
-  on a run ID, and only on runs the calling thread started.
-- A subagent also has `ask_parent`, and read-only memory
-  (`registerMemoryTools({ readOnly: true })`).
+- The other actions are `status`, `wait`, `stop` and `message`, each on a
+  run ID, and only on runs the calling thread started. `message({ id,
+  message, thread? })` joins a working subagent's turn, answers its open
+  question, or continues a finished, failed, stopped or interrupted one in
+  its own thread, with its model and workspace worked out again from the
+  parent's current settings. A task may set `fork: true` to start from a
+  copy of the parent's conversation.
+- A subagent also has `ask_parent({ question, wait? })` (`wait: false`
+  sends a note and keeps working, up to `limits.notes` per stretch), and
+  read-only memory (`registerMemoryTools({ readOnly: true })`).
+- `new Delegation({ ..., approve? })`: a subagent's tool calls ask under its
+  parent's current permission mode, or its own if stricter
+  (`stricterMode`), through `approve(SubagentApproval, signal)`, which
+  `lyricad` shows in the subagent's thread and its parent's; the first answer
+  wins, and a timeout, Stop or abort refuses. With no `approve`, the call is
+  refused.
+- `delegation.message(parent, runId, { text, from? }, { thread?, budget })`
+  is also how a user's message reaches a subagent, from its card in the
+  parent's chat; the parent gets a note. `subagent_runs` records `pick` and
+  `narrowing` so a subagent can be continued.
+- Subagents aren't listed in the thread list; child threads (forks, copies)
+  nest under their parent.
+- Planned (Child threads): one more model-facing tool, `threads({ action,
+  ... })`: `start` (`title`, `task`, optional narrower `folders`,
+  `readOnly`, `internet`), `message` (to a child, or `to: "parent"` from a
+  child), and `list`. A child thread is `createThread({ parent, child: true
+  })`, hosted like any thread, with inherited settings that can only narrow.
+- Planned (Modes): the permission mode values become `ask`, `acceptEdits`,
+  `auto` and `plan` (migrating "ask before changes" to `ask` and "ask before
+  commands" to `acceptEdits`). `plan` leaves only read-only tools active and
+  adds a `propose_plan({ plan })` tool whose approval sets the next mode.
+  Thread settings gain `webSearch` and `images` switches beside `internet`;
+  each one off removes its tools from the session, and children can only
+  narrow them.
+- Planned (Child threads, rewinding): the workspace's `write` and `edit`
+  operations record each change per entry (path, created or changed, content
+  hash after) and keep a snapshot of a changed file's earlier content in the
+  user's encrypted home. `rewindFiles(thread, fromN, { apply })` reports and
+  then deletes created files and restores changed ones that are unchanged
+  since. Snapshots expire after 30 days.
 
 Every run:
 - creates a child thread with `createThread({ parent, subagent: true })`;
@@ -324,7 +411,15 @@ The extension is created with a `ThreadContext`:
     `forFolders` pages. This is the only link between the two components, so
     neither imports the other;
   - `debugPrompt`;
-  - `budgets`.
+  - `budgets`;
+  - `memoryTools`: `"read"` gives `recall` and `read_memory` without
+    `remember` (sleep). The default is `"full"`;
+  - `hide(id)`: memories this thread must not see, in recall and
+    `read_memory` alike. The wake phase hides the journal and sleep's own
+    threads;
+  - `sleep`: the `/sleep` command, where the host offers it (the bench).
+- Memory sections include `opening`: the sleep item a thread was started
+  from. It comes from `itemForThread`, so no other thread ever has it.
 - **`before_agent_start`** never replaces the whole system prompt. It does two
   things:
   - It edits `event.systemPromptOptions`. The persona core goes in
@@ -348,7 +443,9 @@ The extension is created with a `ThreadContext`:
   - `calendar` and `sort` (Integrations thread);
   - `image`, with `create` and `edit` (Images thread);
   - `web_search` and `web_fetch` (research, carried over from v1 or taken from
-    a Pi package).
+    a Pi package);
+  - in sleep sessions only: `write_page`, `write_journal`, `write_wake`,
+    `raise` and `propose_persona` (Sleep thread; see [sleep.md](sleep.md)).
 - **Commands:** `/sleep`, and others only within the budget.
 - Lyrica's sessions **never** load project context files (`AGENTS.md`,
   `CLAUDE.md`). Her self-primer is a routed topic.
@@ -371,7 +468,8 @@ The extension is created with a `ThreadContext`:
   `selfTest()` before serving threads. It builds one `Delegation`, adds
   `createDelegateExtension` to each thread's session, forwards
   `delegation.events` to the parent thread's stream, and calls `stopAll` on
-  Lock and shutdown.
+  Lock and shutdown. It builds one `Sleep` and calls `stop(userId)` on Lock
+  and shutdown, before the key goes.
 - **Permission prompts:** the workspace extension's `tool_call` hook calls
   `ThreadTools.approve?(request)`; `lyricad` supplies it and waits for an
   answer from any open view, denying on timeout or Stop.
@@ -390,12 +488,14 @@ The extension is created with a `ThreadContext`:
   - settings (endpoints, model profiles);
   - users and admin;
   - memory browser;
-  - sleep runs.
+  - sleep: overview, run detail, items (start a chat, dismiss), `sleep.mode`,
+    start a run, and an event stream. `/sleep` typed in a thread is
+    `SendRequest.confirm` and `SendResponse.sleep`.
 - **Local socket:** a Unix socket (mode `0600`, owned by the service user)
   serves the same API to `lyrica chat` and `lyrica mem`. The user still logs in
   with a password over the socket. Being on the machine isn't enough.
-- **Scheduler:** at `sleep.time`, for each user with a key available and each
-  pool with activity past its watermark, run sleep.
+- **Scheduler:** at `sleep.time` (default 04:00), for each user not in manual
+  mode, sleep each pool, one run at a time.
 
 ## bin/lyrica
 
@@ -408,10 +508,23 @@ One entry point with subcommands: `serve`, `chat`, `admin`, `mem` and `dev`
 ## sleep
 
 ```ts
-runSleep(userId: string, pool: Pool, reason: "scheduled" | "manual"): SleepRun
+new Sleep({ users, memory, models, persona, proposals, hasKey, cwd, limits? })
+sleep.run(userId, pool, reason: "scheduled" | "manual"): Promise<SleepRun>  // queued: one run at a time
 // status: "complete" | "partial" | "skipped"
 // skipReason: "no-key" | "endpoint-down" | "no-activity"
+sleep.check(userId, pool)          // what would stop a run now, without recording anything
+sleep.stop(userId)                 // Lock: the run is marked partial
+sleep.mode(userId) / setMode(userId, "scheduled" | "manual")   // user.db
+sleep.events                       // started, phase, finished: IDs only, never text
 ```
+
+- Each phase is a thread in the pool's `sleep` interface, opened through
+  `openThreadSession` with that pool's `CallContext` and its
+  `sleep.<phase>` model, so private sleep is local-only.
+- The pool's `sleep_runs` and `sleep_items` tables hold runs and items. A
+  `no-key` skip is recorded once the key is back, since the pool can't be
+  written without it.
+- Full details: [sleep.md](sleep.md).
 
 ## core/workspace
 

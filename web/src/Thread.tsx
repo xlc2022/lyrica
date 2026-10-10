@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { get, post, threadPath, type Pool, type SendResponse, type ThreadSettings, type ThreadSummary } from "./api.ts";
 import { useThread } from "./stream.ts";
-import { Conversation } from "./Messages.tsx";
+import { Conversation, MessageBox } from "./Messages.tsx";
 import { Composer } from "./Composer.tsx";
 import { ModelBadge, SettingsDrawer } from "./Settings.tsx";
 import type { ShellContext } from "./Shell.tsx";
@@ -68,9 +68,11 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
             {settings.data && settings.data.target !== "sandbox" && <span className="badge folder">{settings.data.target}</span>}
           </div>
         </div>
-        <button type="button" className="gear" aria-label="Thread settings" aria-expanded={drawer} aria-controls="thread-settings" onClick={() => setDrawer(!drawer)}>
-          <span aria-hidden="true">⚙ <span className="long">Thread settings</span></span>
-        </button>
+        {!s?.subagent && (
+          <button type="button" className="gear" aria-label="Thread settings" aria-expanded={drawer} aria-controls="thread-settings" onClick={() => setDrawer(!drawer)}>
+            <span aria-hidden="true">⚙ <span className="long">Thread settings</span></span>
+          </button>
+        )}
       </header>
       {parent && (
         <p className="subnote">Subagent of <a href={`#/u/${encodeURIComponent(userId)}/t/${pool}/${encodeURIComponent(parent.id)}`}>{parent.title || "its thread"}</a></p>
@@ -78,12 +80,15 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
       <div className="scroll" ref={scroller}>
         <ErrorText error={summary.error || t.loadError} />
         {settings.error && <ErrorText error={`This thread's settings didn't load: ${settings.error}`} />}
-        <Conversation ctx={ctx} pool={pool} base={base} thread={t} />
+        <Conversation ctx={ctx} pool={pool} base={base} threadId={threadId} subagent={!!s?.subagent} thread={t} />
         <ErrorText error={sendError} />
       </div>
       {!t.connected && <p className="offline" role="status">Reconnecting…</p>}
-      <Composer base={base} busy={t.live.busy} onSend={send} onStop={stop} restored={restored} readOnly={!!s?.subagent} />
-      {drawer && settings.data && s && (
+      {/* A subagent's thread is its transcript and a message box, as in its delegate card. */}
+      {s?.subagent
+        ? <div className="composer sub-composer"><MessageBox thread={{ pool, id: threadId }} env={{ userId }} onSent={() => t.dispatch({ type: "refresh" })} /></div>
+        : <Composer base={base} busy={t.live.busy} onSend={send} onStop={stop} restored={restored} />}
+      {drawer && settings.data && s && !s.subagent && (
         <SettingsDrawer
           ctx={ctx} base={base} summary={s} settings={settings.data}
           onSettings={settings.set} onSummary={(x) => { summary.set(x); refreshThreads(); }}

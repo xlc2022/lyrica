@@ -9,8 +9,8 @@ export const TASKS = [
 ] as const;
 export type Task = (typeof TASKS)[number];
 
-/** A model on one endpoint. The same model on two endpoints is two refs. */
-export interface ModelRef { endpointId: string; modelId: string }
+/** One model on one endpoint, by its permanent offering ID. The same model on two endpoints is two offerings. */
+export interface ModelRef { offeringId: string }
 
 export interface CallContext {
   userId: string;
