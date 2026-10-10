@@ -13,6 +13,9 @@ started when its API lands:
 looks", "Models and endpoints", "Sleep" and "Images"), and the API in
 `daemon/src/api.ts`.
 
+**Read first, every time:** docs/ux.md. A PR that touches the interface
+follows its checklist.
+
 ## Goal
 
 The web UI shows what the new back ends do, in the agreed look, and works on a

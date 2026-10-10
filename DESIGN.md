@@ -82,46 +82,14 @@ Each user has two pools of memory.
 - **The web UI is React with TypeScript, built with Vite.** Models will write
   and maintain almost all of it, and React is what they know best; `tsc`
   checks its components like the rest of the code.
-- **How the web UI looks:**
-  - Calm and plain, so the conversation comes first. Colour comes from the
-    user's accent, not from decoration.
-  - Her messages run full width as prose. The user's sit in a lightly tinted
-    block. No chat bubbles.
-  - Light or dark follows the device, with an override in settings.
-  - Each user chooses an accent colour and a monogram in settings. No
-    avatar images.
-  - Her inner workings (memories she recalled, notes she saved, tool calls)
-    show as one-line markers that expand when tapped. A subagent shows as a
-    card that expands to its work and takes messages.
-  - **Type:** IBM Plex Sans and IBM Plex Mono (open source, OFL), served by
-    `lyricad` itself, never fetched from elsewhere; system fonts as fallback.
-    Five sizes (22, 15, 14, 13, 12 px, plus 11 for small headings). Every
-    number, size and time is in Plex Mono with tabular figures.
-  - **Actions:** three looks only: primary, secondary (bordered) and link.
-    Nothing pressable is plain grey text. Badges carry state only, at most
-    two per row; facts go in the line beneath the name.
-  - **Words:** labels are short nouns (Sampling, Serving, Pinned, Excluded) or
-    the words a person would say (Not this model),
-    never descriptions of what a thing does. No explanatory captions under
-    headings, in page headers or at the foot of a form; where a word needs
-    explaining, the explanation is a tooltip. A sentence appears only where
-    an action has a consequence, such as a delete.
-  - **Numbers are typed, not picked:** a context length or a layer count is
-    a number field showing the model's maximum beside it, and a value past
-    the maximum becomes the maximum.
-  - **Familiar shapes first**, from ChatGPT, Claude and Open WebUI, unless
-    Lyrica has a reason to differ (pools, privacy, model hosts, subagents).
-  - **One icon set:** 16 px line icons from one family, never text glyphs
-    standing in for icons. Icons sit beside words, except in a row of
-    equal-sized icon buttons, which have labels for screen readers.
-  - **Editing one thing in context happens in the drawer** on the right (a
-    task's list, a model's settings, a GPU's settings), with one Save at its
-    foot when saving has a consequence. Dialogs only confirm an action.
-    Settings a user reaches often are a link in the thing's own line, not a
-    button on every row.
-  - **A thread's header** is its title, one line of facts (pool, the model
-    picker, group, folders, pins) and two actions, Files and Settings. One
-    state badge at most, such as a fallback in use.
+- **How the web UI looks** is set out in [docs/ux.md](docs/ux.md), the
+  rulebook every interface change follows. In short: the conversation comes
+  first and everything else is quiet, familiar and in its one place. IBM
+  Plex, five type sizes, one icon set; three button looks; labels are nouns
+  and explanations are tooltips; badges carry state only; numbers are typed
+  with their maximum shown; editing in context happens in the drawer and
+  dialogs only confirm; a thread's header is its title, one line of facts
+  and two actions; everything works at phone width.
 - **Where things are:**
   - **Sidebar:** New thread, Search (with a Pinned messages view),
     **Notifications** with its count (in orange), Memory, Sleep (with a
