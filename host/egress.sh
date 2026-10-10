@@ -4,8 +4,9 @@
 # both to other machines (FORWARD, through DOCKER-USER) and to this one
 # (INPUT). DNS for outside names goes out from its namespace too, so it is
 # dropped the same way. Docker never flushes DOCKER-USER, but a reboot or a
-# firewall reload does, so lyrica-host-egress.service runs this after Docker
-# starts. Usage: egress.sh apply|remove [host-api address]
+# firewall reload does, so lyrica-host-egress.service runs this before Docker
+# starts, so no container runs without the rules (it creates DOCKER-USER if
+# Docker hasn't yet). Usage: egress.sh apply|remove [host-api address]
 set -euo pipefail
 cd "$(dirname "$0")"
 ip=${2:-$(sed -n 's/^HOST_API_IP=//p' .env)}

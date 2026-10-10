@@ -91,6 +91,9 @@ export class Comfy implements Backend {
         });
         done.catch(() => {});
         try {
+          // The listener is attached now; an abort during the uploads or the
+          // websocket's opening is caught here, before anything is queued.
+          signal?.throwIfAborted();
           const res = await fetch(`${this.base}/prompt`, {
             method: "POST",
             headers: { "content-type": "application/json" },

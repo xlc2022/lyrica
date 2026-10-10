@@ -166,8 +166,8 @@ export class Images {
       const body = await readJson(req);
       onlyFields(body, ["ids"]);
       if (!Array.isArray(body.ids) || !body.ids.every((i) => typeof i === "string")) throw invalid("ids must be a list.");
-      const done = this.book.setState(body.ids as string[], bulk[1] === "confirm" ? "confirmed" : "ignored");
-      sendJson(res, 200, { recipes: done.map((r) => this.book.describe(r, files)) });
+      const { done, failed } = this.book.setState(body.ids as string[], bulk[1] === "confirm" ? "confirmed" : "ignored");
+      sendJson(res, 200, { recipes: done.map((r) => this.book.describe(r, files)), failed });
       return true;
     }
     const one = path.match(/^\/host\/v1\/recipes\/([0-9a-f-]{36})(?:\/(confirm|ignore|copy|download-parts))?$/);
@@ -181,8 +181,9 @@ export class Images {
       if (!action && method === "DELETE") return sendJson(res, 200, await this.remove(id!)), true;
       if (action === "confirm" || action === "ignore") {
         if (method !== "POST") return false;
-        const [r] = this.book.setState([id!], action === "confirm" ? "confirmed" : "ignored");
-        return sendJson(res, 200, this.book.describe(r!, files)), true;
+        const { done, failed } = this.book.setState([id!], action === "confirm" ? "confirmed" : "ignored");
+        if (failed[0]) throw failed[0].message === "No such recipe." ? notFound(failed[0].message) : invalid(failed[0].message);
+        return sendJson(res, 200, this.book.describe(done[0]!, files)), true;
       }
       if (action === "copy" && method === "POST") {
         const body = await readJson(req);

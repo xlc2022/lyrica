@@ -482,8 +482,11 @@ Calls:
   answers with the same recipe, downloading only the parts neither here
   nor already downloading.
 - `POST /host/v1/recipes/<id>/confirm`, `POST /host/v1/recipes/<id>/ignore`:
-  for proposals. Several at once: `POST /host/v1/recipes/confirm` or
-  `/ignore` with `{ "ids": ["<id>", ...] }`.
+  for proposals. One already in that state answers as it is, so a retry is
+  harmless; another state is `invalid`. Several at once:
+  `POST /host/v1/recipes/confirm` or `/ignore` with
+  `{ "ids": ["<id>", ...] }`, each handled on its own; answers
+  `{ "recipes": [<recipe>], "failed": [{ "id": "<id>", "message": "..." }] }`.
 - `POST /host/v1/recipes/<id>/download-parts`: downloads the missing parts
   it knows the source of.
 - `POST /host/v1/recipes/<id>/copy` `{ "name": "Z-Image Turbo, watercolour" }`:
