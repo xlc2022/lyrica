@@ -38,9 +38,9 @@ async function setup() {
 
   const server = await fakeOpenAI({ models: [{ id: "m1" }] });
   const models = new Models(keyring, users);
-  models.addEndpoint(tester, { name: "gpu", kind: "local", baseUrl: server.baseUrl });
-  await models.discover(tester, "gpu");
-  models.setProfile(tester.id, "cloud", "chat", { endpointId: "gpu", modelId: "m1" });
+  const gpu = models.addEndpoint(tester, { name: "gpu", kind: "local", baseUrl: server.baseUrl });
+  const [m1] = await models.discover(tester, gpu.id);
+  models.setProfile(tester.id, "cloud", "chat", { offeringId: m1!.id });
   return { host, keyring, users, tester, server, models };
 }
 

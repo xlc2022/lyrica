@@ -54,7 +54,12 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
       for (const type of EVENT_TYPES) {
         es.addEventListener(type, (m: MessageEvent<string>) => {
           if (type === "hello") { setConnected(true); delay = 1000; }
-          try { dispatch(JSON.parse(m.data) as ThreadEvent); } catch { /* not ours */ }
+          try {
+            const e = JSON.parse(m.data) as ThreadEvent;
+            dispatch(e);
+            // In a subagent's own thread, its work is stored as it goes: show it.
+            if (e.type === "delegation" && e.event.threadId === threadId && e.event.type !== "output" && e.event.type !== "tool_call") dispatch({ type: "refresh" });
+          } catch { /* not ours */ }
         });
       }
       es.onerror = () => {
@@ -67,7 +72,7 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
     };
     open();
     return () => { stopped = true; es?.close(); clearTimeout(retry); };
-  }, [base]);
+  }, [base, threadId]);
 
   return { messages, hasMore, loaded, loadError, loadOlder, live, dispatch, connected };
 }
