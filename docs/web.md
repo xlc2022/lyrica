@@ -104,9 +104,10 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   ends, the stored messages are reloaded and the live copy is dropped.
   `EventSource` reconnects with `Last-Event-ID`. If it gives up, a new one
   can't send that header, so the UI starts again from the stored messages,
-  and one request checks whether the login still holds. A `reset`, or a
-  reconnect that finds the turn already over, also reloads the stored
-  messages.
+  and one request checks whether the login still holds. A `reset` reloads
+  the stored messages, and so does every `hello` that finds the thread idle:
+  a turn may have ended between fetching the messages and opening the stream,
+  such as a child thread opened as its first turn ends.
 - **Each message has a menu** (a bordered ⋯ icon button by the sender's
   name; `src/Rewind.tsx`): Pin or Unpin; Branch from here; on her replies Regenerate and
   Regenerate with… (the models the thread may use); on the user's messages
