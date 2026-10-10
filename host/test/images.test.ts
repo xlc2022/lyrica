@@ -114,6 +114,19 @@ describe("recipes", () => {
     expect(() => b.patch(r.id, { op: "addPart", role: "vae", file: "ae.safetensors" }, parts)).toThrow("checkpoint");
   });
 
+  it("confirms and ignores each proposal on its own, and a retry is harmless", () => {
+    const b = new RecipeBook(mkdtempSync(join(tmpdir(), "lyrica-book-")), TEMPLATES, STARTERS);
+    const starter = STARTERS.find((s) => s.id === "z-image-turbo")!;
+    const confirmed = b.fromStarter(starter, () => null).recipe;
+    const proposal = b.copy(confirmed.id, "p");
+    b.get(proposal.id).state = "proposed";
+    const first = b.setState([proposal.id, confirmed.id, "missing"], "confirmed");
+    expect(first.done.map((r) => r.id)).toEqual([proposal.id, confirmed.id]);
+    expect(first.failed).toEqual([{ id: "missing", message: "No such recipe." }]);
+    expect(b.setState([proposal.id], "confirmed")).toMatchObject({ done: [{ id: proposal.id, state: "confirmed" }], failed: [] });
+    expect(b.setState([proposal.id], "ignored").failed[0]!.message).toBe("p isn't a proposal.");
+  });
+
   it("installs a starter once, and checks defaults against the request ranges", () => {
     const b = new RecipeBook(mkdtempSync(join(tmpdir(), "lyrica-book-")), TEMPLATES, STARTERS);
     const starter = STARTERS.find((s) => s.id === "z-image-turbo")!;
@@ -167,6 +180,16 @@ describe("ComfyUI jobs", () => {
     expect(fake.seen.uploadBodies[1]!.includes(PNG)).toBe(false);
     expect(fake.seen.historyCleared).toBe(1);
     expect(fake.seen.interrupted).toEqual([]);
+  });
+
+  it("queues nothing when the client goes away before the prompt is sent", async () => {
+    const fake = await fakeComfy();
+    open.push(fake);
+    const abort = new AbortController();
+    const run = new Comfy(fake.url).run({ image: PNG }, () => (abort.abort(), {}), abort.signal);
+    await expect(run).rejects.toThrow();
+    expect(fake.seen.prompts).toEqual([]);
+    expect(fake.seen.uploadBodies.at(-1)!.includes(PNG)).toBe(false);
   });
 
   it("refuses an image whose header claims too many pixels", () => {

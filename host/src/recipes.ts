@@ -185,14 +185,26 @@ export class RecipeBook {
     return made;
   }
 
-  setState(ids: string[], state: "confirmed" | "ignored"): Recipe[] {
-    const found = ids.map((id) => this.get(id));
-    for (const r of found) {
-      if (r.state !== "proposed") throw invalid(`${r.name} isn't a proposal.`);
+  /**
+   * Confirms or ignores proposals, each on its own: one already in that state
+   * is returned as it is (so a retry is harmless), and one that can't change
+   * is listed with the reason.
+   */
+  setState(ids: string[], state: "confirmed" | "ignored"): { done: Recipe[]; failed: { id: string; message: string }[] } {
+    const done: Recipe[] = [];
+    const failed: { id: string; message: string }[] = [];
+    for (const id of ids) {
+      const r = this.recipes.find((x) => x.id === id);
+      if (!r) failed.push({ id, message: "No such recipe." });
+      else if (r.state === state) done.push(r);
+      else if (r.state !== "proposed") failed.push({ id, message: `${r.name} isn't a proposal.` });
+      else {
+        r.state = state;
+        done.push(r);
+      }
     }
-    for (const r of found) r.state = state;
     this.save();
-    return found;
+    return { done, failed };
   }
 
   copy(id: string, name: unknown): Recipe {
