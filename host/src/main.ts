@@ -2,7 +2,11 @@
 import { lookup } from "node:dns/promises";
 import { readFileSync } from "node:fs";
 import { LlamaCpp, Vllm } from "./backends.ts";
+import { Comfy } from "./comfy.ts";
 import { Downloads } from "./downloads.ts";
+import { Images } from "./images.ts";
+import { RecipeBook, loadStarters } from "./recipes.ts";
+import { loadTemplates } from "./templates.ts";
 import { amdMonitor, noGpus, nvidiaMonitor } from "./gpus.ts";
 import { stdoutLog } from "./log.ts";
 import { Runtime } from "./runtime.ts";
@@ -36,11 +40,13 @@ const host = new Host({
   log: stdoutLog,
 });
 
+const comfy = new Comfy(env.COMFYUI_URL || "http://comfyui:8188");
 const scheduler = new Scheduler({
   monitor: vendor === "nvidia" ? nvidiaMonitor : vendor === "amd" ? amdMonitor() : noGpus,
   backends: {
     llamacpp: new LlamaCpp({ url: env.LLAMACPP_URL || "http://llamacpp:8080", serving, models: modelsDir, device: (i) => `${vendor === "amd" ? "ROCm" : "CUDA"}${i}` }),
     vllm: new Vllm({ url: env.VLLM_URL || "http://vllm:{port}", serving, models: modelsDir }),
+    comfyui: comfy,
   },
   state: host.state,
   log: stdoutLog,
@@ -50,6 +56,10 @@ host.runtime = new Runtime({ scheduler, modelsDir, state: host.state, log: stdou
 await host.listen(Number(env.TLS_PORT || 7443), Number(env.LOCAL_PORT || 7080));
 host.downloads = new Downloads({ url: env.FETCH_URL || "http://fetch:7300", runtime: host.runtime, log: stdoutLog });
 await host.downloads.start();
+const dataDir = env.DATA_DIR || "/data";
+const book = new RecipeBook(dataDir, loadTemplates(new URL("../workflows/", import.meta.url).pathname), loadStarters(new URL("../recipes/", import.meta.url).pathname));
+host.images = new Images({ book, runtime: host.runtime, comfy, downloads: host.downloads, modelsDir, serving, comfyGpu: Number(env.COMFY_GPU || 0), log: stdoutLog });
+host.runtime.afterScan = () => host.images!.scan();
 await host.runtime.start();
 // fetch shares a network with host-api (for host-api's calls to it) and may not
 // call back. Its address is looked up on every request, so a restart that moves

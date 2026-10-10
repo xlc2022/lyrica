@@ -34,7 +34,7 @@ async function refresh() {
 
   const status = await api("/host/v1/status");
   const states = { running: "Running", pausing: "Pausing: finishing the current job", paused: "Paused", restarting: "Restarting" };
-  $("status").textContent = `${states[status.state] ?? status.state}. Models folder ${status.modelsFolder.path}, ${gib(status.modelsFolder.free)} free.`;
+  $("status").textContent = `${states[status.state] ?? status.state}. Models folder ${status.modelsFolder.path}, ${gib(status.modelsFolder.free)} free (to change it, run host/install.sh --models /new/path on this machine).`;
   if (status.problems?.length) $("status").textContent += ` Problems: ${status.problems.join(" ")}`;
   $("pause").hidden = status.state !== "running";
   $("resume").hidden = status.state === "running" || status.state === "restarting";
@@ -42,6 +42,7 @@ async function refresh() {
   const { models } = await api("/host/v1/models");
   renderModels(models, status.gpus);
   await renderDownloads();
+  await renderRecipes();
   const usage = await api("/host/v1/usage");
   const table = $("usage");
   table.replaceChildren();
@@ -73,15 +74,38 @@ function renderGpus(gpus) {
     const div = document.createElement("div");
     const head = document.createElement("p");
     head.textContent = `GPU ${g.index}: ${g.name}, ${gib(g.vram.used)} of ${gib(g.vram.total)} used. Queue: ${g.queue.chat} chat, ${g.queue.image} image, ${g.queue.background} background. `;
-    const role = document.createElement("select");
-    for (const [value, label] of [["shared", "Shared (llama.cpp, images)"], ["vllm", "vLLM (whole GPU)"]]) role.add(new Option(label, value, false, g.role === value));
-    role.onchange = () => api(`/host/v1/gpus/${g.index}`, { method: "PUT", body: JSON.stringify({ role: role.value }) }).then(refresh, (e) => { show(e); refresh(); });
-    head.append(role);
+    // What it may run, how much it keeps free, or left out entirely.
+    const put = (change) => api(`/host/v1/gpus/${g.index}`, { method: "PUT", body: JSON.stringify({ ...g.settings, ...change }) }).then(refresh, (e) => { show(e); refresh(); });
+    for (const [server, label] of [["llamacpp", "llama.cpp"], ["vllm", "vLLM"], ["images", "images"]]) {
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = g.settings.servers.includes(server);
+      box.onchange = () => put({ servers: box.checked ? [...g.settings.servers, server] : g.settings.servers.filter((x) => x !== server) });
+      const tag = document.createElement("label");
+      tag.append(box, ` ${label} `);
+      head.append(tag);
+    }
+    const out = document.createElement("input");
+    out.type = "checkbox";
+    out.checked = g.settings.excluded;
+    out.onchange = () => put({ excluded: out.checked });
+    const outLabel = document.createElement("label");
+    outLabel.append(out, " left out ");
+    const keep = document.createElement("input");
+    keep.type = "number";
+    keep.min = "0";
+    keep.step = "0.5";
+    keep.style.width = "5em";
+    keep.value = (g.settings.keepFree / 1024 ** 3).toFixed(1);
+    keep.onchange = () => put({ keepFree: Math.round(Number(keep.value) * 1024 ** 3) });
+    const keepLabel = document.createElement("label");
+    keepLabel.append(" keep ", keep, " GiB free");
+    head.append(outLabel, keepLabel);
     div.append(head);
     const list = document.createElement("ul");
     for (const m of g.models) {
       const li = document.createElement("li");
-      li.textContent = `${m.id} (${m.state}${m.pinned ? ", pinned" : ""}${m.busy ? ", busy" : ""}, ${gib(m.vram)}) `;
+      li.textContent = `${m.id} (${m.state}${m.gpus.length > 1 ? `, split over GPUs ${m.gpus.join(" and ")}` : ""}${m.pinned ? ", pinned" : ""}${m.busy ? ", busy" : ""}, ${gib(m.vram)} here) `;
       if (!m.pinned) li.append(button("Unload", () => post("/host/v1/models/unload", { model: m.id })));
       list.append(li);
     }
@@ -94,18 +118,60 @@ function renderModels(models, gpus) {
   const table = $("models");
   table.replaceChildren();
   if (!models.length) table.insertRow().insertCell().textContent = "No text models found in the models folder.";
-  const shared = gpus.filter((g) => g.role === "shared");
+  void gpus;
   for (const m of models) {
     const row = table.insertRow();
     row.insertCell().textContent = m.id;
-    row.insertCell().textContent = `${m.kind}, ${m.server}, ${gib(m.size)}`;
+    const where = m.placement.mode === "auto" ? "auto" : `GPU ${m.placement.gpus.join("+")}`;
+    row.insertCell().textContent = `${m.kind}, ${m.server}, ${gib(m.size)}, ${where}, ${m.contextLength ?? "?"} context`;
     const actions = row.insertCell();
     if (m.state === "unloaded") actions.append(button("Load", () => post("/host/v1/models/load", { model: m.id })));
-    if (m.server === "llamacpp" && shared.length) {
-      actions.append(m.pinned
-        ? button("Unpin", () => post("/host/v1/models/pin", { model: m.id, gpu: m.gpu ?? shared[0].index, pinned: false }))
-        : button(`Pin on GPU ${m.gpu ?? shared[0].index}`, () => post("/host/v1/models/pin", { model: m.id, gpu: m.gpu ?? shared[0].index, pinned: true })));
+    else actions.append(button("Reload", () => post("/host/v1/models/reload", { model: m.id })));
+    actions.append(" ", button(m.pinned ? "Unpin" : "Pin", () => post("/host/v1/models/pin", { model: m.id, pinned: !m.pinned })));
+    actions.append(" ", button("Settings", () => editSettings(m)));
+  }
+}
+
+/** Placement and serving settings, edited as JSON; the host says why a change can't work. */
+async function editSettings(m) {
+  const { settings } = await api(`/host/v1/models/settings?model=${encodeURIComponent(m.id)}`);
+  const text = prompt(`Settings for ${m.id} (placement { "mode": "auto" } or { "mode": "gpus", "gpus": [0, 1] }; contextLength, and more in the host's API.md). They apply at the next load, or on Reload.`, JSON.stringify(settings));
+  if (text === null) return;
+  let next;
+  try {
+    next = JSON.parse(text);
+  } catch {
+    throw new Error("That isn't valid JSON.");
+  }
+  await api("/host/v1/models/settings", { method: "PUT", body: JSON.stringify({ model: m.id, settings: next }) });
+}
+
+async function renderRecipes() {
+  const { recipes } = await api("/host/v1/recipes").catch(() => ({ recipes: [] }));
+  const table = $("recipes");
+  table.replaceChildren();
+  if (!recipes.length) table.insertRow().insertCell().textContent = "None yet: install a starter, or put image models in the models folder and scan.";
+  for (const r of recipes.filter((x) => x.state !== "ignored")) {
+    const row = table.insertRow();
+    row.insertCell().textContent = r.name;
+    const missing = r.parts.filter((p) => !p.file || p.missing).length;
+    row.insertCell().textContent = `${r.arch}, ${r.does.join(" and ")}${r.state === "proposed" ? ", proposed" : ""}${r.ready ? "" : missing ? `, ${missing} part${missing > 1 ? "s" : ""} missing` : ", not ready"}`;
+    const actions = row.insertCell();
+    if (r.state === "proposed") {
+      actions.append(button("Use", () => post(`/host/v1/recipes/${r.id}/confirm`)), " ", button("Ignore", () => post(`/host/v1/recipes/${r.id}/ignore`)));
     }
+    if (missing) actions.append(" ", button("Download parts", () => post(`/host/v1/recipes/${r.id}/download-parts`)));
+    actions.append(" ", button("Delete", () => confirm(`Delete ${r.name}? Parts the host downloaded that no other recipe uses are deleted too.`) && api(`/host/v1/recipes/${r.id}`, { method: "DELETE" })));
+  }
+  const { starters } = await api("/host/v1/starters").catch(() => ({ starters: [] }));
+  const st = $("starters");
+  st.replaceChildren();
+  for (const s of starters) {
+    const row = st.insertRow();
+    row.insertCell().textContent = s.name;
+    const have = s.parts.filter((p) => p.present).length;
+    row.insertCell().textContent = `${have} of ${s.parts.length} parts here`;
+    row.insertCell().append(button("Install", () => post(`/host/v1/starters/${s.id}/install`)));
   }
 }
 

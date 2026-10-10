@@ -51,9 +51,11 @@ owns compaction; we steer it).
    save what matters to memory, then compact with a summary of what the
    next stretch needs. At 90%: compact now. These are lines in the turn
    context, like the date, not tool results.
-5. **Compacting herself.** A `compact` action on the `threads` tool, with
-   her own summary (what she is doing, decisions, open questions, paths and
-   names she needs). lyricad checks the summary fits Pi's reserve, then
+5. **Compacting herself.** A `compact` tool with one argument, her own
+   summary (what she is doing, decisions, open questions, paths and names
+   she needs). It stands alone until the Child threads thread lands the
+   `threads` tool, which then takes `compact` as an action and the
+   standalone tool goes. lyricad checks the summary fits Pi's reserve, then
    calls Pi's `compact()` and answers `session_before_compact` with her
    summary as the result. Pi cuts the old entries and keeps the recent
    ones; pinned messages are re-injected as today. The compaction shows as

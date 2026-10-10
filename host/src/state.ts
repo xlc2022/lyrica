@@ -1,6 +1,7 @@
 // The host's own state, one JSON file in its data folder. Never holds prompt text or tokens.
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { GpuSettings, ModelSettings } from "./placement.ts";
 
 export interface PairedClient {
   fingerprint: string;
@@ -23,16 +24,19 @@ export interface HostState {
   /** scrypt$<N>$<salt b64>$<hash b64>, set at the machine. */
   password: string | null;
   paused: boolean;
-  /** GPU index → role; a GPU not listed is shared. */
-  roles: Record<number, "vllm" | "shared">;
-  pins: { model: string; gpu: number }[];
-  /** Model ID → bytes of VRAM measured on its first load. */
-  vram: Record<string, number>;
+  /** GPU index → what it may run and keep free; a GPU not listed allows everything. */
+  gpuSettings: Record<number, GpuSettings>;
+  /** Model ID → its placement and serving settings; a model not listed is Auto with defaults. */
+  models: Record<string, ModelSettings>;
+  /** Model IDs kept loaded. */
+  pins: string[];
+  /** "<model ID>@<placement>" → bytes measured on each GPU on its first load there. */
+  vram: Record<string, Record<number, number>>;
   usageSince: string;
   usage: Record<string, Usage>;
 }
 
-const EMPTY: HostState = { clients: [], password: null, paused: false, roles: {}, pins: [], vram: {}, usageSince: "", usage: {} };
+const EMPTY: HostState = { clients: [], password: null, paused: false, gpuSettings: {}, models: {}, pins: [], vram: {}, usageSince: "", usage: {} };
 
 export class StateFile {
   readonly path: string;
@@ -40,8 +44,15 @@ export class StateFile {
 
   constructor(dir: string) {
     this.path = join(dir, "state.json");
-    this.state = existsSync(this.path) ? { ...EMPTY, ...JSON.parse(readFileSync(this.path, "utf8")) } : structuredClone(EMPTY);
+    const stored = existsSync(this.path) ? readFileSync(this.path, "utf8") : null;
+    this.state = stored ? { ...EMPTY, ...JSON.parse(stored) } : structuredClone(EMPTY);
     if (!this.state.usageSince) this.state.usageSince = new Date().toISOString();
+    // From before placements: pins named a GPU, and VRAM was one number per model.
+    this.state.pins = this.state.pins.map((p) => (typeof p === "string" ? p : (p as { model: string }).model));
+    for (const [k, v] of Object.entries(this.state.vram)) if (typeof v === "number" || !k.includes("@")) delete this.state.vram[k];
+    delete (this.state as { roles?: unknown }).roles;
+    // Written back once, so the file on disk is in today's shape.
+    if (stored !== null && JSON.stringify(JSON.parse(stored)) !== JSON.stringify(this.state)) this.update(() => {});
   }
 
   get(): Readonly<HostState> {

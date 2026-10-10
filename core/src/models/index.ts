@@ -773,7 +773,7 @@ export class Models {
     return token ? { "x-hub-token": token } : undefined;
   }
 
-  // --- How it answers ---
+  // --- Sampling ---
 
   /**
    * An offering's settings for one user, with where each comes from: the
