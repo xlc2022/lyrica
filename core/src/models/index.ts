@@ -1396,12 +1396,24 @@ export class Models {
       this.check(parent.userId, pick.model, isRestricted(parent));
       chat = [pick.model];
     }
+    this.inheritContext(parent, childThreadId, { chat: false });
+    this.setThreadModel(parent.userId, parent.pool, childThreadId, "chat", chat);
+    return this.callContext(parent.userId, parent.pool, childThreadId);
+  }
+
+  /**
+   * Gives a child thread (a branch, a subagent) its parent's local-only
+   * switch, profile, thinking level and model lists, the chat list too unless
+   * `chat: false`.
+   */
+  inheritContext(parent: CallContext, childThreadId: string, opts: { chat?: boolean } = {}): CallContext {
     const { userId, pool } = parent;
     if (parent.localOnly) this.setLocalOnly(userId, pool, childThreadId, true);
     if (pool === "general" && parent.profile) this.setThreadProfile(userId, pool, childThreadId, parent.profile);
     if (parent.thinking) this.setThinking(userId, childThreadId, parent.thinking);
-    for (const [task, r] of Object.entries(parent.overrides ?? {})) if (task !== "chat") this.setThreadModel(userId, pool, childThreadId, task as Task, r);
-    this.setThreadModel(userId, pool, childThreadId, "chat", chat);
+    for (const [task, r] of Object.entries(parent.overrides ?? {})) {
+      if (task !== "chat" || opts.chat !== false) this.setThreadModel(userId, pool, childThreadId, task as Task, r);
+    }
     return this.callContext(userId, pool, childThreadId);
   }
 
