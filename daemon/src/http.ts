@@ -147,7 +147,8 @@ export function statusOf(err: unknown): number {
   if (err instanceof HttpError) return err.status;
   if (err instanceof Locked) return 503;
   if (err instanceof Forbidden) return 403;
-  if (err instanceof Offline) return 503;
+  // 502 like a host that can't be reached: 503 means locked, and sends the web UI to unlock.
+  if (err instanceof Offline) return 502;
   if (err instanceof AuthError || err instanceof WrongPassword) return 401;
   if (err instanceof CloudModelForbidden || err instanceof NoModel || err instanceof PairingFailed) return 400;
   // A model host's refusal keeps its meaning; anything else from it is a bad gateway.

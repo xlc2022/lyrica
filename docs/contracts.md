@@ -682,7 +682,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - offline: an `offline` thread event (`task`, `tried`) when no model for a
     turn can be reached; a turn that hadn't started keeps its message in
     `queue` and sends it when a model answers. Any call that throws `Offline`
-    answers `503` with `{ error, code: "offline", task, tried }`;
+    answers `502` (503 is reserved for locked) with `{ error, code: "offline", task, tried }`;
   - child threads: `ThreadSummary.child`, `status` and `unseen`;
     `Message.from: { kind: "parent", threadId }` in a child thread only; a
     user's send or edit starting with the parent's mark is `400`;
@@ -747,7 +747,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       gains `profile` and `thinking`. `DELETE` on a thread calls
       `Models.forgetThread` for it and each subagent thread under it.
     - **Errors from core** (`statusOf`): `CloudModelForbidden`, `NoModel` and
-      `PairingFailed` are `400`; `Offline` is `503`; `Forbidden` is `403`. A `HostRefused` keeps the
+      `PairingFailed` are `400`; `Offline` is `502`; `Forbidden` is `403`. A `HostRefused` keeps the
       host's meaning by `code`: `invalid` 400, `refused` 403, `not_found` 404,
       `in_use` 409, `too_big` 413, `no_space` 507; any other code (`unreachable`,
       `paused`, `busy`, `unpaired`, `identity_changed`, …) is `502` with the
