@@ -201,29 +201,32 @@ button.badge.model:hover { border-color: var(--accent); }
 main > .head, .composer, .subnote, .offline { flex: none; }
 .welcome { padding: 24px var(--gutter); }
 
-.composer { display: grid; gap: 8px; padding: 10px var(--gutter) max(12px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--panel); }
+.composer { display: grid; gap: 2px; padding: 10px var(--gutter) max(6px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--panel); }
 .composer[data-dragging="true"] { outline: 2px dashed var(--accent); outline-offset: -6px; }
-/* As in the Claude app: one box; the row under the text is quiet, and nothing in it has a border (the box is the border). */
-.composer-box { border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); padding: 4px 6px; display: grid; gap: 2px; }
+/* The box holds the text and Send; the quiet row under it holds "+" and the mode. Nothing in either has a border but the box. */
+.composer-box { position: relative; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); padding: 5px 44px 5px 10px; }
 .composer-box:focus-within { border-color: var(--accent); }
-.composer-box textarea { border: 0; background: none; resize: none; min-height: 42px; max-height: 40vh; padding: 8px 6px 4px; }
+.composer-box textarea { display: block; width: 100%; border: 0; background: none; resize: none; min-height: 32px; max-height: 40vh; padding: 5px 4px; font-size: 15px; }
 .composer-box textarea:focus-visible { outline: none; }
-.composer-row { display: flex; align-items: center; gap: 2px; min-height: 30px; }
+.composer-row { display: flex; align-items: center; gap: 2px; min-height: 28px; padding: 0 6px; }
 .composer-row .spacer { flex: 1; }
-.composer-row button.icon { width: 30px; min-height: 30px; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--muted); display: inline-grid; place-items: center; }
-.composer-row button.icon:hover:not(:disabled) { color: var(--accent); }
-.composer-row button.icon svg { width: 16px; height: 16px; }
-.composer-row button.send svg { width: 18px; height: 18px; }
-.composer-row button.send:disabled { opacity: 1; }
+.composer button.icon { width: 28px; min-height: 28px; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--muted); display: inline-grid; place-items: center; }
+.composer button.icon:hover:not(:disabled) { color: var(--accent); }
+.composer button.icon svg { width: 16px; height: 16px; }
+.composer-box button.send { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); }
+.composer-box button.send svg { width: 18px; height: 18px; }
+.composer-box button.send:disabled { opacity: 1; }
 .composer[data-has-text="true"] button.send { color: var(--accent); }
-.mode-picker > button.link { font-size: 13px; padding: 0 6px; }
+.mode-picker > button.link { font-size: 13px; padding: 0 6px; min-height: 28px; }
 .mode-picker > button.link, .go-ahead > button { display: inline-flex; align-items: center; gap: 2px; }
 .mode-picker .drop, .go-ahead .drop { display: inline-flex; color: inherit; }
 .mode-picker .drop svg, .go-ahead .drop svg { width: 12px; height: 12px; }
 .mode-picker .drop { color: var(--muted); }
 @media (pointer: coarse) {
   .composer-row { min-height: 44px; }
-  .composer-row button.icon { width: 44px; min-height: 44px; }
+  .composer button.icon { width: 44px; min-height: 44px; }
+  .composer-box { padding-right: 52px; }
+  .composer-box button.send { right: 4px; }
   .mode-picker > button.link { min-height: 44px; }
 }
 .tools-menu, .mode-picker, .go-ahead { position: relative; }

@@ -1,7 +1,7 @@
 // Writing a message: Enter sends (Shift+Enter for a new line, except on touch
-// keyboards), files attach from the "+" menu, by drag or paste. As in the
-// Claude app, one box: the text, then a quiet row of "+", the thread's mode
-// (Shift+Tab cycles) and Send, or Stop while she works and the box is empty.
+// keyboards), files attach from the "+" menu, by drag or paste. The box holds
+// the text and Send (Stop while she works and the box is empty); under it, a
+// quiet row with "+" and the thread's mode (Shift+Tab cycles).
 import { useEffect, useRef, useState } from "react";
 import { upload, type ThreadSettings, type ThreadSettingsChange } from "./api.ts";
 import { Icon, ModePicker, nextMode, ToolsMenu } from "./Modes.tsx";
@@ -90,15 +90,15 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, onSet
             if (e.key === "Enter" && !e.shiftKey && !touch && !e.nativeEvent.isComposing) { e.preventDefault(); void submit(); }
           }}
         />
-        <div className="composer-row">
-          <ToolsMenu settings={settings} onAttach={() => picker.current?.click()} onChange={onSettings} />
-          <input ref={picker} type="file" multiple hidden onChange={(e) => { attach(e.target.files ?? []); e.target.value = ""; }} />
-          <span className="spacer" />
-          {settings && <ModePicker mode={settings.mode} onChange={(mode) => onSettings({ mode })} />}
-          {busy && !draft.trim()
-            ? <button type="button" className="icon send" aria-label="Stop" title="Stop" onClick={onStop}><Icon name="stop" /></button>
-            : <button type="submit" className="icon send" aria-label="Send" title={busy ? "Send when she finishes" : "Send"} disabled={!draft.trim()}><Icon name="up" /></button>}
-        </div>
+        {busy && !draft.trim()
+          ? <button type="button" className="icon send" aria-label="Stop" title="Stop" onClick={onStop}><Icon name="stop" /></button>
+          : <button type="submit" className="icon send" aria-label="Send" title={busy ? "Send when she finishes" : "Send"} disabled={!draft.trim()}><Icon name="up" /></button>}
+      </div>
+      <div className="composer-row">
+        <ToolsMenu settings={settings} onAttach={() => picker.current?.click()} onChange={onSettings} />
+        <input ref={picker} type="file" multiple hidden onChange={(e) => { attach(e.target.files ?? []); e.target.value = ""; }} />
+        <span className="spacer" />
+        {settings && <ModePicker mode={settings.mode} onChange={(mode) => onSettings({ mode })} />}
       </div>
     </form>
   );
