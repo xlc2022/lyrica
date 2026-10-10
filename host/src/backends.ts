@@ -161,9 +161,9 @@ export class Vllm implements Backend {
     return undefined;
   }
 
-  private write(): void {
+  private write(placed: Map<number, TextModel> = this.placed): void {
     const gpus: Record<string, unknown> = {};
-    for (const [gpu, m] of this.placed) {
+    for (const [gpu, m] of placed) {
       gpus[gpu] = { model: `${this.o.models}/${m.id}`, name: m.id, port: this.port(gpu), embedding: m.kind === "embedding", maxModelLen: m.contextLength };
     }
     writeAtomic(this.statePath, JSON.stringify({ generation: this.generation, gpus }, null, 2));
@@ -208,9 +208,10 @@ export class Vllm implements Backend {
   /** Stops every server and waits until each is gone. */
   async reset(): Promise<void> {
     const gpus = [...this.placed.keys()];
-    this.placed.clear();
     this.generation++;
-    this.write();
+    this.write(gpus.length ? new Map() : undefined);
+    // Forget them only once each server is gone, so a failure stays counted.
     for (const gpu of gpus) await poll(async () => !(await fetch(`${this.base(gpu)}/v1/models`).then(() => true, () => false)), 120_000, "vLLM");
+    this.placed.clear();
   }
 }
