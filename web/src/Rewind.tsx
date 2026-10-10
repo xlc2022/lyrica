@@ -35,8 +35,8 @@ export function MessageMenu({ n, role, rewinder, onEdit }: { n: number; role: "u
             <button type="button" role="menuitem" disabled={busy} aria-expanded={models} onClick={() => setModels(!models)}>Regenerate with…</button>
           )}
           {models && rewinder.settings?.allowed.flatMap((ep) => ep.models.map((m) => (
-            <button key={`${ep.id}/${m.modelId}`} type="button" role="menuitem" className="sub-item" disabled={busy}
-              onClick={act(() => regenerate({ endpointId: ep.id, modelId: m.modelId }))}>
+            <button key={m.id} type="button" role="menuitem" className="sub-item" disabled={busy}
+              onClick={act(() => regenerate({ offeringId: m.id }))}>
               {m.modelId} <span className="muted">· {ep.name}</span>
             </button>
           )))}

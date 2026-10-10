@@ -391,6 +391,9 @@ thread, such as a subagent's, its `CallContext`:
 - as its chat list, the parent's `subagent.cheap` or `subagent.strong`
   list, or a named model or group the parent's context allows.
 
+`inheritContext(parent, childThreadId)` gives a branch the same, chat list
+included: a branch talks with the model its parent does.
+
 A private or local-only parent can only give its child a local model. A
 refusal throws before anything is written. `delegate` itself belongs to the
 Delegation thread ([delegation.md](delegation.md)).

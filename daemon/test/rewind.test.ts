@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { MessagePage, RewindResponse, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { EndpointInfo, MessagePage, RewindResponse, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 /** Li with a local chat model, subagent models on a second server, and one general thread. */
@@ -56,24 +56,26 @@ describe("rewinding a thread", () => {
 
   it("regenerates with another model the thread may use, and refuses a cloud one in a local-only thread", async () => {
     const { rt, li, model, path, stream, say, messages, said } = await setup();
-    await li.post(`/api/u/${rt.li.id}/endpoints`, { name: "cloud", kind: "cloud", baseUrl: model.baseUrl });
+    const cloud = (await li.post<EndpointInfo>(`/api/u/${rt.li.id}/endpoints`, { name: "cloud", kind: "cloud", baseUrl: model.baseUrl })).body;
+    const gpu = (await li.get<EndpointInfo[]>(`/api/u/${rt.li.id}/endpoints`)).body.find((e) => e.name === "gpu")!;
+    const offering = (ep: EndpointInfo, id: string) => ({ offeringId: ep.models.find((m) => m.modelId === id)!.id });
     await li.patch(`${path}/settings`, { localOnly: true });
     model.reply({ text: "One." });
     await say("count");
     const reply = (await messages()).find((m) => m.role === "assistant")!;
 
-    const refused = await li.post(`${path}/messages/${reply.n}/rewind`, { action: "regenerate", model: { endpointId: "cloud", modelId: "qwen3.8-27b" } });
+    const refused = await li.post(`${path}/messages/${reply.n}/rewind`, { action: "regenerate", model: offering(cloud, "qwen3.8-27b") });
     expect(refused.status).toBe(400);
     expect(JSON.stringify(refused.body)).toMatch(/cloud model/);
     expect(await said()).toEqual(["user: count", "assistant: One."]);
 
     model.reply({ text: "Two." });
     const from = stream.events.length;
-    expect((await li.post(`${path}/messages/${reply.n}/rewind`, { action: "regenerate", model: { endpointId: "gpu", modelId: "other" } })).status).toBe(200);
+    expect((await li.post(`${path}/messages/${reply.n}/rewind`, { action: "regenerate", model: offering(gpu, "other") })).status).toBe(200);
     await stream.until(turnEnd, from);
     expect(model.requests.at(-1)!.model).toBe("other");
     expect(await said()).toEqual(["user: count", "assistant: Two."]);
-    expect((await li.get<ThreadSettings>(`${path}/settings`)).body.models.chat.model).toEqual({ endpointId: "gpu", modelId: "other" });
+    expect((await li.get<ThreadSettings>(`${path}/settings`)).body.models.chat.model).toEqual(offering(gpu, "other"));
   });
 
   it("edits a message, and deletes the last turn again and again", async () => {

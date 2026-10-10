@@ -1171,9 +1171,7 @@ function entryN(r: Request): number {
  */
 function inheritThread(d: Lyricad, user: User, pool: Pool, parent: string, child: string): void {
   const { models, workspace } = d.services!;
-  const ctx = models.callContext(user.id, pool, parent);
-  if (ctx.localOnly) models.setLocalOnly(user.id, pool, child, true);
-  for (const [task, ref] of Object.entries(ctx.overrides ?? {})) models.setThreadModel(user.id, pool, child, task as Api.ThreadTask, ref);
+  models.inheritContext(models.callContext(user.id, pool, parent), child);
   workspace.settings(user.id).inheritSettings(parent, child, pool);
 }
 
@@ -1216,7 +1214,8 @@ async function rewind(d: Lyricad, user: User, r: Request, req: Api.RewindRequest
   });
   // Regenerate with…: the router checks the model before anything is removed.
   if (req.action === "regenerate" && req.model) {
-    models.setThreadModel(user.id, pool, thread.id, "chat", { endpointId: String(req.model.endpointId), modelId: String(req.model.modelId) });
+    const m = req.model as { offeringId?: unknown; groupId?: unknown };
+    models.setThreadModel(user.id, pool, thread.id, "chat", m.groupId !== undefined ? { groupId: String(m.groupId) } : { offeringId: String(m.offeringId) });
   }
   let result: Api.RewindResponse = { removed: 0, subagents: 0 };
   try {
