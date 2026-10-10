@@ -782,6 +782,12 @@ export type ThreadEvent =
   | { type: "queue"; queued: string[] }
   /** In plain words: a model the router refused, an endpoint that's down, a failed tool setup. */
   | { type: "error"; message: string }
+  /**
+   * No model for the task could be reached: every machine in its list is down,
+   * paused or stale. For a chat turn the message waits in `queue` and is sent
+   * when one answers again. `tried`: labels and reasons, in list order.
+   */
+  | { type: "offline"; task: Task; tried: { label: string; reason: string }[] }
   | { type: "title"; title: string }
   /** The thread's settings changed (an approved plan switched its mode, say): fetch them again. */
   | { type: "settings" }

@@ -330,8 +330,9 @@ class Models {                                              // new Models(keyrin
   callContext(userId, pool, threadId): CallContext
   childContext(parent, childThreadId, { tier } | { model }): CallContext   // a child under its parent's rules
   inheritContext(parent, childThreadId, { chat? }): CallContext          // a branch: the parent's local-only, profile, thinking and lists
-  resolve(task, ctx, need?): Resolution                     // throws CloudModelForbidden or NoModel
-  resolveLive(task, ctx, need?, { probeMs? }): Promise<Resolution>   // probes first when there is a fallback
+  resolve(task, ctx, need?, { evenIfDown?, except? }?): Resolution   // throws CloudModelForbidden, NoModel or Offline
+  resolveLive(task, ctx, need?, { probeMs?, probeLast? }): Promise<Resolution>   // probes first when there is a fallback; asks again before Offline
+  callWithFallback(task, ctx, need, call: (r) => Promise<T>, { probeMs? }?): Promise<T>   // the next model on isUnreachable; Offline when none answers
   resolveModel(task, ctx, need?): { offeringId }             // resolve(…).ref
   allowed(ctx): { endpoint; offerings }[]                   // local endpoints only when restricted
   // Thinking and call records
@@ -359,7 +360,8 @@ class Models {                                              // new Models(keyrin
   servingSettings(userId, offeringId) / setServingSettings(actor, offeringId, settings) / reloadModel(actor, offeringId)
   hostDashboard(userId, hostId): string                     // a direct link, at the address that last answered
 }
-// Also exported: CloudModelForbidden, NoModel, HostRefused (with `code`), PairingFailed, HostIdentityChanged;
+// Also exported: CloudModelForbidden, NoModel, Offline (a NoModel: code "offline", task, tried), isUnreachable(err),
+// HostRefused (with `code`), PairingFailed, HostIdentityChanged;
 // STALE_DAYS, GONE_DAYS, HEALTH_MS, CAPABILITIES, ANSWER_SETTINGS, TASKS, THINKING_LEVELS; isRestricted, profileFor,
 // checkTask, refId, baseName, acceptedSettings(endpoint), payloadFields(…); fingerprint, normaliseCode, pairingProofs,
 // hostOrigin; probeUrl(baseUrl, apiKey, timeoutMs?, fetchImpl?), discoverModels, addressesOutside.
@@ -373,6 +375,20 @@ class Models {                                              // new Models(keyrin
   named directly throws `CloudModelForbidden`. Nothing falls back across the
   local/cloud line: outside Custom a list keeps to one kind (local where
   restricted, cloud in the cloud profile, else its first model's).
+- **Offline** is the one shape for "every model in a task's list is away",
+  for chat, images and speech alike: `Offline extends NoModel` with
+  `code: "offline"`, the `task`, and `tried` (labels and reasons, in list
+  order, never text). `resolve` throws it when the list is set and a model
+  was skipped only because its machine is down (health cache) or stale;
+  a list where nothing fits the call stays `NoModel`. `resolveLive` asks
+  the down machines again, once, in order, before throwing it, so one that
+  has come back answers. `callWithFallback` runs a call on each model in
+  turn: an `isUnreachable` failure (connection refused, reset or timed out,
+  a reply cut off, a host's `unreachable`, `paused`, `busy`, `restarting`,
+  `unavailable`, `unpaired` or `identity_changed`) marks it down and tries
+  the next (a host's `model_unavailable` marks only that model down, for
+  HEALTH_MS, and the host stays up for its others); any other failure is thrown as is; when none answers it throws
+  `Offline` naming every model tried, and never goes round twice.
 - **Kind is pinned** where an endpoint is made: `addEndpoint` takes it as
   declared, `pairHost` makes a host local, `editEndpoint` can't change it,
   and `replace` and `merge` refuse to cross kinds. `probe` only warns when a
@@ -692,6 +708,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `ThreadSettings.context` (`ContextInfo`: used, window, parts, reserve,
     free, measured at), `CallInfo.pace`, the `context` and `compacted`
     thread events, and a `compacted` message part (the stored notice);
+  - offline: an `offline` thread event (`task`, `tried`) when no model for a
+    turn can be reached; a turn that hadn't started keeps its message in
+    `queue` and sends it when a model answers. Any call that throws `Offline`
+    answers `502` (503 is reserved for locked) with `{ error, code: "offline", task, tried }`;
   - child threads: `ThreadSummary.child`, `status` and `unseen`;
     `Message.from: { kind: "parent", threadId }` in a child thread only; a
     user's send or edit starting with the parent's mark is `400`;
@@ -768,7 +788,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       gains `profile` and `thinking`. `DELETE` on a thread calls
       `Models.forgetThread` for it and each subagent thread under it.
     - **Errors from core** (`statusOf`): `CloudModelForbidden`, `NoModel` and
-      `PairingFailed` are `400`; `Forbidden` is `403`. A `HostRefused` keeps the
+      `PairingFailed` are `400`; `Offline` is `502`; `Forbidden` is `403`. A `HostRefused` keeps the
       host's meaning by `code`: `invalid` 400, `refused` 403, `not_found` 404,
       `in_use` 409, `too_big` 413, `no_space` 507; any other code (`unreachable`,
       `paused`, `busy`, `unpaired`, `identity_changed`, …) is `502` with the

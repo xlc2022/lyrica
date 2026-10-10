@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  Keyring, Memory, Models, PersonaProposals, PersonaStore, SystemdCredentials, Users, Workspace,
+  Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, SystemdCredentials, Users, Workspace,
   type Argon2Params, type CredentialStore, type User,
 } from "@lyrica/core";
 import { Delegation, Sleep, type Limits, type SleepLimits, type ThreadsLimits } from "@lyrica/extension";
@@ -52,6 +52,8 @@ export interface LyricadOptions {
   idleMs?: number;
   /** Unanswered permission requests are denied after this long. Default 5 minutes. */
   permissionMs?: number;
+  /** A message waiting because no model could be reached: how often to ask again. Default 30 seconds. */
+  offlineRetryMs?: number;
   /** Subagent limits (depth, concurrency, runs per request, timeout). Delegation's defaults otherwise. */
   delegation?: Partial<Limits>;
   /** Child thread limits (per request, working at once). */
@@ -202,7 +204,7 @@ export class Lyricad {
     const children = new ChildThreads({ users, memory, models, workspace, delegation, host: () => host, limits: this.opts.threads });
     host = new ThreadHost({
       users, memory, models, workspace, persona, delegation, cwd, log: this.log,
-      idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000,
+      idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000, offlineRetryMs: this.opts.offlineRetryMs,
       threads: children, onTurn: (u, p, t, working) => children.turn(u, p, t, working),
     });
     const proposals = new PersonaProposals(keyring.self(), users, persona);
@@ -382,7 +384,9 @@ export class Lyricad {
       const status = err instanceof URIError ? 400 : statusOf(err);
       const message = status === 500 ? "internal error" : (err as Error).message;
       if (status === 500) this.log(`error in ${method} ${routeName}: ${(err as Error).name}: ${(err as Error).message.split("\n")[0]}`);
-      if (!res.headersSent) sendJson(res, status, { error: message }, err instanceof HttpError ? err.headers : {});
+      // Offline says which models were tried, so the interface can show it the same way for chat, images and speech.
+      const offline = err instanceof Offline ? { code: err.code, task: err.task, tried: err.tried } : {};
+      if (!res.headersSent) sendJson(res, status, { error: message, ...offline }, err instanceof HttpError ? err.headers : {});
       else res.end();
     }
   }

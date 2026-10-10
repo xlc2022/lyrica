@@ -56,6 +56,19 @@ describe("the live view of a thread's stream", () => {
     expect(s.items).toEqual([{ role: "user", text: "one" }]);
   });
 
+  it("shows a message no model took as waiting, once, until a turn starts", () => {
+    const tried = [{ label: "gpu/qwen", reason: "gpu is down" }];
+    const s = run([
+      { type: "hello", busy: false, queued: [], permissions: [] },
+      { type: "sent", text: "hi" },
+      { type: "queue", queued: ["hi"] },
+      { type: "offline", task: "chat", tried },
+    ]);
+    expect([s.items, s.queued, s.offline]).toEqual([[], ["hi"], { task: "chat", tried }]);
+    const back = run([{ type: "queue", queued: [] }, { type: "turn_start" }], s);
+    expect([back.items, back.offline]).toEqual([[{ role: "user", text: "hi" }], undefined]);
+  });
+
   it("tracks permission prompts until they are answered", () => {
     const req = { requestId: "r1", toolCallId: "c1", tool: "bash", args: {}, expiresAt: "2026-10-09T00:00:00Z" };
     const asked = run([{ type: "permission", ...req }]);

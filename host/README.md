@@ -135,6 +135,8 @@ fills the recipe's template in `workflows/` (one per architecture).
   keeps its input, output and temp folders in memory, saves no metadata,
   and its history is cleared after every job. It uses one GPU,
   `COMFY_GPU` in `.env`, and frees its memory after ten idle minutes.
+  A ComfyUI that is off, or doesn't answer a request within 30 seconds,
+  fails that job as `unavailable`, and the next job still runs.
 
 ## Pairing
 
