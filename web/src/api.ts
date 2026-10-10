@@ -35,14 +35,17 @@ export async function request<T>(method: string, path: string, body?: unknown, i
   } catch {
     throw new HttpError(0, "Lyrica can't be reached. Check the connection.");
   }
+  if (!res.ok) throw await errorFrom(res);
   const text = await res.text();
-  const data = text ? safeJson(text) : undefined;
-  if (!res.ok) {
-    if (res.status === 401 || res.status === 503) onAuthLost(res.status);
-    const reason = data && typeof data === "object" && "error" in data ? sentence(String(data.error)) : "";
-    throw new HttpError(res.status, reason || PLAIN[res.status] || `Something went wrong (${res.status}).`);
-  }
-  return data as T;
+  return (text ? safeJson(text) : undefined) as T;
+}
+
+/** A refused response as an HttpError with lyricad's reason, read from its body. */
+export async function errorFrom(res: Response): Promise<HttpError> {
+  if (res.status === 401 || res.status === 503) onAuthLost(res.status);
+  const data = safeJson(await res.text().catch(() => ""));
+  const reason = data && typeof data === "object" && "error" in data ? sentence(String(data.error)) : "";
+  return new HttpError(res.status, reason || PLAIN[res.status] || `Something went wrong (${res.status}).`);
 }
 
 /** lyricad's reasons are lower-case phrases; show them as sentences. */

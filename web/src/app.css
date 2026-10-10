@@ -395,7 +395,24 @@ textarea.code { font: 0.82rem/1.5 var(--mono); white-space: pre; }
 .menu button.danger { color: var(--danger); }
 .msg-menu .menu { right: auto; width: max-content; min-width: 200px; max-width: min(340px, calc(100vw - 32px)); max-height: 60vh; overflow-y: auto; text-transform: none; letter-spacing: normal; font-size: 0.875rem; }
 .msg-menu .menu .sub-item { padding-left: 24px; }
+/* Her actions end with ⋯, so its menu opens leftwards and stays on a phone's screen. */
+.turn .msg-menu .menu { left: auto; right: 0; }
 .edit-box { display: grid; gap: 6px; }
 .edit-box textarea { width: 100%; font: inherit; border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; background: var(--panel); color: var(--fg); }
 /* A child thread's updates nobody has seen yet. */
 .count { font: 500 11px/18px var(--mono); height: 18px; min-width: 18px; text-align: center; border-radius: 999px; padding: 0 5px; background: var(--accent); color: var(--bg); font-variant-numeric: tabular-nums; }
+
+/* Voice (DESIGN.md "Voice"): the mic in the message box's row, and Read aloud in her message's actions. */
+.mic { display: inline-flex; align-items: center; gap: 2px; }
+.mic .elapsed { font: 12px/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); padding-right: 4px; }
+.composer .mic[data-state="recording"] button.icon { color: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
+.composer .mic[data-state="transcribing"] button.icon { color: var(--muted); opacity: 1; animation: pulse 1.4s ease-in-out infinite; }
+.composer[data-mic="recording"] textarea::placeholder { color: var(--accent); }
+.who .read-aloud { margin-left: 6px; vertical-align: middle; }
+.who .read-aloud svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; width: 16px; height: 16px; }
+.who .read-aloud[data-reading="true"] { color: var(--accent); border-color: var(--accent); }
+.who .read-aloud[data-reading="true"] svg { animation: pulse 1.4s ease-in-out infinite; }
+.unit-field { display: inline-flex; align-items: center; gap: 8px; }
+.unit-field input { width: 6em; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+legend .source { font-weight: 400; text-transform: none; letter-spacing: normal; }
+.models button.link.small { min-height: 0; padding: 0; vertical-align: baseline; }

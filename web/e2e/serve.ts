@@ -7,7 +7,10 @@
 // starts a child thread with that title (then says "Started it."), "plan: <plan>"
 // calls propose_plan with that plan (then says "On it."), anything else
 // gets a few streamed sentences that echo it. /local/v1 serves "local-model"
-// and /cloud/v1 "cloud-model".
+// and /cloud/v1 "cloud-model". /speech/v1 is a speech server: "whisper"
+// transcribes any clip as "hello from the fake" and "kokoro" speaks a second
+// of PCM; POST /speech/down and /speech/up make its speech routes fail (503)
+// or answer again.
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -23,10 +26,38 @@ const [port = 7341, modelPort = 7351] = process.argv.slice(2).map(Number);
 interface Chat { model: string; messages: { role: string; content?: unknown }[] }
 
 function fakeModel() {
+  let speechDown = false;
   return createServer((req, res) => {
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", async () => {
+      if (req.url === "/speech/down" || req.url === "/speech/up") { speechDown = req.url === "/speech/down"; res.writeHead(204); return res.end(); }
+      if (req.url?.startsWith("/speech/v1/")) {
+        const rest = req.url.slice("/speech/v1".length);
+        if (req.method === "GET" && rest === "/models") {
+          res.writeHead(200, { "content-type": "application/json" });
+          return res.end(JSON.stringify({ object: "list", data: [{ id: "whisper", object: "model" }, { id: "kokoro", object: "model" }] }));
+        }
+        if (speechDown) { res.writeHead(503, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: { message: "the speech server is down" } })); }
+        if (req.method === "POST" && rest === "/audio/transcriptions") {
+          // Slow enough to be seen transcribing.
+          await new Promise((r) => setTimeout(r, 1200));
+          res.writeHead(200, { "content-type": "application/json" });
+          return res.end(JSON.stringify({ text: " hello from the fake " }));
+        }
+        if (req.method === "POST" && rest === "/audio/speech") {
+          // A second of 24 kHz s16le: a quiet tone, in a few pieces.
+          res.writeHead(200, { "content-type": "audio/pcm" });
+          const pcm = Buffer.alloc(48_000);
+          for (let i = 0; i < 24_000; i++) pcm.writeInt16LE(Math.round(Math.sin(i / 24_000 * 440 * 2 * Math.PI) * 3000), i * 2);
+          for (let at = 0; at < pcm.length; at += 9600) {
+            res.write(pcm.subarray(at, at + 9600));
+            await new Promise((r) => setTimeout(r, 40));
+          }
+          return res.end();
+        }
+        res.writeHead(404); return res.end();
+      }
       const [, kind, rest] = /^\/(local|cloud)\/v1(\/.*)$/.exec(req.url ?? "") ?? [];
       if (req.method === "GET" && rest === "/models") {
         res.writeHead(200, { "content-type": "application/json" });
