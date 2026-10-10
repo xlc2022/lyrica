@@ -541,11 +541,12 @@ test("dictation goes in at the caret, Read aloud plays her reply, and a speech s
     await expect(message).toHaveAttribute("placeholder", "Listening…");
     await page.waitForTimeout(600);
     await page.getByRole("button", { name: "Stop and transcribe" }).click();
-    await expect(page.getByRole("alert").filter({ hasText: "Dictation can't be reached now" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("alert").filter({ hasText: /be reached now/ })).toBeVisible({ timeout: 15_000 });
     await page.reload();
     await expect(mic).toBeDisabled();
-    await expect(mic).toHaveAttribute("title", /Dictation can't be reached now/);
-    await expect(page.getByRole("button", { name: "Read aloud" }).first()).toBeDisabled();
+    await expect(mic).toHaveAttribute("title", /be reached now/);
+    await expect(page.getByRole("button", { name: "Read aloud" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Read aloud" })).toHaveAttribute("title", /be reached now/);
     await shot("speech-down");
     await noHorizontalScroll(page);
     // The thread's own choice held.

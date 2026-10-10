@@ -9,7 +9,7 @@
 // gets a few streamed sentences that echo it. /local/v1 serves "local-model"
 // and /cloud/v1 "cloud-model". /speech/v1 is a speech server: "whisper"
 // transcribes any clip as "hello from the fake" and "kokoro" speaks a second
-// of PCM; POST /speech/down and /speech/up make its speech routes fail (503)
+// of PCM; POST /speech/down and /speech/up make the whole server fail (503)
 // or answer again.
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
@@ -34,11 +34,12 @@ function fakeModel() {
       if (req.url === "/speech/down" || req.url === "/speech/up") { speechDown = req.url === "/speech/down"; res.writeHead(204); return res.end(); }
       if (req.url?.startsWith("/speech/v1/")) {
         const rest = req.url.slice("/speech/v1".length);
+        // Down means the whole server: its model list too, so a probe can't revive it.
+        if (speechDown) { res.writeHead(503, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: { message: "the speech server is down" } })); }
         if (req.method === "GET" && rest === "/models") {
           res.writeHead(200, { "content-type": "application/json" });
           return res.end(JSON.stringify({ object: "list", data: [{ id: "whisper", object: "model" }, { id: "kokoro", object: "model" }] }));
         }
-        if (speechDown) { res.writeHead(503, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: { message: "the speech server is down" } })); }
         if (req.method === "POST" && rest === "/audio/transcriptions") {
           // Slow enough to be seen transcribing.
           await new Promise((r) => setTimeout(r, 1200));
