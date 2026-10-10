@@ -73,10 +73,20 @@ games on, so the host has to be easy to live with and hard to misuse.
      supported architecture live in `host/recipes/`, with each part's file
      and checksum;
    - management: status (GPUs, VRAM, loaded and pinned models, queue,
-     paused), load, unload, pin, GPU roles, pause, resume, restart, and
+     paused), load, unload, pin, placements, GPU settings, pause, resume,
+     restart, and
      downloads (list a repository's files, start, progress, cancel).
 6. **VRAM**, as in DESIGN:
-   - each GPU has a role (vLLM or shared);
+   - each model's placement: Auto, or chosen GPUs (one, or several with
+     llama.cpp's split ratio or vLLM's tensor or pipeline parallel), plus its
+     context length (32k default) and, for vLLM, its memory share, so one
+     GPU can run several vLLM models. Each vLLM model is its own server
+     process under the supervisor;
+   - each GPU's allowed servers (llama.cpp, vLLM, images), its free margin,
+     or excluded;
+   - several models of any mix on one GPU; a split model loads only when all
+     its GPUs have room, and unloads from all;
+   - a placement that can't work is refused when saved, with the reason;
    - pinned models;
    - least-recently-used unloading of idle models, never a pinned model or
      one in use;
@@ -135,7 +145,7 @@ games on, so the host has to be easy to live with and hard to misuse.
      tokens, images and time per model; never prompts, results or who asked;
      nothing leaves the machine);
    - controls pause, resume and restart, the models folder, downloads,
-     roles and pins, pairing and revoking;
+     placements, GPU settings and pins, pairing and revoking;
    - at the machine (`127.0.0.1`) it needs no login. Remotely it needs a
      password set at first start, rate-limited, over HTTPS;
    - it checks the Host and Origin headers.
@@ -163,6 +173,9 @@ games on, so the host has to be easy to live with and hard to misuse.
   - the queue respects priorities;
   - least-recently-used unloading never touches pinned or busy models, and a
     request that can't fit gets the plain error;
+  - a model split over two GPUs loads only when both have room and frees
+    both; two vLLM models share one GPU within their memory shares; an
+    impossible placement is refused when saved;
   - pause refuses work and survives a restart;
   - image requests accept only template names and parameters;
   - the dashboard needs no login at `127.0.0.1`, needs one remotely, and

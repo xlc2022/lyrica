@@ -160,7 +160,8 @@ can be off, paused or busy gaming without Lyrica going dark.
 9. **Models page API** in `daemon/src/api.ts`, per the mockup
    (https://claude.ai/artifact/U3xANiSAFje8cuinWpHo7V):
    - endpoints and hosts with live status;
-   - each host's GPUs, roles, pins, VRAM and queue, plus pause, resume and a
+   - each host's GPUs (allowed servers, free margin), each model's
+     placement and pin, VRAM and queue, plus pause, resume and a
      dashboard link, proxied through the paired connection with
      administrator checks for shared hosts;
    - the ordered list for each task in each profile, with reorder, add and

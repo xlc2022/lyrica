@@ -573,7 +573,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     - usage statistics: requests, tokens, images and time per model. Never
       prompts, results or who asked, and nothing leaves the machine;
     - pause, resume and restart;
-    - the models folder, downloads, and each GPU's role and pinned models.
+    - the models folder, downloads, each GPU's allowed servers and free
+      margin, and each model's placement and pin.
 
     It can be opened three ways:
     - **At the machine:** `http://127.0.0.1:7236`, with no login.
@@ -630,20 +631,38 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     waits until it is back, as with any endpoint that's offline.
   - **The host manages each GPU's VRAM.** No program can grab a GPU behind its
     back:
-    - Each GPU has a role, set on the dashboard or in Lyrica's control
-      panel: a whole GPU for vLLM (which
-      reserves a fixed share), or a **shared** GPU for llama.cpp models and
-      ComfyUI.
-    - On a shared GPU, models can be **pinned** (always loaded, such as the
-      embedding and title models). Every other model is loaded on demand.
+    - **Each model has a placement**, set on the dashboard or in Lyrica's
+      control panel:
+      - **Auto** (the default): one GPU that fits, else split across the
+        GPUs it may use;
+      - **chosen GPUs**: one, or several for a model too big for one GPU,
+        with how it splits (llama.cpp's split by ratio; vLLM's tensor
+        parallel across matching GPUs, else pipeline parallel);
+      - its own **context length** (32k by default), and for vLLM its
+        **memory share**, so one large GPU holds several vLLM models side
+        by side.
+    - **Each GPU says what it may run** (llama.cpp, vLLM, images) and how
+      much memory to **keep free**, or it is left out entirely, such as a
+      GPU kept for the display.
+    - One GPU can hold several models of any mix; vLLM's share is reserved
+      while that model is loaded.
+    - A model split over several GPUs loads only when each has room, counts
+      against each, and unloads from all at once.
+    - Models can be **pinned** (always loaded, such as the embedding and
+      title models). Every other model is loaded on demand.
+    - A placement that can't work is refused when it's saved, with the
+      reason: GPUs that don't allow that server, too little memory even
+      when empty, or vLLM tensor parallel over GPUs that don't match.
     - When a model needs room, the host unloads idle models, least recently
       used first. It never unloads a pinned model or one in use, and asks
       ComfyUI to free its memory after it has been idle a while.
-    - Requests wait in a queue per GPU. Interactive chat comes first, then
+    - Requests wait in a queue per GPU (a split model waits for all of its
+      GPUs). Interactive chat comes first, then
       images, then background work (sleep, cheap subagents). If a request
       can't fit, it fails with a plain reason, such as "the GPU is busy with a
       chat model", rather than running out of memory.
-    - Each model's VRAM use is measured on its first load and remembered. The
+    - Each model's VRAM use is measured per GPU on its first load with each
+      placement, and remembered. The
       control panel shows each GPU's use, what is loaded, and the queue.
 
 ## Images
