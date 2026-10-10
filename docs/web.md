@@ -91,6 +91,9 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   parent's turn; the first answer wins and the other view updates.
 - Errors from the stream (a refused model, an endpoint that's down) are shown
   as sent, in plain words.
+- A stored compaction shows as a one-line notice, **Compacted · 41k → 6k**.
+  The context meter, the stream's `context` events and a marker that expands
+  to the summary are the Web UI 2 thread's.
 - A message sent during a turn waits as a follow-up and shows as waiting.
   Stop aborts the turn; `lyricad` drops the waiting follow-ups, so their text
   goes back into the composer.

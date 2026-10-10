@@ -1,0 +1,146 @@
+import { describe, expect, it } from "vitest";
+import { fakeOpenAI } from "../../core/test/fake-openai.ts";
+import type { CallInfo, EndpointInfo, MessagePage, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
+
+/** An unlocked lyricad, Li logged in, a local model with a 16k window, and one thread in `pool`. */
+async function setup(pool: "general" | "private" = "general", window = 16_384) {
+  const rt = await runtime();
+  const dm = await daemon(rt);
+  await browser(dm.base).post("/api/unlock", { passphrase: "passphrase" });
+  const li = await login(dm.base, "li", "pw");
+  const model = await fakeOpenAI({ label: "local", models: [{ id: "qwen3.8-27b" }] });
+  const ref = await localModel(li, rt.li.id, model.baseUrl);
+  await li.patch(`/api/u/${rt.li.id}/offerings/${ref.offeringId}`, { contextWindow: window });
+  const thread = (await li.post<ThreadSummary>(`/api/u/${rt.li.id}/threads`, { pool, title: "long work" })).body;
+  const path = `/api/u/${rt.li.id}/threads/${pool}/${enc(thread.id)}`;
+  const stream = li.events(`${path}/events`);
+  await stream.ready;
+  const turn = async (text: string) => {
+    const ends = stream.events.filter((e) => e.event.type === "turn_end").length;
+    await li.post(`${path}/messages`, { text });
+    await stream.until((e) => e.type === "turn_end" && stream.events.filter((x) => x.event.type === "turn_end").length > ends, 0, 20_000);
+  };
+  return { rt, ...dm, li, model, thread, path, stream, turn };
+}
+
+/** A long message with a word to find it by. */
+const long = (mark: string) => `${mark} ${"the quick brown fox jumps over the lazy dog ".repeat(200)}`;
+const SUMMARY = (`SUMMARY-MARK. We are writing the migration guide for the offering IDs. Decided: one transaction per database, redirects one hop long. ` +
+  `Open: whether Clean up should suggest groups. Paths: docs/models.md, core/src/models/schema.ts. Names: Li, the blackwell host. `.repeat(3)).trim();
+const sent = (r: { messages: { content?: unknown }[] }) => JSON.stringify(r.messages);
+
+describe("her context", () => {
+  it("is measured each turn, carried in her status line, and recorded on the call with speeds and no text", async () => {
+    const { rt, li, model, path, stream, turn } = await setup();
+    model.reply({ text: "Here is a careful answer about Miso.", slowMs: 120 });
+    await turn("tell me about Miso the cat");
+    const context = stream.events.find((e) => e.event.type === "context")?.event as Extract<ThreadEvent, { type: "context" }>;
+    expect(context.context).toMatchObject({ window: 16_384, parts: expect.arrayContaining([{ name: "conversation", tokens: expect.any(Number) }]) });
+    const settings = (await li.get<ThreadSettings>(`${path}/settings`)).body;
+    expect(settings.context).toMatchObject({ window: 16_384, reserve: 1311 });
+    const used = settings.context!.parts.filter((p) => p.name !== "reserve" && p.name !== "free").reduce((a, p) => a + p.tokens, 0);
+    expect(used).toBe(settings.context!.tokens);
+
+    // The next turn's context carries the numbers, and only the numbers.
+    await turn("and her sister?");
+    expect(sent(model.requests[1]!)).toMatch(/<context>\\nContext \d+% of 16k · [\d.]+k? free/);
+
+    const calls = (await li.get<CallInfo[]>(`/api/u/${rt.li.id}/models/calls`)).body.filter((c) => c.task === "chat");
+    expect(calls[1]!.pace).toMatchObject({ window: 16_384, outputTokens: 5, promptTokens: expect.any(Number), tokPerSec: expect.any(Number) });
+    expect(calls[1]!.pace!.genMs).toBeGreaterThanOrEqual(100);
+    expect(JSON.stringify(calls)).not.toMatch(/Miso|sister/);
+    // The text library shows each copy's median speed.
+    const lib = (await li.get<{ entries: { copies: { speed?: { tokPerSec?: number } }[] }[] }>(`/api/u/${rt.li.id}/library/text`)).body;
+    expect(lib.entries.flatMap((e) => e.copies).some((c) => c.speed?.tokPerSec !== undefined)).toBe(true);
+    stream.close();
+  });
+
+  it("is compacted by Pi at the window's edge when she doesn't, with a marker", async () => {
+    const { li, path, stream, turn } = await setup("general", 8192);
+    await turn(long("FIRST-MARK"));
+    await turn(long("SECOND-MARK"));
+    await turn(long("THIRD-MARK"));
+    expect(stream.events.some((e) => e.event.type === "compacted")).toBe(true);
+    const page = (await li.get<MessagePage>(`${path}/messages`)).body;
+    expect(page.messages.flatMap((m) => m.parts).some((p) => p.type === "compacted")).toBe(true);
+    stream.close();
+  });
+
+  it("compacts with her summary when the turn ends: the old messages go, the recent ones stay, and a marker holds the summary", async () => {
+    const { li, model, path, stream, turn } = await setup();
+    await turn(long("FIRST-MARK"));
+    await turn(long("SECOND-MARK"));
+    await turn(long("THIRD-MARK"));
+    model.reply({ tools: [{ name: "compact", args: { summary: SUMMARY } }] }, { text: "Compacting now." });
+    await turn("let's tidy up before the next part");
+    const compacted = stream.events.find((e) => e.event.type === "compacted")?.event as Extract<ThreadEvent, { type: "compacted" }>;
+    expect(compacted.summary).toBe(SUMMARY);
+    expect(compacted.after).toBeLessThan(compacted.before);
+
+    // The marker stays in the thread, and expands to her summary.
+    const page = (await li.get<MessagePage>(`${path}/messages`)).body;
+    expect(page.messages.flatMap((m) => m.parts)).toContainEqual({ type: "compacted", before: compacted.before, after: compacted.after, summary: SUMMARY });
+
+    // The next request holds her summary and the recent messages, not the old ones.
+    const before = model.requests.length;
+    await turn("go on");
+    const next = sent(model.requests[before]!);
+    expect(next).toContain("SUMMARY-MARK");
+    expect(next).not.toContain("FIRST-MARK");
+    expect(next).toContain("let's tidy up before the next part");
+    stream.close();
+  });
+
+  it("in a private thread, compacts with its local model when her summary is too short to stand on its own", async () => {
+    const { li, model, path, stream, turn } = await setup("private");
+    await turn(long("FIRST-MARK"));
+    await turn(long("SECOND-MARK"));
+    await turn(long("THIRD-MARK"));
+    model.reply(
+      { tools: [{ name: "compact", args: { summary: "NOTES-MARK keep the migration plan" } }] },
+      { text: "Compacting." },
+      { text: "PI-SUMMARY-MARK: the migration plan, decided and open points." },
+    );
+    await turn("tidy up");
+    // Pi wrote the summary, with her notes as its instructions, on the thread's own local model.
+    const summarising = model.requests.find((r) => sent(r).includes("NOTES-MARK") && !r.tools?.length);
+    expect(summarising).toBeDefined();
+    const page = (await li.get<MessagePage>(`${path}/messages`)).body;
+    expect(page.messages.flatMap((m) => m.parts).find((p) => p.type === "compacted")).toMatchObject({ summary: expect.stringContaining("PI-SUMMARY-MARK") });
+    stream.close();
+  });
+
+  it("doesn't compact when the turn that asked for it was stopped", async () => {
+    const { li, model, path, stream, turn } = await setup();
+    await turn(long("FIRST-MARK"));
+    await turn(long("SECOND-MARK"));
+    await turn(long("THIRD-MARK"));
+    model.reply({ tools: [{ name: "compact", args: { summary: SUMMARY } }] }, { text: "Compacting now, once I finish this long thought.", slowMs: 5000 });
+    const ends = stream.events.filter((e) => e.event.type === "turn_end").length;
+    const from = stream.events.length;
+    await li.post(`${path}/messages`, { text: "tidy up" });
+    await stream.until((e) => e.type === "tool_end", from);
+    await stream.until((e) => e.type === "message_start", stream.events.length);
+    await li.post(`${path}/stop`);
+    await stream.until((e) => e.type === "turn_end" && stream.events.filter((x) => x.event.type === "turn_end").length > ends, 0, 20_000);
+    expect(stream.events.some((e) => e.event.type === "compacted")).toBe(false);
+    const before = model.requests.length;
+    await turn("go on");
+    expect(sent(model.requests[before]!)).toContain("FIRST-MARK");
+    stream.close();
+  });
+
+  it("records counts only in a thread that isn't logged", async () => {
+    const { rt, li, path, stream, turn } = await setup();
+    expect((await li.patch(`${path}/settings`, { unlogged: true })).status).toBe(200);
+    await turn("a secret about the garden");
+    const calls = (await li.get<CallInfo[]>(`/api/u/${rt.li.id}/models/calls`)).body.filter((c) => c.task === "chat");
+    expect(calls[0]!.pace).toMatchObject({ promptTokens: expect.any(Number), outputTokens: 5 });
+    expect(JSON.stringify(calls)).not.toMatch(/secret|garden/);
+    stream.close();
+  });
+});
+
+// Keeps the endpoint type import used by tools that check unused imports.
+export type { EndpointInfo };
