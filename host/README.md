@@ -70,6 +70,31 @@ itself, because it has no access to the Docker socket.
 Paired Lyrica servers are listed on the dashboard, where they can be
 revoked. A revoked server must pair again.
 
+## Models and GPUs
+
+- **Text models** are found by scanning the models folder:
+  - GGUF files are served by llama.cpp. A file whose name starts with
+    `mmproj` next to one is its vision projector, and split files count as
+    one model.
+  - Folders with a `config.json` and safetensors are served by vLLM. A model
+    whose config asks for remote code is listed but never loaded.
+- **Each GPU has a role**, set on the dashboard:
+  - **Shared** (the default) holds llama.cpp models, loaded on demand.
+  - **vLLM** holds one vLLM model at a time.
+- **Pinned** models (on a shared GPU) are loaded at start and never unloaded
+  to make room.
+- **Making room.** When a model needs room, idle models are unloaded, least
+  recently used first. A pinned model or one in use is never unloaded.
+  A model that can never fit fails at once, saying why.
+- **Queues.** Requests wait in a queue per GPU: chat first, then images,
+  then background work. A request that waits too long fails with "The GPU
+  is busy with …".
+- **VRAM** use is measured on each model's first load and remembered.
+- **Pause** refuses new work, lets the current job finish, then unloads
+  every model and stops vLLM, so nothing of the host's stays in VRAM. What
+  couldn't be unloaded shows on the dashboard. Until Resume, new work gets
+  "The model host is paused." Pause survives a restart.
+
 ## How it's put together
 
 - `host-api` (this folder's `src/`): TypeScript run by Node 22, with no npm
@@ -80,6 +105,18 @@ revoked. A revoked server must pair again.
   - `<LAN address>:7236` for everything else, over TLS 1.3. It is never
     published on every interface, because Docker's published ports bypass
     the machine's firewall.
+- The model servers are the official llama.cpp and vLLM images, pinned by
+  digest. `compose.nvidia.yaml` uses CUDA images and `compose.amd.yaml` uses
+  ROCm; `install.sh` picks one. They log nothing (Docker's `none` log
+  driver).
+  - llama.cpp runs in router mode. host-api writes its preset file (each
+    model's file, GPU and context), then loads and unloads models through
+    its API.
+  - vLLM runs under `vllm/supervisor.py`, which starts one server per vLLM
+    GPU as host-api asks in a file, in its own process group, with a growing
+    wait between restarts of one that crashes.
+  - host-api reads VRAM with `nvidia-smi`, through NVIDIA's `utility`
+    capability, or from AMD's sysfs.
 - **host-api has no route out.** It sees every prompt, so it may not start
   a connection anywhere, and neither may anything on the `models` network.
   - `models` is internal: host-api and the model servers. No route out, and
@@ -106,7 +143,7 @@ revoked. A revoked server must pair again.
 - No container mounts the Docker socket.
 - The host's key, certificate and state are in the `data` volume, readable
   only by host-api's user. The state is paired clients, the password hash,
-  and pause. Prompts are never stored, and host-api's log has no text: only
+  pause, GPU roles, pins, measured VRAM and usage counts. Prompts are never stored, and host-api's log has no text: only
   event names, IDs and counts, plus the pairing code while it's valid.
 - Images are pinned by digest. `host-api` is built from this checkout by
   `install.sh`, and CI builds it on every pull request.

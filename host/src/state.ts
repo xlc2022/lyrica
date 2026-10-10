@@ -10,14 +10,29 @@ export interface PairedClient {
   lastSeen: string | null;
 }
 
+export interface Usage {
+  requests: number;
+  promptTokens: number;
+  completionTokens: number;
+  images: number;
+  seconds: number;
+}
+
 export interface HostState {
   clients: PairedClient[];
   /** scrypt$<N>$<salt b64>$<hash b64>, set at the machine. */
   password: string | null;
   paused: boolean;
+  /** GPU index → role; a GPU not listed is shared. */
+  roles: Record<number, "vllm" | "shared">;
+  pins: { model: string; gpu: number }[];
+  /** Model ID → bytes of VRAM measured on its first load. */
+  vram: Record<string, number>;
+  usageSince: string;
+  usage: Record<string, Usage>;
 }
 
-const EMPTY: HostState = { clients: [], password: null, paused: false };
+const EMPTY: HostState = { clients: [], password: null, paused: false, roles: {}, pins: [], vram: {}, usageSince: "", usage: {} };
 
 export class StateFile {
   readonly path: string;
@@ -26,6 +41,7 @@ export class StateFile {
   constructor(dir: string) {
     this.path = join(dir, "state.json");
     this.state = existsSync(this.path) ? { ...EMPTY, ...JSON.parse(readFileSync(this.path, "utf8")) } : structuredClone(EMPTY);
+    if (!this.state.usageSince) this.state.usageSince = new Date().toISOString();
   }
 
   get(): Readonly<HostState> {

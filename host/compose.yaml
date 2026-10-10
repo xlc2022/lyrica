@@ -1,5 +1,6 @@
 # The model host. Run through install.sh, which writes .env (including
-# COMPOSE_FILE, which adds compose.lan.yaml and compose.tailscale.yaml).
+# COMPOSE_FILE, which adds the GPU vendor's file, compose.nvidia.yaml or
+# compose.amd.yaml, and compose.lan.yaml and compose.tailscale.yaml).
 #
 # Networks. host-api sees every prompt, so it has no route out:
 # - models: internal, no route out. host-api and the model servers.
@@ -23,6 +24,8 @@ networks:
 
 volumes:
   data: {}
+  # host-api writes the model servers' wanted state here; they read it.
+  serving: {}
 
 services:
   host-api:
@@ -40,9 +43,15 @@ services:
       TAILNET_NAME: ${TS_HOSTNAME:-}
       MODELS_HOST_PATH: ${MODELS_DIR:?run install.sh}
       HOST_VERSION: ${HOST_VERSION:-dev}
+      GPU_VENDOR: ${GPU_VENDOR:-none}
     volumes:
       - data:/data
+      - serving:/serving
       - ${MODELS_DIR}:/models:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('fs').accessSync('/serving/llamacpp.ini')"]
+      interval: 2s
+      retries: 30
     networks:
       models: {}
       edge:
