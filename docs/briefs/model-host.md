@@ -238,22 +238,26 @@ Each step depends on the one before. Note what goes wrong against the step.
 
 ### For a future thread
 
-- **Older AMD GPUs and iGPUs aren't supported** (Li's question about Vega and
-  the 780M):
-  - The llama.cpp ROCm image (b11459) is built for gfx908, gfx90a, gfx942,
-    gfx1030, gfx1100–1102, gfx1150–1151 and gfx1200–1201 only. Vega (gfx900,
-    gfx906) isn't there.
-  - The 780M (gfx1103) isn't listed either; it usually runs as gfx1100 with
-    `HSA_OVERRIDE_GFX_VERSION=11.0.0`, which the host never sets.
-  - The vLLM and ComfyUI ROCm images are expected to target Instinct and RDNA
-    3/4 (not checked).
-  - `gpus.ts` reads `mem_info_vram_*`. On an APU that's only the BIOS
-    carve-out; the usable memory is GTT (`mem_info_gtt_*`), so the planner
-    would think a 780M holds almost nothing.
-  - A likely route: a Vulkan llama.cpp variant for GPUs ROCm doesn't cover
-    (`backends.ts` already takes `Vulkan<n>` device names), GTT-aware memory
-    for APUs, and an optional `HSA_OVERRIDE_GFX_VERSION` in `.env`. This is a
-    design decision for Li.
+- **Older AMD GPUs and integrated GPUs** (Li's question about Vega and the
+  780M):
+  - ROCm's images cover gfx908, gfx90a, gfx942, gfx1030, gfx1100–1102,
+    gfx1150–1151 and gfx1200–1201 (the llama.cpp ROCm image, b11459).
+  - For other GPUs, `install.sh` picks Vulkan: llama.cpp only, with no vLLM
+    and no images (`compose.vulkan.yaml`).
+  - `--hsa-override 11.0.0` runs a 780M (gfx1103) on ROCm as gfx1100
+    (`compose.hsa.yaml`). AMD doesn't support this, and it may not work.
+  - An integrated GPU counts its shared memory (GTT) as well as its
+    carve-out. Beside a discrete GPU it's left out by default.
+  - Not checked on hardware:
+    - that Vulkan numbers several GPUs in PCI order, as host-api assumes;
+    - the APU list in `gpus.ts` and `install.sh`;
+    - how much of GTT a model can really use.
+  - On a ROCm APU, an idle llama.cpp model's shared-memory bytes still count
+    as freeable for a vLLM or image placement on the carve-out, so it may be
+    unloaded for nothing.
+  - `keepFree` is one number per GPU and also comes off the carve-out, so a
+    large value set to protect system memory can rule out vLLM and images on
+    an integrated GPU.
 - **Image VRAM** is measured per recipe, not per part, and unloading one
   recipe frees all of ComfyUI's memory.
 - **`gpuLayers`** below "all" doesn't shrink the expected memory.

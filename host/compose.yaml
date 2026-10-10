@@ -1,6 +1,8 @@
 # The model host. Run through install.sh, which writes .env (including
-# COMPOSE_FILE, which adds the GPU vendor's file, compose.nvidia.yaml or
-# compose.amd.yaml, and compose.lan.yaml and compose.tailscale.yaml).
+# COMPOSE_FILE, which adds the model servers' file: compose.nvidia.yaml
+# (CUDA), compose.amd.yaml (ROCm) or compose.vulkan.yaml (Vulkan); for ROCm,
+# compose.hsa.yaml (a gfx override) and compose.apu.yaml (unified memory on
+# an APU); and compose.lan.yaml and compose.tailscale.yaml).
 #
 # Networks. host-api sees every prompt, so it has no route out:
 # - models: internal, no route out. host-api and the model servers.
@@ -55,6 +57,8 @@ services:
       MODELS_HOST_PATH: ${MODELS_DIR:?run install.sh}
       HOST_VERSION: ${HOST_VERSION:-dev}
       GPU_VENDOR: ${GPU_VENDOR:-none}
+      GPU_BACKEND: ${GPU_BACKEND:-}
+      LLAMA_UNIFIED_MEMORY: ${LLAMA_UNIFIED_MEMORY:-}
       COMFY_GPU: ${COMFY_GPU:-0}
     volumes:
       - data:/data
