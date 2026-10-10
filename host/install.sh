@@ -183,7 +183,10 @@ else
   say "No systemd here: run host/egress.sh apply after every reboot or Docker restart."
 fi
 
+mkdir -p "$MODELS/lyrica"
 "${COMPOSE[@]}" build
+# fetch writes downloads as its own user (10001), into lyrica/ only.
+"${COMPOSE[@]}" run --rm --no-deps -T --user 0 --cap-add CHOWN --entrypoint chown fetch 10001:10001 /models/lyrica
 "${COMPOSE[@]}" up -d --remove-orphans
 
 # Once Tailscale has joined, the auth key isn't needed: drop it from .env.

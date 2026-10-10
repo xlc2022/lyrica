@@ -1,6 +1,8 @@
 // host-api's entry point, run in its container.
+import { lookup } from "node:dns/promises";
 import { readFileSync } from "node:fs";
 import { LlamaCpp, Vllm } from "./backends.ts";
+import { Downloads } from "./downloads.ts";
 import { amdMonitor, noGpus, nvidiaMonitor } from "./gpus.ts";
 import { stdoutLog } from "./log.ts";
 import { Runtime } from "./runtime.ts";
@@ -46,5 +48,14 @@ const scheduler = new Scheduler({
 host.runtime = new Runtime({ scheduler, modelsDir, state: host.state, log: stdoutLog });
 
 await host.listen(Number(env.TLS_PORT || 7443), Number(env.LOCAL_PORT || 7080));
+host.downloads = new Downloads({ url: env.FETCH_URL || "http://fetch:7300", runtime: host.runtime, log: stdoutLog });
+await host.downloads.start();
 await host.runtime.start();
+// fetch shares a network with host-api (for host-api's calls to it) and may not
+// call back. Its address is looked up on every request, so a restart that moves
+// it leaves no window.
+host.refusePeer = async (address) => {
+  const found = await lookup(env.FETCH_HOST || "fetch", { all: true }).catch(() => []);
+  return found.some((a) => a.address === address);
+};
 for (const signal of ["SIGTERM", "SIGINT"] as const) process.on(signal, () => void host.close().then(() => process.exit(0)));

@@ -41,6 +41,7 @@ async function refresh() {
   renderGpus(status.gpus);
   const { models } = await api("/host/v1/models");
   renderModels(models, status.gpus);
+  await renderDownloads();
   const usage = await api("/host/v1/usage");
   const table = $("usage");
   table.replaceChildren();
@@ -107,6 +108,59 @@ function renderModels(models, gpus) {
     }
   }
 }
+
+async function renderDownloads() {
+  const { downloads } = await api("/host/v1/downloads").catch(() => ({ downloads: [] }));
+  const table = $("downloads");
+  table.replaceChildren();
+  for (const d of downloads) {
+    const row = table.insertRow();
+    const what = row.insertCell();
+    what.textContent = d.path;
+    if (d.source === "url" && d.url) {
+      const link = document.createElement("div");
+      link.className = "mono muted";
+      link.style.wordBreak = "break-all";
+      link.textContent = d.url;
+      what.append(link);
+    }
+    const pct = d.size ? ` ${Math.floor((100 * d.received) / d.size)}%` : "";
+    row.insertCell().textContent = d.state === "downloading" ? `downloading${pct}` : d.state === "done" && d.verified === false ? "done, unverified" : d.error ?? d.state;
+    row.insertCell().append(button(["queued", "downloading", "verifying"].includes(d.state) ? "Cancel" : "Clear", () => api(`/host/v1/downloads/${d.id}`, { method: "DELETE" })));
+  }
+}
+
+$("hub-form").onsubmit = (e) => {
+  e.preventDefault();
+  const source = $("hub-source").value;
+  const repo = $("hub-repo").value.trim();
+  const token = $("hub-token").value;
+  const headers = { "content-type": "application/json", ...(token ? { "x-hub-token": token } : {}) };
+  fetch(`/host/v1/hub/files?source=${source}&repo=${encodeURIComponent(repo)}`, { headers, credentials: "same-origin" })
+    .then((r) => r.json().then((b) => (r.ok ? b : Promise.reject(new Error(b.error?.message)))))
+    .then((listing) => {
+      const table = $("hub-files");
+      table.replaceChildren();
+      for (const f of listing.files) {
+        const row = table.insertRow();
+        row.insertCell().textContent = f.path;
+        row.insertCell().textContent = gib(f.size);
+        const cell = row.insertCell();
+        if (!f.allowed) cell.textContent = f.reason;
+        else if (f.present) cell.textContent = "already here";
+        else if (!f.fits) cell.textContent = "too big for the free space";
+        else cell.append(button("Download", () =>
+          fetch("/host/v1/downloads", { method: "POST", headers, credentials: "same-origin", body: JSON.stringify({ source, repo, revision: listing.revision, files: [f.path] }) })
+            .then((r) => r.json().then((b) => (r.ok ? b : Promise.reject(new Error(b.error?.message)))))));
+      }
+      show();
+    }, show);
+};
+$("link-form").onsubmit = (e) => {
+  e.preventDefault();
+  const sha256 = $("link-sha").value.trim();
+  post("/host/v1/downloads", { source: "url", url: $("link-url").value.trim(), ...(sha256 ? { sha256 } : {}) }).then(refresh, show);
+};
 
 async function renderClients() {
   const { clients } = await api("/dashboard/clients");

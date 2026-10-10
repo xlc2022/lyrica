@@ -13,6 +13,7 @@ import { HostError, invalid, notFound, onlyFields, readJson, refused, sendError,
 import { loadIdentity, type Identity } from "./identity.ts";
 import type { Logger } from "./log.ts";
 import { PairingCodes, fingerprint } from "./pairing.ts";
+import type { Downloads } from "./downloads.ts";
 import type { Runtime } from "./runtime.ts";
 import { StateFile } from "./state.ts";
 
@@ -60,6 +61,10 @@ export class Host {
   readonly tls: https.Server;
   readonly local: http.Server;
   runtime: Runtime | null = null;
+  /** Addresses host-api never talks to, whatever they send: fetch's, which goes out to the internet. */
+  /** Peers that may not call in (fetch), checked on every request. */
+  refusePeer: (address: string) => Promise<boolean> = async () => false;
+  downloads: Downloads | null = null;
   private readonly limit: LoginLimit;
   private readonly isOurs: (name: string) => boolean;
 
@@ -92,6 +97,7 @@ export class Host {
 
   async close(): Promise<void> {
     this.runtime?.close();
+    this.downloads?.close();
     this.tls.closeAllConnections();
     this.local.closeAllConnections();
     await Promise.all([new Promise((r) => this.tls.close(r)), new Promise((r) => this.local.close(r))]);
@@ -126,6 +132,10 @@ export class Host {
 
   private async handle(req: IncomingMessage, res: ServerResponse, via: "tls" | "local"): Promise<void> {
     try {
+      if (await this.refusePeer(plainAddress(req.socket.remoteAddress))) {
+        res.socket?.destroy();
+        return;
+      }
       if (via === "local" && !this.opts.localPeers.includes(plainAddress(req.socket.remoteAddress))) {
         res.socket?.destroy();
         return;
@@ -184,6 +194,7 @@ export class Host {
     // /v1 carries prompts: only a paired Lyrica server may use it.
     if (pathname.startsWith("/v1/") && access !== "client") throw refused("Only a paired Lyrica server can use /v1.");
     if (this.runtime && (await this.runtime.route(req, res, pathname, method))) return;
+    if (this.downloads && (await this.downloads.route(req, res, url, method))) return;
     throw notFound();
   }
 
@@ -200,7 +211,7 @@ export class Host {
       state: this.runtime?.scheduler.runState ?? (this.state.get().paused ? "paused" : "running"),
       gpus: (await this.runtime?.scheduler.status()) ?? [],
       problems: this.runtime?.scheduler.problems ?? [],
-      downloads: { active: 0 },
+      downloads: { active: this.downloads?.active ?? 0 },
       modelsFolder: { path: this.opts.modelsHostPath, free },
     };
   }

@@ -31,7 +31,7 @@ on `/v1`, where OpenAI clients read `error.message`.
 | 401 | `unpaired` | The client certificate isn't pinned, or was revoked. |
 | 403 | `refused` | Not allowed: a pickle file, a delete outside the download record, a dashboard-only action. |
 | 404 | `not_found` | No such model, recipe, download or file. |
-| 409 | `in_use` | The model or file is in use by a running request. |
+| 409 | `in_use` | The model or file is in use by a running request, or a link is already downloading. |
 | 413 | `too_big` | The model can't fit on any GPU it may use, even with everything idle unloaded. |
 | 503 | `paused` | The host is paused. Lyrica uses her fallbacks. |
 | 503 | `busy` | It could fit, but not within the wait limit, because the GPU is busy. The message names what with: "The GPU is busy with a chat model." |
@@ -199,7 +199,9 @@ servers) has a route out.
 - Sources: `huggingface`, `modelscope`, or `url` (https only).
 - A gated repository's token travels in the `X-Hub-Token` header of the
   request that needs it. The host passes it to `fetch` for that request and
-  never stores or logs it.
+  never stores or logs it. It is sent only to that hub's own host
+  (`huggingface.co` or `modelscope.cn`), never to a CDN it redirects to,
+  and never with a link.
 - Allowed files: `.gguf` and `.safetensors`, plus the small files a model
   folder needs (`.json`, `.txt`, `.jinja`, `.model`, `.tiktoken`). Pickle
   formats (`.bin`, `.pt`, `.pth`, `.ckpt`, `.pkl`, `.pickle`) and code
@@ -211,7 +213,21 @@ servers) has a route out.
   checksum is kept but marked unverified. A wrong checksum leaves nothing
   behind.
 - Addresses, redirects included, must be public: loopback, private,
-  link-local, CGNAT and tailnet ranges, and multicast are refused.
+  link-local, CGNAT and tailnet ranges, and multicast are refused; for
+  IPv6, only global unicast is allowed.
+- A link must say its size (`Content-Length`), and free space is checked
+  against it and every download already queued. No download is written past
+  its size. A link's query string is kept in memory for the transfer only
+  and never recorded; while the link downloads, its `url` shows it in full.
+- A link is at most 1024 characters, https, with no user name or
+  password, and only one downloads at a time (`in_use` otherwise).
+- **Known channel.** A paired client can still carry data out of the host
+  in a link's path or query: a little at a time, one link at once, and
+  each shown in full on the dashboard's Downloads. These limits make it
+  slow and visible, not impossible.
+- A file must be what its name says (a GGUF header, a readable safetensors
+  header) before it appears.
+- A sharded model is offered once all its shards are here.
 
 ### `GET /host/v1/hub/files?source=huggingface&repo=Qwen/Qwen3-8B-GGUF&revision=main`
 

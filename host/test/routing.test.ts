@@ -46,6 +46,12 @@ function modelsFolder(): string {
   mkdirSync(join(dir, "vllm/remote"), { recursive: true });
   writeFileSync(join(dir, "vllm/remote/config.json"), JSON.stringify({ architectures: ["X"], auto_map: { AutoModel: "x.X" } }));
   writeFileSync(join(dir, "vllm/remote/model.safetensors"), Buffer.alloc(16));
+  // A sharded model with a shard still missing isn't offered yet.
+  mkdirSync(join(dir, "vllm/half"), { recursive: true });
+  writeFileSync(join(dir, "vllm/half/config.json"), JSON.stringify({ architectures: ["Qwen3ForCausalLM"] }));
+  writeFileSync(join(dir, "vllm/half/model-00001-of-00002.safetensors"), Buffer.alloc(16));
+  writeFileSync(join(dir, "vllm/half/model.safetensors.index.json"), JSON.stringify({ weight_map: { a: "model-00001-of-00002.safetensors", b: "model-00002-of-00002.safetensors" } }));
+  writeFileSync(join(dir, "shared/big-00001-of-00002.gguf"), ggufBytes({ "general.architecture": "llama", "tokenizer.ggml.model": "gpt2" }));
   return dir;
 }
 

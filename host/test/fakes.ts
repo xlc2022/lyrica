@@ -1,8 +1,11 @@
 // Fake GPUs and model servers, so host-api runs without a GPU.
+import { createHash } from "node:crypto";
 import http from "node:http";
+import https from "node:https";
 import type { AddressInfo } from "node:net";
 import type { Backend } from "../src/backends.ts";
 import type { Gpu, GpuMonitor } from "../src/gpus.ts";
+import { makeIdentity } from "../src/identity.ts";
 import type { TextModel } from "../src/library.ts";
 
 export const GIB = 1024 ** 3;
@@ -118,3 +121,57 @@ export async function fakeLlamaRouter() {
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   return { server, status, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
 }
+
+export const TOKEN = "hf_marker_token_8812";
+export const sha256 = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+const gitSha1 = (b: Buffer) => createHash("sha1").update(`blob ${b.length}\0`).update(b).digest("hex");
+
+/** A fake Hugging Face over HTTPS on localhost. */
+export async function fakeHub(opts: { lie?: boolean; redirectTo?: string; gated?: boolean; oversend?: boolean } = {}) {
+  const id = makeIdentity("hub", ["localhost"]);
+  const files: Record<string, Buffer> = {
+    "model-Q4_K_M.gguf": Buffer.concat([Buffer.from("GGUF"), Buffer.alloc(299_996, 7)]),
+    "fake.gguf": Buffer.alloc(1000, 7),
+    "nosize.gguf": Buffer.concat([Buffer.from("GGUF"), Buffer.alloc(996, 7)]),
+    "config.json": Buffer.from('{"architectures":["X"]}'),
+    "pytorch_model.bin": Buffer.alloc(10, 1),
+  };
+  const seen: string[] = [];
+  const server = https.createServer({ key: id.key, cert: id.cert }, (req, res) => {
+    seen.push(req.headers.authorization ?? "");
+    const url = new URL(req.url!, "https://localhost");
+    if (opts.gated && req.headers.authorization !== `Bearer ${TOKEN}`) return void res.writeHead(401).end();
+    const json = (v: unknown) => res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(v));
+    if (url.pathname === "/api/models/org/repo/revision/main") return json({ sha: "abc123", gated: !!opts.gated, cardData: { base_model: "org/base", base_model_relation: "quantized" } });
+    if (url.pathname === "/api/models/org/repo/tree/abc123") {
+      return json(Object.entries(files).map(([path, b]) =>
+        path.endsWith(".json") ? { type: "file", path, size: b.length, oid: gitSha1(b) } : { type: "file", path, size: b.length, oid: "x", lfs: { oid: opts.lie ? "0".repeat(64) : sha256(b), size: b.length } }));
+    }
+    const file = url.pathname.match(/^\/org\/repo\/resolve\/abc123\/(.+)$/);
+    if (file && opts.redirectTo) return void res.writeHead(302, { location: opts.redirectTo }).end();
+    const body = file ? files[decodeURIComponent(file[1]!)] : undefined;
+    if (!body) return void res.writeHead(404).end();
+    // A link served without its size.
+    if (url.pathname.endsWith("/nosize.gguf")) {
+      res.writeHead(200, { "transfer-encoding": "chunked" });
+      return void res.end(body);
+    }
+    if (opts.oversend) {
+      // Says one size, sends more.
+      res.writeHead(200);
+      return void res.end(Buffer.concat([body, Buffer.alloc(5000, 1)]));
+    }
+    const range = req.headers.range?.match(/^bytes=(\d+)-$/);
+    if (range) {
+      const from = Number(range[1]);
+      res.writeHead(206, { "content-length": body.length - from });
+      return void res.end(body.subarray(from));
+    }
+    res.writeHead(200, { "content-length": body.length });
+    res.end(body);
+  });
+  await new Promise<void>((r) => server.listen(0, r));
+  const close = () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); });
+  return { base: `https://localhost:${(server.address() as AddressInfo).port}`, files, seen, ca: id.cert, close };
+}
+

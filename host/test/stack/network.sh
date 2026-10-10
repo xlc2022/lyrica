@@ -44,6 +44,12 @@ if compose ps --services | grep -qx tailscale; then
   expect yes "tailscale reaches host-api" tailscale nc -z -w 5 host-api 7443
   expect no  "tailscale doesn't get the local dashboard" tailscale wget -q -T 5 -O /dev/null http://host-api:7080/dashboard/me
 fi
+# fetch: the one route out, and nothing else.
+expect yes "fetch reaches the internet" fetch node -e "$(tcp 1.1.1.1 443)"
+expect no  "fetch can't reach the models network" fetch node -e "$(tcp probe-models 80)"
+expect no  "fetch can't use host-api" fetch node -e "require('https').get({host:'host-api',port:7443,path:'/dashboard/me',rejectUnauthorized:false,timeout:5000},r=>process.exit(0)).on('error',()=>process.exit(1)).on('timeout',()=>process.exit(1))"
+expect no  "the models network can't use fetch" probe-models wget -q -T 5 -O /dev/null http://fetch:7300/record
+expect yes "host-api can use fetch" host-api node -e "fetch('http://fetch:7300/record').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
 curl -fsS -o /dev/null http://127.0.0.1:7236/dashboard/me && echo "ok: the machine gets the local dashboard on 127.0.0.1:7236" || { echo "FAIL: local dashboard"; failed=1; }
 if docker ps --format '{{.Ports}}' | grep -q '0\.0\.0\.0:\|\[::\]:'; then echo "FAIL: a port is published on every interface"; failed=1; else echo "ok: nothing is published on every interface"; fi
 if [[ $(docker network inspect lyrica-host_edge --format '{{len .Containers}}') == 1 ]]; then echo "ok: host-api is alone on its bridge"; else echo "FAIL: something else is on host-api's bridge"; failed=1; fi

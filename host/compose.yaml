@@ -7,6 +7,8 @@
 # - edge: host-api alone, where the published ports arrive. Docker doesn't
 #   masquerade it, and egress.sh (run by install.sh and a systemd unit)
 #   drops every new connection host-api starts.
+# - fetch-api: internal, host-api and fetch, for host-api's calls to fetch.
+# - egress: fetch alone, the only route out.
 name: lyrica-host
 
 networks:
@@ -21,9 +23,16 @@ networks:
     ipam:
       config:
         - subnet: ${EDGE_SUBNET:?run install.sh}
+  fetch-api:
+    internal: true
+    enable_ipv6: false
+  egress:
+    enable_ipv6: false
 
 volumes:
   data: {}
+  # fetch's download record and list.
+  fetch-data: {}
   # host-api writes the model servers' wanted state here; they read it.
   serving: {}
 
@@ -32,7 +41,7 @@ services:
     build:
       context: ..
       dockerfile: host/Dockerfile
-    image: lyrica-host-api:local
+    image: lyrica-host:local
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]
@@ -56,6 +65,7 @@ services:
       models: {}
       edge:
         ipv4_address: ${HOST_API_IP:?run install.sh}
+      fetch-api: {}
     # Container names still resolve (Docker's resolver answers those itself);
     # any other name is sent to a documentation address that answers nothing,
     # so it can't be forwarded out from wherever Docker's resolver runs.
@@ -64,3 +74,18 @@ services:
       # The dashboard at the machine. Everything else is in compose.lan.yaml
       # or reached through the tailscale service.
       - "127.0.0.1:7236:7080"
+
+  # Downloads: the only container with a route out. It can write only to the
+  # models folder's lyrica/ subfolder, has no GPU, isn't on the models
+  # network, and answers only host-api.
+  fetch:
+    image: lyrica-host:local
+    command: ["node", "--disable-warning=ExperimentalWarning", "src/fetch/main.ts"]
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - fetch-data:/data
+      - ${MODELS_DIR}/lyrica:/models/lyrica
+    networks: [fetch-api, egress]

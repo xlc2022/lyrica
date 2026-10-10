@@ -59,6 +59,34 @@ also uses, such as LM Studio's. To change it, run
 `host/install.sh --models /new/path`. host-api can't remount containers
 itself, because it has no access to the Docker socket.
 
+## Downloads
+
+Downloads come from Hugging Face, ModelScope or an https link, asked for by
+Lyrica or on the dashboard. They go into the models folder's `lyrica/`
+subfolder, under `lyrica/<source>/<repository>/`.
+- Only GGUF and safetensors files are downloaded, with the small files a
+  model folder needs. Pickle formats and code are refused.
+- Each file arrives under a temporary name and is checked against the
+  hub's checksum (SHA-256, or the git hash for small files) before it
+  appears. A link without a checksum is kept, marked unverified.
+- Links and redirects must go to public addresses: never this machine, the
+  LAN or the tailnet. A link must say its size, and a signed link's query
+  string is never written down. Links are short (1024 characters), one at
+  a time, and Downloads shows each in full while it downloads: a link is a
+  way data could leave this machine, so check ones you don't recognise.
+- A gated repository's token is used for that download only, and never
+  written down. A gated download interrupted by a restart must be started
+  again; it resumes from its partial file.
+- Free space is checked first, counting downloads already queued, and no
+  file grows past its size. Downloads resume after a restart (a busy server
+  or a broken connection keeps the partial file) and can be cancelled,
+  which deletes the partial file. A sharded model appears once all its
+  shards are here.
+- The **download record** lists each file downloaded, with its size and
+  checksum. **Delete** removes only a file in it, inside `lyrica/` with no
+  symlink on the way, unchanged since it was downloaded. A loaded model is
+  unloaded first. Nothing else is ever deleted.
+
 ## Pairing
 
 1. On the dashboard, choose **Pair with Lyrica**. A code like
@@ -117,6 +145,14 @@ revoked. A revoked server must pair again.
     wait between restarts of one that crashes.
   - host-api reads VRAM with `nvidia-smi`, through NVIDIA's `utility`
     capability, or from AMD's sysfs.
+- `fetch` (`src/fetch/`) does the downloads. It is the same image as
+  host-api, with another command.
+  - It is the only container that goes out, on the `egress` network,
+    alone. It reaches nothing else: host-api calls it over the internal
+    `fetch-api` network, and it isn't on `models`.
+  - It mounts only `lyrica/`, read-write, and has no GPU.
+  - It answers only host-api's address. The download record and list are
+    in its own `fetch-data` volume.
 - **host-api has no route out.** It sees every prompt, so it may not start
   a connection anywhere, and neither may anything on the `models` network.
   - `models` is internal: host-api and the model servers. No route out, and
