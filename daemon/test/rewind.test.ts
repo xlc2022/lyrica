@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { EndpointInfo, MessagePage, RewindResponse, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { EndpointInfo, MessagePage, Pins, RewindResponse, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 /** Li with a local chat model, subagent models on a second server, and one general thread. */
@@ -145,6 +145,38 @@ describe("rewinding a thread", () => {
     expect(r.status).toBe(409);
     release();
     expect((await messages()).length).toBeGreaterThan(0);
+  });
+});
+
+describe("pinning a message", () => {
+  it("puts it in her prompt word for word, keeps it in a branch, and counts it when its turn is removed", async () => {
+    const { li, model, path, say, messages } = await setup();
+    model.reply({ text: "Noted." }, { text: "Sure." }, { text: "Again." });
+    await say("the gate code is 4417");
+    await say("thanks");
+    const [code, reply] = await messages();
+    expect((await li.put(`${path}/messages/${code!.n}/pin`, {})).status).toBe(200);
+    expect((await messages())[0]!.pinned).toBe(true);
+    expect((await li.get<Pins>(`${path}/pins`)).body).toEqual({ pins: [expect.objectContaining({ n: code!.n, role: "user", text: "the gate code is 4417" })], shortened: false });
+
+    await say("what was it?");
+    expect(JSON.stringify(model.requests.at(-1)!.messages[0])).toContain("User: the gate code is 4417");
+
+    const branch = (await li.post<{ id: string }>(`${path}/messages/${reply!.n}/branch`, {})).body;
+    expect((await li.get<Pins>(path.replace(/[^/]+$/, encodeURIComponent(branch.id)) + "/pins")).body.pins).toHaveLength(1);
+    expect((await li.post<RewindResponse>(`${path}/messages/${code!.n}/rewind`, { action: "delete" })).body).toMatchObject({ pins: 1 });
+    expect((await li.get<Pins>(`${path}/pins`)).body.pins).toEqual([]);
+  });
+
+  it("refuses a message that isn't there, and an entry that isn't a message", async () => {
+    const { li, model, path, say, messages } = await setup();
+    model.reply({ text: "A." });
+    await say("one");
+    const first = (await messages())[0]!;
+    expect(first.n).toBeGreaterThan(1); // Pi's own entries come first
+    expect((await li.put(`${path}/messages/1/pin`, {})).status).toBe(400);
+    expect((await li.put(`${path}/messages/99/pin`, {})).status).toBe(404);
+    expect((await li.del(`${path}/messages/${first.n}/pin`)).status).toBe(200);
   });
 });
 

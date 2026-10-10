@@ -1,7 +1,7 @@
 // One thread: header with its badges, the conversation, and the composer.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { get, post, threadPath, type Pool, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSummary } from "./api.ts";
-import { useUndo, type Rewinder } from "./Rewind.tsx";
+import { del, get, post, put, threadPath, type Pins, type Pool, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSummary } from "./api.ts";
+import { PinnedBadge, useUndo, type Rewinder } from "./Rewind.tsx";
 import { go } from "./route.ts";
 import { useThread } from "./stream.ts";
 import { Conversation, MessageBox } from "./Messages.tsx";
@@ -15,6 +15,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
   const base = threadPath(userId, pool, threadId);
   const summary = useLoad(() => get<ThreadSummary>(base), [base]);
   const settings = useLoad(() => get<ThreadSettings>(`${base}/settings`), [base]);
+  const pins = useLoad(() => get<Pins>(`${base}/pins`), [base]);
   const t = useThread(userId, pool, threadId);
   const [drawer, setDrawer] = useState(false);
   const [sendError, setSendError] = useState("");
@@ -28,6 +29,8 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
   useEffect(() => { if (updates) refreshThreads(); }, [updates, refreshThreads]);
   // The badge follows the profile, which may change elsewhere: refresh it after each turn and on focus.
   useEffect(() => { if (t.live.reload) settings.reload(); }, [t.live.reload, settings.reload]);
+  // A rewind may take pinned messages with it.
+  useEffect(() => { if (t.live.reload) pins.reload(); }, [t.live.reload, pins.reload]);
   useEffect(() => {
     addEventListener("focus", settings.reload);
     return () => removeEventListener("focus", settings.reload);
@@ -60,6 +63,11 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
     settings: settings.data,
     busy: t.live.busy,
     lastTurn: t.messages.findLast((m) => m.role === "user")?.n,
+    pinned: new Set(pins.data?.pins.map((p) => p.n)),
+    pin: (n, on) => {
+      setSendError("");
+      (on ? put(`${base}/messages/${n}/pin`, {}) : del(`${base}/messages/${n}/pin`)).then(pins.reload, (e: Error) => setSendError(e.message));
+    },
     branch: (n) => {
       setSendError("");
       post<ThreadSummary>(`${base}/messages/${n}/branch`).then((b) => { refreshThreads(); go({ page: "thread", userId, pool, threadId: b.id }); },
@@ -91,6 +99,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
           <div className="badges">
             <span className="badge" data-kind={pool === "private" ? "private" : "general"}><span className="k">{pool}</span></span>
             {settings.data && <ModelBadge base={base} settings={settings.data} onChange={settings.set} readOnly={!!s?.subagent} />}
+            {pins.data && !s?.subagent && <PinnedBadge pins={pins.data} you={ctx.user.displayName} />}
             {settings.data?.localOnly && pool === "general" && <span className="badge"><span className="k local">local-only</span></span>}
             {settings.data?.grants.map((g) => (
               <span key={g.path} className="badge folder" title={g.path}>{g.path} <span className="muted">{g.writable ? "rw" : "ro"}</span></span>

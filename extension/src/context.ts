@@ -40,7 +40,7 @@ const ESTIMATED: ContextPartName[] = ["persona", "about", "memory", "pinned", "r
 /** Which part each prompt section counts towards. */
 const PART: Record<Section["name"], ContextPartName> = {
   persona: "persona", topics: "persona", notice: "persona", user: "persona", time: "persona",
-  about: "about", opening: "memory", wake: "memory", pages: "memory", folders: "memory", recall: "recall",
+  about: "about", opening: "memory", wake: "memory", pages: "memory", folders: "memory", pinned: "pinned", recall: "recall",
 };
 const chars = (n: number) => Math.ceil(n / 4);
 
@@ -70,7 +70,7 @@ export class ContextMeter {
 
   /** At a turn's end: the measured total and the conversation, estimated. */
   measure(tokens: number | null | undefined, window: number, conversation: number, pace?: Pace): void {
-    const parts: Partial<Record<ContextPartName, number>> = { conversation, pinned: 0 };
+    const parts: Partial<Record<ContextPartName, number>> = { conversation };
     for (const [k, v] of Object.entries(this.sections) as [ContextPartName, number][]) parts[k] = chars(v);
     const estimated = ESTIMATED.reduce((a, k) => a + (parts[k] ?? 0), 0);
     this.snapshot = { parts, tokens: tokens ?? estimated, window, at: new Date().toISOString() };

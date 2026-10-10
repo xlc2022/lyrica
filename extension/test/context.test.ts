@@ -22,6 +22,11 @@ describe("the context breakdown", () => {
       expect(r.parts.map((p) => p.name)).toEqual(["persona", "about", "memory", "pinned", "recall", "tools", "conversation", "reserve", "free"]);
       expect(r.parts.find((p) => p.name === "pinned")!.tokens).toBe(0);
     }
+    // Pinned messages count as their own part.
+    const pinned = new ContextMeter();
+    pinned.setPrompt([section("persona", 4000), section("pinned", 2400)], 0);
+    pinned.measure(undefined, 32_768, 1000);
+    expect(pinned.report()!.parts.find((p) => p.name === "pinned")!.tokens).toBe(600);
     const r = measured(9000).report()!;
     expect(r).toMatchObject({ tokens: 9000, window: 32_768, percent: 27, reserve: reserveFor(32_768), free: 32_768 - 9000 - reserveFor(32_768) });
     // Persona and topics outweigh the page about the user, as their sizes say.

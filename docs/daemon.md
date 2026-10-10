@@ -155,6 +155,11 @@ Each active thread is one Pi session from `openThreadSession`, with
   with the conversation up to message `n` (`branchThread`), and gives it
   the thread's models, local-only switch and workspace settings, which it
   can then only narrow.
+- **Pins** (`PUT` and `DELETE …/messages/:n/pin`) pin or unpin one of the
+  user's messages or her replies (`400` for any other entry, `409` in a
+  subagent's thread). `GET …/pins` lists the thread's pins, oldest first,
+  and whether they're over the pinned budget (`shortened`). Messages carry
+  `pinned`.
 - **Rewinding** (`POST …/messages/:n/rewind`, `RewindRequest`): `delete`
   removes message `n` and everything after it; `regenerate` removes her
   reply's turn from its user message and sends that message again;

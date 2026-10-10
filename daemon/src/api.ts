@@ -629,6 +629,8 @@ export interface Message {
   /** The model that wrote an assistant message. */
   model?: string;
   error?: string;
+  /** The user pinned it: it stays in her context word for word. */
+  pinned?: boolean;
 }
 
 /**
@@ -677,7 +679,20 @@ export interface RewindRequest {
   /** With "regenerate": the thread's chat model from now on, checked by the router first. */
   model?: ModelRef;
 }
-export interface RewindResponse { removed: number; subagents: number }
+/** `pins`: how many of the removed messages were pinned. */
+export interface RewindResponse { removed: number; subagents: number; pins: number }
+
+/**
+ * PUT /api/u/:userId/threads/:pool/:threadId/messages/:n/pin → Pin, and DELETE to unpin.
+ * Only the user's messages and her replies can be pinned; not in a subagent's thread.
+ */
+/**
+ * GET /api/u/:userId/threads/:pool/:threadId/pins → Pins: the thread's pinned
+ * messages, oldest first. `shortened`: over the pinned budget, so the oldest
+ * reach her as their first line only.
+ */
+export interface Pins { pins: Pin[]; shortened: boolean }
+export interface Pin { id: string; n: number; role: "user" | "assistant"; text: string; createdAt: string }
 
 /** POST /api/u/:userId/threads/:pool/:threadId/stop → Ok. Aborts the running turn. */
 
