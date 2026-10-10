@@ -572,6 +572,11 @@ export class PoolStore extends PoolReader {
     });
   }
 
+  /** The entries whose text holds `needle`, in any thread of this pool: where an upload is still mentioned. */
+  entriesMentioning(needle: string): { thread: string; n: number }[] {
+    return this.db.prepare("SELECT thread, n FROM entries WHERE instr(text, ?) > 0").all(needle) as { thread: string; n: number }[];
+  }
+
   /** Pins or unpins entry `n`: a pinned entry stays in her context word for word. Throws if there's no such entry. */
   pinEntry(threadId: string, n: number, pinned: boolean): void {
     this.mustThread(threadId);

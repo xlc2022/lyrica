@@ -9,12 +9,13 @@ export interface ToolOps {
     detectImageMimeType(path: string): Promise<string | null>;
   };
   write: {
-    writeFile(path: string, content: string): Promise<void>;
+    /** A Buffer is written as is: putting back a snapshot (Pi's tools pass text). */
+    writeFile(path: string, content: string | Buffer): Promise<void>;
     mkdir(dir: string): Promise<void>;
   };
   edit: {
     readFile(path: string): Promise<Buffer>;
-    writeFile(path: string, content: string): Promise<void>;
+    writeFile(path: string, content: string | Buffer): Promise<void>;
     access(path: string): Promise<void>;
   };
   bash: {

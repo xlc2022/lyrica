@@ -19,6 +19,7 @@ import {
 } from "./http.ts";
 import { ExternalListener, WebAccess, type External } from "./web/access.ts";
 import { apiRoutes } from "./routes.ts";
+import { sweepUser } from "./sweep.ts";
 
 export interface LyricadOptions {
   /** LYRICA_HOME: self.db, users/, and the Unix socket. */
@@ -274,7 +275,24 @@ export class Lyricad {
     if (`${pad(now.getHours())}:${pad(now.getMinutes())}` !== this.sleepTime() || this.sleptOn === now.toDateString()) return;
     this.sleptOn = now.toDateString();
     try { this.services.models.prune(); } catch (err) { this.log(`model cleanup failed: ${(err as Error).name}`); }
+    this.sweep(now);
     void this.sleepNight();
+  }
+
+  /** Clears what removed turns and forgotten threads left in each mounted home workspace. Logs counts only. */
+  sweep(now = new Date()): void {
+    const s = this.services;
+    if (!s) return;
+    const total = { snapshots: 0, records: 0, folders: 0, worktrees: 0 };
+    for (const id of this.mounted) {
+      try {
+        const c = sweepUser(s, id, now);
+        for (const k of Object.keys(total) as (keyof typeof total)[]) total[k] += c[k];
+      } catch (err) {
+        this.log(`sweep failed: ${(err as Error).name}`);
+      }
+    }
+    this.log(`sweep: ${total.snapshots} snapshots, ${total.records} change records, ${total.folders} thread folders, ${total.worktrees} worktrees removed`);
   }
 
   /**

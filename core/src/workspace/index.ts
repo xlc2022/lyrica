@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { Locked, type Keyring } from "../keyring.ts";
 import type { Pool } from "../types.ts";
 import type { Users } from "../users.ts";
+import { FileChanges, type NewChange } from "./changes.ts";
 import { isMounted, mountGocryptfs, unmountGocryptfs } from "./home.ts";
 import type { ExecutionTarget } from "./ops.ts";
 import { Sandbox, WORKDIR } from "./sandbox.ts";
@@ -11,6 +12,7 @@ import { checkGrant, WorkspaceSettings, type Grant, type Network, type ThreadWor
 import { AllowedPaths } from "./paths.ts";
 import { SshTarget } from "./ssh.ts";
 
+export * from "./changes.ts";
 export * from "./home.ts";
 export * from "./net.ts";
 export * from "./paths.ts";
@@ -59,6 +61,7 @@ export interface WorkspaceOptions {
  */
 export class Workspace {
   private readonly settingsByUser = new Map<string, WorkspaceSettings>();
+  private readonly changesByUser = new Map<string, FileChanges>();
   private readonly sshTargets = new Map<string, SshTarget>();
   /** Which folders each user may grant. Only administrators change them. */
   readonly allowedPaths: AllowedPaths;
@@ -74,6 +77,20 @@ export class Workspace {
       this.settingsByUser.set(userId, s);
     }
     return s;
+  }
+
+  /** What her write and edit calls did to the user's files, with snapshots in their home workspace. */
+  changes(userId: string): FileChanges {
+    let c = this.changesByUser.get(userId);
+    if (!c) {
+      c = new FileChanges(this.users.openUserDb(userId), () => {
+        const home = this.homeDir(userId);
+        if (!isMounted(home)) throw new Locked("the home workspace is not mounted");
+        return home;
+      });
+      this.changesByUser.set(userId, c);
+    }
+    return c;
   }
 
   /** The front door and excluded ports as they are now. */
@@ -105,6 +122,8 @@ export class Workspace {
     for (const [k, t] of this.sshTargets) if (k.startsWith(`${userId}/`)) { t.close(); this.sshTargets.delete(k); }
     this.settingsByUser.get(userId)?.close();
     this.settingsByUser.delete(userId);
+    this.changesByUser.get(userId)?.close();
+    this.changesByUser.delete(userId);
     await unmountGocryptfs(this.homeDir(userId));
   }
 
@@ -128,6 +147,8 @@ export class Workspace {
       settings: () => this.settings(t.userId).thread(t.threadId),
       network: (): Network => this.network(t),
       folders: () => this.folders(t),
+      /** Called after her write or edit tool changed a file, so removing the turn can undo it. */
+      recordChange: (c: NewChange) => { this.changes(t.userId).record(t.pool, t.threadId, c); },
     };
   }
 

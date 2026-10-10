@@ -72,7 +72,7 @@ describe("her context", () => {
     await turn(long("FIRST-MARK"));
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));
-    model.reply({ tools: [{ name: "compact", args: { summary: SUMMARY } }] }, { text: "Compacting now." });
+    model.reply({ tools: [{ name: "threads", args: { action: "compact", summary: SUMMARY } }] }, { text: "Compacting now." });
     await turn("let's tidy up before the next part");
     const compacted = stream.events.find((e) => e.event.type === "compacted")?.event as Extract<ThreadEvent, { type: "compacted" }>;
     expect(compacted.summary).toBe(SUMMARY);
@@ -98,7 +98,7 @@ describe("her context", () => {
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));
     model.reply(
-      { tools: [{ name: "compact", args: { summary: "NOTES-MARK keep the migration plan" } }] },
+      { tools: [{ name: "threads", args: { action: "compact", summary: "NOTES-MARK keep the migration plan" } }] },
       { text: "Compacting." },
       { text: "PI-SUMMARY-MARK: the migration plan, decided and open points." },
     );
@@ -116,7 +116,7 @@ describe("her context", () => {
     await turn(long("FIRST-MARK"));
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));
-    model.reply({ tools: [{ name: "compact", args: { summary: SUMMARY } }] }, { text: "Compacting now, once I finish this long thought.", slowMs: 5000 });
+    model.reply({ tools: [{ name: "threads", args: { action: "compact", summary: SUMMARY } }] }, { text: "Compacting now, once I finish this long thought.", slowMs: 5000 });
     const ends = stream.events.filter((e) => e.event.type === "turn_end").length;
     const from = stream.events.length;
     await li.post(`${path}/messages`, { text: "tidy up" });

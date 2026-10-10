@@ -190,6 +190,11 @@ export class DelegationStore {
     return (this.db(userId, (db) => db.prepare(`SELECT * FROM subagent_runs WHERE pool = ? AND ${col} = ? ORDER BY started_at DESC, rowid DESC`).all(pool, val)) as RunRow[]).map(toRecord);
   }
 
+  /** The runs with a subagent still working or waiting on a question. */
+  liveRuns(userId: string, pool: Pool): string[] {
+    return (this.db(userId, (db) => db.prepare("SELECT DISTINCT run FROM subagent_runs WHERE pool = ? AND status IN ('running', 'question')").all(pool)) as { run: string }[]).map((r) => r.run);
+  }
+
   /** Marks every live row whose run isn't in `live` as interrupted, and returns them. */
   interrupt(userId: string, live: (run: string) => boolean): SubagentRecord[] {
     return this.db(userId, (db) => {

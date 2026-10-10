@@ -119,6 +119,20 @@ so it never touches disk, and no system `ssh` agent is involved.
   symlink she left in `uploads/` can't point it anywhere else.
 - An uploaded file is a file, not a memory. She notes what matters from it, as
   with anything else she reads.
+- **What her write and edit calls change is recorded**, so removing the
+  turns that made a change can undo it (`core/src/workspace/changes.ts`).
+  `user.db` has `file_changes`: the call, the target (`sandbox` or
+  `ssh:<name>`), the path, whether the call made the file, and the hash it
+  left; no content. What the file held before is a snapshot in the home
+  workspace's `snapshots/` folder, outside every thread's folder. A file that
+  exists but can't be read first isn't recorded. Undoing a change deletes a
+  file the turns made, or puts back the snapshot, and only when the file
+  still has the hash they left: something changed it since, so it is kept.
+- **The nightly sweep** (`daemon/src/sweep.ts`), for each user whose home is
+  mounted: change records and snapshots older than 30 days, snapshots no
+  record names, the folders of threads that no longer exist, and subagent
+  worktrees whose run isn't live and that haven't changed in 30 days. It
+  logs counts only.
 - **Granted host paths outside the home workspace are ordinary files.** Their
   protection is whatever the host gives them.
 
