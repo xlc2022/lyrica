@@ -1,6 +1,7 @@
 import { InMemoryCredentialStore, type Api, type Model } from "@earendil-works/pi-ai";
 import { ModelRuntime, type ProviderModelConfig } from "@earendil-works/pi-coding-agent";
-import { CloudModelForbidden, isRestricted, type CallContext, type Endpoint, type EndpointModel, type ModelRef, type Models, type Task } from "@lyrica/core";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { acceptedSettings, CloudModelForbidden, isRestricted, payloadFields, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
 
 const FREE = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const DEFAULT_CONTEXT = 32_768;
@@ -9,12 +10,18 @@ const DEFAULT_CONTEXT = 32_768;
 // `max_tokens`; they don't all know `developer`, `store` or `max_completion_tokens`.
 const LOCAL_COMPAT = { supportsDeveloperRole: false, supportsStore: false, supportsReasoningEffort: false, maxTokensField: "max_tokens" } as const;
 
-function piModel(ep: Endpoint, m: EndpointModel): ProviderModelConfig {
+// A model that thinks gets `reasoning_effort` (OpenAI-compatible endpoints) at the thread's level.
+// A host model with an on/off thinking switch (one level) thinks through the chat template's switch instead.
+function piModel(ep: Endpoint, m: Offering): ProviderModelConfig {
   const contextWindow = m.contextWindow ?? DEFAULT_CONTEXT;
+  const reasoning = !!m.reasoning?.length;
+  const toggle = ep.api === "host" && m.reasoning?.length === 1;
+  const compat = ep.api === "host" ? { ...LOCAL_COMPAT, ...(toggle ? { thinkingFormat: "qwen-chat-template" as const } : { supportsReasoningEffort: reasoning }) }
+    : ep.kind === "local" ? { ...LOCAL_COMPAT, supportsReasoningEffort: reasoning } : undefined;
   return {
-    id: m.modelId, name: m.modelId, input: ["text"], cost: FREE, reasoning: false,
+    id: m.modelId, name: m.modelId, input: m.vision ? ["text", "image"] : ["text"], cost: FREE, reasoning,
     contextWindow, maxTokens: Math.min(8192, Math.floor(contextWindow / 4)),
-    ...(ep.kind === "local" ? { compat: LOCAL_COMPAT } : {}),
+    ...(compat ? { compat } : {}),
   };
 }
 
@@ -34,7 +41,31 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
   internals.rebuildProviders();
 
   const allowed = models.allowed(ctx);
-  for (const { endpoint, models: list } of allowed) {
+  // Each request carries the offering's saved settings (only those set), and a model host's requests its pinned fetch.
+  const fetches = new Map(allowed.flatMap(({ endpoint }) => { const f = models.fetchFor(endpoint); return f ? [[endpoint.id, f] as const] : []; }));
+  const offerings = new Map(allowed.flatMap(({ endpoint, offerings: list }) => list.map((o) => [`${endpoint.id}\u0000${o.modelId}`, { endpoint, offering: o }] as const)));
+  type Prepared = { options: { fetch?: typeof fetch; onPayload?: (payload: unknown, model: Model<Api>) => unknown } };
+  const r = runtime as unknown as { prepareRequest(model: Model<Api>, options?: object): Promise<Prepared> };
+  const prepare = r.prepareRequest.bind(runtime);
+  r.prepareRequest = async (model, options) => {
+    const prepared = await prepare(model, options);
+    const f = fetches.get(model.provider);
+    if (f) prepared.options.fetch = f;
+    const found = offerings.get(`${model.provider}\u0000${model.id}`);
+    if (found) {
+      const values = models.offeringSettings(ctx.userId, found.offering.id).values;
+      if (Object.keys(values).length) {
+        const before = prepared.options.onPayload;
+        const repetition = found.endpoint.kind === "local" && found.endpoint.api !== "host" ? "repeat_penalty" : "repetition_penalty";
+        prepared.options.onPayload = async (payload, m) => {
+          const params = ((await before?.(payload, m)) ?? payload) as Record<string, unknown>;
+          return { ...params, ...payloadFields(values, repetition, params, acceptedSettings(found.endpoint)) };
+        };
+      }
+    }
+    return prepared;
+  };
+  for (const { endpoint, offerings: list } of allowed) {
     if (!list.length) continue;
     runtime.registerProvider(endpoint.id, {
       name: `${endpoint.name} (${endpoint.kind})`, baseUrl: endpoint.baseUrl, api: "openai-completions",
@@ -55,9 +86,38 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
 }
 
 /** The Pi model for a task, resolved through the router. Throws CloudModelForbidden like resolveModel. */
-export function piModelFor(runtime: ModelRuntime, models: Models, task: Task, ctx: CallContext): { ref: ModelRef; model: Model<Api> } {
-  const ref = models.resolveModel(task, ctx);
-  const model = runtime.getModel(ref.endpointId, ref.modelId);
-  if (!model) throw new CloudModelForbidden(`${ref.endpointId}/${ref.modelId} is not in this thread's model runtime`);
-  return { ref, model };
+export function piModelFor(runtime: ModelRuntime, models: Models, task: Task, ctx: CallContext, resolution?: Resolution): { ref: { offeringId: string }; model: Model<Api>; resolution: Resolution } {
+  const r = resolution ?? models.resolve(task, ctx);
+  const model = runtime.getModel(r.endpoint.id, r.offering.modelId);
+  if (!model) throw new CloudModelForbidden(`${r.label} is not in this thread's model runtime`);
+  return { ref: r.ref, model, resolution: r };
+}
+
+/**
+ * Before a turn: picks the chat model again, passing over any whose machine
+ * is away (probed when there is a fallback), switches the session to it,
+ * sets the thinking level it can do, and records which model answers and why.
+ * With `thinking: false` the session keeps its own level (a subagent role's).
+ */
+export async function prepareTurn(o: {
+  session: AgentSession; runtime: ModelRuntime; models: Models; call: CallContext; pool: Pool; threadId: string; task?: Task; thinking?: boolean;
+  /** Pi is retrying within the turn: probe for at most a second (its pause before the retry is two), and rewrite the turn's call record. */
+  retry?: boolean;
+}): Promise<Resolution> {
+  const task = o.task ?? "chat";
+  const tokens = o.session.getContextUsage()?.tokens ?? undefined;
+  // Tools are asked for only when the thread has them, so a model without tools can still chat.
+  const tools = o.session.getActiveToolNames().length > 0;
+  const r = await o.models.resolveLive(task, o.call, { ...(tools ? { tools } : {}), ...(tokens ? { tokens } : {}) }, o.retry ? { probeMs: 1000 } : {});
+  const { model } = piModelFor(o.runtime, o.models, task, o.call, r);
+  const current = o.session.model;
+  if (!current || current.provider !== model.provider || current.id !== model.id) await o.session.setModel(model);
+  let note: string | undefined;
+  if (o.thinking !== false) {
+    const t = o.models.thinkingFor(r, o.call.thinking);
+    o.session.setThinkingLevel(t.level);
+    note = t.note;
+  }
+  o.models.recordCall(o.call.userId, { pool: o.pool, threadId: o.threadId, task, resolution: r, ...(note ? { note } : {}) }, { retry: !!o.retry });
+  return r;
 }

@@ -20,20 +20,43 @@ export async function addressesOutside(baseUrl: string): Promise<string[]> {
   return addresses.filter((a) => !OWN_NETWORK.check(a, isIP(a) === 6 ? "ipv6" : "ipv4"));
 }
 
-export interface DiscoveredModel { modelId: string; contextWindow?: number; tools?: boolean }
+export interface DiscoveredModel {
+  modelId: string; contextWindow?: number; tools?: boolean; vision?: boolean; image?: boolean; embedding?: boolean;
+  reasoning?: ("low" | "medium" | "high")[];
+  /** The file's SHA-256, where a host reports it: the same file on two hosts is the same model. */
+  digest?: string;
+  /** What a host read from the file or its model card, for the library. */
+  identity?: ModelIdentity;
+  /** The host downloaded it itself (only those can be deleted). */
+  downloaded?: boolean;
+  size?: number;
+  /** An image model: a confirmed recipe, by its name. */
+  recipe?: string;
+  /** The context window a host serves the model with, which wins over one set by hand. */
+  servedContext?: number;
+}
+
+/** A model's identity as a host reads it: GGUF metadata and the hub's model card. */
+export interface ModelIdentity {
+  basename?: string | null;
+  sizeLabel?: string | null;
+  finetune?: string | null;
+  baseModels?: { name?: string; organization?: string; repoUrl?: string }[] | null;
+  card?: { baseModel?: string[]; baseModelRelation?: string | null } | null;
+}
 
 const headers = (apiKey?: string): Record<string, string> => (apiKey ? { authorization: `Bearer ${apiKey}` } : {});
 
-async function getModels(baseUrl: string, apiKey: string | undefined, timeoutMs: number): Promise<unknown> {
-  const res = await fetch(`${baseUrl}/models`, { headers: headers(apiKey), signal: AbortSignal.timeout(timeoutMs) });
+async function getModels(baseUrl: string, apiKey: string | undefined, timeoutMs: number, fetchImpl: typeof fetch = fetch): Promise<unknown> {
+  const res = await fetchImpl(`${baseUrl}/models`, { headers: headers(apiKey), signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) throw new Error(`${baseUrl}/models answered ${res.status}`);
   return res.json();
 }
 
 /** "up" when GET /models answers 2xx within the timeout. */
-export async function probeUrl(baseUrl: string, apiKey: string | undefined, timeoutMs = 5000): Promise<"up" | "down"> {
+export async function probeUrl(baseUrl: string, apiKey: string | undefined, timeoutMs = 5000, fetchImpl?: typeof fetch): Promise<"up" | "down"> {
   try {
-    await getModels(baseUrl, apiKey, timeoutMs);
+    await getModels(baseUrl, apiKey, timeoutMs, fetchImpl);
     return "up";
   } catch {
     return "down";
@@ -41,9 +64,10 @@ export async function probeUrl(baseUrl: string, apiKey: string | undefined, time
 }
 
 /**
- * Reads GET /models. Context windows and tool support are recorded only when
- * the server says: OpenRouter's `context_length` and `supported_parameters`,
- * llama-server's `meta.n_ctx`, LM Studio's `max_context_length`.
+ * Reads GET /models. Capabilities are recorded only when the server says:
+ * OpenRouter's `context_length`, `supported_parameters` (tools, reasoning)
+ * and `architecture` modalities (vision, images), llama-server's
+ * `meta.n_ctx`, LM Studio's `max_context_length`.
  */
 export async function discoverModels(baseUrl: string, apiKey: string | undefined, timeoutMs = 10_000): Promise<DiscoveredModel[]> {
   const body = (await getModels(baseUrl, apiKey, timeoutMs)) as { data?: unknown };
@@ -52,10 +76,15 @@ export async function discoverModels(baseUrl: string, apiKey: string | undefined
   return body.data.flatMap((m: Record<string, any>) => {
     if (typeof m?.id !== "string" || !m.id) return [];
     const params = Array.isArray(m.supported_parameters) ? m.supported_parameters : undefined;
+    const input = Array.isArray(m.architecture?.input_modalities) ? m.architecture.input_modalities : undefined;
+    const output = Array.isArray(m.architecture?.output_modalities) ? m.architecture.output_modalities : undefined;
     return [{
       modelId: m.id,
       contextWindow: num(m.context_length) ?? num(m.meta?.n_ctx) ?? num(m.max_context_length),
       tools: params ? params.includes("tools") : undefined,
+      reasoning: params?.includes("reasoning") || params?.includes("reasoning_effort") ? ["low", "medium", "high"] as ("low" | "medium" | "high")[] : undefined,
+      vision: input ? input.includes("image") : undefined,
+      image: output ? output.includes("image") : undefined,
     }];
   });
 }

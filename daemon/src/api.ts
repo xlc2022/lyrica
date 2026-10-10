@@ -21,12 +21,17 @@ export type Pool = "general" | "private";
 export type Interface = "web" | "cli" | "matrix" | "forum" | "sleep";
 export type Task =
   | "chat" | "subagent.cheap" | "subagent.strong" | "compaction"
-  | "title" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake";
+  | "title" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
+  | "image.create" | "image.edit";
 /** The tasks a thread can choose models for. */
 export const THREAD_TASKS = ["chat", "subagent.cheap", "subagent.strong", "compaction", "title"] as const satisfies readonly Task[];
 export type ThreadTask = (typeof THREAD_TASKS)[number];
 
-export interface ModelRef { endpointId: string; modelId: string }
+/** One model on one endpoint, by its permanent offering ID, or a model group, which expands into its members in order. */
+export type ModelRef = { offeringId: string } | { groupId: string };
+export type ThinkingLevel = "off" | "low" | "medium" | "high";
+/** A profile's entry for a task: an ordered list, or another task's list (Same as). */
+export type ProfileEntry = ModelRef[] | { same: Task };
 export interface Pronouns { subj: string; obj: string; poss: string; possPro: string; refl: string }
 export type Theme = "device" | "light" | "dark";
 /** "ask-commands" asks before bash; "ask-changes" before bash, write and edit. */
@@ -149,37 +154,255 @@ export interface CredentialsChange { save: boolean }
 
 // --- Endpoints and model profiles ---
 
-export interface EndpointModelInfo { modelId: string; contextWindow?: number; tools?: boolean; manual: boolean }
+/** What a model can do: discovered where the endpoint says, else set by hand. */
+export interface Capabilities {
+  contextWindow?: number; tools?: boolean; vision?: boolean; embedding?: boolean; image?: boolean; edit?: boolean;
+  /** The thinking levels it offers, besides off. */
+  reasoning?: ("low" | "medium" | "high")[];
+}
+
+/** One model an endpoint offers. */
+export interface OfferingInfo extends Capabilities {
+  /** Permanent. */
+  id: string;
+  /** The endpoint's own model ID. */
+  modelId: string;
+  /** `<endpoint>/<model>`, with `shared.` before a shared endpoint's name. */
+  label: string;
+  manual: boolean;
+  /** missing: the endpoint stopped listing it; gone: missing for 30 days, so fallbacks skip it. */
+  status: "listed" | "missing" | "gone";
+  missingSince?: string;
+}
 
 export interface EndpointInfo {
-  /** Its name, or `shared.<name>` for a shared one. */
+  /** Permanent. Editing the endpoint never changes it. */
   id: string;
+  /** A label that can change. */
   name: string;
   kind: "cloud" | "local";
+  /** A plain OpenAI-compatible server, or a paired model host (always local). */
+  api: "openai-compatible" | "host";
   baseUrl: string;
+  /** A host's addresses, tried in order. */
+  addresses?: string[];
+  /** A host's pinned key fingerprint. */
+  fingerprint?: string;
   /** API keys are never sent back. */
   hasApiKey: boolean;
   shared: boolean;
-  models: EndpointModelInfo[];
+  /** A local endpoint over plain HTTP outside this machine and the tailnet. */
+  unencrypted: boolean;
+  /** Unreachable for 14 days. Fallbacks skip it. */
+  stale: boolean;
+  downSince?: string;
+  models: OfferingInfo[];
 }
 
 /** GET /api/u/:userId/endpoints → EndpointInfo[] (own, then shared) */
 /** POST /api/u/:userId/endpoints → EndpointInfo. `shared` needs an administrator. */
 export interface EndpointInput { name: string; kind: "cloud" | "local"; baseUrl: string; apiKey?: string; shared?: boolean }
-/** DELETE /api/u/:userId/endpoints/:endpointId → Ok */
-/** POST /api/u/:userId/endpoints/:endpointId/discover → EndpointInfo. Re-reads /v1/models. */
-/** POST /api/u/:userId/endpoints/:endpointId/models → EndpointInfo. Adds a model by hand. */
-export interface ModelInput { modelId: string; contextWindow?: number; tools?: boolean }
+/** PATCH /api/u/:userId/endpoints/:endpointId → EndpointInfo. Keeps every ID. `apiKey: null` removes the key. */
+export interface EndpointChange { name?: string; baseUrl?: string; apiKey?: string | null }
+/** DELETE /api/u/:userId/endpoints/:endpointId → Ok. Its models leave tombstones. */
+/** POST /api/u/:userId/endpoints/:endpointId/discover → EndpointInfo. Re-reads /v1/models; models no longer listed are marked missing. */
+/** POST /api/u/:userId/endpoints/:endpointId/models → OfferingInfo. Adds a model by hand. */
+export interface ModelInput extends Capabilities { modelId: string }
 /** GET /api/u/:userId/endpoints/:endpointId/probe → Probe */
 export interface Probe { state: "up" | "down"; warning?: string }
+/** POST /api/u/:userId/endpoints/:endpointId/reset-ids → EndpointInfo. Fresh IDs, with redirects from the old ones. */
+/** POST /api/u/:userId/endpoints/:endpointId/merge → EndpointInfo (the one merged into). */
+export interface MergeInput { into: string }
+
+/**
+ * POST /api/u/:userId/hosts → EndpointInfo. Pairs a model host with the code
+ * its dashboard shows (host/PAIRING.md), pins its key and reads its models.
+ * `shared` needs an administrator. Unpair with DELETE …/endpoints/:endpointId.
+ */
+export interface HostInput { name: string; addresses: string[]; code: string; shared?: boolean }
+/** POST /api/u/:userId/hosts/:endpointId/pair → EndpointInfo. Pairs again after the host's key changed; every ID stays. */
+export interface HostRepair { code: string }
+/** PUT /api/u/:userId/hosts/:endpointId/addresses → EndpointInfo. Trust stays with the key. */
+export interface HostAddresses { addresses: string[] }
+/** A host's status, as it reports it (host/API.md, GET /host/v1/status). */
+export interface HostStatus {
+  name: string; version: string; fingerprint: string;
+  state: "running" | "pausing" | "paused" | "restarting";
+  gpus: {
+    index: number; name: string; vendor: string; role: "vllm" | "shared";
+    vram: { total: number; used: number };
+    models: { id: string; kind: string; state: string; pinned: boolean; busy: boolean; vram: number | null; lastUsed: string | null }[];
+    queue: { chat: number; image: number; background: number };
+  }[];
+  downloads: { active: number };
+  modelsFolder: { path: string; free: number };
+}
+/** GET /api/u/:userId/hosts/:endpointId/status → HostStatus */
+/** POST /api/u/:userId/hosts/:endpointId/pause|resume|restart → HostStatus. A shared host needs an administrator. */
+
+/** How a model answers. Unset values aren't sent, so the server's default applies. */
+export interface AnswerSettings {
+  temperature?: number; topP?: number; topK?: number; minP?: number; repeatPenalty?: number;
+  presencePenalty?: number; frequencyPenalty?: number; maxTokens?: number; seed?: number; stop?: string[];
+}
+/** GET /api/u/:userId/offerings/:offeringId/settings → OfferingSettings: each value with its source. */
+export interface OfferingSettings {
+  values: AnswerSettings;
+  /** shared: the shared model's value; yours: your own, which wins for you only. Anything absent is the server's default. */
+  sources: Partial<Record<keyof AnswerSettings, "shared" | "yours">>;
+  /** Saved values this endpoint's API doesn't take (OpenAI's has no top-k, for one), so they aren't sent. */
+  dropped: (keyof AnswerSettings)[];
+  /** The context window Lyrica plans by: a host's serving settings, else set by hand, else discovered. */
+  contextWindow?: { value: number; source: "host" | "hand" | "discovered" };
+}
+/**
+ * PUT /api/u/:userId/offerings/:offeringId/settings → OfferingSettings.
+ * `shared` sets a shared model's values for everyone (administrators);
+ * `mine` (the default) sets your own. null clears a value.
+ */
+export interface OfferingSettingsChange { scope?: "shared" | "mine"; values: { [K in keyof AnswerSettings]?: AnswerSettings[K] | null } }
+
+// --- The model libraries, downloads and host management ---
+
+export type Hub = "huggingface" | "modelscope";
+/** One model in the text library, with its copies on every endpoint. */
+export interface LibraryEntry {
+  key: string; name: string;
+  /** For a finetune, merge or adapter, or a copy flagged as maybe one: the model it derives from. */
+  base?: { key: string; name: string };
+  starred: boolean; groups: string[];
+  copies: {
+    offeringId: string; label: string;
+    /** The file under the models folder, or the endpoint's model ID. */
+    rawName: string;
+    endpointId: string; endpointName: string; kind: "cloud" | "local"; shared: boolean;
+    status: "listed" | "missing" | "gone";
+    /** Lyrica downloaded it, so it can be deleted. */
+    downloaded: boolean;
+    capabilities: Capabilities; groups: string[];
+    /** Why it may not be this model. */
+    flagged?: string;
+    size?: number;
+  }[];
+}
+/** GET /api/u/:userId/library/text?search=&kind=&endpoint=&capability=&groups=1&offset=&limit= → TextLibrary. Starred first. */
+export interface TextLibrary { total: number; entries: LibraryEntry[] }
+/** PUT /api/u/:userId/offerings/:offeringId/star { starred } → Ok. Per user. */
+/** PUT /api/u/:userId/offerings/:offeringId/separate { separate } → Ok. "Not this model"; an administrator for a shared endpoint. */
+/** POST /api/u/:userId/offerings/:offeringId/delete-copy { confirm? } → DeleteCopy. Without confirm, only where it's used. */
+export interface DeleteCopy {
+  usedIn: ModelUse[];
+  deleted?: string[];
+  /** Shards of a split file the host wouldn't delete (say, in use), with its reason. The copy is gone from every list anyway. */
+  left?: { files: string[]; reason: string };
+}
+/** A hub token as the API shows it: never more than its last four characters. */
+export interface HubTokenInfo { hub: Hub; shared: boolean; last4: string }
+/** GET /api/u/:userId/hub-tokens → HubTokenInfo[]. PUT …/hub-tokens/:hub → HubTokenInfo[]. DELETE …/hub-tokens/:hub?shared=1 → HubTokenInfo[]. */
+export interface HubTokenInput { token: string; shared?: boolean }
+/** GET /api/u/:userId/hosts/:endpointId/hub/files?source=&repo=&revision= → the host's answer (host/API.md). A shared host needs an administrator. */
+/** POST /api/u/:userId/hosts/:endpointId/downloads → the host's answer. GET lists them (a finished one becomes an offering at once); DELETE …/downloads/:id cancels or clears. */
+export type DownloadInput = { source: Hub; repo: string; revision?: string; files: string[] } | { source: "url"; url: string; sha256?: string };
+/** GET /api/u/:userId/hosts/:endpointId/images → { recipes, parts by role }, as the host reports them. */
+/** POST /api/u/:userId/hosts/:endpointId/recipes/:recipeId → the host's answer. Confirmed recipes become image offerings. */
+export type RecipeAction = { do: "confirm" | "ignore" | "download-parts" | "delete" } | { do: "change"; change: Record<string, unknown> } | { do: "copy"; name: string };
+/** POST /api/u/:userId/hosts/:endpointId/manage → the host's answer. Loading, pinning, GPU settings, placements, scan, usage only. */
+export interface HostManage { method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; path: string; body?: unknown }
+/** GET /api/u/:userId/hosts/:endpointId/dashboard → { url } */
+/** A host model's placement and serving settings, as host/API.md defines them. */
+export interface ServingSettings { model: string; settings: Record<string, unknown>; contextLength: number }
+/** GET /api/u/:userId/offerings/:offeringId/serving → ServingSettings. PUT { settings } → the host's model entry; a placement that can't work is refused with the host's reason. */
+/** POST /api/u/:userId/offerings/:offeringId/reload → the host's answer: applies saved settings now. A shared host needs an administrator. */
+/** GET /api/u/:userId/models/page → ModelsPage: what the Models page shows, endpoints with live status. An endpoint seen down in the last 30 s isn't asked again, and each gets 3 s. */
+export interface ModelsPage {
+  endpoints: (EndpointInfo & Probe)[];
+  hosts: ({ endpointId: string; status: HostStatus } | { endpointId: string; error: string })[];
+  profiles: Profiles;
+  calls: CallInfo[];
+  notice: string[];
+  /** How many items Clean up lists. */
+  cleanup: number;
+}
+
+/** PATCH /api/u/:userId/offerings/:offeringId → OfferingInfo. Sets capabilities by hand; null clears one. */
+export type CapabilitiesChange = { [K in keyof Capabilities]?: Capabilities[K] | null };
+/** DELETE /api/u/:userId/offerings/:offeringId → Ok. Leaves a tombstone. */
+/** POST /api/u/:userId/offerings/:offeringId/replace → Ok. Leaves a redirect to the replacement, of the same kind. */
+export interface ReplaceInput { with: string }
+/** GET /api/u/:userId/offerings/:offeringId/same → OfferingInfo[]: the same model on other endpoints of the same kind. */
+
+/** Where one of the user's lists names a model. */
+export type ModelUse =
+  | { where: "profile"; profile: "cloud" | "local" | "custom"; task: Task }
+  | { where: "thread"; pool: Pool; threadId: string; task: Task }
+  | { where: "workflow"; name: string }
+  | { where: "group"; groupId: string; name: string };
+
+/** A stale endpoint (no offering), a gone model, or a group left empty, with where it is still used. */
+export interface CleanupItem {
+  endpoint?: { id: string; name: string; shared: boolean; downSince?: string };
+  offering?: OfferingInfo;
+  group?: { id: string; name: string; shared: boolean };
+  label: string;
+  usedIn: ModelUse[];
+  /** How many other users' lists name it (shared only). */
+  otherUsers: number;
+  /** The same model on another endpoint, to pre-fill Replace with… */
+  suggestion?: { offeringId: string; label: string };
+}
+/** GET /api/u/:userId/models/cleanup → CleanupItem[] */
+/** GET /api/u/:userId/models/notice → ModelsNotice: lists rewritten since last dismissed. */
+export interface ModelsNotice { lines: string[] }
+/** DELETE /api/u/:userId/models/notice → Ok */
+
+/** Offerings from different endpoints declared the same model, in order. */
+export interface GroupInfo { id: string; name: string; shared: boolean; members: string[] }
+/** GET /api/u/:userId/groups → GroupInfo[] (own, then shared) */
+/** POST /api/u/:userId/groups → GroupInfo. `shared` needs an administrator and shared members. */
+export interface GroupInput { name: string; members: string[]; shared?: boolean }
+/** PATCH /api/u/:userId/groups/:groupId → GroupInfo. Rename, or reorder, add or remove members. */
+export interface GroupChange { name?: string; members?: string[] }
+/** DELETE /api/u/:userId/groups/:groupId → Ok. Lists that named it drop it. */
+/** GET /api/u/:userId/groups/:groupId → GroupDetail: how its copies differ. */
+export interface GroupDetail {
+  group: GroupInfo;
+  members: (OfferingInfo & { kind: "cloud" | "local"; stale: boolean })[];
+  warnings: string[];
+}
+/** GET /api/u/:userId/groups/suggestions → GroupSuggestion[]. Never made automatically. */
+export interface GroupSuggestion { name: string; members: string[]; strength: "strong" | "weak" }
 
 /** GET /api/u/:userId/profiles → Profiles */
 export interface Profiles {
-  cloud: Partial<Record<Task, ModelRef>>;
-  local: Partial<Record<Task, ModelRef>>;
+  local: Partial<Record<Task, ProfileEntry>>;
+  cloud: Partial<Record<Task, ProfileEntry>>;
+  custom: Partial<Record<Task, ProfileEntry>>;
+  /** Which profile general threads use unless they choose. */
+  default: "cloud" | "custom";
+  /** The thinking level threads use unless they choose. */
+  thinking: ThinkingLevel;
 }
-/** PUT /api/u/:userId/profiles/:profile/:task → Profiles. The local profile takes local models only. */
-export interface ProfileModelChange { model: ModelRef | null }
+/**
+ * PUT /api/u/:userId/profiles/:profile/:task → Profiles. Local takes local
+ * models only, cloud cloud models only, custom both. `same` names a task
+ * of the same kind that doesn't itself follow another. `model` sets a
+ * one-model list; null or an empty list clears the entry.
+ */
+export type ProfileEntryChange = { models: ModelRef[] | null } | { same: Task } | { model: ModelRef | null };
+/** PATCH /api/u/:userId/profiles → Profiles */
+export interface ProfilesChange { default?: "cloud" | "custom"; thinking?: ThinkingLevel }
+
+/** Which model answered a call. Never any of the conversation's text. */
+export interface CallInfo {
+  at: string; pool: Pool; threadId: string; task: Task; offeringId: string;
+  /** Kept with the ID, so history reads correctly after the model is gone. */
+  label: string; endpointName: string; kind: "cloud" | "local";
+  /** Why the first model in the list didn't answer, when it didn't. */
+  fallback?: string;
+  /** Such as a model that couldn't think. */
+  note?: string;
+}
+/** GET /api/u/:userId/models/calls → CallInfo[], newest first. */
 
 // --- Workspace defaults ---
 
@@ -242,7 +465,13 @@ export interface ThreadChange { title?: string; hidden?: boolean }
 
 /** Where a thread's model for one task comes from. */
 export interface TaskModel {
-  model?: ModelRef;
+  /** The model that answers now. */
+  model?: { offeringId: string };
+  /** The thread's own list, when it has one. */
+  list?: ModelRef[];
+  /** `<endpoint>/<model>`, kept readable after the model is gone. */
+  label?: string;
+  modelId?: string;
   kind?: "cloud" | "local";
   endpointName?: string;
   /** "thread" when overridden here, "profile" when following the profile, "none" when nothing is set. */
@@ -253,6 +482,15 @@ export interface TaskModel {
 
 export interface ThreadSettings {
   models: Record<ThreadTask, TaskModel>;
+  /** Local in a private or local-only thread; otherwise the thread's choice or the user's default. */
+  profile: "local" | "cloud" | "custom";
+  /** Set when the thread chose its profile rather than following the default. */
+  profileChoice: "cloud" | "custom" | null;
+  thinking: ThinkingLevel;
+  /** The levels the current chat model offers (always including off). */
+  thinkingLevels: ThinkingLevel[];
+  /** The last call in this thread: which model answered, and any fallback. */
+  answered?: CallInfo;
   /** Always true in a private thread. */
   localOnly: boolean;
   /** Overrides of the user's per-pool defaults; null follows the default. */
@@ -281,8 +519,12 @@ export interface ThreadSettings {
  * outside the allowed paths, a subagent wider than its parent.
  */
 export interface ThreadSettingsChange {
-  /** null clears the thread's choice, so the profile's applies. */
-  models?: Partial<Record<ThreadTask, ModelRef | null>>;
+  /** A model or an ordered list; null clears the thread's choice, so the profile's applies. */
+  models?: Partial<Record<ThreadTask, ModelRef | ModelRef[] | null>>;
+  /** General threads only; null follows the user's default. */
+  profile?: "cloud" | "custom" | null;
+  /** null follows the user's default. */
+  thinking?: ThinkingLevel | null;
   localOnly?: boolean;
   internet?: boolean | null;
   services?: boolean | null;

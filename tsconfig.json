@@ -12,6 +12,6 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["core", "extension", "daemon", "bin", "evals", "vitest.config.ts", "vitest.evals.config.ts"],
+  "include": ["core", "host", "extension", "daemon", "bin", "evals", "vitest.config.ts", "vitest.evals.config.ts"],
   "exclude": ["**/node_modules"]
 }

@@ -1,0 +1,95 @@
+# The model host. Run through install.sh, which writes .env (including
+# COMPOSE_FILE, which adds the GPU vendor's file, compose.nvidia.yaml or
+# compose.amd.yaml, and compose.lan.yaml and compose.tailscale.yaml).
+#
+# Networks. host-api sees every prompt, so it has no route out:
+# - models: internal, no route out. host-api and the model servers.
+# - edge: host-api alone, where the published ports arrive. Docker doesn't
+#   masquerade it, and egress.sh (run by install.sh and a systemd unit)
+#   drops every new connection host-api starts.
+# - fetch-api: internal, host-api and fetch, for host-api's calls to fetch.
+# - egress: fetch alone, the only route out.
+name: lyrica-host
+
+networks:
+  models:
+    internal: true
+    enable_ipv6: false
+  edge:
+    # IPv4 only: the egress rules are iptables (IPv4) rules.
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: ${EDGE_SUBNET:?run install.sh}
+  fetch-api:
+    internal: true
+    enable_ipv6: false
+  egress:
+    enable_ipv6: false
+
+volumes:
+  data: {}
+  # fetch's download record and list.
+  fetch-data: {}
+  # host-api writes the model servers' wanted state here; they read it.
+  serving: {}
+  # The vLLM supervisor's report of servers that exited; host-api reads it.
+  vllm-status: {}
+
+services:
+  host-api:
+    build:
+      context: ..
+      dockerfile: host/Dockerfile
+    image: lyrica-host:local
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      HOST_NAME: ${HOST_NAME:?run install.sh}
+      HOST_NAMES: ${LAN_ADDRESS:-},host-api
+      TAILNET_NAME: ${TS_HOSTNAME:-}
+      MODELS_HOST_PATH: ${MODELS_DIR:?run install.sh}
+      HOST_VERSION: ${HOST_VERSION:-dev}
+      GPU_VENDOR: ${GPU_VENDOR:-none}
+      COMFY_GPU: ${COMFY_GPU:-0}
+    volumes:
+      - data:/data
+      - serving:/serving
+      - vllm-status:/vllm-status:ro
+      - ${MODELS_DIR}:/models:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('fs').accessSync('/serving/llamacpp.ini')"]
+      interval: 2s
+      retries: 30
+    networks:
+      models: {}
+      edge:
+        ipv4_address: ${HOST_API_IP:?run install.sh}
+      fetch-api: {}
+    # Container names still resolve (Docker's resolver answers those itself);
+    # any other name is sent to a documentation address that answers nothing,
+    # so it can't be forwarded out from wherever Docker's resolver runs.
+    dns: [192.0.2.1]
+    ports:
+      # The dashboard at the machine. Everything else is in compose.lan.yaml
+      # or reached through the tailscale service.
+      - "127.0.0.1:7236:7080"
+
+  # Downloads: the only container with a route out. It can write only to the
+  # models folder's lyrica/ subfolder, has no GPU, isn't on the models
+  # network, and answers only host-api.
+  fetch:
+    image: lyrica-host:local
+    command: ["node", "--disable-warning=ExperimentalWarning", "src/fetch/main.ts"]
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - fetch-data:/data
+      - ${MODELS_DIR}/lyrica:/models/lyrica
+    networks: [fetch-api, egress]

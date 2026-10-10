@@ -14,6 +14,9 @@ Read these, in this order:
 3. [docs/contracts.md](docs/contracts.md): the interfaces between components.
 4. Your brief in `docs/briefs/`, if you have one, and the doc for the component
    you are changing.
+5. [docs/ux.md](docs/ux.md) before changing anything a user sees. Every new
+   control needs a home from its table; a PR that touches the interface
+   says which rule each new control follows.
 
 ## Rules
 

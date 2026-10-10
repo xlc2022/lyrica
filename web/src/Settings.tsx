@@ -23,7 +23,8 @@ const MODES: Record<PermissionMode, string> = {
   "ask-changes": "Ask before commands and changes",
 };
 
-const refKey = (m?: ModelRef) => (m ? `${m.endpointId}\u0000${m.modelId}` : "");
+const refKey = (m?: { offeringId: string }) => m?.offeringId ?? "";
+const named = (t: TaskModel) => t.label ?? (t.modelId ? `${t.modelId} · ${t.endpointName}` : "a model that no longer exists");
 
 /** Always visible in the header: the main conversation's model, cloud or local, and its endpoint. */
 export function ModelBadge({ base, settings, onChange, readOnly }: {
@@ -37,7 +38,7 @@ export function ModelBadge({ base, settings, onChange, readOnly }: {
   const label = (
     <>
       <span className={`k ${chat.kind ?? ""}`}>{chat.kind ?? "no model"}</span>
-      {chat.model ? `${chat.model.modelId} · ${chat.endpointName ?? chat.model.endpointId}` : "Choose a model"}
+      {chat.model ? (chat.modelId ? `${chat.modelId} · ${chat.endpointName}` : named(chat)) : "Choose a model"}
       {chat.problem && <span className="warn" title={chat.problem}> ⚠</span>}
     </>
   );
@@ -45,7 +46,7 @@ export function ModelBadge({ base, settings, onChange, readOnly }: {
   return (
     <span className="picker-anchor" ref={anchor}>
       <button type="button" className="badge model" data-kind={chat.kind} aria-haspopup="dialog" aria-expanded={open}
-        aria-label={`Model: ${chat.model ? `${chat.model.modelId}, ${chat.kind}, ${chat.endpointName ?? chat.model.endpointId}` : "none"}. Change`}
+        aria-label={`Model: ${chat.model ? (chat.modelId ? `${chat.modelId}, ${chat.kind}, ${chat.endpointName}` : named(chat)) : "none"}. Change`}
         onClick={() => setOpen(!open)}>{label}</button>
       {open && <ModelPicker base={base} settings={settings} task="chat" onChange={(s) => { onChange(s); setOpen(false); }} />}
     </span>
@@ -65,10 +66,10 @@ function ModelPicker({ base, settings, task, onChange }: {
         <div key={ep.id} className="picker-group">
           <div className="picker-ep"><span className={`k ${ep.kind}`}>{ep.kind}</span> {ep.name}</div>
           {ep.models.map((m) => {
-            const ref_ = { endpointId: ep.id, modelId: m.modelId };
+            const ref_ = { offeringId: m.id };
             const on = current.source === "thread" && refKey(current.model) === refKey(ref_);
             return (
-              <button key={m.modelId} type="button" className="picker-item" aria-pressed={on} disabled={busy} onClick={() => choose(ref_)}>
+              <button key={m.id} type="button" className="picker-item" aria-pressed={on} disabled={busy} onClick={() => choose(ref_)}>
                 {m.modelId}{on && <span aria-hidden="true"> ✓</span>}
               </button>
             );
@@ -182,23 +183,22 @@ function TaskSelect({ task, value, allowed, onChange }: {
 }) {
   const current = value.source === "thread" ? refKey(value.model) : "";
   const fromProfile = value.source === "profile" && value.model
-    ? `${value.kind ? `${value.kind} · ` : ""}${value.model.modelId} · ${value.endpointName ?? value.model.endpointId}` : "nothing set";
+    ? `${value.kind ? `${value.kind} · ` : ""}${value.modelId ? `${value.modelId} · ${value.endpointName}` : named(value)}` : "nothing set";
   return (
     <label className="field">
       <span>{TASK_LABELS[task]}</span>
       <select value={current} onChange={(e) => {
-        const [endpointId, modelId] = e.target.value.split("\u0000");
-        onChange(endpointId && modelId ? { endpointId, modelId } : null);
+        onChange(e.target.value ? { offeringId: e.target.value } : null);
       }}>
         <option value="">Profile ({fromProfile})</option>
         {allowed.map((ep) => (
           <optgroup key={ep.id} label={`${ep.name} (${ep.kind})`}>
-            {ep.models.map((m) => <option key={m.modelId} value={refKey({ endpointId: ep.id, modelId: m.modelId })}>{ep.kind} · {m.modelId} · {ep.name}</option>)}
+            {ep.models.map((m) => <option key={m.id} value={m.id}>{ep.kind} · {m.modelId} · {ep.name}</option>)}
           </optgroup>
         ))}
         {/* A thread choice that is no longer allowed still shows, so the select says what's set. */}
-        {current && !allowed.some((ep) => ep.models.some((m) => refKey({ endpointId: ep.id, modelId: m.modelId }) === current)) && (
-          <option value={current}>{value.model?.modelId} (not available)</option>
+        {current && !allowed.some((ep) => ep.models.some((m) => m.id === current)) && (
+          <option value={current}>{named(value)} (not available)</option>
         )}
       </select>
       {value.problem && <small className="error">{value.problem}</small>}

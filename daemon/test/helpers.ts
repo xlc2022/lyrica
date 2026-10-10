@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Keyring, PersonaStore, PRONOUN_PRESETS, SystemdCredentials, Users } from "@lyrica/core";
 import { afterEach } from "vitest";
-import type { ThreadEvent } from "../src/api.ts";
+import type { EndpointInfo, ThreadEvent } from "../src/api.ts";
 import { Lyricad, type LyricadOptions } from "../src/lyricad.ts";
 
 const ARGON2 = { memoryCost: 1024, timeCost: 1, parallelism: 1 };
@@ -149,12 +149,15 @@ export async function login(base: string, login: string, password: string): Prom
   return b;
 }
 
-/** Gives the user a local endpoint on `baseUrl` and makes its model the chat model of both profiles. */
+/** Gives the user a local endpoint on `baseUrl` and makes its model the chat model of the local and custom profiles, and Custom their default. */
 export async function localModel(b: Browser, userId: string, baseUrl: string, modelId = "qwen3.8-27b") {
-  const ep = await b.post(`/api/u/${userId}/endpoints`, { name: "gpu", kind: "local", baseUrl });
+  const ep = await b.post<EndpointInfo>(`/api/u/${userId}/endpoints`, { name: "gpu", kind: "local", baseUrl });
   if (ep.status !== 200) throw new Error(JSON.stringify(ep.body));
-  const ref = { endpointId: "gpu", modelId };
-  for (const p of ["cloud", "local"]) await b.put(`/api/u/${userId}/profiles/${p}/chat`, { model: ref });
+  const offering = ep.body.models.find((m) => m.modelId === modelId);
+  if (!offering) throw new Error(`gpu doesn't list ${modelId}`);
+  const ref = { offeringId: offering.id };
+  for (const p of ["custom", "local"]) await b.put(`/api/u/${userId}/profiles/${p}/chat`, { model: ref });
+  await b.patch(`/api/u/${userId}/profiles`, { default: "custom" });
   return ref;
 }
 

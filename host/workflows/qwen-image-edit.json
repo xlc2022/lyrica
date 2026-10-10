@@ -1,0 +1,223 @@
+{
+  "arch": "qwen-image",
+  "does": [
+    "edit"
+  ],
+  "checkpoint": false,
+  "clipType": "qwen_image",
+  "parts": [
+    {
+      "role": "diffusion",
+      "arch": [
+        "qwen-image"
+      ]
+    },
+    {
+      "role": "text_encoder",
+      "slot": "qwen2.5vl"
+    },
+    {
+      "role": "vae",
+      "arch": [
+        "qwen-image"
+      ]
+    }
+  ],
+  "references": 2,
+  "mask": true,
+  "workflow": {
+    "load": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "$image"
+      }
+    },
+    "scaled": {
+      "class_type": "ImageScaleToTotalPixels",
+      "inputs": {
+        "image": [
+          "load",
+          0
+        ],
+        "upscale_method": "lanczos",
+        "megapixels": 1.0,
+        "resolution_steps": 1
+      }
+    },
+    "ref1": {
+      "_if": "reference1",
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "$reference1"
+      }
+    },
+    "ref1s": {
+      "_if": "reference1",
+      "class_type": "ImageScaleToTotalPixels",
+      "inputs": {
+        "image": [
+          "ref1",
+          0
+        ],
+        "upscale_method": "lanczos",
+        "megapixels": 1.0,
+        "resolution_steps": 1
+      }
+    },
+    "ref2": {
+      "_if": "reference2",
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "$reference2"
+      }
+    },
+    "ref2s": {
+      "_if": "reference2",
+      "class_type": "ImageScaleToTotalPixels",
+      "inputs": {
+        "image": [
+          "ref2",
+          0
+        ],
+        "upscale_method": "lanczos",
+        "megapixels": 1.0,
+        "resolution_steps": 1
+      }
+    },
+    "pos": {
+      "class_type": "TextEncodeQwenImageEditPlus",
+      "inputs": {
+        "clip": "$clip",
+        "prompt": "$prompt",
+        "vae": "$vae",
+        "image1": [
+          "scaled",
+          0
+        ],
+        "image2": [
+          "ref1s",
+          0
+        ],
+        "image3": [
+          "ref2s",
+          0
+        ]
+      }
+    },
+    "neg": {
+      "class_type": "TextEncodeQwenImageEditPlus",
+      "inputs": {
+        "clip": "$clip",
+        "prompt": "$negativePrompt",
+        "vae": "$vae",
+        "image1": [
+          "scaled",
+          0
+        ]
+      }
+    },
+    "shift": {
+      "class_type": "ModelSamplingAuraFlow",
+      "inputs": {
+        "model": "$model",
+        "shift": "$shift"
+      }
+    },
+    "encoded": {
+      "class_type": "VAEEncode",
+      "inputs": {
+        "pixels": [
+          "scaled",
+          0
+        ],
+        "vae": "$vae"
+      }
+    },
+    "mask": {
+      "_if": "mask",
+      "class_type": "LoadImageMask",
+      "inputs": {
+        "image": "$mask",
+        "channel": "red"
+      }
+    },
+    "masked": {
+      "_if": "mask",
+      "class_type": "SetLatentNoiseMask",
+      "inputs": {
+        "samples": [
+          "encoded",
+          0
+        ],
+        "mask": [
+          "mask",
+          0
+        ]
+      }
+    },
+    "batch": {
+      "class_type": "RepeatLatentBatch",
+      "inputs": {
+        "samples": {
+          "$pick": [
+            [
+              "masked",
+              0
+            ],
+            [
+              "encoded",
+              0
+            ]
+          ]
+        },
+        "amount": "$count"
+      }
+    },
+    "sample": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": [
+          "shift",
+          0
+        ],
+        "seed": "$seed",
+        "steps": "$steps",
+        "cfg": "$cfg",
+        "sampler_name": "$sampler",
+        "scheduler": "$scheduler",
+        "positive": [
+          "pos",
+          0
+        ],
+        "negative": [
+          "neg",
+          0
+        ],
+        "latent_image": [
+          "batch",
+          0
+        ],
+        "denoise": 1
+      }
+    },
+    "decode": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "sample",
+          0
+        ],
+        "vae": "$vae"
+      }
+    },
+    "save": {
+      "class_type": "SaveImageWebsocket",
+      "inputs": {
+        "images": [
+          "decode",
+          0
+        ]
+      }
+    }
+  }
+}

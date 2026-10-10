@@ -259,6 +259,7 @@ export class Lyricad {
     const pad = (n: number) => String(n).padStart(2, "0");
     if (`${pad(now.getHours())}:${pad(now.getMinutes())}` !== this.sleepTime() || this.sleptOn === now.toDateString()) return;
     this.sleptOn = now.toDateString();
+    try { this.services.models.prune(); } catch (err) { this.log(`model cleanup failed: ${(err as Error).name}`); }
     void this.sleepNight();
   }
 

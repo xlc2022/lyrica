@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
-import type { MessagePage, SendResponse, SleepEvent, SleepOverview, SleepRunDetail, SleepStarted, ThreadEvent, ThreadSummary } from "../src/api.ts";
+import type { EndpointInfo, MessagePage, OfferingInfo, SendResponse, SleepEvent, SleepOverview, SleepRunDetail, SleepStarted, ThreadEvent, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime, sse } from "./helpers.ts";
 
 // Sleep through lyricad: the nightly schedule, /sleep, the Sleep section's API.
@@ -105,11 +105,11 @@ describe("sleep in lyricad", () => {
     const nothing = await s.li.post(`${s.u}/sleep/general`, {});
     expect(nothing).toMatchObject({ status: 409, body: { error: "Sleep can't run now: nothing is new since the last sleep." } });
     await s.talk();
-    await s.li.post(`${s.u}/endpoints`, { name: "dead", kind: "local", baseUrl: "http://127.0.0.1:9/v1" });
-    await s.li.post(`${s.u}/endpoints/dead/models`, { modelId: "m" });
-    await s.li.put(`${s.u}/profiles/cloud/sleep.wake`, { model: { endpointId: "dead", modelId: "m" } });
+    const dead = (await s.li.post<EndpointInfo>(`${s.u}/endpoints`, { name: "dead", kind: "local", baseUrl: "http://127.0.0.1:9/v1" })).body;
+    const m = (await s.li.post<OfferingInfo>(`${s.u}/endpoints/${dead.id}/models`, { modelId: "m" })).body;
+    await s.li.put(`${s.u}/profiles/custom/sleep.wake`, { model: { offeringId: m.id } });
     const down = await s.li.post(`${s.u}/sleep/general`, {});
-    expect(down).toMatchObject({ status: 409, body: { error: "Sleep can't run now: the sleep model's endpoint dead is down." } });
+    expect(down).toMatchObject({ status: 409, body: { error: "Sleep can't run now: no model for sleep.wake can answer now (dead/m: dead is down)." } });
     expect((await s.li.get<SleepOverview>(`${s.u}/sleep`)).body.runs.map((r) => r.skipReason)).toEqual(["endpoint-down", "no-activity"]);
   });
 

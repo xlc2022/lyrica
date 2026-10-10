@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { DelegationEvent, MessagePage, PermissionRequest, Subagents, ThreadEvent, ThreadSummary } from "../src/api.ts";
+import type { DelegationEvent, EndpointInfo, MessagePage, PermissionRequest, Subagents, ThreadEvent, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 /**
@@ -15,8 +15,8 @@ async function setup(opts: Parameters<typeof daemon>[1] = {}) {
   const parent = await fakeOpenAI({ label: "parent", models: [{ id: "chat-model" }] });
   const sub = await fakeOpenAI({ label: "sub", models: [{ id: "sub-model" }] });
   await localModel(li, rt.li.id, parent.baseUrl, "chat-model");
-  await li.post(`/api/u/${rt.li.id}/endpoints`, { name: "subs", kind: "local", baseUrl: sub.baseUrl });
-  for (const task of ["subagent.cheap", "subagent.strong"]) await li.put(`/api/u/${rt.li.id}/profiles/cloud/${task}`, { model: { endpointId: "subs", modelId: "sub-model" } });
+  const subs = (await li.post<EndpointInfo>(`/api/u/${rt.li.id}/endpoints`, { name: "subs", kind: "local", baseUrl: sub.baseUrl })).body;
+  for (const task of ["subagent.cheap", "subagent.strong"]) await li.put(`/api/u/${rt.li.id}/profiles/custom/${task}`, { model: { offeringId: subs.models[0]!.id } });
   const thread = (await li.post<ThreadSummary>(`/api/u/${rt.li.id}/threads`, { pool: "general", title: "parent" })).body;
   const path = `/api/u/${rt.li.id}/threads/general/${enc(thread.id)}`;
   return { rt, ...dm, li, parent, sub, thread, path };
@@ -138,6 +138,11 @@ describe("delegation in lyricad", () => {
     const saved = await li.put<{ name: string }[]>(`${flows}/review`, { description: "Write then check", spec: { loop: { task: "{input}" } } });
     expect(saved.body.map((w) => w.name)).toEqual(["review"]);
     expect((await li.put(`${flows}/empty`, { description: "", spec: { chain: [] } })).status).toBe(400);
+    // A model named by its label is saved by its offering ID, so renaming the endpoint breaks nothing.
+    const named = await li.put<{ name: string; spec: { chain: { model?: string }[] } }[]>(`${flows}/named`, { description: "", spec: { chain: [{ task: "{input}", model: "subs/sub-model" }] } });
+    const subs = (await li.get<EndpointInfo[]>(`/api/u/${rt.li.id}/endpoints`)).body.find((e) => e.name === "subs")!;
+    expect(named.body.find((w) => w.name === "named")!.spec.chain[0]!.model).toBe(subs.models[0]!.id);
+    expect((await li.put<{ error: string }>(`${flows}/nope`, { description: "", spec: { chain: [{ task: "x", model: "subs/nothing" }] } })).body.error).toMatch(/no model subs\/nothing/);
   });
 });
 

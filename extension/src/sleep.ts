@@ -216,24 +216,24 @@ export class Sleep {
   }
 
   /** The context for a sleep phase: the pool's rules, and that phase's model as its chat model. */
-  private context(userId: string, pool: Pool, phase: SleepPhase): { call: CallContext; ref: ModelRef } {
-    const base: CallContext = { userId, pool, localOnly: pool === "private" };
+  private context(userId: string, pool: Pool, phase: SleepPhase): { call: CallContext; ref: { offeringId: string } } {
+    const base: CallContext = { userId, pool, localOnly: pool === "private", ...(pool === "general" ? { profile: this.o.models.defaultProfile(userId) } : {}) };
     const ref = this.o.models.resolveModel(`sleep.${phase}`, base);
-    return { ref, call: { ...base, overrides: { chat: ref, compaction: ref } } };
+    return { ref, call: { ...base, overrides: { chat: [ref], compaction: [ref] } } };
   }
 
   /** A cheap check of each phase's endpoint. Returns why it can't run, if it can't. */
   private async probe(userId: string, pool: Pool, phases: SleepPhase[]): Promise<string | undefined> {
     const endpoints = new Set<string>();
     try {
-      for (const p of phases) endpoints.add(this.context(userId, pool, p).ref.endpointId);
+      for (const p of phases) endpoints.add(this.o.models.offering(userId, this.context(userId, pool, p).ref.offeringId)!.endpoint.id);
     } catch (err) {
       if (err instanceof NoModel || err instanceof CloudModelForbidden) return (err as Error).message;
       throw err;
     }
     for (const id of endpoints) {
       const { state } = await this.o.models.probe(userId, id).catch(() => ({ state: "down" as const }));
-      if (state === "down") return `the sleep model's endpoint ${id} is down`;
+      if (state === "down") return `the sleep model's endpoint ${this.o.models.endpoint(userId, id)?.name ?? id} is down`;
     }
     return undefined;
   }

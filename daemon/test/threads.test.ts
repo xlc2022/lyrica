@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
+import { createServer } from "node:http";
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { MessagePage, ThreadEvent, ThreadSummary, UploadResponse } from "../src/api.ts";
+import type { CallInfo, EndpointInfo, MessagePage, ThreadEvent, ThreadSettings, ThreadSummary, UploadResponse } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 /** An unlocked lyricad, Li logged in, a local model, and one general thread. */
@@ -176,10 +177,108 @@ describe("permission prompts", () => {
   });
 });
 
+describe("the thread's model", () => {
+  it("shows the profile, the thinking levels on offer and which model answered; recent calls hold no prompt text", async () => {
+    const { rt, li, model, path, thread } = await setup();
+    model.reply({ text: "A reply about Miso." });
+    const stream = li.events(`${path}/events`);
+    await stream.ready;
+    await li.post(`${path}/messages`, { text: "tell me about Miso the cat" });
+    await stream.until(is("turn_end"));
+    stream.close();
+    const settings = (await li.get<ThreadSettings>(`${path}/settings`)).body;
+    expect(settings).toMatchObject({ profile: "custom", profileChoice: null, thinking: "off", thinkingLevels: ["off"], answered: { label: "gpu/qwen3.8-27b", kind: "local", task: "chat" } });
+    const calls = (await li.get<CallInfo[]>(`/api/u/${rt.li.id}/models/calls`)).body;
+    expect(calls[0]).toMatchObject({ threadId: thread.id, label: "gpu/qwen3.8-27b" });
+    expect(JSON.stringify(calls)).not.toMatch(/Miso/);
+
+    expect((await li.patch<ThreadSettings>(`${path}/settings`, { thinking: "high", profile: "cloud" })).body).toMatchObject({ thinking: "high", profile: "cloud", profileChoice: "cloud" });
+    const priv = (await li.post<ThreadSummary>(`/api/u/${rt.li.id}/threads`, { pool: "private" })).body;
+    const privPath = `/api/u/${rt.li.id}/threads/private/${enc(priv.id)}/settings`;
+    expect((await li.patch(privPath, { profile: "custom" })).status).toBe(400);
+    expect((await li.get<ThreadSettings>(privPath)).body.profile).toBe("local");
+    // Forgetting the thread takes its call records with it.
+    await li.del(path);
+    expect((await li.get<CallInfo[]>(`/api/u/${rt.li.id}/models/calls`)).body.filter((c) => c.threadId === thread.id)).toEqual([]);
+  });
+});
+
+describe("a machine that goes away", () => {
+  it("marks its endpoint down when a turn can't reach it, and sends Pi's retry to the next model in the list", async () => {
+    const { rt, li, model, path } = await setup();
+    const u = `/api/u/${rt.li.id}`;
+    const away = await fakeOpenAI({ label: "away", models: [{ id: "big" }] });
+    const ep = (await li.post<EndpointInfo>(`${u}/endpoints`, { name: "blackwell", kind: "local", baseUrl: away.baseUrl })).body;
+    const gpu = (await li.get<EndpointInfo[]>(`${u}/endpoints`)).body.find((e) => e.name === "gpu")!;
+    await li.put(`${u}/profiles/custom/chat`, { models: [{ offeringId: ep.models[0]!.id }, { offeringId: gpu.models[0]!.id }] });
+    const stream = li.events(`${path}/events`);
+    await stream.ready;
+    const turn = async (text: string) => {
+      const ends = stream.events.filter((e) => e.event.type === "turn_end").length;
+      await li.post(`${path}/messages`, { text });
+      await stream.until((e) => e.type === "turn_end" && stream.events.filter((x) => x.event.type === "turn_end").length > ends);
+    };
+    await turn("first");
+    expect(away.requests).toHaveLength(1);
+    await away.stop();
+    // Pi's retry goes to the next model in the list, so this very turn is answered.
+    await turn("second");
+    expect(model.requests).toHaveLength(1);
+    const calls = (await li.get<CallInfo[]>(`${u}/models/calls`)).body;
+    expect(calls[0]).toMatchObject({ label: "gpu/qwen3.8-27b", fallback: expect.stringContaining("blackwell is down") });
+    stream.close();
+  });
+});
+
+describe("a machine that dies mid-reply", () => {
+  it("falls back for the rest of the turn and the next, and records one call per turn", async () => {
+    const { rt, li, model, path } = await setup();
+    const u = `/api/u/${rt.li.id}`;
+    // A server that starts its answer, then its machine goes: the socket resets mid-stream and nothing listens after.
+    let chats = 0;
+    const dying = createServer((req, res) => {
+      if (req.url === "/v1/models") { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ object: "list", data: [{ id: "big" }] })); }
+      chats++;
+      req.resume();
+      req.on("end", () => {
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        const chunk = (content: string) => res.write(`data: ${JSON.stringify({ id: "c", object: "chat.completion.chunk", created: 0, model: "big", choices: [{ index: 0, delta: { role: "assistant", content }, finish_reason: null }] })}\n\n`);
+        chunk("Once ");
+        chunk("upon ");
+        setTimeout(() => { dying.close(); res.socket?.resetAndDestroy(); }, 50);
+      });
+    });
+    await new Promise<void>((r) => dying.listen(0, "127.0.0.1", r));
+    const ep = (await li.post<EndpointInfo>(`${u}/endpoints`, { name: "blackwell", kind: "local", baseUrl: `http://127.0.0.1:${(dying.address() as { port: number }).port}/v1` })).body;
+    const gpu = (await li.get<EndpointInfo[]>(`${u}/endpoints`)).body.find((e) => e.name === "gpu")!;
+    await li.put(`${u}/profiles/custom/chat`, { models: [{ offeringId: ep.models[0]!.id }, { offeringId: gpu.models[0]!.id }] });
+    const stream = li.events(`${path}/events`);
+    await stream.ready;
+    const turn = async (text: string) => {
+      const ends = stream.events.filter((e) => e.event.type === "turn_end").length;
+      await li.post(`${path}/messages`, { text });
+      await stream.until((e) => e.type === "turn_end" && stream.events.filter((x) => x.event.type === "turn_end").length > ends, 0, 20_000);
+    };
+    const t = Date.now();
+    await turn("tell me a story");
+    // Pi's first retry, two seconds on, already goes to the next model.
+    expect(Date.now() - t).toBeLessThan(4000);
+    expect(chats).toBe(1);
+    expect(model.requests).toHaveLength(1);
+    await turn("and another");
+    expect(chats).toBe(1);
+    expect(model.requests).toHaveLength(2);
+    const calls = (await li.get<CallInfo[]>(`${u}/models/calls`)).body.filter((c) => c.task === "chat");
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toMatchObject({ label: "gpu/qwen3.8-27b", fallback: expect.stringContaining("blackwell is down") });
+    stream.close();
+  }, 30_000);
+});
+
 describe("errors and logs", () => {
   it("reports a refused model in plain words, on the stream and in the response", async () => {
     const { li, path, rt } = await setup();
-    await li.put(`/api/u/${rt.li.id}/profiles/cloud/chat`, { model: null });
+    await li.put(`/api/u/${rt.li.id}/profiles/custom/chat`, { model: null });
     const stream = li.events(`${path}/events`);
     await stream.ready;
     const sent = await li.post<{ error: string }>(`${path}/messages`, { text: "hello?" });

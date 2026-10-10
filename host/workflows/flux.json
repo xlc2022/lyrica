@@ -1,0 +1,111 @@
+{
+  "arch": "flux",
+  "does": [
+    "create"
+  ],
+  "checkpoint": true,
+  "clipType": "flux",
+  "parts": [
+    {
+      "role": "diffusion",
+      "arch": [
+        "flux"
+      ]
+    },
+    {
+      "role": "text_encoder",
+      "slot": "clip_l"
+    },
+    {
+      "role": "text_encoder",
+      "slot": "t5"
+    },
+    {
+      "role": "vae",
+      "arch": [
+        "flux"
+      ]
+    }
+  ],
+  "references": 0,
+  "mask": false,
+  "workflow": {
+    "pos": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "$prompt",
+        "clip": "$clip"
+      }
+    },
+    "latent": {
+      "class_type": "EmptySD3LatentImage",
+      "inputs": {
+        "width": "$width",
+        "height": "$height",
+        "batch_size": "$count"
+      }
+    },
+    "sample": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": "$model",
+        "seed": "$seed",
+        "steps": "$steps",
+        "cfg": "$cfg",
+        "sampler_name": "$sampler",
+        "scheduler": "$scheduler",
+        "positive": [
+          "guided",
+          0
+        ],
+        "negative": [
+          "neg",
+          0
+        ],
+        "latent_image": [
+          "latent",
+          0
+        ],
+        "denoise": 1
+      }
+    },
+    "decode": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "sample",
+          0
+        ],
+        "vae": "$vae"
+      }
+    },
+    "save": {
+      "class_type": "SaveImageWebsocket",
+      "inputs": {
+        "images": [
+          "decode",
+          0
+        ]
+      }
+    },
+    "guided": {
+      "class_type": "FluxGuidance",
+      "inputs": {
+        "conditioning": [
+          "pos",
+          0
+        ],
+        "guidance": "$guidance"
+      }
+    },
+    "neg": {
+      "class_type": "ConditioningZeroOut",
+      "inputs": {
+        "conditioning": [
+          "pos",
+          0
+        ]
+      }
+    }
+  }
+}

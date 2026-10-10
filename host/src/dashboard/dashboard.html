@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lyrica model host</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1d1d1f; --bg: #fafafa; --muted: #6b6b70; --line: #ddd; --accent: #5b4bd6; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #ececee; --bg: #18181b; --muted: #a0a0a8; --line: #333; --accent: #a99cff; } }
+  body { font: 15px/1.5 system-ui, sans-serif; color: var(--fg); background: var(--bg); max-width: 760px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; margin: 8px 0 0; } h2 { font-size: 16px; margin: 28px 0 8px; }
+  .muted { color: var(--muted); } .mono { font-family: ui-monospace, monospace; word-break: break-all; }
+  section { border-top: 1px solid var(--line); }
+  button { font: inherit; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  input { font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--fg); }
+  table { width: 100%; border-collapse: collapse; } td { padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .code { font: 600 28px ui-monospace, monospace; letter-spacing: 2px; margin: 8px 0; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<h1 id="name">Lyrica model host</h1>
+<div class="muted">Key fingerprint <span class="mono" id="fingerprint"></span></div>
+<p id="error" class="muted" role="alert"></p>
+
+<form id="login" hidden>
+  <h2>Sign in</h2>
+  <p class="muted" id="login-note"></p>
+  <input type="password" id="login-password" autocomplete="current-password" aria-label="Password">
+  <button class="primary" type="submit">Sign in</button>
+</form>
+
+<div id="main" hidden>
+  <section>
+    <h2>Status</h2>
+    <div id="status"></div>
+    <p><button id="pause">Pause</button> <button id="resume">Resume</button> <button id="restart">Restart</button></p>
+    <div id="gpus"></div>
+  </section>
+  <section>
+    <h2>Models</h2>
+    <p><button id="scan">Scan the models folder</button></p>
+    <table id="models"></table>
+  </section>
+  <section>
+    <h2>Image models</h2>
+    <table id="recipes"></table>
+    <h3>Starters</h3>
+    <table id="starters"></table>
+  </section>
+  <section>
+    <h2>Downloads</h2>
+    <form id="hub-form">
+      <select id="hub-source"><option value="huggingface">Hugging Face</option><option value="modelscope">ModelScope</option></select>
+      <input id="hub-repo" placeholder="owner/repository" size="28">
+      <input id="hub-token" type="password" placeholder="Access token, if gated" autocomplete="off" size="20">
+      <button type="submit">List files</button>
+    </form>
+    <table id="hub-files"></table>
+    <form id="link-form">
+      <input id="link-url" placeholder="https:// link to a .gguf or .safetensors file" size="44">
+      <input id="link-sha" placeholder="SHA-256 (optional)" size="20">
+      <button type="submit">Download link</button>
+    </form>
+    <table id="downloads"></table>
+  </section>
+  <section>
+    <h2>Usage</h2>
+    <p class="muted">Counts only: never prompts, results or who asked. Nothing leaves this machine.</p>
+    <table id="usage"></table>
+  </section>
+  <section id="pairing-section">
+    <h2>Lyrica servers</h2>
+    <table id="clients"></table>
+    <p><button class="primary" id="pair">Pair with Lyrica</button></p>
+    <div id="code-box" hidden>
+      <div class="code" id="code"></div>
+      <div class="muted">Paste this into Lyrica's <b>Add model host</b>. It works once, until <span id="code-expires"></span>.</div>
+    </div>
+  </section>
+  <section id="password-section">
+    <h2>Dashboard password</h2>
+    <p class="muted" id="password-note"></p>
+    <form id="password-form">
+      <input type="password" id="password-current" placeholder="Current password" autocomplete="current-password" hidden>
+      <input type="password" id="password-new" placeholder="New password (10 or more characters)" autocomplete="new-password">
+      <button type="submit">Save</button>
+    </form>
+  </section>
+  <p id="signout-row" hidden><button id="signout">Sign out</button></p>
+</div>
+<script src="/dashboard.js"></script>
+</body>
+</html>

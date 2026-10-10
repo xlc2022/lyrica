@@ -1,0 +1,77 @@
+# NVIDIA: CUDA images for the model servers. host-api gets the "utility"
+# capability only, for nvidia-smi's memory readings.
+x-server: &server
+  restart: unless-stopped
+  environment: &server-env
+    # Number GPUs as nvidia-smi does, by PCI bus.
+    CUDA_DEVICE_ORDER: PCI_BUS_ID
+  networks: [models]
+  logging: { driver: none } # Docker would keep their output on disk
+  depends_on:
+    host-api: { condition: service_healthy }
+  deploy:
+    resources:
+      reservations:
+        devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+
+services:
+  host-api:
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: all, capabilities: [gpu, utility] }]
+
+  llamacpp:
+    <<: *server
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda-b11459@sha256:fff6185edd2fbc4093aa5970bf6db53ed11c283e3a1c52a3e244cf27047264f4
+    # --no-slots: no endpoint that would show what's being generated.
+    command: [--models-preset, /serving/llamacpp.ini, --no-models-autoload, --models-max, "0", --no-slots, --host, 0.0.0.0, --port, "8080"]
+    volumes:
+      - ${MODELS_DIR}:/models:ro
+      - serving:/serving:ro
+    tmpfs: [/tmp]
+
+  vllm:
+    <<: *server
+    image: vllm/vllm-openai:v0.30.0@sha256:8a69ffad015f138d7170c4ddc429e230a3bc1c1719f67e14324749df200a4b90
+    entrypoint: [python3, /lyrica/supervisor.py]
+    init: true # reaps what vLLM's engine processes leave behind
+    shm_size: 16gb
+    environment:
+      <<: *server-env
+      HF_HUB_OFFLINE: "1"
+      VLLM_NO_USAGE_STATS: "1"
+      DO_NOT_TRACK: "1"
+    volumes:
+      - ${MODELS_DIR}:/models:ro
+      - serving:/serving:ro
+      - vllm-status:/status
+      - ./vllm:/lyrica:ro
+    tmpfs: [/tmp, /root/.cache]
+
+  # Ours, built from host/comfyui/Dockerfile. It uses one GPU: COMFY_GPU.
+  comfyui:
+    <<: *server
+    build:
+      context: ..
+      dockerfile: host/comfyui/Dockerfile
+      args:
+        BASE: pytorch/pytorch:2.14.0-cuda13.0-cudnn9-runtime@sha256:9c99fafa01edfaa3d16da8c209b38b5970bb6fd6e72725ef60efc901489f70c6
+    image: lyrica-host-comfyui:cuda
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      <<: *server-env
+      CUDA_VISIBLE_DEVICES: ${COMFY_GPU:-0}
+    volumes:
+      - ${MODELS_DIR}:/models:ro
+      - serving:/serving:ro
+    tmpfs: [/tmp]
+    init: true
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8188/system_stats', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 180s
+      retries: 3

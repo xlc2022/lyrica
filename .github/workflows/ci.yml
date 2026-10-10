@@ -28,3 +28,23 @@ jobs:
       - run: npx playwright install --with-deps chromium
         working-directory: web
       - run: npm run e2e -w @lyrica/web
+  # The model host's Compose stack, without a GPU: install, then check the networks.
+  host-stack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Docker forwards outside names to a loopback resolver from its own
+      # namespace: the case host-api's blackhole DNS setting must cover.
+      - name: Docker with a loopback DNS resolver
+        run: |
+          echo '{"dns": ["127.0.0.53"]}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+      - run: mkdir -p "$RUNNER_TEMP/models"
+      - run: host/install.sh --no-gpu --yes --models "$RUNNER_TEMP/models" --name ci-host
+      - run: host/test/stack/network.sh
+      # Again with the Tailscale service (not logged in: no auth key in CI).
+      - run: host/install.sh --no-gpu --yes --tailscale ci-host-ts
+      - run: host/test/stack/network.sh
+      - if: failure()
+        run: docker compose logs
+        working-directory: host

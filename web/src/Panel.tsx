@@ -231,27 +231,27 @@ function ProfilesSection({ ctx }: { ctx: ShellContext }) {
   const eps = useLoad(() => get<EndpointInfo[]>(u(userId, "endpoints")), [userId]);
   const [run, , error] = useAction();
   if (!profiles.data) return <Section title="Model profiles"><ErrorText error={profiles.error} /></Section>;
-  const set = (profile: "cloud" | "local", task: Task, value: string) => run(async () => {
-    const [endpointId, modelId] = value.split("\u0000");
-    profiles.set(await put<Profiles>(u(userId, "profiles", profile, task), { model: endpointId && modelId ? { endpointId, modelId } : null }));
+  const set = (profile: "cloud" | "local" | "custom", task: Task, value: string) => run(async () => {
+    profiles.set(await put<Profiles>(u(userId, "profiles", profile, task), { model: value ? { offeringId: value } : null }));
   });
   return (
     <Section title="Model profiles">
-      <p className="muted">Threads use these unless they choose their own. Private and local-only threads use the local profile.</p>
+      <p className="muted">Threads use these unless they choose their own. Private and local-only threads use the local profile; general threads use the {profiles.data.default} profile.</p>
       <ErrorText error={error} />
       <div className="profiles">
-        {(["cloud", "local"] as const).map((profile) => (
+        {(["local", "cloud", "custom"] as const).map((profile) => (
           <fieldset key={profile} className="group">
-            <legend>{profile === "cloud" ? "Cloud profile" : "Local profile"}</legend>
+            <legend>{profile === "cloud" ? "Cloud profile" : profile === "local" ? "Local profile" : "Custom profile"}</legend>
             {TASKS.map(({ task, label }) => {
               const cur = profiles.data![profile][task];
+              const first = Array.isArray(cur) && cur[0] && "offeringId" in cur[0] ? cur[0].offeringId : "";
               return (
                 <label key={task} className="field"><span>{label}</span>
-                  <select value={cur ? `${cur.endpointId}\u0000${cur.modelId}` : ""} onChange={(e) => set(profile, task, e.target.value)}>
-                    <option value="">Not set</option>
-                    {(eps.data ?? []).filter((ep) => profile === "cloud" || ep.kind === "local").map((ep) => (
+                  <select value={first} onChange={(e) => set(profile, task, e.target.value)}>
+                    <option value="">{cur && !Array.isArray(cur) ? `Same as ${cur.same}` : "Not set"}</option>
+                    {(eps.data ?? []).filter((ep) => profile === "custom" || ep.kind === profile).map((ep) => (
                       <optgroup key={ep.id} label={`${ep.name} (${ep.kind})`}>
-                        {ep.models.map((m) => <option key={m.modelId} value={`${ep.id}\u0000${m.modelId}`}>{m.modelId}</option>)}
+                        {ep.models.map((m) => <option key={m.id} value={m.id}>{m.modelId}</option>)}
                       </optgroup>
                     ))}
                   </select>

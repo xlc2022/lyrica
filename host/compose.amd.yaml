@@ -1,0 +1,64 @@
+# AMD: ROCm images for the model servers. host-api reads VRAM from sysfs and
+# needs no device.
+x-server: &server
+  restart: unless-stopped
+  networks: [models]
+  logging: { driver: none } # Docker would keep their output on disk
+  depends_on:
+    host-api: { condition: service_healthy }
+  devices: [/dev/kfd, /dev/dri]
+  group_add: [video, "${RENDER_GID:-render}"]
+
+services:
+  llamacpp:
+    <<: *server
+    image: ghcr.io/ggml-org/llama.cpp:server-rocm-b11459@sha256:cc1e67f8d06d1a052367e55a76a159c4ca91d1722add19fdf99ef94834cfc0c1
+    # --no-slots: no endpoint that would show what's being generated.
+    command: [--models-preset, /serving/llamacpp.ini, --no-models-autoload, --models-max, "0", --no-slots, --host, 0.0.0.0, --port, "8080"]
+    volumes:
+      - ${MODELS_DIR}:/models:ro
+      - serving:/serving:ro
+    tmpfs: [/tmp]
+
+  vllm:
+    <<: *server
+    image: rocm/vllm:rocm10.0.0_ubuntu24.04_py3.14_pytorch_2.12.0_vllm_0.27.0@sha256:b8a082f346d069376d35784250e38b23a043efe979408ae3a33d7c6b62ee3276
+    entrypoint: [python3, /lyrica/supervisor.py]
+    init: true # reaps what vLLM's engine processes leave behind
+    shm_size: 16gb
+    environment:
+      HF_HUB_OFFLINE: "1"
+      VLLM_NO_USAGE_STATS: "1"
+      DO_NOT_TRACK: "1"
+    volumes:
+      - ${MODELS_DIR}:/models:ro
+      - serving:/serving:ro
+      - vllm-status:/status
+      - ./vllm:/lyrica:ro
+    tmpfs: [/tmp, /root/.cache]
+
+  # Ours, built from host/comfyui/Dockerfile. It uses one GPU: COMFY_GPU.
+  comfyui:
+    <<: *server
+    build:
+      context: ..
+      dockerfile: host/comfyui/Dockerfile
+      args:
+        BASE: rocm/pytorch:rocm10.1.0_ubuntu24.04_py3.12_pytorch_release_2.14.0@sha256:099f59a3bee9c436f5cc57db6bc6076fdeda579c57e9e22ae40f856d5905b3e4
+    image: lyrica-host-comfyui:rocm
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      HIP_VISIBLE_DEVICES: ${COMFY_GPU:-0}
+    volumes:
+      - ${MODELS_DIR}:/models:ro
+      - serving:/serving:ro
+    tmpfs: [/tmp]
+    init: true
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8188/system_stats', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 180s
+      retries: 3
