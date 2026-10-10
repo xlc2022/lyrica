@@ -377,7 +377,9 @@ describe("threads", () => {
 
     own.forgetThread(parent.id, "lyrica");
     expect(own.getThread(sub.id)).toBeUndefined();
-    expect(own.getThread(child.id)).toMatchObject({ parent: undefined, unlogged: true });
+    // Kept, it is a thread of its own, so it may start children.
+    expect(own.getThread(child.id)).toMatchObject({ parent: undefined, child: false, unlogged: true });
+    expect(own.createThread({ interface: "web", parent: child.id, child: true })).toMatchObject({ child: true, parent: child.id });
 
     const p2 = own.createThread({ interface: "web" });
     const c2 = own.createThread({ interface: "web", parent: p2.id, child: true });

@@ -6,7 +6,7 @@ import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
 import { Sessions } from "./auth.ts";
 import { HttpError, route, type Request, type Route } from "./http.ts";
-import { OPENING, reserveFor } from "@lyrica/extension";
+import { FROM_PARENT, OPENING, reserveFor } from "@lyrica/extension";
 import { Busy } from "./hosted.ts";
 import { card, type Lyricad, type Services } from "./lyricad.ts";
 import { toMessages } from "./messages.ts";
@@ -473,7 +473,8 @@ export function apiRoutes(d: Lyricad): Route[] {
         s().models.forgetThread(user.id, pool, id);
       }
       s().children.forget(user.id, pool, doomed);
-      for (const id of kept) s().workspace.settings(user.id).detach(id);
+      // A kept child is a thread of its own now: its next turn opens with its own tools and workspace.
+      for (const id of kept) { s().workspace.settings(user.id).detach(id); s().host.reload(user.id, pool, id); }
       return { ok: true };
     }),
     route("GET", `${t}/subagents`, (r): Api.Subagents => {
@@ -510,7 +511,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         const page = o[poolOf(r)].entryPage(thread.id, { before: before ? Number(before) : undefined, limit });
         const names = thread.subagent ? { userName: (id: string) => s().users.get(id)?.profile.displayName ?? "a user" } : undefined;
         return { messages: toMessages(thread.id, poolOf(r), page.entries,
-          (run) => s().delegation.store.runs(user.id, poolOf(r), { run }).map((x) => x.thread), names), hasMore: page.hasMore };
+          (run) => s().delegation.store.runs(user.id, poolOf(r), { run }).map((x) => x.thread), names, { child: thread.child }), hasMore: page.hasMore };
       });
     }),
     route("POST", `${t}/messages`, async (r) => {
@@ -519,7 +520,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const thread = owner(d, user, (o) => threadOf(o, r));
       if (thread.subagent) return toSubagent(d, user, poolOf(r), thread, String(text ?? ""));
       if (String(text ?? "").trim() === "/sleep") return { queued: false, sleep: await startSleep(d, user, poolOf(r), confirm === true) };
-      return s().host.get(user.id, poolOf(r), thread.id).send(String(text ?? ""));
+      return s().host.get(user.id, poolOf(r), thread.id).send(unmarked(String(text ?? "")));
     }),
     route("POST", `${t}/messages/:n/branch`, async (r) => {
       const user = d.userFor(r);
@@ -1222,6 +1223,12 @@ function userText(data: unknown): string | undefined {
   return Array.isArray(m.content) ? m.content.filter((p: { type: string }) => p.type === "text").map((p: { text: string }) => p.text).join("") : "";
 }
 
+/** A user's text can't carry the line that marks a parent's message to its child thread. */
+function unmarked(text: string): string {
+  if (FROM_PARENT.test(text)) throw new HttpError(400, "a message can't start with a [From t:…] line");
+  return text;
+}
+
 /**
  * Delete from here, Regenerate and Edit. The thread's turn is held while its
  * subagents from those turns are stopped and the entries removed, so nothing
@@ -1244,7 +1251,7 @@ async function rewind(d: Lyricad, user: User, r: Request, req: Api.RewindRequest
       const text = String(req.text ?? "");
       if (userText(at.data) === undefined) throw new HttpError(400, "only your own messages can be edited");
       if (!text.trim()) throw new HttpError(400, "the message is empty");
-      return { from: n, then: text };
+      return { from: n, then: unmarked(text) };
     }
     if (req.action !== "regenerate") throw new HttpError(400, "the action is delete, regenerate or edit");
     const asked = entries.filter((e) => e.n <= n && userText(e.data) !== undefined).at(-1);

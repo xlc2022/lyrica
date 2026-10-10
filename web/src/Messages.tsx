@@ -78,7 +78,7 @@ interface Env {
 
 function StoredMessage({ m, env, you }: { m: Message; env: Env; you: string }) {
   if (m.role === "user") {
-    if (m.from?.kind === "parent") return <FromParent text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} parent={m.from.threadId} env={env} />;
+    if (m.from?.kind === "parent") return <FromParent text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} parent={m.from.threadId} env={env} n={m.n} />;
     const who = m.from?.kind === "lyrica" ? "Lyrica" : m.from?.kind === "user" ? (m.from.name || you) : you;
     return <UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} />;
   }
@@ -228,10 +228,14 @@ function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" 
 }
 
 /** In a child thread, what its parent thread sent: its task, or a message. */
-function FromParent({ text, parent, env }: { text: string; parent: string; env: Env }) {
+function FromParent({ text, parent, env, n }: { text: string; parent: string; env: Env; n?: number }) {
   return (
     <div className="msg user">
-      <div className="who">Lyrica, from <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: parent })}>the parent thread</a></div>
+      <div className="who">
+        Lyrica, from <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: parent })}>the parent thread</a>
+        {/* Branch and delete, as any message; it isn't hers to edit. */}
+        {env.rewinder && n !== undefined && <MessageMenu n={n} role="user" rewinder={env.rewinder} />}
+      </div>
       <div className="body">{text}</div>
     </div>
   );

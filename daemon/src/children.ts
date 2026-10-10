@@ -1,6 +1,7 @@
+import { randomBytes } from "node:crypto";
 import type { Memory, Models, Pool, Users, Workspace } from "@lyrica/core";
 import {
-  DEFAULT_THREADS_LIMITS, fromParent, type ChildInfo, type Delegation, type StartRequest, type ThreadContext, type ThreadsHost, type ThreadsLimits,
+  DEFAULT_THREADS_LIMITS, type ChildInfo, type Delegation, type StartRequest, type ThreadContext, type ThreadsHost, type ThreadsLimits,
 } from "@lyrica/extension";
 import type { ThreadHost } from "./hosted.ts";
 
@@ -44,9 +45,7 @@ export class ChildThreads implements ThreadsHost {
 
   async start(parent: ThreadContext, req: StartRequest): Promise<{ id: string; link: string }> {
     const userId = parent.user.id;
-    this.recover(userId);
-    const working = this.rows(userId).filter((r) => this.o.host().busy(userId, r.pool, r.thread)).length;
-    if (working >= this.limits.concurrency) throw new Error(`${working} child threads are working already; wait for one to finish, or message one`);
+    this.mayStartTurn(userId);
     // The store refuses a child of a child; the workspace refuses anything wider than the parent.
     const own = parent.view.own;
     const child = own.createThread({ interface: parent.interface, parent: parent.threadId, child: true, title: req.title.slice(0, 200) });
@@ -64,13 +63,21 @@ export class ChildThreads implements ThreadsHost {
     }
     this.db(userId, (db) => db.prepare("INSERT INTO child_threads (pool, thread, parent, started_at) VALUES (?, ?, ?, ?)")
       .run(parent.pool, child.id, parent.threadId, new Date().toISOString()));
-    await this.o.host().get(userId, parent.pool, child.id).send(`${fromParent(parent.threadId)}${req.task}`);
+    try {
+      await this.o.host().get(userId, parent.pool, child.id).send(req.task, { fromParent: parent.threadId });
+    } catch (err) {
+      // It never started: nothing is left of it.
+      await this.o.host().forget(userId, parent.pool, child.id);
+      this.forget(userId, parent.pool, [child.id]);
+      own.forgetThread(child.id, "lyrica");
+      this.o.models.forgetThread(userId, parent.pool, child.id);
+      throw err;
+    }
     return { id: child.id, link: `#/u/${encodeURIComponent(userId)}/t/${parent.pool}/${encodeURIComponent(child.id)}` };
   }
 
   async message(from: ThreadContext, to: string, text: string): Promise<void> {
     const userId = from.user.id;
-    this.recover(userId);
     if (to === "parent") {
       const row = this.row(userId, from.pool, from.threadId);
       if (!row || !from.view.own.getThread(row.parent)) throw new Error("this thread's parent is gone");
@@ -81,7 +88,9 @@ export class ChildThreads implements ThreadsHost {
     }
     const row = this.row(userId, from.pool, to);
     if (!row || row.parent !== from.threadId) throw new Error(`t:${to} isn't a child thread of this one`);
-    await this.o.host().get(userId, from.pool, to).send(`${fromParent(from.threadId)}${text}`);
+    // An idle child starts a turn, so the limit holds here too; a working one takes it into its next turn.
+    if (!this.o.host().busy(userId, from.pool, to)) this.mayStartTurn(userId);
+    await this.o.host().get(userId, from.pool, to).send(text, { fromParent: from.threadId });
   }
 
   list(parent: ThreadContext): ChildInfo[] {
@@ -90,7 +99,6 @@ export class ChildThreads implements ThreadsHost {
 
   /** A thread's children, with what the sidebar shows: status and unseen updates. */
   children(userId: string, pool: Pool, parent: string): (ChildInfo & { unseen: number })[] {
-    this.recover(userId);
     const view = this.o.memory.openThreadView(userId, pool);
     try {
       return this.rows(userId).filter((r) => r.pool === pool && r.parent === parent && view.own.getThread(r.thread)).map((r) => {
@@ -107,7 +115,6 @@ export class ChildThreads implements ThreadsHost {
 
   /** Status and unseen updates for each of the user's child threads, by thread. */
   info(userId: string): Map<string, { status: ChildInfo["status"]; unseen: number }> {
-    this.recover(userId);
     return new Map(this.rows(userId).map((r) => [`${r.pool}/${r.thread}`, { status: this.o.host().status(userId, r.pool, r.thread), unseen: r.unseen }]));
   }
 
@@ -123,24 +130,37 @@ export class ChildThreads implements ThreadsHost {
     } catch { /* locked meanwhile; recover() catches it up */ }
   }
 
-  /** Lock: stops the user's working children, and tells each parent. Before the key goes. */
+  /**
+   * Lock: stops the user's working children, and tells each parent. Before
+   * the key goes. A parent mid-turn is stopped first, as Lock would stop it
+   * anyway, so the note is stored rather than left waiting for a next turn.
+   */
   async lock(userId: string): Promise<void> {
-    const working = this.rows(userId).filter((r) => r.working || this.o.host().busy(userId, r.pool, r.thread));
-    await Promise.all(working.map((r) => this.o.host().get(userId, r.pool, r.thread).stop()));
+    const host = this.o.host();
+    const working = this.rows(userId).filter((r) => host.busy(userId, r.pool, r.thread));
+    await Promise.all(working.map((r) => host.get(userId, r.pool, r.thread).stop()));
+    const parents = [...new Map(working.map((r) => [`${r.pool}/${r.parent}`, r])).values()].filter((r) => host.busy(userId, r.pool, r.parent));
+    await Promise.all(parents.map(async (r) => { const p = host.get(userId, r.pool, r.parent); await p.stop(); await p.settled(); }));
     this.idle(userId, working, "was stopped when the user locked Lyrica");
   }
 
-  /** Drops the records of forgotten threads. */
+  /** Drops the records of forgotten threads, and of the children they kept, which are threads of their own now. */
   forget(userId: string, pool: Pool, threads: string[]): void {
-    this.db(userId, (db) => db.prepare("DELETE FROM child_threads WHERE pool = @pool AND thread IN (SELECT value FROM json_each(@t))")
+    this.db(userId, (db) => db.prepare("DELETE FROM child_threads WHERE pool = @pool AND (thread IN (SELECT value FROM json_each(@t)) OR parent IN (SELECT value FROM json_each(@t)))")
       .run({ pool, t: JSON.stringify(threads) }));
   }
 
-  /** Children a restart left working are idle now, never resumed; their parents are told. Once per user per process. */
+  /** At unlock: children a restart left working are idle now, never resumed; their parents are told. Once per user per process. */
   recover(userId: string): void {
     if (this.recovered.has(userId)) return;
-    this.recovered.add(userId);
     this.idle(userId, this.rows(userId).filter((r) => r.working && !this.o.host().busy(userId, r.pool, r.thread)), "was interrupted when Lyrica restarted");
+    this.recovered.add(userId);
+  }
+
+  /** Refuses a new child turn while as many children as the limit allows are working, across all the user's threads. */
+  private mayStartTurn(userId: string): void {
+    const working = this.rows(userId).filter((r) => this.o.host().busy(userId, r.pool, r.thread)).length;
+    if (working >= this.limits.concurrency) throw new Error(`${working} child threads are working already; wait for one to finish, or message one`);
   }
 
   private idle(userId: string, rows: Row[], what: string): void {
@@ -153,7 +173,7 @@ export class ChildThreads implements ThreadsHost {
   /** Into the parent: its live session, or its stored thread; the open views see it either way. */
   private deliver(userId: string, pool: Pool, parent: string, content: string, child: string): void {
     const ref = { user: { id: userId }, pool, threadId: parent } as Parameters<Delegation["deliver"]>[0];
-    const details = { status: "update", threads: [child] };
+    const details = { status: "update", threads: [child], id: randomBytes(8).toString("hex") };
     try {
       this.o.delegation.deliver(ref, content, details);
       this.o.host().delivered(userId, pool, parent, content, details);
