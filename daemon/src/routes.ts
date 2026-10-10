@@ -233,7 +233,9 @@ export function apiRoutes(d: Lyricad): Route[] {
       const user = d.userFor(r);
       const w = await r.json<Api.Workflow>();
       if (!w.spec || typeof w.spec !== "object") throw new Error("a workflow needs a spec: a chain, loop or council");
-      s().delegation.store.setWorkflow(user.id, { name: r.params.name!, description: String(w.description ?? ""), spec: w.spec });
+      // Models are saved by offering ID, so a rename breaks nothing, and indexed so Clean up and pruning see them.
+      s().delegation.store.setWorkflow(user.id, { name: r.params.name!, description: String(w.description ?? ""), spec: s().models.workflowSpec(user.id, w.spec) });
+      s().models.reindex(user.id);
       return s().delegation.workflows(user.id);
     }),
     route("DELETE", `${u}/workflows/:name`, (r) => {

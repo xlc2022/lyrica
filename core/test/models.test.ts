@@ -3,6 +3,7 @@ import { addressesOutside, CloudModelForbidden, Forbidden, NoModel, baseName, ty
 import { deadUrl, fakeOpenAI } from "./fake-openai.ts";
 import { freshKeyring, profile, withModels } from "./helpers.ts";
 import { Models, Users } from "../src/index.ts";
+import { migrate } from "../src/models/schema.ts";
 
 const UUID = /^[0-9a-f-]{36}$/;
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
@@ -73,6 +74,17 @@ describe("endpoints", () => {
     void keyring;
   });
 
+  it("never lets a working endpoint go stale: a successful call clears its down time", async () => {
+    const { models, li, gpu, users } = await withModels();
+    const db = users.openUserDb(li.id);
+    set(db, "UPDATE endpoints SET down_since = ? WHERE id = ?", daysAgo(20), gpu.id);
+    db.close();
+    expect(models.endpoint(li.id, gpu.id)!.stale).toBe(true);
+    models.reportUp(li.id, gpu.id);
+    expect(models.endpoint(li.id, gpu.id)).toMatchObject({ stale: false });
+    expect(models.endpoint(li.id, gpu.id)!.downSince).toBeUndefined();
+  });
+
   it("marks a local endpoint over plain HTTP outside this machine and the tailnet as unencrypted", async () => {
     const { models, li } = await withModels();
     const add = (name: string, baseUrl: string, kind: "local" | "cloud" = "local") => models.addEndpoint(li, { name, kind, baseUrl }).unencrypted;
@@ -127,6 +139,32 @@ describe("endpoints", () => {
 });
 
 describe("migrating to permanent IDs", () => {
+  it("leaves the old tables as they were when a migration is interrupted", async () => {
+    const keyring = await freshKeyring();
+    const users = new Users(keyring);
+    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    await users.authenticate("li", "pw");
+    const db = users.openUserDb(li.id);
+    db.exec(`
+      CREATE TABLE endpoints (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, api TEXT NOT NULL, base_url TEXT NOT NULL, api_key TEXT, created_at TEXT NOT NULL);
+      CREATE TABLE endpoint_models (endpoint TEXT NOT NULL REFERENCES endpoints (id) ON DELETE CASCADE, model TEXT NOT NULL, context_window INTEGER, tools INTEGER, manual INTEGER NOT NULL, PRIMARY KEY (endpoint, model));
+      CREATE TABLE model_profiles (profile TEXT NOT NULL, task TEXT NOT NULL, endpoint TEXT NOT NULL, model TEXT NOT NULL, PRIMARY KEY (profile, task));
+      CREATE TABLE thread_models (pool TEXT NOT NULL, thread TEXT NOT NULL, task TEXT NOT NULL, endpoint TEXT NOT NULL, model TEXT NOT NULL, PRIMARY KEY (pool, thread, task));
+      CREATE TABLE offerings (id TEXT PRIMARY KEY, endpoint TEXT NOT NULL, model TEXT NOT NULL, found TEXT NOT NULL DEFAULT '{}', hand TEXT NOT NULL DEFAULT '{}', manual INTEGER NOT NULL, missing_since TEXT, created_at TEXT NOT NULL, UNIQUE (endpoint, model));
+      INSERT INTO endpoints VALUES ('gpu', 'gpu', 'local', 'openai-compatible', 'http://127.0.0.1:9/v1', NULL, '2026-01-01');
+      INSERT INTO endpoint_models VALUES ('gpu', 'qwen', NULL, NULL, 0);
+      INSERT INTO model_profiles VALUES ('local', 'chat', 'gpu', 'qwen');
+      INSERT INTO model_profiles VALUES ('local', 'title', 'shared.lan', 'qwen');`);
+    expect(() => migrate(db, { shared: () => { throw new Error("stopped"); } })).toThrow("stopped");
+    expect(db.prepare("SELECT id FROM endpoints").all()).toEqual([{ id: "gpu" }]);
+    expect(db.prepare("SELECT count(*) AS n FROM endpoint_models").get()).toEqual({ n: 1 });
+    expect(db.prepare("SELECT endpoint, model FROM model_profiles WHERE task = 'chat'").get()).toEqual({ endpoint: "gpu", model: "qwen" });
+    db.close();
+    // Run again, it completes.
+    const models = new Models(keyring, users);
+    expect(models.profile(li.id, "local").chat).toEqual({ offeringId: models.find(li.id, "gpu/qwen")!.offeringId });
+  });
+
   it("moves endpoints, models and every user's choices, shared ones included, to offerings", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
@@ -179,6 +217,25 @@ describe("migrating to permanent IDs", () => {
 });
 
 describe("redirects, tombstones and Clean up", () => {
+  it("refuses replacing a model with itself", async () => {
+    const { models, li, qwen } = await withShared();
+    expect(() => models.replace(li, qwen.offeringId, qwen.offeringId)).toThrow(/itself/);
+  });
+
+  it("keeps redirect chains one hop long: twenty Reset IDs while a user is locked break nothing", async () => {
+    const m = await withShared();
+    const { models, li, bob, lan, qwen } = m;
+    models.setProfile(bob.id, "local", "chat", qwen);
+    m.keyring.lockUser(bob.id);
+    let id = lan.id;
+    for (let i = 0; i < 20; i++) id = models.resetIds(li, id);
+    const current = models.offerings(li.id, id).find((o) => o.modelId === "qwen3.8-27b")!.id;
+    const targets = m.keyring.self().prepare("SELECT DISTINCT to_id FROM offering_redirects").all() as { to_id: string }[];
+    expect(targets.every((t) => models.offering(li.id, t.to_id))).toBe(true);
+    await m.users.authenticate("bob", "pw");
+    expect(models.resolveModel("chat", { userId: bob.id, pool: "private", localOnly: true })).toEqual({ offeringId: current });
+  });
+
   it("removing a shared endpoint while a user is locked: their calls skip it, and their next unlock rewrites their lists with a notice", async () => {
     const m = await withShared();
     const { models, li, bob, lan, qwen, copy } = m;

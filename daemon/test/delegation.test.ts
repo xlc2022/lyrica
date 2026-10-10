@@ -138,6 +138,11 @@ describe("delegation in lyricad", () => {
     const saved = await li.put<{ name: string }[]>(`${flows}/review`, { description: "Write then check", spec: { loop: { task: "{input}" } } });
     expect(saved.body.map((w) => w.name)).toEqual(["review"]);
     expect((await li.put(`${flows}/empty`, { description: "", spec: { chain: [] } })).status).toBe(400);
+    // A model named by its label is saved by its offering ID, so renaming the endpoint breaks nothing.
+    const named = await li.put<{ name: string; spec: { chain: { model?: string }[] } }[]>(`${flows}/named`, { description: "", spec: { chain: [{ task: "{input}", model: "subs/sub-model" }] } });
+    const subs = (await li.get<EndpointInfo[]>(`/api/u/${rt.li.id}/endpoints`)).body.find((e) => e.name === "subs")!;
+    expect(named.body.find((w) => w.name === "named")!.spec.chain[0]!.model).toBe(subs.models[0]!.id);
+    expect((await li.put<{ error: string }>(`${flows}/nope`, { description: "", spec: { chain: [{ task: "x", model: "subs/nothing" }] } })).body.error).toMatch(/no model subs\/nothing/);
   });
 });
 

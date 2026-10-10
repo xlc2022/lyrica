@@ -6,7 +6,7 @@ import { TASKS, type CallContext, type ModelRef, type Pool, type Task } from "..
 import { Forbidden, type User, type Users } from "../users.ts";
 import { addressesOutside, discoverModels, probeUrl, type DiscoveredModel } from "./http.ts";
 import { baseName } from "./identity.ts";
-import { ENDPOINT_SCHEMA, MODEL_CHOICE_SCHEMA, migrateChoices, migrateEndpoints, REDIRECT_SCHEMA } from "./schema.ts";
+import { ENDPOINT_SCHEMA, migrate, MODEL_CHOICE_SCHEMA, REDIRECT_SCHEMA } from "./schema.ts";
 
 export { addressesOutside, discoverModels, probeUrl, type DiscoveredModel } from "./http.ts";
 export { baseName } from "./identity.ts";
@@ -383,6 +383,7 @@ export class Models {
     const to = this.offering(actor.id, toId);
     if (!from) throw new NoModel(`no model ${fromId}`);
     if (!to) throw new NoModel(`no model ${toId}`);
+    if (fromId === toId) throw new Error("a model can't replace itself");
     if (from.endpoint.kind !== to.endpoint.kind) throw new CloudModelForbidden(`a ${from.endpoint.kind} model can only be replaced by another ${from.endpoint.kind} model`);
     if (from.endpoint.shared && !to.endpoint.shared) throw new Error("a shared model can only be replaced by another shared model");
     this.retire(actor, from.endpoint.id, () => [[fromId, toId]], (db) => { db.prepare("DELETE FROM offerings WHERE id = ?").run(fromId); });
@@ -603,6 +604,42 @@ export class Models {
     };
   }
 
+  /**
+   * A call to the endpoint succeeded: it isn't down, so it can't go stale.
+   * Stale counts only failures with no success since.
+   */
+  reportUp(userId: string, endpointId: string): void {
+    const sql = "UPDATE endpoints SET down_since = NULL WHERE id = ? AND down_since IS NOT NULL";
+    if (this.isShared(endpointId)) this.self().prepare(sql).run(endpointId);
+    else this.withUser(userId, (db) => db.prepare(sql).run(endpointId));
+  }
+
+  private isShared(endpointId: string): boolean {
+    return !!this.self().prepare("SELECT 1 FROM endpoints WHERE id = ?").get(endpointId);
+  }
+
+  /**
+   * A saved workflow's models as offering IDs, so renaming an endpoint breaks
+   * nothing and the IDs are indexed and rewritten like any list. A name that
+   * isn't one of the user's models is refused.
+   */
+  workflowSpec<T>(userId: string, spec: T): T {
+    const name = (v: unknown) => {
+      const ref = typeof v === "string" ? this.find(userId, v) : undefined;
+      if (!ref) throw new NoModel(`no model ${String(v)}; name it as <endpoint>/<model>`);
+      return ref.offeringId;
+    };
+    const s = JSON.parse(JSON.stringify(spec ?? {})) as { chain?: { model?: string }[]; council?: { models?: string[] } };
+    for (const step of s.chain ?? []) if (step.model) step.model = name(step.model);
+    if (s.council?.models) s.council.models = s.council.models.map(name);
+    return s as T;
+  }
+
+  /** Records this user's shared references again, after something outside the router (a saved workflow) changed them. */
+  reindex(userId: string): void {
+    this.withUser(userId, (db) => this.index(userId, db));
+  }
+
   /** Records whether an endpoint answered, for stale. */
   private seen(ep: Endpoint, up: boolean, userId: string): void {
     const sql = up ? "UPDATE endpoints SET down_since = NULL WHERE id = ?" : "UPDATE endpoints SET down_since = ? WHERE id = ? AND down_since IS NULL";
@@ -615,9 +652,9 @@ export class Models {
     const db = this.keyring.self();
     if (!this.selfReady) {
       db.exec(ENDPOINT_SCHEMA + REDIRECT_SCHEMA);
-      const pairs = migrateEndpoints(db);
-      const legacy = db.prepare("INSERT OR IGNORE INTO legacy_refs (endpoint, model, offering) VALUES (?, ?, ?)");
-      for (const p of pairs) legacy.run(p.endpoint, p.model, p.offering);
+      migrate(db, {
+        legacy: (pairs) => { for (const p of pairs) db.prepare("INSERT OR IGNORE INTO legacy_refs (endpoint, model, offering) VALUES (?, ?, ?)").run(p.endpoint, p.model, p.offering); },
+      });
       this.selfReady = true;
     }
     return db;
@@ -629,9 +666,9 @@ export class Models {
     try {
       if (!this.ready.has(userId)) {
         db.exec(ENDPOINT_SCHEMA);
-        const own = new Map(migrateEndpoints(db).map((p) => [`${p.endpoint}\u0000${p.model}`, p.offering]));
-        const dropped = migrateChoices(db, (endpoint, model) => own.get(`${endpoint}\u0000${model}`)
-          ?? (self.prepare("SELECT offering FROM legacy_refs WHERE endpoint = ? AND model = ?").get(endpoint, model) as { offering: string } | undefined)?.offering);
+        const dropped = migrate(db, {
+          shared: (endpoint, model) => (self.prepare("SELECT offering FROM legacy_refs WHERE endpoint = ? AND model = ?").get(endpoint, model) as { offering: string } | undefined)?.offering,
+        });
         db.exec(MODEL_CHOICE_SCHEMA);
         if (dropped.length) addNotice(db, [`Models that no longer existed were taken out of your lists: ${dropped.join(", ")}.`]);
       }
@@ -650,19 +687,22 @@ export class Models {
     if (!pending.length) return;
     const map = new Map(pending.map((r) => [r.from_id, this.follow(r.from_id) ?? null]));
     const labels = new Map(pending.map((r) => [r.from_id, r.label]));
-    const lines = rewrite(db, map, (id) => labels.get(id) ?? id, (id) => this.labelIn(self, id));
-    if (lines.length) addNotice(db, lines);
+    // The rewrite and its notice together; if anything stops before the pending rows go, the rewrite runs again and changes nothing.
+    db.transaction(() => {
+      const lines = rewrite(db, map, (id) => labels.get(id) ?? id, (id) => this.labelIn(self, id));
+      if (lines.length) addNotice(db, lines);
+    })();
     const done = self.prepare("DELETE FROM redirect_pending WHERE from_id = ? AND user = ?");
     const unused = self.prepare("DELETE FROM offering_redirects WHERE from_id = ? AND NOT EXISTS (SELECT 1 FROM redirect_pending WHERE from_id = ?)");
     self.transaction(() => { for (const r of pending) { done.run(r.from_id, userId); unused.run(r.from_id, r.from_id); } })();
     this.index(userId, db);
   }
 
-  /** Records which shared models this user's lists name. */
+  /** Records which shared models this user's lists name: shared offerings and redirected IDs only. */
   private index(userId: string, db: Db): void {
-    const own = new Set((db.prepare("SELECT id FROM offerings").all() as { id: string }[]).map((r) => r.id));
-    const refs = [...collectRefs(db).keys()].filter((id) => !own.has(id));
     const self = this.self();
+    const shared = new Set((self.prepare("SELECT id FROM offerings UNION SELECT from_id FROM offering_redirects").all() as { id: string }[]).map((r) => r.id));
+    const refs = [...collectRefs(db).keys()].filter((id) => shared.has(id));
     self.transaction(() => {
       self.prepare("DELETE FROM shared_refs WHERE user = ?").run(userId);
       const add = self.prepare("INSERT OR IGNORE INTO shared_refs (user, ref) VALUES (?, ?)");
@@ -697,7 +737,8 @@ export class Models {
         const list = pairs(self);
         const now = new Date().toISOString();
         for (const [from, to] of list) {
-          // An earlier redirect to `from` now leads on through this one (see follow).
+          // Earlier redirects to `from` now point straight at its target, so chains stay one hop long and can't loop.
+          self.prepare("UPDATE offering_redirects SET to_id = ? WHERE to_id = ?").run(to, from);
           self.prepare("INSERT OR REPLACE INTO offering_redirects (from_id, to_id, label, created_at) VALUES (?, ?, ?, ?)").run(from, to, this.labelIn(self, from) ?? from, now);
           for (const u of users) self.prepare("INSERT OR IGNORE INTO redirect_pending (from_id, user) VALUES (?, ?)").run(from, u.id);
         }

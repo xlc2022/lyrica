@@ -127,4 +127,18 @@ describe("the model runtime", () => {
     expect(s.cloud.requests).toHaveLength(0);
     expect(s.local.requests).toHaveLength(1);
   });
+
+  it("clears an endpoint's down time when a reply comes back, so a working endpoint never goes stale", async () => {
+    const s = await setup();
+    const db = s.users.openUserDb(s.li.id);
+    db.prepare("UPDATE endpoints SET down_since = ? WHERE id = ?").run(new Date(Date.now() - 13 * 86_400_000).toISOString(), s.gpu.id);
+    db.close();
+    const { session, dispose } = await s.open(s.thread("private"));
+    try {
+      await session.prompt("hello");
+    } finally {
+      dispose();
+    }
+    expect(s.models.endpoint(s.li.id, s.gpu.id)!.downSince).toBeUndefined();
+  });
 });

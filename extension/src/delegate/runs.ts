@@ -885,10 +885,10 @@ export class Delegation {
       sub = new Subagent(this, run, ctx, role, models.label(parent.user.id, opened.chat.offeringId) ?? opened.chat.offeringId, cloud, opened.session, opened.dispose, release, before);
       run.subagents.push(sub);
       if (earlier) {
-        this.store.update(parent.user.id, parent.pool, child.id, { status: "running", model: sub.model });
+        this.store.update(parent.user.id, parent.pool, child.id, { status: "running", model: sub.model, offeringId: opened.chat.offeringId });
       } else {
         this.store.record(parent.user.id, {
-          pool: parent.pool, thread: child.id, run: run.id, parent: parent.threadId, role: role.name, model: sub.model,
+          pool: parent.pool, thread: child.id, run: run.id, parent: parent.threadId, role: role.name, model: sub.model, offeringId: opened.chat.offeringId,
           background: run.background, status: "running", startedAt: new Date().toISOString(),
           pick: "tier" in pick ? pick : { model: pick.model.offeringId }, narrowing: compact(narrowing),
         });
