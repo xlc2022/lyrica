@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { get, post, threadPath, type GoAhead, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type SendResponse, type ThreadRef } from "./api.ts";
 import type { LiveItem } from "./live.ts";
-import { MODES } from "./Modes.tsx";
+import { GoAheadMenu } from "./Modes.tsx";
 import { href, idHref } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
 import type { useThread } from "./stream.ts";
@@ -155,6 +155,8 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" }>; e
   const open = part.type === "tool" ? env.openTools.has(part.toolCallId) : localOpen;
   const toggle = () => (part.type === "tool" ? env.toggleTool(part.toolCallId) : setLocalOpen(!localOpen));
   if (part.type === "tool" && part.name === "delegate") return <SubagentCard part={part} env={env} />;
+  // While her plan waits for an answer, its card shows it; the marker would be a second copy.
+  if (part.type === "tool" && part.name === "propose_plan" && part.result === undefined) return null;
   if (part.type === "delegation") return <Notice text={part.text} status={part.status} threads={part.threads} env={env} />;
   let label: React.ReactNode;
   let body: React.ReactNode;
@@ -311,23 +313,20 @@ function summarizeArgs(args: unknown): string {
   return typeof main === "string" ? main.split("\n")[0]! : JSON.stringify(main ?? "");
 }
 
-const GO_AHEAD: GoAhead[] = ["ask", "acceptEdits", "auto"];
-
 function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest; env: Env }) {
   const [run, busy, error] = useAction();
   const answer = (allow: boolean, mode?: GoAhead) => run(() => post(`${base}/permissions/${encodeURIComponent(p.requestId)}`, { allow, mode }));
   const left = useCountdown(p.expiresAt);
   if (p.tool === "propose_plan" && !p.subagent) {
     // Her plan, from Plan mode: going ahead switches the thread to the mode picked.
+    const plan = String((p.args as { plan?: unknown } | null)?.plan ?? "");
+    const steps = plan.split("\n").filter((l) => /^\s*(\d+[.)]|[-*])\s/.test(l)).length;
     return (
       <div className="permission plan" role="group" aria-label="Lyrica's plan">
-        <p>Lyrica's plan:</p>
-        <div className="prose"><Prose text={String((p.args as { plan?: unknown } | null)?.plan ?? "")} /></div>
+        <div className="plan-head"><b>Plan</b>{steps > 1 && <span className="muted">{steps} steps</span>}</div>
+        <div className="prose"><Prose text={plan} /></div>
         <div className="row">
-          <span>Go ahead in</span>
-          {GO_AHEAD.map((m) => (
-            <button key={m} type="button" className={m === "acceptEdits" ? "primary" : ""} disabled={busy} title={MODES[m].description} onClick={() => answer(true, m)}>{MODES[m].label}</button>
-          ))}
+          <GoAheadMenu disabled={busy} onPick={(m) => answer(true, m)} />
           <button type="button" disabled={busy} onClick={() => answer(false)}>Keep planning</button>
           <span className="muted">{left}</span>
         </div>

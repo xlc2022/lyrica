@@ -24,11 +24,18 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
   useEffect(() => { if (t.live.title) { summary.reload(); refreshThreads(); } }, [t.live.title, summary.reload, refreshThreads]);
   useEffect(() => { if (t.live.reload) refreshThreads(); }, [t.live.reload, refreshThreads]);
   // The badge follows the profile, which may change elsewhere: refresh it after each turn and on focus.
-  useEffect(() => { if (t.live.reload || t.live.settings) settings.reload(); }, [t.live.reload, t.live.settings, settings.reload]);
+  // A refresh that a change overtakes is dropped, so it can't undo a Shift+Tab pressed meanwhile.
+  const latest = useRef(0);
+  const inFlight = useRef(0);
+  const refreshSettings = useCallback(() => {
+    const n = latest.current;
+    get<ThreadSettings>(`${base}/settings`).then((s) => { if (n === latest.current && !inFlight.current) settings.set(s); }, () => {});
+  }, [base, settings.set]);
+  useEffect(() => { if (t.live.reload || t.live.settings) refreshSettings(); }, [t.live.reload, t.live.settings, refreshSettings]);
   useEffect(() => {
-    addEventListener("focus", settings.reload);
-    return () => removeEventListener("focus", settings.reload);
-  }, [settings.reload]);
+    addEventListener("focus", refreshSettings);
+    return () => removeEventListener("focus", refreshSettings);
+  }, [refreshSettings]);
 
   const send = useCallback(async (text: string) => {
     setSendError("");
@@ -43,12 +50,12 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
   }, [base, t.dispatch]);
   // The mode and switches beside the message box: shown at once, so Shift+Tab pressed again cycles on from here.
   // Only the latest change's answer is shown, so answers arriving out of order can't step back.
-  const latest = useRef(0);
   const changeSettings = useCallback((change: ThreadSettingsChange) => {
     setSendError("");
     const n = ++latest.current;
+    inFlight.current++;
     if (settings.data && change.internet === undefined) settings.set({ ...settings.data, ...(change as Partial<ThreadSettings>) });
-    patch<ThreadSettings>(`${base}/settings`, change).then(
+    patch<ThreadSettings>(`${base}/settings`, change).finally(() => inFlight.current--).then(
       (s) => { if (n === latest.current) settings.set(s); },
       (e: Error) => { setSendError(e.message); settings.reload(); },
     );

@@ -218,19 +218,36 @@ test("Plan mode: Shift+Tab gets there, the plan shows as a card, and going ahead
   const message = page.getByLabel("Message", { exact: true });
   await message.focus();
   // Auto, then Ask, Accept edits, Plan.
+  await expect(page.locator(".mode-picker")).toContainText("Auto");
   for (let i = 0; i < 3; i++) await message.press("Shift+Tab");
   await expect(page.locator(".mode-picker")).toContainText("Plan");
+  // With SCREENSHOTS set, light and dark copies for the UI review.
+  const shot = async (name: string) => {
+    if (!process.env.SCREENSHOTS) return;
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.screenshot({ path: `${process.env.SCREENSHOTS}/${name}-${page.viewportSize()!.width}-${colorScheme}.png` });
+    }
+    await page.emulateMedia({ colorScheme: null });
+  };
+  await page.locator(".mode-picker > button").click();
+  await shot("mode-menu");
+  await page.keyboard.press("Escape");
 
   await send(page, "plan: Check the logs, then fix the config");
   const card = page.getByRole("group", { name: "Lyrica's plan" });
   await expect(card).toContainText("Check the logs, then fix the config");
-  await card.getByRole("button", { name: "Accept edits" }).click();
+  await shot("plan-card");
+  await card.getByRole("button", { name: /^Go ahead in/ }).click();
+  await shot("go-ahead-menu");
+  await card.getByRole("menu", { name: "Go ahead in" }).getByRole("menuitem", { name: /^Accept edits/ }).click();
   await expect(page.getByText("On it.")).toBeVisible();
   await expect(page.locator(".mode-picker")).toContainText("Accept edits");
 
   // The "+" menu's switches turn tools off for this thread.
   await page.getByRole("button", { name: "Attach or switch tools" }).click();
   const menu = page.getByRole("menu", { name: "Attach and tools" });
+  await shot("tools-menu");
   await menu.getByLabel("Web search").click();
   await expect(menu.getByLabel("Web search")).not.toBeChecked();
   await page.keyboard.press("Escape");

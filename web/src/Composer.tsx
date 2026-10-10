@@ -1,9 +1,10 @@
 // Writing a message: Enter sends (Shift+Enter for a new line, except on touch
-// keyboards), files attach from the "+" menu, by drag or paste. Beside it, the
-// thread's mode (Shift+Tab cycles) and its tool switches.
+// keyboards), files attach from the "+" menu, by drag or paste. As in the
+// Claude app, one box: the text, then a quiet row of "+", the thread's mode
+// (Shift+Tab cycles) and Send, or Stop while she works and the box is empty.
 import { useEffect, useRef, useState } from "react";
 import { upload, type ThreadSettings, type ThreadSettingsChange } from "./api.ts";
-import { ModePicker, nextMode, ToolsMenu } from "./Modes.tsx";
+import { Icon, ModePicker, nextMode, ToolsMenu } from "./Modes.tsx";
 
 interface Upload { id: number; name: string; progress: number; error?: string }
 
@@ -56,6 +57,7 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, onSet
     <form
       className="composer"
       data-dragging={dragging}
+      data-has-text={!!draft.trim()}
       onSubmit={(e) => { e.preventDefault(); void submit(); }}
       onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragging(true); } }}
       onDragLeave={() => setDragging(false)}
@@ -73,25 +75,31 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, onSet
           ))}
         </ul>
       )}
-      <ToolsMenu settings={settings} onAttach={() => picker.current?.click()} onChange={onSettings} />
-      <input ref={picker} type="file" multiple hidden onChange={(e) => { attach(e.target.files ?? []); e.target.value = ""; }} />
-      <textarea
-        ref={area}
-        rows={1}
-        aria-label="Message"
-        placeholder={busy ? "Add a follow-up" : "Message Lyrica"}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onPaste={(e) => { if (e.clipboardData.files.length) { e.preventDefault(); attach(e.clipboardData.files); } }}
-        onKeyDown={(e) => {
-          if (e.key === "Tab" && e.shiftKey && settings) { e.preventDefault(); onSettings({ mode: nextMode(settings.mode) }); return; }
-          const touch = matchMedia("(pointer: coarse)").matches;
-          if (e.key === "Enter" && !e.shiftKey && !touch && !e.nativeEvent.isComposing) { e.preventDefault(); void submit(); }
-        }}
-      />
-      {busy && <button type="button" className="stop" onClick={onStop}>Stop</button>}
-      <button type="submit" className="primary send" disabled={!draft.trim()}>{busy ? "Queue" : "Send"}</button>
-      {settings && <div className="composer-bar"><ModePicker mode={settings.mode} onChange={(mode) => onSettings({ mode })} /></div>}
+      <div className="composer-box">
+        <textarea
+          ref={area}
+          rows={1}
+          aria-label="Message"
+          placeholder={busy ? "Add a follow-up" : "Message Lyrica"}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onPaste={(e) => { if (e.clipboardData.files.length) { e.preventDefault(); attach(e.clipboardData.files); } }}
+          onKeyDown={(e) => {
+            if (e.key === "Tab" && e.shiftKey && settings) { e.preventDefault(); onSettings({ mode: nextMode(settings.mode) }); return; }
+            const touch = matchMedia("(pointer: coarse)").matches;
+            if (e.key === "Enter" && !e.shiftKey && !touch && !e.nativeEvent.isComposing) { e.preventDefault(); void submit(); }
+          }}
+        />
+        <div className="composer-row">
+          <ToolsMenu settings={settings} onAttach={() => picker.current?.click()} onChange={onSettings} />
+          <input ref={picker} type="file" multiple hidden onChange={(e) => { attach(e.target.files ?? []); e.target.value = ""; }} />
+          <span className="spacer" />
+          {settings && <ModePicker mode={settings.mode} onChange={(mode) => onSettings({ mode })} />}
+          {busy && !draft.trim()
+            ? <button type="button" className="icon send" aria-label="Stop" title="Stop" onClick={onStop}><Icon name="stop" /></button>
+            : <button type="submit" className="icon send" aria-label="Send" title={busy ? "Send when she finishes" : "Send"} disabled={!draft.trim()}><Icon name="up" /></button>}
+        </div>
+      </div>
     </form>
   );
 }

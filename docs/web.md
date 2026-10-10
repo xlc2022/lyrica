@@ -119,14 +119,21 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
 - Files attach from the "+" menu, by dragging onto the composer, or by
   pasting. Each shows its progress, and its path in the thread goes into the
   draft.
-- **Beside the message box** (`src/Modes.tsx`): the mode picker, a link with
-  the mode's name that opens a menu of the four modes, each with its number
-  key and one line; Shift+Tab in the message box cycles Ask, Accept edits,
-  Plan, Auto. The "+" menu attaches a file and has the Web search, Internet
-  for commands and Images switches. Both change the thread's settings, and a
-  `settings` event (an approved plan) refreshes them.
-- **The plan card:** a `propose_plan` request shows her plan as prose, with
-  Go ahead in Ask, Accept edits or Auto, Keep planning, and the time left.
+- **The message box** (`src/Composer.tsx`, `src/Modes.tsx`), as in the
+  Claude app: one bordered box with the text, and under it a row of
+  borderless controls. At the left the "+" icon, whose menu attaches a file
+  and, after a separator, has the Web search, Internet for commands and
+  Images switches. At the right the mode, a link with a chevron that opens a
+  menu of the four modes (a check on the current one, its line, its number
+  key), then Send as an up-arrow icon, accent once there is text, or Stop as
+  a square while she works and the box is empty. Shift+Tab in the box cycles
+  Ask, Accept edits, Plan, Auto, shown at once; a settings refresh that a
+  change overtakes is dropped. A `settings` event (an approved plan)
+  refreshes them.
+- **The plan card:** a `propose_plan` request shows "Plan", its step count
+  when it has numbered or bulleted steps, the plan as prose, a primary
+  "Go ahead in…" whose menu offers Ask, Accept edits or Auto, Keep planning,
+  and the time left. Its tool marker stays hidden until it is answered.
 
 ## Look
 
