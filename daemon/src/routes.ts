@@ -1,5 +1,5 @@
 import {
-  AuthError, WrongPassword, CAPABILITIES, checkTask, isRestricted, profileFor, refId, THINKING_LEVELS, publicKeyOf, generateSshKey, CloudModelForbidden, NoModel, PRONOUN_PRESETS,
+  AuthError, WrongPassword, WORKDIR, CAPABILITIES, checkTask, isRestricted, profileFor, refId, THINKING_LEVELS, publicKeyOf, generateSshKey, CloudModelForbidden, NoModel, PRONOUN_PRESETS,
   type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type User,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
@@ -1317,7 +1317,7 @@ function gather(d: Lyricad, user: User, pool: Pool, thread: string, from: number
     for (const id of store.subagentsSince(thread, from)) walk(id, top.find((x) => x.thread === id)?.run);
     const removed = entriesFrom(store, thread, from);
     const at = new Set(removed.map((e) => e.n));
-    const uploadsKept = new Set([...uploadsIn(removed)].filter((path) => store.entriesMentioning(path).some((m) => m.thread !== thread || !at.has(m.n))));
+    const uploadsKept = new Set([...uploadsIn(removed, WORKDIR)].filter((path) => store.entriesMentioning(path).some((m) => m.thread !== thread || !at.has(m.n))));
     return {
       pool, thread, removed, subagents, uploadsKept, target,
       pins: store.pins(thread).filter((p) => p.n >= from).length,

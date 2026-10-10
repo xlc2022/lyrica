@@ -87,7 +87,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
  * target refuses fails before anything is recorded, so nothing outside the
  * thread's folders is ever kept.
  */
-function recording<T extends ToolOps["write"] | ToolOps["edit"]>(target: ExecutionTarget, ops: T, toolCall: string, record?: (c: NewChange) => void): T {
+export function recording<T extends ToolOps["write"] | ToolOps["edit"]>(target: ExecutionTarget, ops: T, toolCall: string, record?: (c: NewChange) => void): T {
   if (!record) return ops;
   const read = target.ops().read;
   return {

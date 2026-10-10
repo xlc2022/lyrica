@@ -25,12 +25,11 @@ export interface RemovalContext {
   grants: Grant[];
 }
 
-export interface Entry { n: number; data: unknown }
+export interface Entry { n: number; data: unknown; createdAt?: string }
 
 interface ToolCall { id: string; name: string; args: Record<string, unknown> }
 
 const COMMANDS_SHOWN = 20;
-const UPLOAD = /\/workspace\/uploads\/[^\s"'`<>()[\]]+/g;
 const NEW_BRANCH = /(?:^|[;&|]\s*|&&\s*)(?:cd\s+(\S+)\s*&&\s*)?git\s+(?:-C\s+(\S+)\s+)?(?:checkout\s+-b|switch\s+-c|branch)\s+([\w./-]+)/g;
 
 /** Everything a removal from entry `from` would undo, with what's ticked by default. Reads files; changes nothing. */
@@ -38,7 +37,7 @@ export async function removalPlan(c: RemovalContext): Promise<RemovalPlan & { ch
   const removed = c.removed;
   const calls = [...removed.flatMap(toolCalls), ...c.subagents.flatMap((s) => s.entries.flatMap(toolCalls))];
   const changes = [
-    ...c.changes.forCalls(c.pool, c.thread, calls.map((x) => x.id)),
+    ...c.changes.forCalls(c.pool, c.thread, calls.map((x) => x.id), removed[0]?.createdAt),
     ...c.subagents.flatMap((s) => c.changes.forThreads(c.pool, [s.thread])),
   ];
   const plan: RemovalPlan = {
@@ -68,9 +67,10 @@ export async function removalPlan(c: RemovalContext): Promise<RemovalPlan & { ch
     plan.files.push({ id, path: first.path, action: first.created ? "delete" : "restore", ticked: true });
   }
 
-  // Uploads that only the removed messages mention.
+  // Uploads that only the removed messages mention: they're in the thread's folder, so only in the sandbox.
+  const cwd = await target.cwd();
   if (target.name === "sandbox") {
-    for (const path of uploadsIn(removed)) {
+    for (const path of uploadsIn(removed, cwd)) {
       if (c.uploadsKept.has(path)) continue;
       if (!(await target.ops().read.readFile(path).then(() => true, () => false))) continue;
       plan.files.push({ id: fileId("upload", path), path, action: "delete", reason: "upload", ticked: true });
@@ -78,7 +78,6 @@ export async function removalPlan(c: RemovalContext): Promise<RemovalPlan & { ch
   }
 
   // Branches: made by her commands, or her subagents' worktree branches.
-  const cwd = await target.cwd();
   const candidates: { repo: string; pattern: string }[] = [];
   for (const cmd of commands) {
     for (const m of cmd.matchAll(NEW_BRANCH)) {
@@ -137,8 +136,10 @@ export function entriesFrom(store: PoolStore, thread: string, from: number): Ent
 }
 
 /** The uploads the user's messages among `entries` mention. */
-export function uploadsIn(entries: Entry[]): Set<string> {
-  return new Set(entries.filter((e) => role(e.data) === "user").flatMap((e) => textOf(e.data).match(UPLOAD) ?? []));
+export function uploadsIn(entries: Entry[], workdir: string): Set<string> {
+  const upload = new RegExp(`${workdir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/uploads/[^\\s"'\`<>()[\\]]+`, "g");
+  // A sentence's punctuation after a path isn't part of it.
+  return new Set(entries.filter((e) => role(e.data) === "user").flatMap((e) => (textOf(e.data).match(upload) ?? []).map((p) => p.replace(/[.,;:!?]+$/, ""))));
 }
 
 function role(data: unknown): string | undefined {
@@ -178,9 +179,12 @@ async function listBranches(target: ExecutionTarget, repo: string, pattern: stri
   return [...r.out.matchAll(/^BRANCH=(.+)$/gm)].map((m) => m[1]!);
 }
 
-/** Whether a branch has commits no other local branch has. Unsure counts as yes, so it isn't ticked. */
+/**
+ * Whether a branch has commits no other local branch has. Unsure counts as
+ * yes, so it isn't ticked. (`--exclude` for `--branches` takes the short name.)
+ */
 async function ownCommits(target: ExecutionTarget, repo: string, branch: string): Promise<boolean> {
-  const r = await sh(target, `c=$(git -C ${quote(repo)} rev-list --max-count=1 ${quote(`refs/heads/${branch}`)} --not --exclude=${quote(`refs/heads/${branch}`)} --branches) && echo "COMMITS=$c"`);
+  const r = await sh(target, `c=$(git -C ${quote(repo)} rev-list --max-count=1 ${quote(`refs/heads/${branch}`)} --not --exclude=${quote(branch)} --branches) && echo "COMMITS=$c"`);
   const m = /^COMMITS=(.*)$/m.exec(r.out);
   return !r.ok || !m || m[1]!.trim() !== "";
 }

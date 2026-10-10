@@ -82,10 +82,14 @@ export class FileChanges {
     return row;
   }
 
-  /** The changes the given tool calls made in a thread, oldest first. */
-  forCalls(pool: Pool, thread: string, toolCalls: string[]): FileChange[] {
-    return (this.db.prepare("SELECT * FROM file_changes WHERE pool = ? AND thread = ? AND tool_call IN (SELECT value FROM json_each(?)) ORDER BY at, rowid")
-      .all(pool, thread, JSON.stringify(toolCalls)) as Row[]).map(toChange);
+  /**
+   * The changes the given tool calls made in a thread, oldest first. Some
+   * models reuse call IDs from turn to turn ("call_1"), so `since` (when the
+   * first of those turns began) keeps earlier turns' calls out.
+   */
+  forCalls(pool: Pool, thread: string, toolCalls: string[], since = ""): FileChange[] {
+    return (this.db.prepare("SELECT * FROM file_changes WHERE pool = ? AND thread = ? AND at >= ? AND tool_call IN (SELECT value FROM json_each(?)) ORDER BY at, rowid")
+      .all(pool, thread, since, JSON.stringify(toolCalls)) as Row[]).map(toChange);
   }
 
   /** A snapshot's content. */
