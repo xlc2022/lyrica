@@ -275,15 +275,14 @@ material.
 | **Delete a memory** | The text and its revisions are removed. A tombstone is left. Pages that cited it are flagged, and the next sleep rewrites them. |
 | **Forget a thread** | The thread and its entries are deleted, along with notes whose only sources were in it, and its subagents' threads the same way. Each deleted note leaves a tombstone, and pages that cited them are flagged. Its child threads (Lyrica's, branches, copies) go too with `forgetThread(id, author, { children: true })`; otherwise they are kept, with no parent. |
 | **Forget a topic** | Search, review the matches, then delete them in bulk. |
-| **Remove turns** | A rewind (Delete from here, Regenerate, Edit) removes entries from one onwards as forgetting does (`truncateThread`): notes whose only sources were in them go with tombstones, pages citing those notes or the entries are flagged, and subagent threads started in them are forgotten. |
+| **Remove turns** | A rewind (Delete from here, Regenerate, Edit) removes entries from one onwards as forgetting does (`truncateThread`): notes whose only sources were in them go with tombstones, pages citing those notes or the entries are flagged, and subagent threads started in them are forgotten. An entry a branch still holds a copy of keeps its notes and search row, and its citations resolve through the copy. |
 
 **Branches.** `branchThread(threadId, n)` makes a child thread holding the
 entries up to `n` (and the results of its tool calls), copied as an export
 copies them: each keeps its original's ID in `orig`, so citations resolve
 and search and sleep see it once, at its source. A branch of an unlogged
-thread is unlogged. As with forgetting a thread that has an exported copy,
-entries removed from the source stay in a branch's copy but are no longer
-searched or slept.
+thread is unlogged. Rewinding the source keeps what a branch's copy still
+holds: see Remove turns.
 
 A **tombstone** holds no text: only the deleted item's ID, its kind, when it was
 deleted, who deleted it, and the IDs of its source entries. Its one job is to

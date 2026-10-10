@@ -108,10 +108,13 @@ test("a message's menu regenerates, edits, deletes with Undo, and branches", asy
   await expect(page.getByText("You said: second question")).toBeVisible();
   const menu = (i: number) => page.getByRole("button", { name: "Message actions" }).nth(i);
 
-  // Regenerate with another model: her first reply and what followed are replaced.
+  // Regenerate with another model: her first reply and what followed are replaced, after the Undo delay.
   await menu(1).click();
   await page.getByRole("menuitem", { name: "Regenerate with…" }).click();
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/message-menu-${page.viewportSize()!.width}.png` });
   await page.getByRole("menuitem", { name: /local-model/ }).click();
+  await expect(page.getByRole("button", { name: "Undo" })).toBeVisible();
   await expect(page.getByText("from the fake local-model")).toBeVisible();
   await expect(page.getByText("second question")).toHaveCount(0);
 
@@ -119,7 +122,7 @@ test("a message's menu regenerates, edits, deletes with Undo, and branches", asy
   await menu(0).click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
   await page.getByLabel("Edit your message").fill("an edited question");
-  await page.getByRole("button", { name: "Send", exact: true }).first().click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("You said: an edited question")).toBeVisible();
   await expect(page.locator(".msg.user")).toHaveCount(1);
 

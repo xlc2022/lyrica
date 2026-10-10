@@ -525,7 +525,13 @@ export function apiRoutes(d: Lyricad): Route[] {
       const user = d.userFor(r);
       const pool = poolOf(r);
       const { title } = await r.json<Api.BranchRequest>();
-      const branch = owner(d, user, (o) => o[pool].branchThread(threadOf(o, r).id, entryN(r), { title: typeof title === "string" ? title : undefined }));
+      const branch = owner(d, user, (o) => {
+        const thread = threadOf(o, r);
+        const n = entryN(r);
+        if (thread.subagent) throw new HttpError(409, "a subagent's thread can't be branched");
+        if (!o[pool].entryPage(thread.id, { before: n + 1, limit: 1 }).entries.some((e) => e.n === n)) throw new HttpError(404, "no such message");
+        return o[pool].branchThread(thread.id, n, { title: typeof title === "string" ? title : undefined });
+      });
       inheritThread(d, user, pool, r.params.threadId!, branch.id);
       return owner(d, user, (o) => summary(d, user, pool, o[pool], branch, []));
     }),

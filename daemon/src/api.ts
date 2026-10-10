@@ -687,8 +687,8 @@ export type ThreadEvent =
   | { type: "delegation"; event: DelegationEvent }
   /** A background run's result or question, just delivered into this thread (also stored, as a `notice` message). */
   | { type: "notice"; text: string; runId?: string; status?: string; threads?: ThreadRef[] }
-  /** Messages from entry `from` on were removed (a rewind): drop them, and reload. `resend` is being sent now. */
-  | { type: "rewound"; from: number; resend?: string };
+  /** Messages from entry `from` on were removed (a rewind): drop them, and reload. `resend`: a message is being sent in their place. */
+  | { type: "rewound"; from: number; resend?: true };
 
 /** Which run and subagent thread an event is about, and its parent thread. */
 export interface RunRef { userId: string; pool: Pool; parentThreadId: string; runId: string; threadId: string }

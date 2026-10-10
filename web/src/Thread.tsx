@@ -67,8 +67,15 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
     },
     rewind: (n, req, hide) => {
       setSendError("");
-      if (req.action === "delete") later(n === t.messages.findLast((m) => m.role === "user")?.n ? "Turn deleted" : "Messages deleted", hide, () => void rewind(n, req));
-      else void rewind(n, req);
+      const last = t.messages.findLast((m) => m.role === "user")?.n;
+      // What is sent again: the edited text, or the question her reply answered.
+      const resend = req.action === "edit" ? req.text : req.action === "regenerate"
+        ? t.messages.filter((m) => m.n < n && m.role === "user" && !m.from).at(-1)?.parts.map((p) => (p.type === "text" ? p.text : "")).join("") : undefined;
+      const go = () => { t.willResend(resend); void rewind(n, req); };
+      // Removing turns waits for Undo; regenerating or editing the last turn goes at once.
+      if (req.action === "delete") later(n === last ? "Turn deleted" : "Messages deleted", hide, go);
+      else if (last !== undefined && n < last) later(req.action === "edit" ? "Message edited" : "Regenerating", hide, go);
+      else go();
     },
   } : undefined;
   const parent = s?.parent ? findThread(threads, pool, s.parent) : undefined;

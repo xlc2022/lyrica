@@ -212,7 +212,9 @@ they hold its tasks and results. `forget(userId, pool, threadId)`, called
 first, stops the runs it started and drops their records. Removing turns
 (a rewind) forgets the subagent threads started in them the same way:
 `forgetSubagents(userId, pool, threads)` stops every run with a subagent
-among them, with reason `parent_changed`, and drops their records.
+among them, with reason `parent_changed`, and drops their records. The
+subagents are found by when they started, so a run from a kept turn that
+started a subagent after the cut is stopped too.
 
 ## Events
 
