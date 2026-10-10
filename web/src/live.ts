@@ -93,8 +93,8 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       return { ...s, errors: [...s.errors, e.message] };
     case "offline":
       // A message she sent that no model took now waits in the queue, so it isn't shown twice.
-      // Held messages may have been joined into one, so compare with each part.
-      return { ...s, offline: { task: e.task, tried: e.tried }, items: s.items.filter((i, n) => n < s.ended || i.role !== "user" || !s.queued.flatMap((q) => q.split("\n\n")).includes(i.text)) };
+      // Held messages may have been joined into one, so a message matches the whole text or a blank-line-bounded piece of it.
+      return { ...s, offline: { task: e.task, tried: e.tried }, items: s.items.filter((i, n) => n < s.ended || i.role !== "user" || !s.queued.some((q) => `\n\n${q}\n\n`.includes(`\n\n${i.text}\n\n`))) };
     case "title":
       return { ...s, title: e.title };
     case "settings":
