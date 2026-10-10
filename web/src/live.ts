@@ -52,6 +52,8 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     }
     case "reset":
       return { ...s, items: [], ended: 0, reload: s.reload + 1 };
+    case "rewound":
+      return { ...s, items: e.resend !== undefined ? [{ role: "user", text: e.resend }] : [], ended: 0, errors: [], reload: s.reload + 1 };
     case "sent":
       return { ...s, items: [...s.items, { role: "user", text: e.text }] };
     case "turn_start":

@@ -97,6 +97,46 @@ test("unlock, log in, start a thread, and see a streamed reply that survives a r
   await noHorizontalScroll(page);
 });
 
+test("a message's menu regenerates, edits, deletes with Undo, and branches", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "first question");
+  await expect(page.getByText("You said: first question")).toBeVisible();
+  await send(page, "second question");
+  await expect(page.getByText("You said: second question")).toBeVisible();
+  const menu = (i: number) => page.getByRole("button", { name: "Message actions" }).nth(i);
+
+  // Regenerate with another model: her first reply and what followed are replaced.
+  await menu(1).click();
+  await page.getByRole("menuitem", { name: "Regenerate with…" }).click();
+  await page.getByRole("menuitem", { name: /local-model/ }).click();
+  await expect(page.getByText("from the fake local-model")).toBeVisible();
+  await expect(page.getByText("second question")).toHaveCount(0);
+
+  // Edit the question: it is sent again, as edited.
+  await menu(0).click();
+  await page.getByRole("menuitem", { name: "Edit" }).click();
+  await page.getByLabel("Edit your message").fill("an edited question");
+  await page.getByRole("button", { name: "Send", exact: true }).first().click();
+  await expect(page.getByText("You said: an edited question")).toBeVisible();
+  await expect(page.locator(".msg.user")).toHaveCount(1);
+
+  // Delete waits for Undo; undone, nothing changes.
+  await menu(1).click();
+  await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+  await expect(page.getByText("You said: an edited question")).toHaveCount(0);
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(page.getByText("You said: an edited question")).toBeVisible();
+
+  // Branch from her reply: the branch opens, with the conversation so far.
+  await menu(1).click();
+  await page.getByRole("menuitem", { name: "Branch from here" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: /\(branch\)$/ })).toBeVisible();
+  await expect(page.getByText("Branched from")).toBeVisible();
+  await expect(page.getByText("You said: an edited question")).toBeVisible();
+  await noHorizontalScroll(page);
+});
+
 test("the model badge shows the current model, and a change takes effect", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");

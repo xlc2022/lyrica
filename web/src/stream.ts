@@ -5,7 +5,7 @@ import { initialLive, liveReducer } from "./live.ts";
 
 const EVENT_TYPES: ThreadEvent["type"][] = [
   "hello", "reset", "turn_start", "message_start", "text", "thinking", "tool_start", "tool_end", "recall", "remember",
-  "permission", "permission_end", "usage", "queue", "error", "title", "turn_end", "delegation", "notice",
+  "permission", "permission_end", "usage", "queue", "error", "title", "turn_end", "delegation", "notice", "rewound",
 ];
 
 export function useThread(userId: string, pool: Pool, threadId: string) {
@@ -56,6 +56,8 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
           if (type === "hello") { setConnected(true); delay = 1000; }
           try {
             const e = JSON.parse(m.data) as ThreadEvent;
+            // Removed messages go at once; the reload brings what's left.
+            if (e.type === "rewound") setMessages((old) => old.filter((x) => x.n < e.from));
             dispatch(e);
             // In a subagent's own thread, its work is stored as it goes: show it.
             if (e.type === "delegation" && e.event.threadId === threadId && e.event.type !== "output" && e.event.type !== "tool_call") dispatch({ type: "refresh" });

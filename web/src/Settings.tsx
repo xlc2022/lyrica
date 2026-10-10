@@ -60,7 +60,7 @@ function ModelPicker({ base, settings, task, onChange }: {
   const choose = (model: ModelRef | null) => run(async () => onChange(await patch<ThreadSettings>(`${base}/settings`, { models: { [task]: model } })));
   return (
     <div className="picker" role="dialog" aria-label={`Model for ${TASK_LABELS[task].toLowerCase()}`}>
-      {settings.localOnly && <p className="muted small">Only local models: this thread is {settings.parent ? "a subagent of a local-only thread" : "local-only"}.</p>}
+      {settings.localOnly && <p className="muted small">Only local models: this thread is {settings.parent ? "under a local-only thread" : "local-only"}.</p>}
       {settings.allowed.map((ep) => (
         <div key={ep.id} className="picker-group">
           <div className="picker-ep"><span className={`k ${ep.kind}`}>{ep.kind}</span> {ep.name}</div>
@@ -91,7 +91,7 @@ export function SettingsDrawer({ ctx, base, summary, settings, onSettings, onSum
 }) {
   const userId = ctx.user.id;
   const [run, busy, error] = useAction();
-  const sub = !!settings.parent;
+  const sub = summary.subagent;
   const pool = summary.pool;
   const change = (c: ThreadSettingsChange) => run(async () => onSettings(await patch<ThreadSettings>(`${base}/settings`, c)));
   const changeThread = (c: { title?: string; hidden?: boolean }) => run(async () => onSummary(await patch<ThreadSummary>(base, c)));

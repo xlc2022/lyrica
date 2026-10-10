@@ -492,7 +492,9 @@ export class PoolStore extends PoolReader {
   appendEntry(threadId: string, entry: NewEntry, at = now()): string {
     const thread = this.mustThread(threadId);
     return this.tx(() => {
-      const n = (this.db.prepare("SELECT coalesce(max(n), 0) + 1 AS n FROM entries WHERE thread = ?").get(threadId) as { n: number }).n;
+      // After a rewind, numbering goes on past what was removed: an entry ID always means one entry.
+      const n = (this.db.prepare("SELECT max(coalesce((SELECT max(n) FROM entries WHERE thread = @id), 0), cut) + 1 AS n FROM threads WHERE id = @id")
+        .get({ id: threadId }) as { n: number }).n;
       this.db.prepare("INSERT INTO entries (thread, n, pi_id, role, data, text, unlogged, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
         .run(threadId, n, entry.piId, entry.role, JSON.stringify(entry.data), entry.text, thread.unlogged ? 1 : 0, at);
       const id = entryId(threadId, n);
@@ -526,6 +528,68 @@ export class PoolStore extends PoolReader {
     this.db.prepare(`INSERT INTO entries (thread, n, pi_id, role, data, text, unlogged, orig, created_at)
       SELECT ?, n, pi_id, role, data, text, unlogged, coalesce(orig, 'e:' || thread || '#' || n), created_at FROM entries WHERE thread = ? AND n <= ?`)
       .run(to, from, opts.upTo ?? Number.MAX_SAFE_INTEGER);
+  }
+
+  /**
+   * A branch: a child thread holding the conversation up to and including
+   * entry `n` (with the results of its tool calls), copied as an export
+   * copies it, so citations to those entries still resolve and nothing is
+   * processed twice. The source is left as it was. A branch of an unlogged
+   * thread is unlogged.
+   */
+  branchThread(threadId: string, n: number, opts: { title?: string } = {}): Thread {
+    const source = this.mustThread(threadId);
+    if (source.subagent) throw new Error("a subagent's thread can't be branched");
+    if (!this.db.prepare("SELECT 1 FROM entries WHERE thread = ? AND n = ?").get(threadId, n)) throw new Error(`no entry ${n} in ${threadId}`);
+    // A reply's tool calls keep their results, so the copy is a conversation a model can go on with.
+    const results = this.db.prepare("SELECT n, role FROM entries WHERE thread = ? AND n > ? ORDER BY n").all(threadId, n) as { n: number; role: string }[];
+    let upTo = n;
+    for (const r of results) if (r.role === "toolResult") upTo = r.n; else break;
+    const title = (opts.title?.trim() || `${source.title ?? "Untitled"} (branch)`).slice(0, 200);
+    return this.tx(() => {
+      const branch = this.createThread({ interface: source.interface, parent: source.id, title });
+      this.copyEntries(source.id, branch.id, { upTo });
+      return branch;
+    });
+  }
+
+  /** The subagent threads started in entry `fromN` or later: a rewind from there takes them with it. */
+  subagentsSince(threadId: string, fromN: number): string[] {
+    const from = this.db.prepare("SELECT created_at FROM entries WHERE thread = ? AND n >= ? ORDER BY n LIMIT 1").get(threadId, fromN) as { created_at: string } | undefined;
+    if (!from) return [];
+    return (this.db.prepare("SELECT id FROM threads WHERE parent = ? AND subagent = 1 AND created_at >= ? ORDER BY created_at").all(threadId, from.created_at) as { id: string }[])
+      .map((r) => r.id);
+  }
+
+  /**
+   * Rewinds a thread: removes entry `fromN` and everything after it, as
+   * forgetting does. Their index rows go; notes whose only sources were in
+   * them are deleted (each leaves a tombstone, and pages citing them are
+   * flagged), as are pages citing the entries directly; subagent threads
+   * started in them are forgotten. Entry numbers are never reused. As with
+   * forgetting, a branch's copies of removed entries stay in the branch but
+   * aren't searched or slept. Returns how many entries went, and the
+   * subagent threads.
+   */
+  truncateThread(threadId: string, fromN: number, author: Author): { removed: number; subagents: string[] } {
+    this.checkAuthor(author);
+    this.mustThread(threadId);
+    return this.tx(() => {
+      const subagents = this.subagentsSince(threadId, fromN);
+      for (const id of subagents) this.forgetThread(id, author);
+      const rows = this.db.prepare("SELECT n FROM entries WHERE thread = ? AND n >= ? ORDER BY n").all(threadId, fromN) as { n: number }[];
+      if (!rows.length) return { removed: 0, subagents };
+      const gone = JSON.stringify(rows.map((r) => entryId(threadId, r.n)));
+      const goneSet = new Set(JSON.parse(gone) as string[]);
+      const candidates = this.db.prepare("SELECT DISTINCT src FROM citations WHERE src LIKE 'n:%' AND dst IN (SELECT value FROM json_each(?))").all(gone) as { src: string }[];
+      for (const { src } of candidates) if (this.cameFrom(src).every((d) => goneSet.has(d))) this.remove(src, author, true);
+      this.db.prepare("UPDATE pages SET flagged = 1 WHERE 'p:' || slug IN (SELECT src FROM citations WHERE dst IN (SELECT value FROM json_each(?)))").run(gone);
+      this.db.prepare("DELETE FROM search WHERE kind = 'entry' AND id IN (SELECT value FROM json_each(?))").run(gone);
+      this.db.prepare("DELETE FROM entries WHERE thread = ? AND n >= ?").run(threadId, fromN);
+      this.db.prepare("UPDATE threads SET cut = max(cut, ?) WHERE id = ?").run(rows.at(-1)!.n, threadId);
+      this.optimize();
+      return { removed: rows.length, subagents };
+    });
   }
 
   /**

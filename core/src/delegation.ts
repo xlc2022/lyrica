@@ -208,6 +208,12 @@ export class DelegationStore {
     this.db(userId, (db) => db.prepare("DELETE FROM subagent_runs WHERE pool = ? AND parent = ?").run(pool, parent));
   }
 
+  /** Drops the records of these subagent threads, and of runs they started. */
+  forgetThreads(userId: string, pool: Pool, threads: string[]): void {
+    this.db(userId, (db) => db.prepare("DELETE FROM subagent_runs WHERE pool = @pool AND (thread IN (SELECT value FROM json_each(@t)) OR parent IN (SELECT value FROM json_each(@t)))")
+      .run({ pool, t: JSON.stringify(threads) }));
+  }
+
   private db<T>(userId: string, fn: (db: Db) => T): T {
     const db = this.users.openUserDb(userId);
     try {

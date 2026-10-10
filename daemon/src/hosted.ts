@@ -226,6 +226,27 @@ export class HostedThread {
 
   private aborted = false;
 
+  /**
+   * Changes the stored thread while holding its turn, so nothing runs
+   * meanwhile: the session closes first, so the next turn loads what is
+   * left. `change` returns the first entry number it removed. Then `then` is
+   * sent, if given. Throws while a turn runs.
+   */
+  async rewind(change: () => Promise<number>, then?: string): Promise<void> {
+    if (this.busy) throw new Busy("a turn is running: stop it or wait for it to end");
+    this.busy = true;
+    try {
+      await this.opening?.catch(() => {});
+      this.dispose();
+      const from = await change();
+      this.emit({ type: "rewound", from, ...(then !== undefined ? { resend: then } : {}) });
+    } finally {
+      this.busy = false;
+      this.startIdle();
+    }
+    if (then !== undefined) await this.send(then);
+  }
+
   /** Stop: aborts the running turn, denies waiting permission requests and drops queued messages. */
   async stop(): Promise<void> {
     for (const p of [...this.pending.values()]) p.done(false, "stopped");
@@ -445,6 +466,9 @@ export class HostedThread {
     this.clients.clear();
   }
 }
+
+/** The thread is in a turn, so it can't be changed now. */
+export class Busy extends Error {}
 
 function refusal(err: unknown): string {
   const message = (err as Error)?.message ?? String(err);

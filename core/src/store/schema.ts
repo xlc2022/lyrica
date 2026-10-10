@@ -1,7 +1,8 @@
 /** A pool database (general.db or private.db). Owned by the Memory component alone. */
 export const POOL_SCHEMA = `
--- One conversation. parent: the thread it was forked, delegated or exported from;
--- subagent: delegated, so the UI nests it under its parent.
+-- One conversation. parent: the thread it was forked, branched, delegated or exported from;
+-- subagent: delegated, so the UI shows it in its parent's chat; cut: the highest entry number
+-- a rewind removed, so entry IDs are never reused.
 CREATE TABLE IF NOT EXISTS threads (
   id         TEXT PRIMARY KEY,
   interface  TEXT NOT NULL,
@@ -10,6 +11,7 @@ CREATE TABLE IF NOT EXISTS threads (
   title      TEXT,
   hidden     INTEGER NOT NULL DEFAULT 0,
   unlogged   INTEGER NOT NULL DEFAULT 0,
+  cut        INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
 -- Pi session entries, as Pi wrote them. unlogged: written while the thread wasn't logged;
@@ -124,4 +126,5 @@ CREATE VIRTUAL TABLE IF NOT EXISTS search USING fts5 (
 /** Brings an older pool database up to POOL_SCHEMA. */
 export const POOL_UPGRADES = [
   { check: "SELECT 1 FROM pragma_table_info('threads') WHERE name = 'subagent'", sql: "ALTER TABLE threads ADD COLUMN subagent INTEGER NOT NULL DEFAULT 0" },
+  { check: "SELECT 1 FROM pragma_table_info('threads') WHERE name = 'cut'", sql: "ALTER TABLE threads ADD COLUMN cut INTEGER NOT NULL DEFAULT 0" },
 ];

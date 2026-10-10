@@ -352,6 +352,33 @@ export interface SendRequest {
 /** `/sleep` sleeps the thread's pool instead of starting a turn (see SleepRequest), and answers `sleep`. */
 export interface SendResponse { queued: boolean; sleep?: SleepStarted }
 
+/**
+ * POST /api/u/:userId/threads/:pool/:threadId/messages/:n/branch → ThreadSummary.
+ * A child thread holding the conversation up to message `n` (and its tool
+ * results), with the thread's settings; the thread itself is unchanged.
+ */
+export interface BranchRequest { title?: string }
+
+/**
+ * POST /api/u/:userId/threads/:pool/:threadId/messages/:n/rewind → RewindResponse.
+ * Removes messages as forgetting does (memory.md, "Deletion"), while holding
+ * the thread's turn: `409` while a turn runs. Notes written in them go, pages
+ * citing them are flagged, and subagents started in them are stopped and
+ * forgotten. Not in a subagent's thread.
+ */
+export interface RewindRequest {
+  /**
+   * "delete": message `n` and everything after it.
+   * "regenerate": `n` is her reply; its turn goes and its user message is sent again.
+   * "edit": `n` is the user's message; it and what followed go, and `text` is sent.
+   */
+  action: "delete" | "regenerate" | "edit";
+  text?: string;
+  /** With "regenerate": the thread's chat model from now on, checked by the router first. */
+  model?: ModelRef;
+}
+export interface RewindResponse { removed: number; subagents: number }
+
 /** POST /api/u/:userId/threads/:pool/:threadId/stop → Ok. Aborts the running turn. */
 
 /** POST /api/u/:userId/threads/:pool/:threadId/permissions/:requestId → Ok */
@@ -405,7 +432,9 @@ export type ThreadEvent =
    */
   | { type: "delegation"; event: DelegationEvent }
   /** A background run's result or question, just delivered into this thread (also stored, as a `notice` message). */
-  | { type: "notice"; text: string; runId?: string; status?: string; threads?: ThreadRef[] };
+  | { type: "notice"; text: string; runId?: string; status?: string; threads?: ThreadRef[] }
+  /** Messages from entry `from` on were removed (a rewind): drop them, and reload. `resend` is being sent now. */
+  | { type: "rewound"; from: number; resend?: string };
 
 /** Which run and subagent thread an event is about, and its parent thread. */
 export interface RunRef { userId: string; pool: Pool; parentThreadId: string; runId: string; threadId: string }
