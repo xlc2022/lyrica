@@ -91,4 +91,21 @@ owns compaction; we steer it).
 
 ## Handoff notes
 
-(The thread fills this in if it stops before it's done.)
+**Done** (feature/context): items 1 to 7 as the API, with the stored
+compaction marker shown as one line in the web UI.
+
+**Left:**
+- **Pinned messages** don't exist yet. The breakdown has a `pinned` part that
+  reads 0, and compaction keeps nothing special. When pins land: count them in
+  that part, re-inject them after a compaction, and add the brief's "keeps the
+  pinned messages" test.
+- **The context meter UI** (the facts line and its popover) and a compaction
+  marker that expands: Web UI 2.
+- **Speed in the web UI**, which the API already sends: the tok/s and prompt
+  tok/s columns in Recent calls (each call's `pace`), and each copy's median
+  speed in the text library (a library copy's `speed`). Web UI 2.
+- **Exact counts** from a host's llama.cpp `/tokenize`.
+
+**Open questions:** none blocking. `compact` is its own tool, with her summary
+as its one argument, until the Child threads thread's `threads` tool takes it
+as an action.

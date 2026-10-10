@@ -13,6 +13,13 @@ Usage: host/install.sh [options]
   --no-lan             Don't publish on the LAN (Tailscale only)
   --models DIR         The models folder (default: /srv/models)
   --vendor nvidia|amd  The GPU vendor (default: detected)
+  --amd-backend rocm|vulkan
+                       AMD only: ROCm (llama.cpp, vLLM and images) or Vulkan
+                       (llama.cpp only, for GPUs ROCm doesn't support, such as
+                       Vega or the Radeon 780M). Default: ROCm if it supports
+                       every GPU, else Vulkan
+  --hsa-override VER   AMD with ROCm only: run the GPU as a close one ROCm
+                       supports, e.g. 11.0.0 for a 780M. "none" to clear
   --tailscale NAME     Also join the tailnet as device NAME (asks for an auth key)
   --no-tailscale       Leave the tailnet
   --no-gpu             No GPU and no model servers: host-api alone (for testing)
@@ -39,6 +46,9 @@ HOST_API_IP=$(env_value HOST_API_IP)
 LAN_GIVEN=0
 MODELS=$(env_value MODELS_DIR)
 VENDOR=$(env_value GPU_VENDOR)
+AMD_BACKEND=$(env_value GPU_BACKEND)
+HSA_OVERRIDE=$(env_value HSA_OVERRIDE_GFX_VERSION)
+AMD_FLAGS=0 APU_ONLY=0 DISCRETE_SUPPORTED=0
 COMFY_GPU=$(env_value COMFY_GPU)
 TS_HOSTNAME=$(env_value TS_HOSTNAME)
 TS_AUTHKEY=$(env_value TS_AUTHKEY)
@@ -53,6 +63,8 @@ while [[ $# -gt 0 ]]; do
     --no-lan) WANT_LAN=0; LAN= ;;
     --models) MODELS=$2; shift ;;
     --vendor) VENDOR=$2; shift ;;
+    --amd-backend) AMD_BACKEND=$2; AMD_FLAGS=1; shift ;;
+    --hsa-override) HSA_OVERRIDE=$2; AMD_FLAGS=1; [[ $HSA_OVERRIDE == none ]] && HSA_OVERRIDE=; shift ;;
     --tailscale) TS_HOSTNAME=$2; shift ;;
     --no-tailscale) TS_HOSTNAME= TS_AUTHKEY= ;;
     --no-gpu) CHECK_GPU=0; VENDOR=none ;;
@@ -73,12 +85,68 @@ elif podman compose version >/dev/null 2>&1; then
 else fail "install Docker (with the compose plugin) first."
 fi
 
+# The gfx targets the llama.cpp ROCm image is built for (its
+# .devops/rocm.Dockerfile at the pinned build). vLLM's and ComfyUI's ROCm
+# images cover no more than these.
+ROCM_TARGETS=" gfx908 gfx90a gfx942 gfx1030 gfx1100 gfx1101 gfx1102 gfx1150 gfx1151 gfx1200 gfx1201 "
+# Integrated GPUs (as in host/src/gpus.ts). With a discrete GPU beside them,
+# host-api leaves them out by default, so they don't decide ROCm or Vulkan.
+APU_TARGETS=" gfx902 gfx909 gfx90c gfx1033 gfx1035 gfx1036 gfx1037 gfx1103 gfx1150 gfx1151 gfx1152 gfx1153 "
+
+# Each AMD GPU's gfx target, from the KFD topology (gfx_target_version 110003 is gfx1103).
+amd_targets() {
+  local f v
+  for f in /sys/class/kfd/kfd/topology/nodes/*/properties; do
+    v=$(awk '$1 == "gfx_target_version" { print $2 }' "$f" 2>/dev/null)
+    [[ -n $v && $v != 0 ]] || continue
+    printf 'gfx%d%x%x\n' $((v / 10000)) $((v / 100 % 100)) $((v % 100))
+  done
+}
+
+# ROCm or Vulkan: ROCm when it supports every GPU (or an override is set),
+# else Vulkan, which runs llama.cpp on any of them.
+choose_amd_backend() {
+  local targets unsupported=() t discrete=0
+  targets=$(amd_targets)
+  for t in $targets; do
+    [[ $APU_TARGETS == *" $t "* ]] && continue
+    discrete=1
+    [[ $ROCM_TARGETS == *" $t "* ]] && DISCRETE_SUPPORTED=1
+  done
+  [[ -n $targets && $discrete == 0 ]] && APU_ONLY=1
+  for t in $targets; do
+    [[ $ROCM_TARGETS == *" $t "* ]] && continue
+    [[ $discrete == 1 && $APU_TARGETS == *" $t "* ]] && { say "The integrated $t is left out by default (it can be included on the dashboard)."; continue; }
+    unsupported+=("$t")
+  done
+  [[ -n $targets ]] && say "AMD GPUs: $(paste -sd, - <<<"$targets")"
+  if [[ -z $AMD_BACKEND ]]; then
+    if [[ ! -e /dev/kfd ]]; then AMD_BACKEND=vulkan; say "No /dev/kfd (no ROCm kernel support): using Vulkan."
+    elif [[ ${#unsupported[@]} -eq 0 || -n $HSA_OVERRIDE ]]; then AMD_BACKEND=rocm
+    else
+      AMD_BACKEND=vulkan
+      say "ROCm doesn't support ${unsupported[*]}: using Vulkan, which serves llama.cpp models only (no vLLM, no images)."
+      [[ " ${unsupported[*]} " == *" gfx1103 "* ]] && say "  A 780M (gfx1103) may run ROCm as gfx1100: install.sh --amd-backend rocm --hsa-override 11.0.0"
+      [[ ${#unsupported[@]} -lt $(wc -w <<<"$targets") ]] && say "  For ROCm on the supported GPUs only: install.sh --amd-backend rocm, then leave the others out on the dashboard."
+    fi
+  fi
+  case $AMD_BACKEND in
+    rocm) [[ -e /dev/kfd ]] || fail "ROCm needs /dev/kfd: install the amdgpu driver with ROCm support, or use --amd-backend vulkan." ;;
+    vulkan) [[ -z $HSA_OVERRIDE ]] || { say "--hsa-override is for ROCm; ignoring it with Vulkan."; HSA_OVERRIDE=; } ;;
+    *) fail "--amd-backend must be rocm or vulkan." ;;
+  esac
+  [[ -z $HSA_OVERRIDE || $HSA_OVERRIDE =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "--hsa-override looks like 11.0.0."
+  [[ -n $HSA_OVERRIDE && $DISCRETE_SUPPORTED == 1 ]] &&
+    say "Warning: the override applies to every GPU, including the discrete GPU ROCm already supports, which it may break. Leave it unset unless every GPU needs it."
+  say "AMD backend: $AMD_BACKEND${HSA_OVERRIDE:+ (HSA_OVERRIDE_GFX_VERSION=$HSA_OVERRIDE)}"
+}
+
 # The GPU, its driver, and the container engine's GPU support.
 if [[ $CHECK_GPU == 1 ]]; then
   if [[ -z $VENDOR || $VENDOR == none ]]; then
     if command -v nvidia-smi >/dev/null; then VENDOR=nvidia
-    elif [[ -e /dev/kfd ]]; then VENDOR=amd
-    else fail "no NVIDIA or AMD GPU found (no nvidia-smi, no /dev/kfd). Install the GPU driver first."
+    elif [[ -e /dev/kfd ]] || lsmod | grep -q '^amdgpu'; then VENDOR=amd
+    else fail "no NVIDIA or AMD GPU found (no nvidia-smi, no amdgpu driver). Install the GPU driver first."
     fi
   fi
   case $VENDOR in
@@ -88,8 +156,9 @@ if [[ $CHECK_GPU == 1 ]]; then
         fail "Docker has no NVIDIA support. Install nvidia-container-toolkit and run: sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker"
       say "GPUs: $(nvidia-smi --query-gpu=name --format=csv,noheader | paste -sd, -)" ;;
     amd)
-      [[ -e /dev/kfd ]] && compgen -G '/dev/dri/renderD*' >/dev/null || fail "no /dev/kfd or /dev/dri/renderD*: install the amdgpu driver (ROCm)."
-      lsmod | grep -q '^amdgpu' || fail "the amdgpu kernel module isn't loaded." ;;
+      compgen -G '/dev/dri/renderD*' >/dev/null || fail "no /dev/dri/renderD*: install the amdgpu driver."
+      lsmod | grep -q '^amdgpu' || fail "the amdgpu kernel module isn't loaded."
+      choose_amd_backend ;;
     *) fail "--vendor must be nvidia or amd." ;;
   esac
 fi
@@ -130,7 +199,18 @@ fi
 [[ $WANT_LAN == 1 || -n $TS_HOSTNAME ]] || fail "with --no-lan, use --tailscale: otherwise nothing can reach the host."
 
 FILES=compose.yaml
-[[ $VENDOR == nvidia || $VENDOR == amd ]] && FILES+=:compose.$VENDOR.yaml
+if [[ $VENDOR != amd ]]; then
+  [[ $AMD_FLAGS == 0 ]] || fail "--amd-backend and --hsa-override are for AMD GPUs only."
+  AMD_BACKEND= HSA_OVERRIDE=
+fi
+# An APU alone on ROCm: llama.cpp uses unified memory to reach the shared memory.
+UNIFIED=
+[[ $VENDOR == amd && $AMD_BACKEND == rocm && $APU_ONLY == 1 ]] && UNIFIED=1
+[[ $VENDOR == nvidia ]] && FILES+=:compose.nvidia.yaml
+[[ $VENDOR == amd && $AMD_BACKEND == vulkan ]] && FILES+=:compose.vulkan.yaml
+[[ $VENDOR == amd && $AMD_BACKEND != vulkan ]] && FILES+=:compose.amd.yaml
+[[ -n $HSA_OVERRIDE ]] && FILES+=:compose.hsa.yaml
+[[ -n $UNIFIED ]] && FILES+=:compose.apu.yaml
 RENDER_GID=$(getent group render 2>/dev/null | cut -d: -f3 || true)
 [[ $WANT_LAN == 1 ]] && FILES+=:compose.lan.yaml
 [[ -n $TS_HOSTNAME ]] && FILES+=:compose.tailscale.yaml
@@ -158,6 +238,9 @@ EDGE_SUBNET=$EDGE_SUBNET
 HOST_API_IP=$HOST_API_IP
 MODELS_DIR=$MODELS
 GPU_VENDOR=$VENDOR
+GPU_BACKEND=$AMD_BACKEND
+HSA_OVERRIDE_GFX_VERSION=$HSA_OVERRIDE
+LLAMA_UNIFIED_MEMORY=$UNIFIED
 COMFY_GPU=${COMFY_GPU:-0}
 RENDER_GID=${RENDER_GID:-}
 COMPOSE_FILE=$FILES

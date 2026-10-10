@@ -54,6 +54,8 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     }
     case "reset":
       return { ...s, items: [], ended: 0, reload: s.reload + 1 };
+    case "rewound":
+      return { ...s, items: [], ended: 0, errors: [], reload: s.reload + 1 };
     case "sent":
       return { ...s, items: [...s.items, { role: "user", text: e.text }] };
     case "turn_start":
@@ -105,7 +107,10 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       const { threadId, type } = e.event;
       return STORED.includes(type) ? { ...s, subagents: { ...s.subagents, [threadId]: (s.subagents[threadId] ?? 0) + 1 } } : s;
     }
+    // The context meter and the compaction marker are the Web UI 2 thread's to show; a compaction appears when the messages reload.
     case "usage":
+    case "context":
+    case "compacted":
       return s;
   }
 }

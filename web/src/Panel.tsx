@@ -19,7 +19,6 @@ const TASKS: { task: Task; label: string }[] = [
   { task: "chat", label: "Main conversation" },
   { task: "subagent.cheap", label: "Cheap subagents" },
   { task: "subagent.strong", label: "Strong subagents" },
-  { task: "compaction", label: "Compaction" },
   { task: "title", label: "Titles" },
   { task: "embedding", label: "Embeddings" },
   { task: "sleep.consolidate", label: "Sleep: consolidate" },

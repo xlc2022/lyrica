@@ -240,8 +240,8 @@ judgment and make review easy. Each thread has a **mode**:
   can change files too.
 - **Accept edits** (`acceptEdits`): asks before `bash`.
 - **Plan** (`plan`): only `read`, `recall`, `read_memory`, `web_search`,
-  `web_fetch`, `delegate` with read-only roles, and `propose_plan` are
-  active.
+  `web_fetch`, `delegate` with read-only roles, `compact` and `propose_plan`
+  are active.
 - **Auto** (`auto`, the default): works freely inside the grants.
 
 A new thread starts in the user's default mode (`defaultMode`,
@@ -263,7 +263,8 @@ set again before every turn and when a plan is approved.
 `propose_plan({ plan })` shows the plan through the same path as an approval
 (`proposePlan`): the user picks Ask, Accept edits or Auto to go ahead in, or
 keeps planning. Approving switches the thread's mode (`setMode`), turns the
-tools back on, and she carries on with the plan in the same turn. A subagent
+tools back on, and she carries on with the plan in the same turn. A branch
+of a thread in Plan mode stays in Plan mode, and she is told so. A subagent
 has no `propose_plan` and can't change its mode. Without `lyricad`, Pi's own
 UI asks; with no UI she keeps planning.
 

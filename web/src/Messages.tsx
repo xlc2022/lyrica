@@ -6,6 +6,7 @@ import { MODES } from "./Modes.tsx";
 import { href, idHref } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
 import type { useThread } from "./stream.ts";
+import { EditBox, MessageMenu, type Rewinder } from "./Rewind.tsx";
 import { ErrorText, Prose, useAction } from "./ui.tsx";
 
 interface Props {
@@ -16,9 +17,13 @@ interface Props {
   /** A subagent's thread: its messages say who sent them, and its replies are the subagent's. */
   subagent: boolean;
   thread: ReturnType<typeof useThread>;
+  /** Branch, regenerate, edit and delete; not in a subagent's thread. */
+  rewinder?: Rewinder;
+  /** Messages from here on are being deleted (waiting for Undo). */
+  hideFrom?: number;
 }
 
-export function Conversation({ ctx, pool, base, threadId, subagent, thread }: Props) {
+export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewinder, hideFrom }: Props) {
   const { messages, live, hasMore, loadOlder, loaded } = thread;
   const [run, loading, error] = useAction();
   // Expanded tool markers, by call ID, so they stay open when the stored copy replaces the live one.
@@ -29,15 +34,16 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread }: Pr
   const show = (id: string, on: boolean) => setShown((o) => { const n = new Set(o); if (on) n.add(id); else n.delete(id); return n; });
   const env: Env = {
     userId: ctx.user.id, you: ctx.user.displayName, pool, base, threadId, subagent, openTools, toggleTool,
-    permissions: live.permissions, ticks: live.subagents, show,
+    permissions: live.permissions, ticks: live.subagents, show, rewinder,
   };
+  const shownMessages = hideFrom === undefined ? messages : messages.filter((m) => m.n < hideFrom);
   return (
     <>
       {hasMore && <button type="button" className="older" disabled={loading} onClick={() => run(loadOlder)}>Show earlier messages</button>}
       <ErrorText error={error} />
       {loaded && !messages.length && !live.items.length && <p className="muted empty">Say hello.</p>}
-      {messages.map((m) => <StoredMessage key={m.id} m={m} env={env} you={ctx.user.displayName} />)}
-      {live.items.map((item, i) => (
+      {shownMessages.map((m) => <StoredMessage key={m.id} m={m} env={env} you={ctx.user.displayName} />)}
+      {hideFrom === undefined && live.items.map((item, i) => (
         <LiveMessage key={`live-${i}`} item={item} env={env} you={ctx.user.displayName} streaming={live.busy && i === live.items.length - 1} />
       ))}
       {live.busy && !live.items.some((x) => x.role === "assistant") && <p className="thinking-dots" role="status">Lyrica is thinking…</p>}
@@ -68,21 +74,22 @@ interface Env {
   ticks: Record<string, number>;
   /** A delegate card shows or hides a subagent's work. */
   show: (threadId: string, on: boolean) => void;
+  rewinder?: Rewinder;
 }
 
 function StoredMessage({ m, env, you }: { m: Message; env: Env; you: string }) {
   if (m.role === "user") {
     const who = m.from?.kind === "lyrica" ? "Lyrica" : m.from?.kind === "user" ? (m.from.name || you) : you;
-    return <UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} />;
+    return <UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} />;
   }
   if (m.role === "notice") {
     return <>{m.parts.map((p, i) => (p.type === "delegation"
       ? <Notice key={i} text={p.text} status={p.status} threads={p.threads} env={env} />
-      : <Notice key={i} text={p.type === "text" ? p.text : ""} env={env} />))}</>;
+      : <Notice key={i} text={p.type === "text" ? p.text : p.type === "compacted" ? compactedLabel(p) : ""} env={env} />))}</>;
   }
   return (
     <>
-      <Parts parts={m.parts} env={env} model={m.model} />
+      <Parts parts={m.parts} env={env} model={m.model} n={m.n} />
       {m.error && <p className="error turn-error">{m.error}</p>}
     </>
   );
@@ -94,17 +101,21 @@ function LiveMessage({ item, env, you, streaming }: { item: LiveItem; env: Env; 
   return <Parts parts={item.parts} env={env} model={item.model} streaming={streaming} />;
 }
 
-function UserMessage({ text, you }: { text: string; you: string }) {
+function UserMessage({ text, you, n, rewinder }: { text: string; you: string; n?: number; rewinder?: Rewinder }) {
+  const [editing, setEditing] = useState(false);
+  const menu = rewinder && n !== undefined;
   return (
     <div className="msg user">
-      <div className="who">{you}</div>
-      <div className="body">{text}</div>
+      <div className="who">{you}{menu && <MessageMenu n={n} role="user" rewinder={rewinder} onEdit={() => setEditing(true)} />}</div>
+      {editing && menu
+        ? <EditBox text={text} onCancel={() => setEditing(false)} onSend={(t) => { setEditing(false); rewinder.rewind(n, { action: "edit", text: t }, n); }} />
+        : <div className="body">{text}</div>}
     </div>
   );
 }
 
 /** Her message: prose for text, one-line markers for everything else. */
-function Parts({ parts, env, model, streaming }: { parts: MessagePart[]; env: Env; model?: string; streaming?: boolean }) {
+function Parts({ parts, env, model, streaming, n }: { parts: MessagePart[]; env: Env; model?: string; streaming?: boolean; n?: number }) {
   const out: React.ReactNode[] = [];
   let prose: string[] = [];
   const flush = (key: number, last: boolean) => {
@@ -130,7 +141,10 @@ function Parts({ parts, env, model, streaming }: { parts: MessagePart[]; env: En
   const who = env.subagent ? "Subagent" : "Lyrica";
   return (
     <section className="turn" aria-label={model ? `${who} (${model})` : who}>
-      <div className="who">{who}{model && <span className="muted"> · {model}</span>}</div>
+      <div className="who">
+        {who}{model && <span className="muted"> · {model}</span>}
+        {env.rewinder && n !== undefined && <MessageMenu n={n} role="assistant" rewinder={env.rewinder} />}
+      </div>
       {out}
     </section>
   );
@@ -225,7 +239,7 @@ function Transcript({ thread, env }: { thread: ThreadRef; env: Env }) {
     );
     return () => { current = false; };
   }, [env.userId, thread.pool, thread.id, tick]);
-  const inner = { ...env, pool: thread.pool, threadId: thread.id, subagent: true };
+  const inner = { ...env, pool: thread.pool, threadId: thread.id, subagent: true, rewinder: undefined };
   return (
     <div className="transcript" aria-label="The subagent's work">
       <ErrorText error={error} />
@@ -345,4 +359,10 @@ function useCountdown(iso: string) {
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
   const s = Math.max(0, Math.round((Date.parse(iso) - now) / 1000));
   return s > 0 ? `Denied in ${s >= 60 ? `${Math.floor(s / 60)} min ` : ""}${s % 60} s if nobody answers` : "Denying…";
+}
+
+const tokens = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
+/** A compaction as one line until the Web UI 2 thread's marker, which expands to the summary. */
+function compactedLabel(p: { before: number; after?: number }): string {
+  return `Compacted · ${tokens(p.before)}${p.after !== undefined ? ` → ${tokens(p.after)}` : ""}`;
 }

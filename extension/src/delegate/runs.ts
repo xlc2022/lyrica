@@ -592,6 +592,19 @@ export class Delegation {
     this.store.forget(userId, pool, threadId);
   }
 
+  /**
+   * Before a rewind forgets subagent threads (and those they started):
+   * stops every run with a subagent among them, and drops their records.
+   */
+  async forgetSubagents(userId: string, pool: Pool, threads: string[]): Promise<void> {
+    const doomed = new Set(threads);
+    const runs = [...this.live.values()].filter((r) => r.parent.user.id === userId && r.parent.pool === pool
+      && (doomed.has(r.parent.threadId) || r.subagents.some((s) => doomed.has(s.ctx.threadId))));
+    for (const r of runs) r.stop("parent_changed", "the turns that started it were removed");
+    await Promise.all(runs.map((r) => r.ended));
+    this.store.forgetThreads(userId, pool, threads);
+  }
+
   /** Why a subagent may no longer go on, if its parent thread changed under it. */
   parentChanged(sub: Subagent): string | undefined {
     const { user, pool, threadId } = sub.run.parent;

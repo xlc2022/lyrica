@@ -60,8 +60,8 @@ const ASKS: Record<PermissionMode, string[]> = {
   plan: [],
 };
 
-/** The only tools Plan mode leaves on: the ones that read, read-only delegation, and propose_plan. */
-export const PLAN_TOOLS: ReadonlySet<string> = new Set(["read", "recall", "read_memory", "web_search", "web_fetch", "delegate", "ask_parent", "propose_plan"]);
+/** The only tools Plan mode leaves on: the ones that read, read-only delegation, compacting her own context, and propose_plan. */
+export const PLAN_TOOLS: ReadonlySet<string> = new Set(["read", "recall", "read_memory", "web_search", "web_fetch", "delegate", "ask_parent", "compact", "propose_plan"]);
 
 /** The tools each switch turns off. */
 export const SWITCHED_TOOLS = { webSearch: ["web_search", "web_fetch"], images: ["image"] } as const;
@@ -119,7 +119,12 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         async execute(id, p, _signal, _update, ctx) {
           const mode = tools.proposePlan ? await tools.proposePlan({ toolCallId: id, plan: p.plan }) : await choose(ctx, p.plan);
           if (!mode) return text("Not approved yet: keep planning. Ask what to change, or improve the plan.");
-          setMode(mode);
+          try {
+            setMode(mode);
+          } catch (err) {
+            // A branch can't be less strict than the thread it came from.
+            return text(`Approved, but this thread can't leave Plan mode: ${(err as Error).message}.`);
+          }
           // Pi reads the active tools again before her next step, so she can carry on in this turn.
           gate(ctx);
           return text(`Approved. The thread is in ${LABELS[mode]} mode now: go ahead with the plan.`);

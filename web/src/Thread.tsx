@@ -1,6 +1,8 @@
 // One thread: header with its badges, the conversation, and the composer.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { get, patch, post, threadPath, type Pool, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary } from "./api.ts";
+import { get, patch, post, threadPath, type Pool, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary } from "./api.ts";
+import { useUndo, type Rewinder } from "./Rewind.tsx";
+import { go } from "./route.ts";
 import { useThread } from "./stream.ts";
 import { Conversation, MessageBox } from "./Messages.tsx";
 import { Composer } from "./Composer.tsx";
@@ -60,6 +62,31 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
   };
 
   const s = summary.data;
+  // Branch, regenerate, edit and delete, from each message's menu. Deleting waits for Undo.
+  const { pending, later, undo } = useUndo();
+  const rewind = (n: number, req: RewindRequest) => post(`${base}/messages/${n}/rewind`, req).catch((e: Error) => setSendError(e.message));
+  const rewinder: Rewinder | undefined = s && !s.subagent ? {
+    settings: settings.data,
+    busy: t.live.busy,
+    lastTurn: t.messages.findLast((m) => m.role === "user")?.n,
+    branch: (n) => {
+      setSendError("");
+      post<ThreadSummary>(`${base}/messages/${n}/branch`).then((b) => { refreshThreads(); go({ page: "thread", userId, pool, threadId: b.id }); },
+        (e: Error) => setSendError(e.message));
+    },
+    rewind: (n, req, hide) => {
+      setSendError("");
+      const last = t.messages.findLast((m) => m.role === "user")?.n;
+      // What is sent again: the edited text, or the question her reply answered.
+      const resend = req.action === "edit" ? req.text : req.action === "regenerate"
+        ? t.messages.filter((m) => m.n < n && m.role === "user" && !m.from).at(-1)?.parts.map((p) => (p.type === "text" ? p.text : "")).join("") : undefined;
+      const go = () => { t.willResend(resend); void rewind(n, req); };
+      // Removing turns waits for Undo; regenerating or editing the last turn goes at once.
+      if (req.action === "delete") later(n === last ? "Turn deleted" : "Messages deleted", hide, go);
+      else if (last !== undefined && n < last) later(req.action === "edit" ? "Message edited" : "Regenerating", hide, go);
+      else go();
+    },
+  } : undefined;
   const parent = s?.parent ? findThread(threads, pool, s.parent) : undefined;
   const title = t.live.title || s?.title || "New thread";
   const scroller = useStickyScroll([t.messages, t.live]);
@@ -72,7 +99,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
           <h1>{title}</h1>
           <div className="badges">
             <span className="badge" data-kind={pool === "private" ? "private" : "general"}><span className="k">{pool}</span></span>
-            {settings.data && <ModelBadge base={base} settings={settings.data} onChange={settings.set} readOnly={!!settings.data.parent} />}
+            {settings.data && <ModelBadge base={base} settings={settings.data} onChange={settings.set} readOnly={!!s?.subagent} />}
             {settings.data?.localOnly && pool === "general" && <span className="badge"><span className="k local">local-only</span></span>}
             {settings.data?.grants.map((g) => (
               <span key={g.path} className="badge folder" title={g.path}>{g.path} <span className="muted">{g.writable ? "rw" : "ro"}</span></span>
@@ -87,15 +114,21 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
         )}
       </header>
       {parent && (
-        <p className="subnote">Subagent of <a href={`#/u/${encodeURIComponent(userId)}/t/${pool}/${encodeURIComponent(parent.id)}`}>{parent.title || "its thread"}</a></p>
+        <p className="subnote">{s?.subagent ? "Subagent of" : "Branched from"} <a href={`#/u/${encodeURIComponent(userId)}/t/${pool}/${encodeURIComponent(parent.id)}`}>{parent.title || "its thread"}</a></p>
       )}
       <div className="scroll" ref={scroller}>
         <ErrorText error={summary.error || t.loadError} />
         {settings.error && <ErrorText error={`This thread's settings didn't load: ${settings.error}`} />}
-        <Conversation ctx={ctx} pool={pool} base={base} threadId={threadId} subagent={!!s?.subagent} thread={t} />
+        <Conversation ctx={ctx} pool={pool} base={base} threadId={threadId} subagent={!!s?.subagent} thread={t} rewinder={rewinder} hideFrom={pending?.hide} />
         <ErrorText error={sendError} />
       </div>
       {!t.connected && <p className="offline" role="status">Reconnecting…</p>}
+      {pending && (
+        <div className="toast" role="status">
+          <span>{pending.label}</span>
+          <button type="button" className="link" onClick={undo}>Undo</button>
+        </div>
+      )}
       {/* A subagent's thread is its transcript and a message box, as in its delegate card. */}
       {s?.subagent
         ? <div className="composer sub-composer"><MessageBox thread={{ pool, id: threadId }} env={{ userId }} onSent={() => t.dispatch({ type: "refresh" })} /></div>

@@ -1,0 +1,14 @@
+# ROCm on a GPU it doesn't list, run as a close one it does: install.sh adds
+# this file when HSA_OVERRIDE_GFX_VERSION is set in .env (for example 11.0.0
+# for a 780M, gfx1103, to run as gfx1100). Unsupported by AMD; it works for
+# some chips and not others.
+services:
+  llamacpp:
+    environment:
+      HSA_OVERRIDE_GFX_VERSION: ${HSA_OVERRIDE_GFX_VERSION:?set in .env}
+  vllm:
+    environment:
+      HSA_OVERRIDE_GFX_VERSION: ${HSA_OVERRIDE_GFX_VERSION:?set in .env}
+  comfyui:
+    environment:
+      HSA_OVERRIDE_GFX_VERSION: ${HSA_OVERRIDE_GFX_VERSION:?set in .env}
