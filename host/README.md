@@ -11,7 +11,8 @@ Docker Compose stack that Lyrica reaches over mutual TLS after pairing.
 The machine needs:
 - Debian or Ubuntu (other Linux distributions should work), with iptables;
 - the GPU driver;
-- Docker with the compose plugin, or Podman with a compose provider;
+- Docker with the compose plugin, and its iptables firewall backend (the
+  default). Podman isn't supported yet;
 - the container runtime's GPU support. For NVIDIA, that's
   `nvidia-container-toolkit`.
 
@@ -162,8 +163,10 @@ revoked. A revoked server must pair again.
       every connection host-api starts, to the internet or to this
       machine, including DNS for outside names.
     - `install.sh` applies the rules before starting the stack, and installs
-      `lyrica-host-egress.service`, which applies them again after every
-      reboot and Docker restart.
+      `lyrica-host-egress.service`, which applies them before Docker starts
+      at boot, and again on every Docker restart.
+    - host-api's DNS server is a blackhole address: container names still
+      resolve, outside names never do. Its networks have no IPv6.
     - Without systemd, run `host/egress.sh apply` yourself after each.
     - `install.sh` checks that host-api can't connect out, and stops it
       if it can.
@@ -180,6 +183,6 @@ revoked. A revoked server must pair again.
   `install.sh`, and CI builds it on every pull request.
 - `test/stack/network.sh` checks the network layout on a running stack.
 
-Podman is supported by `install.sh` but hasn't been tested. The local
-dashboard's address check and the egress rules assume Docker's port
-publishing and its iptables firewall backend.
+The local dashboard's address check and the egress rules assume Docker's
+port publishing and its iptables firewall backend. After a firewall reload
+that flushes INPUT, run `systemctl restart lyrica-host-egress`.

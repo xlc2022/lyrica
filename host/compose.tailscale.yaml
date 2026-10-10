@@ -6,9 +6,11 @@
 # internal network (tailscale-api). host-api's only route stays edge, so
 # tailscale can't carry host-api's traffic out, and has no capabilities to.
 networks:
-  tailnet: {}
+  tailnet:
+    enable_ipv6: false
   tailscale-api:
     internal: true
+    enable_ipv6: false
 
 services:
   tailscale:

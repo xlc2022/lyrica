@@ -65,10 +65,11 @@ done
 
 [[ $(uname -s) == Linux ]] || fail "the model host runs on Linux only."
 
-# The container engine: Docker, or Podman with a compose provider.
-if docker compose version >/dev/null 2>&1; then COMPOSE=(docker compose); ENGINE=docker
-elif podman compose version >/dev/null 2>&1; then COMPOSE=(podman compose); ENGINE=podman
-else fail "install Docker (with the compose plugin) or Podman with podman-compose first."
+# The container engine: Docker, with its iptables firewall backend.
+if docker compose version >/dev/null 2>&1; then COMPOSE=(docker compose)
+elif podman compose version >/dev/null 2>&1; then
+  fail "Podman isn't supported yet: host-api's egress rules need Docker's DOCKER-USER chain. Install Docker with the compose plugin."
+else fail "install Docker (with the compose plugin) first."
 fi
 
 # The GPU, its driver, and the container engine's GPU support.
@@ -82,13 +83,8 @@ if [[ $CHECK_GPU == 1 ]]; then
   case $VENDOR in
     nvidia)
       nvidia-smi -L >/dev/null 2>&1 || fail "nvidia-smi can't talk to the driver. Install or fix the NVIDIA driver."
-      if [[ $ENGINE == docker ]]; then
-        docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q nvidia || ls /etc/cdi/nvidia*.yaml /var/run/cdi/nvidia*.yaml >/dev/null 2>&1 ||
-          fail "Docker has no NVIDIA support. Install nvidia-container-toolkit and run: sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker"
-      else
-        ls /etc/cdi/nvidia*.yaml /var/run/cdi/nvidia*.yaml >/dev/null 2>&1 ||
-          fail "Podman needs NVIDIA's CDI spec. Install nvidia-container-toolkit and run: sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml"
-      fi
+      docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q nvidia || ls /etc/cdi/nvidia*.yaml /var/run/cdi/nvidia*.yaml >/dev/null 2>&1 ||
+        fail "Docker has no NVIDIA support. Install nvidia-container-toolkit and run: sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker"
       say "GPUs: $(nvidia-smi --query-gpu=name --format=csv,noheader | paste -sd, -)" ;;
     amd)
       [[ -e /dev/kfd ]] && compgen -G '/dev/dri/renderD*' >/dev/null || fail "no /dev/kfd or /dev/dri/renderD*: install the amdgpu driver (ROCm)."
@@ -176,6 +172,8 @@ SUDO=()
 # host-api may start no connection: apply the rules before it starts, and keep
 # them across reboots and Docker restarts with a systemd unit.
 command -v iptables >/dev/null || fail "iptables is needed to keep host-api without a route out."
+[[ $(docker info --format '{{.FirewallBackend.Driver}}' 2>/dev/null) == nftables ]] &&
+  fail "Docker uses its nftables firewall backend, which egress.sh doesn't support yet. Use the iptables backend."
 "${SUDO[@]}" ./egress.sh apply "$HOST_API_IP"
 if [[ -d /run/systemd/system ]]; then
   sed "s#@HOST_DIR@#$PWD#g" lyrica-host-egress.service | "${SUDO[@]}" tee /etc/systemd/system/lyrica-host-egress.service >/dev/null

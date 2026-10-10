@@ -199,6 +199,24 @@ describe("pause", () => {
   });
 });
 
+describe("pause during a restart", () => {
+  it("wins: the host ends paused with nothing loaded", async () => {
+    const { scheduler, gpus, llamacpp } = setup([24]);
+    await scheduler.start([]);
+    const pinned = textModel("pinned", 2);
+    await scheduler.pin(pinned, 0, true);
+    llamacpp.loadMs = 50;
+    const restarting = scheduler.restart([pinned]);
+    await scheduler.pause();
+    await restarting;
+    await until(() => scheduler.runState === "paused");
+    await new Promise((r) => setTimeout(r, 100));
+    expect(scheduler.runState).toBe("paused");
+    expect(gpus.loaded.size).toBe(0);
+    expect((await scheduler.run(pinned, "chat", async () => {}).catch((e) => e)).code).toBe("paused");
+  });
+});
+
 describe("requests", () => {
   it("drops a queued request whose client has gone, without loading its model", async () => {
     const { scheduler, llamacpp } = setup([24]);
