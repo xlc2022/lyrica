@@ -1,0 +1,37 @@
+# Makes the stack a tailnet device of its own. Port 7236 is passed through
+# to host-api (mutual TLS stays end to end); 443 serves the dashboard with
+# Tailscale's certificate. The auth key is used once and never logged.
+#
+# tailscale has its own route out (tailnet) and reaches host-api over an
+# internal network (tailscale-api). host-api's only route stays edge, so
+# tailscale can't carry host-api's traffic out, and has no capabilities to.
+networks:
+  tailnet:
+    enable_ipv6: false
+  tailscale-api:
+    internal: true
+    enable_ipv6: false
+
+services:
+  tailscale:
+    image: tailscale/tailscale:v1.102.4@sha256:2667499ed87ae29218f292556ba062918402dd5e92e93637af14867e4df12dd3
+    restart: unless-stopped
+    hostname: ${TS_HOSTNAME:?set TS_HOSTNAME}
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - tailscale:/var/lib/tailscale
+      - ./tailscale/serve.json:/config/serve.json:ro
+    networks: [tailnet, tailscale-api]
+
+  host-api:
+    networks:
+      tailscale-api: {}
+
+volumes:
+  tailscale: {}

@@ -1,0 +1,57 @@
+# The model host. Run through install.sh, which writes .env (including
+# COMPOSE_FILE, which adds compose.lan.yaml and compose.tailscale.yaml).
+#
+# Networks. host-api sees every prompt, so it has no route out:
+# - models: internal, no route out. host-api and the model servers.
+# - edge: host-api alone, where the published ports arrive. Docker doesn't
+#   masquerade it, and egress.sh (run by install.sh and a systemd unit)
+#   drops every new connection host-api starts.
+name: lyrica-host
+
+networks:
+  models:
+    internal: true
+    enable_ipv6: false
+  edge:
+    # IPv4 only: the egress rules are iptables (IPv4) rules.
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: ${EDGE_SUBNET:?run install.sh}
+
+volumes:
+  data: {}
+
+services:
+  host-api:
+    build:
+      context: ..
+      dockerfile: host/Dockerfile
+    image: lyrica-host-api:local
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      HOST_NAME: ${HOST_NAME:?run install.sh}
+      HOST_NAMES: ${LAN_ADDRESS:-},host-api
+      TAILNET_NAME: ${TS_HOSTNAME:-}
+      MODELS_HOST_PATH: ${MODELS_DIR:?run install.sh}
+      HOST_VERSION: ${HOST_VERSION:-dev}
+    volumes:
+      - data:/data
+      - ${MODELS_DIR}:/models:ro
+    networks:
+      models: {}
+      edge:
+        ipv4_address: ${HOST_API_IP:?run install.sh}
+    # Container names still resolve (Docker's resolver answers those itself);
+    # any other name is sent to a documentation address that answers nothing,
+    # so it can't be forwarded out from wherever Docker's resolver runs.
+    dns: [192.0.2.1]
+    ports:
+      # The dashboard at the machine. Everything else is in compose.lan.yaml
+      # or reached through the tailscale service.
+      - "127.0.0.1:7236:7080"

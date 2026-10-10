@@ -1,0 +1,6 @@
+{
+  // host-api runs under Node's type stripping, so only erasable syntax is allowed.
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "erasableSyntaxOnly": true },
+  "include": ["src", "test"]
+}
