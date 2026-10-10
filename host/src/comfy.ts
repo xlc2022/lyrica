@@ -9,15 +9,19 @@ import type { Backend } from "./backends.ts";
 const BLANK = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 
 const unavailable = () => new HostError(503, "unavailable", "ComfyUI didn't answer.");
+/** How long one request to ComfyUI may take, outside the job itself: a ComfyUI that hangs fails the job rather than the queue. */
+const CALL_MS = 30_000;
 
 export class Comfy implements Backend {
   private readonly base: string;
   private readonly timeoutMs: number;
+  private readonly callMs: number;
   private queue: Promise<unknown> = Promise.resolve();
 
-  constructor(base: string, timeoutMs = 30 * 60_000) {
+  constructor(base: string, timeoutMs = 30 * 60_000, callMs = CALL_MS) {
     this.base = base;
     this.timeoutMs = timeoutMs;
+    this.callMs = callMs;
   }
 
   /** Runs jobs one after another. */
@@ -31,7 +35,7 @@ export class Comfy implements Backend {
     const form = new FormData();
     form.append("image", new Blob([png]), name);
     form.append("overwrite", "true");
-    const res = await fetch(`${this.base}/upload/image`, { method: "POST", body: form }).catch(() => {
+    const res = await fetch(`${this.base}/upload/image`, { method: "POST", body: form, signal: AbortSignal.timeout(this.callMs) }).catch(() => {
       throw unavailable();
     });
     if (!res.ok) throw new HostError(400, "invalid", "ComfyUI couldn't read that image.");
@@ -60,8 +64,9 @@ export class Comfy implements Backend {
         ws = socket;
         socket.binaryType = "arraybuffer";
         await new Promise<void>((resolve, reject) => {
-          socket.onopen = () => resolve();
-          socket.onerror = () => reject(unavailable());
+          const opening = setTimeout(() => reject(unavailable()), this.callMs);
+          socket.onopen = () => { clearTimeout(opening); resolve(); };
+          socket.onerror = () => { clearTimeout(opening); reject(unavailable()); };
         });
         let timer: NodeJS.Timeout | undefined;
         let onAbort = () => {};
@@ -97,7 +102,7 @@ export class Comfy implements Backend {
           const res = await fetch(`${this.base}/prompt`, {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ prompt, client_id: clientId }),
+            body: JSON.stringify({ prompt, client_id: clientId }), signal: AbortSignal.timeout(this.callMs),
           }).catch(() => {
             throw unavailable();
           });
@@ -128,7 +133,7 @@ export class Comfy implements Backend {
   }
 
   private async post(path: string, body: object): Promise<void> {
-    await fetch(`${this.base}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => {});
+    await fetch(`${this.base}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(this.callMs) }).catch(() => {});
   }
 
   /** Frees ComfyUI's GPU memory. */

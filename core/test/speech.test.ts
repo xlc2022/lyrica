@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CloudModelForbidden, NoModel, SpeechDown, VoiceCloudOff, type CallContext } from "../src/index.ts";
+import { CloudModelForbidden, NoModel, Offline, VoiceCloudOff, type CallContext } from "../src/index.ts";
 import { fakeHost } from "./fake-host.ts";
 import { deadUrl } from "./fake-openai.ts";
 import { fakeSpeech, wav } from "./fake-speech.ts";
@@ -114,19 +114,9 @@ describe("speech fallbacks", () => {
     // Every cloud model down: a plain refusal, not the local model and not a crash.
     spare.fail(502);
     s.models.setProfile(s.li.id, "cloud", "speech.speak", [tts]);
-    await expect(s.models.speak(general, "Hello again.")).rejects.toThrow(SpeechDown);
-    await expect(s.models.speak(general, "Hello again.")).rejects.toThrow(/^Read aloud can't be reached now/);
-    expect(s.models.speechModel("speech.speak", general)).toMatchObject({ reason: "down" });
+    await expect(s.models.speak(general, "Hello again.")).rejects.toThrow(Offline);
+    await expect(s.models.speak(general, "Hello again.")).rejects.toThrow(/^no model for speech.speak can be reached now/);
     expect(s.speech.server.heard).toEqual([]);
-  });
-
-  it("skips only the model when a host says that model can't answer, so the endpoint's chat model still can", async () => {
-    const s = await setup();
-    s.speech.server.fail(503, { error: { code: "model_unavailable", message: "The speech server isn't running." } });
-    const ctx = s.ctx({ pool: "private", localOnly: true });
-    await expect(s.models.speak(ctx, "Hello.")).rejects.toThrow(/Read aloud can't be reached now \(speech\/kokoro: The speech server isn't running\.\)/);
-    // Its other models are still fine.
-    expect(s.models.speechModel("speech.transcribe", ctx)).toMatchObject({ label: "speech/whisper-large-v3-turbo" });
   });
 
   it("refuses what a model refuses, plainly, without falling back", async () => {
@@ -134,6 +124,7 @@ describe("speech fallbacks", () => {
     s.speech.server.fail(400, { error: { message: "unsupported audio" } });
     const ctx = s.ctx({ pool: "private", localOnly: true });
     await expect(s.models.transcribe(ctx, wav(1))).rejects.toThrow("speech refused the request (400: unsupported audio)");
+    expect(s.speech.server.heard).toEqual([]); // the fake refused before recording; nothing else was tried
     expect(s.models.speechModel("speech.transcribe", ctx)).toMatchObject({ label: "speech/whisper-large-v3-turbo" });
     await expect(s.models.transcribe(ctx, Buffer.from("not a wav file at all, just some text"))).rejects.toThrow(/isn't PCM WAV/);
   });
@@ -180,7 +171,7 @@ describe("speaking", () => {
     expect(() => s.models.setOfferingSettings(s.li, tts.offeringId, { voices: { chinese: "x" } })).toThrow(/language tags/);
   });
 
-  it("reads a host's speech models from its discovery, calls them over its pinned connection, and skips only the speech model when its server is off", async () => {
+  it("reads a host's speech models from its discovery, calls them over its pinned connection, and falls back when its speech server is off", async () => {
     const s = await setup();
     const host = await fakeHost({ name: "lyrica-3090", models: [
       { id: "lyrica/huggingface/Qwen/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf", kind: "chat", contextLength: 32768 },
@@ -203,16 +194,14 @@ describe("speaking", () => {
     expect(await read((await s.models.speak(ctx, "Hello.")).audio)).toBe(4800);
     expect(host.speech).toEqual(["/v1/audio/transcriptions", "/v1/audio/speech"]);
 
-    // The host's speech server is off: Read aloud falls back to the next voice model, and chat stays on the host.
+    // The host's speech server is off: Read aloud falls back to the next voice model, and Dictation, with no other, is offline.
     host.speechOff();
     expect((await s.models.speak(ctx, "Hello.")).resolution.label).toBe("speech/kokoro");
-    expect(s.models.resolve("chat", ctx).endpoint.id).toBe(ep.id);
-    // The whole host paused: it is down for everything, and Dictation says so.
-    host.speechOff(false);
-    host.pause();
-    await expect(s.models.transcribe(ctx, wav(1))).rejects.toThrow(/^Dictation can't be reached now/);
-    expect(s.models.speechModel("speech.transcribe", ctx)).toMatchObject({ reason: "down" });
-    expect(() => s.models.resolve("chat", ctx)).toThrow(NoModel);
+    await expect(s.models.transcribe(ctx, wav(1))).rejects.toThrow(Offline);
+    // The whole host off: the thread's settings say so before anything is tried.
+    await host.stop();
+    s.models.reportDown(ep.id);
+    expect(s.models.speechModel("speech.transcribe", ctx)).toEqual({ reason: "down", problem: "Dictation can't be reached now" });
 
     const lib = s.models.textLibrary(s.li.id, { capability: "speak" });
     expect(lib.entries.flatMap((e) => e.copies.map((c) => c.label)).sort()).toEqual(["3090/lyrica/huggingface/onnx-community/Kokoro-82M-v1.0-ONNX", "openai/kokoro", "speech/kokoro"]);

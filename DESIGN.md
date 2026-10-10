@@ -449,6 +449,10 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     cloud or local, and a call that fell back to cloud says so.
   - Private and local-only threads never see the Custom profile, so this can
     never reach them.
+  - When every model in a list is away, nothing crashes or hangs: chat,
+    images and speech all report the same **offline** state, naming what
+    was tried. A message no model took waits and is sent when a machine
+    answers again.
 - **Context and pace.** Lyrica and the user both see how full her context
   is and how fast her model answers.
   - After every turn lyricad records prompt and output tokens, the window,
