@@ -40,14 +40,15 @@ own handoff, so a fresh session (or a project conversation) can take over.
 
 Merged on `main`: Core, Memory, Workspace, Models, Delegation, Daemon, Web
 UI, Sleep, Delegation 2, Models 2 (#30, #34, #36, #37, #40, #41, #46), Model
-host (#28, #31, #32, #33, #38, #39, #42, #45) and Child threads 1/3 (#44).
+host (#28, #31, #32, #33, #38, #39, #42, #45), Child threads 1/3 (#44),
+2/3 (#47) and pinned messages (#48).
 
 | Thread | Branch | State |
 |---|---|---|
 | Models 2 | done | context and pace merged in #46 |
 | Model host | done | AMD and integrated GPUs merged in #45; hardware checks listed in its handoff notes |
-| Child threads | `feature/child-threads-2`, `feature/child-threads-3` | #47 (2/3) has a fix round open: a kept child still marked as a child, the working-at-once limit bypassed by messages, a spoofable parent marker; 3/3 being redone |
-| Modes | `feature/modes` | building docs/briefs/modes.md; no pull request yet |
+| Child threads | `feature/child-threads-4` | #47 and #48 merged; #51 (undoing removed turns, the nightly sweep, `compact` folded into `threads`) in review |
+| Modes | `feature/modes` | #50 in review; non-UI round verified, waiting on the UI review |
 | Images | not started | docs/briefs/images.md |
 | Web UI 2 | not started | docs/briefs/web-2.md; reads docs/ux.md first |
 
@@ -66,18 +67,22 @@ From reading the merged Models 2 code against its pull requests:
 
 ## Handoff notes
 
-The design work moves to the Lyrica project chat on claude.ai, which picks
-up reviews and merges from here.
+Since 10 October 2026 (evening), feature-PR reviews run in the project's
+standing **PR review** thread, and the look and feel in a separate **UI
+review** thread; a PR merges once both have verified their rounds and CI
+is green. The PR review thread then records contracts, DESIGN and
+docs/ux.md changes in a docs-only PR.
 
-- Next: verify #47's fix round, then record its contracts (the PR body
-  lists them: `threads.child`, `forgetThread` detaching kept daughters,
-  `listThreads` children, `ChildStatus`/`ChildInfo`/`StartRequest`,
-  DELETE `?children=1`, notice status `update`, `Services.children`,
-  `HostedThread.waiting`) and give the child-thread card a home in
-  docs/ux.md section 6.
+- Settled in review: subagents and child threads follow their parent's
+  later narrowing of mode and switches at once (Modes, #50).
+- The `threads` tool replaces `compact` in Plan mode's tools once #50 and
+  #51 have both landed (whichever merges second).
+
+Earlier notes from the design thread:
+
 - To settle in DESIGN: whether a child follows its parent's later switch
   to local-only or "Do not log" (today it keeps the values it was started
   with), and depth through a user's branch of a child.
-- Small leftovers for the threads' next PRs: a failed resend after a
-  rewind still drops the first queued message (#44); a tool turn's
-  fallback context reads a little high (#46, noted in docs/daemon.md).
+- Small leftover for a thread's next PR: a tool turn's fallback context
+  reads a little high (#46, noted in docs/daemon.md). (#44's dropped
+  queued message was fixed in #47.)

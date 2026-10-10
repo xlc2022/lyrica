@@ -131,6 +131,7 @@ Rules:
 | The app's version | the header, "Lyrica (ver. …, build …)" |
 | Lyrica's inner workings (recall, tools, notes) | one-line **markers** in the conversation that expand when tapped |
 | A subagent | a **card** in the conversation that expands to its work and takes messages |
+| A child thread | nested under its parent in the **sidebar**, with its state and unseen count as badges; its updates as a **card** in the parent's conversation that links to it |
 
 If your thing isn't in this table, it needs the design thread, not a new
 spot.
