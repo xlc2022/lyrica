@@ -232,6 +232,20 @@ thread's pool: a branch's `copyEntries` copies them, `truncateThread`
 removes and counts them, and `sleepMaterial` lists each thread's new pinned
 entries (`threads[].pinned`).
 
+**Planned (Projects,** [briefs/projects.md](briefs/projects.md)**):**
+`createThread({ ..., project? })` and `setProject(id)` (top-level threads
+only; a child or subagent is refused, and there is no way back);
+`Thread.project` and `Thread.goal` (Li's text, so in the pool with the
+title); `pageForProject(threadId)` → the page `p:project-<id>`, whose
+instructions part is User introduced; `projectNotes(threadId, since)`: notes
+that cite an entry of the project chat or one of its threads. `branchThread`
+of a project's thread makes a thread of the same project (`child`, parent
+the project chat, anchored at the source's anchor), so depth stays 1; a
+branch of the project chat is a project thread anchored where it branched.
+`forgetThread`
+on a project with `children` also forgets the project page and the notes
+that came only from it. `sleepMaterial` marks each thread's project.
+
 ## core/models: the cloud boundary lives here
 
 ```ts
@@ -506,6 +520,16 @@ One model-facing tool: `delegate({ action?, ... })`.
 - **Modes:** a thread in Plan mode starts only read-only roles; anything
   else is refused before a thread is made. A read-only subagent there runs
   in Plan mode itself.
+- **Planned (Projects):** in a project, `threads.start` records the anchor
+  (the project chat's entry it hangs off) and returns `queued` past the
+  at-once limit instead of refusing; `message({ to: "parent", text,
+  needsYou? })`; `message({ id, text })` from a project's thread to another
+  thread of the same project, marked `fromThread(id)` (`FROM_THREAD`, which
+  only `lyricad` writes and `send` refuses from a user), at most 3 per turn;
+  new actions `suggest({ threads: { title, task }[] })` (a card, no thread
+  made), `resolve({ id? })` and `reopen({ id })` (in a project's thread,
+  `resolve` with no `id` acts on itself). `user.db` `child_threads` gains
+  `anchor`, `resolved` and `needs_you` (no text). Still one tool.
 
 Every run:
 - creates a child thread with `createThread({ parent, subagent: true })`;
@@ -641,6 +665,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `thinkingFormat: "qwen-chat-template"`; any other model with levels gets
   `reasoning_effort`. Local endpoints and hosts are sent `system` and
   `max_tokens`.
+- **Planned (Projects):** a `project` section in `assemble`, with its own
+  `DEFAULT_BUDGETS.project` (2,000 tokens to start): the goal and
+  instructions first, then project notes since the last sleep, then the
+  project page, then (in the project chat only) its threads with their
+  state. Filled for a project chat and each of its threads; empty elsewhere.
 
 ## daemon
 
@@ -710,6 +739,18 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `ForgetThread` / `DELETE …?children=1`; `ThreadHost.status`,
     `delivered`, `HostedThread.waiting`, `send(text, { fromParent })` and
     `settled()`;
+  - **planned (Projects):** `POST threads` with `project`; `PATCH
+    threads/:id` with `project`, `goal`, `paused` and the threads model and
+    thinking; `POST …/messages/:n/thread` (Start a thread) →
+    `ThreadSummary`; `POST threads/:id/resolve` and `…/reopen`; `POST
+    …/suggestions/:id/start` (one, or all with no id); `GET
+    threads/:id/overview` (its threads by state, the waiting dot, total
+    tokens); `models/calls?project=`. `ThreadSummary` gains `project`,
+    `anchor`, `state` (`working`, `waiting`, `queued`, `idle`, `resolved`),
+    `needsYou` and `outputs` (file names); a `child` event updates a card in
+    place. A Notifications type `waiting`. The nightly tick resolves a
+    project's threads idle for 7 days; Paused and Hide stop a project's
+    working threads the way Lock stops children;
   - pins: `PUT`/`DELETE …/messages/:n/pin` (the user's messages and her
     replies only, `400` otherwise, `409` in a subagent's thread), `GET
     …/pins` → `Pins { pins: Pin[], shortened }`, `Message.pinned`,
@@ -823,6 +864,9 @@ sleep.events                       // started, phase, finished: IDs only, never 
   `no-key` skip is recorded once the key is back, since the pool can't be
   written without it.
 - Full details: [sleep.md](sleep.md).
+- **Planned (Projects):** sleep keeps the "what she knows" part of each
+  project's page from its notes and threads, and keeps the instructions part
+  word for word ([briefs/projects-sleep.md](briefs/projects-sleep.md)).
 
 ## core/workspace
 
@@ -848,6 +892,7 @@ folders(t): string[]
 network(t): Network
 inheritSettings(parent, childThreadId, narrower?)  // subagents and child threads: same or stricter (folders, network, mode, webSearch, images), never wider
 settings(userId).detach(threadId)          // a kept child, once its parent is forgotten: no longer narrowed by it
+// Planned (Projects): inheritSettings also grants a project's thread its project chat's folder (read-only for a read-only thread)
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, SSH targets
 settings(userId).defaultMode() / setDefaultMode(mode)  // the mode new threads start in (default auto)
 settings(userId).startThread(threadId, pool)           // fixes the default mode on a new thread
