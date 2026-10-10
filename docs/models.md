@@ -186,7 +186,8 @@ profile, and outside Custom they keep to one kind.
 `same` names a task of the same kind (text, embeddings, images) that doesn't
 itself follow another, so it is one level deep. A profile's first entry
 brings the defaults: titles and compaction follow cheap subagents, and the
-sleep phases follow strong subagents. A task with no list follows chat,
+sleep phases follow strong subagents. The compaction entry is stored but
+unused, since compaction uses the thread's chat model. A task with no list follows chat,
 except embeddings and the image tasks.
 
 Profiles used to be cloud and local, with local models allowed in the cloud
@@ -410,6 +411,9 @@ thread, such as a subagent's, its `CallContext`:
 - the parent's local-only switch, profile, thinking level and model choices;
 - as its chat list, the parent's `subagent.cheap` or `subagent.strong`
   list, or a named model or group the parent's context allows.
+
+`inheritContext(parent, childThreadId)` gives a branch the same, chat list
+included: a branch talks with the model its parent does.
 
 A private or local-only parent can only give its child a local model. A
 refusal throws before anything is written. `delegate` itself belongs to the

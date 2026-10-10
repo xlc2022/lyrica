@@ -7,6 +7,7 @@ import { THREAD_TASKS } from "./api.ts";
 import { Sessions } from "./auth.ts";
 import { HttpError, route, type Request, type Route } from "./http.ts";
 import { OPENING, reserveFor } from "@lyrica/extension";
+import { Busy } from "./hosted.ts";
 import { card, type Lyricad, type Services } from "./lyricad.ts";
 import { toMessages } from "./messages.ts";
 
@@ -510,6 +511,21 @@ export function apiRoutes(d: Lyricad): Route[] {
       if (String(text ?? "").trim() === "/sleep") return { queued: false, sleep: await startSleep(d, user, poolOf(r), confirm === true) };
       return s().host.get(user.id, poolOf(r), thread.id).send(String(text ?? ""));
     }),
+    route("POST", `${t}/messages/:n/branch`, async (r) => {
+      const user = d.userFor(r);
+      const pool = poolOf(r);
+      const { title } = await r.json<Api.BranchRequest>();
+      const branch = owner(d, user, (o) => {
+        const thread = threadOf(o, r);
+        const n = entryN(r);
+        if (thread.subagent) throw new HttpError(409, "a subagent's thread can't be branched");
+        if (!o[pool].entryPage(thread.id, { before: n + 1, limit: 1 }).entries.some((e) => e.n === n)) throw new HttpError(404, "no such message");
+        return o[pool].branchThread(thread.id, n, { title: typeof title === "string" ? title : undefined });
+      });
+      inheritThread(d, user, pool, r.params.threadId!, branch.id);
+      return owner(d, user, (o) => summary(d, user, pool, o[pool], branch, []));
+    }),
+    route("POST", `${t}/messages/:n/rewind`, async (r) => rewind(d, d.userFor(r), r, await r.json<Api.RewindRequest>())),
     route("POST", `${t}/stop`, async (r) => {
       const user = d.userFor(r);
       const thread = owner(d, user, (o) => threadOf(o, r));
@@ -1077,7 +1093,7 @@ function contextOf(d: Lyricad, user: User, pool: Pool, threadId: string, answere
   if (live) return { context: live };
   const p = answered?.pace;
   if (!p?.window) return undefined;
-  // The last prompt plus its reply, as the live meter counts it.
+  // The last prompt plus the reply, as the live meter counts it. The record's output is the whole turn's, so a tool turn reads a little high.
   const tokens = p.promptTokens + p.outputTokens;
   const reserve = Math.max(0, Math.min(reserveFor(p.window), p.window - tokens));
   return { context: {
@@ -1163,6 +1179,86 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
   if (change.thinking !== undefined) models.setThinking(user.id, thread.id, change.thinking);
   for (const task of Object.keys(change.models ?? {})) models.setThreadModel(user.id, pool, thread.id, task as Api.ThreadTask, overrides[task as Api.ThreadTask]);
   if (change.unlogged !== undefined) owner(d, user, (o) => o[pool].setUnlogged(thread.id, !!change.unlogged));
+}
+
+function entryN(r: Request): number {
+  const n = Number(r.params.n);
+  if (!Number.isInteger(n) || n < 1) throw new HttpError(400, "no such message");
+  return n;
+}
+
+/**
+ * A branch gets its parent's settings: models and local-only, and the
+ * workspace, which then refuses anything wider than the parent's.
+ */
+function inheritThread(d: Lyricad, user: User, pool: Pool, parent: string, child: string): void {
+  const { models, workspace } = d.services!;
+  models.inheritContext(models.callContext(user.id, pool, parent), child);
+  workspace.settings(user.id).inheritSettings(parent, child, pool);
+}
+
+/** The text of a stored user message, for sending again. */
+function userText(data: unknown): string | undefined {
+  const m = (data as { type?: string; message?: { role?: string; content?: unknown } }).message;
+  if ((data as { type?: string }).type !== "message" || m?.role !== "user") return undefined;
+  if (typeof m.content === "string") return m.content;
+  return Array.isArray(m.content) ? m.content.filter((p: { type: string }) => p.type === "text").map((p: { text: string }) => p.text).join("") : "";
+}
+
+/**
+ * Delete from here, Regenerate and Edit. The thread's turn is held while its
+ * subagents from those turns are stopped and the entries removed, so nothing
+ * runs meanwhile; then the message is sent again, or the edited one.
+ */
+async function rewind(d: Lyricad, user: User, r: Request, req: Api.RewindRequest): Promise<Api.RewindResponse> {
+  const { host, delegation, models } = d.services!;
+  const pool = poolOf(r);
+  const n = entryN(r);
+  const thread = owner(d, user, (o) => threadOf(o, r));
+  if (thread.subagent) throw new HttpError(409, "a subagent's thread can't be rewound");
+  if (host.busy(user.id, pool, thread.id)) throw new HttpError(409, "a turn is running: stop it or wait for it to end");
+  // Where the removal starts, and what is sent after it.
+  const { from, then } = owner(d, user, (o) => {
+    const entries = o[pool].entryPage(thread.id, { before: n + 1, limit: n }).entries;
+    const at = entries.find((e) => e.n === n);
+    if (!at) throw new HttpError(404, "no such message");
+    if (req.action === "delete") return { from: n, then: undefined };
+    if (req.action === "edit") {
+      const text = String(req.text ?? "");
+      if (userText(at.data) === undefined) throw new HttpError(400, "only your own messages can be edited");
+      if (!text.trim()) throw new HttpError(400, "the message is empty");
+      return { from: n, then: text };
+    }
+    if (req.action !== "regenerate") throw new HttpError(400, "the action is delete, regenerate or edit");
+    const asked = entries.filter((e) => e.n <= n && userText(e.data) !== undefined).at(-1);
+    if (!asked || asked.n === n) throw new HttpError(400, "only her replies can be regenerated");
+    return { from: asked.n, then: userText(asked.data)! };
+  });
+  // Regenerate with…: the router checks the model before anything is removed.
+  if (req.action === "regenerate" && req.model) {
+    const m = req.model as { offeringId?: unknown; groupId?: unknown };
+    models.setThreadModel(user.id, pool, thread.id, "chat", m.groupId !== undefined ? { groupId: String(m.groupId) } : { offeringId: String(m.offeringId) });
+  }
+  let result: Api.RewindResponse = { removed: 0, subagents: 0 };
+  try {
+    await host.get(user.id, pool, thread.id).rewind(async () => {
+      const subagents = owner(d, user, (o) => {
+        const all: string[] = [];
+        const walk = (id: string) => { all.push(id); for (const c of o[pool].listThreads({ includeHidden: true, parent: id })) walk(c.id); };
+        for (const id of o[pool].subagentsSince(thread.id, from)) walk(id);
+        return all;
+      });
+      await delegation.forgetSubagents(user.id, pool, subagents);
+      for (const id of subagents) await host.forget(user.id, pool, id);
+      const done = owner(d, user, (o) => o[pool].truncateThread(thread.id, from, author(user)));
+      result = { removed: done.removed, subagents: done.subagents.length };
+      return from;
+    }, then);
+  } catch (err) {
+    if (err instanceof Busy) throw new HttpError(409, err.message);
+    throw err;
+  }
+  return result;
 }
 
 function memoryDetail(d: Lyricad, o: OwnerView, pool: Pool, id: string): Api.MemoryDetail {

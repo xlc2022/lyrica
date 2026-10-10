@@ -273,6 +273,42 @@ export class HostedThread {
     if (context) this.emit({ type: "context", context });
   }
 
+  /**
+   * Changes the stored thread while holding its turn, so nothing runs
+   * meanwhile: the session closes first, so the next turn loads what is
+   * left. `change` returns the first entry number it removed. Then `then` is
+   * sent, if given. Throws while a turn runs.
+   */
+  async rewind(change: () => Promise<number>, then?: string): Promise<void> {
+    if (this.busy) throw new Busy("a turn is running: stop it or wait for it to end");
+    this.busy = true;
+    try {
+      await this.opening?.catch(() => {});
+      this.dispose();
+      const from = await change();
+      this.emit({ type: "rewound", from, ...(then !== undefined ? { resend: true as const } : {}) });
+    } finally {
+      this.busy = false;
+      this.startIdle();
+    }
+    // Messages sent while it was held go after what replaces the removed turns, or on their own.
+    const waiting = this.queued.splice(0);
+    if (waiting.length) this.emit({ type: "queue", queued: [] });
+    const next = [then, ...waiting].filter((t): t is string => t !== undefined);
+    if (!next.length) return;
+    try {
+      await this.send(next[0]!);
+    } catch (err) {
+      // The session couldn't open: keep the rest for the next message rather than dropping them.
+      if (next.length > 1) {
+        this.queued.unshift(...next.slice(1));
+        this.emit({ type: "queue", queued: [...this.queued] });
+      }
+      throw err;
+    }
+    for (const t of next.slice(1)) await this.send(t);
+  }
+
   /** Stop: aborts the running turn, denies waiting permission requests and drops queued messages. */
   async stop(): Promise<void> {
     for (const p of [...this.pending.values()]) p.done(false, "stopped");
@@ -517,6 +553,9 @@ export class HostedThread {
     this.clients.clear();
   }
 }
+
+/** The thread is in a turn, so it can't be changed now. */
+export class Busy extends Error {}
 
 function refusal(err: unknown): string {
   const message = (err as Error)?.message ?? String(err);

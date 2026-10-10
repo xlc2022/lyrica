@@ -1,11 +1,11 @@
 // A thread's stored messages plus its live event stream.
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { get, threadPath, type Message, type MessagePage, type Pool, type ThreadEvent } from "./api.ts";
 import { initialLive, liveReducer } from "./live.ts";
 
 const EVENT_TYPES: ThreadEvent["type"][] = [
   "hello", "reset", "turn_start", "message_start", "text", "thinking", "tool_start", "tool_end", "recall", "remember",
-  "permission", "permission_end", "usage", "queue", "error", "title", "turn_end", "delegation", "notice",
+  "permission", "permission_end", "usage", "queue", "error", "title", "turn_end", "delegation", "notice", "rewound",
 ];
 
 export function useThread(userId: string, pool: Pool, threadId: string) {
@@ -15,6 +15,9 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
   const [loadError, setLoadError] = useState("");
   const [connected, setConnected] = useState(true);
   const [live, dispatch] = useReducer(liveReducer, initialLive);
+  // A rewind this view asked for sends a message again: shown as sent until the turn is stored.
+  const resending = useRef<string | undefined>(undefined);
+  const willResend = useCallback((text: string | undefined) => { resending.current = text; }, []);
   const base = threadPath(userId, pool, threadId);
 
   // Stored messages: the newest page, merged with any older pages already shown.
@@ -56,7 +59,11 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
           if (type === "hello") { setConnected(true); delay = 1000; }
           try {
             const e = JSON.parse(m.data) as ThreadEvent;
+            // Removed messages go at once; the reload brings what's left.
+            if (e.type === "rewound") setMessages((old) => old.filter((x) => x.n < e.from));
             dispatch(e);
+            if (e.type === "rewound" && e.resend && resending.current !== undefined) dispatch({ type: "sent", text: resending.current });
+            if (e.type === "rewound") resending.current = undefined;
             // In a subagent's own thread, its work is stored as it goes: show it.
             if (e.type === "delegation" && e.event.threadId === threadId && e.event.type !== "output" && e.event.type !== "tool_call") dispatch({ type: "refresh" });
           } catch { /* not ours */ }
@@ -74,7 +81,7 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
     return () => { stopped = true; es?.close(); clearTimeout(retry); };
   }, [base, threadId]);
 
-  return { messages, hasMore, loaded, loadError, loadOlder, live, dispatch, connected };
+  return { messages, hasMore, loaded, loadError, loadOlder, live, dispatch, connected, willResend };
 }
 
 function mergeByN(a: Message[], b: Message[]): Message[] {

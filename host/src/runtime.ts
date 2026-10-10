@@ -5,7 +5,7 @@ import type { RecordEntry } from "./downloads.ts";
 import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./http.ts";
 import { scanTextModels, type TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
-import { SERVERS, contextOf, validate, type Server } from "./placement.ts";
+import { SERVERS, contextOf, serverOf, validate, type Server } from "./placement.ts";
 import { PRIORITIES, type Priority, type Scheduler } from "./scheduler.ts";
 import type { StateFile, Usage } from "./state.ts";
 
@@ -160,7 +160,7 @@ export class Runtime {
       const model = this.find(body.model);
       if (!body.settings || typeof body.settings !== "object") throw invalid("settings is needed.");
       // Refused when saved if the placement can't work, with the reason. Applies at the next load, or on Reload.
-      const saved = validate(model, body.settings as Record<string, unknown>, s.knownGpus, (i) => s.gpuSettings(i));
+      const saved = validate(model, body.settings as Record<string, unknown>, s.gpusFor(serverOf(model)), (i) => s.gpuSettings(i));
       s.saveSettings(model, saved);
       sendJson(res, 200, this.describe(model));
       return true;
@@ -189,8 +189,10 @@ export class Runtime {
     if (gpu && method === "PUT") {
       const body = await readJson(req);
       onlyFields(body, ["servers", "keepFree", "excluded"]);
-      const servers = body.servers ?? SERVERS;
+      const servers = body.servers ?? s.servers;
       if (!Array.isArray(servers) || servers.some((x) => !SERVERS.includes(x as Server))) throw invalid(`servers lists any of ${SERVERS.join(", ")}.`);
+      const missing = (servers as Server[]).filter((x) => !s.servers.includes(x));
+      if (missing.length) throw invalid(`This host doesn't run ${missing.join(" or ")}; it runs ${s.servers.join(", ")}.`);
       const keepFree = body.keepFree ?? 512 * 1024 * 1024;
       const total = s.knownGpus.find((g) => g.index === Number(gpu[1]))?.total ?? Infinity;
       if (typeof keepFree !== "number" || !Number.isFinite(keepFree) || keepFree < 0 || keepFree >= total) {
