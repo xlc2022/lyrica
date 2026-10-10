@@ -183,6 +183,24 @@ can be off, paused or busy gaming without Lyrica going dark.
    - Tests: the level reaches the request for a model that offers it; a
      model without it gets no thinking parameter and the call notes it;
      thinking text isn't in search results.
+9b. **Model settings**, as in DESIGN:
+   - per offering, "how it answers" (temperature, top-p, top-k, min-p,
+     repeat, presence and frequency penalties, maximum reply length, seed,
+     stop strings), stored in `self.db` for shared endpoints
+     (administrators) and `user.db` for personal ones, with a per-user
+     override of a shared offering's values in `user.db`;
+   - sent with every call to that offering through `core/models`, mapped to
+     each API's names; unset values aren't sent;
+   - the context window per offering, from the host's serving settings,
+     discovery or set by hand, used by compaction and group fitting;
+   - for host offerings, the API reads and writes the host's serving
+     settings through the management API (administrators for shared hosts)
+     and offers Reload now;
+   - the library API returns each value with its source (endpoint default,
+     shared, yours).
+   - Tests: the values reach the request; a user's override wins for that
+     user only; unset values are absent; another user's override never
+     applies.
 10. **Plain endpoints stay as they are.** Mark a local endpoint served over
    plain HTTP, outside this machine and the tailnet, as `unencrypted` in the
    API.

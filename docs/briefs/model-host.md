@@ -87,6 +87,13 @@ games on, so the host has to be easy to live with and hard to misuse.
    - several models of any mix on one GPU; a split model loads only when all
      its GPUs have room, and unloads from all;
    - a placement that can't work is refused when saved, with the reason;
+   - each model's serving settings, saved in the data volume with its
+     placement: context length, KV-cache type, flash attention, GPU layers,
+     parallel requests, batch size; for vLLM its memory share, maximum
+     sequences and dtype; a chat-template override. They apply at the next
+     load; Reload now applies them when the model is idle. A context too big
+     for the placement's memory is refused with the reason. The context
+     length is reported in the model list so Lyrica plans for it;
    - pinned models;
    - least-recently-used unloading of idle models, never a pinned model or
      one in use;

@@ -477,6 +477,24 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     badge rather than failing. Subagent roles keep their own level.
   - Thinking text stays in the thread, encrypted like the rest, shown as a
     collapsed marker. It isn't indexed for recall.
+- **Model settings, saved per copy.** Each copy of a model has settings
+  that last between uses, edited from its row in the library:
+  - **How it answers**, for any endpoint: temperature, top-p, top-k, min-p,
+    repeat, presence and frequency penalties, maximum reply length, seed and
+    stop strings. They go with every call to that copy; an empty one means
+    the endpoint's default. An administrator sets them for shared
+    endpoints, and each user can override them for themselves, in
+    `user.db`. The library shows each value and where it comes from.
+  - **How it's served**, for models on a model host: context length,
+    KV-cache type, flash attention, GPU layers, parallel requests and batch
+    size, plus for vLLM its memory share, maximum sequences and dtype, and a
+    chat-template override. They are saved on the host with the model's
+    placement (administrators for shared hosts) and apply at its next load,
+    with **Reload now** when it's idle.
+  - The context length is the window Lyrica plans for, used by compaction
+    and when a group skips a member too small for the conversation. For
+    other endpoints it is discovered where the endpoint reports it, or set
+    by hand.
 - **Visibility.** The current model and endpoint, with a clear cloud or local
   badge, are always visible in a thread. Choosing an endpoint, public or
   custom, is easy.
