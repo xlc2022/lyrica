@@ -288,6 +288,39 @@ denies it.
 The name is cleaned (no path, no control characters), and a name already
 taken gets a suffix (`image-2.jpg`) rather than overwriting.
 
+## Speech
+
+Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
+`daemon/src/api.ts`; the work is in `daemon/src/speech.ts`.
+
+- `POST …/threads/:pool/:threadId/transcribe?language=` with an `audio/wav`
+  body (16 kHz mono, at most 10 minutes, 413 beyond, 415 for another type)
+  answers `Transcription { text, seconds, model }`. `POST
+  /api/u/:userId/transcribe?pool=` does the same on the welcome page, with
+  the user's defaults for a new thread. The clip is held in memory only.
+- `GET …/threads/:pool/:threadId/messages/:n/speech` reads one of her
+  messages aloud. lyricad reads it from the store (the client sends a
+  number, never text), drops code blocks, tables, images, links' URLs and
+  markdown, splits it into sentences (pieces of at most 400 characters), and
+  asks for one sentence at a time while the one before plays, each in the
+  voice for its language (Han characters mean Mandarin). It streams raw PCM
+  (`audio/pcm;rate=24000;encoding=s16le;channels=1`). `messages/live/speech`
+  follows the message she is writing now (`HostedThread.following()`) to
+  its end. Closing the connection, Logout or Lock stops it and cancels the
+  model's work. One call record per reading, with the seconds of audio.
+- Refusals come before any audio, as JSON: `VoiceCloudOff`, `NoModel` and
+  `CloudModelForbidden` are 400, `Offline` (every model set is down) is
+  502; a message that isn't hers is 400, a missing one 404.
+- `ThreadSettings.speech` (and `GET /api/u/:userId/speech?pool=` before a
+  thread exists) says whether each task can be used now, or why not, for
+  the mic's and Read aloud's state. `ThreadSettings.voiceCloud` is the
+  thread's switch (null follows the default), changed with
+  `ThreadSettingsChange.voiceCloud`; the default is `Profiles.voiceCloud`.
+  Under a parent with it off, a branch can only keep it off, or follow the
+  default when the parent does too.
+- `ThreadSettings.answered` skips speech calls, so the context meter reads
+  the chat call.
+
 ## Memory browser and settings
 
 The memory browser goes through `openOwnerView`, opened and closed per

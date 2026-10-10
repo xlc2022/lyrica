@@ -250,7 +250,8 @@ that came only from it. `sleepMaterial` marks each thread's project.
 
 ```ts
 type Task = "chat" | "subagent.cheap" | "subagent.strong" | "compaction" | "title" | "embedding"
-          | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "image.create" | "image.edit";
+          | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "image.create" | "image.edit"
+          | "speech.transcribe" | "speech.speak";
 type ThinkingLevel = "off" | "low" | "medium" | "high";
 
 interface Endpoint {
@@ -264,7 +265,9 @@ interface Endpoint {
   unencrypted: boolean;                     // local, plain HTTP, outside this machine and the tailnet
   downSince?: string; stale: boolean;       // stale: unreachable for STALE_DAYS (14)
 }
-interface Capabilities { contextWindow?; tools?; vision?; embedding?; image?; edit?; reasoning?: ("low" | "medium" | "high")[] }
+interface Capabilities { contextWindow?; tools?; vision?; embedding?; image?; edit?; reasoning?: ("low" | "medium" | "high")[];
+                         transcribe?: boolean; speak?: { voices: Voice[] } }
+interface Voice { id; language }                             // language: a primary tag, "en" or "zh"
 interface Offering extends Capabilities {   // one model on one endpoint, with a permanent id
   id; endpointId; modelId; manual: boolean;
   status: "listed" | "missing" | "gone"; missingSince?;      // gone: missing for GONE_DAYS (30)
@@ -281,14 +284,16 @@ interface CallContext {
   profile?: "cloud" | "custom";             // general threads only; ignored where localOnly
   overrides?: Partial<Record<Task, ModelRef[]>>;   // the thread's own lists, which beat the profile
   thinking?: ThinkingLevel;
+  voiceCloud?: boolean;                     // Voice to cloud; absent is off
 }
 interface Need { tools?: boolean; tokens?: number }        // what the call needs from a model
 interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: ProfileName;
                        source: "thread" | "profile"; skipped: { label; reason }[]; remaining: number }
 interface Pace { promptTokens; outputTokens; window; ttftMs; genMs; processed }   // counts and times only
-interface CallRecord { at; pool; threadId; task; offeringId; label; endpointName; kind; fallback?; note?; pace?: Pace }
+interface CallRecord { at; pool; threadId; task; offeringId; label; endpointName; kind; fallback?; note?; pace?: Pace; audioSeconds? }
 interface AnswerSettings { temperature?; topP?; topK?; minP?; repeatPenalty?; presencePenalty?;
-                           frequencyPenalty?; maxTokens?; seed?; stop?: string[] }
+                           frequencyPenalty?; maxTokens?; seed?; stop?: string[];
+                           voices?: Record<language, voiceId>; speed? }   // the last two for speak models
 type SettingSource = "shared" | "yours";                   // absent: the server's default
 type Hub = "huggingface" | "modelscope";
 interface ModelIdentity { basename?; sizeLabel?; finetune?; baseModels?: { name?; organization?; repoUrl? }[]; card?: { baseModel?: string[]; baseModelRelation? } }
@@ -338,12 +343,17 @@ class Models {                                              // new Models(keyrin
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
   thinkingFor(resolution, asked): { level; note? }
-  recordCall(userId, { pool, threadId, task, resolution, note? }, { retry? }) / recentCalls(userId, { limit?, threadId? }): CallRecord[]
+  recordCall(userId, { pool, threadId, task, resolution, note?, audioSeconds? }, { retry? }) / recentCalls(userId, { limit?, threadId?, speech?: false }): CallRecord[]
   recordPace(userId, pool, threadId, task, pace) / speedsByOffering(userId): Map<offeringId, { tokPerS?; promptTokPerS? }>   // medians over the last 20 calls
   // Hosts and pairing
   pairHost(actor, { name, addresses, code }, { shared?, endpointId? }): Promise<Endpoint>   // endpointId: pair again, IDs kept
   setHostAddresses(actor, id, addresses): Endpoint / fetchFor(endpoint): typeof fetch | undefined   // undefined for a plain endpoint
   hostStatus(userId, id) / hostControl(actor, id, "pause" | "resume" | "restart")
+  // Speech: the only way audio reaches a model
+  transcribe(ctx, wav, { language?, signal? }): Promise<{ text; resolution; audioSeconds? }>   // VoiceCloudOff, CloudModelForbidden, NoModel, Offline
+  speak(ctx, text, { voice?, speed?, language?, signal? }): Promise<{ audio: ReadableStream<Uint8Array>; resolution; voice? }>   // raw PCM, SPEECH_FORMAT
+  speechModel(task, ctx): { label; kind } | { reason: "none" | "voiceCloud" | "down"; problem }
+  defaultVoiceCloud(userId) / setDefaultVoiceCloud(userId, on) / threadVoiceCloud(userId, threadId) / setThreadVoiceCloud(userId, threadId, on | null)
   // Settings
   offeringSettings(userId, offeringId): { values: AnswerSettings; sources: Partial<Record<keyof AnswerSettings, SettingSource>>;
                                           dropped: (keyof AnswerSettings)[]; contextWindow?: { value; source: "host" | "hand" | "discovered" } }
@@ -361,7 +371,8 @@ class Models {                                              // new Models(keyrin
   hostDashboard(userId, hostId): string                     // a direct link, at the address that last answered
 }
 // Also exported: CloudModelForbidden, NoModel, Offline (a NoModel: code "offline", task, tried), isUnreachable(err),
-// HostRefused (with `code`), PairingFailed, HostIdentityChanged;
+// HostRefused (with `code`), PairingFailed, HostIdentityChanged, VoiceCloudOff;
+// SPEECH_FORMAT (s16le, 24 kHz, mono), SPEECH_CONTENT_TYPE, MAX_CLIP_SECONDS (600), MAX_CLIP_BYTES, MAX_SPEAK_CHARS, wavData, wavSeconds, pcmSeconds, LANGUAGE;
 // STALE_DAYS, GONE_DAYS, HEALTH_MS, CAPABILITIES, ANSWER_SETTINGS, TASKS, THINKING_LEVELS; isRestricted, profileFor,
 // checkTask, refId, baseName, acceptedSettings(endpoint), payloadFields(…); fingerprint, normaliseCode, pairingProofs,
 // hostOrigin; probeUrl(baseUrl, apiKey, timeoutMs?, fetchImpl?), discoverModels, addressesOutside.
@@ -428,16 +439,26 @@ class Models {                                              // new Models(keyrin
   with an administrator actor. A `user.db` is migrated, has pending shared
   redirects applied, and is indexed into `shared_refs` the first time it is
   opened in a process.
-- **Planned (Speech):** `Task` gains `"speech.transcribe" | "speech.speak"`,
-  both own-list only (neither follows Chat). `Capabilities` gains
-  `transcribe?: boolean` and `speak?: { voices: { id; language }[] }`,
-  reported by a host or set by hand. `Models.transcribe(ctx, audio,
-  { language? }): Promise<{ text }>` and `Models.speak(ctx, text, { voice?,
-  speed? }): ReadableStream<Uint8Array>` are the only ways audio reaches a
-  model; they follow the same boundary as `resolve`. A speak model's
-  per-copy settings gain `voices` (one per language) and `speed`, layered
-  shared then yours. `CallRecord` gains `audioSeconds`. Never audio or
-  text in a record or log.
+- **Speech.** `speech.transcribe` and `speech.speak` have lists of their
+  own (neither follows chat) and take models with the `transcribe` or
+  `speak` capability, reported by a host or set by hand. `transcribe` and
+  `speak` follow the same boundary as `resolve`; `transcribe` also refuses
+  a cloud model unless `ctx.voiceCloud` (`VoiceCloudOff`, nothing sent).
+  Both run through `callWithFallback`: an endpoint that can't answer is
+  marked down and the next model in the list answers; a list with nothing
+  that can answer throws `Offline`.
+  Voices and speed are layered shared then yours, per language. Never audio
+  or text in a record or log; records carry `audioSeconds`.
+- **The speech wire** (lyricad to an endpoint, OpenAI's shapes; a host
+  passes them through, host/API.md): `POST /v1/audio/transcriptions`,
+  multipart `file` (`audio/wav`), `model`, `language?`, `response_format:
+  "json"` → `{ text }`; `POST /v1/audio/speech`, JSON `{ model, input,
+  voice?, speed?, response_format: "pcm" }` → raw s16le mono 24 kHz PCM,
+  streamed. A host's `/host/v1/models` entry has `kind` `transcribe` or
+  `speak`, with `capabilities.transcribe: true` or `capabilities.speak:
+  { voices: [{ id, language }] }`. Away (`isUnreachable`): no answer, a
+  host's away codes, or 5xx or 429 from a plain endpoint; a host's
+  `model_unavailable` (one model's server is off) skips only that model.
 - **Planned:** `X-Lyrica-Priority: background` for sleep and cheap subagents
   (not sent; hosts use their defaults; it needs the task in Pi's request
   preparation), and clearing `redirect_pending` rows when a user is deleted,
@@ -795,13 +816,17 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       host's plain message.
   - users and admin;
   - memory browser;
-  - planned (Speech): `POST …/threads/:id/transcribe` and
-    `POST …/transcribe?pool=` (an `audio/wav` body, `{ text }` back);
-    `GET …/threads/:id/messages/:n/speech`, streaming audio, with the
-    message read from the store, never sent by the client; `voiceCloud`,
-    a per-user default with a per-thread override in `ThreadSettings`,
-    like `internet`; a new `VoiceCloudOff` refusal (`400`), checked before
-    the router;
+  - speech: `POST …/threads/:pool/:threadId/transcribe` and `POST
+    /api/u/:userId/transcribe?pool=` (an `audio/wav` body, `?language=`) →
+    `Transcription { text, seconds, model }`; `GET
+    …/threads/:pool/:threadId/messages/:n/speech` (or `messages/live/speech`)
+    streams raw PCM (`audio/pcm;rate=24000;encoding=s16le;channels=1`), with
+    the message read from the store, never sent by the client;
+    `ThreadSettings.speech` (`Speech`, also `GET /api/u/:userId/speech?pool=`)
+    and `voiceCloud` (null follows `Profiles.voiceCloud`);
+    `ThreadSettingsChange.voiceCloud`, `ProfilesChange.voiceCloud`;
+    `Capabilities.transcribe` and `speak`, `AnswerSettings.voices` and
+    `speed`, `CallInfo.audioSeconds`. `VoiceCloudOff` is `400`;
   - sleep: overview, run detail, items (start a chat, dismiss), `sleep.mode`,
     start a run, and an event stream. `/sleep` typed in a thread is
     `SendRequest.confirm` and `SendResponse.sleep`.

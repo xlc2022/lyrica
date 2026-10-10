@@ -14,17 +14,21 @@ export interface AnswerSettings {
   maxTokens?: number;
   seed?: number;
   stop?: string[];
+  /** A speech model's voice for each language, by language tag: { en: "af_heart", zh: "zf_xiaobei" }. */
+  voices?: Record<string, string>;
+  /** A speech model's speed, 0.25 to 4. */
+  speed?: number;
 }
 
 /** Where a value comes from: the shared offering's, or the user's own. Anything absent is the server's default. */
 export type SettingSource = "shared" | "yours";
 
-const RANGES: Record<Exclude<keyof AnswerSettings, "stop">, [number, number, boolean]> = {
+const RANGES: Record<Exclude<keyof AnswerSettings, "stop" | "voices">, [number, number, boolean]> = {
   temperature: [0, 5, false], topP: [0, 1, false], topK: [0, 1000, true], minP: [0, 1, false],
   repeatPenalty: [0, 5, false], presencePenalty: [-2, 2, false], frequencyPenalty: [-2, 2, false],
-  maxTokens: [1, 1_000_000, true], seed: [0, 2 ** 31 - 1, true],
+  maxTokens: [1, 1_000_000, true], seed: [0, 2 ** 31 - 1, true], speed: [0.25, 4, false],
 };
-export const ANSWER_SETTINGS = [...Object.keys(RANGES), "stop"] as (keyof AnswerSettings)[];
+export const ANSWER_SETTINGS = [...Object.keys(RANGES), "stop", "voices"] as (keyof AnswerSettings)[];
 
 /** A change, checked: numbers in range, whole where they must be, up to four stop strings. null clears a value. */
 export function checkSettings(change: Record<string, unknown>): { [K in keyof AnswerSettings]?: AnswerSettings[K] | null } {
@@ -37,7 +41,15 @@ export function checkSettings(change: Record<string, unknown>): { [K in keyof An
       out[k] = v.length ? v : null; // no strings is no setting
       continue;
     }
-    const [min, max, whole] = RANGES[k as Exclude<keyof AnswerSettings, "stop">];
+    if (k === "voices") {
+      const entries = v && typeof v === "object" && !Array.isArray(v) ? Object.entries(v) : undefined;
+      if (!entries || entries.length > 8 || entries.some(([lang, id]) => !/^[a-zA-Z]{2,3}$/.test(lang) || typeof id !== "string" || !id || id.length > 100)) {
+        throw new Error("voices maps up to eight language tags, such as en or zh, to a voice");
+      }
+      out[k] = entries.length ? Object.fromEntries(entries.map(([lang, id]) => [lang.toLowerCase(), id])) : null;
+      continue;
+    }
+    const [min, max, whole] = RANGES[k as Exclude<keyof AnswerSettings, "stop" | "voices">];
     if (typeof v !== "number" || !Number.isFinite(v) || v < min || v > max || (whole && !Number.isInteger(v))) throw new Error(`${k} is ${whole ? "a whole number" : "a number"} from ${min} to ${max}`);
     out[k] = v;
   }
@@ -45,7 +57,7 @@ export function checkSettings(change: Record<string, unknown>): { [K in keyof An
 }
 
 /** What OpenAI's own API takes; it answers 400 to anything else. */
-const OPENAI: readonly (keyof AnswerSettings)[] = ["temperature", "topP", "presencePenalty", "frequencyPenalty", "maxTokens", "seed", "stop"];
+const OPENAI: readonly (keyof AnswerSettings)[] = ["temperature", "topP", "presencePenalty", "frequencyPenalty", "maxTokens", "seed", "stop", "voices", "speed"];
 
 /**
  * The settings an endpoint's API accepts: everything for llama.cpp, vLLM,

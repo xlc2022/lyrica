@@ -116,11 +116,13 @@ CREATE TABLE IF NOT EXISTS starred_offerings (
 CREATE TABLE IF NOT EXISTS local_only_threads (
   thread TEXT PRIMARY KEY
 );
--- A thread's own profile (cloud or custom, general threads only) and thinking setting.
+-- A thread's own profile (cloud or custom, general threads only), thinking
+-- setting and Voice to cloud switch (null follows the user's default).
 CREATE TABLE IF NOT EXISTS thread_choices (
-  thread   TEXT PRIMARY KEY,
-  profile  TEXT,
-  thinking TEXT
+  thread      TEXT PRIMARY KEY,
+  profile     TEXT,
+  thinking    TEXT,
+  voice_cloud INTEGER
 );
 -- Which model answered each call, and why a fallback was used. Never prompt text.
 CREATE TABLE IF NOT EXISTS model_calls (
@@ -141,15 +143,19 @@ CREATE TABLE IF NOT EXISTS model_calls (
   window        INTEGER,
   ttft_ms       INTEGER,
   gen_ms        INTEGER,
-  processed     INTEGER
+  processed     INTEGER,
+  -- A speech call's seconds of audio, heard or spoken: never the audio or its text.
+  audio_seconds REAL
 );
 `;
 
-/** Adds the turn measurements to a `model_calls` table made before them. */
+/** Adds the turn measurements and speech columns to tables made before them. */
 export function upgradeCalls(db: Db): void {
   for (const c of ["prompt_tokens", "output_tokens", "window", "ttft_ms", "gen_ms", "processed"]) {
     if (!hasColumn(db, "model_calls", c)) db.exec(`ALTER TABLE model_calls ADD COLUMN ${c} INTEGER`);
   }
+  if (!hasColumn(db, "model_calls", "audio_seconds")) db.exec("ALTER TABLE model_calls ADD COLUMN audio_seconds REAL");
+  if (!hasColumn(db, "thread_choices", "voice_cloud")) db.exec("ALTER TABLE thread_choices ADD COLUMN voice_cloud INTEGER");
 }
 
 const hasColumn = (db: Db, table: string, column: string) =>
