@@ -165,7 +165,11 @@ button.badge.model:hover { border-color: var(--accent); }
    Sticky offsets count from inside the padding, hence top -20px; the negative bottom margin (its height plus the gap) keeps the messages from moving when it shows. */
 .scroll > .pending-bar { --h: 22px; position: sticky; top: -20px; z-index: 6; max-width: none; width: calc(100% + 2 * var(--gutter)); margin: -20px calc(-1 * var(--gutter)) calc(-1 * var(--h) - 14px); justify-self: stretch; display: flex; justify-content: center; align-items: center; height: var(--h); min-height: 0; padding: 0; border: 0; border-radius: 0; background: var(--accent); color: var(--accent-fg); font-size: 12px; font-weight: 500; }
 .scroll > .pending-bar:hover { filter: brightness(1.08); }
-@media (pointer: coarse) { .scroll > .pending-bar { --h: 44px; } }
+/* On touch the bar stays thin; an invisible extension makes the tap target 44 px. */
+@media (pointer: coarse) {
+  .scroll > .pending-bar { --h: 26px; }
+  .scroll > .pending-bar::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 44px; }
+}
 .older { justify-self: center; width: auto; }
 .who { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 /* The eyebrow carries names; the facts after them read as written. */
