@@ -216,6 +216,16 @@ revoked. A revoked server must pair again.
     (`tailscale-api`). It runs with no capabilities. All sign-ins over
     Tailscale come from its address, so they share one rate limit.
 - No container mounts the Docker socket.
+- Volumes:
+  - `data`: host-api's key, certificate and state (below).
+  - `fetch-data`: fetch's download record and list.
+  - `serving`: what host-api asks of the model servers (llama.cpp's preset,
+    vLLM's wanted servers, chat templates, SeedVR2's links); read-only for
+    them.
+  - `vllm-status`: the vLLM supervisor's report of servers that exited;
+    read-only for host-api.
+  - The models folder is mounted read-only everywhere except its `lyrica/`
+    subfolder, which only fetch writes.
 - The host's key, certificate and state are in the `data` volume, readable
   only by host-api's user. The state is paired clients, the password hash,
   pause, GPU settings, model placements and serving settings, pins,
