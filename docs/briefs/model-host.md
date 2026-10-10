@@ -252,6 +252,12 @@ Each step depends on the one before. Note what goes wrong against the step.
     - that Vulkan numbers several GPUs in PCI order, as host-api assumes;
     - the APU list in `gpus.ts` and `install.sh`;
     - how much of GTT a model can really use.
+  - On a ROCm APU, an idle llama.cpp model's shared-memory bytes still count
+    as freeable for a vLLM or image placement on the carve-out, so it may be
+    unloaded for nothing.
+  - `keepFree` is one number per GPU and also comes off the carve-out, so a
+    large value set to protect system memory can rule out vLLM and images on
+    an integrated GPU.
 - **Image VRAM** is measured per recipe, not per part, and unloading one
   recipe frees all of ComfyUI's memory.
 - **`gpuLayers`** below "all" doesn't shrink the expected memory.
