@@ -162,7 +162,7 @@ describe("migrating to permanent IDs", () => {
     db.close();
     // Run again, it completes.
     const models = new Models(keyring, users);
-    expect(models.profile(li.id, "local").chat).toEqual({ offeringId: models.find(li.id, "gpu/qwen")!.offeringId });
+    expect(models.profile(li.id, "local").chat).toEqual([models.find(li.id, "gpu/qwen")]);
   });
 
   it("moves endpoints, models and every user's choices, shared ones included, to offerings", async () => {
@@ -203,16 +203,16 @@ describe("migrating to permanent IDs", () => {
     const lan = models.findEndpoint(li.id, "shared.lan")!;
     expect(lan.id).toMatch(UUID);
     const [qwen] = models.offerings(li.id, lan.id);
-    const deepseek = models.find(li.id, "openrouter/deepseek/deepseek-4.1-flash")!;
+    const deepseek = models.find(li.id, "openrouter/deepseek/deepseek-4.1-flash") as { offeringId: string };
     expect(models.offering(li.id, deepseek.offeringId)!.offering).toMatchObject({ manual: true });
     expect(qwen).toMatchObject({ modelId: "qwen3.8-27b", contextWindow: 32768, tools: true });
-    expect(models.profile(li.id, "cloud")).toEqual({ chat: deepseek });
-    expect(models.profile(li.id, "local")).toEqual({ chat: { offeringId: qwen!.id } });
-    expect(models.callContext(li.id, "private", "web/p").overrides).toEqual({ chat: { offeringId: qwen!.id } });
+    expect(models.profile(li.id, "cloud")).toEqual({ chat: [deepseek] });
+    expect(models.profile(li.id, "local")).toEqual({ chat: [{ offeringId: qwen!.id }] });
+    expect(models.callContext(li.id, "private", "web/p").overrides).toEqual({ chat: [{ offeringId: qwen!.id }] });
     expect(models.notice(li.id)).toEqual(["Models that no longer existed were taken out of your lists: shared.lan/long-gone."]);
     // Bob was locked; his shared reference migrates when he next opens.
     await users.authenticate("bob", "pw");
-    expect(models.profile(bob.id, "local")).toEqual({ chat: { offeringId: qwen!.id } });
+    expect(models.profile(bob.id, "local")).toEqual({ chat: [{ offeringId: qwen!.id }] });
   });
 });
 
@@ -247,12 +247,13 @@ describe("redirects, tombstones and Clean up", () => {
     models.removeEndpoint(li, lan.id);
     expect(models.endpoints(li.id).some((e) => e.id === lan.id)).toBe(false);
     // A context built before the rewrite, naming the removed model: it is skipped, so the profile applies.
-    expect(() => models.resolveModel("chat", { userId: li.id, pool: "private", localOnly: true, overrides: { chat: qwen } })).toThrow(NoModel);
+    expect(() => models.resolveModel("chat", { userId: li.id, pool: "private", localOnly: true, overrides: { chat: [qwen] } })).toThrow(NoModel);
     models.setProfile(li.id, "local", "chat", copy);
-    expect(models.resolveModel("chat", { userId: li.id, pool: "private", localOnly: true, overrides: { chat: qwen } })).toEqual(copy);
+    expect(models.resolveModel("chat", { userId: li.id, pool: "private", localOnly: true, overrides: { chat: [qwen] } })).toEqual(copy);
 
     await m.users.authenticate("bob", "pw");
-    expect(models.profile(bob.id, "local")).toEqual({ title: copy });
+    expect(models.profile(bob.id, "local")).toMatchObject({ title: [copy] });
+    expect(models.profile(bob.id, "local").chat).toBeUndefined();
     expect(models.callContext(bob.id, "general", "web/b").overrides).toEqual({});
     expect(models.notice(bob.id)).toEqual(["shared.lan/qwen3.8-27b was removed in the local profile's chat, one thread."]);
     models.dismissNotice(bob.id);
@@ -271,11 +272,11 @@ describe("redirects, tombstones and Clean up", () => {
     expect(() => models.replace(li, qwen.offeringId, m.localRef.offeringId)).toThrow(/shared/);
     models.replace(li, qwen.offeringId, copy.offeringId);
     // A context still naming the old ID routes to the replacement.
-    expect(models.resolveModel("chat", { userId: li.id, pool: "private", localOnly: true, overrides: { chat: qwen } })).toEqual(copy);
+    expect(models.resolveModel("chat", { userId: li.id, pool: "private", localOnly: true, overrides: { chat: [qwen] } })).toEqual(copy);
     // A chain of replacements is followed too.
     models.replace(li, copy.offeringId, flash.offeringId);
     await m.users.authenticate("bob", "pw");
-    expect(models.profile(bob.id, "local")).toEqual({ chat: flash });
+    expect(models.profile(bob.id, "local").chat).toEqual([flash]);
     expect(models.notice(bob.id)).toEqual([
       "shared.lan/qwen3.8-27b was replaced by shared.lan/qwen3.8-flash in the local profile's chat.",
     ]);
@@ -305,7 +306,7 @@ describe("redirects, tombstones and Clean up", () => {
     const extra = models.addModel(li, again.id, { modelId: "only-here" });
     models.setProfile(li.id, "local", "chat", { offeringId: dup!.id });
     models.merge(li, again.id, gpu.id);
-    expect(models.profile(li.id, "local")).toEqual({ chat: localRef });
+    expect(models.profile(li.id, "local").chat).toEqual([localRef]);
     expect(models.offerings(li.id, gpu.id).map((o) => o.id)).toEqual([extra.id, localRef.offeringId]);
     expect(models.endpoint(li.id, again.id)).toBeUndefined();
     // A personal endpoint's redirects are applied at once, by its owner, so there's nothing to tell them later.
@@ -324,7 +325,7 @@ describe("redirects, tombstones and Clean up", () => {
     expect(models.offering(li.id, qwen.offeringId)!.offering.status).toBe("gone");
     // Fallbacks skip gone models and stale endpoints.
     expect(() => models.resolveModel("chat", { userId: li.id, pool: "private", localOnly: true })).toThrow(/missing/);
-    expect(() => models.resolveModel("title", { userId: bob.id, pool: "private", localOnly: true, overrides: { title: copy } })).toThrow(/hasn't answered/);
+    expect(() => models.resolveModel("title", { userId: bob.id, pool: "private", localOnly: true, overrides: { title: [copy] } })).toThrow(/hasn't answered/);
 
     const items = models.cleanup(bob.id);
     expect(items.map((i) => i.label)).toEqual(["shared.lan2", "shared.lan/qwen3.8-27b", "shared.lan/qwen3.8-flash"]);
@@ -364,8 +365,8 @@ describe("the router", () => {
     // No local chat model: a private thread gets an error, not the cloud one.
     expect(() => models.resolveModel("chat", ctx({ pool: "private", localOnly: true }))).toThrow(NoModel);
     // A cloud override in a local-only context throws, even if handed in directly.
-    expect(() => models.resolveModel("chat", ctx({ localOnly: true, overrides: { chat: cloudRef } }))).toThrow(CloudModelForbidden);
-    expect(() => models.resolveModel("subagent.strong", ctx({ pool: "private", localOnly: true, overrides: { "subagent.strong": cloudRef } }))).toThrow(CloudModelForbidden);
+    expect(() => models.resolveModel("chat", ctx({ localOnly: true, overrides: { chat: [cloudRef] } }))).toThrow(CloudModelForbidden);
+    expect(() => models.resolveModel("subagent.strong", ctx({ pool: "private", localOnly: true, overrides: { "subagent.strong": [cloudRef] } }))).toThrow(CloudModelForbidden);
     // Settings refuse cloud models where they can't be used.
     expect(() => models.setProfile(li.id, "local", "chat", cloudRef)).toThrow(CloudModelForbidden);
     expect(() => models.setThreadModel(li.id, "private", "web/p", "chat", cloudRef)).toThrow(CloudModelForbidden);
@@ -387,15 +388,16 @@ describe("the router", () => {
 
   it("gives a child thread its parent's limits and the tier's model", async () => {
     const { models, li, cloudRef, localRef, ctx } = await withModels();
-    models.setProfile(li.id, "cloud", "subagent.cheap", localRef);
-    models.setProfile(li.id, "cloud", "subagent.strong", cloudRef);
+    models.setDefaultProfile(li.id, "custom");
+    models.setProfile(li.id, "custom", "subagent.cheap", localRef);
+    models.setProfile(li.id, "custom", "subagent.strong", cloudRef);
     models.setProfile(li.id, "local", "chat", localRef);
     models.setThreadModel(li.id, "general", "web/p", "title", localRef);
     const parent = models.callContext(li.id, "general", "web/p");
 
     const cheap = models.childContext(parent, "web/c1", { tier: "cheap" });
     expect(models.resolveModel("chat", cheap)).toEqual(localRef);
-    expect(cheap.overrides?.title).toEqual(localRef);
+    expect(cheap.overrides?.title).toEqual([localRef]);
     expect(models.resolveModel("chat", models.childContext(parent, "web/c2", { tier: "strong" }))).toEqual(cloudRef);
     expect(models.resolveModel("chat", models.childContext(parent, "web/c3", { model: cloudRef }))).toEqual(cloudRef);
 
@@ -405,7 +407,7 @@ describe("the router", () => {
     expect(child.localOnly).toBe(true);
     expect(models.resolveModel("chat", child)).toEqual(localRef);
     expect(() => models.childContext(priv, "web/c5", { model: cloudRef })).toThrow(CloudModelForbidden);
-    expect(() => models.childContext({ ...priv, overrides: { "subagent.cheap": cloudRef } }, "web/c5", { tier: "cheap" })).toThrow(CloudModelForbidden);
+    expect(() => models.childContext({ ...priv, overrides: { "subagent.cheap": [cloudRef] } }, "web/c5", { tier: "cheap" })).toThrow(CloudModelForbidden);
     expect(models.callContext(li.id, "private", "web/c5").overrides).toEqual({});
 
     // A local-only parent's children are local-only.

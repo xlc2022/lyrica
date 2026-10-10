@@ -1,0 +1,11 @@
+{
+  "TCP": {
+    "443": { "HTTPS": true },
+    "7236": { "TCPForward": "host-api:7443" }
+  },
+  "Web": {
+    "${TS_CERT_DOMAIN}:443": {
+      "Handlers": { "/": { "Proxy": "https+insecure://host-api:7443" } }
+    }
+  }
+}

@@ -16,7 +16,7 @@ async function setup(opts: Parameters<typeof daemon>[1] = {}) {
   const sub = await fakeOpenAI({ label: "sub", models: [{ id: "sub-model" }] });
   await localModel(li, rt.li.id, parent.baseUrl, "chat-model");
   const subs = (await li.post<EndpointInfo>(`/api/u/${rt.li.id}/endpoints`, { name: "subs", kind: "local", baseUrl: sub.baseUrl })).body;
-  for (const task of ["subagent.cheap", "subagent.strong"]) await li.put(`/api/u/${rt.li.id}/profiles/cloud/${task}`, { model: { offeringId: subs.models[0]!.id } });
+  for (const task of ["subagent.cheap", "subagent.strong"]) await li.put(`/api/u/${rt.li.id}/profiles/custom/${task}`, { model: { offeringId: subs.models[0]!.id } });
   const thread = (await li.post<ThreadSummary>(`/api/u/${rt.li.id}/threads`, { pool: "general", title: "parent" })).body;
   const path = `/api/u/${rt.li.id}/threads/general/${enc(thread.id)}`;
   return { rt, ...dm, li, parent, sub, thread, path };

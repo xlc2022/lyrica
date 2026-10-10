@@ -3,8 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CloudModelForbidden, Memory, PRONOUN_PRESETS, type Persona, type Pool } from "@lyrica/core";
 import { afterEach, describe, expect, it } from "vitest";
+import { deadUrl } from "../../core/test/fake-openai.ts";
+import { fakeHost } from "../../core/test/fake-host.ts";
 import { withModels } from "../../core/test/helpers.ts";
-import { createLyricaExtension, modelRuntimeFor, openThreadSession, piModelFor, type ThreadContext } from "../src/index.ts";
+import { createLyricaExtension, modelRuntimeFor, openThreadSession, piModelFor, toStoredEntry, type ThreadContext } from "../src/index.ts";
 
 const persona: Persona = { core: [{ path: "SOUL.md", text: "She is Lyrica." }], topics: [] };
 const dirs: string[] = [];
@@ -56,7 +58,7 @@ describe("the model runtime", () => {
     const s = await setup();
     const t = s.thread("private");
     const runtime = await modelRuntimeFor(s.models, t.call);
-    expect(() => piModelFor(runtime, s.models, "chat", { ...t.call, overrides: { chat: s.cloudRef } })).toThrow(CloudModelForbidden);
+    expect(() => piModelFor(runtime, s.models, "chat", { ...t.call, overrides: { chat: [s.cloudRef] } })).toThrow(CloudModelForbidden);
     // Even a cloud Model object from a general runtime can't be used through it.
     const cloudModel = (await modelRuntimeFor(s.models, s.thread("general").call)).getModel(s.openrouter.id, "deepseek/deepseek-4.1-flash")!;
     const { session, dispose } = await s.open(t);
@@ -140,5 +142,167 @@ describe("the model runtime", () => {
       dispose();
     }
     expect(s.models.endpoint(s.li.id, s.gpu.id)!.downSince).toBeUndefined();
+  });
+});
+
+describe("each turn's model", () => {
+  it("falls back to the next model when the first one's machine is off, and records it", async () => {
+    const s = await setup();
+    const off = s.models.addEndpoint(s.li, { name: "off", kind: "local", baseUrl: await deadUrl() });
+    const first = { offeringId: s.models.addModel(s.li, off.id, { modelId: "qwen3.8-27b" }).id };
+    s.models.setProfile(s.li.id, "local", "chat", [first, s.localRef]);
+    const t = s.thread("private");
+    const { session, prepare, dispose } = await s.open(t);
+    try {
+      const r = await prepare();
+      expect(r.label).toBe("gpu/qwen3.8-27b");
+      await session.prompt("hello");
+    } finally {
+      dispose();
+    }
+    expect(s.local.requests).toHaveLength(1);
+    expect(s.models.recentCalls(s.li.id, { threadId: t.threadId })[0]).toMatchObject({ label: "gpu/qwen3.8-27b", kind: "local", fallback: expect.stringContaining("off/qwen3.8-27b was skipped (off is down)") });
+  });
+
+  it("passes the thread's thinking level to a model that thinks, and none to one that doesn't, noting it", async () => {
+    const s = await setup();
+    s.models.setCapabilities(s.li, s.cloudRef.offeringId, { reasoning: ["low", "medium", "high"] });
+    s.models.setDefaultThinking(s.li.id, "high");
+    for (const t of [s.thread("general"), s.thread("private")]) {
+      const { session, prepare, dispose } = await s.open(t);
+      try {
+        await prepare();
+        await session.prompt("think about it");
+      } finally {
+        dispose();
+      }
+    }
+    expect((s.cloud.requests[0] as unknown as Record<string, unknown>).reasoning_effort).toBe("high");
+    const local = s.local.requests[0] as unknown as Record<string, unknown>;
+    expect(local.reasoning_effort).toBeUndefined();
+    expect(local.chat_template_kwargs).toBeUndefined();
+    const [plain, thought] = s.models.recentCalls(s.li.id);
+    expect(plain!.note).toBe("gpu/qwen3.8-27b can't think, so it answered without thinking");
+    expect(thought!.note).toBeUndefined();
+  });
+
+  it("leaves a subagent role's own thinking level alone", async () => {
+    const s = await setup();
+    s.models.setCapabilities(s.li, s.localRef.offeringId, { reasoning: ["low", "medium", "high"] });
+    s.models.setDefaultThinking(s.li.id, "low");
+    const { session, prepare, dispose } = await s.open(s.thread("private"));
+    try {
+      session.setThinkingLevel("high");
+      await prepare({ thinking: false });
+      expect(session.thinkingLevel).toBe("high");
+      await prepare();
+      expect(session.thinkingLevel).toBe("low");
+    } finally {
+      dispose();
+    }
+  });
+
+  it("never makes thinking text searchable", () => {
+    const stored = toStoredEntry({
+      type: "message", id: "e1", parentId: null, timestamp: new Date().toISOString(),
+      message: { role: "assistant", content: [{ type: "thinking", thinking: "a private chain of thought about Miso" }, { type: "text", text: "Miso is fine." }] },
+    } as never);
+    expect(stored.text).toBe("Miso is fine.");
+  });
+});
+
+describe("a model host", () => {
+  it("is called over mutual TLS with its pinned key, streaming, with thinking through the chat template", async () => {
+    const s = await setup();
+    const host = await fakeHost({ name: "lyrica-blackwell" });
+    const ep = await s.models.pairHost(s.li, { name: "blackwell", addresses: [host.address], code: host.newCode() });
+    const [o] = await s.models.discover(s.li, ep.id);
+    s.models.setProfile(s.li.id, "local", "chat", [{ offeringId: o!.id }]);
+    s.models.setDefaultThinking(s.li.id, "high");
+    const t = s.thread("private");
+    const { session, prepare, dispose } = await s.open(t);
+    try {
+      const r = await prepare();
+      expect(r.endpoint.api).toBe("host");
+      await session.prompt("hello over TLS");
+    } finally {
+      dispose();
+    }
+    expect(session.messages.at(-1)).toMatchObject({ role: "assistant", content: [{ type: "text", text: "ok from lyrica-blackwell" }] });
+    expect(host.chats).toEqual([expect.objectContaining({ model: o!.modelId, chat_template_kwargs: { enable_thinking: true, preserve_thinking: true }, client: [...host.pinned.keys()][0] })]);
+    expect(host.chats[0]!.reasoning_effort).toBeUndefined();
+    expect(s.models.recentCalls(s.li.id)[0]!.note).toBeUndefined();
+  });
+});
+
+describe("how a model answers", () => {
+  it("sends the offering's saved values with every call, only those set, and never another user's", async () => {
+    const s = await setup();
+    const bob = await s.users.createUser("bob", "pw", { displayName: "Bob", pronouns: PRONOUN_PRESETS.he }, { admin: false });
+    await s.users.authenticate("bob", "pw");
+    const lan = s.models.addEndpoint(s.li, { name: "lan", kind: "local", baseUrl: s.local.baseUrl }, { shared: true });
+    const [qwen] = await s.models.discover(s.li, lan.id);
+    s.models.setProfile(s.li.id, "local", "chat", [{ offeringId: qwen!.id }]);
+    s.models.setOfferingSettings(s.li, qwen!.id, { temperature: 0.6, repeatPenalty: 1.1 }, "shared");
+    s.models.setOfferingSettings(s.li, qwen!.id, { seed: 7, stop: ["END"], maxTokens: 300 });
+    s.models.setOfferingSettings(bob, qwen!.id, { temperature: 1.9, topP: 0.5 });
+    const { session, dispose } = await s.open(s.thread("private"));
+    try {
+      await session.prompt("hello");
+    } finally {
+      dispose();
+    }
+    const sent = s.local.requests[0] as unknown as Record<string, unknown>;
+    expect(sent).toMatchObject({ temperature: 0.6, repeat_penalty: 1.1, seed: 7, stop: ["END"], max_tokens: 300 });
+    expect(sent.top_p).toBeUndefined();
+    expect(sent.top_k).toBeUndefined();
+  });
+});
+
+describe("each model's own settings", () => {
+  it("sends the fallback model its own values, and a cloud API only what it takes", async () => {
+    const s = await setup();
+    const off = s.models.addEndpoint(s.li, { name: "off", kind: "local", baseUrl: await deadUrl() });
+    const first = s.models.addModel(s.li, off.id, { modelId: "qwen3.8-27b" });
+    s.models.setOfferingSettings(s.li, first.id, { temperature: 1.5 });
+    s.models.setOfferingSettings(s.li, s.localRef.offeringId, { temperature: 0.3 });
+    s.models.setProfile(s.li.id, "local", "chat", [{ offeringId: first.id }, s.localRef]);
+    s.models.setOfferingSettings(s.li, s.cloudRef.offeringId, { temperature: 0.9, topK: 20 });
+    for (const t of [s.thread("private"), s.thread("general")]) {
+      const { session, prepare, dispose } = await s.open(t);
+      try {
+        await prepare();
+        await session.prompt("hello");
+      } finally {
+        dispose();
+      }
+    }
+    expect((s.local.requests[0] as unknown as Record<string, unknown>).temperature).toBe(0.3);
+    const cloud = s.cloud.requests[0] as unknown as Record<string, unknown>;
+    expect(cloud.temperature).toBe(0.9);
+    expect(cloud.top_k).toBeUndefined();
+  });
+});
+
+describe("thinking on a host", () => {
+  it("sends reasoning_effort to a host model with levels, and the chat-template switch only for one with an on/off switch", async () => {
+    const s = await setup();
+    const host = await fakeHost({ name: "vllm", models: [
+      { id: "Qwen/Qwen3.8-27B", kind: "chat", contextLength: 32768, tools: true, reasoning: ["low", "medium", "high"] },
+    ] });
+    const ep = await s.models.pairHost(s.li, { name: "vllm", addresses: [host.address], code: host.newCode() });
+    const [o] = await s.models.discover(s.li, ep.id);
+    expect(o!.reasoning).toEqual(["low", "medium", "high"]);
+    s.models.setProfile(s.li.id, "local", "chat", [{ offeringId: o!.id }]);
+    s.models.setDefaultThinking(s.li.id, "high");
+    const { session, prepare, dispose } = await s.open(s.thread("private"));
+    try {
+      await prepare();
+      await session.prompt("think hard");
+    } finally {
+      dispose();
+    }
+    expect(host.chats[0]).toMatchObject({ reasoning_effort: "high" });
+    expect(host.chats[0]!.chat_template_kwargs).toBeUndefined();
   });
 });

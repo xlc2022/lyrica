@@ -1,6 +1,6 @@
 import {
-  AuthError, WrongPassword, CAPABILITIES, checkTask, isRestricted, publicKeyOf, generateSshKey, CloudModelForbidden, NoModel, PRONOUN_PRESETS,
-  type Author, type Endpoint, type Offering, type Hit, type Item, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type User,
+  AuthError, WrongPassword, CAPABILITIES, checkTask, isRestricted, profileFor, refId, THINKING_LEVELS, publicKeyOf, generateSshKey, CloudModelForbidden, NoModel, PRONOUN_PRESETS,
+  type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type User,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
@@ -173,11 +173,126 @@ export function apiRoutes(d: Lyricad): Route[] {
       s().models.merge(user, r.params.endpointId!, String(into ?? ""));
       return endpointInfo(d, user.id, String(into));
     }),
+    route("POST", `${u}/hosts`, async (r) => {
+      const user = d.userFor(r);
+      const h = await r.json<Api.HostInput>();
+      const ep = await s().models.pairHost(user, { name: String(h.name ?? ""), addresses: strings(h.addresses), code: String(h.code ?? "") }, { shared: !!h.shared });
+      await s().models.discover(user, ep.id).catch(() => {}); // a host that's paused now is read later
+      return endpointInfo(d, user.id, ep.id);
+    }),
+    route("POST", `${u}/hosts/:endpointId/pair`, async (r) => {
+      const user = d.userFor(r);
+      const { code } = await r.json<Api.HostRepair>();
+      const ep = s().models.endpoint(user.id, r.params.endpointId!);
+      if (!ep || ep.api !== "host") throw new HttpError(404, "no such model host");
+      await s().models.pairHost(user, { name: ep.name, addresses: ep.addresses ?? [], code: String(code ?? "") }, { endpointId: ep.id });
+      return endpointInfo(d, user.id, ep.id);
+    }),
+    route("PUT", `${u}/hosts/:endpointId/addresses`, async (r) => {
+      const user = d.userFor(r);
+      const { addresses } = await r.json<Api.HostAddresses>();
+      s().models.setHostAddresses(user, r.params.endpointId!, strings(addresses));
+      return endpointInfo(d, user.id, r.params.endpointId!);
+    }),
+    route("GET", `${u}/hosts/:endpointId/status`, async (r) => (await s().models.hostStatus(d.userFor(r).id, r.params.endpointId!)) as Api.HostStatus),
+    // --- The model libraries, downloads and host management ---
+    route("GET", `${u}/library/text`, (r): Api.TextLibrary => {
+      const q = r.query;
+      const kind = q.get("kind");
+      const capability = q.get("capability");
+      if (kind && kind !== "cloud" && kind !== "local") throw new HttpError(400, "kind is cloud or local");
+      if (capability && !["tools", "vision", "embedding", "image"].includes(capability)) throw new HttpError(400, "capability is tools, vision, embedding or image");
+      return s().models.textLibrary(d.userFor(r).id, {
+        ...(q.get("search") ? { search: q.get("search")! } : {}), ...(kind ? { kind: kind as "cloud" | "local" } : {}),
+        ...(q.get("endpoint") ? { endpointId: q.get("endpoint")! } : {}), ...(capability ? { capability: capability as "tools" } : {}),
+        groupsOnly: q.get("groups") === "1", offset: Number(q.get("offset") ?? 0) || 0, limit: Number(q.get("limit") ?? 50) || 50,
+      });
+    }),
+    route("PUT", `${u}/offerings/:offeringId/star`, async (r) => {
+      const { starred } = await r.json<{ starred: boolean }>();
+      s().models.star(d.userFor(r).id, r.params.offeringId!, !!starred);
+      return { ok: true };
+    }),
+    route("PUT", `${u}/offerings/:offeringId/separate`, async (r) => {
+      const { separate } = await r.json<{ separate: boolean }>();
+      s().models.notThisModel(d.userFor(r), r.params.offeringId!, !!separate);
+      return { ok: true };
+    }),
+    route("POST", `${u}/offerings/:offeringId/delete-copy`, async (r): Promise<Api.DeleteCopy> => {
+      const { confirm } = await r.json<{ confirm?: boolean }>();
+      return s().models.deleteCopy(d.userFor(r), r.params.offeringId!, { confirm: !!confirm });
+    }),
+    route("GET", `${u}/hub-tokens`, (r): Api.HubTokenInfo[] => s().models.hubTokens(d.userFor(r).id)),
+    route("PUT", `${u}/hub-tokens/:hub`, async (r): Promise<Api.HubTokenInfo[]> => {
+      const user = d.userFor(r);
+      const t = await r.json<Api.HubTokenInput>();
+      s().models.setHubToken(user, r.params.hub as Api.Hub, String(t.token ?? ""), { shared: !!t.shared });
+      return s().models.hubTokens(user.id);
+    }),
+    route("DELETE", `${u}/hub-tokens/:hub`, (r): Api.HubTokenInfo[] => {
+      const user = d.userFor(r);
+      s().models.removeHubToken(user, r.params.hub as Api.Hub, { shared: r.query.get("shared") === "1" });
+      return s().models.hubTokens(user.id);
+    }),
+    route("GET", `${u}/hosts/:endpointId/hub/files`, async (r) => {
+      const source = r.query.get("source");
+      if (source !== "huggingface" && source !== "modelscope") throw new HttpError(400, "source is huggingface or modelscope");
+      return s().models.hubFiles(d.userFor(r), r.params.endpointId!, { source, repo: String(r.query.get("repo") ?? ""), ...(r.query.get("revision") ? { revision: r.query.get("revision")! } : {}) });
+    }),
+    route("POST", `${u}/hosts/:endpointId/downloads`, async (r) => s().models.startDownload(d.userFor(r), r.params.endpointId!, await r.json<Api.DownloadInput>())),
+    route("GET", `${u}/hosts/:endpointId/downloads`, async (r) => s().models.downloads(d.userFor(r), r.params.endpointId!)),
+    route("DELETE", `${u}/hosts/:endpointId/downloads/:downloadId`, async (r) => s().models.cancelDownload(d.userFor(r), r.params.endpointId!, r.params.downloadId!)),
+    route("GET", `${u}/hosts/:endpointId/images`, async (r) => s().models.imageLibrary(d.userFor(r).id, r.params.endpointId!)),
+    route("POST", `${u}/hosts/:endpointId/recipes/:recipeId`, async (r) => {
+      const a = await r.json<Api.RecipeAction>();
+      if (!["confirm", "ignore", "download-parts", "delete", "change", "copy"].includes(a.do)) throw new HttpError(400, "a recipe can be confirmed, ignored, changed, copied, deleted, or have its parts downloaded");
+      return s().models.recipe(d.userFor(r), r.params.endpointId!, r.params.recipeId!, a as never);
+    }),
+    route("POST", `${u}/hosts/:endpointId/manage`, async (r) => {
+      const m = await r.json<Api.HostManage>();
+      if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(m.method)) throw new HttpError(400, "method is GET, POST, PUT, PATCH or DELETE");
+      return s().models.manageHost(d.userFor(r), r.params.endpointId!, m.method, String(m.path ?? ""), m.body);
+    }),
+    route("GET", `${u}/offerings/:offeringId/serving`, async (r): Promise<Api.ServingSettings> => s().models.servingSettings(d.userFor(r).id, r.params.offeringId!)),
+    route("PUT", `${u}/offerings/:offeringId/serving`, async (r) => {
+      const b = await r.json<{ settings?: unknown } | null>();
+      if (!b || typeof b.settings !== "object" || !b.settings || Array.isArray(b.settings)) throw new HttpError(400, "send { settings }");
+      return s().models.setServingSettings(d.userFor(r), r.params.offeringId!, b.settings as Record<string, unknown>);
+    }),
+    route("POST", `${u}/offerings/:offeringId/reload`, async (r) => s().models.reloadModel(d.userFor(r), r.params.offeringId!)),
+    route("GET", `${u}/hosts/:endpointId/dashboard`, (r) => ({ url: s().models.hostDashboard(d.userFor(r).id, r.params.endpointId!) })),
+    route("GET", `${u}/models/page`, async (r): Promise<Api.ModelsPage> => {
+      const user = d.userFor(r);
+      const m = s().models;
+      const eps = m.endpoints(user.id);
+      // One look per endpoint, within 3 s, so a host that's off doesn't hold the page.
+      const looks = await Promise.all(eps.map(async (e) => ({ e, look: await m.pageStatus(user.id, e.id).catch((err: Error) => ({ state: "down" as const, error: err.message, status: undefined, warning: undefined })) })));
+      const live = looks.map(({ e, look }) => ({ ...endpointInfo(d, user.id, e.id), state: look.state, ...(look.warning ? { warning: look.warning } : {}) }));
+      const hosts = looks.filter(({ e }) => e.api === "host").map(({ e, look }) => look.status
+        ? { endpointId: e.id, status: look.status as Api.HostStatus }
+        : { endpointId: e.id, error: look.error ?? `${e.name} is down` });
+      return { endpoints: live, hosts, profiles: profiles(d, user.id), calls: m.recentCalls(user.id, { limit: 20 }), notice: m.notice(user.id), cleanup: m.cleanup(user.id).length };
+    }),
+    route("POST", `${u}/hosts/:endpointId/:action`, async (r) => {
+      const action = r.params.action;
+      if (action !== "pause" && action !== "resume" && action !== "restart") throw new HttpError(404, "a host can be paused, resumed or restarted");
+      return (await s().models.hostControl(d.userFor(r), r.params.endpointId!, action)) as Api.HostStatus;
+    }),
     route("PATCH", `${u}/offerings/:offeringId`, async (r) => {
       const user = d.userFor(r);
       const c = await r.json<Api.CapabilitiesChange>();
       s().models.setCapabilities(user, r.params.offeringId!, capabilities(c, true));
       return offeringInfo(d, user.id, r.params.offeringId!);
+    }),
+    route("GET", `${u}/offerings/:offeringId/settings`, (r): Api.OfferingSettings => s().models.offeringSettings(d.userFor(r).id, r.params.offeringId!)),
+    route("PUT", `${u}/offerings/:offeringId/settings`, async (r): Promise<Api.OfferingSettings> => {
+      const user = d.userFor(r);
+      const c = await r.json<Api.OfferingSettingsChange | null>();
+      if (!c || typeof c !== "object" || Array.isArray(c)) throw new HttpError(400, "send { scope, values }");
+      if (c.scope !== undefined && c.scope !== "shared" && c.scope !== "mine") throw new HttpError(400, "scope is shared or mine");
+      if (!c.values || typeof c.values !== "object" || Array.isArray(c.values)) throw new HttpError(400, "values is an object of settings");
+      s().models.setOfferingSettings(user, r.params.offeringId!, c.values, c.scope ?? "mine");
+      return s().models.offeringSettings(user.id, r.params.offeringId!);
     }),
     route("DELETE", `${u}/offerings/:offeringId`, (r) => {
       s().models.removeOffering(d.userFor(r), r.params.offeringId!);
@@ -195,22 +310,52 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("GET", `${u}/models/cleanup`, (r): Api.CleanupItem[] => {
       const user = d.userFor(r);
       return s().models.cleanup(user.id).map((c) => ({
-        endpoint: { id: c.endpoint.id, name: c.endpoint.name, shared: c.endpoint.shared, ...(c.endpoint.downSince ? { downSince: c.endpoint.downSince } : {}) },
+        ...(c.endpoint ? { endpoint: { id: c.endpoint.id, name: c.endpoint.name, shared: c.endpoint.shared, ...(c.endpoint.downSince ? { downSince: c.endpoint.downSince } : {}) } } : {}),
         ...(c.offering ? { offering: offeringInfo(d, user.id, c.offering.id) } : {}),
+        ...(c.group ? { group: { id: c.group.id, name: c.group.name, shared: c.group.shared } } : {}),
         label: c.label, usedIn: c.usedIn, otherUsers: c.otherUsers, ...(c.suggestion ? { suggestion: c.suggestion } : {}),
       }));
     }),
     route("GET", `${u}/models/notice`, (r): Api.ModelsNotice => ({ lines: s().models.notice(d.userFor(r).id) })),
     route("DELETE", `${u}/models/notice`, (r) => { s().models.dismissNotice(d.userFor(r).id); return { ok: true }; }),
+    route("GET", `${u}/models/calls`, (r): Api.CallInfo[] => s().models.recentCalls(d.userFor(r).id)),
     route("GET", `${u}/profiles`, (r) => profiles(d, d.userFor(r).id)),
+    route("PATCH", `${u}/profiles`, async (r) => {
+      const user = d.userFor(r);
+      const c = await r.json<Api.ProfilesChange>();
+      if (c.default !== undefined) s().models.setDefaultProfile(user.id, c.default);
+      if (c.thinking !== undefined) s().models.setDefaultThinking(user.id, c.thinking);
+      return profiles(d, user.id);
+    }),
     route("PUT", `${u}/profiles/:profile/:task`, async (r) => {
       const user = d.userFor(r);
       const name = r.params.profile;
-      if (name !== "cloud" && name !== "local") throw new HttpError(404, "the profiles are cloud and local");
-      const { model } = await r.json<Api.ProfileModelChange>();
-      s().models.setProfile(user.id, name, checkTask(r.params.task!), model ? { offeringId: String(model.offeringId) } : undefined);
+      if (name !== "cloud" && name !== "local" && name !== "custom") throw new HttpError(404, "the profiles are local, cloud and custom");
+      const c = await r.json<Api.ProfileEntryChange>();
+      const entry = "same" in c ? { same: checkTask(String(c.same)) } : "models" in c ? (c.models ? toRefs(c.models) : undefined) : c.model ? [toRef(c.model)] : undefined;
+      s().models.setProfile(user.id, name, checkTask(r.params.task!), entry);
       return profiles(d, user.id);
     }),
+
+    // --- Model groups ---
+    route("GET", `${u}/groups`, (r): Api.GroupInfo[] => s().models.groups(d.userFor(r).id)),
+    route("GET", `${u}/groups/suggestions`, (r): Api.GroupSuggestion[] => s().models.groupSuggestions(d.userFor(r).id)),
+    route("POST", `${u}/groups`, async (r): Promise<Api.GroupInfo> => {
+      const g = await r.json<Api.GroupInput>();
+      return s().models.addGroup(d.userFor(r), { name: String(g.name ?? ""), members: ids(g.members) }, { shared: !!g.shared });
+    }),
+    route("GET", `${u}/groups/:groupId`, (r): Api.GroupDetail => {
+      const user = d.userFor(r);
+      const detail = s().models.groupDetail(user.id, r.params.groupId!);
+      return { ...detail, members: detail.members.map((m) => ({ ...offeringInfo(d, user.id, m.id), kind: m.kind, stale: m.stale })) };
+    }),
+    route("PATCH", `${u}/groups/:groupId`, async (r): Promise<Api.GroupInfo> => {
+      const c = await r.json<Api.GroupChange>();
+      return s().models.editGroup(d.userFor(r), r.params.groupId!, {
+        ...(c.name !== undefined ? { name: String(c.name) } : {}), ...(c.members !== undefined ? { members: ids(c.members) } : {}),
+      });
+    }),
+    route("DELETE", `${u}/groups/:groupId`, (r) => { s().models.removeGroup(d.userFor(r), r.params.groupId!); return { ok: true }; }),
 
     // --- Subagent roles and saved workflows, in the user's user.db ---
     route("GET", `${u}/roles`, (r) => roles(d, d.userFor(r).id)),
@@ -318,6 +463,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         await s().delegation.forget(user.id, pool, id);
         await s().host.forget(user.id, pool, id);
         owner(d, user, (o) => { if (o[pool].getThread(id)) o[pool].forgetThread(id, author(user)); });
+        s().models.forgetThread(user.id, pool, id);
       }
       return { ok: true };
     }),
@@ -750,7 +896,8 @@ function endpointInfo(d: Lyricad, userId: string, id: string): Api.EndpointInfo 
   const ep = d.services!.models.endpoint(userId, id);
   if (!ep) throw new HttpError(404, `no endpoint ${id}`);
   return {
-    id: ep.id, name: ep.name, kind: ep.kind, baseUrl: ep.baseUrl, hasApiKey: !!ep.apiKey, shared: ep.shared,
+    id: ep.id, name: ep.name, kind: ep.kind, api: ep.api, baseUrl: ep.baseUrl, hasApiKey: !!ep.apiKey, shared: ep.shared,
+    ...(ep.addresses ? { addresses: ep.addresses } : {}), ...(ep.fingerprint ? { fingerprint: ep.fingerprint } : {}),
     unencrypted: ep.unencrypted, stale: ep.stale, ...(ep.downSince ? { downSince: ep.downSince } : {}),
     models: d.services!.models.offerings(userId, ep.id).map((o) => toOfferingInfo(ep, o)),
   };
@@ -768,14 +915,17 @@ function offeringInfo(d: Lyricad, userId: string, id: string): Api.OfferingInfo 
 }
 
 /** Only known capabilities, of the right types. With `clearing`, null clears one. */
-function capabilities(input: object, clearing = false): Record<string, number | boolean | null> {
-  const out: Record<string, number | boolean | null> = {};
+function capabilities(input: object, clearing = false): Record<string, number | boolean | string[] | null> {
+  const out: Record<string, number | boolean | string[] | null> = {};
+  const levels = ["low", "medium", "high"];
   for (const k of CAPABILITIES) {
     const v = (input as Record<string, unknown>)[k];
     if (v === undefined) continue;
     if (v === null && clearing) out[k] = null;
-    else if (k === "contextWindow" ? typeof v === "number" && v > 0 : typeof v === "boolean") out[k] = k === "contextWindow" ? Math.floor(v as number) : v as boolean;
-    else throw new HttpError(400, `${k} must be ${k === "contextWindow" ? "a number of tokens" : "true or false"}`);
+    else if (k === "contextWindow" && typeof v === "number" && v > 0) out[k] = Math.floor(v);
+    else if (k === "reasoning" && Array.isArray(v) && v.every((l) => levels.includes(l))) out[k] = levels.filter((l) => v.includes(l));
+    else if (k !== "contextWindow" && k !== "reasoning" && typeof v === "boolean") out[k] = v;
+    else throw new HttpError(400, `${k} must be ${k === "contextWindow" ? "a number of tokens" : k === "reasoning" ? "a list of low, medium and high" : "true or false"}`);
   }
   return out;
 }
@@ -785,7 +935,34 @@ function endpoints(d: Lyricad, userId: string): Api.EndpointInfo[] {
 }
 
 function profiles(d: Lyricad, userId: string): Api.Profiles {
-  return { cloud: d.services!.models.profile(userId, "cloud"), local: d.services!.models.profile(userId, "local") };
+  const m = d.services!.models;
+  return {
+    local: m.profile(userId, "local"), cloud: m.profile(userId, "cloud"), custom: m.profile(userId, "custom"),
+    default: m.defaultProfile(userId), thinking: m.defaultThinking(userId),
+  };
+}
+
+/** A model reference from a request: an offering or a group, nothing else. */
+function toRef(r: unknown): ModelRef {
+  const o = (r ?? {}) as Record<string, unknown>;
+  if (typeof o.offeringId === "string") return { offeringId: o.offeringId };
+  if (typeof o.groupId === "string") return { groupId: o.groupId };
+  throw new HttpError(400, "a model is { offeringId } or { groupId }");
+}
+
+function toRefs(list: unknown): ModelRef[] {
+  if (!Array.isArray(list)) throw new HttpError(400, "expected a list of models");
+  return list.map(toRef);
+}
+
+function strings(list: unknown): string[] {
+  if (!Array.isArray(list) || list.some((x) => typeof x !== "string")) throw new HttpError(400, "expected a list of addresses");
+  return list as string[];
+}
+
+function ids(list: unknown): string[] {
+  if (!Array.isArray(list) || list.some((x) => typeof x !== "string")) throw new HttpError(400, "members are a list of offering IDs");
+  return list as string[];
 }
 
 function networkDefaults(d: Lyricad, userId: string): Api.NetworkDefaults {
@@ -899,23 +1076,28 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
   const ctx = models.callContext(user.id, pool, threadId);
   const tw = workspace.settings(user.id).thread(threadId);
   const isUnlogged = owner(d, user, (o) => o[pool].getThread(threadId)?.unlogged ?? false);
+  let thinkingLevels: Api.ThinkingLevel[] = ["off"];
   const taskModel = (task: Api.ThreadTask): Api.TaskModel => {
     const override = ctx.overrides?.[task];
+    const list = override?.length ? { list: override } : {};
     try {
-      const ref = models.resolveModel(task, ctx);
-      const o = models.offering(user.id, ref.offeringId);
+      const r = models.resolve(task, ctx);
+      if (task === "chat") thinkingLevels = ["off", ...(r.offering.reasoning ?? [])];
       return {
-        model: ref, kind: o?.endpoint.kind, endpointName: o?.endpoint.name, label: models.label(user.id, ref.offeringId), modelId: o?.offering.modelId,
-        source: override ? "thread" : "profile",
+        model: r.ref, ...list, kind: r.endpoint.kind, endpointName: r.endpoint.name, label: r.label, modelId: r.offering.modelId,
+        source: r.source,
       };
     } catch (err) {
       if (!(err instanceof NoModel) && !(err instanceof CloudModelForbidden)) throw err;
-      const label = override && models.label(user.id, override.offeringId);
-      return { ...(override ? { model: override } : {}), ...(label ? { label } : {}), source: override ? "thread" : "none", problem: (err as Error).message };
+      const label = override?.[0] && models.label(user.id, refId(override[0]));
+      return { ...list, ...(label ? { label } : {}), source: override?.length ? "thread" : "none", problem: (err as Error).message };
     }
   };
+  const answered = models.recentCalls(user.id, { threadId, limit: 1 })[0];
   return {
     models: Object.fromEntries(THREAD_TASKS.map((task) => [task, taskModel(task)])) as Api.ThreadSettings["models"],
+    profile: profileFor(ctx), profileChoice: models.threadProfile(user.id, threadId), thinking: ctx.thinking ?? "off", thinkingLevels,
+    ...(answered ? { answered } : {}),
     localOnly: ctx.localOnly,
     internet: tw.internet, services: tw.services, hosts: tw.hosts,
     network: workspace.network({ userId: user.id, pool, threadId }),
@@ -940,18 +1122,18 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
   const localOnly = change.localOnly ?? current.localOnly;
   if (pool === "private" && !localOnly) throw new CloudModelForbidden("a private thread is always local-only");
   if (parent && !localOnly && models.callContext(user.id, pool, parent).localOnly) throw new Error("the parent thread is local-only, so this one is too");
+  if (change.profile && pool === "private") throw new CloudModelForbidden("a private thread always uses the local profile");
+  if (change.profile !== undefined && change.profile !== null && change.profile !== "cloud" && change.profile !== "custom") throw new Error("a thread uses the cloud or the custom profile");
+  if (change.thinking !== undefined && change.thinking !== null && !THINKING_LEVELS.includes(change.thinking)) throw new Error("thinking is off, low, medium or high");
   const overrides = { ...current.overrides };
   for (const [task, ref] of Object.entries(change.models ?? {})) {
     if (!(THREAD_TASKS as readonly string[]).includes(task)) throw new Error(`a thread can't choose a model for ${task}`);
-    if (ref) overrides[task as Api.ThreadTask] = { offeringId: String(ref.offeringId) };
+    if (ref) overrides[task as Api.ThreadTask] = Array.isArray(ref) ? toRefs(ref) : [toRef(ref)];
     else delete overrides[task as Api.ThreadTask];
   }
-  const next = { ...current, localOnly, overrides };
-  for (const ref of Object.values(overrides)) {
-    const o = models.offering(user.id, ref.offeringId);
-    if (!o) throw new NoModel(`no model ${ref.offeringId}`);
-    if (isRestricted(next) && o.endpoint.kind !== "local") throw new CloudModelForbidden(`${models.label(user.id, ref.offeringId)} is a cloud model, and only local models are allowed in a ${pool === "private" ? "private" : "local-only"} thread`);
-  }
+  const profile = pool === "general" ? (change.profile === undefined ? current.profile : change.profile ?? models.defaultProfile(user.id)) : undefined;
+  const next = { ...current, localOnly, overrides, ...(profile ? { profile } : {}) };
+  for (const [task, list] of Object.entries(overrides)) overrides[task as Api.ThreadTask] = models.checkThreadList(next, task as Api.ThreadTask, list);
   if (change.unlogged === false && thread.parent) {
     owner(d, user, (o) => { if (o[pool].getThread(thread.parent!)?.unlogged) throw new Error("this thread's parent isn't logged, so it can't be logged either"); });
   }
@@ -961,6 +1143,8 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
   if (Object.keys(wsChange).length) ws.setThread(thread.id, pool, wsChange);
 
   if (change.localOnly !== undefined && pool === "general") models.setLocalOnly(user.id, pool, thread.id, change.localOnly);
+  if (change.profile !== undefined && pool === "general") models.setThreadProfile(user.id, pool, thread.id, change.profile);
+  if (change.thinking !== undefined) models.setThinking(user.id, thread.id, change.thinking);
   for (const task of Object.keys(change.models ?? {})) models.setThreadModel(user.id, pool, thread.id, task as Api.ThreadTask, overrides[task as Api.ThreadTask]);
   if (change.unlogged !== undefined) owner(d, user, (o) => o[pool].setUnlogged(thread.id, !!change.unlogged));
 }

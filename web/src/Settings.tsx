@@ -23,7 +23,7 @@ const MODES: Record<PermissionMode, string> = {
   "ask-changes": "Ask before commands and changes",
 };
 
-const refKey = (m?: ModelRef) => m?.offeringId ?? "";
+const refKey = (m?: { offeringId: string }) => m?.offeringId ?? "";
 const named = (t: TaskModel) => t.label ?? (t.modelId ? `${t.modelId} · ${t.endpointName}` : "a model that no longer exists");
 
 /** Always visible in the header: the main conversation's model, cloud or local, and its endpoint. */

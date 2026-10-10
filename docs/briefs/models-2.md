@@ -233,4 +233,11 @@ can be off, paused or busy gaming without Lyrica going dark.
 
 ## Handoff notes
 
-(The thread fills this in if it stops before it's done.)
+**Done** (PRs #30, #34, #36, #37 and #40, stacked in that order): items
+1–10, with 9 as the API only (no UI).
+
+**Next:**
+- Send `X-Lyrica-Priority: background` for sleep and cheap subagents. Pi's
+  request preparation (where hosts get their fetch) would need the task.
+
+**Open questions:** none blocking. Decisions taken are listed in each PR.

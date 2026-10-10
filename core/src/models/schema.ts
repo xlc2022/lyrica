@@ -14,7 +14,10 @@ CREATE TABLE IF NOT EXISTS endpoints (
   api_key    TEXT,
   created_at TEXT NOT NULL,
   -- The first failed check since the last one that answered; NULL while it answers.
-  down_since TEXT
+  down_since TEXT,
+  -- A model host (api 'host'): its addresses in order (JSON) and its pinned key fingerprint.
+  addresses  TEXT,
+  pin        TEXT
 );
 -- Each model an endpoint offers, with a permanent id. found: what discovery
 -- reported (context window, capabilities); hand: what was set by hand, which
@@ -30,6 +33,25 @@ CREATE TABLE IF NOT EXISTS offerings (
   missing_since TEXT,
   created_at    TEXT NOT NULL,
   UNIQUE (endpoint, model)
+);
+-- "How it answers" per offering (JSON). In self.db, a shared offering's values;
+-- in user.db, the user's own: for their offerings, or over a shared one's.
+CREATE TABLE IF NOT EXISTS offering_settings (
+  offering TEXT PRIMARY KEY,
+  settings TEXT NOT NULL
+);
+-- Access tokens for gated repositories, by hub (huggingface, modelscope). In
+-- self.db, one an administrator shares; in user.db, the user's own.
+CREATE TABLE IF NOT EXISTS hub_tokens (
+  hub   TEXT PRIMARY KEY,
+  token TEXT NOT NULL
+);
+-- Offerings declared the same model, in preferred order (members: a JSON list of offering IDs).
+CREATE TABLE IF NOT EXISTS model_groups (
+  id         TEXT PRIMARY KEY,
+  name       TEXT NOT NULL,
+  members    TEXT NOT NULL,
+  created_at TEXT NOT NULL
 );
 `;
 
@@ -86,15 +108,46 @@ CREATE TABLE IF NOT EXISTS thread_models (
   entry  TEXT NOT NULL,
   PRIMARY KEY (pool, thread, task)
 );
+-- Models the user starred; pickers show them first.
+CREATE TABLE IF NOT EXISTS starred_offerings (
+  offering TEXT PRIMARY KEY
+);
 -- General threads switched to local-only. Private threads are always local-only.
 CREATE TABLE IF NOT EXISTS local_only_threads (
   thread TEXT PRIMARY KEY
+);
+-- A thread's own profile (cloud or custom, general threads only) and thinking setting.
+CREATE TABLE IF NOT EXISTS thread_choices (
+  thread   TEXT PRIMARY KEY,
+  profile  TEXT,
+  thinking TEXT
+);
+-- Which model answered each call, and why a fallback was used. Never prompt text.
+CREATE TABLE IF NOT EXISTS model_calls (
+  id       INTEGER PRIMARY KEY,
+  at       TEXT NOT NULL,
+  pool     TEXT NOT NULL,
+  thread   TEXT NOT NULL,
+  task     TEXT NOT NULL,
+  offering TEXT NOT NULL,
+  label    TEXT NOT NULL,
+  endpoint TEXT NOT NULL,
+  kind     TEXT NOT NULL,
+  fallback TEXT,
+  note     TEXT
 );
 `;
 
 const hasColumn = (db: Db, table: string, column: string) =>
   !!db.prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = ?").get(table, column);
 const hasTable = (db: Db, table: string) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
+
+/** Adds the columns later versions gave `endpoints`, to a table made before them. */
+export function upgradeEndpoints(db: Db): void {
+  for (const [column, type] of [["down_since", "TEXT"], ["addresses", "TEXT"], ["pin", "TEXT"]] as const) {
+    if (!hasColumn(db, "endpoints", column)) db.exec(`ALTER TABLE endpoints ADD COLUMN ${column} ${type}`);
+  }
+}
 
 type Pair = { endpoint: string; model: string; offering: string };
 
@@ -110,8 +163,8 @@ type Pair = { endpoint: string; model: string; offering: string };
 export function migrate(db: Db, o: { legacy?: (pairs: Pair[]) => void; shared?: (endpoint: string, model: string) => string | undefined } = {}): string[] {
   const endpoints = hasTable(db, "endpoint_models");
   const choices = hasTable(db, "model_profiles") && hasColumn(db, "model_profiles", "endpoint");
+  upgradeEndpoints(db);
   if (!endpoints && !choices) return [];
-  if (endpoints && !hasColumn(db, "endpoints", "down_since")) db.exec("ALTER TABLE endpoints ADD COLUMN down_since TEXT");
   db.pragma("foreign_keys = OFF");
   try {
     return db.transaction(() => {

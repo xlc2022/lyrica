@@ -50,3 +50,43 @@ export function sameProof(a: string, b: string): boolean {
   const y = Buffer.from(b, "base64url");
   return x.length === 32 && y.length === 32 && timingSafeEqual(x, y);
 }
+
+/** The host's one pairing code at a time: 10 minutes, 5 tries. */
+export class PairingCodes {
+  static readonly LIFETIME_MS = 10 * 60_000;
+  static readonly TRIES = 5;
+  private current: { code: string; key: Buffer; expires: number; triesLeft: number } | null = null;
+
+  private readonly now: () => number;
+
+  constructor(now: () => number = Date.now) {
+    this.now = now;
+  }
+
+  /** Makes a new code, voiding any old one. */
+  make(): { code: string; expiresAt: string } {
+    const code = newCode();
+    const expires = this.now() + PairingCodes.LIFETIME_MS;
+    this.current = { code, key: pairingKey(code), expires, triesLeft: PairingCodes.TRIES };
+    return { code: showCode(code), expiresAt: new Date(expires).toISOString() };
+  }
+
+  /**
+   * Checks a client's proof. Returns the host's answering proof, or the
+   * reason it failed. A right proof uses the code up; a wrong one uses a try.
+   */
+  check(hostFp: string, clientFp: string, clientNonce: string, proof: string): { hostProof: string } | { failed: "no_code" | "pairing_failed" } {
+    const c = this.current;
+    if (!c || c.expires <= this.now() || c.triesLeft <= 0) return { failed: "no_code" };
+    if (!sameProof(proof, clientProof(c.key, hostFp, clientFp, clientNonce))) {
+      c.triesLeft--;
+      return { failed: "pairing_failed" };
+    }
+    this.current = null;
+    return { hostProof: hostProof(c.key, hostFp, clientFp, clientNonce) };
+  }
+
+  active(): boolean {
+    return !!this.current && this.current.expires > this.now() && this.current.triesLeft > 0;
+  }
+}
