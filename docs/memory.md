@@ -242,7 +242,9 @@ said:
   and what's unfinished. Unfinished work goes into WAKE.
 - **Opening a folder brings back what she knows about it.** When a thread is
   granted a folder that a page describes, that page is loaded with the thread's
-  context, the same way a relevant page comes up in conversation.
+  context, the same way a relevant page comes up in conversation. A folder on
+  an SSH machine is written `<name>:<path>`, so it never matches the same path
+  on the host or on another machine.
 - **Copies of files are not memory.** File contents stay in the thread entry
   where she read them. Notes and pages hold what she concluded, with
   citations.

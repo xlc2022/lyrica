@@ -418,6 +418,20 @@ describe("threads", () => {
     expect(own.forFolders(["/srv"])).toEqual([]);
     expect(own.pageIndex().map((p) => p.id).sort()).toEqual(["p:other", "p:site"]);
   });
+
+  it("brings back pages about folders on an SSH machine, never the host's or another machine's", async () => {
+    const { memory, li } = await setup();
+    const { own } = memory.openThreadView(li.id, "general");
+    own.putPage({ slug: "nas-site", title: "Site on the NAS", summary: "x", text: "y", folders: ["nas:/srv/site"] }, "sleep");
+    own.putPage({ slug: "host-site", title: "Site here", summary: "x", text: "y", folders: ["/srv/site"] }, "sleep");
+    own.putPage({ slug: "nas", title: "The NAS", summary: "x", text: "y", folders: ["nas:/"] }, "sleep");
+    const ids = (paths: string[]) => own.forFolders(paths).map((p) => p.id).sort();
+    expect(ids(["nas:/srv/site"])).toEqual(["p:nas", "p:nas-site"]);
+    expect(ids(["nas:/srv/site/src/"])).toEqual(["p:nas", "p:nas-site"]);
+    expect(ids(["nas:/srv/site-old"])).toEqual(["p:nas"]);
+    expect(ids(["/srv/site"])).toEqual(["p:host-site"]);
+    expect(ids(["backup:/srv/site"])).toEqual([]);
+  });
 });
 
 describe("on disk", () => {
