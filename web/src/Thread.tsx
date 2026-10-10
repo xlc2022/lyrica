@@ -23,6 +23,9 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
   // A new title, or a finished turn, may change the sidebar.
   useEffect(() => { if (t.live.title) { summary.reload(); refreshThreads(); } }, [t.live.title, summary.reload, refreshThreads]);
   useEffect(() => { if (t.live.reload) refreshThreads(); }, [t.live.reload, refreshThreads]);
+  // A child thread's update changes its badge in the sidebar.
+  const updates = t.live.items.filter((x) => x.role === "notice").length;
+  useEffect(() => { if (updates) refreshThreads(); }, [updates, refreshThreads]);
   // The badge follows the profile, which may change elsewhere: refresh it after each turn and on focus.
   useEffect(() => { if (t.live.reload) settings.reload(); }, [t.live.reload, settings.reload]);
   useEffect(() => {
@@ -95,7 +98,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
         )}
       </header>
       {parent && (
-        <p className="subnote">{s?.subagent ? "Subagent of" : "Branched from"} <a href={`#/u/${encodeURIComponent(userId)}/t/${pool}/${encodeURIComponent(parent.id)}`}>{parent.title || "its thread"}</a></p>
+        <p className="subnote">{s?.subagent ? "Subagent of" : s?.child ? "Child thread of" : "Branched from"} <a href={`#/u/${encodeURIComponent(userId)}/t/${pool}/${encodeURIComponent(parent.id)}`}>{parent.title || "its thread"}</a></p>
       )}
       <div className="scroll" ref={scroller}>
         <ErrorText error={summary.error || t.loadError} />
@@ -116,7 +119,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
         : <Composer base={base} busy={t.live.busy} onSend={send} onStop={stop} restored={restored} />}
       {drawer && settings.data && s && !s.subagent && (
         <SettingsDrawer
-          ctx={ctx} base={base} summary={s} settings={settings.data}
+          ctx={ctx} base={base} summary={s} settings={settings.data} children={findThread(threads, pool, threadId)?.children.length ?? 0}
           onSettings={settings.set} onSummary={(x) => { summary.set(x); refreshThreads(); }}
           onClose={() => setDrawer(false)}
         />

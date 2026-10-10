@@ -364,6 +364,28 @@ describe("threads", () => {
     expect(own.loadEntries(t.id)).toHaveLength(1);
   });
 
+  it("keeps child threads one level deep, and forgets them with their parent only when asked", async () => {
+    const { memory, li } = await setup();
+    const { own } = memory.openThreadView(li.id, "general");
+    const parent = own.createThread({ interface: "web", unlogged: true });
+    const child = own.createThread({ interface: "web", parent: parent.id, child: true, title: "Child" });
+    expect(child).toMatchObject({ child: true, unlogged: true, parent: parent.id });
+    expect(() => own.createThread({ interface: "web", parent: child.id, child: true })).toThrow(/can't start child threads/);
+    expect(() => own.createThread({ interface: "web", child: true })).toThrow(/needs its parent/);
+    const sub = own.createThread({ interface: "web", parent: parent.id, subagent: true });
+    expect(own.listThreads({ includeHidden: true, parent: parent.id, children: true }).map((t) => t.id)).toEqual([child.id]);
+
+    own.forgetThread(parent.id, "lyrica");
+    expect(own.getThread(sub.id)).toBeUndefined();
+    expect(own.getThread(child.id)).toMatchObject({ parent: undefined, unlogged: true });
+
+    const p2 = own.createThread({ interface: "web" });
+    const c2 = own.createThread({ interface: "web", parent: p2.id, child: true });
+    const b2 = own.createThread({ interface: "web", parent: c2.id });
+    own.forgetThread(p2.id, "lyrica", { children: true });
+    expect([own.getThread(c2.id), own.getThread(b2.id)]).toEqual([undefined, undefined]);
+  });
+
   it("brings back pages about granted folders", async () => {
     const { memory, li } = await setup();
     const { own } = memory.openThreadView(li.id, "general");

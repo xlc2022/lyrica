@@ -78,6 +78,7 @@ interface Env {
 
 function StoredMessage({ m, env, you }: { m: Message; env: Env; you: string }) {
   if (m.role === "user") {
+    if (m.from?.kind === "parent") return <FromParent text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} parent={m.from.threadId} env={env} />;
     const who = m.from?.kind === "lyrica" ? "Lyrica" : m.from?.kind === "user" ? (m.from.name || you) : you;
     return <UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} />;
   }
@@ -154,6 +155,7 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" }>; e
   const open = part.type === "tool" ? env.openTools.has(part.toolCallId) : localOpen;
   const toggle = () => (part.type === "tool" ? env.toggleTool(part.toolCallId) : setLocalOpen(!localOpen));
   if (part.type === "tool" && part.name === "delegate") return <SubagentCard part={part} env={env} />;
+  if (part.type === "tool" && part.name === "threads") return <ThreadsCard part={part} env={env} />;
   if (part.type === "delegation") return <Notice text={part.text} status={part.status} threads={part.threads} env={env} />;
   let label: React.ReactNode;
   let body: React.ReactNode;
@@ -202,6 +204,35 @@ function SubagentCard({ part, env }: { part: Extract<MessagePart, { type: "tool"
       </div>
       {args.task && <p>{args.task}</p>}
       {part.threads?.map((t, i) => <SubagentWork key={t.id} thread={t} label={part.threads!.length > 1 ? `Subagent ${i + 1}` : "Its work"} env={env} />)}
+    </div>
+  );
+}
+
+/** A `threads` call: a child thread started, messaged or listed, linking to it. */
+function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" }>; env: Env }) {
+  const args = (part.args ?? {}) as { action?: string; title?: string; task?: string; text?: string; to?: string };
+  const state = part.result === undefined ? "running" : part.isError ? "failed" : "done";
+  const head = args.action === "start" ? `Child thread: ${args.title ?? ""}` : args.action === "list" ? "Child threads"
+    : args.to === "parent" ? "Update to the parent thread" : "Message to a child thread";
+  return (
+    <div className="subagent threads-card">
+      <div className="sub-head">
+        <span className="status" data-state={state} aria-label={state} />
+        <b>{head}</b>
+        {args.to === "parent" ? null : <ThreadLinks threads={part.threads} env={env} />}
+      </div>
+      {(args.task ?? args.text) && <p>{args.task ?? args.text}</p>}
+      {part.isError && <p className="error">{part.result}</p>}
+    </div>
+  );
+}
+
+/** In a child thread, what its parent thread sent: its task, or a message. */
+function FromParent({ text, parent, env }: { text: string; parent: string; env: Env }) {
+  return (
+    <div className="msg user">
+      <div className="who">Lyrica, from <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: parent })}>the parent thread</a></div>
+      <div className="body">{text}</div>
     </div>
   );
 }
@@ -263,6 +294,7 @@ function ThreadLinks({ threads, env }: { threads?: ThreadRef[]; env: Env }) {
 
 const NOTICE_HEADS: Record<string, string> = {
   question: "Subagent asks", note: "Subagent note", user_message: "Message to a subagent", interrupted: "Subagent interrupted",
+  update: "Child thread",
 };
 
 /** Something a subagent run delivered into the thread: a result, a question, a note, or what someone wrote to one. */

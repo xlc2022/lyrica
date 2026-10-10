@@ -145,7 +145,7 @@ function ThreadRow({ t, userId, current }: { t: ThreadSummary; userId: string; c
     <li>
       <div className="row">
         {t.children.length > 0
-          ? <button type="button" className="chev" aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} subagents`} onClick={() => setOpen(!open)}>›</button>
+          ? <button type="button" className="chev" aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} child threads`} onClick={() => setOpen(!open)}>›</button>
           : <span className="chev" />}
         <ThreadLink t={t} userId={userId} on={current === key} />
       </div>
@@ -168,6 +168,8 @@ function ThreadLink({ t, userId, on }: { t: ThreadSummary; userId: string; on: b
       <span className="title">{t.title || "New thread"}</span>
       <span className="when">
         {t.busy && <span className="busy" title="Working" />}
+        {t.status === "waiting" && <span className="flag">waiting</span>}
+        {!!t.unseen && <span className="count" aria-label={`${t.unseen} new ${t.unseen === 1 ? "update" : "updates"}`}>{t.unseen}</span>}
         {t.hidden && <span className="flag">hidden</span>}
         {shortTime(when)}
       </span>

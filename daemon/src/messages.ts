@@ -1,4 +1,4 @@
-import { DELEGATE_MESSAGE, OPENING, USER_MESSAGE } from "@lyrica/extension";
+import { DELEGATE_MESSAGE, FROM_PARENT, OPENING, USER_MESSAGE } from "@lyrica/extension";
 import type { Message, MessagePart, Pool, ThreadRef } from "./api.ts";
 
 // Stored Pi entries as the web UI shows them, and the memory markers that both
@@ -18,7 +18,7 @@ export type RunThreads = (runId: string) => string[];
  * in the parent's pool: named in its details, or found by its run.
  */
 export function delegateThreads(tool: string, details: unknown, pool: Pool, runThreads?: RunThreads): ThreadRef[] | undefined {
-  if (tool !== "delegate") return undefined;
+  if (tool !== "delegate" && tool !== "threads") return undefined;
   const d = (details ?? {}) as { threads?: unknown; runId?: unknown };
   const ids = Array.isArray(d.threads) ? d.threads.filter((id): id is string => typeof id === "string")
     : typeof d.runId === "string" && runThreads ? runThreads(d.runId) : [];
@@ -112,6 +112,11 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
     const base = { id: `e:${threadId}#${n}`, n, createdAt };
     if (m.role === "user") {
       if (textOf(m.content) === OPENING) continue; // a thread started from a sleep item: she speaks first
+      const parent = FROM_PARENT.exec(textOf(m.content));
+      if (parent) {
+        out.push({ ...base, role: "user", from: { kind: "parent", threadId: parent[1]! }, parts: [{ type: "text", text: textOf(m.content).slice(parent[0].length) }] });
+        continue;
+      }
       out.push({ ...base, role: "user", ...(subagent ? { from: { kind: "lyrica" as const } } : {}), parts: [{ type: "text", text: textOf(m.content) }] });
     } else if (m.role === "assistant") {
       const msg: Message = { ...base, role: "assistant", parts: [], ...(m.model ? { model: m.model } : {}) };

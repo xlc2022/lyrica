@@ -453,19 +453,27 @@ export function apiRoutes(d: Lyricad): Route[] {
       const user = d.userFor(r);
       const pool = poolOf(r);
       const threadId = owner(d, user, (o) => threadOf(o, r).id);
-      // Its subagents' threads go with it, deepest first; each one's runs are stopped and their records dropped first.
-      const doomed = owner(d, user, (o) => {
-        const all: string[] = [];
-        const walk = (id: string) => { for (const c of o[pool].listThreads({ includeHidden: true, parent: id })) walk(c.id); all.push(id); };
+      const { children } = await r.json<Api.ForgetThread>();
+      const all = children === true || r.query.get("children") === "1";
+      // Its subagents' threads go with it, deepest first, and with `children` its child threads; each one's runs are stopped and their records dropped first.
+      const { doomed, kept } = owner(d, user, (o) => {
+        const out = { doomed: [] as string[], kept: [] as string[] };
+        const walk = (id: string) => {
+          for (const c of o[pool].listThreads({ includeHidden: true, parent: id })) walk(c.id);
+          for (const c of o[pool].listThreads({ includeHidden: true, parent: id, children: true })) if (all) walk(c.id); else out.kept.push(c.id);
+          out.doomed.push(id);
+        };
         walk(threadId);
-        return all;
+        return out;
       });
       for (const id of doomed) {
         await s().delegation.forget(user.id, pool, id);
         await s().host.forget(user.id, pool, id);
-        owner(d, user, (o) => { if (o[pool].getThread(id)) o[pool].forgetThread(id, author(user)); });
+        owner(d, user, (o) => { if (o[pool].getThread(id)) o[pool].forgetThread(id, author(user), { children: all }); });
         s().models.forgetThread(user.id, pool, id);
       }
+      s().children.forget(user.id, pool, doomed);
+      for (const id of kept) s().workspace.settings(user.id).detach(id);
       return { ok: true };
     }),
     route("GET", `${t}/subagents`, (r): Api.Subagents => {
@@ -497,6 +505,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       const limit = Math.min(200, Math.max(1, Number(r.query.get("limit") ?? MESSAGE_PAGE) || MESSAGE_PAGE));
       return owner(d, user, (o): Api.MessagePage => {
         const thread = threadOf(o, r);
+        // Opening a child thread sees its updates.
+        if (thread.child && !before) s().children.seen(user.id, poolOf(r), thread.id);
         const page = o[poolOf(r)].entryPage(thread.id, { before: before ? Number(before) : undefined, limit });
         const names = thread.subagent ? { userName: (id: string) => s().users.get(id)?.profile.displayName ?? "a user" } : undefined;
         return { messages: toMessages(thread.id, poolOf(r), page.entries,
@@ -1074,11 +1084,18 @@ function tree(d: Lyricad, user: User, pool: Pool, store: PoolStore, threads: Thr
 
 function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Thread, children: Api.ThreadSummary[]): Api.ThreadSummary {
   return {
-    pool, id: th.id, interface: th.interface, subagent: th.subagent, hidden: th.hidden, unlogged: th.unlogged, createdAt: th.createdAt,
+    pool, id: th.id, interface: th.interface, subagent: th.subagent, child: th.child, hidden: th.hidden, unlogged: th.unlogged, createdAt: th.createdAt,
     updatedAt: store.lastEntry(th.id)?.createdAt ?? th.createdAt,
     ...(th.title ? { title: th.title } : {}), ...(th.parent ? { parent: th.parent } : {}),
     busy: d.services!.host.busy(user.id, pool, th.id), children,
+    ...(th.child ? childInfo(d, user, pool, th.id) : {}),
   };
+}
+
+/** A child thread's status and unseen updates, for the sidebar. */
+function childInfo(d: Lyricad, user: User, pool: Pool, id: string): Pick<Api.ThreadSummary, "status" | "unseen"> {
+  const info = d.services!.children.info(user.id).get(`${pool}/${id}`);
+  return { status: info?.status ?? d.services!.host.status(user.id, pool, id), unseen: info?.unseen ?? 0 };
 }
 
 function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): Api.ThreadSettings {

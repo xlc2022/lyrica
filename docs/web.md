@@ -20,7 +20,9 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   because another browser still holds them.
 - **Sidebar:** the user, the Show general, Show private and Show hidden
   threads filters (saved per user), New thread (general or private), the
-  thread list with child threads (branches, forks, copies) behind `›`, and links to Memory and the Control
+  thread list with child threads (Lyrica's, branches, forks, copies) behind
+  `›`, a child showing when it works or waits and a count of its unseen
+  updates, and links to Memory and the Control
   panel. Private threads carry a small lock in the private colour.
 - **Hidden pools:** with Show general or Show private off, a thread or
   memory from that pool shows "General is hidden" or "Private is hidden"
@@ -111,6 +113,11 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   event drops the removed messages from every open view. A new branch opens,
   under "Branched from" its parent, and its settings can be changed within
   its parent's.
+- A `threads` call is a card: the child thread started (title and task) or
+  messaged, linking to it. A child's update shows in the parent as a card
+  headed "Child thread", linking to it. In a child thread, what the parent
+  sent shows as "Lyrica, from the parent thread". Forgetting a thread with
+  child threads asks whether to forget them too, ticked.
 - Files attach with the button, by dragging onto the composer, or by pasting.
   Each shows its progress, and its path in the thread goes into the draft.
 

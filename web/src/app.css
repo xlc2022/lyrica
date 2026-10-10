@@ -326,3 +326,5 @@ textarea.code { font: 0.82rem/1.5 var(--mono); white-space: pre; }
 .msg-menu .menu .sub-item { padding-left: 24px; }
 .edit-box { display: grid; gap: 6px; }
 .edit-box textarea { width: 100%; font: inherit; border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; background: var(--panel); color: var(--fg); }
+/* A child thread's updates nobody has seen yet. */
+.count { font-size: 0.68rem; min-width: 18px; text-align: center; border-radius: 999px; padding: 0 5px; background: var(--accent); color: var(--bg); font-variant-numeric: tabular-nums; }

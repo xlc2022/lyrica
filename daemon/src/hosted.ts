@@ -4,8 +4,8 @@ import {
   CloudModelForbidden, NoModel, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  createDelegateExtension, createLyricaExtension, createWorkspaceExtension, DELEGATE_MESSAGE, OPENING, openThreadSession, piModelFor,
-  type ApprovalRequest, type Delegation, type DelegationEvent, type SubagentApproval, type ThreadContext,
+  createDelegateExtension, createLyricaExtension, createThreadsExtension, createWorkspaceExtension, DELEGATE_MESSAGE, OPENING, openThreadSession, piModelFor,
+  type ApprovalRequest, type ChildStatus, type ThreadsHost, type Delegation, type DelegationEvent, type SubagentApproval, type ThreadContext,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
@@ -27,6 +27,10 @@ export interface HostOptions {
   permissionMs: number;
   /** For failures that aren't the user's: never message text. */
   log: (line: string) => void;
+  /** Child threads: every hosted thread gets the `threads` tool. */
+  threads?: ThreadsHost;
+  /** A turn started or ended in a thread. */
+  onTurn?: (userId: string, pool: Pool, threadId: string, working: boolean) => void;
 }
 
 /** Events kept for reconnecting streams. Older ones reload from stored entries. */
@@ -104,6 +108,17 @@ export class ThreadHost {
     this.threads.get(`${userId}/${pool}/${threadId}`)?.reload();
   }
 
+  /** Working (a turn runs), waiting (for an approval) or idle, without creating a record. */
+  status(userId: string, pool: Pool, threadId: string): ChildStatus {
+    const t = this.threads.get(`${userId}/${pool}/${threadId}`);
+    return t?.waiting ? "waiting" : t?.busy ? "working" : "idle";
+  }
+
+  /** Something was delivered into the thread: its open views see it, once, however it got there. */
+  delivered(userId: string, pool: Pool, threadId: string, content: string, details: unknown): void {
+    this.threads.get(`${userId}/${pool}/${threadId}`)?.delivered(content, details);
+  }
+
   /** Whether a turn is running in the thread, without creating a record. */
   busy(userId: string, pool: Pool, threadId: string): boolean {
     return this.threads.get(`${userId}/${pool}/${threadId}`)?.busy ?? false;
@@ -143,6 +158,7 @@ export class HostedThread {
   private stale = false;
   /** Closed by Lock, forgetting or shutdown. */
   closed = false;
+  private closing = false;
   busy = false;
 
   constructor(private readonly o: HostOptions, readonly userId: string, readonly pool: Pool, readonly threadId: string,
@@ -203,9 +219,13 @@ export class HostedThread {
     return { queued: false };
   }
 
+  /** Waiting for an answer to a permission request. */
+  get waiting(): boolean { return this.pending.size > 0; }
+
   private async run(text: string): Promise<void> {
     this.stopIdle();
     let aborted = false;
+    this.o.onTurn?.(this.userId, this.pool, this.threadId, true);
     try {
       for (let next: string | undefined = text; next !== undefined && !this.closed;) {
         const opened = await this.open();
@@ -228,6 +248,8 @@ export class HostedThread {
     } finally {
       this.busy = false;
       this.aborted = false;
+      // Shutdown, Lock or forgetting closes it: a child keeps its record of working, so a restart tells its parent.
+      if (!this.closing) this.o.onTurn?.(this.userId, this.pool, this.threadId, false);
       this.startIdle();
     }
   }
@@ -340,6 +362,7 @@ export class HostedThread {
           createLyricaExtension(ctx, { persona: () => persona.read(), profile: () => users.get(this.userId)!.profile, folders: tools.folders }),
           createWorkspaceExtension({ ...tools, approve: (r) => this.approve(r) }),
           ...(canDelegate ? [createDelegateExtension(ctx, delegation)] : []),
+          ...(this.o.threads ? [createThreadsExtension(ctx, this.o.threads)] : []),
         ],
       });
       const unsubscribe = session.subscribe((e) => this.forward(e));
@@ -455,6 +478,9 @@ export class HostedThread {
     else this.dispose();
   }
 
+  /** Delivered into the stored thread or the live session: shown once either way. */
+  delivered(content: unknown, details: unknown): void { this.notice(content, details); }
+
   /** A forwarded event from elsewhere, such as Delegation's runs. */
   publish(event: ThreadEvent): void { this.emit(event); }
 
@@ -479,6 +505,7 @@ export class HostedThread {
 
   /** Stops the turn and disposes the session. Streams are told to reset. */
   async close(): Promise<void> {
+    this.closing = true;
     await this.stop().catch(() => {});
     this.closed = true;
     this.stopIdle();
