@@ -28,14 +28,18 @@ games on, so the host has to be easy to live with and hard to misuse.
    - `host-api`: ours, built in CI. It is the only service with a published
      port.
    - `comfyui`: ours, built in CI from pinned ComfyUI and custom-node
-     commits, with a CUDA and a ROCm variant. It has no plugin manager.
+     commits (including ComfyUI-GGUF and ComfyUI-SeedVR2_VideoUpscaler),
+     with a CUDA and a ROCm variant. It has no plugin manager.
    - vLLM and llama.cpp: their official images, pinned by digest, with a
      CUDA and a ROCm variant (and Vulkan for llama.cpp where useful).
+   - `fetch`: ours, small, for downloads (item 9).
    - A compose profile per vendor (`nvidia`, `amd`). An `install.sh` checks
      the GPU, the driver and the container runtime's GPU support, writes
      `.env`, and starts the stack. Running it again upgrades in place.
 3. **Network.**
    - The model servers sit on an internal Docker network with no route out.
+   - `fetch` alone has a route out, on a network of its own that `host-api`
+     shares with it and the model servers don't.
    - `host-api` joins it and publishes one port, bound to the LAN address
      given at install, never `0.0.0.0`.
    - An optional `tailscale` service makes the stack a tailnet device of its
@@ -58,11 +62,19 @@ games on, so the host has to be easy to live with and hard to misuse.
    - an OpenAI-compatible `/v1` (chat completions with streaming and tools,
      embeddings, and models), routed to the right server;
    - an image API (create and edit) that fills **workflow templates** kept in
-     `host/workflows/`. A request names a template and gives its parameters,
-     never a workflow;
+     `host/workflows/`, one per architecture. A request names a confirmed
+     **recipe** and gives its parameters, never a workflow;
+   - **recipes**, as in DESIGN ("Image models are recipes"), kept in the
+     host's data folder: list, confirm or ignore a proposal, swap a part for
+     another of the same role and slot, add or remove a LoRA (with strength)
+     or a VAE or encoder in place of a checkpoint's own, save as a new
+     recipe, delete. An upscale template for SeedVR2 (scale, largest size,
+     colour matching), with starter recipes for 3B and 7B. Starter recipes for each
+     supported architecture live in `host/recipes/`, with each part's file
+     and checksum;
    - management: status (GPUs, VRAM, loaded and pinned models, queue,
      paused), load, unload, pin, GPU roles, pause, resume, restart, and
-     downloads.
+     downloads (list a repository's files, start, progress, cancel).
 6. **VRAM**, as in DESIGN:
    - each GPU has a role (vLLM or shared);
    - pinned models;
@@ -80,9 +92,45 @@ games on, so the host has to be easy to live with and hard to misuse.
    - mounted read-only into the model servers;
    - llama.cpp reads GGUF files from it directly, and ComfyUI reads it through
      its extra model paths;
-   - downloads go into a `lyrica/` subfolder, through a one-off container
-     that has internet access, from a catalogue with pinned checksums.
-9. **The dashboard**, a small page served by `host-api` on port 7236:
+   - downloads go into a `lyrica/` subfolder.
+9. **Downloads,** as in DESIGN, from Hugging Face, ModelScope or an https
+   link, asked for by Lyrica or on the dashboard:
+   - a small `fetch` service is the only container with internet access. It
+     writes only to `lyrica/`, has no GPU, and has no way to the other
+     containers. `host-api` asks it to list and download; never the Docker
+     socket;
+   - GGUF and safetensors only. Pickle formats are refused, and nothing runs
+     with `trust_remote_code`;
+   - each file is checked against the hub's published checksum, or the one
+     given with a link (otherwise it is marked unverified). It downloads
+     under a temporary name and appears only once checked;
+   - https only. Every address, redirects included, is checked, refusing
+     loopback, private, link-local and tailnet ranges;
+   - a gated repository's token arrives with the request and is never
+     written to disk;
+   - free space is checked first; downloads resume after a restart and can
+     be cancelled, which deletes the partial file;
+   - fetch keeps a **download record** (path, size, checksum, when) in the
+     host's data folder;
+   - **delete** removes only a file in that record, unchanged since it was
+     downloaded, after unloading it if it's loaded. Anything else is
+     refused;
+   - discovery reports each file's raw path and its GGUF identity metadata
+     (`general.basename`, `size_label`, `finetune`, `base_model.*`), or the
+     model card's `base_model` and `base_model_relation` for a download;
+   - for image files, discovery reads the safetensors header only (tensor
+     names, never loading the file) to report the part's role, slot,
+     architecture and precision. It proposes recipes from matching parts,
+     listing parts that are missing; a file whose architecture has no
+     template stays a file. Scanned files are used in place;
+   - deleting a recipe deletes only parts in the download record that no
+     other recipe uses;
+   - tests: a pickle file is refused, a wrong checksum leaves nothing
+     behind, a link to a LAN address or a redirect to one is refused, the
+     token never reaches disk or logs, and deleting is refused for a path
+     outside `lyrica/` (including through `..` or a symlink), for a file put
+     there by hand, and for a downloaded file that has since changed.
+10. **The dashboard**, a small page served by `host-api` on port 7236:
    - shows GPUs and VRAM, models, the queue, and usage statistics (counts,
      tokens, images and time per model; never prompts, results or who asked;
      nothing leaves the machine);
@@ -91,7 +139,7 @@ games on, so the host has to be easy to live with and hard to misuse.
    - at the machine (`127.0.0.1`) it needs no login. Remotely it needs a
      password set at first start, rate-limited, over HTTPS;
    - it checks the Host and Origin headers.
-10. **No prompt traces.**
+11. **No prompt traces.**
     - The serving containers use the `none` log driver.
     - ComfyUI's input, output and temp folders are `tmpfs`, metadata saving
       is off, and history is cleared after each job.

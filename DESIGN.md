@@ -92,7 +92,88 @@ Each user has two pools of memory.
     avatar images.
   - Her inner workings (memories she recalled, notes she saved, tool calls)
     show as one-line markers that expand when tapped. A subagent shows as a
-    small card that opens its thread.
+    card that expands to its work and takes messages.
+  - **Type:** IBM Plex Sans and IBM Plex Mono (open source, OFL), served by
+    `lyricad` itself, never fetched from elsewhere; system fonts as fallback.
+    Five sizes (22, 15, 14, 13, 12 px, plus 11 for small headings). Every
+    number, size and time is in Plex Mono with tabular figures.
+  - **Actions:** three looks only: primary, secondary (bordered) and link.
+    Nothing pressable is plain grey text. Badges carry state only, at most
+    two per row; facts go in the line beneath the name.
+  - **Words:** no explanatory captions under headings or in page headers.
+    Headers state facts (counts, status); a sentence of explanation appears
+    only where an action has a consequence, such as a delete.
+  - **Familiar shapes first**, from ChatGPT, Claude and Open WebUI, unless
+    Lyrica has a reason to differ (pools, privacy, model hosts, subagents).
+- **Where things are:**
+  - **Sidebar:** New thread, Search (with a Pinned messages view),
+    **Notifications** with its count (in orange), Memory, Sleep (with a
+    count) and Models at the top; then her items from last night; then
+    threads, with child threads nested under their parent; then a line of
+    host status; then the user's button.
+  - **Threads can be sorted** by date (grouped Today, Yesterday, Previous 7
+    days, Previous 30 days, the default), by last activity, by start date or
+    by title, or shown in **the user's own groups**, which they make, name
+    and move threads into from a thread's header or the thread menu, or by
+    right-clicking empty space in the thread list (**New group**). The
+    choice and the groups are saved per user, in `user.db`. A group can hold
+    general and private threads; hiding a pool still hides its threads.
+  - **One Sort menu** above the threads holds the sort choices and, below
+    a line, the Show general, Show private and Show hidden threads
+    checkboxes. Nothing on screen says that hidden content exists.
+  - **The thread menu** opens by right-clicking a thread (a long press on a
+    phone), with a letter shortcut for each item: Pin (P), Mark as unread
+    (U), Rename (R), **Share with ›** (S), **Move to group ›** (M), Hide (H)
+    and Delete (D). Delete confirms, says that what Lyrica learned from the
+    thread is forgotten, and offers to delete its child threads too.
+  - **Share with** sends another user a copy of the thread as it is now.
+    They add it to their General or Private threads, or decline. The
+    sender's later messages aren't shared, and none of the sender's
+    memories go with it; the copy is the recipient's thread from then on, and
+    Lyrica remembers it in the recipient's pool. Sharing a private thread
+    asks first. Only users on the same server appear in the list.
+  - **The user's button** opens a menu: Settings, Administration (shown
+    only to administrators), Switch user, Lock and Log out.
+  - **Settings** (the user's own) and **Administration** (administrators) are pages
+    with a list of sections on the left. Notifications is the first section
+    of Settings.
+  - **Notifications:** one page for everything waiting for the user: sleep
+    items, persona suggestions and approvals, permission requests, child
+    thread updates, threads shared with them, image models to review,
+    clean-up items, finished downloads, host problems. It sorts by newest, oldest, type, or host and
+    pool, filters by type and place, has actions on each row and bulk
+    actions, and pages through large numbers. Counts elsewhere link to it.
+  - **Header:** "Lyrica (ver. …, build …)" with the date and time beneath;
+    the daemon reports its version and build.
+  - **Welcome:** a greeting, the message box with General or Private, her
+    items from last night, what's waiting, and what's answering now.
+  - **Files and images, in every thread.** **Files** in the thread header
+    opens a side panel (full screen on a phone) with two tabs:
+    - **Files:** a searchable tree of the thread's folder (uploads, images
+      she made, her notes and scratch files) and each granted folder.
+      Clicking a file shows it.
+    - **Images:** thumbnails of the images in the thread's folder, with All,
+      Uploaded and Made by Lyrica. Clicking one opens it large.
+    - Actions are in a right-click menu (a long press on a phone, or ⋯):
+      Attach to message, Show in thread, Download, Copy path, Rename and
+      Delete on a file; Upload and New folder on a folder or empty space.
+    - Ctrl- or Cmd-click and Shift-click select several (Select in the menu
+      on a phone). The menu then acts on all of them: Attach, Download as
+      zip, Copy paths, Delete.
+    - Uploading from the panel, or dropping files on it, adds them to the
+      thread's folder without sending a message. Her next turn gets one line
+      naming the files added or removed since her last turn. Files attached
+      in the message box go to `uploads/` and show in the panel too.
+    - Rename and Delete work in the thread's folder and in read-write
+      grants, never in read-only ones. Deleting is permanent, and deleting
+      in a grant says it deletes on the server.
+    - A panel upload belongs to the thread, not to a message, so removing
+      turns never deletes it.
+  - **Later: voice**, as in Claude. The message box has a mic for dictation,
+    and when it's empty a voice-conversation button sits where Send goes.
+    Her messages have **Read aloud**. The mockup shows them; nothing is
+    built yet. When they are, speech is a model task like any other, so
+    private and local-only threads use local speech models only.
 - **Each interface keeps its own threads.** Lyrica is continuous across
   interfaces because she remembers, not because threads are mirrored. Moving a
   thread to another interface is an explicit export that copies it. Nothing
@@ -100,8 +181,8 @@ Each user has two pools of memory.
 - A thread belongs to one user, one pool and one interface, all chosen when it
   is created.
 - **Visibility:**
-  - Two checkboxes, **Show general** and **Show private**, show or hide all
-    content from a pool.
+  - Two checkboxes in the Sort menu, **Show general** and **Show private**,
+    show or hide all content from a pool.
   - Any thread can be hidden, and **Show hidden threads** reveals them.
   - These settings are saved per user. They only affect what's displayed:
     hiding doesn't change what Lyrica remembers.
@@ -116,16 +197,85 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
 
 - **Endpoints.** Every endpoint is declared **cloud** or **local** by the user.
   Its API type never decides this.
-  - A model is an endpoint plus a model ID. The same model on two endpoints is
-    two different entries, one cloud and one local. "DeepSeek" in a private
-    thread can only ever mean the local copy.
+  - **Every endpoint and every model it offers has a permanent ID.** An
+    endpoint's name is a label that can change.
+    - Each model an endpoint offers is its own entry with its own ID, so the
+      same model on two endpoints is two entries. "DeepSeek" in a private
+      thread can only ever mean a local copy.
+    - Profiles, thread overrides and recent calls refer to these IDs, so
+      renaming an endpoint breaks nothing, and the same model on two
+      endpoints can sit in one fallback list.
+    - A model an endpoint no longer lists keeps its entry, marked
+      **missing**, so a profile never changes silently.
+    - The UI recognises the same model on different endpoints and can offer
+      it as a fallback.
+  - **Model groups.** A user can group entries from different endpoints as
+    one model, for example "Qwen 3.8 27B" served by the Blackwell machine,
+    the 3090 and a laptop, in their preferred order. A group has its own
+    permanent ID.
+    - Profiles and overrides can name a group or a single entry. A group in a
+      fallback list expands in place into its members, in order.
+    - The usual rules filter members: a private or local-only thread skips
+      cloud members, and a group that mixes kinds is usable as a whole only
+      in the Custom profile.
+    - The router skips a member that can't handle the call, such as one
+      without tool support when tools are needed, or one whose context
+      window is smaller than the conversation, and moves on to the next.
+    - Groups live in the model library, not on a page of their own: each
+      model's row opens to its copies, and the grouped ones show how they
+      differ (quantisation, context window, tools, vision), with warnings.
+    - Lyrica suggests groups but never creates them. A strong suggestion is
+      the same file on two hosts, matched by checksum; a weak one is a
+      matching name. The user confirms.
+    - Administrators make shared groups from shared endpoints. Each user can
+      make personal groups from their own and shared entries.
+    - When an entry is replaced or removed, the change applies inside groups
+      too, and a group left empty is flagged in Clean up.
+  - **Editing an endpoint never changes its IDs.** A new URL, address or key,
+    or re-pairing a host, keeps them all, so moving a server means editing
+    its address.
+  - **Cleaning up** never deletes silently, because profiles, overrides and
+    saved workflows refer to these IDs, including other users' profiles,
+    which stay encrypted while those users are locked:
+    - An endpoint unreachable for 14 days is marked **stale**, and a model
+      missing for 30 days is marked **gone**. Fallbacks skip both.
+    - A gone model that nothing refers to is removed after 30 days.
+    - Everything else goes through a **Clean up** view. It shows where each
+      stale endpoint or gone model is still used, and offers **Replace
+      with…** (pre-filled with the same model on another endpoint, where
+      there is one) or **Remove**.
+  - **Redirects and tombstones.**
+    - A replacement leaves a **redirect** from the old ID to the new one,
+      and a removal leaves a **tombstone**. They are stored where the
+      endpoint lives: `self.db` for shared endpoints, the user's `user.db`
+      for personal ones. Routing follows them at once, for every user.
+    - Each user's own lists are rewritten the next time they unlock, with a
+      one-time notice on their Models page.
+    - A redirect or tombstone is deleted once no user's lists still refer to
+      it.
+  - **History never breaks.** Recent calls and messages keep the model's name
+    and endpoint label with its ID, so old entries read correctly after the
+    ID is gone.
+  - **Reset IDs** gives an endpoint and its models fresh IDs, for a server you
+    want treated as new. It leaves redirects from the old IDs, so nothing
+    breaks. The same mechanism **merges** two endpoints that turned out to be
+    the same server.
 - **Tasks.** Different tasks use different models: chat, cheap and strong
   subagents, compaction, titles, embeddings, each sleep phase, and creating
   and editing images.
-- **Profiles.** A **control panel** sets default models per task, in a **cloud
-  profile** and a **local profile**. Each thread can override which model
-  handles which task, including the main conversation and its subagents. That
-  applies to every thread, with or without folders.
+- **Profiles.** A **control panel** sets default models per task in three
+  profiles:
+  - **Local:** local models only. Private and local-only threads always use
+    it.
+  - **Cloud:** cloud models only.
+  - **Custom:** local and cloud models mixed freely, for example a local
+    model for titles and a cloud one for chat, or a local model with a cloud
+    fallback. Only general threads that aren't local-only can use it.
+
+  Each user chooses which profile general threads use by default, Cloud or
+  Custom, and a general thread can switch. Each thread can also override
+  which model handles which task, including the main conversation and its
+  subagents. That applies to every thread, with or without folders.
 - **Delegation.** When Lyrica delegates, she picks a tier, never a model,
   following a simple rule:
   - **cheap** for searching, reading, summarizing and checking;
@@ -138,31 +288,167 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   [docs/delegation.md](docs/delegation.md) and History.
   - Roles (scout, researcher, reviewer, worker, oracle) and custom roles.
   - Parallel runs, chains, review loops, councils and saved workflows.
-  - Background runs with status, wait, stop and steer.
-  - A subagent can ask the parent a question.
+  - Background runs with status, wait and stop.
+  - **Conversation both ways.** Lyrica sends a subagent a message at any
+    point: it joins the work in progress, answers an open question, or
+    continues a finished subagent in its own thread with everything it
+    knew, even after a restart. A subagent asks Lyrica a question and waits,
+    or sends her a note and keeps working.
+  - **The user can talk to a subagent** from its card in Lyrica's chat. The
+    message reaches the subagent as the user's, and Lyrica is told in her own
+    thread. The subagent keeps the folders, permissions and model its parent
+    gave it.
+  - **Fork:** a subagent can start from a copy of Lyrica's conversation
+    instead of a blank slate (off by default, since it costs more). It stays
+    in the same pool under the same rules.
+  - **Approvals from subagents.** Where the thread's permission mode asks
+    before commands or changes, a subagent's request shows in its own thread
+    and in its parent's, and any open view can answer it. Writers run in
+    such threads instead of being refused.
   - Parallel writers get separate git worktrees.
   - Limits, cost tracking, and a live view in the web UI.
   - Everything runs inside `lyricad`. A background run interrupted by a
     restart is marked interrupted, never silently lost.
-- **Subagents** are ordinary threads.
-  - They inherit "Do not log" and their parent's workspace settings, or
-    narrower ones.
-  - In the UI they appear nested under their parent thread, collapsed behind a
-    `>` that expands to show them.
+- **Subagents** work like Claude's: Lyrica hands one a bounded task and gets
+  its result back. Underneath each is a stored thread, so it is encrypted in
+  its parent's pool, inherits "Do not log" and the parent's workspace
+  settings (or narrower), and is forgotten with its parent.
+  - In the UI a subagent lives inline, as a card in the parent's chat that
+    expands to its work and can be messaged. It is not listed in the sidebar.
+  - **Child threads** are different: conversations of their own (forks and
+    copies of a thread, and threads Lyrica starts), listed collapsibly under
+    their parent in the sidebar, which the user opens and talks in like any
+    thread.
+- **Lyrica chooses between them the way Claude does.** A subagent when she
+  needs an answer to carry on and the task is bounded (search, read,
+  review, check). A child thread when the work is a stream of its own that
+  outlasts the conversation, that the user may want to follow or steer, or
+  that needs a long context of its own, such as "I'll keep going on the
+  homelab migration in its own thread."
+  - A child thread is full Lyrica: her persona, memory tools and the tools
+    its settings allow. It inherits the parent's pool, "Do not log",
+    local-only, permission mode and workspace settings, or narrower ones.
+  - It and its parent message each other: it posts short updates at
+    milestones (a badge on it in the sidebar, a card in the parent), and the
+    parent or the user can message it at any time. Its approvals appear in
+    the child thread, and in Notifications.
+  - It keeps going in the background and stays until it is forgotten.
+    Forgetting a parent asks whether to forget its child threads too, ticked
+    by default.
+- **The user can rewind, retry and branch at any turn,** because weak local
+  models often need a few tries:
+  - **Regenerate** on any of Lyrica's replies removes it and everything after
+    it, then asks again. **Regenerate with…** does the same with another model
+    the thread may use (local only in a private or local-only thread).
+  - **Delete** removes the last turn, as in LM Studio, again and again until
+    the one to retry; **Delete from here** removes a message and everything
+    after it.
+  - **Edit** on one of the user's messages replaces it in place, as in
+    ChatGPT: the edited text is sent and what followed is replaced.
+  - **Branch from here** makes a child thread holding the conversation up to
+    that message, and leaves the original as it was.
+  - There are no versions to flip between inside a thread: a thread is one
+    line, and branches keep alternatives.
+- **What a removed turn takes with it.** Its entries are deleted like
+  forgotten ones: notes written in those turns go too, sleep and search never
+  see them, and pages that already rest on them are flagged for rewriting.
+  Subagents started in them are stopped and forgotten. A short Undo follows,
+  then it is final.
+- **Pinned messages.** Any message, the user's or Lyrica's, can be pinned.
+  - A pinned message is easy to find again: each thread's header lists its
+    pins, and the sidebar's search has a Pinned view across threads.
+  - It stays in Lyrica's context word for word: compaction keeps pinned
+    messages instead of summarising them, in a `pinned` section of the
+    prompt within a budget of 2,000 tokens (oldest pins are summarised first
+    when over, and the thread's header says so).
+  - Sleep treats a pin as a sign the message matters when it consolidates.
+  - Pins live with the thread, in its pool. A branch keeps the pins in the
+    turns it copies. Removing turns that hold a pin says so in the
+    confirmation.
+- **Orphans are cleaned up.**
+  - Lyrica's own leftovers go automatically: subagent runs and threads,
+    images and other outputs in the thread's folder, uploads attached only to
+    removed messages, and the thread's scratch files.
+  - Files in the user's folders are restored, as Claude Code's rewind does.
+    Before her `write` or `edit` tools change a file, Lyrica keeps a snapshot
+    of it, encrypted in the user's home. Removing turns deletes files those
+    turns created and puts back files they changed, but only files nothing has
+    touched since; anything changed later is kept and listed. The
+    confirmation lists each, ticked by default.
+  - Changes made by shell commands can't be tracked reliably: files touched
+    only by commands are listed as not tracked. Git branches left by
+    subagents in removed turns are listed, ticked when they have no commits.
+  - A nightly sweep removes what slipped through (thread folders of forgotten
+    threads, worktrees with no live run) and snapshots older than 30 days.
+  - A branch copies the earlier entries the way an export does, keeping
+    their original IDs, so memories and citations that point at them still
+    resolve, and sleep and recall don't count them twice.
+  - It is a child thread like any other: the same pool, "Do not log",
+    local-only and settings as its parent, nested under it in the sidebar.
+    Subagents aren't branched with it; their results are already in the
+    copied turns.
   - In version one, subagents can't start subagents of their own.
 - **Local-only.** In a private or local-only thread, any attempt to use a cloud
   model, for any purpose, fails with an error. Nothing ever falls back across
   the local/cloud line.
-- **Models page.** One page in the control panel covers everything about
-  models:
+- **Models page.** One area covers everything about models, with its own
+  list of pages: **Overview** (one alert, four tiles: endpoints up, what's
+  answering chat, downloads, what's waiting; compact hosts; the last calls),
+  **Tasks**, **Text models**, **Image models**, **Hosts and endpoints**,
+  **Downloads**, **Clean up** and **Recent calls**. Downloading a model,
+  scanning and pairing are pages; a confirmation is a dialog. It covers:
   - endpoints and model hosts, each with its live status. **Add endpoint**
     takes any OpenAI-compatible URL, with an optional key, declared cloud or
     local, for quick testing or a server started by hand. **Add model host**
     pairs a managed host. A local endpoint over plain HTTP outside this
     machine or the tailnet is marked **unencrypted**;
-  - the cloud and local profiles: for each task (chat, subagents, titles,
-    embeddings, sleep phases, images), an ordered list of models with their
-    fallbacks;
+  - **Tasks:** a table of tasks against **Private threads** (the Local
+    profile) and **General threads** (the user's default, Cloud or Custom,
+    with a switch to the other and a way to show it too). Each cell shows
+    what answers that task right now and opens a side panel with its ordered
+    list of models. A task can instead
+    use another task's list (**Same as**), one level deep: by default titles
+    and compaction follow cheap subagents, and sleep follows strong
+    subagents. A task with no list of its own follows Chat, as before;
+  - two libraries, **Text models** and **Image models**, because the two
+    are managed differently. The image library is described under Images.
+  - a **Downloads** page, with a count while anything is downloading: the
+    queue with Cancel, finished downloads and deletions until cleared, both
+    Download buttons, and **Accounts**. The libraries list no downloads;
+  - the **text model library** stays usable with hundreds of models (an
+    OpenRouter account, a large shared models folder):
+    - one row per model, which opens to its copies on every endpoint. That
+      is where groups are made, ordered and undone, and where Lyrica's
+      suggestions to group copies appear. Each copy shows its **raw name**:
+      the file under the models folder, or the endpoint's model ID. Search
+      matches raw names too;
+    - **what counts as the same model:** copies are the same weights in
+      another quantisation or format. A model's identity is its base name,
+      size and finetune, read from GGUF metadata (`general.basename`,
+      `size_label`, `finetune`, `base_model.*`), from the hub's model card
+      (`base_model` with `base_model_relation`, where only `quantized`
+      makes a copy), or from the endpoint's model ID. A finetune, merge or
+      adapter is a model of its own with a link to its base: never listed
+      under it, never suggested for its group. A copy whose file records no
+      finetune but whose name has words the model's name doesn't is flagged
+      for a check, and **Not this model** moves any copy to a row of its
+      own;
+    - search, and filters by kind, endpoint and what a model can do (chat
+      with tools, vision, embeddings, images), or groups only;
+    - **starred** models, which pickers show first;
+    - each picker offers only models suited to its task, so the embeddings
+      task lists only embedding models;
+    - **Download model**, in each library's header: ask a paired host to
+      download one, from Hugging Face, ModelScope or a link (see Downloads
+      under the model host);
+    - **Delete** a copy Lyrica downloaded herself, after a confirmation that
+      says where it's used. Nothing else can be deleted from the library. Lists that named it skip it, and its ID is
+      kept as removed so other users' lists are tidied when they next
+      unlock;
+    - **Accounts:** saved tokens for gated repositories on Hugging Face and
+      ModelScope. Like endpoint keys, a user's own token is encrypted in
+      their `user.db`, and an administrator can share one for every user in
+      `self.db`. A read-only token is enough;
   - each model host's GPUs, roles, pinned and loaded models, VRAM and queue,
     with pause, through the host's dashboard;
   - recent calls: which model answered, and when a fallback was used.
@@ -171,8 +457,26 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   shared endpoints and model hosts.
 - **Fallbacks.** A profile can list several models for a task, in order. If
   the first one's endpoint is down, the next is used, and the thread shows
-  which model actually answered. A fallback never crosses the local/cloud
-  line.
+  which model actually answered.
+  - In the Local and Cloud profiles a fallback never crosses the local/cloud
+    line.
+  - In Custom it may, because the user chose that mix. Each model is marked
+    cloud or local, and a call that fell back to cloud says so.
+  - Private and local-only threads never see the Custom profile, so this can
+    never reach them.
+- **Reasoning level.** For models that support it, the message box has a
+  thinking control (Off, Low, Medium, High, showing only the levels the
+  current model offers), as in Claude and ChatGPT.
+  - It is a per-thread setting, with a per-user default, and goes to the
+    model through Pi's thinking level (`reasoning_effort` for
+    OpenAI-compatible endpoints, the chat template's thinking switch for
+    llama.cpp and vLLM models that use one).
+  - Offerings carry a `reasoning` capability with their levels, from
+    discovery or set by hand in the library.
+  - When a fallback model can't think, the thread says so beside the model
+    badge rather than failing. Subagent roles keep their own level.
+  - Thinking text stays in the thread, encrypted like the rest, shown as a
+    collapsed marker. It isn't indexed for recall.
 - **Visibility.** The current model and endpoint, with a clear cloud or local
   badge, are always visible in a thread. Choosing an endpoint, public or
   custom, is easy.
@@ -225,14 +529,39 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       address, never to every interface, because Docker's published ports
       bypass the machine's firewall. The host API also accepts only the
       addresses of the Lyrica servers it is paired with.
-  - **Models folder.** Models live in a folder set on the dashboard. That can
+  - **Models folder.** Models live in a folder chosen when the host is installed (run `install.sh` again to change it; the dashboard shows the folder and that command). That can
     be a shared folder on another drive that LM Studio also uses, for example.
     - It is mounted read-only into the model servers. Downloads go into a
       `lyrica` subfolder of it.
     - llama.cpp loads GGUF files from it directly, and ComfyUI finds
       checkpoints and LoRAs through its extra model paths.
-    - Downloads run in a separate one-off container, from a pinned list with
-      checksums, started from the dashboard or by an administrator.
+  - **Downloads,** from Lyrica's model library or the host's dashboard: from
+    Hugging Face, ModelScope or an https link. A shared host takes requests
+    from administrators only, and a personal host from its owner.
+    - A small **fetch** service is the only container with internet access.
+      It can write only to the `lyrica` subfolder, and has no GPU and no way
+      to the other containers. `host-api` asks it to list a repository's
+      files and to download one, so nothing needs the Docker socket.
+    - Only GGUF and safetensors files are accepted. Pickle formats (`.bin`,
+      `.pt`, `.ckpt`) can run code when they load, so they are refused. A
+      model that needs `trust_remote_code` is never run.
+    - Each file is checked against the checksum its hub publishes, or one
+      given with a link. A link without one is marked **unverified**. A file
+      downloads under a temporary name and appears only once it is checked.
+    - Links are https only. Fetch checks every address it connects to,
+      redirects included, and refuses this machine, the LAN and the tailnet.
+    - An access token for a gated repository comes from Lyrica's saved
+      tokens (see Accounts) and travels with each request. The host never
+      stores it.
+    - **Deleting** works only on files fetch downloaded. Fetch keeps a
+      record of each download, with its path, size and checksum, and deletes
+      only a file in that record that hasn't changed since. A file put in
+      the `lyrica` subfolder by hand, and everything elsewhere in the shared
+      folder, such as LM Studio's, is never deleted. A loaded model is
+      unloaded first.
+    - Free space is checked first. A paused host still downloads. A finished
+      model gets its offering ID at once, and Lyrica suggests adding it to a
+      group of the same model.
   - **No prompt logs.** Docker keeps container output on disk by default, so
     the serving containers log nothing. ComfyUI's folders are in memory
     (`tmpfs`).
@@ -342,14 +671,69 @@ it's off.
   - its input, output and temp folders are in RAM, image metadata is off,
     results come back over its websocket, and its history is cleared after
     every job;
-  - Lyrica reaches it only through the model host's token-protected API, which
-    fills workflow templates kept in Lyrica's repository. She can never send
-    ComfyUI a workflow of her own.
+  - Lyrica reaches it only through the model host's paired API (mutual
+    TLS), which fills workflow templates kept in Lyrica's repository. She can
+    never send ComfyUI a workflow of her own.
+- **Image models are recipes.** An image model isn't one file: most need a
+  diffusion model, one or two text encoders and a VAE, unless a checkpoint
+  holds them all. A recipe names each part by its role (and an encoder by its
+  slot, such as T5 or CLIP-L), any LoRAs built in with their strength, the
+  workflow template for its architecture (one per architecture, not per
+  model), and default settings (steps, CFG, sampler, size). Lyrica calls
+  recipes, never files, so she never picks parts herself.
+  - **Parts are shared.** One T5 encoder or VAE serves several recipes. Each
+    part shows its raw file name, size, precision and which recipes use it.
+    The host measures VRAM per part.
+  - **Identity** follows the text rule. A recipe is its diffusion model plus
+    its built-in LoRAs: a lower-precision encoder makes a copy that differs,
+    and a built-in LoRA that changes the results (a Lightning LoRA, a style)
+    makes a model of its own, linked to its base.
+  - **Where recipes come from,** borrowing from Invoke's model manager:
+    - **Starter recipes** shipped with the host for each supported
+      architecture, with each part's known-good file and checksum. Download
+      model fetches only the parts the host doesn't have.
+    - **Scan folder:** the host reads each safetensors header (tensor names
+      only, never loading the file) to tell a checkpoint, diffusion model,
+      text encoder, VAE or LoRA and its architecture. Files are used in
+      place, never copied or deleted. Lyrica proposes recipes from matching
+      parts, and offers to download missing ones. A proposed recipe does
+      nothing until the user confirms it (an administrator on a shared
+      host). Proposals wait on a **To review** page of their own, with a
+      count on the Image models tab: grouped by host, filtered by ready or
+      parts missing, with **Use**, **Download parts** and **Ignore** for one
+      or many at once, so a scan that finds dozens of files stays easy. A
+      file with no template for its architecture is kept as a file.
+    - Hugging Face, ModelScope and links, as for text models.
+    - Unlike Invoke, parts are fixed in the recipe rather than chosen for
+      each image, because Lyrica, not a person, makes the call.
+  - **Editing a recipe.**
+    - **Change** on a text encoder or VAE lists every file on that host with
+      the same role, slot and architecture, from Lyrica's downloads or the
+      shared folder, plus **Download another**. A custom VAE or encoder is
+      chosen this way.
+    - **Add a part** adds a LoRA with its strength, or a VAE or text encoder
+      used instead of a checkpoint's own. A VAE or encoder keeps the model
+      the same. A LoRA changes the results, so by default it saves a new
+      model linked to the original, which stays as it was.
+    - LoRAs and added parts can be removed again.
+  - **The image library** lists recipes, and by type (checkpoints, diffusion
+    models, text encoders, VAEs, LoRAs, unused files), filtered by
+    architecture. Deleting a recipe deletes only the parts Lyrica downloaded
+    that no other recipe uses, and says which it keeps and why.
+  - Quantized GGUF diffusion models run through one more pinned custom node
+    (ComfyUI-GGUF), so smaller GPUs can use them.
+- **Upscaling** uses **SeedVR2**, through its pinned ComfyUI node
+  (ComfyUI-SeedVR2_VideoUpscaler). It's an image model like the others: a
+  recipe of its DiT (3B or 7B, at FP16, FP8 or GGUF) and its VAE, with
+  defaults such as the scale and the largest size. The task
+  `image.upscale` has its own list in each profile (7B on the Blackwell,
+  3B on the 3090), and the `image` tool gains `upscale`. Portrait photos
+  follow the same rule as for edits. Video is out of scope.
 - **Cloud image services** are cloud endpoints like any other: OpenAI's image
   API first, then others (for example Black Forest Labs, Krea, Google, and
   aggregators such as fal or Replicate). They're used only where cloud is
   allowed.
-- **Photos of you.** Each user can keep reference photos of themselves in
+- **Portrait photos.** Each user can keep reference photos of themselves in
   their encrypted home, for edits and for putting them in new scenes. Sending
   these photos to a cloud model is the user's choice, with a setting:
   - **Never.**
@@ -361,7 +745,11 @@ it's off.
   This rule is enforced by the `image` tool, not by instructions to the model.
 - **Later:** a personal LoRA, trained on the user's photos on the GPU machine
   for a closer likeness. It would be stored encrypted in their home, and loaded
-  into the GPU machine's memory only for a job.
+  into the GPU machine's memory only for a job. Choosing a LoRA for one image
+  (a style, a person) comes with it: the `image` tool would offer a short list
+  of LoRAs the user enabled, with their trigger words, and each recipe would
+  say which LoRA slots it takes. Until then, LoRAs exist only inside
+  recipes.
 - **Wireframes and diagrams** are drawn as code (HTML, SVG or Mermaid) and
   rendered to an image by a headless browser in her sandbox. Image models are
   poor at exact layouts and text. Storyboards suit the image models, with
@@ -528,6 +916,26 @@ Details in [docs/sleep.md](docs/sleep.md).
     subagents, local-only, internet, folders and permission mode.
   - Subagents work in their parent's workspace and can only narrow its
     settings, never widen them.
+- **Modes, in the message box,** as in Claude Code: a picker beside the
+  message box (Shift+Tab cycles), per thread, with a per-user default.
+  - **Ask:** asks before commands and file changes.
+  - **Accept edits:** file changes go through; commands ask.
+  - **Auto** (the default): works freely inside the thread's grants.
+  - **Plan:** she can only read, recall and use read-only subagents. She
+    writes a plan and asks to go ahead; approving it switches the thread to
+    the mode the user picks, and she carries on.
+  - Irreversible actions that leave the server always ask, whatever the
+    mode. Subagents and child threads get the parent's mode or a stricter
+    one; a Plan-mode parent's subagents are read-only. Enforced in the
+    `tool_call` hook and by which tools are active, never by instructions.
+- **Switches in the message box,** as in Open WebUI: a "+" beside the
+  message box turns tools on or off for this thread, without opening its
+  settings: **Web search** (`web_search` and `web_fetch`), **Internet for
+  commands** (the sandbox's internet switch) and **Images** (the `image`
+  tool). A switch that's off removes the tools from the session, so she
+  can't use them; a subagent or child thread can't turn back on what its
+  parent turned off. Local-only and the pool are not switches here: they
+  stay in the thread's settings, where changing them is deliberate.
 - **Deployment:** `lyricad` runs as a systemd service, in practice inside an
   LXC container or VM on Li's Proxmox. No Docker. The host needs bubblewrap,
   gocryptfs, pasta, FUSE and unprivileged user namespaces. In an LXC container, that
@@ -604,7 +1012,8 @@ Details in [docs/sleep.md](docs/sleep.md).
   PRINCIPLES, this document and the contracts, and keeps coding to a minimum.
 - **Feature threads** are separate Claude Code sessions tagged `project:lyrica`:
   Core, Memory, Workspace, Models, Delegation, Daemon, Web UI, Sleep,
-  Integrations, Model host, Models 2 and Images.
+  Integrations, Model host, Models 2, Images, Delegation 2, Child
+  threads and Modes.
   - Each works from a brief in `docs/briefs/` on its own branch and ends with a
     pull request.
   - No more than two or three are active at once.
@@ -672,6 +1081,15 @@ new evidence.
   pinned and apart from the rest of the machine, with images per GPU vendor,
   and is easy to add or remove. Windows isn't a model host. `lyricad` stays
   native.
+- **Image models: files → recipes (2026-10-09).** Most image models need
+  several files that work only together, and many share parts. Lyrica can't
+  be asked to choose encoders and VAEs, so the user settles them once in a
+  recipe. The image library is separate from the text one.
+- **Model downloads: one-off container → fetch service (2026-10-09).** The
+  host has no Docker socket, so nothing could start a one-off container.
+  Downloads also became open-ended (Hugging Face, ModelScope, links) instead
+  of a pinned catalogue, so the checks moved into fetch: file formats,
+  checksums and addresses.
 - **Tool budget raised from 6 to 8, then to 30 (2026-10-09).** First to make
   room for web research, then because Lyrica works like a coding agent (files,
   commands, SSH). The budget still exists so that every tool has to justify
