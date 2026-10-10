@@ -190,8 +190,10 @@ export class Lyricad {
     const persona = new PersonaStore(keyring.self());
     const cwd = join(this.opts.home, "run");
     mkdirSync(cwd, { recursive: true, mode: 0o700 });
-    const delegation = new Delegation({ users, memory, models, workspace, cwd, limits: this.opts.delegation });
-    const host = new ThreadHost({
+    // A subagent's approvals are asked in its thread and its parent's, through the host built next.
+    let host!: ThreadHost;
+    const delegation = new Delegation({ users, memory, models, workspace, cwd, limits: this.opts.delegation, approve: (r, signal) => host.approveSubagent(r, signal) });
+    host = new ThreadHost({
       users, memory, models, workspace, persona, delegation, cwd, log: this.log,
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000,
     });
