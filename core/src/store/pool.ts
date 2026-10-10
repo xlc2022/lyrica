@@ -241,8 +241,12 @@ export class PoolReader {
     if (!m) return [];
     const [, thread, n] = m as unknown as [string, string, string];
     const own = thread === fromThread;
-    return (this.db.prepare(`SELECT * FROM entries WHERE thread = ? AND n BETWEEN ? AND ? ${own ? "" : "AND unlogged = 0"} ORDER BY n`)
-      .all(thread, Number(n) - radius, Number(n) + radius) as EntryRow[]).map(toEntry);
+    const rows = this.db.prepare(`SELECT * FROM entries WHERE thread = ? AND n BETWEEN ? AND ? ${own ? "" : "AND unlogged = 0"} ORDER BY n`)
+      .all(thread, Number(n) - radius, Number(n) + radius) as EntryRow[];
+    if (rows.some((r) => r.n === Number(n))) return rows.map(toEntry);
+    // Rewound away from its thread, but a branch still holds a copy: read it there.
+    const copy = this.db.prepare(`SELECT thread, n FROM entries WHERE orig = ? ${own ? "" : "AND unlogged = 0"} ORDER BY rowid LIMIT 1`).get(id) as { thread: string; n: number } | undefined;
+    return copy ? this.entryWindow(entryId(copy.thread, copy.n), radius, fromThread === thread ? copy.thread : fromThread) : rows.map(toEntry);
   }
 
   // Memories
@@ -544,7 +548,8 @@ export class PoolStore extends PoolReader {
     // A reply's tool calls keep their results, so the copy is a conversation a model can go on with.
     const results = this.db.prepare("SELECT n, role FROM entries WHERE thread = ? AND n > ? ORDER BY n").all(threadId, n) as { n: number; role: string }[];
     let upTo = n;
-    for (const r of results) if (r.role === "toolResult") upTo = r.n; else break;
+    // A note delivered mid-turn doesn't end the copy before the results.
+    for (const r of results) if (r.role === "toolResult") upTo = r.n; else if (r.role !== "custom_message") break;
     const title = (opts.title?.trim() || `${source.title ?? "Untitled"} (branch)`).slice(0, 200);
     return this.tx(() => {
       const branch = this.createThread({ interface: source.interface, parent: source.id, title });
@@ -579,7 +584,11 @@ export class PoolStore extends PoolReader {
       for (const id of subagents) this.forgetThread(id, author);
       const rows = this.db.prepare("SELECT n FROM entries WHERE thread = ? AND n >= ? ORDER BY n").all(threadId, fromN) as { n: number }[];
       if (!rows.length) return { removed: 0, subagents };
-      const gone = JSON.stringify(rows.map((r) => entryId(threadId, r.n)));
+      // An entry a branch still holds a copy of keeps its notes and search row: the copy still says it.
+      const removed = rows.map((r) => entryId(threadId, r.n));
+      const copied = new Set((this.db.prepare("SELECT DISTINCT orig FROM entries WHERE orig IN (SELECT value FROM json_each(?))")
+        .all(JSON.stringify(removed)) as { orig: string }[]).map((r) => r.orig));
+      const gone = JSON.stringify(removed.filter((id) => !copied.has(id)));
       const goneSet = new Set(JSON.parse(gone) as string[]);
       const candidates = this.db.prepare("SELECT DISTINCT src FROM citations WHERE src LIKE 'n:%' AND dst IN (SELECT value FROM json_each(?))").all(gone) as { src: string }[];
       for (const { src } of candidates) if (this.cameFrom(src).every((d) => goneSet.has(d))) this.remove(src, author, true);

@@ -305,6 +305,7 @@ textarea.code { font: 0.82rem/1.5 var(--mono); white-space: pre; }
 @media (pointer: coarse) {
   button.badge, .chev, .chips button, .check, .filters label, .marker > button, .picker-item { min-height: 44px; }
   .chev { width: 44px; height: 44px; }
+  button.icon-btn { width: 44px; height: 44px; }
   .threads .row { grid-template-columns: 44px minmax(0, 1fr); }
   .children { margin-left: 44px; }
   .chips button { min-width: 44px; }
@@ -320,8 +321,10 @@ textarea.code { font: 0.82rem/1.5 var(--mono); white-space: pre; }
 .sub-composer { display: block; }
 /* A message's menu: branch, regenerate, edit, delete. */
 .msg-menu { position: relative; display: inline-flex; margin-left: 6px; vertical-align: middle; }
-.msg-menu .dots { border: 0; background: transparent; color: var(--muted); padding: 0 6px; line-height: 1; min-height: 0; letter-spacing: 0; }
-.msg-menu .dots:hover, .msg-menu .dots[aria-expanded="true"] { color: var(--fg); }
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; min-height: 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--fg); }
+.icon-btn svg { fill: currentColor; }
+.icon-btn:hover, .icon-btn[aria-expanded="true"] { border-color: var(--accent); }
+.menu button.danger { color: var(--danger); }
 .msg-menu .menu { right: auto; width: max-content; min-width: 200px; max-width: min(340px, calc(100vw - 32px)); max-height: 60vh; overflow-y: auto; text-transform: none; letter-spacing: normal; font-size: 0.875rem; }
 .msg-menu .menu .sub-item { padding-left: 24px; }
 .edit-box { display: grid; gap: 6px; }

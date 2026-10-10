@@ -127,7 +127,10 @@ Each active thread is one Pi session from `openThreadSession`, with
   is removed. It holds the thread's turn (`409` while one runs): the session
   closes, subagents started in the removed turns are stopped and forgotten
   (`Delegation.forgetSubagents`), the entries go (`truncateThread`), and
-  every view gets `rewound`. Not in a subagent's thread.
+  every view gets `rewound` (the first removed number, and whether a message
+  is sent in their place). Messages sent meanwhile wait and go after it. Not
+  in a subagent's thread. A missing message is `404`; a subagent's thread
+  can't be branched (`409`).
 - Forgetting a thread forgets its subagents' threads with it, deepest first,
   stopping their runs and dropping their records (`Delegation.forget`).
 - Thread lists are per interface (`web` by default), filtered by the user's

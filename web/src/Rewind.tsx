@@ -26,7 +26,9 @@ export function MessageMenu({ n, role, rewinder, onEdit }: { n: number; role: "u
   const inLastTurn = lastTurn !== undefined && n >= lastTurn;
   return (
     <span className="msg-menu" ref={ref}>
-      <button type="button" className="dots" aria-label="Message actions" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>⋯</button>
+      <button type="button" className="icon-btn" aria-label="Message actions" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.25" /><circle cx="8" cy="8" r="1.25" /><circle cx="12.5" cy="8" r="1.25" /></svg>
+      </button>
       {open && (
         <div className="menu" role="menu">
           <button type="button" role="menuitem" onClick={act(() => rewinder.branch(n))}>Branch from here</button>
@@ -41,10 +43,10 @@ export function MessageMenu({ n, role, rewinder, onEdit }: { n: number; role: "u
             </button>
           )))}
           {role === "user" && onEdit && <button type="button" role="menuitem" disabled={busy} onClick={act(onEdit)}>Edit</button>}
-          {inLastTurn && <button type="button" role="menuitem" disabled={busy} onClick={act(() => rewinder.rewind(lastTurn, { action: "delete" }, lastTurn))}>Delete</button>}
-          {!(inLastTurn && n === lastTurn) && (
-            <button type="button" role="menuitem" disabled={busy} onClick={act(() => rewinder.rewind(n, { action: "delete" }, n))}>Delete from here</button>
-          )}
+          {/* The last turn has Delete; earlier messages, Delete from here. */}
+          {inLastTurn
+            ? <button type="button" role="menuitem" className="danger" disabled={busy} onClick={act(() => rewinder.rewind(lastTurn, { action: "delete" }, lastTurn))}>Delete</button>
+            : <button type="button" role="menuitem" className="danger" disabled={busy} onClick={act(() => rewinder.rewind(n, { action: "delete" }, n))}>Delete from here</button>}
         </div>
       )}
     </span>
@@ -58,7 +60,7 @@ export function EditBox({ text, onSend, onCancel }: { text: string; onSend: (tex
     <form className="edit-box" onSubmit={(e) => { e.preventDefault(); if (value.trim()) onSend(value); }}>
       <textarea rows={3} aria-label="Edit your message" value={value} autoFocus onChange={(e) => setValue(e.target.value)} />
       <div className="row">
-        <button type="submit" className="primary" disabled={!value.trim()}>Send</button>
+        <button type="submit" disabled={!value.trim()}>Save</button>
         <button type="button" onClick={onCancel}>Cancel</button>
       </div>
     </form>

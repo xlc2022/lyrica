@@ -364,6 +364,23 @@ describe("threads", () => {
     expect(own.loadEntries(t.id)).toHaveLength(1);
   });
 
+  it("rewinds turns a branch still holds: their notes stay, and citations resolve through the copy", async () => {
+    const { memory, li } = await setup();
+    const { own } = memory.openThreadView(li.id, "general");
+    const t = own.createThread({ interface: "web" });
+    own.appendEntry(t.id, { piId: "u1", role: "user", data: {}, text: "the kettle is copper" });
+    const kept = own.appendEntry(t.id, { piId: "a1", role: "assistant", data: {}, text: "a copper kettle" });
+    const branch = own.branchThread(t.id, 2);
+    const [note] = own.addNotes([{ text: "{user} has a copper kettle", source: kept }], { author: "lyrica", thread: t.id });
+
+    expect(own.truncateThread(t.id, 1, "lyrica").removed).toBe(2);
+    expect(own.get(note!)).toBeDefined();
+    expect(own.isTombstoned(kept)).toBe(false);
+    expect(own.entryWindow(kept, 0).map((e) => [e.id, e.text])).toEqual([[kept, "a copper kettle"]]);
+    expect(own.search("copper").filter((h) => h.kind === "entry").map((h) => h.id).sort()).toEqual([`e:${t.id}#1`, kept]);
+    expect(own.loadEntries(branch.id)).toHaveLength(2);
+  });
+
   it("brings back pages about granted folders", async () => {
     const { memory, li } = await setup();
     const { own } = memory.openThreadView(li.id, "general");
