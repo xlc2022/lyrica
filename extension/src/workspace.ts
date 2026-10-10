@@ -2,7 +2,7 @@ import {
   createBashToolDefinition, createEditToolDefinition, createReadToolDefinition, createWriteToolDefinition,
   type ExtensionContext, type ExtensionFactory, type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { WORKDIR, type ExecutionTarget, type Network, type ThreadWorkspace, type ToolOps } from "@lyrica/core";
+import { WORKDIR, type ExecutionTarget, type Network, type NewChange, type ThreadWorkspace, type ToolOps } from "@lyrica/core";
 
 /** What the workspace tools need for one thread. `Workspace` from core provides it. */
 export interface ThreadTools {
@@ -15,6 +15,8 @@ export interface ThreadTools {
    * supplies it; without it, Pi's own UI asks, and with no UI the call is blocked.
    */
   approve?(request: ApprovalRequest): Promise<boolean>;
+  /** Records what a write or edit call did to a file, so removing its turn can undo it. */
+  recordChange?(change: NewChange): void;
 }
 
 export interface ApprovalRequest {
@@ -51,7 +53,8 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         async execute(id, params, signal, onUpdate, ctx) {
           const target = tools.target();
           const cwd = await target.cwd();
-          const tool = create(cwd, { operations: target.ops()[name] as never });
+          const ops = name === "write" || name === "edit" ? recording(target, target.ops()[name], id, tools.recordChange) : target.ops()[name];
+          const tool = create(cwd, { operations: ops as never });
           // Pi resolves paths against the session's cwd, which is on the host; use the target's.
           const here = new Proxy(ctx, { get: (t, k) => (k === "cwd" ? cwd : Reflect.get(t, k)) });
           return tool.execute(id, params, signal, onUpdate, here);
@@ -77,6 +80,34 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       options.sections = { ...options.sections, workspace: describe(tools) };
     });
   };
+}
+
+/**
+ * Write and edit, keeping what the file held before each write. A path the
+ * target refuses fails before anything is recorded, so nothing outside the
+ * thread's folders is ever kept.
+ */
+function recording<T extends ToolOps["write"] | ToolOps["edit"]>(target: ExecutionTarget, ops: T, toolCall: string, record?: (c: NewChange) => void): T {
+  if (!record) return ops;
+  const read = target.ops().read;
+  return {
+    ...ops,
+    async writeFile(path: string, content: string | Buffer) {
+      const before = await read.readFile(path).catch(() => undefined);
+      // A file that exists but couldn't be read can't be put back, so it isn't recorded (and never deleted).
+      const undoable = before !== undefined || !(await exists(target, path));
+      await ops.writeFile(path, content);
+      // The write happened; failing to record it (a locked home) mustn't fail the call.
+      if (undoable) try { record({ toolCall, target: target.name, path, before, after: content }); } catch { /* not undoable */ }
+    },
+  };
+}
+
+const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
+
+async function exists(target: ExecutionTarget, path: string): Promise<boolean> {
+  const { exitCode } = await target.ops().bash.exec(`test -e ${quote(path)} || test -L ${quote(path)}`, await target.cwd(), { onData: () => {} }).catch(() => ({ exitCode: 0 }));
+  return exitCode === 0;
 }
 
 async function approve(ctx: ExtensionContext, tool: string, input: Record<string, unknown>): Promise<boolean> {

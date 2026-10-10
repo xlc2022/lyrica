@@ -632,9 +632,40 @@ export interface RewindRequest {
   text?: string;
   /** With "regenerate": the thread's chat model from now on, checked by the router first. */
   model?: ModelRef;
+  /** Only say what the removal would do (`RemovalPlan`); nothing changes. */
+  preview?: boolean;
+  /** Plan items the user unticked: left as they are. Everything else ticked in the plan is undone. */
+  skip?: string[];
 }
-/** `pins`: how many of the removed messages were pinned. */
-export interface RewindResponse { removed: number; subagents: number; pins: number }
+
+/**
+ * What removing turns would undo, from `preview`. Files her write and edit
+ * calls made are deleted, files they changed are put back, and either is kept
+ * if something changed it since. Uploads only the removed messages mention are
+ * deleted. Git branches made in those turns are deleted when they hold no
+ * commits of their own (ticked) and listed otherwise. Commands are listed: what
+ * they did isn't tracked.
+ */
+export interface RemovalPlan {
+  messages: number;
+  pins: number;
+  subagents: number;
+  files: PlanFile[];
+  branches: PlanBranch[];
+  /** The removed turns' commands, the first 20, each cut to 200 characters. */
+  commands: string[];
+}
+export interface PlanFile {
+  id: string;
+  path: string;
+  action: "delete" | "restore" | "keep";
+  /** "changed since": by something else, so it's kept. "unreachable": the thread works elsewhere now, or its home is locked. */
+  reason?: "changed since" | "unreachable" | "upload";
+  ticked: boolean;
+}
+export interface PlanBranch { id: string; repo: string; branch: string; commits: boolean; ticked: boolean }
+/** `pins`: how many of the removed messages were pinned; `files` and `branches`: how many were undone. */
+export interface RewindResponse { removed: number; subagents: number; pins: number; files: number; branches: number }
 
 /**
  * PUT /api/u/:userId/threads/:pool/:threadId/messages/:n/pin → Pin, and DELETE to unpin.

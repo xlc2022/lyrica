@@ -1,7 +1,7 @@
 // One thread: header with its badges, the conversation, and the composer.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { del, get, post, put, threadPath, type Pins, type Pool, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSummary } from "./api.ts";
-import { PinnedBadge, useUndo, type Rewinder } from "./Rewind.tsx";
+import { del, get, post, put, threadPath, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSummary } from "./api.ts";
+import { hasConsequences, PinnedBadge, RemovalConfirm, useUndo, type Rewinder } from "./Rewind.tsx";
 import { go } from "./route.ts";
 import { useThread } from "./stream.ts";
 import { Conversation, MessageBox } from "./Messages.tsx";
@@ -58,6 +58,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
   const s = summary.data;
   // Branch, regenerate, edit and delete, from each message's menu. Deleting waits for Undo.
   const { pending, later, undo } = useUndo();
+  const [removal, setRemoval] = useState<{ plan: RemovalPlan; go: (skip: string[]) => void }>();
   const rewind = (n: number, req: RewindRequest) => post(`${base}/messages/${n}/rewind`, req).catch((e: Error) => setSendError(e.message));
   const rewinder: Rewinder | undefined = s && !s.subagent ? {
     settings: settings.data,
@@ -75,17 +76,23 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
     },
     rewind: (n, req, hide) => {
       setSendError("");
-      const last = t.messages.findLast((m) => m.role === "user")?.n;
-      // What is sent again: the edited text, or the question her reply answered.
-      const resend = req.action === "edit" ? req.text : req.action === "regenerate"
-        ? t.messages.filter((m) => m.n < n && m.role === "user" && !m.from).at(-1)?.parts.map((p) => (p.type === "text" ? p.text : "")).join("") : undefined;
-      const go = () => { t.willResend(resend); void rewind(n, req); };
-      // Removing turns waits for Undo; regenerating or editing the last turn goes at once.
-      if (req.action === "delete") later(n === last ? "Turn deleted" : "Messages deleted", hide, go);
-      else if (last !== undefined && n < last) later(req.action === "edit" ? "Message edited" : "Regenerating", hide, go);
-      else go();
+      // Turns that did things (files, branches, commands, pins, subagents) are confirmed first, with what goes.
+      post<RemovalPlan>(`${base}/messages/${n}/rewind`, { ...req, preview: true }).then(
+        (plan) => (hasConsequences(plan) ? setRemoval({ plan, go: (skip) => removeTurns(n, { ...req, skip }, hide) }) : removeTurns(n, req, hide)),
+        (e: Error) => setSendError(e.message));
     },
   } : undefined;
+  function removeTurns(n: number, req: RewindRequest, hide: number) {
+    const last = t.messages.findLast((m) => m.role === "user")?.n;
+    // What is sent again: the edited text, or the question her reply answered.
+    const resend = req.action === "edit" ? req.text : req.action === "regenerate"
+      ? t.messages.filter((m) => m.n < n && m.role === "user" && !m.from).at(-1)?.parts.map((p) => (p.type === "text" ? p.text : "")).join("") : undefined;
+    const go = () => { t.willResend(resend); void rewind(n, req); };
+    // Removing turns waits for Undo; regenerating or editing the last turn goes at once.
+    if (req.action === "delete") later(n === last ? "Turn deleted" : "Messages deleted", hide, go);
+    else if (last !== undefined && n < last) later(req.action === "edit" ? "Message edited" : "Regenerating", hide, go);
+    else go();
+  }
   const parent = s?.parent ? findThread(threads, pool, s.parent) : undefined;
   const title = t.live.title || s?.title || "New thread";
   const scroller = useStickyScroll([t.messages, t.live]);
@@ -123,6 +130,10 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
         <ErrorText error={sendError} />
       </div>
       {!t.connected && <p className="offline" role="status">Reconnecting…</p>}
+      {removal && (
+        <RemovalConfirm plan={removal.plan} onCancel={() => setRemoval(undefined)}
+          onConfirm={(skip) => { setRemoval(undefined); removal.go(skip); }} />
+      )}
       {pending && (
         <div className="toast" role="status">
           <span>{pending.label}</span>

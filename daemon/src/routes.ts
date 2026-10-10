@@ -10,6 +10,7 @@ import { DEFAULT_BUDGETS, OPENING, pinnedBlock, pinnedOf } from "@lyrica/extensi
 import { Busy } from "./hosted.ts";
 import { card, type Lyricad, type Services } from "./lyricad.ts";
 import { toMessages } from "./messages.ts";
+import { applyRemoval, entriesFrom, removalPlan, uploadsIn, type RemovalContext } from "./removal.ts";
 
 const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, showPrivate: true, showHidden: false };
 const DISPLAY_DEFAULTS_ALL: Api.Display = { ...DISPLAY_DEFAULTS, showPrivate: true, showGeneral: true, showHidden: true };
@@ -1241,7 +1242,7 @@ function pin(d: Lyricad, user: User, r: Request, pinned: boolean): Api.Ok {
  * subagents from those turns are stopped and the entries removed, so nothing
  * runs meanwhile; then the message is sent again, or the edited one.
  */
-async function rewind(d: Lyricad, user: User, r: Request, req: Api.RewindRequest): Promise<Api.RewindResponse> {
+async function rewind(d: Lyricad, user: User, r: Request, req: Api.RewindRequest): Promise<Api.RewindResponse | Api.RemovalPlan> {
   const { host, delegation, models } = d.services!;
   const pool = poolOf(r);
   const n = entryN(r);
@@ -1270,19 +1271,20 @@ async function rewind(d: Lyricad, user: User, r: Request, req: Api.RewindRequest
     const m = req.model as { offeringId?: unknown; groupId?: unknown };
     models.setThreadModel(user.id, pool, thread.id, "chat", m.groupId !== undefined ? { groupId: String(m.groupId) } : { offeringId: String(m.offeringId) });
   }
-  let result: Api.RewindResponse = { removed: 0, subagents: 0, pins: 0 };
+  if (req.preview) return removal(d, user, pool, thread.id, from).then(({ changes: _, ...plan }) => plan);
+  const skip = new Set(Array.isArray(req.skip) ? req.skip.map(String) : []);
+  let result: Api.RewindResponse = { removed: 0, subagents: 0, pins: 0, files: 0, branches: 0 };
   try {
     await host.get(user.id, pool, thread.id).rewind(async () => {
-      const subagents = owner(d, user, (o) => {
-        const all: string[] = [];
-        const walk = (id: string) => { all.push(id); for (const c of o[pool].listThreads({ includeHidden: true, parent: id })) walk(c.id); };
-        for (const id of o[pool].subagentsSince(thread.id, from)) walk(id);
-        return all;
-      });
+      // Read before the subagents go; undo files after they've stopped writing.
+      const gathered = gather(d, user, pool, thread.id, from);
+      const subagents = gathered.subagents.map((s) => s.thread);
       await delegation.forgetSubagents(user.id, pool, subagents);
       for (const id of subagents) await host.forget(user.id, pool, id);
+      const plan = await removalPlan(gathered);
+      const undone = await applyRemoval(plan, gathered.target, gathered.changes, skip);
       const done = owner(d, user, (o) => o[pool].truncateThread(thread.id, from, author(user)));
-      result = { removed: done.removed, subagents: done.subagents.length, pins: done.pins };
+      result = { removed: done.removed, subagents: done.subagents.length, pins: done.pins, ...undone };
       return from;
     }, then);
   } catch (err) {
@@ -1290,6 +1292,39 @@ async function rewind(d: Lyricad, user: User, r: Request, req: Api.RewindRequest
     throw err;
   }
   return result;
+}
+
+/** What removing from entry `from` would undo. Reads only. */
+async function removal(d: Lyricad, user: User, pool: Pool, thread: string, from: number) {
+  return removalPlan(gather(d, user, pool, thread, from));
+}
+
+/** The removed entries, their subagents (with runs and entries), pins and uploads, and where the thread's tools run. */
+function gather(d: Lyricad, user: User, pool: Pool, thread: string, from: number): RemovalContext {
+  const { workspace, delegation } = d.services!;
+  const t = { userId: user.id, pool, threadId: thread };
+  let target: RemovalContext["target"];
+  try { target = workspace.targetFor(t); } catch { target = undefined; }
+  return owner(d, user, (o) => {
+    const store = o[pool];
+    const subagents: RemovalContext["subagents"] = [];
+    const walk = (id: string, run?: string) => {
+      subagents.push({ thread: id, run, entries: entriesFrom(store, id, 1) });
+      const runs = delegation.store.runs(user.id, pool, { parent: id });
+      for (const c of store.listThreads({ includeHidden: true, parent: id })) walk(c.id, runs.find((x) => x.thread === c.id)?.run);
+    };
+    const top = delegation.store.runs(user.id, pool, { parent: thread });
+    for (const id of store.subagentsSince(thread, from)) walk(id, top.find((x) => x.thread === id)?.run);
+    const removed = entriesFrom(store, thread, from);
+    const at = new Set(removed.map((e) => e.n));
+    const uploadsKept = new Set([...uploadsIn(removed)].filter((path) => store.entriesMentioning(path).some((m) => m.thread !== thread || !at.has(m.n))));
+    return {
+      pool, thread, removed, subagents, uploadsKept, target,
+      pins: store.pins(thread).filter((p) => p.n >= from).length,
+      changes: workspace.changes(user.id),
+      grants: target ? workspace.grantsFor(t) : [],
+    };
+  });
 }
 
 function memoryDetail(d: Lyricad, o: OwnerView, pool: Pool, id: string): Api.MemoryDetail {
