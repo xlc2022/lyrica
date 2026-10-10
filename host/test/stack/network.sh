@@ -44,6 +44,17 @@ if compose ps --services | grep -qx tailscale; then
   expect yes "tailscale reaches host-api" tailscale nc -z -w 5 host-api 7443
   expect no  "tailscale doesn't get the local dashboard" tailscale wget -q -T 5 -O /dev/null http://host-api:7080/dashboard/me
 fi
+# speech: on the models network only, and writing nowhere but its tmpfs.
+pytcp() { echo "import socket,sys
+try: socket.create_connection(('$1',$2),5)
+except OSError: sys.exit(1)"; }
+expect yes "host-api reaches the speech server" host-api node -e "fetch('http://speech:8000/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+expect no  "speech can't reach the internet by address" speech python -c "$(pytcp 1.1.1.1 443)"
+expect no  "speech can't reach the internet by name" speech python -c "$(pytcp example.com 443)"
+expect no  "speech can't write to its image" speech sh -c 'touch /opt/speech/x'
+expect no  "speech can't write to the models folder" speech sh -c 'touch /models/x'
+expect yes "speech can write to its tmpfs" speech sh -c 'touch /tmp/x && rm /tmp/x && grep -q " /tmp tmpfs " /proc/mounts'
+if [[ $(docker inspect --format '{{.HostConfig.LogConfig.Type}}' "$(compose ps -q speech)") == none ]]; then echo "ok: speech logs nothing"; else echo "FAIL: speech keeps logs"; failed=1; fi
 # fetch: the one route out, and nothing else.
 expect yes "fetch reaches the internet" fetch node -e "$(tcp 1.1.1.1 443)"
 expect no  "fetch can't reach the models network" fetch node -e "$(tcp probe-models 80)"

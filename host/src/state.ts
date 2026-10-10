@@ -17,7 +17,11 @@ export interface Usage {
   completionTokens: number;
   images: number;
   seconds: number;
+  /** Seconds of audio transcribed or spoken. */
+  audioSeconds: number;
 }
+
+export const NO_USAGE = (): Usage => ({ requests: 0, promptTokens: 0, completionTokens: 0, images: 0, seconds: 0, audioSeconds: 0 });
 
 export interface HostState {
   clients: PairedClient[];
@@ -34,9 +38,11 @@ export interface HostState {
   vram: Record<string, Record<number, number>>;
   usageSince: string;
   usage: Record<string, Usage>;
+  /** One-time changes already made to this file. */
+  migrations: string[];
 }
 
-const EMPTY: HostState = { clients: [], password: null, paused: false, gpuSettings: {}, models: {}, pins: [], vram: {}, usageSince: "", usage: {} };
+const EMPTY: HostState = { clients: [], password: null, paused: false, gpuSettings: {}, models: {}, pins: [], vram: {}, usageSince: "", usage: {}, migrations: [] };
 
 export class StateFile {
   readonly path: string;
@@ -51,6 +57,12 @@ export class StateFile {
     this.state.pins = this.state.pins.map((p) => (typeof p === "string" ? p : (p as { model: string }).model));
     for (const [k, v] of Object.entries(this.state.vram)) if (typeof v === "number" || !k.includes("@")) delete this.state.vram[k];
     delete (this.state as { roles?: unknown }).roles;
+    // GPU settings saved before the speech server: it is allowed where the others were.
+    if (!this.state.migrations.includes("speech")) {
+      for (const g of Object.values(this.state.gpuSettings)) if (g.servers.includes("vllm") && !g.servers.includes("speech")) g.servers.push("speech");
+      for (const u of Object.values(this.state.usage)) u.audioSeconds ??= 0;
+      this.state.migrations = [...this.state.migrations, "speech"];
+    }
     // Written back once, so the file on disk is in today's shape.
     if (stored !== null && JSON.stringify(JSON.parse(stored)) !== JSON.stringify(this.state)) this.update(() => {});
   }

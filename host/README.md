@@ -90,8 +90,9 @@ itself, because it has no access to the Docker socket.
 Downloads come from Hugging Face, ModelScope or an https link, asked for by
 Lyrica or on the dashboard. They go into the models folder's `lyrica/`
 subfolder, under `lyrica/<source>/<repository>/`.
-- Only GGUF and safetensors files are downloaded, with the small files a
-  model folder needs. Pickle formats and code are refused.
+- Only GGUF, safetensors and ONNX files are downloaded, with the small
+  files a model folder needs and a voice model's voices (plain arrays of
+  numbers, checked when they arrive). Pickle formats and code are refused.
 - Each file arrives under a temporary name and is checked against the
   hub's checksum (SHA-256, or the git hash for small files) before it
   appears. A link without a checksum is kept, marked unverified.
@@ -136,6 +137,30 @@ fills the recipe's template in `workflows/` (one per architecture).
   and its history is cleared after every job. It uses one GPU,
   `COMFY_GPU` in `.env`, and frees its memory after ten idle minutes.
 
+## Dictation and voice
+
+- **Dictation** models (Whisper, Voxtral) are safetensors folders, served by
+  vLLM on `/v1/audio/transcriptions` and placed like any vLLM model.
+- **Voice** models are Kokoro's ONNX export: a folder with its `.onnx` file,
+  its vocabulary and `voices/`. The speech server (`speech/`, our image)
+  reads them in English and Mandarin, including English words in Mandarin
+  text, and streams the audio on `/v1/audio/speech`. Voices in other
+  languages are left out.
+  - It runs on one GPU on an NVIDIA host (CUDA), and on the CPU elsewhere;
+    Kokoro is small enough for either.
+  - Like the model servers, it is on the `models` network only, logs
+    nothing, runs read-only with no capabilities, and writes only to its
+    `/tmp` tmpfs. That tmpfs allows running files, because the phonemizer
+    loads espeak-ng from a copy it makes there. Text it reads is never kept.
+  - Every package is pinned with its hash (`speech/requirements.*.txt`;
+    `speech/lock.sh` remakes them), so nothing is fetched at run time.
+- To download them, on the dashboard or through the API: the files of
+  `onnx-community/Kokoro-82M-v1.1-zh-ONNX` (`onnx/model.onnx`, its JSON
+  files and `voices/*.bin`), and
+  `openai/whisper-large-v3-turbo` (its safetensors and JSON files).
+- `bench/speech/` compares voice and dictation models on a Windows machine
+  with an NVIDIA GPU, and makes samples to listen to.
+
 ## Pairing
 
 1. On the dashboard, choose **Pair with Lyrica**. A code like
@@ -155,6 +180,8 @@ revoked. A revoked server must pair again.
     one model.
   - Folders with a `config.json` and safetensors are served by vLLM. A model
     whose config asks for remote code is listed but never loaded.
+  - Voice models (see above) are served by the speech server, on one GPU
+    or the CPU. Their only setting is the placement.
 - **Each model has a placement** and serving settings, set on the dashboard
   or through the API:
   - Auto (the default): one GPU with room, preferring one where nothing
@@ -167,7 +194,7 @@ revoked. A revoked server must pair again.
     server).
   - Settings apply at the next load, or now with Reload. A placement that
     can't work is refused when it's saved, with the reason.
-- **Each GPU** says which servers it may run (llama.cpp, vLLM, images), how
+- **Each GPU** says which servers it may run (llama.cpp, vLLM, images, speech), how
   much memory to keep free, or that it is left out. It can hold several
   models of any mix; a split model loads only when all its GPUs have room
   and unloads from all at once.
@@ -215,6 +242,9 @@ revoked. A revoked server must pair again.
     ROCm, AMD GPUs are numbered as ROCm numbers them; with Vulkan, by PCI
     address. Without a KFD topology (no `/dev/kfd`), integrated GPUs can't be
     recognised, so their shared memory isn't counted.
+- `speech` (`speech/`): our image, a small Python server around ONNX
+  Runtime that loads and unloads voice models as host-api asks. The CPU
+  build is in `compose.yaml`; `compose.nvidia.yaml` builds it for CUDA.
 - `fetch` (`src/fetch/`) does the downloads. It is the same image as
   host-api, with another command.
   - It is the only container that goes out, on the `egress` network,

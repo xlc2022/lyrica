@@ -6,8 +6,9 @@ import { HostError, invalid } from "./http.ts";
 import type { Gpu } from "./gpus.ts";
 import type { TextModel } from "./library.ts";
 
-export type Server = "llamacpp" | "vllm" | "images";
-export const SERVERS: Server[] = ["llamacpp", "vllm", "images"];
+export type Server = "llamacpp" | "vllm" | "images" | "speech";
+export const SERVERS: Server[] = ["llamacpp", "vllm", "images", "speech"];
+export const SERVER_NAMES: Record<Server, string> = { llamacpp: "llama.cpp", vllm: "vLLM", images: "images", speech: "speech" };
 
 export type Placement =
   | { mode: "auto" }
@@ -57,7 +58,7 @@ export function contextOf(model: TextModel, s: ModelSettings): number {
 
 /** Bytes for the weights, and for the KV cache at the model's context. */
 export function sizes(model: TextModel, s: ModelSettings): { weights: number; kv: number } {
-  if (model.kind === "image") return { weights: Math.round(model.size * 1.1), kv: 0 };
+  if (model.kind === "image" || model.kind === "speak") return { weights: Math.round(model.size * 1.1), kv: 0 };
   const context = model.kind === "embedding" ? Math.min(contextOf(model, s), 8192) : contextOf(model, s);
   const perToken = model.kvPerToken !== null ? model.kvPerToken * KV_BYTES[s.kvCacheType ?? "f16"] : (2 * GIB) / DEFAULT_CONTEXT;
   return { weights: Math.round(model.size * 1.05), kv: Math.round(perToken * context) };
@@ -115,7 +116,8 @@ export function options(model: TextModel, s: ModelSettings, gpus: Gpu[], setting
     return chosen.length === p.gpus.length ? [option(model, s, chosen, settings, p.split, p.parallel)] : [];
   }
   const singles = [...allowed].sort((a, b) => room(b, settings(b.index)) - room(a, settings(a.index))).map((g) => option(model, s, [g], settings));
-  return allowed.length > 1 ? [...singles, option(model, s, allowed, settings)] : singles;
+  // The speech server runs a voice model on one GPU.
+  return allowed.length > 1 && server !== "speech" ? [...singles, option(model, s, allowed, settings)] : singles;
 }
 
 /** Why an option can never fit, even with its GPUs empty; null if it can. */
@@ -161,11 +163,24 @@ const LLAMA_ONLY = ["kvCacheType", "flashAttention", "gpuLayers", "parallel"] as
 const VLLM_ONLY = ["memoryShare", "maxSeqs", "dtype"] as const;
 const KEYS = ["placement", "contextLength", "batchSize", "chatTemplate", ...LLAMA_ONLY, ...VLLM_ONLY];
 
-/** Checks settings as they are saved: their shape, and that the placement can work on these GPUs. */
-export function validate(model: TextModel, body: Record<string, unknown>, gpus: Gpu[], settings: (i: number) => GpuSettings): ModelSettings {
+/** The one way to run a server on the CPU: no GPUs, nothing counted against them. */
+export const CPU_OPTION: Option = { gpus: [], split: null, parallel: null, share: null, need: {} };
+
+/**
+ * Checks settings as they are saved: their shape, and that the placement can
+ * work on these GPUs. `onCpu`: the server runs on the CPU here (speech on a
+ * host without CUDA), so only Auto is taken.
+ */
+export function validate(model: TextModel, body: Record<string, unknown>, gpus: Gpu[], settings: (i: number) => GpuSettings, onCpu = false): ModelSettings {
   for (const k of Object.keys(body)) if (!KEYS.includes(k)) throw invalid(`Unknown setting: ${k}.`);
   const server = serverOf(model);
   if (server === "images") throw invalid("Image recipes run on ComfyUI's GPU and have no settings here.");
+  if (server === "speech") {
+    const extra = Object.keys(body).find((k) => k !== "placement");
+    if (extra) throw invalid(`${extra} isn't a setting for a voice model; it has a placement only.`);
+    if (onCpu && (body.placement as Placement | undefined)?.mode !== "auto") throw invalid("Voice models run on the CPU on this host: the placement is { mode: \"auto\" }.");
+    if (onCpu) return body as unknown as ModelSettings;
+  }
   for (const k of server === "vllm" ? LLAMA_ONLY : VLLM_ONLY) {
     if (body[k] !== undefined) throw invalid(`${k} is for ${server === "vllm" ? "llama.cpp" : "vLLM"} models.`);
   }
@@ -203,7 +218,7 @@ export function validate(model: TextModel, body: Record<string, unknown>, gpus: 
       if (!g) throw invalid(`There's no GPU ${i}.`);
       const gs = settings(i);
       if (gs.excluded) throw invalid(`GPU ${i} is left out.`);
-      if (!gs.servers.includes(server)) throw invalid(`GPU ${i} doesn't allow ${server === "vllm" ? "vLLM" : "llama.cpp"}.`);
+      if (!gs.servers.includes(server)) throw invalid(`GPU ${i} doesn't allow ${SERVER_NAMES[server]}.`);
     }
     if (p.split !== undefined) {
       if (server !== "llamacpp") throw invalid("split is for llama.cpp; vLLM splits evenly.");
@@ -219,6 +234,7 @@ export function validate(model: TextModel, body: Record<string, unknown>, gpus: 
         throw invalid("Tensor parallel needs matching GPUs, two, four or eight of them; use pipeline parallel.");
       }
     }
+    if (server === "speech" && chosen.length > 1) throw invalid("A voice model runs on one GPU.");
     for (const k of Object.keys(p)) if (!["mode", "gpus", "split", "parallel"].includes(k)) throw invalid(`Unknown placement field: ${k}.`);
   } else if (p.mode !== "auto" || Object.keys(p).length !== 1) {
     throw invalid("placement is { mode: \"auto\" } or { mode: \"gpus\", gpus: [...] }.");
@@ -226,7 +242,7 @@ export function validate(model: TextModel, body: Record<string, unknown>, gpus: 
 
   const s = body as unknown as ModelSettings;
   const opts = options(model, s, gpus, settings);
-  if (!opts.length) throw invalid(`No GPU allows ${server === "vllm" ? "vLLM" : "llama.cpp"}.`);
+  if (!opts.length) throw invalid(`No GPU allows ${SERVER_NAMES[server]}.`);
   // Auto needs one way that can work; a chosen placement must work as chosen.
   const reasons = opts.map((o) => neverFits(model, s, o, gpus, settings));
   if (reasons.every((r) => r !== null)) throw new HostError(400, "too_big", reasons.at(-1)!);

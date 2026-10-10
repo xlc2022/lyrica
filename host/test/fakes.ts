@@ -145,6 +145,11 @@ export async function fakeHub(opts: { lie?: boolean; redirectTo?: string; gated?
     "nosize.gguf": Buffer.concat([Buffer.from("GGUF"), Buffer.alloc(996, 7)]),
     "config.json": Buffer.from('{"architectures":["X"]}'),
     "pytorch_model.bin": Buffer.alloc(10, 1),
+    // A voice model: ONNX starts with its IR version; voices are plain float32.
+    "onnx/model.onnx": Buffer.concat([Buffer.from([0x08, 0x08]), Buffer.alloc(998, 7)]),
+    "fake.onnx": Buffer.alloc(1000, 7),
+    "voices/af_heart.bin": Buffer.alloc(1024, 0),
+    "voices/zf_pickled.bin": Buffer.concat([Buffer.from([0x80, 0x04]), Buffer.alloc(1022, 0)]),
   };
   const seen: string[] = [];
   const server = https.createServer({ key: id.key, cert: id.cert }, (req, res) => {

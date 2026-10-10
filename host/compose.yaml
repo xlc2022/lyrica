@@ -5,7 +5,7 @@
 # an APU); and compose.lan.yaml and compose.tailscale.yaml).
 #
 # Networks. host-api sees every prompt, so it has no route out:
-# - models: internal, no route out. host-api and the model servers.
+# - models: internal, no route out. host-api, the model servers and speech.
 # - edge: host-api alone, where the published ports arrive. Docker doesn't
 #   masquerade it, and egress.sh (run by install.sh and a systemd unit)
 #   drops every new connection host-api starts.
@@ -97,3 +97,25 @@ services:
       - fetch-data:/data
       - ${MODELS_DIR}/lyrica:/models/lyrica
     networks: [fetch-api, egress]
+
+  # Voices: ours, built from host/speech/Dockerfile. It runs on the CPU here;
+  # compose.nvidia.yaml builds it for CUDA and gives it the GPUs. Like the
+  # model servers, it is on the models network only, logs nothing and can
+  # write only to /tmp, a tmpfs. That tmpfs allows running files, because
+  # phonemizer loads espeak-ng from a copy it makes there.
+  speech:
+    build:
+      context: ..
+      dockerfile: host/speech/Dockerfile
+      args: { FLAVOUR: cpu }
+    image: lyrica-host-speech:cpu
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    init: true
+    networks: [models]
+    logging: { driver: none }
+    volumes:
+      - ${MODELS_DIR}:/models:ro
+    tmpfs: ["/tmp:exec"]
