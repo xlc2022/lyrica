@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,6 +8,7 @@ import { FileChanges, Users, type ExecutionTarget, type ToolOps } from "@lyrica/
 import { recording } from "@lyrica/extension";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
 import { applyRemoval, removalPlan, type Entry, type RemovalContext } from "../src/removal.ts";
+import { forgetWorktree } from "../src/sweep.ts";
 
 /** Stands in for the sandbox: the same operations, on the host, in a temp folder. Paths are host paths. */
 function localTarget(cwd: string): ExecutionTarget {
@@ -179,5 +180,24 @@ describe("the sweep of change records", () => {
     expect(changes.sweep(new Date(Date.now() - 864e5))).toEqual({ records: 0, snapshots: 1 });
     expect(changes.sweep(new Date(Date.now() + 1000))).toEqual({ records: 1, snapshots: 0 });
     expect(readdirSync(join(home, "snapshots"))).toEqual([]);
+  });
+
+  it("forgets git's record of a worktree it removes, so its branch can be deleted, and only in a folder the user may grant", async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "lyrica-prune-")));
+    const repo = join(root, "src", "lyrica");
+    mkdirSync(repo, { recursive: true });
+    const git = (...args: string[]) => execFileSync("git", ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", ...args], { encoding: "utf8" });
+    git("init", "-q", "-b", "main");
+    git("commit", "-q", "--allow-empty", "-m", "first");
+    const run = join(root, "home", "threads", "t", "worktrees", "r1-1");
+    mkdirSync(run, { recursive: true });
+    git("worktree", "add", "-q", "-b", "lyrica/r1-1", join(run, "lyrica"));
+
+    // Outside the folders the user may grant: left alone.
+    expect(forgetWorktree(join(run, "lyrica"), [join(root, "elsewhere")])).toBe(false);
+    expect(forgetWorktree(join(run, "lyrica"), [join(root, "src")])).toBe(true);
+    rmSync(run, { recursive: true, force: true });
+    git("branch", "-D", "lyrica/r1-1");
+    expect(git("branch", "--list", "lyrica/*")).toBe("");
   });
 });

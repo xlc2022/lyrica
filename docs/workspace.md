@@ -131,8 +131,12 @@ so it never touches disk, and no system `ssh` agent is involved.
 - **The nightly sweep** (`daemon/src/sweep.ts`), for each user whose home is
   mounted: change records and snapshots older than 30 days, snapshots no
   record names, the folders of threads that no longer exist, and subagent
-  worktrees whose run isn't live and that haven't changed in 30 days. It
-  logs counts only.
+  worktrees whose run isn't live and that haven't changed in 30 days. Before
+  a worktree goes, git's record of it (`.git/worktrees/<name>` in its
+  repository) goes too, so git no longer counts its branch as checked out:
+  only in a folder the user may grant, and only a record that names that
+  worktree back. (`git worktree prune` can't do it: the records name the
+  sandbox's paths.) It logs counts only.
 - **Granted host paths outside the home workspace are ordinary files.** Their
   protection is whatever the host gives them.
 

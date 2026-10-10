@@ -1,5 +1,5 @@
-import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { isMounted } from "@lyrica/core";
 import type { Services } from "./lyricad.ts";
 
@@ -34,6 +34,12 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
   } finally {
     o.close();
   }
+  const paths = s.workspace.allowedPaths.list(userId);
+  const allowed = [...paths.general, ...paths.private];
+  // Each worktree in a run's folder, so git forgets it before the folder goes.
+  const forgetRun = (runDir: string) => {
+    try { for (const repo of readdirSync(runDir)) forgetWorktree(join(runDir, repo), allowed); } catch { /* not a folder */ }
+  };
   const live = new Set((["general", "private"] as const).flatMap((pool) => s.delegation.store.liveRuns(userId, pool)));
   for (const name of readdirSync(threadsDir)) {
     const dir = join(threadsDir, name);
@@ -41,6 +47,8 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
     try { id = decodeURIComponent(name); } catch { continue; }
     // A thread made since the list was read may have a new folder already.
     if (!exists(id) && statSync(dir).mtimeMs < now.getTime() - 60_000) {
+      const runs = join(dir, "worktrees");
+      if (existsSync(runs)) for (const w of readdirSync(runs)) forgetRun(join(runs, w));
       rmSync(dir, { recursive: true, force: true });
       counts.folders++;
       continue;
@@ -51,9 +59,35 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
       const run = /^(.+)-\d+$/.exec(w)?.[1];
       if (!run || live.has(run)) continue;
       if (statSync(join(worktrees, w)).mtime > old) continue;
+      forgetRun(join(worktrees, w));
       rmSync(join(worktrees, w), { recursive: true, force: true });
       counts.worktrees++;
     }
   }
   return counts;
+}
+
+/**
+ * Removes git's record of a worktree the sweep is about to remove (its
+ * folder in the repository's .git/worktrees), so git no longer counts its
+ * branch as checked out and a later removal can delete it. This is what
+ * `git worktree prune` does, but prune can't run here: the records name the
+ * worktrees as the sandbox saw them, so it would take every live one too.
+ * Only a record in a folder the user may grant, with no symlinks on the way,
+ * that names this worktree back. Returns whether it removed one.
+ */
+export function forgetWorktree(path: string, allowed: string[]): boolean {
+  try {
+    const admin = /^gitdir: (\/.+?)\n?$/.exec(readFileSync(join(path, ".git"), "utf8"))?.[1];
+    const repo = admin && /^(\/.+)\/\.git\/worktrees\/[^/]+$/.exec(admin)?.[1];
+    if (!admin || !repo || !allowed.some((a) => repo === a || repo.startsWith(`${a.replace(/\/+$/, "")}/`))) return false;
+    if (realpathSync(admin) !== admin || !lstatSync(admin).isDirectory()) return false;
+    // …/worktrees/<run>-<i>/<repository>/.git, as the sandbox saw it.
+    const back = readFileSync(join(admin, "gitdir"), "utf8").trim();
+    if (!back.endsWith(`/worktrees/${basename(dirname(path))}/${basename(path)}/.git`)) return false;
+    rmSync(admin, { recursive: true, force: true });
+    return true;
+  } catch {
+    return false;
+  }
 }
