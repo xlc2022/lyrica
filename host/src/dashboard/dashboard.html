@@ -44,6 +44,22 @@
     <table id="models"></table>
   </section>
   <section>
+    <h2>Downloads</h2>
+    <form id="hub-form">
+      <select id="hub-source"><option value="huggingface">Hugging Face</option><option value="modelscope">ModelScope</option></select>
+      <input id="hub-repo" placeholder="owner/repository" size="28">
+      <input id="hub-token" type="password" placeholder="Access token, if gated" autocomplete="off" size="20">
+      <button type="submit">List files</button>
+    </form>
+    <table id="hub-files"></table>
+    <form id="link-form">
+      <input id="link-url" placeholder="https:// link to a .gguf or .safetensors file" size="44">
+      <input id="link-sha" placeholder="SHA-256 (optional)" size="20">
+      <button type="submit">Download link</button>
+    </form>
+    <table id="downloads"></table>
+  </section>
+  <section>
     <h2>Usage</h2>
     <p class="muted">Counts only: never prompts, results or who asked. Nothing leaves this machine.</p>
     <table id="usage"></table>

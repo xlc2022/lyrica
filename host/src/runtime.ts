@@ -1,6 +1,7 @@
 // The text models and their routes: the OpenAI-compatible /v1, and the
 // management calls in API.md ("Status and control").
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { RecordEntry } from "./downloads.ts";
 import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./http.ts";
 import { scanTextModels, type TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
@@ -60,6 +61,8 @@ async function readRaw(req: IncomingMessage): Promise<Buffer> {
 
 export class Runtime {
   models: TextModel[] = [];
+  /** The download record, by path, from the fetch service. */
+  record = new Map<string, RecordEntry>();
   readonly scheduler: Scheduler;
   private readonly modelsDir: string;
   private readonly state: StateFile;
@@ -94,7 +97,7 @@ export class Runtime {
     return model;
   }
 
-  record(id: string, add: Partial<Usage>): void {
+  count(id: string, add: Partial<Usage>): void {
     const u = this.pending.get(id) ?? { requests: 0, promptTokens: 0, completionTokens: 0, images: 0, seconds: 0 };
     for (const k of Object.keys(add) as (keyof Usage)[]) u[k] += add[k] ?? 0;
     this.pending.set(id, u);
@@ -182,15 +185,17 @@ export class Runtime {
   describe(m: TextModel) {
     const at = this.scheduler.placement(m.id);
     const s = this.state.get();
+    const entry = this.record.get(m.id);
+    const folder = m.format === "safetensors" ? [...this.record.values()].find((r) => r.path.startsWith(`${m.id}/`)) : undefined;
     return {
       id: m.id,
       kind: m.kind,
       server: m.server,
       format: m.format,
       size: m.size,
-      sha256: null,
-      downloaded: false,
-      identity: { ...m.identity, card: null },
+      sha256: entry?.sha256 ?? null,
+      downloaded: !!(entry ?? folder),
+      identity: { ...m.identity, card: (entry ?? folder)?.card ?? null },
       capabilities: m.capabilities,
       contextLength: m.contextLength,
       state: at?.state ?? "unloaded",
@@ -241,7 +246,7 @@ export class Runtime {
         res.destroy();
       }
       sniffer.done();
-      this.record(model.id, {
+      this.count(model.id, {
         requests: 1,
         promptTokens: sniffer.usage?.prompt_tokens ?? 0,
         completionTokens: sniffer.usage?.completion_tokens ?? 0,

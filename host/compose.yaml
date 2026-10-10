@@ -5,7 +5,7 @@
 # Networks:
 # - models: internal, no route out. host-api and the model servers.
 # - outside: host-api, fetch and tailscale. The only route out, and where
-#   the published ports arrive.
+#   the published ports arrive. Only fetch uses it to go out.
 name: lyrica-host
 
 networks:
@@ -15,6 +15,8 @@ networks:
 
 volumes:
   data: {}
+  # fetch's download record and list.
+  fetch-data: {}
   # host-api writes the model servers' wanted state here; they read it.
   serving: {}
 
@@ -23,7 +25,7 @@ services:
     build:
       context: ..
       dockerfile: host/Dockerfile
-    image: lyrica-host-api:local
+    image: lyrica-host:local
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]
@@ -48,3 +50,18 @@ services:
       # The dashboard at the machine. Everything else is in compose.lan.yaml
       # or reached through the tailscale service.
       - "127.0.0.1:7236:7080"
+
+  # Downloads: the only container with a route out. It can write only to the
+  # models folder's lyrica/ subfolder, has no GPU, isn't on the models
+  # network, and answers only host-api.
+  fetch:
+    image: lyrica-host:local
+    command: ["node", "--disable-warning=ExperimentalWarning", "src/fetch/main.ts"]
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - fetch-data:/data
+      - ${MODELS_DIR}/lyrica:/models/lyrica
+    networks: [outside]

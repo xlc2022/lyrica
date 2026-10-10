@@ -58,6 +58,28 @@ also uses, such as LM Studio's. To change it, run
 `host/install.sh --models /new/path`. host-api can't remount containers
 itself, because it has no access to the Docker socket.
 
+## Downloads
+
+Downloads come from Hugging Face, ModelScope or an https link, asked for by
+Lyrica or on the dashboard. They go into the models folder's `lyrica/`
+subfolder, under `lyrica/<source>/<repository>/`.
+- Only GGUF and safetensors files are downloaded, with the small files a
+  model folder needs. Pickle formats and code are refused.
+- Each file arrives under a temporary name and is checked against the
+  hub's checksum (SHA-256, or the git hash for small files) before it
+  appears. A link without a checksum is kept, marked unverified.
+- Links and redirects must go to public addresses: never this machine, the
+  LAN or the tailnet.
+- A gated repository's token is used for that download only, and never
+  written down. A gated download interrupted by a restart must be started
+  again; it resumes from its partial file.
+- Free space is checked first. Downloads resume after a restart and can be
+  cancelled, which deletes the partial file.
+- The **download record** lists each file downloaded, with its size and
+  checksum. **Delete** removes only a file in it, inside `lyrica/` with no
+  symlink on the way, unchanged since it was downloaded. A loaded model is
+  unloaded first. Nothing else is ever deleted.
+
 ## Pairing
 
 1. On the dashboard, choose **Pair with Lyrica**. A code like
@@ -114,10 +136,16 @@ revoked. A revoked server must pair again.
     GPU as host-api asks in a file. Pause uses vLLM's own sleep and wake.
   - host-api reads VRAM with `nvidia-smi`, through NVIDIA's `utility`
     capability, or from AMD's sysfs.
+- `fetch` (`src/fetch/`) does the downloads. It is the same image as
+  host-api, with another command.
+  - It is the only container that goes out, and it isn't on the `models`
+    network. It mounts only `lyrica/`, read-write, and has no GPU.
+  - It answers only host-api's address. The download record and list are
+    in its own `fetch-data` volume.
 - Networks:
   - `models` is internal: no route out, and nothing outside can reach it.
-  - `outside` holds `host-api` and, with Tailscale, the `tailscale` service.
-    It is the only network with a route out.
+  - `outside` holds `host-api`, `fetch` and, with Tailscale, the
+    `tailscale` service. It is the only network with a route out.
 - No container mounts the Docker socket.
 - The host's key, certificate and state are in the `data` volume, readable
   only by host-api's user. The state is paired clients, the password hash,

@@ -1,6 +1,7 @@
 // host-api's entry point, run in its container.
 import { readFileSync } from "node:fs";
 import { LlamaCpp, Vllm } from "./backends.ts";
+import { Downloads } from "./downloads.ts";
 import { amdMonitor, noGpus, nvidiaMonitor } from "./gpus.ts";
 import { stdoutLog } from "./log.ts";
 import { Runtime } from "./runtime.ts";
@@ -46,5 +47,7 @@ const scheduler = new Scheduler({
 host.runtime = new Runtime({ scheduler, modelsDir, state: host.state, log: stdoutLog });
 
 await host.listen(Number(env.TLS_PORT || 7443), Number(env.LOCAL_PORT || 7080));
+host.downloads = new Downloads({ url: env.FETCH_URL || "http://fetch:7300", runtime: host.runtime, log: stdoutLog });
+await host.downloads.start();
 await host.runtime.start();
 for (const signal of ["SIGTERM", "SIGINT"] as const) process.on(signal, () => void host.close().then(() => process.exit(0)));

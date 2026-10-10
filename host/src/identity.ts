@@ -21,6 +21,7 @@ const seq = (...p: Buffer[]) => der(0x30, ...p);
 const oid = (bytes: number[]) => der(0x06, Buffer.from(bytes));
 const ECDSA_SHA256 = oid([0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x02]); // 1.2.840.10045.4.3.2
 const COMMON_NAME = oid([0x55, 0x04, 0x03]); // 2.5.4.3
+const SUBJECT_ALT_NAME = oid([0x55, 0x1d, 0x11]); // 2.5.29.17
 
 function name(cn: string): Buffer {
   return seq(der(0x31, seq(COMMON_NAME, der(0x0c, Buffer.from(cn, "utf8")))));
@@ -31,8 +32,8 @@ function time(d: Date): Buffer {
   return d.getUTCFullYear() < 2050 ? der(0x17, Buffer.from(s.slice(2))) : der(0x18, Buffer.from(s));
 }
 
-/** A new ECDSA P-256 key and a self-signed certificate that never expires. */
-export function makeIdentity(commonName: string): Identity {
+/** A new ECDSA P-256 key and a self-signed certificate that never expires, optionally for some DNS names. */
+export function makeIdentity(commonName: string, dnsNames: string[] = []): Identity {
   const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
   const serial = randomBytes(16);
   serial[0] = (serial[0]! & 0x7f) | 0x40; // positive, with no leading zero byte (DER wants the shortest form)
@@ -44,6 +45,9 @@ export function makeIdentity(commonName: string): Identity {
     seq(time(new Date(Date.now() - 86_400_000)), time(new Date("9999-12-31T23:59:59Z"))),
     name(commonName),
     publicKey.export({ type: "spki", format: "der" }),
+    ...(dnsNames.length
+      ? [der(0xa3, seq(seq(SUBJECT_ALT_NAME, der(0x04, seq(...dnsNames.map((n) => der(0x82, Buffer.from(n, "ascii"))))))))]
+      : []),
   );
   const signature = sign("sha256", tbs, { key: privateKey, dsaEncoding: "der" });
   const cert = seq(tbs, seq(ECDSA_SHA256), der(0x03, Buffer.from([0]), signature));
