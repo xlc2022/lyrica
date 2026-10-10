@@ -172,7 +172,20 @@ Each active thread is one Pi session from `openThreadSession`, with
   (`Delegation.forgetSubagents`), the entries go (`truncateThread`), and
   every view gets `rewound` (the first removed number, and whether a message
   is sent in their place). Messages sent meanwhile wait and go after it. Not
-  in a subagent's thread. A missing message is `404`; a subagent's thread
+  in a subagent's thread.
+- **What removed turns did** (`daemon/src/removal.ts`). With `preview` the
+  rewind changes nothing and answers a `RemovalPlan`: how many messages,
+  pins and subagent threads go; the files her write and edit calls made or
+  changed in those turns and their subagents' (delete, restore, or keep
+  because something changed them since or the thread works elsewhere now);
+  uploads only the removed messages mention (sandbox only); git branches
+  made by their commands or their subagents' worktrees, ticked unless they
+  hold commits no other branch has; and their first 20 commands, listed, not
+  tracked. The rewind itself undoes every ticked item not in `skip`, in its
+  held turn before the entries go, and drops the change records.
+  `RewindResponse` counts the pins, files and branches. Branches are found
+  by a pattern on her commands (`git checkout -b`, `switch -c`, `branch`),
+  best effort. A missing message is `404`; a subagent's thread
   can't be branched (`409`).
 - Forgetting a thread forgets its subagents' threads with it, deepest first,
   stopping their runs and dropping their records (`Delegation.forget`). With
@@ -294,7 +307,8 @@ drafted against: if the file has changed since, approving it needs
   (`Lyricad.sleepNight`). A user in manual mode is left out; a user without
   a key, or a pool with nothing new, is skipped with the reason.
   Before that, it prunes gone models nothing names (`Models.prune`,
-  [models.md](models.md)).
+  [models.md](models.md)), and sweeps each mounted user's home workspace
+  ([workspace.md](workspace.md), "The nightly sweep").
 - **`/sleep`.** `POST …/sleep/:pool`, or the text `/sleep` sent to a thread
   (which sleeps the thread's pool and starts no turn). In manual mode it
   answers `confirm` unless confirmed, and once the run ends a fresh thread

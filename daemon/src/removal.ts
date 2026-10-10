@@ -1,6 +1,7 @@
 import { posix } from "node:path";
 import { sha256, type ExecutionTarget, type FileChange, type FileChanges, type Grant, type Pool, type PoolStore } from "@lyrica/core";
 import type { RemovalPlan } from "./api.ts";
+import { toMessages } from "./messages.ts";
 
 // What removing turns leaves behind, and undoing it: files her write and edit
 // calls made or changed (deleted or put back, unless something changed them
@@ -41,7 +42,8 @@ export async function removalPlan(c: RemovalContext): Promise<RemovalPlan & { ch
     ...c.subagents.flatMap((s) => c.changes.forThreads(c.pool, [s.thread])),
   ];
   const plan: RemovalPlan = {
-    messages: removed.length,
+    // The messages as the thread shows them; its other entries (turn records, tool results) go with them unseen.
+    messages: toMessages(c.thread, c.pool, removed.map((e) => ({ ...e, createdAt: e.createdAt ?? "" }))).filter((m) => m.role !== "notice").length,
     pins: c.pins,
     subagents: c.subagents.length,
     files: [], branches: [], commands: [],
