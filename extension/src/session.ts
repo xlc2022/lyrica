@@ -43,5 +43,9 @@ export async function openThreadSession(o: ThreadSessionOptions): Promise<{ sess
   });
   await session.bindExtensions({});
   const stop = recordEntries(session, thread.view.own, thread.threadId);
-  return { session, runtime, chat, dispose: () => { stop(); session.dispose(); } };
+  // A reply that came back means its endpoint answered, so it isn't stale.
+  const answered = session.subscribe((e) => {
+    if (e.type === "message_end" && e.message.role === "assistant" && e.message.stopReason !== "error" && session.model) o.models.reportUp(thread.user.id, session.model.provider);
+  });
+  return { session, runtime, chat, dispose: () => { stop(); answered(); session.dispose(); } };
 }

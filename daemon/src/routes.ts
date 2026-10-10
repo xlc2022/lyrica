@@ -1,6 +1,6 @@
 import {
-  AuthError, WrongPassword, checkTask, isRestricted, publicKeyOf, generateSshKey, CloudModelForbidden, NoModel, PRONOUN_PRESETS,
-  type Author, type Hit, type Item, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type User,
+  AuthError, WrongPassword, CAPABILITIES, checkTask, isRestricted, publicKeyOf, generateSshKey, CloudModelForbidden, NoModel, PRONOUN_PRESETS,
+  type Author, type Endpoint, type Offering, type Hit, type Item, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type User,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
@@ -150,17 +150,65 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("POST", `${u}/endpoints/:endpointId/models`, async (r) => {
       const user = d.userFor(r);
       const m = await r.json<Api.ModelInput>();
-      s().models.addModel(user, r.params.endpointId!, { modelId: String(m.modelId ?? ""), contextWindow: m.contextWindow, tools: m.tools });
-      return endpointInfo(d, user.id, r.params.endpointId!);
+      const o = s().models.addModel(user, r.params.endpointId!, { ...capabilities(m), modelId: String(m.modelId ?? "") });
+      return offeringInfo(d, user.id, o.id);
     }),
     route("GET", `${u}/endpoints/:endpointId/probe`, (r) => s().models.probe(d.userFor(r).id, r.params.endpointId!)),
+    route("PATCH", `${u}/endpoints/:endpointId`, async (r) => {
+      const user = d.userFor(r);
+      const c = await r.json<Api.EndpointChange>();
+      s().models.editEndpoint(user, r.params.endpointId!, {
+        ...(c.name !== undefined ? { name: String(c.name) } : {}), ...(c.baseUrl !== undefined ? { baseUrl: String(c.baseUrl) } : {}),
+        ...(c.apiKey !== undefined ? { apiKey: c.apiKey === null ? null : String(c.apiKey) } : {}),
+      });
+      return endpointInfo(d, user.id, r.params.endpointId!);
+    }),
+    route("POST", `${u}/endpoints/:endpointId/reset-ids`, (r) => {
+      const user = d.userFor(r);
+      return endpointInfo(d, user.id, s().models.resetIds(user, r.params.endpointId!));
+    }),
+    route("POST", `${u}/endpoints/:endpointId/merge`, async (r) => {
+      const user = d.userFor(r);
+      const { into } = await r.json<Api.MergeInput>();
+      s().models.merge(user, r.params.endpointId!, String(into ?? ""));
+      return endpointInfo(d, user.id, String(into));
+    }),
+    route("PATCH", `${u}/offerings/:offeringId`, async (r) => {
+      const user = d.userFor(r);
+      const c = await r.json<Api.CapabilitiesChange>();
+      s().models.setCapabilities(user, r.params.offeringId!, capabilities(c, true));
+      return offeringInfo(d, user.id, r.params.offeringId!);
+    }),
+    route("DELETE", `${u}/offerings/:offeringId`, (r) => {
+      s().models.removeOffering(d.userFor(r), r.params.offeringId!);
+      return { ok: true };
+    }),
+    route("POST", `${u}/offerings/:offeringId/replace`, async (r) => {
+      const { with: to } = await r.json<Api.ReplaceInput>();
+      s().models.replace(d.userFor(r), r.params.offeringId!, String(to ?? ""));
+      return { ok: true };
+    }),
+    route("GET", `${u}/offerings/:offeringId/same`, (r) => {
+      const user = d.userFor(r);
+      return s().models.sameModel(user.id, r.params.offeringId!).map((ref) => offeringInfo(d, user.id, ref.offeringId));
+    }),
+    route("GET", `${u}/models/cleanup`, (r): Api.CleanupItem[] => {
+      const user = d.userFor(r);
+      return s().models.cleanup(user.id).map((c) => ({
+        endpoint: { id: c.endpoint.id, name: c.endpoint.name, shared: c.endpoint.shared, ...(c.endpoint.downSince ? { downSince: c.endpoint.downSince } : {}) },
+        ...(c.offering ? { offering: offeringInfo(d, user.id, c.offering.id) } : {}),
+        label: c.label, usedIn: c.usedIn, otherUsers: c.otherUsers, ...(c.suggestion ? { suggestion: c.suggestion } : {}),
+      }));
+    }),
+    route("GET", `${u}/models/notice`, (r): Api.ModelsNotice => ({ lines: s().models.notice(d.userFor(r).id) })),
+    route("DELETE", `${u}/models/notice`, (r) => { s().models.dismissNotice(d.userFor(r).id); return { ok: true }; }),
     route("GET", `${u}/profiles`, (r) => profiles(d, d.userFor(r).id)),
     route("PUT", `${u}/profiles/:profile/:task`, async (r) => {
       const user = d.userFor(r);
       const name = r.params.profile;
       if (name !== "cloud" && name !== "local") throw new HttpError(404, "the profiles are cloud and local");
       const { model } = await r.json<Api.ProfileModelChange>();
-      s().models.setProfile(user.id, name, checkTask(r.params.task!), model ?? undefined);
+      s().models.setProfile(user.id, name, checkTask(r.params.task!), model ? { offeringId: String(model.offeringId) } : undefined);
       return profiles(d, user.id);
     }),
 
@@ -185,7 +233,9 @@ export function apiRoutes(d: Lyricad): Route[] {
       const user = d.userFor(r);
       const w = await r.json<Api.Workflow>();
       if (!w.spec || typeof w.spec !== "object") throw new Error("a workflow needs a spec: a chain, loop or council");
-      s().delegation.store.setWorkflow(user.id, { name: r.params.name!, description: String(w.description ?? ""), spec: w.spec });
+      // Models are saved by offering ID, so a rename breaks nothing, and indexed so Clean up and pruning see them.
+      s().delegation.store.setWorkflow(user.id, { name: r.params.name!, description: String(w.description ?? ""), spec: s().models.workflowSpec(user.id, w.spec) });
+      s().models.reindex(user.id);
       return s().delegation.workflows(user.id);
     }),
     route("DELETE", `${u}/workflows/:name`, (r) => {
@@ -701,8 +751,33 @@ function endpointInfo(d: Lyricad, userId: string, id: string): Api.EndpointInfo 
   if (!ep) throw new HttpError(404, `no endpoint ${id}`);
   return {
     id: ep.id, name: ep.name, kind: ep.kind, baseUrl: ep.baseUrl, hasApiKey: !!ep.apiKey, shared: ep.shared,
-    models: d.services!.models.models(userId, ep.id).map(({ endpointId: _e, ...m }) => m),
+    unencrypted: ep.unencrypted, stale: ep.stale, ...(ep.downSince ? { downSince: ep.downSince } : {}),
+    models: d.services!.models.offerings(userId, ep.id).map((o) => toOfferingInfo(ep, o)),
   };
+}
+
+function toOfferingInfo(ep: Endpoint, o: Offering): Api.OfferingInfo {
+  const { endpointId: _e, ...rest } = o;
+  return { ...rest, label: `${ep.shared ? "shared." : ""}${ep.name}/${o.modelId}` };
+}
+
+function offeringInfo(d: Lyricad, userId: string, id: string): Api.OfferingInfo {
+  const o = d.services!.models.offering(userId, id);
+  if (!o) throw new HttpError(404, `no model ${id}`);
+  return toOfferingInfo(o.endpoint, o.offering);
+}
+
+/** Only known capabilities, of the right types. With `clearing`, null clears one. */
+function capabilities(input: object, clearing = false): Record<string, number | boolean | null> {
+  const out: Record<string, number | boolean | null> = {};
+  for (const k of CAPABILITIES) {
+    const v = (input as Record<string, unknown>)[k];
+    if (v === undefined) continue;
+    if (v === null && clearing) out[k] = null;
+    else if (k === "contextWindow" ? typeof v === "number" && v > 0 : typeof v === "boolean") out[k] = k === "contextWindow" ? Math.floor(v as number) : v as boolean;
+    else throw new HttpError(400, `${k} must be ${k === "contextWindow" ? "a number of tokens" : "true or false"}`);
+  }
+  return out;
 }
 
 function endpoints(d: Lyricad, userId: string): Api.EndpointInfo[] {
@@ -828,11 +903,15 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     const override = ctx.overrides?.[task];
     try {
       const ref = models.resolveModel(task, ctx);
-      const ep = models.endpoint(user.id, ref.endpointId);
-      return { model: ref, kind: ep?.kind, endpointName: ep?.name, source: override ? "thread" : "profile" };
+      const o = models.offering(user.id, ref.offeringId);
+      return {
+        model: ref, kind: o?.endpoint.kind, endpointName: o?.endpoint.name, label: models.label(user.id, ref.offeringId), modelId: o?.offering.modelId,
+        source: override ? "thread" : "profile",
+      };
     } catch (err) {
       if (!(err instanceof NoModel) && !(err instanceof CloudModelForbidden)) throw err;
-      return { ...(override ? { model: override } : {}), source: override ? "thread" : "none", problem: (err as Error).message };
+      const label = override && models.label(user.id, override.offeringId);
+      return { ...(override ? { model: override } : {}), ...(label ? { label } : {}), source: override ? "thread" : "none", problem: (err as Error).message };
     }
   };
   return {
@@ -864,15 +943,14 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
   const overrides = { ...current.overrides };
   for (const [task, ref] of Object.entries(change.models ?? {})) {
     if (!(THREAD_TASKS as readonly string[]).includes(task)) throw new Error(`a thread can't choose a model for ${task}`);
-    if (ref) overrides[task as Api.ThreadTask] = { endpointId: String(ref.endpointId), modelId: String(ref.modelId) };
+    if (ref) overrides[task as Api.ThreadTask] = { offeringId: String(ref.offeringId) };
     else delete overrides[task as Api.ThreadTask];
   }
   const next = { ...current, localOnly, overrides };
   for (const ref of Object.values(overrides)) {
-    const ep = models.endpoint(user.id, ref.endpointId);
-    if (!ep) throw new NoModel(`no endpoint ${ref.endpointId}`);
-    if (isRestricted(next) && ep.kind !== "local") throw new CloudModelForbidden(`${ref.endpointId}/${ref.modelId} is a cloud model, and only local models are allowed in a ${pool === "private" ? "private" : "local-only"} thread`);
-    if (!models.models(user.id, ep.id).some((m) => m.modelId === ref.modelId)) throw new NoModel(`${ref.endpointId} has no model ${ref.modelId}`);
+    const o = models.offering(user.id, ref.offeringId);
+    if (!o) throw new NoModel(`no model ${ref.offeringId}`);
+    if (isRestricted(next) && o.endpoint.kind !== "local") throw new CloudModelForbidden(`${models.label(user.id, ref.offeringId)} is a cloud model, and only local models are allowed in a ${pool === "private" ? "private" : "local-only"} thread`);
   }
   if (change.unlogged === false && thread.parent) {
     owner(d, user, (o) => { if (o[pool].getThread(thread.parent!)?.unlogged) throw new Error("this thread's parent isn't logged, so it can't be logged either"); });
@@ -883,7 +961,7 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
   if (Object.keys(wsChange).length) ws.setThread(thread.id, pool, wsChange);
 
   if (change.localOnly !== undefined && pool === "general") models.setLocalOnly(user.id, pool, thread.id, change.localOnly);
-  for (const [task, ref] of Object.entries(change.models ?? {})) models.setThreadModel(user.id, pool, thread.id, task as Api.ThreadTask, ref ?? undefined);
+  for (const task of Object.keys(change.models ?? {})) models.setThreadModel(user.id, pool, thread.id, task as Api.ThreadTask, overrides[task as Api.ThreadTask]);
   if (change.unlogged !== undefined) owner(d, user, (o) => o[pool].setUnlogged(thread.id, !!change.unlogged));
 }
 

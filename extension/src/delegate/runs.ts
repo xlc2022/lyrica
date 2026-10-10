@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { AgentSession, ExtensionFactory, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
-  DelegationStore, isRestricted, LIVE_STATUSES, parseRef, refString, stricterMode,
+  DelegationStore, isRestricted, LIVE_STATUSES, stricterMode,
   type CouncilSpec, type Grant, type LoopSpec, type Memory, type ModelRef, type Models, type Pool, type PoolStore, type Role,
   type Step, type SubagentRecord, type SubagentStatus, type Tier, type Usage, type User, type Users, type Workflow, type WorkflowSpec, type Workspace,
 } from "@lyrica/core";
@@ -519,7 +519,7 @@ export class Delegation {
     let sub: Subagent;
     try {
       const role = this.role(run.parent.user.id, row.role, "worker");
-      const pick: ModelPick = row.pick && "model" in row.pick ? { model: parseRef(row.pick.model) } : { tier: row.pick?.tier ?? role.tier };
+      const pick: ModelPick = row.pick && "model" in row.pick ? { model: this.named(run.parent.user.id, row.pick.model) } : { tier: row.pick?.tier ?? role.tier };
       sub = await this.open(run, role, pick, row.narrowing ?? {}, row);
       opened.resolve();
     } catch (err) {
@@ -760,10 +760,12 @@ export class Delegation {
   }
 
   private async council(run: Run, spec: CouncilSpec, narrowing: Narrowing): Promise<string> {
-    const refs = spec.models?.length ? spec.models.map(parseRef) : this.councilModels(run);
-    const answers = await Promise.allSettled(refs.map((ref) => this.single(run, { task: spec.question, role: "oracle", model: refString(ref) }, narrowing)));
+    const userId = run.parent.user.id;
+    const refs = spec.models?.length ? spec.models.map((m) => this.named(userId, m)) : this.councilModels(run);
+    const label = (ref: ModelRef) => this.o.models.label(userId, ref.offeringId) ?? ref.offeringId;
+    const answers = await Promise.allSettled(refs.map((ref) => this.single(run, { task: spec.question, role: "oracle", model: ref.offeringId }, narrowing)));
     if (run.abort.signal.aborted) throw stopped(run.abort.signal);
-    const got = answers.map((a, i) => ({ model: refString(refs[i]!), text: a.status === "fulfilled" ? a.value : undefined })).filter((a) => a.text !== undefined);
+    const got = answers.map((a, i) => ({ model: label(refs[i]!), text: a.status === "fulfilled" ? a.value : undefined })).filter((a) => a.text !== undefined);
     if (!got.length) throw new Error(`no member of the council answered: ${(answers.find((a) => a.status === "rejected") as PromiseRejectedResult).reason.message}`);
     const listed = got.map((a, i) => `<answer n="${i + 1}" model="${a.model}">\n${a.text}\n</answer>`).join("\n\n");
     const synthesis = await this.single(run, {
@@ -771,6 +773,13 @@ export class Delegation {
       role: "oracle", tier: "strong",
     }, narrowing);
     return `${synthesis}\n\n---\nCouncil: ${got.map((a) => a.model).join(", ")}`;
+  }
+
+  /** A model a saved workflow names, by offering ID or as `endpoint/model`. */
+  private named(userId: string, name: string): ModelRef {
+    const ref = this.o.models.find(userId, name);
+    if (!ref) throw new Error(`${name} isn't one of this thread's models`);
+    return ref;
   }
 
   /** Up to three distinct models: the thread's subagent models first, then others it allows. */
@@ -781,9 +790,9 @@ export class Delegation {
     for (const task of ["subagent.strong", "subagent.cheap", "chat"] as const) {
       try { picks.push(models.resolveModel(task, call)); } catch { /* not set */ }
     }
-    for (const { endpoint, models: list } of models.allowed(call)) for (const m of list) if (m.tools !== false) picks.push({ endpointId: endpoint.id, modelId: m.modelId });
+    for (const { offerings } of models.allowed(call)) for (const m of offerings) if (m.tools !== false && m.status === "listed") picks.push({ offeringId: m.id });
     const seen = new Set<string>();
-    return picks.filter((r) => !seen.has(refString(r)) && !!seen.add(refString(r))).slice(0, 3);
+    return picks.filter((r) => !seen.has(r.offeringId) && !!seen.add(r.offeringId)).slice(0, 3);
   }
 
   /** The parent's CallContext as it is now: local-only may have been switched on since the run started. */
@@ -805,7 +814,7 @@ export class Delegation {
   /** A new subagent of the run, on a thread of its own: empty, or a fork of the parent's conversation. */
   private spawn(run: Run, step: Step, narrowing: Narrowing, worktrees: Worktree[] = []): Promise<Subagent> {
     const role = this.role(run.parent.user.id, step.role, "worker");
-    const pick: ModelPick = step.model ? { model: parseRef(step.model) } : { tier: step.tier ?? role.tier };
+    const pick: ModelPick = step.model ? { model: this.named(run.parent.user.id, step.model) } : { tier: step.tier ?? role.tier };
     return this.open(run, role, pick, narrowing, undefined, step.task, worktrees, !!step.fork);
   }
 
@@ -824,8 +833,8 @@ export class Delegation {
     if (earlier && isRestricted(models.callContext(parent.user.id, parent.pool, earlier.thread))) parentCall = { ...parentCall, localOnly: true };
     // Refuse a model before anything is written.
     if ("tier" in pick) models.resolveModel(`subagent.${pick.tier}`, parentCall);
-    else if (!models.allowed(parentCall).some((a) => a.endpoint.id === pick.model.endpointId && a.models.some((m) => m.modelId === pick.model.modelId))) {
-      throw new Error(`${refString(pick.model)} isn't one of this thread's models`);
+    else if (!models.allowed(parentCall).some((a) => a.offerings.some((m) => m.id === pick.model.offeringId))) {
+      throw new Error(`${models.label(parent.user.id, pick.model.offeringId) ?? pick.model.offeringId} isn't one of this thread's models`);
     }
     if (run.budget.left <= 0) throw new Error(`this request has already started ${this.limits.runsPerRequest} subagents`);
     run.budget.left--;
@@ -870,17 +879,18 @@ export class Delegation {
       extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed));
       const opened = await openThreadSession({ thread: ctx, models, cwd: this.o.cwd, extensions });
       opened.session.setThinkingLevel(role.thinking);
-      const cloud = models.endpoint(parent.user.id, opened.chat.endpointId)?.kind !== "local";
+      const chat = models.offering(parent.user.id, opened.chat.offeringId);
+      const cloud = chat?.endpoint.kind !== "local";
       const before = earlier ? { inputTokens: earlier.inputTokens, outputTokens: earlier.outputTokens } : undefined;
-      sub = new Subagent(this, run, ctx, role, refString(opened.chat), cloud, opened.session, opened.dispose, release, before);
+      sub = new Subagent(this, run, ctx, role, models.label(parent.user.id, opened.chat.offeringId) ?? opened.chat.offeringId, cloud, opened.session, opened.dispose, release, before);
       run.subagents.push(sub);
       if (earlier) {
-        this.store.update(parent.user.id, parent.pool, child.id, { status: "running", model: sub.model });
+        this.store.update(parent.user.id, parent.pool, child.id, { status: "running", model: sub.model, offeringId: opened.chat.offeringId });
       } else {
         this.store.record(parent.user.id, {
-          pool: parent.pool, thread: child.id, run: run.id, parent: parent.threadId, role: role.name, model: sub.model,
+          pool: parent.pool, thread: child.id, run: run.id, parent: parent.threadId, role: role.name, model: sub.model, offeringId: opened.chat.offeringId,
           background: run.background, status: "running", startedAt: new Date().toISOString(),
-          pick: "tier" in pick ? pick : { model: refString(pick.model) }, narrowing: compact(narrowing),
+          pick: "tier" in pick ? pick : { model: pick.model.offeringId }, narrowing: compact(narrowing),
         });
       }
       sub.emit({ type: "started", role: role.name, model: sub.model, title: child.title ?? "" });

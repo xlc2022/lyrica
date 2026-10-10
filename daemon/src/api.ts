@@ -26,7 +26,8 @@ export type Task =
 export const THREAD_TASKS = ["chat", "subagent.cheap", "subagent.strong", "compaction", "title"] as const satisfies readonly Task[];
 export type ThreadTask = (typeof THREAD_TASKS)[number];
 
-export interface ModelRef { endpointId: string; modelId: string }
+/** One model on one endpoint, by its permanent offering ID. */
+export interface ModelRef { offeringId: string }
 export interface Pronouns { subj: string; obj: string; poss: string; possPro: string; refl: string }
 export type Theme = "device" | "light" | "dark";
 /** "ask-commands" asks before bash; "ask-changes" before bash, write and edit. */
@@ -149,29 +150,84 @@ export interface CredentialsChange { save: boolean }
 
 // --- Endpoints and model profiles ---
 
-export interface EndpointModelInfo { modelId: string; contextWindow?: number; tools?: boolean; manual: boolean }
+/** What a model can do: discovered where the endpoint says, else set by hand. */
+export interface Capabilities { contextWindow?: number; tools?: boolean; vision?: boolean; embedding?: boolean; image?: boolean; edit?: boolean }
+
+/** One model an endpoint offers. */
+export interface OfferingInfo extends Capabilities {
+  /** Permanent. */
+  id: string;
+  /** The endpoint's own model ID. */
+  modelId: string;
+  /** `<endpoint>/<model>`, with `shared.` before a shared endpoint's name. */
+  label: string;
+  manual: boolean;
+  /** missing: the endpoint stopped listing it; gone: missing for 30 days, so fallbacks skip it. */
+  status: "listed" | "missing" | "gone";
+  missingSince?: string;
+}
 
 export interface EndpointInfo {
-  /** Its name, or `shared.<name>` for a shared one. */
+  /** Permanent. Editing the endpoint never changes it. */
   id: string;
+  /** A label that can change. */
   name: string;
   kind: "cloud" | "local";
   baseUrl: string;
   /** API keys are never sent back. */
   hasApiKey: boolean;
   shared: boolean;
-  models: EndpointModelInfo[];
+  /** A local endpoint over plain HTTP outside this machine and the tailnet. */
+  unencrypted: boolean;
+  /** Unreachable for 14 days. Fallbacks skip it. */
+  stale: boolean;
+  downSince?: string;
+  models: OfferingInfo[];
 }
 
 /** GET /api/u/:userId/endpoints → EndpointInfo[] (own, then shared) */
 /** POST /api/u/:userId/endpoints → EndpointInfo. `shared` needs an administrator. */
 export interface EndpointInput { name: string; kind: "cloud" | "local"; baseUrl: string; apiKey?: string; shared?: boolean }
-/** DELETE /api/u/:userId/endpoints/:endpointId → Ok */
-/** POST /api/u/:userId/endpoints/:endpointId/discover → EndpointInfo. Re-reads /v1/models. */
-/** POST /api/u/:userId/endpoints/:endpointId/models → EndpointInfo. Adds a model by hand. */
-export interface ModelInput { modelId: string; contextWindow?: number; tools?: boolean }
+/** PATCH /api/u/:userId/endpoints/:endpointId → EndpointInfo. Keeps every ID. `apiKey: null` removes the key. */
+export interface EndpointChange { name?: string; baseUrl?: string; apiKey?: string | null }
+/** DELETE /api/u/:userId/endpoints/:endpointId → Ok. Its models leave tombstones. */
+/** POST /api/u/:userId/endpoints/:endpointId/discover → EndpointInfo. Re-reads /v1/models; models no longer listed are marked missing. */
+/** POST /api/u/:userId/endpoints/:endpointId/models → OfferingInfo. Adds a model by hand. */
+export interface ModelInput extends Capabilities { modelId: string }
 /** GET /api/u/:userId/endpoints/:endpointId/probe → Probe */
 export interface Probe { state: "up" | "down"; warning?: string }
+/** POST /api/u/:userId/endpoints/:endpointId/reset-ids → EndpointInfo. Fresh IDs, with redirects from the old ones. */
+/** POST /api/u/:userId/endpoints/:endpointId/merge → EndpointInfo (the one merged into). */
+export interface MergeInput { into: string }
+
+/** PATCH /api/u/:userId/offerings/:offeringId → OfferingInfo. Sets capabilities by hand; null clears one. */
+export type CapabilitiesChange = { [K in keyof Capabilities]?: Capabilities[K] | null };
+/** DELETE /api/u/:userId/offerings/:offeringId → Ok. Leaves a tombstone. */
+/** POST /api/u/:userId/offerings/:offeringId/replace → Ok. Leaves a redirect to the replacement, of the same kind. */
+export interface ReplaceInput { with: string }
+/** GET /api/u/:userId/offerings/:offeringId/same → OfferingInfo[]: the same model on other endpoints of the same kind. */
+
+/** Where one of the user's lists names a model. */
+export type ModelUse =
+  | { where: "profile"; profile: "cloud" | "local"; task: Task }
+  | { where: "thread"; pool: Pool; threadId: string; task: Task }
+  | { where: "workflow"; name: string };
+
+/** A stale endpoint (no offering) or a gone model, with where it is still used. */
+export interface CleanupItem {
+  endpoint: { id: string; name: string; shared: boolean; downSince?: string };
+  offering?: OfferingInfo;
+  label: string;
+  usedIn: ModelUse[];
+  /** How many other users' lists name it (shared only). */
+  otherUsers: number;
+  /** The same model on another endpoint, to pre-fill Replace with… */
+  suggestion?: { offeringId: string; label: string };
+}
+/** GET /api/u/:userId/models/cleanup → CleanupItem[] */
+/** GET /api/u/:userId/models/notice → ModelsNotice: lists rewritten since last dismissed. */
+export interface ModelsNotice { lines: string[] }
+/** DELETE /api/u/:userId/models/notice → Ok */
 
 /** GET /api/u/:userId/profiles → Profiles */
 export interface Profiles {
@@ -243,6 +299,9 @@ export interface ThreadChange { title?: string; hidden?: boolean }
 /** Where a thread's model for one task comes from. */
 export interface TaskModel {
   model?: ModelRef;
+  /** `<endpoint>/<model>`, kept readable after the model is gone. */
+  label?: string;
+  modelId?: string;
   kind?: "cloud" | "local";
   endpointName?: string;
   /** "thread" when overridden here, "profile" when following the profile, "none" when nothing is set. */

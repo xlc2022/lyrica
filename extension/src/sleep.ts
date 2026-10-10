@@ -226,14 +226,14 @@ export class Sleep {
   private async probe(userId: string, pool: Pool, phases: SleepPhase[]): Promise<string | undefined> {
     const endpoints = new Set<string>();
     try {
-      for (const p of phases) endpoints.add(this.context(userId, pool, p).ref.endpointId);
+      for (const p of phases) endpoints.add(this.o.models.offering(userId, this.context(userId, pool, p).ref.offeringId)!.endpoint.id);
     } catch (err) {
       if (err instanceof NoModel || err instanceof CloudModelForbidden) return (err as Error).message;
       throw err;
     }
     for (const id of endpoints) {
       const { state } = await this.o.models.probe(userId, id).catch(() => ({ state: "down" as const }));
-      if (state === "down") return `the sleep model's endpoint ${id} is down`;
+      if (state === "down") return `the sleep model's endpoint ${this.o.models.endpoint(userId, id)?.name ?? id} is down`;
     }
     return undefined;
   }
