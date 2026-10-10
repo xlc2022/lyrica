@@ -101,6 +101,13 @@ export async function fakeLlamaRouter() {
     if (url.pathname === "/v1/chat/completions") {
       if (status.get(body.model) !== "loaded") return json(400, { error: { message: "model not loaded" } });
       const text = `echo: ${body.messages.at(-1).content}`;
+      // Error paths: a server error that repeats the prompt, and a stream cut off half way.
+      if (text.includes("FAIL")) return json(500, { error: { message: `failed on: ${text}` } });
+      if (text.includes("BREAK")) {
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`);
+        return void setTimeout(() => res.socket?.destroy(), 5);
+      }
       const usage = { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 };
       if (!body.stream) return json(200, { choices: [{ message: { role: "assistant", content: text } }], usage });
       res.writeHead(200, { "content-type": "text/event-stream" });
@@ -120,10 +127,12 @@ export const sha256 = (b: Buffer) => createHash("sha256").update(b).digest("hex"
 const gitSha1 = (b: Buffer) => createHash("sha1").update(`blob ${b.length}\0`).update(b).digest("hex");
 
 /** A fake Hugging Face over HTTPS on localhost. */
-export async function fakeHub(opts: { lie?: boolean; redirectTo?: string; gated?: boolean } = {}) {
+export async function fakeHub(opts: { lie?: boolean; redirectTo?: string; gated?: boolean; oversend?: boolean } = {}) {
   const id = makeIdentity("hub", ["localhost"]);
   const files: Record<string, Buffer> = {
-    "model-Q4_K_M.gguf": Buffer.alloc(300_000, 7),
+    "model-Q4_K_M.gguf": Buffer.concat([Buffer.from("GGUF"), Buffer.alloc(299_996, 7)]),
+    "fake.gguf": Buffer.alloc(1000, 7),
+    "nosize.gguf": Buffer.concat([Buffer.from("GGUF"), Buffer.alloc(996, 7)]),
     "config.json": Buffer.from('{"architectures":["X"]}'),
     "pytorch_model.bin": Buffer.alloc(10, 1),
   };
@@ -142,6 +151,16 @@ export async function fakeHub(opts: { lie?: boolean; redirectTo?: string; gated?
     if (file && opts.redirectTo) return void res.writeHead(302, { location: opts.redirectTo }).end();
     const body = file ? files[decodeURIComponent(file[1]!)] : undefined;
     if (!body) return void res.writeHead(404).end();
+    // A link served without its size.
+    if (url.pathname.endsWith("/nosize.gguf")) {
+      res.writeHead(200, { "transfer-encoding": "chunked" });
+      return void res.end(body);
+    }
+    if (opts.oversend) {
+      // Says one size, sends more.
+      res.writeHead(200);
+      return void res.end(Buffer.concat([body, Buffer.alloc(5000, 1)]));
+    }
     const range = req.headers.range?.match(/^bytes=(\d+)-$/);
     if (range) {
       const from = Number(range[1]);

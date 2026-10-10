@@ -1,7 +1,7 @@
 // The model servers, driven through their own APIs: llama.cpp's router mode
 // (a preset file plus /models/load and /models/unload), and vLLM through a
-// small supervisor that reads the wanted models from a file, with vLLM's own
-// sleep and wake. Never the Docker socket.
+// small supervisor that starts and stops one server per GPU as a file says.
+// Never the Docker socket.
 import { writeFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { HostError } from "./http.ts";
@@ -13,11 +13,8 @@ export interface Backend {
   unload(model: TextModel): Promise<void>;
   /** Base URL for the model's OpenAI-compatible API. */
   url(model: TextModel): string;
-  /** Unloads everything. */
+  /** Unloads everything; throws if something couldn't be, which then stays counted. */
   reset(): Promise<void>;
-  /** Frees the GPU memory of what's loaded without forgetting it (pause). */
-  sleep(): Promise<void>;
-  wake(): Promise<void>;
 }
 
 const unavailable = (what: string) => new HostError(503, "unavailable", `${what} didn't answer.`);
@@ -77,28 +74,39 @@ export class LlamaCpp implements Backend {
     return body.data.find((m) => m.id === id)?.status ?? null;
   }
 
+  /** POSTs to the router. A 400 saying the model is already in that state is fine; any other is an error. */
   private async post(path: string, body: unknown): Promise<void> {
-    const res = await fetch(`${this.o.url}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    if (!res.ok && res.status !== 400) throw unavailable("llama.cpp");
+    const res = await fetch(`${this.o.url}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => {
+      throw unavailable("llama.cpp");
+    });
+    if (res.ok) return;
+    const text = await res.text().catch(() => "");
+    if (res.status === 400 && /already (loaded|running)|not (loaded|running)/i.test(text)) return;
+    throw new HostError(503, "unavailable", res.status === 400 ? "llama.cpp doesn't know this model." : "llama.cpp didn't answer.");
   }
 
   async load(model: TextModel, gpu: number): Promise<void> {
     this.placed.set(model.id, { model, gpu });
     this.writePreset();
-    await fetch(`${this.o.url}/models?reload=1`).catch(() => {
-      throw unavailable("llama.cpp");
-    });
-    await this.post("/models/load", { model: model.id });
-    let failed = false;
-    await poll(async () => {
-      const s = await this.status(model.id);
-      if (s?.failed) failed = true;
-      return s?.value === "loaded" || failed;
-    }, this.o.loadTimeoutMs, "llama.cpp");
-    if (failed) {
+    try {
+      // ?reload=1 makes the router read the preset file again.
+      await fetch(`${this.o.url}/models?reload=1`).catch(() => {
+        throw unavailable("llama.cpp");
+      });
+      await this.post("/models/load", { model: model.id });
+      let failed = false;
+      await poll(async () => {
+        const s = await this.status(model.id);
+        if (s?.failed) failed = true;
+        return s?.value === "loaded" || failed;
+      }, this.o.loadTimeoutMs, "llama.cpp");
+      if (failed) throw new HostError(503, "unavailable", "llama.cpp couldn't load this model.");
+    } catch (e) {
+      // Leave nothing half-loaded behind.
+      await this.post("/models/unload", { model: model.id }).catch(() => {});
       this.placed.delete(model.id);
       this.writePreset();
-      throw new HostError(503, "unavailable", "llama.cpp couldn't load this model.");
+      throw e;
     }
   }
 
@@ -114,16 +122,10 @@ export class LlamaCpp implements Backend {
   }
 
   async reset(): Promise<void> {
-    for (const { model } of [...this.placed.values()]) await this.unload(model).catch(() => {});
-    this.placed.clear();
-    this.writePreset();
+    let failed = 0;
+    for (const { model } of [...this.placed.values()]) await this.unload(model).catch(() => failed++);
+    if (failed) throw new HostError(503, "unavailable", `llama.cpp couldn't unload ${failed} model${failed > 1 ? "s" : ""}.`);
   }
-
-  async sleep(): Promise<void> {
-    await this.reset();
-  }
-
-  async wake(): Promise<void> {}
 }
 
 export interface VllmOptions {
@@ -175,11 +177,18 @@ export class Vllm implements Backend {
     if (model.remoteCode) throw new HostError(403, "refused", "This model needs trust_remote_code, which the host never allows.");
     this.placed.set(gpu, model);
     this.write();
-    await poll(async () => {
-      const res = await fetch(`${this.base(gpu)}/v1/models`);
-      const body = (await res.json()) as { data: { id: string }[] };
-      return body.data.some((m) => m.id === model.id);
-    }, this.o.loadTimeoutMs, "vLLM", 2000);
+    try {
+      await poll(async () => {
+        const res = await fetch(`${this.base(gpu)}/v1/models`);
+        const body = (await res.json()) as { data: { id: string }[] };
+        return body.data.some((m) => m.id === model.id);
+      }, this.o.loadTimeoutMs, "vLLM", 2000);
+    } catch (e) {
+      // Take it out of the supervisor's file, so it stops retrying.
+      this.placed.delete(gpu);
+      this.write();
+      throw e;
+    }
   }
 
   async unload(model: TextModel): Promise<void> {
@@ -196,17 +205,12 @@ export class Vllm implements Backend {
     return this.base(gpu);
   }
 
+  /** Stops every server and waits until each is gone. */
   async reset(): Promise<void> {
+    const gpus = [...this.placed.keys()];
     this.placed.clear();
     this.generation++;
     this.write();
-  }
-
-  async sleep(): Promise<void> {
-    for (const gpu of this.placed.keys()) await fetch(`${this.base(gpu)}/sleep?level=2`, { method: "POST" }).catch(() => {});
-  }
-
-  async wake(): Promise<void> {
-    for (const gpu of this.placed.keys()) await fetch(`${this.base(gpu)}/wake_up`, { method: "POST" }).catch(() => {});
+    for (const gpu of gpus) await poll(async () => !(await fetch(`${this.base(gpu)}/v1/models`).then(() => true, () => false)), 120_000, "vLLM");
   }
 }

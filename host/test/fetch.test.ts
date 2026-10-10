@@ -45,7 +45,7 @@ function everything(dir: string): string {
 
 describe("addresses", () => {
   it("refuses this machine, the LAN, the tailnet and other private ranges", () => {
-    for (const a of ["127.0.0.1", "10.1.2.3", "172.20.0.5", "192.168.1.10", "169.254.169.254", "100.100.1.1", "0.0.0.0", "::1", "fe80::1", "fd7a:115c:a1e0::1", "::ffff:192.168.1.1", "::ffff:c0a8:101", "224.0.0.1"]) {
+    for (const a of ["127.0.0.1", "10.1.2.3", "172.20.0.5", "192.168.1.10", "169.254.169.254", "100.100.1.1", "0.0.0.0", "::1", "fe80::1", "fd7a:115c:a1e0::1", "::ffff:192.168.1.1", "::ffff:c0a8:101", "224.0.0.1", "::c0a8:101", "2002:c0a8:101::1", "64:ff9b:1::1", "fec0::1", "2001::1"]) {
       expect(isPublic(a), a).toBe(false);
     }
     for (const a of ["1.1.1.1", "18.164.0.1", "2606:4700::1111"]) expect(isPublic(a), a).toBe(true);
@@ -171,6 +171,49 @@ describe("downloads", () => {
     await settle(d);
     expect(d.get(x!.id)!.state).toBe("cancelled");
     expect(readdirSync(join(models, "lyrica/huggingface/org/repo"))).toEqual([]);
+  });
+});
+
+describe("tokens and sizes", () => {
+  it("never sends a hub token with a link, or to another host than the hub's", async () => {
+    const hub = await fakeHub();
+    const { d } = setup(hub);
+    const [x] = await d.request({ source: "url", url: `${hub.base}/org/repo/resolve/abc123/model-Q4_K_M.gguf` }, TOKEN);
+    await settle(d);
+    expect(d.get(x!.id)!.state).toBe("done");
+    expect(hub.seen.join("")).not.toContain(TOKEN);
+    // The hub's token goes to the hub's host only.
+    const net = new Net({ allowed: (a) => a === "127.0.0.1" || a === "::1", ca: hub.ca });
+    (await net.get({ url: `${hub.base}/api/models/org/repo/revision/main`, token: TOKEN, tokenHost: "huggingface.co" })).resume();
+    expect(hub.seen.join("")).not.toContain(TOKEN);
+  });
+
+  it("refuses a file that isn't what its name says, a link without a size, and a server that sends too much", async () => {
+    const hub = await fakeHub();
+    const { d, models } = setup(hub);
+    const [fake] = await d.request({ source: "huggingface", repo: "org/repo", files: ["fake.gguf"] });
+    await settle(d);
+    expect(d.get(fake!.id)).toMatchObject({ state: "failed", error: "The file isn't a valid model file, so it was deleted." });
+    const [nosize] = await d.request({ source: "url", url: `${hub.base}/org/repo/resolve/abc123/nosize.gguf` });
+    await settle(d);
+    expect(d.get(nosize!.id)).toMatchObject({ state: "failed", error: "The link doesn't say how big the file is, so it isn't downloaded." });
+
+    const greedy = await fakeHub({ oversend: true });
+    const g = setup(greedy);
+    const [more] = await g.d.request({ source: "huggingface", repo: "org/repo", files: ["model-Q4_K_M.gguf"] });
+    await settle(g.d);
+    expect(g.d.get(more!.id)).toMatchObject({ state: "failed", error: "The server sent more than the file's size." });
+    expect(readdirSync(join(g.models, "lyrica/huggingface/org/repo"))).toEqual([]);
+    void models;
+  });
+
+  it("keeps a signed link's query out of the list and the record", async () => {
+    const hub = await fakeHub();
+    const { d, data } = setup(hub);
+    const [x] = await d.request({ source: "url", url: `${hub.base}/org/repo/resolve/abc123/model-Q4_K_M.gguf?X-Signature=secret-sig-77` });
+    await settle(d);
+    expect(d.get(x!.id)).toMatchObject({ state: "done", url: `${hub.base}/org/repo/resolve/abc123/model-Q4_K_M.gguf` });
+    expect(everything(data)).not.toContain("secret-sig-77");
   });
 });
 

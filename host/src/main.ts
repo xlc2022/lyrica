@@ -1,4 +1,5 @@
 // host-api's entry point, run in its container.
+import { lookup } from "node:dns/promises";
 import { readFileSync } from "node:fs";
 import { LlamaCpp, Vllm } from "./backends.ts";
 import { Downloads } from "./downloads.ts";
@@ -50,4 +51,11 @@ await host.listen(Number(env.TLS_PORT || 7443), Number(env.LOCAL_PORT || 7080));
 host.downloads = new Downloads({ url: env.FETCH_URL || "http://fetch:7300", runtime: host.runtime, log: stdoutLog });
 await host.downloads.start();
 await host.runtime.start();
+// fetch shares a network with host-api (for host-api's calls to it) and may not call back.
+const refuseFetch = async () => {
+  const found = await lookup(env.FETCH_HOST || "fetch", { all: true }).catch(() => []);
+  host.refusedPeers = new Set(found.map((a) => a.address));
+};
+await refuseFetch();
+setInterval(() => void refuseFetch(), 30_000).unref();
 for (const signal of ["SIGTERM", "SIGINT"] as const) process.on(signal, () => void host.close().then(() => process.exit(0)));

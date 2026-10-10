@@ -7,6 +7,8 @@ import { BlockList, isIP } from "node:net";
 const blocked = new BlockList();
 // Kept apart: Node's BlockList also matches plain IPv4 addresses against this range.
 const mapped = new BlockList();
+const globalUnicast = new BlockList();
+globalUnicast.addSubnet("2000::", 3, "ipv6");
 mapped.addSubnet("::ffff:0:0", 96, "ipv6");
 for (const [net, bits] of [
   ["0.0.0.0", 8], // this network
@@ -30,6 +32,8 @@ for (const [net, bits] of [
   ["64:ff9b::", 96], // NAT64
   ["100::", 64],
   ["2001:db8::", 32],
+  ["2001::", 23], // IETF special use, including Teredo
+  ["2002::", 16], // 6to4, which can wrap any IPv4 address
   ["fc00::", 7], // unique local, including Tailscale's fd7a:115c:a1e0::/48
   ["fe80::", 10], // link-local
   ["ff00::", 8], // multicast
@@ -42,7 +46,8 @@ export function isPublic(address: string): boolean {
   if (family === 6) {
     const dotted = address.toLowerCase().match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
     if (dotted) return isPublic(dotted[1]!);
-    return !mapped.check(address, "ipv6") && !blocked.check(address, "ipv6");
+    // Only global unicast (2000::/3), less its special ranges.
+    return globalUnicast.check(address, "ipv6") && !mapped.check(address, "ipv6") && !blocked.check(address, "ipv6");
   }
   return false;
 }

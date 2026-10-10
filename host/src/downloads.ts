@@ -101,7 +101,9 @@ export class Downloads {
       const body = await readJson(req);
       onlyFields(body, ["source", "repo", "revision", "files", "url", "sha256"]);
       if (!SOURCES.includes(body.source as string)) throw invalid("source must be huggingface, modelscope or url.");
-      const made = await this.call("/downloads", { body: { ...body, token: this.token(req) } });
+      // A hub token is for that hub: never sent along with a link.
+      const token = body.source === "url" ? undefined : this.token(req);
+      const made = await this.call("/downloads", { body: { ...body, token } });
       await this.refresh().catch(() => {});
       sendJson(res, 202, made);
       return true;

@@ -47,6 +47,10 @@ export function call(c: Call): Promise<Reply> {
       (res) => {
         const chunks: Buffer[] = [];
         res.on("data", (d) => chunks.push(d));
+        res.on("error", reject);
+        res.on("close", () => {
+          if (!res.complete) reject(new Error("the answer was cut short"));
+        });
         res.on("end", () => {
           const text = Buffer.concat(chunks).toString("utf8");
           let body: any = text;

@@ -35,6 +35,7 @@ async function refresh() {
   const status = await api("/host/v1/status");
   const states = { running: "Running", pausing: "Pausing: finishing the current job", paused: "Paused", restarting: "Restarting" };
   $("status").textContent = `${states[status.state] ?? status.state}. Models folder ${status.modelsFolder.path}, ${gib(status.modelsFolder.free)} free.`;
+  if (status.problems?.length) $("status").textContent += ` Problems: ${status.problems.join(" ")}`;
   $("pause").hidden = status.state !== "running";
   $("resume").hidden = status.state === "running" || status.state === "restarting";
   renderGpus(status.gpus);

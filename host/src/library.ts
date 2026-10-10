@@ -97,6 +97,12 @@ function readJson(path: string): any {
 function vllmModel(root: string, dir: string, files: string[]): TextModel | null {
   const config = readJson(join(dir, "config.json"));
   if (!config || !Array.isArray(config.architectures)) return null;
+  // A sharded model is offered only once every shard is here (they appear only once checked).
+  if (files.includes("model.safetensors.index.json")) {
+    const index = readJson(join(dir, "model.safetensors.index.json"));
+    const shards = new Set(Object.values(index?.weight_map ?? {}) as string[]);
+    if (!shards.size || [...shards].some((f) => !files.includes(f))) return null;
+  }
   const size = files.filter((f) => f.endsWith(".safetensors")).reduce((n, f) => n + statSync(join(dir, f)).size, 0);
   const tokenizer = readJson(join(dir, "tokenizer_config.json"));
   const template = files.includes("chat_template.jinja") ? readFileSync(join(dir, "chat_template.jinja"), "utf8") : typeof tokenizer?.chat_template === "string" ? tokenizer.chat_template : null;
@@ -144,6 +150,13 @@ export function scanTextModels(root: string): TextModel[] {
       else if ((st.isFile() || (st.isSymbolicLink() && existsSync(path) && statSync(path).isFile())) && e.endsWith(".gguf") && !e.toLowerCase().startsWith("mmproj")) {
         const shard = e.match(SHARD);
         if (shard && shard[1] !== "00001") continue;
+        // Split GGUF: only once every part is here.
+        if (shard) {
+          const prefix = e.slice(0, -shard[0].length);
+          const total = Number(shard[2]);
+          const present = entries.filter((x) => x.startsWith(prefix) && SHARD.test(x)).length;
+          if (present < total) continue;
+        }
         try {
           const model = ggufModel(root, path, entries);
           if (model) found.push(model);

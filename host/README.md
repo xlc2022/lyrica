@@ -9,7 +9,7 @@ Docker Compose stack that Lyrica reaches over mutual TLS after pairing.
 ## Install
 
 The machine needs:
-- Debian or Ubuntu (other Linux distributions should work);
+- Debian or Ubuntu (other Linux distributions should work), with iptables;
 - the GPU driver;
 - Docker with the compose plugin, or Podman with a compose provider;
 - the container runtime's GPU support. For NVIDIA, that's
@@ -69,12 +69,16 @@ subfolder, under `lyrica/<source>/<repository>/`.
   hub's checksum (SHA-256, or the git hash for small files) before it
   appears. A link without a checksum is kept, marked unverified.
 - Links and redirects must go to public addresses: never this machine, the
-  LAN or the tailnet.
+  LAN or the tailnet. A link must say its size, and a signed link's query
+  string is never written down.
 - A gated repository's token is used for that download only, and never
   written down. A gated download interrupted by a restart must be started
   again; it resumes from its partial file.
-- Free space is checked first. Downloads resume after a restart and can be
-  cancelled, which deletes the partial file.
+- Free space is checked first, counting downloads already queued, and no
+  file grows past its size. Downloads resume after a restart (a busy server
+  or a broken connection keeps the partial file) and can be cancelled,
+  which deletes the partial file. A sharded model appears once all its
+  shards are here.
 - The **download record** lists each file downloaded, with its size and
   checksum. **Delete** removes only a file in it, inside `lyrica/` with no
   symlink on the way, unchanged since it was downloaded. A loaded model is
@@ -111,9 +115,10 @@ revoked. A revoked server must pair again.
   then background work. A request that waits too long fails with "The GPU
   is busy with …".
 - **VRAM** use is measured on each model's first load and remembered.
-- **Pause** finishes the current job, then unloads llama.cpp's models and
-  puts vLLM to sleep. Until Resume, new work gets "The model host is
-  paused." Pause survives a restart.
+- **Pause** refuses new work, lets the current job finish, then unloads
+  every model and stops vLLM, so nothing of the host's stays in VRAM. What
+  couldn't be unloaded shows on the dashboard. Until Resume, new work gets
+  "The model host is paused." Pause survives a restart.
 
 ## How it's put together
 
@@ -133,19 +138,39 @@ revoked. A revoked server must pair again.
     model's file, GPU and context), then loads and unloads models through
     its API.
   - vLLM runs under `vllm/supervisor.py`, which starts one server per vLLM
-    GPU as host-api asks in a file. Pause uses vLLM's own sleep and wake.
+    GPU as host-api asks in a file, in its own process group, with a growing
+    wait between restarts of one that crashes.
   - host-api reads VRAM with `nvidia-smi`, through NVIDIA's `utility`
     capability, or from AMD's sysfs.
 - `fetch` (`src/fetch/`) does the downloads. It is the same image as
   host-api, with another command.
-  - It is the only container that goes out, and it isn't on the `models`
-    network. It mounts only `lyrica/`, read-write, and has no GPU.
+  - It is the only container that goes out, on the `egress` network,
+    alone. It reaches nothing else: host-api calls it over the internal
+    `fetch-api` network, and it isn't on `models`.
+  - It mounts only `lyrica/`, read-write, and has no GPU.
   - It answers only host-api's address. The download record and list are
     in its own `fetch-data` volume.
-- Networks:
-  - `models` is internal: no route out, and nothing outside can reach it.
-  - `outside` holds `host-api`, `fetch` and, with Tailscale, the
-    `tailscale` service. It is the only network with a route out.
+- **host-api has no route out.** It sees every prompt, so it may not start
+  a connection anywhere, and neither may anything on the `models` network.
+  - `models` is internal: host-api and the model servers. No route out, and
+    nothing outside can reach it.
+  - `edge` holds host-api alone, at a fixed address (`HOST_API_IP` in
+    `.env`). The published ports arrive there.
+    - Docker doesn't masquerade it.
+    - `egress.sh` adds iptables rules (a `LYRICA-HOST-API` chain, called
+      from `DOCKER-USER` and `INPUT`) that let replies through and drop
+      every connection host-api starts, to the internet or to this
+      machine, including DNS for outside names.
+    - `install.sh` applies the rules before starting the stack, and installs
+      `lyrica-host-egress.service`, which applies them again after every
+      reboot and Docker restart.
+    - Without systemd, run `host/egress.sh apply` yourself after each.
+    - `install.sh` checks that host-api can't connect out, and stops it
+      if it can.
+  - With Tailscale, the `tailscale` service has its own network out
+    (`tailnet`) and reaches host-api over an internal one
+    (`tailscale-api`). It runs with no capabilities. All sign-ins over
+    Tailscale come from its address, so they share one rate limit.
 - No container mounts the Docker socket.
 - The host's key, certificate and state are in the `data` volume, readable
   only by host-api's user. The state is paired clients, the password hash,
@@ -156,4 +181,5 @@ revoked. A revoked server must pair again.
 - `test/stack/network.sh` checks the network layout on a running stack.
 
 Podman is supported by `install.sh` but hasn't been tested. The local
-dashboard's address check assumes Docker's port publishing.
+dashboard's address check and the egress rules assume Docker's port
+publishing and its iptables firewall backend.

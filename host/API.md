@@ -51,10 +51,12 @@ A queued request waits at most 120 seconds (`chat`), 300 (`image`) or 900
 
 ## OpenAI-compatible: `/v1`
 
-Passed to the server holding the model (llama.cpp for GGUF on a shared GPU,
-vLLM on a vLLM GPU), loading it first if needed. Request and response bodies
-are passed through unchanged, including streaming (`text/event-stream`) and
-tool calls.
+Only for a paired client: the dashboard gets `refused`. Passed to the
+server holding the model (llama.cpp for GGUF on a shared GPU, vLLM on a vLLM
+GPU), loading it first if needed. Request and response bodies are passed
+through unchanged, including streaming (`text/event-stream`) and tool calls.
+A client that disconnects cancels its request, queued or running; an answer
+the model server cuts short is cut short too.
 
 - `GET /v1/models`: every text and embedding model in the models folder,
   loaded or not, as `{ "object": "list", "data": [{ "id", "object": "model",
@@ -90,12 +92,16 @@ tool calls.
     "queue": { "chat": 0, "image": 1, "background": 2 }
   }],
   "downloads": { "active": 1 },
-  "modelsFolder": { "path": "/srv/models", "free": 512110190592 }
+  "modelsFolder": { "path": "/srv/models", "free": 512110190592 },
+  "problems": []
 }
 ```
 
 - `state`: `running`, `pausing` (finishing the current job), `paused` or
   `restarting`.
+- `problems`: plain sentences about what the last pause or restart couldn't
+  do, such as "GPU 0: couldn't unload … it may still hold memory." Empty
+  when all went well.
 - `role`: `vllm` (one vLLM model holds the GPU) or `shared` (llama.cpp
   models and ComfyUI, loaded on demand).
 - A model's `kind` is `chat`, `embedding` or `image`; `state` is `loading`
@@ -161,10 +167,15 @@ tool calls.
 
 ### Pause, resume, restart
 
-- `POST /host/v1/pause`: answers at once with the status; the current job
-  finishes, then everything is unloaded and the state is `paused`. Queued
-  and new requests get `paused`. Downloads continue. Survives a restart.
-- `POST /host/v1/resume`: back to `running`; pinned models are loaded again.
+- `POST /host/v1/pause`: answers at once with `{ "state": "pausing" }`.
+  Queued and new requests get `paused` at once. The running jobs and any
+  load under way finish, then every model is unloaded (vLLM's servers are
+  stopped) and the state is `paused`: nothing of the host's stays in VRAM.
+  Anything that couldn't be unloaded is listed in `problems`. Downloads
+  continue. Survives a restart.
+- `POST /host/v1/resume`: back to `running`; pinned models are loaded again,
+  and others load on demand. Pause, resume and restart run one after
+  another, never interleaved.
 - `POST /host/v1/restart`: fails queued requests with `restarting`, unloads
   everything, asks each server to reset, and loads pinned models again.
 
@@ -181,13 +192,16 @@ prompts, results or who asked.
 
 ## Downloads
 
-Fetching is done by the host's `fetch` service, the only part of the host
-with internet access.
+Fetching is done by the host's `fetch` service. It is the only part of
+the host that downloads, and nothing that sees prompts (host-api, the model
+servers) has a route out.
 
 - Sources: `huggingface`, `modelscope`, or `url` (https only).
 - A gated repository's token travels in the `X-Hub-Token` header of the
   request that needs it. The host passes it to `fetch` for that request and
-  never stores or logs it.
+  never stores or logs it. It is sent only to that hub's own host
+  (`huggingface.co` or `modelscope.cn`), never to a CDN it redirects to,
+  and never with a link.
 - Allowed files: `.gguf` and `.safetensors`, plus the small files a model
   folder needs (`.json`, `.txt`, `.jinja`, `.model`, `.tiktoken`). Pickle
   formats (`.bin`, `.pt`, `.pth`, `.ckpt`, `.pkl`, `.pickle`) and code
@@ -199,7 +213,15 @@ with internet access.
   checksum is kept but marked unverified. A wrong checksum leaves nothing
   behind.
 - Addresses, redirects included, must be public: loopback, private,
-  link-local, CGNAT and tailnet ranges, and multicast are refused.
+  link-local, CGNAT and tailnet ranges, and multicast are refused; for
+  IPv6, only global unicast is allowed.
+- A link must say its size (`Content-Length`), and free space is checked
+  against it and every download already queued. No download is written past
+  its size. A link's query string is kept in memory for the transfer only,
+  never listed or recorded.
+- A file must be what its name says (a GGUF header, a readable safetensors
+  header) before it appears.
+- A sharded model is offered once all its shards are here.
 
 ### `GET /host/v1/hub/files?source=huggingface&repo=Qwen/Qwen3-8B-GGUF&revision=main`
 

@@ -3,8 +3,9 @@
 // the hub's checksum, and only then gets its real name and a line in the
 // download record. Tokens are held in memory for one download, never written.
 import { createHash, randomUUID } from "node:crypto";
+import { constants as fsConstants } from "node:fs";
 import {
-  createReadStream, createWriteStream, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync,
+  closeSync, createReadStream, createWriteStream, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync,
   renameSync, rmdirSync, statSync, statfsSync, truncateSync, unlinkSync, writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, posix, relative, resolve, sep } from "node:path";
@@ -80,6 +81,8 @@ export class Downloader {
   private readonly root: string; // <models>/lyrica
   private downloads: Download[];
   private readonly tokens = new Map<string, string>();
+  /** Full links with their query strings, in memory only. */
+  private readonly links = new Map<string, string>();
   private current: { id: string; abort: AbortController } | null = null;
   private running = false;
   private lastSave = 0;
@@ -184,14 +187,24 @@ export class Downloader {
         throw new DownloadError("That isn't a link.");
       }
       if (url.protocol !== "https:") throw new DownloadError("Only https links are allowed.");
-      const name = decodeURIComponent(url.pathname.split("/").pop() ?? "");
+      let name: string;
+      try {
+        name = decodeURIComponent(url.pathname.split("/").pop() ?? "");
+      } catch {
+        throw new DownloadError("The link's file name isn't valid.");
+      }
       const v = verdict(name);
       if (!v.allowed) throw new DownloadError(v.reason!, 403);
       if (req.sha256 !== undefined && !/^[0-9a-f]{64}$/i.test(req.sha256)) throw new DownloadError("sha256 must be 64 hex characters.");
       const path = posix.join("lyrica", "url", url.hostname, checkRepoPath(name));
+      // A signed link's query (and any user and password in it) are credentials:
+      // kept in memory for the transfer, never written down or shown.
+      const shownUrl = `${url.protocol}//${url.host}${url.pathname}`;
+      const id = randomUUID();
+      if (url.search || url.username || url.password) this.links.set(id, url.href);
       made.push({
-        ...base, id: randomUUID(), source: "url", repo: null, revision: null, url: url.href, path, size: 0,
-        from: url.href, sha256: req.sha256?.toLowerCase() ?? null, gitSha1: null, gated: false, card: null, tokenHost: null,
+        ...base, id, source: "url", repo: null, revision: null, url: shownUrl, path, size: 0,
+        from: shownUrl, sha256: req.sha256?.toLowerCase() ?? null, gitSha1: null, gated: !!(url.search || url.username || url.password), card: null, tokenHost: null,
       });
     } else {
       const hub = this.hub(req.source);
@@ -221,14 +234,22 @@ export class Downloader {
       }
     }
     const need = made.reduce((n, d) => n + d.size, 0) + MARGIN;
-    if (need > this.free()) throw new DownloadError("There isn't enough free space for this download.", 507);
+    if (need > this.free() - this.reserved()) throw new DownloadError("There isn't enough free space for this download.", 507);
     for (const d of made) {
-      if (token) this.tokens.set(d.id, token);
+      // A hub's token goes with that hub's downloads only, never with a link.
+      if (token && d.tokenHost) this.tokens.set(d.id, token);
       this.downloads.push(d);
     }
     this.save();
     this.start();
     return made;
+  }
+
+  /** Bytes still to come for the downloads queued or under way. */
+  private reserved(except?: Download): number {
+    return this.downloads
+      .filter((d) => d !== except && (d.state === "queued" || d.state === "downloading" || d.state === "verifying"))
+      .reduce((n, d) => n + Math.max(d.size - d.received, 0), 0);
   }
 
   /** Cancels an unfinished download (deleting its partial file) or clears a finished one. */
@@ -274,8 +295,9 @@ export class Downloader {
     const part = partName(final);
     const token = this.tokens.get(d.id);
     try {
-      if (d.gated && !token) throw new DownloadError("Start this download again to give the token.");
-      mkdirSync(dirname(final), { recursive: true });
+      const link = this.links.get(d.id);
+      if (d.gated && !token && !link) throw new DownloadError("Start this download again to give the token.");
+      this.makeDirs(dirname(final));
       d.state = "downloading";
       this.save();
       const sha256 = createHash("sha256");
@@ -285,16 +307,29 @@ export class Downloader {
       // The git blob hash starts with a header, so it can only be checked from the start.
       const gitHeader = () => sha1.update(`blob ${d.size}\0`);
       const res = await this.o.net.get({
-        url: d.from, token, tokenHost: d.tokenHost ?? undefined, signal: abort.signal,
+        url: link ?? d.from, token, tokenHost: d.tokenHost ?? undefined, signal: abort.signal,
         headers: have ? { range: `bytes=${have}-` } : {},
       });
       if (have && res.statusCode !== 206) {
         // The server ignored the range: start again.
+        res.destroy();
         truncateSync(part, 0);
         have = 0;
         return this.restartFresh(d);
       }
-      if (!d.size) d.size = Number(res.headers["content-length"] ?? 0) + have;
+      if (!d.size) {
+        // A link: its size is known only now. Refuse one that doesn't say, and check the space again.
+        const length = Number(res.headers["content-length"]);
+        if (!Number.isFinite(length) || length <= 0) {
+          res.destroy();
+          throw new DownloadError("The link doesn't say how big the file is, so it isn't downloaded.", 400);
+        }
+        d.size = length + have;
+        if (length + MARGIN > this.free() - this.reserved(d)) {
+          res.destroy();
+          throw new DownloadError("There isn't enough free space for this download.", 507);
+        }
+      }
       if (d.gitSha1 && !have) gitHeader();
       d.received = have;
       const count = new Transform({
@@ -302,11 +337,15 @@ export class Downloader {
           sha256.update(chunk);
           if (d.gitSha1) sha1.update(chunk);
           d.received += chunk.length;
+          // Never more than the file's size: a server sending more is cut off.
+          if (d.received > d.size) return done(new DownloadError("The server sent more than the file's size.", 400));
           if (Date.now() - this.lastSave > 2000) this.save();
           done(null, chunk);
         },
       });
-      await pipeline(res, count, createWriteStream(part, { flags: have ? "a" : "w", mode: 0o644 }), { signal: abort.signal });
+      // O_NOFOLLOW: a symlink planted at the partial file's name isn't followed.
+      const flags = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_NOFOLLOW | (have ? fsConstants.O_APPEND : fsConstants.O_TRUNC);
+      await pipeline(res, count, createWriteStream(part, { fd: openSync(part, flags, 0o644) }), { signal: abort.signal });
       d.state = "verifying";
       this.save();
       const got = sha256.digest("hex");
@@ -315,6 +354,7 @@ export class Downloader {
       if (d.sha256) verified = got === d.sha256.toLowerCase() || fail();
       else if (d.gitSha1 && !have) verified = sha1.digest("hex") === d.gitSha1 || fail();
       else verified = false;
+      checkFormat(part, d.path);
       renameSync(part, final);
       const entry: RecordEntry = {
         path: d.path, size: d.received, sha256: got, verified, downloadedAt: new Date().toISOString(),
@@ -330,17 +370,34 @@ export class Downloader {
       } else {
         d.state = "failed";
         d.error = plainError(e).message;
-        // A wrong checksum leaves nothing behind; a broken connection keeps the partial file to resume.
-        if (e instanceof ChecksumMismatch || (e instanceof DownloadError && e.status !== 503)) this.removePart(d);
+        // A wrong or broken file leaves nothing behind; a broken connection, a
+        // busy server or a timeout keeps the partial file to resume.
+        const temporary = !(e instanceof DownloadError) || e.status === 0 || e.status === 408 || e.status === 429 || e.status >= 500;
+        if (e instanceof ChecksumMismatch || !temporary) this.removePart(d);
         this.o.log("download failed", { id: d.id });
       }
     } finally {
       if (d.state !== "queued") {
         d.finishedAt = d.finishedAt ?? new Date().toISOString();
         this.tokens.delete(d.id);
+        this.links.delete(d.id);
       }
       this.current = null;
       this.save();
+    }
+  }
+
+  /** Creates the folders under lyrica/, refusing a symlink anywhere on the way. */
+  private makeDirs(dir: string): void {
+    let at = this.root;
+    for (const p of relative(this.root, dir).split(sep).filter(Boolean)) {
+      at = join(at, p);
+      try {
+        if (lstatSync(at).isSymbolicLink()) throw new DownloadError("A symlink is in the way of this download.", 400);
+      } catch (e) {
+        if (e instanceof DownloadError) throw e;
+        mkdirSync(at);
+      }
     }
   }
 
@@ -392,6 +449,36 @@ export class Downloader {
 }
 
 class ChecksumMismatch extends DownloadError {}
+
+/** The file is what its name says: a GGUF header, or a readable safetensors header. */
+function checkFormat(path: string, name: string): void {
+  const head = Buffer.alloc(8);
+  const fd = openSync(path, "r");
+  let header: Buffer | null = null;
+  try {
+    readSync(fd, head, 0, 8, 0);
+    if (name.endsWith(".safetensors")) {
+      const n = Number(head.readBigUInt64LE());
+      if (n > 0 && n < 100 * 1024 * 1024) {
+        header = Buffer.alloc(n);
+        readSync(fd, header, 0, n, 8);
+      }
+    }
+  } finally {
+    closeSync(fd);
+  }
+  const bad = () => {
+    throw new ChecksumMismatch("The file isn't a valid model file, so it was deleted.");
+  };
+  if (name.endsWith(".gguf") && head.toString("latin1", 0, 4) !== "GGUF") bad();
+  if (name.endsWith(".safetensors")) {
+    try {
+      if (!header || typeof JSON.parse(header.toString("utf8")) !== "object") bad();
+    } catch {
+      bad();
+    }
+  }
+}
 
 function fail(): never {
   throw new ChecksumMismatch("The file's checksum doesn't match the hub's, so it was deleted.");
