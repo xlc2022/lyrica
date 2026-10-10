@@ -100,7 +100,8 @@ Each user has two pools of memory.
   - **Actions:** three looks only: primary, secondary (bordered) and link.
     Nothing pressable is plain grey text. Badges carry state only, at most
     two per row; facts go in the line beneath the name.
-  - **Words:** labels are short nouns (Sampling, Serving, Pinned, Excluded),
+  - **Words:** labels are short nouns (Sampling, Serving, Pinned, Excluded) or
+    the words a person would say (Not this model),
     never descriptions of what a thing does. No explanatory captions under
     headings, in page headers or at the foot of a form; where a word needs
     explaining, the explanation is a tooltip. A sentence appears only where
@@ -447,7 +448,7 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       adapter is a model of its own with a link to its base: never listed
       under it, never suggested for its group. A copy whose file records no
       finetune but whose name has words the model's name doesn't is flagged
-      for a check, and **Separate** moves any copy to a row of its
+      for a check, and **Not this model** moves any copy to a row of its
       own;
     - search, and filters by kind, endpoint and what a model can do (chat
       with tools, vision, embeddings, images), or groups only;

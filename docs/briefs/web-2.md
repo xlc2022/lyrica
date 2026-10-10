@@ -97,7 +97,7 @@ phone (principle 1).
      progress with Cancel, finished downloads and deletions, Clear finished.
    - **Text models**: one row per model, opening to its copies with their raw
      names, where groups are made, reordered and undone; finetunes in rows of
-     their own, linked to their base; flagged copies and **Separate**;
+     their own, linked to their base; flagged copies and **Not this model**;
      search, filters and stars; each copy's **Settings**: how it answers
      (with each value's source and a per-user override) and, on a model
      host, how it's served, with its placement and Reload now;

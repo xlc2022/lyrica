@@ -120,7 +120,7 @@ can be off, paused or busy gaming without Lyrica going dark.
      host's metadata, the model card or the model ID. Only `quantized` joins
      a copy to its base; a finetune, merge or adapter is its own entry with a
      link to its base. Flag a copy whose file name has words its model's
-     name doesn't. **Separate** moves a copy to an entry of its own;
+     name doesn't. **Not this model** moves a copy to an entry of its own;
      an administrator decides for shared endpoints, the owner for personal
      ones.
    - Tests: a finetune is never in its base's entry or suggested for its
