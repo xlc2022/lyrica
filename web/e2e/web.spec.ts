@@ -310,10 +310,25 @@ test("Plan mode: Shift+Tab gets there, the plan shows as a card, and going ahead
   await shot("mode-menu");
   await page.keyboard.press("Escape");
 
+  for (const said of ["What's in the logs?", "And the config?"]) {
+    await send(page, said);
+    await expect(page.getByText(`You said: ${said}`)).toBeVisible();
+  }
   await send(page, "plan: Check the logs, then fix the config");
   const card = page.getByRole("group", { name: "Lyrica's plan" });
   await expect(card).toContainText("Check the logs, then fix the config");
   await shot("plan-card");
+  // Scrolled out of view, the plan is named in a bar at the top that jumps back to it.
+  const size = page.viewportSize()!;
+  await page.setViewportSize({ width: size.width, height: 420 });
+  const bar = page.getByRole("button", { name: "Plan waiting for your answer" });
+  await page.locator(".scroll").first().evaluate((el) => { el.scrollTop = 0; });
+  await expect(bar).toBeVisible();
+  await shot("pending-bar");
+  await bar.click();
+  await expect(card).toBeInViewport();
+  await expect(bar).toHaveCount(0);
+  await page.setViewportSize(size);
   await card.getByRole("button", { name: /^Go ahead in/ }).click();
   await shot("go-ahead-menu");
   await card.getByRole("menu", { name: "Go ahead in" }).getByRole("menuitem", { name: /^Accept edits/ }).click();

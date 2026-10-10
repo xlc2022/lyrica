@@ -363,7 +363,7 @@ function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest
     const plan = String((p.args as { plan?: unknown } | null)?.plan ?? "");
     const steps = plan.split("\n").filter((l) => /^\s*(\d+[.)]|[-*])\s/.test(l)).length;
     return (
-      <div className="permission plan" role="group" aria-label="Lyrica's plan">
+      <div className="permission plan" role="group" aria-label="Lyrica's plan" data-pending="Plan">
         <div className="plan-head"><b>Plan</b>{steps > 1 && <span className="muted">{steps} steps</span>}</div>
         <div className="prose"><Prose text={plan} /></div>
         <div className="row">
@@ -381,7 +381,7 @@ function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest
     : sub.threadId === env.threadId ? <>This subagent ({sub.role}) wants</>
     : <>Her <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: sub.threadId })}>{sub.role} subagent</a> wants</>;
   return (
-    <div className="permission" role="group" aria-label={`Allow ${p.tool}${sub ? ` for the ${sub.role} subagent` : ""}?`}>
+    <div className="permission" role="group" data-pending="Approval" aria-label={`Allow ${p.tool}${sub ? ` for the ${sub.role} subagent` : ""}?`}>
       <p>{who} to use <b>{p.tool}</b>:</p>
       <pre>{typeof p.args === "object" && p.args && "command" in p.args ? String((p.args as { command: unknown }).command) : JSON.stringify(p.args, null, 2)}</pre>
       <div className="row">
