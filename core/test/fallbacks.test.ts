@@ -335,5 +335,7 @@ describe("every model away", () => {
     expect(isUnreachable(new HostRefused("not_found", "no such model"))).toBe(false);
     expect(isUnreachable(Object.assign(new Error("Body Timeout Error"), { code: "UND_ERR_BODY_TIMEOUT" }))).toBe(true);
     expect(isUnreachable(new Error("400 context length exceeded"))).toBe(false);
+    expect(isUnreachable("The client disconnected before the tool could connect to the sandbox")).toBe(false);
+    expect(isUnreachable("connect ECONNREFUSED 10.0.0.2:8080")).toBe(true);
   });
 });
