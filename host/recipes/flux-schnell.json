@@ -7,7 +7,8 @@
       "source": "huggingface",
       "repo": "Comfy-Org/flux1-schnell",
       "path": "flux1-schnell-fp8.safetensors",
-      "sha256": ""
+      "sha256": "ead426278b49030e9da5df862994f25ce94ab2ee4df38b556ddddb3db093bf72",
+      "size": 17236328572
     }
   ],
   "loras": [],
