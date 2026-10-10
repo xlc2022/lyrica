@@ -229,7 +229,8 @@ the call is a plain `NoModel`. Before throwing it, `resolveLive` asks those
 machines again, in order, so one that has just come back answers at once.
 `callWithFallback` runs a call that isn't a Pi turn (a title, and speech and
 images when they come) on each model in turn: a machine that can't be
-reached or is away (`isUnreachable`) is marked down and the next tries, any
+reached or is away (`isUnreachable`) is marked down and the next tries (a
+host's `model_unavailable` marks only that model down), any
 other failure is the call's own, and when none answers it throws `Offline`
 with every model tried.
 `resolveModel` returns just the chosen `{ offeringId }`.
