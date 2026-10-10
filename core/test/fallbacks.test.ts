@@ -64,6 +64,9 @@ describe("ordered fallbacks", () => {
     expect(s.models.recentCalls(s.li.id)[0]!.fallback).toMatch(/so router2\/qwen\/qwen3.8-27b answered, a cloud model$/);
     // A thread's own list outside Custom keeps to one kind.
     expect(() => s.models.setThreadModel(s.li.id, "general", "web/t", "chat", [s.blackwell.ref, s.router2.ref])).toThrow(/can't mix/);
+    // A group in a one-kind list needs a copy of that kind.
+    const cloudGroup = s.models.addGroup(s.li, { name: "cloud qwen", members: [s.router2.ref.offeringId] });
+    expect(() => s.models.setThreadModel(s.li.id, "general", "web/t", "chat", [s.blackwell.ref, { groupId: cloudGroup.id }])).toThrow(/no local copy/);
     s.models.setThreadModel(s.li.id, "general", "web/t", "chat", [s.blackwell.ref, s.spare.ref]);
     expect(s.models.resolveModel("chat", s.models.callContext(s.li.id, "general", "web/t"))).toEqual(s.spare.ref);
   });
@@ -114,6 +117,28 @@ describe("ordered fallbacks", () => {
     expect(models.profile(s.bob.id, "custom")).toEqual({ chat: [{ offeringId: shared!.id }] });
     expect(models.defaultProfile(s.bob.id)).toBe("custom");
     expect(models.notice(s.bob.id)[0]).toMatch(/copied to the new custom profile/);
+  });
+});
+
+describe("moving a cloud profile to Custom after a redirect", () => {
+  it("follows a replacement made while the user was locked before deciding a model's kind", async () => {
+    const s = await setup();
+    const lan = s.models.addEndpoint(s.li, { name: "lan", kind: "local", baseUrl: s.blackwell.ep.baseUrl }, { shared: true });
+    const lan2 = s.models.addEndpoint(s.li, { name: "lan2", kind: "local", baseUrl: s.spare.ep.baseUrl }, { shared: true });
+    const [a] = await s.models.discover(s.li, lan.id);
+    const [b] = await s.models.discover(s.li, lan2.id);
+    const db = s.users.openUserDb(s.bob.id);
+    db.exec("CREATE TABLE IF NOT EXISTS model_profiles (profile TEXT NOT NULL, task TEXT NOT NULL, entry TEXT NOT NULL, PRIMARY KEY (profile, task))");
+    db.prepare("INSERT OR REPLACE INTO model_profiles (profile, task, entry) VALUES ('cloud', 'chat', ?)").run(JSON.stringify([{ offeringId: a!.id }]));
+    db.prepare("DELETE FROM settings WHERE key = 'profiles_v2'").run();
+    db.close();
+    s.keyring.lockUser(s.bob.id);
+    s.models.replace(s.li, a!.id, b!.id);
+    await s.users.authenticate("bob", "pw");
+    const { Models } = await import("../src/index.ts");
+    const fresh = new Models(s.keyring, s.users);
+    expect(fresh.profile(s.bob.id, "custom").chat).toEqual([{ offeringId: b!.id }]);
+    expect(fresh.profile(s.bob.id, "cloud").chat).toBeUndefined();
   });
 });
 
@@ -226,10 +251,11 @@ describe("thinking", () => {
     s.models.setCapabilities(s.li, s.blackwell.ref.offeringId, { reasoning: ["medium", "high"] });
     const some = s.models.resolve("chat", { ...s.ctx(), overrides: { chat: [s.blackwell.ref] } });
     expect(s.models.thinkingFor(some, "low")).toEqual({ level: "medium", note: "blackwell/qwen3.8-27b doesn't think at low, so it thought at medium" });
-    // A thinking switch (one level) is just on.
+    // One level on a plain endpoint still says so; a host's on/off switch (one level) is just on.
     s.models.setCapabilities(s.li, s.blackwell.ref.offeringId, { reasoning: ["medium"] });
     const one = s.models.resolve("chat", { ...s.ctx(), overrides: { chat: [s.blackwell.ref] } });
-    expect(s.models.thinkingFor(one, "high")).toEqual({ level: "medium" });
+    expect(s.models.thinkingFor(one, "high")).toEqual({ level: "medium", note: "blackwell/qwen3.8-27b doesn't think at high, so it thought at medium" });
+    expect(s.models.thinkingFor({ ...one, endpoint: { ...one.endpoint, api: "host" } }, "high")).toEqual({ level: "medium" });
     // Per thread, with a per-user default.
     s.models.setDefaultThinking(s.li.id, "medium");
     expect(s.models.callContext(s.li.id, "general", "web/t").thinking).toBe("medium");

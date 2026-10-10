@@ -13,6 +13,11 @@ import type { Db } from "../db.ts";
 export class HostIdentityChanged extends Error {
   constructor() { super("This host's identity changed. Pair it again."); }
 }
+/** A model host refused a call, or couldn't be reached, with its error code and a plain message. */
+export class HostRefused extends Error {
+  constructor(readonly code: string, message: string) { super(message); }
+}
+
 /** Pairing was refused or couldn't be completed, with a plain reason. */
 export class PairingFailed extends Error {}
 
@@ -173,7 +178,8 @@ export function hostFetch(id: Identity, host: { addresses: string[]; pin: string
           away(message);
           return new Response(JSON.stringify({ error: { code: "identity_changed", message } }), { status: 502, headers: { "content-type": "application/json" } });
         }
-        if ((e as Error).name === "AbortError") throw e;
+        // A call that ran out of time or was stopped isn't tried at another address with the same dead signal.
+        if ((e as Error).name === "AbortError" || (e as Error).name === "TimeoutError") throw e;
         last = e;
       }
     }
@@ -216,6 +222,8 @@ function post(socket: TLSSocket, origin: string, path: string, body: unknown): P
       res.on("end", () => { try { resolve({ status: res.statusCode ?? 0, body: text ? JSON.parse(text) : {} }); } catch { resolve({ status: res.statusCode ?? 0, body: {} }); } });
     });
     req.on("error", reject);
+    // A host that finishes TLS and then never answers can't hold up pairing.
+    req.setTimeout(10_000, () => req.destroy(new Error("the host didn't answer")));
     req.end(data);
   });
 }
@@ -258,5 +266,5 @@ export async function pair(id: Identity, addresses: string[], typedCode: string,
       conn.socket.destroy();
     }
   }
-  throw new PairingFailed(`Couldn't reach the host at ${addresses.join(" or ")}${unreachable instanceof Error && unreachable.message ? ` (${unreachable.message})` : ""}.`);
+  throw new HostRefused("unreachable", `Couldn't reach the host at ${addresses.join(" or ")}${unreachable instanceof Error && unreachable.message ? ` (${unreachable.message})` : ""}.`);
 }

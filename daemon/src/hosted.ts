@@ -375,6 +375,14 @@ export class HostedThread {
         if (entry.type === "custom_message" && entry.customType === DELEGATE_MESSAGE) this.notice(entry.content, entry.details);
         break;
       }
+      case "auto_retry_start": {
+        // Pi is about to retry a model whose machine couldn't be reached: send the retry to the next model in the list instead.
+        if (UNREACHABLE.test(e.errorMessage) && this.opened) {
+          this.o.models.reportDown(this.opened.session.model?.provider ?? "");
+          void this.opened.prepare().catch(() => {});
+        }
+        break;
+      }
       case "tool_execution_start":
         this.emit({ type: "tool_start", toolCallId: e.toolCallId, name: e.toolName, args: e.args });
         break;

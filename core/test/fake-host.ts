@@ -17,12 +17,13 @@ export interface HostModel { id: string; kind?: "chat" | "embedding"; contextLen
  * proofs, pinned clients only everywhere else, /v1 (models and streaming
  * chat), /host/v1/models, status, pause and resume.
  */
-export async function fakeHost(opts: { name?: string; models?: HostModel[]; port?: number } = {}) {
-  let identity = makeIdentity(opts.name ?? "fake-host");
+export async function fakeHost(opts: { name?: string; models?: HostModel[]; port?: number; identity?: ReturnType<typeof makeIdentity> } = {}) {
+  let identity = opts.identity ?? makeIdentity(opts.name ?? "fake-host");
   let code: string | undefined;
   let tries = 0;
   let paused = false;
   let badProof = false;
+  let lieAboutKey = false;
   const pinned = new Map<string, string>();
   const chats: { model: string; reasoning_effort?: unknown; chat_template_kwargs?: unknown; client: string }[] = [];
   const models = opts.models ?? [{ id: "lyrica/huggingface/Qwen/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf", kind: "chat", contextLength: 32768, tools: true, reasoning: ["off", "on"], sha256: "ab".repeat(32) }];
@@ -53,7 +54,7 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
         }
         pinned.set(clientFp, body.name);
         code = undefined;
-        return json(res, 200, { host: { name: opts.name ?? "fake-host", fingerprint: identity.fingerprint }, proof: badProof ? proofs.client : proofs.host });
+        return json(res, 200, { host: { name: opts.name ?? "fake-host", fingerprint: lieAboutKey ? "0".repeat(64) : identity.fingerprint }, proof: badProof ? proofs.client : proofs.host });
       }
       if (!clientFp || !pinned.has(clientFp)) return json(res, 401, { error: { code: "unpaired", message: "This Lyrica server isn't paired with this host." } });
       if (req.method === "GET" && url.pathname === "/v1/models") return json(res, 200, { object: "list", data: models.map((m) => ({ id: m.id, object: "model", created: 0, owned_by: "lyrica-host" })) });
@@ -97,6 +98,9 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
   return {
     get address() { return `127.0.0.1:${port}`; },
     get fingerprint() { return identity.fingerprint; },
+    get identity() { return identity; },
+    /** Names another key in its pairing answer: Lyrica pins the key it saw, not the one it is told. */
+    lieAboutKey() { lieAboutKey = true; },
     get requests() { return requests; },
     chats,
     pinned,

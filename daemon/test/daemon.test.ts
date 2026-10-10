@@ -230,6 +230,9 @@ describe("model hosts", () => {
     expect((await sam.put(`${samU}/hosts/${ep.id}/addresses`, { addresses: ["127.0.0.1:1"] })).status).toBe(403);
     expect((await li.post<HostStatus>(`/api/u/${rt.li.id}/hosts/${ep.id}/pause`)).body.state).toBe("paused");
 
+    // A host that's off: a plain reason, not an internal error.
+    await host.stop();
+    expect(await li.get(`/api/u/${rt.li.id}/hosts/${ep.id}/status`)).toMatchObject({ status: 502, body: { error: "blackwell can't be reached." } });
     // Another key at the same address: refused in plain words.
     await host.replaceKey();
     const changed = await li.get<{ error: string }>(`/api/u/${rt.li.id}/hosts/${ep.id}/status`);

@@ -45,6 +45,13 @@ describe("pairing", () => {
     expect(s.models.endpoints(s.li.id).some((e) => e.api === "host")).toBe(false);
   });
 
+  it("pins the key the connection presented, never the one the host's answer names", async () => {
+    const s = await setup();
+    s.host.lieAboutKey();
+    const ep = await s.models.pairHost(s.li, { name: "blackwell", addresses: [s.host.address], code: s.host.newCode() });
+    expect(ep.fingerprint).toBe(s.host.fingerprint);
+  });
+
   it("pins nothing when the host can't prove it knows the code", async () => {
     const s = await setup();
     s.host.lie();
@@ -80,6 +87,17 @@ describe("calling a host", () => {
     expect(again).toMatchObject({ id: ep.id, fingerprint: s.host.fingerprint });
     await s.models.discover(s.li, ep.id);
     expect(s.models.offerings(s.li.id, ep.id).map((x) => x.id)).toEqual([o!.id]);
+  });
+
+  it("never tries the next address when a key changed, even where the old key still answers", async () => {
+    const s = await setup();
+    const ep = await s.models.pairHost(s.li, { name: "blackwell", addresses: [s.host.address], code: s.host.newCode() });
+    const original = s.host.identity;
+    await s.host.replaceKey();
+    const twin = await fakeHost({ name: "twin", identity: original });
+    s.models.setHostAddresses(s.li, ep.id, [s.host.address, twin.address]);
+    await expect(s.models.hostStatus(s.li.id, ep.id)).rejects.toThrow("This host's identity changed. Pair it again.");
+    expect(twin.requests).toBe(0);
   });
 
   it("falls back when the host is paused, and back again when it resumes", async () => {
