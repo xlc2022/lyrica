@@ -309,7 +309,8 @@ other endpoint they are set by hand (`setCapabilities`).
   with `VoiceCloudOff` before any byte is sent unless it is on. It is a
   per-user default, off (`setDefaultVoiceCloud`), and a thread's own choice
   (`setThreadVoiceCloud`, null follows the default; `thread_choices`). A
-  branch keeps its parent's when it differs from the default. Read aloud
+  branch keeps its parent's off always, and its on when the default is off;
+  lyricad refuses turning a branch on under a parent that has it off. Read aloud
   sends message text, so it follows the router's rules alone.
 - **Fallbacks** go through `callWithFallback`. When a call can't be made
   (the endpoint can't be reached or doesn't answer in time, a host answers
@@ -322,7 +323,8 @@ other endpoint they are set by hand (`setCapabilities`).
   first bytes; a model that fails later ends that piece of audio.
 - **Voice and speed** are per-copy settings (Sampling): `voices`, a voice
   per language tag, and `speed` (0.25 to 4). Yours for one language leaves
-  the shared one for another. Without a setting, the model's first voice
+  the shared one for another; `sources.voices` reads `yours` once any
+  language is yours. Without a setting, the model's first voice
   for the language is used, else its first voice.
 - `speechModel(task, ctx)` says without calling anything whether a task can
   be used: its model's label and kind, or a reason (`none`, `voiceCloud`,

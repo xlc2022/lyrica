@@ -126,6 +126,20 @@ describe("dictation", () => {
     expect((await s.li.get<Speech>(`${s.u}/speech?pool=general`)).body).toMatchObject({ voiceCloud: true, transcribe: { available: true, kind: "cloud" } });
   });
 
+  it("keeps Voice to cloud off in a branch of a thread that has it off, even after the default is turned on", async () => {
+    const s = await setup("general");
+    await s.turn("Hello.");
+    await s.li.patch(`${s.path}/settings`, { voiceCloud: false });
+    const branch = (await s.li.post<{ id: string }>(`${s.path}/messages/${await s.nOf("assistant")}/branch`, {})).body;
+    const child = `${s.u}/threads/general/${enc(branch.id)}`;
+    expect((await s.li.get<ThreadSettings>(`${child}/settings`)).body.voiceCloud).toBe(false);
+    for (const voiceCloud of [true, null]) {
+      expect(await s.li.patch(`${child}/settings`, { voiceCloud })).toMatchObject({ status: 400, body: { error: "the parent thread keeps Voice to cloud off, so this one does too" } });
+    }
+    await s.li.patch(`${s.u}/profiles`, { voiceCloud: true });
+    expect((await s.li.get<ThreadSettings>(`${child}/settings`)).body).toMatchObject({ voiceCloud: false, speech: { voiceCloud: false } });
+  });
+
   it("says plainly when every speech model is down, and the daemon carries on", async () => {
     const s = await setup();
     await s.speech.stop();

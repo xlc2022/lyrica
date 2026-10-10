@@ -58,6 +58,11 @@ export class ThreadHost {
     });
   }
 
+  /** The thread's record if it has one now; unlike `get`, never makes one. */
+  peek(userId: string, pool: Pool, threadId: string): HostedThread | undefined {
+    return this.threads.get(`${userId}/${pool}/${threadId}`);
+  }
+
   get(userId: string, pool: Pool, threadId: string): HostedThread {
     const key = `${userId}/${pool}/${threadId}`;
     let t = this.threads.get(key);

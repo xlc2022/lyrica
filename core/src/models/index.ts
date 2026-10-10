@@ -1526,8 +1526,8 @@ export class Models {
     if (parent.localOnly) this.setLocalOnly(userId, pool, childThreadId, true);
     if (pool === "general" && parent.profile) this.setThreadProfile(userId, pool, childThreadId, parent.profile);
     if (parent.thinking) this.setThinking(userId, childThreadId, parent.thinking);
-    // Never wider than the parent: a branch of a thread with Voice to cloud off keeps it off.
-    if (parent.voiceCloud !== undefined && parent.voiceCloud !== this.defaultVoiceCloud(userId)) this.setThreadVoiceCloud(userId, childThreadId, parent.voiceCloud);
+    // Never wider than the parent: a branch of a thread with Voice to cloud off keeps it off, even if the default is turned on later.
+    if (parent.voiceCloud === false || (parent.voiceCloud && !this.defaultVoiceCloud(userId))) this.setThreadVoiceCloud(userId, childThreadId, !!parent.voiceCloud);
     for (const [task, r] of Object.entries(parent.overrides ?? {})) {
       if (task !== "chat" || opts.chat !== false) this.setThreadModel(userId, pool, childThreadId, task as Task, r);
     }
