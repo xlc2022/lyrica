@@ -63,42 +63,44 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, onSet
       onDragLeave={() => setDragging(false)}
       onDrop={(e) => { e.preventDefault(); setDragging(false); attach(e.dataTransfer.files); }}
     >
-      {uploads.length > 0 && (
-        <ul className="uploads" aria-label="Uploads">
-          {uploads.map((x) => (
-            <li key={x.id}>
-              <span className="name">{x.name}</span>
-              {x.error
-                ? <><span className="error">{x.error}</span><button type="button" className="quiet" aria-label={`Dismiss ${x.name}`} onClick={() => setUploads((u) => u.filter((y) => y.id !== x.id))}>✕</button></>
-                : <progress max={1} value={x.progress} aria-label={`Uploading ${x.name}`} />}
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="composer-box">
-        <textarea
-          ref={area}
-          rows={1}
-          aria-label="Message"
-          placeholder={busy ? "Add a follow-up" : "Message Lyrica"}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onPaste={(e) => { if (e.clipboardData.files.length) { e.preventDefault(); attach(e.clipboardData.files); } }}
-          onKeyDown={(e) => {
-            if (e.key === "Tab" && e.shiftKey && settings) { e.preventDefault(); onSettings({ mode: nextMode(settings.mode) }); return; }
-            const touch = matchMedia("(pointer: coarse)").matches;
-            if (e.key === "Enter" && !e.shiftKey && !touch && !e.nativeEvent.isComposing) { e.preventDefault(); void submit(); }
-          }}
-        />
-        {busy && !draft.trim()
-          ? <button type="button" className="icon send" aria-label="Stop" title="Stop" onClick={onStop}><Icon name="stop" /></button>
-          : <button type="submit" className="icon send" aria-label="Send" title={busy ? "Send when she finishes" : "Send"} disabled={!draft.trim()}><Icon name="up" /></button>}
-      </div>
-      <div className="composer-row">
-        <ToolsMenu settings={settings} onAttach={() => picker.current?.click()} onChange={onSettings} />
-        <input ref={picker} type="file" multiple hidden onChange={(e) => { attach(e.target.files ?? []); e.target.value = ""; }} />
-        <span className="spacer" />
-        {settings && <ModePicker mode={settings.mode} onChange={(mode) => onSettings({ mode })} />}
+      <div className="composer-wrap">
+        {uploads.length > 0 && (
+          <ul className="uploads" aria-label="Uploads">
+            {uploads.map((x) => (
+              <li key={x.id}>
+                <span className="name">{x.name}</span>
+                {x.error
+                  ? <><span className="error">{x.error}</span><button type="button" className="quiet" aria-label={`Dismiss ${x.name}`} onClick={() => setUploads((u) => u.filter((y) => y.id !== x.id))}>✕</button></>
+                  : <progress max={1} value={x.progress} aria-label={`Uploading ${x.name}`} />}
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="composer-box">
+          <textarea
+            ref={area}
+            rows={1}
+            aria-label="Message"
+            placeholder={busy ? "Add a follow-up" : "Message Lyrica"}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onPaste={(e) => { if (e.clipboardData.files.length) { e.preventDefault(); attach(e.clipboardData.files); } }}
+            onKeyDown={(e) => {
+              if (e.key === "Tab" && e.shiftKey && settings) { e.preventDefault(); onSettings({ mode: nextMode(settings.mode) }); return; }
+              const touch = matchMedia("(pointer: coarse)").matches;
+              if (e.key === "Enter" && !e.shiftKey && !touch && !e.nativeEvent.isComposing) { e.preventDefault(); void submit(); }
+            }}
+          />
+          {busy && !draft.trim()
+            ? <button type="button" className="icon send" aria-label="Stop" title="Stop" onClick={onStop}><Icon name="stop" /></button>
+            : <button type="submit" className="icon send" aria-label="Send" title={busy ? "Send when she finishes" : "Send"} disabled={!draft.trim()}><Icon name="up" /></button>}
+        </div>
+        <div className="composer-row">
+          <ToolsMenu settings={settings} onAttach={() => picker.current?.click()} onChange={onSettings} />
+          <input ref={picker} type="file" multiple hidden onChange={(e) => { attach(e.target.files ?? []); e.target.value = ""; }} />
+          <span className="spacer" />
+          {settings && <ModePicker mode={settings.mode} onChange={(mode) => onSettings({ mode })} />}
+        </div>
       </div>
     </form>
   );

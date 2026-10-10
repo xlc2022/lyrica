@@ -201,10 +201,11 @@ button.badge.model:hover { border-color: var(--accent); }
 main > .head, .composer, .subnote, .offline { flex: none; }
 .welcome { padding: 24px var(--gutter); }
 
-.composer { display: grid; gap: 2px; padding: 10px var(--gutter) max(6px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--panel); }
+.composer { display: grid; justify-items: center; padding: 10px var(--gutter) max(6px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--panel); }
+.composer-wrap { display: grid; gap: 2px; width: 100%; max-width: 76ch; }
 .composer[data-dragging="true"] { outline: 2px dashed var(--accent); outline-offset: -6px; }
 /* The box holds the text and Send; the quiet row under it holds "+" and the mode. Nothing in either has a border but the box. */
-.composer-box { position: relative; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); padding: 5px 44px 5px 10px; }
+.composer-box { position: relative; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); padding: 5px 44px 5px 10px; }
 .composer-box:focus-within { border-color: var(--accent); }
 .composer-box textarea { display: block; width: 100%; border: 0; background: none; resize: none; min-height: 32px; max-height: 40vh; padding: 5px 4px; font-size: 15px; }
 .composer-box textarea:focus-visible { outline: none; }
@@ -217,7 +218,8 @@ main > .head, .composer, .subnote, .offline { flex: none; }
 .composer-box button.send svg { width: 18px; height: 18px; }
 .composer-box button.send:disabled { opacity: 1; }
 .composer[data-has-text="true"] button.send { color: var(--accent); }
-.mode-picker > button.link { font-size: 13px; padding: 0 6px; min-height: 28px; }
+.mode-picker > button.link { font-size: 13px; padding: 0 6px; min-height: 28px; color: var(--fg); }
+.mode-picker > button.link:hover { color: var(--accent); text-decoration: none; }
 .mode-picker > button.link, .go-ahead > button { display: inline-flex; align-items: center; gap: 2px; }
 .mode-picker .drop, .go-ahead .drop { display: inline-flex; color: inherit; }
 .mode-picker .drop svg, .go-ahead .drop svg { width: 12px; height: 12px; }
@@ -244,7 +246,7 @@ main > .head, .composer, .subnote, .offline { flex: none; }
 .plan-head .muted { font-size: 13px; }
 button.link { border: 0; background: transparent; color: var(--accent); padding: 0 2px; min-height: 30px; }
 button.link:hover { text-decoration: underline; }
-.uploads { grid-column: 1 / -1; list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 0.85rem; }
+.uploads { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 0.85rem; }
 .uploads li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; }
 .uploads .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .uploads progress { width: 120px; accent-color: var(--accent); }
