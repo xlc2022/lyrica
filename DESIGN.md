@@ -324,7 +324,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   models often need a few tries:
   - **Regenerate** on any of Lyrica's replies removes it and everything after
     it, then asks again. **Regenerate with…** does the same with another model
-    the thread may use (local only in a private or local-only thread).
+    the thread may use (local only in a private or local-only thread), and
+    the thread keeps that model from then on.
   - **Delete** removes the last turn, as in LM Studio, again and again until
     the one to retry; **Delete from here** removes a message and everything
     after it.

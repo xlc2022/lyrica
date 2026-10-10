@@ -159,7 +159,7 @@ nothing else. No code path gives a general view a private handle.
 
 | Area | Methods |
 |---|---|
-| Threads | `createThread({ interface, parent?, subagent?, unlogged?, title? })`, `listThreads({ includeHidden?, parent? })`, `getThread`, `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage`, `setTitle`, `exportThread`, `forgetThread` (also forgets its subagents' threads) |
+| Threads | `createThread({ interface, parent?, subagent?, unlogged?, title? })`, `listThreads({ includeHidden?, parent? })`, `getThread`, `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage`, `setTitle`, `exportThread`, `forgetThread` (also forgets its subagents' threads), `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, subagents }`, `subagentsSince(threadId, fromN)` |
 | Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
 | Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `userIntroduced` |
@@ -213,6 +213,17 @@ are enforced in the store:
   `setUnlogged(false)` is refused on a thread whose parent is unlogged.
 - Entries record whether they were written while unlogged. Search, sleep and
   catch-up never see those entries.
+- **Removing turns.** `truncateThread` deletes entries from `fromN` on the
+  way forgetting does: index rows go, notes whose sources are all gone are
+  deleted with tombstones, pages citing them are flagged, and subagent
+  threads started in those turns are forgotten. An entry that still has a
+  copy in a branch keeps its notes and search rows, and `entryWindow` finds
+  it through the copy. Entry numbers are never reused: `threads.cut` holds
+  the highest removed number and `appendEntry` numbers past it.
+- **Branches.** `branchThread` makes a child thread (not a subagent) holding
+  the entries up to and including `n`, plus that reply's tool results,
+  copied as an export copies them (`orig` keeps the source ID). The source
+  is unchanged; a branch of an unlogged thread is unlogged.
 - Notes can't be written from an unlogged thread.
 
 ## core/models: the cloud boundary lives here
@@ -297,6 +308,7 @@ class Models {                                              // new Models(keyrin
   setLocalOnly(userId, pool, threadId, on) / forgetThread(userId, pool, threadId)
   callContext(userId, pool, threadId): CallContext
   childContext(parent, childThreadId, { tier } | { model }): CallContext   // a child under its parent's rules
+  inheritContext(parent, childThreadId, { chat? }): CallContext          // a branch: the parent's local-only, profile, thinking and lists
   resolve(task, ctx, need?): Resolution                     // throws CloudModelForbidden or NoModel
   resolveLive(task, ctx, need?, { probeMs? }): Promise<Resolution>   // probes first when there is a fallback
   resolveModel(task, ctx, need?): { offeringId }             // resolve(…).ref
@@ -391,6 +403,7 @@ createDelegateExtension(thread, delegation, budget?)   // adds `delegate` (and `
 delegation.events                                      // typed EventEmitter for the live view
 delegation.store                                       // roles and saved workflows, in user.db
 delegation.forget(userId, pool, threadId)              // before forgetThread: stops its runs
+delegation.forgetSubagents(userId, pool, threads)      // before truncateThread: stops runs with a subagent among them
 delegation.stopAll(userId?)                            // Lock and shutdown
 ```
 
@@ -574,7 +587,10 @@ interface ThreadSession { session; runtime; chat: { offeringId }; prepare(opts?:
   [daemon.md](daemon.md). The web UI imports its types from there:
   - auth;
   - threads (list, create, hide, forget);
-  - messages (send, stream);
+  - messages (send, stream; `POST …/messages/:n/branch` → `ThreadSummary`;
+    `POST …/messages/:n/rewind` with `RewindRequest` `delete`, `regenerate`
+    with an optional `model`, or `edit` with `text`, `409` while a turn runs;
+    the `rewound` event carries `from` and `resend`, never text);
   - models (paths under `/api/u/:userId/`):
     - **Endpoints:** `GET`/`POST endpoints`; `PATCH`/`DELETE endpoints/:id`;
       `POST endpoints/:id/discover`, `…/reset-ids`, `…/merge` (→ `EndpointInfo`),
