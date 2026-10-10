@@ -1,16 +1,22 @@
 # The model host. Run through install.sh, which writes .env (including
 # COMPOSE_FILE, which adds compose.lan.yaml and compose.tailscale.yaml).
 #
-# Networks:
+# Networks. host-api sees every prompt, so it has no route out:
 # - models: internal, no route out. host-api and the model servers.
-# - outside: host-api, fetch and tailscale. The only route out, and where
-#   the published ports arrive.
+# - edge: host-api alone, where the published ports arrive. Docker doesn't
+#   masquerade it, and egress.sh (run by install.sh and a systemd unit)
+#   drops every new connection host-api starts.
 name: lyrica-host
 
 networks:
   models:
     internal: true
-  outside: {}
+  edge:
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: ${EDGE_SUBNET:?run install.sh}
 
 volumes:
   data: {}
@@ -34,7 +40,10 @@ services:
     volumes:
       - data:/data
       - ${MODELS_DIR}:/models:ro
-    networks: [models, outside]
+    networks:
+      models: {}
+      edge:
+        ipv4_address: ${HOST_API_IP:?run install.sh}
     ports:
       # The dashboard at the machine. Everything else is in compose.lan.yaml
       # or reached through the tailscale service.

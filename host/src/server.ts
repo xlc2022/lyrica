@@ -227,13 +227,20 @@ export class Host {
   private async login(req: IncomingMessage, res: ServerResponse, via: "tls" | "local"): Promise<void> {
     if (via !== "tls") return sendJson(res, 200, {});
     const address = plainAddress(req.socket.remoteAddress);
-    if (!this.limit.allowed(address)) throw new HostError(429, "too_many", "Too many tries. Wait 15 minutes.");
-    const body = await readJson(req);
-    onlyFields(body, ["password"]);
+    // All sign-ins over Tailscale come from the tailscale container's address,
+    // so there they share one limit.
     const stored = this.state.get().password;
     if (!stored) throw refused("No password is set. Set one on the dashboard at the machine.");
-    if (typeof body.password !== "string" || !checkPassword(body.password, stored)) {
-      this.limit.failed(address);
+    if (!this.limit.begin(address)) throw new HostError(429, "too_many", "Too many tries. Wait 15 minutes.");
+    let ok = false;
+    try {
+      const body = await readJson(req);
+      onlyFields(body, ["password"]);
+      ok = typeof body.password === "string" && (await checkPassword(body.password, stored));
+    } finally {
+      this.limit.end(address, ok);
+    }
+    if (!ok) {
       this.opts.log("login refused", {});
       throw new HostError(401, "login", "Wrong password.");
     }
@@ -269,11 +276,11 @@ export class Host {
       onlyFields(body, ["password", "current"]);
       const stored = this.state.get().password;
       // Remotely, changing it needs the current one.
-      if (access !== "local" && stored && (typeof body.current !== "string" || !checkPassword(body.current, stored))) {
+      if (access !== "local" && stored && (typeof body.current !== "string" || !(await checkPassword(body.current, stored)))) {
         throw new HostError(401, "login", "Wrong password.");
       }
       if (typeof body.password !== "string" || body.password.length < 10) throw invalid("Use at least 10 characters.");
-      const hash = hashPassword(body.password);
+      const hash = await hashPassword(body.password);
       this.state.update((s) => {
         s.password = hash;
       });

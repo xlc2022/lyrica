@@ -36,6 +36,9 @@ jobs:
       - run: mkdir -p "$RUNNER_TEMP/models"
       - run: host/install.sh --no-gpu --yes --models "$RUNNER_TEMP/models" --name ci-host
       - run: host/test/stack/network.sh
+      # Again with the Tailscale service (not logged in: no auth key in CI).
+      - run: host/install.sh --no-gpu --yes --tailscale ci-host-ts
+      - run: host/test/stack/network.sh
       - if: failure()
         run: docker compose logs
         working-directory: host

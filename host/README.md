@@ -9,7 +9,7 @@ Docker Compose stack that Lyrica reaches over mutual TLS after pairing.
 ## Install
 
 The machine needs:
-- Debian or Ubuntu (other Linux distributions should work);
+- Debian or Ubuntu (other Linux distributions should work), with iptables;
 - the GPU driver;
 - Docker with the compose plugin, or Podman with a compose provider;
 - the container runtime's GPU support. For NVIDIA, that's
@@ -79,10 +79,27 @@ revoked. A revoked server must pair again.
   - `<LAN address>:7236` for everything else, over TLS 1.3. It is never
     published on every interface, because Docker's published ports bypass
     the machine's firewall.
-- Networks:
-  - `models` is internal: no route out, and nothing outside can reach it.
-  - `outside` holds `host-api` and, with Tailscale, the `tailscale` service.
-    It is the only network with a route out.
+- **host-api has no route out.** It sees every prompt, so it may not start
+  a connection anywhere, and neither may anything on the `models` network.
+  - `models` is internal: host-api and the model servers. No route out, and
+    nothing outside can reach it.
+  - `edge` holds host-api alone, at a fixed address (`HOST_API_IP` in
+    `.env`). The published ports arrive there.
+    - Docker doesn't masquerade it.
+    - `egress.sh` adds iptables rules (a `LYRICA-HOST-API` chain, called
+      from `DOCKER-USER` and `INPUT`) that let replies through and drop
+      every connection host-api starts, to the internet or to this
+      machine, including DNS for outside names.
+    - `install.sh` applies the rules before starting the stack, and installs
+      `lyrica-host-egress.service`, which applies them again after every
+      reboot and Docker restart.
+    - Without systemd, run `host/egress.sh apply` yourself after each.
+    - `install.sh` checks that host-api can't connect out, and stops it
+      if it can.
+  - With Tailscale, the `tailscale` service has its own network out
+    (`tailnet`) and reaches host-api over an internal one
+    (`tailscale-api`). It runs with no capabilities. All sign-ins over
+    Tailscale come from its address, so they share one rate limit.
 - No container mounts the Docker socket.
 - The host's key, certificate and state are in the `data` volume, readable
   only by host-api's user. The state is paired clients, the password hash,
@@ -93,4 +110,5 @@ revoked. A revoked server must pair again.
 - `test/stack/network.sh` checks the network layout on a running stack.
 
 Podman is supported by `install.sh` but hasn't been tested. The local
-dashboard's address check assumes Docker's port publishing.
+dashboard's address check and the egress rules assume Docker's port
+publishing and its iptables firewall backend.
