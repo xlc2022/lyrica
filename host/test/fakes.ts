@@ -7,24 +7,30 @@ import type { Backend } from "../src/backends.ts";
 import type { Gpu, GpuMonitor } from "../src/gpus.ts";
 import { makeIdentity } from "../src/identity.ts";
 import type { TextModel } from "../src/library.ts";
+import type { Option } from "../src/placement.ts";
 
 export const GIB = 1024 ** 3;
 
-/** GPUs whose used memory is a baseline plus what the fake backend loaded. */
+/** GPUs whose used memory is a baseline plus what the fake backend loaded on each. */
 export class FakeGpus implements GpuMonitor {
   readonly gpus: Gpu[];
-  readonly loaded = new Map<string, { gpu: number; bytes: number }>();
+  readonly loaded = new Map<string, Record<number, number>>();
 
-  constructor(totals: number[], baseline = GIB) {
-    this.gpus = totals.map((t, index) => ({ index, name: `Fake GPU ${index}`, vendor: "nvidia", total: t * GIB, used: baseline }));
+  constructor(totals: number[], baseline = GIB, names?: string[]) {
+    this.gpus = totals.map((t, index) => ({ index, name: names?.[index] ?? `Fake GPU ${index}`, vendor: "nvidia", total: t * GIB, used: baseline }));
   }
 
   async read(): Promise<Gpu[]> {
-    return this.gpus.map((g) => ({ ...g, used: g.used + [...this.loaded.values()].filter((l) => l.gpu === g.index).reduce((n, l) => n + l.bytes, 0) }));
+    return this.gpus.map((g) => ({ ...g, used: g.used + [...this.loaded.values()].reduce((n, l) => n + (l[g.index] ?? 0), 0) }));
+  }
+
+  /** The GPUs a model is on. */
+  on(id: string): number[] {
+    return Object.keys(this.loaded.get(id) ?? {}).map(Number);
   }
 }
 
-/** A backend that "loads" a model by taking its size (plus 10%) on the fake GPU. */
+/** A backend that "loads" a model by taking what its placement expects on each of its GPUs. */
 export class FakeBackend implements Backend {
   readonly calls: string[] = [];
   readonly gpus: FakeGpus;
@@ -35,10 +41,13 @@ export class FakeBackend implements Backend {
     this.gpus = gpus;
   }
 
-  async load(model: TextModel, gpu: number) {
-    this.calls.push(`load ${model.id}@${gpu}`);
+  readonly placements = new Map<string, Option>();
+
+  async load(model: TextModel, at: Option) {
+    this.calls.push(`load ${model.id}@${at.gpus.join("+")}`);
     await new Promise((r) => setTimeout(r, this.loadMs));
-    this.gpus.loaded.set(model.id, { gpu, bytes: Math.round(model.size * 1.1) });
+    this.placements.set(model.id, at);
+    this.gpus.loaded.set(model.id, { ...at.need });
   }
   async unload(model: TextModel) {
     this.calls.push(`unload ${model.id}`);
@@ -68,6 +77,7 @@ export function textModel(id: string, gb: number, over: Partial<TextModel> = {})
     identity: { basename: id, sizeLabel: null, finetune: null, baseModels: [] },
     capabilities: { tools: true, vision: false, embedding: false, reasoning: null },
     contextLength: 8192,
+    kvPerToken: null,
     mmproj: null,
     remoteCode: false,
     ...over,
@@ -175,3 +185,89 @@ export async function fakeHub(opts: { lie?: boolean; redirectTo?: string; gated?
   return { base: `https://localhost:${(server.address() as AddressInfo).port}`, files, seen, ca: id.cert, close };
 }
 
+
+/** A safetensors file with just a header: tensor names, types and shapes. */
+export function safetensors(tensors: Record<string, { dtype?: string; shape?: number[] }>): Buffer {
+  const header: Record<string, unknown> = {};
+  for (const [name, t] of Object.entries(tensors)) header[name] = { dtype: t.dtype ?? "BF16", shape: t.shape ?? [1], data_offsets: [0, 0] };
+  const json = Buffer.from(JSON.stringify(header));
+  const len = Buffer.alloc(8);
+  len.writeBigUInt64LE(BigInt(json.length));
+  return Buffer.concat([len, json]);
+}
+
+/** A 1×1 PNG. */
+export const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+
+/**
+ * A fake ComfyUI: /upload/image, /prompt, /history, /free, and a websocket
+ * that sends one PNG per batch item and then "executing" with node null.
+ */
+export async function fakeComfy(o: { hang?: boolean } = {}) {
+  const { createHash } = await import("node:crypto");
+  const seen = { uploads: [] as string[], uploadBodies: [] as Buffer[], prompts: [] as any[], historyCleared: 0, freed: 0, interrupted: [] as string[], deleted: [] as string[] };
+  const sockets = new Map<string, import("node:net").Socket>();
+  const frame = (op: number, data: Buffer) => {
+    const head = data.length < 126 ? Buffer.from([0x80 | op, data.length]) : Buffer.from([0x80 | op, 126, data.length >> 8, data.length & 0xff]);
+    return Buffer.concat([head, data]);
+  };
+  const server = http.createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const c of req) chunks.push(c as Buffer);
+    const body = Buffer.concat(chunks);
+    const url = new URL(req.url!, "http://x");
+    if (url.pathname === "/upload/image") {
+      const name = body.toString("latin1").match(/filename="([^"]+)"/)?.[1] ?? "x.png";
+      seen.uploads.push(name);
+      seen.uploadBodies.push(body);
+      return res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ name }));
+    }
+    if (url.pathname === "/history") {
+      if (JSON.parse(body.toString()).clear) seen.historyCleared++;
+      return res.writeHead(200).end();
+    }
+    if (url.pathname === "/interrupt") {
+      seen.interrupted.push(JSON.parse(body.toString()).prompt_id);
+      return res.writeHead(200).end();
+    }
+    if (url.pathname === "/queue") {
+      seen.deleted.push(...JSON.parse(body.toString()).delete);
+      return res.writeHead(200).end();
+    }
+    if (url.pathname === "/free") {
+      seen.freed++;
+      return res.writeHead(200).end();
+    }
+    if (url.pathname === "/prompt") {
+      const { prompt, client_id } = JSON.parse(body.toString());
+      seen.prompts.push(prompt);
+      const id = `p${seen.prompts.length}`;
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ prompt_id: id }));
+      if (o.hang) return;
+      const ws = sockets.get(client_id);
+      const latent = Object.values(prompt as Record<string, { class_type: string; inputs: Record<string, unknown> }>).find((n) => /Latent/.test(n.class_type) && ("batch_size" in n.inputs || "amount" in n.inputs));
+      const count = Number(latent?.inputs.batch_size ?? latent?.inputs.amount ?? 1);
+      setTimeout(() => {
+        for (let i = 0; i < count; i++) {
+          const head = Buffer.alloc(8);
+          head.writeUInt32BE(1, 0);
+          head.writeUInt32BE(2, 4);
+          ws?.write(frame(2, Buffer.concat([head, PNG])));
+        }
+        ws?.write(frame(1, Buffer.from(JSON.stringify({ type: "executing", data: { node: null, prompt_id: id } }))));
+      }, 5);
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  server.on("upgrade", (req, socket) => {
+    const key = req.headers["sec-websocket-key"]!;
+    const accept = createHash("sha1").update(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
+    socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
+    sockets.set(new URL(req.url!, "http://x").searchParams.get("clientId")!, socket as import("node:net").Socket);
+    socket.on("error", () => {});
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const close = () => new Promise<void>((r) => { for (const s of sockets.values()) s.destroy(); server.closeAllConnections(); server.close(() => r()); });
+  return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, seen, close };
+}

@@ -1,0 +1,105 @@
+{
+  "arch": "z-image",
+  "does": [
+    "create"
+  ],
+  "checkpoint": false,
+  "clipType": "lumina2",
+  "parts": [
+    {
+      "role": "diffusion",
+      "arch": [
+        "z-image"
+      ]
+    },
+    {
+      "role": "text_encoder",
+      "slot": "qwen3"
+    },
+    {
+      "role": "vae",
+      "arch": [
+        "flux"
+      ]
+    }
+  ],
+  "references": 0,
+  "mask": false,
+  "workflow": {
+    "pos": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "$prompt",
+        "clip": "$clip"
+      }
+    },
+    "latent": {
+      "class_type": "EmptySD3LatentImage",
+      "inputs": {
+        "width": "$width",
+        "height": "$height",
+        "batch_size": "$count"
+      }
+    },
+    "sample": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": [
+          "shift",
+          0
+        ],
+        "seed": "$seed",
+        "steps": "$steps",
+        "cfg": "$cfg",
+        "sampler_name": "$sampler",
+        "scheduler": "$scheduler",
+        "positive": [
+          "pos",
+          0
+        ],
+        "negative": [
+          "neg",
+          0
+        ],
+        "latent_image": [
+          "latent",
+          0
+        ],
+        "denoise": 1
+      }
+    },
+    "decode": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "sample",
+          0
+        ],
+        "vae": "$vae"
+      }
+    },
+    "save": {
+      "class_type": "SaveImageWebsocket",
+      "inputs": {
+        "images": [
+          "decode",
+          0
+        ]
+      }
+    },
+    "neg": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "$negativePrompt",
+        "clip": "$clip"
+      }
+    },
+    "shift": {
+      "class_type": "ModelSamplingAuraFlow",
+      "inputs": {
+        "model": "$model",
+        "shift": "$shift"
+      }
+    }
+  }
+}

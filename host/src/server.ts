@@ -14,6 +14,7 @@ import { loadIdentity, type Identity } from "./identity.ts";
 import type { Logger } from "./log.ts";
 import { PairingCodes, fingerprint } from "./pairing.ts";
 import type { Downloads } from "./downloads.ts";
+import type { Images } from "./images.ts";
 import type { Runtime } from "./runtime.ts";
 import { StateFile } from "./state.ts";
 
@@ -65,6 +66,7 @@ export class Host {
   /** Peers that may not call in (fetch), checked on every request. */
   refusePeer: (address: string) => Promise<boolean> = async () => false;
   downloads: Downloads | null = null;
+  images: Images | null = null;
   private readonly limit: LoginLimit;
   private readonly isOurs: (name: string) => boolean;
 
@@ -98,6 +100,7 @@ export class Host {
   async close(): Promise<void> {
     this.runtime?.close();
     this.downloads?.close();
+    this.images?.close();
     this.tls.closeAllConnections();
     this.local.closeAllConnections();
     await Promise.all([new Promise((r) => this.tls.close(r)), new Promise((r) => this.local.close(r))]);
@@ -195,6 +198,7 @@ export class Host {
     if (pathname.startsWith("/v1/") && access !== "client") throw refused("Only a paired Lyrica server can use /v1.");
     if (this.runtime && (await this.runtime.route(req, res, pathname, method))) return;
     if (this.downloads && (await this.downloads.route(req, res, url, method))) return;
+    if (this.images && (await this.images.route(req, res, url, method))) return;
     throw notFound();
   }
 

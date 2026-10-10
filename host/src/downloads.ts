@@ -28,6 +28,8 @@ export class Downloads {
   private watching: NodeJS.Timeout | null = null;
   private done = new Set<string>();
   active = 0;
+  /** The paths being downloaded now (queued, downloading or verifying). */
+  inFlight = new Set<string>();
 
   constructor(o: { url: string; runtime: Runtime; log: Logger }) {
     this.url = o.url;
@@ -55,7 +57,9 @@ export class Downloads {
   async refresh(): Promise<void> {
     const [{ files }, { downloads }] = await Promise.all([this.call("/record"), this.call("/downloads")]);
     this.runtime.record = new Map((files as RecordEntry[]).map((r) => [r.path, r]));
-    this.active = (downloads as { state: string }[]).filter((d) => ["queued", "downloading", "verifying"].includes(d.state)).length;
+    const going = (downloads as { state: string; path: string }[]).filter((d) => ["queued", "downloading", "verifying"].includes(d.state));
+    this.active = going.length;
+    this.inFlight = new Set(going.map((d) => d.path));
     const finished = (downloads as { id: string; state: string }[]).filter((d) => d.state === "done" && !this.done.has(d.id));
     if (finished.length) {
       for (const d of finished) this.done.add(d.id);
@@ -81,6 +85,32 @@ export class Downloads {
     if (this.watching) clearInterval(this.watching);
   }
 
+  list(source: string, repo: string | null, revision: string | undefined, token: string | undefined): Promise<any> {
+    return this.call("/list", { body: { source, repo, revision, token } });
+  }
+
+  async request(request: Record<string, unknown>, token: string | undefined): Promise<{ downloads: unknown[] }> {
+    const made = await this.call("/downloads", { body: { ...request, token: request.source === "url" ? undefined : token } });
+    await this.refresh().catch(() => {});
+    return made;
+  }
+
+  /** Deletes one downloaded file, unloading any model that uses it first. */
+  async remove(file: string): Promise<{ deleted: string; unloaded: string[] }> {
+    const unloaded: string[] = [];
+    for (const m of this.runtime.models) {
+      if ((m.id === file || m.mmproj === file || file.startsWith(`${m.id}/`)) && this.runtime.scheduler.placement(m.id)) {
+        await this.runtime.scheduler.unloadNow(m.id);
+        unloaded.push(m.id);
+      }
+    }
+    const { deleted } = await this.call("/delete", { body: { path: file } });
+    this.log("file deleted", { unloaded: unloaded.length });
+    await this.refresh().catch(() => {});
+    this.runtime.scan();
+    return { deleted, unloaded };
+  }
+
   private token(req: IncomingMessage): string | undefined {
     const t = req.headers["x-hub-token"];
     return typeof t === "string" && t ? t : undefined;
@@ -91,10 +121,7 @@ export class Downloads {
     if (path === "/host/v1/hub/files" && method === "GET") {
       const source = url.searchParams.get("source");
       if (source !== "huggingface" && source !== "modelscope") throw invalid("source must be huggingface or modelscope.");
-      const listing = await this.call("/list", {
-        body: { source, repo: url.searchParams.get("repo"), revision: url.searchParams.get("revision") ?? undefined, token: this.token(req) },
-      });
-      sendJson(res, 200, listing);
+      sendJson(res, 200, await this.list(source, url.searchParams.get("repo"), url.searchParams.get("revision") ?? undefined, this.token(req)));
       return true;
     }
     if (path === "/host/v1/downloads" && method === "POST") {
@@ -102,10 +129,7 @@ export class Downloads {
       onlyFields(body, ["source", "repo", "revision", "files", "url", "sha256"]);
       if (!SOURCES.includes(body.source as string)) throw invalid("source must be huggingface, modelscope or url.");
       // A hub token is for that hub: never sent along with a link.
-      const token = body.source === "url" ? undefined : this.token(req);
-      const made = await this.call("/downloads", { body: { ...body, token } });
-      await this.refresh().catch(() => {});
-      sendJson(res, 202, made);
+      sendJson(res, 202, await this.request(body, body.source === "url" ? undefined : this.token(req)));
       return true;
     }
     if (path === "/host/v1/downloads" && method === "GET") {
@@ -125,21 +149,8 @@ export class Downloads {
     if (path === "/host/v1/files" && method === "DELETE") {
       const file = url.searchParams.get("path");
       if (!file) throw invalid("path is missing.");
-      // Unload whatever model uses this file first; a request running on it refuses the delete.
-      const unloaded: string[] = [];
-      for (const m of this.runtime.models) {
-        if (m.id === file || m.mmproj === file || file.startsWith(`${m.id}/`)) {
-          if (this.runtime.scheduler.placement(m.id)) {
-            await this.runtime.scheduler.unloadNow(m.id);
-            unloaded.push(m.id);
-          }
-        }
-      }
-      const { deleted } = await this.call("/delete", { body: { path: file } });
-      this.log("file deleted", { unloaded: unloaded.length });
-      await this.refresh().catch(() => {});
-      this.runtime.scan();
-      sendJson(res, 200, { deleted, unloaded });
+      // A request running on a model using it refuses the delete.
+      sendJson(res, 200, await this.remove(file));
       return true;
     }
     return false;

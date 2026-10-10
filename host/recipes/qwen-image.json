@@ -1,0 +1,41 @@
+{
+  "name": "Qwen-Image",
+  "template": "qwen-image",
+  "parts": [
+    {
+      "role": "diffusion",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Qwen-Image_ComfyUI",
+      "path": "split_files/diffusion_models/qwen_image_fp8_e4m3fn.safetensors",
+      "sha256": "98763a127701eb6fb59096f7742cb3aa7d64ed510b9f4e882d8351f8176e3ce3",
+      "size": 20430635136
+    },
+    {
+      "role": "text_encoder",
+      "slot": "qwen2.5vl",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Qwen-Image_ComfyUI",
+      "path": "split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "sha256": "cb5636d852a0ea6a9075ab1bef496c0db7aef13c02350571e388aea959c5c0b4",
+      "size": 9384670680
+    },
+    {
+      "role": "vae",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Qwen-Image_ComfyUI",
+      "path": "split_files/vae/qwen_image_vae.safetensors",
+      "sha256": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f",
+      "size": 253806246
+    }
+  ],
+  "loras": [],
+  "defaults": {
+    "steps": 20,
+    "cfg": 2.5,
+    "sampler": "euler",
+    "scheduler": "simple",
+    "width": 1328,
+    "height": 1328,
+    "shift": 3.1
+  }
+}
