@@ -316,7 +316,8 @@ function instruction(phase: SleepPhase, c: { view: PoolView; user: string; mater
   if (phase === "consolidate") {
     const notes = m.notes.slice(0, NOTES_SHOWN).map((n) => `- [${n.id}]${n.origin === "user" ? ` (added by ${user})` : ""} ${short(n.text)}`);
     if (m.notes.length > NOTES_SHOWN) notes.push(`- …and ${m.notes.length - NOTES_SHOWN} more: use recall.`);
-    const threads = m.threads.map((t) => `- [t:${t.id}]${t.title ? ` "${t.title}"` : ""}: ${t.entries} new entries, ${t.first} to ${t.last}`);
+    const threads = m.threads.map((t) => `- [t:${t.id}]${t.title ? ` "${t.title}"` : ""}: ${t.entries} new entries, ${t.first} to ${t.last}`
+      + (t.pinned ? `; ${user} pinned ${t.pinned.map((id) => `[${id}]`).join(", ")}` : ""));
     const edited = m.edited.map((e) => `- [${e.id}] on ${e.at.slice(0, 10)}`);
     const about = view.own.get("p:about-user");
     const aboutLine = !about ? `There is no page about ${user} yet: create p:about-user.`

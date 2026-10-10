@@ -1,3 +1,4 @@
+import type { PinnedText } from "./assemble.ts";
 import { readView, resolve, searchView, type Hit, type SearchOptions, type PoolView, type Profile, type StoredEntry, type Item } from "@lyrica/core";
 
 /** What memory contributes to the prompt. Every field is optional. */
@@ -10,6 +11,8 @@ export interface MemorySections {
   pageIndex?: string;
   /** Pages about the thread's granted folders. */
   folders?: string;
+  /** The thread's pinned messages, oldest first. */
+  pinned?: PinnedText[];
   recall?: string;
   /** The item from sleep this thread was started from: she opens with it. No other thread sees items. */
   opening?: string;
@@ -50,10 +53,18 @@ export async function memorySections(view: PoolView, prompt: string, ctx: Memory
       .map((p) => p!.text.trim()).filter(Boolean).join("\n\n") || undefined,
     pageIndex: index || undefined,
     folders: folderPages.map((p) => `<page id="${p.id}" title="${p.title}">\n${p.text}\n</page>`).join("\n\n") || undefined,
+    pinned: pinnedOf(own, ctx.threadId),
     recall: hits.map((h) => formatHit(h, ctx.user)).join("\n") || undefined,
     opening: item && `You're starting this conversation. Bring this up, in your own words: ${item.text}${item.source ? ` [${item.source}]` : ""}`,
     lastTalk: own.lastUserMessage(),
   };
+}
+
+/** A thread's pinned messages, for the pinned section: only the user's messages and her replies. */
+export function pinnedOf(store: Pick<PoolView["own"], "pins">, threadId: string): PinnedText[] | undefined {
+  const pins = store.pins(threadId).filter((p) => (p.role === "user" || p.role === "assistant") && p.text.trim())
+    .map((p) => ({ id: p.id, role: p.role, text: p.text }));
+  return pins.length ? pins : undefined;
 }
 
 /** searchView, minus what the thread must not see. */

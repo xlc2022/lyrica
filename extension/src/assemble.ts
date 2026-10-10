@@ -12,6 +12,7 @@ export interface Budgets {
   about: number;
   pages: number;
   folders: number;
+  pinned: number;
   user: number;
   recall: number;
   time: number;
@@ -26,6 +27,8 @@ export const DEFAULT_BUDGETS: Budgets = {
   about: 1500,
   pages: 3000,
   folders: 4000,
+  // About 2,000 tokens.
+  pinned: 8000,
   user: 600,
   recall: 4000,
   time: 300,
@@ -52,7 +55,7 @@ export interface Section {
 export interface Assembled {
   /** The persona core: Pi's `customPrompt`. */
   customPrompt: string;
-  /** Stable sections for Pi's `sections`, in order: topics, notice, opening, wake, about, pages, folders, user. Pi adds the tags. */
+  /** Stable sections for Pi's `sections`, in order: topics, notice, opening, wake, about, pages, folders, pinned, user. Pi adds the tags. */
   sections: Record<string, string>;
   /** Content that changes every turn (recall, time), sent as a message so the prompt prefix stays cacheable. */
   turn: string;
@@ -89,6 +92,7 @@ export function assemble(input: PromptInput, budgets: Budgets = DEFAULT_BUDGETS)
     ["about", input.memory.about],
     ["pages", input.memory.pageIndex],
     ["folders", input.memory.folders],
+    ["pinned", input.memory.pinned && pinnedBlock(input.memory.pinned, budgets.pinned).text],
     ["user", whoLine(input.profile)],
   ];
   for (const [name, body] of stable) {
@@ -120,6 +124,29 @@ function topicBlocks(topics: RoutedTopic[], budget: number): { text: string; tru
     room -= body.length;
   }
   return { text: blocks.join("\n\n"), truncated };
+}
+
+/** A pinned message, as the pinned section holds it. */
+export interface PinnedText { id: string; role: string; text: string }
+
+const PIN_LINE = 200;
+
+/**
+ * The thread's pinned messages, word for word, oldest first. Over budget, the
+ * oldest are shortened to their first line until the rest fit.
+ */
+export function pinnedBlock(pins: PinnedText[], budget: number): { text: string; shortened: boolean } {
+  const block = (p: PinnedText, short: boolean) => {
+    const first = p.text.trim().split("\n")[0]!.slice(0, PIN_LINE);
+    const body = short && first.length < p.text.trim().length ? `${first} …` : p.text.trim();
+    return `[${p.id}] ${p.role === "user" ? "User" : "You"}: ${body}`;
+  };
+  const render = (short: number) => pins.map((p, i) => block(p, i < short)).join("\n\n");
+  let short = 0;
+  let text = render(0);
+  while (text.length > budget && short < pins.length) text = render(++short);
+  const fitted = fit(text, budget);
+  return { text: fitted, shortened: short > 0 || fitted !== text };
 }
 
 /** Cuts text to at most `budget` characters, at a paragraph or line break when one is near. */

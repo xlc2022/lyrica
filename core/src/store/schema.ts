@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS threads (
   created_at TEXT NOT NULL
 );
 -- Pi session entries, as Pi wrote them. unlogged: written while the thread wasn't logged;
--- orig: the entry this one was copied from by an export.
+-- orig: the entry this one was copied from by an export; pinned: the user pinned it, so it stays in
+-- her context word for word.
 CREATE TABLE IF NOT EXISTS entries (
   thread     TEXT NOT NULL REFERENCES threads (id) ON DELETE CASCADE,
   n          INTEGER NOT NULL,
@@ -26,6 +27,7 @@ CREATE TABLE IF NOT EXISTS entries (
   text       TEXT NOT NULL,
   unlogged   INTEGER NOT NULL,
   orig       TEXT,
+  pinned     INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   PRIMARY KEY (thread, n),
   UNIQUE (thread, pi_id)
@@ -129,4 +131,5 @@ export const POOL_UPGRADES = [
   { check: "SELECT 1 FROM pragma_table_info('threads') WHERE name = 'subagent'", sql: "ALTER TABLE threads ADD COLUMN subagent INTEGER NOT NULL DEFAULT 0" },
   { check: "SELECT 1 FROM pragma_table_info('threads') WHERE name = 'child'", sql: "ALTER TABLE threads ADD COLUMN child INTEGER NOT NULL DEFAULT 0" },
   { check: "SELECT 1 FROM pragma_table_info('threads') WHERE name = 'cut'", sql: "ALTER TABLE threads ADD COLUMN cut INTEGER NOT NULL DEFAULT 0" },
+  { check: "SELECT 1 FROM pragma_table_info('entries') WHERE name = 'pinned'", sql: "ALTER TABLE entries ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0" },
 ];

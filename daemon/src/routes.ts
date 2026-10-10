@@ -6,7 +6,7 @@ import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
 import { Sessions } from "./auth.ts";
 import { HttpError, route, type Request, type Route } from "./http.ts";
-import { OPENING } from "@lyrica/extension";
+import { DEFAULT_BUDGETS, OPENING, pinnedBlock, pinnedOf } from "@lyrica/extension";
 import { Busy } from "./hosted.ts";
 import { card, type Lyricad, type Services } from "./lyricad.ts";
 import { toMessages } from "./messages.ts";
@@ -534,6 +534,20 @@ export function apiRoutes(d: Lyricad): Route[] {
       });
       inheritThread(d, user, pool, r.params.threadId!, branch.id);
       return owner(d, user, (o) => summary(d, user, pool, o[pool], branch, []));
+    }),
+    route("PUT", `${t}/messages/:n/pin`, (r) => pin(d, d.userFor(r), r, true)),
+    route("DELETE", `${t}/messages/:n/pin`, (r) => pin(d, d.userFor(r), r, false)),
+    route("GET", `${t}/pins`, (r) => {
+      const user = d.userFor(r);
+      return owner(d, user, (o): Api.Pins => {
+        const thread = threadOf(o, r);
+        const pins = o[poolOf(r)].pins(thread.id).filter((p) => p.role === "user" || p.role === "assistant");
+        const block = pinnedOf(o[poolOf(r)], thread.id);
+        return {
+          pins: pins.map((p) => ({ id: p.id, n: p.n, role: p.role as Api.Pin["role"], text: p.text, createdAt: p.createdAt })),
+          shortened: !!block && pinnedBlock(block, DEFAULT_BUDGETS.pinned).shortened,
+        };
+      });
     }),
     route("POST", `${t}/messages/:n/rewind`, async (r) => rewind(d, d.userFor(r), r, await r.json<Api.RewindRequest>())),
     route("POST", `${t}/stop`, async (r) => {
@@ -1206,6 +1220,22 @@ function userText(data: unknown): string | undefined {
   return Array.isArray(m.content) ? m.content.filter((p: { type: string }) => p.type === "text").map((p: { text: string }) => p.text).join("") : "";
 }
 
+/** Pins or unpins one of the user's messages or her replies. */
+function pin(d: Lyricad, user: User, r: Request, pinned: boolean): Api.Ok {
+  const pool = poolOf(r);
+  const n = entryN(r);
+  return owner(d, user, (o) => {
+    const thread = threadOf(o, r);
+    if (thread.subagent) throw new HttpError(409, "a subagent's thread has no pins");
+    const at = o[pool].entryPage(thread.id, { before: n + 1, limit: 1 }).entries.find((e) => e.n === n);
+    const role = (at?.data as { type?: string; message?: { role?: string } } | undefined)?.message?.role;
+    if (!at) throw new HttpError(404, "no such message");
+    if (role !== "user" && role !== "assistant") throw new HttpError(400, "only your messages and her replies can be pinned");
+    o[pool].pinEntry(thread.id, n, pinned);
+    return { ok: true };
+  });
+}
+
 /**
  * Delete from here, Regenerate and Edit. The thread's turn is held while its
  * subagents from those turns are stopped and the entries removed, so nothing
@@ -1240,7 +1270,7 @@ async function rewind(d: Lyricad, user: User, r: Request, req: Api.RewindRequest
     const m = req.model as { offeringId?: unknown; groupId?: unknown };
     models.setThreadModel(user.id, pool, thread.id, "chat", m.groupId !== undefined ? { groupId: String(m.groupId) } : { offeringId: String(m.offeringId) });
   }
-  let result: Api.RewindResponse = { removed: 0, subagents: 0 };
+  let result: Api.RewindResponse = { removed: 0, subagents: 0, pins: 0 };
   try {
     await host.get(user.id, pool, thread.id).rewind(async () => {
       const subagents = owner(d, user, (o) => {
@@ -1252,7 +1282,7 @@ async function rewind(d: Lyricad, user: User, r: Request, req: Api.RewindRequest
       await delegation.forgetSubagents(user.id, pool, subagents);
       for (const id of subagents) await host.forget(user.id, pool, id);
       const done = owner(d, user, (o) => o[pool].truncateThread(thread.id, from, author(user)));
-      result = { removed: done.removed, subagents: done.subagents.length };
+      result = { removed: done.removed, subagents: done.subagents.length, pins: done.pins };
       return from;
     }, then);
   } catch (err) {
