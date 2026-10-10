@@ -156,6 +156,10 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   when it has numbered or bulleted steps, the plan as prose, a primary
   "Go ahead in…" whose menu offers Ask, Accept edits or Auto, Keep planning,
   and the time left. Its tool marker stays hidden until it is answered.
+- **Waiting for an answer:** when the latest card waiting for her answer (a
+  plan or an approval) has scrolled out of view, a thin accent bar across the
+  top of the conversation says "Plan waiting for your answer" (or
+  "Approval…") and scrolls to it.
 
 ## Look
 

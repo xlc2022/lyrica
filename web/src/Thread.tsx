@@ -143,6 +143,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
         <p className="subnote">{s?.subagent ? "Subagent of" : s?.child ? "Child thread of" : "Branched from"} <a href={`#/u/${encodeURIComponent(userId)}/t/${pool}/${encodeURIComponent(parent.id)}`}>{parent.title || "the parent thread"}</a></p>
       )}
       <div className="scroll" ref={scroller}>
+        <PendingBar scroller={scroller} deps={[t.messages, t.live.permissions]} />
         <ErrorText error={summary.error || t.loadError} />
         {settings.error && <ErrorText error={`This thread's settings didn't load: ${settings.error}`} />}
         <Conversation ctx={ctx} pool={pool} base={base} threadId={threadId} subagent={!!s?.subagent} thread={t} rewinder={rewinder} hideFrom={pending?.hide} parentTitle={s?.child ? parent?.title : undefined} />
@@ -184,20 +185,43 @@ function findThread(list: ThreadSummary[], pool: Pool, id: string): ThreadSummar
   return undefined;
 }
 
-/** Keeps the conversation scrolled to the bottom while new text arrives, unless she has scrolled up. */
+/**
+ * When the latest card waiting for her answer (a plan, an approval) has
+ * scrolled out of view, a thin bar across the top of the conversation names
+ * it and jumps to it.
+ */
+function PendingBar({ scroller, deps }: { scroller: React.RefObject<HTMLDivElement | null>; deps: unknown[] }) {
+  const [kind, setKind] = useState("");
+  const latest = () => [...scroller.current?.querySelectorAll<HTMLElement>("[data-pending]") ?? []].at(-1);
+  useEffect(() => {
+    const card = latest();
+    if (!card) { setKind(""); return; }
+    const seen = new IntersectionObserver(([e]) => setKind(e!.isIntersecting ? "" : card.dataset.pending ?? ""), { root: scroller.current });
+    seen.observe(card);
+    return () => seen.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+  if (!kind) return null;
+  return (
+    <button type="button" className="pending-bar" onClick={() => latest()?.scrollIntoView({ block: "center", behavior: "smooth" })}>
+      {kind} waiting for your answer
+    </button>
+  );
+}
+
+/**
+ * Keeps the conversation scrolled to the bottom while new text arrives, unless she has scrolled up.
+ * Whether she was at the bottom is judged against the height before this update, not from the
+ * last scroll event, which may not have fired yet when an update lands right after she scrolls.
+ */
 function useStickyScroll(deps: unknown[]) {
   const ref = useRef<HTMLDivElement>(null);
-  const stuck = useRef(true);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const on = () => { stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; };
-    el.addEventListener("scroll", on, { passive: true });
-    return () => el.removeEventListener("scroll", on);
-  }, []);
+  const height = useRef(0);
   useLayoutEffect(() => {
     const el = ref.current;
-    if (el && stuck.current) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    if (height.current - el.scrollTop - el.clientHeight < 80) el.scrollTop = el.scrollHeight;
+    height.current = el.scrollHeight;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
   return ref;
