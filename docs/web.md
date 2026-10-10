@@ -162,7 +162,10 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   the icon in mono. Pressing it again, or Enter in the box, stops and sends
   the clip as WAV to `…/transcribe`; the icon pulses in muted meanwhile, and
   the text goes in at the caret. Escape throws the clip away, and so does
-  leaving the thread. A clip stops itself at ten minutes. The browser's own
+  leaving the thread. A clip stops itself at ten minutes and is cut there
+  before it is sent, so a late timer can't make lyricad refuse it whole.
+  Where the browser won't connect the microphone to a 16 kHz context
+  (Firefox), the recorder uses the device's rate and resamples. The browser's own
   speech features are never used, and nothing is kept in browser storage.
   With no Dictation model usable here (`ThreadSettings.speech.transcribe`:
   none set, a cloud one with Voice to cloud off, or every one down), the mic
@@ -213,7 +216,8 @@ turns animations off.
 
 - `npm run typecheck` covers `web/` (`tsc -p web`), and `npm run build` builds
   it.
-- `web/test/live.test.ts` tests the stream reducer.
+- `web/test/live.test.ts` tests the stream reducer; `web/test/voice.test.ts`
+  the recorder's context fallback and the clip's limit.
 - `npm run e2e -w @lyrica/web` runs Playwright (after a build). Each viewport
   (390×844 with touch, 1280×800) gets its own real `lyricad` from
   `web/e2e/serve.ts`, on a temporary runtime with a fake model server, which

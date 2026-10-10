@@ -97,12 +97,13 @@ export function useDictation({ base, onText, onError }: {
     }
     let ctx: AudioContext;
     try {
-      try { ctx = new AudioContext({ sampleRate: RATE }); } catch { ctx = new AudioContext(); }
+      const opened = openContext(stream);
+      ctx = opened.ctx;
       await ctx.audioWorklet.addModule("/dictation-worklet.js");
       const node = new AudioWorkletNode(ctx, "dictation", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
       const chunks: Float32Array[] = [];
       node.port.onmessage = (e: MessageEvent<Float32Array>) => { if (rec.current?.chunks === chunks) chunks.push(e.data); };
-      ctx.createMediaStreamSource(stream).connect(node);
+      opened.source.connect(node);
       // The node's output is silence; it is connected so the graph runs.
       node.connect(ctx.destination);
       await ctx.resume();
@@ -127,14 +128,46 @@ export function useDictation({ base, onText, onError }: {
   return { state, seconds, start, stop, discard };
 }
 
-/** One array of 16 kHz samples from the recorder's blocks, resampled if the context ran at another rate. */
-function join(chunks: Float32Array[], rate: number): Float32Array {
-  const n = chunks.reduce((a, c) => a + c.length, 0);
+/** The microphone and its sample rate, for tests: `AudioContext` and `createMediaStreamSource`, reduced to what `openContext` uses. */
+export interface ContextLike { sampleRate: number; close(): Promise<void>; createMediaStreamSource(stream: MediaStream): { connect(node: AudioNode): unknown } }
+
+/**
+ * A context at 16 kHz with the microphone connected, or, where the browser
+ * won't connect a microphone to a context at another rate than its own
+ * (Firefox throws NotSupportedError), one at the default rate; `join`
+ * resamples that. The constructor is a parameter so a test can stand one in.
+ */
+export function openContext<C extends ContextLike = AudioContext>(stream: MediaStream, Ctx: new (opts?: { sampleRate?: number }) => C = AudioContext as unknown as new (opts?: { sampleRate?: number }) => C): { ctx: C; source: ReturnType<C["createMediaStreamSource"]> } {
+  let ctx: C;
+  try { ctx = new Ctx({ sampleRate: RATE }); } catch { ctx = new Ctx(); }
+  try {
+    return { ctx, source: ctx.createMediaStreamSource(stream) as ReturnType<C["createMediaStreamSource"]> };
+  } catch (e) {
+    void ctx.close().catch(() => {});
+    const fallback = new Ctx();
+    if (fallback.sampleRate === ctx.sampleRate) { void fallback.close().catch(() => {}); throw e; }
+    return { ctx: fallback, source: fallback.createMediaStreamSource(stream) as ReturnType<C["createMediaStreamSource"]> };
+  }
+}
+
+/**
+ * One array of 16 kHz samples from the recorder's blocks, resampled if the
+ * context ran at another rate, and cut at the clip's limit: the timer that
+ * stops a long recording fires a little late, and the daemon refuses a
+ * clip over ten minutes whole.
+ */
+export function join(chunks: Float32Array[], rate: number): Float32Array {
+  const n = Math.min(chunks.reduce((a, c) => a + c.length, 0), Math.floor(MAX_SECONDS * rate));
   const all = new Float32Array(n);
   let at = 0;
-  for (const c of chunks) { all.set(c, at); at += c.length; }
+  for (const c of chunks) {
+    const piece = c.subarray(0, Math.max(0, n - at));
+    all.set(piece, at);
+    at += piece.length;
+    if (at >= n) break;
+  }
   if (rate === RATE) return all;
-  const out = new Float32Array(Math.floor(n * RATE / rate));
+  const out = new Float32Array(Math.min(Math.floor(n * RATE / rate), MAX_SECONDS * RATE));
   const step = rate / RATE;
   for (let i = 0; i < out.length; i++) {
     const x = i * step;
