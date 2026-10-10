@@ -42,7 +42,9 @@ Work through these in order. Most additions end at step 1 or 2.
   not what the page is for.
 - **Icons:** one family of 16 px line icons. Never a text glyph (☰ ⚙ ▤ ◔ ▣)
   standing in for an icon. An icon sits beside its word; a row of icon-only
-  buttons has `aria-label`s and a border on each.
+  buttons has `aria-label`s and a border on each. The one exception is the
+  message box: its "+" and Send are plain icons, because the box is the
+  border.
 - **Spacing:** a 16 px gutter on phones; cards and drawers share one radius.
 
 ## 3. Controls
@@ -130,6 +132,8 @@ Rules:
 | Models, hosts, downloads, clean-up | the **Models** area: Overview, Tasks, Text models, Image models, Hosts and endpoints, Downloads, Clean up, Recent calls |
 | The app's version | the header, "Lyrica (ver. …, build …)" |
 | Lyrica's inner workings (recall, tools, notes) | one-line **markers** in the conversation that expand when tapped |
+| The message box | one box holding the textarea and Send as a plain icon (Stop while she works); under it, a row with "+" (Attach and the tool switches) and, at its end, the mode word with a caret |
+| Anything in the conversation waiting for an answer (a plan, a permission, a question from a subagent) | a **card** in the conversation, with its actions at its foot and one primary action at most |
 | A subagent | a **card** in the conversation that expands to its work and takes messages |
 | A child thread | nested under its parent in the **sidebar**, with its state and unseen count as badges; its updates as a **card** in the parent's conversation that links to it |
 
