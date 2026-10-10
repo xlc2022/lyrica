@@ -105,6 +105,38 @@ Each active thread is one Pi session from `openThreadSession`, with
   connection error, or a reply cut off mid-stream, marks that endpoint down,
   and Pi's retry goes to the next model in the list. The next turn waits for
   that choice to finish.
+- **Context and pace.** Each hosted thread has a `ContextMeter`
+  (`extension/src/context.ts`), fed by the Lyrica extension from Pi's events:
+  - Per request: time to first token, generation time and usage.
+  - At the turn's end: the measured total from `getContextUsage()` and an
+    estimate of each part, using Pi's `estimateTokens` and the prompt sections
+    `assemble` made. The parts are persona (with topics, who she's talking
+    with and the time), about, memory (WAKE, the page index, folder pages),
+    pinned (0 until pins exist), recall, tools (definitions and guidance) and
+    the conversation. They're scaled to add up to the measured total, then
+    Pi's reserve and the free space fill the window.
+  - After each turn `lyricad` records the pace on the call (`recordPace`) and
+    sends a `context` event. `GET …/settings` returns `context`, from the open
+    session or, with no breakdown, from the last call record.
+- **Her status line.** Each turn's context message carries one line of
+  numbers in `<context>`, such as
+  `Context 64% of 32k · 9.1k free · 38 tok/s · 2.1k tok/s prompt`. Free is
+  what's left before Pi's own compaction. At 75% a second line tells her to
+  finish the step, save what matters and compact with a summary; at 90%, to
+  compact now. The `threads` tool's guidelines say once what the line means.
+- **Compacting herself.** The `threads` tool's `compact` action takes her
+  summary.
+  - A summary too long for Pi's reserve is refused with the limit. A short one
+    (under 400 characters) becomes the notes for Pi's own summary.
+  - The compaction runs when the turn ends, since Pi's `compact()` would stop
+    the turn that asked for it. `session_before_compact` hands Pi her summary
+    as the result, and Pi cuts the old entries and keeps the recent ones.
+  - The compaction is stored, and the stream gets a `compacted` event with the
+    tokens before and (estimated) after and the summary. The message list
+    shows it as a `notice` with a `compacted` part.
+  - Pi's automatic compaction at the window's edge stays on as the safety net,
+    with Pi's own summary, which keeps the goal, progress and next steps. It
+    shows the same marker.
 - Changing a thread's models or local-only switch reopens its session after
   the current turn. Workspace settings are read on every tool call, so they
   apply at once.
@@ -128,7 +160,9 @@ Each active thread is one Pi session from `openThreadSession`, with
 carries text and thinking deltas, tool calls (start with arguments; end with
 the first lines of the result), recall and remember markers, permission
 requests and their outcome, usage, errors in plain words (a model the router
-refused, an endpoint that didn't answer), the queue, the title and turn end.
+refused, an endpoint that didn't answer), the queue, the title and turn end,
+then the thread's `context` after each turn and a `compacted` marker when it
+compacts.
 A subagent run's events (started, output, tool calls, questions, notes,
 usage, finished, stopped, interrupted) go out as `delegation` to the parent
 thread's stream and to the subagent's own thread's stream. What a run

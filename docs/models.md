@@ -241,6 +241,16 @@ thread, task, the answering model's ID with its label, endpoint and kind,
 the fallback taken and why, and a note such as a model that couldn't think.
 Never prompt text. The latest 500 per user are kept.
 
+Once a turn ends, `recordPace` adds its counts and times to the record
+(`pace`): the last request's prompt tokens (the context used), output tokens,
+the window, time to first token and generation time, and the prompt tokens
+the server actually read rather than took from its cache. From those come
+tokens per second and prompt tokens per second (`speeds`; left out when a
+time is under 50 ms). `speedsByOffering` gives each copy's median speeds over
+the user's last twenty measured calls; the text library shows them on each
+copy (`speed`). Counts and times only, so a "Do not log" thread records them
+too. Nothing acts on speed yet.
+
 ## Thinking
 
 Offerings carry `reasoning`, the levels they offer besides off: discovered
@@ -371,6 +381,10 @@ API `openai-completions` holding its offerings.
   don't all accept the newer fields.
 - Pi compacts with the session's own model, so in practice the `compaction`
   task is the chat model.
+- `openThreadSession` sets Pi's compaction per model: a reserve of 8% of the
+  window (1,024 to 16,384 tokens), so Pi compacts on its own at 92%, past
+  Lyrica's 75% and 90% lines; and a kept tail of a quarter of the window (at
+  most 20,000). A caller's own compaction settings win.
 
 `openThreadSession` hosts one thread with that runtime and its chat model.
 

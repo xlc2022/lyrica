@@ -3,6 +3,7 @@ import {
   type AgentSession, type ExtensionFactory, type ModelRuntime,
 } from "@earendil-works/pi-coding-agent";
 import type { Models, Resolution } from "@lyrica/core";
+import { keepRecentFor, reserveFor } from "./context.ts";
 import type { ThreadContext } from "./index.ts";
 import { modelRuntimeFor, piModelFor, prepareTurn } from "./models.ts";
 import { recordEntries } from "./record.ts";
@@ -39,7 +40,16 @@ export async function openThreadSession(o: ThreadSessionOptions): Promise<Thread
   const { thread } = o;
   const runtime = await modelRuntimeFor(o.models, thread.call);
   const { ref: chat, model } = piModelFor(runtime, o.models, "chat", thread.call);
-  const settingsManager = SettingsManager.inMemory(o.settings);
+  // Pi's compaction reserve and kept tail follow each model's window, so it compacts at 92%: past the 75% and 90% lines.
+  const modelOverrides = Object.fromEntries(o.models.allowed(thread.call).flatMap(({ endpoint, offerings }) => offerings.flatMap((off) => {
+    const w = runtime.getModel(endpoint.id, off.modelId)?.contextWindow;
+    // A caller's own compaction settings win: per-model overrides would outrank them in Pi.
+    const set = o.settings?.compaction;
+    return w ? [[`${endpoint.id}/${off.modelId}`, {
+      ...(set?.reserveTokens === undefined ? { reserveTokens: reserveFor(w) } : {}), ...(set?.keepRecentTokens === undefined ? { keepRecentTokens: keepRecentFor(w) } : {}),
+    }] as const] : [];
+  })));
+  const settingsManager = SettingsManager.inMemory({ ...o.settings, compaction: { ...o.settings?.compaction, modelOverrides: { ...modelOverrides, ...o.settings?.compaction?.modelOverrides } } });
   const loader = new DefaultResourceLoader({
     cwd: o.cwd, agentDir: o.cwd, settingsManager,
     noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true, noThemes: true,

@@ -10,7 +10,7 @@ import { baseName } from "./identity.ts";
 import { copyIdentity } from "./library.ts";
 import { acceptedSettings, ANSWER_SETTINGS, checkSettings, type AnswerSettings, type SettingSource } from "./settings.ts";
 import { collectRefs, isList, mapMembers, moveSettings, refId, rewrite, type Entry, type ProfileName, type Use } from "./refs.ts";
-import { ENDPOINT_SCHEMA, migrate, MODEL_CHOICE_SCHEMA, REDIRECT_SCHEMA } from "./schema.ts";
+import { ENDPOINT_SCHEMA, migrate, MODEL_CHOICE_SCHEMA, REDIRECT_SCHEMA, upgradeCalls } from "./schema.ts";
 
 export { addressesOutside, discoverModels, probeUrl, type DiscoveredModel, type ModelIdentity } from "./http.ts";
 export { baseName } from "./identity.ts";
@@ -127,6 +127,8 @@ export interface LibraryEntry {
     groups: string[];
     flagged?: string;
     size?: number;
+    /** Its median speeds over the user's last twenty measured calls to it. */
+    speed?: { tokPerSec?: number; promptTokPerSec?: number };
   }[];
 }
 
@@ -179,6 +181,36 @@ export interface CallRecord {
   fallback?: string;
   /** Such as a model that couldn't think at the level asked for. */
   note?: string;
+  /** How the turn went, once it ended: counts and times only. */
+  pace?: Pace;
+}
+
+/**
+ * One turn's measurements. `promptTokens` is the last request's whole prompt
+ * (the context used); `processed` is the prompt tokens the server actually
+ * read (not from its cache), over every request in the turn; `ttftMs` is the
+ * time to the first token, summed over those requests, and `genMs` the time
+ * from there to the end; `outputTokens` is everything written.
+ */
+export interface Pace {
+  promptTokens: number;
+  outputTokens: number;
+  window: number;
+  ttftMs: number;
+  genMs: number;
+  processed: number;
+  /** Output tokens per second of generation. */
+  tokPerSec?: number;
+  /** Prompt tokens read per second, before the first token. */
+  promptTokPerSec?: number;
+}
+
+/** Speeds from a turn's counts and times; absent where a time is too short to mean anything. */
+export function speeds(p: Omit<Pace, "tokPerSec" | "promptTokPerSec">): Pace {
+  const rate = (n: number, ms: number) => (ms >= 50 && n > 0 ? Math.round((n / ms) * 10_000) / 10 : undefined);
+  const tok = rate(p.outputTokens, p.genMs);
+  const prompt = rate(p.processed, p.ttftMs);
+  return { ...p, ...(tok !== undefined ? { tokPerSec: tok } : {}), ...(prompt !== undefined ? { promptTokPerSec: prompt } : {}) };
 }
 
 /** Private and local-only threads may use local endpoints only. */
@@ -485,6 +517,7 @@ export class Models {
     const inGroups = new Map<string, string[]>();
     for (const g of c.groups.values()) for (const m of g.members) inGroups.set(m, [...(inGroups.get(m) ?? []), g.id]);
     const entries = new Map<string, LibraryEntry>();
+    const measured = this.speedsByOffering(userId);
     for (const o of c.offerings.values()) {
       if (o.recipe) continue;
       const ep = c.endpoints.get(o.endpointId)!;
@@ -494,6 +527,7 @@ export class Models {
         offeringId: o.id, label: labelOf(ep, o), rawName: o.modelId, endpointId: ep.id, endpointName: ep.name, kind: ep.kind, shared: ep.shared,
         status: o.status, downloaded: !!o.downloaded, capabilities: Object.fromEntries(CAPABILITIES.filter((k) => o[k] !== undefined).map((k) => [k, o[k]])) as Capabilities,
         groups: inGroups.get(o.id) ?? [], ...(id.flagged ? { flagged: id.flagged } : {}), ...(o.size ? { size: o.size } : {}),
+        ...(measured.get(o.id) ? { speed: measured.get(o.id) } : {}),
       });
       for (const g of inGroups.get(o.id) ?? []) if (!e.groups.includes(g)) e.groups.push(g);
       if (starred.has(o.id)) e.starred = true;
@@ -1515,13 +1549,39 @@ export class Models {
     });
   }
 
+  /**
+   * Adds a finished turn's counts and times to its call record (the thread's
+   * latest for the task). Never text, so a "Do not log" thread records it too.
+   */
+  recordPace(userId: string, threadId: string, pace: Omit<Pace, "tokPerSec" | "promptTokPerSec">, task: Task = "chat"): void {
+    const n = (v: number) => Math.max(0, Math.round(Number.isFinite(v) ? v : 0));
+    this.withUser(userId, (db) => db.prepare(`UPDATE model_calls SET prompt_tokens = ?, output_tokens = ?, window = ?, ttft_ms = ?, gen_ms = ?, processed = ?
+      WHERE id = (SELECT max(id) FROM model_calls WHERE thread = ? AND task = ?)`)
+      .run(n(pace.promptTokens), n(pace.outputTokens), n(pace.window), n(pace.ttftMs), n(pace.genMs), n(pace.processed), threadId, task));
+  }
+
   /** The user's recent calls, newest first. With a thread, that thread's only. */
   recentCalls(userId: string, opts: { limit?: number; threadId?: string } = {}): CallRecord[] {
     const rows = this.withUser(userId, (db) => db.prepare(`SELECT * FROM model_calls ${opts.threadId ? "WHERE thread = ?" : ""} ORDER BY id DESC LIMIT ?`)
-      .all(...(opts.threadId ? [opts.threadId] : []), opts.limit ?? 50)) as { at: string; pool: Pool; thread: string; task: Task; offering: string; label: string; endpoint: string; kind: "cloud" | "local"; fallback: string | null; note: string | null }[];
-    return rows.map((r) => ({
-      at: r.at, pool: r.pool, threadId: r.thread, task: r.task, offeringId: r.offering, label: r.label, endpointName: r.endpoint, kind: r.kind,
-      ...(r.fallback ? { fallback: r.fallback } : {}), ...(r.note ? { note: r.note } : {}),
+      .all(...(opts.threadId ? [opts.threadId] : []), opts.limit ?? 50)) as CallRow[];
+    return rows.map(toCall);
+  }
+
+  /** Each copy's median speeds over its last twenty measured calls, for this user. */
+  speedsByOffering(userId: string): Map<string, { tokPerSec?: number; promptTokPerSec?: number }> {
+    const rows = this.withUser(userId, (db) => db.prepare(`SELECT * FROM (
+      SELECT *, row_number() OVER (PARTITION BY offering ORDER BY id DESC) AS k FROM model_calls WHERE gen_ms IS NOT NULL
+    ) WHERE k <= 20`).all()) as CallRow[];
+    const by = new Map<string, Pace[]>();
+    for (const r of rows) { const p = toCall(r).pace; if (p) by.set(r.offering, [...(by.get(r.offering) ?? []), p]); }
+    const median = (xs: (number | undefined)[]) => {
+      const v = xs.filter((x): x is number => x !== undefined).sort((a, b) => a - b);
+      return v.length ? (v.length % 2 ? v[(v.length - 1) / 2]! : Math.round(((v[v.length / 2 - 1]! + v[v.length / 2]!) / 2) * 10) / 10) : undefined;
+    };
+    return new Map([...by].map(([id, ps]) => {
+      const tok = median(ps.map((p) => p.tokPerSec));
+      const prompt = median(ps.map((p) => p.promptTokPerSec));
+      return [id, { ...(tok !== undefined ? { tokPerSec: tok } : {}), ...(prompt !== undefined ? { promptTokPerSec: prompt } : {}) }];
     }));
   }
 
@@ -1749,6 +1809,7 @@ export class Models {
           shared: (endpoint, model) => (self.prepare("SELECT offering FROM legacy_refs WHERE endpoint = ? AND model = ?").get(endpoint, model) as { offering: string } | undefined)?.offering,
         });
         db.exec(MODEL_CHOICE_SCHEMA);
+        upgradeCalls(db);
         if (dropped.length) addNotice(db, [`Models that no longer existed were taken out of your lists: ${dropped.join(", ")}.`]);
       }
       this.sync(userId, db, self);
@@ -1960,3 +2021,14 @@ function copyFile(modelId: string, path: string): boolean {
   const split = /^(.*)-00001-of-(\d{5})\.gguf$/.exec(modelId);
   return !!split && new RegExp(`^${split[1]!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-\\d{5}-of-${split[2]}\\.gguf$`).test(path);
 }
+
+type CallRow = {
+  at: string; pool: Pool; thread: string; task: Task; offering: string; label: string; endpoint: string; kind: "cloud" | "local"; fallback: string | null; note: string | null;
+  prompt_tokens: number | null; output_tokens: number | null; window: number | null; ttft_ms: number | null; gen_ms: number | null; processed: number | null;
+};
+
+const toCall = (r: CallRow): CallRecord => ({
+  at: r.at, pool: r.pool, threadId: r.thread, task: r.task, offeringId: r.offering, label: r.label, endpointName: r.endpoint, kind: r.kind,
+  ...(r.fallback ? { fallback: r.fallback } : {}), ...(r.note ? { note: r.note } : {}),
+  ...(r.gen_ms !== null ? { pace: speeds({ promptTokens: r.prompt_tokens ?? 0, outputTokens: r.output_tokens ?? 0, window: r.window ?? 0, ttftMs: r.ttft_ms ?? 0, genMs: r.gen_ms, processed: r.processed ?? 0 }) } : {}),
+});

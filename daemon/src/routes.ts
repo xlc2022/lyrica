@@ -6,7 +6,7 @@ import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
 import { Sessions } from "./auth.ts";
 import { HttpError, route, type Request, type Route } from "./http.ts";
-import { OPENING } from "@lyrica/extension";
+import { OPENING, reserveFor } from "@lyrica/extension";
 import { card, type Lyricad, type Services } from "./lyricad.ts";
 import { toMessages } from "./messages.ts";
 
@@ -1071,6 +1071,19 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
   };
 }
 
+/** The thread's context: from its open session, else what its last call record measured (no breakdown). */
+function contextOf(d: Lyricad, user: User, pool: Pool, threadId: string, answered?: Api.CallInfo): { context: Api.ContextInfo } | undefined {
+  const live = d.services!.host.context(user.id, pool, threadId);
+  if (live) return { context: live };
+  const p = answered?.pace;
+  if (!p?.window) return undefined;
+  const reserve = Math.max(0, Math.min(reserveFor(p.window), p.window - p.promptTokens));
+  return { context: {
+    tokens: p.promptTokens, window: p.window, percent: Math.round((p.promptTokens / p.window) * 100), reserve,
+    free: Math.max(0, p.window - p.promptTokens - reserve), parts: [], measuredAt: answered!.at, pace: p,
+  } };
+}
+
 function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): Api.ThreadSettings {
   const { models, workspace } = d.services!;
   const ctx = models.callContext(user.id, pool, threadId);
@@ -1098,6 +1111,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     models: Object.fromEntries(THREAD_TASKS.map((task) => [task, taskModel(task)])) as Api.ThreadSettings["models"],
     profile: profileFor(ctx), profileChoice: models.threadProfile(user.id, threadId), thinking: ctx.thinking ?? "off", thinkingLevels,
     ...(answered ? { answered } : {}),
+    ...(contextOf(d, user, pool, threadId, answered) ?? {}),
     localOnly: ctx.localOnly,
     internet: tw.internet, services: tw.services, hosts: tw.hosts,
     network: workspace.network({ userId: user.id, pool, threadId }),
