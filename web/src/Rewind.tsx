@@ -158,18 +158,18 @@ export function RemovalConfirm({ plan, onConfirm, onCancel }: { plan: RemovalPla
   useDismiss(ref, true, onCancel);
   const undoable = [...plan.files.filter((f) => f.action !== "keep"), ...plan.branches];
   const kept = plan.files.filter((f) => f.action === "keep");
-  const extra = [
-    plan.pins && (plan.pins === 1 ? "1 pinned message" : `${plan.pins} pinned messages`),
-    plan.subagents && (plan.subagents === 1 ? "1 subagent" : `${plan.subagents} subagents`),
-  ].filter(Boolean);
+  const num = (n: number) => <span className="num">{n}</span>;
   return (
     <div className="confirm removal" role="group" aria-label="Remove messages" ref={ref}>
+      {/* The one sentence Remove answers; the lists' headings say the rest. */}
       <p>
-        {plan.messages === 1 ? "1 message goes" : `${plan.messages} messages go`}{extra.length ? `, with ${extra.join(" and ")}` : ""}
-        {undoable.length ? ". What they did is undone where it's ticked." : "."}
+        Remove {num(plan.messages)} {plan.messages === 1 ? "message" : "messages"}
+        {plan.subagents > 0 && <> and {num(plan.subagents)} {plan.subagents === 1 ? "subagent thread" : "subagent threads"}</>}?
+        {plan.pins > 0 && <> {num(plan.pins)} {plan.pins === 1 ? "is" : "are"} pinned.</>}
       </p>
       {undoable.length > 0 && (
         <div className="removal-list">
+          <h4 title="Untick to keep">Undone</h4>
           {plan.files.filter((f) => f.action !== "keep").map((f) => (
             <label key={f.id} className="check">
               <input type="checkbox" checked={ticked.has(f.id)} onChange={(e) => toggle(f.id, e.target.checked)} />
@@ -177,27 +177,32 @@ export function RemovalConfirm({ plan, onConfirm, onCancel }: { plan: RemovalPla
             </label>
           ))}
           {plan.branches.map((b) => (
-            <label key={b.id} className="check" title={b.commits ? "It has commits no other branch has" : undefined}>
+            <label key={b.id} className="check">
               <input type="checkbox" checked={ticked.has(b.id)} onChange={(e) => toggle(b.id, e.target.checked)} />
-              <span>Delete branch <code>{b.branch}</code> in <code>{b.repo}</code>{b.commits && <span className="muted"> · has commits</span>}</span>
+              <span>Delete branch <code>{b.branch}</code> in <code>{b.repo}</code>{b.commits && <span className="badge" title="It has commits no other branch has">has commits</span>}</span>
             </label>
           ))}
         </div>
       )}
       {kept.length > 0 && (
         <div className="removal-list">
+          <h4>Kept</h4>
           {kept.map((f) => (
-            <div key={f.id} className="kept" title={f.reason === "changed since" ? "Something else changed it since" : "This thread's files can't be reached now"}>
-              Kept <code>{f.path}</code> <span className="muted">· {f.reason}</span>
+            <div key={f.id} className="kept">
+              <code>{f.path}</code>
+              <span className="badge" title={f.reason === "changed since" ? "Something else changed it since" : "This thread's files can't be reached now"}>{f.reason}</span>
             </div>
           ))}
         </div>
       )}
       {plan.commands.length > 0 && (
-        <details className="removal-commands">
-          <summary title="What commands changed isn't tracked">{plan.commands.length === 1 ? "1 command" : `${plan.commands.length} commands`} not undone</summary>
-          {plan.commands.map((c, i) => <code key={i}>{c}</code>)}
-        </details>
+        <div className="removal-list">
+          <h4 title="What commands changed isn't tracked">Not undone</h4>
+          <details className="removal-commands">
+            <summary>{num(plan.commands.length)} {plan.commands.length === 1 ? "command" : "commands"} ▾</summary>
+            {plan.commands.map((c, i) => <code key={i}>{c}</code>)}
+          </details>
+        </div>
       )}
       <div className="row">
         <button type="button" className="danger solid" onClick={() => onConfirm([...plan.files, ...plan.branches].filter((x) => !ticked.has(x.id)).map((x) => x.id))}>Remove</button>

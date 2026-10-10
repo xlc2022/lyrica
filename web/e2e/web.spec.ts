@@ -180,7 +180,7 @@ test("removing turns that did things asks first, with what goes", async ({ page,
   await menu(1).click();
   await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
   const confirm = page.getByRole("group", { name: "Remove messages" });
-  await expect(confirm).toContainText("2 messages go, with 1 pinned message.");
+  await expect(confirm).toContainText("Remove 2 messages? 1 is pinned.");
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/removal-${page.viewportSize()!.width}.png` });
   await confirm.getByRole("button", { name: "Cancel" }).click();

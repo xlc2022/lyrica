@@ -118,9 +118,11 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   before the last turn. On the last turn, Regenerate and Edit go at once.
   Turns that did things are confirmed first: the rewind is previewed, and if
   it would undo files or branches, list commands, or take pins or subagent
-  threads, a confirmation box (as `Confirm`, fixed above the composer) lists
-  them with a checkbox each, kept files with why, and the commands under a
-  disclosure; Remove goes on with what's ticked, Cancel leaves everything. A `rewound`
+  threads, a confirmation box (fixed above the composer) asks "Remove 2
+  messages? 1 is pinned." and lists, under Undone, Kept and Not undone, the
+  undos with a checkbox each, kept files with a badge saying why, and the
+  commands behind "N commands ▾"; Remove goes on with what's ticked, Cancel
+  leaves everything. A `rewound`
   event drops the removed messages from every open view. A new branch opens,
   under "Branched from" its parent, and its settings can be changed within
   its parent's.
