@@ -265,7 +265,8 @@ interface CallContext {
 interface Need { tools?: boolean; tokens?: number }        // what the call needs from a model
 interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: ProfileName;
                        source: "thread" | "profile"; skipped: { label; reason }[]; remaining: number }
-interface CallRecord { at; pool; threadId; task; offeringId; label; endpointName; kind; fallback?; note? }
+interface Pace { promptTokens; outputTokens; window; ttftMs; genMs; processed }   // counts and times only
+interface CallRecord { at; pool; threadId; task; offeringId; label; endpointName; kind; fallback?; note?; pace?: Pace }
 interface AnswerSettings { temperature?; topP?; topK?; minP?; repeatPenalty?; presencePenalty?;
                            frequencyPenalty?; maxTokens?; seed?; stop?: string[] }
 type SettingSource = "shared" | "yours";                   // absent: the server's default
@@ -317,6 +318,7 @@ class Models {                                              // new Models(keyrin
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
   thinkingFor(resolution, asked): { level; note? }
   recordCall(userId, { pool, threadId, task, resolution, note? }, { retry? }) / recentCalls(userId, { limit?, threadId? }): CallRecord[]
+  recordPace(userId, pool, threadId, task, pace) / speedsByOffering(userId): Map<offeringId, { tokPerS?; promptTokPerS? }>   // medians over the last 20 calls
   // Hosts and pairing
   pairHost(actor, { name, addresses, code }, { shared?, endpointId? }): Promise<Endpoint>   // endpointId: pair again, IDs kept
   setHostAddresses(actor, id, addresses): Endpoint / fetchFor(endpoint): typeof fetch | undefined   // undefined for a plain endpoint
@@ -478,6 +480,7 @@ piModelFor(runtime, models, task, ctx, resolution?): { ref; model; resolution }
 prepareTurn({ session, runtime, models, call, pool, threadId, task?, thinking?, retry? }): Promise<Resolution>
 openThreadSession({ thread, models, cwd, extensions, settings? }): Promise<ThreadSession>
 interface ThreadSession { session; runtime; chat: { offeringId }; prepare(opts?: { thinking?; retry? }): Promise<Resolution>; dispose() }
+interface ContextMeter { report(): ContextInfo | undefined; contextLines(): string; pending?: { summary } }   // LyricaOptions.meter
 ```
 
 - The factory is `createLyricaExtension(thread: ThreadContext, opts:
@@ -523,6 +526,9 @@ interface ThreadSession { session; runtime; chat: { offeringId }; prepare(opts?:
     a Pi package);
   - in sleep sessions only: `write_page`, `write_journal`, `write_wake`,
     `raise` and `propose_persona` (Sleep thread; see [sleep.md](sleep.md)).
+  - `compact`, with her summary as its one argument (Models 2's context
+    work); it runs after the turn and answers Pi's `session_before_compact`
+    with the summary. It becomes an action of `threads` when that lands.
 - **Commands:** `/sleep`, and others only within the budget.
 - Lyrica's sessions **never** load project context files (`AGENTS.md`,
   `CLAUDE.md`). Her self-primer is a routed topic.
@@ -587,6 +593,9 @@ interface ThreadSession { session; runtime; chat: { offeringId }; prepare(opts?:
   [daemon.md](daemon.md). The web UI imports its types from there:
   - auth;
   - threads (list, create, hide, forget);
+  - `ThreadSettings.context` (`ContextInfo`: used, window, parts, reserve,
+    free, measured at), `CallInfo.pace`, the `context` and `compacted`
+    thread events, and a `compacted` message part (the stored notice);
   - messages (send, stream; `POST …/messages/:n/branch` → `ThreadSummary`;
     `POST …/messages/:n/rewind` with `RewindRequest` `delete`, `regenerate`
     with an optional `model`, or `edit` with `text`, `409` while a turn runs;

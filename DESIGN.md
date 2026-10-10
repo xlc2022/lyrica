@@ -246,8 +246,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     breaks. The same mechanism **merges** two endpoints that turned out to be
     the same server.
 - **Tasks.** Different tasks use different models: chat, cheap and strong
-  subagents, compaction, titles, embeddings, each sleep phase, and creating
-  and editing images.
+  subagents, titles, embeddings, each sleep phase, and creating and editing
+  images. Compaction always uses the thread's chat model (Pi has no
+  separate setting for it), so it isn't a task to pick.
 - **Profiles.** A **control panel** sets default models per task in three
   profiles:
   - **Local:** local models only. Private and local-only threads always use
@@ -394,8 +395,7 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     what answers that task right now and opens a side panel with its ordered
     list of models. A task can instead
     use another task's list (**Same as**), one level deep: by default titles
-    and compaction follow cheap subagents, and sleep follows strong
-    subagents. A task with no list of its own follows Chat, as before;
+    follow cheap subagents, and sleep follows strong subagents. A task with no list of its own follows Chat, as before;
   - two libraries, **Text models** and **Image models**, because the two
     are managed differently. The image library is described under Images.
   - a **Downloads** page, with a count while anything is downloading: the
@@ -461,11 +461,13 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     The thread's facts line shows **Context 21%**, opening a popover with
     one bar, the parts, used of window, and the last turn's speed.
   - Her turn context carries one line of numbers: context used and free,
-    tokens per second, prompt tokens per second. At 75% lyricad adds a line
-    telling her to finish the step, save what matters to memory and compact
-    with a summary; at 90%, to compact now.
-  - She compacts herself with the `compact` action of the `threads` tool,
-    giving her own summary. lyricad hands it to Pi's compaction, which cuts
+    tokens per second, prompt tokens per second. Two points before Pi's
+    own edge (90% on a 32k window and up, where its reserve is 8%) lyricad
+    adds a line telling her to compact now; fifteen points before that, to
+    finish the step, save what matters to memory and compact with a
+    summary.
+  - She compacts herself with the `compact` tool, giving her own summary
+    (it becomes an action of the `threads` tool once that lands). lyricad hands it to Pi's compaction, which cuts
     the old entries and keeps the recent ones; pinned messages stay. It
     shows as a marker, **Compacted · 41k → 6k**, expanding to the summary.
     Pi's automatic compaction stays on at the window's edge as the safety
