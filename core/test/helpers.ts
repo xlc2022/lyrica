@@ -28,13 +28,11 @@ export async function withModels() {
   const models = new Models(keyring, users);
   const cloud = await fakeOpenAI({ label: "cloud", models: [{ id: "deepseek/deepseek-4.1-flash", context_length: 128000, supported_parameters: ["tools", "temperature"] }] });
   const local = await fakeOpenAI({ label: "local", models: [{ id: "qwen3.8-27b", meta: { n_ctx: 32768 } }] });
-  models.addEndpoint(li, { name: "openrouter", kind: "cloud", baseUrl: cloud.baseUrl, apiKey: "sk-test" });
-  models.addEndpoint(li, { name: "gpu", kind: "local", baseUrl: local.baseUrl });
-  await models.discover(li, "openrouter");
-  await models.discover(li, "gpu");
-  const cloudRef = { endpointId: "openrouter", modelId: "deepseek/deepseek-4.1-flash" };
-  const localRef = { endpointId: "gpu", modelId: "qwen3.8-27b" };
+  const openrouter = models.addEndpoint(li, { name: "openrouter", kind: "cloud", baseUrl: cloud.baseUrl, apiKey: "sk-test" });
+  const gpu = models.addEndpoint(li, { name: "gpu", kind: "local", baseUrl: local.baseUrl });
+  const cloudRef = { offeringId: (await models.discover(li, openrouter.id))[0]!.id };
+  const localRef = { offeringId: (await models.discover(li, gpu.id))[0]!.id };
   const ctx = (c: Partial<CallContext> = {}): CallContext => ({ userId: li.id, pool: "general", localOnly: false, ...c });
-  return { keyring, users, li, models, cloud, local, cloudRef, localRef, ctx };
+  return { keyring, users, li, models, cloud, local, openrouter, gpu, cloudRef, localRef, ctx };
 }
 

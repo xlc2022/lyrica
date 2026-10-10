@@ -13,6 +13,8 @@ export interface Grant {
 export type PermissionMode = "auto" | "ask-changes" | "ask-commands";
 export const PERMISSION_MODES: readonly PermissionMode[] = ["auto", "ask-changes", "ask-commands"];
 const MODE_RANK: Record<PermissionMode, number> = { auto: 0, "ask-commands": 1, "ask-changes": 2 };
+/** The mode that asks about more of the two. */
+export const stricterMode = (a: PermissionMode, b: PermissionMode): PermissionMode => (MODE_RANK[a] >= MODE_RANK[b] ? a : b);
 
 /** What a thread's tools may reach on the network. */
 export interface Network {
