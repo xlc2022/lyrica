@@ -213,4 +213,18 @@ can be off, paused or busy gaming without Lyrica going dark.
 
 ## Handoff notes
 
-(The thread fills this in if it stops before it's done.)
+**Done** (PRs #30, #34, #36, #37 and the library PR, stacked in that
+order): items 1–8, 9 (the API; no UI), 9a, 9b except the host's serving
+settings, and 10.
+
+**Next:**
+- 9b's host part: read and write a host's serving settings, Reload now,
+  and take the context window from them. It needs that part of
+  `host/API.md`, which the Model host thread hasn't published yet.
+- Send `X-Lyrica-Priority: background` for sleep and cheap subagents. Pi's
+  request preparation (where hosts get their fetch) would need the task.
+- Placements and GPU settings pass through `manageHost` as the host
+  defines them; add their paths to `MANAGE` if the host names them
+  differently from `/host/v1/gpus` and `/host/v1/placements`.
+
+**Open questions:** none blocking. Decisions taken are listed in each PR.

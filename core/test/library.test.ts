@@ -1,0 +1,148 @@
+import { describe, expect, it } from "vitest";
+import { Forbidden, HostRefused, NoModel } from "../src/index.ts";
+import { fakeHost, type HostModel } from "./fake-host.ts";
+import { profile, withModels } from "./helpers.ts";
+
+const qwen = (file: string, identity: Record<string, unknown> | null, extra: Partial<HostModel> = {}): HostModel =>
+  ({ id: `lyrica/huggingface/Qwen/Qwen3-8B-GGUF/${file}`, kind: "chat", contextLength: 32768, tools: true, identity, ...extra });
+
+async function setup() {
+  const m = await withModels();
+  const bob = await m.users.createUser("bob", "pw", profile("Bob"), { admin: false });
+  await m.users.authenticate("bob", "pw");
+  const big = await fakeHost({
+    name: "blackwell", models: [
+      qwen("Qwen3-8B-Q8_0.gguf", { basename: "Qwen3", sizeLabel: "8B", finetune: null }, { downloaded: true, sha256: "aa".repeat(32) }),
+      qwen("Qwen3-8B-Abliterated-Q4_K_M.gguf", { basename: "Qwen3", sizeLabel: "8B", finetune: null }),
+      qwen("Qwen3-8B-Coder-Q4_K_M.gguf", { basename: "Qwen3", sizeLabel: "8B", finetune: "Coder" }),
+    ],
+  });
+  const small = await fakeHost({
+    name: "3090", models: [
+      qwen("Qwen3-8B-Q4_K_M.gguf", { basename: "Qwen3", sizeLabel: "8B", finetune: null }),
+      { id: "shared/lmstudio/odd-name.gguf", identity: { card: { baseModel: ["Qwen/Qwen3-8B"], baseModelRelation: "quantized" } } },
+    ],
+  });
+  const pair = async (name: string, host: Awaited<ReturnType<typeof fakeHost>>) => {
+    const ep = await m.models.pairHost(m.li, { name, addresses: [host.address], code: host.newCode() }, { shared: true });
+    await m.models.discover(m.li, ep.id);
+    return ep;
+  };
+  const bigEp = await pair("blackwell", big);
+  const smallEp = await pair("gpu3090", small);
+  const offering = (raw: string) => m.models.offerings(m.li.id, [bigEp.id, smallEp.id].find((id) => m.models.offerings(m.li.id, id).some((o) => o.modelId.endsWith(raw)))!).find((o) => o.modelId.endsWith(raw))!;
+  return { ...m, bob, big, small, bigEp, smallEp, offering };
+}
+
+describe("the text library", () => {
+  it("lists one entry per model with its copies; only quantized copies join, derived models stand apart linked to their base", async () => {
+    const s = await setup();
+    const { entries } = s.models.textLibrary(s.li.id, { search: "qwen3" });
+    const base = entries.find((e) => e.name === "qwen3-8b")!;
+    expect(base.copies.map((c) => c.rawName.split("/").at(-1)).sort()).toEqual(["Qwen3-8B-Q4_K_M.gguf", "Qwen3-8B-Q8_0.gguf", "odd-name.gguf"]);
+    expect(base.copies.find((c) => c.rawName.endsWith("Q8_0.gguf"))).toMatchObject({ downloaded: true, endpointName: "blackwell", kind: "local" });
+    const coder = entries.find((e) => e.name === "qwen3-8b-coder")!;
+    expect(coder).toMatchObject({ base: { name: "qwen3-8b" } });
+    // A finetune whose file records no finetune: never in its base's entry, flagged instead.
+    const abl = entries.find((e) => e.name === "qwen3-8b-abliterated")!;
+    expect(abl.copies[0]!.flagged).toMatch(/abliterated/);
+    expect(abl.base).toEqual({ key: "name:qwen3-8b", name: "qwen3-8b" });
+    // Nor is it suggested for the base's group.
+    const suggestions = s.models.groupSuggestions(s.li.id);
+    const ablId = s.offering("Abliterated-Q4_K_M.gguf").id;
+    expect(suggestions.some((x) => x.members.includes(ablId))).toBe(false);
+    expect(suggestions.some((x) => x.members.includes(s.offering("Qwen3-8B-Q8_0.gguf").id) && x.members.includes(s.offering("Qwen3-8B-Q4_K_M.gguf").id))).toBe(true);
+  });
+
+  it("moves a copy out with Not this model (an administrator for a shared endpoint), and searches, filters, stars and pages", async () => {
+    const s = await setup();
+    const odd = s.offering("odd-name.gguf");
+    expect(() => s.models.notThisModel(s.bob, odd.id)).toThrow(Forbidden);
+    s.models.notThisModel(s.li, odd.id);
+    expect(s.models.textLibrary(s.li.id).entries.find((e) => e.name === "qwen3-8b")!.copies).toHaveLength(2);
+    expect(s.models.textLibrary(s.li.id, { search: "odd-name" }).entries).toHaveLength(1);
+    expect(s.models.textLibrary(s.li.id, { kind: "cloud" }).entries.map((e) => e.name)).toEqual(["deepseek-4.1-flash"]);
+    expect(s.models.textLibrary(s.li.id, { endpointId: s.smallEp.id }).total).toBe(2);
+    expect(s.models.textLibrary(s.li.id, { capability: "tools" }).entries.every((e) => e.copies.some((c) => c.capabilities.tools))).toBe(true);
+    expect(s.models.textLibrary(s.li.id, { groupsOnly: true }).total).toBe(0);
+    s.models.star(s.bob.id, s.offering("Coder-Q4_K_M.gguf").id, true);
+    expect(s.models.textLibrary(s.bob.id).entries[0]).toMatchObject({ name: "qwen3-8b-coder", starred: true });
+    expect(s.models.textLibrary(s.li.id).entries[0]!.starred).toBe(false);
+    const page = s.models.textLibrary(s.li.id, { offset: 2, limit: 2 });
+    expect(page.entries).toHaveLength(2);
+    expect(page.total).toBe(s.models.textLibrary(s.li.id).total);
+  });
+});
+
+describe("hub tokens and downloads", () => {
+  it("returns only a token's last four characters, and sends it with the requests that need it", async () => {
+    const s = await setup();
+    s.models.setHubToken(s.bob, "huggingface", "hf_bobsecrettoken1234");
+    expect(() => s.models.setHubToken(s.bob, "huggingface", "hf_sharedtoken9999", { shared: true })).toThrow(Forbidden);
+    s.models.setHubToken(s.li, "modelscope", "ms_sharedtoken9999", { shared: true });
+    expect(s.models.hubTokens(s.bob.id)).toEqual([{ hub: "huggingface", shared: false, last4: "1234" }, { hub: "modelscope", shared: true, last4: "9999" }]);
+    expect(JSON.stringify(s.models.hubTokens(s.bob.id))).not.toContain("secret");
+    // Shared hosts take downloads from administrators only.
+    await expect(s.models.hubFiles(s.bob, s.bigEp.id, { source: "huggingface", repo: "Qwen/Qwen3-8B-GGUF" })).rejects.toThrow(Forbidden);
+    s.models.setHubToken(s.li, "huggingface", "hf_lisecrettoken5678");
+    await s.models.hubFiles(s.li, s.bigEp.id, { source: "huggingface", repo: "Qwen/Qwen3-8B-GGUF" });
+    await s.models.startDownload(s.li, s.bigEp.id, { source: "huggingface", repo: "Qwen/Qwen3-14B-GGUF", files: ["Qwen3-14B-Q4_K_M.gguf"] });
+    expect(s.big.tokens).toEqual(["hf_lisecrettoken5678", "hf_lisecrettoken5678"]);
+    // A finished download is read as a new offering at once.
+    const d = s.big.downloads[0]!;
+    d.state = "done";
+    s.big.models.push({ id: d.path, kind: "chat", downloaded: true, identity: { basename: "Qwen3", sizeLabel: "14B", finetune: null } });
+    await s.models.downloads(s.li, s.bigEp.id);
+    expect(s.models.offerings(s.li.id, s.bigEp.id).some((o) => o.modelId === d.path)).toBe(true);
+  });
+
+  it("deletes only a copy Lyrica downloaded, says where it's used first, and leaves every list working", async () => {
+    const s = await setup();
+    const q8 = s.offering("Qwen3-8B-Q8_0.gguf");
+    const q4 = s.offering("Qwen3-8B-Q4_K_M.gguf");
+    s.models.setProfile(s.li.id, "local", "chat", [{ offeringId: q8.id }, { offeringId: q4.id }]);
+    await expect(s.models.deleteCopy(s.bob, q8.id, { confirm: true })).rejects.toThrow(Forbidden);
+    expect(await s.models.deleteCopy(s.li, q8.id)).toEqual({ usedIn: [{ where: "profile", profile: "local", task: "chat" }] });
+    await expect(s.models.deleteCopy(s.li, q4.id, { confirm: true })).rejects.toThrow(HostRefused);
+    expect(s.small.models.some((m) => m.id === q4.modelId)).toBe(true);
+    expect((await s.models.deleteCopy(s.li, q8.id, { confirm: true })).deleted).toEqual([q8.modelId]);
+    expect(s.big.models.some((m) => m.id === q8.modelId)).toBe(false);
+    expect(s.models.resolveModel("chat", { userId: s.li.id, pool: "private", localOnly: true })).toEqual({ offeringId: q4.id });
+  });
+});
+
+describe("the image library", () => {
+  it("never resolves a proposed recipe, offers a confirmed one, and keeps parts another recipe uses when one is deleted", async () => {
+    const s = await setup();
+    s.big.parts.push({ file: "vae/ae.safetensors", role: "vae", downloaded: true }, { file: "diffusion/z.safetensors", role: "diffusion", downloaded: true }, { file: "diffusion/z2.safetensors", role: "diffusion", downloaded: true });
+    s.big.recipes.push(
+      { id: "r1", name: "Z-Image Turbo", state: "proposed", does: ["create"], parts: [{ role: "diffusion", file: "diffusion/z.safetensors" }, { role: "vae", file: "vae/ae.safetensors" }] },
+      { id: "r2", name: "Z-Image Other", state: "confirmed", does: ["create"], parts: [{ role: "diffusion", file: "diffusion/z2.safetensors" }, { role: "vae", file: "vae/ae.safetensors" }] },
+    );
+    await s.models.discover(s.li, s.bigEp.id);
+    const offered = () => s.models.offerings(s.li.id, s.bigEp.id).filter((o) => o.recipe).map((o) => o.recipe);
+    expect(offered()).toEqual(["Z-Image Other"]);
+    const lib = await s.models.imageLibrary(s.bob.id, s.bigEp.id);
+    expect(lib.recipes).toHaveLength(2);
+    expect(Object.keys(lib.parts).sort()).toEqual(["diffusion", "vae"]);
+    await expect(s.models.recipe(s.bob, s.bigEp.id, "r1", { do: "confirm" })).rejects.toThrow(Forbidden);
+    await s.models.recipe(s.li, s.bigEp.id, "r1", { do: "confirm" });
+    expect(offered().sort()).toEqual(["Z-Image Other", "Z-Image Turbo"]);
+    const turbo = s.models.offerings(s.li.id, s.bigEp.id).find((o) => o.recipe === "Z-Image Turbo")!;
+    s.models.setProfile(s.li.id, "local", "image.create", [{ offeringId: turbo.id }]);
+    expect(s.models.resolveModel("image.create", { userId: s.li.id, pool: "private", localOnly: true })).toEqual({ offeringId: turbo.id });
+    expect(await s.models.recipe(s.li, s.bigEp.id, "r1", { do: "delete" })).toEqual({ deleted: ["diffusion/z.safetensors"], kept: [{ file: "vae/ae.safetensors", reason: "Used by Z-Image Other." }] });
+    expect(() => s.models.resolveModel("image.create", { userId: s.li.id, pool: "private", localOnly: true })).toThrow(NoModel);
+  });
+});
+
+describe("host management", () => {
+  it("passes on only host management paths, and only an administrator manages a shared host", async () => {
+    const s = await setup();
+    expect(await s.models.manageHost(s.li, s.bigEp.id, "POST", "/host/v1/models/load", { model: "x" })).toEqual({ ok: true, body: { model: "x" } });
+    await expect(s.models.manageHost(s.li, s.bigEp.id, "POST", "/pair/v1", {})).rejects.toThrow(/isn't host management/);
+    await expect(s.models.manageHost(s.li, s.bigEp.id, "GET", "/host/v1/files")).rejects.toThrow(/isn't host management/);
+    await expect(s.models.manageHost(s.bob, s.bigEp.id, "POST", "/host/v1/models/unload", { model: "x" })).rejects.toThrow(Forbidden);
+    expect(s.models.hostDashboard(s.bob.id, s.bigEp.id)).toBe(`https://${s.big.address}/`);
+  });
+});

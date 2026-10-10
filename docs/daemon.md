@@ -191,7 +191,10 @@ users, so the UI renders current names and edits keep the tokens. It covers
 search, lineage, edit, restore, the four deletion levels and user-introduced
 notes and pages. The settings API covers profiles (with accent and monogram),
 display settings (in `user.db`), passwords, endpoints, model hosts (pair,
-pair again, addresses, status, pause, resume, restart), offerings, model
+pair again, addresses, status, pause, resume, restart, management,
+downloads, the image library), the text library, hub tokens (last four
+characters only), the Models page overview (`GET …/models/page`, endpoints
+with live status), offerings, model
 groups, Clean up and the models notice, the three profiles with the default
 profile and thinking level, recent calls, network
 defaults, SSH targets, and for administrators users, allowed paths, shared

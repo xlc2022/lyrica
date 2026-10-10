@@ -230,6 +230,60 @@ can't think. Pi passes it as `reasoning_effort` to OpenAI-compatible
 endpoints. Subagent roles keep their own level. Thinking text is stored with
 the thread but never made searchable.
 
+## The libraries
+
+**Text models** (`textLibrary`, `core/src/models/library.ts`): one entry per
+model, holding its copies on every endpoint, the groups they're in, and
+whether the user starred it (`star`, per user, starred first).
+
+- A copy shows its raw name: the file under a host's models folder, or the
+  endpoint's model ID; search matches raw names too. Filters: kind,
+  endpoint, capability (tools, vision, embeddings, images), groups only;
+  paged.
+- **What counts as the same model:** base name, size and finetune, from a
+  host's GGUF metadata, the hub's model card, or the model ID. Only a card's
+  `quantized` relation joins a copy to its base; a finetune, merge or
+  adapter is an entry of its own linked to its base. A copy whose file
+  records no finetune but whose name has words its model's name doesn't is
+  kept apart, flagged for a check, and never suggested for its base's group.
+- **Not this model** (`notThisModel`) moves a copy to an entry of its own;
+  an administrator decides for a shared endpoint, the owner for a personal
+  one.
+
+**Image models** (`imageLibrary`, `recipe`): a host's recipes (with
+proposals and missing parts) and parts by role, as the host reports them.
+Confirm, ignore, download missing parts, change (swap a part within its role
+and slot, LoRAs, defaults, rename), copy or delete; the host keeps every part
+another recipe uses. Only confirmed recipes become offerings (`recipe/<id>`,
+with `image` or `edit`), so a proposal never resolves; a recipe deleted here
+leaves a tombstone.
+
+## Downloads, hub tokens and deleting
+
+All through a paired host's management API (host/API.md); a shared host
+needs an administrator.
+
+- `hubFiles` lists a repository's files (present, fitting the free space);
+  `startDownload`, `downloads` and `cancelDownload` start, follow and
+  cancel. A download that finished since the last look is read as an
+  offering at once, and the group suggestions pick it up.
+- **Hub tokens** for Hugging Face and ModelScope: a user's own in `user.db`,
+  or one an administrator shares in `self.db` (`hub_tokens`). The API shows
+  only the last four characters (`hubTokens`). A token goes to the host in
+  `X-Hub-Token` with each request that needs it, the user's own before the
+  shared one, and never into a response, a log or a call record.
+- `deleteCopy` first says where a copy is used; confirmed, it deletes only
+  files in the host's download record (anything else, such as a shared
+  models folder, is refused) and leaves a tombstone, so lists skip it.
+
+## Host management
+
+`manageHost` passes on the host's own management calls (loading,
+unloading and pinning models, GPU settings and placements, scanning, usage)
+as the host defines them; other paths are refused, and a shared host needs
+an administrator. `hostDashboard` gives the dashboard's address, which has
+its own password away from the machine.
+
 ## How it answers
 
 Each offering can have saved settings: temperature, top-p, top-k, min-p,

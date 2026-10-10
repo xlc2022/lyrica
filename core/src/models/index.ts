@@ -4,14 +4,15 @@ import type { Db } from "../db.ts";
 import type { Keyring } from "../keyring.ts";
 import { TASKS, THINKING_LEVELS, type CallContext, type ModelRef, type Pool, type Task, type ThinkingLevel } from "../types.ts";
 import { Forbidden, type User, type Users } from "../users.ts";
-import { addressesOutside, discoverModels, probeUrl, type DiscoveredModel } from "./http.ts";
+import { addressesOutside, discoverModels, probeUrl, type DiscoveredModel, type ModelIdentity } from "./http.ts";
 import { hostError, hostFetch, hostOrigin, lyricaIdentity, pair } from "./host.ts";
 import { baseName } from "./identity.ts";
+import { copyIdentity } from "./library.ts";
 import { ANSWER_SETTINGS, checkSettings, type AnswerSettings, type SettingSource } from "./settings.ts";
 import { collectRefs, isList, mapMembers, refId, rewrite, type Entry, type ProfileName, type Use } from "./refs.ts";
 import { ENDPOINT_SCHEMA, migrate, MODEL_CHOICE_SCHEMA, REDIRECT_SCHEMA } from "./schema.ts";
 
-export { addressesOutside, discoverModels, probeUrl, type DiscoveredModel } from "./http.ts";
+export { addressesOutside, discoverModels, probeUrl, type DiscoveredModel, type ModelIdentity } from "./http.ts";
 export { baseName } from "./identity.ts";
 export { ANSWER_SETTINGS, payloadFields, type AnswerSettings, type SettingSource } from "./settings.ts";
 export { fingerprint, HostIdentityChanged, hostOrigin, normaliseCode, PairingFailed, pairingProofs } from "./host.ts";
@@ -87,6 +88,15 @@ export interface Offering extends Capabilities {
   missingSince?: string;
   /** The file's SHA-256, where a host reports it. */
   digest?: string;
+  /** What a host read from the file or its model card. */
+  identity?: ModelIdentity;
+  /** The host downloaded it itself, so it can be deleted. */
+  downloaded?: boolean;
+  size?: number;
+  /** An image model on a host: a confirmed recipe's name. */
+  recipe?: string;
+  /** "Not this model": kept out of the entry its name would put it in. */
+  separate?: boolean;
 }
 
 /** Offerings from different endpoints declared the same model, in preferred order. */
@@ -99,6 +109,33 @@ export interface Group {
 }
 
 export type Profiles = Partial<Record<Task, Entry>>;
+export type Hub = "huggingface" | "modelscope";
+
+/** One model in the text library, with its copies on every endpoint. */
+export interface LibraryEntry {
+  key: string;
+  name: string;
+  /** For a finetune, merge or adapter (or a copy flagged as maybe one): the model it derives from. */
+  base?: { key: string; name: string };
+  starred: boolean;
+  groups: string[];
+  copies: {
+    offeringId: string; label: string;
+    /** The file under the models folder, or the endpoint's model ID. */
+    rawName: string;
+    endpointId: string; endpointName: string; kind: "cloud" | "local"; shared: boolean;
+    status: Offering["status"];
+    /** Lyrica downloaded it, so it can be deleted. */
+    downloaded: boolean;
+    capabilities: Capabilities;
+    groups: string[];
+    flagged?: string;
+    size?: number;
+  }[];
+}
+
+/** Host management paths passed through (host/API.md). */
+const MANAGE = [/^\/host\/v1\/models\/(load|unload|pin)$/, /^\/host\/v1\/gpus(\/\d+)?$/, /^\/host\/v1\/placements(\/[^/?#]+)?$/, /^\/host\/v1\/scan$/, /^\/host\/v1\/usage$/];
 
 export interface CleanupItem {
   /** For a stale endpoint, its uses are those of all its models. */
@@ -214,7 +251,7 @@ const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
-  const caps: Capabilities & { digest?: string } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; separate?: boolean } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
   const gone = !!r.missing_since && now - Date.parse(r.missing_since) >= GONE_DAYS * DAY;
   return {
     id: r.id, endpointId: r.endpoint, modelId: r.model, manual: r.manual === 1,
@@ -222,6 +259,11 @@ const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
     status: gone ? "gone" : r.missing_since ? "missing" : "listed",
     ...(r.missing_since ? { missingSince: r.missing_since } : {}),
     ...(typeof caps.digest === "string" ? { digest: caps.digest } : {}),
+    ...(caps.identity ? { identity: caps.identity } : {}),
+    ...(caps.downloaded !== undefined ? { downloaded: caps.downloaded } : {}),
+    ...(caps.size ? { size: caps.size } : {}),
+    ...(caps.recipe ? { recipe: caps.recipe } : {}),
+    ...(caps.separate ? { separate: true } : {}),
   };
 };
 const toGroup = (r: GroupRow, shared: boolean): Group => ({ id: r.id, name: r.name, shared, members: JSON.parse(r.members) });
@@ -253,6 +295,8 @@ export class Models {
   private readonly health = new Map<string, { up: boolean; at: number }>();
   /** Each host's pinned fetch, by endpoint, key and addresses. */
   private readonly fetches = new Map<string, typeof fetch>();
+  /** Finished downloads already read as offerings, by host and download ID. */
+  private readonly discovered = new Set<string>();
 
   constructor(private readonly keyring: Keyring, private readonly users: Users) {}
 
@@ -425,6 +469,215 @@ export class Models {
     return warning ? { state, warning } : { state };
   }
 
+  // --- The text model library ---
+
+  /**
+   * The text library: one entry per model with its copies on every endpoint,
+   * the groups they're in, and whether the user starred it. Search matches
+   * names and raw names; filters by kind, endpoint, capability, groups only.
+   * Starred entries come first. Image recipes are in the image library.
+   */
+  textLibrary(userId: string, q: { search?: string; kind?: "cloud" | "local"; endpointId?: string; capability?: "tools" | "vision" | "embedding" | "image"; groupsOnly?: boolean; offset?: number; limit?: number } = {}): { total: number; entries: LibraryEntry[] } {
+    const c = this.catalog(userId);
+    const starred = this.withUser(userId, (db) => new Set((db.prepare("SELECT offering FROM starred_offerings").all() as { offering: string }[]).map((r) => r.offering)));
+    const inGroups = new Map<string, string[]>();
+    for (const g of c.groups.values()) for (const m of g.members) inGroups.set(m, [...(inGroups.get(m) ?? []), g.id]);
+    const entries = new Map<string, LibraryEntry>();
+    for (const o of c.offerings.values()) {
+      if (o.recipe) continue;
+      const ep = c.endpoints.get(o.endpointId)!;
+      const id = copyIdentity(o);
+      const e = entries.get(id.key) ?? { key: id.key, name: id.name, ...(id.base ? { base: id.base } : {}), starred: false, copies: [], groups: [] };
+      e.copies.push({
+        offeringId: o.id, label: labelOf(ep, o), rawName: o.modelId, endpointId: ep.id, endpointName: ep.name, kind: ep.kind, shared: ep.shared,
+        status: o.status, downloaded: !!o.downloaded, capabilities: Object.fromEntries(CAPABILITIES.filter((k) => o[k] !== undefined).map((k) => [k, o[k]])) as Capabilities,
+        groups: inGroups.get(o.id) ?? [], ...(id.flagged ? { flagged: id.flagged } : {}), ...(o.size ? { size: o.size } : {}),
+      });
+      for (const g of inGroups.get(o.id) ?? []) if (!e.groups.includes(g)) e.groups.push(g);
+      if (starred.has(o.id)) e.starred = true;
+      entries.set(id.key, e);
+    }
+    const needle = q.search?.toLowerCase().trim();
+    const list = [...entries.values()].filter((e) => {
+      if (needle && !e.name.includes(needle) && !e.copies.some((x) => x.rawName.toLowerCase().includes(needle) || x.label.toLowerCase().includes(needle))) return false;
+      if (q.kind && !e.copies.some((x) => x.kind === q.kind)) return false;
+      if (q.endpointId && !e.copies.some((x) => x.endpointId === q.endpointId)) return false;
+      if (q.capability && !e.copies.some((x) => x.capabilities[q.capability!])) return false;
+      if (q.groupsOnly && !e.groups.length) return false;
+      return true;
+    }).sort((a, b) => Number(b.starred) - Number(a.starred) || a.name.localeCompare(b.name));
+    const offset = Math.max(0, q.offset ?? 0);
+    return { total: list.length, entries: list.slice(offset, offset + Math.min(200, Math.max(1, q.limit ?? 50))) };
+  }
+
+  /** Stars (or unstars) a model for this user; pickers show starred models first. */
+  star(userId: string, offeringId: string, on: boolean): void {
+    if (!this.offering(userId, offeringId)) throw new NoModel(`no model ${offeringId}`);
+    this.withUser(userId, (db) => {
+      if (on) db.prepare("INSERT OR IGNORE INTO starred_offerings (offering) VALUES (?)").run(offeringId);
+      else db.prepare("DELETE FROM starred_offerings WHERE offering = ?").run(offeringId);
+    });
+  }
+
+  /**
+   * "Not this model": moves a copy to an entry of its own (or back, with
+   * false). An administrator decides for a shared endpoint, its owner for a
+   * personal one.
+   */
+  notThisModel(actor: User, offeringId: string, separate = true): void {
+    const o = this.offering(actor.id, offeringId);
+    if (!o) throw new NoModel(`no model ${offeringId}`);
+    this.write(actor, o.endpoint.id, (db) => {
+      const row = db.prepare("SELECT hand FROM offerings WHERE id = ?").get(offeringId) as { hand: string };
+      const hand = JSON.parse(row.hand) as Record<string, unknown>;
+      if (separate) hand.separate = true; else delete hand.separate;
+      db.prepare("UPDATE offerings SET hand = ? WHERE id = ?").run(JSON.stringify(hand), offeringId);
+    });
+  }
+
+  // --- Hub tokens ---
+
+  /** The hub tokens this user can use, as the last four characters only: their own, and a shared one an administrator saved. */
+  hubTokens(userId: string): { hub: Hub; shared: boolean; last4: string }[] {
+    const read = (db: Db, shared: boolean) => (db.prepare("SELECT hub, token FROM hub_tokens ORDER BY hub").all() as { hub: Hub; token: string }[])
+      .map((r) => ({ hub: r.hub, shared, last4: r.token.slice(-4) }));
+    return [...this.withUser(userId, (db) => read(db, false)), ...read(this.self(), true)];
+  }
+
+  /** Saves or replaces a token for Hugging Face or ModelScope: the user's own, or (administrators) one shared with every user. */
+  setHubToken(actor: User, hub: Hub, token: string, opts: { shared?: boolean } = {}): void {
+    if (hub !== "huggingface" && hub !== "modelscope") throw new Error("tokens are for huggingface or modelscope");
+    const t = String(token ?? "").trim();
+    if (t.length < 8 || /\s/.test(t)) throw new Error("that doesn't look like an access token");
+    this.place(actor, !!opts.shared, (db) => db.prepare("INSERT OR REPLACE INTO hub_tokens (hub, token) VALUES (?, ?)").run(hub, t));
+  }
+
+  removeHubToken(actor: User, hub: Hub, opts: { shared?: boolean } = {}): void {
+    this.place(actor, !!opts.shared, (db) => db.prepare("DELETE FROM hub_tokens WHERE hub = ?").run(hub));
+  }
+
+  /** The token sent with a request to `hub`: the user's own, else the shared one. Never returned by the API. */
+  private tokenFor(userId: string, hub: string): string | undefined {
+    const sql = "SELECT token FROM hub_tokens WHERE hub = ?";
+    return (this.withUser(userId, (db) => db.prepare(sql).get(hub)) as { token: string } | undefined)?.token
+      ?? (this.self().prepare(sql).get(hub) as { token: string } | undefined)?.token;
+  }
+
+  // --- Downloads, deleting, and the image library, through a host's management API ---
+
+  /** A repository's files on a host: which are there already and which are too big for its free space. */
+  async hubFiles(actor: User, hostId: string, q: { source: Hub; repo: string; revision?: string }): Promise<unknown> {
+    const ep = this.manageable(actor, hostId);
+    const params = new URLSearchParams({ source: q.source, repo: q.repo, ...(q.revision ? { revision: q.revision } : {}) });
+    return this.hostCall(ep, "GET", `/host/v1/hub/files?${params}`, undefined, this.hubHeader(actor.id, q.source));
+  }
+
+  /** Starts downloads on a host (host/API.md): files from a repository, or one https link. */
+  async startDownload(actor: User, hostId: string, body: { source: Hub; repo: string; revision?: string; files: string[] } | { source: "url"; url: string; sha256?: string }): Promise<unknown> {
+    const ep = this.manageable(actor, hostId);
+    return this.hostCall(ep, "POST", "/host/v1/downloads", body, body.source === "url" ? undefined : this.hubHeader(actor.id, body.source));
+  }
+
+  /**
+   * A host's downloads. A download that finished since the last look is read
+   * as a new offering at once, and the group suggestions pick it up.
+   */
+  async downloads(actor: User, hostId: string): Promise<{ downloads: { id: string; state: string }[] }> {
+    const ep = this.manageable(actor, hostId);
+    const list = (await this.hostCall(ep, "GET", "/host/v1/downloads")) as { downloads?: { id: string; state: string }[] } | { id: string; state: string }[];
+    const downloads = Array.isArray(list) ? list : list.downloads ?? [];
+    const fresh = downloads.filter((d) => d.state === "done" && !this.discovered.has(`${hostId}/${d.id}`));
+    if (fresh.length) {
+      await this.discover(actor, hostId);
+      for (const d of fresh) this.discovered.add(`${hostId}/${d.id}`);
+    }
+    return { downloads };
+  }
+
+  /** Cancels an unfinished download (its partial file goes), or clears a finished one from the list. */
+  async cancelDownload(actor: User, hostId: string, downloadId: string): Promise<unknown> {
+    return this.hostCall(this.manageable(actor, hostId), "DELETE", `/host/v1/downloads/${encodeURIComponent(downloadId)}`);
+  }
+
+  /**
+   * Deletes a copy Lyrica downloaded, from its host. Without `confirm`, it
+   * only says where the copy is used. Only files in the host's download
+   * record go; anything else (a shared models folder) is refused. The
+   * offering leaves a tombstone, so every list skips it.
+   */
+  async deleteCopy(actor: User, offeringId: string, opts: { confirm?: boolean } = {}): Promise<{ usedIn: Use[]; deleted?: string[] }> {
+    const o = this.offering(actor.id, offeringId);
+    if (!o) throw new NoModel(`no model ${offeringId}`);
+    const ep = this.manageable(actor, o.endpoint.id);
+    const usedIn = [...(this.uses(actor.id).get(offeringId) ?? []), ...(collectRefs(this.self()).get(offeringId) ?? [])];
+    if (!opts.confirm) return { usedIn };
+    const record = (await this.hostCall(ep, "GET", "/host/v1/files")) as { path: string }[] | { files?: { path: string }[] };
+    const files = (Array.isArray(record) ? record : record.files ?? []).map((f) => f.path)
+      .filter((p) => p === o.offering.modelId || p.startsWith(`${o.offering.modelId}/`));
+    if (!files.length) throw new HostRefused("refused", "Only files Lyrica downloaded can be deleted.");
+    for (const path of files) await this.hostCall(ep, "DELETE", `/host/v1/files?${new URLSearchParams({ path })}`);
+    this.removeOffering(actor, offeringId);
+    return { usedIn, deleted: files };
+  }
+
+  /** A host's image library: its recipes (with proposals and missing parts) and its parts by role. */
+  async imageLibrary(userId: string, hostId: string): Promise<{ recipes: unknown[]; parts: Record<string, unknown[]> }> {
+    const ep = this.needHost(userId, hostId);
+    const recipes = (await this.hostCall(ep, "GET", "/host/v1/recipes")) as unknown[];
+    const parts = (await this.hostCall(ep, "GET", "/host/v1/parts")) as { role?: string }[];
+    const byRole: Record<string, unknown[]> = {};
+    for (const p of parts) (byRole[p.role ?? "unknown"] ??= []).push(p);
+    return { recipes, parts: byRole };
+  }
+
+  /**
+   * Changes a host's image library: confirm or ignore a proposal, download
+   * its missing parts, change it (swap a part within its role and slot, add
+   * or remove a LoRA, defaults, rename), copy it, or delete it, which keeps
+   * every part another recipe uses. A shared host needs an administrator.
+   * Confirmed recipes become image offerings at once.
+   */
+  async recipe(actor: User, hostId: string, recipeId: string, action: { do: "confirm" | "ignore" | "download-parts" | "delete" } | { do: "change"; change: Record<string, unknown> } | { do: "copy"; name: string }): Promise<unknown> {
+    const ep = this.manageable(actor, hostId);
+    const path = `/host/v1/recipes/${encodeURIComponent(recipeId)}`;
+    const result = action.do === "delete" ? await this.hostCall(ep, "DELETE", path)
+      : action.do === "change" ? await this.hostCall(ep, "PATCH", path, action.change)
+        : action.do === "copy" ? await this.hostCall(ep, "POST", `${path}/copy`, { name: action.name })
+          : await this.hostCall(ep, "POST", `${path}/${action.do}`);
+    // A recipe deleted here leaves a tombstone, like a deleted copy, so lists skip it at once.
+    const gone = action.do === "delete" ? this.offerings(actor.id, hostId).find((o) => o.modelId === `recipe/${recipeId}`) : undefined;
+    if (gone) this.removeOffering(actor, gone.id);
+    await this.discover(actor, hostId).catch(() => {});
+    return result;
+  }
+
+  /**
+   * Host management passed through as the host defines it: loading,
+   * unloading and pinning models, GPU settings and placements, scanning.
+   * Only these paths; a shared host needs an administrator.
+   */
+  async manageHost(actor: User, hostId: string, method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<unknown> {
+    if (!MANAGE.some((re) => re.test(path))) throw new Error(`${path} isn't host management Lyrica passes on`);
+    return this.hostCall(this.manageable(actor, hostId), method, path, body);
+  }
+
+  /** A host's dashboard, opened directly (it has its own password away from the machine). */
+  hostDashboard(userId: string, hostId: string): string {
+    return `${hostOrigin(this.needHost(userId, hostId).addresses![0]!)}/`;
+  }
+
+  /** A host the actor may manage: any they can see, but a shared one only as an administrator. */
+  private manageable(actor: User, hostId: string): Endpoint {
+    const ep = this.needHost(actor.id, hostId);
+    if (ep.shared && !this.users.get(actor.id)?.admin) throw new Forbidden("only an administrator can manage a shared model host");
+    return ep;
+  }
+
+  private hubHeader(userId: string, hub: string): Record<string, string> | undefined {
+    const token = this.tokenFor(userId, hub);
+    return token ? { "x-hub-token": token } : undefined;
+  }
+
   // --- How it answers ---
 
   /**
@@ -556,10 +809,11 @@ export class Models {
   }
 
   /** One call to a host's API, with its error as a plain reason. */
-  private async hostCall(ep: Endpoint, method: string, path: string, body?: unknown): Promise<unknown> {
+  private async hostCall(ep: Endpoint, method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<unknown> {
     const res = await this.fetchFor(ep)!(`${hostOrigin(ep.addresses![0]!)}${path}`, {
       method, signal: AbortSignal.timeout(30_000),
-      ...(body === undefined ? {} : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+      headers: { ...(body === undefined ? {} : { "content-type": "application/json" }), ...headers },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     const err = await hostError(res);
     if (err) throw new HostRefused(err.code, err.message);
@@ -580,9 +834,17 @@ export class Models {
 
   /** A host's text models, from its library (host/API.md "Models"). */
   private async hostModels(ep: Endpoint): Promise<DiscoveredModel[]> {
-    const list = (await this.hostCall(ep, "GET", "/host/v1/models")) as { id: string; kind?: string; sha256?: string | null; contextLength?: number | null; capabilities?: { tools?: boolean; vision?: boolean; embedding?: boolean; reasoning?: string[] | null } }[];
+    const list = (await this.hostCall(ep, "GET", "/host/v1/models")) as {
+      id: string; kind?: string; sha256?: string | null; contextLength?: number | null; size?: number; downloaded?: boolean; identity?: ModelIdentity | null;
+      capabilities?: { tools?: boolean; vision?: boolean; embedding?: boolean; reasoning?: string[] | null };
+    }[];
     if (!Array.isArray(list)) throw new Error(`${ep.name} didn't return a model list`);
-    return list.filter((m) => typeof m?.id === "string" && m.kind !== "image").map((m) => {
+    // Image models are recipes: only confirmed ones become offerings, so a proposal never resolves.
+    const recipes = ((await this.hostCall(ep, "GET", "/host/v1/recipes?state=confirmed").catch(() => [])) as { id: string; name: string; state: string; does?: string[] }[])
+      .filter((r) => r?.state === "confirmed").map((r) => ({
+        modelId: `recipe/${r.id}`, recipe: r.name, ...(r.does?.includes("create") ? { image: true } : {}), ...(r.does?.includes("edit") ? { edit: true } : {}),
+      } as DiscoveredModel));
+    return [...list.filter((m) => typeof m?.id === "string" && m.kind !== "image").map((m) => {
       const levels = (m.capabilities?.reasoning ?? []).filter((l) => l !== "off");
       // A thinking switch in the chat template is on or off: one level.
       const reasoning = levels.filter((l): l is "low" | "medium" | "high" => ["low", "medium", "high"].includes(l));
@@ -594,8 +856,11 @@ export class Models {
         ...(m.capabilities?.embedding || m.kind === "embedding" ? { embedding: true } : {}),
         ...(levels.length ? { reasoning: reasoning.length ? reasoning : ["medium"] as "medium"[] } : {}),
         ...(m.sha256 ? { digest: m.sha256 } : {}),
+        ...(m.identity ? { identity: m.identity } : {}),
+        ...(m.downloaded !== undefined ? { downloaded: !!m.downloaded } : {}),
+        ...(m.size ? { size: m.size } : {}),
       } as DiscoveredModel;
-    });
+    }), ...recipes];
   }
 
   /** A call to the endpoint failed to connect or was refused as away: the router skips it for HEALTH_MS. */
@@ -712,13 +977,15 @@ export class Models {
         by.set(b, [...(by.get(b) ?? []), o]);
       }
       for (const list of by.values()) {
-        const one = [...new Map(list.map((o) => [o.endpointId, o])).values()];
+        // One copy per endpoint: the first.
+        const one = list.filter((o, i) => list.findIndex((x) => x.endpointId === o.endpointId) === i);
         const ids = one.map((o) => o.id);
         if (one.length > 1 && !covered(ids) && !out.some((s) => ids.every((id) => s.members.includes(id)))) out.push({ name: baseName(one[0]!.modelId), members: ids, strength });
       }
     };
     bucket((o) => o.digest, "strong");
-    bucket((o) => baseName(o.modelId), "weak");
+    // Same entry in the library, never a flagged or separated copy: a finetune is never suggested for its base's group.
+    bucket((o) => { const id = copyIdentity(o); return id.flagged || id.key.startsWith("copy:") ? undefined : id.key; }, "weak");
     return out;
   }
 

@@ -145,6 +145,9 @@ export async function hostError(res: Response): Promise<{ code: string; message:
   return undefined;
 }
 
+/** A socket closed under a request: a kept-alive connection the other side had already closed. */
+const reset = (e: unknown) => /ECONNRESET|UND_ERR_SOCKET|other side closed|socket hang up/i.test(`${(e as Error)?.message} ${((e as Error)?.cause as { code?: string; message?: string } | undefined)?.code ?? ""} ${((e as Error)?.cause as Error | undefined)?.message ?? ""}`);
+
 /** Codes after which another model should answer for a while. */
 const AWAY = new Set(["paused", "busy", "restarting", "unavailable", "unpaired"]);
 
@@ -160,21 +163,27 @@ export function hostFetch(id: Identity, host: { addresses: string[]; pin: string
   return (async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     let last: unknown;
+    const method = (init?.method ?? "GET").toUpperCase();
+    // A kept-alive connection the host already closed fails before any answer; a GET is safe to send again on a fresh one.
+    const attempts = method === "GET" || method === "HEAD" ? 2 : 1;
     for (const origin of origins) {
-      try {
-        // undici's own fetch, so the dispatcher and the fetch are the same version.
-        const res = (await undiciFetch(new URL(url.pathname + url.search, origin), { ...(init as object), dispatcher })) as unknown as Response;
-        const err = await hostError(res);
-        if (err && AWAY.has(err.code)) away(err.message);
-        return res;
-      } catch (e) {
-        if ((e as Error).cause instanceof HostIdentityChanged || e instanceof HostIdentityChanged) {
-          const message = new HostIdentityChanged().message;
-          away(message);
-          return new Response(JSON.stringify({ error: { code: "identity_changed", message } }), { status: 502, headers: { "content-type": "application/json" } });
+      for (let attempt = 0; attempt < attempts; attempt++) {
+        try {
+          // undici's own fetch, so the dispatcher and the fetch are the same version.
+          const res = (await undiciFetch(new URL(url.pathname + url.search, origin), { ...(init as object), dispatcher })) as unknown as Response;
+          const err = await hostError(res);
+          if (err && AWAY.has(err.code)) away(err.message);
+          return res;
+        } catch (e) {
+          if ((e as Error).cause instanceof HostIdentityChanged || e instanceof HostIdentityChanged) {
+            const message = new HostIdentityChanged().message;
+            away(message);
+            return new Response(JSON.stringify({ error: { code: "identity_changed", message } }), { status: 502, headers: { "content-type": "application/json" } });
+          }
+          if ((e as Error).name === "AbortError") throw e;
+          last = e;
+          if (!reset(e)) break;
         }
-        if ((e as Error).name === "AbortError") throw e;
-        last = e;
       }
     }
     away("it can't be reached");
