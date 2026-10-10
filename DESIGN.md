@@ -111,8 +111,9 @@ Each user has two pools of memory.
     phone), with a letter shortcut for each item: Pin (P), Mark as unread
     (U), Rename (R), **Share with ›** (S), **Move to group ›** (M), Hide (H)
     and Delete (D); **Make project** (K) on a top-level thread, and
-    **Resolve** or **Reopen** (E) on a project's thread. Delete confirms, says that what Lyrica learned from the
-    thread is forgotten, and offers to delete its child threads too.
+    **Resolve** or **Reopen** (E) on a project's thread. Delete confirms,
+    says that what Lyrica learned from the thread is forgotten, and offers
+    to delete its child threads too.
   - **Share with** sends another user a copy of the thread as it is now.
     They add it to their General or Private threads, or decline. The
     sender's later messages aren't shared, and none of the sender's
@@ -880,13 +881,19 @@ the work and keeps track of. Agreed 2026-10-10; not built yet. The briefs are
 - **Threads hang off messages.** Each thread is anchored to the message in
   the project chat that started it: her reply, or a message Li picks with
   **Start a thread**. A branch of the project chat is a thread of the
-  project, anchored where it branched.
+  project, anchored where it branched. A branch of one of the project's
+  threads is also a thread of the project, beside its source rather than
+  under it (its parent is the project chat, its anchor the source's), so
+  depth stays 1.
 - **Threads talk to each other.** Besides parent and child, any thread of a
   project can message any other thread of the same project. The message is
   that thread's next turn, marked as from the sender (a mark only `lyricad`
   writes), and shows there, so every exchange can be read where it landed.
   At most 3 such messages per turn, and waking an idle thread counts against
-  the at-once limit.
+  the at-once limit. Such a message follows the same rule as a child's
+  update to its parent: local-only covers a thread's own model calls, so a
+  local-only thread's message can reach a thread that uses cloud models,
+  within the one pool.
 - **States:** Working; **Waiting on you** (an approval, an update that asks
   Li something, or a failed turn); Queued (started past the at-once limit,
   which stays 2 per user; it waits its turn instead of being refused); Idle;

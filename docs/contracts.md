@@ -238,7 +238,11 @@ only; a child or subagent is refused, and there is no way back);
 `Thread.project` and `Thread.goal` (Li's text, so in the pool with the
 title); `pageForProject(threadId)` → the page `p:project-<id>`, whose
 instructions part is User introduced; `projectNotes(threadId, since)`: notes
-that cite an entry of the project chat or one of its threads. `forgetThread`
+that cite an entry of the project chat or one of its threads. `branchThread`
+of a project's thread makes a thread of the same project (`child`, parent
+the project chat, anchored at the source's anchor), so depth stays 1; a
+branch of the project chat is a project thread anchored where it branched.
+`forgetThread`
 on a project with `children` also forgets the project page and the notes
 that came only from it. `sleepMaterial` marks each thread's project.
 

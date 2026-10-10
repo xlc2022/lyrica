@@ -37,6 +37,8 @@ local-only, "Do not log" and workspace settings are inherited as today.
    waiting (approval, `needsYou`, or a failed turn), queued, idle, resolved.
    Past the at-once limit (2 per user, unchanged) a project's `start`
    queues the thread and it starts when a slot frees, in order.
+   A branch of the project chat or of a project's thread is a thread of the
+   project (parent the project chat), never a thread under a thread.
    Resolve and reopen from the tool, the API, and by a message in the thread;
    the nightly tick resolves threads idle for 7 days.
 3. **The `threads` tool** gains, in a project: `message({ to: "parent",
@@ -92,6 +94,8 @@ local-only, "Do not log" and workspace settings are inherited as today.
   - a sibling message reaches only a thread of the same project, can't be
     sent by a user, and stops at 3 per turn;
   - a start past the limit queues and runs when a slot frees;
+  - a branch of a project's thread is a thread of the project, beside its
+    source;
   - anchors survive a rewind of later turns, and a rewind that removes the
     anchor leaves the thread, unanchored;
   - resolve, reopen and the 7-day auto-resolve; Paused refuses messages;
