@@ -32,8 +32,9 @@ own settings, not behind a hop).
    changed; `lyricad`'s validation reason is shown in place of the estimate
    line, as the drawer does.
 3. **The Thread settings link stays** for network, local-only and the other
-   task models. Its tooltip, if it has one, no longer lists folders and
-   machines.
+   task models. Its tooltip in `web/src/Project.tsx` becomes "Network,
+   local-only and the other task models, in the chat's drawer." (UI
+   review's wording), and docs/ux.md's Project settings row says the same.
 4. **Inheritance is unchanged and is the point:** every thread the project
    starts gets these folders and machines or fewer (`inheritSettings`), and
    removing one here removes it from the project's threads at once. Nothing
