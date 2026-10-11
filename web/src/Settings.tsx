@@ -263,6 +263,8 @@ export function Folders({ grants, allowed, onChange }: { grants: Grant[]; allowe
   const listId = useId();
   const [draft, setDraft] = useState("");
   const set = (i: number, g: Grant | null) => onChange(grants.flatMap((x, j) => (j === i ? (g ? [g] : []) : [x])));
+  // The first allowed folder not yet granted, so the hint never invites a second grant of one.
+  const next = allowed.find((p) => !grants.some((g) => g.path === p)) ?? "";
   const add = () => { if (draft) { onChange([...grants, { path: draft, writable: false }]); setDraft(""); } };
   return (
     <>
@@ -280,7 +282,7 @@ export function Folders({ grants, allowed, onChange }: { grants: Grant[]; allowe
       {allowed.length > 0 ? (
         // Not a form of its own: on the Project settings page it sits inside the page's form.
         <div className="inline">
-          <input aria-label="Add a folder" list={listId} placeholder={allowed[0]} value={draft} onChange={(e) => setDraft(e.target.value)}
+          <input aria-label="Add a folder" list={listId} placeholder={next} value={draft} onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} />
           <datalist id={listId}>{allowed.map((p) => <option key={p} value={p} />)}</datalist>
           <button type="button" disabled={!draft} onClick={add}>Add</button>
