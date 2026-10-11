@@ -158,7 +158,7 @@ fills the recipe's template in `workflows/` (one per architecture).
     `speech/lock.sh` remakes them), so nothing is fetched at run time.
 - **Starters**, pinned to the revisions that were benchmarked. Download
   them on the dashboard or with `POST /host/v1/downloads`:
-  - her voice: `onnx-community/Kokoro-82M-v1.1-zh-ONNX` at
+  - the proposed voice: `onnx-community/Kokoro-82M-v1.1-zh-ONNX` at
     `6cc0f0d2ebe369a68b0df87c2b65c1af8c0ac3e3`: `onnx/model.onnx`,
     `config.json`, `tokenizer.json`, `tokenizer_config.json` and every
     `voices/*.bin` (about 330 MB with all 103 voices);
