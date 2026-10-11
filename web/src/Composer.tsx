@@ -11,6 +11,11 @@ import { MicButton, stopReading, useDictation } from "./Voice.tsx";
 
 interface Upload { id: number; name: string; progress: number; error?: string }
 
+/** Paths the Files panel attaches to a thread's message box. */
+export interface AttachRequest { base: string; paths: string[]; handled?: boolean }
+export const ATTACH_EVENT = "lyrica:attach";
+export const ATTACH_KEY = "lyrica.attach";
+
 export function Composer({ base, busy, restored, onSend, onStop, settings, machines, onSettings, onError }: {
   base: string; busy: boolean; onSend: (text: string) => Promise<boolean>; onStop: () => void;
   /** Text handed back, such as follow-ups that Stop dropped. */
@@ -30,6 +35,30 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
   const nextId = useRef(0);
 
   useEffect(() => { if (restored) setDraft((d) => (d ? `${restored}\n\n${d}` : restored)); }, [restored]);
+
+  // Attach from the Files panel: its paths go in on their own lines, as an upload's does. Chosen on the
+  // Files page on a phone, they wait in session storage for this thread's box.
+  const addPaths = useCallback((paths: string[]) => {
+    setDraft((d) => (d && !d.endsWith("\n") ? `${d}\n` : d) + paths.map((p) => `${p}\n`).join(""));
+    area.current?.focus();
+  }, []);
+  useEffect(() => {
+    const on = (e: Event) => {
+      const { detail } = e as CustomEvent<AttachRequest>;
+      if (detail.base !== base) return;
+      detail.handled = true;
+      addPaths(detail.paths);
+    };
+    addEventListener(ATTACH_EVENT, on);
+    try {
+      const kept = sessionStorage.getItem(ATTACH_KEY);
+      if (kept) {
+        const req = JSON.parse(kept) as AttachRequest;
+        if (req.base === base) { sessionStorage.removeItem(ATTACH_KEY); addPaths(req.paths); }
+      }
+    } catch { /* nothing kept */ }
+    return () => removeEventListener(ATTACH_EVENT, on);
+  }, [base, addPaths]);
 
   // Dictated text goes in at the caret, with a space on each side where it meets other text.
   const insert = useCallback((text: string) => {

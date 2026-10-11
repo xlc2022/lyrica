@@ -94,6 +94,23 @@ A thread's address may carry what the panel beside it shows:
   it, and focus lands on its heading each time it shows something else. The
   panel is `role="complementary"` named by its breadcrumb. Below 1180 px the
   same address shows the panel's page on its own.
+- **The Files panel** (`Files.tsx`, docs/ux.md §6): **Files** in a thread's
+  header is a link to `…/t/<pool>/<thread>/files`, which the split view opens
+  in the panel column (and the same link closes it); below 1180 px, or on a
+  phone, it is the page. Files lists one folder at a time from
+  `GET …/files?dir=` (docs/daemon.md "Files"), the thread folder open at the
+  start and each grant after it; a search runs under every root; a file
+  fetches `…/files/content` once and shows images as themselves, text (up to
+  512 KB) as text, and anything else by its size with Download. Images lists
+  `…/files/images`, filtered by source, and opens one large in a dialog.
+  The right-click menu (a long press, or the ⋯ beside a shown file) attaches
+  (the path goes into this thread's message box through a window event, or
+  waits in session storage when the page has no box), selects, shows,
+  downloads (one file by its address, several as `…/files/zip`), copies
+  paths, renames and deletes (a confirm dialog), uploads and makes folders;
+  dropping files on the panel uploads them to the folder last opened. After a
+  change the folders it touched are reloaded. No thumbnails: the grid shows
+  the image itself.
 - **Project settings page** (`…/p/<pool>/<project>/general` or `/memory`),
   sections at the left. **General**: Goal, the Paused and **Watching
   threads** switches (`watchThreads`; the tooltip says what a look does), **New
