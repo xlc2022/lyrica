@@ -134,6 +134,8 @@ describe("delegate", () => {
     let most = 0;
     s.cloud.respond(async (r) => {
       most = Math.max(most, ++working);
+      // Waits for a second call to arrive (or a second to pass), so a slow runner still sees them overlap.
+      for (let t = 0; t < 100 && working < 2; t++) await sleep(10);
       await sleep(30);
       working--;
       return { text: `done: ${told(r)}` };
