@@ -966,7 +966,10 @@ web part and sleep's project page are not yet. The briefs are
   notes and no page from sleep; its instructions still apply.
 - **Files.** The project chat's folder is the project folder, granted to
   each of its threads (read-only to a read-only thread), shown in each
-  thread's Files panel as a root named after the project. Two threads may
+  thread's Files panel as a root named after the project. A folder or
+  machine taken off the project chat leaves its running threads at once
+  (decided 2026-10-11; folders in
+  [briefs/folder-narrowing.md](docs/briefs/folder-narrowing.md)). Two threads may
   write one file; her guidance is a subfolder per thread for its outputs.
 - **What Li sees:**
   - In the sidebar a project is a thread row with a project icon, its

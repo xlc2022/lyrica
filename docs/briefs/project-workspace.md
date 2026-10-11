@@ -47,18 +47,18 @@ own settings, not behind a hop).
    holds a removed folder has its next command or Files call fail with
    "isn't in the parent thread's folders" until its own folders are
    narrowed. Describe that as it is in docs/web.md; don't change it here.
-   Whether the build should narrow the children's folders too is an open
-   question for Li (below).
+   Folder narrowing ([folder-narrowing.md](folder-narrowing.md)) fixes it
+   separately.
 5. **Docs:** docs/web.md ("Project settings page"), docs/ux.md (the Project
    settings row already names the two rows after this brief's docs PR),
    DESIGN.md's Project settings bullet (same).
 
-## Open question for Li
+## Decided
 
-When a folder is taken off a project, should its running threads lose it at
-once (their grants narrowed, as machines already are), rather than failing
-until someone narrows them by hand? *Recommended: yes, as a separate small
-change in `core/workspace`, not in this brief.*
+Li decided (2026-10-11) that a folder taken off a project narrows its
+running threads at once, as machines do. That is its own brief,
+[folder-narrowing.md](folder-narrowing.md), in `core/workspace`, not this
+one; once it lands, the docs/web.md sentence about the old failure goes.
 
 ## Out of scope
 
