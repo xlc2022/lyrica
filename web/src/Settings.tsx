@@ -179,15 +179,15 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
   );
 }
 
-function TaskSelect({ task, value, allowed, onChange }: {
-  task: ThreadTask; value: TaskModel; allowed: EndpointInfo[]; onChange: (m: ModelRef | null) => void;
+export function TaskSelect({ task, label, value, allowed, onChange }: {
+  task: ThreadTask; label?: string; value: TaskModel; allowed: EndpointInfo[]; onChange: (m: ModelRef | null) => void;
 }) {
   const current = value.source === "thread" ? refKey(value.model) : "";
   const fromProfile = value.source === "profile" && value.model
     ? `${value.kind ? `${value.kind} · ` : ""}${value.modelId ? `${value.modelId} · ${value.endpointName}` : named(value)}` : "nothing set";
   return (
     <label className="field">
-      <span>{TASK_LABELS[task]}</span>
+      <span>{label ?? TASK_LABELS[task]}</span>
       <select value={current} onChange={(e) => {
         onChange(e.target.value ? { offeringId: e.target.value } : null);
       }}>

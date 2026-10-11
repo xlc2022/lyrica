@@ -74,4 +74,14 @@ desktop and at 390 px (principle 1). Every control has its row in ux.md §6.
 
 ## Handoff notes
 
-(The thread fills this in if it stops before it's done.)
+- 2026-10-11, PR 1 (Web UI 2 thread, branch `feature/web-2-4h2b0c`): done
+  items 1 to 6 as far as the back end offers: sidebar project rows, Resolved
+  row, New project in the list's menu, Pin/Unpin, Make project, Resolve/Reopen,
+  the projects filter in the Sort menu; Threads popover and tokens; thread
+  cards (title, state, last update's first line; file names wait for a
+  Workspace listing), Suggested threads card, Start a thread, Reopen link;
+  the Project settings page with General (UI review's labels: Paused switch,
+  New threads, This chat) and Memory. Not done: Files and images (needs the
+  Files panel), Notifications (7), Recent calls by project (8), the Watching
+  threads switch and markers (after #97), the split-view panel (PR 2, see
+  docs/briefs/web-2.md).

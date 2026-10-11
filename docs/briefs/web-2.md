@@ -165,3 +165,13 @@ For each part:
   end's pins), the speech Settings drawer into the Models area, the Models
   page, the Sleep section. Open: the mockup's Sleep and Models sidebar links
   come with their parts.
+- 2026-10-11, PR 2 (Projects web part 1): the project chat, its cards and
+  the Project settings page, per docs/briefs/projects-web.md. Next: the
+  split-view panel settled with UI review (third column from 1180 px, 360 to
+  520 px, 420 to start, dragged divider, width kept per browser; anything
+  looked at without leaving a conversation opens in it: the project's
+  Overview, Threads, Settings and Files, a thread from a card, a mention or
+  the Threads popover; breadcrumbs, Expand and Close; Esc closes; below
+  1180 px the same address is the full page), then the Files panel, the
+  Watching threads switch and markers once #97 lands, Notifications, Pin
+  in the remaining places, the Models page and the Sleep section.

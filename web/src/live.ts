@@ -28,9 +28,11 @@ export interface Live {
   subagents: Record<string, number>;
   /** Bumped when the thread's settings change elsewhere, such as an approved plan switching its mode. */
   settings: number;
+  /** In a project chat: bumped when one of its threads changes state, so its card and the Threads count reload. */
+  children: number;
 }
 
-export const initialLive: Live = { busy: false, queued: [], permissions: [], items: [], errors: [], reload: 0, ended: 0, subagents: {}, settings: 0 };
+export const initialLive: Live = { busy: false, queued: [], permissions: [], items: [], errors: [], reload: 0, ended: 0, subagents: {}, settings: 0, children: 0 };
 
 /** A subagent's events that mean its thread has new stored messages. */
 const STORED: string[] = ["started", "usage", "question", "note", "finished", "stopped", "interrupted"];
@@ -100,8 +102,7 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     case "settings":
       return { ...s, settings: s.settings + 1 };
     case "child":
-      // A project's thread card: drawn by Projects (web); nothing here yet.
-      return s;
+      return { ...s, children: s.children + 1 };
     case "turn_end":
       // A subagent's request outlives the parent's turn: it ends with its own permission_end.
       return { ...s, busy: false, permissions: s.permissions.filter((p) => p.subagent), reload: s.reload + 1, ended: s.items.length };
