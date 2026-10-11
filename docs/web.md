@@ -190,8 +190,9 @@ a single file. The old `…/panel` opens Settings.
   Web search, Internet for commands and Images switches; then the mic; at the right the
   mode, a link with a chevron that opens a menu of the four modes (a check on
   the current one, its line, its number key). Shift+Tab in the box cycles
-  Ask, Accept edits, Plan, Auto, shown at once; a settings refresh that a
-  change overtakes is dropped. A `settings` event (an approved plan)
+  Ask, Accept edits, Plan, Auto, shown at once. Changes are saved one at a
+  time in the order pressed, and a message sent meanwhile waits for them; a
+  settings refresh that a change overtakes is dropped. A `settings` event (an approved plan)
   refreshes them.
 - **Dictation** (`src/Voice.tsx`, DESIGN.md "Voice"): the mic in the row
   under the box records 16 kHz mono PCM through an AudioWorklet
