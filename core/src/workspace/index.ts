@@ -240,7 +240,14 @@ export class Workspace {
       const s = this.settings(userId);
       const cfg = s.ssh(name);
       if (!cfg) throw new Error(`no ssh target ${name}`);
-      target = new SshTarget(cfg, (fp) => s.recordHostKey(name, fp));
+      target = new SshTarget(cfg, {
+        // Pinned on first use for now; Machines confirms the key when a machine is added.
+        hostKey: (fp) => {
+          if (!cfg.hostKey) { cfg.hostKey = fp; s.recordHostKey(name, fp); }
+          return cfg.hostKey === fp;
+        },
+        sandbox: () => ({ ...this.door(), bwrap: this.opts.bwrap, pasta: this.opts.pasta, refused: this.networkRefused }),
+      });
       this.sshTargets.set(key, target);
     }
     return target;

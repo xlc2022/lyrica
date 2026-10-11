@@ -72,8 +72,10 @@ Keys, users and the persona store. No Pi dependency.
     network defaults and SSH targets in the user's `user.db`.
   - `net.ts` builds the `pasta` options and the nftables rules for a
     sandbox's network.
-  - `Sandbox` (bubblewrap) and `SshTarget` (ssh2) implement Pi's tool
-    operations without depending on Pi.
+  - `Sandbox` (bubblewrap) and `SshTarget` implement Pi's tool operations
+    without depending on Pi. `SshTarget`'s client (ssh2) runs in
+    `ssh-helper.ts`, a sandboxed child per connection, over the frames in
+    `ssh-frames.ts`.
 - **`models/`**: endpoints, profiles and the model router. See
   [docs/models.md](../docs/models.md).
 - **`types.ts`**: `Pool`, `Interface`, `Task`, `ModelRef` and `CallContext`.

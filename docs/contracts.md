@@ -889,6 +889,10 @@ interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
   ops(): { read; write; edit; bash };     // Pi's tool operations
   folders(): string[];                    // host folders, or "<ssh name>:<root>"
 }
+new SshTarget(cfg, { hostKey(fingerprint): boolean, sandbox(): HelperSandbox })  // asked each connection
+// HelperSandbox { exclude, front?, frontHosts?, bwrap?, pasta?, refused? }: refused (the self-test's reason) fails the call
+probeHostKey({ host, port }, sandbox): Promise<string>   // "SHA256:…", read through a helper, no login
+helperSandbox(address, port, sandbox): Sandbox           // the helper's sandbox: no workspace, that address and port only
 forThread(t)  // { target(), settings(), setMode(), network(), folders(), recordChange() }, each read fresh; settings() is effective
 changes(userId): FileChanges              // her write and edit calls' changes, for removing turns
 targetFor(t): ExecutionTarget
@@ -947,10 +951,13 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   - If `selfTest()` finds that a sandbox could undo its firewall, or can't
     start one, every thread runs with network off and the reason is kept in
     `networkRefused` for the UI.
-- **Planned (Machines):** the SSH client moves into a sandboxed helper
-  process per connection (`core/workspace/ssh-helper`), given one machine's
-  key on a pipe and network to that one address through the existing
-  nftables rules; `SshTarget` keeps its interface. A `proxmox` tool
+- **SSH helper:** the SSH client runs in a sandboxed helper process per
+  connection (`core/workspace/ssh-helper.ts`), given one machine's key on
+  its stdin and network to that one address and port through the existing
+  nftables rules; it speaks length-prefixed frames (`ssh-frames.ts`) with
+  `SshTarget`, which keeps its `ExecutionTarget` interface. The host key
+  decision stays in `lyricad` (`hostKey`); strict key exchange is required.
+- **Planned (Machines):** a `proxmox` tool
   (`extension/src/proxmox.ts`) with named actions (status, list, start,
   stop, shutdown, reboot, snapshots) is a schema plus one call into
   `core/workspace`, which calls the Proxmox API with the machine's token;

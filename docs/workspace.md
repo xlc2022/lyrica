@@ -22,7 +22,7 @@ database files. A command that could see either one could read everything.
 | Target | What it is | How she is confined |
 |---|---|---|
 | **Sandbox** (default) | Each command runs on the Lyrica host inside bubblewrap. | The sandbox is described below. |
-| **SSH** | A named remote machine. | She is confined by the remote account's own permissions, so each target should use a dedicated account. An optional root path limits `read`, `write` and `edit`. If SSH fails, the action fails: it **never** falls back to running locally. |
+| **SSH** | A named remote machine. | She is confined by the remote account's own permissions, so each target should use a dedicated account. An optional root path limits `read`, `write` and `edit`. If SSH fails, the action fails: it **never** falls back to running locally. The SSH client itself runs in a sandbox (below). |
 
 **The sandbox:**
 - It runs with every namespace unshared (mount, process, user, IPC, network),
@@ -60,9 +60,37 @@ database files. A command that could see either one could read everything.
 - Command output past 20 KB is cut to its last 20 KB before Pi sees it. Pi
   would otherwise save long output to a plaintext temp file on the host.
 
-**SSH targets** use an in-process SSH library (`ssh2`). Each private key is
-stored in the user's encrypted settings and handed to the library in memory,
-so it never touches disk, and no system `ssh` agent is involved.
+**SSH targets** use the `ssh2` library, but not inside `lyricad`, which holds
+every user's unlocked keys. Each connection starts a **helper process**
+(`core/src/workspace/ssh-helper.ts`) in a sandbox of its own, so a server
+that breaks the library's parsing gets one key it could already use, not
+`lyricad`'s memory.
+- The helper's sandbox is the one above with no workspace: the read-only
+  system, Node, the helper's own files and `ssh2` with its dependencies,
+  read-only. Lyrica's runtime directory, databases and the rest of her code
+  aren't there, and its process namespace hides `lyricad`.
+- Its network is exactly the machine's address and port, through the same
+  `pasta` and nftables rules as an allowed host. The name is resolved once in
+  `lyricad` and the helper is given the address. `excludePorts` and the front
+  door still apply. A machine on this host's loopback gets just that one port
+  forwarded.
+- The private key goes to the helper on its stdin, never to a file or an
+  environment variable, and it holds it in memory for the connection.
+- `lyricad` and the helper speak length-prefixed frames on the pipe
+  (`ssh-frames.ts`): connect, exec with streamed output and kill, the SFTP
+  operations the target uses, close. `lyricad` refuses oversized frames and
+  more command output than the helper's cap allows. Output is capped in the
+  helper, before it crosses the pipe.
+- The helper sends the server's host key to `lyricad`, which decides; the pin
+  stays with the settings. Strict key exchange is required: a server without
+  it is refused (OpenSSH 9.6, or a distribution's Terrapin fix, has it).
+- The helper exits when its stdin closes, so it never outlives `lyricad`. If
+  it can't start, or the network self-test has refused networked sandboxes,
+  the call fails; there is no client in `lyricad` to fall back to.
+- `probeHostKey({ host, port })` reads a server's host key through a helper
+  without logging in.
+- No system `ssh` agent is involved. The helper needs Node 22.6 or later
+  (it runs with type stripping).
 - `lyrica admin ssh add` generates an ed25519 key and prints the public half
   to install on the remote account.
 - The host key is pinned on first connection; a different key later fails.
@@ -221,9 +249,10 @@ How it is enforced:
   `lyrica dev` prints it.
 - IPv4 only for now: sandboxes run `pasta --ipv4-only`, and IPv6 host
   entries are refused until IPv6 is supported end to end.
-- SSH targets don't depend on these switches: `lyricad`'s SSH client reaches
-  them, not the sandbox. Model calls also come from `lyricad`, so local-only
-  and the switches are independent.
+- SSH targets don't depend on these switches: each connection's helper gets
+  network to its machine alone, whatever the thread's switches say. If the
+  self-test refuses network, SSH calls fail too. Model calls come from
+  `lyricad`, so local-only and the switches are independent.
 
 ## Subagents
 
