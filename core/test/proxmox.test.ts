@@ -75,6 +75,21 @@ describe("a Proxmox machine", () => {
     expect(await workspace.proxmox(t, "pve", "list")).toContain("101 web");
   });
 
+  it("refuses its own node's address when the address changes later, and on every call", async () => {
+    const self: Self = { ...ELSEWHERE, gateways: [...ELSEWHERE.gateways] };
+    const { li, workspace, pve, add, t } = await setup(self);
+    await add();
+    workspace.settings(li.id).setThread("t1", "general", { machines: ["pve"] });
+    self.gateways.push("127.0.0.2");
+    await expect(workspace.updateMachine(li.id, "pve", { address: `https://127.0.0.2:${pve.port}` })).rejects.toThrow(/127.0.0.2 is this computer's default gateway/);
+    expect(workspace.settings(li.id).machine("pve")!.host).toBe("127.0.0.1");
+    // An address that has come to be her gateway (a DHCP or DNS change) is refused before the token is sent.
+    self.gateways.push("127.0.0.1");
+    pve.requests.length = 0;
+    await expect(workspace.proxmox(t, "pve", "list")).rejects.toThrow(/Stopping it would stop her/);
+    expect(pve.requests).toEqual([]);
+  });
+
   it("refuses the Proxmox that runs Lyrica's own VM, where it can tell", async () => {
     for (const [self, why] of [
       [{ ...ELSEWHERE, gateways: ["127.0.0.1"] }, /127.0.0.1 is this computer's default gateway/],

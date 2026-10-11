@@ -218,17 +218,26 @@ const MAX_CONFIGS = 300;
  * nothing points that way.
  */
 export async function ownNode(api: ProxmoxCall, addresses: string[], self: Self): Promise<string | undefined> {
-  const at = addresses.find((a) => self.addresses.includes(a) || self.gateways.includes(a));
-  if (at) return `${at} is ${self.addresses.includes(at) ? "this computer" : "this computer's default gateway"}, so it's likely the Proxmox that runs Lyrica`;
+  const at = ownAddress(addresses, self);
+  if (at) return at;
   const all = await resources(api);
   const name = self.hostname.split(".")[0]!.toLowerCase();
   const named = all.find((r) => r.name?.toLowerCase() === name);
   const mine = (r: Resource) => `${r.name ?? r.type} (${r.vmid} on ${r.node})`;
   if (named) return `it runs ${mine(named)}, which has this computer's name`;
-  for (const r of all.slice(0, MAX_CONFIGS)) {
-    const config = (await api("GET", `${base(r)}/config`).catch(() => ({}))) as Record<string, unknown>;
-    const macs = Object.entries(config).filter(([k]) => /^net\d+$/.test(k)).flatMap(([, v]) => String(v).match(MAC) ?? []).map((m) => m.toLowerCase());
-    if (macs.some((m) => self.macs.includes(m))) return `it runs ${mine(r)}, which has this computer's network card`;
+  // A few at a time, so a big cluster doesn't make Confirm wait on one handshake after another.
+  const guests = all.slice(0, MAX_CONFIGS);
+  for (let i = 0; i < guests.length; i += 8) {
+    const configs = await Promise.all(guests.slice(i, i + 8).map((r) => api("GET", `${base(r)}/config`).catch(() => ({})) as Promise<Record<string, unknown>>));
+    const hit = configs.findIndex((config) => Object.entries(config).filter(([k]) => /^net\d+$/.test(k))
+      .flatMap(([, v]) => String(v).match(MAC) ?? []).some((m) => self.macs.includes(m.toLowerCase())));
+    if (hit >= 0) return `it runs ${mine(guests[i + hit]!)}, which has this computer's network card`;
   }
   return undefined;
+}
+
+/** Why an address is likely the Proxmox that runs Lyrica: it is this computer or its default gateway. */
+export function ownAddress(addresses: string[], self: Self): string | undefined {
+  const at = addresses.find((a) => self.addresses.includes(a) || self.gateways.includes(a));
+  return at && `${at} is ${self.addresses.includes(at) ? "this computer" : "this computer's default gateway"}, so it's likely the Proxmox that runs Lyrica`;
 }
