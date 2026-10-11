@@ -1405,20 +1405,27 @@ from Monika's runbooks.
   UI review) as Claude's, which approves and merges them, so Li doesn't
   read every change. **Boundary code is hands off for her:** keys, the
   privacy boundary, the model router, the sandbox, authentication,
-  deployment, the updater and CI. A required CI check fails any pull
-  request from her account that touches those paths, and `.github/` is
-  one of them, so she can't change the check. When she wants a boundary
-  changed, she describes it and a Claude thread builds it under the usual
-  review. (Claude's reviews act through Li's account, so an approval
-  rule alone couldn't tell Li's approval from a reviewer's.)
+  deployment, the updater and CI. She may push only `lyrica/*` branches
+  and `update/*` tags. A required check, run from the base branch's
+  workflow (`pull_request_target`, so her branch can't edit it), fails any
+  pull request from her account or her branches that touches those paths,
+  counting both names of a rename. Her boundary PR fails visibly; merging
+  past it would take Li's administrator bypass, which merging threads
+  never use on her PRs. Fully structural would need Claude to work
+  through an account of its own, the later step. When she wants a
+  boundary changed, she describes it and a Claude thread builds it under
+  the usual review.
 - **GitHub is replaceable.** She reaches the forge only through git and
   its command-line client in her sandbox (`gh` today), with no tool of
   her own; the updater needs only git and a read-only key; update notes
   are git tags; CI is Actions-syntax workflows. Moving to Forgejo or
   Gitea means re-creating her account, token and branch protection
   there, running their Actions runner on Li's VMs with the same label,
-  and swapping the client (`tea` or `fj`). Claude's project threads are
-  the part that is tied to GitHub.
+  and swapping the client (`tea` or `fj`). The boundary check needs that
+  forge's way to run the base branch's workflow on a PR, and the branch
+  limit needs its branch rules; where either is missing, the boundary
+  falls back to a rule the reviewers follow. Claude's project threads
+  are the part that is tied to GitHub.
 - **The outer net is the operator's:** a scheduled Proxmox backup of the
   container. The updater can't snapshot the container it runs in.
 - **Not covered:** her persona, which has its own revisions; model hosts,

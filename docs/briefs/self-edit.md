@@ -32,19 +32,25 @@ the boundaries structural).
    repository): her account as a collaborator with write; a fine-grained
    token for this repository only with contents and pull requests; `main`
    protected (pull requests only, the CI jobs including the boundary check
-   required, one approval). Li's account may bypass the rules as
-   administrator ("Do not allow bypassing" stays off), so Claude's PRs,
-   which are authored as Li, keep merging as they do today. She pushes
+   required, one approval); a ruleset that lets her account create and
+   update only `lyrica/*` branches and `update/*` tags. Li's account may
+   bypass the rules as administrator ("Do not allow bypassing" stays off),
+   so Claude's PRs, which are authored as Li, keep merging as they do
+   today; merging threads never use that bypass on her PRs. She pushes
    branches to the repository, never a fork, so her PRs run
    `.github/workflows/ci.yml` on the `lyrica-ci` runners like Claude's,
    with no first-time-contributor approval.
-4. **The boundary check**, a job in `.github/workflows/ci.yml`: when the
-   PR's author is her account, it fails if the diff touches any path in
-   `.github/boundary-paths`, naming them. The list: `core/src/keyring.ts`,
-   `core/src/models/`, `core/src/workspace/`, `core/src/store/memory.ts`
-   (`openThreadView`), `daemon/src/auth.ts`, `daemon/deploy/`, the updater
-   scripts and `.github/` (so the check and the list are covered too).
-   Claude's PRs are untouched by it. The list and the job are in this PR.
+4. **The boundary check**, its own workflow on `pull_request_target`, so
+   it always runs the base branch's copy of itself and of the list, and a
+   PR can't edit the job that judges it. It checks out nothing from the
+   head: it reads the changed files from the API, counting both names of
+   a rename. It fails when the PR's author is her account or its head is
+   a `lyrica/*` branch and any changed path is in `.github/boundary-paths`,
+   naming them. The list: `core/src/keyring.ts`, `core/src/models/`,
+   `core/src/workspace/`, `core/src/store/memory.ts` (`openThreadView`),
+   `daemon/src/auth.ts`, `daemon/deploy/`, the updater scripts and
+   `.github/`. Claude's PRs pass it. The list and the workflow are in this
+   PR.
 5. **Update notes.** How she writes one: an annotated tag `update/<date>`
    on the `main` commit to install, its message listing the merged PRs
    since the running version, what each changes, any schema change and
