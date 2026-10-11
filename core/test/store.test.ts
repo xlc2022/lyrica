@@ -416,6 +416,34 @@ describe("threads", () => {
     expect(own.projectOf(kid.id)).toBe(plain.id);
   });
 
+  it("ranks a project's own memories higher when recalling from inside it, without hiding the rest", async () => {
+    const { memory, li } = await setup();
+    const { own } = memory.openThreadView(li.id, "general");
+    const project = own.createThread({ interface: "web", project: true });
+    const thread = own.createThread({ interface: "web", parent: project.id, child: true });
+    const a = own.appendEntry(project.id, { piId: "u1", role: "user", data: {}, text: "set it up" });
+    const other = said(own, "something else");
+    const [ours] = own.addNotes([{ text: "the backup job runs nightly", source: a }], { author: "lyrica", thread: project.id });
+    const [theirs] = own.addNotes([{ text: "the backup job runs nightly at two, the backup job", source: other.entry }], { author: "lyrica", thread: other.thread });
+    const ids = (opts: Parameters<PoolStore["search"]>[1]) => own.search("backup job", { kinds: ["note"], ...opts }).map((h) => h.id);
+    expect(ids({ fromThread: other.thread })).toEqual([theirs, ours]);
+    expect(ids({ fromThread: thread.id })).toEqual([ours, theirs]);
+    expect(ids({ fromThread: thread.id, limit: 1 })).toEqual([ours]);
+    expect(ids({ limit: 1 })).toEqual([theirs]);
+    // The project's page counts as its own too.
+    own.putPage({ slug: projectSlug(project.id), title: "Backups", summary: "the backup job", text: `nightly [${ours}]` }, "sleep");
+    own.putPage({ slug: "jobs", title: "Backup jobs", summary: "the backup job, every backup job", text: `at two [${theirs}]` }, "sleep");
+    const pages = (fromThread: string) => own.search("backup job", { kinds: ["page"], fromThread }).map((h) => h.id);
+    expect(pages(other.thread)).toEqual(["p:jobs", `p:${projectSlug(project.id)}`]);
+    expect(pages(thread.id)).toEqual([`p:${projectSlug(project.id)}`, "p:jobs"]);
+    // A project thread that isn't logged stays out of recall, boost or not; a logged one comes up.
+    const quiet = own.createThread({ interface: "web", parent: project.id, child: true, unlogged: true });
+    own.appendEntry(quiet.id, { piId: "u1", role: "user", data: {}, text: "the backup job failed again" });
+    const loud = own.appendEntry(project.id, { piId: "u2", role: "user", data: {}, text: "the backup job failed once" });
+    const entries = own.search("backup job failed", { kinds: ["entry"], fromThread: thread.id }).map((h) => h.id);
+    expect(entries).toEqual([loud]);
+  });
+
   it("finds a project's notes by citation, and forgets its page and notes with it", async () => {
     const { memory, li } = await setup();
     const { own } = memory.openThreadView(li.id, "general");
