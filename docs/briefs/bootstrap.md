@@ -152,7 +152,9 @@ Administration. No new model-facing tool, no new process of Lyrica's
    `lyrica-tailscaled.service` (`daemon/deploy/`; hardened like Caddy's
    unit, `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`,
    `PrivateTmp`, since it needs nothing of what lyricad's sandboxes
-   need), `After=` it in
+   need; under `ProtectSystem=strict` every path it writes must be its
+   `StateDirectory` or `RuntimeDirectory`, so add `CacheDirectory=` if
+   the installed version writes a cache), `After=` it in
    `lyricad.service`, and closing lines that print the setup addresses,
    the certificate fingerprint and the code instead of the `admin init`
    command. NixOS module: `services.lyrica.tailscale` (default on) declares
