@@ -1,6 +1,6 @@
 import {
   AuthError, WrongPassword, WORKDIR, CAPABILITIES, checkTask, isRestricted, profileFor, refId, THINKING_LEVELS, publicKeyOf, generateSshKey, CloudModelForbidden, NoModel, PRONOUN_PRESETS,
-  type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type User,
+  type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
@@ -13,7 +13,8 @@ import { toMessages } from "./messages.ts";
 import { messageText, readAloud, readClip, speechState, storedSource, transcribeClip, type SpeechSource } from "./speech.ts";
 import { applyRemoval, entriesFrom, removalPlan, uploadsIn, type RemovalContext } from "./removal.ts";
 
-const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, showPrivate: true, showHidden: false };
+const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, showPrivate: true, showHidden: false, sort: "date" };
+const THREAD_SORTS: Api.ThreadSort[] = ["date", "activity", "started", "title", "groups"];
 const DISPLAY_DEFAULTS_ALL: Api.Display = { ...DISPLAY_DEFAULTS, showPrivate: true, showGeneral: true, showHidden: true };
 const MESSAGE_PAGE = 50;
 
@@ -73,8 +74,9 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("PATCH", `${u}/me/display`, async (r) => {
       const user = d.userFor(r);
       const change = await r.json<Api.DisplayChange>();
-      const next = { ...display(d, user.id), ...pick(change, ["theme", "showGeneral", "showPrivate", "showHidden"]) };
+      const next = { ...display(d, user.id), ...pick(change, ["theme", "showGeneral", "showPrivate", "showHidden", "sort"]) };
       if (!["device", "light", "dark"].includes(next.theme)) throw new Error("the theme is device, light or dark");
+      if (!THREAD_SORTS.includes(next.sort)) throw new Error(`the sort is one of ${THREAD_SORTS.join(", ")}`);
       const db = s().users.openUserDb(user.id);
       try {
         db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('display', ?)").run(JSON.stringify(next));
@@ -423,15 +425,22 @@ export function apiRoutes(d: Lyricad): Route[] {
       return { ok: true };
     }),
 
+    // --- The user's own groups of threads ---
+    route("GET", `${u}/thread-groups`, (r): Api.ThreadGroup[] => s().prefs.groups(d.userFor(r).id)),
+    route("POST", `${u}/thread-groups`, async (r): Promise<Api.ThreadGroup> => s().prefs.addGroup(d.userFor(r).id, String((await r.json<Api.NewThreadGroup>()).name ?? ""))),
+    route("PATCH", `${u}/thread-groups/:groupId`, async (r): Promise<Api.ThreadGroup> => s().prefs.renameGroup(d.userFor(r).id, r.params.groupId!, String((await r.json<Api.NewThreadGroup>()).name ?? ""))),
+    route("DELETE", `${u}/thread-groups/:groupId`, (r) => { s().prefs.removeGroup(d.userFor(r).id, r.params.groupId!); return { ok: true }; }),
+
     // --- Threads ---
     route("GET", `${u}/threads`, (r) => {
       const user = d.userFor(r);
       const all = r.query.get("all") === "1";
       const iface = r.query.get("interface") ?? "web";
       const show = display(d, user.id);
+      const prefs = s().prefs.all(user.id);
       return owner(d, user, (o) => (["general", "private"] as const)
         .filter((p) => all || (p === "general" ? show.showGeneral : show.showPrivate))
-        .flatMap((p) => tree(d, user, p, o[p], o[p].listThreads({ includeHidden: all || show.showHidden }).filter((x) => x.interface === iface)))
+        .flatMap((p) => tree(d, user, p, o[p], o[p].listThreads({ includeHidden: all || show.showHidden }).filter((x) => x.interface === iface), prefs))
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
     }),
     route("POST", `${u}/threads`, async (r) => {
@@ -456,6 +465,9 @@ export function apiRoutes(d: Lyricad): Route[] {
         const thread = threadOf(o, r);
         if (change.title !== undefined) store.setTitle(thread.id, String(change.title));
         if (change.hidden !== undefined) store.setHidden(thread.id, !!change.hidden);
+        // The user's own view of the thread, in user.db.
+        if (change.group !== undefined) s().prefs.setGroup(user.id, poolOf(r), thread.id, change.group === null ? null : String(change.group));
+        if (change.unread !== undefined) s().prefs.setUnread(user.id, poolOf(r), thread.id, !!change.unread);
         return summary(d, user, poolOf(r), store, store.getThread(thread.id)!, []);
       });
     }),
@@ -483,6 +495,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         s().models.forgetThread(user.id, pool, id);
       }
       s().children.forget(user.id, pool, doomed);
+      s().prefs.forget(user.id, pool, doomed);
       // A kept child is a thread of its own now: its next turn opens with its own tools and workspace.
       for (const id of kept) { s().workspace.settings(user.id).detach(id); s().host.reload(user.id, pool, id); }
       return { ok: true };
@@ -516,8 +529,9 @@ export function apiRoutes(d: Lyricad): Route[] {
       const limit = Math.min(200, Math.max(1, Number(r.query.get("limit") ?? MESSAGE_PAGE) || MESSAGE_PAGE));
       return owner(d, user, (o): Api.MessagePage => {
         const thread = threadOf(o, r);
-        // Opening a child thread sees its updates.
+        // Opening a child thread sees its updates, and opening any thread clears its unread mark.
         if (thread.child && !before) s().children.seen(user.id, poolOf(r), thread.id);
+        if (!before && s().prefs.get(user.id, poolOf(r), thread.id).unread) s().prefs.setUnread(user.id, poolOf(r), thread.id, false);
         const page = o[poolOf(r)].entryPage(thread.id, { before: before ? Number(before) : undefined, limit });
         const names = thread.subagent ? { userName: (id: string) => s().users.get(id)?.profile.displayName ?? "a user" } : undefined;
         return { messages: toMessages(thread.id, poolOf(r), page.entries,
@@ -1154,22 +1168,25 @@ function sleepRunDetail(d: Lyricad, o: OwnerView, pool: Pool, runId: string): Ap
  * A thread with its child threads (forks, copies) nested under it. Subagents
  * aren't listed: they live inline, in their parent's delegate cards.
  */
-function tree(d: Lyricad, user: User, pool: Pool, store: PoolStore, threads: Thread[]): Api.ThreadSummary[] {
+function tree(d: Lyricad, user: User, pool: Pool, store: PoolStore, threads: Thread[], prefs: Map<string, ThreadPref>): Api.ThreadSummary[] {
   const listed = threads.filter((th) => !th.subagent);
   const children = new Map<string, Thread[]>();
   const nested = (th: Thread) => !!th.parent && listed.some((p) => p.id === th.parent);
   for (const th of listed) if (nested(th)) children.set(th.parent!, [...(children.get(th.parent!) ?? []), th]);
-  const build = (th: Thread): Api.ThreadSummary => summary(d, user, pool, store, th, (children.get(th.id) ?? []).map(build));
+  const build = (th: Thread): Api.ThreadSummary => summary(d, user, pool, store, th, (children.get(th.id) ?? []).map(build), prefs);
   return listed.filter((th) => !nested(th)).map(build);
 }
 
-function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Thread, children: Api.ThreadSummary[]): Api.ThreadSummary {
+/** `prefs` is the user's thread preferences read once for a whole list; a single summary reads its own. */
+function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Thread, children: Api.ThreadSummary[], prefs?: Map<string, ThreadPref>): Api.ThreadSummary {
+  const pref = prefs ? prefs.get(`${pool}/${th.id}`) : d.services!.prefs.get(user.id, pool, th.id);
   return {
     pool, id: th.id, interface: th.interface, subagent: th.subagent, child: th.child, hidden: th.hidden, unlogged: th.unlogged, createdAt: th.createdAt,
     updatedAt: store.lastEntry(th.id)?.createdAt ?? th.createdAt,
     ...(th.title ? { title: th.title } : {}), ...(th.parent ? { parent: th.parent } : {}),
     busy: d.services!.host.busy(user.id, pool, th.id), children,
     ...(th.child ? childInfo(d, user, pool, th.id) : {}),
+    ...(pref?.group ? { group: pref.group } : {}), ...(pref?.unread ? { unread: true } : {}),
   };
 }
 

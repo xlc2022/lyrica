@@ -62,6 +62,9 @@ export interface State {
   locked: boolean;
   /** Users logged in on this browser session. Empty while locked. */
   users: UserCard[];
+  /** lyricad's version (package.json) and build (the git commit it was built from, or "dev"). Shown in the header. */
+  version: string;
+  build: string;
 }
 
 /** POST /api/unlock → State. Only while locked. */
@@ -95,11 +98,15 @@ export interface LogoutResponse {
 
 // --- The signed-in user: /api/u/:userId/me ---
 
+/** How the sidebar orders threads: by date (grouped Today, Yesterday, …), last activity, start date, title, or the user's own groups. */
+export type ThreadSort = "date" | "activity" | "started" | "title" | "groups";
+
 export interface Display {
   theme: Theme;
   showGeneral: boolean;
   showPrivate: boolean;
   showHidden: boolean;
+  sort: ThreadSort;
 }
 
 /** GET /api/u/:userId/me */
@@ -512,6 +519,10 @@ export interface ThreadSummary {
   unseen?: number;
   /** Child threads (Lyrica's, branches, forks, copies), nested under their parent. Subagents aren't listed. */
   children: ThreadSummary[];
+  /** The user's own group for it (GET …/thread-groups), when it is in one. Per user, never in the pool. */
+  group?: string;
+  /** Marked unread by the user; opening the thread clears it. */
+  unread?: boolean;
 }
 
 /**
@@ -524,7 +535,18 @@ export interface ThreadSummary {
 export interface NewThread { pool: Pool; title?: string }
 /** GET /api/u/:userId/threads/:pool/:threadId → ThreadSummary */
 /** PATCH /api/u/:userId/threads/:pool/:threadId → ThreadSummary. Rename, hide or unhide. */
-export interface ThreadChange { title?: string; hidden?: boolean }
+/** `group` and `unread` are the user's own view of the thread, kept in user.db; `null` takes it out of its group. */
+export interface ThreadChange { title?: string; hidden?: boolean; group?: string | null; unread?: boolean }
+
+/**
+ * The user's own groups of threads, shown in the sidebar under "My groups" and in the thread menu's Move to group.
+ * GET /api/u/:userId/thread-groups → ThreadGroup[]
+ * POST /api/u/:userId/thread-groups (NewThreadGroup) → ThreadGroup
+ * PATCH /api/u/:userId/thread-groups/:groupId (NewThreadGroup) → ThreadGroup
+ * DELETE /api/u/:userId/thread-groups/:groupId → Ok. Its threads are in no group afterwards.
+ */
+export interface ThreadGroup { id: string; name: string }
+export interface NewThreadGroup { name: string }
 /**
  * DELETE /api/u/:userId/threads/:pool/:threadId → Ok. Forgets the thread (memory.md, "Deletion"),
  * with its subagents. Its child threads (Lyrica's, branches, copies) go too with `children`,

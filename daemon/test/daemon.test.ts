@@ -10,7 +10,7 @@ describe("lyricad, locked", () => {
     const rt = await runtime();
     const { base, d } = await daemon(rt);
     const b = browser(base);
-    expect((await b.get<State>("/api/state")).body).toEqual({ locked: true, users: [] });
+    expect((await b.get<State>("/api/state")).body).toMatchObject({ locked: true, users: [] });
     expect((await b.post("/api/login", { login: "li", password: "pw" })).status).toBe(503);
     expect((await b.get(`/api/u/${rt.li.id}/threads`)).status).toBe(503);
     expect((await b.post("/api/unlock", { passphrase: "wrong" })).status).toBe(401);
@@ -296,5 +296,37 @@ describe("the memory browser", () => {
     expect((await li.get<MemoryDetail>(url)).body.item.text).toBe(`[[u:${rt.li.id}]] grows tomatoes`);
     expect((await li.del(url)).status).toBe(200);
     expect((await li.get(url)).status).toBe(404);
+  });
+});
+
+describe("the user's own view of their threads", () => {
+  it("keeps groups, the sort and unread marks per user, and reports the build", async () => {
+    const rt = await runtime();
+    const { base } = await daemon(rt);
+    const state = (await browser(base).post<{ version: string; build: string }>("/api/unlock", { passphrase: "passphrase" })).body;
+    expect(state.version).toMatch(/^\d/);
+    expect(state.build.length).toBeGreaterThan(0);
+    const li = await login(base, "li", "pw");
+    const u = `/api/u/${rt.li.id}`;
+    const t = (await li.post<{ id: string }>(`${u}/threads`, { pool: "general" })).body;
+    const tp = `${u}/threads/general/${enc(t.id)}`;
+    const g = (await li.post<{ id: string; name: string }>(`${u}/thread-groups`, { name: " Garden " })).body;
+    expect(g.name).toBe("Garden");
+    expect((await li.post(`${u}/thread-groups`, { name: "  " })).status).toBe(400);
+    expect((await li.patch(tp, { group: g.id, unread: true })).status).toBe(200);
+    let list = (await li.get<{ id: string; group?: string; unread?: boolean }[]>(`${u}/threads`)).body;
+    expect(list.find((x) => x.id === t.id)).toMatchObject({ group: g.id, unread: true });
+    // Opening the thread clears the mark; the sort is saved with the display settings.
+    expect((await li.get(`${tp}/messages`)).status).toBe(200);
+    list = (await li.get<{ id: string; unread?: boolean }[]>(`${u}/threads`)).body;
+    expect(list.find((x) => x.id === t.id)!.unread).toBeUndefined();
+    expect((await li.patch<{ display: { sort: string } }>(`${u}/me/display`, { sort: "groups" })).body.display.sort).toBe("groups");
+    expect((await li.patch(`${u}/me/display`, { sort: "sideways" })).status).toBe(400);
+    // Removing the group leaves its threads in none; another user sees none of it.
+    await li.del(`${u}/thread-groups/${g.id}`);
+    expect((await li.get(`${u}/thread-groups`)).body).toEqual([]);
+    expect((await li.get<{ id: string; group?: string }[]>(`${u}/threads`)).body.find((x) => x.id === t.id)!.group).toBeUndefined();
+    const sam = await login(base, "sam", "pw2");
+    expect((await sam.get(`/api/u/${rt.sam.id}/thread-groups`)).body).toEqual([]);
   });
 });
