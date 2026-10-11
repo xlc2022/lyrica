@@ -1,8 +1,9 @@
 // A thread's menu in the sidebar (docs/ux.md §6): right-click, or a long press
 // on a phone, with a letter shortcut for each item. Mark as unread, Rename,
-// Move to group, Hide and Delete. Pin and Share with come with their back ends.
+// Move to group, Hide and Delete; Pin; Make project for a top-level thread, Resolve and
+// Reopen for a project's thread. Share with comes with its back end.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { del, patch, post, threadPath, u, type ThreadGroup, type ThreadSummary } from "./api.ts";
+import { del, patch, post, put, threadPath, u, type ThreadGroup, type ThreadSummary } from "./api.ts";
 import { go, type Route } from "./route.ts";
 import { ConfirmDialog, ErrorText, menuArrows } from "./ui.tsx";
 
@@ -54,7 +55,7 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onCl
   const t = at.thread;
   const base = threadPath(userId, t.pool, t.id);
   const ref = useRef<HTMLDivElement>(null);
-  const [sub, setSub] = useState<"" | "group" | "rename" | "newgroup" | "delete">("");
+  const [sub, setSub] = useState<"" | "group" | "rename" | "newgroup" | "delete" | "project">("");
   const [draft, setDraft] = useState(t.title ?? "");
   const [error, setError] = useState("");
   const children = t.children.length;
@@ -69,7 +70,7 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onCl
   }, [at, sub, groups.length, error]);
   // Escape closes the topmost thing; a click elsewhere closes the menu; letters pick items.
   useEffect(() => {
-    if (sub === "delete") return;
+    if (sub === "delete" || sub === "project") return;
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.preventDefault(); if (sub) setSub(""); else onClose(); return; }
       if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -85,13 +86,20 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onCl
   useEffect(() => { if (!sub) ref.current?.querySelector("button")?.focus(); }, [sub]);
 
   const act = (fn: () => Promise<unknown>) => fn().then(() => { onChange(); onClose(); }, (e: Error) => setError(e.message));
-  const change = (c: { title?: string; hidden?: boolean; group?: string | null; unread?: boolean }) => act(() => patch(base, c));
+  const change = (c: { title?: string; hidden?: boolean; group?: string | null; unread?: boolean; project?: true }) => act(() => patch(base, c));
+  const inProject = t.state !== undefined;
   const forget = (withChildren: boolean) => act(async () => {
     await del(base, { children: withChildren });
     // The open thread is gone: leave it.
     if (route.page === "thread" && route.threadId === t.id) go({ page: "home", userId });
   });
 
+  if (sub === "project") {
+    return (
+      <ConfirmDialog title="Make this a project?" confirm="Make project" onCancel={onClose} onConfirm={() => change({ project: true })}
+        sentence="This thread becomes the project chat, and threads Lyrica starts from it become the project's threads. There is no way back." />
+    );
+  }
   if (sub === "delete") {
     return (
       <ConfirmDialog title="Delete this thread?" danger confirm="Delete" onCancel={onClose} onConfirm={forget}
@@ -127,10 +135,13 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onCl
   } else {
     body = (
       <>
-        <span className="eyebrow">{t.title || "New thread"}</span>
+        <span className="eyebrow">{t.title || (t.project ? "New project" : "New thread")}</span>
         <Item label={t.unread ? "Mark as read" : "Mark as unread"} kbd="U" onClick={() => change({ unread: !t.unread })} />
         <Item label="Rename…" kbd="R" onClick={() => { setDraft(t.title ?? ""); setSub("rename"); }} />
         <Item label="Move to group" kbd="M" sub onClick={() => setSub("group")} />
+        {!t.child && !t.parent && <Item label={t.pinned ? "Unpin" : "Pin"} kbd="P" onClick={() => act(() => (t.pinned ? del(`${base}/pin`) : put(`${base}/pin`, {})))} />}
+        {!t.child && !t.parent && !t.project && <Item label="Make project…" kbd="K" onClick={() => setSub("project")} />}
+        {inProject && <Item label={t.state === "resolved" ? "Reopen" : "Resolve"} kbd="E" onClick={() => act(() => post(`${base}/${t.state === "resolved" ? "reopen" : "resolve"}`))} />}
         <div className="sep" role="separator" />
         <Item label={t.hidden ? "Unhide" : "Hide"} kbd="H" onClick={() => change({ hidden: !t.hidden })} />
         <Item label="Delete…" kbd="D" danger onClick={() => setSub("delete")} />

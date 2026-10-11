@@ -9,9 +9,9 @@ render mention tokens.
 
 ## Pages
 
-Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
-`…/settings/<section>`, `…/admin/<section>`, `#/login`), so `lyricad` serves
-a single file. The old `…/panel` opens Settings.
+Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/p/<pool>/<project>/<section>`
+for a project's settings, `…/memory`, `…/settings/<section>`, `…/admin/<section>`,
+`#/login`), so `lyricad` serves a single file. The old `…/panel` opens Settings.
 
 - **Unlock** while `lyricad` is locked, then **login**. A browser holds one
   person's users: the user menu at the foot of the sidebar opens Settings and
@@ -30,16 +30,29 @@ a single file. The old `…/panel` opens Settings.
   menu** ("Sort: By date ▾") has the sorts By date (sections Today, Yesterday,
   Previous 7 days, Previous 30 days, Older), Last activity, Start date, Title and My groups (one
   section per group with its count, then Not in a group, and a New group
-  form), then the General, Private and Hidden checkboxes. The sort and the
-  checkboxes are saved per user (`Display`). A thread unread for this user
+  form), then the General, Private and Hidden checkboxes, then All threads,
+  Only projects or No projects. The sort, the checkboxes and the projects
+  choice are saved per user (`Display`). Pinned threads come first under a
+  **Pinned** eyebrow, whatever the sort. A thread unread for this user
   is bold; private threads carry a small lock in the private colour; child
   threads (Lyrica's, branches, forks, copies) sit behind `›`, a child
   showing when it works or waits and a count of its unseen updates (at most
   two badges a row: waiting, then the count, then hidden).
+- **Projects in the sidebar:** a project row has the project icon in the
+  pool dot's place (amber-dotted when one of its threads waits on the user)
+  and its threads nested under it, open by default, each with its pool dot,
+  its state as a word (Working, Waiting on you, Waiting for approval,
+  Queued, Idle) and its unseen count; resolved ones fold under a
+  **Resolved** row with their count. The list's own menu (right-click or a
+  long press on its empty space) has **New project** (General or Private:
+  an empty, pinned project chat) and **New group…**.
 - **Thread menu** (`src/ThreadMenu.tsx`): right-click a thread, or hold it
   for half a second on a touch screen. Mark as unread or read (U), Rename…
   (R, inline), Move to group (M: the groups, Not in a group, New group… N),
-  Hide or Unhide (H), and Delete… (D), which confirms in a dialog and offers
+  **Pin** or **Unpin** (P, top-level threads), **Make project…** (K, a
+  top-level thread; confirms in a dialog, since there is no way back),
+  **Resolve** or **Reopen** (E, a project's thread), Hide or Unhide (H), and
+  Delete… (D), which confirms in a dialog and offers
   to delete child threads too. From the keyboard, Shift+F10 or the Menu key
   on a focused thread opens it under the row; the arrows move between items
   and Escape closes it. The user menu works the same way. Groups and unread marks are
@@ -53,6 +66,28 @@ a single file. The old `…/panel` opens Settings.
   thread's group as a link that changes it, the folders as words with the
   paths in their tooltip, and the granted machines' names in mono; at the
   right a Settings button. Below it the conversation and the composer.
+- **Project chat** (`src/Project.tsx`): the facts line adds **Threads** with
+  the count, opening a popover of the project's threads grouped Waiting on
+  you, Working, Queued, Idle and Resolved (each a link, with its unseen
+  count), and the project's tokens ("65 tokens", "312k tokens"; on a phone the tokens
+  are the popover's first line instead). The header has a **Project**
+  link to the project settings page before the Settings button, which
+  opens the thread's drawer as in any thread. The
+  `child` stream event reloads the overview (`GET …/overview`) and the
+  thread list, so cards and state words follow. A resolved project thread
+  has a **Reopen** link where its message box was.
+- **Project settings page** (`…/p/<pool>/<project>/general` or `/memory`),
+  sections at the left. **General**: Goal, the Paused switch, **New
+  threads** (Model and Thinking the project's threads start with; "This
+  chat's model" follows the project chat), **This chat** (Model, Mode,
+  Group, then a **Thread settings** link that opens the project chat with
+  its drawer showing, `…/t/<pool>/<thread>/settings`, for folders, machines,
+  network, local-only and the other task models), and one Save, which
+  patches the thread (`goal`, `paused`, `threadsModel`, `threadsThinking`,
+  `group`) and, when they changed, its settings. **Memory**: the
+  Instructions kept on the project page (2,000 characters, counted under
+  the box), and a link to that page in the memory browser. Files and
+  images come with the Files panel.
 - **Thread settings drawer:** a model per task (each option says cloud or local first), local-only, the internet and
   this machine's services switches (each following the user's default until
   changed), allowed hosts, folders from the allowed paths (read-only or
@@ -203,7 +238,19 @@ a single file. The old `…/panel` opens Settings.
   a tooltip saying the oldest reach her as their first line only.
 - A `threads` call is a card: the child thread started (title and task) or
   messaged, linking to it. A child's update shows in the parent as a card
-  headed "Child thread", linking to it. In a child thread, what the parent
+  headed "Child thread", linking to it. **In a project chat** there is no
+  card per start or update: each of the project's threads gets one card
+  under the message that started it (its anchor; threads whose anchor is
+  gone sit under the last message), updated in place from the overview:
+  title, state as a dot and word (Working blue, Waiting amber, Resolved
+  green, Idle plain), the first line of its last update beneath, and Open,
+  Stop, Resolve or Reopen behind ⋯. A card waiting on the user carries
+  `data-pending`, so the pending bar reads "Thread waiting for your answer".
+  A `threads suggest` call is the **Suggested threads** card, like the plan
+  card: each proposed thread with Start, one primary Start all; started ones
+  show Open (`GET …/overview` says which, by call and index). **Start a
+  thread** in a message's menu (project chats only) starts one from that
+  message (`POST …/messages/:n/thread`). In a child thread, what the parent
   sent shows as "Lyrica · from <parent title>", with the message menu
   (Branch, Delete; not Edit). Forgetting a thread with child threads asks
   whether to forget them too, ticked, in the shared `Confirm` with one option.

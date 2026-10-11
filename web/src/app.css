@@ -155,7 +155,8 @@ button.private { color: var(--private); border-color: color-mix(in oklab, var(--
 .showing .menu-sep { border: 0; border-top: 1px solid var(--line); margin: 4px -10px; }
 .showing label { display: flex; gap: 8px; align-items: center; min-height: 32px; font-size: 13px; cursor: pointer; }
 .showing .new-group { justify-self: start; margin-top: 2px; }
-.threads { list-style: none; margin: 0; padding: 0 2px; overflow-y: auto; flex: 1; display: grid; align-content: start; gap: 1px; }
+/* The strip under the last row keeps the list's own menu (New project, New group) reachable when the list is full. */
+.threads { list-style: none; margin: 0; padding: 0 2px 44px; overflow-y: auto; flex: 1; display: grid; align-content: start; gap: 1px; }
 .threads .eyebrow { padding: 10px 8px 4px; display: flex; gap: 6px; align-items: baseline; }
 .threads .trow { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 0; flex-wrap: nowrap; align-items: center; }
 .chev { width: 20px; min-height: 0; height: 24px; padding: 0; display: grid; place-items: center; border: 0; background: transparent; color: var(--muted); transition: transform 0.15s; }
@@ -241,7 +242,7 @@ button.badge:hover:not(:disabled) { border-color: var(--accent); }
 .picker form input { flex: 1; min-height: 32px; }
 
 /* ---- Pages with sections (Settings, Administration): the section list at the left, the content at the right. ---- */
-.body { display: grid; grid-template-columns: 196px minmax(0, 1fr); flex: 1; min-height: 0; overflow-y: auto; }
+.page-body { display: grid; grid-template-columns: 196px minmax(0, 1fr); flex: 1; min-height: 0; overflow-y: auto; }
 .subnav { border-right: 1px solid var(--line); padding: 14px 8px; display: grid; gap: 1px; align-content: start; position: sticky; top: 0; align-self: start; }
 .subnav a { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: 8px; color: var(--fg); min-height: var(--tap); }
 .subnav a:hover { background: var(--panel); text-decoration: none; }
@@ -470,7 +471,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   .drawer { width: 100%; }
   .picker { position: fixed; top: 104px; left: 16px; right: 16px; width: auto; }
   /* max-content keeps the section row at its height when a tall section would squeeze it (the scrolling row has no automatic minimum). */
-  .body { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content 1fr; }
+  .page-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content 1fr; }
   .subnav { position: static; display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px var(--gutter); gap: 2px; scrollbar-width: none; mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
   .subnav a:last-child { margin-right: 24px; }
   .subnav a { white-space: nowrap; }
@@ -560,3 +561,52 @@ form.drawer-body { flex: 1; }
   .machine-row .state-word { grid-column: 1; justify-self: start; padding-left: 14px; padding-bottom: 6px; }
   .machine-row .row-menu { grid-column: 2; grid-row: 1 / span 2; }
 }
+
+/* ---- Projects (docs/ux.md §6) ---- */
+/* The project icon stands where the pool dot is; amber when one of its threads waits on her. */
+.project-mark { display: inline-grid; place-items: center; width: 16px; margin-left: -2px; color: var(--muted); position: relative; }
+.project-mark.private { color: var(--private); }
+.project-mark .ic { width: 15px; height: 15px; }
+.project-mark[data-waiting]::after { content: ""; position: absolute; right: -3px; top: -1px; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 2px var(--bg); }
+.thread.project { grid-template-columns: 16px minmax(0, 1fr) auto; }
+.children .thread.dotted { grid-template-columns: 12px minmax(0, 1fr) auto; }
+.children .thread.dotted .pool-dot { width: 7px; height: 7px; }
+.tstate { font-size: 12px; font-family: var(--ui); color: var(--muted); white-space: nowrap; }
+.tstate[data-state="working"] { color: var(--info); }
+.tstate[data-state="waiting"], .tstate[data-state="needsYou"] { color: var(--warn); }
+.tstate[data-state="resolved"] { color: var(--ok); }
+.resolved-row { border: 0; background: transparent; color: var(--muted); font-size: 12px; min-height: 28px; padding: 0 8px 0 4px; justify-content: flex-start; gap: 4px; width: 100%; border-radius: 8px; font-weight: 400; }
+.resolved-row:hover { background: color-mix(in oklab, var(--panel) 60%, transparent); border: 0; }
+.resolved-row .chev-ic { width: 12px; height: 12px; transition: transform 0.15s; }
+.resolved-row[aria-expanded="true"] .chev-ic { transform: rotate(90deg); }
+.resolved-row .num { font-size: 11px; }
+.threads .num, .picker-ep .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+/* The header: Threads popover and tokens; Project is a link (docs/ux.md §3) before the Settings button. */
+.tfacts .tokens { white-space: nowrap; }
+.head-actions .project-link { font-size: 13px; padding: 0 6px; }
+.head-actions .project-link .ic { width: 15px; height: 15px; }
+.threads-pop .picker-ep { display: flex; gap: 6px; align-items: baseline; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; font-weight: 600; }
+.threads-pop .thread-item { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 8px; align-items: center; color: var(--fg); text-decoration: none; }
+.threads-pop .thread-item .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status[data-state="working"] { background: var(--info); animation: pulse 1.4s ease-in-out infinite; }
+.status[data-state="waiting"], .status[data-state="needsYou"] { background: var(--warn); }
+.status[data-state="resolved"] { background: var(--ok); }
+.threads-pop .tokens { margin: 0; padding: 2px 6px 4px; color: var(--muted); }
+/* A project thread's card under the message that started it. */
+/* The dot and the word carry the state (docs/ux.md §2: nothing coloured for decoration); Idle is the word alone. */
+.tcard { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 8px 12px; display: grid; gap: 4px; }
+.tcard-head { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; font-size: 14px; }
+.tcard-head[data-dot] { grid-template-columns: 8px minmax(0, 1fr) auto auto; }
+.tcard-title { color: var(--fg); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tcard-line { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tcard .msg-menu { position: relative; }
+.tcard .menu.end { left: auto; right: 0; min-width: 160px; }
+/* Suggested threads: like the plan card. */
+.suggestions { margin: 0; padding: 0 0 0 20px; display: grid; gap: 8px; }
+.suggestions li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: start; }
+.suggestion-text { display: grid; gap: 2px; min-width: 0; }
+.suggestion-text .prose.small { font-size: 14px; line-height: 1.5; }
+.resolved-box { padding-block: 12px; }
+.resolved-box p { margin: 0; display: flex; gap: 6px; align-items: center; }
+.project-form h3 { font-size: 15px; margin: 8px 0 0; }
+.project-form textarea { width: 100%; resize: vertical; }

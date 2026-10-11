@@ -4,7 +4,8 @@
 //
 // The fake model answers from the last user message: "run: <command>" calls
 // bash with that command (then says "The command finished."), "start: <title>"
-// starts a child thread with that title (then says "Started it."), "plan: <plan>"
+// starts a child thread with that title (then says "Started it."), "suggest: <a>, <b>"
+// proposes threads with those titles (then says "Suggested."), "plan: <plan>"
 // calls propose_plan with that plan (then says "On it."), anything else
 // gets a few streamed sentences that echo it. /local/v1 serves "local-model"
 // and /cloud/v1 "cloud-model". /speech/v1 is a speech server: "whisper"
@@ -77,12 +78,14 @@ function fakeModel() {
       const command = /run: (.+)/.exec(said)?.[1];
       const plan = /plan: (.+)/.exec(said)?.[1];
       const child = /^start: (.+)/.exec(said)?.[1];
-      if (child && last?.role !== "tool") {
-        const args = { action: "start", title: child, task: `Work on ${child}.` };
+      const suggest = /^suggest: (.+)/.exec(said)?.[1];
+      if ((child || suggest) && last?.role !== "tool") {
+        const args = child ? { action: "start", title: child, task: `Work on ${child}.` }
+          : { action: "suggest", threads: suggest!.split(",").map((t) => t.trim()).map((title) => ({ title, task: `Work on ${title}.` })) };
         send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: { name: "threads", arguments: JSON.stringify(args) } }] });
         send({}, "tool_calls");
-      } else if (child) {
-        send({ role: "assistant", content: "Started it." });
+      } else if (child || suggest) {
+        send({ role: "assistant", content: child ? "Started it." : "Suggested." });
         send({}, "stop");
       } else if ((command || plan) && last?.role !== "tool") {
         const call = command ? { name: "bash", arguments: JSON.stringify({ command }) } : { name: "propose_plan", arguments: JSON.stringify({ plan }) };
