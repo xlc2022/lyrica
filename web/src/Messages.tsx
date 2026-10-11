@@ -144,7 +144,7 @@ function Parts({ parts, env, model, streaming, n }: { parts: MessagePart[]; env:
       <div key={`p${key}`} className="msg her">
         <div className="body prose">
           <HerProse text={prose.join("")} env={env} />
-          {streaming && last && <span className="caret" aria-hidden="true" />}
+          {streaming && last && <span className="caret-blink" aria-hidden="true" />}
         </div>
       </div>,
     );
@@ -156,7 +156,7 @@ function Parts({ parts, env, model, streaming, n }: { parts: MessagePart[]; env:
     out.push(<Marker key={i} part={p} env={env} />);
   });
   flush(parts.length, true);
-  if (streaming && parts.at(-1)?.type !== "text") out.push(<span key="caret" className="caret alone" aria-hidden="true" />);
+  if (streaming && parts.at(-1)?.type !== "text") out.push(<span key="caret" className="caret-blink alone" aria-hidden="true" />);
   // In a subagent's thread, the replies are the subagent's own work.
   const who = env.subagent ? "Subagent" : "Lyrica";
   return (

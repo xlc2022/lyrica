@@ -25,7 +25,7 @@ go back (principle 6: make review easy).
    in mono, date, Running on one), **Roll back** in each row's ⋯ except the
    Running row's, disabled while an update runs.
 2. **Roll back dialog:** "Roll back to the release from 9 October?" with
-   the commit in mono after it, plus, when the schema changed, "Messages
+   the commit in mono after it, plus, when it restores a snapshot, "Messages
    since 14:02 will be lost." Roll back and Cancel.
 3. **A failed probation** in Notifications: the commit, the failed check,
    that it rolled back.

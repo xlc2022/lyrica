@@ -774,7 +774,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 - **HTTP/SSE API**, defined in `daemon/src/api.ts` and described in
   [daemon.md](daemon.md). The web UI imports its types from there:
   - auth;
-  - threads (list, create, hide, forget);
+  - threads (list, create, hide, forget); the user's own view of them:
+    `Display.sort` (`ThreadSort`), `ThreadSummary.group` and `unread`,
+    `ThreadChange.group` and `unread`, `ThreadGroup` with `GET`/`POST
+    thread-groups` and `PATCH`/`DELETE thread-groups/:id` (in `user.db`,
+    never the pool); `State.version` and `build` (once unlocked);
   - `ThreadSettings.context` (`ContextInfo`: used, window, parts, reserve,
     free, measured at), `CallInfo.pace`, the `context` and `compacted`
     thread events, and a `compacted` message part (the stored notice);
@@ -902,8 +906,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   new turns; answers `{ busy: threadId[] }` until idle) and `POST /undrain`.
   While draining, `SendRequest` is `409` with `{ updating: true }` (`503`
   stays "locked"). Each
-  encrypted database records its schema version (`PRAGMA user_version`),
-  and opening one written by a newer schema throws `SchemaTooNew`. An
+  encrypted database records its schema version (`PRAGMA user_version`)
+  and the oldest schema that can read it (`meta.min_reader`: an expand
+  leaves it, a contract raises it); opening one whose `min_reader` is above
+  the release's schema throws `SchemaTooNew`. A
+  database migrates in one transaction that checks `integrity_check` and
+  `foreign_key_check` before committing; a failure leaves it unchanged and
+  shows as a failed `/health` check. An
   administrator's `GET /api/u/:userId/admin/updates` lists the running
   release, kept releases, the newest update note (tag, commit, message) and
   the updater's state; `POST …/updates` with `{ tag }` and `POST

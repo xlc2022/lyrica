@@ -6,7 +6,7 @@
 // sent or played, then goes.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { errorFrom, type Speech, type Transcription } from "./api.ts";
-import { Icon } from "./Modes.tsx";
+import { Icon } from "./icons.tsx";
 
 const RATE = 16_000;
 /** A clip is at most 10 minutes; recording stops there. */
