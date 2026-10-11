@@ -58,7 +58,8 @@ jobs:
         run: |
           if [ ! -x /nix/var/nix/profiles/default/bin/nix ]; then
             # A cancelled install leaves these, and the installer then refuses to run.
-            left=$(find /etc -maxdepth 2 -name '*.backup-before-nix' 2>/dev/null)
+            # find exits 1 on /etc's root-only directories, which bash -e would turn into a silent stop.
+            left=$(find /etc -maxdepth 2 -name '*.backup-before-nix' 2>/dev/null || true)
             if [ -n "$left" ]; then
               echo "$left"
               echo "::error::An earlier Nix install on this runner stopped partway. Undo it with the Nix manual's multi-user uninstall steps (restore the files above, remove /nix and /etc/nix, the nix-daemon units and the nixbld users), then re-run this job."
