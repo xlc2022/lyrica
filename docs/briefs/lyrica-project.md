@@ -40,6 +40,12 @@ written here.
    - **Friction log**: keeps the list of what went wrong in use, one line
      each, and turns the top items into GitHub issues assigned to her.
 
+4. Leave the project's `watchThreads` setting on (the default): the
+   project chat then takes a batched look at its threads 30 s after one
+   ends a turn Li started or posts an update, marked `[Watching threads]`,
+   tells the threads a change affects and speaks only when Li must know
+   or decide (docs/delegation.md, "Watching threads").
+
 ## Project instructions (paste as is)
 
 Kept current by every PR that changes how she works on her own code
