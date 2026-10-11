@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
+import { fakeProxmox, TOKEN as PVE_TOKEN } from "../../core/test/fake-proxmox.ts";
 import type { CallInfo, EndpointInfo, MachineInfo, MachineProbe, MessagePage, PermissionRequest, ThreadEvent, ThreadSettings, ThreadSummary, UploadResponse } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
@@ -227,6 +228,69 @@ describe("machines", () => {
     await li.post(`${path}/permissions/${request.requestId}`, { allow: false });
     await stream.until(is("turn_end"));
     stream.close();
+  });
+});
+
+describe("a Proxmox machine", () => {
+  it("is added with its token, which never shows, and a reboot asks until allowed in that thread and no other", async () => {
+    const pve = await fakeProxmox();
+    try {
+      const { rt, li, model, path, logs } = await setup({ permissionMs: 5_000 });
+      const u = `/api/u/${rt.li.id}/machines`;
+      const probe = (await li.post<MachineProbe>(`${u}/probe`, { kind: "proxmox", name: "pve", address: pve.address })).body;
+      expect(probe).toMatchObject({ fingerprint: pve.fingerprint, login: false });
+      expect(probe.draft).toBeUndefined();
+      const added = await li.post<MachineInfo>(u, { kind: "proxmox", name: "pve", address: pve.address, token: PVE_TOKEN, hostKey: pve.fingerprint, pool: "general", limit: "auto" });
+      expect(added.body).toMatchObject({ name: "pve", kind: "proxmox", address: pve.address, tokenId: "lyrica@pve!agent", limit: "auto", hostKey: pve.fingerprint });
+      await li.patch(`${path}/settings`, { machines: ["pve"] });
+      const other = (await li.post<ThreadSummary>(`/api/u/${rt.li.id}/threads`, { pool: "general", title: "other" })).body;
+      const otherPath = `/api/u/${rt.li.id}/threads/general/${enc(other.id)}`;
+      await li.patch(`${otherPath}/settings`, { machines: ["pve"] });
+
+      const reboot = { tools: [{ name: "proxmox", args: { machine: "pve", action: "reboot", vm: "101" } }] };
+      model.reply(reboot, { text: "rebooting" });
+      const stream = li.events(`${path}/events`);
+      await li.post(`${path}/messages`, { text: "reboot web" });
+      await stream.until(is("permission"));
+      const request = stream.events.find((e) => e.event.type === "permission")!.event as PermissionRequest;
+      expect(request).toMatchObject({ tool: "proxmox", machine: "pve", suspect: true, warning: "This restarts the VM: everything running in it stops." });
+      expect(request.cwd).toBeUndefined();
+      await li.post(`${path}/permissions/${request.requestId}`, { allow: true, allowInThread: true });
+      await stream.until(is("turn_end"));
+      expect(pve.requests.map((r) => r.line)).toContain("POST /api2/json/nodes/pve1/qemu/101/status/reboot");
+
+      // The same reboot in the same thread runs without asking.
+      model.reply(reboot, { text: "again" });
+      const again = li.events(`${path}/events`);
+      await again.until(is("hello"));
+      await li.post(`${path}/messages`, { text: "once more" });
+      await again.until(is("turn_end"));
+      expect(again.events.some((e) => e.event.type === "permission")).toBe(false);
+
+      // In another thread it still asks.
+      model.reply(reboot, { text: "not allowed here" });
+      const elsewhere = li.events(`${otherPath}/events`);
+      await elsewhere.until(is("hello"));
+      await li.post(`${otherPath}/messages`, { text: "reboot web" });
+      await elsewhere.until(is("permission"));
+      const asked = elsewhere.events.find((e) => e.event.type === "permission")!.event as PermissionRequest;
+      await li.post(`${otherPath}/permissions/${asked.requestId}`, { allow: false });
+      await elsewhere.until(is("turn_end"));
+
+      // The token's secret is nowhere she, the API or the log can show.
+      const secret = PVE_TOKEN.split("=")[1]!;
+      const shown = JSON.stringify([
+        (await li.get(u)).body, (await li.get(`${path}/messages`)).body, (await li.get(`${otherPath}/messages`)).body,
+        stream.events, again.events, elsewhere.events, logs, model.requests,
+      ]);
+      expect(shown).toContain("Asked pve1 to reboot 101 web");
+      expect(shown).not.toContain(secret);
+      stream.close();
+      again.close();
+      elsewhere.close();
+    } finally {
+      await pve.close();
+    }
   });
 });
 

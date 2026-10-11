@@ -2,6 +2,7 @@ import { isAbsolute, posix } from "node:path";
 import type { Db } from "../db.ts";
 import type { Pool } from "../types.ts";
 import { parseHost } from "./net.ts";
+import { certFingerprint } from "./proxmox.ts";
 
 /** A folder a thread may touch. It is mounted at the same path inside the sandbox. */
 export interface Grant {
@@ -53,18 +54,26 @@ export interface ThreadWorkspace {
 export type MachineLimit = Exclude<PermissionMode, "plan">;
 export const MACHINE_LIMITS: readonly MachineLimit[] = ["auto", "acceptEdits", "ask"];
 
-/** A computer she works on over SSH, with the account and key she signs in with. */
+/** How a machine is reached: SSH with a key, or Proxmox's API with a token. */
+export type MachineKind = "ssh" | "proxmox";
+
+/** A computer she works on over SSH with an account and key, or a Proxmox she manages over its API with a token. */
 export interface MachineConfig {
   name: string;
-  kind: "ssh";
+  kind: MachineKind;
   host: string;
   port: number;
+  /** The SSH account, or for Proxmox the token's id (`user@realm!tokenid`). */
   username: string;
-  /** OpenSSH private key. Lives only in user.db and in memory. */
+  /** The OpenSSH private key, or for Proxmox the whole API token. Lives only in user.db and in memory. */
   privateKey: string;
-  /** Optional remote folder that read, write and edit stay inside. */
+  /** Optional remote folder that read, write and edit stay inside. Always null for Proxmox. */
   root: string | null;
-  /** SHA-256 of the host key Li confirmed. A machine from before confirming may have none, and can't be reached until it does. */
+  /**
+   * SHA-256 of the host key Li confirmed (`SHA256:…`), or for Proxmox of its
+   * TLS certificate (`AB:CD:…`). A machine from before confirming may have
+   * none, and can't be reached until it does.
+   */
   hostKey: string | null;
   /** Reached only from threads of this pool. */
   pool: Pool;
@@ -76,10 +85,16 @@ export interface MachineConfig {
 }
 
 /** What adding a machine takes: the rest starts empty. */
-export type NewMachine = Omit<MachineConfig, "kind" | "hostKey" | "limit" | "lastUsed"> & { limit?: MachineLimit };
+export type NewMachine = Omit<MachineConfig, "kind" | "hostKey" | "limit" | "lastUsed"> & { kind?: MachineKind; limit?: MachineLimit };
 
 const MACHINE_NAME = /^[A-Za-z0-9._-]{1,64}$/;
 const HOST_KEY = /^SHA256:[A-Za-z0-9+/]{43}=?$/;
+/** The confirmed key in the form kept for its kind, or a thrown error. */
+function confirmedKey(kind: MachineKind, key: string): string {
+  if (kind === "proxmox") return certFingerprint(key);
+  if (!HOST_KEY.test(key)) throw new Error("confirm the machine's host key (SHA256:…) before adding it");
+  return key;
+}
 
 /** Workspace tables in the user's user.db. The pool databases belong to Memory. */
 export const WORKSPACE_SCHEMA = `
@@ -362,17 +377,19 @@ export class WorkspaceSettings {
     return m;
   }
 
-  /** Adds a machine with the host key Li confirmed. New machines start at Ask. */
+  /** Adds a machine with the host key (or Proxmox certificate) Li confirmed. New machines start at Ask. */
   addMachine(m: NewMachine, confirmedHostKey: string): MachineConfig {
     if (!MACHINE_NAME.test(m.name)) throw new Error("machine names use letters, digits, '.', '_' and '-'");
     if (this.machine(m.name)) throw new Error(`machine ${m.name} already exists`);
-    if (!HOST_KEY.test(confirmedHostKey)) throw new Error("confirm the machine's host key (SHA256:…) before adding it");
+    const kind = m.kind ?? "ssh";
+    if (kind !== "ssh" && kind !== "proxmox") throw new Error(`unknown machine kind: ${String(kind)}`);
+    const hostKey = confirmedKey(kind, confirmedHostKey);
     if (m.pool !== "general" && m.pool !== "private") throw new Error("a machine is general or private");
     const limit = m.limit ?? "ask";
     if (!MACHINE_LIMITS.includes(limit)) throw new Error(`unknown mode limit: ${limit}`);
     this.db.prepare(`INSERT INTO machines (name, kind, host, port, username, private_key, root, host_key, pool, mode_limit, off_network)
-      VALUES (?, 'ssh', ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(m.name, m.host, m.port, m.username, m.privateKey,
-      m.root === null ? null : cleanPath(m.root), confirmedHostKey, m.pool, limit, m.offNetwork ? 1 : 0);
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(m.name, kind, m.host, m.port, m.username, m.privateKey,
+      m.root === null || kind === "proxmox" ? null : cleanPath(m.root), hostKey, m.pool, limit, m.offNetwork ? 1 : 0);
     return this.need(m.name);
   }
 
@@ -389,6 +406,7 @@ export class WorkspaceSettings {
    */
   updateMachine(name: string, change: Partial<Pick<MachineConfig, "host" | "port" | "username" | "root" | "limit">>): MachineConfig {
     const next = { ...this.need(name), ...change };
+    if (next.kind === "proxmox") next.root = null;
     if (!MACHINE_LIMITS.includes(next.limit)) throw new Error(`unknown mode limit: ${next.limit}`);
     if (!next.host || !Number.isInteger(next.port) || next.port < 1 || next.port > 65535 || !next.username) throw new Error("the address looks like account@host or account@host:port");
     this.db.prepare("UPDATE machines SET host = ?, port = ?, username = ?, root = ?, mode_limit = ? WHERE name = ?")
@@ -406,11 +424,17 @@ export class WorkspaceSettings {
     return this.need(name);
   }
 
-  /** Re-pairs a machine: the host key Li confirmed replaces the old one. */
+  /** Re-pairs a machine: the host key (or Proxmox certificate) Li confirmed replaces the old one. */
   setHostKey(name: string, confirmedHostKey: string): MachineConfig {
-    this.need(name);
-    if (!HOST_KEY.test(confirmedHostKey)) throw new Error("a host key looks like SHA256:…");
-    this.db.prepare("UPDATE machines SET host_key = ? WHERE name = ?").run(confirmedHostKey, name);
+    const key = confirmedKey(this.need(name).kind, confirmedHostKey);
+    this.db.prepare("UPDATE machines SET host_key = ? WHERE name = ?").run(key, name);
+    return this.need(name);
+  }
+
+  /** A Proxmox machine's new token, with its id. */
+  setToken(name: string, token: string, id: string): MachineConfig {
+    if (this.need(name).kind !== "proxmox") throw new Error(`${name} isn't a Proxmox machine`);
+    this.db.prepare("UPDATE machines SET private_key = ?, username = ? WHERE name = ?").run(token, id, name);
     return this.need(name);
   }
 
@@ -488,10 +512,10 @@ function migrate(db: Db): void {
 }
 
 interface MachineRow {
-  name: string; host: string; port: number; username: string; private_key: string; root: string | null; host_key: string | null;
+  name: string; kind: MachineKind; host: string; port: number; username: string; private_key: string; root: string | null; host_key: string | null;
   pool: Pool; mode_limit: MachineLimit; off_network: number; last_used: string | null;
 }
 const toMachine = (r: MachineRow): MachineConfig => ({
-  name: r.name, kind: "ssh", host: r.host, port: r.port, username: r.username, privateKey: r.private_key, root: r.root, hostKey: r.host_key,
+  name: r.name, kind: r.kind, host: r.host, port: r.port, username: r.username, privateKey: r.private_key, root: r.root, hostKey: r.host_key,
   pool: r.pool, limit: r.mode_limit, offNetwork: r.off_network === 1, lastUsed: r.last_used,
 });
