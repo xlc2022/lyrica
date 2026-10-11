@@ -1,4 +1,4 @@
-import { FROM_PARENT } from "@lyrica/core";
+import { FROM_PARENT, WATCHING } from "@lyrica/core";
 import { DELEGATE_MESSAGE, OPENING, USER_MESSAGE } from "@lyrica/extension";
 import type { Message, MessagePart, Pool, ThreadRef } from "./api.ts";
 
@@ -125,6 +125,12 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
       if (marked) {
         const from = marked[1] === opts.parent ? { kind: "parent" as const, threadId: marked[1]! } : { kind: "thread" as const, threadId: marked[1]! };
         out.push({ ...base, role: "user", from, parts: [{ type: "text", text: textOf(m.content).slice(marked[0].length) }] });
+        continue;
+      }
+      // lyricad refuses the mark on anything a user sends.
+      const watching = WATCHING.exec(textOf(m.content));
+      if (watching) {
+        out.push({ ...base, role: "user", from: { kind: "watching" }, parts: [{ type: "text", text: textOf(m.content).slice(watching[0].length) }] });
         continue;
       }
       out.push({ ...base, role: "user", ...(subagent ? { from: { kind: "lyrica" as const } } : {}), parts: [{ type: "text", text: textOf(m.content) }] });

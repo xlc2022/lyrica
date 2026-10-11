@@ -107,7 +107,7 @@ function StoredMessage({ m, env, you, cards }: { m: Message; env: Env; you: stri
   const after = cards?.map((t) => <ThreadCard key={t.id} t={t} userId={env.userId} env={env.project!} />);
   if (m.role === "user") {
     if (m.from?.kind === "parent") return <><FromParent text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} parent={m.from.threadId} env={env} n={m.n} />{after}</>;
-    const hers = m.from?.kind === "lyrica" || m.from?.kind === "thread";
+    const hers = m.from?.kind === "lyrica" || m.from?.kind === "thread" || m.from?.kind === "watching";
     const who = hers ? "Lyrica" : m.from?.kind === "user" ? (m.from.name || you) : you;
     return <><UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} hers={hers ? env : undefined} />{after}</>;
   }

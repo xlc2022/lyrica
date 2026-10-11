@@ -798,8 +798,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     Web UI 2's thread menu uses them. `POST threads` with `project` (and
     `PATCH` making one) also pins the thread; `Display.projects: "all" |
     "only" | "none"` filters the list; `PATCH threads/:id` with `project`,
-    `goal`, `paused`, `threadsModel` and `threadsThinking` (`user.db`
-    `project_settings`, IDs only); `POST …/messages/:n/thread` (Start a
+    `goal`, `paused`, `threadsModel`, `threadsThinking` and `watchThreads`
+    (`user.db` `project_settings`, IDs and switches only); a project chat's
+    look at its threads is a user message marked `[Watching threads]`
+    (`WATCHING_MARK`, core/src/threads.ts), which only `daemon/src/watch.ts`
+    writes and `Message.from` shows as `{ kind: "watching" }`; `POST …/messages/:n/thread` (Start a
     thread) → `ThreadSummary`; `POST threads/:id/resolve` and `…/reopen`;
     `POST …/suggestions/:callId/start` (`index`, or all with none; `user.db`
     `started_suggestions`); `GET threads/:id/overview` (`ProjectOverview`:
@@ -1031,7 +1034,7 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   services) and an **allowed hosts** list. Each has per-user, per-pool
   defaults and a per-thread override.
   - Nothing on, list empty: `--unshare-net`.
-  - Otherwise `pasta` wraps the sandbox in its own network namespace, with
+  - Otherwise the sandbox gets its own network namespace, served by `pasta`, with
     default-deny output rules set inside it before the command runs. They
     allow the internet if that switch is on, the host's loopback if the
     machine's-services switch is on, and each allowed host (IP, CIDR, or a

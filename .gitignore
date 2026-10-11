@@ -3,3 +3,4 @@ runtime/
 web/dist/
 web/test-results/
 web/playwright-report/
+result*

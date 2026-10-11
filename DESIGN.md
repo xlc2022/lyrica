@@ -922,8 +922,18 @@ web part and sleep's project page are not yet. The briefs are
   **Resolved**. A thread is resolved by Li, by Lyrica when its work is
   delivered and nothing is owed, or after 7 days with no activity; a message
   in it reopens it.
-- **Updates don't start a turn in the project chat**; she speaks there
-  when Li writes. A thread's update changes its card.
+- **She watches her threads** (Li, 2026-10-11; a project setting, **Watching
+  threads**, on by default). When Li writes in one of the project's threads,
+  or a thread posts an update, the project chat takes one quiet turn a
+  little later, batched across threads, with what was said. There she
+  decides whether another thread is affected, messages it, and relays its
+  answer; she posts in the project chat only what needs Li. A thread that
+  isn't logged is left out, and so is a local-only thread unless the
+  project chat is local-only too, since a look quotes Li's words. A run of such turns stops after 3 until Li
+  writes in the project again, so threads can't keep each other going.
+  With the setting off, updates only change their cards and she speaks in
+  the project chat when Li writes. The back end is built; the switch and
+  the notice are in the web part.
 - **Context set once.** Every thread of a project starts with the same
   project context, assembled each turn in its own budget:
   - **Goal**: one line Li writes.
@@ -1273,7 +1283,13 @@ Details in [docs/sleep.md](docs/sleep.md).
   LXC container or VM on Li's Proxmox. No Docker. The host needs bubblewrap,
   gocryptfs, pasta, FUSE and unprivileged user namespaces. In an LXC container, that
   means turning on the nesting and FUSE features. One install script sets up
-  the service users, `lyricad`'s unit, and the built-in Caddy.
+  the service users, `lyricad`'s unit, and the built-in Caddy. On NixOS,
+  the repository's flake gives a package and a module, `services.lyrica`,
+  that declares the same users, units and hardening as the install script.
+  Her sandboxes there mount the module's tools as `/usr` and only their
+  closure from `/nix/store`, never the whole store. Updates on NixOS use the
+  same Update button, through a Lyrica-only Nix profile (Updates and
+  self-editing). Details in [docs/daemon.md](docs/daemon.md), "On NixOS".
 - **Reaching the web UI:**
   - `lyricad` serves plain HTTP on `127.0.0.1` behind an HTTPS proxy. The
     browser never gets plain HTTP: login cookies are `Secure`.
@@ -1560,6 +1576,14 @@ new evidence.
   machine starting at Ask and loosened one at a time, and Proxmox through a
   narrow API token rather than a root shell. The node that runs her own VM
   still waits.
+- **NixOS (2026-10-11).** Li asked to deploy to NixOS, as a flake. The flake
+  packages lyricad and exports a NixOS module that declares what the install
+  script does; nixpkgs packaging was left out while Lyrica changes daily.
+  NixOS has no `/usr` to share, so sandboxes get the module's tools as
+  `/usr` with only their closure in `/nix/store`, because the whole store
+  holds generated system configs. Li chose the same Update button on NixOS
+  (through a Lyrica-only Nix profile) over updating only with
+  `nixos-rebuild`. It is documented in daemon.md, not a page of its own.
 - **Operator guides added to the docs budget (2026-10-11).** Li asked for
   human-readable documentation on running Lyrica: bootstrapping her on a new
   system, deploying model hosts, adding CI runners. They live in
