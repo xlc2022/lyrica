@@ -72,12 +72,23 @@ can use voice (principles 1 and 2).
 
 ## Handoff notes
 
-- Done: dictation on vLLM, the speech container (Kokoro's ONNX export, CPU
-  or CUDA), the host API and dashboard, `.onnx` and voice downloads, and
-  the Windows benchmark (`host/bench/speech/`). On a CPU, Kokoro reads at
-  about a quarter of real time.
-- Waiting: Li's benchmark results, for the numbers and the voice pick.
-  Proposed: Kokoro, the only one without pickled weights (CosyVoice 2's
-  `.pt` files and Chatterbox's `conds.pt` are pickles).
-- Next, once picked: pinned starter downloads, and placement notes for
-  pinning both models on the 3090.
+- Done (#65): dictation on vLLM, the speech container (Kokoro's ONNX
+  export, CPU or CUDA), the host API and dashboard, `.onnx` and voice
+  downloads, `model_unavailable` for a dead model server, and the Windows
+  benchmark (`host/bench/speech/`).
+- Benchmark on Li's RTX 3090 machine (Windows 11, 2026-10-10):
+  - Kokoro v1.0 and v1.1-zh: 1.2 to 1.7 s for a 4.5 to 5.8 s sentence
+    (real-time factor about 0.27), on the CPU. The GPU rows fell back to
+    the CPU (cuDNN wouldn't load on Windows), so GPU speed is unmeasured;
+    the CPU is already fast enough. Apache-2.0.
+  - Whisper large-v3-turbo (transformers, fp16): no errors on English and
+    Mandarin; 6 s per minute of audio; 2.2 GB of VRAM; 52 s to load.
+    On mixed Mandarin and English it heard Kokoro 1.1's zm_010 almost
+    perfectly (CER 0.03); the other Mandarin voices mangle English words
+    (CER 0.34 to 0.41).
+  - Chatterbox (its watermarker didn't load), CosyVoice 2 (an install
+    failure) and Voxtral (a bug in the benchmark) gave no numbers.
+- The benchmark is fixed for those three, and for cuDNN on Windows, and
+  Li is running it again (Li's choice, 2026-10-11) before picking the
+  voice. Proposed: Kokoro v1.1-zh, the only candidate without pickled
+  weights. Its starters, and Whisper's, are in host/README.md.

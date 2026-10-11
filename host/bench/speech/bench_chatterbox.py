@@ -15,7 +15,18 @@ environment(PART)
 try:
     import time
 
+    import perth
     import torch
+
+    watermark = "Perth"
+    if perth.PerthImplicitWatermarker is None:
+        # Its import failed (it needs pkg_resources): measure without the watermark rather than not at all.
+        class NoWatermark:
+            def apply_watermark(self, wav, sample_rate=None, **kw):
+                return wav
+
+        perth.PerthImplicitWatermarker = NoWatermark
+        watermark = "off (Perth didn't load)"
     from chatterbox.mtl_tts import ChatterboxMultilingualTTS
 
     mem = GpuMemory()
@@ -38,7 +49,7 @@ for key, text in SENTENCES.items():
             firstAudioSeconds=round(seconds, 3), streaming=False, audioSeconds=round(audio.size / tts.sr, 2),
             realTimeFactor=round(seconds / (audio.size / tts.sr), 3), loadSeconds=round(load, 2),
             peakVramGb=mem.peak_gb(), torchPeakGb=round(torch.cuda.max_memory_allocated() / 1024**3, 2),
-            licence="MIT (code and weights); output is watermarked (Perth)",
+            licence="MIT (code and weights)", watermark=watermark,
         )
     except Exception as e:  # noqa: BLE001
         failed(PART, MODEL, f"{key}: {e}")
