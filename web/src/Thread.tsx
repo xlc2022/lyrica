@@ -24,6 +24,10 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart }: { ctx: S
   const granted = settings.data?.machines.flatMap((name) => { const m = machines.data?.find((x) => x.name === name); return m ? [{ name, limit: m.limit }] : []; }) ?? [];
   const t = useThread(userId, pool, threadId);
   const [drawer, setDrawer] = useState(!!drawerAtStart);
+  // Opened by its address (…/settings): once closed, the address drops it, so a reload doesn't reopen it.
+  useEffect(() => {
+    if (drawerAtStart && !drawer && location.hash.endsWith("/settings")) history.replaceState(null, "", location.hash.slice(0, -"/settings".length));
+  }, [drawer, drawerAtStart]);
   const [sendError, setSendError] = useState("");
   const { refreshThreads } = ctx;
   // A project chat: its threads, reloaded when one changes state or a turn ends.
