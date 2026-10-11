@@ -248,16 +248,16 @@ describe.skipIf(!runnable)("the Files panel", () => {
     expect(await f.upload("/workspace/notes", "../../etc/x.txt", Buffer.from("one"))).toBe("/workspace/notes/x.txt");
     expect(await f.upload("/workspace/notes", "x.txt", Buffer.from("two"))).toBe("/workspace/notes/x-2.txt");
     expect(readFileSync(p("work", "notes", "x-2.txt"), "utf8")).toBe("two");
-    await f.mkdir("/workspace/out");
-    await f.rename("/workspace/notes/x-2.txt", "/workspace/out/y.txt");
-    expect(readFileSync(p("work", "out", "y.txt"), "utf8")).toBe("two");
-    await expect(f.rename("/workspace/notes/x.txt", "/workspace/out/y.txt")).rejects.toThrow(/already there/);
-    await f.remove(["/workspace/out", "/workspace/notes/x.txt"]);
-    expect(readdirSync(p("work"))).not.toContain("out");
+    await f.mkdir("/workspace/pout");
+    await f.rename("/workspace/notes/x-2.txt", "/workspace/pout/y.txt");
+    expect(readFileSync(p("work", "pout", "y.txt"), "utf8")).toBe("two");
+    await expect(f.rename("/workspace/notes/x.txt", "/workspace/pout/y.txt")).rejects.toThrow(/already there/);
+    await f.remove(["/workspace/pout", "/workspace/notes/x.txt"]);
+    expect(readdirSync(p("work"))).not.toContain("pout");
     expect(readdirSync(p("work", "notes"))).toEqual(["plan.md"]);
     expect(notes).toEqual([
-      ["added", ["/workspace/notes/x.txt"]], ["added", ["/workspace/notes/x-2.txt"]], ["added", ["/workspace/out"]],
-      ["removed", ["/workspace/notes/x-2.txt"]], ["added", ["/workspace/out/y.txt"]], ["removed", ["/workspace/out", "/workspace/notes/x.txt"]],
+      ["added", ["/workspace/notes/x.txt"]], ["added", ["/workspace/notes/x-2.txt"]], ["added", ["/workspace/pout"]],
+      ["removed", ["/workspace/notes/x-2.txt"]], ["added", ["/workspace/pout/y.txt"]], ["removed", ["/workspace/pout", "/workspace/notes/x.txt"]],
     ]);
     for (const call of [
       () => f.upload(p("ro"), "new.txt", Buffer.from("x")), () => f.mkdir(p("ro", "d")), () => f.rename(p("ro", "song.txt"), p("ro", "hymn.txt")),
