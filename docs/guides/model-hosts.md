@@ -9,9 +9,9 @@ references are [host/README.md](../../host/README.md) (what the stack is),
 and on Lyrica's side [docs/models.md](../models.md) ("Model hosts").
 
 **What has and hasn't been exercised.** CI installs the stack with
-`install.sh --no-gpu` on Ubuntu 24.04 on every pull request, checks its
-network layout on the running containers, and builds the CUDA and ROCm
-images. Nothing has run on a GPU, with a real model, or against a real hub
+`install.sh --no-gpu` on Ubuntu 24.04 on every pull request and checks its
+network layout on the running containers; the CUDA and ROCm images build
+only when the files that go into them change. Nothing has run on a GPU, with a real model, or against a real hub
 (the model host brief's handoff says so, and no later thread has reported
 otherwise). The voice and dictation choices below come from a benchmark
 Li ran on a Windows machine with an RTX 3090, outside this stack. Expect
@@ -49,15 +49,25 @@ back each other up.
   NVIDIA (`nvidia-ctk runtime configure --runtime=docker`, then restart
   Docker). AMD needs only the `render` group and `/dev/dri`.
 - `iptables` and `git`. systemd keeps the egress rules across reboots;
-  without it you run `host/egress.sh apply` after every boot and Docker
-  restart.
+  without it you run `sudo host/egress.sh apply` after every boot and
+  Docker restart.
+- A user in the `docker` group to run the script as: it runs `docker
+  compose` as you, and uses `sudo` only for the egress rules and the unit.
 - A **models folder**, `/srv/models` by default, on a disk with room for
-  what you'll download. It can be one another program already uses, such
-  as LM Studio's; the stack mounts it read-only and writes only into its
-  `lyrica/` subfolder.
+  what you'll download. It must exist before the script runs, and you must
+  be able to create its `lyrica/` subfolder:
+
+  ```sh
+  sudo mkdir -p /srv/models && sudo chown "$USER" /srv/models
+  ```
+
+  It can be one another program already uses, such as LM Studio's; the
+  stack mounts it read-only and writes only into `lyrica/`.
 - A **private LAN address** (10/8, 172.16/12, 192.168/16, or a tailnet
   address). Docker's published ports bypass the machine's firewall, so the
-  script refuses to publish on every interface or on a public address.
+  script never publishes on every interface, and a detected address that
+  isn't private is dropped rather than offered. An address you type, or
+  give with `--lan`, is used as given, so don't give it a public one.
   Optionally Tailscale: the stack can join your tailnet as a device of its
   own, with no Tailscale installed on the machine.
 
@@ -80,25 +90,24 @@ git clone https://github.com/xlc2022/lyrica && cd lyrica
 host/install.sh
 ```
 
-It asks three questions, each with a default: the host's name (lower-case
-letters, digits and dashes; `lyrica-<hostname>`), the LAN address to
-publish on (detected, if the detected one is private), and the models
-folder. Then it:
+It first checks the GPU, the driver and Docker's GPU support, and for AMD
+picks ROCm or Vulkan. Then it asks three questions, each with a default:
+the host's name (lower-case letters, digits and dashes;
+`lyrica-<hostname>`), the LAN address to publish on (detected, if the
+detected one is private), and the models folder. Then it:
 
-1. Checks the GPU, the driver and Docker's GPU support, and for AMD picks
-   ROCm or Vulkan.
-2. Writes `host/.env` (mode 0600) with the answers, the compose files to
+1. Writes `host/.env` (mode 0600) with the answers, the compose files to
    use, and the fixed address of `host-api`'s own bridge.
-3. Applies the egress rules (`egress.sh`) and installs
+2. Applies the egress rules (`egress.sh`, with sudo) and installs
    `lyrica-host-egress.service`, which applies them again at boot and after
    every Docker restart.
-4. Builds the `host-api` and speech images and starts the stack
+3. Builds the `host-api` and speech images and starts the stack
    (`docker compose up -d`). The ComfyUI image is large and builds here
    too, from pinned commits.
-5. Checks that `host-api` can't open a connection to the internet, by
+4. Checks that `host-api` can't open a connection to the internet, by
    address or by name, and stops it if it can.
-6. Offers to set a dashboard password.
-7. Prints the dashboard addresses and the host's **key fingerprint**. Keep
+5. Offers to set a dashboard password.
+6. Prints the dashboard addresses and the host's **key fingerprint**. Keep
    the fingerprint: you check it against what Lyrica shows after pairing.
 
 Options, for a second run or a non-interactive one (`host/install.sh --help`):
@@ -108,6 +117,7 @@ Options, for a second run or a non-interactive one (`host/install.sh --help`):
 | `--name NAME`, `--lan ADDRESS`, `--models DIR` | The three answers, as flags. |
 | `--tailscale NAME` | Also join the tailnet as device `NAME`. Asks once for an auth key; the key is dropped from `.env` once the device has joined. |
 | `--no-lan` | Reachable over Tailscale only (needs `--tailscale`). |
+| `--no-tailscale` | Leave the tailnet. |
 | `--vendor nvidia\|amd`, `--amd-backend rocm\|vulkan`, `--hsa-override VER` | Override what was detected. |
 | `--yes` | No questions: defaults and flags. |
 | `--no-start` | Write `.env` only. |
@@ -123,8 +133,8 @@ restarts the stack in place. That is how you change a setting or upgrade
 - From the LAN: `https://<LAN address>:7236`, with the password. The
   certificate is the host's own, so the browser warns; check its
   fingerprint against the one the script printed.
-- Over Tailscale: `https://NAME.<tailnet>.ts.net`, with Tailscale's
-  certificate.
+- Over Tailscale: `https://NAME.<tailnet>.ts.net`, with the password and
+  Tailscale's certificate.
 
 Until a password is set (by the script, or on the dashboard at the machine)
 it opens only at the machine. It shows the GPUs and what is loaded on them,
@@ -150,10 +160,11 @@ hidden prompt, never put on a command line:
 
 ```sh
 read -rs -p 'Password: ' PASSWORD; echo
-printf '{"login":"li","password":"%s"}' "$PASSWORD" |
+ESCAPED=${PASSWORD//\\/\\\\}; ESCAPED=${ESCAPED//\"/\\\"}
+printf '{"login":"li","password":"%s"}' "$ESCAPED" |
   curl -sS -c jar -H 'Origin: http://127.0.0.1:7340' -H 'content-type: application/json' \
     --data @- http://127.0.0.1:7340/api/login
-unset PASSWORD
+unset PASSWORD ESCAPED
 ```
 
 The answer carries your user id. Then, with `shared: true` for a host every
@@ -198,10 +209,10 @@ Three ways a model gets into the library:
 ### The voice and dictation starters
 
 Li chose these after the benchmark; the host's README names them and the
-exact revisions. Download both on the dashboard (Downloads, with the
-repository and revision), or with the API from the machine, where the
-dashboard port needs no password. List a repository's files first, then ask
-for the ones you want by name:
+exact revisions. The dashboard's Downloads takes a repository and
+downloads its `main` branch; to get the benchmarked revision, use the API
+from the machine, where the dashboard port needs no password. List a
+repository's files first, then ask for the ones you want by name:
 
 ```sh
 curl -sS 'http://127.0.0.1:7236/host/v1/hub/files?source=huggingface&repo=onnx-community/Kokoro-82M-v1.1-zh-ONNX&revision=6cc0f0d2ebe369a68b0df87c2b65c1af8c0ac3e3'
@@ -232,8 +243,8 @@ Then **pin both** (the pin button in the library, or `POST
 /host/v1/models/pin`), so neither waits for a load when someone speaks or
 listens. Whisper takes about 2.2 GB of VRAM and Kokoro about 1 GB on an
 NVIDIA host; on AMD or without CUDA the voice runs on the CPU, where
-Kokoro is quick enough (about 1.3 s to start a sentence against 0.3 s on
-an RTX 3090).
+Kokoro is quick enough. On an RTX 3090 it starts speaking in about 0.3 s;
+on the CPU alone it takes about 1.3 s for a 5-second sentence.
 
 ### Placements and settings
 
@@ -266,8 +277,8 @@ lyrica admin models profile show --user li
 A model id is its path under the models folder, as the dashboard and
 `GET /host/v1/models` show it. Private and local-only threads use the local
 profile, so a host is how private threads get a model at all. Each user
-picks their own voice and speed per language in the model's Sampling
-settings; without one, the model's first voice for the language is used.
+picks their own voice and speed per language under the speech model's
+**Settings** in the control panel's Endpoints section; without one, the model's first voice for the language is used.
 
 ## More than one host
 
@@ -277,9 +288,9 @@ second pairing. Then:
 - **Order the lists.** A task's list is tried in order; the first model
   whose host is up and not paused answers. Put the same model on two hosts
   one after the other, and a host that is off, paused, restarting or busy
-  is passed over within 30 seconds. Lyrica's Clean up and group suggestions
-  (see [docs/models.md](../models.md)) find the same file on two hosts by
-  its checksum.
+  is passed over within 30 seconds. Lyrica's group suggestions (see
+  [docs/models.md](../models.md)) find the same file on two hosts by its
+  checksum, and Clean up finds the same model on another endpoint by name.
 - **Shared or personal** is per host. A host every persona should use is
   shared; a host only one user may reach is personal, and no other user
   sees its addresses or models.
@@ -300,20 +311,21 @@ second pairing. Then:
 - **Upgrade:** `git pull && host/install.sh` in the checkout. It rebuilds
   the images and restarts the stack; `.env` keeps the settings, and the
   `data` volume keeps the host's key, so pairing survives.
-- **After a firewall reload** that flushes `INPUT`, `systemctl restart
-  lyrica-host-egress`. `host/test/stack/network.sh` checks the network
+- **After a firewall reload** that flushes `INPUT`, `sudo systemctl
+  restart lyrica-host-egress`. `host/test/stack/network.sh` checks the network
   layout on the running stack whenever you doubt it.
 - **Revoke** a Lyrica server on the dashboard; it must pair again.
   **Unpair** from Lyrica's side by removing the endpoint (`DELETE
   …/endpoints/<endpoint id>`); the host keeps it listed until revoked
   there.
-- **Delete** on the dashboard removes only a file the host itself
-  downloaded, unchanged since; nothing else in the models folder is ever
-  touched.
+- **Deleting a file** (`DELETE /host/v1/files?path=<path>`) removes only
+  a file the host itself downloaded, unchanged since; nothing else in the
+  models folder is ever touched. The dashboard's Delete is for image
+  recipes.
 - **Tear down:** `docker compose down -v` in `host/` removes the stack and
   its volumes, including the host's key (a new pairing afterwards), and
-  `systemctl disable --now lyrica-host-egress` with `host/egress.sh remove`
-  takes the rules out. The models folder stays.
+  `sudo systemctl disable --now lyrica-host-egress` with `sudo
+  host/egress.sh remove` takes the rules out. The models folder stays.
 
 ## Checklist for the first host on Li's GPU machine
 
