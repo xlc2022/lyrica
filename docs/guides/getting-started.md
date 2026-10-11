@@ -289,7 +289,7 @@ runs in three steps:
    machine**: her public key into `/etc/ssh/authorized_keys/<account>`, a
    file only root can change, with a `Match User` block in
    `/etc/ssh/sshd_config.d/lyrica.conf`, then `sshd -t && systemctl reload
-   ssh`. The key line is restricted to connections from this computer. If
+   ssh` (the unit is `sshd` on Fedora and RHEL). The key line is restricted to connections from this computer. If
    she should run some commands as root there, give the account exact
    commands with `visudo -f /etc/sudoers.d/lyrica`, never a password.
 2. Press Enter. She connects, prints the machine's host key fingerprint
@@ -312,7 +312,7 @@ key ever changes, every call fails until you confirm the new key; `lyrica
 admin ssh list` shows each machine's pool, limit and confirmed key, and
 `ssh remove` takes one away. SSH targets added before machines existed
 became general machines at Ask; one that had never connected has no
-confirmed key and must be added again.
+confirmed key and must be added again (`ssh remove <name>`, then `add`).
 
 ## Day to day
 
