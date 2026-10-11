@@ -191,6 +191,10 @@ For each part:
   rename, delete, zip streamed from the sandbox, and the one-line note to her
   about what the panel changed. No thumbnails yet (the panel shows the image
   itself; a thumbnail route waits for an image library). Next: the panel
-  itself (Files | Images tabs in the panel column, context menu, multi-select,
-  drag-drop upload), then Notifications, Pin in the remaining places, the
-  Models page and the Sleep section.
+  itself.
+- 2026-10-11, PR 7 (Files panel, the UI): `web/src/Files.tsx` and the
+  `files` route and panel kind (docs/web.md "The Files panel", docs/ux.md
+  §6; Show in thread finds the first message naming the path, on Li's ask).
+  Not built: thumbnails. Next: Notifications, Pin in the
+  remaining places, the Models page (carry the Fallback default), the Sleep
+  section; Web: bootstrap on Li's go.

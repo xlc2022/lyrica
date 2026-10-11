@@ -92,6 +92,8 @@ async function togglePrivate(page: Page) {
 }
 
 /** Body is overflow: hidden, so check the containers that scroll, and that nothing pokes past the viewport. */
+const location_of = (page: Page) => page.url();
+
 async function noHorizontalScroll(page: Page) {
   const found = await page.evaluate(() => {
     const wide = [...document.querySelectorAll<HTMLElement>(".scroll, .head, .drawer-body, .memory-search, .memory-detail, .side")]
@@ -1017,6 +1019,84 @@ test("watching threads: writing in a project's thread leads to a look, shown as 
   await expect(page.getByText("Saved.")).toBeVisible();
   await page.reload();
   await expect(page.getByRole("checkbox", { name: "Watching threads" })).not.toBeChecked();
+  await noHorizontalScroll(page);
+});
+
+test("the Files panel: a tree one folder at a time, a file shown, search, the Images tab, and the menu's attach, new folder, rename and delete", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "hello files");
+  await expect(page.getByText("You said: hello files")).toBeVisible();
+  const threadId = decodeURIComponent(location_of(page).split("/t/general/")[1]!.split("/")[0]!);
+  // Two uploads through the message box's route: a note and a tiny image.
+  const upload = (name: string, b64: string) => page.evaluate(async ([path, b64]) => {
+    const r = await fetch(path, { method: "POST", headers: { "content-type": "application/octet-stream" }, body: Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)) });
+    if (!r.ok) throw new Error(`${path}: ${r.status}`);
+  }, [`/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/uploads?name=${encodeURIComponent(name)}`, b64] as const);
+  await upload("plan.md", Buffer.from("# The plan\n\nWater the trays.\n").toString("base64"));
+  await upload("tray.png", "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwyBNJjFAAAiOQZ3YJ5p9QAAAABJRU5ErkJggg==");
+
+  await page.getByRole("link", { name: "Files and images" }).click();
+  // Beside the conversation from 1180 px; the page on its own on a phone.
+  const panel = phone(page) ? page.locator(".files-page") : page.getByRole("complementary");
+  await expect(panel.getByRole("tab", { name: "Files" })).toHaveAttribute("aria-selected", "true");
+  await panel.getByRole("button", { name: "uploads" }).click();
+  await panel.getByRole("button", { name: "plan.md" }).click();
+  await expect(panel.locator(".fview pre")).toContainText("Water the trays.");
+  // The panel is narrow, so the file took the tree's place.
+  await panel.locator(".fback").click();
+  await panel.getByLabel("Search files").fill("tray");
+  await expect(panel.getByRole("button", { name: "uploads/tray.png" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: /plan\.md/ })).toHaveCount(0);
+  await panel.getByLabel("Search files").fill("");
+
+  // The menu on a file: Attach puts its path in the message box.
+  const open = async (name: string) => {
+    // Back on the Files page (a phone), the tree starts afresh with uploads folded.
+    const uploads = panel.getByRole("button", { name: "uploads" });
+    await expect(uploads).toBeVisible();
+    if ((await uploads.getAttribute("aria-expanded")) === "false") await uploads.click();
+    if (phone(page)) { await panel.getByRole("button", { name }).click(); await panel.getByRole("button", { name: "File actions" }).click(); }
+    else await panel.getByRole("button", { name }).click({ button: "right" });
+    return page.getByRole("menu", { name: "File actions" });
+  };
+  let menu = await open("plan.md");
+  await menu.getByRole("menuitem", { name: "Attach to message" }).click();
+  await expect(page.getByLabel("Message", { exact: true })).toHaveValue(/\/workspace\/uploads\/plan\.md/);
+  // Sent, the message names the file, and Show in thread goes to it.
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("You said: /workspace/uploads/plan.md")).toBeVisible();
+  // Once the turn ends, the stored message (with its number) replaces the live one.
+  await expect(page.locator(".msg.user", { hasText: "/workspace/uploads/plan.md" })).toHaveAttribute("id", /^m-/);
+  if (phone(page)) await page.getByRole("link", { name: "Files and images" }).click();
+  menu = await open("plan.md");
+  await menu.getByRole("menuitem", { name: "Show in thread" }).click();
+  await expect(page.locator(".msg.user.flash")).toContainText("/workspace/uploads/plan.md");
+  if (phone(page)) await page.getByRole("link", { name: "Files and images" }).click();
+  // A new folder under uploads, renamed, then deleted with the note.
+  await expect(panel.getByRole("button", { name: "uploads" })).toBeVisible();
+  await panel.getByRole("button", { name: "uploads" }).click({ button: "right" });
+  menu = page.getByRole("menu", { name: "File actions" });
+  await menu.getByRole("menuitem", { name: "New folder…" }).click();
+  await menu.getByLabel("Folder name").fill("drafts");
+  await menu.getByRole("button", { name: "Add" }).click();
+  await expect(panel.getByRole("button", { name: "drafts" })).toBeVisible();
+  await panel.getByRole("button", { name: "drafts" }).click({ button: "right" });
+  await menu.getByRole("menuitem", { name: "Rename…" }).click();
+  await menu.getByLabel("New name").fill("sketches");
+  await menu.getByRole("button", { name: "Rename" }).click();
+  await expect(panel.getByRole("button", { name: "sketches" })).toBeVisible();
+  await panel.getByRole("button", { name: "sketches" }).click({ button: "right" });
+  await menu.getByRole("menuitem", { name: "Delete…" }).click();
+  await expect(page.getByRole("dialog")).toContainText("deleted for good");
+  await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+  await expect(panel.getByRole("button", { name: "sketches" })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "plan.md" })).toBeVisible();
+
+  await panel.getByRole("tab", { name: "Images" }).click();
+  await expect(panel.locator(".igrid").getByRole("button", { name: "tray.png" })).toBeVisible();
+  await panel.getByRole("group", { name: "Show" }).getByRole("button", { name: "Made by Lyrica" }).click();
+  await expect(panel.getByText("No images yet")).toBeVisible();
   await noHorizontalScroll(page);
 });
 

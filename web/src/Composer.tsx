@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { upload, type ThreadSettings, type ThreadSettingsChange } from "./api.ts";
 import { Icon } from "./icons.tsx";
+import { ATTACH_EVENT, ATTACH_KEY, take, type AttachRequest } from "./links.ts";
 import { ModePicker, nextMode, ToolsMenu, type GrantedMachine } from "./Modes.tsx";
 import { MicButton, stopReading, useDictation } from "./Voice.tsx";
 
@@ -30,6 +31,25 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
   const nextId = useRef(0);
 
   useEffect(() => { if (restored) setDraft((d) => (d ? `${restored}\n\n${d}` : restored)); }, [restored]);
+
+  // Attach from the Files panel: its paths go in on their own lines, as an upload's does. Chosen on the
+  // Files page on a phone, they wait in session storage for this thread's box.
+  const addPaths = useCallback((paths: string[]) => {
+    setDraft((d) => (d && !d.endsWith("\n") ? `${d}\n` : d) + paths.map((p) => `${p}\n`).join(""));
+    area.current?.focus();
+  }, []);
+  useEffect(() => {
+    const on = (e: Event) => {
+      const { detail } = e as CustomEvent<AttachRequest>;
+      if (detail.base !== base) return;
+      detail.handled = true;
+      addPaths(detail.paths);
+    };
+    addEventListener(ATTACH_EVENT, on);
+    const kept = take<AttachRequest>(ATTACH_KEY, base);
+    if (kept) addPaths(kept.paths);
+    return () => removeEventListener(ATTACH_EVENT, on);
+  }, [base, addPaths]);
 
   // Dictated text goes in at the caret, with a space on each side where it meets other text.
   const insert = useCallback((text: string) => {
