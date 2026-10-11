@@ -82,8 +82,10 @@ function ModelPicker({ base, settings, task, onChange }: {
   );
 }
 
-export function SettingsDrawer({ ctx, base, summary, settings, onSettings, onSummary, onClose, children = 0 }: {
+export function SettingsDrawer({ ctx, base, summary, settings, machines, onSettings, onSummary, onClose, children = 0 }: {
   ctx: ShellContext; base: string; summary: ThreadSummary; settings: ThreadSettings;
+  /** The user's machines; those of the thread's pool can be granted. */
+  machines: MachineInfo[];
   /** Its child threads listed under it: forgetting asks whether they go too. */
   children?: number;
   onSettings: (s: ThreadSettings) => void; onSummary: (s: ThreadSummary) => void; onClose: () => void;
@@ -95,7 +97,6 @@ export function SettingsDrawer({ ctx, base, summary, settings, onSettings, onSum
   const change = (c: ThreadSettingsChange) => run(async () => onSettings(await patch<ThreadSettings>(`${base}/settings`, c)));
   const changeThread = (c: { title?: string; hidden?: boolean }) => run(async () => onSummary(await patch<ThreadSummary>(base, c)));
   const paths = useLoad(() => get<AllowedPaths>(u(userId, "paths")), [userId]);
-  const machines = useLoad(() => get<MachineInfo[]>(u(userId, "machines")), [userId]);
   const [title, setTitle] = useState(summary.title ?? "");
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -138,12 +139,11 @@ export function SettingsDrawer({ ctx, base, summary, settings, onSettings, onSum
         <fieldset className="group" disabled={sub || busy}>
           <legend>Folders</legend>
           <Folders grants={settings.grants} allowed={paths.data?.[pool] ?? []} onChange={(grants) => change({ grants })} />
-          <label className="field"><span>Machine</span>
-            <select value={settings.machines[0] ?? ""} onChange={(e) => change({ machines: e.target.value ? [e.target.value] : [] })}>
-              <option value="">None</option>
-              {(machines.data ?? []).filter((m) => m.pool === pool).map((m) => <option key={m.name} value={m.name}>{m.name} ({m.address})</option>)}
-            </select>
-          </label>
+        </fieldset>
+
+        <fieldset className="group" disabled={sub || busy}>
+          <legend>Machines</legend>
+          <Machines granted={settings.machines} machines={machines.filter((m) => m.pool === pool)} onChange={(names) => change({ machines: names })} />
         </fieldset>
 
         <fieldset className="group" disabled={sub || busy}>
@@ -263,6 +263,19 @@ function Folders({ grants, allowed, onChange }: { grants: Grant[]; allowed: stri
           <button type="submit" disabled={!draft}>Add</button>
         </form>
       ) : <span className="muted small">An administrator hasn't allowed any folders for this pool.</span>}
+    </>
+  );
+}
+
+/** The sandbox, always, then each machine of the thread's pool with a switch; a granted one that no longer exists still shows, so it can be taken off. */
+function Machines({ granted, machines, onChange }: { granted: string[]; machines: MachineInfo[]; onChange: (names: string[]) => void }) {
+  const gone = granted.filter((name) => !machines.some((m) => m.name === name));
+  const toggle = (name: string, on: boolean) => onChange(on ? [...granted, name] : granted.filter((n) => n !== name));
+  return (
+    <>
+      <div className="folder"><span className="path">sandbox</span><span className="muted small">always</span><span /></div>
+      {machines.map((m) => <Switch key={m.name} label={m.name} hint={`${m.address} · up to ${MODES[m.limit].label}`} checked={granted.includes(m.name)} onChange={(on) => toggle(m.name, on)} />)}
+      {gone.map((name) => <Switch key={name} label={name} hint="No longer one of your machines." checked onChange={() => toggle(name, false)} />)}
     </>
   );
 }

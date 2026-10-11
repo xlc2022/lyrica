@@ -1,6 +1,6 @@
 // One thread: header with its badges, the conversation, and the composer.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { del, get, patch, post, put, threadPath, u, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary } from "./api.ts";
+import { del, get, patch, post, put, threadPath, u, type MachineInfo, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { hasConsequences, PinnedBadge, RemovalConfirm, useUndo, type Rewinder } from "./Rewind.tsx";
 import { go } from "./route.ts";
@@ -18,6 +18,9 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
   const summary = useLoad(() => get<ThreadSummary>(base), [base]);
   const settings = useLoad(() => get<ThreadSettings>(`${base}/settings`), [base]);
   const pins = useLoad(() => get<Pins>(`${base}/pins`), [base]);
+  // The user's machines, for the granted ones' limits in the mode menu and the settings drawer.
+  const machines = useLoad(() => get<MachineInfo[]>(u(userId, "machines")), [userId]);
+  const granted = settings.data?.machines.flatMap((name) => { const m = machines.data?.find((x) => x.name === name); return m ? [{ name, limit: m.limit }] : []; }) ?? [];
   const t = useThread(userId, pool, threadId);
   const [drawer, setDrawer] = useState(false);
   const [sendError, setSendError] = useState("");
@@ -137,7 +140,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
             {settings.data?.grants.map((g) => (
               <span key={g.path} className="badge folder" title={g.path}>{g.path} <span className="muted">{g.writable ? "rw" : "ro"}</span></span>
             ))}
-            {settings.data?.machines.map((m) => <span key={m} className="badge folder">{m}</span>)}
+            {settings.data?.machines.map((m) => <span key={m} className="badge folder" title="Machine">{m}</span>)}
           </div>
         </div>
         {!s?.subagent && (
@@ -173,10 +176,10 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
       {/* A subagent's thread is its transcript and a message box, as in its delegate card. */}
       {s?.subagent
         ? <div className="composer sub-composer"><MessageBox thread={{ pool, id: threadId }} env={{ userId }} onSent={() => t.dispatch({ type: "refresh" })} /></div>
-        : <Composer base={base} busy={t.live.busy} onSend={send} onStop={stop} restored={restored} settings={settings.data} onSettings={changeSettings} onError={setSendError} />}
+        : <Composer base={base} busy={t.live.busy} onSend={send} onStop={stop} restored={restored} settings={settings.data} machines={granted} onSettings={changeSettings} onError={setSendError} />}
       {drawer && settings.data && s && !s.subagent && (
         <SettingsDrawer
-          ctx={ctx} base={base} summary={s} settings={settings.data} children={findThread(threads, pool, threadId)?.children.length ?? 0}
+          ctx={ctx} base={base} summary={s} settings={settings.data} machines={machines.data ?? []} children={findThread(threads, pool, threadId)?.children.length ?? 0}
           onSettings={settings.set} onSummary={(x) => { summary.set(x); refreshThreads(); }}
           onClose={() => setDrawer(false)}
         />

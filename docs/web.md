@@ -50,13 +50,15 @@ a single file. The old `…/panel` opens Settings.
   instead, and memory search leaves the pool out.
 - **Thread:** a header with the title; under it the pool word, the model
   badge (cloud or local, model and endpoint; it opens the model picker), the
-  thread's group as a link that changes it, and the folders and target as
-  words with the paths in their tooltip; at the right a Settings button. Below
-  it the conversation and the composer.
+  thread's group as a link that changes it, the folders as words with the
+  paths in their tooltip, and the granted machines' names in mono; at the
+  right a Settings button. Below it the conversation and the composer.
 - **Thread settings drawer:** a model per task (each option says cloud or local first), local-only, the internet and
   this machine's services switches (each following the user's default until
   changed), allowed hosts, folders from the allowed paths (read-only or
-  read-write), a machine of the thread's pool (one; picking one replaces any others the thread had), the mode, the
+  read-write), **Machines** (the sandbox, always, then a switch per machine
+  of the thread's pool; a granted machine that no longer exists keeps its
+  switch so it can be taken off), the mode, the
   Web search and Images switches, "Do not log", rename, hide, and forget. `lyricad` validates every
   change and its reason is shown.
 - **Subagents live inline**, not in the sidebar: see the `delegate` card
@@ -78,8 +80,30 @@ a single file. The old `…/panel` opens Settings.
   Password, Your personas (linking a separate persona needs both passwords),
   Persona suggestions (edit, send on to the administrators, or drop),
   Endpoints with probe status, Model profiles, Network (New threads: the default
-  mode and Voice to cloud; then network defaults per pool), and Machines (listed, with
-  Remove; `lyrica admin ssh add` or `lyrica admin proxmox add` adds one).
+  mode and Voice to cloud; then network defaults per pool), and **Machines**
+  (`src/Machines.tsx`, docs/ux.md section 6): a row per machine with its
+  name, a facts line in mono (address, pool, "SSH · key" or "Proxmox API ·
+  token", "up to Accept edits") and at most one state as a dot and a word
+  (Online, Unreachable with the duration in mono, Key changed, Off
+  network; none if never probed; a machine whose host key was never
+  confirmed shows Key changed). The row opens a drawer: address, folder,
+  pool and **Mode limit** as the message box's three-item mode list, with
+  one Save. The row's ⋯ has Replace key, **Use anyway** (only on a private
+  machine that is Off network: the same dialog as Add machine's, then
+  `confirm-off-network`) and Remove, Remove in a dialog with its one
+  sentence. **Add machine** is a link to its own card in the section
+  (`#/u/<user>/settings/machines/new`): a kind segment (SSH | Proxmox), then
+  steps as sections with eyebrows. Name and address (name, address, folder
+  for SSH, pool); leaving the address or pressing Enter asks `lyricad` for
+  her key and the setup commands. Key, or Token for Proxmox (the commands in
+  a code block, **Copy**, and the token field). Test (**Test** probes again
+  and says Logged in or the problem). Fingerprint (the host key or
+  certificate fingerprint in mono, **Confirm**). The current step's button
+  is the one primary; a done step's turns secondary; nothing is saved before
+  Confirm. A private machine that resolves off network gets a dialog (**Add
+  anyway** or Cancel) before Confirm saves it. Replace key
+  (`#/u/<user>/settings/machines/<name>/key`) opens the same card at the
+  Fingerprint step, with a Replace token field for Proxmox.
 - **Administration**, for administrators: Status (the server's network
   self-test, sleep time, start unlocked), Users with the administrator flag and
   their allowed folders, Sleep, Start unlocked (saving the `self.db`
@@ -124,9 +148,13 @@ a single file. The old `…/panel` opens Settings.
   someone wrote to a subagent), as a `notice` event and stored as a
   `notice` message, shows as a card headed by what it is, linking to the
   subagent.
-- Permission requests appear inline with Allow and Deny and the time left;
-  a request on a machine leads with the machine's name and the folder, and
-  a suspect command shows its warning sentence above the command. A
+- Permission requests appear inline with Allow and Deny and the time left.
+  A call on a machine (`machine` on the request) leads with the machine's
+  name in mono, says the folder the command runs in, and shows the command,
+  path or Proxmox action and VM in mono; a suspect command (`suspect`,
+  `warning`) adds its warning sentence above the command and a third,
+  secondary **Allow in this thread**, which answers with `allowInThread`.
+  A tool marker for a call on a machine names the machine first. A
   subagent's request shows in its parent's thread (in its card, when that
   is open) and on its own page, naming the subagent, and stays past the
   parent's turn; the first answer wins and the other view updates.
@@ -189,7 +217,8 @@ a single file. The old `…/panel` opens Settings.
   the "+" icon, whose menu attaches a file and, after a separator, has the
   Web search, Internet for commands and Images switches; then the mic; at the right the
   mode, a link with a chevron that opens a menu of the four modes (a check on
-  the current one, its line, its number key). Shift+Tab in the box cycles
+  the current one, its line, its number key; a mode above a granted
+  machine's limit reads "Asks on <machine>" in its line). Shift+Tab in the box cycles
   Ask, Accept edits, Plan, Auto, shown at once; a settings refresh that a
   change overtakes is dropped. A `settings` event (an approved plan)
   refreshes them.
@@ -227,7 +256,7 @@ a single file. The old `…/panel` opens Settings.
   the field is left), each with its source word (shared or yours) and a
   Reset link.
 - **The plan card:** a `propose_plan` request shows "Plan", its step count
-  when it has numbered or bulleted steps, the plan as prose (thread mentions show as links), a primary
+  when it has numbered or bulleted steps, the plan as prose, a primary
   "Go ahead in…" whose menu offers Ask, Accept edits or Auto, Keep planning,
   and the time left. Its tool marker stays hidden until it is answered.
 - **Waiting for an answer:** when the latest card waiting for her answer (a
