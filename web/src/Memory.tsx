@@ -4,7 +4,7 @@ import {
   del, get, patch, post, u,
   type MemoryDetail, type MemoryHit, type MemoryKind, type Pool,
 } from "./api.ts";
-import { fromEditable, readable, toEditable } from "./mentions.ts";
+import { fromEditable, readable, toEditable, useThreadMentions } from "./mentions.ts";
 import { go, href, idHref } from "./route.ts";
 import { PageHead, type ShellContext } from "./Shell.tsx";
 import { Confirm, ErrorText, hidden, Prose, shortTime, useAction, useLoad } from "./ui.tsx";
@@ -145,7 +145,7 @@ function Detail({ userId, pool, id }: { userId: string; pool: Pool; id: string }
         : (
           <>
             {item.summary && <p className="summary">{readable(item.summary, users)}</p>}
-            <div className="prose"><Prose text={readable(item.text, users)} /></div>
+            <div className="prose"><MemoryProse text={readable(item.text, users)} userId={userId} pool={item.pool} /></div>
             <div className="row">
               <button type="button" onClick={() => setEditing(true)}>Edit</button>
               <button type="button" onClick={() => act(() => post<MemoryDetail>(`${path}/archive`, { archived: !item.archived }))}>{item.archived ? "Unarchive" : "Archive"}</button>
@@ -165,7 +165,7 @@ function Detail({ userId, pool, id }: { userId: string; pool: Pool; id: string }
               <li key={r.id}>
                 <details>
                   <summary>{shortTime(r.createdAt)} · {users[r.author]?.displayName ?? r.author}</summary>
-                  <div className="prose small"><Prose text={readable(r.body.text, users)} /></div>
+                  <div className="prose small"><MemoryProse text={readable(r.body.text, users)} userId={userId} pool={item.pool} /></div>
                   <button type="button" disabled={busy} onClick={() => act(() => post<MemoryDetail>(`${path}/restore`, { revision: r.id }))}>Restore this version</button>
                 </details>
               </li>
@@ -261,4 +261,9 @@ function AddMemory({ userId, onDone }: { userId: string; onDone: (d?: MemoryDeta
       </div>
     </form>
   );
+}
+
+/** A memory's text, with each thread it mentions shown by its current title (web/src/mentions.ts). */
+function MemoryProse({ text, userId, pool }: { text: string; userId: string; pool: Pool }) {
+  return <Prose text={useThreadMentions(text, userId, pool)} />;
 }

@@ -68,7 +68,9 @@ a single file. The old `…/panel` opens Settings.
   restore, archive and delete; forgetting selected results as a topic; and
   adding a note or page, linked or free. Mention tokens show as current names;
   the editor shows them as `[[Name]]` or `[[Name:obj]]` and saves them back as
-  tokens.
+  tokens. A thread mention (`[t:<id>]`, `[e:<id>#<n>]`) in a memory's text or
+  history shows as a link with the thread's current title, as in her
+  messages.
 - **Settings** (`src/Panel.tsx`): a page with its sections listed at the
   left (a scrolling row on a phone): Profile (name, pronouns, accent colour,
   monogram), Appearance (theme), Unlock and lock (saved credentials, stay

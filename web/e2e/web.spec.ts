@@ -381,12 +381,16 @@ test("an uploaded file's path goes into the message", async ({ page, baseURL }) 
 
 test("a memory can be added, edited and restored", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
+  // A thread mention in a memory shows as a link to that thread.
+  await newThread(page, "General");
+  const threadId = decodeURIComponent(page.url().split("/t/general/")[1]!);
   await page.goto(`/#/u/${userId}/memory`);
   await page.getByRole("button", { name: "Add a memory" }).click();
-  await page.getByLabel("Text").fill("The backup job on node 2 runs at night.");
+  await page.getByLabel("Text").fill(`The backup job on node 2 runs at night, see [t:${threadId}].`);
   await page.getByRole("button", { name: "Add", exact: true }).click();
   const article = page.locator("article.memory-item");
   await expect(article).toContainText("runs at night");
+  await expect(article.locator(".prose a").first()).toHaveAttribute("href", new RegExp(encodeURIComponent(threadId).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 
   await article.getByRole("button", { name: "Edit" }).click();
   await article.getByLabel("Text").fill("The backup job on node 2 runs at noon.");
