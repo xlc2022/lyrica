@@ -83,5 +83,5 @@ desktop and at 390 px (principle 1). Every control has its row in ux.md §6.
   the Project settings page with General (UI review's labels: Paused switch,
   New threads, This chat) and Memory. Not done: Files and images (needs the
   Files panel), Notifications (7), Recent calls by project (8), the Watching
-  threads switch and markers (after #97), the split-view panel (PR 2, see
-  docs/briefs/web-2.md).
+  threads switch and markers (after #97). The split-view panel came as the
+  next PR (docs/web.md "The panel").

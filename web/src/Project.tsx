@@ -10,7 +10,7 @@ import { Icon } from "./icons.tsx";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { href } from "./route.ts";
 import { TaskSelect } from "./Settings.tsx";
-import { PageHead, type ShellContext } from "./Shell.tsx";
+import { Main, PageHead, type ShellContext } from "./Shell.tsx";
 import { ErrorText, Prose, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 /** A project thread's state, in the sidebar's words. */
@@ -188,7 +188,7 @@ export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContex
   const s = summary.data;
   const title = s?.title || "New project";
   return (
-    <main className="main">
+    <Main className="main">
       <PageHead ctx={ctx} title="Project settings" facts={s && <a href={href({ page: "thread", userId, pool, threadId })}>{title}</a>} />
       <div className="page-body">
         <nav className="subnav" aria-label="Project settings sections">
@@ -202,7 +202,7 @@ export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContex
             : <GeneralSection ctx={ctx} base={base} summary={s} settings={settings.data} onSummary={(x) => { summary.set(x); ctx.refreshThreads(); }} onSettings={settings.set} />)}
         </div>
       </div>
-    </main>
+    </Main>
   );
 }
 

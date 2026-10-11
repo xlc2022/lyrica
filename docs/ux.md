@@ -98,7 +98,7 @@ Rules:
   Share with, Move to group, Sampling, Serving, Placement, Memory,
   Throughput, Template, Pinned, Excluded, Servers, Keep free, Not this
   model, Group, Add…, Reset, Dictation, Dictate, Read aloud, Stop reading,
-  Voice to cloud, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, Thread settings, New threads, This chat, Threads,
+  Voice to cloud, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, Thread settings, New threads, This chat, Threads, Open as a page, Close panel,
   Start a thread, Suggested threads, Start all, Resolve, Reopen, Resolved,
   Waiting on you, Goal, Instructions, Paused, All threads, Only projects,
   No projects, Machines, Add machine, Mode limit, Replace key, Use anyway,
@@ -127,6 +127,7 @@ Rules:
 | A thread's title, pool, model, group, folders, pins | the thread header: title, then **one line of facts** with the model picker as the only chip, then **two actions**, Files and Settings. One state badge at most |
 | Picking a model, a group, a pinned message | a popover from its word in the facts line |
 | A thread's own files and images | the **Files** panel (full screen on a phone), with every action in its right-click menu |
+| Anything looked at without leaving a conversation (a thread from its card, a mention or the Threads popover; a project's settings from the chat's header) | the **panel**: a third column from 1180 px up, 360 to 520 px wide (420 to start), dragged on its divider, the width kept per browser. One panel; a link inside it replaces what it shows and the breadcrumb above its title grows. Its header is the page's own with **Open as a page** and **Close panel** as icon buttons at the end; Esc closes it. The divider takes focus and shows itself on hover. Below 1180 px the same address is the page. The sidebar's rows, Search and the welcome page navigate |
 | Editing one thing in context (a task's list, a model's settings, a GPU's settings) | the **drawer** on the right, sections with eyebrows, one Save at its foot when saving has a consequence |
 | Confirming an action with a consequence | a **dialog** with the sentence and two buttons. Dialogs confirm; they never hold forms or flows |
 | A flow with steps (download a model, pair a host) | a **page** with its own address, never a dialog |
@@ -187,7 +188,8 @@ spot.
 
 - Everything works at 390 px: the sidebar slides in, drawers and the Files
   panel go full screen, tables stack into rows, header actions become icon
-  buttons with labels for screen readers.
+  buttons with labels for screen readers. There is no panel: what would open
+  in it is the page, at the same address.
 - No horizontal scrolling, anywhere, ever.
 - A long press does what a right-click does.
 - Touch targets are 44 px.

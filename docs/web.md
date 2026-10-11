@@ -12,6 +12,8 @@ render mention tokens.
 Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/p/<pool>/<project>/<section>`
 for a project's settings, `…/memory`, `…/settings/<section>`, `…/admin/<section>`,
 `#/login`), so `lyricad` serves a single file. The old `…/panel` opens Settings.
+A thread's address may carry what the panel beside it shows:
+`…/t/<pool>/<thread>/panel/t/<pool>/<other>` or `…/panel/p/<pool>/<project>/<section>`.
 
 - **Unlock** while `lyricad` is locked, then **login**. A browser holds one
   person's users: the user menu at the foot of the sidebar opens Settings and
@@ -76,6 +78,22 @@ for a project's settings, `…/memory`, `…/settings/<section>`, `…/admin/<se
   `child` stream event reloads the overview (`GET …/overview`) and the
   thread list, so cards and state words follow. A resolved project thread
   has a **Reopen** link where its message box was.
+- **The panel** (`Shell.tsx`, docs/ux.md §6): from 1180 px up, a link in a
+  conversation to a thread or a project's settings (a thread card, a mention,
+  the Threads popover, the header's Project link) opens it in a third column
+  instead of navigating, and the address gains `/panel/<its path>`; the
+  sidebar's rows navigate as before, and so does a modified click. The column
+  is 360 to 520 px (420 to start), dragged on its divider (a `separator`
+  that the arrow keys move too), the width kept in `localStorage`
+  (`lyrica.panel-width`). A link inside the panel replaces what it shows and
+  the breadcrumb above its title grows (each crumb goes back to that page);
+  a link to the conversation's own thread closes the panel (the Thread
+  settings link opens the drawer). The page in the panel is the same
+  component as on its own, rooted in a block instead of `main`, and its
+  header gains **Open as a page** (a link to the page's own address) and **Close panel**; Esc closes
+  it, and focus lands on its heading each time it shows something else. The
+  panel is `role="complementary"` named by its breadcrumb. Below 1180 px the
+  same address shows the panel's page on its own.
 - **Project settings page** (`…/p/<pool>/<project>/general` or `/memory`),
   sections at the left. **General**: Goal, the Paused switch, **New
   threads** (Model and Thinking the project's threads start with; "This
