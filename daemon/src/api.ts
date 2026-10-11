@@ -616,6 +616,8 @@ export interface ThreadSummary {
 }
 
 export interface ProjectSettingsInfo {
+  /** The project page's memory ID, for the memory browser. The page exists once instructions are saved or sleep writes it. */
+  pageId: string;
   /** Paused: its threads stop, nothing new starts, and they take no messages. */
   paused: boolean;
   /** The chat model new threads of the project start with; none: the project chat's. */

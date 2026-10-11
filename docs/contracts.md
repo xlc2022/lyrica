@@ -799,7 +799,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `PATCH` making one) also pins the thread; `Display.projects: "all" |
     "only" | "none"` filters the list; `PATCH threads/:id` with `project`,
     `goal`, `paused`, `threadsModel`, `threadsThinking` and `watchThreads`
-    (`user.db` `project_settings`, IDs and switches only); a project chat's
+    (`user.db` `project_settings`, IDs and switches only), and
+    `projectSettings.pageId` names the project page's memory ID; a project chat's
     look at its threads is a user message marked `[Watching threads]`
     (`WATCHING_MARK`, core/src/threads.ts), which only `daemon/src/watch.ts`
     writes and `Message.from` shows as `{ kind: "watching" }`; `POST …/messages/:n/thread` (Start a

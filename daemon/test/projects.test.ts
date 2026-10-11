@@ -86,6 +86,8 @@ describe("projects", () => {
     expect((await li.get<ThreadSummary>(`${u}/threads/general/${enc(plain.id)}`)).body.pinned).toBe(false);
     expect((await li.patch<ThreadSummary>(path, { goal: "Rack by Friday" })).body.goal).toBe("Rack by Friday");
     expect((await li.patch<ThreadSummary>(path, { instructions: "Ask before buying anything." })).body.instructions).toBe("Ask before buying anything.");
+    // The project page, where the instructions are kept, opens by the ID the summary gives.
+    expect((await li.get(`${u}/memory/general/${enc(project.projectSettings!.pageId)}`)).status).toBe(200);
     expect((await li.patch(path, { instructions: "x".repeat(2001) })).status).toBe(400);
   });
 
