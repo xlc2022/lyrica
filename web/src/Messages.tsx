@@ -340,7 +340,6 @@ function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" 
   );
 }
 
-/** In a child thread, what its parent thread sent: its task, or a message. */
 /**
  * A message written in another thread (the parent's, or a sibling's in a project): collapsed
  * to one line, since it was said elsewhere, and expanded on tap; a long one shows its first lines
@@ -353,6 +352,7 @@ function FromThread({ text, from, env, n }: { text: string; from: { kind: "paren
   const body = useRef<HTMLDivElement>(null);
   const title = useMentionText(`[t:${from.threadId}]`, env.userId, env.pool);
   const name = from.kind === "parent" ? env.parentTitle || title : title;
+  // Clamped until Show more; the button shows only when the clamp hides something.
   useLayoutEffect(() => {
     if (!open || more) return;
     const el = body.current;
@@ -370,7 +370,7 @@ function FromThread({ text, from, env, n }: { text: string; from: { kind: "paren
             {/* Branch and delete, as any message; it isn't hers to edit. */}
             {env.rewinder && n !== undefined && <MessageMenu n={n} role="user" rewinder={env.rewinder} />}
           </div>
-          <div ref={body} className="body prose" data-clamped={!more && long ? "" : undefined}><HerProse text={text} env={env} /></div>
+          <div ref={body} className="body prose" data-clamped={more ? undefined : ""}><HerProse text={text} env={env} /></div>
           {long && <button type="button" className="link show-more" onClick={() => setMore(!more)}>{more ? "Show less" : "Show more"}</button>}
         </>
       )}

@@ -78,12 +78,14 @@ function fakeModel() {
       res.writeHead(200, { "content-type": "text/event-stream" });
       const command = /run: (.+)/.exec(said)?.[1];
       const plan = /plan: (.+)/.exec(said)?.[1];
-      const child = /^start: (.+)/.exec(said)?.[1];
+      const child = /^start(?: long)?: (.+)/.exec(said)?.[1];
+      // "start long: <title>" gives the child a task of many lines, for the collapsed message's Show more.
+      const task = said.startsWith("start long:") ? Array.from({ length: 30 }, (_, i) => `Step ${i + 1} of the plan for ${child}.`).join("\n\n") : `Work on ${child}.`;
       const suggest = /^suggest: (.+)/.exec(said)?.[1];
       // A look at the project's threads ("[Watching threads]"): tell the first thread it names.
       const looked = said.startsWith("[Watching threads]") ? /^In \[t:([^\]\s]+)\]:/m.exec(said)?.[1] : undefined;
       if ((child || suggest || looked) && last?.role !== "tool") {
-        const args = child ? { action: "start", title: child, task: `Work on ${child}.` }
+        const args = child ? { action: "start", title: child, task }
           : looked ? { action: "message", id: looked, text: "Heads up: the plan changed." }
           : { action: "suggest", threads: suggest!.split(",").map((t) => t.trim()).map((title) => ({ title, task: `Work on ${title}.` })) };
         send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: { name: "threads", arguments: JSON.stringify(args) } }] });

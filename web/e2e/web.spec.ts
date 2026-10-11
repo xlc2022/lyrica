@@ -250,6 +250,26 @@ test("a child thread nests under its parent, opens from its card, and goes with 
   await noHorizontalScroll(page);
 });
 
+test("a long message from the parent shows its first lines and Show more", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "start long: Long plan");
+  await expect(page.getByText("Started it.")).toBeVisible();
+  await page.locator(".threads-card").getByRole("link", { name: "Open" }).click();
+  const view = phone(page) ? page : page.getByRole("complementary", { name: "Long plan" });
+  await expect(view.getByRole("heading", { level: 1, name: "Long plan" })).toBeVisible();
+  await view.getByRole("button", { name: /^Message received from/ }).click();
+  const block = view.locator(".from-thread .body"); // her reply echoes the task, so look in the block
+  await expect(block.getByText("Step 1 of the plan for Long plan.")).toBeVisible();
+  const last = block.getByText("Step 30 of the plan for Long plan.");
+  await expect(last).not.toBeInViewport();
+  await view.getByRole("button", { name: "Show more" }).click();
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toBeInViewport();
+  await expect(view.getByRole("button", { name: "Show less" })).toBeVisible();
+  await noHorizontalScroll(page);
+});
+
 test("the model badge shows the current model, and a change takes effect", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");
