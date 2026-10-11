@@ -11,8 +11,8 @@ client certificate unless it says otherwise.
 - **Model IDs** and **file paths** are paths relative to the models folder,
   with `/` separators, exactly as on disk:
   `lyrica/huggingface/Qwen/Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf`. A GGUF model
-  is its file (the first shard for split files); a safetensors text model is
-  its folder. Lyrica gives each its own offering ID; the host has none.
+  is its file (the first shard for split files); a safetensors model or a
+  voice model is its folder. Lyrica gives each its own offering ID; the host has none.
 - Nothing the host returns or logs contains prompt or result text, except
   the result of the request that asked for it.
 
@@ -36,7 +36,8 @@ on `/v1`, where OpenAI clients read `error.message`.
 | 503 | `paused` | The host is paused. Lyrica uses her fallbacks. |
 | 503 | `busy` | It could fit, but not within the wait limit, because the GPU is busy. The message names what with: "The GPU is busy with a chat model." |
 | 503 | `restarting` | A restart is under way. |
-| 503 | `unavailable` | The server for this model isn't running or didn't answer. |
+| 503 | `model_unavailable` | The server for this model (llama.cpp, vLLM, ComfyUI or the speech server) isn't running, didn't answer or couldn't load it. The host itself is up: its other models may still work. |
+| 503 | `unavailable` | A part of the host itself isn't running, such as the download service. |
 | 507 | `no_space` | Not enough free space for a download. |
 
 ## Priority
@@ -53,16 +54,34 @@ A queued request waits at most 120 seconds (`chat`), 300 (`image`) or 900
 
 Only for a paired client: the dashboard gets `refused`. Passed to the
 server holding the model (llama.cpp for GGUF, vLLM for a safetensors
-folder), loading it first where its placement says. Request and response bodies are passed
+folder, the speech server for a voice model), loading it first where its
+placement says. Request and response bodies are passed
 through unchanged, including streaming (`text/event-stream`) and tool calls.
 A client that disconnects cancels its request, queued or running; an answer
 the model server cuts short is cut short too.
 
-- `GET /v1/models`: every text and embedding model in the models folder,
-  loaded or not, as `{ "object": "list", "data": [{ "id", "object": "model",
-  "created", "owned_by": "lyrica-host" }] }`.
+- `GET /v1/models`: every model in the models folder (chat, embedding,
+  dictation and voice), loaded or not, as `{ "object": "list", "data":
+  [{ "id", "object": "model", "created", "owned_by": "lyrica-host" }] }`.
 - `POST /v1/chat/completions`
 - `POST /v1/embeddings`
+- `POST /v1/audio/transcriptions`: dictation, on a `transcribe` model
+  (Whisper or Voxtral, on vLLM). OpenAI's `multipart/form-data`: `file`
+  (the audio), `model`, and optionally `language` (`en`, `zh`; without it
+  the model detects the language), `response_format` (`json` or `text`)
+  and `temperature`. Up to 64 MB. The form is passed to vLLM unchanged;
+  host-api reads only `model` from it. Answers `{ "text": "..." }`.
+- `POST /v1/audio/speech`: her voice, on a `speak` model.
+  `{ "model", "input", "voice", "speed"?, "response_format"? }`: `input` is
+  1 to 4096 characters, `voice` one of the model's voices (an unknown one is
+  `invalid`, naming some that exist), `speed` 0.25 to 4 (default 1), and
+  `response_format` only `pcm`. Answers raw 16-bit little-endian mono PCM at
+  24 kHz (`audio/pcm;rate=24000`), streamed: long text is read in parts at
+  sentence breaks, and each part is sent as soon as it is made.
+
+Both audio routes run at `chat` priority unless the request says otherwise.
+Neither the audio nor the text is logged or kept; usage counts only the
+seconds of audio.
 
 ## Status and control: `/host/v1`
 
@@ -75,13 +94,14 @@ the model server cuts short is cut short too.
   "fingerprint": "<host key fingerprint>",
   "state": "running",
   "backend": "cuda",
-  "servers": ["llamacpp", "vllm", "images"],
+  "servers": ["llamacpp", "vllm", "images", "speech"],
+  "cpuServers": [],
   "gpus": [{
     "index": 0,
     "name": "NVIDIA GeForce RTX 3090",
     "vendor": "nvidia",
     "integrated": false,
-    "settings": { "servers": ["llamacpp", "vllm", "images"], "keepFree": 536870912, "excluded": false },
+    "settings": { "servers": ["llamacpp", "vllm", "images", "speech"], "keepFree": 536870912, "excluded": false },
     "vram": { "total": 25769803776, "used": 9663676416 },
     "models": [{
       "id": "lyrica/huggingface/Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf",
@@ -106,7 +126,11 @@ the model server cuts short is cut short too.
 - `backend`: how the model servers reach the GPUs: `cuda`, `rocm`, `vulkan`,
   or `null` with no GPU. `servers`: what this host runs. A Vulkan host (AMD
   GPUs that ROCm doesn't support) runs `llamacpp` only, so vLLM models and
-  image recipes can't be placed there.
+  image recipes can't be placed there. `cpuServers`: servers that run on
+  the CPU here instead. The speech server runs voices on the CPU on a host
+  without CUDA (ROCm, Vulkan, or no GPU), so there it is `["speech"]` and
+  `speech` isn't in `servers`. A model on the CPU isn't listed under any
+  GPU.
 - `integrated`: an integrated GPU (an APU). Its `vram` counts the shared
   system memory it can use (GTT) as well as its BIOS carve-out, and
   `vram.carveOut` (`{ total, used }`) gives the carve-out alone. Which a
@@ -122,12 +146,12 @@ the model server cuts short is cut short too.
 - `problems`: plain sentences about what the last pause or restart couldn't
   do, such as "GPU 0: couldn't unload … it may still hold memory." Empty
   when all went well.
-- `settings`: what the GPU may run (`llamacpp`, `vllm`, `images`), the
+- `settings`: what the GPU may run (`llamacpp`, `vllm`, `images`, `speech`), the
   bytes it always keeps free, and whether it is left out entirely (see
   GPUs below).
 - A GPU lists every model on it, including one split over several GPUs
-  (`gpus` names them all). A model's `kind` is `chat`, `embedding` or
-  `image`; `state` is `loading` or `loaded`; `vram` is what it takes on
+  (`gpus` names them all). A model's `kind` is `chat`, `embedding`,
+  `image`, `transcribe` or `speak`; `state` is `loading` or `loaded`; `vram` is what it takes on
   this GPU, measured on its first load with this placement.
 - `queue` counts the requests waiting for this GPU; a request for a split
   model waits for all of its GPUs.
@@ -135,8 +159,8 @@ the model server cuts short is cut short too.
 
 ### Models
 
-- `GET /host/v1/models`: the text library, one entry per model file or
-  folder:
+- `GET /host/v1/models`: the text and speech library, one entry per model
+  file or folder:
 
   ```json
   {
@@ -163,8 +187,10 @@ the model server cuts short is cut short too.
   }
   ```
 
-  - `server`: `llamacpp` (GGUF) or `vllm` (a safetensors folder with a
-    `config.json`).
+  - `server`: `llamacpp` (GGUF), `vllm` (a safetensors folder with a
+    `config.json`) or `speech` (a voice model: see below). `kind` is
+    `chat`, `embedding`, `transcribe` (Whisper or Voxtral, on vLLM) or
+    `speak`.
   - `identity` comes from GGUF metadata (`general.basename`,
     `general.size_label`, `general.finetune`, `general.base_model.*`); any
     of it may be `null`. `card` is from the model card's `base_model` and
@@ -172,6 +198,15 @@ the model server cuts short is cut short too.
   - `capabilities` are what the host can tell from the file (the chat
     template's tool and thinking support, a vision projector next to it,
     pooling for embeddings). `reasoning` is `null` or the levels it takes.
+    A `transcribe` model has `"transcribe": true`. A `speak` model has
+    `"speak": { "voices": [{ "id": "af_heart", "language": "en" },
+    { "id": "zf_xiaoxiao", "language": "zh" }] }`: the voices the speech
+    server can read, English (`en`) and Mandarin (`zh`); a Mandarin voice
+    also reads the English words in Mandarin text.
+  - A voice model is a folder with an `.onnx` file (in it or in `onnx/`;
+    `model.onnx` where there are several), its vocabulary in `config.json`
+    or `tokenizer.json`, and `voices/*.bin`, one raw float32 array per
+    voice: Kokoro's ONNX export. Its `contextLength` is `null`.
   - `contextLength` is the context it is served with (its setting, else
     32768, never more than `maxContextLength`, what it was trained for).
     Lyrica plans her context by it.
@@ -244,7 +279,7 @@ volume. They apply at its next load, or at once with Reload.
   The weights and the KV cache for the context must fit in the share of
   each GPU (`too_big` otherwise, saying to lower the context length or
   raise the share). A vLLM server that exits while starting fails its load
-  at once (`unavailable`), rather than after the load timeout.
+  at once (`model_unavailable`), rather than after the load timeout.
 - Both: `batchSize` (32 to 65536: llama.cpp's batch size, vLLM's batched
   tokens), `chatTemplate` (a Jinja template, at most 64 kB, used instead of
   the model's own).
@@ -288,8 +323,11 @@ prompts, results or who asked.
 ```json
 { "since": "2026-10-01T00:00:00Z",
   "models": [{ "id": "<model id or recipe id>", "requests": 120, "promptTokens": 50000,
-               "completionTokens": 9000, "images": 0, "seconds": 340.5 }] }
+               "completionTokens": 9000, "images": 0, "audioSeconds": 0, "seconds": 340.5 }] }
 ```
+
+`audioSeconds` is the audio transcribed (from a WAV file's header; 0 for
+other formats) or spoken.
 
 ## Downloads
 
@@ -303,10 +341,14 @@ servers) has a route out.
   never stores or logs it. It is sent only to that hub's own host
   (`huggingface.co` or `modelscope.cn`), never to a CDN it redirects to,
   and never with a link.
-- Allowed files: `.gguf` and `.safetensors`, plus the small files a model
-  folder needs (`.json`, `.txt`, `.jinja`, `.model`, `.tiktoken`). Pickle
-  formats (`.bin`, `.pt`, `.pth`, `.ckpt`, `.pkl`, `.pickle`) and code
-  (`.py`) are refused, as is anything else.
+- Allowed files: `.gguf`, `.safetensors` and `.onnx`, plus the small files
+  a model folder needs (`.json`, `.txt`, `.jinja`, `.model`, `.tiktoken`).
+  Pickle formats (`.bin`, `.pt`, `.pth`, `.ckpt`, `.pkl`, `.pickle`) and
+  code (`.py`) are refused, as is anything else. The one exception is a
+  voice model's voices, `voices/<name>.bin`: plain float32 arrays the
+  speech server reads as numbers. Once downloaded, a voice that is a
+  pickle, a zip or not whole 4-byte numbers is deleted, as is an `.onnx`
+  file that doesn't start like one.
 - Each file goes to `lyrica/<source>/<repo>/<path>` (for a link,
   `lyrica/url/<hostname>/<file name>`) in the models folder. It downloads
   under a temporary name, is checked against the hub's SHA-256 (or the one

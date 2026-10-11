@@ -1,5 +1,6 @@
-// The text models in the models folder: GGUF files for llama.cpp, and
-// safetensors folders for vLLM. Reads headers only.
+// The text and speech models in the models folder: GGUF files for llama.cpp,
+// safetensors folders for vLLM (Whisper and Voxtral among them, for
+// dictation), and ONNX voice models for the speech server. Reads headers only.
 import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { readGguf, type GgufValue } from "./gguf.ts";
@@ -16,15 +17,25 @@ export interface Capabilities {
   vision: boolean;
   embedding: boolean;
   reasoning: string[] | null;
+  /** Dictation: speech to text on /v1/audio/transcriptions. */
+  transcribe?: boolean;
+  /** Text to speech on /v1/audio/speech, with the voices it has. */
+  speak?: { voices: Voice[] };
+}
+
+export interface Voice {
+  id: string;
+  /** "en" or "zh": the languages the speech server reads. */
+  language: "en" | "zh";
 }
 
 export interface TextModel {
   /** Path relative to the models folder, with `/`. */
   id: string;
-  kind: "chat" | "embedding" | "image";
+  kind: "chat" | "embedding" | "image" | "transcribe" | "speak";
   /** ComfyUI runs image recipes, which the scheduler places like models. */
-  server: "llamacpp" | "vllm" | "comfyui";
-  format: "gguf" | "safetensors";
+  server: "llamacpp" | "vllm" | "comfyui" | "speech";
+  format: "gguf" | "safetensors" | "onnx";
   size: number;
   identity: Identity;
   capabilities: Capabilities;
@@ -36,6 +47,8 @@ export interface TextModel {
   mmproj: string | null;
   /** A vLLM model whose config asks for remote code: never loaded. */
   remoteCode: boolean;
+  /** A speech model's ONNX file, relative to its folder. */
+  onnx?: string;
 }
 
 const SHARD = /-(\d{5})-of-(\d{5})\.gguf$/;
@@ -124,6 +137,7 @@ function vllmModel(root: string, dir: string, files: string[]): TextModel | null
   const tokenizer = readJson(join(dir, "tokenizer_config.json"));
   const template = files.includes("chat_template.jinja") ? readFileSync(join(dir, "chat_template.jinja"), "utf8") : typeof tokenizer?.chat_template === "string" ? tokenizer.chat_template : null;
   const embedding = files.includes("modules.json");
+  if (config.architectures.some((a: unknown) => TRANSCRIBE.includes(a as string))) return transcribeModel(root, dir, config, size);
   const text = config.text_config ?? config;
   return {
     id: relative(root, dir).split("\\").join("/"),
@@ -140,7 +154,76 @@ function vllmModel(root: string, dir: string, files: string[]): TextModel | null
   };
 }
 
-/** Every text model under `root`. Unreadable files are skipped. */
+/** Architectures vLLM serves on /v1/audio/transcriptions. */
+const TRANSCRIBE = ["WhisperForConditionalGeneration", "VoxtralForConditionalGeneration"];
+
+/** Whisper or Voxtral: dictation, on vLLM. Its context is the decoder's, which is short (448 for Whisper). */
+function transcribeModel(root: string, dir: string, config: any, size: number): TextModel {
+  const text = config.text_config ?? config;
+  const context = config.max_target_positions ?? text.max_position_embeddings;
+  return {
+    id: relative(root, dir).split("\\").join("/"),
+    kind: "transcribe",
+    server: "vllm",
+    format: "safetensors",
+    size,
+    identity: { basename: basename(dir), sizeLabel: null, finetune: null, baseModels: [] },
+    capabilities: { tools: false, vision: false, embedding: false, reasoning: null, transcribe: true },
+    contextLength: typeof context === "number" ? context : null,
+    kvPerToken: config.decoder_layers
+      ? kvElements(config.decoder_layers, config.d_model, config.decoder_attention_heads, config.decoder_attention_heads)
+      : kvElements(text.num_hidden_layers, text.hidden_size, text.num_attention_heads, text.num_key_value_heads ?? text.num_attention_heads, text.head_dim),
+    mmproj: null,
+    remoteCode: !!config.auto_map,
+  };
+}
+
+/** The languages the speech server reads, by a Kokoro voice's first letter (a, b: English; z: Mandarin). */
+const VOICE_LANGUAGES: Record<string, Voice["language"]> = { a: "en", b: "en", z: "zh" };
+
+/**
+ * A voice model for the speech server (Kokoro's ONNX export): an `.onnx`
+ * file, its vocabulary in config.json or tokenizer.json, and voices/*.bin,
+ * one raw float32 style table per voice. Voices in other languages are left
+ * out. Null if it isn't one.
+ */
+function speechModel(root: string, dir: string, entries: string[]): TextModel | null {
+  const onnxDir = entries.includes("onnx") ? join(dir, "onnx") : dir;
+  let onnxFiles: string[] = [];
+  let voiceFiles: string[] = [];
+  try {
+    onnxFiles = readdirSync(onnxDir).filter((f) => f.endsWith(".onnx")).sort();
+    voiceFiles = readdirSync(join(dir, "voices")).filter((f) => f.endsWith(".bin")).sort();
+  } catch {
+    return null;
+  }
+  // The full-precision export where there are several.
+  const file = onnxFiles.includes("model.onnx") ? "model.onnx" : onnxFiles.includes("model_fp16.onnx") ? "model_fp16.onnx" : onnxFiles[0];
+  const vocab = readJson(join(dir, "config.json"))?.vocab ?? readJson(join(dir, "tokenizer.json"))?.model?.vocab;
+  if (!file || !vocab || typeof vocab !== "object") return null;
+  const voices = voiceFiles
+    .map((f) => ({ id: f.slice(0, -4), language: VOICE_LANGUAGES[f[0]!] }))
+    .filter((v): v is Voice => !!v.language && /^[a-z]{2}_[\w-]+$/.test(v.id));
+  if (!voices.length) return null;
+  const onnx = relative(dir, join(onnxDir, file)).split("\\").join("/");
+  const size = statSync(join(onnxDir, file)).size + voiceFiles.reduce((n, f) => n + statSync(join(dir, "voices", f)).size, 0);
+  return {
+    id: relative(root, dir).split("\\").join("/"),
+    kind: "speak",
+    server: "speech",
+    format: "onnx",
+    size,
+    identity: { basename: basename(dir), sizeLabel: null, finetune: null, baseModels: [] },
+    capabilities: { tools: false, vision: false, embedding: false, reasoning: null, speak: { voices } },
+    contextLength: null,
+    kvPerToken: null,
+    mmproj: null,
+    remoteCode: false,
+    onnx,
+  };
+}
+
+/** Every text and speech model under `root`. Unreadable files are skipped. */
 export function scanTextModels(root: string): TextModel[] {
   const found: TextModel[] = [];
   const walk = (dir: string, depth: number) => {
@@ -150,6 +233,13 @@ export function scanTextModels(root: string): TextModel[] {
       entries = readdirSync(dir).filter((e) => !e.startsWith("."));
     } catch {
       return;
+    }
+    if (entries.includes("voices") && (entries.includes("onnx") || entries.some((e) => e.endsWith(".onnx")))) {
+      const model = speechModel(root, dir, entries);
+      if (model) {
+        found.push(model);
+        return;
+      }
     }
     if (entries.includes("config.json") && !entries.includes("model_index.json") && entries.some((e) => e.endsWith(".safetensors"))) {
       const model = vllmModel(root, dir, entries);

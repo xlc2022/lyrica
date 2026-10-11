@@ -41,7 +41,7 @@ async function refresh() {
   if (status.backend) $("status").textContent += ` GPUs: ${{ cuda: "CUDA", rocm: "ROCm", vulkan: "Vulkan" }[status.backend]}.`;
   renderGpus(status.gpus, status.servers);
   const { models } = await api("/host/v1/models");
-  renderModels(models, status.gpus);
+  renderModels(models, status.cpuServers ?? []);
   await renderDownloads();
   await renderRecipes();
   const usage = await api("/host/v1/usage");
@@ -51,7 +51,7 @@ async function refresh() {
   for (const u of usage.models) {
     const row = table.insertRow();
     row.insertCell().textContent = u.id;
-    row.insertCell().textContent = `${u.requests} requests, ${u.promptTokens + u.completionTokens} tokens${u.images ? `, ${u.images} images` : ""}, ${Math.round(u.seconds)} s`;
+    row.insertCell().textContent = `${u.requests} requests, ${u.promptTokens + u.completionTokens} tokens${u.images ? `, ${u.images} images` : ""}${u.audioSeconds ? `, ${Math.round(u.audioSeconds)} s of audio` : ""}, ${Math.round(u.seconds)} s`;
   }
   $("pairing-section").hidden = me.access === "client";
   $("password-section").hidden = me.access === "client";
@@ -77,7 +77,7 @@ function renderGpus(gpus, servers) {
     head.textContent = `GPU ${g.index}: ${g.name}${g.integrated ? ", integrated" : ""}, ${gib(g.vram.used)} of ${gib(g.vram.total)} used. Queue: ${g.queue.chat} chat, ${g.queue.image} image, ${g.queue.background} background. `;
     // What it may run, how much it keeps free, or left out entirely.
     const put = (change) => api(`/host/v1/gpus/${g.index}`, { method: "PUT", body: JSON.stringify({ ...g.settings, ...change }) }).then(refresh, (e) => { show(e); refresh(); });
-    for (const [server, label] of [["llamacpp", "llama.cpp"], ["vllm", "vLLM"], ["images", "images"]].filter(([s]) => servers.includes(s))) {
+    for (const [server, label] of [["llamacpp", "llama.cpp"], ["vllm", "vLLM"], ["images", "images"], ["speech", "speech"]].filter(([s]) => servers.includes(s))) {
       const box = document.createElement("input");
       box.type = "checkbox";
       box.checked = g.settings.servers.includes(server);
@@ -115,16 +115,16 @@ function renderGpus(gpus, servers) {
   }
 }
 
-function renderModels(models, gpus) {
+function renderModels(models, cpuServers) {
   const table = $("models");
   table.replaceChildren();
-  if (!models.length) table.insertRow().insertCell().textContent = "No text models found in the models folder.";
-  void gpus;
+  if (!models.length) table.insertRow().insertCell().textContent = "No text or voice models found in the models folder.";
   for (const m of models) {
     const row = table.insertRow();
     row.insertCell().textContent = m.id;
-    const where = m.placement.mode === "auto" ? "auto" : `GPU ${m.placement.gpus.join("+")}`;
-    row.insertCell().textContent = `${m.kind}, ${m.server}, ${gib(m.size)}, ${where}, ${m.contextLength ?? "?"} context`;
+    const where = cpuServers.includes(m.server) ? "on the CPU" : m.placement.mode === "auto" ? "auto" : `GPU ${m.placement.gpus.join("+")}`;
+    const extra = m.capabilities.speak ? `${m.capabilities.speak.voices.length} voices` : `${m.contextLength ?? "?"} context`;
+    row.insertCell().textContent = `${m.kind}, ${m.server}, ${gib(m.size)}, ${where}, ${extra}`;
     const actions = row.insertCell();
     if (m.state === "unloaded") actions.append(button("Load", () => post("/host/v1/models/load", { model: m.id })));
     else actions.append(button("Reload", () => post("/host/v1/models/reload", { model: m.id })));

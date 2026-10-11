@@ -1,9 +1,9 @@
 // The control panel: your profile and models, and the administrator's settings.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   del, get, patch, post, put, u,
   type AdminStatus, type AllowedPaths, type EndpointInfo, type Me, type ModeDefault, type NetworkDefaults, type PersonaProposal,
-  type Pool, type Probe, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type SshTargetInfo, type Task, type Theme, type UserCard,
+  type OfferingInfo, type OfferingSettings, type Pool, type Probe, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type SshTargetInfo, type Task, type Theme, type UserCard,
 } from "./api.ts";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
 import type { ShellContext } from "./Shell.tsx";
@@ -24,7 +24,11 @@ const TASKS: { task: Task; label: string }[] = [
   { task: "sleep.consolidate", label: "Sleep: consolidate" },
   { task: "sleep.dream", label: "Sleep: dream" },
   { task: "sleep.wake", label: "Sleep: wake" },
+  { task: "speech.transcribe", label: "Dictation" },
+  { task: "speech.speak", label: "Read aloud" },
 ];
+/** The models a task's select offers: speech tasks take only models that transcribe or speak. */
+const fits = (task: Task, m: OfferingInfo) => (task === "speech.transcribe" ? !!m.transcribe : task === "speech.speak" ? !!m.speak?.voices.length : true);
 
 export function Panel({ ctx }: { ctx: ShellContext }) {
   const admin = ctx.user.admin;
@@ -200,6 +204,7 @@ function EndpointRow({ userId, ep, canEdit, onChange }: { userId: string; ep: En
   const probe = useLoad(() => get<Probe>(`${path}/probe`), [path]);
   const [run, busy, error] = useAction();
   const [model, setModel] = useState("");
+  const [voice, setVoice] = useState<OfferingInfo>();
   return (
     <li className="endpoint">
       <div className="row between">
@@ -208,7 +213,13 @@ function EndpointRow({ userId, ep, canEdit, onChange }: { userId: string; ep: En
       </div>
       <code className="url">{ep.baseUrl}</code>
       {probe.data?.warning && <p className="warn-text">{probe.data.warning}</p>}
-      <p className="muted small">{ep.models.length ? ep.models.map((m) => m.modelId).join(", ") : "No models yet."}</p>
+      <p className="muted small models">
+        {ep.models.length ? ep.models.map((m, i) => (
+          <span key={m.id}>{i > 0 && ", "}{m.modelId}{m.speak?.voices.length ? <> <button type="button" className="link small" aria-label={`${m.modelId} settings`} onClick={() => setVoice(m)}>Settings</button></> : null}</span>
+        )) : "No models yet."}
+      </p>
+      {voice && <VoiceDrawer userId={userId} model={voice} onClose={() => setVoice(undefined)} />}
+      {voice && <div className="scrim drawer-scrim" aria-hidden="true" onClick={() => setVoice(undefined)} />}
       <ErrorText error={error} />
       {canEdit && (
         <div className="row wrap">
@@ -222,6 +233,74 @@ function EndpointRow({ userId, ep, canEdit, onChange }: { userId: string; ep: En
         </div>
       )}
     </li>
+  );
+}
+
+const LANGUAGES: Record<string, string> = { en: "English", zh: "Mandarin" };
+const MAX_SPEED = 4;
+const MIN_SPEED = 0.25;
+
+/** A speech model's Settings drawer: its voice per language and its speed, yours over the shared ones. */
+function VoiceDrawer({ userId, model, onClose }: { userId: string; model: OfferingInfo; onClose: () => void }) {
+  const path = u(userId, "offerings", model.id, "settings");
+  const settings = useLoad(() => get<OfferingSettings>(path), [path]);
+  const [run, busy, error] = useAction();
+  const [speed, setSpeed] = useState<string>();
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    ref.current?.focus();
+    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    addEventListener("keydown", key);
+    return () => removeEventListener("keydown", key);
+  }, [onClose]);
+  const voices = model.speak?.voices ?? [];
+  const languages = [...new Set(voices.map((v) => v.language))];
+  const s = settings.data;
+  const save = (values: { voices?: Record<string, string> | null; speed?: number | null }) => run(async () => settings.set(await put<OfferingSettings>(path, { values })));
+  const source = (k: "voices" | "speed") => s?.sources[k] && <span className="muted small source"> {s.sources[k]}</span>;
+  // The field clamps to its range when it is left; empty goes back to the default.
+  const commitSpeed = () => {
+    if (speed === undefined) return;
+    const n = Number(speed);
+    setSpeed(undefined);
+    if (speed.trim() === "") { if (s?.values.speed !== undefined) void save({ speed: null }); return; }
+    if (!Number.isFinite(n)) return;
+    void save({ speed: Math.min(MAX_SPEED, Math.max(MIN_SPEED, n)) });
+  };
+  return (
+    <aside ref={ref} tabIndex={-1} className="drawer" aria-label={`${model.modelId} settings`}>
+      <div className="drawer-head">
+        <h2>{model.modelId}</h2>
+        <button type="button" onClick={onClose}>Close</button>
+      </div>
+      <div className="drawer-body">
+        <ErrorText error={settings.error || error} />
+        <fieldset className="group" disabled={!s || busy}>
+          <legend>Voice{source("voices")}</legend>
+          {languages.map((lang) => (
+            <label key={lang} className="field"><span>{LANGUAGES[lang] ?? lang}</span>
+              <select value={s?.values.voices?.[lang] ?? ""} onChange={(e) => save({ voices: { ...s?.values.voices, [lang]: e.target.value } })}>
+                {!s?.values.voices?.[lang] && <option value="">Default</option>}
+                {voices.filter((v) => v.language === lang).map((v) => <option key={v.id} value={v.id}>{v.id}</option>)}
+              </select>
+            </label>
+          ))}
+          {s?.sources.voices === "yours" && <button type="button" className="link small" onClick={() => save({ voices: null })}>Reset</button>}
+        </fieldset>
+        <fieldset className="group" disabled={!s || busy}>
+          <legend>Speed{source("speed")}</legend>
+          <div className="field">
+            <span className="unit-field">
+              <input type="number" inputMode="decimal" min={MIN_SPEED} max={MAX_SPEED} step={0.05} placeholder="1" aria-label="Speed"
+                value={speed ?? s?.values.speed ?? ""} onChange={(e) => setSpeed(e.target.value)} onBlur={commitSpeed}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitSpeed(); } }} />
+              <span className="muted small">of {MAX_SPEED}</span>
+            </span>
+          </div>
+          {s?.sources.speed === "yours" && <button type="button" className="link small" onClick={() => save({ speed: null })}>Reset</button>}
+        </fieldset>
+      </div>
+    </aside>
   );
 }
 
@@ -251,7 +330,7 @@ function ProfilesSection({ ctx }: { ctx: ShellContext }) {
                     <option value="">{cur && !Array.isArray(cur) ? `Same as ${cur.same}` : "Not set"}</option>
                     {(eps.data ?? []).filter((ep) => profile === "custom" || ep.kind === profile).map((ep) => (
                       <optgroup key={ep.id} label={`${ep.name} (${ep.kind})`}>
-                        {ep.models.map((m) => <option key={m.id} value={m.id}>{m.modelId}</option>)}
+                        {ep.models.filter((m) => fits(task, m)).map((m) => <option key={m.id} value={m.id}>{m.modelId}</option>)}
                       </optgroup>
                     ))}
                   </select>
@@ -269,6 +348,7 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const net = useLoad(() => get<NetworkDefaults>(u(userId, "network")), [userId]);
   const mode = useLoad(() => get<ModeDefault>(u(userId, "mode")), [userId]);
+  const profiles = useLoad(() => get<Profiles>(u(userId, "profiles")), [userId]);
   const [run, , error] = useAction();
   const [host, setHost] = useState<Record<Pool, string>>({ general: "", private: "" });
   if (!net.data) return <Section title="Network"><ErrorText error={net.error} /></Section>;
@@ -303,6 +383,10 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
           );
         })}
       </div>
+      {profiles.data && (
+        <Switch label="Voice to cloud" hint="What you dictate may be sent to a cloud model."
+          checked={profiles.data.voiceCloud} onChange={(voiceCloud) => run(async () => profiles.set(await patch<Profiles>(u(userId, "profiles"), { voiceCloud })))} />
+      )}
     </Section>
   );
 }

@@ -21,6 +21,8 @@ export interface Call {
   path: string;
   method?: string;
   body?: unknown;
+  /** Sent as is, instead of body as JSON. */
+  raw?: Buffer;
   headers?: Record<string, string>;
   identity?: Identity; // the client certificate to present
   pinned?: string; // refuse a host with another fingerprint
@@ -36,7 +38,7 @@ export function call(c: Call): Promise<Reply> {
         host: c.host ?? "127.0.0.1",
         port: c.port,
         path: c.path,
-        method: c.method ?? (c.body === undefined ? "GET" : "POST"),
+        method: c.method ?? (c.body === undefined && c.raw === undefined ? "GET" : "POST"),
         headers: { "content-type": "application/json", ...c.headers },
         key: c.identity?.key,
         cert: c.identity?.cert,
@@ -71,7 +73,8 @@ export function call(c: Call): Promise<Reply> {
       else socket.once("secureConnect", check);
     });
     req.on("error", reject);
-    if (c.body !== undefined) req.write(JSON.stringify(c.body));
+    if (c.raw !== undefined) req.write(c.raw);
+    else if (c.body !== undefined) req.write(JSON.stringify(c.body));
     req.end();
   });
 }

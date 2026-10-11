@@ -1,13 +1,14 @@
 name: Host images
-# The model host's ComfyUI images (CUDA and ROCm) are large, so they build
-# only when what goes into them changes. The starter recipes are checked
+# The model host's ComfyUI images (CUDA and ROCm) and the speech server's
+# CUDA image are large, so they build only when what goes into them changes.
+# (The speech server's CPU image builds in CI's host-stack job.) The starter recipes are checked
 # against Hugging Face here too, since that needs the internet.
 on:
   pull_request:
-    paths: ["host/comfyui/**", "host/compose.nvidia.yaml", "host/compose.amd.yaml", "host/recipes/**", ".github/workflows/host-images.yml"]
+    paths: ["host/comfyui/**", "host/speech/**", "host/compose.nvidia.yaml", "host/compose.amd.yaml", "host/recipes/**", ".github/workflows/host-images.yml"]
   push:
     branches: [main]
-    paths: ["host/comfyui/**", "host/compose.nvidia.yaml", "host/compose.amd.yaml", "host/recipes/**"]
+    paths: ["host/comfyui/**", "host/speech/**", "host/compose.nvidia.yaml", "host/compose.amd.yaml", "host/recipes/**"]
 # The jobs run on Li's own runner (docs/ci.md), so their token can only read.
 permissions:
   contents: read
@@ -43,6 +44,12 @@ jobs:
           base=$(sed -n 's/^ *BASE: //p' host/compose.${{ matrix.vendor }}.yaml)
           echo "base: $base"
           docker buildx build -f host/comfyui/Dockerfile --build-arg "BASE=$base" --output type=cacheonly .
+  speech:
+    runs-on: lyrica-ci
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the CUDA image
+        run: docker buildx build -f host/speech/Dockerfile --build-arg FLAVOUR=cuda --output type=cacheonly .
   starters:
     runs-on: lyrica-ci
     steps:

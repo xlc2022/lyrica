@@ -46,15 +46,22 @@ export function checkRepoPath(path: unknown): string {
   return path;
 }
 
-const ALLOWED = [".gguf", ".safetensors", ".json", ".txt", ".jinja", ".model", ".tiktoken"];
+const ALLOWED = [".gguf", ".safetensors", ".onnx", ".json", ".txt", ".jinja", ".model", ".tiktoken"];
 const PICKLE = [".bin", ".pt", ".pth", ".ckpt", ".pkl", ".pickle"];
+/**
+ * A voice model's voices (Kokoro's ONNX export): raw float32 arrays named
+ * .bin, which only the speech server reads, as plain numbers. Checked when
+ * downloaded to be neither a pickle nor a zip.
+ */
+export const VOICE_FILE = /(^|\/)voices\/[\w-]+\.bin$/;
 
 /** Whether a file may be downloaded, and why not. */
 export function verdict(path: string): { allowed: boolean; reason: string | null } {
   const name = path.toLowerCase();
+  if (VOICE_FILE.test(name)) return { allowed: true, reason: null };
   if (PICKLE.some((e) => name.endsWith(e))) return { allowed: false, reason: "Pickle files can run code when loaded." };
   if (name.endsWith(".py")) return { allowed: false, reason: "Code is never downloaded." };
-  if (!ALLOWED.some((e) => name.endsWith(e))) return { allowed: false, reason: "Only GGUF and safetensors files, and the small files a model folder needs, are downloaded." };
+  if (!ALLOWED.some((e) => name.endsWith(e))) return { allowed: false, reason: "Only GGUF, safetensors and ONNX files, and the small files a model folder needs, are downloaded." };
   return { allowed: true, reason: null };
 }
 

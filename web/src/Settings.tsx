@@ -129,6 +129,8 @@ export function SettingsDrawer({ ctx, base, summary, settings, onSettings, onSum
             onChange={(v) => change({ internet: v })} />
           <NetSwitch label="This machine's services" hint="Local ports, except Lyrica's own." value={settings.services} effective={settings.network.services}
             onChange={(v) => change({ services: v })} />
+          <NetSwitch label="Voice to cloud" hint="What you dictate may be sent to a cloud model." value={settings.voiceCloud} effective={settings.speech.voiceCloud}
+            onChange={(v) => change({ voiceCloud: v })} />
           <Hosts hosts={settings.hosts ?? settings.network.hosts} overridden={settings.hosts !== null} onChange={(hosts) => change({ hosts })} />
         </fieldset>
 

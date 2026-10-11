@@ -12,7 +12,7 @@ import type { Gpu, GpuMonitor } from "./gpus.ts";
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
 import {
-  defaultGpu, neverFits, options, placementKey, serverOf, sizes, SERVERS,
+  CPU_OPTION, defaultGpu, neverFits, options, placementKey, serverOf, sizes, SERVER_NAMES, SERVERS,
   type GpuSettings, type ModelSettings, type Option, type Server,
 } from "./placement.ts";
 import type { StateFile } from "./state.ts";
@@ -52,14 +52,19 @@ interface Job {
 
 export interface SchedulerOptions {
   monitor: GpuMonitor;
-  backends: { llamacpp: Backend; vllm: Backend; comfyui?: Backend };
+  backends: { llamacpp: Backend; vllm: Backend; comfyui?: Backend; speech?: Backend };
   state: StateFile;
   log: Logger;
   now?: () => number;
   /** Longest wait in the queue, per priority, in ms. */
   waitLimits?: Record<Priority, number>;
-  /** The servers this host runs (a Vulkan host runs llama.cpp only). */
+  /** The servers this host runs on its GPUs (a Vulkan host runs llama.cpp only). */
   servers?: Server[];
+  /**
+   * Servers that run on the CPU here instead: speech, on a host without
+   * CUDA. Their models take no GPU memory and need no placement.
+   */
+  cpuServers?: Server[];
   /** How the servers reach the GPUs, for the status. */
   gpuBackend?: "cuda" | "rocm" | "vulkan" | null;
   /**
@@ -108,9 +113,18 @@ export class Scheduler {
     return this.o.gpuBackend ?? null;
   }
 
-  /** The servers this host runs. */
+  /** The servers this host runs on its GPUs. */
   get servers(): Server[] {
-    return this.o.servers ?? [...SERVERS];
+    return (this.o.servers ?? SERVERS).filter((s) => !this.cpuServers.includes(s));
+  }
+
+  /** The servers this host runs on the CPU. */
+  get cpuServers(): Server[] {
+    return this.o.cpuServers ?? [];
+  }
+
+  onCpu(model: TextModel): boolean {
+    return this.cpuServers.includes(serverOf(model));
   }
 
   /**
@@ -144,8 +158,12 @@ export class Scheduler {
 
   private backend(model: TextModel): Backend {
     if (model.server === "comfyui") {
-      if (!this.o.backends.comfyui) throw new HostError(503, "unavailable", "This host has no image server.");
+      if (!this.o.backends.comfyui) throw new HostError(503, "model_unavailable", "This host has no image server.");
       return this.o.backends.comfyui;
+    }
+    if (model.server === "speech") {
+      if (!this.o.backends.speech) throw new HostError(503, "model_unavailable", "This host has no speech server.");
+      return this.o.backends.speech;
     }
     return model.server === "vllm" ? this.o.backends.vllm : this.o.backends.llamacpp;
   }
@@ -157,6 +175,7 @@ export class Scheduler {
 
   /** The ways this job's model may run. */
   private optionsFor(job: { model: TextModel; gpu?: number }): Option[] {
+    if (this.onCpu(job.model)) return [CPU_OPTION];
     const s = this.settings(job.model);
     const gpus = this.gpusFor(serverOf(job.model));
     if (job.gpu === undefined) return options(job.model, s, gpus, (i) => this.gpuSettings(i));
@@ -213,6 +232,7 @@ export class Scheduler {
     if (kinds.includes("chat")) return "a chat model";
     if (kinds.includes("embedding")) return "an embedding model";
     if (kinds.includes("image")) return "image generation";
+    if (kinds.includes("transcribe") || kinds.includes("speak")) return "speech";
     return "other work";
   }
 
@@ -270,7 +290,7 @@ export class Scheduler {
             for (const e of plan.evict) await this.unload(e);
             await this.load(job.model, plan.option);
           } catch (e) {
-            this.finish(job, e instanceof HostError ? e : new HostError(503, "unavailable", "The model server couldn't load this model."));
+            this.finish(job, e instanceof HostError ? e : new HostError(503, "model_unavailable", "The model server couldn't load this model."));
           }
           this.again = true; // memory changed: look at the queue again from the top
           break;
@@ -290,8 +310,7 @@ export class Scheduler {
     const opts = this.optionsFor(job);
     const s = this.settings(model);
     if (!opts.length) {
-      const what = serverOf(model) === "vllm" ? "vLLM" : serverOf(model) === "images" ? "images" : "llama.cpp";
-      return new HostError(413, "too_big", job.gpu !== undefined ? `GPU ${job.gpu} doesn't allow images.` : `No GPU allows ${what} for this model.`);
+      return new HostError(413, "too_big", job.gpu !== undefined ? `GPU ${job.gpu} doesn't allow images.` : `No GPU allows ${SERVER_NAMES[serverOf(model)]} for this model.`);
     }
     const loadedOn = (g: number) => [...this.loaded.values()].filter((l) => l.option.gpus.includes(g));
     const view = this.gpusFor(serverOf(model));
@@ -372,7 +391,7 @@ export class Scheduler {
     }
     entry.ready = true;
     // Measured per GPU on the first load with this placement. vLLM's share is what it reserves.
-    if (this.o.state.get().vram[key] === undefined && model.server !== "vllm") {
+    if (this.o.state.get().vram[key] === undefined && model.server !== "vllm" && o.gpus.length) {
       const after = await this.readGpus();
       const measured: Record<number, number> = {};
       for (const g of o.gpus) measured[g] = (after.find((x) => x.index === g)?.used ?? 0) - (before[g] ?? 0);

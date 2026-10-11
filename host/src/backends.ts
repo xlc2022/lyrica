@@ -19,7 +19,7 @@ export interface Backend {
   reset(): Promise<void>;
 }
 
-const unavailable = (what: string) => new HostError(503, "unavailable", `${what} didn't answer.`);
+const unavailable = (what: string) => new HostError(503, "model_unavailable", `${what} didn't answer.`);
 
 function writeAtomic(path: string, text: string): void {
   writeFileSync(`${path}.tmp`, text, { mode: 0o644 });
@@ -132,7 +132,7 @@ export class LlamaCpp implements Backend {
     if (res.ok) return;
     const text = await res.text().catch(() => "");
     if (res.status === 400 && /already (loaded|running)|not (loaded|running)/i.test(text)) return;
-    throw new HostError(503, "unavailable", res.status === 400 ? "llama.cpp doesn't know this model." : "llama.cpp didn't answer.");
+    throw new HostError(503, "model_unavailable", res.status === 400 ? "llama.cpp doesn't know this model." : "llama.cpp didn't answer.");
   }
 
   async load(model: TextModel, at: Option, settings: ModelSettings): Promise<void> {
@@ -150,7 +150,7 @@ export class LlamaCpp implements Backend {
         if (s?.failed) failed = true;
         return s?.value === "loaded" || failed;
       }, this.o.loadTimeoutMs, "llama.cpp");
-      if (failed) throw new HostError(503, "unavailable", "llama.cpp couldn't load this model.");
+      if (failed) throw new HostError(503, "model_unavailable", "llama.cpp couldn't load this model.");
     } catch (e) {
       // Leave nothing half-loaded behind.
       await this.post("/models/unload", { model: model.id }).catch(() => {});
@@ -174,7 +174,7 @@ export class LlamaCpp implements Backend {
   async reset(): Promise<void> {
     let failed = 0;
     for (const { model } of [...this.placed.values()]) await this.unload(model).catch(() => failed++);
-    if (failed) throw new HostError(503, "unavailable", `llama.cpp couldn't unload ${failed} model${failed > 1 ? "s" : ""}.`);
+    if (failed) throw new HostError(503, "model_unavailable", `llama.cpp couldn't unload ${failed} model${failed > 1 ? "s" : ""}.`);
   }
 }
 
@@ -248,7 +248,7 @@ export class Vllm implements Backend {
       await poll(async () => {
         // A server that exited while starting won't come up: stop waiting.
         if (this.failed(model.id, attempt)) {
-          throw new HostError(503, "unavailable", `vLLM couldn't start ${model.id} with these settings; try a lower context length or a larger memory share.`);
+          throw new HostError(503, "model_unavailable", `vLLM couldn't start ${model.id} with these settings; try a lower context length or a larger memory share.`);
         }
         const res = await fetch(`${this.base(port)}/v1/models`);
         const body = (await res.json()) as { data: { id: string }[] };

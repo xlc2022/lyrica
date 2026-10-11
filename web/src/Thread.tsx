@@ -9,6 +9,7 @@ import { Composer } from "./Composer.tsx";
 import { ModelBadge, SettingsDrawer } from "./Settings.tsx";
 import type { ShellContext } from "./Shell.tsx";
 import { ErrorText, useLoad } from "./ui.tsx";
+import { stopReading } from "./Voice.tsx";
 
 export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; pool: Pool; threadId: string; threads: ThreadSummary[] }) {
   const userId = ctx.user.id;
@@ -43,8 +44,12 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
     return () => removeEventListener("focus", refreshSettings);
   }, [refreshSettings]);
 
+  // Leaving the thread stops anything being read aloud.
+  useEffect(() => stopReading, [base]);
+
   const send = useCallback(async (text: string) => {
     setSendError("");
+    stopReading();
     try {
       const r = await post<SendResponse>(`${base}/messages`, { text });
       if (!r.queued) t.dispatch({ type: "sent", text });
@@ -146,7 +151,8 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
         <PendingBar scroller={scroller} deps={[t.messages, t.live.permissions]} />
         <ErrorText error={summary.error || t.loadError} />
         {settings.error && <ErrorText error={`This thread's settings didn't load: ${settings.error}`} />}
-        <Conversation ctx={ctx} pool={pool} base={base} threadId={threadId} subagent={!!s?.subagent} thread={t} rewinder={rewinder} hideFrom={pending?.hide} parentTitle={s?.child ? parent?.title : undefined} />
+        <Conversation ctx={ctx} pool={pool} base={base} threadId={threadId} subagent={!!s?.subagent} thread={t} rewinder={rewinder} hideFrom={pending?.hide} parentTitle={s?.child ? parent?.title : undefined}
+          speech={settings.data?.speech} onError={setSendError} />
         <ErrorText error={sendError} />
       </div>
       {!t.connected && <p className="offline" role="status">Reconnecting…</p>}
@@ -163,7 +169,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
       {/* A subagent's thread is its transcript and a message box, as in its delegate card. */}
       {s?.subagent
         ? <div className="composer sub-composer"><MessageBox thread={{ pool, id: threadId }} env={{ userId }} onSent={() => t.dispatch({ type: "refresh" })} /></div>
-        : <Composer base={base} busy={t.live.busy} onSend={send} onStop={stop} restored={restored} settings={settings.data} onSettings={changeSettings} />}
+        : <Composer base={base} busy={t.live.busy} onSend={send} onStop={stop} restored={restored} settings={settings.data} onSettings={changeSettings} onError={setSendError} />}
       {drawer && settings.data && s && !s.subagent && (
         <SettingsDrawer
           ctx={ctx} base={base} summary={s} settings={settings.data} children={findThread(threads, pool, threadId)?.children.length ?? 0}

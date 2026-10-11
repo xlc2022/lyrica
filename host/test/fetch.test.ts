@@ -207,6 +207,21 @@ describe("tokens and sizes", () => {
     void models;
   });
 
+  it("takes a voice model's ONNX file and plain voices, and refuses a pickled voice or a file that isn't ONNX", async () => {
+    const hub = await fakeHub();
+    const { d, models } = setup(hub);
+    const listing = await d.listRepo("huggingface", "org/repo", undefined);
+    expect(listing.files.find((f) => f.path === "voices/af_heart.bin")).toMatchObject({ allowed: true });
+    expect(listing.files.find((f) => f.path === "pytorch_model.bin")).toMatchObject({ allowed: false });
+    const [onnx, voice, pickled, fake] = await d.request({ source: "huggingface", repo: "org/repo", files: ["onnx/model.onnx", "voices/af_heart.bin", "voices/zf_pickled.bin", "fake.onnx"] });
+    await settle(d);
+    expect(d.get(onnx!.id)).toMatchObject({ state: "done", verified: true });
+    expect(d.get(voice!.id)).toMatchObject({ state: "done", verified: true });
+    expect(d.get(pickled!.id)).toMatchObject({ state: "failed", error: "The voice file isn't a plain array of numbers, so it was deleted." });
+    expect(d.get(fake!.id)).toMatchObject({ state: "failed", error: "The file isn't a valid model file, so it was deleted." });
+    expect(readdirSync(join(models, "lyrica/huggingface/org/repo/voices"))).toEqual(["af_heart.bin"]);
+  });
+
   it("keeps a signed link's query out of the list and the record", async () => {
     const hub = await fakeHub();
     const { d, data } = setup(hub);
