@@ -91,7 +91,13 @@ runner keeps its registration, and the firewall is applied again.
 - **The nix job** installs Nix on the runner the first time (a pinned
   installer, checked by hash) and keeps it; it needs the internet for
   `releases.nixos.org`, `channels.nixos.org` and `cache.nixos.org`, which
-  the firewall allows like the rest of the internet.
+  the firewall allows like the rest of the internet. If that first install
+  was cancelled partway (a cancelled run, a rebooted VM), later nix jobs
+  stop with "An earlier Nix install on this runner stopped partway" and
+  list the `/etc/*.backup-before-nix` files it left. Undo it by hand with
+  the Nix manual's multi-user uninstall steps on the VM: put those backup
+  files back in place, remove `/nix` and `/etc/nix`, the `nix-daemon`
+  units and the `nixbld` users, then re-run the job.
 - **The host-stack job** installs the model host stack with `--no-gpu` and
   removes it again when it ends (the stack, its volumes, the egress unit
   and rules, Docker's `daemon.json`).
