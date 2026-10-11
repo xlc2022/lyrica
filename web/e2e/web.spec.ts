@@ -46,6 +46,17 @@ async function enter(page: Page, baseURL: string): Promise<string> {
     };
     await api("PUT", "/profiles/local/chat", { model: await add("gpu", "local", "local", "local-model") });
     await api("PUT", "/profiles/cloud/chat", { model: await add("router", "cloud", "cloud", "cloud-model") });
+    // The same fake speech server as a local and as a cloud endpoint: whisper transcribes, kokoro speaks English and Mandarin.
+    for (const [name, kind] of [["speech", "local"], ["openai", "cloud"]] as const) {
+      const ep = await api("POST", "/endpoints", { name, kind, baseUrl: `${models}/speech/v1` }) as Ep;
+      const found = await api("POST", `/endpoints/${ep.id}/discover`) as Ep;
+      const whisper = found.models.find((m) => m.modelId === "whisper")!.id;
+      const kokoro = found.models.find((m) => m.modelId === "kokoro")!.id;
+      await api("PATCH", `/offerings/${whisper}`, { transcribe: true });
+      await api("PATCH", `/offerings/${kokoro}`, { speak: { voices: [{ id: "af_heart", language: "en" }, { id: "zf_xiaobei", language: "zh" }] } });
+      await api("PUT", `/profiles/${kind}/speech.transcribe`, { model: { offeringId: whisper } });
+      await api("PUT", `/profiles/${kind}/speech.speak`, { model: { offeringId: kokoro } });
+    }
   }
   return userId;
 }
@@ -464,6 +475,119 @@ test("linked users share a browser; logging in as anyone else signs this browser
   await expect(page.getByRole("status").filter({ hasText: "Signed out the previous user on this browser." })).toBeVisible();
   const state = await page.evaluate(() => fetch("/api/state").then((r) => r.json())) as { users: { login: string }[] };
   expect(state.users.map((x) => x.login)).toEqual(["sam"]);
+});
+
+test("dictation goes in at the caret, Read aloud plays her reply, and a speech server that is down disables both", async ({ page, baseURL, request }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  const shot = async (name: string) => {
+    if (!process.env.SCREENSHOTS) return;
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.screenshot({ path: `${process.env.SCREENSHOTS}/${name}-${page.viewportSize()!.width}-${colorScheme}.png` });
+    }
+    await page.emulateMedia({ colorScheme: null });
+  };
+  const message = page.getByLabel("Message", { exact: true });
+  // A general thread's Dictation model is a cloud one, so the mic is off until Voice to cloud is on.
+  const mic = page.getByRole("button", { name: "Dictate" });
+  await expect(mic).toBeDisabled();
+  await expect(mic).toHaveAttribute("title", /is a cloud model, and Voice to cloud is off/);
+  await shot("mic-off");
+  // Voice to cloud: a switch among the thread's privacy and network switches, following the default until changed.
+  let drawer = await openSettings(page);
+  const voiceCloud = drawer.getByLabel("Voice to cloud");
+  await expect(voiceCloud).not.toBeChecked();
+  await voiceCloud.click();
+  await expect(voiceCloud).toBeChecked();
+  await shot("voice-to-cloud");
+  await drawer.getByRole("button", { name: "Close" }).click();
+  await expect(mic).toBeEnabled();
+
+  // Recording: the placeholder says so, and the time runs beside the mic. Escape throws the clip away.
+  await mic.click();
+  await expect(message).toHaveAttribute("placeholder", "Listening…");
+  await expect(page.locator(".mic .elapsed")).toHaveText(/0:0[1-9]/);
+  await shot("recording");
+  await message.press("Escape");
+  await expect(mic).toBeEnabled();
+  await expect(message).toHaveValue("");
+  // Enter in the box stops and transcribes; the text lands at the caret.
+  await message.fill("Please note:");
+  await mic.click();
+  await expect(message).toHaveAttribute("placeholder", "Listening…");
+  await page.waitForTimeout(500);
+  await message.press("Enter");
+  await expect(page.getByRole("button", { name: "Transcribing" })).toBeDisabled();
+  await shot("transcribing");
+  await expect(message).toHaveValue("Please note: hello from the fake", { timeout: 15_000 });
+  await expect(mic).toBeEnabled();
+
+  // Read aloud on her reply is Stop reading while it plays, then comes back.
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("in a few pieces.")).toBeVisible();
+  await page.getByRole("button", { name: "Read aloud" }).click();
+  const stop = page.getByRole("button", { name: "Stop reading" });
+  await expect(stop).toBeVisible();
+  await shot("read-aloud");
+  await expect(page.getByRole("button", { name: "Read aloud" })).toBeVisible({ timeout: 15_000 });
+  await noHorizontalScroll(page);
+
+  // With the speech server down, a clip's failure shows in the error line, and the mic and Read aloud are then disabled with the reason.
+  const models = `http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}`;
+  await request.post(`${models}/speech/down`);
+  try {
+    await page.getByRole("button", { name: "Dictate" }).click();
+    await expect(message).toHaveAttribute("placeholder", "Listening…");
+    await page.waitForTimeout(600);
+    await page.getByRole("button", { name: "Stop and transcribe" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: /be reached now/ })).toBeVisible({ timeout: 15_000 });
+    await page.reload();
+    await expect(mic).toBeDisabled();
+    await expect(mic).toHaveAttribute("title", /be reached now/);
+    await expect(page.getByRole("button", { name: "Read aloud" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Read aloud" })).toHaveAttribute("title", /be reached now/);
+    await shot("speech-down");
+    await noHorizontalScroll(page);
+    // The thread's own choice held.
+    drawer = await openSettings(page);
+    await expect(drawer.getByLabel("Voice to cloud")).toBeChecked();
+    await drawer.getByRole("button", { name: "Use default" }).last().click();
+    await expect(drawer.getByLabel("Voice to cloud")).not.toBeChecked();
+  } finally {
+    await request.post(`${models}/speech/up`);
+  }
+});
+
+test("a speaking model's Settings drawer sets its voice and clamps its speed; Voice to cloud has its default beside the network defaults", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${encodeURIComponent(userId)}/panel`);
+  await expect(page.getByRole("heading", { level: 1, name: "Control panel" })).toBeVisible();
+  // Dictation and Read aloud rows offer only models that transcribe or speak.
+  const local = page.getByRole("group", { name: "Local profile" });
+  await expect(local.getByLabel("Dictation").locator("option")).toHaveText(["Not set", "whisper"]);
+  await expect(local.getByLabel("Read aloud").locator("option")).toHaveText(["Not set", "kokoro"]);
+  await expect(page.getByLabel("Voice to cloud")).not.toBeChecked();
+
+  await page.getByRole("button", { name: "kokoro settings" }).first().click();
+  const drawer = page.getByRole("complementary", { name: "kokoro settings" });
+  await drawer.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+  const english = drawer.getByLabel("English");
+  await expect(english).toHaveValue("");
+  await english.selectOption("af_heart");
+  await expect(drawer.getByRole("group", { name: /^Voice/ })).toContainText("yours");
+  const speed = drawer.getByRole("spinbutton");
+  await speed.fill("9");
+  await speed.press("Enter");
+  await expect(speed).toHaveValue("4");
+  await expect(drawer.getByRole("group", { name: /^Speed/ })).toContainText("yours");
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/voice-drawer-${page.viewportSize()!.width}.png` });
+  // Reset takes each section back to the shared or default value.
+  await drawer.getByRole("group", { name: /^Speed/ }).getByRole("button", { name: "Reset" }).click();
+  await expect(speed).toHaveValue("");
+  await drawer.getByRole("button", { name: "Close" }).click();
+  await expect(drawer).toHaveCount(0);
 });
 
 test("no horizontal scrolling and big enough tap targets on a phone", async ({ page, baseURL }) => {
