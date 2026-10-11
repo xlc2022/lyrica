@@ -94,6 +94,8 @@ decisions, requirements, pitfalls, who to ask, what's open, citing them.
   some of its threads are logged; those threads are slept as ordinary
   threads.
 - Notes she folds into the page stay notes.
+- She names a conversation by citing it (`[t:…]`), never by its title, so
+  a rename shows everywhere without rewriting the page.
 - Unfinished work in a project goes into WAKE like any other work.
 
 ## Memory pools
