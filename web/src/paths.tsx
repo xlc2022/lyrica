@@ -11,8 +11,13 @@ export const WORKDIR = "/workspace";
 /** A path as the panel shows it: the thread folder by name, its files without the prefix, a grant's as they are. */
 export const shown = (p: string) => (p === WORKDIR ? "Thread folder" : p.startsWith(`${WORKDIR}/`) ? p.slice(WORKDIR.length + 1) : p);
 
-/** A path under the thread's folder, as written in prose: it ends before a space, a quote, a bracket or trailing punctuation. */
-const PATH = /\/workspace(?:\/[^\s"'`<>()[\]{}|,;]*[^\s"'`<>()[\]{}|,;:.!?])?(?![\w-])/g;
+/**
+ * A path under the thread's folder, as written in prose: it starts the word (not inside `/home/li/workspace`,
+ * `~/workspace` or a URL) and ends before a space, a quote, a bracket or trailing punctuation.
+ */
+export const PATH = /(?<![\w.~/:-])\/workspace(?:\/[^\s"'`<>()[\]{}|,;]*[^\s"'`<>()[\]{}|,;:.!?])?(?![\w-])/g;
+/** Each path in a text, with where it starts. */
+export const findPaths = (text: string): { path: string; at: number }[] => [...text.matchAll(PATH)].map((m) => ({ path: m[0], at: m.index }));
 export const isUnderWorkdir = (p: string) => p === WORKDIR || p.startsWith(`${WORKDIR}/`);
 
 /** Where a path in this thread leads: the Files panel with the file shown, and the file's own bytes. */

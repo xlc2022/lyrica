@@ -713,10 +713,11 @@ form.drawer-body { flex: 1; }
 .igrid .empty { grid-column: 1 / -1; }
 .selbar { display: flex; align-items: center; gap: 6px; padding: 6px var(--gutter); border-top: 1px solid var(--line); font-size: 13px; background: var(--panel); }
 .selbar > span { margin-right: auto; }
-dialog.lightbox { width: min(960px, calc(100vw - 32px)); }
+/* Centred wherever it is opened from (a message's prose zeroes its children's margins), and never taller than the viewport. */
+dialog.lightbox { width: min(960px, calc(100vw - 32px)); max-height: calc(100vh - 32px); margin: auto; }
 dialog.lightbox .fhead { padding: 10px 14px; }
 dialog.lightbox .lb-img { padding: 0 14px 14px; }
-dialog.lightbox img { display: block; max-width: 100%; max-height: 72vh; margin: 0 auto; border-radius: 8px; }
+dialog.lightbox img { display: block; max-width: 100%; max-height: calc(100vh - 32px - 66px); margin: 0 auto; border-radius: 8px; }
 .ctx-menu .empty { padding: 4px 10px; font-size: 13px; }
 @media (max-width: 760px) {
   .ftree button, .igrid > button { min-height: 44px; }

@@ -1,5 +1,6 @@
 // Small pieces shared by every page.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Markdown, { type Components } from "react-markdown";
 import { InlineImage, isUnderWorkdir, Lightbox, rehypePaths, type FileLinks } from "./paths.tsx";
 import type { Display, Pool } from "./api.ts";
@@ -124,7 +125,7 @@ export function Prose({ text, files }: { text: string; files?: FileLinks }) {
   return (
     <>
       <Markdown skipHtml components={components} rehypePlugins={plugins}>{text}</Markdown>
-      {large && files && <Lightbox path={large} url={files.url(large)} onClose={() => setLarge(undefined)} />}
+      {large && files && createPortal(<Lightbox path={large} url={files.url(large)} onClose={() => setLarge(undefined)} />, document.body)}
     </>
   );
 }

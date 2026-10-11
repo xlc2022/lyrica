@@ -380,7 +380,7 @@ function FromThread({ text, from, env, n }: { text: string; from: { kind: "paren
             {/* Branch and delete, as any message; it isn't hers to edit. */}
             {env.rewinder && n !== undefined && <MessageMenu n={n} role="user" rewinder={env.rewinder} />}
           </div>
-          <div ref={body} className="body prose" data-clamped={more ? undefined : ""}><HerProse text={text} env={env} /></div>
+          <div ref={body} className="body prose" data-clamped={more ? undefined : ""}><HerProse text={text} env={env} elsewhere /></div>
           {long && <button type="button" className="link show-more" onClick={() => setMore(!more)}>{more ? "Show less" : "Show more"}</button>}
         </>
       )}
@@ -465,10 +465,13 @@ function Notice({ text, status, threads, env }: { text: string; status?: string;
   );
 }
 
-/** Her text, with each thread she mentions shown by its current title, this thread's paths as links and its images shown. */
-function HerProse({ text, env }: { text: string; env: Pick<Env, "userId" | "pool" | "threadId"> }) {
+/**
+ * Her text, with each thread she mentions shown by its current title, this thread's paths as links and its images
+ * shown. `elsewhere`: the text was written in another thread, whose /workspace is not this one's, so paths stay text.
+ */
+function HerProse({ text, env, elsewhere }: { text: string; env: Pick<Env, "userId" | "pool" | "threadId">; elsewhere?: boolean }) {
   const files = useFileLinks(env.userId, env.pool, env.threadId);
-  return <Prose text={useThreadMentions(text, env.userId, env.pool)} files={files} />;
+  return <Prose text={useThreadMentions(text, env.userId, env.pool)} files={elsewhere ? undefined : files} />;
 }
 
 /**
