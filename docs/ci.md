@@ -19,7 +19,9 @@ minutes on a private repository are billed past the plan's allowance.
   the model host (the host-stack job installs its own model host stack).
 - The nix job installs Nix once (pinned installer, kept between runs), runs
   `nix flake check` and the sandbox tests with the NixOS sandbox tools and
-  closure (docs/daemon.md "On NixOS"). Nix stays installed on the VM.
+  closure (docs/daemon.md "On NixOS"). Nix stays installed on the VM. If
+  an install was cancelled partway, the job stops and names the leftover
+  files; the Nix manual's multi-user uninstall steps clear it.
 - The host-stack job removes what it installed (the stack and its volumes,
   the egress unit and rules, Docker's daemon.json) when it ends.
 - One runner runs one job at a time. A new push to a pull request
