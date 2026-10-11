@@ -31,7 +31,8 @@ day (principle 5: invest in the curator).
 6. **Docs:** docs/sleep.md and docs/memory.md.
 7. **Watching threads** (projects.md): a `[Watching threads]` message in the
    project chat quotes Li from a thread. Sleep takes Li's words from the
-   thread where they were said, never from that message.
+   thread where they were said, never from that message. Built in #97:
+   a look isn't indexed and `read_memory` shows it as a pointer.
 
 ## Done when
 

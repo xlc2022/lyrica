@@ -275,6 +275,12 @@ with their state, and last the project page, so a long page is what gets
 cut. A private project's section comes only from the private
 pool.
 
+A project chat's **look** at its threads ([delegation.md](delegation.md#child-threads))
+only quotes them, so it isn't indexed, doesn't count as the user talking
+(`lastUserMessage`), and `read_memory` shows it as a pointer to the
+threads it looked at (`lookPointer`). Recall and sleep take the user's
+words from the thread where they were said.
+
 ## Threads that aren't logged
 
 Each thread has a **Do not log thread in memory** checkbox. When it is on:

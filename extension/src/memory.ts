@@ -1,5 +1,5 @@
 import type { PinnedText } from "./assemble.ts";
-import { projectSection, readView, resolve, searchView, type Hit, type SearchOptions, type PoolView, type Profile, type StoredEntry, type Item } from "@lyrica/core";
+import { lookPointer, projectSection, readView, resolve, searchView, type Hit, type SearchOptions, type PoolView, type Profile, type StoredEntry, type Item } from "@lyrica/core";
 
 /** What memory contributes to the prompt. Every field is optional. */
 export interface MemorySections {
@@ -110,6 +110,6 @@ export function formatRead(view: PoolView, id: string, ctx: Pick<MemoryContext, 
 }
 
 function formatEntry(e: StoredEntry): string {
-  const text = e.text.length > 1500 ? `${e.text.slice(0, 1500)}…` : e.text;
+  const text = lookPointer(e.text) ?? (e.text.length > 1500 ? `${e.text.slice(0, 1500)}…` : e.text);
   return `[${e.id}] ${e.role} (${e.createdAt.slice(0, 16).replace("T", " ")}): ${text || "(no text)"}`;
 }

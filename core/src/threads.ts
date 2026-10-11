@@ -9,6 +9,15 @@ export const FROM_PARENT = /^\[From t:([^\]\s]+)\]\n\n/;
 /** The mark lyricad puts on what it shows the project chat about its threads (daemon/src/watch.ts). */
 export const WATCHING_MARK = "[Watching threads]\n\n";
 export const WATCHING = /^\[Watching threads\]\n\n/;
+/**
+ * A look as memory shows it: which threads it pointed at, never what it
+ * quoted, so sleep and recall take the person's words from where they were said.
+ */
+export function lookPointer(text: string): string | undefined {
+  if (!WATCHING.test(text)) return undefined;
+  const ids = [...new Set([...text.matchAll(/^In \[t:([^\]\s]+)\]:/gm)].map((m) => m[1]!))];
+  return `watching threads: a look at ${ids.map((id) => `[t:${id}]`).join(", ") || "its threads"}; what was said is in those threads.`;
+}
 
 export type ChildStatus = "working" | "waiting" | "idle";
 
