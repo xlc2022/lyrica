@@ -50,13 +50,15 @@ a single file. The old `…/panel` opens Settings.
   instead, and memory search leaves the pool out.
 - **Thread:** a header with the title; under it the pool word, the model
   badge (cloud or local, model and endpoint; it opens the model picker), the
-  thread's group as a link that changes it, and the folders and target as
-  words with the paths in their tooltip; at the right a Settings button. Below
-  it the conversation and the composer.
+  thread's group as a link that changes it, the folders as words with the
+  paths in their tooltip, and the granted machines' names in mono; at the
+  right a Settings button. Below it the conversation and the composer.
 - **Thread settings drawer:** a model per task (each option says cloud or local first), local-only, the internet and
   this machine's services switches (each following the user's default until
   changed), allowed hosts, folders from the allowed paths (read-only or
-  read-write), a machine of the thread's pool (one; picking one replaces any others the thread had), the mode, the
+  read-write), **Machines** (the sandbox, always, then a switch per machine
+  of the thread's pool; a granted machine that no longer exists keeps its
+  switch so it can be taken off), the mode, the
   Web search and Images switches, "Do not log", rename, hide, and forget. `lyricad` validates every
   change and its reason is shown.
 - **Subagents live inline**, not in the sidebar: see the `delegate` card
@@ -212,7 +214,8 @@ a single file. The old `…/panel` opens Settings.
   the "+" icon, whose menu attaches a file and, after a separator, has the
   Web search, Internet for commands and Images switches; then the mic; at the right the
   mode, a link with a chevron that opens a menu of the four modes (a check on
-  the current one, its line, its number key). Shift+Tab in the box cycles
+  the current one, its line, its number key; a mode above a granted
+  machine's limit reads "Asks on <machine>" in its line). Shift+Tab in the box cycles
   Ask, Accept edits, Plan, Auto, shown at once; a settings refresh that a
   change overtakes is dropped. A `settings` event (an approved plan)
   refreshes them.
