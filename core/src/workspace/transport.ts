@@ -23,7 +23,7 @@ export interface SshEndpoint {
 
 export interface RemoteStat { uid: number; gid: number; mode: number; symlink: boolean }
 
-/** Thrown for a path that doesn't exist. */
+/** Thrown for a path that doesn't exist, by every transport. */
 export class RemoteMissing extends Error { readonly code = "ENOENT"; }
 export const isMissing = (err: unknown): boolean => err instanceof RemoteMissing;
 

@@ -1,20 +1,26 @@
+import { randomBytes } from "node:crypto";
+import { lookup } from "node:dns/promises";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { isIP } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Locked, type Keyring } from "../keyring.ts";
+import { inOwnNetwork } from "../models/http.ts";
 import type { Pool } from "../types.ts";
 import type { Users } from "../users.ts";
 import { FileChanges, type NewChange } from "./changes.ts";
 import { isMounted, mountGocryptfs, unmountGocryptfs } from "./home.ts";
 import type { ExecutionTarget } from "./ops.ts";
 import { Sandbox, WORKDIR } from "./sandbox.ts";
-import { checkGrant, WorkspaceSettings, type Grant, type Network, type PermissionMode, type ThreadWorkspace } from "./settings.ts";
+import { authorizedKeysLine, machineSetup } from "./machines.ts";
+import { checkGrant, stricterMode, WorkspaceSettings, type Grant, type MachineConfig, type MachineLimit, type Network, type NewMachine, type PermissionMode, type ThreadWorkspace } from "./settings.ts";
 import { AllowedPaths } from "./paths.ts";
-import { SshTarget } from "./ssh.ts";
-import { sandboxedTransport } from "./transport.ts";
+import { generateSshKey, SshTarget } from "./ssh.ts";
+import { sandboxedTransport, type SshTransport } from "./transport.ts";
 
 export * from "./changes.ts";
 export * from "./home.ts";
+export * from "./machines.ts";
 export * from "./net.ts";
 export * from "./paths.ts";
 export * from "./ops.ts";
@@ -54,6 +60,48 @@ export interface WorkspaceOptions {
   frontDoor?: () => FrontDoor;
   bwrap?: string;
   pasta?: string;
+  /** The SSH client for machines. Default: sandboxedTransport, a sandboxed helper per connection. */
+  sshTransport?: SshTransport;
+}
+
+/** A machine as one thread sees it: granted, of its pool, with its limit. */
+export interface ThreadMachine { name: string; limit: MachineLimit; root: string | null }
+
+/** What adding a machine needs before it is saved: the key she will use and what the machine showed. */
+export interface MachineProbe {
+  /** Refers to the key pair kept in memory for this machine until it is added. */
+  draft: string;
+  /** For the machine's keys file: usable only from Lyrica's addresses. */
+  keyLine: string;
+  /** The setup steps to run as root on the machine. */
+  setup: string;
+  /** The host key the machine showed, when it answered. */
+  fingerprint?: string;
+  /** Whether her key was accepted. */
+  login: boolean;
+  /** Why the test failed, in plain words. */
+  problem?: string;
+  /** The address resolves outside Li's LAN, loopback and tailnet. */
+  offNetwork: boolean;
+}
+
+const DRAFT_MS = 60 * 60_000;
+/** account@host or account@host:port, with [v6] in brackets. */
+export function parseMachineAddress(address: string): { username: string; host: string; port: number } {
+  const m = /^([^@\s]+)@(\[[0-9a-fA-F:.]+\]|[^:\s@\[\]]+)(?::(\d+))?$/.exec(address.trim());
+  const port = Number(m?.[3] ?? 22);
+  if (!m || port < 1 || port > 65535) throw new Error("the address looks like account@host or account@host:port");
+  return { username: m[1]!, host: m[2]!.replace(/^\[|\]$/g, ""), port };
+}
+
+/** A host's addresses, and whether any is outside Li's own network. A resolver that never answers is no answer. */
+async function resolveHost(host: string): Promise<{ addresses: string[]; outside: boolean }> {
+  const addresses = isIP(host) ? [host] : await Promise.race([
+    lookup(host, { all: true }).then((all) => all.map((a) => a.address)),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`${host} doesn't resolve`)), 5000).unref()),
+  ]);
+  if (!addresses.length) throw new Error(`${host} doesn't resolve`);
+  return { addresses, outside: addresses.some((a) => !inOwnNetwork(a)) };
 }
 
 /**
@@ -65,13 +113,20 @@ export class Workspace {
   private readonly settingsByUser = new Map<string, WorkspaceSettings>();
   private readonly changesByUser = new Map<string, FileChanges>();
   private readonly sshTargets = new Map<string, SshTarget>();
-  /** The SSH client, a sandboxed helper per connection, under the same front door and self-test as the sandbox. */
-  readonly sshTransport = sandboxedTransport(() => ({ ...this.door(), bwrap: this.opts.bwrap, pasta: this.opts.pasta, refused: this.networkRefused }));
+  /** Key pairs for machines being added, by draft id, never saved before the machine is. */
+  private readonly drafts = new Map<string, { userId: string; privateKey: string; publicKey: string; expires: number }>();
+  /**
+   * The SSH client: a sandboxed helper per connection, under the same front
+   * door and self-test as the sandbox. Tests may pass their own.
+   */
+  readonly sshTransport: SshTransport;
   /** Which folders each user may grant. Only administrators change them. */
   readonly allowedPaths: AllowedPaths;
 
   constructor(private readonly keyring: Keyring, private readonly users: Users, private readonly opts: WorkspaceOptions) {
     this.allowedPaths = new AllowedPaths(keyring.self(), users, keyring.home);
+    this.sshTransport = opts.sshTransport
+      ?? sandboxedTransport(() => ({ ...this.door(), bwrap: this.opts.bwrap, pasta: this.opts.pasta, refused: this.networkRefused }));
   }
 
   settings(userId: string): WorkspaceSettings {
@@ -151,8 +206,12 @@ export class Workspace {
    */
   forThread(t: WorkspaceThread) {
     return {
-      target: () => this.targetFor(t),
+      target: (machine?: string) => this.targetFor(t, machine),
       settings: () => this.settings(t.userId).effective(t.threadId),
+      machines: () => this.machinesFor(t),
+      /** Whether Li allowed this exact suspect command on this machine in this thread. */
+      allowedInThread: (machine: string, command: string) =>
+        this.settings(t.userId).allowedInThread(t.threadId).some((a) => a.machine === machine && a.command === command),
       /** An approved plan switching the thread's mode. */
       setMode: (mode: PermissionMode) => { this.settings(t.userId).setThread(t.threadId, t.pool, { mode }); },
       network: (): Network => this.network(t),
@@ -213,19 +272,40 @@ export class Workspace {
 
   grantsFor(t: WorkspaceThread): Grant[] { return this.settings(t.userId).thread(t.threadId).grants; }
 
-  /** What the thread works in: host folders, or `<ssh name>:<root>`. Memory loads pages about them. */
+  /** What the thread works in: host folders, and `<machine>:<root>` for its machines with a root. Memory loads pages about them. */
   folders(t: WorkspaceThread): string[] {
     const tw = this.settings(t.userId).thread(t.threadId);
-    if (tw.target === "sandbox") return tw.grants.map((g) => g.path);
-    const root = this.settings(t.userId).ssh(tw.target.slice(4))?.root;
-    return root ? [`${tw.target.slice(4)}:${root}`] : [];
+    return [...tw.grants.map((g) => g.path), ...this.machinesFor(t).filter((m) => m.root).map((m) => `${m.name}:${m.root}`)];
   }
 
-  targetFor(t: WorkspaceThread): ExecutionTarget {
+  /**
+   * The machines the thread may use now: granted by it and every ancestor,
+   * and of its pool, whatever an older row says.
+   */
+  machinesFor(t: WorkspaceThread): ThreadMachine[] {
     const s = this.settings(t.userId);
-    const tw = s.thread(t.threadId);
+    return s.effective(t.threadId).machines.map((name) => s.machine(name))
+      .filter((m): m is MachineConfig => !!m && m.pool === t.pool).map((m) => ({ name: m.name, limit: m.limit, root: m.root }));
+  }
+
+  /** The mode a call runs in: the thread's, or on a machine the stricter of it and the machine's limit, read now. */
+  callMode(t: WorkspaceThread, machine?: string): PermissionMode {
+    const mode = this.settings(t.userId).effective(t.threadId).mode;
+    if (!machine) return mode;
+    const m = this.machinesFor(t).find((x) => x.name === machine);
+    if (!m) throw new Error(`${machine} isn't one of this thread's machines`);
+    return stricterMode(mode, m.limit);
+  }
+
+  /** Where a call runs: the sandbox, or one of the thread's machines. */
+  targetFor(t: WorkspaceThread, machine?: string): ExecutionTarget {
+    const s = this.settings(t.userId);
     s.checkInherited(t.threadId, t.pool);
-    if (tw.target !== "sandbox") return this.ssh(t.userId, tw.target.slice(4));
+    if (machine) {
+      if (!this.machinesFor(t).some((m) => m.name === machine)) throw new Error(`${machine} isn't one of this thread's machines`);
+      return this.ssh(t.userId, machine);
+    }
+    const tw = s.thread(t.threadId);
     return new Sandbox({
       workdir: this.threadDir(t),
       grants: tw.grants,
@@ -242,19 +322,122 @@ export class Workspace {
     let target = this.sshTargets.get(key);
     if (!target) {
       const s = this.settings(userId);
-      const cfg = s.ssh(name);
-      if (!cfg) throw new Error(`no ssh target ${name}`);
+      const cfg = s.machine(name);
+      if (!cfg) throw new Error(`no machine ${name}`);
       target = new SshTarget(cfg, {
         transport: this.sshTransport,
-        // Pinned on first use for now; Machines confirms the key when a machine is added.
-        hostKey: (fp) => {
-          if (!cfg.hostKey) { cfg.hostKey = fp; s.recordHostKey(name, fp); }
-          return cfg.hostKey === fp;
-        },
+        address: () => this.checkAddress(userId, name),
+        connected: () => s.usedMachine(name),
       });
       this.sshTargets.set(key, target);
     }
     return target;
+  }
+
+  /** Drops a machine's open connection, so a changed setting applies to the next call. */
+  private disconnect(userId: string, name: string): void {
+    this.sshTargets.get(`${userId}/${name}`)?.close();
+    this.sshTargets.delete(`${userId}/${name}`);
+  }
+
+  /**
+   * Checks a machine's address before each connection and returns the one to
+   * connect to. A private machine that has newly gone off network is refused
+   * until Li confirms again, so a DNS change can't get past the warning.
+   */
+  private async checkAddress(userId: string, name: string): Promise<string> {
+    const s = this.settings(userId);
+    const m = s.machine(name);
+    if (!m) throw new Error(`no machine ${name}`);
+    const { addresses, outside } = await resolveHost(m.host);
+    if (outside && m.pool === "private" && !m.offNetwork) {
+      throw new Error(`${m.host} now resolves outside your network (${addresses.join(", ")}); confirm it in Settings to use it again`);
+    }
+    if (outside !== m.offNetwork) s.setOffNetwork(name, outside);
+    return addresses[0]!;
+  }
+
+  /**
+   * The first steps of adding a machine: a key pair kept in memory for it
+   * (or the one from an earlier probe), its setup steps, and a test that
+   * reads the host key and tries the key. Nothing is saved.
+   */
+  async probeMachine(userId: string, login: string, input: { name: string; address: string; draft?: string }): Promise<MachineProbe> {
+    const now = Date.now();
+    for (const [id, d] of this.drafts) if (d.expires < now) this.drafts.delete(id);
+    const { username, host, port } = parseMachineAddress(input.address);
+    let draft = input.draft;
+    let pair = draft ? this.drafts.get(draft) : undefined;
+    if (!pair || pair.userId !== userId) {
+      draft = randomBytes(12).toString("hex");
+      pair = { userId, ...generateSshKey(`lyrica:${login}:${input.name}`), expires: 0 };
+      this.drafts.set(draft, pair);
+    }
+    pair.expires = now + DRAFT_MS;
+    const keyLine = authorizedKeysLine(pair.publicKey);
+    const base = { draft: draft!, keyLine, setup: machineSetup(username, keyLine) };
+    let resolved: { addresses: string[]; outside: boolean };
+    try {
+      resolved = await resolveHost(host);
+    } catch (err) {
+      return { ...base, login: false, offNetwork: false, problem: (err as Error).message };
+    }
+    let fingerprint: string | undefined;
+    try {
+      // The key it shows is only reported: nothing runs, and the connection closes once she's in.
+      const session = await this.sshTransport.connect(
+        { host: resolved.addresses[0]!, port, username, privateKey: pair.privateKey }, (fp) => { fingerprint = fp; return true; });
+      session.close();
+      return { ...base, fingerprint, login: true, offNetwork: resolved.outside };
+    } catch (err) {
+      return { ...base, ...(fingerprint ? { fingerprint } : {}), login: false, offNetwork: resolved.outside, problem: (err as Error).message };
+    }
+  }
+
+  /**
+   * Saves a machine with the key from its probe and the host key Li
+   * confirmed. Its address is checked now: a private machine off network
+   * needs `offNetworkConfirmed`, which the Add anyway dialog gives.
+   */
+  async addMachine(userId: string, input: Omit<NewMachine, "privateKey" | "offNetwork" | "host" | "port" | "username"> & {
+    address: string; draft: string; hostKey: string; offNetworkConfirmed?: boolean;
+  }): Promise<MachineConfig> {
+    const pair = this.drafts.get(input.draft);
+    if (!pair || pair.userId !== userId || pair.expires < Date.now()) throw new Error("test the machine again: its key has expired");
+    const { username, host, port } = parseMachineAddress(input.address);
+    const { outside } = await resolveHost(host);
+    if (outside && input.pool === "private" && !input.offNetworkConfirmed) throw new Error(`${host} resolves outside your network; confirm adding it anyway`);
+    const m = this.settings(userId).addMachine({
+      name: input.name, host, port, username, privateKey: pair.privateKey, root: input.root, pool: input.pool, limit: input.limit, offNetwork: outside,
+    }, input.hostKey);
+    this.drafts.delete(input.draft);
+    return m;
+  }
+
+  /** Changes a machine's address, root, limit or pool; a new pool takes it from every thread that granted it. */
+  updateMachine(userId: string, name: string, change: { address?: string; root?: string | null; limit?: MachineLimit; pool?: Pool }): MachineConfig {
+    const s = this.settings(userId);
+    const address = change.address === undefined ? {} : parseMachineAddress(change.address);
+    let m = s.updateMachine(name, { ...address, ...(change.root !== undefined ? { root: change.root || null } : {}), ...(change.limit ? { limit: change.limit } : {}) });
+    if (change.pool) m = s.setMachinePool(name, change.pool);
+    this.disconnect(userId, name);
+    return m;
+  }
+
+  /** Re-pairs a machine whose host key changed, with the key Li confirmed. */
+  setHostKey(userId: string, name: string, confirmedHostKey: string): MachineConfig {
+    const m = this.settings(userId).setHostKey(name, confirmedHostKey);
+    this.disconnect(userId, name);
+    return m;
+  }
+
+  confirmOffNetwork(userId: string, name: string): MachineConfig {
+    return this.settings(userId).confirmOffNetwork(name);
+  }
+
+  removeMachine(userId: string, name: string): void {
+    this.settings(userId).removeMachine(name);
+    this.disconnect(userId, name);
   }
 
   /**

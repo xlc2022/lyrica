@@ -5,7 +5,7 @@ import { networkInterfaces, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, Users, Workspace, WorkspaceSettings, type HelperSandbox, type SshTargetConfig } from "../src/index.ts";
+import { generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, Users, Workspace, WorkspaceSettings, type HelperSandbox, type MachineConfig } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -193,25 +193,20 @@ describe("modes and switches", () => {
   });
 });
 
-/** Pins the host key on first use, as Workspace does today, and records what it pinned. */
-const pinning = (cfg: SshTargetConfig, seen: string[] = [], sandbox: HelperSandbox = { exclude: [] }) => ({
-  hostKey: (fp: string) => {
-    if (!cfg.hostKey) { cfg.hostKey = fp; seen.push(fp); }
-    return cfg.hostKey === fp;
-  },
-  transport: sandboxedTransport(() => sandbox),
-});
+const unreachable: MachineConfig = {
+  name: "nas", kind: "ssh", host: "127.0.0.1", port: 1, username: "lyrica", privateKey: generateSshKey("test").privateKey, root: null,
+  hostKey: `SHA256:${"A".repeat(43)}`, pool: "general", limit: "ask", offNetwork: false, lastUsed: null,
+};
+/** The real client: a sandboxed helper per connection. */
+const helper = (sandbox: HelperSandbox = { exclude: [] }) => ({ transport: sandboxedTransport(() => sandbox) });
 
-describe("ssh targets", () => {
-  const unreachable: SshTargetConfig = {
-    name: "nas", host: "127.0.0.1", port: 1, username: "lyrica", privateKey: generateSshKey("test").privateKey, root: null, hostKey: null,
-  };
+describe("ssh machines", () => {
 
   it("fail without falling back to local execution", async () => {
     const dir = mkdtempSync(join(tmpdir(), "lyrica-ssh-"));
     dirs.push(dir);
     const marker = join(dir, "ran-locally");
-    const ops = new SshTarget({ ...unreachable }, pinning({ ...unreachable })).ops();
+    const ops = new SshTarget(unreachable, helper()).ops();
     await expect(ops.bash.exec(`touch ${marker}`, dir, { onData: () => {} })).rejects.toThrow(/ssh nas/);
     await expect(ops.write.writeFile(marker, "x")).rejects.toThrow(/ssh nas/);
     await expect(ops.read.readFile("/etc/hostname")).rejects.toThrow(/ssh nas/);
@@ -223,7 +218,7 @@ describe("ssh targets", () => {
     dirs.push(dir);
     const marker = join(dir, "ran-locally");
     for (const sandbox of [{ exclude: [], bwrap: "/nonexistent/bwrap", pasta: "/nonexistent/pasta" }, { exclude: [], refused: "the sandbox flushed the rules" }]) {
-      const ops = new SshTarget({ ...unreachable }, pinning({ ...unreachable }, [], sandbox)).ops();
+      const ops = new SshTarget(unreachable, helper(sandbox)).ops();
       await expect(ops.bash.exec(`touch ${marker}`, dir, { onData: () => {} })).rejects.toThrow(/ssh nas: .*(SSH helper|no sandbox)/);
       await expect(ops.read.readFile("/etc/hostname")).rejects.toThrow(/ssh nas/);
     }
@@ -231,20 +226,20 @@ describe("ssh targets", () => {
   });
 
   it("keep file tools inside the root", async () => {
-    const ops = new SshTarget({ ...unreachable, root: "/srv/lyrica" }, pinning({ ...unreachable })).ops();
+    const ops = new SshTarget({ ...unreachable, root: "/srv/lyrica" }, helper()).ops();
     await expect(ops.read.readFile("/srv/lyrica/../etc/passwd")).rejects.toThrow(/outside \/srv\/lyrica/);
     await expect(ops.write.writeFile("/etc/passwd", "x")).rejects.toThrow(/outside/);
   });
 
-  it("are chosen per thread and stored with the user's settings", async () => {
+  it("are granted per thread and stored with the user's settings", async () => {
     const { keyring, users, li, settings } = await setup();
-    settings.addSsh({ ...unreachable, root: "/srv/lyrica" });
-    settings.setThread("t1", "general", { target: "ssh:nas" });
+    settings.addMachine({ ...unreachable, root: "/srv/lyrica" }, unreachable.hostKey!);
+    settings.setThread("t1", "general", { machines: ["nas"] });
     const workspace = new Workspace(keyring, users, { excludePorts: [] });
     const thread = { userId: li.id, pool: "general" as const, threadId: "t1" };
-    expect(workspace.targetFor(thread).name).toBe("ssh:nas");
+    expect(workspace.targetFor(thread, "nas").name).toBe("ssh:nas");
     expect(workspace.folders(thread)).toEqual(["nas:/srv/lyrica"]);
-    expect(() => settings.setThread("t1", "general", { target: "ssh:nope" })).toThrow(/unknown target/);
+    expect(() => settings.setThread("t1", "general", { machines: ["nope"] })).toThrow(/no machine nope/);
   });
 });
 
@@ -270,7 +265,7 @@ const has = (cmd: string) => { try { execFileSync("sh", ["-c", `command -v ${cmd
 const helperRunnable = existsSync(sshd) && process.getuid?.() !== 0 && has("bwrap") && has("pasta") && has("nft");
 if (process.env.LYRICA_SANDBOX_TESTS === "require" && !helperRunnable) throw new Error("ssh tests required but sshd, bwrap, pasta or nft is missing");
 describe.skipIf(!helperRunnable)("an ssh target", () => {
-  it("reads, writes, edits and runs commands remotely, pinning the host key", async () => {
+  it("reads, writes, edits and runs commands remotely, with the confirmed host key", async () => {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), "lyrica-sshd-")));
     dirs.push(dir);
     const key = generateSshKey("lyrica");
@@ -286,11 +281,16 @@ describe.skipIf(!helperRunnable)("an ssh target", () => {
     server.stderr.on("data", (d: Buffer) => { log += d.toString(); });
     try {
       await listening(port, server, () => log);
-      const seen: string[] = [];
-      const cfg: SshTargetConfig = {
-        name: "local", host: "127.0.0.1", port, username: userInfo().username, privateKey: key.privateKey, root: join(dir, "root"), hostKey: null,
-      };
-      const target = new SshTarget(cfg, pinning(cfg, seen));
+      // Probing reads the key the server shows, the way Add machine does.
+      const { keyring, users, li } = await setup();
+      const probe = new Workspace(keyring, users, { excludePorts: [] });
+      const first = await probe.probeMachine(li.id, "li", { name: "local", address: `${userInfo().username}@127.0.0.1:${port}` });
+      expect(first.fingerprint).toMatch(/^SHA256:/);
+      expect(first.login).toBe(false); // the draft's key isn't installed
+      expect(first.keyLine).toMatch(/^restrict(,from="[^"]*")? ssh-ed25519 /);
+      const target = new SshTarget({
+        ...unreachable, name: "local", port, username: userInfo().username, privateKey: key.privateKey, root: join(dir, "root"), hostKey: first.fingerprint!,
+      }, helper());
       const ops = target.ops();
       const file = join(dir, "root", "todo.txt");
       await ops.write.writeFile(file, "buy milk\n");
@@ -312,15 +312,10 @@ describe.skipIf(!helperRunnable)("an ssh target", () => {
       expect(out).toBe(`${join(dir, "root")}\nbuy milk\n`);
       symlinkSync("/etc", join(dir, "root", "etc"));
       await expect(ops.read.readFile(join(dir, "root", "etc", "hostname"))).rejects.toThrow(/leads outside/);
-      expect(seen).toEqual([expect.stringMatching(/^SHA256:/)]);
+      await expect(ops.write.writeFile(join(dir, "root", ".ssh", "authorized_keys"), "x")).rejects.toThrow(/SSH's or sudo's/);
       target.close();
-      // The key Lyrica would show when adding the machine is the one pinned.
-      let probed = "";
-      (await sandboxedTransport(() => ({ exclude: [] })).connect(cfg, (fp) => { probed = fp; return true; })).close();
-      expect(probed).toBe(seen[0]);
-      const pinned = { ...cfg, hostKey: "SHA256:someone-else" };
-      const impostor = new SshTarget(pinned, pinning(pinned));
-      await expect(impostor.ops().read.readFile(file)).rejects.toThrow(/ssh local: the host key changed/);
+      const impostor = new SshTarget({ ...target["cfg"], hostKey: `SHA256:${"B".repeat(43)}` }, helper());
+      await expect(impostor.ops().read.readFile(file)).rejects.toThrow(/ssh local: its host key changed/);
       await expect(impostor.ops().bash.exec(`touch ${join(dir, "ran-locally")}`, dir, { onData: () => {} })).rejects.toThrow(/host key changed/);
       expect(existsSync(join(dir, "ran-locally"))).toBe(false);
     } finally {

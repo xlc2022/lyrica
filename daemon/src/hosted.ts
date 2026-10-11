@@ -84,7 +84,7 @@ export class ThreadHost {
    */
   approveSubagent(r: SubagentApproval, signal: AbortSignal): Promise<boolean> {
     const request: PermissionRequest = {
-      requestId: randomBytes(8).toString("hex"), toolCallId: r.toolCallId, tool: r.tool, args: r.input,
+      requestId: randomBytes(8).toString("hex"), toolCallId: r.toolCallId, tool: r.tool, args: r.input, ...onMachine(r),
       expiresAt: new Date(Date.now() + this.opts.permissionMs).toISOString(),
       subagent: { runId: r.runId, threadId: r.threadId, parentThreadId: r.parentThreadId, role: r.role },
     };
@@ -452,7 +452,7 @@ export class HostedThread {
 
   /** Asks every open view of the thread. A timeout or Stop denies. */
   private async approve(r: ApprovalRequest): Promise<boolean> {
-    return (await this.ask(r.toolCallId, r.tool, r.input)).allowed;
+    return (await this.ask(r.toolCallId, r.tool, r.input, onMachine(r))).allowed;
   }
 
   /** A plan, the same way: approving it says which mode to go ahead in; anything else keeps planning. */
@@ -461,9 +461,9 @@ export class HostedThread {
     return allowed ? mode : undefined;
   }
 
-  private ask(toolCallId: string, tool: string, args: unknown): Promise<{ allowed: boolean; mode?: GoAhead }> {
+  private ask(toolCallId: string, tool: string, args: unknown, where: Partial<PermissionRequest> = {}): Promise<{ allowed: boolean; mode?: GoAhead }> {
     const requestId = randomBytes(8).toString("hex");
-    const request: PermissionRequest = { requestId, toolCallId, tool, args, expiresAt: new Date(Date.now() + this.o.permissionMs).toISOString() };
+    const request: PermissionRequest = { requestId, toolCallId, tool, args, ...where, expiresAt: new Date(Date.now() + this.o.permissionMs).toISOString() };
     return new Promise((resolve) => {
       const timer = setTimeout(() => done(false, "timeout"), this.o.permissionMs);
       const done: Done = (allowed, reason, mode) => {
@@ -489,11 +489,20 @@ export class HostedThread {
     if (!this.busy && !this.pending.size && !this.clients.size) this.startIdle();
   }
 
-  /** Answers a permission request; approving a plan needs the mode to go ahead in. Returns false if it's no longer waiting. */
-  answer(requestId: string, allow: boolean, mode?: GoAhead): boolean {
+  /**
+   * Answers a permission request; approving a plan needs the mode to go ahead
+   * in. Allowing a suspect command in this thread stores that exact command
+   * for the thread it runs in, and only that one. Returns false if it's no
+   * longer waiting.
+   */
+  answer(requestId: string, allow: boolean, mode?: GoAhead, allowInThread?: boolean): boolean {
     const p = this.pending.get(requestId);
     if (!p) return false;
     if (p.request.tool === "propose_plan" && allow && !GO_AHEAD.includes(mode!)) throw new Error("say which mode to go ahead in: ask, acceptEdits or auto");
+    if (allow && allowInThread) {
+      if (!p.request.suspect) throw new Error("only a suspect command can be allowed in this thread");
+      this.o.workspace.settings(this.userId).allowInThread(p.request.subagent?.threadId ?? this.threadId, p.request.machine!, String((p.request.args as { command: unknown }).command));
+    }
     p.done(allow, "answered", allow ? mode : undefined);
     return true;
   }
@@ -745,4 +754,10 @@ function conversationLine(entry: unknown): string {
   const text = typeof m.content === "string" ? m.content
     : Array.isArray(m.content) ? m.content.filter((p: { type: string }) => p.type === "text").map((p: { text: string }) => p.text).join(" ") : "";
   return text.trim() && text !== OPENING ? `${m.role}: ${text.trim().slice(0, 500)}` : "";
+}
+
+/** A call on a machine: its name and folder, and for a suspect command the warning. */
+function onMachine(r: ApprovalRequest): Partial<PermissionRequest> {
+  if (!r.machine) return {};
+  return { machine: r.machine, ...(r.cwd ? { cwd: r.cwd } : {}), ...(r.warning ? { suspect: true as const, warning: r.warning } : {}) };
 }

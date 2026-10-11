@@ -273,6 +273,12 @@ plan }`. Approving it takes `mode` too (`ask`, `acceptEdits` or `auto`;
 without it the answer is refused); `lyricad` switches the thread to it and
 sends `settings`. Denying it, a timeout or Stop keeps planning.
 
+A call on a machine adds `machine` and `cwd`; the answer covers exactly that
+command or path there. A suspect command adds `suspect: true` and `warning`,
+and its answer may carry `allowInThread: true`, which stores that exact
+command for the thread it runs in (a subagent's own thread for a subagent's
+request); `allowInThread` on any other request is refused.
+
 A subagent's request (`ThreadHost.approveSubagent`, given to `Delegation` as
 `approve`) is one request shown in its own thread and its parent's, with
 `subagent` naming the run, thread and role. Either thread's views may answer;
@@ -336,7 +342,7 @@ with live status, at most 3 seconds each, and none asked again while it was
 seen down in the last 30 seconds), offerings, model
 groups, Clean up and the models notice, the three profiles with the default
 profile and thinking level, recent calls, network
-defaults, SSH targets, and for administrators users, allowed paths, shared
+defaults, machines, and for administrators users, allowed paths, shared
 endpoints, the sleep time (`sleep.time` in `self.db`'s `settings`) and persona
 proposals.
 
