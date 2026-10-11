@@ -484,15 +484,22 @@ export type MachineLimit = "ask" | "acceptEdits" | "auto";
 
 export interface MachineInfo {
   name: string;
-  kind: "ssh";
-  /** account@host or account@host:port. */
+  kind: "ssh" | "proxmox";
+  /** account@host or account@host:port; for Proxmox https://host:port. */
   address: string;
+  /** Always null for Proxmox. */
   root: string | null;
   pool: Pool;
   limit: MachineLimit;
-  /** For the machine's keys file: usable only from Lyrica's addresses. */
-  keyLine: string;
-  /** The host key Li confirmed; null for a machine from before confirming, which can't be used until it is. */
+  /** SSH: for the machine's keys file, usable only from Lyrica's addresses. */
+  keyLine?: string;
+  /** Proxmox: the token's id (user@realm!tokenid). The token itself is never shown. */
+  tokenId?: string;
+  /**
+   * The host key Li confirmed (SHA256:…), or for Proxmox the certificate's
+   * fingerprint (AB:CD:…); null for a machine from before confirming, which
+   * can't be used until it is.
+   */
   hostKey: string | null;
   /** Its address resolved outside the LAN, loopback and tailnet at the last check. */
   offNetwork: boolean;
@@ -505,14 +512,22 @@ export interface MachineInfo {
  * in memory (pass `draft` back to keep using it), then reads the host key and
  * tries the login. Nothing is saved.
  */
-export interface MachineProbeInput { name: string; address: string; draft?: string }
+/**
+ * For Proxmox (`kind: "proxmox"`, address https://host:8006) the Test step
+ * reads only the certificate's fingerprint and gives the pveum setup steps;
+ * the token isn't sent until Confirm.
+ */
+export interface MachineProbeInput { kind?: "ssh" | "proxmox"; name: string; address: string; draft?: string }
 export interface MachineProbe {
-  draft: string;
-  keyLine: string;
-  /** The setup steps, to run as root on the machine. */
+  /** SSH only. */
+  draft?: string;
+  /** SSH only. */
+  keyLine?: string;
+  /** The setup steps, to run as root on the machine (for Proxmox, on the node). */
   setup: string;
+  /** The host key, or for Proxmox the certificate's SHA-256 fingerprint. */
   fingerprint?: string;
-  /** Whether her key was accepted. */
+  /** Whether her key was accepted. Always false for Proxmox. */
   login: boolean;
   problem?: string;
   offNetwork: boolean;
@@ -522,14 +537,25 @@ export interface MachineProbe {
  * its probe's key and the host key Li confirmed. A private machine off network
  * needs `offNetworkConfirmed` (the Add anyway dialog). New machines start at Ask.
  */
+/**
+ * For Proxmox: `kind: "proxmox"`, `token` (user@realm!tokenid=secret) in place
+ * of `draft`, and the certificate's fingerprint as `hostKey`. The token is
+ * tried against that certificate before saving, and the Proxmox that runs
+ * Lyrica's own VM is refused (400, saying why).
+ */
 export interface MachineInput {
+  kind?: "ssh" | "proxmox";
   name: string; address: string; root?: string; pool: Pool; limit?: MachineLimit;
-  draft: string; hostKey: string; offNetworkConfirmed?: boolean;
+  draft?: string; token?: string; hostKey: string; offNetworkConfirmed?: boolean;
 }
 /** PATCH /api/u/:userId/machines/:name → MachineInfo. A new pool takes the machine from every thread that granted it. */
 export interface MachineChange { address?: string; root?: string | null; pool?: Pool; limit?: MachineLimit }
-/** POST /api/u/:userId/machines/:name/key → MachineInfo. Replace key: the host key Li confirmed after a probe. */
-export interface MachineKey { hostKey: string }
+/**
+ * POST /api/u/:userId/machines/:name/key → MachineInfo. Replace key: the host
+ * key (or Proxmox certificate) Li confirmed after a probe. A Proxmox machine
+ * may take a new `token`, tried against that certificate before saving.
+ */
+export interface MachineKey { hostKey: string; token?: string }
 /** POST /api/u/:userId/machines/:name/confirm-off-network → MachineInfo. A private machine gone off network can be used again. */
 /** DELETE /api/u/:userId/machines/:name → Ok. Every thread's grant of it goes too. */
 

@@ -62,8 +62,9 @@ database files. A command that could see either one could read everything.
 
 ## Machines
 
-A machine is one of Li's other computers that she works on over SSH. The
-SSH targets that existed before became general machines at Ask.
+A machine is one of Li's other computers that she works on over SSH, or a
+Proxmox she manages over its API ([below](#proxmox)). The SSH targets that
+existed before became general machines at Ask.
 
 - **Kept in `user.db`** (`machines`): name, address, account, the private
   key, an optional root, the host key Li confirmed, the pool, the **mode
@@ -98,11 +99,13 @@ SSH targets that existed before became general machines at Ask.
   top-level system folder; `mkfs`; `dd` onto `/dev/…`; recursive `chmod`,
   `chown` or `chgrp` on `/`; `userdel` or `deluser`; `shutdown`, `reboot`,
   `poweroff`, `halt`, `systemctl reboot|poweroff|halt|kexec`, `init 0|6`;
-  `qm destroy` and `pct destroy`. Wrappers such as `sudo`, `env`, `nice` and
+  `qm destroy` and `pct destroy`; and on a Proxmox machine the `stop` and
+  `reboot` actions (`PROXMOX_SUSPECT`). Wrappers such as `sudo`, `env`, `nice` and
   `timeout` (with their flag values), a program's path, and `bash -c '…'`
   are looked through; `cd / && rm -rf *` is not caught. The answer may say **Allow in this
   thread**: that exact command on that machine no longer asks in that
-  thread, and nowhere else. The list is short and fixed, a warning layer and
+  thread, and nowhere else (for Proxmox, that action on that VM:
+  `suspectKey`). The list is short and fixed, a warning layer and
   not the boundary: the boundary is the account's own rights and the
   root-owned keys file.
 - **A floor no mode lifts:** `write` and `edit` on a machine refuse any path
@@ -166,6 +169,72 @@ Replacing the key (`setHostKey`) re-confirms the host key only; her own key
 pair stays as it was. A test answers whatever the machine said (refused,
 timed out), so any signed-in user can learn whether an address answers on
 a port, as they could from a sandbox with network.
+
+## Proxmox
+
+A Proxmox machine (`kind: "proxmox"`) is reached over Proxmox's HTTPS API
+with a token, never a shell on the hypervisor
+(`core/src/workspace/proxmox.ts`).
+
+- **Kept like an SSH machine**, in the same `machines` table: the address
+  (`https://host:8006`), the token (`user@realm!tokenid=secret`) where an
+  SSH machine keeps its private key, the token's id where it keeps the
+  account, the SHA-256 fingerprint of the TLS certificate Li confirmed
+  (`AB:CD:…`) where it keeps the host key, the pool, the mode limit and the
+  off-network mark. No root. The token is never shown to her, in the API
+  (`MachineInfo` has `tokenId` only) or in the log.
+- **The certificate is pinned.** Each call opens a TLS connection, checks the
+  certificate's fingerprint, and only then sends the request with the token
+  over that same connection. A different certificate fails every call, with
+  no fallback and nothing sent, until Li confirms the new fingerprint
+  (`setHostKey`, which may also take a new token). The address is checked
+  for off network before each call, as for SSH.
+- **One tool, `proxmox`** (`extension/src/proxmox.ts`), with `machine`,
+  `action` and `vm` (number or name): `list` (VMs and containers the token
+  can see), `status`, `snapshots` (list only), `start`, `shutdown`, `stop`
+  and `reboot`. Each action is one API call after looking the VM up in
+  `/cluster/resources`. Nothing else: no destroy, create, console,
+  guest-agent, snapshot creation or rollback. The tool is offered only while
+  the thread has a Proxmox machine. Subagents don't get it.
+- **Modes.** `list`, `status` and `snapshots` ask like `read` (never, by
+  themselves) and work in Plan mode. `start` and `shutdown` ask like `bash`
+  under the stricter of the thread's mode and the machine's limit. `stop`
+  and `reboot` are suspect: they ask with a warning in every mode until
+  allowed in the thread. Plan mode refuses everything but reading. `read`,
+  `write`, `edit` and `bash` refuse a Proxmox machine.
+
+**Adding a Proxmox** (`probeMachine` with `kind: "proxmox"`, then
+`addMachine`, or `lyrica admin proxmox add`): the test reads only the
+certificate's fingerprint and gives the setup steps; the token isn't sent
+until Li confirms the fingerprint. Confirm then tries the token
+(`/version`) against that certificate, refuses the Proxmox that runs
+Lyrica's own VM where it can tell, and saves only if both pass. That
+refusal (`ownNode`) covers an address that is this computer or its default
+gateway, and a cluster with a guest that has this computer's name or one of
+its network cards' MAC addresses (read from each guest's config, up to 300
+guests). Its message says which; there is no way past it yet.
+
+The setup, as root on the Proxmox node:
+
+```sh
+# 1. A user and a role that can see VMs and power them, nothing more
+pveum user add lyrica@pve --comment Lyrica
+pveum role add LyricaPower --privs "VM.Audit VM.PowerMgmt"
+pveum user token add lyrica@pve agent --privsep 1
+
+# 2. Reads everywhere; power only on the VMs she may manage (repeat per VM, or use /pool/<name>).
+#    A separated token has only what both it and its user have, so both get each role.
+pveum acl modify / --roles PVEAuditor --users lyrica@pve --tokens 'lyrica@pve!agent'
+pveum acl modify /vms/101 --roles LyricaPower --users lyrica@pve --tokens 'lyrica@pve!agent'
+
+# Never PVEVMUser: its console and guest-agent rights run code in the guest. Never Sys.PowerMgmt.
+
+# The certificate's fingerprint, to compare with the one Lyrica shows
+openssl x509 -noout -fingerprint -sha256 -in /etc/pve/local/pveproxy-ssl.pem 2>/dev/null || openssl x509 -noout -fingerprint -sha256 -in /etc/pve/local/pve-ssl.pem
+```
+
+`pveum user token add` prints the token's secret once; the token Lyrica
+takes is `lyrica@pve!agent=<that secret>`.
 
 ## Grants: what she may touch
 
@@ -353,7 +422,7 @@ judgment and make review easy. Each thread has a **mode**:
   can change files too.
 - **Accept edits** (`acceptEdits`): asks before `bash`.
 - **Plan** (`plan`): only `read`, `recall`, `read_memory`, `web_search`,
-  `web_fetch`, `delegate` with read-only roles, a subagent's `ask_parent`,
+  `web_fetch`, `proxmox` for reading, `delegate` with read-only roles, a subagent's `ask_parent`,
   `threads` (her child threads, and compacting her context) and
   `propose_plan` are active. A child thread of a Plan-mode thread is in
   Plan mode too.
@@ -394,7 +463,8 @@ with the call's target (the sandbox, or the machine its `machine` argument
 names) looked up on every call, so changing a thread's settings applies at
 once. Commands typed with `!` in the terminal run in the sandbox. A short
 `workspace` prompt section tells her where she works, what she was given,
-whether she has internet, and her machines. Pi's `grep`, `find` and `ls` can be added
+whether she has internet, and her machines. `proxmox` is the tool for
+Proxmox machines ([above](#proxmox)). Pi's `grep`, `find` and `ls` can be added
 inside the 30-tool budget if `bash` turns out not to be enough. The memory tool
 is `read_memory`, so it doesn't clash with `read`.
 

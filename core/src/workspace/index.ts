@@ -13,7 +13,11 @@ import { isMounted, mountGocryptfs, unmountGocryptfs } from "./home.ts";
 import type { ExecutionTarget } from "./ops.ts";
 import { Sandbox, WORKDIR } from "./sandbox.ts";
 import { authorizedKeysLine, machineSetup } from "./machines.ts";
-import { checkGrant, stricterMode, WorkspaceSettings, type Grant, type MachineConfig, type MachineLimit, type Network, type NewMachine, type PermissionMode, type ThreadWorkspace } from "./settings.ts";
+import {
+  certFingerprint, ownNode, parseProxmoxAddress, proxmoxAction, proxmoxHttps, proxmoxSetup, thisComputer, tokenId,
+  type ProxmoxAction, type ProxmoxCall, type ProxmoxTransport, type Self,
+} from "./proxmox.ts";
+import { checkGrant, stricterMode, WorkspaceSettings, type Grant, type MachineConfig, type MachineKind, type MachineLimit, type Network, type NewMachine, type PermissionMode, type ThreadWorkspace } from "./settings.ts";
 import { AllowedPaths } from "./paths.ts";
 import { generateSshKey, SshTarget } from "./ssh.ts";
 import { inProcess, type SshTransport } from "./transport.ts";
@@ -24,6 +28,7 @@ export * from "./machines.ts";
 export * from "./net.ts";
 export * from "./paths.ts";
 export * from "./ops.ts";
+export * from "./proxmox.ts";
 export * from "./sandbox.ts";
 export * from "./settings.ts";
 export * from "./ssh.ts";
@@ -62,22 +67,26 @@ export interface WorkspaceOptions {
   pasta?: string;
   /** The SSH client for machines. Default: ssh2 in this process. */
   sshTransport?: SshTransport;
+  /** The HTTPS client for Proxmox machines. Default: Node's, in this process. */
+  proxmoxTransport?: ProxmoxTransport;
+  /** This computer's name, network cards, addresses and gateways, for refusing the Proxmox that runs it. Default: read now. */
+  self?: () => Self;
 }
 
 /** A machine as one thread sees it: granted, of its pool, with its limit. */
-export interface ThreadMachine { name: string; limit: MachineLimit; root: string | null }
+export interface ThreadMachine { name: string; kind: MachineKind; limit: MachineLimit; root: string | null }
 
 /** What adding a machine needs before it is saved: the key she will use and what the machine showed. */
 export interface MachineProbe {
-  /** Refers to the key pair kept in memory for this machine until it is added. */
-  draft: string;
-  /** For the machine's keys file: usable only from Lyrica's addresses. */
-  keyLine: string;
-  /** The setup steps to run as root on the machine. */
+  /** SSH: refers to the key pair kept in memory for this machine until it is added. */
+  draft?: string;
+  /** SSH: for the machine's keys file, usable only from Lyrica's addresses. */
+  keyLine?: string;
+  /** The setup steps to run as root on the machine (for Proxmox, on the node). */
   setup: string;
-  /** The host key the machine showed, when it answered. */
+  /** The host key the machine showed, or for Proxmox its certificate's, when it answered. */
   fingerprint?: string;
-  /** Whether her key was accepted. */
+  /** Whether her key was accepted. Always false for Proxmox: the token is tried only at Confirm, against the confirmed certificate. */
   login: boolean;
   /** Why the test failed, in plain words. */
   problem?: string;
@@ -202,6 +211,8 @@ export class Workspace {
       target: (machine?: string) => this.targetFor(t, machine),
       settings: () => this.settings(t.userId).effective(t.threadId),
       machines: () => this.machinesFor(t),
+      /** One action on one of the thread's Proxmox machines. */
+      proxmox: (machine: string, action: ProxmoxAction, vm?: string) => this.proxmox(t, machine, action, vm),
       /** Whether Li allowed this exact suspect command on this machine in this thread. */
       allowedInThread: (machine: string, command: string) =>
         this.settings(t.userId).allowedInThread(t.threadId).some((a) => a.machine === machine && a.command === command),
@@ -278,7 +289,7 @@ export class Workspace {
   machinesFor(t: WorkspaceThread): ThreadMachine[] {
     const s = this.settings(t.userId);
     return s.effective(t.threadId).machines.map((name) => s.machine(name))
-      .filter((m): m is MachineConfig => !!m && m.pool === t.pool).map((m) => ({ name: m.name, limit: m.limit, root: m.root }));
+      .filter((m): m is MachineConfig => !!m && m.pool === t.pool).map((m) => ({ name: m.name, kind: m.kind, limit: m.limit, root: m.root }));
   }
 
   /** The mode a call runs in: the thread's, or on a machine the stricter of it and the machine's limit, read now. */
@@ -295,7 +306,9 @@ export class Workspace {
     const s = this.settings(t.userId);
     s.checkInherited(t.threadId, t.pool);
     if (machine) {
-      if (!this.machinesFor(t).some((m) => m.name === machine)) throw new Error(`${machine} isn't one of this thread's machines`);
+      const m = this.machinesFor(t).find((x) => x.name === machine);
+      if (!m) throw new Error(`${machine} isn't one of this thread's machines`);
+      if (m.kind === "proxmox") throw new Error(`${machine} is a Proxmox machine: use the proxmox tool`);
       return this.ssh(t.userId, machine);
     }
     const tw = s.thread(t.threadId);
@@ -355,7 +368,8 @@ export class Workspace {
    * (or the one from an earlier probe), its setup steps, and a test that
    * reads the host key and tries the key. Nothing is saved.
    */
-  async probeMachine(userId: string, login: string, input: { name: string; address: string; draft?: string }): Promise<MachineProbe> {
+  async probeMachine(userId: string, login: string, input: { kind?: MachineKind; name: string; address: string; draft?: string }): Promise<MachineProbe> {
+    if (input.kind === "proxmox") return this.probeProxmox(input.address);
     const now = Date.now();
     for (const [id, d] of this.drafts) if (d.expires < now) this.drafts.delete(id);
     const { username, host, port } = parseMachineAddress(input.address);
@@ -387,14 +401,83 @@ export class Workspace {
     }
   }
 
+  /** Proxmox's Test step: its certificate's fingerprint and the setup steps. The token isn't sent before Li confirms the certificate. */
+  private async probeProxmox(address: string): Promise<MachineProbe> {
+    const { host, port } = parseProxmoxAddress(address);
+    const base = { setup: proxmoxSetup(), login: false };
+    let resolved: { addresses: string[]; outside: boolean };
+    try {
+      resolved = await resolveHost(host);
+    } catch (err) {
+      return { ...base, offNetwork: false, problem: (err as Error).message };
+    }
+    try {
+      return { ...base, fingerprint: await this.proxmoxTransport().fingerprint(resolved.addresses[0]!, port), offNetwork: resolved.outside };
+    } catch (err) {
+      return { ...base, offNetwork: resolved.outside, problem: (err as Error).message };
+    }
+  }
+
+  private proxmoxTransport(): ProxmoxTransport { return this.opts.proxmoxTransport ?? proxmoxHttps; }
+
+  /** Calls to a Proxmox at `address` with `token`, sent only to the certificate `pinned`. */
+  private proxmoxApi(address: string, port: number, token: string, pinned: string): ProxmoxCall {
+    const transport = this.proxmoxTransport();
+    return (method, path) => transport.call({ host: address, port, token }, method, path, (fp) => !!fp && fp.toUpperCase() === pinned);
+  }
+
   /**
-   * Saves a machine with the key from its probe and the host key Li
-   * confirmed. Its address is checked now: a private machine off network
-   * needs `offNetworkConfirmed`, which the Add anyway dialog gives.
+   * Tries a Proxmox token against the confirmed certificate, and refuses the
+   * Proxmox that runs Lyrica's own VM where it can tell.
+   */
+  private async checkProxmox(addresses: string[], port: number, token: string, pinned: string): Promise<void> {
+    const api = this.proxmoxApi(addresses[0]!, port, token, pinned);
+    try {
+      await api("GET", "/version");
+    } catch (err) {
+      throw new Error(`the token didn't work: ${(err as Error).message}`);
+    }
+    const own = await ownNode(api, addresses, (this.opts.self ?? thisComputer)());
+    if (own) throw new Error(`this Proxmox can't be added: ${own}. Stopping it would stop her, so it stays off the list for now.`);
+  }
+
+  /** One action on a thread's Proxmox machine, after its address check, sent only to the certificate Li confirmed. */
+  async proxmox(t: WorkspaceThread, machine: string, action: ProxmoxAction, vm?: string): Promise<string> {
+    this.settings(t.userId).checkInherited(t.threadId, t.pool);
+    if (!this.machinesFor(t).some((m) => m.name === machine && m.kind === "proxmox")) throw new Error(`${machine} isn't one of this thread's Proxmox machines`);
+    const s = this.settings(t.userId);
+    const cfg = s.machine(machine)!;
+    if (!cfg.hostKey) throw new Error(`confirm ${machine}'s certificate in Settings first`);
+    const address = await this.checkAddress(t.userId, machine);
+    const result = await proxmoxAction(this.proxmoxApi(address, cfg.port, cfg.privateKey, cfg.hostKey), action, vm);
+    s.usedMachine(machine);
+    return result;
+  }
+
+  /**
+   * Saves a machine with the key from its probe (for Proxmox, the token) and
+   * the host key or certificate Li confirmed. Its address is checked now: a
+   * private machine off network needs `offNetworkConfirmed`, which the Add
+   * anyway dialog gives. A Proxmox token is tried first, and the Proxmox
+   * that runs Lyrica is refused.
    */
   async addMachine(userId: string, input: Omit<NewMachine, "privateKey" | "offNetwork" | "host" | "port" | "username"> & {
-    address: string; draft: string; hostKey: string; offNetworkConfirmed?: boolean;
+    address: string; draft?: string; token?: string; hostKey: string; offNetworkConfirmed?: boolean;
   }): Promise<MachineConfig> {
+    if (input.kind === "proxmox") {
+      const { host, port } = parseProxmoxAddress(input.address);
+      const token = String(input.token ?? "").trim();
+      const id = tokenId(token);
+      const pinned = certFingerprint(input.hostKey);
+      const { addresses, outside } = await resolveHost(host);
+      if (outside && input.pool === "private" && !input.offNetworkConfirmed) throw new Error(`${host} resolves outside your network; confirm adding it anyway`);
+      if (this.settings(userId).machine(input.name)) throw new Error(`machine ${input.name} already exists`);
+      await this.checkProxmox(addresses, port, token, pinned);
+      return this.settings(userId).addMachine({
+        kind: "proxmox", name: input.name, host, port, username: id, privateKey: token, root: null, pool: input.pool, limit: input.limit, offNetwork: outside,
+      }, pinned);
+    }
+    if (!input.draft) throw new Error("test the machine first");
     const pair = this.drafts.get(input.draft);
     if (!pair || pair.userId !== userId || pair.expires < Date.now()) throw new Error("test the machine again: its key has expired");
     const { username, host, port } = parseMachineAddress(input.address);
@@ -410,18 +493,34 @@ export class Workspace {
   /** Changes a machine's address, root, limit or pool; a new pool takes it from every thread that granted it. */
   updateMachine(userId: string, name: string, change: { address?: string; root?: string | null; limit?: MachineLimit; pool?: Pool }): MachineConfig {
     const s = this.settings(userId);
-    const address = change.address === undefined ? {} : parseMachineAddress(change.address);
+    const kind = s.machine(name)?.kind;
+    const address = change.address === undefined ? {} : kind === "proxmox" ? parseProxmoxAddress(change.address) : parseMachineAddress(change.address);
     let m = s.updateMachine(name, { ...address, ...(change.root !== undefined ? { root: change.root || null } : {}), ...(change.limit ? { limit: change.limit } : {}) });
     if (change.pool) m = s.setMachinePool(name, change.pool);
     this.disconnect(userId, name);
     return m;
   }
 
-  /** Re-pairs a machine whose host key changed, with the key Li confirmed. */
-  setHostKey(userId: string, name: string, confirmedHostKey: string): MachineConfig {
-    const m = this.settings(userId).setHostKey(name, confirmedHostKey);
+  /**
+   * Re-pairs a machine whose host key (or certificate) changed, with the one
+   * Li confirmed. A Proxmox machine may get a new token too, tried against
+   * that certificate before anything is saved.
+   */
+  async setHostKey(userId: string, name: string, confirmedHostKey: string, token?: string): Promise<MachineConfig> {
+    const s = this.settings(userId);
+    const m = s.machine(name);
+    if (!m) throw new Error(`no machine ${name}`);
+    if (token !== undefined && m.kind !== "proxmox") throw new Error(`${name} isn't a Proxmox machine`);
+    if (m.kind === "proxmox") {
+      const pinned = certFingerprint(confirmedHostKey);
+      const next = token?.trim() || m.privateKey;
+      const id = tokenId(next);
+      await this.checkProxmox([await this.checkAddress(userId, name)], m.port, next, pinned);
+      if (token !== undefined) s.setToken(name, next, id);
+    }
+    const done = s.setHostKey(name, confirmedHostKey);
     this.disconnect(userId, name);
-    return m;
+    return done;
   }
 
   confirmOffNetwork(userId: string, name: string): MachineConfig {
