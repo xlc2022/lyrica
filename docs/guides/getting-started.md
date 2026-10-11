@@ -5,8 +5,9 @@ Debian or Ubuntu system, and what to do on the first day. This guide follows
 `daemon/deploy/install.sh` and the two systemd units next to it; the
 reference for each piece is [docs/daemon.md](../daemon.md) ("Deployment")
 and [docs/workspace.md](../workspace.md) ("Host requirements"). Model hosts
-(the GPU machines that run her models) have their own guide:
-[model-hosts.md](model-hosts.md).
+(the GPU machines that run her models) have their own guide,
+[model-hosts.md](model-hosts.md), and the machines that run the project's
+checks have [ci-runners.md](ci-runners.md).
 
 **What has and hasn't been exercised.** `install.sh` is run in no automated
 check, and as of this writing it has never been run on a fresh Debian host.

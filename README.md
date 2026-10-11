@@ -8,7 +8,8 @@ start with [AGENTS.md](AGENTS.md). The design lives in
 design is in [docs/memory.md](docs/memory.md). To run her, start with
 [docs/guides/getting-started.md](docs/guides/getting-started.md); a GPU
 machine for her models is set up in
-[docs/guides/model-hosts.md](docs/guides/model-hosts.md).
+[docs/guides/model-hosts.md](docs/guides/model-hosts.md), and a machine
+that runs the checks in [docs/guides/ci-runners.md](docs/guides/ci-runners.md).
 
 Lyrica runs for one person, Li, on one server. Each of Li's personas is a separate
 user whose memory is encrypted with that user's own key. Encryption protects
