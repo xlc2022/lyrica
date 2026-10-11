@@ -5,7 +5,8 @@
 // thread's mode (Shift+Tab cycles).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { upload, type ThreadSettings, type ThreadSettingsChange } from "./api.ts";
-import { Icon, ModePicker, nextMode, ToolsMenu } from "./Modes.tsx";
+import { Icon } from "./icons.tsx";
+import { ModePicker, nextMode, ToolsMenu } from "./Modes.tsx";
 import { MicButton, stopReading, useDictation } from "./Voice.tsx";
 
 interface Upload { id: number; name: string; progress: number; error?: string }
@@ -92,7 +93,7 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, onSet
               <li key={x.id}>
                 <span className="name">{x.name}</span>
                 {x.error
-                  ? <><span className="error">{x.error}</span><button type="button" className="quiet" aria-label={`Dismiss ${x.name}`} onClick={() => setUploads((u) => u.filter((y) => y.id !== x.id))}>✕</button></>
+                  ? <><span className="error">{x.error}</span><button type="button" className="icon sm" aria-label={`Dismiss ${x.name}`} onClick={() => setUploads((u) => u.filter((y) => y.id !== x.id))}><Icon name="close" /></button></>
                   : <progress max={1} value={x.progress} aria-label={`Uploading ${x.name}`} />}
               </li>
             ))}

@@ -4,9 +4,9 @@ import {
   del, get, patch, post, u,
   type MemoryDetail, type MemoryHit, type MemoryKind, type Pool,
 } from "./api.ts";
-import { fromEditable, readable, toEditable } from "./mentions.ts";
+import { fromEditable, readable, toEditable, useThreadMentions } from "./mentions.ts";
 import { go, href, idHref } from "./route.ts";
-import type { ShellContext } from "./Shell.tsx";
+import { PageHead, type ShellContext } from "./Shell.tsx";
 import { Confirm, ErrorText, hidden, Prose, shortTime, useAction, useLoad } from "./ui.tsx";
 
 const KINDS: { kind: MemoryKind; label: string }[] = [
@@ -23,16 +23,14 @@ export function Memory({ ctx, pool, id }: { ctx: ShellContext; pool?: Pool; id?:
   const [adding, setAdding] = useState(false);
   return (
     <main className="main memory" data-detail={!!id || adding}>
-      <header className="head">
-        <button type="button" className="menu-btn" aria-label="Show threads" onClick={ctx.openSide}>☰</button>
-        <div className="head-title"><h1>Memory</h1></div>
-        <button type="button" className="gear" onClick={() => { setAdding(true); go({ page: "memory", userId }); }}>Add a memory</button>
-      </header>
+      <PageHead ctx={ctx} title="Memory">
+        <button type="button" className="sm" onClick={() => { setAdding(true); go({ page: "memory", userId }); }}>Add a memory</button>
+      </PageHead>
       <div className="memory-panes">
         <Search ctx={ctx} current={id} />
         <div className="memory-detail">
           {adding ? <AddMemory userId={userId} onDone={(d) => { setAdding(false); if (d) go({ page: "memory", userId, pool: d.item.pool, id: d.item.id }); }} />
-            : id && pool && hidden(ctx.me.display, pool) ? <p className="muted empty">{pool === "private" ? "Private" : "General"} is hidden. Turn on Show {pool} in the sidebar to see it.</p>
+            : id && pool && hidden(ctx.me.display, pool) ? <p className="muted empty">{pool === "private" ? "Private" : "General"} is hidden. Turn on {pool === "private" ? "Private" : "General"} in the Sort menu to see it.</p>
             : id && pool ? <Detail key={`${pool}/${id}`} userId={userId} pool={pool} id={id} />
             : <p className="muted empty">Search, or pick a memory to read it.</p>}
         </div>
@@ -147,7 +145,7 @@ function Detail({ userId, pool, id }: { userId: string; pool: Pool; id: string }
         : (
           <>
             {item.summary && <p className="summary">{readable(item.summary, users)}</p>}
-            <div className="prose"><Prose text={readable(item.text, users)} /></div>
+            <div className="prose"><MemoryProse text={readable(item.text, users)} userId={userId} pool={item.pool} /></div>
             <div className="row">
               <button type="button" onClick={() => setEditing(true)}>Edit</button>
               <button type="button" onClick={() => act(() => post<MemoryDetail>(`${path}/archive`, { archived: !item.archived }))}>{item.archived ? "Unarchive" : "Archive"}</button>
@@ -167,7 +165,7 @@ function Detail({ userId, pool, id }: { userId: string; pool: Pool; id: string }
               <li key={r.id}>
                 <details>
                   <summary>{shortTime(r.createdAt)} · {users[r.author]?.displayName ?? r.author}</summary>
-                  <div className="prose small"><Prose text={readable(r.body.text, users)} /></div>
+                  <div className="prose small"><MemoryProse text={readable(r.body.text, users)} userId={userId} pool={item.pool} /></div>
                   <button type="button" disabled={busy} onClick={() => act(() => post<MemoryDetail>(`${path}/restore`, { revision: r.id }))}>Restore this version</button>
                 </details>
               </li>
@@ -263,4 +261,9 @@ function AddMemory({ userId, onDone }: { userId: string; onDone: (d?: MemoryDeta
       </div>
     </form>
   );
+}
+
+/** A memory's text, with each thread it mentions shown by its current title (web/src/mentions.ts). */
+function MemoryProse({ text, userId, pool }: { text: string; userId: string; pool: Pool }) {
+  return <Prose text={useThreadMentions(text, userId, pool)} />;
 }

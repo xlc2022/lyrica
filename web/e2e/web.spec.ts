@@ -80,6 +80,17 @@ async function openSettings(page: Page) {
   return drawer;
 }
 
+/** Flips the Private checkbox in the sidebar's Sort menu (the sidebar is open already on a phone). */
+async function togglePrivate(page: Page) {
+  const sorting = page.locator(".showing");
+  if (!(await sorting.evaluate((el) => (el as HTMLDetailsElement).open))) await sorting.locator("summary").click();
+  const box = sorting.getByRole("checkbox", { name: "Private" });
+  const was = await box.isChecked();
+  await box.click();
+  await expect(box).toBeChecked({ checked: !was });
+  await sorting.locator("summary").click();
+}
+
 /** Body is overflow: hidden, so check the containers that scroll, and that nothing pokes past the viewport. */
 async function noHorizontalScroll(page: Page) {
   const found = await page.evaluate(() => {
@@ -87,7 +98,7 @@ async function noHorizontalScroll(page: Page) {
       .filter((el) => el.scrollWidth > el.clientWidth + 1)
       .map((el) => `${el.className}: ${el.scrollWidth} > ${el.clientWidth}`);
     const past = [...document.querySelectorAll<HTMLElement>("body *")]
-      .filter((el) => el.offsetParent && el.closest("pre, table, .side, .menu") === null && el.getBoundingClientRect().right > innerWidth + 1)
+      .filter((el) => el.offsetParent && el.closest("pre, table, .side, .menu, .subnav") === null && el.getBoundingClientRect().right > innerWidth + 1)
       .map((el) => `${el.tagName}.${el.className}`);
     return { wide, past };
   });
@@ -252,7 +263,7 @@ test("the model badge shows the current model, and a change takes effect", async
 test("private and local-only threads offer only local models", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "Private");
-  await expect(page.locator(".head .badge").first()).toContainText(/private/i);
+  await expect(page.locator(".tfacts .k").first()).toHaveText(/private/i);
   await page.getByRole("button", { name: /^Model:/ }).click();
   let picker = page.getByRole("dialog");
   await expect(picker.getByRole("button", { name: "local-model" })).toBeVisible();
@@ -370,12 +381,16 @@ test("an uploaded file's path goes into the message", async ({ page, baseURL }) 
 
 test("a memory can be added, edited and restored", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
+  // A thread mention in a memory shows as a link to that thread.
+  await newThread(page, "General");
+  const threadId = decodeURIComponent(page.url().split("/t/general/")[1]!);
   await page.goto(`/#/u/${userId}/memory`);
   await page.getByRole("button", { name: "Add a memory" }).click();
-  await page.getByLabel("Text").fill("The backup job on node 2 runs at night.");
+  await page.getByLabel("Text").fill(`The backup job on node 2 runs at night, see [t:${threadId}].`);
   await page.getByRole("button", { name: "Add", exact: true }).click();
   const article = page.locator("article.memory-item");
   await expect(article).toContainText("runs at night");
+  await expect(article.locator(".prose a").first()).toHaveAttribute("href", new RegExp(encodeURIComponent(threadId).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 
   await article.getByRole("button", { name: "Edit" }).click();
   await article.getByLabel("Text").fill("The backup job on node 2 runs at noon.");
@@ -402,8 +417,7 @@ test("turning Show private off hides an open private thread and private memory",
   await send(page, "A private hello");
   await expect(page.getByText("You said: A private hello")).toBeVisible();
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
-  await page.getByLabel("Show private").click();
-  await expect(page.getByLabel("Show private")).not.toBeChecked();
+  await togglePrivate(page);
   if (phone(page)) await page.locator(".scrim").first().click({ position: { x: 370, y: 400 } });
   await expect(page.getByRole("heading", { name: "Private is hidden" })).toBeVisible();
   await expect(page.getByText("A private hello")).toHaveCount(0);
@@ -418,13 +432,12 @@ test("turning Show private off hides an open private thread and private memory",
 
   // Leave the filters as the other tests expect them.
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
-  await page.getByLabel("Show private").click();
-  await expect(page.getByLabel("Show private")).toBeChecked();
+  await togglePrivate(page);
 });
 
 test("an administrator sees how Lyrica is reached", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
-  await page.goto(`/#/u/${userId}/panel`);
+  await page.goto(`/#/u/${userId}/admin/web`);
   const section = page.getByRole("region", { name: "Web access", exact: true });
   await expect(section.getByLabel("Only this machine")).toBeChecked();
   await expect(section.getByRole("region", { name: "Web access status" })).toContainText("Only on this machine");
@@ -445,8 +458,8 @@ test("linked users share a browser; logging in as anyone else signs this browser
   await admin("", { login: "lark", password: "pw-lark", displayName: "Lark", pronouns, admin: false });
   await admin("", { login: "sam", password: "pw-sam", displayName: "Sam", pronouns, admin: false });
 
-  // Link Lark to Li from the control panel.
-  await page.goto(`/#/u/${userId}/panel`);
+  // Link Lark to Li from Settings.
+  await page.goto(`/#/u/${userId}/settings/personas`);
   const links = page.getByRole("region", { name: "Your personas" });
   await links.getByLabel("Your password").fill("pw");
   await links.getByLabel("Its login name").fill("lark");
@@ -457,7 +470,7 @@ test("linked users share a browser; logging in as anyone else signs this browser
   const logInAs = async (login: string, password: string) => {
     if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
     await page.getByRole("button", { name: /Switch user/ }).click();
-    await page.getByRole("link", { name: "Log in as another user…" }).click();
+    await page.getByRole("menuitem", { name: "Log in as another user…" }).click();
     await expect(page.getByRole("heading", { name: "Log in as another user" })).toBeVisible();
     await page.getByLabel("Login name", { exact: true }).fill(login);
     await page.getByLabel("Password", { exact: true }).fill(password);
@@ -561,14 +574,16 @@ test("dictation goes in at the caret, Read aloud plays her reply, and a speech s
 
 test("a speaking model's Settings drawer sets its voice and clamps its speed; Voice to cloud has its default beside the network defaults", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
-  await page.goto(`/#/u/${encodeURIComponent(userId)}/panel`);
-  await expect(page.getByRole("heading", { level: 1, name: "Control panel" })).toBeVisible();
+  await page.goto(`/#/u/${encodeURIComponent(userId)}/settings/network`);
+  await expect(page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible();
+  await expect(page.getByLabel("Voice to cloud")).not.toBeChecked();
+  await page.goto(`/#/u/${encodeURIComponent(userId)}/settings/profiles`);
   // Dictation and Read aloud rows offer only models that transcribe or speak.
   const local = page.getByRole("group", { name: "Local profile" });
   await expect(local.getByLabel("Dictation").locator("option")).toHaveText(["Not set", "whisper"]);
   await expect(local.getByLabel("Read aloud").locator("option")).toHaveText(["Not set", "kokoro"]);
-  await expect(page.getByLabel("Voice to cloud")).not.toBeChecked();
 
+  await page.goto(`/#/u/${encodeURIComponent(userId)}/settings/endpoints`);
   await page.getByRole("button", { name: "kokoro settings" }).first().click();
   const drawer = page.getByRole("complementary", { name: "kokoro settings" });
   await drawer.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
@@ -590,6 +605,86 @@ test("a speaking model's Settings drawer sets its voice and clamps its speed; Vo
   await expect(drawer).toHaveCount(0);
 });
 
+test("the header names the version and build, and the home box starts a thread", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}`);
+  await expect(page.getByRole("heading", { level: 1, name: /^Lyrica \S+ · \S+$/ })).toBeVisible();
+  await page.getByLabel("Message", { exact: true }).fill("From the home box");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.locator(".msg.user").getByText("From the home box")).toBeVisible();
+  await expect(page.getByText("You said: From the home box")).toBeVisible();
+});
+
+test("the thread menu renames, marks unread, groups, hides and deletes; the Sort menu sorts by group", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "A thread to manage");
+  await expect(page.getByText("You said: A thread to manage")).toBeVisible();
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  const row = page.locator(".threads").getByRole("link", { name: /A thread to manage/ }).first();
+  const open = () => row.click({ button: "right" });
+
+  await open();
+  await page.getByRole("menuitem", { name: "Rename…" }).click();
+  await page.getByRole("textbox", { name: "Title" }).fill("Managed thread");
+  await page.getByRole("button", { name: "Rename" }).click();
+  const renamed = page.locator(".threads").getByRole("link", { name: /^Managed thread/ });
+  await expect(renamed).toBeVisible();
+
+  // From the keyboard: Shift+F10 opens the menu under the row, the arrows move, Escape closes.
+  await renamed.focus();
+  await page.keyboard.press("Shift+F10");
+  await expect(page.getByRole("menu", { name: /Managed thread/ })).toBeVisible();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("menuitem", { name: "Rename…" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu", { name: /Managed thread/ })).toHaveCount(0);
+
+  await renamed.click({ button: "right" });
+  await page.keyboard.press("u");
+  await expect(page.locator(".threads a.unread")).toHaveCount(1);
+  await renamed.click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Mark as read" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await renamed.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Move to group" }).click();
+  await page.getByRole("menuitem", { name: "New group…" }).click();
+  await page.getByLabel("Group name").fill("Chores");
+  await page.getByRole("button", { name: "Add" }).click();
+  const sorting = page.locator(".showing");
+  await sorting.locator("summary").click();
+  await sorting.getByRole("radio", { name: "My groups" }).click();
+  await expect(sorting.getByRole("radio", { name: "My groups" })).toBeChecked();
+  await sorting.locator("summary").click();
+  await expect(page.locator(".threads .eyebrow", { hasText: "Chores" })).toBeVisible();
+  await sorting.locator("summary").click();
+  await sorting.getByRole("radio", { name: "By date" }).click();
+  await expect(sorting.getByRole("radio", { name: "By date" })).toBeChecked();
+  await sorting.locator("summary").click();
+
+  await renamed.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Hide" }).click();
+  await expect(renamed).toHaveCount(0);
+  await sorting.locator("summary").click();
+  await sorting.getByRole("checkbox", { name: "Hidden" }).click();
+  await expect(sorting.getByRole("checkbox", { name: "Hidden" })).toBeChecked();
+  await sorting.locator("summary").click();
+  await expect(renamed).toBeVisible();
+  await renamed.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Delete…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Delete this thread?" });
+  await dialog.getByRole("button", { name: "Delete" }).click();
+  await expect(renamed).toHaveCount(0);
+  // Deleting the open thread goes home, which closes the sidebar on a phone.
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await sorting.locator("summary").click();
+  await sorting.getByRole("checkbox", { name: "Hidden" }).click();
+  await expect(sorting.getByRole("checkbox", { name: "Hidden" })).not.toBeChecked();
+  await sorting.locator("summary").click();
+  await noHorizontalScroll(page);
+});
+
 test("no horizontal scrolling and big enough tap targets on a phone", async ({ page, baseURL }) => {
   test.skip(!phone(page), "phone only");
   const userId = await enter(page, baseURL!);
@@ -605,7 +700,7 @@ test("no horizontal scrolling and big enough tap targets on a phone", async ({ p
   }
   await openSettings(page);
   await noHorizontalScroll(page);
-  for (const hash of ["memory", "panel"]) {
+  for (const hash of ["memory", "settings/network", "admin/users"]) {
     await page.goto(`/#/u/${userId}/${hash}`);
     await page.waitForLoadState("networkidle");
     await noHorizontalScroll(page);

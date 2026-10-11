@@ -1,4 +1,5 @@
-// The control panel: your profile and models, and the administrator's settings.
+// Settings (the user's own) and Administration (server-wide), each a page with
+// its sections listed at the left. The old control panel's cards moved here.
 import { useEffect, useRef, useState } from "react";
 import {
   del, get, patch, post, put, u,
@@ -6,7 +7,8 @@ import {
   type OfferingInfo, type OfferingSettings, type Pool, type Probe, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type MachineInfo, type Task, type Theme, type UserCard,
 } from "./api.ts";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
-import type { ShellContext } from "./Shell.tsx";
+import { href } from "./route.ts";
+import { PageHead, type ShellContext } from "./Shell.tsx";
 import { WebAccessSection } from "./WebAccess.tsx";
 import { Confirm, ErrorText, Switch, useAction, useLoad } from "./ui.tsx";
 
@@ -30,40 +32,60 @@ const TASKS: { task: Task; label: string }[] = [
 /** The models a task's select offers: speech tasks take only models that transcribe or speak. */
 const fits = (task: Task, m: OfferingInfo) => (task === "speech.transcribe" ? !!m.transcribe : task === "speech.speak" ? !!m.speak?.voices.length : true);
 
-export function Panel({ ctx }: { ctx: ShellContext }) {
-  const admin = ctx.user.admin;
-  const sections = ["Profile", "Password", "Your personas", "Your suggestions for Lyrica's persona", "Endpoints", "Model profiles", "Network", "Machines", ...(admin ? ["Server", "Web access", "Users", "Changes to Lyrica's persona"] : [])];
+type SectionDef = { key: string; label: string; body: (ctx: ShellContext) => React.ReactNode };
+
+const SETTINGS: SectionDef[] = [
+  { key: "profile", label: "Profile", body: (ctx) => <ProfileSection ctx={ctx} /> },
+  { key: "appearance", label: "Appearance", body: (ctx) => <AppearanceSection ctx={ctx} /> },
+  { key: "unlock", label: "Unlock and lock", body: (ctx) => <UnlockSection ctx={ctx} /> },
+  { key: "password", label: "Password", body: (ctx) => <PasswordSection ctx={ctx} /> },
+  { key: "personas", label: "Your personas", body: (ctx) => <LinksSection ctx={ctx} /> },
+  { key: "suggestions", label: "Persona suggestions", body: (ctx) => <DraftsSection ctx={ctx} /> },
+  { key: "endpoints", label: "Endpoints", body: (ctx) => <EndpointsSection ctx={ctx} /> },
+  { key: "profiles", label: "Model profiles", body: (ctx) => <ProfilesSection ctx={ctx} /> },
+  { key: "network", label: "Network", body: (ctx) => <NetworkSection ctx={ctx} /> },
+  { key: "machines", label: "Machines", body: (ctx) => <MachinesSection ctx={ctx} /> },
+];
+const ADMIN: SectionDef[] = [
+  { key: "status", label: "Status", body: (ctx) => <StatusSection ctx={ctx} /> },
+  { key: "users", label: "Users", body: (ctx) => <UsersSection ctx={ctx} /> },
+  { key: "sleep", label: "Sleep", body: (ctx) => <SleepSection ctx={ctx} /> },
+  { key: "unlocked", label: "Start unlocked", body: (ctx) => <UnlockedSection ctx={ctx} /> },
+  { key: "web", label: "Web access", body: (ctx) => <Section title="Web access"><WebAccessSection userId={ctx.user.id} /></Section> },
+  { key: "persona", label: "Persona changes", body: (ctx) => <ProposalsSection ctx={ctx} /> },
+];
+
+/** The user's own settings: a page with its sections listed at the left (docs/ux.md §6). */
+export function SettingsPage({ ctx, section }: { ctx: ShellContext; section?: string }) {
+  return <Sections ctx={ctx} page="settings" title="Settings" sections={SETTINGS} current={section} />;
+}
+
+/** Server-wide settings, for administrators only. */
+export function AdminPage({ ctx, section }: { ctx: ShellContext; section?: string }) {
+  if (!ctx.user.admin) {
+    return <main className="main"><PageHead ctx={ctx} title="Administration" /><div className="welcome"><p>Only administrators can change the server's settings.</p></div></main>;
+  }
+  return <Sections ctx={ctx} page="admin" title="Administration" sections={ADMIN} current={section} />;
+}
+
+function Sections({ ctx, page, title, sections, current }: { ctx: ShellContext; page: "settings" | "admin"; title: string; sections: SectionDef[]; current?: string }) {
+  const cur = sections.find((s) => s.key === current) ?? sections[0]!;
   return (
-    <main className="main panel">
-      <header className="head">
-        <button type="button" className="menu-btn" aria-label="Show threads" onClick={ctx.openSide}>☰</button>
-        <div className="head-title"><h1>Control panel</h1></div>
-      </header>
-      <div className="scroll panel-body">
-        <nav className="panel-nav" aria-label="Sections">
-          {sections.map((s) => <a key={s} href={`#panel-${slug(s)}`} onClick={(e) => { e.preventDefault(); document.getElementById(`panel-${slug(s)}`)?.scrollIntoView(); }}>{s}</a>)}
+    <main className="main">
+      <PageHead ctx={ctx} title={title} />
+      <div className="body">
+        <nav className="subnav" aria-label={`${title} sections`}>
+          {sections.map((s) => <a key={s.key} href={href({ page, userId: ctx.user.id, section: s.key })} aria-current={s.key === cur.key ? "page" : undefined}>{s.label}</a>)}
         </nav>
-        <ProfileSection ctx={ctx} />
-        <PasswordSection ctx={ctx} />
-        <LinksSection ctx={ctx} />
-        <DraftsSection ctx={ctx} />
-        <EndpointsSection ctx={ctx} />
-        <ProfilesSection ctx={ctx} />
-        <NetworkSection ctx={ctx} />
-        <SshSection ctx={ctx} />
-        {admin && <ServerSection ctx={ctx} />}
-        {admin && <Section title="Web access"><WebAccessSection userId={ctx.user.id} /></Section>}
-        {admin && <UsersSection ctx={ctx} />}
-        {admin && <ProposalsSection ctx={ctx} />}
+        <div className="content">{cur.body(ctx)}</div>
       </div>
     </main>
   );
 }
 
-const slug = (s: string) => s.toLowerCase().replace(/\W+/g, "-");
-
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return <section className="card" id={`panel-${slug(title)}`} aria-labelledby={`h-${slug(title)}`}><h2 id={`h-${slug(title)}`}>{title}</h2>{children}</section>;
+  const id = `h-${title.toLowerCase().replace(/\W+/g, "-")}`;
+  return <section className="card" aria-labelledby={id}><h2 id={id}>{title}</h2>{children}</section>;
 }
 
 function PronounFields({ value, onChange }: { value: Pronouns; onChange: (p: Pronouns) => void }) {
@@ -104,36 +126,57 @@ function ProfileSection({ ctx }: { ctx: ShellContext }) {
     <Section title="Profile">
       <form className="stack" onSubmit={(e) => { e.preventDefault(); void save(); }}>
         <label className="field"><span>Display name</span><input value={name} onChange={(e) => setName(e.target.value)} /></label>
-        {me.previousNames.length > 0 && <p className="muted small">Before: {me.previousNames.map((p) => `${p.name} (until ${p.until.slice(0, 10)})`).join(", ")}</p>}
+        {me.previousNames.length > 0 && <p className="cap">Before: {me.previousNames.map((p) => `${p.name} (until ${p.until.slice(0, 10)})`).join(", ")}</p>}
         <PronounFields value={pronouns} onChange={setPronouns} />
         <div className="row wrap top">
           <div className="field narrow swatch">
             <label className="field"><span>Accent colour</span>
               <input type="color" value={accent || "#1f6f78"} onChange={(e) => setAccent(e.target.value)} />
             </label>
-            {accent && <button type="button" className="quiet small" onClick={() => setAccent("")}>Default colour</button>}
+            {accent && <button type="button" className="link sm" onClick={() => setAccent("")}>Reset</button>}
           </div>
           <label className="field narrow"><span>Monogram</span>
             <input maxLength={2} value={monogram} placeholder={name.slice(0, 2)} onChange={(e) => setMonogram(e.target.value)} />
           </label>
         </div>
         <ErrorText error={error} />
-        <div className="row"><button className="primary" disabled={busy || !name.trim()}>Save profile</button></div>
+        <div className="row"><button className="primary" disabled={busy || !name.trim()}>Save</button></div>
       </form>
+    </Section>
+  );
+}
+
+function AppearanceSection({ ctx }: { ctx: ShellContext }) {
+  const { me } = ctx;
+  const [run, , error] = useAction();
+  return (
+    <Section title="Appearance">
       <label className="field"><span>Theme</span>
-        <select value={me.display.theme} onChange={(e) => run(async () => ctx.setMe(await patch<Me>(`${path}/display`, { theme: e.target.value as Theme })))}>
+        <select value={me.display.theme} onChange={(e) => run(async () => ctx.setMe(await patch<Me>(u(me.user.id, "me", "display"), { theme: e.target.value as Theme })))}>
           <option value="device">Follow the device</option>
           <option value="light">Light</option>
           <option value="dark">Dark</option>
         </select>
       </label>
+      <ErrorText error={error} />
+    </Section>
+  );
+}
+
+function UnlockSection({ ctx }: { ctx: ShellContext }) {
+  const { me } = ctx;
+  const [run, , error] = useAction();
+  const path = u(me.user.id, "me");
+  return (
+    <Section title="Unlock and lock">
       <Switch label="Unlock me when Lyrica starts" checked={me.savedCredentials}
-        hint="Saves your key with the server's credentials (sealed to its TPM where there is one), so sleep can run after a restart."
+        hint="Saves your key with the server's credentials, sealed to its TPM where there is one, so sleep can run after a restart."
         onChange={(save) => run(async () => ctx.setMe(await put<Me>(`${path}/credentials`, { save })))} />
       <Switch label="Stay unlocked after logout" checked={me.stayUnlocked}
         hint="Keeps your key in memory when you log out, so sleep can run. Lock always drops it."
         onChange={(stayUnlocked) => run(async () => ctx.setMe(await put<Me>(`${path}/stay-unlocked`, { stayUnlocked })))} />
       {me.warning && <p className="warn-text" role="status">{me.warning}</p>}
+      <ErrorText error={error} />
     </Section>
   );
 }
@@ -156,6 +199,7 @@ function PasswordSection({ ctx }: { ctx: ShellContext }) {
         <label className="field"><span>New password again</span><input type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} /></label>
         {mismatch && <p className="error">The new passwords don't match.</p>}
         {done && <p className="ok" role="status">Password changed.</p>}
+        <p className="meta muted">There is no reset that keeps your data: a forgotten password loses it.</p>
         <ErrorText error={error} />
         <div className="row"><button className="primary" disabled={busy || !oldPassword || !newPassword || newPassword !== again}>Change password</button></div>
       </form>
@@ -180,19 +224,18 @@ function EndpointsSection({ ctx }: { ctx: ShellContext }) {
         {(eps.data ?? []).map((ep) => <EndpointRow key={ep.id} userId={userId} ep={ep} canEdit={!ep.shared || ctx.user.admin} onChange={eps.reload} />)}
       </ul>
       <form className="stack sub-card" onSubmit={(e) => { e.preventDefault(); void add(); }}>
-        <h3>Add an endpoint</h3>
+        <h3>Add endpoint</h3>
         <div className="row wrap">
           <label className="field"><span>Name</span><input value={form.name} placeholder="Blackwell host" onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
           <label className="field narrow"><span>Kind</span>
-            <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as "cloud" | "local" })}>
+            <select value={form.kind} title="Local means on your own network: the LAN or your tailnet. Lyrica warns if a local endpoint looks public." onChange={(e) => setForm({ ...form, kind: e.target.value as "cloud" | "local" })}>
               <option value="local">Local</option><option value="cloud">Cloud</option>
             </select>
           </label>
         </div>
         <label className="field"><span>Base URL</span><input value={form.baseUrl} placeholder="http://192.168.1.50:1234/v1" onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} /></label>
-        <label className="field"><span>API key (optional)</span><input type="password" autoComplete="off" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} /></label>
-        {ctx.user.admin && <Switch label="Shared with every user" checked={form.shared} onChange={(shared) => setForm({ ...form, shared })} />}
-        <p className="muted small">Local means on your own network: the LAN or your tailnet. You decide; Lyrica warns if a local endpoint looks public.</p>
+        <label className="field"><span>API key</span><input type="password" autoComplete="off" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} /></label>
+        {ctx.user.admin && <Switch label="Shared" hint="Every user on this server can use it" checked={form.shared} onChange={(shared) => setForm({ ...form, shared })} />}
         <div className="row"><button className="primary" disabled={busy || !form.name || !form.baseUrl}>Add endpoint</button></div>
       </form>
     </Section>
@@ -213,9 +256,9 @@ function EndpointRow({ userId, ep, canEdit, onChange }: { userId: string; ep: En
       </div>
       <code className="url">{ep.baseUrl}</code>
       {probe.data?.warning && <p className="warn-text">{probe.data.warning}</p>}
-      <p className="muted small models">
+      <p className="meta muted models">
         {ep.models.length ? ep.models.map((m, i) => (
-          <span key={m.id}>{i > 0 && ", "}{m.modelId}{m.speak?.voices.length ? <> <button type="button" className="link small" aria-label={`${m.modelId} settings`} onClick={() => setVoice(m)}>Settings</button></> : null}</span>
+          <span key={m.id}>{i > 0 && ", "}{m.modelId}{m.speak?.voices.length ? <> <button type="button" className="link sm" aria-label={`${m.modelId} settings`} onClick={() => setVoice(m)}>Settings</button></> : null}</span>
         )) : "No models yet."}
       </p>
       {voice && <VoiceDrawer userId={userId} model={voice} onClose={() => setVoice(undefined)} />}
@@ -228,7 +271,7 @@ function EndpointRow({ userId, ep, canEdit, onChange }: { userId: string; ep: En
             <input aria-label={`Add a model to ${ep.name}`} placeholder="Model ID" value={model} onChange={(e) => setModel(e.target.value)} />
             <button disabled={!model || busy}>Add model</button>
           </form>
-          <Confirm label="Remove" danger confirm="Remove it" question={`Remove ${ep.name}? Threads using its models fall back to the profile.`}
+          <Confirm label="Remove" danger confirm="Remove" question={`Remove ${ep.name}? Threads using its models fall back to the profile.`}
             onConfirm={() => run(async () => { await del(path); onChange(); })} />
         </div>
       )}
@@ -257,7 +300,7 @@ function VoiceDrawer({ userId, model, onClose }: { userId: string; model: Offeri
   const languages = [...new Set(voices.map((v) => v.language))];
   const s = settings.data;
   const save = (values: { voices?: Record<string, string> | null; speed?: number | null }) => run(async () => settings.set(await put<OfferingSettings>(path, { values })));
-  const source = (k: "voices" | "speed") => s?.sources[k] && <span className="muted small source"> {s.sources[k]}</span>;
+  const source = (k: "voices" | "speed") => s?.sources[k] && <span className="muted meta source"> {s.sources[k]}</span>;
   // The field clamps to its range when it is left; empty goes back to the default.
   const commitSpeed = () => {
     if (speed === undefined) return;
@@ -285,7 +328,7 @@ function VoiceDrawer({ userId, model, onClose }: { userId: string; model: Offeri
               </select>
             </label>
           ))}
-          {s?.sources.voices === "yours" && <button type="button" className="link small" onClick={() => save({ voices: null })}>Reset</button>}
+          {s?.sources.voices === "yours" && <button type="button" className="link sm" onClick={() => save({ voices: null })}>Reset</button>}
         </fieldset>
         <fieldset className="group" disabled={!s || busy}>
           <legend>Speed{source("speed")}</legend>
@@ -294,10 +337,10 @@ function VoiceDrawer({ userId, model, onClose }: { userId: string; model: Offeri
               <input type="number" inputMode="decimal" min={MIN_SPEED} max={MAX_SPEED} step={0.05} placeholder="1" aria-label="Speed"
                 value={speed ?? s?.values.speed ?? ""} onChange={(e) => setSpeed(e.target.value)} onBlur={commitSpeed}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitSpeed(); } }} />
-              <span className="muted small">of {MAX_SPEED}</span>
+              <span className="muted meta">of {MAX_SPEED}</span>
             </span>
           </div>
-          {s?.sources.speed === "yours" && <button type="button" className="link small" onClick={() => save({ speed: null })}>Reset</button>}
+          {s?.sources.speed === "yours" && <button type="button" className="link sm" onClick={() => save({ speed: null })}>Reset</button>}
         </fieldset>
       </div>
     </aside>
@@ -315,7 +358,7 @@ function ProfilesSection({ ctx }: { ctx: ShellContext }) {
   });
   return (
     <Section title="Model profiles">
-      <p className="muted">Threads use these unless they choose their own. Private and local-only threads use the local profile; general threads use the {profiles.data.default} profile.</p>
+      <p className="meta muted">General threads: {profiles.data.default} profile. Private and local-only threads: local profile.</p>
       <ErrorText error={error} />
       <div className="profiles">
         {(["local", "cloud", "custom"] as const).map((profile) => (
@@ -355,15 +398,21 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
   const change = (pool: Pool, c: Partial<NetworkDefaults[Pool]>) => run(async () => net.set(await patch<NetworkDefaults>(u(userId, "network", pool), c)));
   return (
     <Section title="Network">
-      <p className="muted">Defaults for new threads' tools. Each thread can change them in its settings.</p>
       <ErrorText error={error} />
-      {mode.data && (
-        <label className="field"><span>Mode</span>
-          <select value={mode.data.mode} onChange={(e) => run(async () => mode.set(await put<ModeDefault>(u(userId, "mode"), { mode: e.target.value })))}>
-            {MODE_ORDER.map((m) => <option key={m} value={m} title={MODES[m].description}>{MODES[m].label}</option>)}
-          </select>
-        </label>
-      )}
+      <div className="eyebrow">New threads</div>
+      <div className="row top defaults">
+        {mode.data && (
+          <label className="field"><span>Mode</span>
+            <select value={mode.data.mode} onChange={(e) => run(async () => mode.set(await put<ModeDefault>(u(userId, "mode"), { mode: e.target.value })))}>
+              {MODE_ORDER.map((m) => <option key={m} value={m} title={MODES[m].description}>{MODES[m].label}</option>)}
+            </select>
+          </label>
+        )}
+        {profiles.data && (
+          <Switch label="Voice to cloud" hint="What you dictate may be sent to a cloud model"
+            checked={profiles.data.voiceCloud} onChange={(voiceCloud) => run(async () => profiles.set(await patch<Profiles>(u(userId, "profiles"), { voiceCloud })))} />
+        )}
+      </div>
       <div className="profiles">
         {(["general", "private"] as const).map((pool) => {
           const n = net.data![pool];
@@ -383,15 +432,11 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
           );
         })}
       </div>
-      {profiles.data && (
-        <Switch label="Voice to cloud" hint="What you dictate may be sent to a cloud model."
-          checked={profiles.data.voiceCloud} onChange={(voiceCloud) => run(async () => profiles.set(await patch<Profiles>(u(userId, "profiles"), { voiceCloud })))} />
-      )}
     </Section>
   );
 }
 
-function SshSection({ ctx }: { ctx: ShellContext }) {
+function MachinesSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const machines = useLoad(() => get<MachineInfo[]>(u(userId, "machines")), [userId]);
   const [run, , error] = useAction();
@@ -411,41 +456,63 @@ function SshSection({ ctx }: { ctx: ShellContext }) {
   );
 }
 
-function ServerSection({ ctx }: { ctx: ShellContext }) {
+function StatusSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const status = useLoad(() => get<AdminStatus>(u(userId, "admin", "status")), [userId]);
   const sleep = useLoad(() => get<SleepTime>(u(userId, "admin", "sleep")), [userId]);
-  const [run, busy, error] = useAction();
-  const [passphrase, setPassphrase] = useState("");
-  const [time, setTime] = useState<string>();
   const s = status.data;
   return (
-    <Section title="Server">
-      <ErrorText error={status.error || error} />
+    <Section title="Status">
+      <ErrorText error={status.error} />
       {s?.networkRefused && (
         <div className="notice" role="alert">
           <b>Her tools have no network on this server.</b>
           <p>{s.networkRefused}</p>
         </div>
       )}
-      <form className="inline" onSubmit={(e) => { e.preventDefault(); void run(async () => sleep.set(await put<SleepTime>(u(userId, "admin", "sleep"), { time: time ?? sleep.data?.time }))); }}>
+      <dl className="facts">
+        <dt>Her tools' network</dt><dd>{s ? (s.networkRefused ? <span className="status-word"><span className="dot down" />Refused</span> : <span className="status-word"><span className="dot up" />Self-test passed</span>) : "…"}</dd>
+        <dt>Sleep time</dt><dd className="num">{sleep.data?.time ?? "…"}</dd>
+        <dt>Start unlocked</dt><dd>{s ? (s.savedPassphrase ? "Passphrase saved" : "Passphrase not saved") : "…"}</dd>
+      </dl>
+    </Section>
+  );
+}
+
+function SleepSection({ ctx }: { ctx: ShellContext }) {
+  const userId = ctx.user.id;
+  const sleep = useLoad(() => get<SleepTime>(u(userId, "admin", "sleep")), [userId]);
+  const [run, busy, error] = useAction();
+  const [time, setTime] = useState<string>();
+  return (
+    <Section title="Sleep">
+      <ErrorText error={sleep.error || error} />
+      <form className="inline" onSubmit={(e) => { e.preventDefault(); void run(async () => { sleep.set(await put<SleepTime>(u(userId, "admin", "sleep"), { time: time ?? sleep.data?.time })); setTime(undefined); }); }}>
         <label className="field"><span>Sleep time</span><input type="time" value={time ?? sleep.data?.time ?? ""} onChange={(e) => setTime(e.target.value)} /></label>
-        <button disabled={busy || !time || time === sleep.data?.time}>Save</button>
+        <button className="primary" disabled={busy || !time || time === sleep.data?.time}>Save</button>
       </form>
-      {s && (
-        <div className="stack">
-          <h3>Start unlocked</h3>
-          {!s.credentials.available && <p className="muted small">This server can't save credentials{s.credentials.reason ? `: ${s.credentials.reason}` : "."}</p>}
-          {s.savedPassphrase ? (
-            <div className="row"><span>The passphrase is saved, so Lyrica starts unlocked.</span>
-              <button type="button" disabled={busy} onClick={() => run(async () => status.set(await put<AdminStatus>(u(userId, "admin", "passphrase"), { save: false })))}>Forget it</button></div>
-          ) : (
-            <form className="inline" onSubmit={(e) => { e.preventDefault(); void run(async () => { status.set(await put<AdminStatus>(u(userId, "admin", "passphrase"), { save: true, passphrase })); setPassphrase(""); }); }}>
-              <label className="field grow"><span>Save the passphrase</span><input type="password" autoComplete="off" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} /></label>
-              <button disabled={busy || !passphrase || !s.credentials.available}>Save</button>
-            </form>
-          )}
-        </div>
+    </Section>
+  );
+}
+
+function UnlockedSection({ ctx }: { ctx: ShellContext }) {
+  const userId = ctx.user.id;
+  const status = useLoad(() => get<AdminStatus>(u(userId, "admin", "status")), [userId]);
+  const [run, busy, error] = useAction();
+  const [passphrase, setPassphrase] = useState("");
+  const s = status.data;
+  return (
+    <Section title="Start unlocked">
+      <ErrorText error={status.error || error} />
+      {s && !s.credentials.available && <p className="meta muted">This server can't save credentials{s.credentials.reason ? `: ${s.credentials.reason}` : "."}</p>}
+      {s?.savedPassphrase ? (
+        <div className="row"><span>The passphrase is saved, so Lyrica starts unlocked.</span>
+          <button type="button" className="danger" disabled={busy} onClick={() => run(async () => status.set(await put<AdminStatus>(u(userId, "admin", "passphrase"), { save: false })))}>Forget it</button></div>
+      ) : s && (
+        <form className="inline" onSubmit={(e) => { e.preventDefault(); void run(async () => { status.set(await put<AdminStatus>(u(userId, "admin", "passphrase"), { save: true, passphrase })); setPassphrase(""); }); }}>
+          <label className="field grow"><span>Passphrase</span><input type="password" autoComplete="off" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} /></label>
+          <button className="primary" disabled={busy || !passphrase || !s.credentials.available}>Save</button>
+        </form>
       )}
     </Section>
   );
@@ -472,7 +539,7 @@ function UsersSection({ ctx }: { ctx: ShellContext }) {
         ))}
       </ul>
       <form className="stack sub-card" onSubmit={(e) => { e.preventDefault(); void run(async () => { await post(u(userId, "admin", "users"), form); setForm({ ...form, login: "", password: "", displayName: "" }); users.reload(); }); }}>
-        <h3>Add a user</h3>
+        <h3>Add user</h3>
         <div className="row wrap">
           <label className="field"><span>Login name</span><input autoCapitalize="none" value={form.login} onChange={(e) => setForm({ ...form, login: e.target.value })} /></label>
           <label className="field"><span>Display name</span><input value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} /></label>
@@ -525,14 +592,13 @@ function ProposalsSection({ ctx }: { ctx: ShellContext }) {
   const who = (sentBy: string) => users.data?.find((x) => `user:${x.id}` === sentBy)?.displayName ?? sentBy;
   return (
     <Section title="Changes to Lyrica's persona">
-      <p className="muted">Suggestions for Lyrica's persona that users have sent on from their conversations.</p>
       <ErrorText error={proposals.error || error} />
       {proposals.data && !proposals.data.length && <p className="muted">No suggestions waiting.</p>}
       <ul className="list">
         {(proposals.data ?? []).map((p) => (
           <li key={p.id}>
-            <div className="row between"><code>{p.path}</code><span className="muted small">Sent by {who(p.sentBy)} · {p.createdAt.slice(0, 10)}</span></div>
-            {p.edited && <p className="muted small">{who(p.sentBy)} changed its text before sending it: the words are theirs.</p>}
+            <div className="row between"><code>{p.path}</code><span className="meta muted">Sent by {who(p.sentBy)} · <span className="num">{p.createdAt.slice(0, 10)}</span></span></div>
+            {p.edited && <p className="meta muted">{who(p.sentBy)} changed its text before sending it: the words are theirs.</p>}
             <p>{p.reason}</p>
             <div className="diff">
               <div><h4>Now</h4><pre>{p.current || "(new topic)"}</pre></div>
@@ -568,14 +634,12 @@ function LinksSection({ ctx }: { ctx: ShellContext }) {
   const [form, setForm] = useState({ password: "", login: "", otherPassword: "" });
   return (
     <Section title="Your personas">
-      <p className="muted">Link a separate persona of yours, another user you also log in as, so one browser can switch between them without a password. Linking needs both passwords.</p>
-      <h3>Linked personas</h3>
       <ErrorText error={links.error || error} />
       <ul className="list">
         {(links.data ?? []).map((x) => (
           <li key={x.id} className="row between">
             <span><b>{x.displayName}</b> <span className="muted">({x.login})</span></span>
-            <Confirm label="Unlink persona" danger confirm="Unlink persona" question={`Unlink ${x.displayName}? Browsers holding you both keep only you.`}
+            <Confirm label="Unlink" danger confirm="Unlink" question={`Unlink ${x.displayName}? Browsers holding you both keep only you.`}
               onConfirm={() => run(async () => links.set(await del<UserCard[]>(u(userId, "links", x.id))))} />
           </li>
         ))}
@@ -585,7 +649,7 @@ function LinksSection({ ctx }: { ctx: ShellContext }) {
         e.preventDefault();
         void run(async () => { links.set(await post<UserCard[]>(u(userId, "links"), form)); setForm({ password: "", login: "", otherPassword: "" }); });
       }}>
-        <h3>Link a separate persona</h3>
+        <h3>Link separate persona</h3>
         <label className="field"><span>Your password</span>
           <input type="password" autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
         </label>
@@ -610,7 +674,6 @@ function DraftsSection({ ctx }: { ctx: ShellContext }) {
   const [run, , error] = useAction();
   return (
     <Section title="Your suggestions for Lyrica's persona">
-      <p className="muted">Changes to her own persona that Lyrica suggested in your conversations. Administrators see a suggestion only after you send it on, so edit out anything private first.</p>
       <ErrorText error={drafts.error || error} />
       {drafts.data && !drafts.data.length && <p className="muted">No suggestions.</p>}
       <ul className="list">
@@ -635,9 +698,9 @@ function Draft({ draft, path, run, onChange }: {
       <label className="field"><span>Proposed text</span><textarea rows={6} value={text} onChange={(e) => setText(e.target.value)} /></label>
       <div className="row">
         <button type="button" disabled={!changed} onClick={() => run(async () => { await patch(path, { text, reason }); onChange(); })}>Save</button>
-        <button type="button" className="primary" disabled={changed} title={changed ? "Save your changes first" : undefined}
+        <button type="button" className="primary" disabled={changed} title={changed ? "Save your changes first. Administrators see it only once you send it on, so edit out anything private." : "Administrators see it only once you send it on, so edit out anything private."}
           onClick={() => run(async () => { await post(`${path}/send`); onChange(); })}>Send to administrators</button>
-        <Confirm label="Drop" danger confirm="Drop it" question="Drop this suggestion? It can't be brought back."
+        <Confirm label="Drop" danger confirm="Drop" question="Drop this suggestion? It can't be brought back."
           onConfirm={() => run(async () => { await del(path); onChange(); })} />
       </div>
     </li>

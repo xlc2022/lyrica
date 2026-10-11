@@ -1,6 +1,7 @@
 // One thread: header with its badges, the conversation, and the composer.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { del, get, patch, post, put, threadPath, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary } from "./api.ts";
+import { del, get, patch, post, put, threadPath, u, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary } from "./api.ts";
+import { Icon } from "./icons.tsx";
 import { hasConsequences, PinnedBadge, RemovalConfirm, useUndo, type Rewinder } from "./Rewind.tsx";
 import { go } from "./route.ts";
 import { useThread } from "./stream.ts";
@@ -8,7 +9,7 @@ import { Conversation, MessageBox } from "./Messages.tsx";
 import { Composer } from "./Composer.tsx";
 import { ModelBadge, SettingsDrawer } from "./Settings.tsx";
 import type { ShellContext } from "./Shell.tsx";
-import { ErrorText, useLoad } from "./ui.tsx";
+import { ErrorText, useAction, useDismiss, useLoad } from "./ui.tsx";
 import { stopReading } from "./Voice.tsx";
 
 export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; pool: Pool; threadId: string; threads: ThreadSummary[] }) {
@@ -123,14 +124,15 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
 
   return (
     <main className="main" data-drawer-open={drawer}>
-      <header className="head">
-        <button type="button" className="menu-btn" aria-label="Show threads" onClick={ctx.openSide}>☰</button>
+      <header className="head thread-head">
+        <button type="button" className="menu-btn icon" aria-label="Show threads" onClick={ctx.openSide}><Icon name="menu" /></button>
         <div className="head-title">
           <h1>{title}</h1>
-          <div className="badges">
-            <span className="badge" data-kind={pool === "private" ? "private" : "general"}><span className="k">{pool}</span></span>
+          <div className="tfacts">
+            <span className={`k ${pool}`}>{pool}</span>
             {settings.data && <ModelBadge base={base} settings={settings.data} onChange={settings.set} readOnly={!!s?.subagent} />}
             {pins.data && !s?.subagent && <PinnedBadge pins={pins.data} you={ctx.user.displayName} userId={ctx.user.id} pool={pool} />}
+            {s && !s.subagent && !s.child && <GroupPicker ctx={ctx} base={base} summary={s} onChange={(x) => { summary.set(x); refreshThreads(); }} />}
             {settings.data?.localOnly && pool === "general" && <span className="badge"><span className="k local">local-only</span></span>}
             {settings.data?.grants.map((g) => (
               <span key={g.path} className="badge folder" title={g.path}>{g.path} <span className="muted">{g.writable ? "rw" : "ro"}</span></span>
@@ -139,9 +141,11 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
           </div>
         </div>
         {!s?.subagent && (
-          <button type="button" className="gear" aria-label="Thread settings" aria-expanded={drawer} aria-controls="thread-settings" onClick={() => setDrawer(!drawer)}>
-            <span aria-hidden="true">⚙ <span className="long">Thread settings</span></span>
-          </button>
+          <div className="head-actions">
+            <button type="button" className="sm" aria-label="Thread settings" aria-expanded={drawer} aria-controls="thread-settings" onClick={() => setDrawer(!drawer)}>
+              <Icon name="gear" /><span className="long">Settings</span>
+            </button>
+          </div>
         )}
       </header>
       {parent && (
@@ -179,6 +183,45 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
       )}
       {drawer && <div className="scrim drawer-scrim" aria-hidden="true" onClick={() => setDrawer(false)} />}
     </main>
+  );
+}
+
+/** The thread's group, picked from a popover on its word in the facts line (docs/ux.md §6). */
+function GroupPicker({ ctx, base, summary, onChange }: { ctx: ShellContext; base: string; summary: ThreadSummary; onChange: (s: ThreadSummary) => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const anchor = useRef<HTMLSpanElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(anchor, open, close);
+  const [run, busy, error] = useAction();
+  const current = ctx.groups.find((g) => g.id === summary.group);
+  const pick = (group: string | null) => run(async () => { onChange(await patch<ThreadSummary>(base, { group })); close(); });
+  const add = () => run(async () => {
+    const g = await post<{ id: string }>(u(ctx.user.id, "thread-groups"), { name });
+    ctx.refreshGroups();
+    setName("");
+    onChange(await patch<ThreadSummary>(base, { group: g.id }));
+    close();
+  });
+  return (
+    <span className="picker-anchor" ref={anchor}>
+      <button type="button" className="link" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {current ? current.name : "Group"} <span className="caret" aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <div className="picker" role="dialog" aria-label="Group">
+          {ctx.groups.map((g) => (
+            <button key={g.id} type="button" className="picker-item" aria-pressed={g.id === summary.group} disabled={busy} onClick={() => pick(g.id === summary.group ? null : g.id)}>{g.name}</button>
+          ))}
+          {current && <button type="button" className="picker-item" disabled={busy} onClick={() => pick(null)}>Not in a group</button>}
+          <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) void add(); }}>
+            <input aria-label="New group" placeholder="New group" value={name} onChange={(e) => setName(e.target.value)} />
+            <button type="submit" className="sm" disabled={busy || !name.trim()}>Add</button>
+          </form>
+          <ErrorText error={error} />
+        </div>
+      )}
+    </span>
   );
 }
 
