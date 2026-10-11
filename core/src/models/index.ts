@@ -1418,6 +1418,27 @@ export class Models {
     return v === 1 ? true : v === 0 ? false : null;
   }
 
+  /** Fallback: whether a later model in a list may answer when the first can't, unless a thread says otherwise. On by default. */
+  defaultFallback(userId: string): boolean {
+    return this.setting(userId, "fallback") !== "off";
+  }
+
+  setDefaultFallback(userId: string, on: boolean): void {
+    if (typeof on !== "boolean") throw new Error("fallback is true or false");
+    this.setSetting(userId, "fallback", on ? "on" : "off");
+  }
+
+  /** A thread's own Fallback switch; null follows the user's default. */
+  setThreadFallback(userId: string, threadId: string, on: boolean | null): void {
+    if (on !== null && typeof on !== "boolean") throw new Error("fallback is true, false or null");
+    this.threadChoice(userId, threadId, "fallback", on === null ? null : on ? 1 : 0);
+  }
+
+  threadFallback(userId: string, threadId: string): boolean | null {
+    const v = this.withUser(userId, (db) => (db.prepare("SELECT fallback FROM thread_choices WHERE thread = ?").get(threadId) as { fallback: number | null } | undefined)?.fallback);
+    return v === 1 ? true : v === 0 ? false : null;
+  }
+
   /** Sets (or clears) one thread's ordered list for a task. A private or local-only thread takes local models only. */
   setThreadModel(userId: string, pool: Pool, threadId: string, task: Task, list?: ModelRef[] | ModelRef): void {
     const refs = list === undefined ? undefined : Array.isArray(list) ? list : [list];
@@ -1483,13 +1504,14 @@ export class Models {
     return this.withUser(userId, (db) => {
       const rows = db.prepare("SELECT task, entry FROM thread_models WHERE pool = ? AND thread = ?").all(pool, threadId) as { task: Task; entry: string }[];
       const localOnly = pool === "private" || !!db.prepare("SELECT 1 FROM local_only_threads WHERE thread = ?").get(threadId);
-      const choice = db.prepare("SELECT profile, thinking, voice_cloud FROM thread_choices WHERE thread = ?").get(threadId) as { profile: string | null; thinking: string | null; voice_cloud: number | null } | undefined;
+      const choice = db.prepare("SELECT profile, thinking, voice_cloud, fallback FROM thread_choices WHERE thread = ?").get(threadId) as { profile: string | null; thinking: string | null; voice_cloud: number | null; fallback: number | null } | undefined;
       const setting = (key: string) => (db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined)?.value;
       const profile = (choice?.profile ?? setting("general_profile")) === "custom" ? "custom" : "cloud";
       const thinking = (choice?.thinking ?? setting("thinking") ?? "off") as ThinkingLevel;
       const voiceCloud = choice?.voice_cloud !== null && choice?.voice_cloud !== undefined ? choice.voice_cloud === 1 : setting("voice_cloud") === "on";
+      const fallback = choice?.fallback !== null && choice?.fallback !== undefined ? choice.fallback === 1 : setting("fallback") !== "off";
       return {
-        userId, pool, localOnly, ...(pool === "general" ? { profile } : {}), thinking: THINKING_LEVELS.includes(thinking) ? thinking : "off", voiceCloud,
+        userId, pool, localOnly, ...(pool === "general" ? { profile } : {}), thinking: THINKING_LEVELS.includes(thinking) ? thinking : "off", voiceCloud, fallback,
         overrides: Object.fromEntries(rows.map((r) => [r.task, JSON.parse(r.entry) as ModelRef[]])),
       };
     });
@@ -1517,7 +1539,7 @@ export class Models {
 
   /**
    * Gives a child thread (a branch, a subagent) its parent's local-only
-   * switch, profile, thinking level and model lists, the chat list too unless
+   * switch, profile, thinking level, Fallback and model lists, the chat list too unless
    * `chat: false`.
    */
   inheritContext(parent: CallContext, childThreadId: string, opts: { chat?: boolean } = {}): CallContext {
@@ -1527,6 +1549,8 @@ export class Models {
     if (parent.thinking) this.setThinking(userId, childThreadId, parent.thinking);
     // Never wider than the parent: a branch of a thread with Voice to cloud off keeps it off, even if the default is turned on later.
     if (parent.voiceCloud === false || (parent.voiceCloud && !this.defaultVoiceCloud(userId))) this.setThreadVoiceCloud(userId, childThreadId, !!parent.voiceCloud);
+    // A child starts with its parent's Fallback, whatever the default becomes; a subagent can't change it.
+    if (parent.fallback !== undefined && parent.fallback !== this.defaultFallback(userId)) this.setThreadFallback(userId, childThreadId, parent.fallback);
     for (const [task, r] of Object.entries(parent.overrides ?? {})) {
       if (task !== "chat" || opts.chat !== false) this.setThreadModel(userId, pool, childThreadId, task as Task, r);
     }
@@ -1552,7 +1576,9 @@ export class Models {
    * (tools, context window, images). Outside Custom, the first usable model
    * fixes the kind, so a fallback never crosses the local/cloud line. In a
    * private or local-only context, a group's cloud members are skipped and a
-   * cloud model named directly throws CloudModelForbidden.
+   * cloud model named directly throws CloudModelForbidden. With Fallback off
+   * (`ctx.fallback === false`) only the list's first entry can answer: a
+   * group there keeps its copies, and nothing after it is tried.
    */
   resolve(task: Task, ctx: CallContext, need: Need = {}, opts: ResolveOptions = {}): Resolution {
     const c = this.catalog(ctx.userId);
@@ -1562,7 +1588,8 @@ export class Models {
     const restricted = isRestricted(ctx);
     const fixKind = profile !== "custom";
     const candidates: { id: string; grouped: boolean }[] = [];
-    for (const ref of found.list) {
+    const cut = ctx.fallback === false && found.list.length > 1;
+    for (const ref of cut ? found.list.slice(0, 1) : found.list) {
       if ("offeringId" in ref) candidates.push({ id: ref.offeringId, grouped: false });
       else for (const m of c.groups.get(ref.groupId)?.members ?? []) { const id = this.follow(m); if (id) candidates.push({ id, grouped: true }); }
     }
@@ -1594,7 +1621,7 @@ export class Models {
     // Something would answer once its machine is back: offline, not unset.
     if (away) throw new Offline(task, skipped);
     const reasons = skipped.map((s) => `${s.label}: ${s.reason}`).join("; ");
-    throw new NoModel(`no model for ${TASK_NAMES[task]} can answer now${reasons ? ` (${reasons})` : ""}`);
+    throw new NoModel(`no model for ${TASK_NAMES[task]} can answer now${reasons ? ` (${reasons})` : ""}${cut ? ", and Fallback is off" : ""}`);
   }
 
   /**
@@ -2038,7 +2065,7 @@ export class Models {
     this.withUser(userId, (db) => db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, value));
   }
 
-  private threadChoice(userId: string, threadId: string, column: "profile" | "thinking" | "voice_cloud", value: string | number | null): void {
+  private threadChoice(userId: string, threadId: string, column: "profile" | "thinking" | "voice_cloud" | "fallback", value: string | number | null): void {
     this.withUser(userId, (db) => {
       db.prepare("INSERT OR IGNORE INTO thread_choices (thread) VALUES (?)").run(threadId);
       db.prepare(`UPDATE thread_choices SET ${column} = ? WHERE thread = ?`).run(value, threadId);

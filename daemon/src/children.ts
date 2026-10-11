@@ -117,6 +117,7 @@ export class ChildThreads implements ThreadsHost {
       const chosen = project ? this.o.project?.(userId, parent.pool, parent.threadId) : undefined;
       if (chosen?.model) this.o.models.setThreadModel(userId, parent.pool, child.id, "chat", chosen.model);
       if (chosen?.thinking) this.o.models.setThinking(userId, child.id, chosen.thinking);
+      if (chosen?.fallback !== undefined) this.o.models.setThreadFallback(userId, child.id, chosen.fallback);
     } catch (err) {
       own.forgetThread(child.id, "lyrica");
       throw err;

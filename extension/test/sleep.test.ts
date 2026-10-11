@@ -246,6 +246,24 @@ describe("a night's sleep", () => {
     v.close();
   });
 
+  it("with Fallback off, skips a night whose phase's first model is away rather than use the next", async () => {
+    const s = await setup();
+    const v = s.view();
+    s.talk(v, "Hello there.", "{user} said hello");
+    const dead = s.models.addEndpoint(s.li, { name: "dead", kind: "cloud", baseUrl: await deadUrl() });
+    s.models.setProfile(s.li.id, "cloud", "sleep.dream", [{ offeringId: s.models.addModel(s.li, dead.id, { modelId: "m" }).id }, s.cloudRef]);
+    expect(s.sleep.fallback(s.li.id)).toBe(true);
+    s.sleep.setFallback(s.li.id, false);
+    expect(s.sleep.fallback(s.li.id)).toBe(false);
+    expect(await s.sleep.run(s.li.id, "general", "scheduled")).toMatchObject({ status: "skipped", skipReason: "endpoint-down" });
+    expect(v.own.watermark()).toBeUndefined();
+    // On, the next model in the list sleeps.
+    s.sleep.setFallback(s.li.id, true);
+    s.script({});
+    expect((await s.sleep.run(s.li.id, "general", "scheduled")).status).toBe("complete");
+    v.close();
+  });
+
   it("never sleeps unlogged threads or entries written after the run began", async () => {
     const s = await setup();
     const v = s.view();

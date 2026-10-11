@@ -473,6 +473,11 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     images and speech all report the same **offline** state, naming what
     was tried. A message no model took waits and is sent when a machine
     answers again.
+  - A thread, a project's new threads, the user's default and sleep can
+    turn **Fallback** off: only the first model in a list answers (a group
+    there keeps its copies), so a smaller model never writes in that thread
+    or touches its files. When that model is away the message waits; a
+    plain switch, not a quality floor, since models carry no quality data.
 - **Context and pace.** Lyrica and the user both see how full her context
   is and how fast her model answers.
   - After every turn lyricad records prompt and output tokens, the window,

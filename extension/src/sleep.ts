@@ -62,6 +62,7 @@ export const hideDreams = (id: string): boolean => {
 export const DREAM_HEADER = "Dream journal (reflection, not a record of fact).";
 
 const SETTING = "sleep.mode";
+const FALLBACK = "sleep.fallback";
 
 export class Sleep {
   readonly events = new EventEmitter();
@@ -78,20 +79,26 @@ export class Sleep {
   }
 
   mode(userId: string): SleepMode {
-    const db = this.o.users.openUserDb(userId);
-    try {
-      const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(SETTING) as { value: string } | undefined;
-      return row?.value === "manual" ? "manual" : "scheduled";
-    } finally {
-      db.close();
-    }
+    return this.setting(userId, SETTING) === "manual" ? "manual" : "scheduled";
   }
 
   setMode(userId: string, mode: SleepMode): void {
     if (mode !== "scheduled" && mode !== "manual") throw new Error("sleep mode is scheduled or manual");
+    this.setting(userId, SETTING, mode);
+  }
+
+  /** Fallback for sleep's phases, on unless turned off. Off, each phase uses its list's first model only. */
+  fallback(userId: string): boolean { return this.setting(userId, FALLBACK) !== "off"; }
+  setFallback(userId: string, on: boolean): void {
+    if (typeof on !== "boolean") throw new Error("sleep fallback is true or false");
+    this.setting(userId, FALLBACK, on ? "on" : "off");
+  }
+
+  private setting(userId: string, key: string, value?: string): string | undefined {
     const db = this.o.users.openUserDb(userId);
     try {
-      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(SETTING, mode);
+      if (value !== undefined) db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, value);
+      return (db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined)?.value;
     } finally {
       db.close();
     }
@@ -218,10 +225,11 @@ export class Sleep {
   /**
    * The context for a sleep phase: the pool's rules, and that phase's model as
    * its chat model. The model's machine is asked first, so a list falls back
-   * past one that is off; throws Offline when none answers.
+   * past one that is off (unless the user turned sleep's Fallback off); throws
+   * Offline when none answers.
    */
   private async context(userId: string, pool: Pool, phase: SleepPhase): Promise<{ call: CallContext; ref: { offeringId: string } }> {
-    const base: CallContext = { userId, pool, localOnly: pool === "private", ...(pool === "general" ? { profile: this.o.models.defaultProfile(userId) } : {}) };
+    const base: CallContext = { userId, pool, localOnly: pool === "private", ...(pool === "general" ? { profile: this.o.models.defaultProfile(userId) } : {}), fallback: this.fallback(userId) };
     const { ref } = await this.o.models.resolveLive(`sleep.${phase}`, base, {}, { probeLast: true });
     return { ref, call: { ...base, overrides: { chat: [ref], compaction: [ref] } } };
   }

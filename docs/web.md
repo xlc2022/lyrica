@@ -97,13 +97,13 @@ A thread's address may carry what the panel beside it shows:
 - **Project settings page** (`…/p/<pool>/<project>/general` or `/memory`),
   sections at the left. **General**: Goal, the Paused and **Watching
   threads** switches (`watchThreads`; the tooltip says what a look does), **New
-  threads** (Model and Thinking the project's threads start with; "This
-  chat's model" follows the project chat), **This chat** (Model, Mode,
+  threads** (Model, Thinking and Fallback the project's threads start with;
+  "This chat's model", "This chat's fallback" follow the project chat), **This chat** (Model, Mode,
   Group, then a **Thread settings** link that opens the project chat with
   its drawer showing, `…/t/<pool>/<thread>/settings`, for folders, machines,
   network, local-only and the other task models), and one Save, which
   patches the thread (`goal`, `paused`, `watchThreads` when it changed,
-  `threadsModel`, `threadsThinking`, `group`) and, when they changed, its
+  `threadsModel`, `threadsThinking`, `threadsFallback`, `group`) and, when they changed, its
   settings. **Memory**: the
   Instructions kept on the project page (2,000 characters, counted under
   the box), and a link to that page in the memory browser. Files and
@@ -134,8 +134,9 @@ A thread's address may carry what the panel beside it shows:
   unlocked after logout, and `lyricad`'s warning when the two contradict),
   Password, Your personas (linking a separate persona needs both passwords),
   Persona suggestions (edit, send on to the administrators, or drop),
-  Endpoints with probe status, Model profiles, Network (New threads: the default
-  mode and Voice to cloud; then network defaults per pool), and **Machines**
+  Endpoints with probe status, Model profiles (with the **Sleep fallback**
+  switch above the profiles), Network (New threads: the default
+  mode, Voice to cloud and Fallback; then network defaults per pool), and **Machines**
   (`src/Machines.tsx`, docs/ux.md section 6): a row per machine with its
   name, a facts line in mono (address, pool, "SSH · key" or "Proxmox API ·
   token", "up to Accept edits") and at most one state as a dot and a word
@@ -322,6 +323,10 @@ A thread's address may carry what the panel beside it shows:
   reading, the mic, sending, another Read aloud or leaving the thread stops
   it. Disabled with the reason as its tooltip when no Read aloud model can be
   used here. The message she is still writing has no button.
+- **Fallback** is a switch in the thread settings drawer's Models section,
+  under the task models, following the user's default until changed (Use
+  default goes back); tooltip "Off: only the first model in each list
+  answers. If it can't, the message waits for it."
 - **Voice to cloud** is a switch in the thread settings drawer's Privacy and
   network section, under Internet, following the user's default until
   changed (Use default goes back); the default is in Settings, Network. The Model profiles section has Dictation and Read aloud

@@ -1,7 +1,7 @@
 import type { ModelRef, Pool, ThinkingLevel, Users } from "@lyrica/core";
 
 // What a user sets about threads and projects that isn't conversation: thread
-// pins, and each project's settings (paused, the model and thinking its new
+// pins, and each project's settings (paused, the model, thinking and Fallback its new
 // threads start with) and which suggested threads were started. All in the
 // user's user.db, as IDs and switches only, never in the pool.
 
@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS pinned_threads (
   pinned_at TEXT NOT NULL,
   PRIMARY KEY (pool, thread)
 );
--- A project's settings: paused, the model (JSON ModelRef or list) and thinking its new threads start with, and whether she watches its threads.
+-- A project's settings: paused, the model (JSON ModelRef or list), thinking and Fallback (null: the project chat's) its new threads start with, and whether she watches its threads.
 CREATE TABLE IF NOT EXISTS project_settings (
   pool     TEXT NOT NULL,
   thread   TEXT NOT NULL,
@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS project_settings (
   model    TEXT,
   thinking TEXT,
   watch    INTEGER NOT NULL DEFAULT 1,
+  fallback INTEGER,
   PRIMARY KEY (pool, thread)
 );
 -- A suggested thread the user started: the suggest call (its tool call ID), which of its threads, and the thread made.
@@ -39,6 +40,8 @@ export interface ProjectSettings {
   /** The chat model new threads of the project start with; none: the project chat's. */
   model?: ModelRef | ModelRef[];
   thinking?: ThinkingLevel;
+  /** Fallback for its new threads; none: the project chat's. */
+  fallback?: boolean;
   /** The project chat looks at what the person and its threads said (watch.ts). On unless turned off. */
   watch: boolean;
 }
@@ -60,22 +63,26 @@ export class Projects {
 
   settings(userId: string, pool: Pool, project: string): ProjectSettings {
     const row = this.db(userId, (db) => db.prepare("SELECT * FROM project_settings WHERE pool = ? AND thread = ?").get(pool, project)) as
-      { paused: number; model: string | null; thinking: string | null; watch: number } | undefined;
+      { paused: number; model: string | null; thinking: string | null; watch: number; fallback: number | null } | undefined;
     return {
       paused: row?.paused === 1,
       watch: row?.watch !== 0,
       ...(row?.model ? { model: JSON.parse(row.model) as ModelRef | ModelRef[] } : {}),
       ...(row?.thinking ? { thinking: row.thinking as ThinkingLevel } : {}),
+      ...(row?.fallback === 0 || row?.fallback === 1 ? { fallback: row.fallback === 1 } : {}),
     };
   }
 
-  /** Changes some of a project's settings; `null` clears the model or thinking. */
-  set(userId: string, pool: Pool, project: string, change: { paused?: boolean; model?: ModelRef | ModelRef[] | null; thinking?: ThinkingLevel | null; watch?: boolean }): ProjectSettings {
+  /** Changes some of a project's settings; `null` clears the model, thinking or Fallback. */
+  set(userId: string, pool: Pool, project: string, change: { paused?: boolean; model?: ModelRef | ModelRef[] | null; thinking?: ThinkingLevel | null; fallback?: boolean | null; watch?: boolean }): ProjectSettings {
+    if (change.fallback !== undefined && change.fallback !== null && typeof change.fallback !== "boolean") throw new Error("fallback is true, false or null");
     const now = this.settings(userId, pool, project);
     const model = change.model === undefined ? now.model : change.model ?? undefined;
     const thinking = change.thinking === undefined ? now.thinking : change.thinking ?? undefined;
-    this.db(userId, (db) => db.prepare("INSERT OR REPLACE INTO project_settings (pool, thread, paused, model, thinking, watch) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(pool, project, (change.paused ?? now.paused) ? 1 : 0, model ? JSON.stringify(model) : null, thinking ?? null, (change.watch ?? now.watch) ? 1 : 0));
+    const fallback = change.fallback === undefined ? now.fallback : change.fallback ?? undefined;
+    this.db(userId, (db) => db.prepare("INSERT OR REPLACE INTO project_settings (pool, thread, paused, model, thinking, watch, fallback) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(pool, project, (change.paused ?? now.paused) ? 1 : 0, model ? JSON.stringify(model) : null, thinking ?? null, (change.watch ?? now.watch) ? 1 : 0,
+        fallback === undefined ? null : fallback ? 1 : 0));
     return this.settings(userId, pool, project);
   }
 
@@ -108,9 +115,10 @@ export class Projects {
     try {
       db.exec(SCHEMA);
       // Added after the table was: an older user.db gains the column, on.
-      if (!(db.prepare("PRAGMA table_info(project_settings)").all() as { name: string }[]).some((c) => c.name === "watch")) {
-        db.exec("ALTER TABLE project_settings ADD COLUMN watch INTEGER NOT NULL DEFAULT 1");
-      }
+      const columns = (db.prepare("PRAGMA table_info(project_settings)").all() as { name: string }[]).map((c) => c.name);
+      if (!columns.includes("watch")) db.exec("ALTER TABLE project_settings ADD COLUMN watch INTEGER NOT NULL DEFAULT 1");
+      // Null: the project chat's Fallback.
+      if (!columns.includes("fallback")) db.exec("ALTER TABLE project_settings ADD COLUMN fallback INTEGER");
       return fn(db);
     } finally {
       db.close();

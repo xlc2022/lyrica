@@ -341,6 +341,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       if (c.default !== undefined) s().models.setDefaultProfile(user.id, c.default);
       if (c.thinking !== undefined) s().models.setDefaultThinking(user.id, c.thinking);
       if (c.voiceCloud !== undefined) s().models.setDefaultVoiceCloud(user.id, c.voiceCloud);
+      if (c.fallback !== undefined) s().models.setDefaultFallback(user.id, c.fallback);
+      if (c.sleepFallback !== undefined) s().sleep.setFallback(user.id, c.sleepFallback);
       return profiles(d, user.id);
     }),
     route("PUT", `${u}/profiles/:profile/:task`, async (r) => {
@@ -502,7 +504,7 @@ export function apiRoutes(d: Lyricad): Route[] {
           s().projects.pin(user.id, pool, thread.id, true);
         }
         const project = !!store.getThread(thread.id)!.project;
-        const settings = change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined || change.watchThreads !== undefined;
+        const settings = change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined || change.threadsFallback !== undefined || change.watchThreads !== undefined;
         if ((change.goal !== undefined || change.instructions !== undefined || settings) && !project) {
           throw new HttpError(400, "only a project has a goal, instructions and project settings");
         }
@@ -520,6 +522,7 @@ export function apiRoutes(d: Lyricad): Route[] {
             ...(change.paused !== undefined ? { paused: !!change.paused } : {}),
             ...(change.threadsModel !== undefined ? { model: change.threadsModel } : {}),
             ...(change.threadsThinking !== undefined ? { thinking: change.threadsThinking } : {}),
+            ...(change.threadsFallback !== undefined ? { fallback: change.threadsFallback } : {}),
             ...(change.watchThreads !== undefined ? { watch: !!change.watchThreads } : {}),
           });
         }
@@ -1214,6 +1217,7 @@ function profiles(d: Lyricad, userId: string): Api.Profiles {
   return {
     local: m.profile(userId, "local"), cloud: m.profile(userId, "cloud"), custom: m.profile(userId, "custom"),
     default: m.defaultProfile(userId), thinking: m.defaultThinking(userId), voiceCloud: m.defaultVoiceCloud(userId),
+    fallback: m.defaultFallback(userId), sleepFallback: d.services!.sleep.fallback(userId),
   };
 }
 
@@ -1373,6 +1377,7 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
     ...(th.project ? { project: true as const, ...(th.goal ? { goal: th.goal } : {}), ...instructionsOf(store, th.id) } : {}),
     ...(settings ? { projectSettings: {
       pageId: `p:${projectSlug(th.id)}`, paused: settings.paused, watchThreads: settings.watch, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
+      ...(settings.fallback !== undefined ? { threadsFallback: settings.fallback } : {}),
     } } : {}),
     ...(mine ? { state: mine.state, ...(mine.anchor !== undefined ? { anchor: mine.anchor } : {}), ...(mine.needsYou ? { needsYou: true as const } : {}) } : {}),
   };
@@ -1501,6 +1506,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     network: workspace.network({ userId: user.id, pool, threadId }),
     grants: tw.grants, machines: tw.machines, mode: applies.mode, webSearch: applies.webSearch, images: applies.images, unlogged: isUnlogged, parent: tw.parent,
     voiceCloud: models.threadVoiceCloud(user.id, threadId), speech: speechState(models, ctx),
+    fallback: models.threadFallback(user.id, threadId), fallbackOn: ctx.fallback !== false,
     allowed: models.allowed(ctx).map(({ endpoint }) => endpointInfo(d, user.id, endpoint.id)),
   };
 }
@@ -1544,6 +1550,7 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
     && !(change.voiceCloud === null && models.threadVoiceCloud(user.id, parent) === null)) {
     throw new Error("the parent thread keeps Voice to cloud off, so this one does too");
   }
+  if (change.fallback !== undefined && change.fallback !== null && typeof change.fallback !== "boolean") throw new Error("fallback is true, false or null");
   // The workspace checks grants, hosts, mode, switches, machines and the parent's limits, and writes only if all pass.
   const wsChange = pick(change, ["grants", "internet", "services", "hosts", "mode", "webSearch", "images", "machines"]);
   if (Object.keys(wsChange).length) ws.setThread(thread.id, pool, wsChange);
@@ -1554,6 +1561,7 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
   for (const task of Object.keys(change.models ?? {})) models.setThreadModel(user.id, pool, thread.id, task as Api.ThreadTask, overrides[task as Api.ThreadTask]);
   if (change.unlogged !== undefined) owner(d, user, (o) => o[pool].setUnlogged(thread.id, !!change.unlogged));
   if (change.voiceCloud !== undefined) models.setThreadVoiceCloud(user.id, thread.id, change.voiceCloud);
+  if (change.fallback !== undefined) models.setThreadFallback(user.id, thread.id, change.fallback);
 }
 
 /** A signal that stops when the client goes away before the answer is sent. */

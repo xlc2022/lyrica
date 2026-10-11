@@ -518,6 +518,27 @@ test("linked users share a browser; logging in as anyone else signs this browser
   expect(state.users.map((x) => x.login)).toEqual(["sam"]);
 });
 
+test("Fallback is on by default and turns off per thread, with Use default to follow the default again", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  const drawer = await openSettings(page);
+  const fallback = drawer.getByLabel("Fallback", { exact: true });
+  await expect(fallback).toBeChecked();
+  await fallback.click();
+  await expect(fallback).not.toBeChecked();
+  const back = drawer.getByRole("button", { name: "Use default" });
+  if (process.env.SCREENSHOTS) {
+    await fallback.scrollIntoViewIfNeeded();
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.screenshot({ path: `${process.env.SCREENSHOTS}/fallback-off-${page.viewportSize()!.width}-${colorScheme}.png` });
+    }
+    await page.emulateMedia({ colorScheme: null });
+  }
+  await back.first().click();
+  await expect(fallback).toBeChecked();
+});
+
 test("dictation goes in at the caret, Read aloud plays her reply, and a speech server that is down disables both", async ({ page, baseURL, request }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");

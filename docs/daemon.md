@@ -216,8 +216,9 @@ Each active thread is one Pi session from `openThreadSession`, with
   project, and `PATCH` with `project: true` makes one of a top-level thread
   (no way back); either pins it. `PATCH` also sets `goal`, `instructions`
   (kept on the project page apart from sleep's text), `paused`,
-  `threadsModel` and `threadsThinking` (the model and thinking its new
-  threads start with), and `watchThreads` (on unless turned off; see
+  `threadsModel`, `threadsThinking` and `threadsFallback` (the model,
+  thinking and Fallback its new threads start with; each null follows the
+  project chat), and `watchThreads` (on unless turned off; see
   [delegation.md](delegation.md#child-threads)). `projectSettings.pageId` is the
   project page's memory ID, for the memory browser. Pausing or hiding stops its working threads; a
   message to a paused project's thread is `409`. **Start a thread** (`POST
@@ -356,6 +357,14 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
   `ThreadSettingsChange.voiceCloud`; the default is `Profiles.voiceCloud`.
   Under a parent with it off, a branch can only keep it off, or follow the
   default when the parent does too.
+- **Fallback.** `ThreadSettings.fallback` is the thread's switch (null
+  follows `Profiles.fallback`, on by default) and `fallbackOn` what applies;
+  `ThreadSettingsChange.fallback` changes it. Off, only the first model in
+  each of the thread's lists answers ([models.md](models.md#choosing-a-model)):
+  a message to a thread whose model is away waits, as under **No model
+  reachable**. A branch or subagent starts with its parent's.
+  `Profiles.sleepFallback` (`PATCH profiles`, `sleep.fallback` in `user.db`)
+  does the same for sleep's phases.
 - `ThreadSettings.answered` skips speech calls, so the context meter reads
   the chat call.
 
