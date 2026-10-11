@@ -194,7 +194,7 @@ describe("modes and switches", () => {
 
 const unreachable: MachineConfig = {
   name: "nas", kind: "ssh", host: "127.0.0.1", port: 1, username: "lyrica", privateKey: generateSshKey("test").privateKey, root: null,
-  hostKey: `SHA256:${"A".repeat(43)}`, pool: "general", limit: "ask", offNetwork: false, lastUsed: null,
+  hostKey: `SHA256:${"A".repeat(43)}`, pool: "general", limit: "ask", offNetwork: false, lastUsed: null, state: null,
 };
 
 describe("ssh machines", () => {

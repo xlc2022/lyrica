@@ -68,8 +68,10 @@ existed before became general machines at Ask.
 
 - **Kept in `user.db`** (`machines`): name, address, account, the private
   key, an optional root, the host key Li confirmed, the pool, the **mode
-  limit**, whether the address is off network, and when she last
-  connected. The key is generated in memory, stored only there, and handed to
+  limit**, whether the address is off network, when she last
+  connected, and how the last connection went (online, unreachable, or host
+  key changed) and since when. That state clears when the address or host key
+  changes. The key is generated in memory, stored only there, and handed to
   the SSH client in memory; she never sees it.
 - **One pool each.** A general thread grants general machines and a private
   thread private ones (`setThread` refuses the other pool, and every call
@@ -405,7 +407,9 @@ settings:
 - **Mode:** the parent's or stricter, in the order Plan, Ask, Accept edits,
   Auto.
 - **Switches:** each off if the parent's is off.
-- **Machines:** the parent's or a subset.
+- **Machines:** the parent's or a subset. Delegation gives none to a read-only,
+  offline or folder-narrowed subagent or child thread, or to a writer in a
+  worktree, since bash on a machine follows none of those narrowings.
 
 A subagent can never widen what its parent was given. `inheritSettings`
 copies the parent's settings, or the narrower ones it is given, and the
@@ -450,7 +454,8 @@ set again before every turn and when a plan is approved.
 `propose_plan({ plan })` shows the plan through the same path as an approval
 (`proposePlan`): the user picks Ask, Accept edits or Auto to go ahead in, or
 keeps planning. Approving switches the thread's mode (`setMode`), turns the
-tools back on, and she carries on with the plan in the same turn. A branch
+tools back on, and she carries on with the plan in the same turn. She is
+told which machines' limits still hold calls to a stricter mode. A branch
 of a thread in Plan mode stays in Plan mode, and she is told so. A subagent
 has no `propose_plan` and can't change its mode. Without `lyricad`, Pi's own
 UI asks; with no UI she keeps planning.

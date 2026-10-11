@@ -1115,6 +1115,7 @@ function machineInfo(m: MachineConfig): Api.MachineInfo {
   return {
     name: m.name, kind: m.kind, address: `${m.username}@${host}${m.port === 22 ? "" : `:${m.port}`}`, root: m.root, pool: m.pool, limit: m.limit,
     keyLine: authorizedKeysLine(publicKeyOf(m.privateKey)), hostKey: m.hostKey, offNetwork: m.offNetwork, lastUsed: m.lastUsed,
+    ...(m.state ? { state: m.state } : {}),
   };
 }
 
