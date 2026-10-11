@@ -581,10 +581,10 @@ form.drawer-body { flex: 1; }
 .resolved-row[aria-expanded="true"] .chev-ic { transform: rotate(90deg); }
 .resolved-row .num { font-size: 11px; }
 .threads .num, .picker-ep .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-/* The header: Threads popover and tokens; Settings is a link styled as the small button. */
+/* The header: Threads popover and tokens; Project is a link (docs/ux.md §3) before the Settings button. */
 .tfacts .tokens { white-space: nowrap; }
-.head-actions a.button { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 9px; font-size: 13px; border: 1px solid var(--edge); border-radius: 7px; background: var(--panel); color: var(--fg); text-decoration: none; }
-.head-actions a.button:hover { border-color: color-mix(in oklab, var(--fg) 25%, var(--line)); text-decoration: none; }
+.head-actions .project-link { font-size: 13px; padding: 0 6px; }
+.head-actions .project-link .ic { width: 15px; height: 15px; }
 .threads-pop .picker-ep { display: flex; gap: 6px; align-items: baseline; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; font-weight: 600; }
 .threads-pop .thread-item { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 8px; align-items: center; color: var(--fg); text-decoration: none; }
 .threads-pop .thread-item .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

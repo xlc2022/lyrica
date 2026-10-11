@@ -174,7 +174,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart }: { ctx: S
         {!s?.subagent && (
           <div className="head-actions">
             {/* A project chat keeps its drawer (folders, network, local-only, the other task models); the page holds the project's own settings. */}
-            {s?.project && <a className="sm button" href={href({ page: "project", userId, pool, threadId })} aria-label="Project settings"><Icon name="project" /><span className="long">Project</span></a>}
+            {s?.project && <a className="link project-link" href={href({ page: "project", userId, pool, threadId })} aria-label="Project settings"><Icon name="project" /><span className="long">Project</span></a>}
             <button type="button" className="sm" aria-label="Thread settings" aria-expanded={drawer} aria-controls="thread-settings" onClick={() => setDrawer(!drawer)}>
               <Icon name="gear" /><span className="long">Settings</span>
             </button>
