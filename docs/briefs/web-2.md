@@ -199,6 +199,14 @@ For each part:
 - 2026-10-11, PR 8 (files in the conversation, Li's ask): `web/src/paths.tsx`;
   a `/workspace` path in a message links to `…/files/<encoded path>`, which
   shows the file; her images from the thread folder show in the message and
-  open large (docs/web.md "Chat", docs/ux.md §6); her prompt says so. Next:
-  Notifications, Pin in the remaining places, the Models page (carry the
-  Fallback default), the Sleep section; Web: bootstrap on Li's go.
+  open large (docs/web.md "Chat", docs/ux.md §6); her prompt says so.
+- 2026-10-11, PR 9 (thumbnails, Li's pick): `ThreadFiles.thumb` runs
+  ImageMagick inside the sandbox and keeps the copy under `.lyrica/thumbs`,
+  gone with the image on delete or rename (Li's rule); `GET …/files/thumb`
+  (docs/daemon.md "Files"); the Images grid and inline images use it and
+  fall back to the image itself; `imagemagick` joins the NixOS sandbox tools
+  and the Debian install. Not done: a grant-less sandbox for the thumbnail
+  run (PR review's suggestion; `ThreadFiles` gets the thread's box) and a
+  replaced-by-older image, which `-nt` misses. Next: Notifications, Pin in the remaining places,
+  the Models page (carry the Fallback default), the Sleep section; Web:
+  bootstrap on Li's go.

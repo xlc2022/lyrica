@@ -1006,6 +1006,10 @@ export interface ImageEntry extends FileEntry { source: "uploaded" | "made" }
  * GET …/files/content?path=<path>[&download=1] → the file's bytes, with its type
  * (images by their bytes; HTML, SVG and scripts as plain text, never run) and
  * `Content-Disposition` inline, or attachment with `download`.
+ * GET …/files/thumb?path=<path> → a copy of an image in the thread's folder at most 320 px on a side (PNG, or JPEG
+ * for a JPEG), made by ImageMagick in the sandbox (decoded as what its name says, within memory, size and time
+ * limits) and kept under `.lyrica/thumbs` until the image changes or goes; 404 for a grant's file, a name that is
+ * not an image's, or a server without ImageMagick, when the panel shows the file itself.
  * POST …/files/upload?dir=<path>&name=<file> with the bytes → UploadResponse: saved under a free name in that folder.
  * POST …/files/folder { path } → Ok. POST …/files/rename { from, to } → Ok (a taken `to` is refused).
  * POST …/files/delete { paths } → Ok, for good. POST …/files/zip { paths } → application/zip, built as it streams.

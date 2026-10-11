@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { get, post, threadPath, upload, type FileEntry, type FileListing, type FileRoot, type FileSearch, type ImageEntry, type Pool, type ThreadSummary } from "./api.ts";
 import { ask, ATTACH_EVENT, ATTACH_KEY, keep, SHOW_EVENT, SHOW_KEY, type AttachRequest, type ShowRequest } from "./links.ts";
-import { Lightbox, shown, WORKDIR } from "./paths.tsx";
+import { Lightbox, shown, Thumb, useFileLinks, WORKDIR, type FileLinks } from "./paths.tsx";
 import { Icon } from "./icons.tsx";
 import { go } from "./route.ts";
 import { Crumbs, Main, PanelButtons, type ShellContext } from "./Shell.tsx";
@@ -38,6 +38,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   const userId = ctx.user.id;
   const thread = threadPath(userId, pool, threadId);
   const base = `${thread}/files`;
+  const links = useFileLinks(userId, pool, threadId);
   const title = threads.find((t) => t.pool === pool && t.id === threadId)?.title || "New thread";
   const [tab, setTab] = useState<Tab>("files");
   const [error, setError] = useState("");
@@ -299,7 +300,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
           </div>
         </>
       ) : (
-        <ImagesTab images={images} filter={filter} onFilter={setFilter} url={contentUrl} sel={sel} onPick={pick} press={(e) => press({ kind: "file", entry: e })}
+        <ImagesTab images={images} filter={filter} onFilter={setFilter} url={contentUrl} links={links} sel={sel} onPick={pick} press={(e) => press({ kind: "file", entry: e })}
           onMenu={(e, entry) => openMenu(e, { kind: "file", entry })} />
       )}
       {sel.size > 0 && (
@@ -355,8 +356,8 @@ function FileView({ entry, url, onBack, onMenu, onDownload }: { entry: FileEntry
 }
 
 /** The thread's images, filtered, each opening large. */
-function ImagesTab({ images, filter, onFilter, url, sel, onPick, press, onMenu }: {
-  images?: ImageEntry[]; filter: Filter; onFilter: (f: Filter) => void; url: (p: string) => string; sel: Set<string>;
+function ImagesTab({ images, filter, onFilter, url, links, sel, onPick, press, onMenu }: {
+  images?: ImageEntry[]; filter: Filter; onFilter: (f: Filter) => void; url: (p: string) => string; links: FileLinks; sel: Set<string>;
   onPick: (e: React.MouseEvent, entry: FileEntry) => boolean; press: (entry: FileEntry) => Record<string, unknown>; onMenu: (e: React.MouseEvent, entry: FileEntry) => void;
 }) {
   const [large, setLarge] = useState<ImageEntry>();
@@ -374,7 +375,7 @@ function ImagesTab({ images, filter, onFilter, url, sel, onPick, press, onMenu }
         {!images ? <p className="empty">Loading…</p> : !shownImages?.length ? <p className="empty">No images yet</p> : shownImages.map((i) => (
           <button key={i.path} type="button" aria-label={i.name} className={sel.has(i.path) ? "sel" : undefined} aria-pressed={sel.has(i.path) || undefined}
             onClick={(e) => { if (!onPick(e, i)) setLarge(i); }} {...press(i)}>
-            <img src={url(i.path)} alt="" loading="lazy" /><span className="meta mono">{i.name}</span>
+            <Thumb path={i.path} alt="" files={links} /><span className="meta mono">{i.name}</span>
           </button>
         ))}
       </div>

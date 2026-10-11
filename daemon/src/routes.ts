@@ -763,6 +763,16 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("GET", `${t}/files/search`, (r): Promise<Api.FileSearch> => refused(() => files(r).search(r.query.get("root") || WORKDIR, r.query.get("q") ?? ""))),
     route("GET", `${t}/files/images`, (r): Promise<Api.ImageEntry[]> => refused(() => files(r).images())),
+    route("GET", `${t}/files/thumb`, async (r) => {
+      const thumb = await refused(() => files(r).thumb(r.query.get("path") ?? ""));
+      if (!thumb) throw new HttpError(404, "no thumbnail; show the image itself");
+      r.res.writeHead(200, {
+        "content-type": thumb.type, "content-length": String(thumb.bytes.length), "cache-control": "private, max-age=60",
+        "content-security-policy": "default-src 'none'; sandbox", "x-content-type-options": "nosniff",
+      });
+      r.res.end(thumb.bytes);
+      return undefined;
+    }),
     route("GET", `${t}/files/content`, async (r) => {
       const path = r.query.get("path") ?? "";
       const { stream, size, type } = await refused(() => files(r).read(path));

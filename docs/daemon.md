@@ -348,6 +348,17 @@ documented in `daemon/src/api.ts`, "The Files panel".
   as `text/plain`. Every answer carries `Content-Security-Policy: default-src
   'none'; sandbox` and `nosniff`, so a served file never runs as a page.
   `download` makes it an attachment.
+- `GET …/files/thumb?path=<path>` serves a copy of an image in the thread's
+  folder at most 320 px on a side (PNG, or JPEG for a JPEG), made by
+  ImageMagick (`magick`, or `convert` on ImageMagick 6) inside the sandbox
+  and kept under `.lyrica/thumbs` mirroring the image's path, remade when
+  the image is newer; a delete or rename takes the copies under its path
+  along. Only a file named `.png`, `.jpg`, `.jpeg`, `.gif` or `.webp`, decoded
+  as that format and nothing else (so a renamed MVG or SVG fails instead of
+  running), under ImageMagick's memory, area and size limits and a 20 s
+  timeout. For a grant's file, or on a
+  host without ImageMagick (it is in the Debian install and the NixOS sandbox
+  tools), 404: the panel shows the image itself.
 - `POST …/files/upload?dir&name` (the bytes), `POST …/files/folder { path }`,
   `POST …/files/rename { from, to }`, `POST …/files/delete { paths }` change
   the thread's folder and read-write grants. A read-only grant, a root itself,

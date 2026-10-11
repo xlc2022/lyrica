@@ -28,8 +28,10 @@ export interface FileListing { entries: FileEntry[]; /** The listing stopped at 
 /** An image in the thread's folder: uploaded by the person, or made by her. */
 export interface ImageEntry extends FileEntry { source: "uploaded" | "made" }
 
-/** What the panel's thumbnail cache would live under; never listed or searched. */
+/** The panel's own folder in the thread's: its thumbnails live under `.lyrica/thumbs`; never listed or searched. */
 export const PANEL_DIR = ".lyrica";
+export const THUMB_BOX = 320;
+const THUMB_TIMEOUT_MS = 20_000;
 export const LIST_LIMIT = 2000;
 export const SEARCH_LIMIT = 200;
 export const ZIP_FILES_LIMIT = 10_000;
@@ -44,8 +46,8 @@ export class FilesRefused extends Error {}
 
 /** The panel's operations for one thread, each a fresh sandbox run. */
 export class ThreadFiles {
-  /** `note` records what the panel added or removed, for her next turn. */
-  constructor(private readonly box: Sandbox, private readonly grants: Grant[], private readonly note: (kind: "added" | "removed", names: string[]) => void = () => {}) {}
+  /** `note` records what the panel added or removed, for her next turn. `workdir` is the thread's folder (a test's stand-in may put it elsewhere). */
+  constructor(private readonly box: Sandbox, private readonly grants: Grant[], private readonly note: (kind: "added" | "removed", names: string[]) => void = () => {}, private readonly workdir = WORKDIR) {}
 
   roots(): FileRoot[] {
     return [{ path: WORKDIR, writable: true, kind: "thread" }, ...this.grants.map((g) => ({ path: g.path, writable: g.writable, kind: "grant" as const }))];
@@ -107,6 +109,47 @@ export class ThreadFiles {
   }
 
   /**
+   * A small copy of an image in the thread's folder, at most THUMB_BOX on a
+   * side, made by ImageMagick inside the sandbox and kept under
+   * `.lyrica/thumbs/<its path>.png` (or `.jpg` for a JPEG) until the image
+   * is newer; a deleted or renamed image takes its copy with it. Only a
+   * file named like an image, decoded as what its name says (a `.png`
+   * holding something else fails rather than runs), within memory, size
+   * and time limits. Without ImageMagick, for a file outside the thread's
+   * folder, or for a name that is not an image's, `undefined`: the panel
+   * shows the file itself.
+   */
+  async thumb(path: string): Promise<{ bytes: Buffer; type: string } | undefined> {
+    const p = this.allow(path, false);
+    const cache = this.thumbPath(p);
+    const ext = posix.extname(p).slice(1).toLowerCase();
+    if (!cache || !IMAGE_EXTENSIONS.includes(ext)) return undefined;
+    const jpeg = ext === "jpg" || ext === "jpeg";
+    const coder = jpeg ? "jpeg" : ext;
+    // ImageMagick 7 answers to `magick`; 6, Debian's, to `convert`. The limits bound a decompression bomb.
+    const script = 'src=$1; c=$2; test -f "$src" || { echo "$src is not a file" >&2; exit 1; }; ' +
+      'if command -v magick >/dev/null; then im=magick; elif command -v convert >/dev/null; then im=convert; else exit 3; fi; ' +
+      'if [ ! "$c" -nt "$src" ]; then mkdir -p -- "$(dirname -- "$c")" && ' +
+      '"$im" -limit memory 256MiB -limit map 512MiB -limit area 64MP -limit disk 1GiB -limit width 16KP -limit height 16KP ' +
+      '"$3:$src[0]" -auto-orient -thumbnail "$4" -strip "$c" || { rm -f -- "$c"; exit 1; }; fi; cat -- "$c"';
+    const r = await this.box.run(["sh", "-c", script, "sh", p, `${cache}${jpeg ? ".jpg" : ".png"}`, coder, `${THUMB_BOX}x${THUMB_BOX}>`], { timeoutMs: THUMB_TIMEOUT_MS });
+    if (r.code === 3) return undefined;
+    if (r.code !== 0) throw new Error(r.stderr.toString().trim() || (r.signal ? "the thumbnail took too long" : "could not make the thumbnail"));
+    return { bytes: r.stdout, type: jpeg ? "image/jpeg" : "image/png" };
+  }
+
+  /** Where a file's thumbnail is kept, without its extension; nothing for a path outside the thread's folder. */
+  private thumbPath(p: string): string | undefined {
+    const base = `${this.workdir}/`;
+    return p.startsWith(base) && !p.startsWith(`${base}${PANEL_DIR}/`) ? posix.join(this.workdir, PANEL_DIR, "thumbs", p.slice(base.length)) : undefined;
+  }
+
+  /** The thumbnails of files under `paths` (a file's own, or everything under a folder), to go with them. */
+  private thumbsOf(paths: string[]): string[] {
+    return paths.flatMap((p) => { const t = this.thumbPath(p); return t ? [t, `${t}.png`, `${t}.jpg`] : []; });
+  }
+
+  /**
    * Saves `bytes` as `name` in `dir`, cleaned, under a free name (a taken one
    * gets a suffix, never overwritten). Returns the path she sees.
    */
@@ -133,7 +176,7 @@ export class ThreadFiles {
   async rename(from: string, to: string): Promise<void> {
     const f = this.inside(from);
     const t = this.inside(to);
-    await this.file(["sh", "-c", 'if [ -e "$2" ] || [ -L "$2" ]; then echo "$2 is already there" >&2; exit 1; fi; mv -T -- "$1" "$2"', "sh", f, t]);
+    await this.file(["sh", "-c", 'if [ -e "$2" ] || [ -L "$2" ]; then echo "$2 is already there" >&2; exit 1; fi; mv -T -- "$1" "$2" && shift 2 && rm -rf -- "$@"', "sh", f, t, ...this.thumbsOf([f])]);
     this.note("removed", [f]);
     this.note("added", [t]);
   }
@@ -142,7 +185,7 @@ export class ThreadFiles {
   async remove(paths: string[]): Promise<void> {
     if (!paths.length) return;
     const ps = paths.map((p) => this.inside(p));
-    await this.file(["rm", "-rf", "--", ...ps]);
+    await this.file(["rm", "-rf", "--", ...ps, ...this.thumbsOf(ps)]);
     this.note("removed", ps);
   }
 

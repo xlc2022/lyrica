@@ -102,7 +102,7 @@ its normal user, with `LYRICA_SANDBOX_TESTS=require` so they can't be skipped. I
 session, create a user and run them as that user from a copy of the checkout:
 
 ```sh
-apt-get install -y bubblewrap gocryptfs fuse3 openssh-server passt nftables
+apt-get install -y bubblewrap gocryptfs fuse3 openssh-server passt nftables imagemagick
 chmod 666 /dev/fuse /dev/net/tun   # some containers ship them 0600
 useradd -m lyricatest
 rsync -a --exclude .git ./ /home/lyricatest/lyrica/ && chown -R lyricatest: /home/lyricatest/lyrica
