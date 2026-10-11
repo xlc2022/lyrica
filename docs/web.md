@@ -40,7 +40,9 @@ a single file. The old `…/panel` opens Settings.
   for half a second on a touch screen. Mark as unread or read (U), Rename…
   (R, inline), Move to group (M: the groups, Not in a group, New group… N),
   Hide or Unhide (H), and Delete… (D), which confirms in a dialog and offers
-  to delete child threads too. Escape closes it. Groups and unread marks are
+  to delete child threads too. From the keyboard, Shift+F10 or the Menu key
+  on a focused thread opens it under the row; the arrows move between items
+  and Escape closes it. The user menu works the same way. Groups and unread marks are
   the user's own (`thread_groups`, `thread_prefs` in `user.db`); opening a
   thread clears its unread mark.
 - **Hidden pools:** with Show general or Show private off, a thread or
@@ -66,7 +68,9 @@ a single file. The old `…/panel` opens Settings.
   restore, archive and delete; forgetting selected results as a topic; and
   adding a note or page, linked or free. Mention tokens show as current names;
   the editor shows them as `[[Name]]` or `[[Name:obj]]` and saves them back as
-  tokens.
+  tokens. A thread mention (`[t:<id>]`, `[e:<id>#<n>]`) in a memory's text or
+  history shows as a link with the thread's current title, as in her
+  messages.
 - **Settings** (`src/Panel.tsx`): a page with its sections listed at the
   left (a scrolling row on a phone): Profile (name, pronouns, accent colour,
   monogram), Appearance (theme), Unlock and lock (saved credentials, stay
@@ -122,6 +126,10 @@ a single file. The old `…/panel` opens Settings.
 - Her messages are prose, rendered with `react-markdown`. Raw HTML is
   skipped, links open in a new tab, and images are never loaded: they show
   as a link with their alt text.
+- A thread she mentions (`[t:<id>]`, `[e:<id>#<n>]`) shows as its current
+  title, linked to the thread in the same tab; "a forgotten thread" once it's
+  gone. Titles are fetched per thread and kept for 30 seconds, so a rename
+  shows on the next look. This covers her prose and the notice cards.
   The user's sit in a tinted block.
 - Thinking, recalls, saved notes and tool calls are one-line markers that
   expand when tapped. An expanded tool call stays open when the turn ends
@@ -257,7 +265,9 @@ a single file. The old `…/panel` opens Settings.
 `@fontsource` packages (their licence ships as `OFL.txt`); type sizes 22,
 15, 14, 13, 12 and 11; three button looks (primary, secondary, link) plus
 icon buttons; one 16 px line icon set in `src/icons.tsx`, never a text
-glyph; labels are nouns and hints are tooltips. The accent is the user's
+glyph; labels are nouns and hints are tooltips. Controls (buttons, fields,
+the message box) have a 3:1 boundary (`--edge`); separators and cards use
+the lighter `--line`. Text colours meet 4.5:1 in both themes. The accent is the user's
 (`--user-accent`), lightened in dark mode; cloud, local and private keep
 fixed colours. The theme follows the device unless the user overrides it.
 

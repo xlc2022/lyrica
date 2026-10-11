@@ -5,7 +5,9 @@ import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
 import { fakeSpeech, wav } from "../../core/test/fake-speech.ts";
 import type { CallInfo, EndpointInfo, MessagePage, Profiles, Speech, ThreadSettings, ThreadSummary, Transcription } from "../src/api.ts";
-import { languageOf, sentences, speakable } from "../src/speech.ts";
+import { Memory, Users } from "@lyrica/core";
+import { freshKeyring, profile } from "../../core/test/helpers.ts";
+import { languageOf, messageText, sentences, speakable, titlesIn } from "../src/speech.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 const VOICES = [{ id: "af_heart", language: "en" }, { id: "zf_xiaobei", language: "zh" }];
@@ -71,6 +73,24 @@ describe("making text speakable", () => {
     expect(sentences("One. Two and", false)).toEqual(["One."]);
     expect(speakable("Look:\n```\nconst x = 1;")).toBe("Look:");
     expect(sentences(`${"word ".repeat(150)}end.`).every((s) => s.length <= 400)).toBe(true);
+  });
+});
+
+describe("thread mentions read aloud", () => {
+  it("read as the thread's current title, and a general message never names a private thread", async () => {
+    const keyring = await freshKeyring();
+    const users = new Users(keyring);
+    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    await users.authenticate("li", "pw");
+    const o = new Memory(keyring, users).openOwnerView(li.id);
+    const g = o.general.createThread({ interface: "web", title: "Garden" });
+    const p = o.private.createThread({ interface: "web", title: "Doctor" });
+    const said = (text: string) => [{ type: "text" as const, text }];
+    o.general.setTitle(g.id, "Spring garden");
+    expect(messageText(said(`See [t:${g.id}] and [e:${g.id}#2].`), titlesIn(o, "general"))).toBe("See Spring garden and Spring garden.");
+    expect(messageText(said(`See [private/t:${p.id}] and [t:${p.id}].`), titlesIn(o, "general"))).toBe("See a forgotten thread and a forgotten thread.");
+    expect(messageText(said(`See [t:${p.id}] and [general/t:${g.id}].`), titlesIn(o, "private"))).toBe("See Doctor and Spring garden.");
+    o.close();
   });
 });
 

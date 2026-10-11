@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { get, post, threadPath, type GoAhead, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type SendResponse, type Speech, type ThreadRef } from "./api.ts";
 import type { LiveItem } from "./live.ts";
+import { useThreadMentions } from "./mentions.ts";
 import { GoAheadMenu } from "./Modes.tsx";
 import { href, idHref } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
@@ -139,7 +140,7 @@ function Parts({ parts, env, model, streaming, n }: { parts: MessagePart[]; env:
     out.push(
       <div key={`p${key}`} className="msg her">
         <div className="body prose">
-          <Prose text={prose.join("")} />
+          <HerProse text={prose.join("")} env={env} />
           {streaming && last && <span className="caret-blink" aria-hidden="true" />}
         </div>
       </div>,
@@ -152,7 +153,7 @@ function Parts({ parts, env, model, streaming, n }: { parts: MessagePart[]; env:
     out.push(<Marker key={i} part={p} env={env} />);
   });
   flush(parts.length, true);
-  if (streaming && parts.at(-1)?.type !== "text") out.push(<span key="caret" className="caret alone" aria-hidden="true" />);
+  if (streaming && parts.at(-1)?.type !== "text") out.push(<span key="caret" className="caret-blink alone" aria-hidden="true" />);
   // In a subagent's thread, the replies are the subagent's own work.
   const who = env.subagent ? "Subagent" : "Lyrica";
   return (
@@ -329,9 +330,14 @@ function Notice({ text, status, threads, env }: { text: string; status?: string;
   return (
     <div className="subagent delivered" data-status={status}>
       <div className="sub-head"><b>{NOTICE_HEADS[status ?? ""] ?? "Subagent result"}</b><ThreadLinks threads={threads} env={env} /></div>
-      <div className="prose"><Prose text={text} /></div>
+      <div className="prose"><HerProse text={text} env={env} /></div>
     </div>
   );
+}
+
+/** Her text, with each thread she mentions shown by its current title. */
+function HerProse({ text, env }: { text: string; env: Pick<Env, "userId" | "pool"> }) {
+  return <Prose text={useThreadMentions(text, env.userId, env.pool)} />;
 }
 
 /**

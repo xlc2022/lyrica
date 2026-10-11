@@ -381,12 +381,16 @@ test("an uploaded file's path goes into the message", async ({ page, baseURL }) 
 
 test("a memory can be added, edited and restored", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
+  // A thread mention in a memory shows as a link to that thread.
+  await newThread(page, "General");
+  const threadId = decodeURIComponent(page.url().split("/t/general/")[1]!);
   await page.goto(`/#/u/${userId}/memory`);
   await page.getByRole("button", { name: "Add a memory" }).click();
-  await page.getByLabel("Text").fill("The backup job on node 2 runs at night.");
+  await page.getByLabel("Text").fill(`The backup job on node 2 runs at night, see [t:${threadId}].`);
   await page.getByRole("button", { name: "Add", exact: true }).click();
   const article = page.locator("article.memory-item");
   await expect(article).toContainText("runs at night");
+  await expect(article.locator(".prose a").first()).toHaveAttribute("href", new RegExp(encodeURIComponent(threadId).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 
   await article.getByRole("button", { name: "Edit" }).click();
   await article.getByLabel("Text").fill("The backup job on node 2 runs at noon.");
@@ -651,6 +655,15 @@ test("the thread menu renames, marks unread, groups, hides and deletes; the Sort
   await page.getByRole("button", { name: "Rename" }).click();
   const renamed = page.locator(".threads").getByRole("link", { name: /^Managed thread/ });
   await expect(renamed).toBeVisible();
+
+  // From the keyboard: Shift+F10 opens the menu under the row, the arrows move, Escape closes.
+  await renamed.focus();
+  await page.keyboard.press("Shift+F10");
+  await expect(page.getByRole("menu", { name: /Managed thread/ })).toBeVisible();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("menuitem", { name: "Rename…" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu", { name: /Managed thread/ })).toHaveCount(0);
 
   await renamed.click({ button: "right" });
   await page.keyboard.press("u");

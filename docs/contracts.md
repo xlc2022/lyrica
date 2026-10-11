@@ -125,7 +125,14 @@ interface Profile {
 toStored(text: string, speaker: UserId): string              // {user}, {user:obj}… → [[u:ID]], [[u:ID:obj]]…
 render(text: string, profiles: (id) => Profile | undefined): string   // tokens → current names and pronouns
 queryTokens(query: string, profiles: Map<UserId, Profile>): …  // see below
+THREAD_MENTION                                                // [t:<id>], [e:<id>#<n>], [general/t:<id>]
+renderThreadMentions(text, titleOf: (id, pool?) => string | undefined): string   // each mention → current title, or "a forgotten thread"
 ```
+
+- **Thread mentions** stay IDs in everything stored; only display swaps in
+  the title. The web shows the title as a link; text with no link (Read aloud) goes
+  through `renderThreadMentions`. A mention in a general thread never
+  resolves a private thread.
 
 - Every write of a note or page goes through `toStored`, and every read path
   goes through `render`. See [memory.md](memory.md#names-and-pronouns).
@@ -515,8 +522,10 @@ One model-facing tool: `delegate({ action?, ... })`.
 - **Child threads** (`createThreadsExtension(thread, host?: ThreadsHost, meter?)`,
   never in a subagent's thread): one model-facing tool, `threads({ action,
   ... })`: `start` (`title`, `task`, optional narrower `folders`,
-  `readOnly`, `internet`), `message` (to a child, or `to: "parent"` from a
-  child), and `list` (`ChildInfo` with `ChildStatus`). A child thread is
+  `readOnly`, `internet`), `message` (to a child, by ID or current title
+  (`pickThread`; a title two threads share is refused), or `to: "parent"`
+  from a child), and `list` (`ChildInfo` with `ChildStatus`). Its results
+  and guidance mention threads as `[t:<id>]`. A child thread is
   `createThread({ parent, child: true })`, hosted like any thread, with the
   parent's pool, models (`models.inheritContext`) and workspace
   (`inheritSettings`), which can only narrow. `ThreadsLimits`

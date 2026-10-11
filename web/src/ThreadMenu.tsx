@@ -4,7 +4,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { del, patch, post, threadPath, u, type ThreadGroup, type ThreadSummary } from "./api.ts";
 import { go, type Route } from "./route.ts";
-import { ConfirmDialog, ErrorText } from "./ui.tsx";
+import { ConfirmDialog, ErrorText, menuArrows } from "./ui.tsx";
 
 export interface MenuAt { x: number; y: number; thread: ThreadSummary }
 
@@ -14,7 +14,12 @@ export function useThreadMenu() {
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const held = useRef(false);
   const handlers = (thread: ThreadSummary) => ({
-    onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); setAt({ x: e.clientX, y: e.clientY, thread }); },
+    onContextMenu: (e: React.MouseEvent) => {
+      e.preventDefault();
+      // From the keyboard (Shift+F10, the Menu key) there is no pointer: open under the row.
+      const r = e.clientX === 0 && e.clientY === 0 ? e.currentTarget.getBoundingClientRect() : null;
+      setAt({ x: r ? r.left + 24 : e.clientX, y: r ? r.bottom : e.clientY, thread });
+    },
     onPointerDown: (e: React.PointerEvent) => {
       if (e.pointerType === "mouse") return;
       held.current = false;
@@ -68,6 +73,7 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onCl
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.preventDefault(); if (sub) setSub(""); else onClose(); return; }
       if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (menuArrows(e, ref.current)) return;
       const btn = ref.current?.querySelector<HTMLButtonElement>(`button[data-key="${e.key.toUpperCase()}"]`);
       if (btn) { e.preventDefault(); btn.click(); }
     };

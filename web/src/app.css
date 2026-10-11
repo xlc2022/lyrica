@@ -5,7 +5,7 @@
 :root {
   --user-accent: #1f6f78;
   --bg: #f7f8f8; --panel: #ffffff; --side: #f0f2f2; --fg: #1d2626; --muted: #5d6969;
-  --line: #dfe5e5; --tool: #f3f5f5; --danger: #a8322d; --ok: #26704a; --warn: #9a6a0a; --info: #2b6cb0;
+  --line: #dfe5e5; --edge: #889494; --tool: #f3f5f5; --danger: #a8322d; --ok: #26704a; --warn: #9a6a0a; --info: #2b6cb0;
   --accent: var(--user-accent); --accent-fg: #ffffff;
   --cloud: #9a5b12; --local: #26704a; --private: #6b3fa0;
   --user-block: color-mix(in oklab, var(--accent) 9%, var(--panel));
@@ -17,7 +17,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #141818; --panel: #1a1f1f; --side: #171c1c; --fg: #e3eaea; --muted: #9aa8a8;
-    --line: #2a3333; --tool: #1e2424; --danger: #f08a80; --ok: #7fc79a; --warn: #e3b45b; --info: #7fb3f0;
+    --line: #2a3333; --edge: #607070; --tool: #1e2424; --danger: #f08a80; --ok: #7fc79a; --warn: #e3b45b; --info: #7fb3f0;
     --accent: color-mix(in oklab, var(--user-accent) 55%, white); --accent-fg: #0f1414;
     --cloud: #e3a95b; --local: #7fc79a; --private: #b896e8;
     color-scheme: dark;
@@ -25,13 +25,14 @@
 }
 :root[data-theme="dark"] {
   --bg: #141818; --panel: #1a1f1f; --side: #171c1c; --fg: #e3eaea; --muted: #9aa8a8;
-  --line: #2a3333; --tool: #1e2424; --danger: #f08a80; --ok: #7fc79a; --warn: #e3b45b; --info: #7fb3f0;
+  --line: #2a3333; --edge: #607070; --tool: #1e2424; --danger: #f08a80; --ok: #7fc79a; --warn: #e3b45b; --info: #7fb3f0;
   --accent: color-mix(in oklab, var(--user-accent) 55%, white); --accent-fg: #0f1414;
   --cloud: #e3a95b; --local: #7fc79a; --private: #b896e8;
   color-scheme: dark;
 }
 @media (pointer: coarse) { :root { --tap: 44px; } }
 
+/* Controls (buttons, fields, the message box) take --edge, a 3:1 boundary (WCAG 1.4.11); --line is for separators and cards. */
 /* ---- Type: 22 (page title), 15 (chat), 14 (body, rows), 13 (meta, tables, small buttons), 12 (captions), 11 (eyebrows). Nothing smaller. ---- */
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
@@ -61,7 +62,7 @@ fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 /* ---- Actions: three looks and no more. Primary (filled accent), secondary (a border, the default), link (accent text).
    Nothing pressable is plain grey text. ---- */
 button, input, select, textarea { font: inherit; color: inherit; }
-button { min-height: var(--tap); padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+button { min-height: var(--tap); padding: 0 12px; border: 1px solid var(--edge); border-radius: 8px; background: var(--panel); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
 button:hover:not(:disabled) { border-color: color-mix(in oklab, var(--fg) 25%, var(--line)); }
 button:disabled { opacity: 0.5; cursor: default; }
 button.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; font-weight: 600; }
@@ -76,12 +77,12 @@ button.danger.solid, button.danger.primary { background: var(--danger); color: #
 button .ic, a .ic { flex: none; }
 .ic { width: 16px; height: 16px; flex: none; }
 .caret { color: var(--muted); font-size: 10px; }
-input, select, textarea { min-height: var(--tap); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; max-width: 100%; min-width: 0; }
+input, select, textarea { min-height: var(--tap); background: var(--bg); border: 1px solid var(--edge); border-radius: 8px; padding: 6px 10px; max-width: 100%; min-width: 0; }
 input[type="checkbox"], input[type="radio"] { min-height: 0; accent-color: var(--accent); width: 18px; height: 18px; margin: 0; }
 input[type="color"] { padding: 2px; width: 64px; }
 input[type="number"], input[type="time"] { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 textarea { resize: vertical; }
-.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.seg { display: inline-flex; border: 1px solid var(--edge); border-radius: 8px; overflow: hidden; background: var(--panel); }
 .seg button { border: 0; border-radius: 0; min-height: 32px; font-size: 13px; }
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button[aria-pressed="true"] { background: var(--tool); font-weight: 600; }
@@ -314,6 +315,7 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
 .prose table { border-collapse: collapse; display: block; overflow-x: auto; font-size: 13px; }
 .prose th, .prose td { border: 1px solid var(--line); padding: 4px 8px; }
 .prose img { max-width: 100%; }
+.caret-blink.alone { margin-left: 0; }
 .caret-blink { display: inline-block; width: 0.5em; height: 1em; background: var(--accent); vertical-align: -0.15em; margin-left: 2px; animation: pulse 1s steps(2) infinite; }
 .thinking-dots { color: var(--muted); margin: 0; font-size: 13px; }
 .marker { font-size: 13px; color: var(--muted); min-width: 0; }
@@ -347,7 +349,7 @@ main > .head, .composer, .subnote, .offline { flex: none; }
 .composer-wrap { display: grid; gap: 2px; width: 100%; max-width: 76ch; }
 .composer[data-dragging="true"] { outline: 2px dashed var(--accent); outline-offset: -6px; }
 /* The box holds the text and Send; the quiet row under it holds "+" and the mode. Nothing in either has a border but the box. */
-.composer-box { position: relative; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); padding: 5px 44px 5px 10px; }
+.composer-box { position: relative; border: 1px solid var(--edge); border-radius: 14px; background: var(--bg); padding: 5px 44px 5px 10px; }
 .composer-box:focus-within { border-color: var(--accent); }
 .composer-box textarea { display: block; width: 100%; border: 0; background: none; resize: none; min-height: 32px; max-height: 40vh; padding: 5px 4px; font: 15px/1.45 var(--ui); }
 .composer-box textarea:focus-visible { outline: none; }

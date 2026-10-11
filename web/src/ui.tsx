@@ -45,6 +45,18 @@ export function useDismiss(ref: React.RefObject<HTMLElement | null>, open: boole
   }, [ref, open, close]);
 }
 
+/** Arrow keys move between a menu's items (WCAG 2.1.1); Home and End jump to the ends. Returns whether the key was taken. */
+export function menuArrows(e: KeyboardEvent, menu: HTMLElement | null): boolean {
+  if (!menu || !["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return false;
+  const items = [...menu.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])')];
+  if (!items.length) return false;
+  const at = items.indexOf(document.activeElement as HTMLElement);
+  const next = e.key === "Home" ? 0 : e.key === "End" ? items.length - 1 : e.key === "ArrowDown" ? (at + 1) % items.length : (at - 1 + items.length) % items.length;
+  e.preventDefault();
+  items[next]!.focus();
+  return true;
+}
+
 export function ErrorText({ error }: { error?: string }) {
   return error ? <p className="error" role="alert">{error}</p> : null;
 }
@@ -89,9 +101,9 @@ export const shortTime = (iso: string) => {
   return d.toLocaleDateString([], { day: "numeric", month: "short" });
 };
 
-/** Links open in a new tab; images are never loaded, only linked by their alt text. */
+/** Links open in a new tab, except Lyrica's own (a mentioned thread); images are never loaded, only linked by their alt text. */
 const MARKDOWN: Components = {
-  a: ({ node: _, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+  a: ({ node: _, ...props }) => (props.href?.startsWith("#/") ? <a {...props} /> : <a {...props} target="_blank" rel="noopener noreferrer" />),
   img: ({ src, alt }) => (typeof src === "string" && src ? <a href={src} target="_blank" rel="noopener noreferrer">{alt || src}</a> : <>{alt}</>),
 };
 
