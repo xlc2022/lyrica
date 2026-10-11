@@ -120,7 +120,7 @@ brake.
 | Slash commands | 6 or fewer |
 | Long-running processes | 1 daemon, plus Pi's TUI when in use |
 | Core extension | about 2,000 lines |
-| Docs | README, AGENTS, PRINCIPLES, DESIGN, the contracts, briefs, and at most one page per component |
+| Docs | README, AGENTS, PRINCIPLES, DESIGN, the contracts, briefs, at most one page per component, and the operator guides in docs/guides/ |
 
 Going over a budget takes an agreed change to DESIGN.md, or removing
 something else.
