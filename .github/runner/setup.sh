@@ -70,8 +70,9 @@ if [[ ! -f .runner ]]; then
 fi
 [[ -f .service ]] || ./svc.sh install "$RUNNER_USER"
 
-# The firewall: the uplink reaches the internet, DNS and DHCP, and no private
-# address. Applied at boot, before the runner starts.
+# The firewall: the uplink reaches the internet, DNS and DHCP, and opens no
+# connection to a private address; it still answers ones opened to it, such
+# as SSH. Applied at boot, before the runner starts.
 cat >/usr/local/sbin/lyrica-ci-firewall <<'FIREWALL'
 #!/usr/bin/env bash
 # Lyrica CI: this machine reaches the internet but nothing on the LAN or the
@@ -91,6 +92,8 @@ table inet lyrica_ci {
   chain output { type filter hook output priority filter; policy accept; oifname "$dev" jump lan; }
   chain forward { type filter hook forward priority filter; policy accept; oifname "$dev" jump lan; }
   chain lan {
+    # Replies to connections the LAN opened (your SSH session) still go back.
+    ct state established,related accept
     $dns_rule
     udp dport 67 accept
     ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16 } reject with icmpx admin-prohibited

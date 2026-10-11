@@ -29,7 +29,8 @@ internet and nothing else:
 - setup.sh installs `lyrica-ci-firewall`, an nftables table applied at boot
   before the runner starts. On the uplink it rejects 10.0.0.0/8,
   172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16 and fc00::/7,
-  except DNS to the configured resolvers and DHCP. Docker's own bridges are
+  except DNS to the configured resolvers and DHCP. Replies to connections
+  opened to the VM, such as SSH from the LAN, still go out. Docker's own bridges are
   other interfaces, so the jobs' containers still reach each other.
 - A job has root and could remove that table, so the same rules on the
   hypervisor (Proxmox's firewall for the VM) or a separate VLAN are stronger.
