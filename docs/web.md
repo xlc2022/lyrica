@@ -69,7 +69,8 @@ for a project's settings, `…/memory`, `…/settings/<section>`, `…/admin/<se
 - **Project chat** (`src/Project.tsx`): the facts line adds **Threads** with
   the count, opening a popover of the project's threads grouped Waiting on
   you, Working, Queued, Idle and Resolved (each a link, with its unseen
-  count), and the project's tokens ("65 tokens", "312k tokens"). Settings in
+  count), and the project's tokens ("65 tokens", "312k tokens"; on a phone the tokens
+  are the popover's first line instead). Settings in
   the header opens the project settings page instead of the drawer. The
   `child` stream event reloads the overview (`GET …/overview`) and the
   thread list, so cards and state words follow. A resolved project thread

@@ -73,7 +73,7 @@ function Sections({ ctx, page, title, sections, current }: { ctx: ShellContext; 
   return (
     <main className="main">
       <PageHead ctx={ctx} title={title} />
-      <div className="body">
+      <div className="page-body">
         <nav className="subnav" aria-label={`${title} sections`}>
           {sections.map((s) => <a key={s.key} href={href({ page, userId: ctx.user.id, section: s.key })} aria-current={s.key === cur.key ? "page" : undefined}>{s.label}</a>)}
         </nav>

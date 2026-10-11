@@ -260,6 +260,7 @@ function NewGroup({ userId, onDone }: { userId: string; onDone: () => void }) {
 function useListMenu() {
   const [at, setAt] = useState<{ x: number; y: number }>();
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // Anywhere on the list that is not a row: the eyebrows, the gaps, and the strip under the last row.
   const onList = (e: React.SyntheticEvent) => !(e.target as HTMLElement).closest(".thread, .chev, .resolved-row");
   const handlers = {
     onContextMenu: (e: React.MouseEvent) => { if (!onList(e)) return; e.preventDefault(); setAt({ x: e.clientX, y: e.clientY }); },

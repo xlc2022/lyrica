@@ -52,7 +52,7 @@ const GROUPS: { label: string; of: (t: ThreadSummary) => boolean }[] = [
 ];
 
 /** "Threads 4 ▾" in the project chat's facts line: a popover of its threads grouped by state. */
-export function ThreadsFact({ userId, overview }: { userId: string; overview: ProjectOverview }) {
+export function ThreadsFact({ userId, overview, phone }: { userId: string; overview: ProjectOverview; phone?: boolean }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -65,6 +65,7 @@ export function ThreadsFact({ userId, overview }: { userId: string; overview: Pr
       </button>
       {open && (
         <div className="picker threads-pop" role="dialog" aria-label="The project's threads">
+          {phone && <p className="small tokens"><span className="num">{tokenCount(overview.tokens)}</span> tokens</p>}
           {!threads.length && <p className="muted small">No threads yet. Ask Lyrica for some, or pick Start a thread in a message's menu.</p>}
           {GROUPS.map((g) => {
             const mine = threads.filter(g.of);
@@ -74,7 +75,7 @@ export function ThreadsFact({ userId, overview }: { userId: string; overview: Pr
                 <div className="picker-ep">{g.label} <span className="num">{mine.length}</span></div>
                 {mine.map((t) => (
                   <a key={t.id} className="picker-item thread-item" href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })} onClick={close}>
-                    <span className="status" data-state={t.needsYou ? "needsYou" : t.state} aria-hidden="true" />
+                    {t.state === "idle" || t.state === "queued" || !t.state ? <span /> : <span className="status" data-state={t.needsYou ? "needsYou" : t.state} aria-hidden="true" />}
                     <span className="title">{t.title || "New thread"}</span>
                     {!!t.unseen && <span className="count">{t.unseen}</span>}
                   </a>
@@ -107,8 +108,8 @@ export function ThreadCard({ t, userId, env }: { t: ThreadSummary; userId: strin
   const open_ = href({ page: "thread", userId, pool: t.pool, threadId: t.id });
   return (
     <div className="tcard" data-state={state} {...(t.needsYou ? { "data-pending": "Thread" } : {})}>
-      <div className="tcard-head">
-        <span className="status" data-state={state} aria-hidden="true" />
+      <div className="tcard-head" data-dot={state !== "idle" && state !== "queued" ? "" : undefined}>
+        {state !== "idle" && state !== "queued" && <span className="status" data-state={state} aria-hidden="true" />}
         <a className="tcard-title" href={open_}>{t.title || "New thread"}</a>
         <span className="state-word" data-state={state}>{stateWord(t)}</span>
         <span className="msg-menu" ref={ref}>
@@ -189,7 +190,7 @@ export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContex
   return (
     <main className="main">
       <PageHead ctx={ctx} title="Project settings" facts={s && <a href={href({ page: "thread", userId, pool, threadId })}>{title}</a>} />
-      <div className="body">
+      <div className="page-body">
         <nav className="subnav" aria-label="Project settings sections">
           {SECTIONS.map((x) => <a key={x.key} href={href({ page: "project", userId, pool, threadId, section: x.key })} aria-current={x.key === cur.key ? "page" : undefined}>{x.label}</a>)}
         </nav>
@@ -269,7 +270,7 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
 
       <h3>This chat</h3>
       <div className="row top defaults">
-        <TaskSelect task="chat" value={chat === undefined ? settings.models.chat : { ...settings.models.chat, source: chat ? "thread" : "profile", model: chat ?? undefined }} allowed={settings.allowed} onChange={(m) => setChat(m && "offeringId" in m ? m : null)} />
+        <TaskSelect task="chat" label="Model" value={chat === undefined ? settings.models.chat : { ...settings.models.chat, source: chat ? "thread" : "profile", model: chat ?? undefined }} allowed={settings.allowed} onChange={(m) => setChat(m && "offeringId" in m ? m : null)} />
         <label className="field">
           <span>Mode</span>
           <select value={mode} onChange={(e) => setMode(e.target.value as PermissionMode)}>

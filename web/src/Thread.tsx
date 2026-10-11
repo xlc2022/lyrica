@@ -145,6 +145,8 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
   const resolved = s?.state === "resolved";
   const reopen = () => post<ThreadSummary>(`${base}/reopen`).then((x) => { summary.set(x); refreshThreads(); }, (e: Error) => setSendError(e.message));
   const scroller = useStickyScroll([t.messages, t.live]);
+  // On a phone the tokens move into the Threads popover, so the facts line stays at two rows.
+  const phone = usePhone();
 
   return (
     <main className="main" data-drawer-open={drawer}>
@@ -157,8 +159,8 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
             {settings.data && <ModelBadge base={base} settings={settings.data} onChange={settings.set} readOnly={!!s?.subagent} />}
             {pins.data && !s?.subagent && <PinnedBadge pins={pins.data} you={ctx.user.displayName} userId={ctx.user.id} pool={pool} />}
             {s && !s.subagent && !s.child && <GroupPicker ctx={ctx} base={base} summary={s} onChange={(x) => { summary.set(x); refreshThreads(); }} />}
-            {s?.project && overview.data && <ThreadsFact userId={userId} overview={overview.data} />}
-            {s?.project && overview.data && <span className="tokens"><span className="num">{tokenCount(overview.data.tokens)}</span> tokens</span>}
+            {s?.project && overview.data && <ThreadsFact userId={userId} overview={overview.data} phone={phone} />}
+            {s?.project && overview.data && !phone && <span className="tokens"><span className="num">{tokenCount(overview.data.tokens)}</span> tokens</span>}
             {settings.data?.localOnly && pool === "general" && <span className="badge"><span className="k local">local-only</span></span>}
             {settings.data?.grants.map((g) => (
               <span key={g.path} className="badge folder" title={g.path}>{g.path} <span className="muted">{g.writable ? "rw" : "ro"}</span></span>
@@ -256,6 +258,18 @@ function GroupPicker({ ctx, base, summary, onChange }: { ctx: ShellContext; base
       )}
     </span>
   );
+}
+
+/** Below the shell's phone breakpoint (app.css). */
+function usePhone(): boolean {
+  const [phone, setPhone] = useState(() => matchMedia("(max-width: 760px)").matches);
+  useEffect(() => {
+    const mq = matchMedia("(max-width: 760px)");
+    const on = () => setPhone(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return phone;
 }
 
 /** An update's text without its first line, the head Lyrica reads ("Update from child thread …:"). */

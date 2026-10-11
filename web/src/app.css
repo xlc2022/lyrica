@@ -155,7 +155,8 @@ button.private { color: var(--private); border-color: color-mix(in oklab, var(--
 .showing .menu-sep { border: 0; border-top: 1px solid var(--line); margin: 4px -10px; }
 .showing label { display: flex; gap: 8px; align-items: center; min-height: 32px; font-size: 13px; cursor: pointer; }
 .showing .new-group { justify-self: start; margin-top: 2px; }
-.threads { list-style: none; margin: 0; padding: 0 2px; overflow-y: auto; flex: 1; display: grid; align-content: start; gap: 1px; }
+/* The strip under the last row keeps the list's own menu (New project, New group) reachable when the list is full. */
+.threads { list-style: none; margin: 0; padding: 0 2px 44px; overflow-y: auto; flex: 1; display: grid; align-content: start; gap: 1px; }
 .threads .eyebrow { padding: 10px 8px 4px; display: flex; gap: 6px; align-items: baseline; }
 .threads .trow { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 0; flex-wrap: nowrap; align-items: center; }
 .chev { width: 20px; min-height: 0; height: 24px; padding: 0; display: grid; place-items: center; border: 0; background: transparent; color: var(--muted); transition: transform 0.15s; }
@@ -241,7 +242,7 @@ button.badge:hover:not(:disabled) { border-color: var(--accent); }
 .picker form input { flex: 1; min-height: 32px; }
 
 /* ---- Pages with sections (Settings, Administration): the section list at the left, the content at the right. ---- */
-.body { display: grid; grid-template-columns: 196px minmax(0, 1fr); flex: 1; min-height: 0; overflow-y: auto; }
+.page-body { display: grid; grid-template-columns: 196px minmax(0, 1fr); flex: 1; min-height: 0; overflow-y: auto; }
 .subnav { border-right: 1px solid var(--line); padding: 14px 8px; display: grid; gap: 1px; align-content: start; position: sticky; top: 0; align-self: start; }
 .subnav a { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: 8px; color: var(--fg); min-height: var(--tap); }
 .subnav a:hover { background: var(--panel); text-decoration: none; }
@@ -469,7 +470,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   .tfacts .picker-anchor:has(> .badge) { flex: 1 1 0; min-width: min(100%, 120px); }
   .drawer { width: 100%; }
   .picker { position: fixed; top: 104px; left: 16px; right: 16px; width: auto; }
-  .body { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content 1fr; }
+  .page-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content 1fr; }
   .subnav { position: static; display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px var(--gutter); gap: 2px; scrollbar-width: none; mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
   .subnav a:last-child { margin-right: 24px; }
   .subnav a { white-space: nowrap; }
@@ -555,13 +556,12 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .status[data-state="working"] { background: var(--info); animation: pulse 1.4s ease-in-out infinite; }
 .status[data-state="waiting"], .status[data-state="needsYou"] { background: var(--warn); }
 .status[data-state="resolved"] { background: var(--ok); }
-.status[data-state="idle"], .status[data-state="queued"] { background: var(--line); border: 1px solid var(--edge); box-sizing: border-box; }
+.threads-pop .tokens { margin: 0; padding: 2px 6px 4px; color: var(--muted); }
 /* A project thread's card under the message that started it. */
-.tcard { border: 1px solid var(--line); border-left: 3px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 8px 12px; display: grid; gap: 4px; }
-.tcard[data-state="working"] { border-left-color: var(--info); }
-.tcard[data-state="waiting"], .tcard[data-state="needsYou"] { border-left-color: var(--warn); }
-.tcard[data-state="resolved"] { border-left-color: var(--ok); }
-.tcard-head { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; font-size: 14px; }
+/* The dot and the word carry the state (docs/ux.md §2: nothing coloured for decoration); Idle is the word alone. */
+.tcard { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 8px 12px; display: grid; gap: 4px; }
+.tcard-head { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; font-size: 14px; }
+.tcard-head[data-dot] { grid-template-columns: 8px minmax(0, 1fr) auto auto; }
 .tcard-title { color: var(--fg); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tcard-line { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tcard .msg-menu { position: relative; }
