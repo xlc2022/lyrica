@@ -218,7 +218,8 @@ Each active thread is one Pi session from `openThreadSession`, with
   (kept on the project page apart from sleep's text), `paused`,
   `threadsModel` and `threadsThinking` (the model and thinking its new
   threads start with), and `watchThreads` (on unless turned off; see
-  [delegation.md](delegation.md#child-threads)). Pausing or hiding stops its working threads; a
+  [delegation.md](delegation.md#child-threads)). `projectSettings.pageId` is the
+  project page's memory ID, for the memory browser. Pausing or hiding stops its working threads; a
   message to a paused project's thread is `409`. **Start a thread** (`POST
   …/messages/:n/thread`, optional `title`) starts a thread of the project
   from message n, with its text as the task. `POST …/resolve` and
