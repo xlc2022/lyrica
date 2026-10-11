@@ -1411,6 +1411,14 @@ from Monika's runbooks.
   changed, she describes it and a Claude thread builds it under the usual
   review. (Claude's reviews act through Li's account, so an approval
   rule alone couldn't tell Li's approval from a reviewer's.)
+- **GitHub is replaceable.** She reaches the forge only through git and
+  its command-line client in her sandbox (`gh` today), with no tool of
+  her own; the updater needs only git and a read-only key; update notes
+  are git tags; CI is Actions-syntax workflows. Moving to Forgejo or
+  Gitea means re-creating her account, token and branch protection
+  there, running their Actions runner on Li's VMs with the same label,
+  and swapping the client (`tea` or `fj`). Claude's project threads are
+  the part that is tied to GitHub.
 - **The outer net is the operator's:** a scheduled Proxmox backup of the
   container. The updater can't snapshot the container it runs in.
 - **Not covered:** her persona, which has its own revisions; model hosts,
