@@ -6,9 +6,9 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, SystemdCredentials, Users, Workspace,
-  type Argon2Params, type CredentialStore, type User,
+  type Argon2Params, type CredentialStore, type User, type ThreadsLimits,
 } from "@lyrica/core";
-import { Delegation, Sleep, type Limits, type SleepLimits, type ThreadsLimits } from "@lyrica/extension";
+import { Delegation, Sleep, type Limits, type SleepLimits } from "@lyrica/extension";
 import { ChildThreads } from "./children.ts";
 import { Projects } from "./projects.ts";
 import type { State, UserCard } from "./api.ts";

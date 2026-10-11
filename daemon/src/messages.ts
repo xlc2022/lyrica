@@ -1,4 +1,5 @@
-import { DELEGATE_MESSAGE, FROM_PARENT, OPENING, USER_MESSAGE } from "@lyrica/extension";
+import { FROM_PARENT } from "@lyrica/core";
+import { DELEGATE_MESSAGE, OPENING, USER_MESSAGE } from "@lyrica/extension";
 import type { Message, MessagePart, Pool, ThreadRef } from "./api.ts";
 
 // Stored Pi entries as the web UI shows them, and the memory markers that both

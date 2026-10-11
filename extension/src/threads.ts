@@ -1,37 +1,15 @@
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
+import {
+  CHILD_THREAD_GUIDELINES, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, threadLine,
+  type ChildInfo, type StartRequest, type ThreadsLimits,
+} from "@lyrica/core";
 import { askCompaction, COMPACT_GUIDELINES, type ContextMeter } from "./context.ts";
 import type { ThreadContext } from "./index.ts";
 
 // Child threads: streams of work Lyrica starts under the thread she's in. Each
 // is a thread like any other, hosted by lyricad, which supplies `ThreadsHost`.
 // The same tool compacts the thread she's in, with her own summary.
-
-/** What a parent's message to its child starts with, so the child's thread can show it as hers. Only lyricad writes it. */
-export const fromParent = (parentThreadId: string) => `[From t:${parentThreadId}]\n\n`;
-export const FROM_PARENT = /^\[From t:([^\]\s]+)\]\n\n/;
-
-export type ChildStatus = "working" | "waiting" | "idle";
-
-/** A project's thread, as the project chat sees it: waiting covers an approval and a question for the person (`needsYou`). */
-export type ThreadState = "working" | "waiting" | "queued" | "idle" | "resolved";
-
-export interface ChildInfo { id: string; title?: string; status: ChildStatus; state?: ThreadState; needsYou?: boolean; updatedAt: string }
-
-export interface StartRequest { title: string; task: string; folders?: string[]; readOnly?: boolean; internet?: false }
-
-export interface Suggestion { title: string; task: string }
-
-export interface ThreadsLimits {
-  /** Child threads one message to the parent may start. */
-  perRequest: number;
-  /** Child threads working at once, per user. */
-  concurrency: number;
-  /** Messages one turn of a project's thread may send to the project's other threads. */
-  siblingMessages: number;
-}
-
-export const DEFAULT_THREADS_LIMITS: ThreadsLimits = { perRequest: 3, concurrency: 2, siblingMessages: 3 };
 
 export interface ThreadsHost {
   readonly limits: ThreadsLimits;
@@ -69,46 +47,7 @@ const Params = Type.Object({
 });
 type Params = Static<typeof Params>;
 
-/** Her guidance in a project chat: she coordinates, and the work happens in threads. Guidance, never a boundary. */
-export const PROJECT_CHAT_GUIDELINES = [
-  "This is a project chat: you coordinate the project here, and the work happens in its threads.",
-  "Answer a quick question here yourself. Start one thread per task (threads start), even when one message holds several; mention each.",
-  "A follow-up about work a thread is already on goes to that thread (threads message); say which thread you sent it to.",
-  "When the person asks you to propose first, suggest threads (threads suggest) instead of starting them.",
-  "When the person says how they want the project run (how many threads at once, who to ask, what to avoid), save it as a note with remember.",
-];
-
-/** Her guidance in a project's thread. */
-export const PROJECT_THREAD_GUIDELINES = [
-  "Post an update to the project chat (threads message to: \"parent\") at milestones and when you finish, not after every step.",
-  "Set needsYou only when the person must decide something before you can go on.",
-  "Save lasting decisions about the project with remember.",
-  "When the work is delivered, resolve this thread (threads resolve).",
-  "You may message another thread of this project (threads message with its id) when its work affects yours.",
-];
-
-/** How she mentions a thread, in every thread: by ID, which the person sees as its current title. */
-export const MENTION_GUIDELINE = "Mention a thread as [t:<id>] and a message as [e:<id>#<n>]: the person sees the thread's current title, linked, so don't write the title beside it. A person may name a thread by its title; use its ID when you mention it.";
-
-/**
- * A thread named by its ID (bare, `t:…` or `[t:…]`) or its current title,
- * among `rows`. A title matches without regard to case; one that matches
- * more than one thread is refused, listing them.
- */
-export function pickThread(ref: string, rows: { id: string; title?: string }[]): string {
-  const bare = ref.trim().replace(/^\[(.*)\]$/, "$1").replace(/^t:/, "");
-  if (rows.some((r) => r.id === bare)) return bare;
-  const named = rows.filter((r) => r.title?.trim().toLowerCase() === ref.trim().toLowerCase());
-  if (named.length === 1) return named[0]!.id;
-  if (named.length > 1) throw new Error(`more than one thread is called ${JSON.stringify(ref.trim())}: ${named.map((r) => `[t:${r.id}]`).join(", ")}; use its ID`);
-  // Not one of these: the host says whether it exists at all.
-  return bare;
-}
-
 const text = (t: string, details?: unknown) => ({ content: [{ type: "text" as const, text: t }], details });
-
-const listLine = (r: ChildInfo) =>
-  `[t:${r.id}] ${r.title ? JSON.stringify(r.title) : "(untitled)"}: ${r.state ?? r.status}${r.needsYou ? " (waiting on the person)" : ""}, last ${r.updatedAt}`;
 
 /**
  * The `threads` tool. In a thread Lyrica can start children from, it
@@ -165,11 +104,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
       description: description(),
       promptSnippet: [!host ? "" : child ? "post an update to the parent thread" : "start, message and list child threads", meter ? "compact this thread with your own summary" : ""].filter(Boolean).join("; "),
       promptGuidelines: [
-        ...(!host ? [] : projectThread() ? PROJECT_THREAD_GUIDELINES : child ? [] : inProjectChat() ? PROJECT_CHAT_GUIDELINES : [
-          "Use a subagent (delegate) when you need an answer to carry on and the task is bounded: searching, reading, reviewing, checking.",
-          "Start a child thread (threads start) when the work is a stream of its own that outlasts this conversation, that the person may want to follow or steer, or that needs a long context of its own, such as \"I'll keep going on the homelab migration in its own thread.\" Say so, mentioning it.",
-          "A child thread posts updates here as it goes. Message it with threads message; the person can also talk to it directly.",
-        ]),
+        ...(!host ? [] : projectThread() ? PROJECT_THREAD_GUIDELINES : child ? [] : inProjectChat() ? PROJECT_CHAT_GUIDELINES : CHILD_THREAD_GUIDELINES),
         ...(host || meter ? [MENTION_GUIDELINE] : []), ...(meter ? COMPACT_GUIDELINES : []),
       ],
       parameters: Params,
@@ -204,7 +139,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
         if (p.action === "list") {
           if (child && !inProject) throw new Error("a child thread can't list child threads; it can delegate, and message its parent");
           const rows = host.list(thread);
-          return text(rows.length ? rows.map(listLine).join("\n") : inProject ? "The project has no other threads." : "This thread has no child threads.",
+          return text(rows.length ? rows.map(threadLine).join("\n") : inProject ? "The project has no other threads." : "This thread has no child threads.",
             { threads: rows.map((r) => r.id) });
         }
         if (p.action === "resolve" || p.action === "reopen") {

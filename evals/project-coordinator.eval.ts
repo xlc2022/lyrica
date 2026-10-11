@@ -2,9 +2,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Memory, PersonaStore, type CallContext } from "@lyrica/core";
+import { Memory, PersonaStore, DEFAULT_THREADS_LIMITS, type CallContext } from "@lyrica/core";
 import {
-  createLyricaExtension, createThreadsExtension, DEFAULT_THREADS_LIMITS, openThreadSession, type ThreadContext, type ThreadsHost,
+  createLyricaExtension, createThreadsExtension, openThreadSession, type ThreadContext, type ThreadsHost,
 } from "@lyrica/extension";
 import { afterAll, describe, expect, it } from "vitest";
 import type { ChatRequest } from "../core/test/fake-openai.ts";

@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
-import type { Memory, Models, Pool, Users, Workspace } from "@lyrica/core";
 import {
-  DEFAULT_THREADS_LIMITS, type ChildInfo, type Delegation, type StartRequest, type ThreadContext, type ThreadsHost, type ThreadsLimits, type ThreadState,
-} from "@lyrica/extension";
+  DEFAULT_THREADS_LIMITS, type ChildInfo, type Memory, type Models, type Pool, type StartRequest, type ThreadsLimits, type ThreadState, type Users, type Workspace,
+} from "@lyrica/core";
+import type { Delegation, ThreadContext, ThreadsHost } from "@lyrica/extension";
 import type { ThreadHost } from "./hosted.ts";
 import type { ProjectSettings } from "./projects.ts";
 

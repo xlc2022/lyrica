@@ -558,6 +558,10 @@ One model-facing tool: `delegate({ action?, ... })`.
   `PROJECT_CHAT_GUIDELINES` and `PROJECT_THREAD_GUIDELINES`. `user.db`
   `child_threads` gains `anchor`, `resolved_at`, `needs_you` and `queued`
   (no text). Still one tool.
+- The pure parts (`ChildInfo`, `ThreadState`, `StartRequest`,
+  `ThreadsLimits`, `fromParent`, `pickThread`, the guidance, `threadLine`
+  and `projectSection`) live in `core/src/threads.ts`; the extension keeps
+  the tool.
 
 Every run:
 - creates a child thread with `createThread({ parent, subagent: true })`;
