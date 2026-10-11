@@ -984,7 +984,8 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   memory) with Add anyway as its one action, and its row shows **Off
   network** while that holds: the address is checked again on every
   connection, and a private machine that has newly gone off network is
-  refused until Li confirms the dialog again. Changing a machine's pool
+  refused until Li confirms the dialog again, from **Use anyway** behind the
+  row's ⋯. Changing a machine's pool
   removes it from every thread that grants it, and moving one from Private
   to General gets a dialog saying that what is already on the machine
   becomes reachable from general threads. The sandbox's

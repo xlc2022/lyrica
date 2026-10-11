@@ -74,8 +74,30 @@ a single file. The old `…/panel` opens Settings.
   Password, Your personas (linking a separate persona needs both passwords),
   Persona suggestions (edit, send on to the administrators, or drop),
   Endpoints with probe status, Model profiles, Network (the default mode and
-  network defaults per pool, Voice to cloud), and Machines (listed, with
-  Remove; `lyrica admin ssh add` adds one).
+  network defaults per pool, Voice to cloud), and **Machines**
+  (`src/Machines.tsx`, docs/ux.md section 6): a row per machine with its
+  name, a facts line in mono (address, pool, "SSH · key" or "Proxmox API ·
+  token", "up to Accept edits") and at most one state as a dot and a word
+  (Online, Unreachable with the duration in mono, Key changed, Off
+  network; none if never probed; a machine whose host key was never
+  confirmed shows Key changed). The row opens a drawer: address, folder,
+  pool and **Mode limit** as the message box's three-item mode list, with
+  one Save. The row's ⋯ has Replace key, **Use anyway** (only on a private
+  machine that is Off network: the same dialog as Add machine's, then
+  `confirm-off-network`) and Remove, Remove in a dialog with its one
+  sentence. **Add machine** is a link to its own card in the section
+  (`#/u/<user>/settings/machines/new`): a kind segment (SSH | Proxmox), then
+  steps as sections with eyebrows. Name and address (name, address, folder
+  for SSH, pool); leaving the address or pressing Enter asks `lyricad` for
+  her key and the setup commands. Key, or Token for Proxmox (the commands in
+  a code block, **Copy**, and the token field). Test (**Test** probes again
+  and says Logged in or the problem). Fingerprint (the host key or
+  certificate fingerprint in mono, **Confirm**). The current step's button
+  is the one primary; a done step's turns secondary; nothing is saved before
+  Confirm. A private machine that resolves off network gets a dialog (**Add
+  anyway** or Cancel) before Confirm saves it. Replace key
+  (`#/u/<user>/settings/machines/<name>/key`) opens the same card at the
+  Fingerprint step, with a Replace token field for Proxmox.
 - **Administration**, for administrators: Status (the server's network
   self-test, sleep time, start unlocked), Users with the administrator flag and
   their allowed folders, Sleep, Start unlocked (saving the `self.db`
@@ -113,9 +135,13 @@ a single file. The old `…/panel` opens Settings.
   someone wrote to a subagent), as a `notice` event and stored as a
   `notice` message, shows as a card headed by what it is, linking to the
   subagent.
-- Permission requests appear inline with Allow and Deny and the time left;
-  a request on a machine leads with the machine's name and the folder, and
-  a suspect command shows its warning sentence above the command. A
+- Permission requests appear inline with Allow and Deny and the time left.
+  A call on a machine (`machine` on the request) leads with the machine's
+  name in mono, says the folder the command runs in, and shows the command,
+  path or Proxmox action and VM in mono; a suspect command (`suspect`,
+  `warning`) adds its warning sentence above the command and a third,
+  secondary **Allow in this thread**, which answers with `allowInThread`.
+  A tool marker for a call on a machine names the machine first. A
   subagent's request shows in its parent's thread (in its card, when that
   is open) and on its own page, naming the subagent, and stays past the
   parent's turn; the first answer wins and the other view updates.

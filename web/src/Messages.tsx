@@ -193,7 +193,9 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" }>; e
       break;
     case "tool": {
       const state = part.result === undefined ? "running" : part.isError ? "failed" : "done";
-      label = <><b className="tool-name">{part.name}</b> <code>{summarizeArgs(part.args)}</code> <span className="state" data-state={state}>{state}</span></>;
+      // A call on a machine names it first.
+      const place = machineOf(part.args);
+      label = <>{place && <b className="place">{place}</b>}<b className="tool-name">{part.name}</b> <code>{summarizeArgs(part.args)}</code> <span className="state" data-state={state}>{state}</span></>;
       body = (
         <>
           <pre>{JSON.stringify(part.args, null, 2)}</pre>
@@ -359,17 +361,34 @@ export function MessageBox({ thread, env, onSent }: { thread: ThreadRef; env: Pi
   );
 }
 
-/** One line for a tool call: the command, path or first argument. */
+/** One line for a tool call: the command, path, Proxmox action or first argument; never the machine, which is named on its own. */
 function summarizeArgs(args: unknown): string {
   if (!args || typeof args !== "object") return String(args ?? "");
-  const a = args as Record<string, unknown>;
+  const { machine: _, ...a } = args as Record<string, unknown>;
+  if (typeof a.action === "string") return [a.action, a.vm].filter((x) => typeof x === "string" && x).join(" ");
   const main = a.command ?? a.path ?? a.query ?? a.url ?? Object.values(a)[0];
   return typeof main === "string" ? main.split("\n")[0]! : JSON.stringify(main ?? "");
 }
 
+/** The machine a call runs on, when its arguments name one. */
+function machineOf(args: unknown): string | undefined {
+  const m = args && typeof args === "object" ? (args as { machine?: unknown }).machine : undefined;
+  return typeof m === "string" && m ? m : undefined;
+}
+
+/** What is being approved, in mono: the command, the path, or the Proxmox action and VM. */
+function permissionText(args: unknown): string {
+  if (!args || typeof args !== "object") return JSON.stringify(args);
+  const { machine: _, ...a } = args as Record<string, unknown>;
+  if (typeof a.command === "string") return a.command;
+  if (typeof a.action === "string") return [a.action, a.vm].filter((x) => typeof x === "string" && x).join(" ");
+  if (typeof a.path === "string" && Object.keys(a).length === 1) return a.path;
+  return JSON.stringify(a, null, 2);
+}
+
 function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest; env: Env }) {
   const [run, busy, error] = useAction();
-  const answer = (allow: boolean, mode?: GoAhead) => run(() => post(`${base}/permissions/${encodeURIComponent(p.requestId)}`, { allow, mode }));
+  const answer = (allow: boolean, mode?: GoAhead, allowInThread?: boolean) => run(() => post(`${base}/permissions/${encodeURIComponent(p.requestId)}`, { allow, mode, allowInThread }));
   const left = useCountdown(p.expiresAt);
   if (p.tool === "propose_plan" && !p.subagent) {
     // Her plan, from Plan mode: going ahead switches the thread to the mode picked.
@@ -394,13 +413,14 @@ function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest
     : sub.threadId === env.threadId ? <>This subagent ({sub.role}) wants</>
     : <>Her <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: sub.threadId })}>{sub.role} subagent</a> wants</>;
   return (
-    <div className="permission" role="group" data-pending="Approval" aria-label={`Allow ${p.tool}${sub ? ` for the ${sub.role} subagent` : ""}?`}>
-      <p>{p.machine && <><b>{p.machine}</b>: </>}{who} to use <b>{p.tool}</b>{p.machine && p.cwd ? <> in <span className="mono">{p.cwd}</span></> : null}:</p>
+    <div className="permission" role="group" data-pending="Approval" aria-label={`Allow ${p.tool}${p.machine ? ` on ${p.machine}` : ""}${sub ? ` for the ${sub.role} subagent` : ""}?`}>
+      <p>{p.machine && <><b className="mono">{p.machine}</b> · </>}{who} to use <b>{p.tool}</b>{p.machine && p.cwd ? <> in <span className="mono">{p.cwd}</span></> : null}:</p>
       {p.warning && <p role="alert">{p.warning}</p>}
-      <pre>{typeof p.args === "object" && p.args && "command" in p.args ? String((p.args as { command: unknown }).command) : JSON.stringify(p.args, null, 2)}</pre>
+      <pre>{permissionText(p.args)}</pre>
       <div className="row">
         <button type="button" className="primary" disabled={busy} onClick={() => answer(true)}>Allow</button>
         <button type="button" disabled={busy} onClick={() => answer(false)}>Deny</button>
+        {p.suspect && <button type="button" disabled={busy} onClick={() => answer(true, undefined, true)}>Allow in this thread</button>}
         <span className="muted">{left}</span>
       </div>
       <ErrorText error={error} />

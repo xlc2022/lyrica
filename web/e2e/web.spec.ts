@@ -431,6 +431,31 @@ test("turning Show private off hides an open private thread and private memory",
   await togglePrivate(page);
 });
 
+test("Machines lists none, and Add machine reaches a machine before anything is saved", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}/settings/machines`);
+  const section = page.getByRole("region", { name: "Machines", exact: true });
+  await expect(section).toContainText("None yet.");
+  await section.getByRole("link", { name: "Add machine" }).click();
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/settings/machines/new$`));
+  await expect(page.getByRole("heading", { level: 2, name: "Add machine" })).toBeVisible();
+  // Until the machine is reached, the Key, Test and Fingerprint steps don't show, and nothing is saved.
+  await expect(page.getByRole("button", { name: "SSH" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Copy" })).toHaveCount(0);
+  await page.getByRole("textbox", { name: "Name" }).fill("nowhere");
+  await page.getByRole("textbox", { name: "Address" }).fill("lyrica@nowhere.invalid");
+  await page.getByRole("textbox", { name: "Address" }).press("Enter");
+  // The key and its setup commands come even when the host can't be resolved; Test says why.
+  await expect(page.getByRole("button", { name: "Copy" })).toBeVisible();
+  await expect(page.getByText("/etc/ssh/authorized_keys")).toBeVisible();
+  await page.getByRole("button", { name: "Test" }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Confirm" })).toHaveCount(0);
+  await noHorizontalScroll(page);
+  await page.getByRole("link", { name: "Machines", exact: true }).first().click();
+  await expect(page.getByRole("region", { name: "Machines", exact: true })).toContainText("None yet.");
+});
+
 test("an administrator sees how Lyrica is reached", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}/admin/web`);
