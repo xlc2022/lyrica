@@ -76,3 +76,15 @@ function startsSentence(text: string, offset: number): boolean {
 function escape(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+// Threads are mentioned by their permanent ID, never their title, so a rename
+// shows in every past mention without rewriting anything (DESIGN.md, "Thread
+// mentions"). The web draws each as a chip with the current title.
+
+/** `[t:<id>]`, `[e:<id>#<n>]`, and from a private view `[general/t:<id>]`. */
+export const THREAD_MENTION = /\[(?:(general|private)\/)?([te]):([^\]\s#]+)(?:#(\d+))?\]/g;
+
+/** What a mention reads as where there is no chip: the thread's current title, or "a forgotten thread". */
+export function renderThreadMentions(text: string, titleOf: (threadId: string, pool?: "general" | "private") => string | undefined): string {
+  return text.replace(THREAD_MENTION, (_m, pool: "general" | "private" | undefined, _kind: string, id: string) => titleOf(id, pool) ?? "a forgotten thread");
+}

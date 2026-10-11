@@ -306,7 +306,8 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
   the user's defaults for a new thread. The clip is held in memory only.
 - `GET …/threads/:pool/:threadId/messages/:n/speech` reads one of her
   messages aloud. lyricad reads it from the store (the client sends a
-  number, never text), drops code blocks, tables, images, links' URLs and
+  number, never text), reads each thread she mentions as its current title
+  (`titlesIn`), drops code blocks, tables, images, links' URLs and
   markdown, splits it into sentences (pieces of at most 400 characters), and
   asks for one sentence at a time while the one before plays, each in the
   voice for its language (Han characters mean Mandarin). It streams raw PCM

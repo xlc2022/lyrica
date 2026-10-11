@@ -1,8 +1,10 @@
 // Mention tokens in memory text. Reading shows current names and pronouns
 // (core's render); editing shows `[[Name]]` and `[[Name:obj]]`, which go back
 // to `[[u:ID]]` tokens on save, so a later rename still applies.
-import type { UserMap } from "./api.ts";
-import { render } from "../../core/src/mentions.ts";
+import { useEffect, useState } from "react";
+import { get, HttpError, threadPath, type Pool, type ThreadSummary, type UserMap } from "./api.ts";
+import { render, THREAD_MENTION } from "../../core/src/mentions.ts";
+import { href } from "./route.ts";
 
 export function readable(text: string, users: UserMap): string {
   return render(text, (id) => (users[id] ? { ...users[id], previousNames: [] } : undefined));
@@ -20,5 +22,48 @@ export function fromEditable(text: string, users: UserMap): string {
   return text.replace(EDITABLE, (whole, name: string, form = "") => {
     const id = byName.get(name.trim());
     return id ? `[[u:${id}${form}]]` : whole;
+  });
+}
+
+// Thread mentions in her text, `[t:<id>]` or `[e:<id>#<n>]` (`general/` for
+// the other pool): each shows as the thread's current title, linked to it,
+// or "a forgotten thread" once it is gone. Titles are fetched once per thread
+// and kept briefly, so a rename shows on the next look.
+
+const TITLES = new Map<string, { title: string | null; at: number }>();
+const PENDING = new Set<string>();
+const KEEP_MS = 30_000;
+
+export function useThreadMentions(text: string, userId: string, pool: Pool): string {
+  const [, setTick] = useState(0);
+  // A general message never resolves a private thread, so those aren't fetched.
+  const found = [...text.matchAll(THREAD_MENTION)].map((m) => ({ pool: (m[1] as Pool | undefined) ?? pool, id: m[3]! }))
+    .filter((f) => !(pool === "general" && f.pool === "private"));
+  const keys = found.map((f) => `${userId}/${f.pool}/${f.id}`);
+  useEffect(() => {
+    let live = true;
+    found.forEach((f, i) => {
+      const key = keys[i]!;
+      const known = TITLES.get(key);
+      if (PENDING.has(key) || (known && Date.now() - known.at < KEEP_MS)) return;
+      PENDING.add(key);
+      get<ThreadSummary>(threadPath(userId, f.pool, f.id))
+        .then((t) => TITLES.set(key, { title: t.title || "an untitled thread", at: Date.now() }))
+        .catch((err) => { if (err instanceof HttpError && err.status === 404) TITLES.set(key, { title: null, at: Date.now() }); })
+        .finally(() => { PENDING.delete(key); if (live) setTick((n) => n + 1); });
+    });
+    return () => { live = false; };
+  }, [keys.join(" ")]); // eslint-disable-line react-hooks/exhaustive-deps
+  return linkMentions(text, userId, pool, (p, id) => TITLES.get(`${userId}/${p}/${id}`)?.title);
+}
+
+/** Each mention as a markdown link with the title (`null`: gone; undefined: not known yet). A general message never shows a private thread. */
+export function linkMentions(text: string, userId: string, pool: Pool, titleOf: (pool: Pool, id: string) => string | null | undefined): string {
+  return text.replace(THREAD_MENTION, (_whole, other: string | undefined, _kind: string, id: string) => {
+    const p = (other as Pool | undefined) ?? pool;
+    if (pool === "general" && p === "private") return "a forgotten thread";
+    const title = titleOf(p, id);
+    if (title === null) return "a forgotten thread";
+    return `[${(title ?? "a thread").replace(/[\\[\]]/g, "\\$&")}](${href({ page: "thread", userId, pool: p, threadId: id })})`;
   });
 }
