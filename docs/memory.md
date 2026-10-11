@@ -265,8 +265,9 @@ found by where it came from:
   once they are on the page.
 - **Recall from inside a project favours it.** Searching from one of its
   threads (automatic recall and `recall`) weighs its notes, its page and its
-  threads' entries 1.5 times higher (`PROJECT_BOOST`). It's a boost, not a
-  filter: the rest of the pool still comes up, and nothing crosses pools.
+  threads' entries 1.5 times higher (`PROJECT_BOOST`) among the closest
+  matches. It's a boost, not a filter: the rest of the pool still comes up,
+  and nothing crosses pools.
 - A branch of the project chat or of one of its threads is a thread of the
   project.
 - Forgetting a project with its threads also forgets its page and the notes
