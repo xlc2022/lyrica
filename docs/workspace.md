@@ -472,7 +472,8 @@ A folder the parent makes read-only is read-only below it too. Their sandbox
 mounts only what applies, their settings, facts line and Files panel show it, and `read`
 on a folder that's gone is refused as outside their folders. The narrowing is
 written into their own settings as well, so a parent that gets a folder back
-gives it to no one below it. Parallel
+gives it to no one below it. Changing a thread's workspace tells its
+descendants' open views to fetch their settings again. Parallel
 writers get their own git worktrees (see [delegation.md](delegation.md)).
 
 ## Approval

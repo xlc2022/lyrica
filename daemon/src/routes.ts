@@ -598,6 +598,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       const thread = owner(d, user, (o) => threadOf(o, r));
       changeSettings(d, user, pool, thread, change);
       s().host.reload(user.id, pool, thread.id);
+      // Its subagents and child threads are narrowed at once (`effective`): their open views fetch their settings again.
+      if (WORKSPACE_KEYS.some((k) => change[k] !== undefined)) for (const id of descendants(d, user, pool, thread.id)) s().host.reload(user.id, pool, id);
       return threadSettings(d, user, pool, thread.id);
     }),
     route("GET", `${t}/messages`, (r) => {
@@ -1578,6 +1580,20 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
   };
 }
 
+const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "mode", "webSearch", "images", "machines"] as const;
+
+/** A thread's subagents and child threads, and theirs, hidden ones included. */
+function descendants(d: Lyricad, user: User, pool: Pool, threadId: string): string[] {
+  return owner(d, user, (o) => {
+    const out: string[] = [];
+    const walk = (id: string) => {
+      for (const children of [false, true]) for (const c of o[pool].listThreads({ includeHidden: true, parent: id, children })) { out.push(c.id); walk(c.id); }
+    };
+    walk(threadId);
+    return out;
+  });
+}
+
 /**
  * Applies a settings change, or refuses all of it with the reason: what the
  * router would refuse (a cloud model where only local ones are allowed) and
@@ -1613,7 +1629,7 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
   for (const k of ["webSearch", "images"] as const) if (change[k] !== undefined && typeof change[k] !== "boolean") throw new Error(`${k} is true or false`);
   if (change.fallback !== undefined && change.fallback !== null && typeof change.fallback !== "boolean") throw new Error("fallback is true, false or null");
   // The workspace checks grants, hosts, mode, switches, machines and the parent's limits, and writes only if all pass.
-  const wsChange = pick(change, ["grants", "internet", "services", "hosts", "mode", "webSearch", "images", "machines"]);
+  const wsChange = pick(change, [...WORKSPACE_KEYS]);
   if (Object.keys(wsChange).length) ws.setThread(thread.id, pool, wsChange);
 
   if (change.localOnly !== undefined && pool === "general") models.setLocalOnly(user.id, pool, thread.id, change.localOnly);

@@ -118,21 +118,26 @@ A thread's address may carry what the panel beside it shows:
   threads** switches (`watchThreads`; the tooltip says what a look does), **New
   threads** (Model, Thinking and Fallback the project's threads start with;
   "This chat's model", "This chat's fallback" follow the project chat), **This chat** (Model, Mode,
-  Group, then a **Thread settings** link that opens the project chat with
-  its drawer showing, `…/t/<pool>/<thread>/settings`, for folders, machines,
-  network, local-only and the other task models), and one Save, which
-  patches the thread (`goal`, `paused`, `watchThreads` when it changed,
-  `threadsModel`, `threadsThinking`, `threadsFallback`, `group`) and, when they changed, its
-  settings. **Memory**: the
+  Group, then **Folders** and **Machines**, the drawer's own two controls,
+  then a **Thread settings** link that opens the project chat with its
+  drawer showing, `…/t/<pool>/<thread>/settings`, for network, local-only
+  and the other task models), and one Save, which patches the thread
+  (`goal`, `paused`, `watchThreads` when it changed, `threadsModel`,
+  `threadsThinking`, `threadsFallback`, `group`) and, when they changed, its
+  settings (`grants`, `machines` among them); `lyricad`'s reason shows when
+  it refuses. Every thread the project starts gets these folders and
+  machines or fewer. A folder or machine taken off here leaves the
+  project's running threads at once, and their open views show it gone. **Memory**: the
   Instructions kept on the project page (2,000 characters, counted under
   the box), and a link to that page in the memory browser. Files and
   images come with the Files panel.
 - **Thread settings drawer:** a model per task (each option says cloud or local first), local-only, the internet and
   Local services (localhost) switches (each following the user's default until
   changed), allowed hosts, folders from the allowed paths (read-only or
-  read-write), **Machines** (the sandbox, always, then a switch per machine
-  of the thread's pool; a granted machine that no longer exists keeps its
-  switch so it can be taken off), the mode, the
+  read-write), **Machines** (the sandbox, always, then each granted machine
+  in mono with its limit and an ✕ to take it off, a machine that no longer
+  exists included; **+** (Add machine) opens a search of the pool's other
+  machines by name or address, Enter picks the first), the mode, the
   Web search and Images switches, "Do not log", rename, hide, and forget. `lyricad` validates every
   change and its reason is shown.
 - **Subagents live inline**, not in the sidebar: see the `delegate` card

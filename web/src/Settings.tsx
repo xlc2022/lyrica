@@ -259,10 +259,13 @@ function Hosts({ hosts, overridden, onChange }: { hosts: string[]; overridden: b
   );
 }
 
-function Folders({ grants, allowed, onChange }: { grants: Grant[]; allowed: string[]; onChange: (g: Grant[]) => void }) {
+export function Folders({ grants, allowed, onChange }: { grants: Grant[]; allowed: string[]; onChange: (g: Grant[]) => void }) {
   const listId = useId();
   const [draft, setDraft] = useState("");
   const set = (i: number, g: Grant | null) => onChange(grants.flatMap((x, j) => (j === i ? (g ? [g] : []) : [x])));
+  // The first allowed folder not yet granted, so the hint never invites a second grant of one.
+  const next = allowed.find((p) => !grants.some((g) => g.path === p)) ?? "";
+  const add = () => { if (draft) { onChange([...grants, { path: draft, writable: false }]); setDraft(""); } };
   return (
     <>
       {grants.map((g, i) => (
@@ -277,25 +280,67 @@ function Folders({ grants, allowed, onChange }: { grants: Grant[]; allowed: stri
       ))}
       {!grants.length && <span className="muted small">No folders granted.</span>}
       {allowed.length > 0 ? (
-        <form className="inline" onSubmit={(e) => { e.preventDefault(); if (draft) { onChange([...grants, { path: draft, writable: false }]); setDraft(""); } }}>
-          <input aria-label="Add a folder" list={listId} placeholder={allowed[0]} value={draft} onChange={(e) => setDraft(e.target.value)} />
+        // Not a form of its own: on the Project settings page it sits inside the page's form.
+        <div className="inline">
+          <input aria-label="Add a folder" list={listId} placeholder={next} value={draft} onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} />
           <datalist id={listId}>{allowed.map((p) => <option key={p} value={p} />)}</datalist>
-          <button type="submit" disabled={!draft}>Add</button>
-        </form>
+          <button type="button" disabled={!draft} onClick={add}>Add</button>
+        </div>
       ) : <span className="muted small">An administrator hasn't allowed any folders for this pool.</span>}
     </>
   );
 }
 
-/** The sandbox, always, then each machine of the thread's pool with a switch; a granted one that no longer exists still shows, so it can be taken off. */
-function Machines({ granted, machines, onChange }: { granted: string[]; machines: MachineInfo[]; onChange: (names: string[]) => void }) {
-  const gone = granted.filter((name) => !machines.some((m) => m.name === name));
-  const toggle = (name: string, on: boolean) => onChange(on ? [...granted, name] : granted.filter((n) => n !== name));
+/**
+ * The sandbox, always, then each granted machine with ✕ to take it off; + opens a search of the pool's
+ * other machines. A granted one that no longer exists still shows, so it can be taken off. Also on the Project settings page.
+ */
+export function Machines({ granted, machines, onChange }: { granted: string[]; machines: MachineInfo[]; onChange: (names: string[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const anchor = useRef<HTMLSpanElement>(null);
+  const plus = useRef<HTMLButtonElement>(null);
+  const close = useCallback(() => { setOpen(false); setQuery(""); }, []);
+  useDismiss(anchor, open, close);
+  const others = machines.filter((m) => !granted.includes(m.name));
+  const q = query.trim().toLowerCase();
+  const found = others.filter((m) => !q || m.name.toLowerCase().includes(q) || m.address.toLowerCase().includes(q));
+  const add = (name: string) => { onChange([...granted, name]); close(); plus.current?.focus(); };
   return (
     <>
       <div className="folder"><span className="path">sandbox</span><span className="muted small">always</span><span /></div>
-      {machines.map((m) => <Switch key={m.name} label={m.name} hint={`${m.address} · up to ${MODES[m.limit].label}`} checked={granted.includes(m.name)} onChange={(on) => toggle(m.name, on)} />)}
-      {gone.map((name) => <Switch key={name} label={name} hint="No longer one of your machines." checked onChange={() => toggle(name, false)} />)}
+      {granted.map((name) => {
+        const m = machines.find((x) => x.name === name);
+        return (
+          <div key={name} className="folder">
+            <span className="path" title={m ? m.address : undefined}>{name}</span>
+            <span className="muted small">{m ? `up to ${MODES[m.limit].label}` : "removed"}</span>
+            <button type="button" className="icon sm" aria-label={`Remove ${name}`} title={m ? undefined : "No longer one of your machines."}
+              onClick={() => onChange(granted.filter((n) => n !== name))}><Icon name="close" /></button>
+          </div>
+        );
+      })}
+      {!machines.length && !granted.length && <span className="muted small">No machines in this pool.</span>}
+      {others.length > 0 && (
+        <span className="picker-anchor machine-add" ref={anchor}>
+          <button ref={plus} type="button" className="icon sm" aria-label="Add machine" title="Add machine" aria-haspopup="dialog" aria-expanded={open}
+            onClick={() => (open ? close() : setOpen(true))}><Icon name="plus" /></button>
+          {open && (
+            <div className="picker machine-pick" role="dialog" aria-label="Add machine"
+              onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); close(); plus.current?.focus(); } }}>
+              <input type="search" aria-label="Search machines" autoFocus value={query} onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (found[0]) add(found[0].name); } }} />
+              {found.map((m) => (
+                <button key={m.name} type="button" className="picker-item" onClick={() => add(m.name)}>
+                  <span className="mono">{m.name}</span> <span className="muted small">{m.address}</span>
+                </button>
+              ))}
+              {!found.length && <p className="muted small">No machine matches.</p>}
+            </div>
+          )}
+        </span>
+      )}
     </>
   );
 }
