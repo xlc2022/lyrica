@@ -305,8 +305,6 @@ function MemorySection({ base, summary, pool, userId, onSummary }: { base: strin
   const [saved, setSaved] = useState(false);
   useEffect(() => setInstructions(summary.instructions ?? ""), [summary.instructions]);
   const save = () => run(async () => { setSaved(false); onSummary(await patch<ThreadSummary>(base, { instructions })); setSaved(true); });
-  // The project page's ID, as core/src/store/pool.ts names it.
-  const page = `p:project-${summary.id.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
   return (
     <form className="card project-form" aria-labelledby="h-memory" onSubmit={(e) => { e.preventDefault(); void save(); }}>
       <h2 id="h-memory">Memory</h2>
@@ -315,7 +313,7 @@ function MemorySection({ base, summary, pool, userId, onSummary }: { base: strin
         <textarea rows={6} maxLength={2000} value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="How Lyrica should work in this project. Every thread of it reads this." />
         <small className="muted num">{instructions.length} / 2000</small>
       </label>
-      <p className="small"><a href={href({ page: "memory", userId, pool, id: page })}>Project page</a> <span className="muted">· what Lyrica knows about the project, rewritten while she sleeps</span></p>
+      <p className="small"><a href={href({ page: "memory", userId, pool, id: summary.projectSettings!.pageId })}>Project page</a> <span className="muted">· what Lyrica knows about the project, rewritten while she sleeps</span></p>
       <div className="row">
         <button type="submit" className="primary" disabled={busy}>Save</button>
         {saved && <span className="muted" role="status">Saved.</span>}
