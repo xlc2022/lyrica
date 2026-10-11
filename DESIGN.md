@@ -1272,7 +1272,7 @@ Details in [docs/sleep.md](docs/sleep.md).
   - Each user has an encrypted home workspace (gocryptfs) for uploads and
     working files, unlocked with that user's key.
   - Every thread has two network switches for its tools: **internet** (on by
-    default in general, off in private) and **this machine's services** (off
+    default in general, off in private) and **local services** (off
     by default in both). There are per-user defaults and per-thread
     overrides.
   - Each thread can also have an **allowed hosts** list: IP addresses,

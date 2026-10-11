@@ -133,7 +133,7 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
             onChange={(v) => change({ localOnly: v })} />
           <NetSwitch label="Internet" hint="For her commands and fetches." value={settings.internet} effective={settings.network.internet}
             onChange={(v) => change({ internet: v })} />
-          <NetSwitch label="This machine's services" hint="Local ports, except Lyrica's own." value={settings.services} effective={settings.network.services}
+          <NetSwitch label="Local services (localhost)" hint="Programs running on Lyrica's own server, such as a database. Never Lyrica's own page." value={settings.services} effective={settings.network.services}
             onChange={(v) => change({ services: v })} />
           <NetSwitch label="Voice to cloud" hint="What you dictate may be sent to a cloud model." value={settings.voiceCloud} effective={settings.speech.voiceCloud}
             onChange={(v) => change({ voiceCloud: v })} />

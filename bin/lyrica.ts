@@ -188,7 +188,7 @@ async function workspaceAdmin(users: Users, keyring: Keyring, kind: "grants" | "
   if (kind === "net" && action === "show") {
     for (const p of ["general", "private"] as const) {
       const n = settings.defaultNetwork(p);
-      console.log(`${p}: internet ${n.internet ? "on" : "off"}, machine's services ${n.services ? "on" : "off"}, hosts: ${n.hosts.join(", ") || "(none)"}`);
+      console.log(`${p}: internet ${n.internet ? "on" : "off"}, local services ${n.services ? "on" : "off"}, hosts: ${n.hosts.join(", ") || "(none)"}`);
     }
   } else if (kind === "net" && action === "set" && isPool(pool) && (rest[0] === "internet" || rest[0] === "services") && (rest[1] === "on" || rest[1] === "off")) {
     settings.setDefaultNetwork(pool, { [rest[0]]: rest[1] === "on" });

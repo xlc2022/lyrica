@@ -372,7 +372,7 @@ values are always visible next to the model badge:
 
 Every thread has two switches and a list:
 - **Internet:** anything off this machine.
-- **This machine's services:** whatever listens on the host's loopback, TCP
+- **Local services (localhost)**: whatever listens on the host's loopback, TCP
   and UDP, or on the host's own addresses (except lyricad's front door).
 - **Allowed hosts:** IPs, CIDR ranges or hostnames (a URL is reduced to its
   host and port), each with an optional port. They are reachable even with

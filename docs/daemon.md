@@ -574,7 +574,7 @@ module does the same ("On NixOS" below).
   must show `0`.
 - **Caddy's unit** runs `caddy run --resume`, starting from
   `/etc/lyrica/caddy.json`, which only puts the admin API on its Unix socket.
-  It is never on `localhost:2019`: a thread with "this machine's services" on
+  It is never on `localhost:2019`: a thread with "Local services (localhost)" on
   reaches loopback ports, and the admin API could replace the site with a
   fake login page. Caddy needs none of what lyricad's sandboxes need, so its
   unit is fully hardened. Before it starts, a saved config that no longer

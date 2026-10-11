@@ -437,7 +437,7 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
             <fieldset key={pool} className="group">
               <legend>{pool === "general" ? "General threads" : "Private threads"}</legend>
               <Switch label="Internet" checked={n.internet} onChange={(internet) => change(pool, { internet })} />
-              <Switch label="This machine's services" checked={n.services} onChange={(services) => change(pool, { services })} />
+              <Switch label="Local services (localhost)" hint="Programs running on Lyrica's own server, such as a database. Never Lyrica's own page." checked={n.services} onChange={(services) => change(pool, { services })} />
               <div className="field"><span>Allowed hosts</span>
                 <ul className="chips">{n.hosts.map((h) => <li key={h}>{h}<button type="button" className="quiet" aria-label={`Remove ${h}`} onClick={() => change(pool, { hosts: n.hosts.filter((x) => x !== h) })}>✕</button></li>)}</ul>
                 <form className="inline" onSubmit={(e) => { e.preventDefault(); void change(pool, { hosts: [...n.hosts, host[pool].trim()] }).then((ok) => ok && setHost({ ...host, [pool]: "" })); }}>

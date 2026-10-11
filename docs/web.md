@@ -109,7 +109,7 @@ A thread's address may carry what the panel beside it shows:
   the box), and a link to that page in the memory browser. Files and
   images come with the Files panel.
 - **Thread settings drawer:** a model per task (each option says cloud or local first), local-only, the internet and
-  this machine's services switches (each following the user's default until
+  Local services (localhost) switches (each following the user's default until
   changed), allowed hosts, folders from the allowed paths (read-only or
   read-write), **Machines** (the sandbox, always, then a switch per machine
   of the thread's pool; a granted machine that no longer exists keeps its
