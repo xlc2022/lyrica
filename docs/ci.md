@@ -23,10 +23,17 @@ minutes on a private repository are billed past the plan's allowance.
 ## Where it sits on the network
 
 Every job, and every package a job installs, runs as root on the VM, and the
-machines beside it hold Li's memory and the model host. So the VM's own
-firewall rules (Proxmox's, for that VM) let it reach the internet and nothing
-else: outbound to 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 and the tailnet's
-100.64.0.0/10 is denied, except the gateway. It never joins the tailnet.
+machines beside it hold Li's memory and the model host. So the VM reaches the
+internet and nothing else:
+
+- setup.sh installs `lyrica-ci-firewall`, an nftables table applied at boot
+  before the runner starts. On the uplink it rejects 10.0.0.0/8,
+  172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16 and fc00::/7,
+  except DNS to the configured resolvers and DHCP. Docker's own bridges are
+  other interfaces, so the jobs' containers still reach each other.
+- A job has root and could remove that table, so the same rules on the
+  hypervisor (Proxmox's firewall for the VM) or a separate VLAN are stronger.
+- The VM never joins the tailnet.
 
 ## Who can run code on it
 

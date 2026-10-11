@@ -2,9 +2,9 @@
 # Makes this machine Lyrica's CI runner: a GitHub Actions self-hosted runner
 # labelled lyrica-ci, running as a systemd service (see docs/ci.md).
 #
-# Run it as root on a fresh Ubuntu 24.04 VM that holds nothing else, and
-# whose firewall lets it reach the internet but nothing on the LAN or the
-# tailnet (see docs/ci.md):
+# Run it as root on a fresh Ubuntu 24.04 VM that holds nothing else. It also
+# sets a firewall in the VM that lets it reach the internet but nothing on the
+# LAN or the tailnet (see docs/ci.md):
 #   sudo bash setup.sh TOKEN
 # TOKEN is the one shown on
 # https://github.com/xlc2022/lyrica/settings/actions/runners/new (valid for an
@@ -65,6 +65,59 @@ if [[ ! -f .runner ]]; then
     --name "$(hostname -s)" --labels "$LABEL"
 fi
 [[ -f .service ]] || ./svc.sh install "$RUNNER_USER"
+
+# The firewall: the uplink reaches the internet, DNS and DHCP, and no private
+# address. Applied at boot, before the runner starts.
+cat >/usr/local/sbin/lyrica-ci-firewall <<'FIREWALL'
+#!/usr/bin/env bash
+# Lyrica CI: this machine reaches the internet but nothing on the LAN or the
+# tailnet. Installed by .github/runner/setup.sh; see docs/ci.md.
+set -euo pipefail
+dev=$(ip -4 route show default | awk '{for (i = 1; i < NF; i++) if ($i == "dev") { print $(i + 1); exit }}')
+[[ -n $dev ]] || { echo "lyrica-ci-firewall: no default route" >&2; exit 1; }
+# The DNS servers DHCP gave us may be on the LAN: they get port 53 only.
+dns=$( { resolvectl dns 2>/dev/null || true; cat /run/systemd/resolve/resolv.conf /etc/resolv.conf 2>/dev/null || true; } |
+  grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | grep -v '^127\.' | sort -u | paste -sd, - || true)
+dns_rule=
+[[ -z $dns ]] || dns_rule="ip daddr { $dns } meta l4proto { tcp, udp } th dport 53 accept"
+nft -f - <<NFT
+table inet lyrica_ci
+delete table inet lyrica_ci
+table inet lyrica_ci {
+  chain output { type filter hook output priority filter; policy accept; oifname "$dev" jump lan; }
+  chain forward { type filter hook forward priority filter; policy accept; oifname "$dev" jump lan; }
+  chain lan {
+    $dns_rule
+    udp dport 67 accept
+    ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16 } reject with icmpx admin-prohibited
+    ip6 daddr fc00::/7 reject with icmpx admin-prohibited
+  }
+}
+NFT
+echo "lyrica-ci-firewall: $dev reaches the internet only${dns:+ (DNS: $dns)}"
+FIREWALL
+chmod 755 /usr/local/sbin/lyrica-ci-firewall
+cat >/etc/systemd/system/lyrica-ci-firewall.service <<'UNIT'
+[Unit]
+Description=Lyrica CI: no access to the LAN or the tailnet
+Wants=network-online.target
+After=network-online.target systemd-resolved.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/lyrica-ci-firewall
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+runner_service=$(cat .service)
+mkdir -p "/etc/systemd/system/$runner_service.d"
+printf '[Unit]\nRequires=lyrica-ci-firewall.service\nAfter=lyrica-ci-firewall.service\n' >"/etc/systemd/system/$runner_service.d/firewall.conf"
+systemctl daemon-reload
+systemctl enable lyrica-ci-firewall.service
+systemctl restart lyrica-ci-firewall.service
+./svc.sh stop >/dev/null 2>&1 || true
 ./svc.sh start
 
 # Image builds and old stacks pile up: clear what no job has used for a week.
