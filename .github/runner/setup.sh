@@ -62,13 +62,14 @@ echo "Installing the runner's dependencies..."
 ./bin/installdependencies.sh
 
 if [[ ! -f .runner ]]; then
+  echo "Registering the runner with GitHub..."
   TOKEN=${1:-}
   [[ -n $TOKEN ]] || { read -r -s -p "Registration token: " TOKEN; echo; }
   sudo -u "$RUNNER_USER" ./config.sh --unattended --replace \
     --url "https://github.com/$REPO" --token "$TOKEN" \
     --name "$(hostname -s)" --labels "$LABEL"
 fi
-[[ -f .service ]] || ./svc.sh install "$RUNNER_USER"
+[[ -f .service ]] || { echo "Installing the runner service..."; ./svc.sh install "$RUNNER_USER"; }
 
 # The firewall: the uplink reaches the internet, DNS and DHCP, and opens no
 # connection to a private address; it still answers ones opened to it, such
@@ -78,6 +79,9 @@ cat >/usr/local/sbin/lyrica-ci-firewall <<'FIREWALL'
 # Lyrica CI: this machine reaches the internet but nothing on the LAN or the
 # tailnet. Installed by .github/runner/setup.sh; see docs/ci.md.
 set -euo pipefail
+# At boot, wait for DHCP's default route (instead of network-online.target,
+# which can wait minutes on an interface that never comes up).
+for _ in $(seq 60); do ip -4 route show default | grep -q . && break; sleep 1; done
 dev=$(ip -4 route show default | awk '{for (i = 1; i < NF; i++) if ($i == "dev") { print $(i + 1); exit }}')
 [[ -n $dev ]] || { echo "lyrica-ci-firewall: no default route" >&2; exit 1; }
 # The DNS servers DHCP gave us may be on the LAN: they get port 53 only.
@@ -107,8 +111,7 @@ chmod 755 /usr/local/sbin/lyrica-ci-firewall
 cat >/etc/systemd/system/lyrica-ci-firewall.service <<'UNIT'
 [Unit]
 Description=Lyrica CI: no access to the LAN or the tailnet
-Wants=network-online.target
-After=network-online.target systemd-resolved.service
+After=network.target systemd-resolved.service
 
 [Service]
 Type=oneshot
@@ -121,10 +124,13 @@ UNIT
 runner_service=$(cat .service)
 mkdir -p "/etc/systemd/system/$runner_service.d"
 printf '[Unit]\nRequires=lyrica-ci-firewall.service\nAfter=lyrica-ci-firewall.service\n' >"/etc/systemd/system/$runner_service.d/firewall.conf"
+echo "Turning on the firewall..."
 systemctl daemon-reload
 systemctl enable lyrica-ci-firewall.service
 systemctl restart lyrica-ci-firewall.service
-./svc.sh stop >/dev/null 2>&1 || true
+systemctl status lyrica-ci-firewall.service --no-pager -n 1 | tail -n 1
+echo "Restarting the runner (a job it is running is cancelled)..."
+./svc.sh stop || true
 ./svc.sh start
 
 # Image builds and old stacks pile up: clear what no job has used for a week.
