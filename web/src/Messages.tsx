@@ -11,6 +11,7 @@ import type { useThread } from "./stream.ts";
 import { SuggestedCard, ThreadCard, type ProjectEnv } from "./Project.tsx";
 import { EditBox, MessageMenu, type Rewinder } from "./Rewind.tsx";
 import { ErrorText, Prose, useAction } from "./ui.tsx";
+import { PathText, useFileLinks } from "./paths.tsx";
 import { ReadAloudButton } from "./Voice.tsx";
 
 interface Props {
@@ -137,7 +138,7 @@ function StoredMessage({ m, env, you, cards, told, folded }: { m: Message; env: 
     if (m.from?.kind === "watching") return <><LookMarker text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} told={told ?? []} env={env} n={m.n} />{after}</>;
     const hers = m.from?.kind === "lyrica";
     const who = hers ? "Lyrica" : m.from?.kind === "user" ? (m.from.name || you) : you;
-    return <><UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} hers={hers ? env : undefined} />{after}</>;
+    return <><UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} env={env} hers={hers} />{after}</>;
   }
   if (m.role === "notice") {
     return <>{m.parts.map((p, i) => (p.type === "delegation"
@@ -193,22 +194,23 @@ function LiveMessage({ item, env, you, streaming }: { item: LiveItem; env: Env; 
     if (item.text.startsWith(WATCHING_MARK)) return <LookMarker text={item.text.slice(WATCHING_MARK.length)} told={[]} env={env} />;
     const parent = FROM_PARENT.exec(item.text);
     if (parent) return <FromThread text={item.text.slice(parent[0].length)} from={{ kind: "thread", threadId: parent[1]! }} env={env} />;
-    return <UserMessage text={item.text} you={you} />;
+    return <UserMessage text={item.text} you={you} env={env} />;
   }
   if (item.role === "notice") return <Notice text={item.text} status={item.status} threads={item.threads} env={env} />;
   return <Parts parts={item.parts} env={env} model={item.model} streaming={streaming} />;
 }
 
-/** A message in the person's place; `hers` when Lyrica wrote it (a subagent's task), so the threads she mentions show by title. */
-function UserMessage({ text, you, n, rewinder, hers }: { text: string; you: string; n?: number; rewinder?: Rewinder; hers?: Pick<Env, "userId" | "pool"> }) {
+/** A message in the person's place; `hers` when Lyrica wrote it (a subagent's task), so the threads she mentions show by title. Its paths are links. */
+function UserMessage({ text, you, n, rewinder, env, hers }: { text: string; you: string; n?: number; rewinder?: Rewinder; env: Pick<Env, "userId" | "pool" | "threadId">; hers?: boolean }) {
   const [editing, setEditing] = useState(false);
+  const files = useFileLinks(env.userId, env.pool, env.threadId);
   const menu = rewinder && n !== undefined;
   return (
     <div className="msg user" id={n !== undefined ? `m-${n}` : undefined}>
       <div className="who">{you}{menu && rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}{menu && <MessageMenu n={n} role="user" rewinder={rewinder} onEdit={() => setEditing(true)} />}</div>
       {editing && menu
         ? <EditBox text={text} onCancel={() => setEditing(false)} onSend={(t) => { setEditing(false); rewinder.rewind(n, { action: "edit", text: t }, n); }} />
-        : hers ? <div className="body prose"><HerProse text={text} env={hers} /></div> : <div className="body">{text}</div>}
+        : hers ? <div className="body prose"><HerProse text={text} env={env} /></div> : <div className="body"><PathText text={text} files={files} /></div>}
     </div>
   );
 }
@@ -463,9 +465,10 @@ function Notice({ text, status, threads, env }: { text: string; status?: string;
   );
 }
 
-/** Her text, with each thread she mentions shown by its current title. */
-function HerProse({ text, env }: { text: string; env: Pick<Env, "userId" | "pool"> }) {
-  return <Prose text={useThreadMentions(text, env.userId, env.pool)} />;
+/** Her text, with each thread she mentions shown by its current title, this thread's paths as links and its images shown. */
+function HerProse({ text, env }: { text: string; env: Pick<Env, "userId" | "pool" | "threadId"> }) {
+  const files = useFileLinks(env.userId, env.pool, env.threadId);
+  return <Prose text={useThreadMentions(text, env.userId, env.pool)} files={files} />;
 }
 
 /**

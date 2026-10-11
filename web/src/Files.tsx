@@ -6,12 +6,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { get, post, threadPath, upload, type FileEntry, type FileListing, type FileRoot, type FileSearch, type ImageEntry, type Pool, type ThreadSummary } from "./api.ts";
 import { ask, ATTACH_EVENT, ATTACH_KEY, keep, SHOW_EVENT, SHOW_KEY, type AttachRequest, type ShowRequest } from "./links.ts";
+import { Lightbox, shown, WORKDIR } from "./paths.tsx";
 import { Icon } from "./icons.tsx";
 import { go } from "./route.ts";
 import { Crumbs, Main, PanelButtons, type ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, ErrorText, menuArrows } from "./ui.tsx";
 
-const WORKDIR = "/workspace";
 /** Text this large is shown in the panel; anything bigger, or of another kind, is offered as a download. */
 const TEXT_LIMIT = 512 * 1024;
 
@@ -32,9 +32,9 @@ const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1);
 const under = (p: string, dir: string) => p === dir || p.startsWith(`${dir}/`);
 const kb = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
 /** A path as the panel names it: inside the thread's folder without the prefix, elsewhere as it is. */
-const shown = (p: string) => (p === WORKDIR ? "Thread folder" : p.startsWith(`${WORKDIR}/`) ? p.slice(WORKDIR.length + 1) : p);
 
-export function FilesPage({ ctx, pool, threadId, threads }: { ctx: ShellContext; pool: Pool; threadId: string; threads: ThreadSummary[] }) {
+/** `path`: a file to show on arrival (a link in the conversation), with its folders opened in the tree. */
+export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellContext; pool: Pool; threadId: string; threads: ThreadSummary[]; path?: string }) {
   const userId = ctx.user.id;
   const thread = threadPath(userId, pool, threadId);
   const base = `${thread}/files`;
@@ -66,6 +66,23 @@ export function FilesPage({ ctx, pool, threadId, threads }: { ctx: ShellContext;
     return l;
   }, [base]);
   useEffect(() => { load(WORKDIR).catch(fail); }, [load]);
+  // A linked file: its folders open and it is shown; a folder is only opened.
+  useEffect(() => {
+    if (!path) return;
+    let live = true;
+    (async () => {
+      const dirs: string[] = [];
+      for (let d = parent(path); d.length >= WORKDIR.length && under(d, WORKDIR); d = parent(d)) dirs.unshift(d);
+      const l = await load(parent(path));
+      const entry = l.entries.find((e) => e.path === path);
+      if (!live) return;
+      setOpen((s) => new Set([...s, ...dirs, ...(entry?.kind === "folder" ? [path] : [])]));
+      if (entry?.kind === "folder") { setCwd(path); if (!listings[path]) load(path).catch(fail); }
+      else if (entry) view(entry);
+      else setError(`There is no ${shown(path)} any more.`);
+    })().catch(fail);
+    return () => { live = false; };
+  }, [path, load]); // eslint-disable-line react-hooks/exhaustive-deps
   const loadImages = useCallback(() => get<ImageEntry[]>(`${base}/images`).then(setImages, fail), [base]);
   useEffect(() => { if (tab === "images") void loadImages(); }, [tab, loadImages]);
 
@@ -361,23 +378,8 @@ function ImagesTab({ images, filter, onFilter, url, sel, onPick, press, onMenu }
           </button>
         ))}
       </div>
-      {large && <Lightbox entry={large} url={url(large.path)} onClose={() => setLarge(undefined)} onMenu={(e) => onMenu(e, large)} />}
+      {large && <Lightbox path={large.path} url={url(large.path)} onClose={() => setLarge(undefined)} onMenu={(e) => onMenu(e, large)} />}
     </>
-  );
-}
-
-function Lightbox({ entry, url, onClose, onMenu }: { entry: ImageEntry; url: string; onClose: () => void; onMenu: (e: React.MouseEvent) => void }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => { const el = ref.current; if (el && !el.open) el.showModal(); return () => el?.close(); }, []);
-  return (
-    <dialog ref={ref} className="lightbox" aria-label={entry.name} onCancel={(e) => { e.preventDefault(); onClose(); }} onClick={(e) => { if (e.target === ref.current) onClose(); }}>
-      <div className="fhead">
-        <span className="fname mono">{shown(entry.path)}</span>
-        <button type="button" className="icon sm" aria-label="Image actions" aria-haspopup="menu" onClick={onMenu}><Icon name="more" /></button>
-        <button type="button" className="icon sm" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
-      </div>
-      <div className="lb-img"><img src={url} alt={entry.name} /></div>
-    </dialog>
   );
 }
 

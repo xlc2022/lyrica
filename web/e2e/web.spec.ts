@@ -1072,6 +1072,22 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   menu = await open("plan.md");
   await menu.getByRole("menuitem", { name: "Show in thread" }).click();
   await expect(page.locator(".msg.user.flash")).toContainText("/workspace/uploads/plan.md");
+  // The path in her reply is a link that shows the file; the person's message links it too.
+  await expect(page.locator(".msg.user a.fpath", { hasText: "/workspace/uploads/plan.md" })).toBeVisible();
+  await page.locator(".prose a.fpath", { hasText: "/workspace/uploads/plan.md" }).first().click();
+  await expect(page.locator(".fview .fname")).toHaveText("uploads/plan.md");
+  await expect(page.locator(".fview pre")).toContainText("# The plan");
+  if (phone(page)) { await page.goBack(); await page.getByRole("heading", { level: 1, name: "hello files" }).waitFor(); }
+  else await page.locator(".fview .fback").click(); // the panel column is narrow, so the file took the tree's place
+  // An image she writes from the thread folder shows in the message and opens large.
+  await page.getByLabel("Message", { exact: true }).fill("![the tray](/workspace/uploads/tray.png)");
+  await page.getByRole("button", { name: "Send" }).click();
+  const thumb = page.getByRole("button", { name: "the tray, open large" });
+  await expect(thumb).toBeVisible();
+  await thumb.click();
+  await expect(page.locator("dialog.lightbox img")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("dialog.lightbox")).toBeHidden();
   if (phone(page)) await page.getByRole("link", { name: "Files and images" }).click();
   // A new folder under uploads, renamed, then deleted with the note.
   await expect(panel.getByRole("button", { name: "uploads" })).toBeVisible();

@@ -721,3 +721,10 @@ dialog.lightbox img { display: block; max-width: 100%; max-height: 72vh; margin:
 @media (max-width: 760px) {
   .ftree button, .igrid > button { min-height: 44px; }
 }
+
+/* ---- Files named in a conversation (docs/ux.md §6): a path is a link to the Files panel; her images from the thread folder show inline and open large. ---- */
+a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; }
+.inline-img { display: block; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--tool); overflow: hidden; max-width: min(100%, 420px); cursor: zoom-in; }
+.inline-img:hover { border-color: var(--muted); }
+.inline-img img { display: block; max-width: 100%; max-height: 320px; object-fit: contain; }
+.prose p:has(> .inline-img:only-child) { margin: 8px 0; }

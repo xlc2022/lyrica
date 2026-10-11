@@ -284,6 +284,7 @@ export function describe(tools: ThreadTools): string {
   const pves = all.filter((m) => m.kind === "proxmox").map((m) => `${m.name} (${limit(m)})`);
   return [
     `Your file and command tools run in a sandbox. ${WORKDIR} is this conversation's folder; uploads arrive in ${WORKDIR}/uploads.`,
+    `A ${WORKDIR} path you write is a link the person can open, and an image under it that you write as markdown (![what it shows](${WORKDIR}/plot.png)) shows in your message.`,
     grants.length ? `Folders you were given: ${grants.join(", ")}.` : "No other folders were given to you in this conversation.",
     network(tools.network()),
     ...(machines.length ? [`Machines you can work on over SSH, with the machine argument: ${machines.join(", ")}. The sandbox's network settings don't apply there.`] : []),
