@@ -160,7 +160,7 @@ class Helper {
   static async start(address: string, port: number, sandbox: HelperSandbox, onEvent: (f: Frame, h: Helper) => void, onExit: (err: Error) => void): Promise<Helper> {
     if (sandbox.refused) throw new Error(`no sandbox for the SSH client: ${sandbox.refused}`);
     const [major, minor] = process.versions.node.split(".").map(Number) as [number, number];
-    if (major === 22 && minor < 6) throw new Error("the SSH helper needs Node 22.6 or later (type stripping)");
+    if (major < 22 || (major === 22 && minor < 6)) throw new Error("the SSH helper needs Node 22.6 or later (type stripping)");
     const child = await helperSandbox(address, port, sandbox)
       .start([realpathSync(process.execPath), "--experimental-strip-types", "--disable-warning=ExperimentalWarning", HELPER]);
     const h = new Helper(child);
@@ -231,10 +231,15 @@ export function sandboxedTransport(sandbox: () => HelperSandbox): SshTransport {
       const address = await addressOf(to.host);
       return new Promise<SshSession>((resolve, reject) => {
         let refused: string | undefined;
+        let accepted = false;
+        let asked = false;
+        let settled = false;
         let helper: Helper | undefined;
         let session: SshSession | undefined;
         const closed: (() => void)[] = [];
         const fail = (err: Error) => {
+          if (settled) return;
+          settled = true;
           clearTimeout(timer);
           helper?.fail(err);
           reject(refused ? new Error(`the host key changed (saw ${refused})`) : err);
@@ -242,13 +247,19 @@ export function sandboxedTransport(sandbox: () => HelperSandbox): SshTransport {
         // Starting the sandbox, which can hang if pasta can't make its device, plus ssh2's own 10 s.
         const timer = setTimeout(() => fail(new Error("timed out connecting")), 20_000);
         Helper.start(address, to.port, sandbox(), (f, h) => {
-          if (session) return;
+          if (settled) return;
           if (f.head.ev === "hostkey") {
+            // One host key per connection; the private key goes only with a yes.
+            if (asked) return fail(new Error("the SSH helper asked about a second host key"));
+            asked = true;
             const seen = fingerprint(f.body);
-            const ok = verify(seen);
-            if (!ok) refused = seen;
-            h.send({ op: "hostkey", ok });
+            accepted = verify(seen);
+            if (!accepted) refused = seen;
+            h.send({ op: "hostkey", ok: accepted }, accepted ? Buffer.from(to.privateKey) : undefined);
           } else if (f.head.ev === "ready" && typeof f.head.home === "string") {
+            // A helper that skipped the host key question doesn't get a session.
+            if (!accepted) return fail(new Error("the SSH helper logged in before the host key was accepted"));
+            settled = true;
             clearTimeout(timer);
             session = sessionOf(h, f.head.home, closed);
             resolve(session);
@@ -260,7 +271,9 @@ export function sandboxedTransport(sandbox: () => HelperSandbox): SshTransport {
           else fail(err);
         }).then((h) => {
           helper = h;
-          h.send({ op: "connect", host: address, port: to.port, username: to.username }, Buffer.from(to.privateKey));
+          // Timed out while the sandbox was starting: the helper is ended and told nothing.
+          if (settled) return h.fail(new Error("timed out connecting"));
+          h.send({ op: "connect", host: address, port: to.port, username: to.username });
         }, fail);
       });
     },
@@ -286,13 +299,26 @@ function sessionOf(h: Helper, home: string, closed: (() => void)[]): SshSession 
         else o.onData(d);
       });
       let stopped: Error | undefined;
-      const stop = (why: Error) => { stopped = why; h.call({ op: "kill", target: run.id }).catch(() => {}); };
+      let rejectStop: (err: Error) => void = () => {};
+      const stopping = new Promise<never>((_, reject) => { rejectStop = reject; });
+      stopping.catch(() => {});
+      let grace: NodeJS.Timeout | undefined;
+      // A stopped command fails at once; a helper that doesn't end it within 5 s is ended itself.
+      const stop = (why: Error) => {
+        if (stopped) return;
+        stopped = why;
+        h.call({ op: "kill", target: run.id }).catch(() => {});
+        grace = setTimeout(() => h.fail(new Error("the SSH helper didn't stop a command")), 5000);
+        grace.unref();
+        rejectStop(why);
+      };
       const timer = o.timeout ? setTimeout(() => stop(new Error(`timeout:${o.timeout}`)), o.timeout * 1000) : undefined;
       const onAbort = () => stop(new Error("aborted"));
       o.signal?.addEventListener("abort", onAbort, { once: true });
       if (o.signal?.aborted) onAbort();
+      run.then(() => clearTimeout(grace), () => clearTimeout(grace));
       try {
-        const reply = await run;
+        const reply = await Promise.race([run, stopping]);
         if (stopped) throw stopped;
         return typeof reply.head.code === "number" ? reply.head.code : null;
       } catch (err) {
@@ -305,7 +331,8 @@ function sessionOf(h: Helper, home: string, closed: (() => void)[]): SshSession 
     realpath: async (path) => String((await call({ op: "realpath", path })).head.value),
     lstat: async (path) => {
       try {
-        return (await call({ op: "lstat", path })).head.stats as RemoteStat;
+        const st = (await call({ op: "lstat", path })).head.stats as Record<string, unknown> | undefined;
+        return { uid: Number(st?.uid), gid: Number(st?.gid), mode: Number(st?.mode), symlink: st?.symlink === true };
       } catch (err) {
         if (isMissing(err)) return undefined;
         throw err;

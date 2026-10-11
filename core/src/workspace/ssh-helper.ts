@@ -20,16 +20,14 @@ const client = new ssh2.Client();
 const streams = new Map<number, ClientChannel>();
 let sftp: SFTPWrapper | undefined;
 let answerHostKey: ((ok: boolean) => void) | undefined;
+/** The private key: lyricad sends it only with its yes to the host key. */
+let key: Buffer | undefined;
 
-function connect(head: Frame["head"], key: Buffer): void {
+function connect(head: Frame["head"]): void {
+  const username = String(head.username);
   client.on("error", (err) => send({ ev: "error", message: err.message }));
   client.on("close", () => { send({ ev: "closed" }); process.exit(0); });
   client.on("ready", () => {
-    // Strict key exchange (the Terrapin fix) is required, not just preferred.
-    if ((client as unknown as { _protocol?: { _strictMode?: boolean } })._protocol?._strictMode !== true) {
-      send({ ev: "error", message: "the server doesn't offer strict key exchange; update its OpenSSH" });
-      return void client.end();
-    }
     client.sftp((err, s) => {
       if (err) return send({ ev: "error", message: err.message });
       sftp = s;
@@ -40,12 +38,24 @@ function connect(head: Frame["head"], key: Buffer): void {
     host: String(head.host),
     port: Number(head.port),
     username: String(head.username),
-    privateKey: key.length ? key : undefined,
     readyTimeout: 10_000,
     agent: undefined,
     hostVerifier: (hostKey: Buffer, verify: (ok: boolean) => void) => {
+      // Strict key exchange (the Terrapin fix) is required, not just preferred: checked
+      // here, where ssh2 has settled it, before the host key is judged or anything is sent.
+      if ((client as unknown as { _protocol?: { _strictMode?: boolean } })._protocol?._strictMode !== true) {
+        send({ ev: "error", message: "the server doesn't offer strict key exchange; update its OpenSSH" });
+        return verify(false);
+      }
       answerHostKey = verify;
       send({ ev: "hostkey" }, hostKey);
+    },
+    // Runs only after the host key was accepted, which is when lyricad sends the key.
+    authHandler: (_methods, _partial, next) => {
+      const k = key;
+      key = undefined;
+      // false ends authentication; ssh2's types leave it out.
+      (next as (method: unknown) => void)(k ? { type: "publickey", username, key: k } : false);
     },
   });
 }
@@ -124,8 +134,13 @@ function request(id: number, head: Frame["head"], body: Buffer): void {
 }
 
 const feed = decoder(({ head, body }) => {
-  if (head.op === "connect") return connect(head, body);
-  if (head.op === "hostkey") { answerHostKey?.(head.ok === true); answerHostKey = undefined; return; }
+  if (head.op === "connect") return connect(head);
+  if (head.op === "hostkey") {
+    if (head.ok === true && body.length) key = body;
+    answerHostKey?.(head.ok === true);
+    answerHostKey = undefined;
+    return;
+  }
   request(Number(head.id), head, body);
 });
 process.stdin.on("data", (chunk: Buffer) => feed(chunk));

@@ -4,6 +4,7 @@ import { connect, createServer, type Server } from "node:net";
 import { networkInterfaces, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import ssh2 from "ssh2";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, Users, Workspace, WorkspaceSettings, type HelperSandbox, type MachineConfig } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
@@ -352,6 +353,61 @@ describe.skipIf(!helperRunnable)("the ssh helper's sandbox", () => {
     const ps = await run(box, "for f in /proc/[0-9]*/cmdline; do tr '\\0' ' ' < $f; echo; done");
     expect(ps).toContain("bwrap");
     expect(ps).not.toContain("vitest");
+  });
+
+  it("refuses a server without strict key exchange, and sends the key only after the host key is accepted", async () => {
+    const hostKey = generateSshKey("host").privateKey;
+    const key = generateSshKey("lyrica");
+    const serve = async (strict: boolean) => {
+      const tried: string[] = [];
+      const srv = new ssh2.Server({ hostKeys: [hostKey] }, (c) => {
+        c.on("error", () => {});
+        c.on("authentication", (ctx) => { tried.push(ctx.method); ctx.method === "publickey" ? ctx.accept() : ctx.reject(["publickey"]); });
+        c.on("ready", () => c.end());
+      });
+      await new Promise<void>((resolve) => srv.listen(0, "127.0.0.1", resolve));
+      const real = (srv.address() as { port: number }).port;
+      // ssh2's server always offers strict key exchange. Without it, a proxy in the
+      // middle strips the offer from the server's first packet, as a Terrapin attacker would.
+      const proxy = createServer((inbound) => {
+        const out = connect(real, "127.0.0.1");
+        let seen = 0;
+        out.on("data", (d: Buffer) => {
+          if (!strict && seen < 8192) {
+            const at = d.indexOf("kex-strict-s-v00@openssh.com");
+            if (at >= 0) d.write("kex-strict-x", at);
+          }
+          seen += d.length;
+          inbound.write(d);
+        });
+        inbound.pipe(out);
+        for (const sock of [inbound, out]) sock.on("error", () => { inbound.destroy(); out.destroy(); });
+        out.on("close", () => inbound.destroy());
+        inbound.on("close", () => out.destroy());
+      });
+      await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
+      const port = (proxy.address() as { port: number }).port;
+      return { port, tried, close: () => { proxy.close(); srv.close(); } };
+    };
+    const to = (port: number) => ({ host: "127.0.0.1", port, username: "lyrica", privateKey: key.privateKey });
+    const transport = sandboxedTransport(() => ({ exclude: [] }));
+
+    // Not strict: refused before the host key is judged or any login is tried.
+    const plain = await serve(false);
+    let asked = false;
+    await expect(transport.connect(to(plain.port), () => { asked = true; return true; })).rejects.toThrow(/strict key exchange/);
+    expect(asked).toBe(false);
+    expect(plain.tried).toEqual([]);
+    plain.close();
+
+    // A host key that isn't the confirmed one: no login is tried, so the key never left lyricad.
+    const strict = await serve(true);
+    await expect(transport.connect(to(strict.port), () => false)).rejects.toThrow(/host key changed/);
+    expect(strict.tried).toEqual([]);
+    // Accepted: the key goes, and logs in.
+    await transport.connect(to(strict.port), () => true).catch(() => {}); // the server hangs up once she's in
+    expect(strict.tried).toContain("publickey");
+    strict.close();
   });
 
   it("reaches only the machine's address and port", async () => {
