@@ -5,7 +5,7 @@ import { lookup } from "node:dns/promises";
 import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { Sandbox, SandboxDenied, Users, Workspace, type Grant, type Network } from "../src/index.ts";
+import { FilesRefused, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Grant, type Network } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 // Escaping the sandbox is the main failure. These tests must run as an
@@ -207,6 +207,96 @@ describe.skipIf(!runnable)("the sandbox", () => {
 
 // On NixOS (the CI nix job sets these): only the closure is in /nix/store.
 const nixTools = process.env.LYRICA_SANDBOX_TOOLS;
+describe.skipIf(!runnable)("the Files panel", () => {
+  const notes: [string, string[]][] = [];
+  const files = () => new ThreadFiles(box(), grants(), (kind, names) => notes.push([kind, names]));
+
+  it("lists one folder at a time, folders first, and searches names under a root", async () => {
+    mkdirSync(p("work", "notes"), { recursive: true });
+    writeFileSync(p("work", "notes", "plan.md"), "# plan");
+    writeFileSync(p("work", "zebra.txt"), "z");
+    mkdirSync(p("work", ".lyrica", "thumbs"), { recursive: true });
+    const f = files();
+    expect(f.roots()).toEqual([{ path: "/workspace", writable: true, kind: "thread" }, { path: p("rw"), writable: true, kind: "grant" }, { path: p("ro"), writable: false, kind: "grant" }]);
+    const top = await f.list("/workspace");
+    expect(top.more).toBe(false);
+    expect(top.entries.map((e) => [e.name, e.kind])).toEqual(expect.arrayContaining([["notes", "folder"], ["zebra.txt", "file"]]));
+    expect(top.entries[0]!.kind).toBe("folder");
+    expect(top.entries.map((e) => e.name)).not.toContain(".lyrica");
+    expect(top.entries.find((e) => e.name === "zebra.txt")).toMatchObject({ path: "/workspace/zebra.txt", size: 1 });
+    expect((await f.list(p("ro"))).entries.map((e) => e.name)).toEqual(["song.txt"]);
+    const hits = await f.search("/workspace", "PLA");
+    expect(hits.entries.map((e) => e.path)).toEqual(["/workspace/notes/plan.md"]);
+    await expect(f.list("/etc")).rejects.toThrow(FilesRefused);
+    await expect(f.list(p("rw", "..", "outside"))).rejects.toThrow(FilesRefused);
+  });
+
+  it("serves a file by its bytes, and follows no symlink out", async () => {
+    const f = files();
+    const { stream, size, type } = await f.read(p("ro", "song.txt"));
+    const chunks: Buffer[] = [];
+    for await (const c of stream as AsyncIterable<Buffer>) chunks.push(c);
+    expect([Buffer.concat(chunks).toString(), size, type]).toEqual(["la la la\n", 9, "text/plain; charset=utf-8"]);
+    await expect(f.read(p("rw", "abs-link"))).rejects.toThrow();
+    await expect(f.read(p("outside", "secret.txt"))).rejects.toThrow(FilesRefused);
+    await expect(f.read("/workspace/notes")).rejects.toThrow(/not a file/);
+  });
+
+  it("uploads under a free name, makes folders, renames and deletes, and refuses a read-only grant, the roots and escapes", async () => {
+    notes.length = 0;
+    const f = files();
+    expect(await f.upload("/workspace/notes", "../../etc/x.txt", Buffer.from("one"))).toBe("/workspace/notes/x.txt");
+    expect(await f.upload("/workspace/notes", "x.txt", Buffer.from("two"))).toBe("/workspace/notes/x-2.txt");
+    expect(readFileSync(p("work", "notes", "x-2.txt"), "utf8")).toBe("two");
+    await f.mkdir("/workspace/pout");
+    await f.rename("/workspace/notes/x-2.txt", "/workspace/pout/y.txt");
+    expect(readFileSync(p("work", "pout", "y.txt"), "utf8")).toBe("two");
+    await expect(f.rename("/workspace/notes/x.txt", "/workspace/pout/y.txt")).rejects.toThrow(/already there/);
+    await f.remove(["/workspace/pout", "/workspace/notes/x.txt"]);
+    expect(readdirSync(p("work"))).not.toContain("pout");
+    expect(readdirSync(p("work", "notes"))).toEqual(["plan.md"]);
+    expect(notes).toEqual([
+      ["added", ["/workspace/notes/x.txt"]], ["added", ["/workspace/notes/x-2.txt"]], ["added", ["/workspace/pout"]],
+      ["removed", ["/workspace/notes/x-2.txt"]], ["added", ["/workspace/pout/y.txt"]], ["removed", ["/workspace/pout", "/workspace/notes/x.txt"]],
+    ]);
+    for (const call of [
+      () => f.upload(p("ro"), "new.txt", Buffer.from("x")), () => f.mkdir(p("ro", "d")), () => f.rename(p("ro", "song.txt"), p("ro", "hymn.txt")),
+      () => f.remove([p("ro", "song.txt")]), () => f.remove(["/workspace"]), () => f.rename(p("rw"), p("rw", "..", "moved")),
+      () => f.upload("/workspace/../etc", "x", Buffer.from("x")), () => f.remove([p("outside", "secret.txt")]), () => f.mkdir("/workspace/.lyrica"),
+    ]) await expect(call()).rejects.toThrow(FilesRefused);
+    expect(readdirSync(p("ro"))).toEqual(["song.txt"]);
+    expect(readFileSync(p("outside", "secret.txt"), "utf8")).toBe("s3cr3t");
+  });
+
+  it("keeps a name with a tab or a newline whole, in a listing and in a zip", async () => {
+    const f = files();
+    mkdirSync(p("work", "odd"));
+    writeFileSync(p("work", "odd", "a\tb.txt"), "tab");
+    writeFileSync(p("work", "odd", "c\nd.txt"), "newline");
+    const { entries } = await f.list("/workspace/odd");
+    expect(entries.map((e) => [e.name, e.size])).toEqual([["a\tb.txt", 3], ["c\nd.txt", 7]]);
+    expect((await f.search("/workspace", "b.txt")).entries.map((e) => e.path)).toEqual(["/workspace/odd/a\tb.txt"]);
+    const chunks: Buffer[] = [];
+    for await (const c of await f.zip(["/workspace/odd"])) chunks.push(c as Buffer);
+    const zip = Buffer.concat(chunks).toString("latin1");
+    expect(zip).toContain("odd/a\tb.txttab");
+    expect(zip).toContain("odd/c\nd.txtnewline");
+    await f.remove(["/workspace/odd"]);
+  });
+
+  it("zips files and folders as it streams, with nothing written to disk", async () => {
+    const f = files();
+    const before = readdirSync(p("work"));
+    const chunks: Buffer[] = [];
+    for await (const c of await f.zip(["/workspace/notes", p("ro", "song.txt")])) chunks.push(c as Buffer);
+    const zip = Buffer.concat(chunks);
+    expect(readdirSync(p("work"))).toEqual(before);
+    const names = [...zip.toString("latin1").matchAll(/PK\x01\x02[\s\S]{42}([^\x00]+?)(?=PK)/g)].map((m) => m[1]);
+    expect(names).toEqual(["notes/plan.md", "song.txt"]);
+    await expect(f.zip([p("outside")])).rejects.toThrow(FilesRefused);
+  });
+});
+
 describe.skipIf(!runnable || !nixTools)("the sandbox with the NixOS tools", () => {
   it("sees only the closure's store paths, never the rest of the store", async () => {
     const closure = readFileSync(process.env.LYRICA_SANDBOX_CLOSURE!, "utf8").split("\n").filter(Boolean);

@@ -9,6 +9,7 @@ import { inOwnNetwork } from "../models/http.ts";
 import type { Pool } from "../types.ts";
 import type { Users } from "../users.ts";
 import { FileChanges, type NewChange } from "./changes.ts";
+import { cleanUploadName, ThreadFiles } from "./files.ts";
 import { isMounted, mountGocryptfs, unmountGocryptfs } from "./home.ts";
 import type { ExecutionTarget } from "./ops.ts";
 import { Sandbox, WORKDIR } from "./sandbox.ts";
@@ -23,6 +24,7 @@ import { generateSshKey, SshTarget } from "./ssh.ts";
 import { sandboxedTransport, type SshTransport } from "./transport.ts";
 
 export * from "./changes.ts";
+export * from "./files.ts";
 export * from "./home.ts";
 export * from "./machines.ts";
 export * from "./net.ts";
@@ -39,13 +41,6 @@ export interface WorkspaceThread {
   userId: string;
   pool: Pool;
   threadId: string;
-}
-
-/** An uploaded file's name made safe: no path, no control characters, at most 120 characters. */
-export function cleanUploadName(name: string): string {
-  const base = name.normalize("NFC").split(/[/\\]/).pop() ?? "";
-  const clean = base.replace(/[^\p{L}\p{N}._:@ ()+,'&-]/gu, "_").replace(/^[.\s]+/, "").trim().slice(0, 120);
-  return clean || "upload";
 }
 
 export interface FrontDoor { ports: number[]; hosts: string[]; exclude: number[] }
@@ -229,7 +224,25 @@ export class Workspace {
       folders: () => this.folders(t),
       /** Called after her write or edit tool changed a file, so removing the turn can undo it. */
       recordChange: (c: NewChange) => { this.changes(t.userId).record(t.pool, t.threadId, c); },
+      /** Files the panel added or removed since her last turn, names only; taking them clears them. */
+      fileNotes: () => this.settings(t.userId).takeFileNotes(t.threadId),
     };
+  }
+
+  /**
+   * The thread's Files panel: its folder and grants, every operation in a
+   * fresh sandbox with no network. Grants are checked against the allowed
+   * paths as they are now, as for her tools.
+   */
+  files(t: WorkspaceThread): ThreadFiles {
+    const s = this.settings(t.userId);
+    s.checkInherited(t.threadId, t.pool);
+    const tw = s.thread(t.threadId);
+    const box = new Sandbox({
+      workdir: this.threadDir(t), grants: tw.grants, network: { internet: false, services: false, hosts: [] },
+      check: (g) => checkGrant(s.allowed(), t.pool, g), bwrap: this.opts.bwrap,
+    });
+    return new ThreadFiles(box, tw.grants, (kind, names) => s.noteFiles(t.threadId, kind, names));
   }
 
   /** What the thread's tools may reach: its settings, or nothing while the self-test has refused network. */

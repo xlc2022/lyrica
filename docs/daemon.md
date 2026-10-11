@@ -325,6 +325,40 @@ denies it.
 The name is cleaned (no path, no control characters), and a name already
 taken gets a suffix (`image-2.jpg`) rather than overwriting.
 
+## Files
+
+The Files panel (DESIGN, "Files and images") reaches a thread's folder and its
+grants only through `Workspace.files(t)`, so every listing, read and change
+runs in the thread's sandbox: no host path is ever handled by `lyricad`, and
+a symlink she left can't point the panel outside. Types and routes are
+documented in `daemon/src/api.ts`, "The Files panel".
+
+- `GET …/threads/:pool/:threadId/files?dir=<path>` lists one folder (the
+  thread's `/workspace` without `dir`), folders first, with the roots: the
+  thread's folder, then each granted folder with whether it is writable. A
+  project thread's project folder is one of its grants, so it shows as a
+  root. Listings stop at 2,000 entries (`more: true`); the panel's own
+  `.lyrica` folder is hidden.
+- `GET …/files/search?root=<path>&q=<text>` finds names containing the text
+  under a root (at most 200). `GET …/files/images` lists every image in the
+  thread's folder, `uploaded` when it is in `uploads/`, otherwise `made` by her.
+- `GET …/files/content?path=<path>[&download=1]` streams the file with its
+  type: images by their bytes, text by extension, and HTML, SVG and scripts
+  as `text/plain`. Every answer carries `Content-Security-Policy: default-src
+  'none'; sandbox` and `nosniff`, so a served file never runs as a page.
+  `download` makes it an attachment.
+- `POST …/files/upload?dir&name` (the bytes), `POST …/files/folder { path }`,
+  `POST …/files/rename { from, to }`, `POST …/files/delete { paths }` change
+  the thread's folder and read-write grants. A read-only grant, a root itself,
+  `.lyrica`, or a path outside the thread's folders is refused with 403; a
+  taken `to` or a missing file is 400 with the reason. Deleting is permanent.
+- `POST …/files/zip { paths }` answers `application/zip`, built in Node as it
+  streams from `cat` in the sandbox: nothing is written to disk, and no zip
+  tool is needed in the sandbox.
+- What the panel adds or removes is noted in `user.db` (`panel_files`), and
+  her next turn's prompt gets one line naming it ("Since your last turn, in the
+  Files panel, the person added … and removed …"), then the notes are cleared.
+
 ## Speech
 
 Dictation and Read aloud (see [models.md](models.md) Speech). Types are in

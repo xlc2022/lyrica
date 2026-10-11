@@ -119,6 +119,13 @@ CREATE TABLE IF NOT EXISTS thread_workspaces (
   machines   TEXT NOT NULL DEFAULT '[]',
   allowed    TEXT NOT NULL DEFAULT '[]'
 );
+-- What the Files panel added or removed since her last turn in the thread: paths only, cleared when her turn takes them.
+CREATE TABLE IF NOT EXISTS panel_files (
+  thread_id TEXT NOT NULL,
+  kind      TEXT NOT NULL,
+  path      TEXT NOT NULL,
+  at        TEXT NOT NULL
+);
 `;
 
 /** Machines she can work on, with the key she signs in with. Older databases call it ssh_targets; migrate renames it. */
@@ -357,6 +364,20 @@ export class WorkspaceSettings {
   /** What this thread's tools may reach. */
   network(threadId: string, pool: Pool): Network {
     return this.resolve(this.thread(threadId), pool);
+  }
+
+  /** Records what the Files panel added or removed, for her next turn. */
+  noteFiles(threadId: string, kind: "added" | "removed", paths: string[]): void {
+    const at = new Date().toISOString();
+    const insert = this.db.prepare("INSERT INTO panel_files (thread_id, kind, path, at) VALUES (?, ?, ?, ?)");
+    for (const path of paths) insert.run(threadId, kind, path, at);
+  }
+
+  /** The panel's notes since her last turn, oldest first, cleared as they're taken. */
+  takeFileNotes(threadId: string): { added: string[]; removed: string[] } {
+    const rows = this.db.prepare("SELECT kind, path FROM panel_files WHERE thread_id = ? ORDER BY rowid").all(threadId) as { kind: string; path: string }[];
+    if (rows.length) this.db.prepare("DELETE FROM panel_files WHERE thread_id = ?").run(threadId);
+    return { added: rows.filter((r) => r.kind === "added").map((r) => r.path), removed: rows.filter((r) => r.kind === "removed").map((r) => r.path) };
   }
 
   /** The thread whose folder in the home workspace this one works in: itself, or its first ancestor. */

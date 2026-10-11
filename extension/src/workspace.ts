@@ -37,6 +37,8 @@ export interface ThreadTools {
   proposePlan?(request: PlanRequest): Promise<GoAhead | undefined>;
   /** Records what a write or edit call did to a file, so removing its turn can undo it. */
   recordChange?(change: NewChange): void;
+  /** What the person's Files panel added or removed since her last turn, names only; taking them clears them. */
+  fileNotes?(): { added: string[]; removed: string[] };
 }
 
 export interface ApprovalRequest {
@@ -286,7 +288,16 @@ export function describe(tools: ThreadTools): string {
     network(tools.network()),
     ...(machines.length ? [`Machines you can work on over SSH, with the machine argument: ${machines.join(", ")}. The sandbox's network settings don't apply there.`] : []),
     ...(pves.length ? [`Proxmox machines you can manage with the proxmox tool: ${pves.join(", ")}.`] : []),
+    ...fileNotes(tools.fileNotes?.()),
   ].join("\n");
+}
+
+/** One line naming what the person added or removed in the Files panel since her last turn. */
+function fileNotes(n?: { added: string[]; removed: string[] }): string[] {
+  if (!n || (!n.added.length && !n.removed.length)) return [];
+  const list = (paths: string[]) => (paths.length > 20 ? `${paths.slice(0, 20).join(", ")} and ${paths.length - 20} more` : paths.join(", "));
+  const parts = [n.added.length ? `added ${list(n.added)}` : "", n.removed.length ? `removed ${list(n.removed)}` : ""].filter(Boolean);
+  return [`Since your last turn, in the Files panel, the person ${parts.join(" and ")}.`];
 }
 
 function network(n: Network): string {

@@ -165,8 +165,8 @@ export class Sandbox implements ExecutionTarget {
 
   folders(): string[] { return this.grants.map((g) => g.path); }
 
-  /** Refuses paths outside the thread's folder and grants. The mounts confine her regardless. */
-  private allow(path: string, write: boolean): string {
+  /** Refuses paths outside the thread's folder and grants (SandboxDenied). The mounts confine her regardless. */
+  allow(path: string, write: boolean): string {
     const p = cleanPath(path);
     if (within(p, WORKDIR)) return p;
     const grant = [...this.grants].reverse().find((g) => within(p, g.path));
