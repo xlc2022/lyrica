@@ -54,12 +54,21 @@ looks, the drawer and the dialog (docs/ux.md §1.4).
    installed red with the reason as the word's tooltip, Not joined the
    word alone); **Connect** primary (not joined: a drawer with Auth key,
    Hostname, Advanced → Control server, Connect at its foot; disconnected:
-   at once); **Disconnect** secondary while connected; **Leave** and
-   **Connect to another tailnet** behind ⋯, Leave with its dialog ("Leave
-   <tailnet>? Her key there is removed, Web access over the tailnet stops,
-   and connecting again needs a new auth key." Buttons Leave / Stay);
-   Connect to another tailnet opens the drawer and its Connect shows the
-   Leave dialog first, ending "…and she joins the new one with this key."
+   at once); **Disconnect** secondary while connected, with its dialog
+   ("Disconnect this machine from <tailnet>? Everything reached over the
+   tailnet stops, SSH included, until it connects again." Buttons
+   Disconnect / Stay connected); **Leave** and **Connect to another
+   tailnet** behind ⋯, Leave with its dialog ("This machine leaves
+   <tailnet>. Its key there is removed, everything reached over the
+   tailnet stops, SSH included, and connecting again needs a new auth
+   key." Buttons Leave / Stay); Connect to another tailnet opens the
+   drawer and its Connect shows the Leave dialog first, ending "…and it
+   joins the new one with this key." When the daemon answers `409`
+   because this page came over the tailnet, the error says so and what to
+   do: "This page is reached over the tailnet, so disconnecting would cut
+   it off. Open Lyrica on the machine, or over the LAN, and do it there."
+   The same sentence on the setup page's Tailnet step when its join would
+   leave another tailnet.
 5. **Web access: Tailnet** as a mode next to Off, Built-in Caddy and
    External proxy, with its state line (the DNS name, the certificate) as
    the other modes have.

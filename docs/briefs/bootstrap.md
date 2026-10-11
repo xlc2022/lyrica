@@ -41,11 +41,13 @@ Administration. No new model-facing tool, no new process of Lyrica's
    `LoginResponse`. Everything else is `503` as while locked. Rate limited
    like unlock.
 3. **The setup code.** At start in this state `lyricad` makes a one-time
-   code (eight characters in two groups, from `crypto.randomBytes`), logs
-   it once ("Set up Lyrica at http://127.0.0.1:7340 with the code
-   XXXX-XXXX") and writes it to `<runtime>/setup-code` (0600). `lyrica
-   admin setup-code` prints it. A wrong code is `403` and counts against
-   the rate limit; the file is deleted when setup completes.
+   code: eight characters in two groups from a 32-symbol alphabet
+   (Crockford's base32, no 0/O or 1/I, from `crypto.randomBytes`), 40
+   bits, logged once ("Set up Lyrica at http://127.0.0.1:7340 with the
+   code XXXX-XXXX") and written to `<runtime>/setup-code` (0600). `lyrica
+   admin setup-code` prints it. A wrong code is `403` and counts on the
+   unlock limiter (`limited(d, ["unlock:<ip>"])` in `daemon/src/routes.ts`,
+   the same counter); the file is deleted when setup completes.
 4. **Where the setup page is reachable:** `127.0.0.1` and the Unix socket
    as always, and, only while setting up, the host's existing Tailscale
    addresses (plain HTTP on Tailscale's own interface, the external-proxy
@@ -67,21 +69,45 @@ Administration. No new model-facing tool, no new process of Lyrica's
      covers a missing binary and `lyrica` not being the operator, with
      `reason` saying which.
    - `PUT …/admin/tailnet` with `TailnetJoin { authKey, hostname?,
-     controlServer?, leave?: boolean }`: `tailscale up --auth-key
-     file:<path> --hostname … [--login-server …]`. Already joined to a
-     different tailnet and `leave` not set is `409`; with `leave`, `logout`
-     first. The key is written to a 0600 file under the runtime directory
+     controlServer?, leave?: boolean }`: `tailscale login --auth-key
+     file:<path> [--login-server …]`, then `tailscale set --hostname …`
+     only when a hostname was given, so preferences an operator set by
+     hand (`--ssh`, `--accept-routes`, anything non-default) survive; never
+     `up` with flags, which fails unless every non-default flag is
+     repeated, and never `--reset`. Already joined to a different tailnet
+     and `leave` not set is `409`; with `leave`, `logout` first. The key is written to a 0600 file under the runtime directory
      and deleted when `up` returns, whatever the outcome; it never appears
      in arguments, logs or the database. Errors from the CLI that could
      quote it are redacted as `access.ts` redacts DNS tokens.
    - `POST …/admin/tailnet/disconnect` (`down`), `POST
-     …/admin/tailnet/connect` (`up` with no key), `DELETE …/admin/tailnet`
+     …/admin/tailnet/connect` (a bare `up`), `DELETE …/admin/tailnet`
      (`logout`; turns the Tailnet web mode off first when it is on).
-   - One change at a time, as Web access does. `hostname` defaults to
-     `self.name` lower-cased.
+   - **It is the machine's tailscaled.** Disconnect, Leave and a join that
+     leaves take the whole host off the tailnet, Li's SSH and anything
+     else reached over it included, and would cut the request that asked
+     for them. So each is refused with `409` and a reason when the request
+     arrived over the tailnet (a Tailscale address, or through the Tailnet
+     web mode: compare the connection's local address and the proxy's
+     forwarded address with `hostAddresses()`), the rule that a change
+     never locks the administrator out; the UI says to do it from another
+     way in. On a host where Lyrica is one service among others, the
+     operator is told this in the guide too.
+   - **A fixed allow-list, structurally.** `tailnet.ts` builds every
+     command from one table and nothing else can reach the binary:
+     `status --json --peers=false`, `login --auth-key file:… [--login-server
+     …]`, `up`, `down`, `logout`, `set --hostname …`, `serve --bg
+     --https=443 http://127.0.0.1:<port>`, `serve reset`. Never `funnel`,
+     `--ssh`, `--advertise-routes`, `--advertise-exit-node`, `--exit-node`
+     or `--reset`: the operator right would allow them, and funnel would
+     put her login page on the public internet.
+   - One change at a time, as Web access does. The setup page's default
+     hostname is `self.name` lower-cased; it is sent only when it differs
+     from what `status` reports.
    - **Verify at first deployment** (the brief's handoff lists it): that
-     `up --auth-key`, `logout` and `serve` are allowed to the operator in
-     the installed Tailscale. If one isn't, the fallback is one
+     `login --auth-key`, `up`, `down`, `logout`, `set --hostname` and
+     `serve` are allowed to the operator in the installed Tailscale, and
+     that preferences set by hand survive Connect, Disconnect and Connect
+     again. If one isn't, the fallback is one
      `sudoers.d` line for exactly those subcommands, written by `install.sh`
      and the module; nothing broader, and nothing in `lyricad.service`.
 7. **Web access: the Tailnet mode.** `WebMode` gains `"tailnet"`:
@@ -124,10 +150,14 @@ of `/opt/lyrica` (Releases); a per-user nickname for her (not now, Li
   line and nowhere else in the persona changes, and in `/api/state` while
   locked; the auth key file is gone after `up` succeeds and after it
   fails, and no log line contains the key; a join while joined elsewhere
-  is `409` without `leave`; the Tailnet mode adds its ports to
-  `frontDoor`; leaving the tailnet turns the Tailnet web mode off. The
-  CLI is a fake `tailscale` on `PATH` that records its arguments, as the
-  Caddy tests fake the admin socket.
+  is `409` without `leave`; a disconnect, leave or switch requested over
+  a Tailscale address is `409`; the fake CLI never receives `funnel`,
+  `--ssh`, `--advertise-routes`, `--advertise-exit-node`, `--exit-node` or
+  `--reset`, and joining is `login` followed by `set --hostname` only when
+  one was given; the Tailnet mode adds its ports to `frontDoor`; leaving
+  the tailnet turns the Tailnet web mode off. The CLI is a fake
+  `tailscale` on `PATH` that records its arguments, as the Caddy tests
+  fake the admin socket.
 - docs/daemon.md (Starting and unlocking, Web access, Deployment, On
   NixOS) and docs/contracts.md describe what exists; the PR lists its
   contract changes.

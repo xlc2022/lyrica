@@ -1331,7 +1331,18 @@ Details in [docs/sleep.md](docs/sleep.md).
     and never stored; Tailscale keeps the node key in its own state, and
     `lyricad` reads the tailnet, address and MagicDNS name back from it
     rather than keeping a copy. Who may reach her on the tailnet is
-    Tailscale's access rules; the login remains hers.
+    Tailscale's access rules; the login remains hers. Two limits, because
+    it is the **machine's** tailscaled she drives, not one of her own:
+    Disconnect, Leave and a switch of tailnet take the whole machine off
+    the tailnet, SSH included, so `lyricad` refuses them (409, with the
+    reason) when the request itself arrived over the tailnet, the rule
+    that a change never locks the administrator out; and she runs only a
+    fixed list of subcommands (status, login, up, down, logout, set
+    --hostname, serve on 443 to loopback, serve reset), never funnel, SSH,
+    routes or exit nodes, so the operator right can't put her login page
+    on the public internet (AGENTS.md: boundaries are structural). Settings
+    an operator made by hand survive: joining is `login`, not `up` with
+    flags.
   - An administrator chooses the proxy in the control panel, under **Web
     access**:
     - **Tailnet** (2026-10-11), the default once the setup page has joined
