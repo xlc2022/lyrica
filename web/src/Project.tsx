@@ -111,7 +111,7 @@ export function ThreadCard({ t, userId, env }: { t: ThreadSummary; userId: strin
       <div className="tcard-head" data-dot={state !== "idle" && state !== "queued" ? "" : undefined}>
         {state !== "idle" && state !== "queued" && <span className="status" data-state={state} aria-hidden="true" />}
         <a className="tcard-title" href={open_}>{t.title || "New thread"}</a>
-        <span className="state-word" data-state={state}>{stateWord(t)}</span>
+        <span className="tstate" data-state={state}>{stateWord(t)}</span>
         <span className="msg-menu" ref={ref}>
           <button type="button" className="icon-btn" aria-label={`Actions for ${t.title || "the thread"}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}><Icon name="more" /></button>
           {open && (

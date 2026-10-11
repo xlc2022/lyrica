@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   del, get, patch, post, put, u,
   type AdminStatus, type AllowedPaths, type EndpointInfo, type Me, type ModeDefault, type NetworkDefaults, type PersonaProposal,
-  type OfferingInfo, type OfferingSettings, type Pool, type Probe, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type MachineInfo, type Task, type Theme, type UserCard,
+  type OfferingInfo, type OfferingSettings, type Pool, type Probe, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type Task, type Theme, type UserCard,
 } from "./api.ts";
+import { MachinesSection } from "./Machines.tsx";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { href } from "./route.ts";
 import { PageHead, type ShellContext } from "./Shell.tsx";
@@ -32,7 +33,8 @@ const TASKS: { task: Task; label: string }[] = [
 /** The models a task's select offers: speech tasks take only models that transcribe or speak. */
 const fits = (task: Task, m: OfferingInfo) => (task === "speech.transcribe" ? !!m.transcribe : task === "speech.speak" ? !!m.speak?.voices.length : true);
 
-type SectionDef = { key: string; label: string; body: (ctx: ShellContext) => React.ReactNode };
+/** `rest` is what follows the section's key in the hash (settings/machines/new → "new"), for a section with pages of its own. */
+type SectionDef = { key: string; label: string; body: (ctx: ShellContext, rest: string) => React.ReactNode };
 
 const SETTINGS: SectionDef[] = [
   { key: "profile", label: "Profile", body: (ctx) => <ProfileSection ctx={ctx} /> },
@@ -44,7 +46,7 @@ const SETTINGS: SectionDef[] = [
   { key: "endpoints", label: "Endpoints", body: (ctx) => <EndpointsSection ctx={ctx} /> },
   { key: "profiles", label: "Model profiles", body: (ctx) => <ProfilesSection ctx={ctx} /> },
   { key: "network", label: "Network", body: (ctx) => <NetworkSection ctx={ctx} /> },
-  { key: "machines", label: "Machines", body: (ctx) => <MachinesSection ctx={ctx} /> },
+  { key: "machines", label: "Machines", body: (ctx, rest) => <MachinesSection ctx={ctx} rest={rest} /> },
 ];
 const ADMIN: SectionDef[] = [
   { key: "status", label: "Status", body: (ctx) => <StatusSection ctx={ctx} /> },
@@ -69,7 +71,8 @@ export function AdminPage({ ctx, section }: { ctx: ShellContext; section?: strin
 }
 
 function Sections({ ctx, page, title, sections, current }: { ctx: ShellContext; page: "settings" | "admin"; title: string; sections: SectionDef[]; current?: string }) {
-  const cur = sections.find((s) => s.key === current) ?? sections[0]!;
+  const [key, ...rest] = (current ?? "").split("/");
+  const cur = sections.find((s) => s.key === key) ?? sections[0]!;
   return (
     <main className="main">
       <PageHead ctx={ctx} title={title} />
@@ -77,13 +80,13 @@ function Sections({ ctx, page, title, sections, current }: { ctx: ShellContext; 
         <nav className="subnav" aria-label={`${title} sections`}>
           {sections.map((s) => <a key={s.key} href={href({ page, userId: ctx.user.id, section: s.key })} aria-current={s.key === cur.key ? "page" : undefined}>{s.label}</a>)}
         </nav>
-        <div className="content">{cur.body(ctx)}</div>
+        <div className="content">{cur.body(ctx, rest.join("/"))}</div>
       </div>
     </main>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+export function Section({ title, children }: { title: string; children: React.ReactNode }) {
   const id = `h-${title.toLowerCase().replace(/\W+/g, "-")}`;
   return <section className="card" aria-labelledby={id}><h2 id={id}>{title}</h2>{children}</section>;
 }
@@ -436,25 +439,6 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
   );
 }
 
-function MachinesSection({ ctx }: { ctx: ShellContext }) {
-  const userId = ctx.user.id;
-  const machines = useLoad(() => get<MachineInfo[]>(u(userId, "machines")), [userId]);
-  const [run, , error] = useAction();
-  return (
-    <Section title="Machines">
-      <ErrorText error={machines.error || error} />
-      <ul className="list">
-        {(machines.data ?? []).map((m) => (
-          <li key={m.name}>
-            <div className="row between"><b>{m.name}</b><span className="muted mono">{m.address}{m.root && ` · ${m.root}`} · {m.pool} · up to {MODES[m.limit].label}{m.offNetwork && " · off network"}</span></div>
-            <Confirm label="Remove" danger confirm="Remove it" question={`Remove ${m.name}? Threads that use it lose it.`}
-              onConfirm={() => run(async () => { await del(u(userId, "machines", m.name)); machines.reload(); })} />
-          </li>
-        ))}
-      </ul>
-    </Section>
-  );
-}
 
 function StatusSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;

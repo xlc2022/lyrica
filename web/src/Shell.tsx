@@ -386,7 +386,7 @@ function ThreadLink({ t, userId, on, menu, child }: { t: ThreadSummary; userId: 
   // most pressing first (ux.md §5): waiting on her, then new updates, then hidden.
   const inProject = t.state !== undefined;
   const badges = [
-    inProject ? <span key="s" className="state-word" data-state={t.needsYou ? "needsYou" : t.state}>{stateWord(t)}</span> : t.status === "waiting" && <span key="w" className="flag">waiting</span>,
+    inProject ? <span key="s" className="tstate" data-state={t.needsYou ? "needsYou" : t.state}>{stateWord(t)}</span> : t.status === "waiting" && <span key="w" className="flag">waiting</span>,
     !!t.unseen && <span key="u" className="count" aria-label={`${t.unseen} new ${t.unseen === 1 ? "update" : "updates"}`}>{t.unseen}</span>,
     t.hidden && <span key="h" className="flag">hidden</span>,
   ].filter(Boolean).slice(0, 2);

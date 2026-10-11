@@ -6,16 +6,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { upload, type ThreadSettings, type ThreadSettingsChange } from "./api.ts";
 import { Icon } from "./icons.tsx";
-import { ModePicker, nextMode, ToolsMenu } from "./Modes.tsx";
+import { ModePicker, nextMode, ToolsMenu, type GrantedMachine } from "./Modes.tsx";
 import { MicButton, stopReading, useDictation } from "./Voice.tsx";
 
 interface Upload { id: number; name: string; progress: number; error?: string }
 
-export function Composer({ base, busy, restored, onSend, onStop, settings, onSettings, onError }: {
+export function Composer({ base, busy, restored, onSend, onStop, settings, machines, onSettings, onError }: {
   base: string; busy: boolean; onSend: (text: string) => Promise<boolean>; onStop: () => void;
   /** Text handed back, such as follow-ups that Stop dropped. */
   restored: string;
   settings?: ThreadSettings;
+  /** The thread's granted machines with their limits, for the mode menu. */
+  machines?: GrantedMachine[];
   onSettings: (change: ThreadSettingsChange) => void;
   /** Dictation's problems, for the conversation's error line. */
   onError: (message: string) => void;
@@ -126,7 +128,7 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, onSet
           <input ref={picker} type="file" multiple hidden onChange={(e) => { attach(e.target.files ?? []); e.target.value = ""; }} />
           <MicButton state={mic.state} seconds={mic.seconds} speech={settings?.speech} onStart={() => void mic.start()} onStop={() => void mic.stop()} />
           <span className="spacer" />
-          {settings && <ModePicker mode={settings.mode} onChange={(mode) => onSettings({ mode })} />}
+          {settings && <ModePicker mode={settings.mode} machines={machines} onChange={(mode) => onSettings({ mode })} />}
         </div>
       </div>
     </form>
