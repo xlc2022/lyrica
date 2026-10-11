@@ -1,6 +1,6 @@
 import {
-  AuthError, WrongPassword, WORKDIR, CAPABILITIES, checkTask, isRestricted, profileFor, refId, THINKING_LEVELS, publicKeyOf, generateSshKey, CloudModelForbidden, NoModel, PRONOUN_PRESETS,
-  type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type User,
+  AuthError, WrongPassword, WORKDIR, CAPABILITIES, checkTask, isRestricted, profileFor, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, CloudModelForbidden, NoModel, PRONOUN_PRESETS,
+  type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type MachineConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type User,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
@@ -408,18 +408,32 @@ export function apiRoutes(d: Lyricad): Route[] {
       return { mode: ws.defaultMode() };
     }),
     route("GET", `${u}/paths`, (r) => s().workspace.allowedPaths.list(d.userFor(r).id)),
-    route("GET", `${u}/ssh`, (r) => sshTargets(d, d.userFor(r).id)),
-    route("POST", `${u}/ssh`, async (r) => {
+    route("GET", `${u}/machines`, (r) => s().workspace.settings(d.userFor(r).id).machines().map(machineInfo)),
+    route("POST", `${u}/machines/probe`, async (r): Promise<Api.MachineProbe> => {
       const user = d.userFor(r);
-      const input = await r.json<Api.SshTargetInput>();
-      const m = /^([^@\s]+)@([^:\s]+)(?::(\d+))?$/.exec(String(input.address ?? ""));
-      if (!m) throw new Error("the address looks like account@host or account@host:port");
-      const key = generateSshKey(`lyrica:${user.login}:${input.name}`);
-      s().workspace.settings(user.id).addSsh({ name: String(input.name ?? ""), username: m[1]!, host: m[2]!, port: Number(m[3] ?? 22), privateKey: key.privateKey, root: input.root || null });
-      return sshTargets(d, user.id).find((x) => x.name === input.name);
+      const input = await r.json<Api.MachineProbeInput>();
+      return s().workspace.probeMachine(user.id, user.login, { name: String(input.name ?? ""), address: String(input.address ?? ""), draft: input.draft });
     }),
-    route("DELETE", `${u}/ssh/:name`, (r) => {
-      s().workspace.settings(d.userFor(r).id).removeSsh(r.params.name!);
+    route("POST", `${u}/machines`, async (r) => {
+      const user = d.userFor(r);
+      const input = await r.json<Api.MachineInput>();
+      return machineInfo(await s().workspace.addMachine(user.id, {
+        name: String(input.name ?? ""), address: String(input.address ?? ""), root: input.root || null, pool: checkPool(input.pool),
+        limit: input.limit, draft: String(input.draft ?? ""), hostKey: String(input.hostKey ?? ""), offNetworkConfirmed: input.offNetworkConfirmed === true,
+      }));
+    }),
+    route("PATCH", `${u}/machines/:name`, async (r) => {
+      const change = pick(await r.json<Api.MachineChange>(), ["address", "root", "pool", "limit"]);
+      if (change.pool !== undefined) checkPool(change.pool);
+      return machineInfo(s().workspace.updateMachine(d.userFor(r).id, r.params.name!, change));
+    }),
+    route("POST", `${u}/machines/:name/key`, async (r) => {
+      const { hostKey } = await r.json<Api.MachineKey>();
+      return machineInfo(s().workspace.setHostKey(d.userFor(r).id, r.params.name!, String(hostKey ?? "")));
+    }),
+    route("POST", `${u}/machines/:name/confirm-off-network`, (r) => machineInfo(s().workspace.confirmOffNetwork(d.userFor(r).id, r.params.name!))),
+    route("DELETE", `${u}/machines/:name`, (r) => {
+      s().workspace.removeMachine(d.userFor(r).id, r.params.name!);
       return { ok: true };
     }),
 
@@ -571,9 +585,9 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("POST", `${t}/permissions/:requestId`, async (r) => {
       const user = d.userFor(r);
-      const { allow, mode } = await r.json<Api.PermissionAnswer>();
+      const { allow, mode, allowInThread } = await r.json<Api.PermissionAnswer>();
       const thread = owner(d, user, (o) => threadOf(o, r));
-      if (!s().host.get(user.id, poolOf(r), thread.id).answer(r.params.requestId!, allow === true, mode)) throw new HttpError(404, "that request is no longer waiting");
+      if (!s().host.get(user.id, poolOf(r), thread.id).answer(r.params.requestId!, allow === true, mode, allowInThread === true)) throw new HttpError(404, "that request is no longer waiting");
       return { ok: true };
     }),
     route("POST", `${t}/uploads`, async (r): Promise<Api.UploadResponse> => {
@@ -1070,10 +1084,12 @@ function networkDefaults(d: Lyricad, userId: string): Api.NetworkDefaults {
   return { general: s.defaultNetwork("general"), private: s.defaultNetwork("private") };
 }
 
-function sshTargets(d: Lyricad, userId: string): Api.SshTargetInfo[] {
-  return d.services!.workspace.settings(userId).sshTargets().map((t) => ({
-    name: t.name, host: t.host, port: t.port, username: t.username, root: t.root, hostKey: t.hostKey, publicKey: publicKeyOf(t.privateKey),
-  }));
+function machineInfo(m: MachineConfig): Api.MachineInfo {
+  const host = m.host.includes(":") ? `[${m.host}]` : m.host;
+  return {
+    name: m.name, kind: m.kind, address: `${m.username}@${host}${m.port === 22 ? "" : `:${m.port}`}`, root: m.root, pool: m.pool, limit: m.limit,
+    keyLine: authorizedKeysLine(publicKeyOf(m.privateKey)), hostKey: m.hostKey, offNetwork: m.offNetwork, lastUsed: m.lastUsed,
+  };
 }
 
 function adminStatus(d: Lyricad): Api.AdminStatus {
@@ -1227,7 +1243,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     localOnly: ctx.localOnly,
     internet: tw.internet, services: tw.services, hosts: tw.hosts,
     network: workspace.network({ userId: user.id, pool, threadId }),
-    grants: tw.grants, target: tw.target, mode: applies.mode, webSearch: applies.webSearch, images: applies.images, unlogged: isUnlogged, parent: tw.parent,
+    grants: tw.grants, machines: tw.machines, mode: applies.mode, webSearch: applies.webSearch, images: applies.images, unlogged: isUnlogged, parent: tw.parent,
     voiceCloud: models.threadVoiceCloud(user.id, threadId), speech: speechState(models, ctx),
     allowed: models.allowed(ctx).map(({ endpoint }) => endpointInfo(d, user.id, endpoint.id)),
   };
@@ -1272,8 +1288,8 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
     && !(change.voiceCloud === null && models.threadVoiceCloud(user.id, parent) === null)) {
     throw new Error("the parent thread keeps Voice to cloud off, so this one does too");
   }
-  // The workspace checks grants, hosts, mode, switches, target and the parent's limits, and writes only if all pass.
-  const wsChange = pick(change, ["grants", "internet", "services", "hosts", "mode", "webSearch", "images", "target"]);
+  // The workspace checks grants, hosts, mode, switches, machines and the parent's limits, and writes only if all pass.
+  const wsChange = pick(change, ["grants", "internet", "services", "hosts", "mode", "webSearch", "images", "machines"]);
   if (Object.keys(wsChange).length) ws.setThread(thread.id, pool, wsChange);
 
   if (change.localOnly !== undefined && pool === "general") models.setLocalOnly(user.id, pool, thread.id, change.localOnly);
@@ -1382,7 +1398,7 @@ async function rewind(d: Lyricad, user: User, r: Request, req: Api.RewindRequest
       await delegation.forgetSubagents(user.id, pool, subagents);
       for (const id of subagents) await host.forget(user.id, pool, id);
       const plan = await removalPlan(gathered);
-      const undone = await applyRemoval(plan, gathered.target, gathered.changes, skip);
+      const undone = await applyRemoval(plan, gathered, gathered.changes, skip);
       const done = owner(d, user, (o) => o[pool].truncateThread(thread.id, from, author(user)));
       result = { removed: done.removed, subagents: done.subagents.length, pins: done.pins, ...undone };
       return from;
@@ -1405,6 +1421,10 @@ function gather(d: Lyricad, user: User, pool: Pool, thread: string, from: number
   const t = { userId: user.id, pool, threadId: thread };
   let target: RemovalContext["target"];
   try { target = workspace.targetFor(t); } catch { target = undefined; }
+  const targetOf = (name: string) => {
+    if (name === "sandbox") return target;
+    try { return name.startsWith("ssh:") ? workspace.targetFor(t, name.slice(4)) : undefined; } catch { return undefined; }
+  };
   return owner(d, user, (o) => {
     const store = o[pool];
     const subagents: RemovalContext["subagents"] = [];
@@ -1419,7 +1439,7 @@ function gather(d: Lyricad, user: User, pool: Pool, thread: string, from: number
     const at = new Set(removed.map((e) => e.n));
     const uploadsKept = new Set([...uploadsIn(removed, WORKDIR)].filter((path) => store.entriesMentioning(path).some((m) => m.thread !== thread || !at.has(m.n))));
     return {
-      pool, thread, removed, subagents, uploadsKept, target,
+      pool, thread, removed, subagents, uploadsKept, target, targetOf,
       pins: store.pins(thread).filter((p) => p.n >= from).length,
       changes: workspace.changes(user.id),
       grants: target ? workspace.grantsFor(t) : [],

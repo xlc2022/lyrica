@@ -44,7 +44,8 @@ async function setup() {
   const write = (call: string, path: string, text: string) =>
     recording(target, target.ops().write, call, (c) => changes.record("general", "web/t", c)).writeFile(path, text);
   const ctx = (removed: Entry[], extra: Partial<RemovalContext> = {}): RemovalContext => ({
-    pool: "general", thread: "web/t", removed, subagents: [], pins: 0, uploadsKept: new Set(), changes, target, grants: [{ path: ws, writable: true }], ...extra,
+    pool: "general", thread: "web/t", removed, subagents: [], pins: 0, uploadsKept: new Set(), changes, target,
+    targetOf: (name) => (name === "sandbox" ? target : undefined), grants: [{ path: ws, writable: true }], ...extra,
   });
   return { home, ws, changes, target, write, ctx };
 }
@@ -77,7 +78,7 @@ describe("removing turns that changed files", () => {
       { path: since, action: "keep", reason: "changed since", ticked: false },
     ]);
 
-    expect(await applyRemoval(plan, target, changes, new Set())).toEqual({ files: 2, branches: 0 });
+    expect(await applyRemoval(plan, ctx([]), changes, new Set())).toEqual({ files: 2, branches: 0 });
     expect(existsSync(made)).toBe(false);
     expect(readFileSync(changed, "utf8")).toBe("original\n");
     expect(readFileSync(since, "utf8")).toBe("someone else's\n");
@@ -95,7 +96,7 @@ describe("removing turns that changed files", () => {
     await new Promise((r) => setTimeout(r, 5));
     await recording(target, target.ops().write, "c1", (c) => changes.record("general", "web/t", c)).writeFile(shared, "hers");
     const plan = await removalPlan(ctx([reply(3, { id: "c1", name: "write", args: {} })], { subagents: [{ thread: "web/sub", entries: [] }] }));
-    await applyRemoval(plan, target, changes, new Set());
+    await applyRemoval(plan, ctx([]), changes, new Set());
     expect(readFileSync(shared, "utf8")).toBe("original\n");
   });
 
@@ -104,7 +105,7 @@ describe("removing turns that changed files", () => {
     const made = join(ws, "made.txt");
     await write("c1", made, "new file");
     const plan = await removalPlan(ctx([reply(3, { id: "c1", name: "write", args: {} })]));
-    await applyRemoval(plan, target, changes, new Set([plan.files[0]!.id]));
+    await applyRemoval(plan, ctx([]), changes, new Set([plan.files[0]!.id]));
     expect(readFileSync(made, "utf8")).toBe("new file");
   });
 
@@ -114,7 +115,7 @@ describe("removing turns that changed files", () => {
     const bytes = Buffer.from([0, 255, 128, 10, 13, 0xc3, 0x28]);
     writeFileSync(bin, bytes);
     await write("c1", bin, "text now");
-    await applyRemoval(await removalPlan(ctx([reply(2, { id: "c1", name: "write", args: {} })])), target, changes, new Set());
+    await applyRemoval(await removalPlan(ctx([reply(2, { id: "c1", name: "write", args: {} })])), ctx([]), changes, new Set());
     expect(readFileSync(bin)).toEqual(bytes);
 
     // A file that exists but can't be read (a directory stands in) can't be put back, so it isn't recorded.
@@ -130,7 +131,7 @@ describe("removing turns that changed files", () => {
     for (const f of ["a.png", "b.png"]) writeFileSync(join(ws, "uploads", f), f);
     const plan = await removalPlan(ctx([said(4, `see ${ws}/uploads/a.png and ${ws}/uploads/b.png, and ${ws}/uploads/gone.png`)], { uploadsKept: new Set([`${ws}/uploads/b.png`]) }));
     expect(plan.files).toEqual([{ id: expect.any(String), path: `${ws}/uploads/a.png`, action: "delete", reason: "upload", ticked: true }]);
-    await applyRemoval(plan, target, changes, new Set());
+    await applyRemoval(plan, ctx([]), changes, new Set());
     expect(readdirSync(join(ws, "uploads"))).toEqual(["b.png"]);
     // Punctuation after a path isn't part of it.
     expect((await removalPlan(ctx([said(5, `here: ${ws}/uploads/b.png.`)]))).files.map((f) => f.path)).toEqual([`${ws}/uploads/b.png`]);
@@ -157,7 +158,7 @@ describe("removing turns that changed files", () => {
       { branch: "busy", commits: true, ticked: false },
     ]);
     expect(plan.commands).toHaveLength(3);
-    expect(await applyRemoval(plan, target, changes, new Set())).toEqual({ files: 0, branches: 1 });
+    expect(await applyRemoval(plan, ctx([]), changes, new Set())).toEqual({ files: 0, branches: 1 });
     expect(git("branch", "--format=%(refname:short)").toString().trim().split("\n").sort()).toEqual(["busy", "main"]);
   });
 

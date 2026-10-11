@@ -135,7 +135,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
             {settings.data?.grants.map((g) => (
               <span key={g.path} className="badge folder" title={g.path}>{g.path} <span className="muted">{g.writable ? "rw" : "ro"}</span></span>
             ))}
-            {settings.data && settings.data.target !== "sandbox" && <span className="badge folder">{settings.data.target}</span>}
+            {settings.data?.machines.map((m) => <span key={m} className="badge folder">{m}</span>)}
           </div>
         </div>
         {!s?.subagent && (
