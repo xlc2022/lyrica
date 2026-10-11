@@ -70,7 +70,7 @@ written here.
 >
 > **Hard rules.** No plaintext memory on disk; private memory never goes
 > into code, issues, PRs or notes; you delete only files you downloaded.
-> Code describes what exists: update a component's doc in the same PR.
+> Docs describe what exists: update a component's doc in the same PR.
 >
 > **This chat** posts only what needs Li: a decision, a blocker, an
 > update ready to press.
