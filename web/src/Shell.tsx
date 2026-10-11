@@ -7,7 +7,7 @@ import { Thread } from "./Thread.tsx";
 import { Memory } from "./Memory.tsx";
 import { AdminPage, SettingsPage } from "./Panel.tsx";
 import { ThreadMenu, useThreadMenu } from "./ThreadMenu.tsx";
-import { ErrorText, hidden, shortTime, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
+import { ErrorText, hidden, menuArrows, shortTime, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
 
 export interface ShellContext {
   user: UserCard;
@@ -298,6 +298,15 @@ function UserMenu({ ctx, users, onAuthChange }: { ctx: ShellContext; users: User
   const close = useCallback(() => setOpen(false), []);
   useDismiss(ref, open, close);
   useEffect(() => { addEventListener("hashchange", close); return () => removeEventListener("hashchange", close); }, [close]);
+  // Open from the keyboard: the first item takes focus, the arrows move, closing returns focus to the button.
+  useEffect(() => {
+    if (!open) return;
+    const menu = ref.current?.querySelector<HTMLElement>('[role="menu"]');
+    menu?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    const key = (e: KeyboardEvent) => { menuArrows(e, menu ?? null); };
+    addEventListener("keydown", key);
+    return () => { removeEventListener("keydown", key); ref.current?.querySelector<HTMLElement>(".user-switch")?.focus(); };
+  }, [open]);
   const [run, , error] = useAction();
   const leave = (path: string, body: unknown) => run(async () => {
     const r = await post<Partial<LogoutResponse>>(path, body);

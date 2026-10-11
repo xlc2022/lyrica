@@ -627,6 +627,15 @@ test("the thread menu renames, marks unread, groups, hides and deletes; the Sort
   const renamed = page.locator(".threads").getByRole("link", { name: /^Managed thread/ });
   await expect(renamed).toBeVisible();
 
+  // From the keyboard: Shift+F10 opens the menu under the row, the arrows move, Escape closes.
+  await renamed.focus();
+  await page.keyboard.press("Shift+F10");
+  await expect(page.getByRole("menu", { name: /Managed thread/ })).toBeVisible();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("menuitem", { name: "Rename…" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu", { name: /Managed thread/ })).toHaveCount(0);
+
   await renamed.click({ button: "right" });
   await page.keyboard.press("u");
   await expect(page.locator(".threads a.unread")).toHaveCount(1);
