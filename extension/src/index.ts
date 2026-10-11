@@ -45,6 +45,8 @@ export interface LyricaOptions {
   sleep?: (ctx: ExtensionCommandContext) => Promise<void>;
   /** lyricad's meter for this thread: measures each turn, adds her status line; the `threads` tool compacts with it. */
   meter?: ContextMeter;
+  /** In a project chat: its threads with their state, one line each, read every turn. */
+  projectThreads?: () => string | undefined;
 }
 
 /** The Lyrica Pi extension for one thread. */
@@ -61,7 +63,7 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
     pi.on("before_agent_start", async (event, ctx) => {
       const persona = opts.persona();
       const topics = router.route(persona.topics, event.prompt);
-      const memory = await memorySections(view, event.prompt, { ...who(), folders: opts.folders?.() ?? [] });
+      const memory = await memorySections(view, event.prompt, { ...who(), folders: opts.folders?.() ?? [], projectThreads: opts.projectThreads });
       // An unlogged thread isn't offered remember at all.
       if (opts.memoryTools !== "read") setToolsOff(pi, ctx, "unlogged", memory.notice ? ["remember"] : []);
       const { customPrompt, sections, turn, report } = assemble(

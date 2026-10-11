@@ -1,7 +1,8 @@
 // Each message's menu: pin, branch, regenerate, edit and delete. Deleting waits a few seconds, so it can be undone.
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ModelRef, Pins, RemovalPlan, RewindRequest, ThreadSettings } from "./api.ts";
+import type { ModelRef, Pins, Pool, RemovalPlan, RewindRequest, ThreadSettings } from "./api.ts";
 import { Icon } from "./icons.tsx";
+import { useMentionText } from "./mentions.ts";
 import { useDismiss } from "./ui.tsx";
 
 /** What a thread lets its messages do. Absent in a subagent's thread. */
@@ -106,7 +107,7 @@ export function useUndo() {
 }
 
 /** "3 pinned ▾" in the thread's header: a popover of the pinned messages, each going to its place in the conversation. */
-export function PinnedBadge({ pins, you }: { pins: Pins; you: string }) {
+export function PinnedBadge({ pins, you, userId, pool }: { pins: Pins; you: string; userId: string; pool: Pool }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -121,8 +122,6 @@ export function PinnedBadge({ pins, you }: { pins: Pins; you: string }) {
     void el?.offsetWidth;
     el?.classList.add("flash");
   };
-  // One or two lines each: the first line, at most about 90 characters.
-  const preview = (t: string) => { const first = t.trim().split("\n")[0]!; return first.length > 90 ? `${first.slice(0, 90)}…` : first; };
   return (
     <span className="picker-anchor" ref={anchor}>
       <button type="button" className="link" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}
@@ -133,7 +132,7 @@ export function PinnedBadge({ pins, you }: { pins: Pins; you: string }) {
         <div className="picker" role="dialog" aria-label="Pinned">
           {pins.pins.map((p) => (
             <button key={p.n} type="button" className="picker-item pin-item" onClick={() => show(p.n)}>
-              <span className="muted">{p.role === "user" ? you : "Lyrica"} · </span>{preview(p.text)}
+              <span className="muted">{p.role === "user" ? you : "Lyrica"} · </span><PinPreview text={p.text} userId={userId} pool={pool} />
             </button>
           ))}
         </div>
@@ -143,6 +142,12 @@ export function PinnedBadge({ pins, you }: { pins: Pins; you: string }) {
 }
 
 /** Whether a removal has anything to confirm: files, branches, commands, pins or subagents. */
+/** One or two lines: the first line, threads she mentions by their current title, at most about 90 characters. */
+function PinPreview({ text, userId, pool }: { text: string; userId: string; pool: Pool }) {
+  const first = useMentionText(text.trim().split("\n")[0]!, userId, pool);
+  return <>{first.length > 90 ? `${first.slice(0, 90)}…` : first}</>;
+}
+
 export function hasConsequences(p: RemovalPlan): boolean {
   return p.files.length + p.branches.length + p.commands.length + p.pins + p.subagents > 0;
 }

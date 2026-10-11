@@ -1,10 +1,10 @@
+import { pickThread } from "@lyrica/core";
 import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pickThread } from "@lyrica/extension";
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
-import type { EndpointInfo, MessagePage, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { EndpointInfo, MachineProbe, MessagePage, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 /** Whether a chat request is a child thread's: its conversation holds a message from its parent. */
@@ -199,12 +199,16 @@ describe("child threads", () => {
     const { rt, li, u, parent, child, path, say, childPath } = await setup();
     const [a, b] = [0, 1].map(() => realpathSync(mkdtempSync(join(tmpdir(), "lyrica-child-"))));
     for (const p of [a!, b!]) expect((await li.post(`${u}/admin/users/${rt.li.id}/paths`, { pool: "general", path: p })).status).toBe(200);
-    expect((await li.patch(`${path}/settings`, { localOnly: true, grants: [{ path: a, writable: true }, { path: b, writable: true }] })).status).toBe(200);
+    const probe = (await li.post<MachineProbe>(`${u}/machines/probe`, { name: "nas", address: "lyrica@127.0.0.1:1" })).body;
+    expect((await li.post(`${u}/machines`, { name: "nas", address: "lyrica@127.0.0.1:1", pool: "general", draft: probe.draft, hostKey: `SHA256:${"A".repeat(43)}` })).status).toBe(200);
+    expect((await li.patch(`${path}/settings`, { localOnly: true, grants: [{ path: a, writable: true }, { path: b, writable: true }], machines: ["nas"] })).status).toBe(200);
     parent.push(start("Read only", "Read the notes.", { folders: [a], readOnly: true }), { text: "Started." });
     child.push({ text: "Read." });
     const id = toolEnd(await say("read the notes in a child thread"))!.threads![0]!.id;
     const settings = (await li.get<ThreadSettings>(`${childPath(id)}/settings`)).body;
     expect(settings.grants).toEqual([{ path: a, writable: false }]);
+    // Bash on a machine follows no folder or read-only narrowing: a narrowed child gets no machines.
+    expect(settings.machines).toEqual([]);
     // The router refuses a cloud model for it, as for its parent.
     const cloud = await fakeOpenAI({ models: [{ id: "deepseek" }] });
     const deepseek = { offeringId: (await li.post<EndpointInfo>(`${u}/endpoints`, { name: "openrouter", kind: "cloud", baseUrl: cloud.baseUrl })).body.models[0]!.id };

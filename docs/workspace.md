@@ -68,8 +68,10 @@ existed before became general machines at Ask.
 
 - **Kept in `user.db`** (`machines`): name, address, account, the private
   key, an optional root, the host key Li confirmed, the pool, the **mode
-  limit**, whether the address is off network, and when she last
-  connected. The key is generated in memory, stored only there, and handed to
+  limit**, whether the address is off network, when she last
+  connected, and how the last connection went (online, unreachable, or host
+  key changed) and since when. That state clears when the address or host key
+  changes. The key is generated in memory, stored only there, and handed to
   the SSH client in memory; she never sees it.
 - **One pool each.** A general thread grants general machines and a private
   thread private ones (`setThread` refuses the other pool, and every call
@@ -131,7 +133,33 @@ existed before became general machines at Ask.
 - **The SSH client** sits behind `SshTransport`
   (`core/src/workspace/transport.ts`): `SshTarget` keeps the root, the
   floor, the output cleaning and the host key check, and the transport only
-  connects and moves bytes. Today the transport is `ssh2` inside `lyricad`.
+  connects and moves bytes. The one transport, `sandboxedTransport`, runs
+  `ssh2` outside `lyricad`, which holds every user's unlocked keys: each
+  connection starts a **helper process** (`ssh-helper.ts`) in a sandbox of
+  its own, so a server that breaks the library's parsing gets one key it
+  could already use, not `lyricad`'s memory.
+  - The helper's sandbox is the one above with no workspace: the read-only
+    system, Node, the helper's own files and `ssh2` with its dependencies,
+    read-only. Lyrica's runtime directory, databases and the rest of her
+    code aren't there, and its process namespace hides `lyricad`.
+  - Its network is exactly the machine's checked address and port, through
+    the same `pasta` and nftables rules as an allowed host. `excludePorts`
+    and the front door still apply. A machine on this host's loopback gets
+    just that one port forwarded.
+  - The private key goes to the helper on its stdin, never to a file or an
+    environment variable.
+  - `lyricad` and the helper speak length-prefixed frames (`ssh-frames.ts`):
+    connect, exec with streamed output and kill, the SFTP operations the
+    target uses. `lyricad` refuses oversized frames and more command output
+    than the helper's cap allows; output is capped in the helper, before it
+    crosses the pipe, and a file over 64 MB is refused rather than read.
+  - The helper sends the server's host key to `lyricad`, which decides.
+    Strict key exchange is required (OpenSSH 9.6, or a distribution's
+    Terrapin fix, has it).
+  - The helper exits when its stdin closes, so it never outlives `lyricad`.
+    If it can't start, or the network self-test has refused networked
+    sandboxes, the call fails; there is no client in `lyricad` to fall back
+    to. It needs Node 22.6 or later (it runs with type stripping).
 - **Writes** follow the sandbox's rule: for a file the account owns, an SFTP
   temp file with the old mode and group, then `posix-rename` (plain rename
   where the server lacks it); otherwise, or if the temp file can't be made,
@@ -387,9 +415,10 @@ How it is enforced:
   `lyrica dev` prints it.
 - IPv4 only for now: sandboxes run `pasta --ipv4-only`, and IPv6 host
   entries are refused until IPv6 is supported end to end.
-- Machines don't depend on these switches: `lyricad`'s SSH client reaches
-  them, not the sandbox, and a machine's network is its own. Model calls
-  also come from `lyricad`, so local-only and the switches are independent.
+- Machines don't depend on these switches: each connection's helper gets
+  network to its machine alone, whatever the thread's switches say. If the
+  self-test refuses network, machine calls fail too. Model calls come from
+  `lyricad`, so local-only and the switches are independent.
 
 ## Subagents
 
@@ -405,7 +434,9 @@ settings:
 - **Mode:** the parent's or stricter, in the order Plan, Ask, Accept edits,
   Auto.
 - **Switches:** each off if the parent's is off.
-- **Machines:** the parent's or a subset.
+- **Machines:** the parent's or a subset. Delegation gives none to a read-only,
+  offline or folder-narrowed subagent or child thread, or to a writer in a
+  worktree, since bash on a machine follows none of those narrowings.
 
 A subagent can never widen what its parent was given. `inheritSettings`
 copies the parent's settings, or the narrower ones it is given, and the
@@ -450,7 +481,8 @@ set again before every turn and when a plan is approved.
 `propose_plan({ plan })` shows the plan through the same path as an approval
 (`proposePlan`): the user picks Ask, Accept edits or Auto to go ahead in, or
 keeps planning. Approving switches the thread's mode (`setMode`), turns the
-tools back on, and she carries on with the plan in the same turn. A branch
+tools back on, and she carries on with the plan in the same turn. She is
+told which machines' limits still hold calls to a stricter mode. A branch
 of a thread in Plan mode stays in Plan mode, and she is told so. A subagent
 has no `propose_plan` and can't change its mode. Without `lyricad`, Pi's own
 UI asks; with no UI she keeps planning.

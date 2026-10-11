@@ -12,6 +12,7 @@ export interface Budgets {
   about: number;
   pages: number;
   folders: number;
+  project: number;
   pinned: number;
   user: number;
   recall: number;
@@ -27,7 +28,8 @@ export const DEFAULT_BUDGETS: Budgets = {
   about: 1500,
   pages: 3000,
   folders: 4000,
-  // About 2,000 tokens.
+  // About 2,000 tokens each.
+  project: 8000,
   pinned: 8000,
   user: 600,
   recall: 4000,
@@ -55,7 +57,7 @@ export interface Section {
 export interface Assembled {
   /** The persona core: Pi's `customPrompt`. */
   customPrompt: string;
-  /** Stable sections for Pi's `sections`, in order: topics, notice, opening, wake, about, pages, folders, pinned, user. Pi adds the tags. */
+  /** Stable sections for Pi's `sections`, in order: topics, notice, opening, wake, about, pages, folders, project, pinned, user. Pi adds the tags. */
   sections: Record<string, string>;
   /** Content that changes every turn (recall, time), sent as a message so the prompt prefix stays cacheable. */
   turn: string;
@@ -92,6 +94,7 @@ export function assemble(input: PromptInput, budgets: Budgets = DEFAULT_BUDGETS)
     ["about", input.memory.about],
     ["pages", input.memory.pageIndex],
     ["folders", input.memory.folders],
+    ["project", input.memory.project],
     ["pinned", input.memory.pinned && pinnedBlock(input.memory.pinned, budgets.pinned).text],
     ["user", whoLine(input.profile)],
   ];

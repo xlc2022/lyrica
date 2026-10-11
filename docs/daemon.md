@@ -211,14 +211,35 @@ Each active thread is one Pi session from `openThreadSession`, with
   `onTurn` keeps its record. Its summary has `child`, `status` and `unseen`
   (updates not yet seen; reading its messages sees them). Lock stops working
   children before the key goes.
+- **Projects** ([delegation.md](delegation.md#child-threads), DESIGN.md
+  "Projects"). `POST threads` with `project` and an optional `goal` makes a
+  project, and `PATCH` with `project: true` makes one of a top-level thread
+  (no way back); either pins it. `PATCH` also sets `goal`, `instructions`
+  (kept on the project page apart from sleep's text), `paused`,
+  `threadsModel` and `threadsThinking` (the model and thinking its new
+  threads start with). Pausing or hiding stops its working threads; a
+  message to a paused project's thread is `409`. **Start a thread** (`POST
+  …/messages/:n/thread`, optional `title`) starts a thread of the project
+  from message n, with its text as the task. `POST …/resolve` and
+  `…/reopen` act on a project's thread; `POST
+  …/suggestions/:callId/start` starts one (`index`) or all of a Suggested
+  threads card's threads, each once. `GET …/overview` lists its threads, how
+  many wait on the user, its total tokens and which suggestions were
+  started; `models/calls?project=&pool=` its calls. A project's thread's
+  summary has `state`, `anchor` and `needsYou`; the project chat's stream
+  gets a `child` event when one of them changes. Deleting a project with its
+  threads forgets its page and the notes that came only from it first.
+- **Pins:** `PUT` and `DELETE …/pin` pin a thread for the user (`user.db`
+  `pinned_threads`), and `ThreadSummary.pinned` says so.
 - Thread lists are per interface (`web` by default), filtered by the user's
-  display settings (which pools, hidden threads, and the sidebar's `sort`),
-  most recently active first, with child threads (Lyrica's,
-  branches, forks, copies) nested under their parent. Each summary carries the
-  user's own `group` and `unread` (`thread_groups` and `thread_prefs` in
-  `user.db`, `core/src/prefs.ts`; never in the pool): `PATCH threads/:id`
-  sets them, reading a thread's messages clears `unread`, and
-  `…/thread-groups` lists, adds, renames and removes groups. Subagents aren't listed: they live in
+  display settings (which pools, hidden threads, the sidebar's `sort`, and
+  `projects`: all, only projects, or none), pinned threads first, then
+  most recently active, with child threads (Lyrica's, branches, forks,
+  copies) nested under their parent. Each summary carries the user's own
+  `group` and `unread` (`thread_groups` and `thread_prefs` in `user.db`,
+  `core/src/prefs.ts`; never in the pool): `PATCH threads/:id` sets them,
+  reading a thread's messages clears `unread`, and `…/thread-groups` lists,
+  adds, renames and removes groups. Subagents aren't listed: they live in
   their parent's `delegate` cards. Memory search honours the same pool filters; `?all=1` ignores
   them in both.
 

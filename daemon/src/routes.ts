@@ -1,19 +1,20 @@
 import {
-  AuthError, WrongPassword, WORKDIR, CAPABILITIES, checkTask, isRestricted, profileFor, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, NoModel, PRONOUN_PRESETS,
+  AuthError, WrongPassword, WORKDIR, CAPABILITIES, checkTask, isRestricted, profileFor, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, PRONOUN_PRESETS,
   type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type MachineConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
 import { Sessions } from "./auth.ts";
 import { HttpError, route, type Request, type Route } from "./http.ts";
-import { DEFAULT_BUDGETS, FROM_PARENT, OPENING, pinnedBlock, pinnedOf, reserveFor } from "@lyrica/extension";
+import { DEFAULT_BUDGETS, OPENING, pinnedBlock, pinnedOf, reserveFor } from "@lyrica/extension";
+import type { ProjectThreadInfo } from "./children.ts";
 import { Busy } from "./hosted.ts";
 import { card, type Lyricad, type Services } from "./lyricad.ts";
 import { toMessages } from "./messages.ts";
 import { messageText, readAloud, readClip, speechState, storedSource, transcribeClip, titlesIn, type SpeechSource } from "./speech.ts";
 import { applyRemoval, entriesFrom, removalPlan, uploadsIn, type RemovalContext } from "./removal.ts";
 
-const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, showPrivate: true, showHidden: false, sort: "date" };
+const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, showPrivate: true, showHidden: false, sort: "date", projects: "all" };
 const THREAD_SORTS: Api.ThreadSort[] = ["date", "activity", "started", "title", "groups"];
 const DISPLAY_DEFAULTS_ALL: Api.Display = { ...DISPLAY_DEFAULTS, showPrivate: true, showGeneral: true, showHidden: true };
 const MESSAGE_PAGE = 50;
@@ -74,9 +75,10 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("PATCH", `${u}/me/display`, async (r) => {
       const user = d.userFor(r);
       const change = await r.json<Api.DisplayChange>();
-      const next = { ...display(d, user.id), ...pick(change, ["theme", "showGeneral", "showPrivate", "showHidden", "sort"]) };
+      const next = { ...display(d, user.id), ...pick(change, ["theme", "showGeneral", "showPrivate", "showHidden", "sort", "projects"]) };
       if (!["device", "light", "dark"].includes(next.theme)) throw new Error("the theme is device, light or dark");
       if (!THREAD_SORTS.includes(next.sort)) throw new Error(`the sort is one of ${THREAD_SORTS.join(", ")}`);
+      if (!["all", "only", "none"].includes(next.projects)) throw new Error("projects is all, only or none");
       const db = s().users.openUserDb(user.id);
       try {
         db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('display', ?)").run(JSON.stringify(next));
@@ -323,7 +325,15 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("GET", `${u}/models/notice`, (r): Api.ModelsNotice => ({ lines: s().models.notice(d.userFor(r).id) })),
     route("DELETE", `${u}/models/notice`, (r) => { s().models.dismissNotice(d.userFor(r).id); return { ok: true }; }),
-    route("GET", `${u}/models/calls`, (r): Api.CallInfo[] => s().models.recentCalls(d.userFor(r).id)),
+    route("GET", `${u}/models/calls`, (r): Api.CallInfo[] => {
+      const user = d.userFor(r);
+      const project = r.query.get("project");
+      if (!project) return s().models.recentCalls(user.id);
+      // A project's calls: its chat's and its threads', in the pool it is in.
+      const pool = checkPool(r.query.get("pool") ?? "general");
+      const ids = owner(d, user, (o) => o[pool].projectThreads(project));
+      return s().models.recentCalls(user.id, { threadIds: ids });
+    }),
     route("GET", `${u}/profiles`, (r) => profiles(d, d.userFor(r).id)),
     route("PATCH", `${u}/profiles`, async (r) => {
       const user = d.userFor(r);
@@ -453,18 +463,25 @@ export function apiRoutes(d: Lyricad): Route[] {
       const iface = r.query.get("interface") ?? "web";
       const show = display(d, user.id);
       const prefs = s().prefs.all(user.id);
+      const projects = all ? "all" : show.projects;
       return owner(d, user, (o) => (["general", "private"] as const)
         .filter((p) => all || (p === "general" ? show.showGeneral : show.showPrivate))
         .flatMap((p) => tree(d, user, p, o[p], o[p].listThreads({ includeHidden: all || show.showHidden }).filter((x) => x.interface === iface), prefs))
-        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+        .filter((x) => projects === "all" || (projects === "only") === !!x.project)
+        .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt)));
     }),
     route("POST", `${u}/threads`, async (r) => {
       const user = d.userFor(r);
       const input = await r.json<Api.NewThread>();
       const pool = checkPool(input.pool);
       return owner(d, user, (o) => {
-        const thread = o[pool].createThread({ interface: "web", title: input.title?.trim() || undefined });
+        const thread = o[pool].createThread({
+          interface: "web", title: input.title?.trim() || undefined,
+          ...(input.project ? { project: true, ...(typeof input.goal === "string" && input.goal.trim() ? { goal: input.goal } : {}) } : {}),
+        });
         s().workspace.settings(user.id).startThread(thread.id, pool);
+        // A new project starts pinned.
+        if (thread.project) s().projects.pin(user.id, pool, thread.id, true);
         return summary(d, user, pool, o[pool], thread, []);
       });
     }),
@@ -475,16 +492,45 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("PATCH", t, async (r) => {
       const user = d.userFor(r);
       const change = await r.json<Api.ThreadChange>();
-      return owner(d, user, (o) => {
-        const store = o[poolOf(r)];
+      const pool = poolOf(r);
+      const before = owner(d, user, (o) => {
+        const store = o[pool];
         const thread = threadOf(o, r);
+        if (change.project !== undefined && change.project !== true) throw new HttpError(400, "a project can't be made a thread again");
+        if (change.project && !thread.project) {
+          try { store.setProject(thread.id); } catch (err) { throw new HttpError(409, (err as Error).message); }
+          s().projects.pin(user.id, pool, thread.id, true);
+        }
+        const project = !!store.getThread(thread.id)!.project;
+        const settings = change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined;
+        if ((change.goal !== undefined || change.instructions !== undefined || settings) && !project) {
+          throw new HttpError(400, "only a project has a goal, instructions and project settings");
+        }
         if (change.title !== undefined) store.setTitle(thread.id, String(change.title));
         if (change.hidden !== undefined) store.setHidden(thread.id, !!change.hidden);
         // The user's own view of the thread, in user.db.
-        if (change.group !== undefined) s().prefs.setGroup(user.id, poolOf(r), thread.id, change.group === null ? null : String(change.group));
-        if (change.unread !== undefined) s().prefs.setUnread(user.id, poolOf(r), thread.id, !!change.unread);
-        return summary(d, user, poolOf(r), store, store.getThread(thread.id)!, []);
+        if (change.group !== undefined) s().prefs.setGroup(user.id, pool, thread.id, change.group === null ? null : String(change.group));
+        if (change.unread !== undefined) s().prefs.setUnread(user.id, pool, thread.id, !!change.unread);
+        if (change.goal !== undefined) store.setGoal(thread.id, String(change.goal));
+        if (change.instructions !== undefined) {
+          try { store.setProjectInstructions(thread.id, String(change.instructions), `user:${user.id}`); } catch (err) { throw new HttpError(400, (err as Error).message); }
+        }
+        if (settings) {
+          s().projects.set(user.id, pool, thread.id, {
+            ...(change.paused !== undefined ? { paused: !!change.paused } : {}),
+            ...(change.threadsModel !== undefined ? { model: change.threadsModel } : {}),
+            ...(change.threadsThinking !== undefined ? { thinking: change.threadsThinking } : {}),
+          });
+        }
+        return { thread: thread.id, project, made: !!change.project && !thread.project };
       });
+      // Paused or hidden, a project's working threads stop and nothing new starts.
+      if (before.project && (change.paused === true || change.hidden === true)) await s().children.stopProject(user.id, pool, before.thread);
+      // Resumed or shown again: its queued threads may start.
+      if (before.project && (change.paused === false || change.hidden === false)) s().children.resume(user.id);
+      // A thread made a project opens its next turn with the project's tools and guidance.
+      if (before.made) s().host.reload(user.id, pool, before.thread);
+      return owner(d, user, (o) => summary(d, user, pool, o[pool], o[pool].getThread(before.thread)!, []));
     }),
     route("DELETE", t, async (r) => {
       const user = d.userFor(r);
@@ -503,6 +549,8 @@ export function apiRoutes(d: Lyricad): Route[] {
         walk(threadId);
         return out;
       });
+      // A project's page and the notes that came only from it go before its threads do, while they still say where the notes came from.
+      if (all) owner(d, user, (o) => { if (o[pool].getThread(threadId)?.project) o[pool].forgetProjectMemory(threadId, author(user)); });
       for (const id of doomed) {
         await s().delegation.forget(user.id, pool, id);
         await s().host.forget(user.id, pool, id);
@@ -511,6 +559,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       }
       s().children.forget(user.id, pool, doomed);
       s().prefs.forget(user.id, pool, doomed);
+      s().projects.forget(user.id, pool, doomed);
       // A kept child is a thread of its own now: its next turn opens with its own tools and workspace.
       for (const id of kept) { s().workspace.settings(user.id).detach(id); s().host.reload(user.id, pool, id); }
       return { ok: true };
@@ -550,7 +599,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         const page = o[poolOf(r)].entryPage(thread.id, { before: before ? Number(before) : undefined, limit });
         const names = thread.subagent ? { userName: (id: string) => s().users.get(id)?.profile.displayName ?? "a user" } : undefined;
         return { messages: toMessages(thread.id, poolOf(r), page.entries,
-          (run) => s().delegation.store.runs(user.id, poolOf(r), { run }).map((x) => x.thread), names, { child: thread.child }), hasMore: page.hasMore };
+          (run) => s().delegation.store.runs(user.id, poolOf(r), { run }).map((x) => x.thread), names, thread.child && thread.parent ? { parent: thread.parent } : {}), hasMore: page.hasMore };
       });
     }),
     route("POST", `${t}/messages`, async (r) => {
@@ -559,7 +608,12 @@ export function apiRoutes(d: Lyricad): Route[] {
       const thread = owner(d, user, (o) => threadOf(o, r));
       if (thread.subagent) return toSubagent(d, user, poolOf(r), thread, String(text ?? ""));
       if (String(text ?? "").trim() === "/sleep") return { queued: false, sleep: await startSleep(d, user, poolOf(r), confirm === true) };
-      return s().host.get(user.id, poolOf(r), thread.id).send(unmarked(String(text ?? "")));
+      const project = owner(d, user, (o) => o[poolOf(r)].projectOf(thread.id));
+      if (project && project !== thread.id && s().children.stopped(user.id, poolOf(r), project)) throw new HttpError(409, "this project is paused or hidden; resume it to write in its threads");
+      const sent = await s().host.get(user.id, poolOf(r), thread.id).send(unmarked(String(text ?? "")));
+      // The user wrote: the thread no longer waits on them, and a resolved one reopens.
+      if (thread.child) s().children.userWrote(user.id, poolOf(r), thread.id);
+      return sent;
     }),
     route("POST", `${t}/messages/:n/branch`, async (r) => {
       const user = d.userFor(r);
@@ -573,7 +627,80 @@ export function apiRoutes(d: Lyricad): Route[] {
         return o[pool].branchThread(thread.id, n, { title: typeof title === "string" ? title : undefined });
       });
       inheritThread(d, user, pool, r.params.threadId!, branch.id);
+      // A branch in a project is a thread of the project, anchored where its source hangs (or, of the project chat, where it branched).
+      if (branch.child && branch.parent) s().children.adopt(user.id, pool, branch.id, branch.parent, branch.parent === r.params.threadId ? entryN(r) : s().children.anchorOf(user.id, pool, r.params.threadId!));
       return owner(d, user, (o) => summary(d, user, pool, o[pool], branch, []));
+    }),
+    route("PUT", `${t}/pin`, (r) => pinThread(d, d.userFor(r), r, true)),
+    route("DELETE", `${t}/pin`, (r) => pinThread(d, d.userFor(r), r, false)),
+    route("POST", `${t}/messages/:n/thread`, async (r) => {
+      const user = d.userFor(r);
+      const pool = poolOf(r);
+      const { title } = await r.json<Api.StartThread>();
+      const n = entryN(r);
+      const { project, task } = owner(d, user, (o) => {
+        const thread = threadOf(o, r);
+        if (!thread.project) throw new HttpError(400, "threads are started from a project chat's messages");
+        const entry = o[pool].entryPage(thread.id, { before: n + 1, limit: 1 }).entries.find((e) => e.n === n);
+        if (!entry) throw new HttpError(404, "no such message");
+        const said = userText(entry.data) ?? assistantText(entry.data);
+        if (!said?.trim()) throw new HttpError(400, "start a thread from a message with text");
+        return { project: thread.id, task: said };
+      });
+      if (s().children.stopped(user.id, pool, project)) throw new HttpError(409, "this project is paused or hidden; resume it to start threads");
+      const name = (typeof title === "string" && title.trim()) || task.trim().split("\n")[0]!.slice(0, 80);
+      let id: string;
+      try { id = await s().children.startFrom(user.id, pool, project, n, { title: name, task }); } catch (err) { throw new HttpError(409, (err as Error).message); }
+      return owner(d, user, (o) => summary(d, user, pool, o[pool], o[pool].getThread(id)!, []));
+    }),
+    route("POST", `${t}/resolve`, (r) => resolveThread(d, d.userFor(r), r, true)),
+    route("POST", `${t}/reopen`, (r) => resolveThread(d, d.userFor(r), r, false)),
+    route("POST", `${t}/suggestions/:callId/start`, async (r) => {
+      const user = d.userFor(r);
+      const pool = poolOf(r);
+      const { index } = await r.json<Api.StartSuggestion>();
+      const callId = r.params.callId!;
+      const project = owner(d, user, (o) => threadOf(o, r));
+      if (!project.project) throw new HttpError(400, "suggestions are a project chat's");
+      const entries = owner(d, user, (o) => o[pool].entryPage(project.id, { limit: 100_000 }).entries);
+      const list = suggestionsIn(entries.map((e) => e.data), callId);
+      if (!list) throw new HttpError(404, "no such suggestion");
+      const started = s().projects.started(user.id, pool, project.id);
+      const wanted = index === undefined ? list.map((_, i) => i) : [Number(index)];
+      if (wanted.some((i) => !list[i])) throw new HttpError(404, "no such suggested thread");
+      const anchor = anchorOfCall(entries, callId) ?? owner(d, user, (o) => o[pool].nextEntryN(project.id));
+      const made: string[] = [];
+      for (const i of wanted) {
+        // Claimed before the await, so a second click can't start the same thread.
+        const key = `${user.id}/${pool}/${project.id}/${callId}#${i}`;
+        if (started.has(`${callId}#${i}`) || startingSuggestions.has(key)) continue;
+        startingSuggestions.add(key);
+        let id: string;
+        try {
+          id = await s().children.startFrom(user.id, pool, project.id, anchor, list[i]!);
+          s().projects.markStarted(user.id, pool, project.id, callId, i, id);
+        } catch (err) {
+          throw new HttpError(409, (err as Error).message);
+        } finally {
+          startingSuggestions.delete(key);
+        }
+        made.push(id);
+      }
+      return owner(d, user, (o) => made.map((id) => summary(d, user, pool, o[pool], o[pool].getThread(id)!, [])));
+    }),
+    route("GET", `${t}/overview`, (r): Api.ProjectOverview => {
+      const user = d.userFor(r);
+      const pool = poolOf(r);
+      return owner(d, user, (o) => {
+        const project = threadOf(o, r);
+        if (!project.project) throw new HttpError(400, "only a project has an overview");
+        const ids = o[pool].projectThreads(project.id);
+        const threads = ids.slice(1).map((id) => summary(d, user, pool, o[pool], o[pool].getThread(id)!, []));
+        return {
+          threads, waiting: threads.filter((x) => x.state === "waiting").length, tokens: s().models.tokensFor(user.id, ids),
+          started: Object.fromEntries(s().projects.started(user.id, pool, project.id)),
+        };
+      });
     }),
     route("PUT", `${t}/messages/:n/pin`, (r) => pin(d, d.userFor(r), r, true)),
     route("DELETE", `${t}/messages/:n/pin`, (r) => pin(d, d.userFor(r), r, false)),
@@ -1129,6 +1256,7 @@ function machineInfo(m: MachineConfig): Api.MachineInfo {
   return {
     name: m.name, kind: m.kind, address: `${m.username}@${host}${m.port === 22 ? "" : `:${m.port}`}`, root: m.root, pool: m.pool, limit: m.limit,
     keyLine: authorizedKeysLine(publicKeyOf(m.privateKey)), hostKey: m.hostKey, offNetwork: m.offNetwork, lastUsed: m.lastUsed,
+    ...(m.state ? { state: m.state } : {}),
   };
 }
 
@@ -1215,21 +1343,105 @@ function tree(d: Lyricad, user: User, pool: Pool, store: PoolStore, threads: Thr
   const children = new Map<string, Thread[]>();
   const nested = (th: Thread) => !!th.parent && listed.some((p) => p.id === th.parent);
   for (const th of listed) if (nested(th)) children.set(th.parent!, [...(children.get(th.parent!) ?? []), th]);
-  const build = (th: Thread): Api.ThreadSummary => summary(d, user, pool, store, th, (children.get(th.id) ?? []).map(build), prefs);
+  const look = lookups(d, user);
+  const build = (th: Thread): Api.ThreadSummary => summary(d, user, pool, store, th, (children.get(th.id) ?? []).map(build), look, prefs);
   return listed.filter((th) => !nested(th)).map(build);
 }
 
+/** Suggested threads being started now, so one started twice at once starts once. */
+const startingSuggestions = new Set<string>();
+
+function instructionsOf(store: PoolStore, project: string): { instructions?: string } {
+  const instructions = store.pageForProject(project)?.instructions;
+  return instructions ? { instructions } : {};
+}
+
 /** `prefs` is the user's thread preferences read once for a whole list; a single summary reads its own. */
-function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Thread, children: Api.ThreadSummary[], prefs?: Map<string, ThreadPref>): Api.ThreadSummary {
+function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Thread, children: Api.ThreadSummary[], look = lookups(d, user), prefs?: Map<string, ThreadPref>): Api.ThreadSummary {
   const pref = prefs ? prefs.get(`${pool}/${th.id}`) : d.services!.prefs.get(user.id, pool, th.id);
+  const inProject = th.child && th.parent ? look.project(pool, th.parent, store) : undefined;
+  const mine = inProject?.find((x) => x.id === th.id);
+  const settings = th.project ? d.services!.projects.settings(user.id, pool, th.id) : undefined;
   return {
     pool, id: th.id, interface: th.interface, subagent: th.subagent, child: th.child, hidden: th.hidden, unlogged: th.unlogged, createdAt: th.createdAt,
     updatedAt: store.lastEntry(th.id)?.createdAt ?? th.createdAt,
     ...(th.title ? { title: th.title } : {}), ...(th.parent ? { parent: th.parent } : {}),
-    busy: d.services!.host.busy(user.id, pool, th.id), children,
+    busy: d.services!.host.busy(user.id, pool, th.id), children, pinned: look.pinned().has(`${pool}/${th.id}`),
     ...(th.child ? childInfo(d, user, pool, th.id) : {}),
     ...(pref?.group ? { group: pref.group } : {}), ...(pref?.unread ? { unread: true } : {}),
+    ...(th.project ? { project: true as const, ...(th.goal ? { goal: th.goal } : {}), ...instructionsOf(store, th.id) } : {}),
+    ...(settings ? { projectSettings: {
+      paused: settings.paused, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
+    } } : {}),
+    ...(mine ? { state: mine.state, ...(mine.anchor !== undefined ? { anchor: mine.anchor } : {}), ...(mine.needsYou ? { needsYou: true as const } : {}) } : {}),
   };
+}
+
+/** Per request: the user's pins and each project's threads, read once. */
+function lookups(d: Lyricad, user: User) {
+  let pinned: Set<string> | undefined;
+  const projects = new Map<string, ProjectThreadInfo[] | undefined>();
+  return {
+    pinned: () => (pinned ??= d.services!.projects.pinned(user.id)),
+    project: (pool: Pool, parent: string, store: PoolStore) => {
+      const key = `${pool}/${parent}`;
+      if (!projects.has(key)) projects.set(key, store.getThread(parent)?.project ? d.services!.children.projectThreads(user.id, pool, parent) : undefined);
+      return projects.get(key);
+    },
+  };
+}
+
+/** Pins or unpins a thread: the user's own setting, in user.db. */
+function pinThread(d: Lyricad, user: User, r: Request, pinned: boolean): Api.ThreadSummary {
+  const pool = poolOf(r);
+  return owner(d, user, (o) => {
+    const thread = threadOf(o, r);
+    if (thread.subagent) throw new HttpError(409, "a subagent's thread isn't in the thread list");
+    d.services!.projects.pin(user.id, pool, thread.id, pinned);
+    return summary(d, user, pool, o[pool], thread, []);
+  });
+}
+
+/** Resolves or reopens a project's thread. */
+function resolveThread(d: Lyricad, user: User, r: Request, resolved: boolean): Api.ThreadSummary {
+  const pool = poolOf(r);
+  return owner(d, user, (o) => {
+    const thread = threadOf(o, r);
+    if (!thread.child || !thread.parent || !o[pool].getThread(thread.parent)?.project) throw new HttpError(400, "only a project's thread is resolved or reopened");
+    d.services!.children.setResolved(user.id, pool, thread.id, resolved);
+    return summary(d, user, pool, o[pool], thread, []);
+  });
+}
+
+/** The threads a `threads suggest` call proposed, from the project chat's stored entries. */
+function suggestionsIn(entries: unknown[], callId: string): { title: string; task: string }[] | undefined {
+  for (const e of entries) {
+    const m = (e as { type?: string; message?: { role?: string; content?: unknown } }).message;
+    if (m?.role !== "assistant" || !Array.isArray(m.content)) continue;
+    for (const p of m.content as { type: string; id?: string; name?: string; arguments?: { action?: string; threads?: unknown } }[]) {
+      if (p.type !== "toolCall" || p.id !== callId || p.name !== "threads" || p.arguments?.action !== "suggest" || !Array.isArray(p.arguments.threads)) continue;
+      return (p.arguments.threads as { title?: unknown; task?: unknown }[])
+        .map((t) => ({ title: String(t.title ?? "").trim().slice(0, 200), task: String(t.task ?? "").trim() })).filter((t) => t.title && t.task);
+    }
+  }
+  return undefined;
+}
+
+/** The entry number of the reply holding a tool call, so threads started from its card hang there. */
+function anchorOfCall(entries: { n: number; data: unknown }[], callId: string): number | undefined {
+  for (const e of entries) {
+    const m = (e.data as { message?: { role?: string; content?: unknown } }).message;
+    if (m?.role === "assistant" && Array.isArray(m.content) && (m.content as { type: string; id?: string }[]).some((p) => p.type === "toolCall" && p.id === callId)) return e.n;
+  }
+  return undefined;
+}
+
+/** The text of one of her stored replies. */
+function assistantText(data: unknown): string | undefined {
+  const m = (data as { type?: string; message?: { role?: string; content?: unknown } }).message;
+  if ((data as { type?: string }).type !== "message" || m?.role !== "assistant") return undefined;
+  if (typeof m.content === "string") return m.content;
+  return Array.isArray(m.content) ? m.content.filter((p: { type: string }) => p.type === "text").map((p: { text: string }) => p.text).join("") : "";
 }
 
 /** A child thread's status and unseen updates, for the sidebar. */
@@ -1443,6 +1655,8 @@ async function rewind(d: Lyricad, user: User, r: Request, req: Api.RewindRequest
       const plan = await removalPlan(gathered);
       const undone = await applyRemoval(plan, gathered, gathered.changes, skip);
       const done = owner(d, user, (o) => o[pool].truncateThread(thread.id, from, author(user)));
+      // A project's threads hanging off removed messages stay, unanchored.
+      if (thread.project) d.services!.children.unanchor(user.id, pool, thread.id, from);
       result = { removed: done.removed, subagents: done.subagents.length, pins: done.pins, ...undone };
       return from;
     }, then);

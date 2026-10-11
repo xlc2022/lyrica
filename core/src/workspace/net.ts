@@ -115,15 +115,16 @@ export function hostAddresses(): string[] {
     .filter((i) => i?.family === "IPv4" && !i.internal).map((i) => i!.address);
 }
 
-/** pasta's options for a thread's network. */
-export function pastaArgs(net: { internet: boolean; services: boolean; hosts: boolean }, exclude: number[]): string[] {
+/** pasta's options for a thread's network. `forward` adds loopback TCP ports whatever the services switch says. */
+export function pastaArgs(net: { internet: boolean; services: boolean; hosts: boolean; forward?: number[] }, exclude: number[]): string[] {
   const args = ["--quiet", "--ipv4-only", "-t", "none", "-u", "none"];
   if (net.internet || net.hosts) {
     args.push("--config-net", "--no-map-gw", "-a", SANDBOX_ADDRESS, "-n", "30", "-g", SANDBOX_GATEWAY);
     if (net.internet) args.push("--dns-forward", SANDBOX_GATEWAY);
   }
   const forward = (proto: "tcp" | "udp") => {
-    const ports = net.services ? loopbackPorts(proto).filter((p) => !exclude.includes(p)) : [];
+    const listed = proto === "tcp" ? net.forward ?? [] : [];
+    const ports = [...new Set([...(net.services ? loopbackPorts(proto) : []), ...listed])].filter((p) => !exclude.includes(p)).sort((a, b) => a - b);
     return ports.length ? ports.join(",") : "none";
   };
   args.push("-T", forward("tcp"), "-U", forward("udp"));
