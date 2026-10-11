@@ -17,6 +17,9 @@ minutes on a private repository are billed past the plan's allowance.
   mid-job), and apt waits up to 10 minutes for a busy dpkg lock; setup.sh
   and the check job both set this. It holds nothing else: never the lyricad machine (Li's memory) or
   the model host (the host-stack job installs its own model host stack).
+- The nix job installs Nix once (pinned installer, kept between runs), runs
+  `nix flake check` and the sandbox tests with the NixOS sandbox tools and
+  closure (docs/daemon.md "On NixOS"). Nix stays installed on the VM.
 - The host-stack job removes what it installed (the stack and its volumes,
   the egress unit and rules, Docker's daemon.json) when it ends.
 - One runner runs one job at a time. A new push to a pull request

@@ -1031,7 +1031,7 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   services) and an **allowed hosts** list. Each has per-user, per-pool
   defaults and a per-thread override.
   - Nothing on, list empty: `--unshare-net`.
-  - Otherwise `pasta` wraps the sandbox in its own network namespace, with
+  - Otherwise the sandbox gets its own network namespace, served by `pasta`, with
     default-deny output rules set inside it before the command runs. They
     allow the internet if that switch is on, the host's loopback if the
     machine's-services switch is on, and each allowed host (IP, CIDR, or a

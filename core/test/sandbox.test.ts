@@ -89,7 +89,9 @@ describe.skipIf(!runnable)("the sandbox", () => {
     process.env.LYRICA_TEST_SECRET = "in lyricad's environment";
     const r = await sh(`cat /proc/[0-9]*/cmdline | tr '\\0' ' '; echo; env; kill -0 ${process.pid} && echo AL""IVE`);
     delete process.env.LYRICA_TEST_SECRET;
-    expect(r.out).not.toMatch(/node|vitest/);
+    // Not /node/: on NixOS the sandbox's own bwrap lists Node's store path among its mounts.
+    expect(r.out).not.toContain("vitest");
+    expect(r.out).not.toContain(process.execPath);
     expect(r.out).not.toContain("LYRICA_TEST_SECRET");
     expect(r.out).not.toContain("ALIVE");
     expect((await sh("ls /proc | grep -c '^[0-9]'")).out.trim()).toMatch(/^[1-5]$/);
@@ -200,6 +202,30 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect(r.out.split("\n").length).toBeLessThan(2000);
     expect(r.out).toContain("bytes of output left out");
     expect(r.out.trimEnd().endsWith("200000")).toBe(true);
+  });
+});
+
+// On NixOS (the CI nix job sets these): only the closure is in /nix/store.
+const nixTools = process.env.LYRICA_SANDBOX_TOOLS;
+describe.skipIf(!runnable || !nixTools)("the sandbox with the NixOS tools", () => {
+  it("sees only the closure's store paths, never the rest of the store", async () => {
+    const closure = readFileSync(process.env.LYRICA_SANDBOX_CLOSURE!, "utf8").split("\n").filter(Boolean);
+    const r = await sh("ls /nix/store");
+    expect(r.code).toBe(0);
+    expect(r.out.split("\n").filter(Boolean).sort()).toEqual(closure.map((c) => c.slice("/nix/store/".length)).sort());
+    // The closure file's own store path isn't in the closure.
+    const own = process.env.LYRICA_SANDBOX_CLOSURE!.split("/").slice(0, 4).join("/");
+    expect((await sh(`ls ${own}`)).code).not.toBe(0);
+    expect((await sh("ls /usr/bin/bash")).code).toBe(0);
+  });
+
+  it("refuses tools outside /nix/store", async () => {
+    process.env.LYRICA_SANDBOX_TOOLS = "/usr";
+    try {
+      await expect(sh("true")).rejects.toThrow(SandboxDenied);
+    } finally {
+      process.env.LYRICA_SANDBOX_TOOLS = nixTools;
+    }
   });
 });
 
