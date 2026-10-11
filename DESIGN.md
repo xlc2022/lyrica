@@ -931,8 +931,8 @@ web part and sleep's project page are not yet. The briefs are
   isn't logged is left out. A run of such turns stops after 3 until Li
   writes in the project again, so threads can't keep each other going.
   With the setting off, updates only change their cards and she speaks in
-  the project chat when Li writes. Not built yet: `docs/briefs/projects.md`,
-  "Watching threads".
+  the project chat when Li writes. The back end is built; the switch and
+  the notice are in the web part.
 - **Context set once.** Every thread of a project starts with the same
   project context, assembled each turn in its own budget:
   - **Goal**: one line Li writes.

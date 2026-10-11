@@ -6,6 +6,9 @@ import type { PoolView } from "./store/memory.ts";
 /** What a parent's message to its child starts with, so the child's thread can show it as hers. Only lyricad writes it. */
 export const fromParent = (parentThreadId: string) => `[From t:${parentThreadId}]\n\n`;
 export const FROM_PARENT = /^\[From t:([^\]\s]+)\]\n\n/;
+/** The mark lyricad puts on what it shows the project chat about its threads (daemon/src/watch.ts). */
+export const WATCHING_MARK = "[Watching threads]\n\n";
+export const WATCHING = /^\[Watching threads\]\n\n/;
 
 export type ChildStatus = "working" | "waiting" | "idle";
 
@@ -43,6 +46,9 @@ export const PROJECT_CHAT_GUIDELINES = [
   "A follow-up about work a thread is already on goes to that thread (threads message); say which thread you sent it to.",
   "When the person asks you to propose first, suggest threads (threads suggest) instead of starting them.",
   "When the person says how they want the project run (how many threads at once, who to ask, what to avoid), save it as a note with remember.",
+  "A message starting [Watching threads] isn't from the person: it shows you what the person and your threads just said in the threads. "
+    + "Decide whether another thread's work is affected; if so, message that thread with what it needs to know, and pass its answer on where it matters. "
+    + "Say something here only when the person must know or decide something; never repeat their words back to them. If nothing needs doing, reply with one short line.",
 ];
 
 /** Her guidance in a project's thread. */

@@ -610,6 +610,8 @@ export interface ProjectSettingsInfo {
   /** The chat model new threads of the project start with; none: the project chat's. */
   threadsModel?: ModelRef | ModelRef[];
   threadsThinking?: ThinkingLevel;
+  /** After the person writes in a thread, or a thread posts an update, the project chat looks and tells the threads it affects. */
+  watchThreads: boolean;
 }
 
 /**
@@ -628,7 +630,7 @@ export interface NewThread { pool: Pool; title?: string; project?: boolean; goal
  */
 export interface ThreadChange {
   title?: string; hidden?: boolean; project?: true; goal?: string; instructions?: string;
-  paused?: boolean; threadsModel?: ModelRef | ModelRef[] | null; threadsThinking?: ThinkingLevel | null;
+  paused?: boolean; threadsModel?: ModelRef | ModelRef[] | null; threadsThinking?: ThinkingLevel | null; watchThreads?: boolean;
 }
 /** PUT and DELETE /api/u/:userId/threads/:pool/:threadId/pin → ThreadSummary. The user's own pin, in user.db. */
 /**
@@ -824,8 +826,11 @@ export interface Message {
    * wrote in the thread (with their current name). In a child thread, a
    * message from its parent thread.
    */
-  /** `thread`: another thread of the same project wrote it (Lyrica, from there). */
-  from?: { kind: "lyrica" } | { kind: "user"; userId: string; name: string } | { kind: "parent"; threadId: string } | { kind: "thread"; threadId: string };
+  /**
+   * `thread`: another thread of the same project wrote it (Lyrica, from there).
+   * `watching`: in a project chat, lyricad showing her what was said in its threads.
+   */
+  from?: { kind: "lyrica" } | { kind: "watching" } | { kind: "user"; userId: string; name: string } | { kind: "parent"; threadId: string } | { kind: "thread"; threadId: string };
   parts: MessagePart[];
   createdAt: string;
   /** The model that wrote an assistant message. */

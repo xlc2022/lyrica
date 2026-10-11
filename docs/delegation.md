@@ -322,6 +322,18 @@ child's messages sees its updates.
   messages to its threads are refused.
 - A rewind of the project chat that removes a thread's anchor leaves the
   thread, unanchored.
+- **Watching threads** (`daemon/src/watch.ts`; the project setting
+  `watchThreads`, on by default). When a turn the user started in a logged
+  thread of the project ends, or a thread posts to the project chat, a
+  **look** follows 30 s later, batched across threads: one message into the
+  project chat marked `[Watching threads]`, naming each thread with up to
+  500 characters of what the user wrote there and of its reply, or that it
+  posted an update. Her guidance there is to tell the threads it affects
+  and speak only when the user must know or decide. A look waits for a
+  running turn in the chat to end. Nothing is sent while the project is
+  paused, hidden, locked or the setting is off. After 3 looks with no
+  message from the user anywhere in the project, watching waits for one, so
+  threads can't keep each other going. Pending looks live in memory only.
 
 **Forgetting** a parent forgets its child threads too when asked (the
 default in the UI); otherwise they are kept as threads of their own, detached

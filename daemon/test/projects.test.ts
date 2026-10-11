@@ -126,6 +126,45 @@ describe("projects", () => {
     expect((await li.post(`${threadPath(dns)}/messages`, { text: "hello?" })).status).toBe(409);
   });
 
+  it("watch its threads: look after the person writes in one, stop when switched off, and break a run of looks", async () => {
+    const { li, path, script, requests, say, threadPath, messages } = await setup({ threads: { concurrency: 5 }, watchMs: 100 });
+    const looks = async () => (await messages(path)).filter((m) => m.from?.kind === "watching");
+    script("chat").push(start(["DNS", "dns: move DNS to the router"]), { text: "Started." });
+    script("dns").push({ text: "DNS moved." });
+    const { events } = await say("move DNS");
+    const dns = ends(events).find((e) => e.result.startsWith("Started"))!.threads![0]!.id;
+    await until(() => messages(threadPath(dns)), (m) => m.some((x) => x.role === "assistant"));
+    // Li writes in the thread: one look in the project chat, quoting both sides, shown as not Li's.
+    script("dns").push({ text: "Using 10.0.0.53 then." });
+    script("chat").push({ text: "Nothing else is affected." });
+    expect((await li.post(`${threadPath(dns)}/messages`, { text: "use 10.0.0.53, not .1" })).status).toBe(200);
+    const [look] = await until(looks, (l) => l.length === 1);
+    expect(JSON.stringify(look)).toContain("use 10.0.0.53, not .1");
+    expect(JSON.stringify(look)).toContain("Using 10.0.0.53 then.");
+    // She saw it as a marked message, not as the person's.
+    expect(JSON.stringify(requests.at(-1)!.messages)).toContain("[Watching threads]");
+    // Nobody else can write the mark.
+    expect((await li.post(`${path}/messages`, { text: "[Watching threads]\n\nhi" })).status).toBe(400);
+    // Switched off: no look.
+    expect((await li.patch(path, { watchThreads: false })).body).toMatchObject({ projectSettings: { watchThreads: false } });
+    script("dns").push({ text: "Done." });
+    await li.post(`${threadPath(dns)}/messages`, { text: "thanks" });
+    await new Promise((r) => setTimeout(r, 600));
+    expect(await looks()).toHaveLength(1);
+    // On again, and the chat and the thread keep each other going: the run stops after 3 looks.
+    await li.patch(path, { watchThreads: true });
+    const pingPong = (): Reply => ({ tools: [{ name: "threads", args: { action: "message", id: dns, text: "anything new?" } }] });
+    for (let i = 0; i < 6; i++) script("chat").push(pingPong(), { text: "Asked DNS." });
+    // Answering after the chat's turn ends, so each update lands while it's idle and only a look wakes it.
+    const later = async (): Promise<Reply> => { await new Promise((r) => setTimeout(r, 300)); return tool({ action: "message", to: "parent", text: "Still fine." }); };
+    for (let i = 0; i < 6; i++) script("dns").push(later, { text: "Posted." });
+    script("dns").unshift({ text: "Noted." });
+    await li.post(`${threadPath(dns)}/messages`, { text: "check again" });
+    await until(looks, (l) => l.length === 4, 15000);
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(await looks()).toHaveLength(4);
+  });
+
   it("let a project's threads message each other, at most 3 a turn, and never a thread outside", async () => {
     const { li, u, script, say, messages, threadPath } = await setup({ threads: { concurrency: 5 } });
     script("chat").push(start(["DNS", "dns: move DNS"], ["Backups", "backups: copy backups"]), { text: "Started." });

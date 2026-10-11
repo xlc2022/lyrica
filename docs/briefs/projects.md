@@ -146,6 +146,12 @@ answers back. Li chose a project setting, on by default.
    paused project and the setting off make none; the fourth look in a row
    waits for Li; a user can't write the mark.
 
+Built (back end): items 1 to 5, and the test for a look, the setting off,
+the mark and a run of looks. Item 6 is projects-web's, item 7
+projects-sleep's. Found while building: an update to a project chat that is
+mid-turn arrives as a follow-up that starts a turn (Delegation's delivery,
+as for any busy parent), with or without watching.
+
 ## Handoff notes
 
 Done (2026-10-11): everything in scope except the items below.

@@ -96,8 +96,10 @@ interface Env {
 function StoredMessage({ m, env, you }: { m: Message; env: Env; you: string }) {
   if (m.role === "user") {
     if (m.from?.kind === "parent") return <FromParent text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} parent={m.from.threadId} env={env} n={m.n} />;
-    const who = m.from?.kind === "lyrica" ? "Lyrica" : m.from?.kind === "user" ? (m.from.name || you) : you;
-    return <UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} hers={m.from?.kind === "lyrica" ? env : undefined} />;
+    // Until the project web part shows it as a notice, what lyricad showed her reads as hers.
+    const hers = m.from?.kind === "lyrica" || m.from?.kind === "watching";
+    const who = hers ? "Lyrica" : m.from?.kind === "user" ? (m.from.name || you) : you;
+    return <UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} hers={hers ? env : undefined} />;
   }
   if (m.role === "notice") {
     return <>{m.parts.map((p, i) => (p.type === "delegation"
