@@ -179,7 +179,7 @@ export function SettingsDrawer({ ctx, base, summary, settings, onSettings, onSum
   );
 }
 
-function TaskSelect({ task, value, allowed, onChange }: {
+export function TaskSelect({ task, value, allowed, onChange }: {
   task: ThreadTask; value: TaskModel; allowed: EndpointInfo[]; onChange: (m: ModelRef | null) => void;
 }) {
   const current = value.source === "thread" ? refKey(value.model) : "";

@@ -17,6 +17,8 @@ export interface Rewinder {
   branch(n: number): void;
   /** Removes from message `n` (and sends again, for regenerate and edit). Messages from `hide` on are hidden meanwhile. */
   rewind(n: number, req: RewindRequest, hide: number): void;
+  /** In a project chat: starts a thread of the project from message `n`, with its text as the task. */
+  startThread?(n: number): void;
 }
 
 export function MessageMenu({ n, role, rewinder, onEdit }: { n: number; role: "user" | "assistant"; rewinder: Rewinder; onEdit?: () => void }) {
@@ -40,6 +42,7 @@ export function MessageMenu({ n, role, rewinder, onEdit }: { n: number; role: "u
             ? <button type="button" role="menuitem" onClick={act(() => rewinder.pin(n, false))}>Unpin</button>
             : <button type="button" role="menuitem" onClick={act(() => rewinder.pin(n, true))}>Pin</button>}
           <button type="button" role="menuitem" onClick={act(() => rewinder.branch(n))}>Branch from here</button>
+          {rewinder.startThread && <button type="button" role="menuitem" disabled={busy} onClick={act(() => rewinder.startThread!(n))}>Start a thread</button>}
           {role === "assistant" && <button type="button" role="menuitem" disabled={busy} onClick={act(() => regenerate())}>Regenerate</button>}
           {role === "assistant" && (
             <button type="button" role="menuitem" disabled={busy} aria-expanded={models} onClick={() => setModels(!models)}>Regenerate with…</button>

@@ -1,12 +1,13 @@
 // The signed-in layout: the sidebar, and the page the route points at.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { get, patch, post, u, type DisplayChange, type LogoutResponse, type Me, type Pool, type State, type ThreadGroup, type ThreadSort, type ThreadSummary, type UserCard } from "./api.ts";
+import { get, patch, post, u, type Display, type DisplayChange, type LogoutResponse, type Me, type Pool, type State, type ThreadGroup, type ThreadSort, type ThreadSummary, type UserCard } from "./api.ts";
 import { href, go, type Route } from "./route.ts";
 import { Icon } from "./icons.tsx";
 import { Thread } from "./Thread.tsx";
 import { Memory } from "./Memory.tsx";
 import { AdminPage, SettingsPage } from "./Panel.tsx";
 import { ThreadMenu, useThreadMenu } from "./ThreadMenu.tsx";
+import { ProjectPage, stateWord } from "./Project.tsx";
 import { ErrorText, hidden, menuArrows, shortTime, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
 
 export interface ShellContext {
@@ -57,6 +58,10 @@ export function Shell({ user, users, route, build, onAuthChange }: {
         <HiddenPool ctx={ctx} pool={route.pool} />
       ) : route.page === "thread" ? (
         <Thread key={`${route.pool}/${route.threadId}`} ctx={ctx} pool={route.pool} threadId={route.threadId} threads={threads.data ?? []} />
+      ) : route.page === "project" && hidden(me.data.display, route.pool) ? (
+        <HiddenPool ctx={ctx} pool={route.pool} />
+      ) : route.page === "project" ? (
+        <ProjectPage key={`${route.pool}/${route.threadId}`} ctx={ctx} pool={route.pool} threadId={route.threadId} section={route.section} />
       ) : route.page === "memory" ? (
         <Memory ctx={ctx} pool={route.pool} id={route.id} />
       ) : route.page === "settings" ? (
@@ -110,6 +115,10 @@ export function HiddenPool({ ctx, pool }: { ctx: ShellContext; pool: Pool }) {
 
 export const monogram = (user: UserCard) => user.monogram || user.displayName.slice(0, 2);
 
+const PROJECT_FILTERS: { projects: Display["projects"]; label: string }[] = [
+  { projects: "all", label: "All threads" }, { projects: "only", label: "Only projects" }, { projects: "none", label: "No projects" },
+];
+
 const SORTS: { sort: ThreadSort; label: string }[] = [
   { sort: "date", label: "By date" }, { sort: "activity", label: "Last activity" }, { sort: "started", label: "Start date" }, { sort: "title", label: "Title" }, { sort: "groups", label: "My groups" },
 ];
@@ -161,8 +170,16 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
   // Search filters titles, child threads included, as they are typed.
   const q = query.trim().toLowerCase();
   const matches = (t: ThreadSummary): boolean => !q || (t.title ?? "New thread").toLowerCase().includes(q) || t.children.some(matches);
-  const shown = useMemo(() => sections(threads.filter(matches), sort, ctx.groups, now), [threads, sort, ctx.groups, now, q]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Pinned threads sit at the top, whatever the sort; the projects filter is the Sort menu's third part.
+  const projects = me.display.projects;
+  const shown = useMemo(() => {
+    const visible = threads.filter((t) => (projects === "only" ? t.project : projects === "none" ? !t.project : true)).filter(matches);
+    const pinned = visible.filter((t) => t.pinned).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    const rest = sections(visible.filter((t) => !t.pinned), sort, ctx.groups, now);
+    return pinned.length ? [{ label: "Pinned", threads: pinned }, ...rest] : rest;
+  }, [threads, sort, projects, ctx.groups, now, q]); // eslint-disable-line react-hooks/exhaustive-deps
   const sortLabel = SORTS.find((s) => s.sort === sort)?.label ?? "By date";
+  const listMenu = useListMenu();
 
   return (
     <aside className="side" aria-label="Threads">
@@ -192,14 +209,20 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
             <label><input type="checkbox" checked={me.display.showGeneral} onChange={(e) => setDisplay({ showGeneral: e.target.checked })} /> General</label>
             <label><input type="checkbox" checked={me.display.showPrivate} onChange={(e) => setDisplay({ showPrivate: e.target.checked })} /> Private</label>
             <label><input type="checkbox" checked={me.display.showHidden} onChange={(e) => setDisplay({ showHidden: e.target.checked })} /> Hidden</label>
+            <hr className="menu-sep" />
+            <div className="rg" role="radiogroup" aria-label="Projects">
+              {PROJECT_FILTERS.map((f) => (
+                <label key={f.projects}><input type="radio" name="tprojects" checked={projects === f.projects} onChange={() => setDisplay({ projects: f.projects })} /> {f.label}</label>
+              ))}
+            </div>
           </div>
         </details>
       </div>
       <ErrorText error={actionError || error} />
-      <ul className="threads" aria-label="Threads">
+      <ul className="threads" aria-label="Threads" {...listMenu.handlers}>
         {shown.map((s) => (
           <li key={s.label} className="group-rows">
-            {(shown.length > 1 || sort === "groups") && <span className="eyebrow">{s.label}{s.count !== undefined && <span className="num">{s.count}</span>}</span>}
+            {(shown.length > 1 || sort === "groups" || s.label === "Pinned") && <span className="eyebrow">{s.label}{s.count !== undefined && <span className="num">{s.count}</span>}</span>}
             <ul className="threads-in">
               {s.threads.map((t) => <ThreadRow key={`${t.pool}/${t.id}`} t={t} userId={user.id} current={current} menu={menu.handlers} />)}
             </ul>
@@ -210,6 +233,7 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
       {menu.at && (
         <ThreadMenu at={menu.at} userId={user.id} route={route} groups={ctx.groups} onGroups={ctx.refreshGroups} onChange={ctx.refreshThreads} onClose={menu.close} />
       )}
+      {listMenu.at && <ListMenu at={listMenu.at} ctx={ctx} onClose={listMenu.close} />}
       <div className="side-foot">
         <UserMenu ctx={ctx} users={users} onAuthChange={onAuthChange} />
       </div>
@@ -232,6 +256,84 @@ function NewGroup({ userId, onDone }: { userId: string; onDone: () => void }) {
   );
 }
 
+/** The thread list's own menu, from a right-click or long press on its empty space: New project and New group. */
+function useListMenu() {
+  const [at, setAt] = useState<{ x: number; y: number }>();
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const onList = (e: React.SyntheticEvent) => !(e.target as HTMLElement).closest(".thread, .chev, .resolved-row");
+  const handlers = {
+    onContextMenu: (e: React.MouseEvent) => { if (!onList(e)) return; e.preventDefault(); setAt({ x: e.clientX, y: e.clientY }); },
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.pointerType === "mouse" || !onList(e)) return;
+      clearTimeout(timer.current);
+      const { clientX: x, clientY: y } = e;
+      timer.current = setTimeout(() => setAt({ x, y }), 500);
+    },
+    onPointerUp: () => clearTimeout(timer.current),
+    onPointerMove: () => clearTimeout(timer.current),
+    onPointerCancel: () => clearTimeout(timer.current),
+  };
+  return { at, close: () => setAt(undefined), handlers };
+}
+
+function ListMenu({ at, ctx, onClose }: { at: { x: number; y: number }; ctx: ShellContext; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [sub, setSub] = useState<"" | "project" | "group">("");
+  const [name, setName] = useState("");
+  const [run, , error] = useAction();
+  const userId = ctx.user.id;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    el.style.left = `${Math.max(8, Math.min(at.x, innerWidth - r.width - 8))}px`;
+    el.style.top = `${Math.max(8, Math.min(at.y, innerHeight - r.height - 8))}px`;
+    el.querySelector("button")?.focus();
+  }, [at, sub]);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.preventDefault(); if (sub) setSub(""); else onClose(); return; }
+      if (e.target instanceof HTMLInputElement || menuArrows(e, ref.current)) return;
+      const btn = ref.current?.querySelector<HTMLButtonElement>(`button[data-key="${e.key.toUpperCase()}"]`);
+      if (btn) { e.preventDefault(); btn.click(); }
+    };
+    const down = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
+    addEventListener("keydown", key);
+    addEventListener("pointerdown", down);
+    return () => { removeEventListener("keydown", key); removeEventListener("pointerdown", down); };
+  }, [sub, onClose]);
+  const addGroup = () => run(async () => { await post(u(userId, "thread-groups"), { name: name.trim() }); ctx.refreshGroups(); onClose(); });
+  // A new project is an empty project chat, pinned, opened at once.
+  const create = (pool: Pool) => run(async () => {
+    const t = await post<ThreadSummary>(u(userId, "threads"), { pool, project: true });
+    ctx.refreshThreads();
+    onClose();
+    go({ page: "thread", userId, pool, threadId: t.id });
+  });
+  return (
+    <div ref={ref} className="ctx-menu" role="menu" aria-label="Thread list menu" style={{ left: at.x, top: at.y }}>
+      {sub === "project" ? (
+        <>
+          <button type="button" className="back" onClick={() => setSub("")}>‹ New project in</button>
+          <button type="button" role="menuitem" data-key="G" onClick={() => create("general")}><span>General</span><kbd>G</kbd></button>
+          <button type="button" role="menuitem" data-key="P" onClick={() => create("private")}><span>Private</span><kbd>P</kbd></button>
+        </>
+      ) : sub === "group" ? (
+        <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) void addGroup(); }}>
+          <input autoFocus aria-label="Group name" value={name} onChange={(e) => setName(e.target.value)} />
+          <button type="submit" className="primary sm" disabled={!name.trim()}>Add</button>
+        </form>
+      ) : (
+        <>
+          <button type="button" role="menuitem" className="has-sub" data-key="P" onClick={() => setSub("project")}><span>New project</span><kbd>P</kbd></button>
+          <button type="button" role="menuitem" data-key="G" onClick={() => setSub("group")}><span>New group…</span><kbd>G</kbd></button>
+        </>
+      )}
+      <ErrorText error={error} />
+    </div>
+  );
+}
+
 function NewThread({ onCreate }: { onCreate: (pool: Pool) => void }) {
   const [open, setOpen] = useState(false);
   if (!open) return <button type="button" aria-expanded="false" onClick={() => setOpen(true)}><Icon name="plus" />New thread</button>;
@@ -248,18 +350,30 @@ type MenuHandlers = ReturnType<ReturnType<typeof useThreadMenu>["handlers"]>;
 
 function ThreadRow({ t, userId, current, menu }: { t: ThreadSummary; userId: string; current: string; menu: (t: ThreadSummary) => MenuHandlers }) {
   const key = `${t.pool}/${t.id}`;
-  const [open, setOpen] = useState(() => t.children.some((c) => `${c.pool}/${c.id}` === current));
+  // A project's threads show by default; resolved ones fold under one Resolved row.
+  const [open, setOpen] = useState(() => !!t.project || t.children.some((c) => `${c.pool}/${c.id}` === current));
+  const [resolvedOpen, setResolvedOpen] = useState(() => t.children.some((c) => c.state === "resolved" && `${c.pool}/${c.id}` === current));
+  const active = t.project ? t.children.filter((c) => c.state !== "resolved") : t.children;
+  const resolved = t.project ? t.children.filter((c) => c.state === "resolved") : [];
   return (
     <li>
       <div className="trow">
         {t.children.length > 0
-          ? <button type="button" className="chev" aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} child threads`} onClick={() => setOpen(!open)}><Icon name="right" /></button>
+          ? <button type="button" className="chev" aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} ${t.project ? "the project's threads" : "child threads"}`} onClick={() => setOpen(!open)}><Icon name="right" /></button>
           : <span className="chev" />}
         <ThreadLink t={t} userId={userId} on={current === key} menu={menu} />
       </div>
       {open && (
         <ul className="children">
-          {t.children.map((c) => <li key={c.id}><ThreadLink t={c} userId={userId} on={current === `${c.pool}/${c.id}`} menu={menu} child /></li>)}
+          {active.map((c) => <li key={c.id}><ThreadLink t={c} userId={userId} on={current === `${c.pool}/${c.id}`} menu={menu} child /></li>)}
+          {resolved.length > 0 && (
+            <li>
+              <button type="button" className="resolved-row" aria-expanded={resolvedOpen} onClick={() => setResolvedOpen(!resolvedOpen)}>
+                <Icon name="right" className="chev-ic" />Resolved <span className="num">{resolved.length}</span>
+              </button>
+              {resolvedOpen && <ul className="children">{resolved.map((c) => <li key={c.id}><ThreadLink t={c} userId={userId} on={current === `${c.pool}/${c.id}`} menu={menu} child /></li>)}</ul>}
+            </li>
+          )}
         </ul>
       )}
     </li>
@@ -267,22 +381,27 @@ function ThreadRow({ t, userId, current, menu }: { t: ThreadSummary; userId: str
 }
 
 function ThreadLink({ t, userId, on, menu, child }: { t: ThreadSummary; userId: string; on: boolean; menu: (t: ThreadSummary) => MenuHandlers; child?: boolean }) {
-  // At most two badges, most pressing first (ux.md §5): waiting on her, then new updates, then hidden.
+  // A project's thread: its state as a word, then its unseen updates. Otherwise at most two badges,
+  // most pressing first (ux.md §5): waiting on her, then new updates, then hidden.
+  const inProject = t.state !== undefined;
   const badges = [
-    t.status === "waiting" && <span key="w" className="flag">waiting</span>,
+    inProject ? <span key="s" className="state-word" data-state={t.needsYou ? "needsYou" : t.state}>{stateWord(t)}</span> : t.status === "waiting" && <span key="w" className="flag">waiting</span>,
     !!t.unseen && <span key="u" className="count" aria-label={`${t.unseen} new ${t.unseen === 1 ? "update" : "updates"}`}>{t.unseen}</span>,
     t.hidden && <span key="h" className="flag">hidden</span>,
   ].filter(Boolean).slice(0, 2);
+  // A project row: the project icon in the pool dot's place, amber when one of its threads waits on her.
+  const waiting = t.project && t.children.some((c) => c.state === "waiting");
   return (
-    <a className={`thread${t.unread ? " unread" : ""}`} href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })} aria-current={on ? "page" : undefined} {...menu(t)}>
-      {!child && (t.pool === "private"
-        ? <svg className="pool-lock" viewBox="0 0 12 14" aria-hidden="true"><rect x="1" y="6" width="10" height="7.5" rx="1.5" /><path d="M3.5 6V4.2a2.5 2.5 0 0 1 5 0V6" fill="none" strokeWidth="1.6" /></svg>
-        : <span className="pool-dot" aria-hidden="true" />)}
-      <span className="title">{t.title || "New thread"}</span>
+    <a className={`thread${t.unread ? " unread" : ""}${t.project ? " project" : ""}${child && inProject ? " dotted" : ""}`} href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })} aria-current={on ? "page" : undefined} {...menu(t)}>
+      {t.project ? <span className={`project-mark ${t.pool}`} data-waiting={waiting || undefined}><Icon name="project" />{waiting && <span className="sr-only">a thread waits on you</span>}</span>
+        : (!child || inProject) && (t.pool === "private"
+          ? <svg className="pool-lock" viewBox="0 0 12 14" aria-hidden="true"><rect x="1" y="6" width="10" height="7.5" rx="1.5" /><path d="M3.5 6V4.2a2.5 2.5 0 0 1 5 0V6" fill="none" strokeWidth="1.6" /></svg>
+          : <span className="pool-dot" aria-hidden="true" />)}
+      <span className="title">{t.title || (t.project ? "New project" : "New thread")}</span>
       <span className="when">
-        {t.busy && <span className="busy" title="Working" />}
+        {t.busy && !inProject && <span className="busy" title="Working" />}
         {badges}
-        {shortTime(t.updatedAt)}
+        {!inProject && shortTime(t.updatedAt)}
       </span>
       {t.pool === "private" && <span className="sr-only">private</span>}
       {t.unread && <span className="sr-only">unread</span>}

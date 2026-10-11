@@ -1,9 +1,10 @@
 // One thread: header with its badges, the conversation, and the composer.
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { del, get, patch, post, put, threadPath, u, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { hasConsequences, PinnedBadge, RemovalConfirm, useUndo, type Rewinder } from "./Rewind.tsx";
-import { go } from "./route.ts";
+import { go, href } from "./route.ts";
+import { ThreadsFact, tokenCount, useOverview, type ProjectEnv } from "./Project.tsx";
 import { useThread } from "./stream.ts";
 import { Conversation, MessageBox } from "./Messages.tsx";
 import { Composer } from "./Composer.tsx";
@@ -22,6 +23,21 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
   const [drawer, setDrawer] = useState(false);
   const [sendError, setSendError] = useState("");
   const { refreshThreads } = ctx;
+  // A project chat: its threads, reloaded when one changes state or a turn ends.
+  const isProject = !!summary.data?.project;
+  const overview = useOverview(userId, pool, threadId, isProject, t.live.children + t.live.reload);
+  useEffect(() => { if (t.live.children) refreshThreads(); }, [t.live.children, refreshThreads]);
+  // Each thread's last update to the project chat, for its card.
+  const lastUpdates = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const m of t.messages) {
+      if (m.role !== "notice") continue;
+      for (const p of m.parts) if (p.type === "delegation" && p.threads?.[0] && (p.status === "update" || p.status === "waiting")) out.set(p.threads[0].id, afterHead(p.text));
+    }
+    for (const item of t.live.items) if (item.role === "notice" && item.threads?.[0] && (item.status === "update" || item.status === "waiting")) out.set(item.threads[0].id, afterHead(item.text));
+    return out;
+  }, [t.messages, t.live.items]);
+  const projectEnv: ProjectEnv | undefined = isProject && overview.data ? { overview: overview.data, lastUpdates, onChange: () => { overview.reload(); refreshThreads(); } } : undefined;
 
   // A new title, or a finished turn, may change the sidebar.
   useEffect(() => { if (t.live.title) { summary.reload(); refreshThreads(); } }, [t.live.title, summary.reload, refreshThreads]);
@@ -106,6 +122,12 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
         (plan) => (hasConsequences(plan) ? setRemoval({ plan, go: (skip) => removeTurns(n, { ...req, skip }, hide) }) : removeTurns(n, req, hide)),
         (e: Error) => setSendError(e.message));
     },
+    ...(s.project ? {
+      startThread: (n: number) => {
+        setSendError("");
+        post<ThreadSummary>(`${base}/messages/${n}/thread`, {}).then(() => { overview.reload(); refreshThreads(); }, (e: Error) => setSendError(e.message));
+      },
+    } : {}),
   } : undefined;
   function removeTurns(n: number, req: RewindRequest, hide: number) {
     const last = t.messages.findLast((m) => m.role === "user")?.n;
@@ -119,7 +141,9 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
     else go();
   }
   const parent = s?.parent ? findThread(threads, pool, s.parent) : undefined;
-  const title = t.live.title || s?.title || "New thread";
+  const title = t.live.title || s?.title || (s?.project ? "New project" : "New thread");
+  const resolved = s?.state === "resolved";
+  const reopen = () => post<ThreadSummary>(`${base}/reopen`).then((x) => { summary.set(x); refreshThreads(); }, (e: Error) => setSendError(e.message));
   const scroller = useStickyScroll([t.messages, t.live]);
 
   return (
@@ -133,6 +157,8 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
             {settings.data && <ModelBadge base={base} settings={settings.data} onChange={settings.set} readOnly={!!s?.subagent} />}
             {pins.data && !s?.subagent && <PinnedBadge pins={pins.data} you={ctx.user.displayName} userId={ctx.user.id} pool={pool} />}
             {s && !s.subagent && !s.child && <GroupPicker ctx={ctx} base={base} summary={s} onChange={(x) => { summary.set(x); refreshThreads(); }} />}
+            {s?.project && overview.data && <ThreadsFact userId={userId} overview={overview.data} />}
+            {s?.project && overview.data && <span className="tokens"><span className="num">{tokenCount(overview.data.tokens)}</span> tokens</span>}
             {settings.data?.localOnly && pool === "general" && <span className="badge"><span className="k local">local-only</span></span>}
             {settings.data?.grants.map((g) => (
               <span key={g.path} className="badge folder" title={g.path}>{g.path} <span className="muted">{g.writable ? "rw" : "ro"}</span></span>
@@ -140,7 +166,11 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
             {settings.data?.machines.map((m) => <span key={m} className="badge folder">{m}</span>)}
           </div>
         </div>
-        {!s?.subagent && (
+        {s?.project ? (
+          <div className="head-actions">
+            <a className="sm button" href={href({ page: "project", userId, pool, threadId })} aria-label="Project settings"><Icon name="gear" /><span className="long">Settings</span></a>
+          </div>
+        ) : !s?.subagent && (
           <div className="head-actions">
             <button type="button" className="sm" aria-label="Thread settings" aria-expanded={drawer} aria-controls="thread-settings" onClick={() => setDrawer(!drawer)}>
               <Icon name="gear" /><span className="long">Settings</span>
@@ -155,8 +185,9 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
         <PendingBar scroller={scroller} deps={[t.messages, t.live.permissions]} />
         <ErrorText error={summary.error || t.loadError} />
         {settings.error && <ErrorText error={`This thread's settings didn't load: ${settings.error}`} />}
+        <ErrorText error={overview.error} />
         <Conversation ctx={ctx} pool={pool} base={base} threadId={threadId} subagent={!!s?.subagent} thread={t} rewinder={rewinder} hideFrom={pending?.hide} parentTitle={s?.child ? parent?.title : undefined}
-          speech={settings.data?.speech} onError={setSendError} />
+          speech={settings.data?.speech} onError={setSendError} project={projectEnv} />
         <ErrorText error={sendError} />
       </div>
       {!t.connected && <p className="offline" role="status">Reconnecting…</p>}
@@ -170,9 +201,11 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
           <button type="button" className="link" onClick={undo}>Undo</button>
         </div>
       )}
-      {/* A subagent's thread is its transcript and a message box, as in its delegate card. */}
+      {/* A subagent's thread is its transcript and a message box, as in its delegate card; a resolved project thread has one Reopen link. */}
       {s?.subagent
         ? <div className="composer sub-composer"><MessageBox thread={{ pool, id: threadId }} env={{ userId }} onSent={() => t.dispatch({ type: "refresh" })} /></div>
+        : resolved
+        ? <div className="composer resolved-box"><p className="muted">Resolved. <button type="button" className="link" onClick={() => void reopen()}>Reopen</button></p></div>
         : <Composer base={base} busy={t.live.busy} onSend={send} onStop={stop} restored={restored} settings={settings.data} onSettings={changeSettings} onError={setSendError} />}
       {drawer && settings.data && s && !s.subagent && (
         <SettingsDrawer
@@ -223,6 +256,12 @@ function GroupPicker({ ctx, base, summary, onChange }: { ctx: ShellContext; base
       )}
     </span>
   );
+}
+
+/** An update's text without its first line, the head Lyrica reads ("Update from child thread …:"). */
+function afterHead(text: string): string {
+  const nl = text.indexOf("\n");
+  return nl === -1 ? text : text.slice(nl + 1);
 }
 
 function findThread(list: ThreadSummary[], pool: Pool, id: string): ThreadSummary | undefined {

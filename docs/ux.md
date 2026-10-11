@@ -98,7 +98,7 @@ Rules:
   Share with, Move to group, Sampling, Serving, Placement, Memory,
   Throughput, Template, Pinned, Excluded, Servers, Keep free, Not this
   model, Group, Add…, Reset, Dictation, Dictate, Read aloud, Stop reading,
-  Voice to cloud, Voice, Speed, Project, New project, Make project, Threads,
+  Voice to cloud, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, New threads, This chat, Threads,
   Start a thread, Suggested threads, Start all, Resolve, Reopen, Resolved,
   Waiting on you, Goal, Instructions, Paused, All threads, Only projects,
   No projects, Machines, Add machine, Mode limit, Replace key, Allow in this
@@ -154,11 +154,11 @@ Rules:
 | A child thread | nested under its parent in the **sidebar**, with its state and unseen count as badges; its updates as a **card** in the parent's conversation that links to it |
 | A project | a thread row in the **sidebar** with the project icon in the pool dot's place, its threads nested under it (each keeps its pool dot) and resolved ones folded under one **Resolved** disclosure row with the count in mono; an amber dot on the row when a thread waits on the user. **New project** in the empty thread list's context menu, **Make project** in a top-level thread's menu; a new project starts pinned, at the top with the other pinned threads |
 | A project's threads at a glance | **Threads** with its count in the project chat's facts line, a popover grouped Waiting on you, Working, Queued, Idle, Resolved, in the sidebar's words and order; full width on a phone |
-| A thread of a project, in the project chat | one **card** under the message that started it, updated in place (no card per update): title, state as a dot and word (Working blue; Waiting on you and Waiting for approval amber; Resolved green; Idle the word alone), what it waits on beneath, the last update's first line, up to three file names in mono then "+n"; Open, Stop, Resolve or Reopen behind ⋯. Waiting on you counts as waiting for an answer, so the pending bar covers it |
+| A thread of a project, in the project chat | one **card** under the message that started it, updated in place (no card per update): title, state as a dot and word (Working blue; Waiting on you and Waiting for approval amber; Resolved green; Idle the word alone), what it waits on beneath, the last update's first line, up to three file names in mono then "+n" (once the back end lists them); Open, Stop, Resolve or Reopen behind ⋯. Waiting on you counts as waiting for an answer, so the pending bar covers it |
 | Threads she proposes | a **Suggested threads** card, like the plan card: a small secondary **Start** per row, one primary **Start all** at its foot; no Dismiss |
 | Starting a thread from a message | **Start a thread** in that message's menu, in a project chat only |
 | Resolving a project's thread | **Resolve** / **Reopen** in the thread menu and the card's ⋯; a resolved thread's message box is replaced by one **Reopen** link |
-| A project's settings, files and images | the **Project settings** page (Settings in the project chat's header), sections on the left: General (the project's rows, then **This chat**), Memory, **Files and images** (a segmented control, Files and Images). Files in the header stays the quick view; the page manages the folder |
+| A project's settings, files and images | the **Project settings** page (Settings in the project chat's header), sections on the left: General (Goal; the **Paused** switch, tooltip "Running threads stop and queued ones wait."; an h3 **New threads** with Model and Thinking, tooltip "Threads Lyrica starts from this chat. Each one can be changed after it starts."; an h3 **This chat** with Model, Mode and Group; one Save), Memory (Instructions, a link to the project page), **Files and images** (a segmented control, Files and Images). Files in the header stays the quick view; the page manages the folder |
 | A project's usage | a fact in the project chat's facts line ("312k tokens"); the breakdown in Models → Recent calls, filtered to the project |
 
 The project rows are drawn in the app mockup's projects frame

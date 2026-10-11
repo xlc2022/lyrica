@@ -1,12 +1,13 @@
 // The conversation: stored messages, then what's streaming now.
 import { useEffect, useState } from "react";
-import { get, post, threadPath, type GoAhead, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type SendResponse, type Speech, type ThreadRef } from "./api.ts";
+import { get, post, threadPath, type GoAhead, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
 import type { LiveItem } from "./live.ts";
 import { useMentionText, useThreadMentions } from "./mentions.ts";
 import { GoAheadMenu } from "./Modes.tsx";
 import { href, idHref } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
 import type { useThread } from "./stream.ts";
+import { SuggestedCard, ThreadCard, type ProjectEnv } from "./Project.tsx";
 import { EditBox, MessageMenu, type Rewinder } from "./Rewind.tsx";
 import { ErrorText, Prose, useAction } from "./ui.tsx";
 import { ReadAloudButton } from "./Voice.tsx";
@@ -29,9 +30,11 @@ interface Props {
   speech?: Speech;
   /** Read aloud's problems, for the conversation's error line. */
   onError?: (message: string) => void;
+  /** A project chat: its threads' cards go under the messages that started them, and its updates stay off the chat. */
+  project?: ProjectEnv;
 }
 
-export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewinder, hideFrom, parentTitle, speech, onError }: Props) {
+export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewinder, hideFrom, parentTitle, speech, onError, project }: Props) {
   const { messages, live, hasMore, loadOlder, loaded } = thread;
   const [run, loading, error] = useAction();
   // Expanded tool markers, by call ID, so they stay open when the stored copy replaces the live one.
@@ -42,15 +45,21 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   const show = (id: string, on: boolean) => setShown((o) => { const n = new Set(o); if (on) n.add(id); else n.delete(id); return n; });
   const env: Env = {
     userId: ctx.user.id, you: ctx.user.displayName, pool, base, threadId, subagent, openTools, toggleTool,
-    permissions: live.permissions, ticks: live.subagents, show, rewinder, parentTitle, speech, onError: onError ?? (() => {}),
+    permissions: live.permissions, ticks: live.subagents, show, rewinder, parentTitle, speech, onError: onError ?? (() => {}), project,
   };
+  // A project's threads whose anchor message is gone sit under the last message instead.
+  const anchored = project ? project.overview.threads.filter((t) => t.anchor !== undefined && shownMessagesHave(messages, hideFrom, t.anchor)) : [];
+  const loose = project ? project.overview.threads.filter((t) => !anchored.includes(t)) : [];
   const shownMessages = hideFrom === undefined ? messages : messages.filter((m) => m.n < hideFrom);
   return (
     <>
       {hasMore && <button type="button" className="older" disabled={loading} onClick={() => run(loadOlder)}>Show earlier messages</button>}
       <ErrorText error={error} />
       {loaded && !messages.length && !live.items.length && <p className="muted empty">Say hello.</p>}
-      {shownMessages.map((m) => <StoredMessage key={m.id} m={m} env={env} you={ctx.user.displayName} />)}
+      {shownMessages.map((m, i) => (
+        <StoredMessage key={m.id} m={m} env={env} you={ctx.user.displayName}
+          cards={project && [...anchored.filter((t) => t.anchor === m.n), ...(i === shownMessages.length - 1 ? loose : [])]} />
+      ))}
       {hideFrom === undefined && live.items.map((item, i) => (
         <LiveMessage key={`live-${i}`} item={item} env={env} you={ctx.user.displayName} streaming={live.busy && i === live.items.length - 1} />
       ))}
@@ -91,25 +100,33 @@ interface Env {
   rewinder?: Rewinder;
   speech?: Speech;
   onError: (message: string) => void;
+  project?: ProjectEnv;
 }
 
-function StoredMessage({ m, env, you }: { m: Message; env: Env; you: string }) {
+function StoredMessage({ m, env, you, cards }: { m: Message; env: Env; you: string; cards?: ThreadSummary[] }) {
+  const after = cards?.map((t) => <ThreadCard key={t.id} t={t} userId={env.userId} env={env.project!} />);
   if (m.role === "user") {
-    if (m.from?.kind === "parent") return <FromParent text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} parent={m.from.threadId} env={env} n={m.n} />;
-    const who = m.from?.kind === "lyrica" ? "Lyrica" : m.from?.kind === "user" ? (m.from.name || you) : you;
-    return <UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} hers={m.from?.kind === "lyrica" ? env : undefined} />;
+    if (m.from?.kind === "parent") return <><FromParent text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} parent={m.from.threadId} env={env} n={m.n} />{after}</>;
+    const hers = m.from?.kind === "lyrica" || m.from?.kind === "thread";
+    const who = hers ? "Lyrica" : m.from?.kind === "user" ? (m.from.name || you) : you;
+    return <><UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} hers={hers ? env : undefined} />{after}</>;
   }
   if (m.role === "notice") {
     return <>{m.parts.map((p, i) => (p.type === "delegation"
       ? <Notice key={i} text={p.text} status={p.status} threads={p.threads} env={env} />
-      : <Notice key={i} text={p.type === "text" ? p.text : p.type === "compacted" ? compactedLabel(p) : ""} env={env} />))}</>;
+      : <Notice key={i} text={p.type === "text" ? p.text : p.type === "compacted" ? compactedLabel(p) : ""} env={env} />))}{after}</>;
   }
   return (
     <>
       <Parts parts={m.parts} env={env} model={m.model} n={m.n} />
       {m.error && <p className="error turn-error">{m.error}</p>}
+      {after}
     </>
   );
+}
+
+function shownMessagesHave(messages: Message[], hideFrom: number | undefined, n: number): boolean {
+  return (hideFrom === undefined || n < hideFrom) && messages.some((m) => m.n === n);
 }
 
 function LiveMessage({ item, env, you, streaming }: { item: LiveItem; env: Env; you: string; streaming: boolean }) {
@@ -177,7 +194,13 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" }>; e
   if (part.type === "tool" && part.name === "delegate") return <SubagentCard part={part} env={env} />;
   // While her plan waits for an answer, its card shows it; the marker would be a second copy.
   if (part.type === "tool" && part.name === "propose_plan" && part.result === undefined) return null;
-  if (part.type === "tool" && part.name === "threads") return <ThreadsCard part={part} env={env} />;
+  if (part.type === "tool" && part.name === "threads") {
+    const action = (part.args as { action?: string } | null)?.action;
+    if (action === "suggest") return <SuggestedCard part={part} userId={env.userId} pool={env.pool} projectId={env.threadId} env={env.project} />;
+    // In a project chat, the thread's own card stands under the message; the start marker would be a second copy.
+    if (action === "start" && env.project && !part.isError) return null;
+    return <ThreadsCard part={part} env={env} />;
+  }
   if (part.type === "delegation") return <Notice text={part.text} status={part.status} threads={part.threads} env={env} />;
   let label: React.ReactNode;
   let body: React.ReactNode;
@@ -331,6 +354,8 @@ const NOTICE_HEADS: Record<string, string> = {
 
 /** Something a subagent run delivered into the thread: a result, a question, a note, or what someone wrote to one. */
 function Notice({ text, status, threads, env }: { text: string; status?: string; threads?: ThreadRef[]; env: Env }) {
+  // In a project chat, a thread's updates go on its card (no card per update).
+  if (env.project && (status === "update" || status === "waiting")) return null;
   return (
     <div className="subagent delivered" data-status={status}>
       <div className="sub-head"><b>{NOTICE_HEADS[status ?? ""] ?? "Subagent result"}</b><ThreadLinks threads={threads} env={env} /></div>

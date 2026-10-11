@@ -685,6 +685,89 @@ test("the thread menu renames, marks unread, groups, hides and deletes; the Sort
   await noHorizontalScroll(page);
 });
 
+test("a project: New project, suggested threads start into cards, the Threads popover, Start a thread, Resolve, and its settings page", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  // New project lives in the thread list's own menu, on its empty space.
+  const list = page.locator(".threads");
+  const box = (await list.boundingBox())!;
+  await list.dispatchEvent("contextmenu", { clientX: box.x + box.width / 2, clientY: box.y + box.height - 6 });
+  await page.getByRole("menu", { name: "Thread list menu" }).getByRole("menuitem", { name: "New project" }).click();
+  await page.getByRole("menuitem", { name: "General" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "New project" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Threads/ })).toContainText("0");
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  const row = page.locator(".side .thread.project");
+  await expect(row).toHaveCount(1);
+  await expect(page.locator(".side .eyebrow").first()).toContainText("Pinned");
+  if (phone(page)) await page.getByRole("button", { name: "Hide threads" }).click();
+
+  // Suggested threads: Start one, then Start all; each becomes a card under the message.
+  await send(page, "suggest: Alpha, Beta");
+  await expect(page.getByText("Suggested.")).toBeVisible();
+  const card = page.getByRole("group", { name: "Suggested threads" });
+  await expect(card.getByRole("listitem")).toHaveCount(2);
+  await card.getByRole("button", { name: "Start" }).first().click();
+  await expect(page.locator(".tcard")).toHaveCount(1);
+  await expect(page.locator(".tcard").first()).toContainText("Alpha");
+  await card.getByRole("button", { name: "Start all" }).click();
+  await expect(page.locator(".tcard")).toHaveCount(2);
+  await expect(card.getByRole("link", { name: "Open" })).toHaveCount(2);
+  const fact = page.getByRole("button", { name: /^Threads/ });
+  await expect(fact).toContainText("2");
+  await fact.click();
+  const pop = page.getByRole("dialog", { name: "The project's threads" });
+  await expect(pop.getByRole("link", { name: /Alpha/ })).toBeVisible();
+  await expect(pop.getByRole("link", { name: /Beta/ })).toBeVisible();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/project-threads-${page.viewportSize()!.width}.png` });
+  await page.keyboard.press("Escape");
+
+  // Start a thread from a message's menu; the sidebar nests the project's threads with their state.
+  await page.locator(".msg.user").first().getByRole("button", { name: "Message actions" }).click();
+  await page.getByRole("menuitem", { name: "Start a thread" }).click();
+  await expect(page.locator(".tcard")).toHaveCount(3);
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await expect(page.locator(".side .children .thread")).toHaveCount(3);
+  if (phone(page)) await page.getByRole("button", { name: "Hide threads" }).click();
+
+  // Resolve from the card's menu: the sidebar folds it under Resolved, and its own message box is one Reopen link.
+  const alpha = page.locator(".tcard").filter({ has: page.getByRole("link", { name: "Alpha", exact: true }) });
+  await alpha.getByRole("button", { name: "Actions for Alpha" }).click();
+  await page.getByRole("menuitem", { name: "Resolve" }).click();
+  await expect(alpha).toContainText("Resolved");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/project-chat-${page.viewportSize()!.width}.png` });
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  const resolvedRow = page.locator(".side .resolved-row");
+  await expect(resolvedRow).toContainText("1");
+  await resolvedRow.click();
+  await page.locator(".side .resolved-row + ul .thread").click();
+  await expect(page.getByRole("heading", { level: 1, name: "Alpha" })).toBeVisible();
+  await expect(page.getByLabel("Message", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Reopen" }).click();
+  await expect(page.getByLabel("Message", { exact: true })).toBeVisible();
+
+  // The project settings page: Goal and Paused save together; Memory keeps the instructions.
+  await page.getByText("Child thread of").getByRole("link").click();
+  await page.getByRole("link", { name: "Project settings" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Project settings" })).toBeVisible();
+  await page.getByLabel("Goal").fill("Ship the garden plan.");
+  await page.getByRole("checkbox", { name: "Paused" }).check();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Saved.")).toBeVisible();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/project-settings-${page.viewportSize()!.width}.png` });
+  const sections = page.getByRole("navigation", { name: "Project settings sections" });
+  await sections.getByRole("link", { name: "Memory" }).click();
+  await page.getByLabel("Instructions").fill("Keep answers short.");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Saved.")).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Instructions")).toHaveValue("Keep answers short.");
+  await sections.getByRole("link", { name: "General" }).click();
+  await expect(page.getByLabel("Goal")).toHaveValue("Ship the garden plan.");
+  await expect(page.getByRole("checkbox", { name: "Paused" })).toBeChecked();
+  await noHorizontalScroll(page);
+});
+
 test("no horizontal scrolling and big enough tap targets on a phone", async ({ page, baseURL }) => {
   test.skip(!phone(page), "phone only");
   const userId = await enter(page, baseURL!);
