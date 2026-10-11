@@ -6,12 +6,13 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, SystemdCredentials, ThreadPrefs, Users, Workspace,
+  isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, SystemdCredentials, ThreadPrefs, Users, Workspace,
   type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
 } from "@lyrica/core";
 import { Delegation, Sleep, type Limits, type SleepLimits } from "@lyrica/extension";
 import { ChildThreads } from "./children.ts";
 import { Projects } from "./projects.ts";
+import { Watcher } from "./watch.ts";
 import type { State, UserCard } from "./api.ts";
 import { RateLimiter, Sessions } from "./auth.ts";
 import { ThreadHost } from "./hosted.ts";
@@ -60,6 +61,8 @@ export interface LyricadOptions {
   delegation?: Partial<Limits>;
   /** Child thread limits (per request, working at once). */
   threads?: Partial<ThreadsLimits>;
+  /** How long after the first trigger a project chat looks at its threads (default 30 s). */
+  watchMs?: number;
   /** Sleep's per-phase limits and retries. Sleep's defaults otherwise. */
   sleep?: Partial<SleepLimits>;
   /** Largest upload, in bytes. Default 50 MB. */
@@ -83,6 +86,8 @@ export interface Services {
   children: ChildThreads;
   /** Thread pins and project settings, per user. */
   projects: Projects;
+  /** A project chat's looks at what was said in its threads. */
+  watcher: Watcher;
   /** Each pool's consolidate → dream → wake, one run at a time. */
   sleep: Sleep;
   host: ThreadHost;
@@ -220,22 +225,30 @@ export class Lyricad {
     let host!: ThreadHost;
     const delegation = new Delegation({ users, memory, models, workspace, cwd, limits: this.opts.delegation, approve: (r, signal) => host.approveSubagent(r, signal) });
     const projects = new Projects(users);
+    // A hidden project stops as a paused one does.
+    const stopped = (u: string, p: Pool, project: string) => projects.paused(u, p, project) || hiddenThread(memory, u, p, project);
+    const watcher = new Watcher({ memory, host: () => host, delayMs: this.opts.watchMs, wanted: (u, p, project) => projects.settings(u, p, project).watch && !stopped(u, p, project),
+      restricted: (u, p, thread) => isRestricted(models.callContext(u, p, thread)),
+    });
     const children = new ChildThreads({
       users, memory, models, workspace, delegation, host: () => host, limits: this.opts.threads,
-      // A hidden project stops as a paused one does.
-      paused: (u, p, project) => projects.paused(u, p, project) || hiddenThread(memory, u, p, project),
+      paused: stopped,
       project: (u, p, project) => projects.settings(u, p, project),
+      updated: (u, p, project, thread) => watcher.updated(u, p, project, thread),
     });
     host = new ThreadHost({
       users, memory, models, workspace, persona, delegation, cwd, log: this.log,
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000, offlineRetryMs: this.opts.offlineRetryMs,
-      threads: children, onTurn: (u, p, t, working) => children.turn(u, p, t, working),
+      threads: children, onTurn: (u, p, t, working) => {
+        children.turn(u, p, t, working);
+        if (!working) watcher.turnEnded(u, p, t);
+      },
       projectThreads: (u, p, project) => children.projectLines(u, p, project),
     });
     const proposals = new PersonaProposals(keyring.self(), users, persona);
     const sleep = new Sleep({ users, memory, models, persona, proposals, hasKey: (id) => keyring.hasUserKey(id), cwd, limits: this.opts.sleep, log: this.log });
     const prefs = new ThreadPrefs((id) => users.openUserDb(id));
-    this.services = { users, memory, models, workspace, persona, proposals, delegation, children, projects, sleep, host, web, prefs };
+    this.services = { users, memory, models, workspace, persona, proposals, delegation, children, projects, watcher, sleep, host, web, prefs };
     await web.resume();
     for (const u of users.all()) {
       if (keyring.loadSavedKey(u.id)) {
@@ -283,6 +296,7 @@ export class Lyricad {
     // Subagent runs record how they ended in user.db, and a sleep run in the pool, so they stop before the key goes.
     await s.delegation.stopAll(userId);
     await s.children.lock(userId);
+    s.watcher.close(userId);
     await s.sleep.stop(userId);
     this.keyring.lockUser(userId);
     await s.host.close(userId);
@@ -359,6 +373,7 @@ export class Lyricad {
     clearInterval(this.nightly);
     if (s) {
       await s.delegation.stopAll();
+      s.watcher.close();
       for (const u of s.users.all()) await s.sleep.stop(u.id);
       await s.host.close();
       for (const id of this.mounted) await s.workspace.unmountHome(id).catch(() => {});

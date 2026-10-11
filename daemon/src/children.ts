@@ -58,6 +58,8 @@ export interface ChildOptions {
   paused?: (userId: string, pool: Pool, project: string) => boolean;
   /** The model and thinking a project's new threads start with, if the user chose them. */
   project?: (userId: string, pool: Pool, project: string) => ProjectSettings;
+  /** A project's thread posted to the project chat. */
+  updated?: (userId: string, pool: Pool, project: string, thread: string) => void;
 }
 
 export class ChildThreads implements ThreadsHost {
@@ -170,6 +172,7 @@ export class ChildThreads implements ThreadsHost {
       // The mention shows as the current title, so none is written beside it.
       const head = needsYou ? `Child thread [t:${from.threadId}] is waiting on the person` : `Update from child thread [t:${from.threadId}]`;
       this.deliver(userId, from.pool, row.parent, `${head}:\n${text}`, from.threadId, needsYou ? "waiting" : "update");
+      if (from.view.own.getThread(row.parent)?.project) this.o.updated?.(userId, from.pool, row.parent, from.threadId);
       return;
     }
     const target = this.row(userId, from.pool, to);

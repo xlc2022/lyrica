@@ -13,13 +13,14 @@ CREATE TABLE IF NOT EXISTS pinned_threads (
   pinned_at TEXT NOT NULL,
   PRIMARY KEY (pool, thread)
 );
--- A project's settings: paused, and the model (JSON ModelRef or list) and thinking its new threads start with.
+-- A project's settings: paused, the model (JSON ModelRef or list) and thinking its new threads start with, and whether she watches its threads.
 CREATE TABLE IF NOT EXISTS project_settings (
   pool     TEXT NOT NULL,
   thread   TEXT NOT NULL,
   paused   INTEGER NOT NULL DEFAULT 0,
   model    TEXT,
   thinking TEXT,
+  watch    INTEGER NOT NULL DEFAULT 1,
   PRIMARY KEY (pool, thread)
 );
 -- A suggested thread the user started: the suggest call (its tool call ID), which of its threads, and the thread made.
@@ -38,6 +39,8 @@ export interface ProjectSettings {
   /** The chat model new threads of the project start with; none: the project chat's. */
   model?: ModelRef | ModelRef[];
   thinking?: ThinkingLevel;
+  /** The project chat looks at what the person and its threads said (watch.ts). On unless turned off. */
+  watch: boolean;
 }
 
 export class Projects {
@@ -57,21 +60,22 @@ export class Projects {
 
   settings(userId: string, pool: Pool, project: string): ProjectSettings {
     const row = this.db(userId, (db) => db.prepare("SELECT * FROM project_settings WHERE pool = ? AND thread = ?").get(pool, project)) as
-      { paused: number; model: string | null; thinking: string | null } | undefined;
+      { paused: number; model: string | null; thinking: string | null; watch: number } | undefined;
     return {
       paused: row?.paused === 1,
+      watch: row?.watch !== 0,
       ...(row?.model ? { model: JSON.parse(row.model) as ModelRef | ModelRef[] } : {}),
       ...(row?.thinking ? { thinking: row.thinking as ThinkingLevel } : {}),
     };
   }
 
   /** Changes some of a project's settings; `null` clears the model or thinking. */
-  set(userId: string, pool: Pool, project: string, change: { paused?: boolean; model?: ModelRef | ModelRef[] | null; thinking?: ThinkingLevel | null }): ProjectSettings {
+  set(userId: string, pool: Pool, project: string, change: { paused?: boolean; model?: ModelRef | ModelRef[] | null; thinking?: ThinkingLevel | null; watch?: boolean }): ProjectSettings {
     const now = this.settings(userId, pool, project);
     const model = change.model === undefined ? now.model : change.model ?? undefined;
     const thinking = change.thinking === undefined ? now.thinking : change.thinking ?? undefined;
-    this.db(userId, (db) => db.prepare("INSERT OR REPLACE INTO project_settings (pool, thread, paused, model, thinking) VALUES (?, ?, ?, ?, ?)")
-      .run(pool, project, (change.paused ?? now.paused) ? 1 : 0, model ? JSON.stringify(model) : null, thinking ?? null));
+    this.db(userId, (db) => db.prepare("INSERT OR REPLACE INTO project_settings (pool, thread, paused, model, thinking, watch) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(pool, project, (change.paused ?? now.paused) ? 1 : 0, model ? JSON.stringify(model) : null, thinking ?? null, (change.watch ?? now.watch) ? 1 : 0));
     return this.settings(userId, pool, project);
   }
 
@@ -103,6 +107,10 @@ export class Projects {
     const db = this.users.openUserDb(userId);
     try {
       db.exec(SCHEMA);
+      // Added after the table was: an older user.db gains the column, on.
+      if (!(db.prepare("PRAGMA table_info(project_settings)").all() as { name: string }[]).some((c) => c.name === "watch")) {
+        db.exec("ALTER TABLE project_settings ADD COLUMN watch INTEGER NOT NULL DEFAULT 1");
+      }
       return fn(db);
     } finally {
       db.close();

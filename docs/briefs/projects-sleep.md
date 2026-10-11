@@ -29,6 +29,10 @@ day (principle 5: invest in the curator).
 4. An unlogged project gets no page from sleep.
 5. Unfinished work in a project goes into WAKE as for any work.
 6. **Docs:** docs/sleep.md and docs/memory.md.
+7. **Watching threads** (projects.md): a `[Watching threads]` message in the
+   project chat quotes Li from a thread. Sleep takes Li's words from the
+   thread where they were said, never from that message. Built in #97:
+   a look isn't indexed and `read_memory` shows it as a pointer.
 
 ## Done when
 

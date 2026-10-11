@@ -3,6 +3,7 @@ import type { Db } from "../db.ts";
 import { render, toStored, type UserId } from "../mentions.ts";
 import type { Profile } from "../profile.ts";
 import type { Interface, Pool } from "../types.ts";
+import { WATCHING } from "../threads.ts";
 import { citationsIn, ftsQuery, indexText, kindOf, queryWords, snippet, type Kind } from "./refs.ts";
 
 /** Who made a change. Thread views write as `lyrica` or `sleep`; the owner view as `user:<id>`. */
@@ -297,7 +298,7 @@ export class PoolReader {
 
   /** When the user last spoke in this pool, in any thread. */
   lastUserMessage(): Date | undefined {
-    const row = this.db.prepare("SELECT max(created_at) AS at FROM entries WHERE role = 'user' AND unlogged = 0 AND text != ''").get() as { at: string | null };
+    const row = this.db.prepare("SELECT max(created_at) AS at FROM entries WHERE role = 'user' AND unlogged = 0 AND text != '' AND text NOT LIKE '[Watching threads]%'").get() as { at: string | null };
     return row.at ? new Date(row.at) : undefined;
   }
 
@@ -627,7 +628,8 @@ export class PoolStore extends PoolReader {
       this.db.prepare("INSERT INTO entries (thread, n, pi_id, role, data, text, unlogged, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
         .run(threadId, n, entry.piId, entry.role, JSON.stringify(entry.data), entry.text, thread.unlogged ? 1 : 0, at);
       const id = entryId(threadId, n);
-      if (!thread.unlogged && entry.text.trim()) this.index(id, "entry", entry.role === "toolResult" ? entry.text.slice(0, TOOL_TEXT_LIMIT) : entry.text);
+      // A look only quotes other threads (daemon/src/watch.ts): recall finds the words where they were said.
+      if (!thread.unlogged && entry.text.trim() && !WATCHING.test(entry.text)) this.index(id, "entry", entry.role === "toolResult" ? entry.text.slice(0, TOOL_TEXT_LIMIT) : entry.text);
       return id;
     });
   }
