@@ -165,7 +165,7 @@ function AppearanceSection({ ctx }: { ctx: ShellContext }) {
       {profiles.data && (
         <>
           <div className="eyebrow">Speech</div>
-          <Switch label="Read aloud while she writes" hint="Offers Read aloud on her reply while she is still writing it."
+          <Switch label="Read aloud while agent writes" hint="Offers Read aloud on her reply while she is still writing it."
             checked={profiles.data.readAloudLive} onChange={(readAloudLive) => run(async () => profiles.set(await patch<Profiles>(u(me.user.id, "profiles"), { readAloudLive })))} />
         </>
       )}

@@ -769,9 +769,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       const pool = poolOf(r);
       let source: SpeechSource;
       const thread = owner(d, user, (o) => threadOf(o, r));
-      if (r.params.n === "live") {
-        const live = s().host.peek(user.id, pool, thread.id)?.following();
-        if (!live) throw new HttpError(404, "she isn't writing a message now");
+      const live = r.params.n === "live" ? s().host.peek(user.id, pool, thread.id)?.following() : undefined;
+      if (live) {
         let read = "";
         let at = -1;
         // Made speakable as it grows; the text stays in memory only.
@@ -789,11 +788,13 @@ export function apiRoutes(d: Lyricad): Route[] {
           done: live.done, more: live.more,
         };
       } else {
-        const n = entryN(r);
+        // Live with nothing being written (she finished as it was pressed) reads her last message.
+        const n = r.params.n === "live" ? undefined : entryN(r);
         const text = owner(d, user, (o) => {
-          const entries = o[pool].entryPage(thread.id, { before: n + 1, limit: 1 }).entries.filter((e) => e.n === n);
-          const message = toMessages(thread.id, pool, entries)[0];
-          if (!message) throw new HttpError(404, "no such message");
+          const message = n === undefined
+            ? toMessages(thread.id, pool, o[pool].entryPage(thread.id, { limit: 20 }).entries).findLast((m) => m.role === "assistant")
+            : toMessages(thread.id, pool, o[pool].entryPage(thread.id, { before: n + 1, limit: 1 }).entries.filter((e) => e.n === n))[0];
+          if (!message) throw new HttpError(404, n === undefined ? "she hasn't written a message here" : "no such message");
           if (message.role !== "assistant") throw new HttpError(400, "only her messages are read aloud");
           return messageText(message.parts, titlesIn(o, pool));
         });

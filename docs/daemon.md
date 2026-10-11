@@ -345,7 +345,8 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
   voice for its language (Han characters mean Mandarin). It streams raw PCM
   (`audio/pcm;rate=24000;encoding=s16le;channels=1`). `messages/live/speech`
   follows the message she is writing now (`HostedThread.following()`) to
-  its end. Closing the connection, Logout or Lock stops it and cancels the
+  its end; when she is writing nothing (she finished as it was pressed), it
+  reads her last message. Closing the connection, Logout or Lock stops it and cancels the
   model's work. One call record per reading, with the seconds of audio.
 - Refusals come before any audio, as JSON: `VoiceCloudOff`, `NoModel` and
   `CloudModelForbidden` are 400, `Offline` (every model set is down) is
@@ -357,7 +358,7 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
   `ThreadSettingsChange.voiceCloud`; the default is `Profiles.voiceCloud`.
   Under a parent with it off, a branch can only keep it off, or follow the
   default when the parent does too. `Profiles.readAloudLive` (changed with
-  `ProfilesChange.readAloudLive`, off by default) is Read aloud while she
+  `ProfilesChange.readAloudLive`, off by default) is Read aloud while agent
   writes; `Speech.readAloudLive` carries it so the web knows whether to
   offer `messages/live/speech`.
 - **Fallback.** `ThreadSettings.fallback` is the thread's switch (null

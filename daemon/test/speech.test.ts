@@ -141,7 +141,7 @@ describe("dictation", () => {
     expect(refused).toMatchObject({ status: 400, body: { error: "openai/whisper-large-v3-turbo is a cloud model, and Voice to cloud is off, so the clip wasn't sent" } });
     expect(cloud.heard).toEqual([]);
 
-    // Read aloud while she writes is a user setting, off by default, that ThreadSettings.speech carries.
+    // Read aloud while agent writes is a user setting, off by default, that ThreadSettings.speech carries.
     expect(settings.speech.readAloudLive).toBe(false);
     expect((await s.li.patch<Profiles>(`${s.u}/profiles`, { readAloudLive: true })).body.readAloudLive).toBe(true);
     expect((await s.li.get<ThreadSettings>(`${s.path}/settings`)).body.speech.readAloudLive).toBe(true);
@@ -219,7 +219,10 @@ describe("read aloud", () => {
     // Only her messages, and only ones that exist.
     expect((await s.audio(`${s.path}/messages/${await s.nOf("user")}/speech`)).status).toBe(400);
     expect((await s.audio(`${s.path}/messages/99/speech`)).status).toBe(404);
-    expect((await s.audio(`${s.path}/messages/live/speech`)).status).toBe(404);
+    // Live with nothing being written reads her last message: pressed just as she finished.
+    const late = await s.audio(`${s.path}/messages/live/speech`);
+    expect(late.status).toBe(200);
+    expect((await late.arrayBuffer()).byteLength).toBeGreaterThan(0);
   });
 
   it("stops the upstream call when the client goes away", async () => {

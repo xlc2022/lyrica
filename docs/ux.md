@@ -98,7 +98,7 @@ Rules:
   Share with, Move to group, Sampling, Serving, Placement, Memory,
   Throughput, Template, Pinned, Excluded, Servers, Keep free, Not this
   model, Group, Add…, Reset, Dictation, Dictate, Read aloud, Stop reading,
-  Voice to cloud, Read aloud while she writes, Fallback, Sleep fallback, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, Thread settings, New threads, This chat, Threads, Watching threads, Checked the other threads, Message received from, Show more, Show less, Open as a page, Close panel,
+  Voice to cloud, Read aloud while agent writes, Fallback, Sleep fallback, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, Thread settings, New threads, This chat, Threads, Watching threads, Checked the other threads, Message received from, Show more, Show less, Open as a page, Close panel,
   Start a thread, Suggested threads, Start all, Resolve, Reopen, Resolved,
   Waiting on you, Goal, Instructions, Paused, All threads, Only projects,
   No projects, Machines, Add machine, Mode limit, Replace key, Use anyway,
@@ -147,8 +147,8 @@ Rules:
 | Anything in the conversation waiting for an answer (a plan, a permission, a question from a subagent) | a **card** in the conversation, with its actions at its foot and one primary action at most. When the latest such card has scrolled out of view, a thin bar in the accent colour across the top of the chat names it and jumps to it; it is the one bar the chat may show |
 | A subagent | a **card** in the conversation that expands to its work and takes messages |
 | Dictating a message | the mic in the message box's row; the box's placeholder while listening |
-| Hearing a message read aloud | her message's actions; with **Read aloud while she writes** on, also on the reply she is still writing |
-| Read aloud while she writes | a switch under Speech in Settings, Appearance |
+| Hearing a message read aloud | her message's actions; with **Read aloud while agent writes** on, also on the reply she is still writing |
+| Read aloud while agent writes | a switch under Speech in Settings, Appearance |
 | Voice to cloud | the thread's Privacy and network switches; its default beside the user's other defaults for new threads (Settings, Network) |
 | Fallback (only a list's first model answers when off) | a switch at the foot of the thread drawer's Models section; its default beside Voice to cloud (Settings, Network, New threads); a project's under Project settings → New threads, a select beside Thinking; sleep's as **Sleep fallback** at the top of Settings → Model profiles. Tooltip "When off, only the first model in each list answers; if it can't, the message waits for it." |
 | A speech model's voice and speed | its Settings drawer in Models |

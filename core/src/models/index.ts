@@ -1407,7 +1407,7 @@ export class Models {
     this.setSetting(userId, "voice_cloud", on ? "on" : "off");
   }
 
-  /** Read aloud while she writes: whether Read aloud is offered on the reply she is still writing. Off by default. */
+  /** Read aloud while agent writes: whether Read aloud is offered on the reply she is still writing. Off by default. */
   defaultReadAloudLive(userId: string): boolean {
     return this.setting(userId, "read_aloud_live") === "on";
   }
