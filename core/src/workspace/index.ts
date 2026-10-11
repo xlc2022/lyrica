@@ -14,7 +14,7 @@ import type { ExecutionTarget } from "./ops.ts";
 import { Sandbox, WORKDIR } from "./sandbox.ts";
 import { authorizedKeysLine, machineSetup } from "./machines.ts";
 import {
-  certFingerprint, ownNode, parseProxmoxAddress, proxmoxAction, proxmoxHttps, proxmoxSetup, thisComputer, tokenId,
+  certFingerprint, ownAddress, ownNode, parseProxmoxAddress, proxmoxAction, proxmoxHttps, proxmoxSetup, thisComputer, tokenId,
   type ProxmoxAction, type ProxmoxCall, type ProxmoxTransport, type Self,
 } from "./proxmox.ts";
 import { checkGrant, stricterMode, WorkspaceSettings, type Grant, type MachineConfig, type MachineKind, type MachineLimit, type Network, type NewMachine, type PermissionMode, type ThreadWorkspace } from "./settings.ts";
@@ -437,8 +437,13 @@ export class Workspace {
     } catch (err) {
       throw new Error(`the token didn't work: ${(err as Error).message}`);
     }
-    const own = await ownNode(api, addresses, (this.opts.self ?? thisComputer)());
-    if (own) throw new Error(`this Proxmox can't be added: ${own}. Stopping it would stop her, so it stays off the list for now.`);
+    this.refuseOwn(await ownNode(api, addresses, this.self()));
+  }
+
+  private self(): Self { return (this.opts.self ?? thisComputer)(); }
+
+  private refuseOwn(why: string | undefined): void {
+    if (why) throw new Error(`this Proxmox can't be used: ${why}. Stopping it would stop her, so it stays off the list for now.`);
   }
 
   /** One action on a thread's Proxmox machine, after its address check, sent only to the certificate Li confirmed. */
@@ -449,6 +454,8 @@ export class Workspace {
     const cfg = s.machine(machine)!;
     if (!cfg.hostKey) throw new Error(`confirm ${machine}'s certificate in Settings first`);
     const address = await this.checkAddress(t.userId, machine);
+    // A changed address or name can point at her own node later: checked on every call.
+    this.refuseOwn(ownAddress([address], this.self()));
     const result = await proxmoxAction(this.proxmoxApi(address, cfg.port, cfg.privateKey, cfg.hostKey), action, vm);
     s.usedMachine(machine);
     return result;
@@ -491,10 +498,12 @@ export class Workspace {
   }
 
   /** Changes a machine's address, root, limit or pool; a new pool takes it from every thread that granted it. */
-  updateMachine(userId: string, name: string, change: { address?: string; root?: string | null; limit?: MachineLimit; pool?: Pool }): MachineConfig {
+  async updateMachine(userId: string, name: string, change: { address?: string; root?: string | null; limit?: MachineLimit; pool?: Pool }): Promise<MachineConfig> {
     const s = this.settings(userId);
     const kind = s.machine(name)?.kind;
     const address = change.address === undefined ? {} : kind === "proxmox" ? parseProxmoxAddress(change.address) : parseMachineAddress(change.address);
+    // A Proxmox moved onto her own node's address is refused, as when adding.
+    if (kind === "proxmox" && change.address !== undefined) this.refuseOwn(ownAddress((await resolveHost(parseProxmoxAddress(change.address).host)).addresses, this.self()));
     let m = s.updateMachine(name, { ...address, ...(change.root !== undefined ? { root: change.root || null } : {}), ...(change.limit ? { limit: change.limit } : {}) });
     if (change.pool) m = s.setMachinePool(name, change.pool);
     this.disconnect(userId, name);

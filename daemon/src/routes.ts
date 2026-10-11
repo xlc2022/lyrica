@@ -428,7 +428,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("PATCH", `${u}/machines/:name`, async (r) => {
       const change = pick(await r.json<Api.MachineChange>(), ["address", "root", "pool", "limit"]);
       if (change.pool !== undefined) checkPool(change.pool);
-      return machineInfo(s().workspace.updateMachine(d.userFor(r).id, r.params.name!, change));
+      return machineInfo(await s().workspace.updateMachine(d.userFor(r).id, r.params.name!, change));
     }),
     route("POST", `${u}/machines/:name/key`, async (r) => {
       const { hostKey, token } = await r.json<Api.MachineKey>();

@@ -212,7 +212,10 @@ Lyrica's own VM where it can tell, and saves only if both pass. That
 refusal (`ownNode`) covers an address that is this computer or its default
 gateway, and a cluster with a guest that has this computer's name or one of
 its network cards' MAC addresses (read from each guest's config, up to 300
-guests). Its message says which; there is no way past it yet.
+guests, a few at a time). Its message says which; there is no way past it
+yet. The address part is checked again when the address changes and before
+every call, so a machine moved (or resolving) onto this computer's gateway
+is refused before the token is sent.
 
 The setup, as root on the Proxmox node:
 

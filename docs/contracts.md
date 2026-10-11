@@ -940,7 +940,7 @@ probeMachine(userId, login, { kind?, name, address, draft? }): Promise<MachinePr
   // Saves nothing.
 addMachine(userId, { kind?, name, address, root, pool, limit?, draft? | token?, hostKey, offNetworkConfirmed? }): Promise<MachineConfig>
   // Proxmox: tries the token against the confirmed certificate and refuses the Proxmox running Lyrica (ownNode)
-updateMachine(userId, name, { address?, root?, limit?, pool? })  // a new pool drops the machine from every thread
+updateMachine(userId, name, { address?, root?, limit?, pool? }): Promise  // a new pool drops the machine from every thread; Proxmox: own-node address refused
 setHostKey(userId, name, hostKey, token?): Promise / confirmOffNetwork(userId, name) / removeMachine(userId, name)
 grantsFor(t): Grant[]                     // { path, writable }
 folders(t): string[]                      // grants, and "<machine>:<root>" for its machines with a root
@@ -961,7 +961,7 @@ settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overr
 // SshTransport { connect(endpoint, verify(fingerprint)): Promise<SshSession> } (transport.ts); `inProcess` is ssh2 in
 //   lyricad; WorkspaceOptions.sshTransport replaces it. SshTarget(cfg, { transport?, address?, connected? }).
 // proxmox.ts: PROXMOX_ACTIONS (status, list, start, stop, shutdown, reboot, snapshots), PROXMOX_READS, PROXMOX_SUSPECT (stop, reboot),
-//   suspectKey(tool, input) (what Allow in this thread stores), proxmoxAction(call, action, vm?), ownNode(call, addresses, self),
+//   suspectKey(tool, input) (what Allow in this thread stores), proxmoxAction(call, action, vm?), ownNode(call, addresses, self), ownAddress(addresses, self),
 //   proxmoxSetup(), parseProxmoxAddress, tokenId, certFingerprint. ProxmoxTransport { fingerprint(host, port), call(endpoint, method,
 //   path, verify(fingerprint)) }; `proxmoxHttps` is Node's TLS; WorkspaceOptions.proxmoxTransport and .self replace them.
 settings(userId).defaultMode() / setDefaultMode(mode)  // the mode new threads start in (default auto)
