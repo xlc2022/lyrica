@@ -17,8 +17,8 @@ minutes on a private repository are billed past the plan's allowance.
   the model host (the host-stack job installs its own model host stack).
 - The host-stack job removes what it installed (the stack and its volumes,
   the egress unit and rules, Docker's daemon.json) when it ends.
-- One runner runs one job at a time. A new push to a branch cancels that
-  branch's older runs, so the queue holds only the latest commit. A weekly cron job clears Docker images
+- One runner runs one job at a time. A new push to a pull request
+  cancels its older runs; every commit on main gets a full run. A weekly cron job clears Docker images
   and build cache unused for a week.
 
 ## Where it sits on the network
