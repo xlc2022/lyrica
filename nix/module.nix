@@ -88,8 +88,13 @@ in {
     # The setuid fusermount3 that gocryptfs uses for her home.
     programs.fuse.enable = lib.mkDefault true;
 
-    # The CLI, for `lyrica admin …` as the lyrica user.
-    environment.systemPackages = [ cfg.package ];
+    # `lyrica` on the PATH runs the CLI as lyrica with her state folder, as on Debian.
+    environment.systemPackages = [
+      (pkgs.runCommand "lyrica-cli" { } ''
+        install -Dm755 ${../daemon/deploy/lyrica} $out/bin/lyrica
+        substituteInPlace $out/bin/lyrica --replace-fail @CLI@ ${lib.getExe cfg.package} --replace-fail @STATE@ ${state}
+      '')
+    ];
 
     # Caddy binds its addresses even before they're up (Tailscale at boot, a DHCP renewal).
     boot.kernel.sysctl."net.ipv4.ip_nonlocal_bind" = 1;
