@@ -40,6 +40,7 @@ function fakeFiles() {
     mkdir: async (path: string) => { calls.push(["mkdir", path]); },
     rename: async (from: string, to: string) => { calls.push(["rename", from, to]); if (to.endsWith("taken")) throw new Error(`${to} is already there`); },
     remove: async (paths: string[]) => { calls.push(["remove", paths]); },
+    thumb: async (path: string) => (path.startsWith("/workspace/") ? { bytes: Buffer.from("tiny"), type: "image/png" } : undefined),
     zip: async (paths: string[]) => {
       calls.push(["zip", paths]);
       return Readable.from([Buffer.from("PK\u0003\u0004zipbytes")]);
@@ -109,6 +110,12 @@ describe("the Files panel's routes", () => {
     expect(res.headers.get("content-disposition")).toBe("inline; filename*=UTF-8''a.txt");
     expect(res.headers.get("content-security-policy")).toContain("sandbox");
     expect(await res.text()).toBe("hello");
+    const thumb = await get(`${path}/thumb?path=${enc("/workspace/uploads/cat.png")}`);
+    expect(thumb.status).toBe(200);
+    expect(thumb.headers.get("content-type")).toBe("image/png");
+    expect(thumb.headers.get("content-security-policy")).toContain("sandbox");
+    expect(await thumb.text()).toBe("tiny");
+    expect((await get(`${path}/thumb?path=${enc("/srv/docs/cat.png")}`)).status).toBe(404);
     const down = await get(`${path}/content?path=${enc("/workspace/a.txt")}&download=1`);
     expect(down.headers.get("content-disposition")).toBe("attachment; filename*=UTF-8''a.txt");
     expect((await get(`${path}/content?path=${enc("/workspace/missing")}`)).status).toBe(400);
@@ -161,6 +168,50 @@ describe("the zip the panel streams", () => {
       try { listed = execFileSync("unzip", ["-l", zipPath]).toString(); } catch { return; /* no unzip here */ }
       expect(listed).toContain("a.txt");
       expect(execFileSync("unzip", ["-p", zipPath, "a.txt"]).toString()).toBe("alpha");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+/** Thumbnails over the same stand-in, where ImageMagick is on the host; made in the sandbox, kept beside the thread's files, gone with them. */
+describe("the thumbnails the panel serves", () => {
+  it("makes a small copy once, keeps it until the image changes, and deletes it with the image", async () => {
+    try { execFileSync("convert", ["-version"]); } catch { return; /* no ImageMagick here */ }
+    const { ThreadFiles } = await import("@lyrica/core");
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-thumbs-"));
+    try {
+      const box = {
+        allow: (p: string) => p,
+        run: async (argv: string[]) => {
+          const { spawnSync } = await import("node:child_process");
+          const r = spawnSync(argv[0]!, argv.slice(1));
+          return { code: r.status, signal: r.signal, stdout: r.stdout, stderr: r.stderr };
+        },
+      };
+      const files = new ThreadFiles(box as unknown as Sandbox, [], () => {}, dir);
+      execFileSync("convert", ["-size", "900x600", "xc:green", join(dir, "big.png")]);
+      const first = await files.thumb(join(dir, "big.png"));
+      expect(first?.type).toBe("image/png");
+      // A PNG's width and height sit at bytes 16 and 20 of its header.
+      expect([first!.bytes.readUInt32BE(16), first!.bytes.readUInt32BE(20)]).toEqual([320, 213]);
+      const cache = join(dir, ".lyrica", "thumbs", "big.png.png");
+      expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual(["big.png.png"]);
+      const again = await files.thumb(join(dir, "big.png"));
+      expect(again!.bytes.equals(first!.bytes)).toBe(true);
+      // Outside the thread's folder there is no copy; a missing file is an error.
+      expect(await files.thumb("/srv/docs/x.png")).toBeUndefined();
+      await expect(files.thumb(join(dir, "none.png"))).rejects.toThrow("is not a file");
+      // Deleting the image takes the copy along; so does renaming it.
+      await files.remove([join(dir, "big.png")]);
+      expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual([]);
+      execFileSync("convert", ["-size", "40x40", "xc:blue", join(dir, "small.jpg")]);
+      expect((await files.thumb(join(dir, "small.jpg")))?.type).toBe("image/jpeg");
+      expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual(["small.jpg.jpg"]);
+      await files.rename(join(dir, "small.jpg"), join(dir, "moved.jpg"));
+      expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual([]);
+      expect(readdirSync(dir).sort()).toEqual([".lyrica", "moved.jpg"]);
+      void cache;
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -111,8 +111,9 @@ A thread's address may carry what the panel beside it shows:
   upload or her call that wrote it, through the same channel), downloads (one file by its address, several as `…/files/zip`), copies
   paths, renames and deletes (a confirm dialog), uploads and makes folders;
   dropping files on the panel uploads them to the folder last opened. After a
-  change the folders it touched are reloaded. No thumbnails: the grid shows
-  the image itself.
+  change the folders it touched are reloaded. The grid shows each image's
+  thumbnail (`…/files/thumb`, docs/daemon.md "Files"), or the image itself
+  where the server makes none.
 - **Project settings page** (`…/p/<pool>/<project>/general` or `/memory`),
   sections at the left. **General**: Goal, the Paused and **Watching
   threads** switches (`watchThreads`; the tooltip says what a look does), **New
@@ -205,8 +206,9 @@ A thread's address may carry what the panel beside it shows:
   prose or the person's message, is a link to `…/files/<encoded path>`,
   which shows the file in the Files panel (`paths.tsx`; a code block is left
   as written). An image she writes from the thread folder shows in the
-  message, loaded from `…/files/content`, and opens large in the Images
-  tab's dialog; a remote image is never loaded and shows as a link with its
+  message by its thumbnail (`…/files/thumb`, or the image itself where the
+  server makes none) and opens large, from `…/files/content`, in the
+  Images tab's dialog; a remote image is never loaded and shows as a link with its
   alt text.
 - A thread she mentions (`[t:<id>]`, `[e:<id>#<n>]`) shows as its current
   title, linked to the thread in the same tab; "a forgotten thread" once it's

@@ -1,7 +1,7 @@
 // Files named in a conversation (DESIGN, "Files and images"; docs/ux.md §6):
 // a path under the thread's folder is a link that opens the file in the
 // Files panel, and an image she writes from there shows in the message.
-import { Fragment, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon } from "./icons.tsx";
 import type { Element, Root, Text } from "hast";
 import { threadPath, type Pool } from "./api.ts";
@@ -20,16 +20,18 @@ export const PATH = /(?<![\w.~/:-])\/workspace(?:\/[^\s"'`<>()[\]{}|,;]*[^\s"'`<
 export const findPaths = (text: string): { path: string; at: number }[] => [...text.matchAll(PATH)].map((m) => ({ path: m[0], at: m.index }));
 export const isUnderWorkdir = (p: string) => p === WORKDIR || p.startsWith(`${WORKDIR}/`);
 
-/** Where a path in this thread leads: the Files panel with the file shown, and the file's own bytes. */
+/** Where a path in this thread leads: the Files panel with the file shown, the file's own bytes, and its thumbnail. */
 export interface FileLinks {
   href: (path: string) => string;
   url: (path: string) => string;
+  thumb: (path: string) => string;
 }
 
 export function useFileLinks(userId: string, pool: Pool, threadId: string): FileLinks {
   return useMemo(() => ({
     href: (path) => href({ page: "files", userId, pool, threadId, ...(path === WORKDIR ? {} : { path }) }),
     url: (path) => `${threadPath(userId, pool, threadId)}/files/content?path=${encodeURIComponent(path)}`,
+    thumb: (path) => `${threadPath(userId, pool, threadId)}/files/thumb?path=${encodeURIComponent(path)}`,
   }), [userId, pool, threadId]);
 }
 
@@ -78,13 +80,19 @@ function split(value: string, files: FileLinks): (Element | Text)[] | undefined 
   return out;
 }
 
-/** An image from the thread's folder, shown in the message and opened large on a click; any other image stays a link. */
+/** An image from the thread's folder, shown in the message by its thumbnail and opened large on a click; any other image stays a link. */
 export function InlineImage({ src, alt, files, large }: { src: string; alt: string; files: FileLinks; large: (path: string) => void }) {
   return (
     <button type="button" className="inline-img" onClick={() => large(src)} aria-label={`${alt || basename(src)}, open large`}>
-      <img src={files.url(src)} alt={alt || basename(src)} loading="lazy" />
+      <Thumb path={src} alt={alt || basename(src)} files={files} />
     </button>
   );
+}
+
+/** The thumbnail, or the image itself where the server makes none. */
+export function Thumb({ path, alt, files }: { path: string; alt: string; files: FileLinks }) {
+  const [full, setFull] = useState(false);
+  return <img src={full ? files.url(path) : files.thumb(path)} alt={alt} loading="lazy" onError={() => setFull(true)} />;
 }
 
 export const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1);
