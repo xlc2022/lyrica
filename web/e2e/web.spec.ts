@@ -518,6 +518,60 @@ test("linked users share a browser; logging in as anyone else signs this browser
   expect(state.users.map((x) => x.login)).toEqual(["sam"]);
 });
 
+test("with Read aloud while she writes on, a reply can be read aloud as it streams, and her stored copy takes the reading over", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const shot = async (name: string) => {
+    if (!process.env.SCREENSHOTS) return;
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.screenshot({ path: `${process.env.SCREENSHOTS}/${name}-${page.viewportSize()!.width}-${colorScheme}.png` });
+    }
+    await page.emulateMedia({ colorScheme: null });
+  };
+  // Off by default: a reply being written has no Read aloud.
+  await newThread(page, "General");
+  const message = page.getByLabel("Message", { exact: true });
+  await message.fill("Say this slowly");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("You said: Say this slowly")).toBeVisible();
+  await expect(page.locator(".turn").filter({ has: page.locator(".caret-blink") }).getByRole("button", { name: "Read aloud" })).toHaveCount(0);
+  await expect(page.getByText("in a few pieces.")).toBeVisible({ timeout: 15_000 });
+
+  // The setting sits beside Voice to cloud in Settings, Network.
+  await page.goto(`/#/u/${encodeURIComponent(userId)}/settings/network`);
+  const live = page.getByLabel("Read aloud while she writes");
+  await expect(live).not.toBeChecked();
+  await live.click();
+  await expect(live).toBeChecked();
+  await shot("read-aloud-live-setting");
+  await page.reload();
+  await expect(page.getByLabel("Read aloud while she writes")).toBeChecked();
+
+  // On: Read aloud appears on the reply she is writing and follows it; her stored copy then owns the reading.
+  await page.goBack();
+  await page.goBack();
+  await expect(message).toBeVisible();
+  await message.fill("Say this slowly too");
+  await page.getByRole("button", { name: "Send" }).click();
+  const writing = page.locator(".turn").filter({ has: page.locator(".caret-blink") });
+  await expect(writing.getByRole("button", { name: "Read aloud" })).toBeEnabled();
+  await writing.getByRole("button", { name: "Read aloud" }).click();
+  await expect(writing.getByRole("button", { name: "Stop reading" })).toBeVisible();
+  await shot("read-aloud-live");
+  await expect(page.getByText("You said: Say this slowly too. This reply comes from the fake cloud-model, in a few pieces.")).toBeVisible({ timeout: 20_000 });
+  const stored = page.locator(".turn").last();
+  await expect(stored).not.toContainText("Lyrica is thinking");
+  // The reading goes on past the end of the text; the stored copy's button is the one to stop it.
+  const button = stored.getByRole("button", { name: /Stop reading|Read aloud/ });
+  await expect(button).toBeVisible();
+  if ((await button.getAttribute("aria-label")) === "Stop reading") {
+    await button.click();
+    await expect(stored.getByRole("button", { name: "Read aloud" })).toBeVisible();
+  }
+  await expect(page.locator(".turn").getByRole("button", { name: "Stop reading" })).toHaveCount(0, { timeout: 15_000 });
+  await noHorizontalScroll(page);
+});
+
 test("dictation goes in at the caret, Read aloud plays her reply, and a speech server that is down disables both", async ({ page, baseURL, request }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");

@@ -315,9 +315,14 @@ export function readAloud(url: string, onError: (message: string) => void) {
   })();
 }
 
-/** In her message's actions: Read aloud, which is Stop reading while this message plays. */
-export function ReadAloudButton({ url, speech, onError }: { url: string; speech?: Speech; onError: (message: string) => void }) {
-  const reading = useReading() === url;
+/**
+ * In her message's actions: Read aloud, which is Stop reading while this
+ * message plays. `also` is a second URL this button owns: her last stored
+ * message keeps the reading started while she was writing it.
+ */
+export function ReadAloudButton({ url, also, speech, onError }: { url: string; also?: string; speech?: Speech; onError: (message: string) => void }) {
+  const now = useReading();
+  const reading = now === url || (also !== undefined && now === also);
   const off = speech && !speech.speak.available ? speech.speak : undefined;
   const label = reading ? "Stop reading" : "Read aloud";
   return (

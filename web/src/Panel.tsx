@@ -415,6 +415,10 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
           <Switch label="Voice to cloud" hint="What you dictate may be sent to a cloud model"
             checked={profiles.data.voiceCloud} onChange={(voiceCloud) => run(async () => profiles.set(await patch<Profiles>(u(userId, "profiles"), { voiceCloud })))} />
         )}
+        {profiles.data && (
+          <Switch label="Read aloud while she writes" hint="Read aloud on a reply she is still writing"
+            checked={profiles.data.readAloudLive} onChange={(readAloudLive) => run(async () => profiles.set(await patch<Profiles>(u(userId, "profiles"), { readAloudLive })))} />
+        )}
       </div>
       <div className="profiles">
         {(["general", "private"] as const).map((pool) => {
