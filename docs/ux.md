@@ -103,7 +103,7 @@ Rules:
   Read aloud while agent writes, Local services (localhost), Fallback, Sleep fallback, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, Thread settings, New threads, This chat, Threads, Watching threads, Checked the other threads, Message received from, Show more, Show less, Open as a page, Close panel,
   Start a thread, Suggested threads, Start all, Resolve, Reopen, Resolved,
   Memory, Pages, Notes, WAKE, Journal, User introduced, Add a memory, Came
-  from, Used in, History, Restore, Archive, Preview, Edit,
+  from, Used in, History, Restore, Archive, Preview, Edit, Remember this,
   Waiting on you, Goal, Instructions, Paused, All threads, Only projects,
   No projects, Machines, Add machine, Mode limit, Replace key, Use anyway,
   Allow in this thread, Online, Unreachable, Key changed, Off network,
@@ -151,7 +151,7 @@ Rules:
 | A memory looked at from a conversation (a recall marker, a citation in her text, a sleep item's source) | the **panel**, like a thread; below 1180 px the Memory page at that memory |
 | A link inside a memory's text | a page link reads as the page's **title**, a thread citation as the thread's title, a note citation as a small dated **source mark** in mono (the note has no title); each is a link that opens the memory in place (the breadcrumb grows) and shows a **preview** of its first lines on hover or focus. Never the raw ID; the stored text keeps it |
 | What a memory came from, and what uses it | **Came from** and **Used in**: a card per memory with its title (or first words), its date in mono, and the citing sentence beneath |
-| A memory's versions | **History**: a row per version with its time in mono and its author (Lyrica, sleep, or the person's name), the current one open; a version opens to the word differences against the current text (removed words struck through in the danger colour, added words in the ok colour) and a **Restore** button |
+| A memory's versions | **History**: a row per version with its time in mono and its author (Lyrica, sleep, or yours), the current one open; a version opens to the word differences against the current text (removed words struck through in the danger colour, added words in the ok colour) and a **Restore** button |
 | A note's tags | its `about` words as **tag** chips under the facts line, in mono; the Notes layer lists the pool's tags above its list, and a tapped tag filters it |
 | Editing a memory | in place where the text was: an **Edit** \| **Preview** segment, the textarea, **Save** as the one primary and Cancel; typing `[[` opens a popover of pages and people (a page is saved as its ID, a person as their name token). Notes cite by ID in the editor, since they have no title. No draft is kept in the browser |
 | A message written in another thread (what a parent sent its child, a sibling's in a project, a look at a project's threads) | collapsed to one line, **Message received from <thread>** with a chevron (the look is its own marker, Checked the other threads); tapping it shows the message as a tinted block with its menu; a long one shows its first lines and **Show more**. Never shown open by default: said elsewhere, it would crowd this conversation |

@@ -909,10 +909,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - memory browser. **Planned (Memory browser,**
     [briefs/memory-browser.md](briefs/memory-browser.md)**):**
     `MemoryDetail.links: Record<id, { title: string; snippet: string }>`
-    for every memory the text and the lineage cite, titles only from pools
-    the display filters show, never a private title to a general ID's
-    reader; `MemoryDetail.usedIn` entries gain the citing sentence
-    (`{ id, sentence }`); `GET …/memory/search` without `q` lists one layer
+    for every memory the text and the lineage cite; `MemoryDetail.usedIn`
+    becomes `{ id, sentence }[]` (replacing `string[]`; the web is its
+    only client), the citing sentence of each memory that cites this one.
+    Titles, snippets and sentences come only from pools the display
+    filters show: a hidden pool's memory keeps its id and gets no title,
+    snippet or sentence, and reads as "Private is hidden"; a general ID's
+    reader never receives private words. `GET …/memory/search` without `q` lists one layer
     when `kinds` names exactly one (newest first, `limit` and `before`
     paging) and takes `about=` to filter notes by a tag;
     `GET …/memory/about` → the pool's distinct `about` words with counts.

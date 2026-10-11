@@ -44,7 +44,10 @@ edits; "Remember this" on a message.
    `MemoryDetail.links` (contracts). A general reader never receives a
    private title; a hidden pool's memory shows "Private is hidden".
 3. **Came from and Used in** as cards: title or first words, date, and the
-   citing sentence, rendered with titles. `usedIn` returns the sentence.
+   citing sentence, rendered with titles. `usedIn` returns the sentence,
+   and only from pools the display filters show: a citer in a hidden pool
+   keeps its id, gets no sentence, and shows as "Private is hidden", like
+   a link. A private note's words never reach a general memory's detail.
 4. **History** as word differences: each revision against the current
    text, computed in the browser (a small word-level diff, no dependency),
    with **Restore**. No diff is stored.
@@ -81,7 +84,7 @@ belongs to the feature comparison's item 11); telling her about edits
 
 - The browser reads through `openOwnerView` only. Titles for links are
   read in the same owner view; a general ID's detail never carries a
-  private title.
+  private title, snippet or citing sentence.
 - Titles, previews and diffs live in React state, computed from the API
   response. Nothing of a memory's text goes to `localStorage`,
   `sessionStorage` or any log.
@@ -89,8 +92,8 @@ belongs to the feature comparison's item 11); telling her about edits
 
 ## Tests (what Li would notice)
 
-- A general memory's detail never carries a private title or snippet, with
-  the private pool shown or hidden.
+- A general memory's detail never carries a private title, snippet or
+  citing sentence, with the private pool shown or hidden.
 - An edit keeps name tokens and citations; the rendered titles follow a
   page rename and a thread rename without a save.
 - Restore after a diff round-trips the text exactly.
