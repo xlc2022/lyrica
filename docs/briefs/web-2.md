@@ -205,6 +205,8 @@ For each part:
   gone with the image on delete or rename (Li's rule); `GET …/files/thumb`
   (docs/daemon.md "Files"); the Images grid and inline images use it and
   fall back to the image itself; `imagemagick` joins the NixOS sandbox tools
-  and the Debian install. Next: Notifications, Pin in the remaining places,
+  and the Debian install. Not done: a grant-less sandbox for the thumbnail
+  run (PR review's suggestion; `ThreadFiles` gets the thread's box) and a
+  replaced-by-older image, which `-nt` misses. Next: Notifications, Pin in the remaining places,
   the Models page (carry the Fallback default), the Sleep section; Web:
   bootstrap on Li's go.
