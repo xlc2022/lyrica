@@ -1,10 +1,12 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
-import { connect } from "node:net";
-import { tmpdir, userInfo } from "node:os";
+import { connect, createServer, type Server } from "node:net";
+import { networkInterfaces, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { generateSshKey, nftRules, resolveAddresses, SshTarget, Users, Workspace, WorkspaceSettings, type MachineConfig } from "../src/index.ts";
+import { fileURLToPath } from "node:url";
+import ssh2 from "ssh2";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, Users, Workspace, WorkspaceSettings, type HelperSandbox, type MachineConfig } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -196,6 +198,8 @@ const unreachable: MachineConfig = {
   name: "nas", kind: "ssh", host: "127.0.0.1", port: 1, username: "lyrica", privateKey: generateSshKey("test").privateKey, root: null,
   hostKey: `SHA256:${"A".repeat(43)}`, pool: "general", limit: "ask", offNetwork: false, lastUsed: null, state: null,
 };
+/** The real client: a sandboxed helper per connection. */
+const helper = (sandbox: HelperSandbox = { exclude: [] }) => ({ transport: sandboxedTransport(() => sandbox) });
 
 describe("ssh machines", () => {
 
@@ -203,15 +207,27 @@ describe("ssh machines", () => {
     const dir = mkdtempSync(join(tmpdir(), "lyrica-ssh-"));
     dirs.push(dir);
     const marker = join(dir, "ran-locally");
-    const ops = new SshTarget(unreachable).ops();
+    const ops = new SshTarget(unreachable, helper()).ops();
     await expect(ops.bash.exec(`touch ${marker}`, dir, { onData: () => {} })).rejects.toThrow(/ssh nas/);
     await expect(ops.write.writeFile(marker, "x")).rejects.toThrow(/ssh nas/);
     await expect(ops.read.readFile("/etc/hostname")).rejects.toThrow(/ssh nas/);
     expect(existsSync(marker)).toBe(false);
   });
 
+  it("fail when the SSH helper can't start, with no client in lyricad to fall back to", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-ssh-"));
+    dirs.push(dir);
+    const marker = join(dir, "ran-locally");
+    for (const sandbox of [{ exclude: [], bwrap: "/nonexistent/bwrap", pasta: "/nonexistent/pasta" }, { exclude: [], refused: "the sandbox flushed the rules" }]) {
+      const ops = new SshTarget(unreachable, helper(sandbox)).ops();
+      await expect(ops.bash.exec(`touch ${marker}`, dir, { onData: () => {} })).rejects.toThrow(/ssh nas: .*(SSH helper|no sandbox)/);
+      await expect(ops.read.readFile("/etc/hostname")).rejects.toThrow(/ssh nas/);
+    }
+    expect(existsSync(marker)).toBe(false);
+  });
+
   it("keep file tools inside the root", async () => {
-    const ops = new SshTarget({ ...unreachable, root: "/srv/lyrica" }).ops();
+    const ops = new SshTarget({ ...unreachable, root: "/srv/lyrica" }, helper()).ops();
     await expect(ops.read.readFile("/srv/lyrica/../etc/passwd")).rejects.toThrow(/outside \/srv\/lyrica/);
     await expect(ops.write.writeFile("/etc/passwd", "x")).rejects.toThrow(/outside/);
   });
@@ -242,10 +258,14 @@ async function listening(port: number, server: ReturnType<typeof spawn>, log: ()
   throw new Error(`sshd isn't listening: ${log()}`);
 }
 
-// A real round trip against a throwaway sshd, run as the current user. Skipped
-// where sshd isn't installed or the tests run as root.
+// A real round trip against a throwaway sshd, run as the current user, through
+// the sandboxed helper. Skipped where sshd, bwrap or pasta isn't installed or
+// the tests run as root; CI has them all.
 const sshd = "/usr/sbin/sshd";
-describe.skipIf(!existsSync(sshd) || process.getuid?.() === 0)("an ssh target", () => {
+const has = (cmd: string) => { try { execFileSync("sh", ["-c", `command -v ${cmd}`]); return true; } catch { return false; } };
+const helperRunnable = existsSync(sshd) && process.getuid?.() !== 0 && has("bwrap") && has("pasta") && has("nft");
+if (process.env.LYRICA_SANDBOX_TESTS === "require" && !helperRunnable) throw new Error("ssh tests required but sshd, bwrap, pasta or nft is missing");
+describe.skipIf(!helperRunnable)("an ssh target", () => {
   it("reads, writes, edits and runs commands remotely, with the confirmed host key", async () => {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), "lyrica-sshd-")));
     dirs.push(dir);
@@ -271,7 +291,7 @@ describe.skipIf(!existsSync(sshd) || process.getuid?.() === 0)("an ssh target", 
       expect(first.keyLine).toMatch(/^restrict(,from="[^"]*")? ssh-ed25519 /);
       const target = new SshTarget({
         ...unreachable, name: "local", port, username: userInfo().username, privateKey: key.privateKey, root: join(dir, "root"), hostKey: first.fingerprint!,
-      });
+      }, helper());
       const ops = target.ops();
       const file = join(dir, "root", "todo.txt");
       await ops.write.writeFile(file, "buy milk\n");
@@ -295,10 +315,115 @@ describe.skipIf(!existsSync(sshd) || process.getuid?.() === 0)("an ssh target", 
       await expect(ops.read.readFile(join(dir, "root", "etc", "hostname"))).rejects.toThrow(/leads outside/);
       await expect(ops.write.writeFile(join(dir, "root", ".ssh", "authorized_keys"), "x")).rejects.toThrow(/SSH's or sudo's/);
       target.close();
-      const impostor = new SshTarget({ ...target["cfg"], hostKey: `SHA256:${"B".repeat(43)}` });
+      const impostor = new SshTarget({ ...target["cfg"], hostKey: `SHA256:${"B".repeat(43)}` }, helper());
       await expect(impostor.ops().read.readFile(file)).rejects.toThrow(/ssh local: its host key changed/);
+      await expect(impostor.ops().bash.exec(`touch ${join(dir, "ran-locally")}`, dir, { onData: () => {} })).rejects.toThrow(/host key changed/);
+      expect(existsSync(join(dir, "ran-locally"))).toBe(false);
     } finally {
       server.kill();
     }
+  });
+});
+
+describe.skipIf(!helperRunnable)("the ssh helper's sandbox", () => {
+  const servers: Server[] = [];
+  const listen = async (host: string, reply: string) => {
+    const srv = createServer((c) => c.end(`${reply}\n`));
+    servers.push(srv);
+    await new Promise<void>((resolve) => srv.listen(0, host, resolve));
+    return (srv.address() as { port: number }).port;
+  };
+  afterAll(() => { for (const s of servers) s.close(); });
+  const tcp = (host: string, port: number) => `timeout 5 bash -c 'exec 3<>/dev/tcp/${host}/${port} && cat <&3' 2>&1`;
+  const run = async (box: ReturnType<typeof helperSandbox>, script: string) =>
+    (await box.run(["bash", "-c", script], { timeoutMs: 30_000 })).stdout.toString();
+
+  it("hides lyricad's runtime directory, databases, code and process", async () => {
+    const runtime = realpathSync(mkdtempSync(join(tmpdir(), "lyrica-runtime-")));
+    dirs.push(runtime);
+    writeFileSync(join(runtime, "self.db"), "keys");
+    const keyring = fileURLToPath(new URL("../src/keyring.ts", import.meta.url));
+    const box = helperSandbox("127.0.0.1", 22, { exclude: [] });
+    const helper = fileURLToPath(new URL("../src/workspace/ssh-helper.ts", import.meta.url));
+    const out = await run(box, `test -e ${runtime}/self.db && echo SEES-RUNTIME; test -e ${keyring} && echo SEES-CODE; test -e ${helper} && echo HAS-HELPER; echo DONE`);
+    expect(out).toContain("DONE");
+    expect(out).toContain("HAS-HELPER");
+    expect(out).not.toMatch(/SEES-/);
+    // Every process it can see: only its own.
+    const ps = await run(box, "for f in /proc/[0-9]*/cmdline; do tr '\\0' ' ' < $f; echo; done");
+    expect(ps).toContain("bwrap");
+    expect(ps).not.toContain("vitest");
+  });
+
+  it("refuses a server without strict key exchange, and sends the key only after the host key is accepted", async () => {
+    const hostKey = generateSshKey("host").privateKey;
+    const key = generateSshKey("lyrica");
+    const serve = async (strict: boolean) => {
+      const tried: string[] = [];
+      const srv = new ssh2.Server({ hostKeys: [hostKey] }, (c) => {
+        c.on("error", () => {});
+        c.on("authentication", (ctx) => { tried.push(ctx.method); ctx.method === "publickey" ? ctx.accept() : ctx.reject(["publickey"]); });
+        c.on("ready", () => c.end());
+      });
+      await new Promise<void>((resolve) => srv.listen(0, "127.0.0.1", resolve));
+      const real = (srv.address() as { port: number }).port;
+      // ssh2's server always offers strict key exchange. Without it, a proxy in the
+      // middle strips the offer from the server's first packet, as a Terrapin attacker would.
+      const proxy = createServer((inbound) => {
+        const out = connect(real, "127.0.0.1");
+        let seen = 0;
+        out.on("data", (d: Buffer) => {
+          if (!strict && seen < 8192) {
+            const at = d.indexOf("kex-strict-s-v00@openssh.com");
+            if (at >= 0) d.write("kex-strict-x", at);
+          }
+          seen += d.length;
+          inbound.write(d);
+        });
+        inbound.pipe(out);
+        for (const sock of [inbound, out]) sock.on("error", () => { inbound.destroy(); out.destroy(); });
+        out.on("close", () => inbound.destroy());
+        inbound.on("close", () => out.destroy());
+      });
+      await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
+      const port = (proxy.address() as { port: number }).port;
+      return { port, tried, close: () => { proxy.close(); srv.close(); } };
+    };
+    const to = (port: number) => ({ host: "127.0.0.1", port, username: "lyrica", privateKey: key.privateKey });
+    const transport = sandboxedTransport(() => ({ exclude: [] }));
+
+    // Not strict: refused before the host key is judged or any login is tried.
+    const plain = await serve(false);
+    let asked = false;
+    await expect(transport.connect(to(plain.port), () => { asked = true; return true; })).rejects.toThrow(/strict key exchange/);
+    expect(asked).toBe(false);
+    expect(plain.tried).toEqual([]);
+    plain.close();
+
+    // A host key that isn't the confirmed one: no login is tried, so the key never left lyricad.
+    const strict = await serve(true);
+    await expect(transport.connect(to(strict.port), () => false)).rejects.toThrow(/host key changed/);
+    expect(strict.tried).toEqual([]);
+    // Accepted: the key goes, and logs in.
+    await transport.connect(to(strict.port), () => true).catch(() => {}); // the server hangs up once she's in
+    expect(strict.tried).toContain("publickey");
+    strict.close();
+  });
+
+  it("reaches only the machine's address and port", async () => {
+    const lan = Object.values(networkInterfaces()).flat().find((i) => i?.family === "IPv4" && !i.internal)?.address;
+    const machine = await listen("0.0.0.0", "MACHINE");
+    const other = await listen("0.0.0.0", "OTHER");
+    const local = await run(helperSandbox("127.0.0.1", machine, { exclude: [] }), `${tcp("127.0.0.1", machine)}; ${tcp("127.0.0.1", other)}`);
+    expect(local).toContain("MACHINE");
+    expect(local).not.toContain("OTHER");
+    if (lan) {
+      // This host's LAN address as the machine: its other ports, and loopback, stay shut.
+      const remote = await run(helperSandbox(lan, machine, { exclude: [] }), `${tcp(lan, machine)}; ${tcp(lan, other)}; ${tcp("127.0.0.1", machine)}`);
+      expect(remote.match(/MACHINE/g)).toHaveLength(1);
+      expect(remote).not.toContain("OTHER");
+    }
+    // lyricad's own ports stay shut even when they are the machine's.
+    expect(await run(helperSandbox("127.0.0.1", machine, { exclude: [machine] }), tcp("127.0.0.1", machine))).not.toContain("MACHINE");
   });
 });

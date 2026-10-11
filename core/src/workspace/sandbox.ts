@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, constants, existsSync, lstatSync, openSync, readlinkSync } from "node:fs";
 import { posix } from "node:path";
 import type { Readable, Writable } from "node:stream";
@@ -10,8 +10,8 @@ import { cleanPath, within, type Grant, type Network } from "./settings.ts";
 export const WORKDIR = "/workspace";
 
 export interface SandboxSpec {
-  /** Host path of the thread's folder in the home workspace. Mounted read-write at /workspace. */
-  workdir: string;
+  /** Host path of the thread's folder in the home workspace. Mounted read-write at /workspace. None for the SSH helper. */
+  workdir?: string;
   grants: Grant[];
   network: Network;
   /** Ports never reachable on any address, whatever the switches say: lyricad's own. */
@@ -27,6 +27,10 @@ export interface SandboxSpec {
    * grant can be checked against the current settings. Throws to refuse.
    */
   check?: (grant: Grant) => void;
+  /** Host files mounted read-only at the same path: the SSH helper's code. */
+  files?: string[];
+  /** Loopback TCP ports forwarded to the host's loopback, whatever the services switch says: an SSH machine on 127.0.0.1. */
+  forward?: number[];
   bwrap?: string;
   pasta?: string;
 }
@@ -44,6 +48,9 @@ const ENV = { PATH: "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin", HOME: WORKDI
 const LOAD_RULES = 'printf "%s" "$1" | nft -f - || exit 125; shift; exec "$@"';
 
 export class SandboxDenied extends Error {}
+
+/** A process started in a sandbox, with its three pipes. */
+export type Sandboxed = ChildProcess & { stdin: Writable; stdout: Readable; stderr: Readable };
 
 /**
  * Writes stdin to "$1". For a file she owns (or a new one), atomically: a
@@ -111,56 +118,14 @@ export class Sandbox implements ExecutionTarget {
 
   /** Runs argv inside a fresh sandbox. */
   async run(argv: string[], o: RunOptions = {}): Promise<{ code: number | null; signal: NodeJS.Signals | null; stdout: Buffer; stderr: Buffer }> {
-    let { internet, services, hosts } = this.spec.network;
-    // The front door's names must resolve (now or before), or this run gets no network at all: its rules can't be trusted.
-    const frontAddresses = internet || services || hosts.length ? await resolveAddresses(this.spec.frontHosts ?? []) : [];
-    if (!frontAddresses) [internet, services, hosts] = [false, false, []];
-    const networked = internet || services || hosts.length > 0;
-    const resolved = await resolveHosts(hosts);
-    // Files written into the sandbox's /etc. Hostnames are pinned when it starts;
-    // with internet off there is no resolver at all, so DNS can't carry data out.
-    const data = [
-      ["/etc/hosts", ["127.0.0.1 localhost", "::1 localhost", ...resolved.pinned].join("\n") + "\n"],
-      ["/etc/resolv.conf", internet ? `nameserver ${SANDBOX_GATEWAY}\n` : ""],
-    ] as const;
-    const fds: number[] = [];
-    let args: string[];
-    try {
-      args = this.args(fds, o.cwd ?? WORKDIR, networked);
-    } catch (err) {
-      for (const fd of fds) closeSync(fd);
-      throw err;
-    }
-    data.forEach(([dest], i) => args.push("--ro-bind-data", String(3 + fds.length + i), dest));
-    let cmd = [this.spec.bwrap ?? "bwrap", ...args, "--", ...argv];
-    if (networked) {
-      const exclude = this.spec.exclude ?? [];
-      const rules = nftRules(internet, resolved.rules, exclude, {
-        addresses: this.spec.self ?? hostAddresses(), services, front: this.spec.front ?? [],
-        frontAddresses: frontAddresses ?? [],
-      });
-      // The front ports are never forwarded from loopback either, in case the proxy listens on every address.
-      cmd = [this.spec.pasta ?? "pasta", ...pastaArgs({ internet, services, hosts: hosts.length > 0 }, [...exclude, ...(this.spec.front ?? [])]),
-        "--", "sh", "-c", LOAD_RULES, "sh", rules, ...cmd];
-    }
+    const child = await this.start(argv, o.cwd);
     return new Promise((resolve, reject) => {
-      const child = spawn(cmd[0]!, cmd.slice(1), {
-        env: ENV,
-        stdio: ["pipe", "pipe", "pipe", ...fds, ...data.map(() => "pipe" as const)],
-      });
-      for (const fd of fds) closeSync(fd);
-      data.forEach(([, text], i) => {
-        const pipe = child.stdio[3 + fds.length + i] as Writable;
-        pipe.on("error", () => {}); // if bwrap or pasta never starts, the spawn error is what's reported
-        pipe.end(text);
-      });
-      const { stdin, stdout, stderr } = child as unknown as { stdin: Writable; stdout: Readable; stderr: Readable };
       const out: Buffer[] = [];
       const err: Buffer[] = [];
-      stdout.on("data", (d: Buffer) => (o.onData ? o.onData(d) : out.push(d)));
-      stderr.on("data", (d: Buffer) => (o.onData ? o.onData(d) : err.push(d)));
-      stdin.on("error", () => {}); // the command may exit without reading its input
-      stdin.end(o.input ?? "");
+      child.stdout.on("data", (d: Buffer) => (o.onData ? o.onData(d) : out.push(d)));
+      child.stderr.on("data", (d: Buffer) => (o.onData ? o.onData(d) : err.push(d)));
+      child.stdin.on("error", () => {}); // the command may exit without reading its input
+      child.stdin.end(o.input ?? "");
       let stopped: Error | undefined;
       const stop = (why: Error) => { stopped = why; child.kill("SIGKILL"); };
       const timer = o.timeoutMs ? setTimeout(() => stop(new Error(`timeout:${o.timeoutMs! / 1000}`)), o.timeoutMs) : undefined;
@@ -175,6 +140,58 @@ export class Sandbox implements ExecutionTarget {
         else resolve({ code, signal, stdout: Buffer.concat(out), stderr: Buffer.concat(err) });
       });
     });
+  }
+
+  /**
+   * Starts argv inside a fresh sandbox and hands back the process, its stdin
+   * still open: run() for one command, the SSH helper for a connection.
+   */
+  async start(argv: string[], cwd?: string): Promise<Sandboxed> {
+    let { internet, services, hosts } = this.spec.network;
+    let forward = this.spec.forward ?? [];
+    // The front door's names must resolve (now or before), or this run gets no network at all: its rules can't be trusted.
+    const frontAddresses = internet || services || hosts.length || forward.length ? await resolveAddresses(this.spec.frontHosts ?? []) : [];
+    if (!frontAddresses) [internet, services, hosts, forward] = [false, false, [], []];
+    const networked = internet || services || hosts.length > 0 || forward.length > 0;
+    const resolved = await resolveHosts(hosts);
+    // Files written into the sandbox's /etc. Hostnames are pinned when it starts;
+    // with internet off there is no resolver at all, so DNS can't carry data out.
+    const data = [
+      ["/etc/hosts", ["127.0.0.1 localhost", "::1 localhost", ...resolved.pinned].join("\n") + "\n"],
+      ["/etc/resolv.conf", internet ? `nameserver ${SANDBOX_GATEWAY}\n` : ""],
+    ] as const;
+    const fds: number[] = [];
+    let args: string[];
+    try {
+      args = this.args(fds, cwd ?? WORKDIR, networked);
+    } catch (err) {
+      for (const fd of fds) closeSync(fd);
+      throw err;
+    }
+    data.forEach(([dest], i) => args.push("--ro-bind-data", String(3 + fds.length + i), dest));
+    let cmd = [this.spec.bwrap ?? "bwrap", ...args, "--", ...argv];
+    if (networked) {
+      const exclude = this.spec.exclude ?? [];
+      const rules = nftRules(internet, resolved.rules, exclude, {
+        addresses: this.spec.self ?? hostAddresses(), services, front: this.spec.front ?? [],
+        frontAddresses: frontAddresses ?? [],
+      });
+      // The front ports are never forwarded from loopback either, in case the proxy listens on every address.
+      cmd = [this.spec.pasta ?? "pasta", ...pastaArgs({ internet, services, hosts: hosts.length > 0, forward }, [...exclude, ...(this.spec.front ?? [])]),
+        "--", "sh", "-c", LOAD_RULES, "sh", rules, ...cmd];
+    }
+    const child = spawn(cmd[0]!, cmd.slice(1), {
+      env: ENV,
+      stdio: ["pipe", "pipe", "pipe", ...fds, ...data.map(() => "pipe" as const)],
+    });
+    child.on("error", () => {}); // reported to the caller's own listener; never an uncaught error
+    for (const fd of fds) closeSync(fd);
+    data.forEach(([, text], i) => {
+      const pipe = child.stdio[3 + fds.length + i] as Writable;
+      pipe.on("error", () => {}); // if bwrap or pasta never starts, the spawn error is what's reported
+      pipe.end(text);
+    });
+    return child as Sandboxed;
   }
 
   /** bwrap arguments. Opens each folder to mount and appends its fd to `fds` (child fd 3, 4, …). */
@@ -203,11 +220,12 @@ export class Sandbox implements ExecutionTarget {
       check?.();
       args.push(writable ? "--bind-fd" : "--ro-bind-fd", String(fds.length + 2), dest);
     };
-    mount(cleanPath(this.spec.workdir), true, WORKDIR);
+    if (this.spec.workdir) mount(cleanPath(this.spec.workdir), true, WORKDIR);
     for (const g of this.grants) mount(g.path, g.writable, g.path, () => this.spec.check?.(g));
+    for (const f of this.spec.files ?? []) args.push("--ro-bind", f, f);
 
-    const visible = within(cwd, WORKDIR) || this.grants.some((g) => within(cwd, g.path));
-    args.push("--chdir", visible ? cwd : WORKDIR);
+    const visible = (this.spec.workdir && within(cwd, WORKDIR)) || this.grants.some((g) => within(cwd, g.path));
+    args.push("--chdir", visible ? cwd : this.spec.workdir ? WORKDIR : "/");
     return args;
   }
 

@@ -133,7 +133,33 @@ existed before became general machines at Ask.
 - **The SSH client** sits behind `SshTransport`
   (`core/src/workspace/transport.ts`): `SshTarget` keeps the root, the
   floor, the output cleaning and the host key check, and the transport only
-  connects and moves bytes. Today the transport is `ssh2` inside `lyricad`.
+  connects and moves bytes. The one transport, `sandboxedTransport`, runs
+  `ssh2` outside `lyricad`, which holds every user's unlocked keys: each
+  connection starts a **helper process** (`ssh-helper.ts`) in a sandbox of
+  its own, so a server that breaks the library's parsing gets one key it
+  could already use, not `lyricad`'s memory.
+  - The helper's sandbox is the one above with no workspace: the read-only
+    system, Node, the helper's own files and `ssh2` with its dependencies,
+    read-only. Lyrica's runtime directory, databases and the rest of her
+    code aren't there, and its process namespace hides `lyricad`.
+  - Its network is exactly the machine's checked address and port, through
+    the same `pasta` and nftables rules as an allowed host. `excludePorts`
+    and the front door still apply. A machine on this host's loopback gets
+    just that one port forwarded.
+  - The private key goes to the helper on its stdin, never to a file or an
+    environment variable.
+  - `lyricad` and the helper speak length-prefixed frames (`ssh-frames.ts`):
+    connect, exec with streamed output and kill, the SFTP operations the
+    target uses. `lyricad` refuses oversized frames and more command output
+    than the helper's cap allows; output is capped in the helper, before it
+    crosses the pipe, and a file over 64 MB is refused rather than read.
+  - The helper sends the server's host key to `lyricad`, which decides.
+    Strict key exchange is required (OpenSSH 9.6, or a distribution's
+    Terrapin fix, has it).
+  - The helper exits when its stdin closes, so it never outlives `lyricad`.
+    If it can't start, or the network self-test has refused networked
+    sandboxes, the call fails; there is no client in `lyricad` to fall back
+    to. It needs Node 22.6 or later (it runs with type stripping).
 - **Writes** follow the sandbox's rule: for a file the account owns, an SFTP
   temp file with the old mode and group, then `posix-rename` (plain rename
   where the server lacks it); otherwise, or if the temp file can't be made,
@@ -389,9 +415,10 @@ How it is enforced:
   `lyrica dev` prints it.
 - IPv4 only for now: sandboxes run `pasta --ipv4-only`, and IPv6 host
   entries are refused until IPv6 is supported end to end.
-- Machines don't depend on these switches: `lyricad`'s SSH client reaches
-  them, not the sandbox, and a machine's network is its own. Model calls
-  also come from `lyricad`, so local-only and the switches are independent.
+- Machines don't depend on these switches: each connection's helper gets
+  network to its machine alone, whatever the thread's switches say. If the
+  self-test refuses network, machine calls fail too. Model calls come from
+  `lyricad`, so local-only and the switches are independent.
 
 ## Subagents
 

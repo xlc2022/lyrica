@@ -4,7 +4,7 @@ import ssh2 from "ssh2";
 import { cleanOutput, maskKeys, onFloor } from "./machines.ts";
 import { capOutput, sniffImage, type ExecutionTarget, type ToolOps } from "./ops.ts";
 import { cleanPath, within, type MachineConfig } from "./settings.ts";
-import { inProcess, isMissing, type SshSession, type SshTransport } from "./transport.ts";
+import { isMissing, type SshSession, type SshTransport } from "./transport.ts";
 
 const quote = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
 
@@ -23,8 +23,8 @@ export function publicKeyOf(privateKey: string): string {
 }
 
 export interface SshTargetOptions {
-  /** The SSH client. Default: ssh2 in this process. */
-  transport?: SshTransport;
+  /** The SSH client: Workspace.sshTransport, a sandboxed helper per connection. */
+  transport: SshTransport;
   /**
    * The address to connect to, checked before every connection (the
    * machine's network check). Default: the configured host.
@@ -49,7 +49,7 @@ export class SshTarget implements ExecutionTarget {
   /** Set by close(): a connection still in flight then reports nothing, so it can't overwrite a cleared state. */
   private closed = false;
 
-  constructor(private readonly cfg: MachineConfig, private readonly o: SshTargetOptions = {}) {
+  constructor(private readonly cfg: MachineConfig, private readonly o: SshTargetOptions) {
     this.name = `ssh:${cfg.name}`;
   }
 
@@ -70,7 +70,7 @@ export class SshTarget implements ExecutionTarget {
       if (!hostKey) throw new Error("its host key hasn't been confirmed");
       const host = this.o.address ? await this.o.address() : this.cfg.host;
       let seen: string | undefined;
-      const session = await (this.o.transport ?? inProcess).connect(
+      const session = await this.o.transport.connect(
         { host, port: this.cfg.port, username: this.cfg.username, privateKey: this.cfg.privateKey },
         (fp) => { seen = fp; return fp === hostKey; },
       ).catch((err: Error) => {

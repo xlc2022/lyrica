@@ -923,6 +923,15 @@ interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
   ops(): { read; write; edit; bash };     // Pi's tool operations
   folders(): string[];                    // host folders, or "<ssh name>:<root>"
 }
+new SshTarget(cfg, { transport: SshTransport, address?, connected? })  // the host key must be cfg.hostKey
+interface SshTransport { connect(to: SshEndpoint, verify(fingerprint): boolean): Promise<SshSession> }
+// SshEndpoint { host, port, username, privateKey }. SshSession: home, exec(command, { onData, signal?, timeout? }),
+//   realpath, lstat (undefined when missing), readFile, readHead(path, n), check(path, "r" | "r+"),
+//   writeFile(path, content, mode?), chmod, chown, rename (posix-rename where it can), unlink, close, onClose.
+//   A missing path rejects with RemoteMissing (isMissing(err)).
+sandboxedTransport(sandbox: () => HelperSandbox): SshTransport  // the only client; Workspace.sshTransport (WorkspaceOptions.sshTransport for tests)
+// HelperSandbox { exclude, front?, frontHosts?, bwrap?, pasta?, refused? }: refused (the self-test's reason) fails the call
+helperSandbox(address, port, sandbox): Sandbox           // the helper's sandbox: no workspace, that address and port only
 forThread(t)  // { target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), folders(), recordChange() },
               // each read fresh; settings() is effective
 changes(userId): FileChanges              // her write and edit calls' changes, for removing turns
@@ -955,8 +964,6 @@ settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overr
 //   inheritSettings takes a subset; effective() keeps only machines every ancestor grants.
 // SUSPECT_COMMANDS, suspectCommand(command), onFloor(path), cleanOutput(onData), maskKeys(buf),
 //   authorizedKeysLine(publicKey), machineSetup(account, keyLine): core/src/workspace/machines.ts
-// SshTransport { connect(endpoint, verify(fingerprint)): Promise<SshSession> } (transport.ts); `inProcess` is ssh2 in
-//   lyricad; WorkspaceOptions.sshTransport replaces it. SshTarget(cfg, { transport?, address?, connected? }).
 // proxmox.ts: PROXMOX_ACTIONS (status, list, start, stop, shutdown, reboot, snapshots), PROXMOX_READS, PROXMOX_SUSPECT (stop, reboot),
 //   suspectKey(tool, input) (what Allow in this thread stores), proxmoxAction(call, action, vm?), ownNode(call, addresses, self), ownAddress(addresses, self),
 //   proxmoxSetup(), parseProxmoxAddress, tokenId, certFingerprint. ProxmoxTransport { fingerprint(host, port), call(endpoint, method,
@@ -1016,11 +1023,12 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   call to `ThreadTools.proxmox`; the workspace extension's `tool_call` does
   the asking (reads like `read`, start and shutdown like `bash`, stop and
   reboot suspect, Plan mode reads only). `destroy` is never offered.
-- **Planned (SSH helper):** the SSH client moves into a sandboxed
-  helper process per connection (`core/workspace/ssh-helper`), an
-  `SshTransport` given one machine's key on a pipe and network to that one
-  address through the existing nftables rules; `SshTarget` keeps its
-  interface.
+- **SSH helper:** the SSH client runs in a sandboxed helper process per
+  connection (`core/workspace/ssh-helper.ts`, behind `sandboxedTransport`),
+  given one machine's key on its stdin and network to that one address and
+  port through the existing nftables rules; it speaks length-prefixed frames
+  (`ssh-frames.ts`). The host key decision stays in `lyricad`; strict key
+  exchange is required. There is no in-process client.
 - **Modes:** `PermissionMode` is `"auto" | "acceptEdits" | "ask" | "plan"`,
   strictest first plan, ask, acceptEdits, auto. Stored `ask-changes` and
   `ask-commands` migrate in place to `ask` and `acceptEdits`. A thread with
