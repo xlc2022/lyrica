@@ -2,7 +2,7 @@ import { existsSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  Keyring, MACHINE_LIMITS, parseHost, PersonaStore, PRONOUN_PRESETS, pronounLabel, Users, Workspace,
+  Keyring, MACHINE_LIMITS, parseHost, proxmoxAddress, PersonaStore, PRONOUN_PRESETS, pronounLabel, Users, Workspace,
   type MachineLimit, type Pool, type Profile, type Pronouns, type User,
 } from "@lyrica/core";
 import { AgentSessionRuntime, InteractiveMode } from "@earendil-works/pi-coding-agent";
@@ -20,7 +20,8 @@ const USAGE = `usage:
   lyrica admin grants add|remove --user <login> --pool general|private <path>
   lyrica admin grants list --user <login>
   lyrica admin ssh add --user <login> <name> <account>@<host>[:<port>] [--root <path>] [--pool general|private] [--limit ask|acceptEdits|auto]
-  lyrica admin ssh list|remove --user <login> [<name>]
+  lyrica admin ssh list|remove --user <login> [<name>]            (every machine, Proxmox ones too)
+  lyrica admin proxmox add --user <login> <name> https://<host>[:<port>] [--pool general|private] [--limit ask|acceptEdits|auto]
   lyrica admin net show --user <login>
   lyrica admin net set --user <login> --pool general|private internet|services on|off
   lyrica admin net hosts add|remove --user <login> --pool general|private <host>
@@ -111,10 +112,10 @@ async function admin(args: string[], home: string): Promise<void> {
     console.log(`Created ${keyring.selfPath}, imported the persona and added ${first}.`);
     return;
   }
-  if (sub !== "user" && sub !== "grants" && sub !== "ssh" && sub !== "net" && sub !== "models") throw new Error(USAGE);
+  if (sub !== "user" && sub !== "grants" && sub !== "ssh" && sub !== "proxmox" && sub !== "net" && sub !== "models") throw new Error(USAGE);
 
   await keyring.unlockSelf(await ask("self.db passphrase: ", true));
-  if (sub === "grants" || sub === "ssh" || sub === "net") return workspaceAdmin(users, keyring, sub, args.slice(1));
+  if (sub === "grants" || sub === "ssh" || sub === "proxmox" || sub === "net") return workspaceAdmin(users, keyring, sub, args.slice(1));
   if (sub === "models") return modelsAdmin(keyring, users, args.slice(1), ask);
   if (action === "list") {
     for (const u of users.all()) {
@@ -149,7 +150,7 @@ async function admin(args: string[], home: string): Promise<void> {
  * Network defaults and SSH targets live in the user's own user.db, so their
  * password opens it.
  */
-async function workspaceAdmin(users: Users, keyring: Keyring, kind: "grants" | "ssh" | "net", args: string[]): Promise<void> {
+async function workspaceAdmin(users: Users, keyring: Keyring, kind: "grants" | "ssh" | "proxmox" | "net", args: string[]): Promise<void> {
   const take = (name: string) => {
     const i = args.indexOf(name);
     if (i < 0) return undefined;
@@ -200,7 +201,8 @@ async function workspaceAdmin(users: Users, keyring: Keyring, kind: "grants" | "
     console.log(`${rest[0] === "add" ? "Added" : "Removed"} ${entry} ${rest[0] === "add" ? "to" : "from"} ${login}'s ${pool} hosts.`);
   } else if (kind === "ssh" && action === "list") {
     for (const m of settings.machines()) {
-      console.log(`${m.name}: ${m.username}@${m.host}:${m.port}${m.root ? ` in ${m.root}` : ""}, ${m.pool}, up to ${m.limit}${m.hostKey ? `, host key ${m.hostKey}` : ", host key not confirmed"}${m.offNetwork ? ", off network" : ""}`);
+      const where = m.kind === "proxmox" ? `Proxmox ${proxmoxAddress(m.host, m.port)}, token ${m.username}` : `${m.username}@${m.host}:${m.port}${m.root ? ` in ${m.root}` : ""}`;
+      console.log(`${m.name}: ${where}, ${m.pool}, up to ${m.limit}${m.hostKey ? `, ${m.kind === "proxmox" ? "certificate" : "host key"} ${m.hostKey}` : ", host key not confirmed"}${m.offNetwork ? ", off network" : ""}`);
     }
   } else if (kind === "ssh" && action === "add" && rest.length === 2) {
     const [name, address] = rest as [string, string];
@@ -221,6 +223,25 @@ async function workspaceAdmin(users: Users, keyring: Keyring, kind: "grants" | "
     }
     await workspace.addMachine(target.id, {
       name, address, root: root ?? null, pool: machinePool, limit: limit as MachineLimit | undefined, draft: probe.draft, hostKey: probe.fingerprint, offNetworkConfirmed: true,
+    });
+    console.log(`Added ${name} (${machinePool}, up to ${limit ?? "ask"}).`);
+  } else if (kind === "proxmox" && action === "add" && rest.length === 2) {
+    const [name, address] = rest as [string, string];
+    const machinePool = pool ?? "general";
+    if (!isPool(machinePool)) throw new Error(USAGE);
+    if (limit !== undefined && !MACHINE_LIMITS.includes(limit as MachineLimit)) throw new Error("--limit is ask, acceptEdits or auto");
+    const probe = await workspace.probeMachine(target.id, login, { kind: "proxmox", name, address });
+    console.log(`Run this on the Proxmox node as root, for each VM she may manage:\n\n${probe.setup}\n`);
+    if (!probe.fingerprint) throw new Error(`couldn't reach ${address}: ${probe.problem ?? "no answer"}`);
+    console.log(`Its certificate's fingerprint: ${probe.fingerprint}`);
+    if ((await ask("Is that the fingerprint the node prints? (yes/no) ")).trim().toLowerCase() !== "yes") throw new Error("not added: the fingerprint wasn't confirmed");
+    const token = await ask("The token, as lyrica@pve!agent=<secret>: ", true);
+    if (probe.offNetwork && machinePool === "private"
+      && (await ask("It resolves outside your network: what she reads there, and the thread's private memory, can leave it. Add anyway? (yes/no) ")).trim().toLowerCase() !== "yes") {
+      throw new Error("not added");
+    }
+    await workspace.addMachine(target.id, {
+      kind: "proxmox", name, address, token, root: null, pool: machinePool, limit: limit as MachineLimit | undefined, hostKey: probe.fingerprint, offNetworkConfirmed: true,
     });
     console.log(`Added ${name} (${machinePool}, up to ${limit ?? "ask"}).`);
   } else if (kind === "ssh" && action === "remove" && rest.length === 1) {

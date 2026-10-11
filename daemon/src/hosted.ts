@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
-  CloudModelForbidden, HEALTH_MS, isUnreachable, NoModel, Offline, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
+  CloudModelForbidden, HEALTH_MS, isUnreachable, NoModel, Offline, suspectKey, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
   ContextMeter, createDelegateExtension, createLyricaExtension, createThreadsExtension, createWorkspaceExtension, DELEGATE_MESSAGE, FROM_PARENT, fromParent, OPENING, openThreadSession, piModelFor,
@@ -501,7 +501,7 @@ export class HostedThread {
     if (p.request.tool === "propose_plan" && allow && !GO_AHEAD.includes(mode!)) throw new Error("say which mode to go ahead in: ask, acceptEdits or auto");
     if (allow && allowInThread) {
       if (!p.request.suspect) throw new Error("only a suspect command can be allowed in this thread");
-      this.o.workspace.settings(this.userId).allowInThread(p.request.subagent?.threadId ?? this.threadId, p.request.machine!, String((p.request.args as { command: unknown }).command));
+      this.o.workspace.settings(this.userId).allowInThread(p.request.subagent?.threadId ?? this.threadId, p.request.machine!, suspectKey(p.request.tool, p.request.args));
     }
     p.done(allow, "answered", allow ? mode : undefined);
     return true;

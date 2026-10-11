@@ -79,7 +79,7 @@ a single file. The old `…/panel` opens Settings.
   Persona suggestions (edit, send on to the administrators, or drop),
   Endpoints with probe status, Model profiles, Network (the default mode and
   network defaults per pool, Voice to cloud), and Machines (listed, with
-  Remove; `lyrica admin ssh add` adds one).
+  Remove; `lyrica admin ssh add` or `lyrica admin proxmox add` adds one).
 - **Administration**, for administrators: Status (the server's network
   self-test, sleep time, start unlocked), Users with the administrator flag and
   their allowed folders, Sleep, Start unlocked (saving the `self.db`

@@ -1,5 +1,5 @@
 import {
-  AuthError, WrongPassword, WORKDIR, CAPABILITIES, checkTask, isRestricted, profileFor, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, CloudModelForbidden, NoModel, PRONOUN_PRESETS,
+  AuthError, WrongPassword, WORKDIR, CAPABILITIES, checkTask, isRestricted, profileFor, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, NoModel, PRONOUN_PRESETS,
   type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type MachineConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
@@ -414,24 +414,25 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("POST", `${u}/machines/probe`, async (r): Promise<Api.MachineProbe> => {
       const user = d.userFor(r);
       const input = await r.json<Api.MachineProbeInput>();
-      return s().workspace.probeMachine(user.id, user.login, { name: String(input.name ?? ""), address: String(input.address ?? ""), draft: input.draft });
+      return s().workspace.probeMachine(user.id, user.login, { kind: checkKind(input.kind), name: String(input.name ?? ""), address: String(input.address ?? ""), draft: input.draft });
     }),
     route("POST", `${u}/machines`, async (r) => {
       const user = d.userFor(r);
       const input = await r.json<Api.MachineInput>();
       return machineInfo(await s().workspace.addMachine(user.id, {
-        name: String(input.name ?? ""), address: String(input.address ?? ""), root: input.root || null, pool: checkPool(input.pool),
-        limit: input.limit, draft: String(input.draft ?? ""), hostKey: String(input.hostKey ?? ""), offNetworkConfirmed: input.offNetworkConfirmed === true,
+        kind: checkKind(input.kind), name: String(input.name ?? ""), address: String(input.address ?? ""), root: input.root || null, pool: checkPool(input.pool),
+        limit: input.limit, draft: String(input.draft ?? ""), token: input.token === undefined ? undefined : String(input.token),
+        hostKey: String(input.hostKey ?? ""), offNetworkConfirmed: input.offNetworkConfirmed === true,
       }));
     }),
     route("PATCH", `${u}/machines/:name`, async (r) => {
       const change = pick(await r.json<Api.MachineChange>(), ["address", "root", "pool", "limit"]);
       if (change.pool !== undefined) checkPool(change.pool);
-      return machineInfo(s().workspace.updateMachine(d.userFor(r).id, r.params.name!, change));
+      return machineInfo(await s().workspace.updateMachine(d.userFor(r).id, r.params.name!, change));
     }),
     route("POST", `${u}/machines/:name/key`, async (r) => {
-      const { hostKey } = await r.json<Api.MachineKey>();
-      return machineInfo(s().workspace.setHostKey(d.userFor(r).id, r.params.name!, String(hostKey ?? "")));
+      const { hostKey, token } = await r.json<Api.MachineKey>();
+      return machineInfo(await s().workspace.setHostKey(d.userFor(r).id, r.params.name!, String(hostKey ?? ""), token === undefined ? undefined : String(token)));
     }),
     route("POST", `${u}/machines/:name/confirm-off-network`, (r) => machineInfo(s().workspace.confirmOffNetwork(d.userFor(r).id, r.params.name!))),
     route("DELETE", `${u}/machines/:name`, (r) => {
@@ -938,6 +939,12 @@ function checkPool(p: unknown): Pool {
 }
 
 const poolOf = (r: Request): Pool => checkPool(r.params.pool);
+
+function checkKind(k: unknown): "ssh" | "proxmox" {
+  if (k === undefined || k === "ssh") return "ssh";
+  if (k !== "proxmox") throw new HttpError(400, "a machine's kind is ssh or proxmox");
+  return k;
+}
 const author = (user: User): Author => `user:${user.id}`;
 
 /** The owner view for one request, closed afterwards. */
@@ -1110,7 +1117,14 @@ function networkDefaults(d: Lyricad, userId: string): Api.NetworkDefaults {
   return { general: s.defaultNetwork("general"), private: s.defaultNetwork("private") };
 }
 
+/** A machine as the API shows it: never its key or token. */
 function machineInfo(m: MachineConfig): Api.MachineInfo {
+  if (m.kind === "proxmox") {
+    return {
+      name: m.name, kind: "proxmox", address: proxmoxAddress(m.host, m.port), root: null, pool: m.pool, limit: m.limit,
+      tokenId: m.username, hostKey: m.hostKey, offNetwork: m.offNetwork, lastUsed: m.lastUsed,
+    };
+  }
   const host = m.host.includes(":") ? `[${m.host}]` : m.host;
   return {
     name: m.name, kind: m.kind, address: `${m.username}@${host}${m.port === 22 ? "" : `:${m.port}`}`, root: m.root, pool: m.pool, limit: m.limit,
