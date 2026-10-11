@@ -314,6 +314,72 @@ admin ssh list` shows each machine's pool, limit and confirmed key, and
 became general machines at Ask; one that had never connected has no
 confirmed key and must be added again (`ssh remove <name>`, then `add`).
 
+## Give her a Proxmox node
+
+A **Proxmox machine** is a Proxmox VE node or cluster she reaches over its
+HTTPS API with a token, never a shell: she can list VMs and containers,
+read their status and snapshots, and start, shut down, stop or reboot the
+ones the token may. Nothing else (no destroy, create, console or snapshot
+changes), and her file and shell tools refuse it. It lives in the same
+list as SSH machines, with a pool and a mode limit. The reference is
+[docs/workspace.md](../workspace.md#proxmox).
+
+**The Proxmox that runs Lyrica's own VM or container is refused**, on
+purpose, and there is no way to add it yet. She tells which sign gave it
+away (its address is this computer or its gateway, or a guest there has
+this computer's name or MAC address).
+
+1. On the Proxmox node, as root, make her a user, a role that can only
+   see and power VMs, and a privilege-separated token:
+
+   ```sh
+   pveum user add lyrica@pve --comment Lyrica
+   pveum role add LyricaPower --privs "VM.Audit VM.PowerMgmt"
+   pveum user token add lyrica@pve agent --privsep 1
+   ```
+
+   The last command prints the token's secret once. The token she takes
+   is `lyrica@pve!agent=<that secret>`.
+2. Grant reads everywhere and power only on the VMs she may manage, one
+   `/vms/<id>` at a time or a `/pool/<name>`. A separated token has only
+   what both it and its user have, so both get each role:
+
+   ```sh
+   pveum acl modify / --roles PVEAuditor --users lyrica@pve --tokens 'lyrica@pve!agent'
+   pveum acl modify /vms/101 --roles LyricaPower --users lyrica@pve --tokens 'lyrica@pve!agent'
+   ```
+
+   Never give her `PVEVMUser` (its console and guest-agent rights run code
+   inside the guests) or `Sys.PowerMgmt`.
+3. Note the node's certificate fingerprint, to compare in the next step:
+
+   ```sh
+   openssl x509 -noout -fingerprint -sha256 -in /etc/pve/local/pveproxy-ssl.pem
+   ```
+
+   (`pve-ssl.pem` in the same folder if there is no `pveproxy-ssl.pem`.)
+4. On Lyrica's machine, as the `lyrica` user with
+   `LYRICA_HOME=/var/lib/lyrica`:
+
+   ```sh
+   lyrica admin proxmox add --user li hypervisor https://pve.lan:8006 --pool general --limit ask
+   ```
+
+   It prints the setup above again, shows the certificate's fingerprint
+   and asks you to confirm it, then asks for the token at a hidden prompt.
+   The token is not sent anywhere until the fingerprint is confirmed, and
+   the machine is saved only once the token works. A private machine whose
+   address resolves outside your network asks a second time.
+
+Threads grant it like any machine. Listing, status and snapshots never
+ask; start and shutdown ask like a command under the thread's mode and the
+machine's limit; stop and reboot always ask with a warning. If the node's
+certificate changes (Proxmox renews it), every call fails until you confirm
+the new fingerprint. `lyrica admin ssh list` shows Proxmox machines with
+the SSH ones, and `ssh remove <name>` takes one away. An **Add machine**
+page in the web UI is on its way; until it lands this command is the only
+way.
+
 ## Day to day
 
 - **Logs:** `journalctl -u lyricad` and `journalctl -u lyrica-caddy`. One
