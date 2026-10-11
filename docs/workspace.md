@@ -2,7 +2,7 @@
 
 **Status: agreed.**
 
-Code: `core/src/workspace/` (settings, sandbox, home, SSH) and
+Code: `core/src/workspace/` (settings, sandbox, home, machines, SSH) and
 `extension/src/workspace.ts` (the tools).
 
 Lyrica works like a coding agent. She can read, write and edit files, run
@@ -21,8 +21,8 @@ database files. A command that could see either one could read everything.
 
 | Target | What it is | How she is confined |
 |---|---|---|
-| **Sandbox** (default) | Each command runs on the Lyrica host inside bubblewrap. | The sandbox is described below. |
-| **SSH** | A named remote machine. | She is confined by the remote account's own permissions, so each target should use a dedicated account. An optional root path limits `read`, `write` and `edit`. If SSH fails, the action fails: it **never** falls back to running locally. |
+| **Sandbox** (always there) | Each command runs on the Lyrica host inside bubblewrap. | The sandbox is described below. |
+| **A machine** | One of Li's other computers, reached over SSH, when a call names it. | She is confined by the machine's own account, so each machine uses a dedicated account. An optional root path limits `read`, `write` and `edit`. If SSH fails, the action fails: it **never** falls back to running locally. See [Machines](#machines). |
 
 **The sandbox:**
 - It runs with every namespace unshared (mount, process, user, IPC, network),
@@ -60,18 +60,112 @@ database files. A command that could see either one could read everything.
 - Command output past 20 KB is cut to its last 20 KB before Pi sees it. Pi
   would otherwise save long output to a plaintext temp file on the host.
 
-**SSH targets** use an in-process SSH library (`ssh2`). Each private key is
-stored in the user's encrypted settings and handed to the library in memory,
-so it never touches disk, and no system `ssh` agent is involved.
-- `lyrica admin ssh add` generates an ed25519 key and prints the public half
-  to install on the remote account.
-- The host key is pinned on first connection; a different key later fails.
-- The root path check follows remote symlinks. Commands are not confined by
-  it, only by the remote account.
-- Writes follow the same rule there: for a file the remote account owns, an
-  SFTP temp file with the old mode and group, then `posix-rename` (plain
-  rename where the server lacks it); otherwise, or if the temp file can't be
-  made, the file is written in place.
+## Machines
+
+A machine is one of Li's other computers that she works on over SSH. The
+SSH targets that existed before became general machines at Ask.
+
+- **Kept in `user.db`** (`machines`): name, address, account, the private
+  key, an optional root, the host key Li confirmed, the pool, the **mode
+  limit**, whether the address is off network, and when she last
+  connected. The key is generated in memory, stored only there, and handed to
+  the SSH client in memory; she never sees it.
+- **One pool each.** A general thread grants general machines and a private
+  thread private ones (`setThread` refuses the other pool, and every call
+  checks again). `setMachinePool` takes the machine from every thread that
+  granted it, with any commands allowed there.
+- **Threads grant machines** (`machines` in the thread's settings). `read`,
+  `write`, `edit` and `bash` take an optional `machine`; without it they run
+  in the sandbox. A subagent or child thread gets a subset of its parent's
+  machines, and loses one at once when its parent does (`effective`). The
+  `workspace` prompt section lists the thread's machines with their limits.
+- **Mode on a machine** is the stricter of the thread's effective mode and
+  the machine's limit (Ask, Accept edits or Auto; new machines start at
+  Ask), read on every call (`Workspace.callMode`). Plan mode may `read` on a
+  machine and nothing else.
+- **The first call on a machine in a turn asks**, whatever the modes, if
+  anything earlier in the turn ran somewhere else (the sandbox or another
+  machine). A subagent counts its own turn: what its parent ran before
+  doesn't count.
+- **Approvals are bound to what was shown.** A request for a machine carries
+  the machine, the command or path, and the folder a command runs in. The
+  call runs only if its arguments are still exactly those; anything else is
+  refused. A request is denied on Stop, on timeout, or with nobody to ask, so
+  none outlives its turn.
+- **Suspect commands always ask** on a machine, in every mode, with a warning
+  sentence (`suspectCommand`, `SUSPECT_COMMANDS` in
+  `core/src/workspace/machines.ts`): deleting `/`, `/*`, a home folder or a
+  top-level system folder; `mkfs`; `dd` onto `/dev/…`; recursive `chmod`,
+  `chown` or `chgrp` on `/`; `userdel` or `deluser`; `shutdown`, `reboot`,
+  `poweroff`, `halt`, `systemctl reboot|poweroff|halt|kexec`, `init 0|6`;
+  `qm destroy` and `pct destroy`. Wrappers such as `sudo`, `env`, `nice` and
+  `timeout` (with their flag values), a program's path, and `bash -c '…'`
+  are looked through; `cd / && rm -rf *` is not caught. The answer may say **Allow in this
+  thread**: that exact command on that machine no longer asks in that
+  thread, and nowhere else. The list is short and fixed, a warning layer and
+  not the boundary: the boundary is the account's own rights and the
+  root-owned keys file.
+- **A floor no mode lifts:** `write` and `edit` on a machine refuse any path
+  in a `.ssh` folder, under `/etc/ssh/`, or `/etc/sudoers*`, before and after
+  following symlinks.
+- **Output** of commands is capped as in the sandbox, stripped of terminal
+  control sequences, and private-key blocks are replaced with `[private key
+  removed]` (PEM and OpenSSH keys, and PGP private key blocks). `read`
+  masks key blocks too; `edit` reads the file as it is, so
+  writing it back keeps the key.
+- **The host key is confirmed when the machine is added**, never pinned on
+  first use: a machine with no key from before can't be reached until Li
+  confirms one; a key pinned on first use before machines existed is kept
+  as confirmed. A different key fails every call, with no
+  fallback, until Li confirms the new one (`setHostKey`). Strict key
+  exchange (`kex-strict-*`) is required. No agent, no forwarding.
+- **Off network.** Before each connection the address is resolved and the
+  connection goes to that address. If it resolves outside Li's LAN,
+  loopback and tailnet (the model endpoints' check), the machine is marked
+  off network. A private machine that has newly gone off network is refused
+  until Li confirms (`confirmOffNetwork`), so a DNS change can't get past the
+  warning; back on network clears the mark.
+- **The SSH client** sits behind `SshTransport`
+  (`core/src/workspace/transport.ts`): `SshTarget` keeps the root, the
+  floor, the output cleaning and the host key check, and the transport only
+  connects and moves bytes. Today the transport is `ssh2` inside `lyricad`.
+- **Writes** follow the sandbox's rule: for a file the account owns, an SFTP
+  temp file with the old mode and group, then `posix-rename` (plain rename
+  where the server lacks it); otherwise, or if the temp file can't be made,
+  the file is written in place. The root path check follows remote
+  symlinks. Commands are confined only by the account.
+- **The record** is the thread: `write` and `edit` changes on a machine are
+  recorded with snapshots like the sandbox's (target `ssh:<name>`), so
+  removing the turns puts them back if the thread still has the machine.
+  Commands on a machine can't be undone by Lyrica. The machine's own auth log
+  records every login under the key's comment `lyrica:<login>:<machine>`.
+
+**Adding a machine** (`Workspace.probeMachine`, then `addMachine`, or
+`lyrica admin ssh add`): Lyrica makes a key pair and keeps it in memory for
+an hour; nothing is saved until Li confirms the host key. The key's
+`authorized_keys` line is `restrict,from="<Lyrica's addresses>" ssh-ed25519
+…`, usable only from this computer. The setup, run as root on the machine:
+
+```sh
+# 1. Her key, in a file only root can change
+install -d -m 755 /etc/ssh/authorized_keys
+printf '%s\n' '<the key line>' > /etc/ssh/authorized_keys/<account>
+chmod 644 /etc/ssh/authorized_keys/<account>
+printf 'Match User <account>\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\n' > /etc/ssh/sshd_config.d/lyrica.conf
+sshd -t && systemctl reload ssh
+
+# 2. Optional: sudo for exact commands only (visudo -f /etc/sudoers.d/lyrica)
+<account> ALL=(root) NOPASSWD: /usr/bin/systemctl restart nginx
+```
+
+The test then reads the host key the machine shows and tries the login,
+and Li compares the fingerprint with `ssh-keygen -lf
+/etc/ssh/ssh_host_ed25519_key.pub` on the machine before confirming. A
+private machine that resolves off network needs a second confirmation.
+Replacing the key (`setHostKey`) re-confirms the host key only; her own key
+pair stays as it was. A test answers whatever the machine said (refused,
+timed out), so any signed-in user can learn whether an address answers on
+a port, as they could from a sandbox with network.
 
 ## Grants: what she may touch
 
@@ -221,9 +315,9 @@ How it is enforced:
   `lyrica dev` prints it.
 - IPv4 only for now: sandboxes run `pasta --ipv4-only`, and IPv6 host
   entries are refused until IPv6 is supported end to end.
-- SSH targets don't depend on these switches: `lyricad`'s SSH client reaches
-  them, not the sandbox. Model calls also come from `lyricad`, so local-only
-  and the switches are independent.
+- Machines don't depend on these switches: `lyricad`'s SSH client reaches
+  them, not the sandbox, and a machine's network is its own. Model calls
+  also come from `lyricad`, so local-only and the switches are independent.
 
 ## Subagents
 
@@ -239,14 +333,15 @@ settings:
 - **Mode:** the parent's or stricter, in the order Plan, Ask, Accept edits,
   Auto.
 - **Switches:** each off if the parent's is off.
+- **Machines:** the parent's or a subset.
 
 A subagent can never widen what its parent was given. `inheritSettings`
 copies the parent's settings, or the narrower ones it is given, and the
 subagent's settings are checked against its parent's whenever they change and
 before every use. What its tools follow is `effective(thread)`: its own
 settings with the strictest mode and switches of every ancestor, read on each
-call, so a parent switched to Plan or with a switch turned off narrows its
-subagents at once. A subagent always uses its parent's target. Parallel
+call, so a parent switched to Plan, with a switch turned off or with a
+machine taken away narrows its subagents at once. Parallel
 writers get their own git worktrees (see [delegation.md](delegation.md)).
 
 ## Approval
@@ -295,10 +390,11 @@ annotated as reaching outside (`openWorldHint`) and not read-only.
 ## Tools
 
 `read`, `write`, `edit` and `bash`, and `propose_plan` in a thread that isn't a subagent, built from Pi's own tool definitions
-with the thread's target looked up on every call, so changing a thread's
-settings applies at once. Commands typed with `!` in the terminal go to the
-same target. A short `workspace` prompt section tells her where she works,
-what she was given and whether she has internet. Pi's `grep`, `find` and `ls` can be added
+with the call's target (the sandbox, or the machine its `machine` argument
+names) looked up on every call, so changing a thread's settings applies at
+once. Commands typed with `!` in the terminal run in the sandbox. A short
+`workspace` prompt section tells her where she works, what she was given,
+whether she has internet, and her machines. Pi's `grep`, `find` and `ls` can be added
 inside the 30-tool budget if `bash` turns out not to be enough. The memory tool
 is `read_memory`, so it doesn't clash with `read`.
 

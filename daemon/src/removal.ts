@@ -21,8 +21,10 @@ export interface RemovalContext {
   /** Uploads the removed messages mention that a kept entry mentions too: they stay. */
   uploadsKept: Set<string>;
   changes: FileChanges;
-  /** The thread's tools' target now, or undefined when it can't be reached (locked home). */
+  /** The thread's sandbox now, or undefined when it can't be reached (locked home). */
   target: ExecutionTarget | undefined;
+  /** A file change's target by name ("sandbox" or "ssh:<machine>"), or undefined when the thread can't reach it now. */
+  targetOf(name: string): ExecutionTarget | undefined;
   grants: Grant[];
 }
 
@@ -49,7 +51,8 @@ export async function removalPlan(c: RemovalContext): Promise<RemovalPlan & { ch
     subagents: c.subagents.length,
     files: [], branches: [], commands: [],
   };
-  const commands = calls.filter((x) => x.name === "bash" && typeof x.args.command === "string").map((x) => String(x.args.command));
+  const bash = calls.filter((x) => x.name === "bash" && typeof x.args.command === "string");
+  const commands = bash.map((x) => (x.args.machine ? `${String(x.args.machine)}: ${String(x.args.command)}` : String(x.args.command)));
   plan.commands = commands.slice(0, COMMANDS_SHOWN).map((t) => (t.length > 200 ? `${t.slice(0, 200)}…` : t));
   if (!c.target) {
     plan.files = [...new Set(changes.map((ch) => ch.path))].map((path) => ({ id: fileId("?", path), path, action: "keep" as const, reason: "unreachable" as const, ticked: false }));
@@ -63,8 +66,10 @@ export async function removalPlan(c: RemovalContext): Promise<RemovalPlan & { ch
   for (const [id, list] of byFile) {
     const first = list[0]!;
     const last = list.at(-1)!;
-    if (first.target !== target.name) { plan.files.push({ id, path: first.path, action: "keep", reason: "unreachable", ticked: false }); continue; }
-    const now = await target.ops().read.readFile(first.path).catch(() => undefined);
+    const there = c.targetOf(first.target);
+    if (!there) { plan.files.push({ id, path: first.path, action: "keep", reason: "unreachable", ticked: false }); continue; }
+    // edit's read gets the file as it is; read masks keys on a machine.
+    const now = await there.ops().edit.readFile(first.path).catch(() => undefined);
     if (!now && first.created) continue; // already gone
     if (!now || sha256(now) !== last.hashAfter) { plan.files.push({ id, path: first.path, action: "keep", reason: "changed since", ticked: false }); continue; }
     plan.files.push({ id, path: first.path, action: first.created ? "delete" : "restore", ticked: true });
@@ -80,9 +85,9 @@ export async function removalPlan(c: RemovalContext): Promise<RemovalPlan & { ch
     }
   }
 
-  // Branches: made by her commands, or her subagents' worktree branches.
+  // Branches: made by her commands in the sandbox, or her subagents' worktree branches.
   const candidates: { repo: string; pattern: string }[] = [];
-  for (const cmd of commands) {
+  for (const cmd of bash.filter((x) => !x.args.machine).map((x) => String(x.args.command))) {
     for (const m of cmd.matchAll(NEW_BRANCH)) {
       const dir = m[2] ?? m[1];
       candidates.push({ repo: dir ? posix.resolve(cwd, dir.replace(/^["']|["']$/g, "")) : cwd, pattern: m[3]! });
@@ -104,19 +109,23 @@ export async function removalPlan(c: RemovalContext): Promise<RemovalPlan & { ch
 }
 
 /** Applies the plan's items that are ticked, minus those in `skip`. Returns how many files and branches it undid. */
-export async function applyRemoval(plan: RemovalPlan & { changes: FileChange[] }, target: ExecutionTarget | undefined, changes: FileChanges, skip: Set<string>): Promise<{ files: number; branches: number }> {
+export async function applyRemoval(plan: RemovalPlan & { changes: FileChange[] }, c: Pick<RemovalContext, "target" | "targetOf">, changes: FileChanges, skip: Set<string>): Promise<{ files: number; branches: number }> {
   let files = 0;
   let branches = 0;
+  const target = c.target;
   if (target) {
     for (const f of plan.files) {
       if (!f.ticked || skip.has(f.id)) continue;
+      const first = plan.changes.find((ch) => fileId(ch.target, ch.path) === f.id);
+      // An upload is in the sandbox; a file change is undone where it was made.
+      const there = first ? c.targetOf(first.target) : target;
+      if (!there) continue;
       try {
         if (f.action === "delete") {
-          if ((await sh(target, `rm -f -- ${quote(f.path)}`)).ok) files++;
+          if ((await sh(there, `rm -f -- ${quote(f.path)}`)).ok) files++;
         } else if (f.action === "restore") {
-          const first = plan.changes.find((ch) => fileId(ch.target, ch.path) === f.id);
           if (!first?.snapshot) continue;
-          await target.ops().write.writeFile(f.path, changes.snapshot(first.snapshot));
+          await there.ops().write.writeFile(f.path, changes.snapshot(first.snapshot));
           files++;
         }
       } catch { /* left as it is */ }

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { CallInfo, EndpointInfo, MessagePage, ThreadEvent, ThreadSettings, ThreadSummary, UploadResponse } from "../src/api.ts";
+import type { CallInfo, EndpointInfo, MachineInfo, MachineProbe, MessagePage, PermissionRequest, ThreadEvent, ThreadSettings, ThreadSummary, UploadResponse } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 /** An unlocked lyricad, Li logged in, a local model, and one general thread. */
@@ -18,6 +18,7 @@ async function setup(opts: Parameters<typeof daemon>[1] = {}, title: string | nu
   return { rt, ...dm, li, model, thread, path };
 }
 
+const KEY = `SHA256:${"A".repeat(43)}`;
 const is = (type: ThreadEvent["type"]) => (e: ThreadEvent) => e.type === type;
 
 describe("a conversation", () => {
@@ -173,6 +174,58 @@ describe("permission prompts", () => {
     await li.post(`${path}/stop`);
     await stream.until(is("turn_end"));
     expect(stream.events.find((e) => e.event.type === "permission_end")!.event).toMatchObject({ allowed: false, reason: "stopped" });
+    stream.close();
+  });
+});
+
+describe("machines", () => {
+  it("are added after a test and a confirmed host key, and a suspect command asks until allowed in the thread", async () => {
+    const { rt, li, model, path } = await setup({ permissionMs: 5_000 });
+    const u = `/api/u/${rt.li.id}/machines`;
+    // Nothing listens there: the test still gives a key and its setup steps, and nothing is saved.
+    const probe = (await li.post<MachineProbe>(`${u}/probe`, { name: "nas", address: "lyrica@127.0.0.1:1" })).body;
+    expect(probe).toMatchObject({ login: false, offNetwork: false });
+    expect(probe.setup).toContain("/etc/ssh/authorized_keys/lyrica");
+    expect((await li.get<MachineInfo[]>(u)).body).toEqual([]);
+    expect((await li.post(u, { name: "nas", address: "lyrica@127.0.0.1:1", pool: "general", draft: "nope", hostKey: KEY })).status).toBe(400);
+    const added = (await li.post<MachineInfo>(u, { name: "nas", address: "lyrica@127.0.0.1:1", root: "/srv", pool: "general", draft: probe.draft, hostKey: KEY })).body;
+    expect(added).toMatchObject({ name: "nas", address: "lyrica@127.0.0.1:1", pool: "general", limit: "ask", hostKey: KEY });
+    expect(added.keyLine).toMatch(/^restrict/);
+    await li.patch(`${u}/nas`, { limit: "auto" });
+    expect((await li.patch(`${path}/settings`, { machines: ["nas"] })).status).toBe(200);
+    expect((await li.get<ThreadSettings>(`${path}/settings`)).body.machines).toEqual(["nas"]);
+
+    model.reply({ tools: [{ name: "bash", args: { command: "sudo reboot", machine: "nas" } }] }, { text: "it didn't connect" });
+    const stream = li.events(`${path}/events`);
+    await li.post(`${path}/messages`, { text: "restart it" });
+    await stream.until(is("permission"));
+    const request = stream.events.find((e) => e.event.type === "permission")!.event as PermissionRequest;
+    expect(request).toMatchObject({ tool: "bash", machine: "nas", suspect: true, warning: "This shuts the machine down or restarts it." });
+    await li.post(`${path}/permissions/${request.requestId}`, { allow: true, allowInThread: true });
+    await stream.until(is("turn_end"));
+    // The same command in the same thread no longer asks; it runs (and fails to connect, with no fallback).
+    model.reply({ tools: [{ name: "bash", args: { command: "sudo reboot", machine: "nas" } }] }, { text: "again" });
+    const again = li.events(`${path}/events`);
+    await again.until(is("hello"));
+    await li.post(`${path}/messages`, { text: "once more" });
+    await again.until(is("turn_end"));
+    expect(again.events.some((e) => e.event.type === "permission")).toBe(false);
+    expect(again.events.find((e) => e.event.type === "tool_end")!.event).toMatchObject({ name: "bash", isError: true });
+    stream.close();
+    again.close();
+  });
+
+  it("refuses Allow in this thread for a request that isn't a suspect command", async () => {
+    const { li, model, path } = await setup({ permissionMs: 5_000 });
+    await li.patch(`${path}/settings`, { mode: "acceptEdits" });
+    model.reply({ tools: [{ name: "bash", args: { command: "echo hi" } }] }, { text: "ok" });
+    const stream = li.events(`${path}/events`);
+    await li.post(`${path}/messages`, { text: "go" });
+    await stream.until(is("permission"));
+    const request = stream.events.find((e) => e.event.type === "permission")!.event as PermissionRequest;
+    expect((await li.post(`${path}/permissions/${request.requestId}`, { allow: true, allowInThread: true })).status).toBe(400);
+    await li.post(`${path}/permissions/${request.requestId}`, { allow: false });
+    await stream.until(is("turn_end"));
     stream.close();
   });
 });

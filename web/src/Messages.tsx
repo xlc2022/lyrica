@@ -401,7 +401,8 @@ function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest
     : <>Her <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: sub.threadId })}>{sub.role} subagent</a> wants</>;
   return (
     <div className="permission" role="group" data-pending="Approval" aria-label={`Allow ${p.tool}${sub ? ` for the ${sub.role} subagent` : ""}?`}>
-      <p>{who} to use <b>{p.tool}</b>:</p>
+      <p>{p.machine && <><b>{p.machine}</b>: </>}{who} to use <b>{p.tool}</b>{p.machine && p.cwd ? <> in <span className="mono">{p.cwd}</span></> : null}:</p>
+      {p.warning && <p role="alert">{p.warning}</p>}
       <pre>{typeof p.args === "object" && p.args && "command" in p.args ? String((p.args as { command: unknown }).command) : JSON.stringify(p.args, null, 2)}</pre>
       <div className="row">
         <button type="button" className="primary" disabled={busy} onClick={() => answer(true)}>Allow</button>
