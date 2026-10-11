@@ -43,7 +43,7 @@ export async function memorySections(view: PoolView, prompt: string, ctx: Memory
   const index = own.pageIndex().map((p) => `- [${p.id}] ${p.title}: ${p.summary}`).join("\n");
   const stores = [{ prefix: "", store: own }, ...view.reads.map((store) => ({ prefix: `${store.pool}/`, store }))];
   const folderPages = stores.flatMap(({ prefix, store }) => store.forFolders(ctx.folders).map((p) => ({ ...p, id: prefix + p.id })));
-  const hits = prompt.trim() ? search(view, prompt, { current: true, limit: RECALL_HITS, excludeThread: ctx.threadId }, ctx.hide) : [];
+  const hits = prompt.trim() ? search(view, prompt, { current: true, limit: RECALL_HITS, excludeThread: ctx.threadId, fromThread: ctx.threadId }, ctx.hide) : [];
   const item = own.itemForThread(ctx.threadId);
   return {
     notice: own.getThread(ctx.threadId)?.unlogged ? UNLOGGED_NOTICE : undefined,

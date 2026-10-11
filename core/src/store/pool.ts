@@ -106,6 +106,8 @@ export interface SearchOptions {
   current?: boolean;
   /** Leave out entries of this thread (already in context). */
   excludeThread?: string;
+  /** The thread searching. In a project, what belongs to it (notes citing its threads, its page, its threads' entries) ranks higher. */
+  fromThread?: string;
   includeArchived?: boolean;
 }
 
@@ -181,6 +183,8 @@ const json = <T>(s: string): T => JSON.parse(s) as T;
 const entryId = (thread: string, n: number) => `e:${thread}#${n}`;
 const TOOL_TEXT_LIMIT = 2000;
 const GOAL_LIMIT = 2000;
+/** How much more a project's own memories weigh in recall from inside that project. A boost, never a filter. */
+export const PROJECT_BOOST = 1.5;
 
 /** The slug of a project's page: thread IDs hold '/', which slugs don't. */
 export const projectSlug = (projectId: string) => `project-${projectId.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
@@ -462,14 +466,27 @@ export class PoolReader {
     const rows = this.db.prepare("SELECT id, kind, bm25(search) AS rank FROM search WHERE search MATCH ? ORDER BY rank LIMIT ?")
       .all(fts, limit * 4) as { id: string; kind: Kind; rank: number }[];
     const words = queryWords(query);
+    const threads = opts.fromThread ? this.projectThreads(opts.fromThread) : [];
+    const ours = threads.length ? this.inProject(rows.map((r) => r.id), threads) : undefined;
     const hits: Hit[] = [];
     for (const row of rows) {
       if (opts.kinds && !opts.kinds.includes(row.kind)) continue;
-      const hit = this.hit(row.id, row.kind, words, -row.rank, opts);
+      const hit = this.hit(row.id, row.kind, words, -row.rank * (ours?.has(row.id) ? PROJECT_BOOST : 1), opts);
       if (hit) hits.push(hit);
-      if (hits.length >= limit) break;
+      if (!ours && hits.length >= limit) break;
     }
-    return hits;
+    return ours ? hits.sort((a, b) => b.score - a.score).slice(0, limit) : hits;
+  }
+
+  /** Which of `ids` belong to the project made of `threads`: its page, its threads' entries, and memories citing them. */
+  private inProject(ids: string[], threads: string[]): Set<string> {
+    const page = `p:${projectSlug(threads[0]!)}`;
+    const ours = new Set(ids.filter((id) => id === page || threads.some((t) => id.startsWith(`e:${t}#`))));
+    const citing = this.db.prepare(`SELECT DISTINCT c.src FROM citations c, json_each(@ids) i, json_each(@threads) t
+      WHERE c.src = i.value AND (c.dst = 't:' || t.value OR c.dst LIKE 'e:' || t.value || '#%')`)
+      .all({ ids: JSON.stringify(ids), threads: JSON.stringify(threads) }) as { src: string }[];
+    for (const r of citing) ours.add(r.src);
+    return ours;
   }
 
   private hit(id: string, kind: Kind, words: string[], score: number, opts: SearchOptions): Hit | undefined {

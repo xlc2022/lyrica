@@ -56,7 +56,7 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
     }),
     async execute(_id, params) {
       const c = ctx();
-      const hits = search(view, params.query, { limit: params.limit ?? 8, excludeThread: c.threadId }, c.hide);
+      const hits = search(view, params.query, { limit: params.limit ?? 8, excludeThread: c.threadId, fromThread: c.threadId }, c.hide);
       return text(hits.length ? hits.map((h) => formatHit(h, c.user)).join("\n") : "Nothing found.");
     },
   });
