@@ -25,7 +25,7 @@ jobs:
       # Ubuntu 24.04's AppArmor blocks unprivileged user namespaces by default.
       - run: |
           sudo apt-get update
-          sudo apt-get install -y bubblewrap gocryptfs fuse3 openssh-server passt nftables
+          sudo apt-get install -y build-essential bubblewrap gocryptfs fuse3 openssh-server passt nftables
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - run: npm ci
       - run: npm run typecheck
@@ -57,6 +57,13 @@ jobs:
       - if: failure()
         run: docker compose logs
         working-directory: host
+      # TEMPORARY (self-hosted runner bring-up): why builds can't resolve names.
+      - if: failure()
+        run: |
+          docker version --format '{{.Server.Version}}'; cat /etc/docker/daemon.json || true
+          resolvectl dns || true; sudo nft list tables || true
+          printf 'FROM busybox:1.36\nRUN cat /etc/resolv.conf; nslookup github.com\n' | docker build --no-cache --progress=plain - || true
+          docker run --rm busybox:1.36 sh -c 'cat /etc/resolv.conf; nslookup github.com' || true
       # The runner is kept between jobs: leave nothing for the next run, not
       # the stack and its volumes, the egress unit and rules, or the Docker
       # setting from the first step (setup.sh leaves no daemon.json).

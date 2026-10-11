@@ -28,7 +28,7 @@ esac
 # What the jobs expect to find. They install the rest themselves with sudo,
 # as they do on GitHub's runners.
 apt-get update
-apt-get install -y curl git jq python3 iptables docker.io docker-compose-v2 docker-buildx
+apt-get install -y build-essential curl git jq python3 iptables docker.io docker-compose-v2 docker-buildx
 
 # The jobs run as an ordinary user with passwordless sudo and Docker, as on
 # GitHub's runners: the sandbox tests refuse to run as root, and the model
