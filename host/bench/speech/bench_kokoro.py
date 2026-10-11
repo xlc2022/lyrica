@@ -20,6 +20,17 @@ EXPORTS = {
 
 environment(PART)
 
+import glob  # noqa: E402
+import site  # noqa: E402
+
+# cuDNN loads its sub-libraries (engines, kernels) by name on the first run, so
+# the nvidia-* wheels' bin folders must be on the DLL search path, not only
+# preloaded. Without this, ONNX Runtime falls back to the CPU on Windows.
+for d in sorted({p for root in site.getsitepackages() for p in glob.glob(os.path.join(root, "nvidia", "*", "bin"))}):
+    os.environ["PATH"] = d + os.pathsep + os.environ.get("PATH", "")
+    if hasattr(os, "add_dll_directory"):
+        os.add_dll_directory(d)
+
 import espeakng_loader  # noqa: E402
 import numpy as np  # noqa: E402
 import onnxruntime as ort  # noqa: E402
@@ -111,6 +122,8 @@ for export, (repo, voices) in EXPORTS.items():
                         "speed": np.array([1.0], dtype=np.float32),
                     }
                     seconds, out = median_time(lambda: session.run(None, feed)[0])
+                    # ONNX Runtime may fall back to the CPU on the first run (a cuDNN that won't load): record what ran.
+                    used = session.get_providers()[0]
                     audio = np.asarray(out).reshape(-1)
                     if device == "cuda":
                         write_wav(os.path.join(SAMPLES, f"{export}_{voice}_{key}.wav"), audio, RATE)

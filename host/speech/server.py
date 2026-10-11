@@ -115,6 +115,12 @@ class Model:
         self.styles = {}
         # Load the phonemizers now, so the first sentence isn't slow.
         VOICES.phonemes("zf_", "你好, hello.", self.version)
+        # One short run now: ONNX Runtime sets up the GPU on the first run, and
+        # falls back to the CPU there if it can't (a cuDNN that won't load).
+        voices = sorted(f for f in os.listdir(os.path.join(folder, "voices")) if f.endswith(".bin"))
+        if voices:
+            style = np.fromfile(os.path.join(folder, "voices", voices[0]), dtype=np.float32).reshape(-1, 1, 256)
+            self.session.run(None, {self.ids: np.array([[0, 1, 0]], dtype=np.int64), "style": style[1], "speed": np.array([1.0], dtype=np.float32)})
 
     def _vocab(self):
         for name, keys in (("config.json", ("vocab",)), ("tokenizer.json", ("model", "vocab"))):

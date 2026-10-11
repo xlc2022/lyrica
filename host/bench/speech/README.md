@@ -26,6 +26,6 @@ named RTX 3090 if there is one, else the first.
    raw numbers, the logs and the voice samples (`samples\`), which you can
    listen to first.
 
-Delete the folder afterwards to get the space back. Nothing here touches
+To run it again with a newer copy of these files, unzip it over the old folder: `work\` is reused, so nothing is downloaded twice. Delete the folder afterwards to get the space back. Nothing here touches
 the model host or its models folder. `-Only kokoro,stt` runs only some
 parts.
