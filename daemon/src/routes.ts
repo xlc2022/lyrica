@@ -1629,7 +1629,9 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
   for (const k of ["webSearch", "images"] as const) if (change[k] !== undefined && typeof change[k] !== "boolean") throw new Error(`${k} is true or false`);
   if (change.fallback !== undefined && change.fallback !== null && typeof change.fallback !== "boolean") throw new Error("fallback is true, false or null");
   // The workspace checks grants, hosts, mode, switches, machines and the parent's limits, and writes only if all pass.
-  const wsChange = pick(change, [...WORKSPACE_KEYS]);
+  const wsChange: Partial<Pick<Api.ThreadSettingsChange, (typeof WORKSPACE_KEYS)[number]>> = pick(change, [...WORKSPACE_KEYS]);
+  // A machine an ancestor took off is gone from what the thread shows (`effective`): drop it from its own list too, so an unrelated change isn't refused for it.
+  if (parent && Object.keys(wsChange).length && wsChange.machines === undefined) wsChange.machines = ws.effective(thread.id).machines;
   if (Object.keys(wsChange).length) ws.setThread(thread.id, pool, wsChange);
 
   if (change.localOnly !== undefined && pool === "general") models.setLocalOnly(user.id, pool, thread.id, change.localOnly);

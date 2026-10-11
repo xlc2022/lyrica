@@ -231,6 +231,8 @@ describe("child threads", () => {
     expect((await li.patch(`${path}/settings`, { machines: [] })).status).toBe(200);
     await view.until((e) => e.type === "settings");
     expect((await li.get<ThreadSettings>(`${childPath(id)}/settings`)).body.machines).toEqual([]);
+    // The machine it can no longer see doesn't block an unrelated change.
+    expect((await li.patch(`${childPath(id)}/settings`, { webSearch: false })).status).toBe(200);
   });
 
   it("hold the limits: a message that wakes an idle child counts, and so do another parent's children", async () => {
