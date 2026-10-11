@@ -141,6 +141,11 @@ describe("dictation", () => {
     expect(refused).toMatchObject({ status: 400, body: { error: "openai/whisper-large-v3-turbo is a cloud model, and Voice to cloud is off, so the clip wasn't sent" } });
     expect(cloud.heard).toEqual([]);
 
+    // Read aloud while she writes is a user setting, off by default, that ThreadSettings.speech carries.
+    expect(settings.speech.readAloudLive).toBe(false);
+    expect((await s.li.patch<Profiles>(`${s.u}/profiles`, { readAloudLive: true })).body.readAloudLive).toBe(true);
+    expect((await s.li.get<ThreadSettings>(`${s.path}/settings`)).body.speech.readAloudLive).toBe(true);
+    expect((await s.li.patch(`${s.u}/profiles`, { readAloudLive: "yes" })).status).toBe(400);
     // On by default, off in this thread: off.
     expect((await s.li.patch<Profiles>(`${s.u}/profiles`, { voiceCloud: true })).body.voiceCloud).toBe(true);
     settings = (await s.li.patch<ThreadSettings>(`${s.path}/settings`, { voiceCloud: false })).body;

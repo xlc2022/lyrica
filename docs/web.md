@@ -321,10 +321,17 @@ A thread's address may carry what the panel beside it shows:
   **Stop reading**, a square in accent. Only one thing plays at a time: Stop
   reading, the mic, sending, another Read aloud or leaving the thread stops
   it. Disabled with the reason as its tooltip when no Read aloud model can be
-  used here. The message she is still writing has no button.
+  used here. The message she is still writing has no button unless
+  **Read aloud while she writes** is on (`ThreadSettings.speech.readAloudLive`):
+  then its actions hold one too, playing `…/messages/live/speech`, which
+  follows her to the end; when her stored copy replaces it, the last
+  message's button owns that reading (Stop reading until it ends). In a
+  split view each pane's buttons are its own, and still only one plays.
 - **Voice to cloud** is a switch in the thread settings drawer's Privacy and
   network section, under Internet, following the user's default until
-  changed (Use default goes back); the default is in Settings, Network. The Model profiles section has Dictation and Read aloud
+  changed (Use default goes back); the default is in Settings, Network.
+  **Read aloud while she writes** (`Profiles.readAloudLive`) is a switch
+  under Speech in Settings, Appearance. The Model profiles section has Dictation and Read aloud
   rows that offer only models that transcribe or speak, and a speaking model
   in the Endpoints list has a Settings link opening its drawer: a voice per
   language (English, Mandarin) and the speed (a number, of 4, clamped when

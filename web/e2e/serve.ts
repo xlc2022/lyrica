@@ -97,9 +97,11 @@ function fakeModel() {
         send({}, "tool_calls");
       } else {
         const text = command ? "The command finished." : plan ? "On it." : `You said: ${said.slice(0, 200)}. This reply comes from the fake ${chat.model}, in a few pieces.`;
+        // A message that says "slowly" streams slowly enough to be read aloud while it is written.
+        const pace = /slowly/.test(said) ? 300 : 30;
         for (const piece of text.match(/.{1,12}/gs) ?? []) {
           send({ role: "assistant", content: piece });
-          await new Promise((r) => setTimeout(r, 30));
+          await new Promise((r) => setTimeout(r, pace));
         }
         send({}, "stop");
       }

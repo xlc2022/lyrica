@@ -355,7 +355,10 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
   thread's switch (null follows the default), changed with
   `ThreadSettingsChange.voiceCloud`; the default is `Profiles.voiceCloud`.
   Under a parent with it off, a branch can only keep it off, or follow the
-  default when the parent does too.
+  default when the parent does too. `Profiles.readAloudLive` (changed with
+  `ProfilesChange.readAloudLive`, off by default) is Read aloud while she
+  writes; `Speech.readAloudLive` carries it so the web knows whether to
+  offer `messages/live/speech`.
 - `ThreadSettings.answered` skips speech calls, so the context meter reads
   the chat call.
 
