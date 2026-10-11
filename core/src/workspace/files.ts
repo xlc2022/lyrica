@@ -34,7 +34,10 @@ export const LIST_LIMIT = 2000;
 export const SEARCH_LIMIT = 200;
 export const ZIP_FILES_LIMIT = 10_000;
 const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp"];
-const PRINTF = String.raw`%y\t%s\t%T@\t%p\n`;
+// Entries end in NUL, not newline: a name may hold a newline or a tab, so the
+// path is everything after the fixed fields.
+const PRINTF = String.raw`%y\t%s\t%T@\t%p\0`;
+const ZIP_PRINTF = String.raw`%s\t%p\0`;
 
 /** Thrown for a path the panel may not touch: a root itself, or one outside the thread's folders. */
 export class FilesRefused extends Error {}
@@ -153,10 +156,11 @@ export class ThreadFiles {
     const files: { path: string; name: string; size: number }[] = [];
     for (const raw of paths) {
       const p = this.allow(raw, false);
-      const out = await this.file(["find", p, "-name", PANEL_DIR, "-prune", "-o", "-type", "f", "-printf", String.raw`%s\t%p\n`]);
-      for (const line of out.toString().split("\n").filter(Boolean)) {
-        const [size, path] = line.split("\t", 2) as [string, string];
-        files.push({ path, name: posix.relative(posix.dirname(p), path), size: Number(size) });
+      const out = await this.capped(["find", p, "-name", PANEL_DIR, "-prune", "-o", "-type", "f", "-printf", ZIP_PRINTF], ZIP_FILES_LIMIT + 1 - files.length);
+      for (const line of out) {
+        const tab = line.indexOf("\t");
+        const path = line.slice(tab + 1);
+        files.push({ path, name: posix.relative(posix.dirname(p), path), size: Number(line.slice(0, tab)) });
         if (files.length > ZIP_FILES_LIMIT) throw new FilesRefused(`more than ${ZIP_FILES_LIMIT} files; zip fewer at a time`);
       }
     }
@@ -230,10 +234,15 @@ export class ThreadFiles {
   }
 
   private async find(argv: string[], limit: number): Promise<FileListing> {
-    const out = await this.file(["sh", "-c", 'n=$1; shift; "$@" | head -n "$n"', "sh", String(limit + 1), ...argv]);
-    const lines = out.toString().split("\n").filter(Boolean);
+    const lines = await this.capped(argv, limit + 1);
     const entries = lines.slice(0, limit).map(parseLine);
     return { entries, more: lines.length > limit };
+  }
+
+  /** Runs a find that prints NUL-ended lines, stopping it after `n` of them. */
+  private async capped(argv: string[], n: number): Promise<string[]> {
+    const out = await this.file(["sh", "-c", 'n=$1; shift; "$@" | head -z -n "$n"', "sh", String(n), ...argv]);
+    return out.toString().split("\0").filter(Boolean);
   }
 
   /** Runs a command and throws its error output if it fails. */

@@ -268,6 +268,22 @@ describe.skipIf(!runnable)("the Files panel", () => {
     expect(readFileSync(p("outside", "secret.txt"), "utf8")).toBe("s3cr3t");
   });
 
+  it("keeps a name with a tab or a newline whole, in a listing and in a zip", async () => {
+    const f = files();
+    mkdirSync(p("work", "odd"));
+    writeFileSync(p("work", "odd", "a\tb.txt"), "tab");
+    writeFileSync(p("work", "odd", "c\nd.txt"), "newline");
+    const { entries } = await f.list("/workspace/odd");
+    expect(entries.map((e) => [e.name, e.size])).toEqual([["a\tb.txt", 3], ["c\nd.txt", 7]]);
+    expect((await f.search("/workspace", "b.txt")).entries.map((e) => e.path)).toEqual(["/workspace/odd/a\tb.txt"]);
+    const chunks: Buffer[] = [];
+    for await (const c of await f.zip(["/workspace/odd"])) chunks.push(c as Buffer);
+    const zip = Buffer.concat(chunks).toString("latin1");
+    expect(zip).toContain("odd/a\tb.txttab");
+    expect(zip).toContain("odd/c\nd.txtnewline");
+    await f.remove(["/workspace/odd"]);
+  });
+
   it("zips files and folders as it streams, with nothing written to disk", async () => {
     const f = files();
     const before = readdirSync(p("work"));
