@@ -541,6 +541,27 @@ test("linked users share a browser; logging in as anyone else signs this browser
   expect(state.users.map((x) => x.login)).toEqual(["sam"]);
 });
 
+test("Fallback is on by default and turns off per thread, with Use default to follow the default again", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  const drawer = await openSettings(page);
+  const fallback = drawer.getByLabel("Fallback", { exact: true });
+  await expect(fallback).toBeChecked();
+  await fallback.click();
+  await expect(fallback).not.toBeChecked();
+  const back = drawer.getByRole("button", { name: "Use default" });
+  if (process.env.SCREENSHOTS) {
+    await fallback.scrollIntoViewIfNeeded();
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.screenshot({ path: `${process.env.SCREENSHOTS}/fallback-off-${page.viewportSize()!.width}-${colorScheme}.png` });
+    }
+    await page.emulateMedia({ colorScheme: null });
+  }
+  await back.first().click();
+  await expect(fallback).toBeChecked();
+});
+
 test("with Read aloud while agent writes on, a reply can be read aloud as it streams, and her stored copy takes the reading over", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const shot = async (name: string) => {

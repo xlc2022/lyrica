@@ -117,12 +117,13 @@ CREATE TABLE IF NOT EXISTS local_only_threads (
   thread TEXT PRIMARY KEY
 );
 -- A thread's own profile (cloud or custom, general threads only), thinking
--- setting and Voice to cloud switch (null follows the user's default).
+-- setting, Voice to cloud and Fallback switches (null follows the user's default).
 CREATE TABLE IF NOT EXISTS thread_choices (
   thread      TEXT PRIMARY KEY,
   profile     TEXT,
   thinking    TEXT,
-  voice_cloud INTEGER
+  voice_cloud INTEGER,
+  fallback    INTEGER
 );
 -- Which model answered each call, and why a fallback was used. Never prompt text.
 CREATE TABLE IF NOT EXISTS model_calls (
@@ -156,6 +157,7 @@ export function upgradeCalls(db: Db): void {
   }
   if (!hasColumn(db, "model_calls", "audio_seconds")) db.exec("ALTER TABLE model_calls ADD COLUMN audio_seconds REAL");
   if (!hasColumn(db, "thread_choices", "voice_cloud")) db.exec("ALTER TABLE thread_choices ADD COLUMN voice_cloud INTEGER");
+  if (!hasColumn(db, "thread_choices", "fallback")) db.exec("ALTER TABLE thread_choices ADD COLUMN fallback INTEGER");
 }
 
 const hasColumn = (db: Db, table: string, column: string) =>

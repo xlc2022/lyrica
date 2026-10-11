@@ -306,6 +306,7 @@ interface CallContext {
   overrides?: Partial<Record<Task, ModelRef[]>>;   // the thread's own lists, which beat the profile
   thinking?: ThinkingLevel;
   voiceCloud?: boolean;                     // Voice to cloud; absent is off
+  fallback?: boolean;                       // Fallback; false: only a list's first entry answers; absent is on
 }
 interface Need { tools?: boolean; tokens?: number }        // what the call needs from a model
 interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: ProfileName;
@@ -826,7 +827,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     Web UI 2's thread menu uses them. `POST threads` with `project` (and
     `PATCH` making one) also pins the thread; `Display.projects: "all" |
     "only" | "none"` filters the list; `PATCH threads/:id` with `project`,
-    `goal`, `paused`, `threadsModel`, `threadsThinking` and `watchThreads`
+    `goal`, `paused`, `threadsModel`, `threadsThinking`, `threadsFallback` and `watchThreads`
     (`user.db` `project_settings`, IDs and switches only), and
     `projectSettings.pageId` names the project page's memory ID; a project chat's
     look at its threads is a user message marked `[Watching threads]`
@@ -917,7 +918,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `ThreadSettings.speech` (`Speech`, also `GET /api/u/:userId/speech?pool=`)
     and `voiceCloud` (null follows `Profiles.voiceCloud`);
     `ThreadSettingsChange.voiceCloud`, `ProfilesChange.voiceCloud`;
-    `Profiles.readAloudLive` and `Speech.readAloudLive` (Read aloud while agent
+    `ThreadSettings.fallback` (null follows `Profiles.fallback`) and
+    `fallbackOn`, `ThreadSettingsChange.fallback`, `ProfilesChange.fallback`
+    and `sleepFallback`;
+    `Profiles.readAloudLive` and `Speech.readAloudLive` (Read aloud while she
     writes, off by default), `ProfilesChange.readAloudLive`;
     `Capabilities.transcribe` and `speak`, `AnswerSettings.voices` and
     `speed`, `CallInfo.audioSeconds`. `VoiceCloudOff` is `400`;

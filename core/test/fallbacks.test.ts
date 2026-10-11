@@ -339,3 +339,60 @@ describe("every model away", () => {
     expect(isUnreachable("connect ECONNREFUSED 10.0.0.2:8080")).toBe(true);
   });
 });
+
+describe("Fallback off", () => {
+  it("lets only the list's first entry answer: a machine away is Offline, an unfit model a plain NoModel", async () => {
+    const s = await setup();
+    s.models.setProfile(s.li.id, "local", "chat", [s.blackwell.ref, s.spare.ref]);
+    const priv = s.ctx({ pool: "private", localOnly: true, fallback: false });
+    expect(s.models.resolve("chat", priv).ref).toEqual(s.blackwell.ref);
+    s.models.reportDown(s.blackwell.ep.id);
+    const away = (() => { try { s.models.resolve("chat", priv); } catch (e) { return e; } })();
+    expect(away).toBeInstanceOf(Offline);
+    expect((away as Offline).tried.map((t) => t.label)).toEqual(["blackwell/qwen3.8-27b"]);
+    // With it on, the same list falls back.
+    expect(s.models.resolve("chat", { ...priv, fallback: true }).ref).toEqual(s.spare.ref);
+    s.models.setCapabilities(s.li, s.blackwell.ref.offeringId, { tools: false });
+    s.models.reportUp(s.li.id, s.blackwell.ep.id);
+    expect(() => s.models.resolve("chat", priv, { tools: true })).toThrow(/can't use tools\), and Fallback is off$/);
+    // A call that fails on the first model is never retried on the next.
+    s.models.setCapabilities(s.li, s.blackwell.ref.offeringId, { tools: null });
+    const seen: string[] = [];
+    const refused = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:1"), { name: "TypeError" });
+    const out = await s.models.callWithFallback("title", priv, {}, async (r) => { seen.push(r.label); throw refused; }).catch((e: unknown) => e);
+    expect(out).toBeInstanceOf(Offline);
+    expect(seen).toEqual(["blackwell/qwen3.8-27b"]);
+  });
+
+  it("keeps a group's copies when the group is the first entry", async () => {
+    const s = await setup();
+    const g = s.models.addGroup(s.li, { name: "Qwen", members: [s.blackwell.ref.offeringId, s.spare.ref.offeringId] });
+    s.models.setProfile(s.li.id, "local", "chat", [{ groupId: g.id }, s.localRef]);
+    const priv = s.ctx({ pool: "private", localOnly: true, fallback: false });
+    s.models.reportDown(s.blackwell.ep.id);
+    expect(s.models.resolve("chat", priv).ref).toEqual(s.spare.ref);
+    s.models.reportDown(s.spare.ep.id);
+    expect(() => s.models.resolve("chat", priv)).toThrow(Offline);
+  });
+
+  it("is on by default, set per thread or as the default, and a child starts with its parent's", async () => {
+    const s = await setup();
+    const { models, li } = s;
+    expect(models.defaultFallback(li.id)).toBe(true);
+    expect(models.callContext(li.id, "general", "web/a").fallback).toBe(true);
+    models.setThreadFallback(li.id, "web/a", false);
+    expect([models.threadFallback(li.id, "web/a"), models.callContext(li.id, "general", "web/a").fallback]).toEqual([false, false]);
+    // A subagent or branch of it starts with it off, even after the default changes.
+    models.inheritContext(models.callContext(li.id, "general", "web/a"), "web/a.child");
+    expect(models.threadFallback(li.id, "web/a.child")).toBe(false);
+    models.setDefaultFallback(li.id, false);
+    expect(models.callContext(li.id, "general", "web/b").fallback).toBe(false);
+    models.setThreadFallback(li.id, "web/b", true);
+    models.inheritContext(models.callContext(li.id, "general", "web/b"), "web/b.child");
+    models.setDefaultFallback(li.id, true);
+    expect(models.callContext(li.id, "general", "web/b.child").fallback).toBe(true);
+    models.setThreadFallback(li.id, "web/a", null);
+    expect(models.threadFallback(li.id, "web/a")).toBeNull();
+    expect(() => models.setThreadFallback(li.id, "web/a", "no" as unknown as boolean)).toThrow(/true, false or null/);
+  });
+});

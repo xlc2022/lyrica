@@ -140,7 +140,9 @@ cheap request (such as listing models).
 - **Manual `/sleep` with the endpoint down:** an immediate, plain error.
 
 Cloud and general sleep never fall back to a different model. Retries stay
-within the pool's configured models.
+within the pool's configured models. With **Sleep fallback** off
+(`sleep.fallback`, Settings → Model profiles), each phase uses its list's
+first model only: when that one is away, the pool is skipped as above.
 
 ## Sleep in the UI
 

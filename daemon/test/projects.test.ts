@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
-import type { MessagePage, ProjectOverview, ThreadEvent, ThreadSummary } from "../src/api.ts";
+import type { MessagePage, Profiles, ProjectOverview, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 // Projects: a project chat whose child threads are the project's threads.
@@ -89,6 +89,22 @@ describe("projects", () => {
     // The project page, where the instructions are kept, opens by the ID the summary gives.
     expect((await li.get(`${u}/memory/general/${enc(project.projectSettings!.pageId)}`)).status).toBe(200);
     expect((await li.patch(path, { instructions: "x".repeat(2001) })).status).toBe(400);
+  });
+
+  it("start new threads with the project's Fallback, which each thread can change", async () => {
+    const { li, u, path, script, say, threadPath } = await setup();
+    expect((await li.patch<ThreadSummary>(path, { threadsFallback: false })).body.projectSettings).toMatchObject({ threadsFallback: false });
+    script("chat").push(start(["DNS", "dns: move DNS to the router"]), { text: "Started." });
+    const { events } = await say("move DNS");
+    const dns = ends(events).find((e) => e.result.startsWith("Started"))!.threads![0]!.id;
+    expect((await li.get<ThreadSettings>(`${threadPath(dns)}/settings`)).body).toMatchObject({ fallback: false, fallbackOn: false });
+    expect((await li.patch<ThreadSettings>(`${threadPath(dns)}/settings`, { fallback: null })).body).toMatchObject({ fallback: null, fallbackOn: true });
+    expect((await li.patch(`${threadPath(dns)}/settings`, { fallback: "off" })).status).toBe(400);
+    // Cleared, new threads follow the project chat's again.
+    expect((await li.patch<ThreadSummary>(path, { threadsFallback: null })).body.projectSettings?.threadsFallback).toBeUndefined();
+    // The defaults: new threads, and sleep's phases.
+    expect((await li.patch<Profiles>(`${u}/profiles`, { fallback: false, sleepFallback: false })).body).toMatchObject({ fallback: false, sleepFallback: false });
+    expect((await li.get<ThreadSettings>(`${path}/settings`)).body).toMatchObject({ fallback: null, fallbackOn: false });
   });
 
   it("queue a start past the limit, and run it when a slot frees", async () => {

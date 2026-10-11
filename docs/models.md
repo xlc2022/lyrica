@@ -219,6 +219,19 @@ from. The settings refuse a cloud model where it can't be used, and a
 replacement or merge never changes a model's kind. A private thread is
 always local-only.
 
+**Fallback off.** A thread, a project's new threads, the user's default
+and sleep each have a Fallback switch, on by default. With it off
+(`ctx.fallback === false`), `resolve` takes only the list's first entry: a
+group there still tries its copies, since the user declared them the same
+model, but nothing after it answers. So a machine that is away makes the
+task `Offline` (the turn waits, a call's fallback stops, Pi's retry is
+called off), and a model that can't take the call is a `NoModel` ending
+"and Fallback is off". `defaultFallback`, `setDefaultFallback`,
+`threadFallback` and `setThreadFallback` (null follows the default) keep it
+in `user.db` (`settings.fallback`, `thread_choices.fallback`).
+`inheritContext` gives a branch or subagent its parent's switch, whatever the
+default becomes.
+
 `resolveLive` first probes the chosen endpoint (2 seconds) when its health
 isn't known lately and there is a later model to fall back to (or always,
 with `probeLast`, as sleep asks).
@@ -237,7 +250,7 @@ with every model tried.
 `resolveModel` returns just the chosen `{ offeringId }`.
 
 `callContext(userId, pool, threadId)` reads a thread's local-only switch,
-profile, thinking level, Voice to cloud switch and lists from `user.db`.
+profile, thinking level, Voice to cloud and Fallback switches and lists from `user.db`.
 
 ## Each turn
 

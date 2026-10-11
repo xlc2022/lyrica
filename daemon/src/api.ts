@@ -422,6 +422,10 @@ export interface Profiles {
   thinking: ThinkingLevel;
   /** Voice to cloud, unless a thread chooses: whether the user's audio may go to a cloud model. Off by default. */
   voiceCloud: boolean;
+  /** Fallback, unless a thread chooses: whether a later model in a list may answer when the first can't. On by default. */
+  fallback: boolean;
+  /** Fallback for sleep's phases. On by default; off, a phase whose first model is away waits for the next night. */
+  sleepFallback: boolean;
   /** Read aloud while agent writes: Read aloud is offered on the reply she is still writing (`messages/live/speech`). Off by default. */
   readAloudLive: boolean;
 }
@@ -433,7 +437,7 @@ export interface Profiles {
  */
 export type ProfileEntryChange = { models: ModelRef[] | null } | { same: Task } | { model: ModelRef | null };
 /** PATCH /api/u/:userId/profiles → Profiles */
-export interface ProfilesChange { default?: "cloud" | "custom"; thinking?: ThinkingLevel; voiceCloud?: boolean; readAloudLive?: boolean }
+export interface ProfilesChange { default?: "cloud" | "custom"; thinking?: ThinkingLevel; voiceCloud?: boolean; fallback?: boolean; sleepFallback?: boolean; readAloudLive?: boolean }
 
 /**
  * One turn's counts and times. `promptTokens` is the whole prompt of its last
@@ -625,6 +629,8 @@ export interface ProjectSettingsInfo {
   /** The chat model new threads of the project start with; none: the project chat's. */
   threadsModel?: ModelRef | ModelRef[];
   threadsThinking?: ThinkingLevel;
+  /** Fallback for new threads of the project; none: the project chat's. */
+  threadsFallback?: boolean;
   /** After the person writes in a thread, or a thread posts an update, the project chat looks and tells the threads it affects. */
   watchThreads: boolean;
 }
@@ -647,7 +653,7 @@ export interface ThreadChange {
   /** `group` and `unread` are the user's own view of the thread, kept in user.db; `null` takes it out of its group. */
   group?: string | null; unread?: boolean;
   title?: string; hidden?: boolean; project?: true; goal?: string; instructions?: string;
-  paused?: boolean; threadsModel?: ModelRef | ModelRef[] | null; threadsThinking?: ThinkingLevel | null; watchThreads?: boolean;
+  paused?: boolean; threadsModel?: ModelRef | ModelRef[] | null; threadsThinking?: ThinkingLevel | null; threadsFallback?: boolean | null; watchThreads?: boolean;
 }
 /** PUT and DELETE /api/u/:userId/threads/:pool/:threadId/pin → ThreadSummary. The user's own pin, in user.db. */
 /**
@@ -740,6 +746,10 @@ export interface ThreadSettings {
   unlogged: boolean;
   /** Voice to cloud: the thread's choice, or null to follow the user's default. */
   voiceCloud: boolean | null;
+  /** Fallback: the thread's choice, or null to follow the user's default. Off, only the first model in a list answers. */
+  fallback: boolean | null;
+  /** Fallback as it applies here, after the default. */
+  fallbackOn: boolean;
   /** Whether Dictation and Read aloud can be used here now, and why not. */
   speech: Speech;
   /** Set for a subagent or a branch: its settings are its parent's or stricter. A subagent's UI shows them read-only. */
@@ -775,6 +785,8 @@ export interface ThreadSettingsChange {
   unlogged?: boolean;
   /** null follows the user's default. */
   voiceCloud?: boolean | null;
+  /** null follows the user's default. */
+  fallback?: boolean | null;
 }
 
 // --- Speech: Dictation and Read aloud ---

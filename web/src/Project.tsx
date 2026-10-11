@@ -206,7 +206,7 @@ export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContex
   );
 }
 
-/** Goal, Paused and Watching threads; New threads (Model, Thinking); This chat (Model, Mode, Group); one Save. */
+/** Goal, Paused and Watching threads; New threads (Model, Thinking, Fallback); This chat (Model, Mode, Group); one Save. */
 function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }: {
   ctx: ShellContext; base: string; summary: ThreadSummary; settings: ThreadSettings; onSummary: (s: ThreadSummary) => void; onSettings: (s: ThreadSettings) => void;
 }) {
@@ -216,6 +216,7 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
   const [watch, setWatch] = useState(ps?.watchThreads !== false);
   const [model, setModel] = useState(refOf(ps?.threadsModel));
   const [thinking, setThinking] = useState<ThinkingLevel | "">(ps?.threadsThinking ?? "");
+  const [fallback, setFallback] = useState<"" | "on" | "off">(ps?.threadsFallback === undefined ? "" : ps.threadsFallback ? "on" : "off");
   const [chat, setChat] = useState<{ offeringId: string } | null | undefined>(undefined);
   const [mode, setMode] = useState<PermissionMode>(settings.mode);
   const [group, setGroup] = useState(summary.group ?? "");
@@ -228,6 +229,7 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
       ...(watch !== (ps?.watchThreads !== false) ? { watchThreads: watch } : {}),
       threadsModel: model ? { offeringId: model } : null,
       threadsThinking: thinking || null,
+      threadsFallback: fallback ? fallback === "on" : null,
       ...(group !== (summary.group ?? "") ? { group: group || null } : {}),
     };
     onSummary(await patch<ThreadSummary>(base, change));
@@ -269,6 +271,14 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
           <select value={thinking} onChange={(e) => setThinking(e.target.value as ThinkingLevel | "")}>
             <option value="">This chat's thinking</option>
             {THINKING.map((l) => <option key={l} value={l}>{l === "off" ? "Off" : l[0]!.toUpperCase() + l.slice(1)}</option>)}
+          </select>
+        </label>
+        <label className="field" title={newThreadsHint}>
+          <span>Fallback</span>
+          <select value={fallback} onChange={(e) => setFallback(e.target.value as "" | "on" | "off")}>
+            <option value="">This chat's fallback</option>
+            <option value="on">On</option>
+            <option value="off">Off</option>
           </select>
         </label>
       </div>
