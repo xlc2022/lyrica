@@ -64,7 +64,7 @@ export function Shell({ user, users, route, build, onAuthChange }: {
     ) : r.page === "files" && hidden(me.data!.display, r.pool) ? (
       <HiddenPool ctx={ctx} pool={r.pool} />
     ) : r.page === "files" ? (
-      <FilesPage key={`${r.pool}/${r.threadId}`} ctx={ctx} pool={r.pool} threadId={r.threadId} threads={threads.data ?? []} />
+      <FilesPage key={`${r.pool}/${r.threadId}`} ctx={ctx} pool={r.pool} threadId={r.threadId} threads={threads.data ?? []} path={r.path} />
     ) : r.page === "project" && hidden(me.data!.display, r.pool) ? (
       <HiddenPool ctx={ctx} pool={r.pool} />
     ) : r.page === "project" ? (
@@ -152,10 +152,10 @@ function openInPanel(e: React.MouseEvent, route: Route & { page: "thread" }, tra
   }
   const panel: Panel = to.page === "thread"
     ? { page: "thread", pool: to.pool, threadId: to.threadId, ...(to.drawer ? { drawer: true as const } : {}) }
-    : to.page === "files" ? { page: "files", pool: to.pool, threadId: to.threadId }
+    : to.page === "files" ? { page: "files", pool: to.pool, threadId: to.threadId, ...(to.path ? { path: to.path } : {}) }
     : { page: "project", pool: to.pool, threadId: to.threadId, ...(to.section ? { section: to.section } : {}) };
-  // The Files button toggles its panel.
-  if (panel.page === "files" && route.panel?.page === "files" && route.panel.threadId === panel.threadId) { go({ ...route, drawer: undefined, panel: undefined }); return; }
+  // The Files button toggles its panel; a file's link shows that file in it.
+  if (panel.page === "files" && !panel.path && route.panel?.page === "files" && route.panel.threadId === panel.threadId) { go({ ...route, drawer: undefined, panel: undefined }); return; }
   // A breadcrumb goes back to that page; a link in the panel goes one deeper; one in the conversation starts afresh.
   const crumb = (a as HTMLElement).dataset.crumb;
   trail.set(crumb !== undefined ? trail.crumbs.slice(0, Number(crumb) + 1) : a.closest(".panel") ? [...trail.crumbs, panel] : [panel]);

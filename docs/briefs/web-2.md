@@ -195,6 +195,10 @@ For each part:
 - 2026-10-11, PR 7 (Files panel, the UI): `web/src/Files.tsx` and the
   `files` route and panel kind (docs/web.md "The Files panel", docs/ux.md
   §6; Show in thread finds the first message naming the path, on Li's ask).
-  Not built: thumbnails. Next: Notifications, Pin in the
-  remaining places, the Models page (carry the Fallback default), the Sleep
-  section; Web: bootstrap on Li's go.
+  Not built: thumbnails.
+- 2026-10-11, PR 8 (files in the conversation, Li's ask): `web/src/paths.tsx`;
+  a `/workspace` path in a message links to `…/files/<encoded path>`, which
+  shows the file; her images from the thread folder show in the message and
+  open large (docs/web.md "Chat", docs/ux.md §6); her prompt says so. Next:
+  Notifications, Pin in the remaining places, the Models page (carry the
+  Fallback default), the Sleep section; Web: bootstrap on Li's go.

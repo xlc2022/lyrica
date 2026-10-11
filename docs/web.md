@@ -97,7 +97,8 @@ A thread's address may carry what the panel beside it shows:
 - **The Files panel** (`Files.tsx`, docs/ux.md §6): **Files** in a thread's
   header is a link to `…/t/<pool>/<thread>/files`, which the split view opens
   in the panel column (and the same link closes it); below 1180 px, or on a
-  phone, it is the page. Files lists one folder at a time from
+  phone, it is the page. `…/files/<encoded path>` opens with that file shown
+  and its folders open (a folder: opened), or says it is gone. Files lists one folder at a time from
   `GET …/files?dir=` (docs/daemon.md "Files"), the thread folder open at the
   start and each grant after it; a search runs under every root; a file
   fetches `…/files/content` once and shows images as themselves, text (up to
@@ -200,8 +201,13 @@ A thread's address may carry what the panel beside it shows:
 ## Chat
 
 - Her messages are prose, rendered with `react-markdown`. Raw HTML is
-  skipped, links open in a new tab, and images are never loaded: they show
-  as a link with their alt text.
+  skipped and links open in a new tab. A path under `/workspace`, in her
+  prose or the person's message, is a link to `…/files/<encoded path>`,
+  which shows the file in the Files panel (`paths.tsx`; a code block is left
+  as written). An image she writes from the thread folder shows in the
+  message, loaded from `…/files/content`, and opens large in the Images
+  tab's dialog; a remote image is never loaded and shows as a link with its
+  alt text.
 - A thread she mentions (`[t:<id>]`, `[e:<id>#<n>]`) shows as its current
   title, linked to the thread in the same tab; "a forgotten thread" once it's
   gone. Titles are fetched per thread and kept for 30 seconds, so a rename

@@ -1,6 +1,8 @@
 // Small pieces shared by every page.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Markdown, { type Components } from "react-markdown";
+import { InlineImage, isUnderWorkdir, Lightbox, rehypePaths, type FileLinks } from "./paths.tsx";
 import type { Display, Pool } from "./api.ts";
 
 /** Whether the display filters hide a pool. Hiding only changes what's shown. */
@@ -101,15 +103,31 @@ export const shortTime = (iso: string) => {
   return d.toLocaleDateString([], { day: "numeric", month: "short" });
 };
 
-/** Links open in a new tab, except Lyrica's own (a mentioned thread); images are never loaded, only linked by their alt text. */
-const MARKDOWN: Components = {
-  a: ({ node: _, ...props }) => (props.href?.startsWith("#/") ? <a {...props} /> : <a {...props} target="_blank" rel="noopener noreferrer" />),
-  img: ({ src, alt }) => (typeof src === "string" && src ? <a href={src} target="_blank" rel="noopener noreferrer">{alt || src}</a> : <>{alt}</>),
-};
+/**
+ * Links open in a new tab, except Lyrica's own (a mentioned thread, a file of the thread). A remote image is never
+ * loaded, only linked by its alt text; one from the thread's folder shows in the message and opens large (docs/ux.md §6).
+ */
+function markdown(files: FileLinks | undefined, large: (path: string) => void): Components {
+  return {
+    a: ({ node: _, ...props }) => (props.href?.startsWith("#/") ? <a {...props} /> : <a {...props} target="_blank" rel="noopener noreferrer" />),
+    img: ({ src, alt }) => (typeof src !== "string" || !src ? <>{alt}</>
+      : files && isUnderWorkdir(src) ? <InlineImage src={src} alt={alt ?? ""} files={files} large={large} />
+      : <a href={src} target="_blank" rel="noopener noreferrer">{alt || src}</a>),
+  };
+}
+const PLAIN = markdown(undefined, () => {});
 
-/** Markdown with raw HTML skipped. */
-export function Prose({ text }: { text: string }) {
-  return <Markdown skipHtml components={MARKDOWN}>{text}</Markdown>;
+/** Markdown with raw HTML skipped; with `files`, the thread's paths are links and its images show. */
+export function Prose({ text, files }: { text: string; files?: FileLinks }) {
+  const [large, setLarge] = useState<string>();
+  const components = useMemo(() => (files ? markdown(files, setLarge) : PLAIN), [files]);
+  const plugins = useMemo(() => (files ? [rehypePaths(files)] : []), [files]);
+  return (
+    <>
+      <Markdown skipHtml components={components} rehypePlugins={plugins}>{text}</Markdown>
+      {large && files && createPortal(<Lightbox path={large} url={files.url(large)} onClose={() => setLarge(undefined)} />, document.body)}
+    </>
+  );
 }
 
 /**
