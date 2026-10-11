@@ -18,13 +18,18 @@ written here.
 
 ## Setup, by Li, once
 
-1. In a general thread list, **New project** named "Lyrica", with her code
-   folder granted and the internet switch on (or `github.com` and
-   `registry.npmjs.org` in allowed hosts). Goal: "Improve Lyrica's own
-   code from what we notice in use, through review."
-2. Paste the **Project instructions** below into the project's
-   instructions (only Li can change them).
-3. Start and pin three standing threads, each with its model:
+1. **New project** from the thread list's own menu (right-click or long
+   press its empty space), in the general pool, named "Lyrica". In
+   **Project settings** (the link in the project chat's header):
+   General → Goal: "Improve Lyrica's own code from what we notice in use,
+   through review."; then **Thread settings** under This chat: grant her
+   code folder and turn the internet on (or allow `github.com` and
+   `registry.npmjs.org`).
+2. Paste the **Project instructions** below into Project settings →
+   Memory → Instructions (the count shows it is under 2,000; only Li can
+   change them).
+3. Start three standing threads in the project chat (**Start a thread**
+   on a message), pin each, and pick each one's model:
    - **Review** (the strongest cloud model allowed): reviews every PR she
      opens before it goes to Claude, against the brief or issue, AGENTS.md
      and the docs; sends fixes to the building thread; says verified.
