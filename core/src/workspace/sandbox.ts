@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { closeSync, constants, existsSync, lstatSync, openSync, readFileSync, readlinkSync } from "node:fs";
-import { posix } from "node:path";
+import { closeSync, constants, existsSync, lstatSync, mkdtempSync, openSync, readFileSync, readlinkSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, posix } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { capOutput, sniffImage, type ExecutionTarget, type ToolOps } from "./ops.ts";
 import { hostAddresses, nftRules, pastaArgs, resolveAddresses, resolveHosts, SANDBOX_GATEWAY } from "./net.ts";
@@ -42,7 +43,7 @@ const ETC = [
   "alternatives", "ssl", "ca-certificates", "pki", "nsswitch.conf", "localtime",
   "passwd", "group", "ld.so.cache", "ld.so.conf", "ld.so.conf.d", "os-release",
 ].map((f) => `/etc/${f}`);
-// /usr/sbin is for nft, which runs before bwrap; the sandbox's PATH is the same.
+// /usr/sbin is for nft, which lyricad runs with nsenter; the sandbox's PATH is the same.
 const PATH = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 // On NixOS there's no /usr to share. The service sets LYRICA_SANDBOX_TOOLS to
 // a Nix environment of the sandbox's tools, which becomes the sandbox's /usr,
@@ -67,8 +68,43 @@ function nixSystem(dir: string): string[] {
   if (!closure.paths.includes(dir)) throw new SandboxDenied(`${file} doesn't contain ${dir}`);
   return closure.paths;
 }
-// Loads the firewall into pasta's namespace, then starts bwrap. Fails closed if nft fails.
-const LOAD_RULES = 'printf "%s" "$1" | nft -f - || exit 125; shift; exec "$@"';
+// Loads the firewall into the new namespaces (fails closed), says so on
+// fd $2, waits on fd $3 until pasta is attached, then starts bwrap.
+const HOLD = 'printf "%s" "$1" | nft -f - || exit 125; r=$2; g=$3; shift 3; eval "echo ready >&$r; exec $r>&-; read -r _ <&$g; exec $g<&-"; exec "$@"';
+
+/** Waits for the namespaces' "ready", or refuses with why they didn't come up. */
+function signalled(child: ChildProcess, ready: Readable): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // Its stderr is left to the caller, who reads the rest of the run's.
+    const done = (e?: Error) => { ready.removeAllListeners("data"); child.off("exit", onExit); e ? reject(e) : resolve(); };
+    const onExit = (code: number | null) => done(new Error(`a networked sandbox didn't start: ${code === 125 ? "its firewall didn't load" : `exit ${code}`}`));
+    child.on("exit", onExit);
+    child.on("error", (e) => done(new Error(`a networked sandbox didn't start: ${e.message}`)));
+    ready.on("data", () => done());
+  });
+}
+
+/**
+ * Runs pasta, which forks into the background once the namespace is set up:
+ * its exit says it's ready, and its PID file names the daemon. The file is
+ * in a fresh private folder and holds only that number. Refuses with pasta's
+ * stderr if it fails.
+ */
+function startPasta(cmd: string[]): Promise<number> {
+  const dir = mkdtempSync(join(tmpdir(), "lyrica-pasta-"));
+  const file = join(dir, "pid");
+  return new Promise<number>((resolve, reject) => {
+    const p = spawn(cmd[0]!, [...cmd.slice(1, -1), "--pid", file, cmd.at(-1)!], { env: env(), stdio: ["ignore", "ignore", "pipe"] });
+    let err = "";
+    p.stderr.on("data", (d: Buffer) => { if (err.length < 2000) err += d.toString(); });
+    p.on("error", (e) => reject(new Error(`a networked sandbox didn't start: pasta: ${e.message}`)));
+    p.on("exit", (code) => {
+      if (code !== 0) return reject(new Error(`a networked sandbox didn't start: pasta: ${err.trim() || `exit ${code}`}`));
+      p.stderr.destroy();
+      resolve(Number(readFileSync(file, "utf8").trim()));
+    });
+  }).finally(() => rmSync(dir, { recursive: true, force: true }));
+}
 
 export class SandboxDenied extends Error {}
 
@@ -192,37 +228,57 @@ export class Sandbox implements ExecutionTarget {
       throw err;
     }
     data.forEach(([dest], i) => args.push("--ro-bind-data", String(3 + fds.length + i), dest));
+    // With network on, `unshare` makes the user and network namespaces and
+    // bash loads the firewall into them, then waits while pasta attaches by
+    // PID, then starts bwrap, which keeps the network. pasta can't start bwrap
+    // itself: since 2024 it closes every file it inherits, and bwrap needs the
+    // folders and data above.
+    const ready = 3 + fds.length + data.length;
     let cmd = [this.spec.bwrap ?? "bwrap", ...args, "--", ...argv];
     if (networked) {
-      const exclude = this.spec.exclude ?? [];
-      const rules = nftRules(internet, resolved.rules, exclude, {
+      const rules = nftRules(internet, resolved.rules, this.spec.exclude ?? [], {
         addresses: this.spec.self ?? hostAddresses(), services, front: this.spec.front ?? [],
         frontAddresses: frontAddresses ?? [],
       });
-      // The front ports are never forwarded from loopback either, in case the proxy listens on every address.
-      cmd = [this.spec.pasta ?? "pasta", ...pastaArgs({ internet, services, hosts: hosts.length > 0, forward }, [...exclude, ...(this.spec.front ?? [])]),
-        "--", "sh", "-c", LOAD_RULES, "sh", rules, ...cmd];
+      cmd = ["unshare", "--user", "--map-root-user", "--net", "--", "bash", "-c", HOLD, "bash", rules, String(ready), String(ready + 1), ...cmd];
     }
     const child = spawn(cmd[0]!, cmd.slice(1), {
       env: env(),
-      stdio: ["pipe", "pipe", "pipe", ...fds, ...data.map(() => "pipe" as const)],
+      stdio: ["pipe", "pipe", "pipe", ...fds, ...data.map(() => "pipe" as const), ...(networked ? ["pipe", "pipe"] as const : [])],
     });
     child.on("error", () => {}); // reported to the caller's own listener; never an uncaught error
     for (const fd of fds) closeSync(fd);
     data.forEach(([, text], i) => {
       const pipe = child.stdio[3 + fds.length + i] as Writable;
-      pipe.on("error", () => {}); // if bwrap or pasta never starts, the spawn error is what's reported
+      pipe.on("error", () => {}); // if bwrap never starts, the spawn error is what's reported
       pipe.end(text);
     });
+    if (!networked) return child as Sandboxed;
+
+    const go = child.stdio[ready + 1] as Writable;
+    go.on("error", () => {});
+    try {
+      await signalled(child, child.stdio[ready] as Readable);
+      // The front ports are never forwarded from loopback either, in case the proxy listens on every address.
+      const pastaPid = await startPasta([this.spec.pasta ?? "pasta", ...pastaArgs({ internet, services, hosts: hosts.length > 0, forward },
+        [...(this.spec.exclude ?? []), ...(this.spec.front ?? [])]), String(child.pid)]);
+      // pasta also quits by itself within a second of the namespace going.
+      if (Number.isInteger(pastaPid) && pastaPid > 1) child.on("exit", () => { try { process.kill(pastaPid, "SIGTERM"); } catch { /* already gone */ } });
+    } catch (err) {
+      child.kill("SIGKILL");
+      throw err;
+    }
+    go.end("go\n");
     return child as Sandboxed;
   }
 
   /** bwrap arguments. Opens each folder to mount and appends its fd to `fds` (child fd 3, 4, …). */
   private args(fds: number[], cwd: string, networked: boolean): string[] {
     const args = ["--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL"];
-    // With network on, bwrap runs inside pasta's own namespace and keeps it.
+    // With network on, bwrap runs inside the namespace pasta serves and keeps it.
     // The host's network is never shared.
     if (networked) args.push("--share-net");
+
     const nix = tools();
     if (nix) {
       for (const p of nixSystem(nix)) args.push("--ro-bind", p, p);

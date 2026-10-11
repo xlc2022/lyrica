@@ -379,11 +379,14 @@ overrides go through `WorkspaceSettings.setThread` (the Web thread's UI).
 How it is enforced:
 - **Everything off:** bwrap's `--unshare-net`. The sandbox has only its own
   loopback.
-- **Anything on:** `pasta` (from passt) gives the sandbox a network namespace
-  of its own, with its own address (`10.255.255.2`), so the host's LAN
-  address is just another machine to it. Inside that namespace, before the
-  command starts, `nft` loads a default-deny output ruleset. It allows, in
-  order:
+- **Anything on:** `unshare` makes a user and network namespace of the
+  sandbox's own and `pasta` (from passt) attaches to it by PID, giving it its
+  own address (`10.255.255.2`), so the host's LAN address is just another
+  machine to it. pasta doesn't start the command itself, because since 2024
+  it closes every file it inherits, and bwrap needs the folders and files
+  `lyricad` opened. Inside that namespace, before the command starts, `nft`
+  loads a default-deny output ruleset (a failure refuses the run). It
+  allows, in order:
   - replies on connections already made;
   - nothing to `lyricad`'s own ports, on any address (`Workspace`'s
     `excludePorts`, a required option, so forgetting it can't leave them
@@ -405,7 +408,9 @@ How it is enforced:
   - each allowed host and port.
 - bwrap then starts inside that namespace with every capability dropped, so
   the command can't change the rules or the namespace. The host's own network
-  is never shared; bwrap's `--share-net` here keeps pasta's namespace.
+  is never shared; bwrap's `--share-net` here keeps the namespace pasta
+  serves. pasta quits when the namespace is gone, and `lyricad` stops it
+  when the command exits.
 - **Names:** allowed hostnames are resolved when the sandbox starts and pinned
   in its `/etc/hosts`. With internet off its `/etc/resolv.conf` is empty, so
   there is no DNS to carry data out. With internet on, DNS goes through
@@ -518,7 +523,7 @@ The machine running `lyricad` needs:
 - bubblewrap;
 - gocryptfs;
 - FUSE (`/dev/fuse` and `fusermount3`);
-- passt (for `pasta`), nftables, and `/dev/net/tun`;
+- passt (for `pasta`), nftables, `unshare` and bash, and `/dev/net/tun`;
 - unprivileged user namespaces.
 
 In a Proxmox LXC container, turn on the **nesting** and **FUSE** features. A
