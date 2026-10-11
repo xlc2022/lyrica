@@ -1,7 +1,8 @@
 # Brief: Project settings: Folders and Machines
 
 **Thread:** Project workspace. **Branch:** `feature/project-workspace`.
-**Model:** Fable (it is all interface). **Depends on:** Web: machines
+**Model:** Fable, as the project's model rule gives UI work to Fable (as
+Web: machines was). **Depends on:** Web: machines
 merged (#83).
 
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md "Projects" and
@@ -32,16 +33,32 @@ own settings, not behind a hop).
    changed; `lyricad`'s validation reason is shown in place of the estimate
    line, as the drawer does.
 3. **The Thread settings link stays** for network, local-only and the other
-   task models. Its tooltip in `web/src/Project.tsx` becomes "Network,
-   local-only and the other task models, in the chat's drawer." (UI
-   review's wording), and docs/ux.md's Project settings row says the same.
+   task models. Its tooltip in `web/src/Project.tsx` (now "Folders,
+   machines, network, local-only and the other task models, in the chat's
+   drawer.") becomes "Network, local-only and the other task models, in the
+   chat's drawer." (UI review's wording), and docs/ux.md's Project settings
+   row says the same.
 4. **Inheritance is unchanged and is the point:** every thread the project
-   starts gets these folders and machines or fewer (`inheritSettings`), and
-   removing one here removes it from the project's threads at once. Nothing
-   in this brief changes what a thread may do.
+   starts gets these folders and machines or fewer (`inheritSettings`).
+   Taking a machine off here takes it off the project's threads at once
+   (`effective()` filters a thread's machines by its ancestors',
+   `core/src/workspace/settings.ts`). A folder is different today: a
+   thread's own grant list isn't filtered, so a project thread that still
+   holds a removed folder has its next command or Files call fail with
+   "isn't in the parent thread's folders" until its own folders are
+   narrowed. Describe that as it is in docs/web.md; don't change it here.
+   Whether the build should narrow the children's folders too is an open
+   question for Li (below).
 5. **Docs:** docs/web.md ("Project settings page"), docs/ux.md (the Project
    settings row already names the two rows after this brief's docs PR),
    DESIGN.md's Project settings bullet (same).
+
+## Open question for Li
+
+When a folder is taken off a project, should its running threads lose it at
+once (their grants narrowed, as machines already are), rather than failing
+until someone narrows them by hand? *Recommended: yes, as a separate small
+change in `core/workspace`, not in this brief.*
 
 ## Out of scope
 
