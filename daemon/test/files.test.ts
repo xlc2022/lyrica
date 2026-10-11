@@ -199,9 +199,15 @@ describe("the thumbnails the panel serves", () => {
       expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual(["big.png.png"]);
       const again = await files.thumb(join(dir, "big.png"));
       expect(again!.bytes.equals(first!.bytes)).toBe(true);
-      // Outside the thread's folder there is no copy; a missing file is an error.
+      // Outside the thread's folder, or not named like an image, there is no copy; a missing file is an error.
       expect(await files.thumb("/srv/docs/x.png")).toBeUndefined();
+      writeFileSync(join(dir, "notes.txt"), "push 'viewbox 0 0 9 9'");
+      expect(await files.thumb(join(dir, "notes.txt"))).toBeUndefined();
       await expect(files.thumb(join(dir, "none.png"))).rejects.toThrow("is not a file");
+      // A .png that holds something else (here MVG drawing commands, which can read and write files) is decoded as PNG and fails.
+      writeFileSync(join(dir, "fake.png"), "push graphic-context\nviewbox 0 0 9 9\nfill red\nrectangle 0,0 8,8\npop graphic-context\n");
+      await expect(files.thumb(join(dir, "fake.png"))).rejects.toThrow();
+      expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual(["big.png.png"]);
       // Deleting the image takes the copy along; so does renaming it.
       await files.remove([join(dir, "big.png")]);
       expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual([]);
@@ -210,7 +216,7 @@ describe("the thumbnails the panel serves", () => {
       expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual(["small.jpg.jpg"]);
       await files.rename(join(dir, "small.jpg"), join(dir, "moved.jpg"));
       expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual([]);
-      expect(readdirSync(dir).sort()).toEqual([".lyrica", "moved.jpg"]);
+      expect(readdirSync(dir).sort()).toEqual([".lyrica", "fake.png", "moved.jpg", "notes.txt"]);
       void cache;
     } finally {
       rmSync(dir, { recursive: true, force: true });

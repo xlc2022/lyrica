@@ -31,6 +31,7 @@ export interface ImageEntry extends FileEntry { source: "uploaded" | "made" }
 /** The panel's own folder in the thread's: its thumbnails live under `.lyrica/thumbs`; never listed or searched. */
 export const PANEL_DIR = ".lyrica";
 export const THUMB_BOX = 320;
+const THUMB_TIMEOUT_MS = 20_000;
 export const LIST_LIMIT = 2000;
 export const SEARCH_LIMIT = 200;
 export const ZIP_FILES_LIMIT = 10_000;
@@ -111,20 +112,29 @@ export class ThreadFiles {
    * A small copy of an image in the thread's folder, at most THUMB_BOX on a
    * side, made by ImageMagick inside the sandbox and kept under
    * `.lyrica/thumbs/<its path>.png` (or `.jpg` for a JPEG) until the image
-   * is newer; a deleted or renamed image takes its copy with it. Without
-   * ImageMagick, or for a file outside the thread's folder, `undefined`: the
-   * panel shows the image itself.
+   * is newer; a deleted or renamed image takes its copy with it. Only a
+   * file named like an image, decoded as what its name says (a `.png`
+   * holding something else fails rather than runs), within memory, size
+   * and time limits. Without ImageMagick, for a file outside the thread's
+   * folder, or for a name that is not an image's, `undefined`: the panel
+   * shows the file itself.
    */
   async thumb(path: string): Promise<{ bytes: Buffer; type: string } | undefined> {
     const p = this.allow(path, false);
     const cache = this.thumbPath(p);
-    if (!cache) return undefined;
-    const jpeg = /\.jpe?g$/i.test(p);
-    const script = 'src=$1; c=$2; test -f "$src" || { echo "$src is not a file" >&2; exit 1; }; command -v convert >/dev/null || exit 3; ' +
-      'if [ ! "$c" -nt "$src" ]; then mkdir -p -- "$(dirname -- "$c")" && convert "$src[0]" -auto-orient -thumbnail "$3" -strip "$c" || { rm -f -- "$c"; exit 1; }; fi; cat -- "$c"';
-    const r = await this.box.run(["sh", "-c", script, "sh", p, `${cache}${jpeg ? ".jpg" : ".png"}`, `${THUMB_BOX}x${THUMB_BOX}>`]);
+    const ext = posix.extname(p).slice(1).toLowerCase();
+    if (!cache || !IMAGE_EXTENSIONS.includes(ext)) return undefined;
+    const jpeg = ext === "jpg" || ext === "jpeg";
+    const coder = jpeg ? "jpeg" : ext;
+    // ImageMagick 7 answers to `magick`; 6, Debian's, to `convert`. The limits bound a decompression bomb.
+    const script = 'src=$1; c=$2; test -f "$src" || { echo "$src is not a file" >&2; exit 1; }; ' +
+      'if command -v magick >/dev/null; then im=magick; elif command -v convert >/dev/null; then im=convert; else exit 3; fi; ' +
+      'if [ ! "$c" -nt "$src" ]; then mkdir -p -- "$(dirname -- "$c")" && ' +
+      '"$im" -limit memory 256MiB -limit map 512MiB -limit area 64MP -limit disk 1GiB -limit width 16KP -limit height 16KP ' +
+      '"$3:$src[0]" -auto-orient -thumbnail "$4" -strip "$c" || { rm -f -- "$c"; exit 1; }; fi; cat -- "$c"';
+    const r = await this.box.run(["sh", "-c", script, "sh", p, `${cache}${jpeg ? ".jpg" : ".png"}`, coder, `${THUMB_BOX}x${THUMB_BOX}>`], { timeoutMs: THUMB_TIMEOUT_MS });
     if (r.code === 3) return undefined;
-    if (r.code !== 0) throw new Error(r.stderr.toString().trim() || "could not make the thumbnail");
+    if (r.code !== 0) throw new Error(r.stderr.toString().trim() || (r.signal ? "the thumbnail took too long" : "could not make the thumbnail"));
     return { bytes: r.stdout, type: jpeg ? "image/jpeg" : "image/png" };
   }
 

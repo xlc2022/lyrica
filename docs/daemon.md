@@ -350,9 +350,13 @@ documented in `daemon/src/api.ts`, "The Files panel".
   `download` makes it an attachment.
 - `GET …/files/thumb?path=<path>` serves a copy of an image in the thread's
   folder at most 320 px on a side (PNG, or JPEG for a JPEG), made by
-  ImageMagick's `convert` inside the sandbox and kept under `.lyrica/thumbs`
-  mirroring the image's path, remade when the image is newer; a delete or
-  rename takes the copies under its path along. For a grant's file, or on a
+  ImageMagick (`magick`, or `convert` on ImageMagick 6) inside the sandbox
+  and kept under `.lyrica/thumbs` mirroring the image's path, remade when
+  the image is newer; a delete or rename takes the copies under its path
+  along. Only a file named `.png`, `.jpg`, `.jpeg`, `.gif` or `.webp`, decoded
+  as that format and nothing else (so a renamed MVG or SVG fails instead of
+  running), under ImageMagick's memory, area and size limits and a 20 s
+  timeout. For a grant's file, or on a
   host without ImageMagick (it is in the Debian install and the NixOS sandbox
   tools), 404: the panel shows the image itself.
 - `POST …/files/upload?dir&name` (the bytes), `POST …/files/folder { path }`,
