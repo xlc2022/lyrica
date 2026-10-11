@@ -2,7 +2,7 @@
 // memory only and passed straight through; nothing is written or logged.
 
 import type { ServerResponse } from "node:http";
-import { MAX_CLIP_BYTES, pcmSeconds, SPEECH_CONTENT_TYPE, type CallContext, type Models, type Pool, type Resolution } from "@lyrica/core";
+import { MAX_CLIP_BYTES, pcmSeconds, renderThreadMentions, SPEECH_CONTENT_TYPE, type CallContext, type Models, type OwnerView, type Pool, type Resolution } from "@lyrica/core";
 import type * as Api from "./api.ts";
 import { HttpError, SECURITY_HEADERS } from "./http.ts";
 
@@ -79,10 +79,25 @@ function cut(s: string): string[] {
   return pieces;
 }
 
-/** Her stored message's text, as it reads aloud. */
-export function messageText(parts: Api.MessagePart[]): string {
-  return speakable(parts.filter((p): p is Extract<Api.MessagePart, { type: "text" }> => p.type === "text").map((p) => p.text).join("\n\n"));
+/** Her stored message's text, as it reads aloud: a thread she mentions reads as its current title. */
+export function messageText(parts: Api.MessagePart[], titleOf: TitleOf = () => undefined): string {
+  const text = parts.filter((p): p is Extract<Api.MessagePart, { type: "text" }> => p.type === "text").map((p) => p.text).join("\n\n");
+  return speakable(renderThreadMentions(text, titleOf));
 }
+
+/** A thread's current title, in the message's pool or the pool named in the mention. */
+export type TitleOf = (threadId: string, pool?: Pool) => string | undefined;
+
+/** Thread titles for mentions in a message of `pool`: a general message never names a private thread. */
+export function titlesIn(o: OwnerView, pool: Pool): TitleOf {
+  return (id, mentioned) => {
+    const p = mentioned ?? pool;
+    if (pool === "general" && p !== "general") return undefined;
+    const thread = o[p].getThread(id);
+    return thread && (thread.title ?? "an untitled thread");
+  };
+}
+
 
 /** Where Read aloud gets its text: a stored message, or one still being written. */
 export interface SpeechSource {

@@ -250,13 +250,15 @@ checks it reaches her, and with a real model which she picks. Code:
 **The tool**, `threads({ action, ... })`:
 - `start({ title, task, folders?, readOnly?, internet? })` creates the child
   (`createThread({ parent, child: true })`) and sends it the task, then
-  returns its ID and link at once. It gets the parent's model context
+  returns its ID at once, as `[t:<id>]`, which she mentions it by. It gets the parent's model context
   (`models.inheritContext`: pool, local-only, profile, thinking, models) and
   workspace (`inheritSettings`, narrowed by `folders`, `readOnly` and
   `internet: false`); the workspace refuses anything wider, and a folder the
   parent doesn't have is refused. It inherits "Do not log" from the store.
   If the child's first turn can't start, the child is forgotten.
-- `message({ id, text })` to one of the thread's children: sent as its next
+- `message({ id, text })` to one of the thread's children, named by its ID
+  or its current title (`pickThread`; a title two children share is
+  refused): sent as its next
   turn (or queued behind the running one), marked as from the parent with a
   first line `[From t:<parent>]`. Only `ChildThreads` sends it
   (`HostedThread.send(text, { fromParent })`); `send` refuses any other text
