@@ -1355,7 +1355,7 @@ from Monika's runbooks.
   user; **smoke test** it on a spare port with a scratch home and a test
   user, never real data; **drain**: stop taking new turns and wait until no
   turn, sleep run, subagent or child thread is working (new messages get
-  "Updating"), giving up after 10 minutes with nothing changed, so a restart
+  "Updating", and scheduled sleep and child-thread starts wait), giving up after 10 minutes with nothing changed, so a restart
   never cuts a turn in half; **snapshot** her databases and settings (copies
   of encrypted files; homes are left to the operator's backup), keeping the
   last 3; switch `current`; start; **probation**.
@@ -1364,7 +1364,8 @@ from Monika's runbooks.
   the web UI's files) and stay up 10 minutes. With saved credentials that
   happens at start; without them, at the first unlock. A crash loop or a
   failed check rolls back by itself and tells administrators in
-  Notifications which commit failed and which check.
+  Notifications which commit failed, which check, and, when the snapshot
+  was restored, from when messages were lost.
 - **Rollback** goes back to the previous release: automatically in
   probation, from Administration, or with `sudo lyrica-rollback` on the
   console when nothing else works. Each database records the schema version
@@ -1372,7 +1373,9 @@ from Monika's runbooks.
   schema change also restores the pre-update snapshot, and loses what was
   written since; its dialog says from when. A migration that removes or
   renames waits one release (expand, then contract), so most rollbacks keep
-  everything.
+  everything. A kept release older than the last snapshot that still
+  matches its schema can't be rolled back to; the dialog and the console
+  say so and name the oldest release that can.
 - **Update notes.** Every update installs an update note, never a bare
   commit: an annotated tag (`update/<date>`) on a `main` commit whose
   message lists the merged PRs since the running version, what each
@@ -1385,7 +1388,7 @@ from Monika's runbooks.
 - **Updates are manual.** An administrator presses **Update** in
   Administration. She can say an update is ready; she can't press it.
 - **Her own code** is a checkout granted like any folder, to general
-  threads only: the code goes to GitHub and cloud CI, so private memory
+  threads only: the code goes to GitHub and CI, so private memory
   never reaches a commit. She works like a feature thread: one branch and
   one pull request per piece of work, typecheck and tests in her sandbox.
 - **Her own GitHub account**, a collaborator with a fine-grained token for
@@ -1395,12 +1398,16 @@ from Monika's runbooks.
   requests run the same CI as Claude's on Li's runners (docs/ci.md), with
   no first-time-contributor approval. `main` is protected: pull requests
   only, green CI, one approval from someone other than the author; nothing
-  merges without both.
+  of hers merges without both. Li's own account may bypass the rules as
+  administrator, because Claude's threads work through it and could
+  never approve their own PRs.
 - **Review is the project's.** Her PRs go through the same PR review (and
   UI review) as Claude's, which approves and merges them, so Li doesn't
-  read every change. `CODEOWNERS` names Li for boundary code (keys, the
-  model router, the sandbox, authentication, deployment and the updater),
-  where her own approval is required.
+  read every change. `CODEOWNERS` names Li for boundary code: keys, the
+  privacy boundary, the model router, the sandbox, authentication,
+  deployment, the updater and CI. Claude's reviews come from Li's own
+  account, so GitHub can't tell them from Li's; until that changes, Li's
+  approval of boundary code is a rule the reviewers follow, not a gate.
 - **The outer net is the operator's:** a scheduled Proxmox backup of the
   container. The updater can't snapshot the container it runs in.
 - **Not covered:** her persona, which has its own revisions; model hosts,

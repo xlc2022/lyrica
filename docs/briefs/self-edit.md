@@ -36,8 +36,11 @@ the boundaries structural).
    fork, so her PRs run `.github/workflows/ci.yml` on the `lyrica-ci`
    runners like Claude's, with no first-time-contributor approval; a `CODEOWNERS` file naming `@xlc2022` for
    `core/src/keyring.ts`, `core/src/models/`, `core/src/workspace/`,
-   `daemon/src/auth.ts`, `daemon/deploy/`, the updater scripts and
-   `CODEOWNERS` itself. The `CODEOWNERS` file is in this PR.
+   `core/src/store/memory.ts` (`openThreadView`), `daemon/src/auth.ts`,
+   `daemon/deploy/`, the updater scripts, `.github/` and `CODEOWNERS`
+   itself. Li's account may bypass the rules as administrator ("Do not
+   allow bypassing" stays off), so Claude's PRs, which are authored as Li,
+   keep merging as they do today. The `CODEOWNERS` file is in this PR.
 4. **Update notes.** How she writes one: an annotated tag `update/<date>`
    on the `main` commit to install, its message listing the merged PRs
    since the running version, what each changes, any schema change and

@@ -32,8 +32,9 @@ Li notices the first update that goes wrong).
    and then: builds as an unprivileged build user with no access to
    `/var/lib/lyrica`; smoke-tests the release on a spare port with a scratch
    home and a test user (start, unlock, `/health` checks, the web UI's
-   index), never real data; drains over `update.sock` (gives up after 10
-   minutes and undrains, changing nothing); stops `lyricad`; snapshots the
+   index), never real data; drains over `update.sock` (scheduled sleep and
+   child-thread starts wait too; gives up after 10 minutes and undrains,
+   changing nothing); stops `lyricad`; snapshots the
    databases and settings into `/var/lib/lyrica-snapshots/<time>-<commit>/`
    (not the users' homes; keep the last 3) with the tag's message beside
    them; switches `current`; starts `lyricad`; runs probation. A `flock`
@@ -50,7 +51,10 @@ Li notices the first update that goes wrong).
    point `current` at `previous` (or a named kept release), restore the
    pre-update snapshot only if the release being left wrote a newer schema,
    start `lyricad`. Works with `lyricad` dead. Asks on a terminal before
-   restoring a snapshot, saying from when data will be lost.
+   restoring a snapshot, saying from when data will be lost. Refuses a
+   release with an older schema and no kept snapshot, naming the oldest
+   release it can go back to. An automatic rollback that restored a
+   snapshot says from when in its Notification.
 5. **In `lyricad`:** `update.sock` with `/health`, `/drain`, `/undrain`;
    `409 { updating: true }` on send while draining; a schema version in
    every encrypted database and `SchemaTooNew` on opening a newer one, set
