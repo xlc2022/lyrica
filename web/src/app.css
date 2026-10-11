@@ -90,6 +90,8 @@ textarea { resize: vertical; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .row.between { justify-content: space-between; }
 .row.top { align-items: start; }
+.row.defaults { gap: 8px 24px; }
+.row.defaults .field { flex: 0 1 260px; }
 .spacer { flex: 1; }
 .stack { display: grid; gap: 12px; }
 .inline { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
@@ -145,7 +147,7 @@ button.private { color: var(--private); border-color: color-mix(in oklab, var(--
 /* The one Sort menu above the threads: the sort choices, then the General, Private and Hidden checkboxes. */
 .thread-tools { display: flex; align-items: center; gap: 4px; padding-inline: 2px; }
 .showing { position: relative; }
-.showing > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 6px 8px; min-height: 32px; font-size: 12px; color: var(--muted); border-radius: 8px; }
+.showing > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 6px 8px; min-height: 32px; font-size: 12px; color: var(--accent); border-radius: 8px; }
 .showing > summary::-webkit-details-marker { display: none; }
 .showing > summary:hover { background: color-mix(in oklab, var(--panel) 60%, transparent); }
 .showing > div { position: absolute; left: 0; z-index: 12; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; display: grid; gap: 2px; min-width: 220px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); }
@@ -214,11 +216,12 @@ button.private { color: var(--private); border-color: color-mix(in oklab, var(--
 .tfacts { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; font-size: 13px; color: var(--muted); min-width: 0; }
 .tfacts > span, .tfacts > button { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
 .tfacts .num { font-size: 12px; }
-.tfacts .link { font-size: 13px; min-height: 26px; padding: 0; }
+.tfacts .link { font-size: 13px; min-height: 26px; padding: 0; position: relative; }
+.badge .name { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tfacts .folder { font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .head-actions { display: flex; gap: 6px; align-self: start; flex: none; }
 .head-actions .sm[aria-expanded="true"] { background: var(--tool); }
-.badge { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; background: var(--bg); min-height: 0; line-height: 1.5; }
+.badge { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; overflow: hidden; white-space: nowrap; font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; background: var(--bg); min-height: 0; line-height: 1.5; }
 button.badge { min-height: 26px; padding: 2px 9px; cursor: pointer; font-weight: 400; }
 button.badge:hover:not(:disabled) { border-color: var(--accent); }
 .badge .warn { color: var(--warn); }
@@ -455,10 +458,15 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   .menu-btn { display: inline-flex; }
   .side-close { display: inline-flex; }
   .head { gap: 8px; }
-  .thread-head { align-items: flex-start; }
-  .thread-head > .icon { margin-top: 2px; }
+  /* The thread header wraps: title between the two buttons, then the facts row across the full width. */
+  .thread-head { flex-wrap: wrap; align-items: center; }
+  .thread-head .head-title { display: contents; }
+  .thread-head h1 { flex: 1; min-width: 0; }
+  .thread-head .tfacts { flex-basis: 100%; order: 3; }
   .head-actions .long { display: none; }
   .tfacts .folder { display: none; }
+  .tfacts { row-gap: 0; }
+  .tfacts .picker-anchor:has(> .badge) { flex: 1 1 0; min-width: min(100%, 120px); }
   .drawer { width: 100%; }
   .picker { position: fixed; top: 104px; left: 16px; right: 16px; width: auto; }
   .body { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content 1fr; }
@@ -478,7 +486,8 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 
 /* Touch screens: every control is at least 44 px. Last, so nothing above overrides it. */
 @media (pointer: coarse) {
-  button.badge, .chev, .chips button, .check, .marker > button, .picker-item, .showing > summary, .showing label, .tfacts .link { min-height: 44px; }
+  button.badge, .chev, .chips button, .check, .marker > button, .picker-item, .showing > summary, .showing label { min-height: 44px; }
+  .tfacts .link::after { content: ""; position: absolute; inset: -9px -6px; }
   .chev { width: 32px; height: 44px; }
   .threads .trow { grid-template-columns: 32px minmax(0, 1fr); }
   button.icon-btn, button.icon.sm { width: 44px; height: 44px; min-height: 44px; }

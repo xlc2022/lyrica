@@ -13,8 +13,9 @@ type is in `daemon/src/api.ts`, with its route beside it.
 clients; they still log in.
 
 - It starts **locked**. Until `self.db` is unlocked, only `GET /api/state`
-  (locked, the users, and lyricad's `version` from `package.json` and
-  `build` from `LYRICA_BUILD` or the git commit) and `POST /api/unlock` answer (and the web UI's static files, so the unlock
+  (locked and the users; lyricad's `version` from `package.json` and
+  `build` from `LYRICA_BUILD` or the git commit join it once unlocked, so
+  the unlock page gives away no commit) and `POST /api/unlock` answer (and the web UI's static files, so the unlock
   page loads); everything else is `503`.
 - Run by hand in a terminal, it asks for the passphrase at a hidden prompt.
 - With a saved passphrase (below), it starts unlocked.

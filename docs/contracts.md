@@ -761,7 +761,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `Display.sort` (`ThreadSort`), `ThreadSummary.group` and `unread`,
     `ThreadChange.group` and `unread`, `ThreadGroup` with `GET`/`POST
     thread-groups` and `PATCH`/`DELETE thread-groups/:id` (in `user.db`,
-    never the pool); `State.version` and `build`;
+    never the pool); `State.version` and `build` (once unlocked);
   - `ThreadSettings.context` (`ContextInfo`: used, window, parts, reserve,
     free, measured at), `CallInfo.pace`, the `context` and `compacted`
     thread events, and a `compacted` message part (the stored notice);

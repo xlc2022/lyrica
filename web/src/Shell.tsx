@@ -355,7 +355,7 @@ function Welcome({ ctx }: { ctx: ShellContext }) {
   const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return (
     <main className="main">
-      <PageHead ctx={ctx} title={<>Lyrica <span className="ver">(ver. {ctx.build.version}, build {ctx.build.build})</span></>} facts={<>{date} · <span className="num">{time}</span></>} />
+      <PageHead ctx={ctx} title={<>Lyrica <span className="ver">{ctx.build.version} · {ctx.build.build}</span></>} facts={<>{date} · <span className="num">{time}</span></>} />
       <div className="scroll">
         <div className="welcome">
           <h1>{greeting(now.getHours())}, {ctx.user.displayName}.</h1>

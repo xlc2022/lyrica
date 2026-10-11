@@ -330,7 +330,7 @@ export class Lyricad {
   }
 
   state(cookie: string | undefined): State {
-    if (!this.services) return { locked: true, users: [], ...BUILD };
+    if (!this.services) return { locked: true, users: [] };
     const ids = this.sessions.users(cookie) ?? new Set<string>();
     const users = [...ids].map((id) => this.services!.users.get(id)).filter((u): u is User => !!u && this.keyring.hasUserKey(u.id));
     return { locked: false, users: users.map(card), ...BUILD };

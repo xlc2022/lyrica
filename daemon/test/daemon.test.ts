@@ -303,6 +303,7 @@ describe("the user's own view of their threads", () => {
   it("keeps groups, the sort and unread marks per user, and reports the build", async () => {
     const rt = await runtime();
     const { base } = await daemon(rt);
+    expect((await browser(base).get<{ version?: string }>("/api/state")).body.version).toBeUndefined();
     const state = (await browser(base).post<{ version: string; build: string }>("/api/unlock", { passphrase: "passphrase" })).body;
     expect(state.version).toMatch(/^\d/);
     expect(state.build.length).toBeGreaterThan(0);

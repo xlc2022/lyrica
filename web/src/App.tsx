@@ -36,7 +36,7 @@ export function App() {
   }
   return (
     <>
-      <Shell key={user.id} user={user} users={state.users} route={route} build={{ version: state.version, build: state.build }}
+      <Shell key={user.id} user={user} users={state.users} route={route} build={{ version: state.version ?? "", build: state.build ?? "" }}
         onAuthChange={(text) => { if (text) setNotice(text); refresh(); }} />
       {toast}
     </>

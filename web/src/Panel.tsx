@@ -399,13 +399,20 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
   return (
     <Section title="Network">
       <ErrorText error={error} />
-      {mode.data && (
-        <label className="field"><span>Mode</span>
-          <select value={mode.data.mode} onChange={(e) => run(async () => mode.set(await put<ModeDefault>(u(userId, "mode"), { mode: e.target.value })))}>
-            {MODE_ORDER.map((m) => <option key={m} value={m} title={MODES[m].description}>{MODES[m].label}</option>)}
-          </select>
-        </label>
-      )}
+      <div className="eyebrow">New threads</div>
+      <div className="row top defaults">
+        {mode.data && (
+          <label className="field"><span>Mode</span>
+            <select value={mode.data.mode} onChange={(e) => run(async () => mode.set(await put<ModeDefault>(u(userId, "mode"), { mode: e.target.value })))}>
+              {MODE_ORDER.map((m) => <option key={m} value={m} title={MODES[m].description}>{MODES[m].label}</option>)}
+            </select>
+          </label>
+        )}
+        {profiles.data && (
+          <Switch label="Voice to cloud" hint="What you dictate may be sent to a cloud model"
+            checked={profiles.data.voiceCloud} onChange={(voiceCloud) => run(async () => profiles.set(await patch<Profiles>(u(userId, "profiles"), { voiceCloud })))} />
+        )}
+      </div>
       <div className="profiles">
         {(["general", "private"] as const).map((pool) => {
           const n = net.data![pool];
@@ -425,10 +432,6 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
           );
         })}
       </div>
-      {profiles.data && (
-        <Switch label="Voice to cloud" hint="What you dictate may be sent to a cloud model"
-          checked={profiles.data.voiceCloud} onChange={(voiceCloud) => run(async () => profiles.set(await patch<Profiles>(u(userId, "profiles"), { voiceCloud })))} />
-      )}
     </Section>
   );
 }

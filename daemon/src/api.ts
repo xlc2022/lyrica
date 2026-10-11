@@ -62,9 +62,9 @@ export interface State {
   locked: boolean;
   /** Users logged in on this browser session. Empty while locked. */
   users: UserCard[];
-  /** lyricad's version (package.json) and build (the git commit it was built from, or "dev"). Shown in the header. */
-  version: string;
-  build: string;
+  /** lyricad's version (package.json) and build (the git commit it was built from, or "dev"). Shown in the header; absent while locked. */
+  version?: string;
+  build?: string;
 }
 
 /** POST /api/unlock → State. Only while locked. */
