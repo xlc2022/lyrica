@@ -172,8 +172,15 @@ describe("machines", () => {
     fake.down = false;
     await run();
     expect(settings.machine("nas")!.state?.kind).toBe("online");
+    // The same address again keeps it; a new one clears it.
+    workspace.updateMachine(thread("g").userId, "nas", { address: "lyrica@127.0.0.1" });
+    expect(settings.machine("nas")!.state?.kind).toBe("online");
     workspace.updateMachine(thread("g").userId, "nas", { address: "lyrica@10.0.0.9" });
     expect(settings.machine("nas")!.state).toBeNull();
+    // A name that no longer resolves is unreachable too.
+    workspace.updateMachine(thread("g").userId, "nas", { address: "lyrica@gone.invalid" });
+    await expect(run()).rejects.toThrow();
+    expect(settings.machine("nas")!.state?.kind).toBe("unreachable");
   });
 
   it("never let write or edit touch SSH's or sudo's files, in any mode", async () => {

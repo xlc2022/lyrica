@@ -115,12 +115,13 @@ describe("delegate", () => {
     ws.settings(s.li.id).setThread(parent.threadId, "general", { mode: "auto" });
     await s.run(parent, { task: "change it", role: "worker" });
     await s.run(parent, { task: "change only a", role: "worker", folders: [join(host, "a")] });
-    const [narrowed, worker, scout] = s.delegation.status(parent);
+    await s.run(parent, { task: "change it offline", role: "worker", internet: false });
+    const [offline, narrowed, worker, scout] = s.delegation.status(parent);
     const child = (thread: string) => ({ ...ws.settings(s.li.id).thread(thread), network: ws.network({ userId: s.li.id, pool: "general", threadId: thread }) });
     expect(child(scout!.thread)).toMatchObject({ grants: [{ path: join(host, "a"), writable: false }], mode: "acceptEdits", parent: parent.threadId, network: { internet: false, services: false, hosts: ["10.0.0.5"] } });
     expect(child(worker!.thread)).toMatchObject({ grants: [{ path: join(host, "a"), writable: true }], network: { internet: false, hosts: ["10.0.0.5"] } });
     // Bash on a machine follows no folder or read-only narrowing, so only an unnarrowed writer keeps the parent's machines.
-    expect([scout, worker, narrowed].map((r) => child(r!.thread).machines)).toEqual([[], ["nas"], []]);
+    expect([scout, worker, narrowed, offline].map((r) => child(r!.thread).machines)).toEqual([[], ["nas"], [], []]);
     // Anything wider is refused by the workspace itself.
     const p = { userId: s.li.id, pool: "general" as const, threadId: parent.threadId };
     expect(() => ws.inheritSettings(p, worker!.thread, { internet: true })).toThrow("no internet");

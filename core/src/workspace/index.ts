@@ -343,7 +343,15 @@ export class Workspace {
     const s = this.settings(userId);
     const m = s.machine(name);
     if (!m) throw new Error(`no machine ${name}`);
-    const { addresses, outside } = await resolveHost(m.host);
+    let resolved: { addresses: string[]; outside: boolean };
+    try {
+      resolved = await resolveHost(m.host);
+    } catch (err) {
+      // A name that no longer resolves can't be reached; the off-network refusal below has its own state.
+      try { s.machineState(name, "unreachable"); } catch { /* shown only */ }
+      throw err;
+    }
+    const { addresses, outside } = resolved;
     if (outside && m.pool === "private" && !m.offNetwork) {
       throw new Error(`${m.host} now resolves outside your network (${addresses.join(", ")}); confirm it in Settings to use it again`);
     }
@@ -411,10 +419,14 @@ export class Workspace {
   /** Changes a machine's address, root, limit or pool; a new pool takes it from every thread that granted it. */
   updateMachine(userId: string, name: string, change: { address?: string; root?: string | null; limit?: MachineLimit; pool?: Pool }): MachineConfig {
     const s = this.settings(userId);
+    const before = s.machine(name);
     const address = change.address === undefined ? {} : parseMachineAddress(change.address);
     let m = s.updateMachine(name, { ...address, ...(change.root !== undefined ? { root: change.root || null } : {}), ...(change.limit ? { limit: change.limit } : {}) });
     if (change.pool) m = s.setMachinePool(name, change.pool);
-    if (change.address !== undefined) { s.machineState(name, null); m = s.machine(name)!; }
+    if (change.address !== undefined && (m.host !== before?.host || m.port !== before?.port || m.username !== before?.username)) {
+      s.machineState(name, null);
+      m = s.machine(name)!;
+    }
     this.disconnect(userId, name);
     return m;
   }
