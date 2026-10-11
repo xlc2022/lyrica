@@ -139,7 +139,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
                 <Icon name="folder" />{settings.data.grants.length === 1 ? settings.data.grants[0]!.path : `${settings.data.grants.length} folders`}
               </span>
             )}
-            {settings.data && settings.data.target !== "sandbox" && <span className="folder">{settings.data.target}</span>}
+            {settings.data?.machines.map((m) => <span key={m} className="folder" title="Machine">{m}</span>)}
           </div>
         </div>
         {!s?.subagent && (

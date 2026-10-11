@@ -54,7 +54,7 @@ a single file. The old `…/panel` opens Settings.
 - **Thread settings drawer:** a model per task (each option says cloud or local first), local-only, the internet and
   this machine's services switches (each following the user's default until
   changed), allowed hosts, folders from the allowed paths (read-only or
-  read-write), where commands run (sandbox or an SSH target), the mode, the
+  read-write), a machine of the thread's pool (one; picking one replaces any others the thread had), the mode, the
   Web search and Images switches, "Do not log", rename, hide, and forget. `lyricad` validates every
   change and its reason is shown.
 - **Subagents live inline**, not in the sidebar: see the `delegate` card
@@ -74,7 +74,8 @@ a single file. The old `…/panel` opens Settings.
   Password, Your personas (linking a separate persona needs both passwords),
   Persona suggestions (edit, send on to the administrators, or drop),
   Endpoints with probe status, Model profiles, Network (the default mode and
-  network defaults per pool, Voice to cloud), and SSH targets.
+  network defaults per pool, Voice to cloud), and Machines (listed, with
+  Remove; `lyrica admin ssh add` adds one).
 - **Administration**, for administrators: Status (the server's network
   self-test, sleep time, start unlocked), Users with the administrator flag and
   their allowed folders, Sleep, Start unlocked (saving the `self.db`
@@ -112,7 +113,9 @@ a single file. The old `…/panel` opens Settings.
   someone wrote to a subagent), as a `notice` event and stored as a
   `notice` message, shows as a card headed by what it is, linking to the
   subagent.
-- Permission requests appear inline with Allow and Deny and the time left. A
+- Permission requests appear inline with Allow and Deny and the time left;
+  a request on a machine leads with the machine's name and the folder, and
+  a suspect command shows its warning sentence above the command. A
   subagent's request shows in its parent's thread (in its card, when that
   is open) and on its own page, naming the subagent, and stays past the
   parent's turn; the first answer wins and the other view updates.

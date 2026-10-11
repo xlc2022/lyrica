@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   del, get, patch, u, THREAD_TASKS,
-  type AllowedPaths, type EndpointInfo, type Grant, type ModelRef, type PermissionMode, type SshTargetInfo,
+  type AllowedPaths, type EndpointInfo, type Grant, type ModelRef, type PermissionMode, type MachineInfo,
   type TaskModel, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTask,
 } from "./api.ts";
 import { Icon } from "./icons.tsx";
@@ -95,7 +95,7 @@ export function SettingsDrawer({ ctx, base, summary, settings, onSettings, onSum
   const change = (c: ThreadSettingsChange) => run(async () => onSettings(await patch<ThreadSettings>(`${base}/settings`, c)));
   const changeThread = (c: { title?: string; hidden?: boolean }) => run(async () => onSummary(await patch<ThreadSummary>(base, c)));
   const paths = useLoad(() => get<AllowedPaths>(u(userId, "paths")), [userId]);
-  const ssh = useLoad(() => get<SshTargetInfo[]>(u(userId, "ssh")), [userId]);
+  const machines = useLoad(() => get<MachineInfo[]>(u(userId, "machines")), [userId]);
   const [title, setTitle] = useState(summary.title ?? "");
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -138,11 +138,10 @@ export function SettingsDrawer({ ctx, base, summary, settings, onSettings, onSum
         <fieldset className="group" disabled={sub || busy}>
           <legend>Folders</legend>
           <Folders grants={settings.grants} allowed={paths.data?.[pool] ?? []} onChange={(grants) => change({ grants })} />
-          <label className="field"><span>Run commands in</span>
-            <select value={settings.target} onChange={(e) => change({ target: e.target.value })}>
-              <option value="sandbox">This server's sandbox</option>
-              {(ssh.data ?? []).map((t) => <option key={t.name} value={`ssh:${t.name}`}>{t.name} ({t.username}@{t.host})</option>)}
-              {settings.target !== "sandbox" && !ssh.data?.some((t) => `ssh:${t.name}` === settings.target) && <option value={settings.target}>{settings.target}</option>}
+          <label className="field"><span>Machine</span>
+            <select value={settings.machines[0] ?? ""} onChange={(e) => change({ machines: e.target.value ? [e.target.value] : [] })}>
+              <option value="">None</option>
+              {(machines.data ?? []).filter((m) => m.pool === pool).map((m) => <option key={m.name} value={m.name}>{m.name} ({m.address})</option>)}
             </select>
           </label>
         </fieldset>

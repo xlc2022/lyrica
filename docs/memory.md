@@ -249,6 +249,26 @@ said:
   where she read them. Notes and pages hold what she concluded, with
   citations.
 
+## Projects
+
+A project chat is marked in the store (`threads.project`, with the user's
+goal), and its threads are its child threads. Its memory is ordinary memory,
+found by where it came from:
+- **Project notes** are the notes citing the project chat or one of its
+  threads (`projectNotes`). Nothing stores them apart.
+- **The project page** is `p:project-<id>` (`pageForProject`). The user's
+  instructions on it are User introduced, so sleep keeps them word for word.
+  Sleep keeps the rest: what she knows about the project, citing its notes
+  and threads ([sleep.md](sleep.md#projects)). A project's notes stay notes
+  once they are on the page.
+- A branch of the project chat or of one of its threads is a thread of the
+  project.
+- Forgetting a project with its threads also forgets its page and the notes
+  that came only from it.
+
+The project's context section is not built yet
+([briefs/projects.md](briefs/projects.md)).
+
 ## Threads that aren't logged
 
 Each thread has a **Do not log thread in memory** checkbox. When it is on:

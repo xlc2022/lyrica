@@ -101,7 +101,8 @@ Rules:
   Voice to cloud, Voice, Speed, Project, New project, Make project, Threads,
   Start a thread, Suggested threads, Start all, Resolve, Reopen, Resolved,
   Waiting on you, Goal, Instructions, Paused, All threads, Only projects,
-  No projects.
+  No projects, Machines, Add machine, Mode limit, Replace key, Allow in this
+  thread, Online, Unreachable, Key changed, Off network.
 - Numbers get units beside the field (GB, %, tokens), and a maximum shown
   where one exists ("of 128k").
 
@@ -143,6 +144,10 @@ Rules:
 | Hearing a message read aloud | her message's actions |
 | Voice to cloud | the thread's Privacy and network switches; its default beside the user's other defaults for new threads (Settings, Network) |
 | A speech model's voice and speed | its Settings drawer in Models |
+| A machine (an SSH account, a Proxmox token) | a row in the **Machines** section of Settings: name; a facts line in mono with the address, the pool, "SSH · key" or "Proxmox API · token", and the limit as a phrase ("up to Accept edits"); at most one state (Online green, Unreachable amber with the duration in mono after the word, Key changed red, Off network amber; none if never probed). The row opens the **drawer** (address, root, pool, **Mode limit** as the message box's three-item mode list); Replace key and Remove behind ⋯, Remove with its one sentence |
+| Adding a machine | the **Add machine** page, like pairing a host: one h1, a kind segment (SSH \| Proxmox) at the top, steps as sections with eyebrows (Name and address, Key or Token, Test, Fingerprint), one primary on the page: the current step's action (Copy, then Test, then Confirm); a done step's button becomes secondary. Confirm is the last step; nothing is saved before it. Commands in a code block, the fingerprint in mono, no captions. Replace key and a changed key open it at the Fingerprint step. An off-network private machine gets a **dialog** with the consequence, **Add anyway** primary and Cancel |
+| A thread's machines | one Machines row in the thread's Settings drawer next to Folders: the sandbox plus the granted machines; their names in mono in the header's facts line beside the folders. The mode word stays the thread's mode; in the mode menu, a mode above a granted machine's limit reads "Asks on <machine>" |
+| A remote action waiting for approval | the permission **card**, the machine's name first in its title, the command or path in mono; for a suspect command, one plain warning sentence above the command and a third secondary choice, **Allow in this thread**. Allow stays the one primary; no third colour. Each remote call is a **marker** naming the machine |
 | A child thread | nested under its parent in the **sidebar**, with its state and unseen count as badges; its updates as a **card** in the parent's conversation that links to it |
 | A project | a thread row in the **sidebar** with the project icon in the pool dot's place, its threads nested under it (each keeps its pool dot) and resolved ones folded under one **Resolved** disclosure row with the count in mono; an amber dot on the row when a thread waits on the user. **New project** in the empty thread list's context menu, **Make project** in a top-level thread's menu; a new project starts pinned, at the top with the other pinned threads |
 | A project's threads at a glance | **Threads** with its count in the project chat's facts line, a popover grouped Waiting on you, Working, Queued, Idle, Resolved, in the sidebar's words and order; full width on a phone |

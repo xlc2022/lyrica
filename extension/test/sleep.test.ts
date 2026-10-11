@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Memory, PersonaProposals, PersonaStore, searchView, type Pool, type PoolView } from "@lyrica/core";
+import { Memory, PersonaProposals, PersonaStore, projectSlug, searchView, type Pool, type PoolView } from "@lyrica/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { deadUrl, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
 import { profile, withModels } from "../../core/test/helpers.ts";
@@ -324,6 +324,108 @@ describe("a night's sleep", () => {
     await held;
     await s.sleep.stop(s.li.id);
     expect((await running).status).toBe("partial");
+    v.close();
+  });
+});
+
+describe("project pages", () => {
+  /** A project chat with one thread, where Li says something and Lyrica notes it. */
+  const project = (v: PoolView, said: string, note: string, opts: { unlogged?: boolean } = {}) => {
+    const chat = v.own.createThread({ interface: "web", project: true, goal: "Ship the garden app", title: "Garden app", unlogged: opts.unlogged });
+    const thread = v.own.createThread({ interface: "web", parent: chat.id, child: true });
+    const e = v.own.appendEntry(thread.id, { piId: `p${Math.random()}`, role: "user", data: {}, text: said });
+    const [n] = opts.unlogged ? [] : v.own.addNotes([{ text: note, source: e }], { author: "lyrica", thread: thread.id });
+    return { chat: chat.id, thread: thread.id, note: n, slug: projectSlug(chat.id) };
+  };
+
+  it("keeps each project's page from that night's project notes, citing them, and the next thread of the project starts with it", async () => {
+    const s = await setup();
+    const v = s.view();
+    const p = project(v, "Let's use SQLite, not Postgres.", "{user} decided the garden app uses SQLite, not Postgres");
+    let instruction = "";
+    s.script({
+      consolidate: [
+        (c) => { instruction = said(c); return call("write_page", { slug: p.slug, title: "Garden app", summary: "the garden app project", text: `Decided: SQLite, not Postgres [${p.note}].` }); },
+      ],
+    });
+    expect((await s.sleep.run(s.li.id, "general", "scheduled")).status).toBe("complete");
+    expect(instruction).toContain(`Page: ${p.slug} (create it)`);
+    expect(instruction).toContain(`Notes: [${p.note}]`);
+    expect(instruction).toContain("Ship the garden app");
+    const later = v.own.createThread({ interface: "web", parent: p.chat, child: true });
+    expect(v.own.pageForProject(later.id)?.text).toBe(`Decided: SQLite, not Postgres [${p.note}].`);
+    expect(v.own.cameFrom(`p:${p.slug}`)).toEqual([p.note]);
+    // Folded into the page, the note stays a note.
+    expect(v.own.get(p.note!)).toBeDefined();
+    v.close();
+  });
+
+  it("keeps Li's instructions on a project's page word for word", async () => {
+    const s = await setup();
+    const v = s.view();
+    const p = project(v, "Write the changelog in German.", "{user} wants the garden app's changelog in German");
+    const owner = s.memory.openOwnerView(s.li.id);
+    const mine = "Always measure in metric.";
+    owner.general.putPage({ slug: p.slug, title: "Garden app", summary: "the garden app project", text: mine }, `user:${s.li.id}`);
+    owner.close();
+    const results: string[] = [];
+    s.script({
+      consolidate: [
+        call("write_page", { slug: p.slug, title: "Garden app", summary: "the garden app project", text: `Changelog in German [${p.note}].` }),
+        (c) => { results.push(said(c)); return call("write_page", { slug: p.slug, title: "Garden app", summary: "the garden app project", text: `${mine}\n\nChangelog in German [${p.note}].` }); },
+      ],
+    });
+    await s.sleep.run(s.li.id, "general", "scheduled");
+    expect(results[0]).toContain("has text a user wrote");
+    expect(v.own.get(`p:${p.slug}`)!.text).toBe(`${mine}\n\nChangelog in German [${p.note}].`);
+    v.close();
+  });
+
+  it("writes a private project's page only in private sleep, and none for an unlogged project", async () => {
+    const s = await setup();
+    const g = s.view("general");
+    const pv = s.view("private");
+    const secret = project(pv, "The surprise party is on the 12th.", "{user} planned the surprise party for the 12th");
+    const quiet = project(g, "Nothing to keep.", "", { unlogged: true });
+    s.talk(g, "Something ordinary.", "{user} said something ordinary");
+
+    const general: string[] = [];
+    s.script({
+      consolidate: [
+        (c) => { general.push(said(c)); return call("write_page", { slug: secret.slug, title: "Party", summary: "x", text: `The 12th [${secret.note}].` }); },
+        (c) => { general.push(said(c)); return call("write_page", { slug: quiet.slug, title: "Quiet", summary: "x", text: "Something [n:20261011-00000000]." }); },
+        (c) => { general.push(said(c)); return { text: "Done." }; },
+      ],
+    });
+    await s.sleep.run(s.li.id, "general", "scheduled");
+    expect(general[0]).not.toContain(secret.chat);
+    expect(general[0]).not.toContain(quiet.chat);
+    expect(general[1]).toContain("there's no such project here");
+    expect(general[2]).toContain("isn't logged in memory");
+    expect(g.own.get(`p:${secret.slug}`)).toBeUndefined();
+    expect(g.own.get(`p:${quiet.slug}`)).toBeUndefined();
+
+    s.script({ consolidate: [call("write_page", { slug: secret.slug, title: "Party", summary: "the party", text: `The 12th [${secret.note}].` })] });
+    await s.sleep.run(s.li.id, "private", "scheduled");
+    expect(pv.own.get(`p:${secret.slug}`)!.text).toBe(`The 12th [${secret.note}].`);
+    expect(s.cloud.requests.filter((r) => JSON.stringify(r).includes("surprise party"))).toHaveLength(0);
+    g.close();
+    pv.close();
+  });
+
+  it("keeps an unlogged project chat's title and goal out of sleep, even when its threads are logged", async () => {
+    const s = await setup();
+    const v = s.view();
+    const p = project(v, "We pick the paint on Friday.", "{user} picks the paint on Friday");
+    v.own.setUnlogged(p.chat, true);
+    let instruction = "";
+    s.script({ consolidate: [(c) => { instruction = said(c); return { text: "Done." }; }] });
+    await s.sleep.run(s.li.id, "general", "scheduled");
+    // The thread itself is still slept, as an ordinary thread.
+    expect(instruction).toContain(`t:${p.thread}`);
+    expect(instruction).not.toContain(p.chat);
+    expect(instruction).not.toContain("Ship the garden app");
+    expect(instruction).not.toContain(p.slug);
     v.close();
   });
 });

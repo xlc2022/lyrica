@@ -2,8 +2,8 @@ import { existsSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  generateSshKey, Keyring, parseHost, PersonaStore, PRONOUN_PRESETS, pronounLabel, Users, Workspace,
-  type Pool, type Profile, type Pronouns, type User,
+  Keyring, MACHINE_LIMITS, parseHost, PersonaStore, PRONOUN_PRESETS, pronounLabel, Users, Workspace,
+  type MachineLimit, type Pool, type Profile, type Pronouns, type User,
 } from "@lyrica/core";
 import { AgentSessionRuntime, InteractiveMode } from "@earendil-works/pi-coding-agent";
 import { Lyricad } from "@lyrica/daemon";
@@ -19,7 +19,7 @@ const USAGE = `usage:
   lyrica admin user profile <login>
   lyrica admin grants add|remove --user <login> --pool general|private <path>
   lyrica admin grants list --user <login>
-  lyrica admin ssh add --user <login> <name> <account>@<host>[:<port>] [--root <path>]
+  lyrica admin ssh add --user <login> <name> <account>@<host>[:<port>] [--root <path>] [--pool general|private] [--limit ask|acceptEdits|auto]
   lyrica admin ssh list|remove --user <login> [<name>]
   lyrica admin net show --user <login>
   lyrica admin net set --user <login> --pool general|private internet|services on|off
@@ -160,6 +160,7 @@ async function workspaceAdmin(users: Users, keyring: Keyring, kind: "grants" | "
   const login = take("--user");
   const pool = take("--pool");
   const root = take("--root");
+  const limit = take("--limit");
   const [action, ...rest] = args;
   if (!login) throw new Error(USAGE);
   const target = need(users, login);
@@ -198,18 +199,32 @@ async function workspaceAdmin(users: Users, keyring: Keyring, kind: "grants" | "
     settings.setDefaultNetwork(pool, { hosts: rest[0] === "add" ? [...new Set([...hosts, entry])] : hosts.filter((h) => h !== entry) });
     console.log(`${rest[0] === "add" ? "Added" : "Removed"} ${entry} ${rest[0] === "add" ? "to" : "from"} ${login}'s ${pool} hosts.`);
   } else if (kind === "ssh" && action === "list") {
-    for (const t of settings.sshTargets()) {
-      console.log(`${t.name}: ${t.username}@${t.host}:${t.port}${t.root ? ` in ${t.root}` : ""}${t.hostKey ? ` (host key ${t.hostKey})` : " (host key not seen yet)"}`);
+    for (const m of settings.machines()) {
+      console.log(`${m.name}: ${m.username}@${m.host}:${m.port}${m.root ? ` in ${m.root}` : ""}, ${m.pool}, up to ${m.limit}${m.hostKey ? `, host key ${m.hostKey}` : ", host key not confirmed"}${m.offNetwork ? ", off network" : ""}`);
     }
   } else if (kind === "ssh" && action === "add" && rest.length === 2) {
     const [name, address] = rest as [string, string];
-    const m = /^([^@\s]+)@([^:\s]+)(?::(\d+))?$/.exec(address);
-    if (!m) throw new Error("the address looks like account@host or account@host:port");
-    const key = generateSshKey(`lyrica:${login}:${name}`);
-    settings.addSsh({ name, username: m[1]!, host: m[2]!, port: Number(m[3] ?? 22), privateKey: key.privateKey, root: root ?? null });
-    console.log(`Added ${name}. Add this key to ~${m[1]}/.ssh/authorized_keys on ${m[2]}:\n${key.publicKey}`);
+    const machinePool = pool ?? "general";
+    if (!isPool(machinePool)) throw new Error(USAGE);
+    if (limit !== undefined && !MACHINE_LIMITS.includes(limit as MachineLimit)) throw new Error("--limit is ask, acceptEdits or auto");
+    let probe = await workspace.probeMachine(target.id, login, { name, address });
+    console.log(`Run this on the machine as root:\n\n${probe.setup}\n`);
+    await ask("Press Enter when it's done. ");
+    probe = await workspace.probeMachine(target.id, login, { name, address, draft: probe.draft });
+    if (!probe.fingerprint) throw new Error(`couldn't reach ${address}: ${probe.problem ?? "no answer"}`);
+    console.log(`The machine's host key: ${probe.fingerprint}`);
+    console.log(probe.login ? "Her key was accepted." : `Her key wasn't accepted (${probe.problem ?? "refused"}); it will be once the setup is done.`);
+    if ((await ask("Is that the fingerprint the machine prints? (yes/no) ")).trim().toLowerCase() !== "yes") throw new Error("not added: the fingerprint wasn't confirmed");
+    if (probe.offNetwork && machinePool === "private"
+      && (await ask("It resolves outside your network: what she reads and writes there, and the thread's private memory, can leave it. Add anyway? (yes/no) ")).trim().toLowerCase() !== "yes") {
+      throw new Error("not added");
+    }
+    await workspace.addMachine(target.id, {
+      name, address, root: root ?? null, pool: machinePool, limit: limit as MachineLimit | undefined, draft: probe.draft, hostKey: probe.fingerprint, offNetworkConfirmed: true,
+    });
+    console.log(`Added ${name} (${machinePool}, up to ${limit ?? "ask"}).`);
   } else if (kind === "ssh" && action === "remove" && rest.length === 1) {
-    settings.removeSsh(rest[0]!);
+    workspace.removeMachine(target.id, rest[0]!);
     console.log(`Removed ${rest[0]}.`);
   } else {
     throw new Error(USAGE);

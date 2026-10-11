@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   del, get, patch, post, put, u,
   type AdminStatus, type AllowedPaths, type EndpointInfo, type Me, type ModeDefault, type NetworkDefaults, type PersonaProposal,
-  type OfferingInfo, type OfferingSettings, type Pool, type Probe, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type SshTargetInfo, type Task, type Theme, type UserCard,
+  type OfferingInfo, type OfferingSettings, type Pool, type Probe, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type MachineInfo, type Task, type Theme, type UserCard,
 } from "./api.ts";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { href } from "./route.ts";
@@ -44,7 +44,7 @@ const SETTINGS: SectionDef[] = [
   { key: "endpoints", label: "Endpoints", body: (ctx) => <EndpointsSection ctx={ctx} /> },
   { key: "profiles", label: "Model profiles", body: (ctx) => <ProfilesSection ctx={ctx} /> },
   { key: "network", label: "Network", body: (ctx) => <NetworkSection ctx={ctx} /> },
-  { key: "ssh", label: "SSH targets", body: (ctx) => <SshSection ctx={ctx} /> },
+  { key: "machines", label: "Machines", body: (ctx) => <MachinesSection ctx={ctx} /> },
 ];
 const ADMIN: SectionDef[] = [
   { key: "status", label: "Status", body: (ctx) => <StatusSection ctx={ctx} /> },
@@ -433,34 +433,22 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
   );
 }
 
-function SshSection({ ctx }: { ctx: ShellContext }) {
+function MachinesSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
-  const targets = useLoad(() => get<SshTargetInfo[]>(u(userId, "ssh")), [userId]);
-  const [run, busy, error] = useAction();
-  const [form, setForm] = useState({ name: "", address: "", root: "" });
+  const machines = useLoad(() => get<MachineInfo[]>(u(userId, "machines")), [userId]);
+  const [run, , error] = useAction();
   return (
-    <Section title="SSH targets">
-      <ErrorText error={targets.error || error} />
+    <Section title="Machines">
+      <ErrorText error={machines.error || error} />
       <ul className="list">
-        {(targets.data ?? []).map((t) => (
-          <li key={t.name}>
-            <div className="row between"><b>{t.name}</b><span className="muted">{t.username}@{t.host}:{t.port}{t.root && ` · ${t.root}`}</span></div>
-            <label className="field"><span>Public key</span><textarea readOnly rows={2} value={t.publicKey} onFocus={(e) => e.target.select()} /></label>
-            <p className="meta muted mono">{t.hostKey ? `Host key ${t.hostKey}` : "Host key pinned on first connection"}</p>
-            <Confirm label="Remove" danger confirm="Remove" question={`Remove ${t.name}? Threads that run commands there go back to the sandbox.`}
-              onConfirm={() => run(async () => { await del(u(userId, "ssh", t.name)); targets.reload(); })} />
+        {(machines.data ?? []).map((m) => (
+          <li key={m.name}>
+            <div className="row between"><b>{m.name}</b><span className="muted mono">{m.address}{m.root && ` · ${m.root}`} · {m.pool} · up to {MODES[m.limit].label}{m.offNetwork && " · off network"}</span></div>
+            <Confirm label="Remove" danger confirm="Remove it" question={`Remove ${m.name}? Threads that use it lose it.`}
+              onConfirm={() => run(async () => { await del(u(userId, "machines", m.name)); machines.reload(); })} />
           </li>
         ))}
       </ul>
-      <form className="stack sub-card" onSubmit={(e) => { e.preventDefault(); void run(async () => { await post(u(userId, "ssh"), { ...form, root: form.root || undefined }); setForm({ name: "", address: "", root: "" }); targets.reload(); }); }}>
-        <h3>Add target</h3>
-        <div className="row wrap">
-          <label className="field"><span>Name</span><input value={form.name} placeholder="nas" onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
-          <label className="field"><span>Address</span><input value={form.address} placeholder="lyrica@nas.lan:22" onChange={(e) => setForm({ ...form, address: e.target.value })} /></label>
-          <label className="field"><span>Folder</span><input value={form.root} placeholder="/srv/share" onChange={(e) => setForm({ ...form, root: e.target.value })} /></label>
-        </div>
-        <div className="row"><button className="primary" disabled={busy || !form.name || !form.address}>Add target</button></div>
-      </form>
     </Section>
   );
 }

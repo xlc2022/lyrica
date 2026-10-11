@@ -479,21 +479,59 @@ export interface ModeDefault { mode: PermissionMode }
 /** GET /api/u/:userId/paths → AllowedPaths: the folders this user may grant, set by an administrator. */
 export type AllowedPaths = Record<Pool, string[]>;
 
-export interface SshTargetInfo {
+/** The loosest mode she may use on a machine. */
+export type MachineLimit = "ask" | "acceptEdits" | "auto";
+
+export interface MachineInfo {
   name: string;
-  host: string;
-  port: number;
-  username: string;
+  kind: "ssh";
+  /** account@host or account@host:port. */
+  address: string;
   root: string | null;
-  /** Install this on the remote account. */
-  publicKey: string;
-  /** SHA-256 of the host key, pinned on first connection. */
+  pool: Pool;
+  limit: MachineLimit;
+  /** For the machine's keys file: usable only from Lyrica's addresses. */
+  keyLine: string;
+  /** The host key Li confirmed; null for a machine from before confirming, which can't be used until it is. */
   hostKey: string | null;
+  /** Its address resolved outside the LAN, loopback and tailnet at the last check. */
+  offNetwork: boolean;
+  lastUsed: string | null;
 }
-/** GET /api/u/:userId/ssh → SshTargetInfo[] */
-/** POST /api/u/:userId/ssh → SshTargetInfo. Generates the key; `address` is account@host[:port]. */
-export interface SshTargetInput { name: string; address: string; root?: string }
-/** DELETE /api/u/:userId/ssh/:name → Ok */
+/** GET /api/u/:userId/machines → MachineInfo[] */
+/**
+ * POST /api/u/:userId/machines/probe → MachineProbe. The Test step of Add
+ * machine, and of Replace key: makes a key pair for the machine and keeps it
+ * in memory (pass `draft` back to keep using it), then reads the host key and
+ * tries the login. Nothing is saved.
+ */
+export interface MachineProbeInput { name: string; address: string; draft?: string }
+export interface MachineProbe {
+  draft: string;
+  keyLine: string;
+  /** The setup steps, to run as root on the machine. */
+  setup: string;
+  fingerprint?: string;
+  /** Whether her key was accepted. */
+  login: boolean;
+  problem?: string;
+  offNetwork: boolean;
+}
+/**
+ * POST /api/u/:userId/machines → MachineInfo. Confirm: saves the machine with
+ * its probe's key and the host key Li confirmed. A private machine off network
+ * needs `offNetworkConfirmed` (the Add anyway dialog). New machines start at Ask.
+ */
+export interface MachineInput {
+  name: string; address: string; root?: string; pool: Pool; limit?: MachineLimit;
+  draft: string; hostKey: string; offNetworkConfirmed?: boolean;
+}
+/** PATCH /api/u/:userId/machines/:name → MachineInfo. A new pool takes the machine from every thread that granted it. */
+export interface MachineChange { address?: string; root?: string | null; pool?: Pool; limit?: MachineLimit }
+/** POST /api/u/:userId/machines/:name/key → MachineInfo. Replace key: the host key Li confirmed after a probe. */
+export interface MachineKey { hostKey: string }
+/** POST /api/u/:userId/machines/:name/confirm-off-network → MachineInfo. A private machine gone off network can be used again. */
+/** DELETE /api/u/:userId/machines/:name → Ok. Every thread's grant of it goes too. */
 
 // --- Threads ---
 
@@ -596,8 +634,8 @@ export interface ThreadSettings {
   /** What applies now, defaults included. All off while the host's network self-test refuses network. */
   network: Network;
   grants: Grant[];
-  /** "sandbox" or "ssh:<name>". */
-  target: string;
+  /** The machines granted to it besides the sandbox, by name. */
+  machines: string[];
   mode: PermissionMode;
   /** Switches: web_search and web_fetch, and the image tool. Off removes them from the session. */
   webSearch: boolean;
@@ -633,7 +671,8 @@ export interface ThreadSettingsChange {
   services?: boolean | null;
   hosts?: string[] | null;
   grants?: Grant[];
-  target?: string;
+  /** Machines of the thread's pool; a branch takes a subset of its parent's. */
+  machines?: string[];
   mode?: PermissionMode;
   webSearch?: boolean;
   images?: boolean;
@@ -826,7 +865,12 @@ export interface Pin { id: string; n: number; role: "user" | "assistant"; text: 
  * POST /api/u/:userId/threads/:pool/:threadId/permissions/:requestId → Ok.
  * Approving a plan (`propose_plan`) says which mode to go ahead in; refusing it keeps planning.
  */
-export interface PermissionAnswer { allow: boolean; mode?: GoAhead }
+export interface PermissionAnswer {
+  allow: boolean;
+  mode?: GoAhead;
+  /** For a suspect command: that exact command stops asking in the thread it runs in, and nowhere else. */
+  allowInThread?: boolean;
+}
 
 /**
  * POST /api/u/:userId/threads/:pool/:threadId/uploads?name=<file name> → UploadResponse.
@@ -914,6 +958,12 @@ export interface PermissionRequest {
   args: unknown;
   /** When it is denied if nobody answers (ISO time). */
   expiresAt: string;
+  /** Set for a call on a machine, with the folder a command runs in there. The answer covers exactly what is shown. */
+  machine?: string;
+  cwd?: string;
+  /** A suspect command, with its warning sentence: the card offers Allow in this thread. */
+  suspect?: true;
+  warning?: string;
   /**
    * Set for a subagent's tool call. The same request shows in the subagent's
    * thread and its parent's; either can answer it, and the first answer wins.

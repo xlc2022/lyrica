@@ -964,6 +964,114 @@ the work and keeps track of. Agreed 2026-10-10; not built yet. The briefs are
   thread into a project, and sharing a project (Share with copies one
   thread).
 
+## Machines
+
+Lyrica works on Li's other computers: a VM, a single-board computer, the
+NAS, and Proxmox nodes. Decided 2026-10-11 from
+`/mnt/project-files/remote/proposal.md`, which surveys what other agents do.
+
+- **Agentless.** Nothing of Lyrica's is installed on a machine. An SSH
+  machine is reached with Lyrica's own SSH client and a dedicated account
+  there; a **Proxmox** machine is reached over its API with a token. No
+  Lyrica agent on the machine, no full-power server as VS Code and Zed
+  install, unless real use hits a wall (a Windows machine, or policy that
+  must be enforced on the machine itself).
+- **A machine belongs to one pool.** A general thread uses general machines,
+  a private thread private ones; a machine is never in both. A private
+  machine whose address resolves outside Li's LAN, loopback and tailnet is
+  allowed through a dialog that states the consequence (what she reads
+  and writes there leaves the network, and so can the thread's private
+  memory) with Add anyway as its one action, and its row shows **Off
+  network** while that holds: the address is checked again on every
+  connection, and a private machine that has newly gone off network is
+  refused until Li confirms the dialog again. Changing a machine's pool
+  removes it from every thread that grants it, and moving one from Private
+  to General gets a dialog saying that what is already on the machine
+  becomes reachable from general threads. The sandbox's
+  internet switch and allowed hosts cover the sandbox only: a machine's
+  network is its own.
+- **A machine has a mode limit**, the loosest mode she may use there: Ask,
+  Accept edits or Auto. New machines start at **Ask**; Li loosens each one
+  as she proves reliable there. A call's mode is the strictest of the
+  thread's effective mode (already the strictest of its ancestors) and the
+  machine's limit, read on every call. Plan mode may `read` on a machine and
+  nothing else.
+- **Threads grant machines like folders**, from their pool's machines, in
+  the thread's settings. `read`, `write`, `edit` and `bash` take an optional
+  machine; without one they run in the sandbox. A subagent or child thread
+  gets a subset of its parent's machines, never more, and is narrowed at
+  once when its parent is.
+- **Keys and tokens** are generated or entered once, stored in the user's
+  encrypted `user.db`, handed to the client in memory, and never shown to
+  her or to anything she runs. The `authorized_keys` line Lyrica gives
+  carries `restrict` and `from=` Lyrica's addresses, so a stolen key is
+  useless elsewhere, and the machine's setup puts it in a root-owned file
+  (`AuthorizedKeysFile /etc/ssh/authorized_keys/%u`), so no command she
+  runs can add a key to stay. Her sudo rights are the exact commands Li
+  lists; she never has a password.
+- **The host key is confirmed when the machine is added**, never pinned on
+  first use: the Add machine page shows the fingerprint Lyrica sees next to
+  the command that prints it on the machine, and on the tailnet also checks
+  the key Tailscale publishes. A changed key fails every call, with no
+  fallback, until Li re-pairs. Strict key exchange is required.
+- **The SSH client runs outside `lyricad`**, in a sandboxed helper per
+  connection that holds one machine's key and reaches one address, so a
+  hostile server that breaks the SSH library gets one key it could already
+  use, not every user's.
+- **Approvals are bound to what was shown**: the machine, the exact command
+  or path and the working folder on the card. Anything different is denied;
+  an approval still pending when the turn ends is void; with nobody to
+  answer, the call is denied. There is no "allow from now on", with one
+  exception below.
+- **Suspect commands always ask**, in every mode: a short fixed list,
+  documented in docs/workspace.md and never grown one scare at a time, of
+  commands almost never right on a machine (deleting `/`, `/*`, a home
+  folder or a top-level system folder; `mkfs` or `dd` onto a device;
+  recursive `chmod` or `chown` on `/`; `userdel`; shutdown and reboot;
+  `qm destroy`). The permission card carries a warning sentence and a third
+  choice, **Allow in this thread**: that exact command no longer asks in
+  that thread, and nowhere else. The list is a warning layer; the boundary
+  is the account's rights and the root-owned keys file.
+- **The first call on a machine in a turn asks** if anything earlier in the
+  turn ran somewhere else (the sandbox or another machine), whatever the
+  modes, so output from one place can't quietly steer her onto another.
+- **A floor no mode lifts** for `write` and `edit` on a machine: `~/.ssh/`,
+  `/etc/ssh/` and `/etc/sudoers*` are refused.
+- **Output** is capped as in the sandbox, stripped of terminal control
+  sequences, and private-key blocks in it are replaced with a marker before
+  she or memory sees them. Secrets live on machines, which is why a machine
+  that holds them belongs in the Private pool.
+- **Proxmox** is a kind of machine reached over its API, never a root shell.
+  Li makes a privilege-separated token (`pveum user token add lyrica@pve
+  agent -privsep 1`) with a custom role of `VM.Audit` and `VM.PowerMgmt` on
+  the VMs or pool she may touch, plus `PVEAuditor` on `/` for reads; never
+  the built-in PVEVMUser, whose console and guest-agent file rights amount
+  to running code in the guest, and never `Sys.PowerMgmt`. One tool,
+  `proxmox`, with named actions: status, list, start, stop, shutdown,
+  reboot, snapshots (list only). No destroy. Shutdown follows the machine's
+  mode limit like a command; stop and reboot are on the suspect list and ask
+  with the warning in every mode until allowed in a thread. The node that
+  runs Lyrica's own VM is not added until
+  Li finds her reliable; the Add machine page refuses it where it can tell.
+- **The record is the thread.** Each remote call is a thread entry,
+  encrypted in its pool; `write` and `edit` changes are recorded with
+  snapshots as in the sandbox, so removing the turns undoes them; commands
+  on a machine can't be undone by Lyrica. The machine's own auth log and
+  journal record every login and command independently, under the key's
+  comment `lyrica:<user>:<machine>`. No command text reaches `lyricad`'s
+  log.
+- **In the interface:** a **Machines** section in Settings (rows that open
+  the drawer; **Add machine** is a page, like pairing a host); machines
+  beside Folders in the thread's settings drawer and header facts; the
+  machine's name leading the permission card's title; markers naming the
+  machine. The mode word in the message box stays the thread's mode; in the
+  mode menu, a mode above a granted machine's limit reads "Asks on
+  <machine>". See docs/ux.md.
+- **Later, only when real use asks:** shared machines offered by an
+  administrator to other users (a remote account per user, since users are
+  protected from each other), short-lived SSH certificates from a Lyrica
+  certificate authority, and an installed Lyrica agent.
+
 ## Storage, encryption and unlocking
 
 - Each user's memory and threads live in encrypted SQLite (SQLCipher): a
@@ -1080,8 +1188,10 @@ Details in [docs/sleep.md](docs/sleep.md).
 - **Integrations:** Google Calendar, iCloud and CalDAV (which covers Nextcloud)
   for calendars; files, notes, downloads and email for sorting. Each sits behind
   a common adapter interface, and they don't all need to be connected at first.
-- **Much later:** managing computer systems such as Li's Proxmox deployment,
-  once she has proven reliable and sensitive data can be kept on local models.
+- **Machines:** working on Li's other computers over SSH, and on Proxmox
+  through its API, one machine at a time as Li finds her reliable (see
+  [Machines](#machines)). The Proxmox node that runs her own VM waits until
+  then.
 
 ## Runtime
 
@@ -1095,7 +1205,8 @@ Details in [docs/sleep.md](docs/sleep.md).
   `bash`, but they never run inside `lyricad`. Details are in
   [docs/workspace.md](docs/workspace.md).
   - Each operation goes either to a bubblewrap sandbox, which sees only the
-    folders granted to the thread, or to a named SSH target.
+    folders granted to the thread, or to one of the machines granted to it
+    (see [Machines](#machines)).
   - An administrator decides which folders each user may grant, with separate
     lists for the general and private pools. The lists live in `self.db`, so
     the user's password isn't needed and users can't extend their own.
@@ -1304,3 +1415,18 @@ new evidence.
   room for web research, then because Lyrica works like a coding agent (files,
   commands, SSH). The budget still exists so that every tool has to justify
   itself.
+- **Remote machines: "much later" → now (2026-10-11).** Working on Li's
+  other computers was deferred until she had proven reliable. It comes
+  forward as an extension of the SSH targets that already exist, with each
+  machine starting at Ask and loosened one at a time, and Proxmox through a
+  narrow API token rather than a root shell. The node that runs her own VM
+  still waits.
+- **Operator guides added to the docs budget (2026-10-11).** Li asked for
+  human-readable documentation on running Lyrica: bootstrapping her on a new
+  system, deploying model hosts, adding CI runners. They live in
+  `docs/guides/`, one page per task, written from the scripts and the
+  component docs. They follow the component docs and never replace them: a
+  behaviour is described once, in its component's page, and a guide says
+  which steps to take and what has not yet been exercised. They are kept
+  current by the Operator docs thread, on notice from threads whose merged
+  PRs change what an operator does by hand, and by a weekly drift check.
