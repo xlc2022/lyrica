@@ -24,15 +24,22 @@ place.
 1. **`effective()` narrows grants too:** a child's grant is kept only where
    an ancestor has a grant that contains it; a child's read-write grant
    becomes read-only where the ancestor's is read-only. Read on every call,
-   as the rest of `effective()` is.
+   as the rest of `effective()` is. Every grant read for a running thread
+   then goes through `effective()`, not `thread()`: in
+   `core/src/workspace/index.ts`, `files()` (the Files panel's sandbox and
+   `ThreadFiles` roots), `grantsFor`, `folders`, and `targetFor`'s sandbox;
+   and in `daemon/src/routes.ts`, the settings route's `tw` where it feeds
+   the facts line. The settings drawer's editable list stays the thread's
+   own grants, as it does for machines.
 2. **`checkInherited` stops throwing for this case.** With grants narrowed
    in `effective()`, a child whose parent lost a folder simply no longer has
    it: its sandbox mounts fewer folders, and `read` on the old path is
    refused as outside its grants, with the usual reason.
 3. **The UI follows:** a child thread's facts line and Files panel show the
    effective folders, so a removed folder disappears from running threads
-   without a reload, as a removed machine does. Nothing new to design; the
-   thread already shows `effective(thread)`.
+   without a reload, as a removed machine does. Nothing new to design: the
+   thread already shows `effective(thread)` for its mode and machines, and
+   the reads in item 1 bring its folders along.
 4. **Docs:** docs/workspace.md "Subagents" (folders join the list of what an
    ancestor narrows at once), docs/contracts.md (`effective`), and the
    sentence in docs/web.md "Project settings page" that describes the old
@@ -48,9 +55,10 @@ place.
 - `npm run typecheck` and `npm test` pass in CI, including the sandbox
   suites.
 - Tests show that: removing a folder from a parent removes it from a
-  running child's `effective()` grants and its next sandbox run; making a
-  parent's grant read-only makes the child's read-only; a parent gaining a
-  folder gives the child nothing; a child's own narrower grants are kept.
+  running child's `effective()` grants, its Files panel roots and its next
+  sandbox run; making a parent's grant read-only makes the child's
+  read-only; a parent gaining a folder gives the child nothing; a child's
+  own narrower grants are kept.
 - docs/workspace.md describes what exists and the PR lists its contract
   changes.
 
