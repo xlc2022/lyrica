@@ -5,6 +5,6 @@
 pkgs: with pkgs; [
   bashInteractive coreutils findutils gnugrep gnused gawk diffutils patch
   gnutar gzip xz bzip2 zstd unzip which file less procps util-linux
-  git openssh curl cacert jq ripgrep python3
+  getent git openssh curl cacert jq ripgrep python3
   bubblewrap passt nftables
 ]
