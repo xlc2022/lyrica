@@ -13,9 +13,10 @@ on:
 permissions:
   contents: read
 # One runner: a newer push to a PR replaces its older runs; main tests every commit.
+# (A group keeps one pending run, so main's groups are per commit.)
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
 jobs:
   comfyui:
     runs-on: lyrica-ci
