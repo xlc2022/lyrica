@@ -117,7 +117,8 @@ CREATE TABLE IF NOT EXISTS local_only_threads (
   thread TEXT PRIMARY KEY
 );
 -- A thread's own profile (cloud or custom, general threads only), thinking
--- setting, Voice to cloud and Fallback switches (null follows the user's default).
+-- setting and Fallback switch (null follows the user's default). voice_cloud,
+-- the old Voice to cloud switch, is no longer read; a later release drops it.
 CREATE TABLE IF NOT EXISTS thread_choices (
   thread      TEXT PRIMARY KEY,
   profile     TEXT,

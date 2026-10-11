@@ -126,7 +126,7 @@ A thread's address may carry what the panel beside it shows:
   the box), and a link to that page in the memory browser. Files and
   images come with the Files panel.
 - **Thread settings drawer:** a model per task (each option says cloud or local first), local-only, the internet and
-  this machine's services switches (each following the user's default until
+  Local services (localhost) switches (each following the user's default until
   changed), allowed hosts, folders from the allowed paths (read-only or
   read-write), **Machines** (the sandbox, always, then a switch per machine
   of the thread's pool; a granted machine that no longer exists keeps its
@@ -153,7 +153,7 @@ A thread's address may carry what the panel beside it shows:
   Persona suggestions (edit, send on to the administrators, or drop),
   Endpoints with probe status, Model profiles (with the **Sleep fallback**
   switch above the profiles), Network (New threads: the default
-  mode, Voice to cloud and Fallback; then network defaults per pool), and **Machines**
+  mode and Fallback; then network defaults per pool), and **Machines**
   (`src/Machines.tsx`, docs/ux.md section 6): a row per machine with its
   name, a facts line in mono (address, pool, "SSH · key" or "Proxmox API ·
   token", "up to Accept edits") and at most one state as a dot and a word
@@ -332,7 +332,7 @@ A thread's address may carry what the panel beside it shows:
   (Firefox), the recorder uses the device's rate and resamples. The browser's own
   speech features are never used, and nothing is kept in browser storage.
   With no Dictation model usable here (`ThreadSettings.speech.transcribe`:
-  none set, a cloud one with Voice to cloud off, or every one down), the mic
+  none set, or every one down), the mic
   is disabled and its tooltip is lyricad's reason. "Allow the microphone in
   your browser" and lyricad's refusals show in the conversation's error line
   above the box, never as a toast or in the placeholder.
@@ -353,12 +353,16 @@ A thread's address may carry what the panel beside it shows:
   under the task models, following the user's default until changed (Use
   default goes back); tooltip "When off, only the first model in each list
   answers; if it can't, the message waits for it."
-- **Voice to cloud** is a switch in the thread settings drawer's Privacy and
-  network section, under Internet, following the user's default until
-  changed (Use default goes back); the default is in Settings, Network.
+- **Dictation** and **Read aloud** are selects in the thread settings
+  drawer's Models section, under Titles, offering only models that
+  transcribe or speak; "Profile (…)" names what applies without a pick
+  (for Dictation, always the local profile's). A cloud pick for Dictation
+  first asks in a dialog naming the model (Use cloud dictation or Cancel);
+  confirmed, it is what sends that thread's voice to the cloud.
   **Read aloud while agent writes** (`Profiles.readAloudLive`) is a switch
-  under Speech in Settings, Appearance. The Model profiles section has Dictation and Read aloud
-  rows that offer only models that transcribe or speak, and a speaking model
+  under Speech in Settings, Appearance. The Model profiles
+  section has Read aloud rows in every profile and a Dictation row in Local
+  only, and a speaking model
   in the Endpoints list has a Settings link opening its drawer: a voice per
   language (English, Mandarin) and the speed (a number, of 4, clamped when
   the field is left), each with its source word (shared or yours) and a

@@ -4,8 +4,6 @@
 
 import { hostError, HostRefused } from "./host.ts";
 
-/** Voice to cloud is off, and the model that would hear the audio is a cloud model. Nothing was sent. */
-export class VoiceCloudOff extends Error {}
 /** The audio Read aloud streams: raw PCM, signed 16-bit little-endian, mono, at 24 kHz. */
 export const SPEECH_FORMAT = { encoding: "s16le", sampleRate: 24_000, channels: 1 } as const;
 export const SPEECH_CONTENT_TYPE = "audio/pcm;rate=24000;encoding=s16le;channels=1";

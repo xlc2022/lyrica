@@ -24,7 +24,7 @@ export type Task =
   | "title" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
   | "image.create" | "image.edit" | "speech.transcribe" | "speech.speak";
 /** The tasks a thread can choose models for. Compaction isn't one: Pi compacts with the thread's chat model. */
-export const THREAD_TASKS = ["chat", "subagent.cheap", "subagent.strong", "title"] as const satisfies readonly Task[];
+export const THREAD_TASKS = ["chat", "subagent.cheap", "subagent.strong", "title", "speech.transcribe", "speech.speak"] as const satisfies readonly Task[];
 export type ThreadTask = (typeof THREAD_TASKS)[number];
 
 /** One model on one endpoint, by its permanent offering ID, or a model group, which expands into its members in order. */
@@ -420,8 +420,6 @@ export interface Profiles {
   default: "cloud" | "custom";
   /** The thinking level threads use unless they choose. */
   thinking: ThinkingLevel;
-  /** Voice to cloud, unless a thread chooses: whether the user's audio may go to a cloud model. Off by default. */
-  voiceCloud: boolean;
   /** Fallback, unless a thread chooses: whether a later model in a list may answer when the first can't. On by default. */
   fallback: boolean;
   /** Fallback for sleep's phases. On by default; off, a phase whose first model is away waits for the next night. */
@@ -437,7 +435,7 @@ export interface Profiles {
  */
 export type ProfileEntryChange = { models: ModelRef[] | null } | { same: Task } | { model: ModelRef | null };
 /** PATCH /api/u/:userId/profiles → Profiles */
-export interface ProfilesChange { default?: "cloud" | "custom"; thinking?: ThinkingLevel; voiceCloud?: boolean; fallback?: boolean; sleepFallback?: boolean; readAloudLive?: boolean }
+export interface ProfilesChange { default?: "cloud" | "custom"; thinking?: ThinkingLevel; fallback?: boolean; sleepFallback?: boolean; readAloudLive?: boolean }
 
 /**
  * One turn's counts and times. `promptTokens` is the whole prompt of its last
@@ -744,8 +742,6 @@ export interface ThreadSettings {
   images: boolean;
   /** "Do not log thread in memory". */
   unlogged: boolean;
-  /** Voice to cloud: the thread's choice, or null to follow the user's default. */
-  voiceCloud: boolean | null;
   /** Fallback: the thread's choice, or null to follow the user's default. Off, only the first model in a list answers. */
   fallback: boolean | null;
   /** Fallback as it applies here, after the default. */
@@ -784,8 +780,6 @@ export interface ThreadSettingsChange {
   images?: boolean;
   unlogged?: boolean;
   /** null follows the user's default. */
-  voiceCloud?: boolean | null;
-  /** null follows the user's default. */
   fallback?: boolean | null;
 }
 
@@ -794,14 +788,14 @@ export interface ThreadSettingsChange {
 /**
  * Whether a speech task can be used now: the model the router would pick,
  * or the plain reason there is none (no model set, a private thread with no
- * local one, Voice to cloud off for a cloud one, every model down). The mic
+ * local one, every model down). Dictation uses the thread's own pick, else the local profile. The mic
  * or Read aloud is disabled with `problem` as its tooltip.
  */
 export type SpeechState = { available: true; label: string; kind: "cloud" | "local" }
-  /** reason: "none" nothing usable is set here; "voiceCloud" the model is cloud and Voice to cloud is off; "down" every model set can't be reached now. */
-  | { available: false; reason: "none" | "voiceCloud" | "down"; problem: string };
+  /** reason: "none" nothing usable is set here; "down" every model set can't be reached now. */
+  | { available: false; reason: "none" | "down"; problem: string };
 /** `readAloudLive` is the user's Read aloud while agent writes setting (`Profiles.readAloudLive`). */
-export interface Speech { transcribe: SpeechState; speak: SpeechState; voiceCloud: boolean; readAloudLive: boolean }
+export interface Speech { transcribe: SpeechState; speak: SpeechState; readAloudLive: boolean }
 /** GET /api/u/:userId/speech?pool= → Speech: for the welcome page, before a thread exists (the user's defaults). */
 
 /**
@@ -811,7 +805,6 @@ export interface Speech { transcribe: SpeechState; speak: SpeechState; voiceClou
  * The body is the clip: `audio/wav`, 16 kHz mono 16-bit PCM, at most 10
  * minutes (413 beyond). `language` ("en", "zh") is optional; without it the
  * model detects it. Refusals, each with a plain sentence for the error line:
- * 400 VoiceCloudOff (a cloud model and Voice to cloud off: nothing was sent),
  * 400 CloudModelForbidden or NoModel (none set, or none allowed here), 502
  * Offline (`code: "offline"`) when every Dictation model set can't be reached now. The audio is
  * never stored; call records hold the model and the seconds only.

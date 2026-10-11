@@ -301,7 +301,7 @@ function fileNotes(n?: { added: string[]; removed: string[] }): string[] {
 }
 
 function network(n: Network): string {
-  const parts = [`Internet for commands: ${n.internet ? "on" : "off"}.`, `This machine's services: ${n.services ? "on" : "off"}.`];
+  const parts = [`Internet for commands: ${n.internet ? "on" : "off"}.`, `Local services (programs on this server): ${n.services ? "on" : "off"}.`];
   if (n.hosts.length) parts.push(`Hosts you may reach: ${n.hosts.join(", ")}.`);
   return parts.join(" ");
 }

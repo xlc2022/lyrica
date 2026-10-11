@@ -346,7 +346,7 @@ export class WorkspaceSettings {
     const mine = this.resolve(child, pool);
     const theirs = this.network(parentThreadId, pool);
     if (mine.internet && !theirs.internet) throw new Error("the parent thread has no internet");
-    if (mine.services && !theirs.services) throw new Error("the parent thread can't reach this machine's services");
+    if (mine.services && !theirs.services) throw new Error("the parent thread can't reach local services");
     const extra = mine.hosts.find((h) => !theirs.hosts.includes(h));
     if (extra) throw new Error(`${extra} isn't in the parent thread's hosts`);
     if (MODE_RANK[child.mode] < MODE_RANK[parent.mode]) throw new Error(`the parent thread's permission mode is ${parent.mode}`);
