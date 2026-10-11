@@ -78,7 +78,10 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
 - A thread she mentions (`[t:<id>]`, `[e:<id>#<n>]`) shows as its current
   title, linked to the thread in the same tab; "a forgotten thread" once it's
   gone. Titles are fetched per thread and kept for 30 seconds, so a rename
-  shows on the next look. This covers her prose and the notice cards.
+  shows on the next look. This covers her prose, the notice cards, the task
+  or message on a delegate or threads card, what a parent thread sent its
+  child, and a subagent's task. Where a link can't go (the pinned list, a
+  failed tool call's message) the title shows as plain text.
   The user's sit in a tinted block.
 - Thinking, recalls, saved notes and tool calls are one-line markers that
   expand when tapped. An expanded tool call stays open when the turn ends

@@ -162,11 +162,11 @@ export class ChildThreads implements ThreadsHost {
     if (to === "parent") {
       const row = this.row(userId, from.pool, from.threadId);
       if (!row || !from.view.own.getThread(row.parent)) throw new Error("this thread's parent is gone");
-      const title = from.view.own.getThread(from.threadId)?.title;
       const needsYou = !!opts.needsYou && !!from.view.own.getThread(row.parent)?.project;
       this.db(userId, (db) => db.prepare("UPDATE child_threads SET unseen = unseen + 1, needs_you = CASE WHEN ? THEN 1 ELSE needs_you END WHERE pool = ? AND thread = ?")
         .run(needsYou ? 1 : 0, from.pool, from.threadId));
-      const head = needsYou ? `Child thread [t:${from.threadId}]${title ? ` ("${title}")` : ""} is waiting on the person` : `Update from child thread [t:${from.threadId}]${title ? ` ("${title}")` : ""}`;
+      // The mention shows as the current title, so none is written beside it.
+      const head = needsYou ? `Child thread [t:${from.threadId}] is waiting on the person` : `Update from child thread [t:${from.threadId}]`;
       this.deliver(userId, from.pool, row.parent, `${head}:\n${text}`, from.threadId, needsYou ? "waiting" : "update");
       return;
     }

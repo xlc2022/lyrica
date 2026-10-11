@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { get, post, threadPath, type GoAhead, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type SendResponse, type Speech, type ThreadRef } from "./api.ts";
 import type { LiveItem } from "./live.ts";
-import { useThreadMentions } from "./mentions.ts";
+import { useMentionText, useThreadMentions } from "./mentions.ts";
 import { GoAheadMenu } from "./Modes.tsx";
 import { href, idHref } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
@@ -97,7 +97,7 @@ function StoredMessage({ m, env, you }: { m: Message; env: Env; you: string }) {
   if (m.role === "user") {
     if (m.from?.kind === "parent") return <FromParent text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} parent={m.from.threadId} env={env} n={m.n} />;
     const who = m.from?.kind === "lyrica" ? "Lyrica" : m.from?.kind === "user" ? (m.from.name || you) : you;
-    return <UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} />;
+    return <UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} hers={m.from?.kind === "lyrica" ? env : undefined} />;
   }
   if (m.role === "notice") {
     return <>{m.parts.map((p, i) => (p.type === "delegation"
@@ -118,7 +118,8 @@ function LiveMessage({ item, env, you, streaming }: { item: LiveItem; env: Env; 
   return <Parts parts={item.parts} env={env} model={item.model} streaming={streaming} />;
 }
 
-function UserMessage({ text, you, n, rewinder }: { text: string; you: string; n?: number; rewinder?: Rewinder }) {
+/** A message in the person's place; `hers` when Lyrica wrote it (a subagent's task), so the threads she mentions show by title. */
+function UserMessage({ text, you, n, rewinder, hers }: { text: string; you: string; n?: number; rewinder?: Rewinder; hers?: Pick<Env, "userId" | "pool"> }) {
   const [editing, setEditing] = useState(false);
   const menu = rewinder && n !== undefined;
   return (
@@ -126,7 +127,7 @@ function UserMessage({ text, you, n, rewinder }: { text: string; you: string; n?
       <div className="who">{you}{menu && rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}{menu && <MessageMenu n={n} role="user" rewinder={rewinder} onEdit={() => setEditing(true)} />}</div>
       {editing && menu
         ? <EditBox text={text} onCancel={() => setEditing(false)} onSend={(t) => { setEditing(false); rewinder.rewind(n, { action: "edit", text: t }, n); }} />
-        : <div className="body">{text}</div>}
+        : hers ? <div className="body prose"><HerProse text={text} env={hers} /></div> : <div className="body">{text}</div>}
     </div>
   );
 }
@@ -223,7 +224,7 @@ function SubagentCard({ part, env }: { part: Extract<MessagePart, { type: "tool"
         {args.tier && <span className="muted">{args.tier}</span>}
         <ThreadLinks threads={part.threads} env={env} />
       </div>
-      {args.task && <p>{args.task}</p>}
+      {args.task && <div className="prose"><HerProse text={args.task} env={env} /></div>}
       {part.threads?.map((t, i) => <SubagentWork key={t.id} thread={t} label={part.threads!.length > 1 ? `Subagent ${i + 1}` : "Its work"} env={env} />)}
     </div>
   );
@@ -243,8 +244,8 @@ function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" 
         <b className="as-is">{head}</b>
         {args.to === "parent" ? null : <ThreadLinks threads={part.threads} env={env} />}
       </div>
-      {(args.task ?? args.text) && <p>{args.task ?? args.text}</p>}
-      {part.isError && <p className="error">{part.result}</p>}
+      {(args.task ?? args.text) && <div className="prose"><HerProse text={(args.task ?? args.text)!} env={env} /></div>}
+      {part.isError && <ToolError text={String(part.result ?? "")} env={env} />}
     </div>
   );
 }
@@ -258,9 +259,14 @@ function FromParent({ text, parent, env, n }: { text: string; parent: string; en
         {/* Branch and delete, as any message; it isn't hers to edit. */}
         {env.rewinder && n !== undefined && <MessageMenu n={n} role="user" rewinder={env.rewinder} />}
       </div>
-      <div className="body">{text}</div>
+      <div className="body prose"><HerProse text={text} env={env} /></div>
     </div>
   );
+}
+
+/** A failed tool call's message, written for her: threads it names show by their current title. */
+function ToolError({ text, env }: { text: string; env: Pick<Env, "userId" | "pool"> }) {
+  return <p className="error">{useMentionText(text, env.userId, env.pool)}</p>;
 }
 
 /** A subagent's work, inline: its transcript, its waiting approvals, and a message box. */
