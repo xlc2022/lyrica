@@ -37,8 +37,9 @@ jobs:
       - run: npx playwright install --with-deps chromium
         working-directory: web
       - run: npm run e2e -w @lyrica/web
-  # The flake (docs/nixos.md): the package and a NixOS system with the module
-  # build, and the sandbox tests pass with the module's sandbox tools as /usr.
+  # The flake (docs/daemon.md, "On NixOS"): the package and a NixOS system with the module
+  # build, and the sandbox tests pass with the module's sandbox tools as /usr
+  # and only their closure in /nix/store.
   nix:
     runs-on: lyrica-ci
     steps:
@@ -64,8 +65,10 @@ jobs:
       - run: npm ci
       - name: Sandbox tests with the NixOS sandbox tools
         run: |
-          tools=$(nix --extra-experimental-features "nix-command flakes" build --no-link --print-out-paths .#sandbox-tools)
-          PATH="$tools/bin:$PATH" LYRICA_SANDBOX_TOOLS="$tools" npx vitest --run core/test/sandbox.test.ts
+          nix() { command nix --extra-experimental-features "nix-command flakes" "$@"; }
+          tools=$(nix build --no-link --print-out-paths .#sandbox-tools)
+          closure=$(nix build --no-link --print-out-paths .#sandbox-closure)/store-paths
+          PATH="$tools/bin:$PATH" LYRICA_SANDBOX_TOOLS="$tools" LYRICA_SANDBOX_CLOSURE="$closure" npx vitest --run core/test/sandbox.test.ts
         env:
           LYRICA_SANDBOX_TESTS: require
   # The model host's Compose stack, without a GPU: install, then check the networks.

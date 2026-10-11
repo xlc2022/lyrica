@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { closeSync, constants, existsSync, lstatSync, openSync, readlinkSync } from "node:fs";
+import { closeSync, constants, existsSync, lstatSync, openSync, readFileSync, readlinkSync } from "node:fs";
 import { posix } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { capOutput, sniffImage, type ExecutionTarget, type ToolOps } from "./ops.ts";
@@ -45,11 +45,28 @@ const ETC = [
 // /usr/sbin is for nft, which runs before bwrap; the sandbox's PATH is the same.
 const PATH = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 // On NixOS there's no /usr to share. The service sets LYRICA_SANDBOX_TOOLS to
-// a Nix environment of the sandbox's tools: it becomes the sandbox's /usr, with
-// /nix/store read-only beneath it, and its bin is first on the host's PATH too,
-// for pasta, nft and bwrap.
+// a Nix environment of the sandbox's tools, which becomes the sandbox's /usr,
+// and LYRICA_SANDBOX_CLOSURE to the list of store paths it needs (closureInfo's
+// store-paths): only those are mounted, never the whole store, which holds
+// the system's generated configs. The tools' bin is first on the host's PATH
+// too, for pasta, nft and bwrap.
 const tools = () => process.env.LYRICA_SANDBOX_TOOLS || undefined;
 const env = () => ({ PATH: tools() ? `${tools()}/bin:${PATH}` : PATH, HOME: WORKDIR, LANG: "C.UTF-8", TERM: "dumb" });
+const inStore = (p: string) => /^\/nix\/store\/[0-9a-z]{32}-[^/]+$/.test(p);
+let closure: { file: string; paths: string[] } | undefined;
+function nixSystem(dir: string): string[] {
+  const file = process.env.LYRICA_SANDBOX_CLOSURE ?? "";
+  if (!inStore(dir)) throw new SandboxDenied(`LYRICA_SANDBOX_TOOLS must be a /nix/store path, not ${dir}`);
+  if (!file.startsWith("/nix/store/") || file.includes("..")) throw new SandboxDenied("LYRICA_SANDBOX_TOOLS needs LYRICA_SANDBOX_CLOSURE, a store-paths file in /nix/store");
+  if (closure?.file !== file) {
+    const paths = readFileSync(file, "utf8").split("\n").filter(Boolean);
+    const bad = paths.find((p) => !inStore(p));
+    if (bad) throw new SandboxDenied(`${file} lists ${bad}, which isn't a store path`);
+    closure = { file, paths };
+  }
+  if (!closure.paths.includes(dir)) throw new SandboxDenied(`${file} doesn't contain ${dir}`);
+  return closure.paths;
+}
 // Loads the firewall into pasta's namespace, then starts bwrap. Fails closed if nft fails.
 const LOAD_RULES = 'printf "%s" "$1" | nft -f - || exit 125; shift; exec "$@"';
 
@@ -208,7 +225,8 @@ export class Sandbox implements ExecutionTarget {
     if (networked) args.push("--share-net");
     const nix = tools();
     if (nix) {
-      args.push("--ro-bind", "/nix/store", "/nix/store", "--ro-bind", nix, "/usr", "--symlink", "usr/bin", "/bin", "--symlink", "usr/bin", "/sbin");
+      for (const p of nixSystem(nix)) args.push("--ro-bind", p, p);
+      args.push("--ro-bind", nix, "/usr", "--symlink", "usr/bin", "/bin", "--symlink", "usr/bin", "/sbin");
     } else {
       for (const dir of SYSTEM_DIRS) {
         if (!existsSync(dir)) continue;

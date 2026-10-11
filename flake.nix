@@ -1,5 +1,5 @@
 {
-  description = "Lyrica: lyricad, the lyrica CLI and a NixOS module (docs/nixos.md)";
+  description = "Lyrica: lyricad, the lyrica CLI and a NixOS module (docs/daemon.md, On NixOS)";
 
   inputs.nixpkgs.url = "https://channels.nixos.org/nixos-26.05/nixexprs.tar.xz";
 
@@ -14,6 +14,7 @@
         default = lyrica;
         # The module's default sandbox tools; CI runs the sandbox tests with them.
         sandbox-tools = pkgs.callPackage ./nix/sandbox-env.nix { packages = import ./nix/sandbox-tools.nix pkgs; };
+        sandbox-closure = pkgs.callPackage ./nix/sandbox-closure.nix { rootPaths = [ sandbox-tools pkgs.nodejs_22 pkgs.cacert ]; };
       };
 
       nixosModules.default = { pkgs, lib, ... }: {

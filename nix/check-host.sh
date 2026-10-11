@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Checks a NixOS host running services.lyrica (docs/nixos.md). Run as root
+# Checks a NixOS host running services.lyrica (docs/daemon.md, "On NixOS"). Run as root
 # after `lyrica admin init` and `systemctl start lyricad`. Prints one line per
 # check and "All checks passed." at the end, or stops at the first failure.
 set -uo pipefail

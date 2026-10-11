@@ -1,7 +1,7 @@
 # services.lyrica: lyricad and its built-in Caddy on NixOS, declaring what
 # daemon/deploy/install.sh does on Debian. The units mirror
 # daemon/deploy/lyricad.service and lyrica-caddy.service; keep them in step.
-# See docs/nixos.md.
+# See docs/daemon.md, "On NixOS".
 { config, lib, pkgs, ... }:
 
 let
@@ -18,6 +18,10 @@ let
 
   # What her sandboxes see as /usr. lyricad also finds bwrap, pasta and nft here.
   sandboxTools = pkgs.callPackage ./sandbox-env.nix { packages = cfg.sandboxPackages; };
+  # Only these store paths are mounted in her sandboxes.
+  sandboxClosure = pkgs.callPackage ./sandbox-closure.nix {
+    rootPaths = [ sandboxTools cfg.package.nodejs config.security.pki.caBundle ];
+  };
 in {
   options.services.lyrica = {
     enable = lib.mkEnableOption "Lyrica (lyricad and its built-in Caddy)";
@@ -53,9 +57,8 @@ in {
         The tools her sandboxes have, mounted as their /usr. Add to it with
         `services.lyrica.sandboxPackages = options.services.lyrica.sandboxPackages.default ++ [ … ];`.
         bubblewrap, passt, nftables, bash, coreutils and util-linux must stay:
-        lyricad and its self-test use them. Everything in /nix/store is
-        readable in her sandboxes, as /usr is on Debian, so keep secrets out
-        of the store.
+        lyricad and its self-test use them. Her sandboxes see only these
+        packages' closure in /nix/store, plus Node's and the CA bundle's.
       '';
     };
   };
@@ -149,6 +152,7 @@ in {
       environment = {
         LYRICA_HOME = state;
         LYRICA_SANDBOX_TOOLS = "${sandboxTools}";
+        LYRICA_SANDBOX_CLOSURE = "${sandboxClosure}/store-paths";
         # The setuid wrappers first: fusermount3 must be the setuid one.
         PATH = lib.mkForce "/run/wrappers/bin:${lib.makeBinPath [ pkgs.gocryptfs pkgs.openssl pkgs.systemd pkgs.coreutils pkgs.bash sandboxTools ]}";
       };

@@ -1,5 +1,5 @@
 # lyricad, the lyrica CLI and the built web UI, from package-lock.json.
-# See docs/nixos.md.
+# See docs/daemon.md, "On NixOS".
 { lib, buildNpmPackage, nodejs_22, python3, makeWrapper, src, rev ? "dirty" }:
 
 buildNpmPackage {
@@ -35,6 +35,9 @@ buildNpmPackage {
     makeWrapper ${nodejs_22}/bin/node $out/bin/lyrica --add-flags $out/lib/lyrica/bin/lyrica
     runHook postInstall
   '';
+
+  # The SSH helper runs on this Node; the module adds it to the sandbox closure.
+  passthru.nodejs = nodejs_22;
 
   meta = {
     description = "Lyrica, a personal AI companion (lyricad and the lyrica CLI)";

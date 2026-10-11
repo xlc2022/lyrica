@@ -38,9 +38,15 @@ database files. A command that could see either one could read everything.
   cache), `/proc`, `/dev`, an empty `/tmp`, the thread's folder at
   `/workspace`, and each grant at its own host path. Its environment is a
   fixed minimal set; nothing of `lyricad`'s is passed in.
-- On NixOS the system is the module's sandbox tools instead: `/nix/store`
-  read-only, the tools as `/usr`, `/bin` and `/sbin` linking to `usr/bin`
-  (`LYRICA_SANDBOX_TOOLS`, docs/nixos.md).
+- On NixOS (`LYRICA_SANDBOX_TOOLS` set, docs/daemon.md "On NixOS") the
+  system is the module's sandbox tools instead: they are `/usr`, with `/bin`
+  and `/sbin` linking to `usr/bin`, and only the store paths listed in
+  `LYRICA_SANDBOX_CLOSURE` (the tools' closure, Node's and the CA bundle's)
+  are in `/nix/store`, never the whole store, which holds the system's
+  generated configs. Lyrica's own package isn't among them. Both must be
+  store paths and the list must contain the tools, or the sandbox refuses
+  to start. Their `bin` is also first on the `PATH` lyricad starts `pasta`,
+  `nft` and `bwrap` with.
 - **Every operation is a fresh sandbox**, file reads and writes included, so
   paths and symlinks always resolve inside it. `read`, `write` and `edit`
   first refuse paths outside `/workspace` and the grants (and writes to

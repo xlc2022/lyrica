@@ -1272,11 +1272,12 @@ Details in [docs/sleep.md](docs/sleep.md).
   gocryptfs, pasta, FUSE and unprivileged user namespaces. In an LXC container, that
   means turning on the nesting and FUSE features. One install script sets up
   the service users, `lyricad`'s unit, and the built-in Caddy. On NixOS,
-  the repository's flake gives a module, `services.lyrica`, that declares
-  the same users, units and hardening; her sandboxes there mount the
-  module's tools as `/usr` ([docs/nixos.md](docs/nixos.md)). Updates on
-  NixOS use the same Update button, through a Lyrica-only Nix profile (see
-  Updates and self-editing; Li, 2026-10-11).
+  the repository's flake gives a package and a module, `services.lyrica`,
+  that declares the same users, units and hardening as the install script.
+  Her sandboxes there mount the module's tools as `/usr` and only their
+  closure from `/nix/store`, never the whole store. Updates on NixOS use the
+  same Update button, through a Lyrica-only Nix profile (Updates and
+  self-editing). Details in [docs/daemon.md](docs/daemon.md), "On NixOS".
 - **Reaching the web UI:**
   - `lyricad` serves plain HTTP on `127.0.0.1` behind an HTTPS proxy. The
     browser never gets plain HTTP: login cookies are `Secure`.
@@ -1545,6 +1546,14 @@ new evidence.
   machine starting at Ask and loosened one at a time, and Proxmox through a
   narrow API token rather than a root shell. The node that runs her own VM
   still waits.
+- **NixOS (2026-10-11).** Li asked to deploy to NixOS, as a flake. The flake
+  packages lyricad and exports a NixOS module that declares what the install
+  script does; nixpkgs packaging was left out while Lyrica changes daily.
+  NixOS has no `/usr` to share, so sandboxes get the module's tools as
+  `/usr` with only their closure in `/nix/store`, because the whole store
+  holds generated system configs. Li chose the same Update button on NixOS
+  (through a Lyrica-only Nix profile) over updating only with
+  `nixos-rebuild`. It is documented in daemon.md, not a page of its own.
 - **Operator guides added to the docs budget (2026-10-11).** Li asked for
   human-readable documentation on running Lyrica: bootstrapping her on a new
   system, deploying model hosts, adding CI runners. They live in

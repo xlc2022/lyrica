@@ -3,7 +3,7 @@
 **Thread:** NixOS. **Branch:** `claude/project-thread-hf25g9`. **Model:** Opus.
 
 **Read first:** AGENTS.md, docs/daemon.md "Deployment", docs/workspace.md
-(the sandbox), docs/nixos.md, docs/briefs/releases.md item 7.
+(the sandbox), docs/briefs/releases.md item 7.
 
 ## Goal
 
@@ -16,10 +16,10 @@ operator, simple boundaries).
 1. `flake.nix`: the package (lyricad, CLI, web UI) and `nixosModules.default`.
 2. The module: users, both units, Caddy with the DNS plugins, the sysctl,
    the setuid `fusermount3`, sandbox tools.
-3. The sandbox's system from `LYRICA_SANDBOX_TOOLS` when set; Debian
-   unchanged.
+3. The sandbox's system from `LYRICA_SANDBOX_TOOLS` when set, with only
+   the store paths in `LYRICA_SANDBOX_CLOSURE`; Debian unchanged.
 4. CI: `nix flake check`, and the sandbox tests with the NixOS tools.
-5. Docs: docs/nixos.md; pointers in daemon.md, workspace.md, ci.md.
+5. Docs: daemon.md "On NixOS", workspace.md, ci.md, DESIGN.md; the operator guide from the Operator docs thread.
 
 ## Out of scope
 
@@ -34,6 +34,6 @@ choice of 2026-10-11).
   builds, the CLI and native modules load, and the non-network sandbox
   tests pass with the NixOS tools (the network ones need `/dev/net/tun`,
   which the cloud sessions lack; CI runs them).
-- **Next:** Li runs `nix/check-host.sh` on a real NixOS host (docs/nixos.md "Checking a host"). The releases
+- **Next:** Li runs `nix/check-host.sh` on a real NixOS host (docs/daemon.md "On NixOS"). The releases
   build adds the profile path.
 - **Open:** none.
