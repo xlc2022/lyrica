@@ -41,20 +41,23 @@ chmod 440 /etc/sudoers.d/$RUNNER_USER
 
 # The runner, checked against the hash in its release notes. It updates itself after this.
 if [[ ! -x $DIR/config.sh ]]; then
-  release=$(curl -fsSL https://api.github.com/repos/actions/runner/releases/latest)
+  echo "Finding the latest runner release..."
+  release=$(curl -fsSL --connect-timeout 20 --max-time 60 https://api.github.com/repos/actions/runner/releases/latest)
   version=$(jq -r .tag_name <<<"$release")
   version=${version#v}
   sha=$(jq -r .body <<<"$release" | sed -n "s/.*BEGIN SHA linux-$ARCH -->\([0-9a-f]\{64\}\)<.*/\1/p")
   [[ -n $sha ]] || fail "couldn't find the runner's checksum in release $version."
   tarball=actions-runner-linux-$ARCH-$version.tar.gz
   tmp=$(mktemp -d)
-  curl -fsSL -o "$tmp/$tarball" "https://github.com/actions/runner/releases/download/v$version/$tarball"
+  echo "Downloading runner $version..."
+  curl -fL --connect-timeout 20 --progress-bar -o "$tmp/$tarball" "https://github.com/actions/runner/releases/download/v$version/$tarball"
   echo "$sha  $tmp/$tarball" | sha256sum -c -
   install -d -o "$RUNNER_USER" -g "$RUNNER_USER" "$DIR"
   sudo -u "$RUNNER_USER" tar xzf "$tmp/$tarball" -C "$DIR"
   rm -rf "$tmp"
 fi
 cd "$DIR"
+echo "Installing the runner's dependencies..."
 ./bin/installdependencies.sh
 
 if [[ ! -f .runner ]]; then
