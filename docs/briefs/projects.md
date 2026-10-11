@@ -81,7 +81,7 @@ local-only, "Do not log" and workspace settings are inherited as today.
 ## Out of scope
 
 - The web UI (Projects web) and sleep's project page (Projects sleep).
-- Updates waking her in the project chat (Li decided: not at first).
+- Updates waking her in the project chat: see "Watching threads" below.
 - Moving an existing thread into a project, schedules in a project, sharing
   a project.
 
@@ -109,6 +109,42 @@ local-only, "Do not log" and workspace settings are inherited as today.
   answers a quick question herself, starts one thread per task for a
   message with several, routes a follow-up to the thread already on it, and
   saves "run two at a time" as a project note.
+
+## Watching threads (follow-up, Li 2026-10-11)
+
+Li wants the project chat to work the way a coordinator does: notice what
+Li and a thread decide, tell the other threads it touches, and bring their
+answers back. Li chose a project setting, on by default.
+
+1. **Setting.** `project_settings.watch` in `user.db` (a new column,
+   default on); `PATCH` `watchThreads`, `ThreadSummary.watchThreads`. No text.
+2. **What triggers a look.** In a logged thread of the project, a turn that
+   Li started ends, or the thread posts an update or `needsYou` to the
+   project chat. Messages from the project chat or a sibling don't trigger
+   one on their own; their update to the chat does.
+3. **The look.** 30 seconds after the first trigger, lyricad sends the
+   project chat one message marked `[Watching threads]` (a mark only
+   `lyricad` writes, like `[From t:…]`). It holds, per thread, a mention, the
+   first 500 characters of what Li wrote there, and of the thread's reply.
+   Updates are already in the chat, so they are named, not repeated. If the
+   chat is busy, the look waits for its turn to end. Paused, hidden, locked
+   or switched off: nothing is sent, and pending triggers are dropped.
+4. **Her guidance** for such a turn: decide whether another thread is
+   affected, message it with what it needs to know, and relay answers; say
+   nothing in the chat unless Li must know or decide; never repeat Li's
+   words back to Li. Guidance, not a boundary.
+5. **Limits.** At most 3 looks in a row without Li writing anywhere in the
+   project; the count resets when Li writes. Each look is one turn of the
+   project chat's model, so its cost is visible in Recent calls.
+6. **Web** (projects-web): a **Watch threads** switch on the General
+   page; a `[Watching threads]` message shows as a one-line notice
+   ("Looked at her threads"), expandable, never as Li's bubble.
+7. **Sleep** (projects-sleep): a look quotes Li; sleep takes Li's words
+   from the thread where they were said, never from the look.
+8. **Tests:** a turn Li starts in a thread leads to one look after the
+   delay; two threads in the delay make one look; an unlogged thread, a
+   paused project and the setting off make none; the fourth look in a row
+   waits for Li; a user can't write the mark.
 
 ## Handoff notes
 

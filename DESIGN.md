@@ -922,8 +922,17 @@ web part and sleep's project page are not yet. The briefs are
   **Resolved**. A thread is resolved by Li, by Lyrica when its work is
   delivered and nothing is owed, or after 7 days with no activity; a message
   in it reopens it.
-- **Updates don't start a turn in the project chat**; she speaks there
-  when Li writes. A thread's update changes its card.
+- **She watches her threads** (Li, 2026-10-11; a project setting, **Watch
+  threads**, on by default). When Li writes in one of the project's threads,
+  or a thread posts an update, the project chat takes one quiet turn a
+  little later, batched across threads, with what was said. There she
+  decides whether another thread is affected, messages it, and relays its
+  answer; she posts in the project chat only what needs Li. A thread that
+  isn't logged is left out. A run of such turns stops after 3 until Li
+  writes in the project again, so threads can't keep each other going.
+  With the setting off, updates only change their cards and she speaks in
+  the project chat when Li writes. Not built yet: `docs/briefs/projects.md`,
+  "Watching threads".
 - **Context set once.** Every thread of a project starts with the same
   project context, assembled each turn in its own budget:
   - **Goal**: one line Li writes.
