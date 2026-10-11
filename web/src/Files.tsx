@@ -261,7 +261,7 @@ export function FilesPage({ ctx, pool, threadId, threads }: { ctx: ShellContext;
         <div className="head-actions">
           <div className="seg" role="tablist" aria-label="Files or images">
             {(["files", "images"] as const).map((k) => (
-              <button key={k} type="button" role="tab" aria-selected={tab === k} aria-pressed={tab === k} onClick={() => setTab(k)}>{k === "files" ? "Files" : "Images"}</button>
+              <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{k === "files" ? "Files" : "Images"}</button>
             ))}
           </div>
         </div>
@@ -432,10 +432,13 @@ function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCo
   const run = (p: Promise<unknown>) => p.catch((e: Error) => setError(e.message));
   if (sub === "delete") {
     const inGrant = paths.some((p) => !p.startsWith(`${WORKDIR}/`));
-    const what = paths.length === 1 ? shownName(paths[0]!) : `these ${paths.length} items`;
+    const one = paths.length === 1 ? shownName(paths[0]!) : undefined;
+    const what = one ?? `${paths.length} items`;
+    const sentence = one
+      ? inGrant ? `${one} is one of your own files, not a copy. It is deleted for good; this can't be undone.` : `${one} is deleted for good. This can't be undone.`
+      : inGrant ? `These ${paths.length} items are your own files, not copies. They are deleted for good; this can't be undone.` : `These ${paths.length} items are deleted for good. This can't be undone.`;
     return (
-      <ConfirmDialog title={`Delete ${paths.length === 1 ? "this" : "these"}?`} danger confirm="Delete" onCancel={onClose} onConfirm={() => void run(onDelete(paths))}
-        sentence={`${paths.length === 1 ? what.charAt(0).toUpperCase() + what.slice(1) : "They"} ${paths.length === 1 ? "is" : "are"} deleted for good${inGrant ? ", on the server too" : ""}. This can't be undone.`} />
+      <ConfirmDialog title={`Delete ${what}?`} danger confirm="Delete" onCancel={onClose} onConfirm={() => void run(onDelete(paths))} sentence={sentence} />
     );
   }
   let body: ReactNode;
@@ -459,7 +462,7 @@ function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCo
   } else if (t.kind === "file") {
     body = (
       <>
-        <span className="eyebrow">{t.entry.name}</span>
+        <span className="eyebrow name">{t.entry.name}</span>
         <Item label="Attach to message" kbd="A" onClick={() => onAttach(paths)} />
         <Item label="Select" kbd="X" onClick={() => onSelect(t.entry.path)} />
         <Item label="Show in thread" kbd="G" onClick={() => onShow(t.entry.path)} />
@@ -478,7 +481,7 @@ function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCo
     const root = t.kind === "folder" && t.root;
     body = (
       <>
-        <span className="eyebrow">{shownName(dir)}</span>
+        <span className={dir === WORKDIR ? "eyebrow" : "eyebrow name"}>{shownName(dir)}</span>
         {canWrite ? (
           <>
             <Item label="Upload…" kbd="U" onClick={() => onUpload(dir)} />
