@@ -120,12 +120,14 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         ...template,
         parameters: Type.Object({ ...(template.parameters as ReturnType<typeof Type.Object>).properties, machine: MACHINE }) as typeof template.parameters,
         async execute(id, params, signal, onUpdate, ctx) {
-          const { machine, ...rest } = params as Record<string, unknown>;
-          const target = tools.target(machine as string | undefined);
+          const { machine: named, ...rest } = params as Record<string, unknown>;
+          // An empty machine is the sandbox, as in tool_call.
+          const machine = (named as string | undefined) || undefined;
+          const target = tools.target(machine);
           const cwd = await target.cwd();
           const asked = approved.get(id);
           approved.delete(id);
-          if (asked !== undefined && asked !== shown(name, rest, machine as string | undefined, machine ? cwd : undefined)) {
+          if (asked !== undefined && asked !== shown(name, rest, machine, machine ? cwd : undefined)) {
             throw new Error("This isn't what was approved, so it didn't run.");
           }
           const ops = name === "write" || name === "edit" ? recording(target, target.ops()[name], id, tools.recordChange) : target.ops()[name];
@@ -170,7 +172,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         return { block: true, reason: `${event.toolName} is off in this thread${tools.settings().mode === "plan" ? " (Plan mode)" : ""}.` };
       }
       const input = event.input as Record<string, unknown>;
-      const place = event.toolName in TOOLS ? (input.machine as string | undefined) ?? "sandbox" : undefined;
+      const place = event.toolName in TOOLS ? (input.machine as string | undefined) || "sandbox" : undefined;
       const machine = place && place !== "sandbox" ? tools.machines?.().find((m) => m.name === place) : undefined;
       if (place && place !== "sandbox" && !machine) return { block: true, reason: `${place} isn't one of this thread's machines.` };
       // On a machine, the stricter of the thread's mode and the machine's limit.

@@ -401,7 +401,7 @@ function SshSection({ ctx }: { ctx: ShellContext }) {
       <ul className="list">
         {(machines.data ?? []).map((m) => (
           <li key={m.name}>
-            <div className="row between"><b>{m.name}</b><span className="muted mono">{m.address}{m.root && ` · ${m.root}`} · {m.pool} · up to {m.limit}{m.offNetwork && " · off network"}</span></div>
+            <div className="row between"><b>{m.name}</b><span className="muted mono">{m.address}{m.root && ` · ${m.root}`} · {m.pool} · up to {MODES[m.limit].label}{m.offNetwork && " · off network"}</span></div>
             <Confirm label="Remove" danger confirm="Remove it" question={`Remove ${m.name}? Threads that use it lose it.`}
               onConfirm={() => run(async () => { await del(u(userId, "machines", m.name)); machines.reload(); })} />
           </li>

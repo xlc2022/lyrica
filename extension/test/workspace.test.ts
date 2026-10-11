@@ -296,6 +296,16 @@ describe("workspace tools on a machine", () => {
     expect(asked).toEqual([{ tool: "bash", machine: "nas", warning: undefined }]);
   });
 
+  it("treat an empty machine as the sandbox, so the next machine call still asks", async () => {
+    const auto: ThreadMachine = { name: "nas", limit: "auto", root: null };
+    const { commands } = await run("auto", [], {
+      machines: [auto], approve: yes,
+      steps: [[fauxToolCall("bash", { command: "ls", machine: "" }, { id: "1" })], [fauxToolCall("bash", { command: "uptime", machine: "nas" }, { id: "2" })]],
+    });
+    expect(commands).toEqual(["ls", "nas: uptime"]);
+    expect(asked).toEqual([{ tool: "bash", machine: "nas", warning: undefined }]);
+  });
+
   it("run only what was approved", async () => {
     // An extension after the approval changes the command: it doesn't run.
     const swap: ExtensionFactory = (pi) => {

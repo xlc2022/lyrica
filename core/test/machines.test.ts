@@ -185,7 +185,8 @@ describe("suspect commands", () => {
   it("catch the commands on the list however they're written", () => {
     for (const c of ["rm -rf /", "sudo rm -rf --no-preserve-root /", "rm -rf /*", "rm -rf ~", "rm -rf ~/", "rm -fr $HOME", "rm -r /home/li", "rm -rf /etc/",
       "cd /tmp && rm -rf /usr", "sudo mkfs.ext4 /dev/sdb1", "dd if=img of=/dev/sda bs=4M", "chmod -R 777 /", "sudo chown -R li /", "userdel li",
-      "sudo shutdown -h now", "/sbin/reboot", "sudo systemctl reboot", "poweroff", "qm destroy 101", "echo hi; sudo -n reboot"]) {
+      "sudo shutdown -h now", "/sbin/reboot", "sudo systemctl reboot", "poweroff", "qm destroy 101", "echo hi; sudo -n reboot",
+      "sudo -u root rm -rf /", "nice -n 5 rm -rf /", "timeout 5 rm -rf /", "bash -c 'rm -rf /'", "chmod -R 777 /*", "chown -R li //"]) {
       expect(suspectCommand(c), c).toBeDefined();
     }
     for (const c of ["rm -rf ./build", "rm -rf /home/li/tmp", "rm -rf ~/cache", "dd if=/dev/zero of=file", "chmod -R 755 /srv/www", "ls /", "qm list",
@@ -205,6 +206,26 @@ describe("output cleaning", () => {
     clean.end();
     expect(got.join("")).toBe("one\n[private key removed]\ntwo");
     expect(maskKeys(Buffer.from("x\n-----BEGIN PRIVATE KEY-----\nAAA")).toString()).toBe("x\n[private key removed]");
+    const pgp = "-----BEGIN PGP PRIVATE KEY BLOCK-----\n\nlQOYBF\n-----END PGP PRIVATE KEY BLOCK-----\n";
+    expect(maskKeys(Buffer.from(`a\n${pgp}b`)).toString()).toBe("a\n[private key removed]\nb");
+    const out: string[] = [];
+    const c = cleanOutput((d) => out.push(d.toString()));
+    c.push(Buffer.from(pgp));
+    c.end();
+    expect(out.join("")).toBe("[private key removed]\n");
+  });
+
+  it("keeps characters split across chunks, and holds back a key header after a long line", () => {
+    const got: string[] = [];
+    const clean = cleanOutput((d) => got.push(d.toString()));
+    const zh = Buffer.from("你好\n");
+    clean.push(zh.subarray(0, 2));
+    clean.push(zh.subarray(2));
+    const long = "x".repeat(9000);
+    clean.push(Buffer.from(`${long}-----BEGIN OPENSSH PRIV`));
+    clean.push(Buffer.from("ATE KEY-----\nAAAA\n-----END OPENSSH PRIVATE KEY-----\nok\n"));
+    clean.end();
+    expect(got.join("")).toBe(`你好\n${long}[private key removed]\nok\n`);
   });
 });
 
