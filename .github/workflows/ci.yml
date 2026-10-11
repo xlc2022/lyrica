@@ -62,7 +62,10 @@ jobs:
             sh "$RUNNER_TEMP/nix-install" --daemon --yes
           fi
           echo /nix/var/nix/profiles/default/bin >>"$GITHUB_PATH"
+      # The same needrestart and dpkg lock settings as the check job.
       - run: |
+          echo "\$nrconf{restart} = 'l';" | sudo tee /etc/needrestart/conf.d/lyrica-ci.conf >/dev/null 2>&1 || true
+          echo 'DPkg::Lock::Timeout "600";' | sudo tee /etc/apt/apt.conf.d/90lyrica-ci >/dev/null
           sudo apt-get update
           sudo apt-get install -y build-essential gocryptfs fuse3
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
