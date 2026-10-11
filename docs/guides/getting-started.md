@@ -47,8 +47,8 @@ server on your network, or on a paired model host.
   Ubuntu 24.04 don't. Without it everything else works, and you type the
   passphrase on the unlock page after each start.
 - **Node.js 22.6 or later**, installed before the script runs (it checks
-  the major version and stops otherwise). Machines need 22.6: their SSH
-  helper runs with Node's type stripping, and an older 22 fails every
+  and stops otherwise). The SSH helper that machines use runs with
+  Node's type stripping, which arrived in 22.6; an older 22 fails every
   machine call. NodeSource's packages are one way:
 
   ```sh
