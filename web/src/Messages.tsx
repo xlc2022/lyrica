@@ -403,7 +403,7 @@ function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest
     return (
       <div className="permission plan" role="group" aria-label="Lyrica's plan" data-pending="Plan">
         <div className="plan-head"><b>Plan</b>{steps > 1 && <span className="muted">{steps} steps</span>}</div>
-        <div className="prose"><Prose text={plan} /></div>
+        <div className="prose"><HerProse text={plan} env={env} /></div>
         <div className="row">
           <GoAheadMenu disabled={busy} onPick={(m) => answer(true, m)} />
           <button type="button" disabled={busy} onClick={() => answer(false)}>Keep planning</button>
