@@ -98,7 +98,7 @@ Administration. No new model-facing tool, no new process of Lyrica's
      device survive a second join; never `up` with flags, which fails
      unless every non-default flag is repeated, and never `--reset`. Already joined to a different tailnet
      and `leave` not set is `409`; with `leave`, `logout` first. The key is written to a 0600 file under the runtime directory
-     and deleted when `up` returns, whatever the outcome; it never appears
+     and deleted when `login` returns, whatever the outcome; it never appears
      in arguments, logs or the database. Errors from the CLI that could
      quote it are redacted as `access.ts` redacts DNS tokens.
    - `POST …/admin/tailnet/disconnect` (`down`), `POST
@@ -106,8 +106,9 @@ Administration. No new model-facing tool, no new process of Lyrica's
      (`logout`; turns the Tailnet web mode off first when it is on).
    - **Not over her own tailnet address.** Disconnect, Leave and a join
      that leaves would cut the request that asked for them when it came
-     through her device (the Tailnet web mode: a connection from `serve`,
-     which `lyricad` tells by the listener and the forwarded address), so
+     through her device (the Tailnet web mode: a connection on the serve
+     port, item 7, which only `serve` targets, so the listener alone
+     decides and no header is trusted), so
      each is refused with `409` and a reason then, the rule that a change
      never locks the administrator out; the UI says to do it over the LAN
      or on the machine. The host's own tailnet, SSH and routes are
@@ -133,7 +134,9 @@ Administration. No new model-facing tool, no new process of Lyrica's
 7. **Web access: the Direct and Tailnet modes.** `WebMode` gains
    `"direct"` (item 4; its state line shows the addresses and the
    certificate's fingerprint) and `"tailnet"`:
-   `tailscale serve --bg --https=443 http://127.0.0.1:<port>`, checked by
+   `tailscale serve --bg --https=443 http://127.0.0.1:<serve port>`, where
+   the serve port is a second loopback listener of `lyricad`'s that
+   nothing else targets; checked by
    fetching `https://<dnsName>/api/state` before it is saved; on failure
    `serve reset` and the previous mode stays, with the reason (the usual
    ones: MagicDNS or HTTPS certificates off in the tailnet, named so the UI
@@ -146,7 +149,10 @@ Administration. No new model-facing tool, no new process of Lyrica's
 8. **Installers.** `install.sh`: install the `tailscale` package from
    Tailscale's apt repository when the binaries are missing (a host's own
    `tailscaled.service` is left as it is), install and enable
-   `lyrica-tailscaled.service` (`daemon/deploy/`), `After=` it in
+   `lyrica-tailscaled.service` (`daemon/deploy/`; hardened like Caddy's
+   unit, `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`,
+   `PrivateTmp`, since it needs nothing of what lyricad's sandboxes
+   need), `After=` it in
    `lyricad.service`, and closing lines that print the setup addresses,
    the certificate fingerprint and the code instead of the `admin init`
    command. NixOS module: `services.lyrica.tailscale` (default on) declares
@@ -173,7 +179,7 @@ machines; later, if a host that isn't on the tailnet needs it).
   administrator is logged in; `admin init` and `/api/setup` produce the
   same `self.db` shape; her set name appears in her context's REGISTER
   line and nowhere else in the persona changes, and in `/api/state` while
-  locked; the auth key file is gone after `up` succeeds and after it
+  locked; the auth key file is gone after `login` succeeds and after it
   fails, and no log line contains the key; a join while joined elsewhere
   is `409` without `leave`; a disconnect, leave or switch requested
   through her own tailnet listener is `409`; every `tailscale` call names
