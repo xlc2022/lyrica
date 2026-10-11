@@ -979,6 +979,37 @@ export interface PermissionAnswer {
  */
 export interface UploadResponse { path: string }
 
+// --- The Files panel (DESIGN, "Files and images"): the thread's folder and its grants, through the sandbox ---
+
+/** One row of a listing; `path` is the file's path as she sees it. */
+export interface FileEntry { name: string; path: string; kind: "file" | "folder" | "link" | "other"; size: number; modified: string }
+/** A top of the panel's tree: the thread's folder (`/workspace`), then each granted folder. */
+export interface FileRoot { path: string; writable: boolean; kind: "thread" | "grant" }
+/**
+ * GET /api/u/:userId/threads/:pool/:threadId/files?dir=<path> → FileListing.
+ * One folder at a time (the thread's folder without `dir`), folders first;
+ * `more` when the listing stopped at its cap (2,000). The panel's own
+ * `.lyrica` folder is never listed.
+ */
+export interface FileListing { roots: FileRoot[]; dir: string; entries: FileEntry[]; more: boolean }
+/** GET …/files/search?root=<path>&q=<text> → FileSearch: names containing the text under that root, at most 200. */
+export interface FileSearch { entries: FileEntry[]; more: boolean }
+/** GET …/files/images → ImageEntry[]: every image in the thread's folder; `uploaded` when it is in uploads/, else `made` by her. */
+export interface ImageEntry extends FileEntry { source: "uploaded" | "made" }
+/**
+ * GET …/files/content?path=<path>[&download=1] → the file's bytes, with its type
+ * (images by their bytes; HTML, SVG and scripts as plain text, never run) and
+ * `Content-Disposition` inline, or attachment with `download`.
+ * POST …/files/upload?dir=<path>&name=<file> with the bytes → UploadResponse: saved under a free name in that folder.
+ * POST …/files/folder { path } → Ok. POST …/files/rename { from, to } → Ok (a taken `to` is refused).
+ * POST …/files/delete { paths } → Ok, for good. POST …/files/zip { paths } → application/zip, built as it streams.
+ * A root itself can't be renamed or deleted; a read-only grant refuses every change (403); a path outside the
+ * thread's folders is 403. Her next turn is told, by name, what the panel added or removed.
+ */
+export interface FileFolderInput { path: string }
+export interface FileRenameInput { from: string; to: string }
+export interface FilePathsInput { paths: string[] }
+
 // --- The event stream ---
 
 /**

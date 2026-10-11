@@ -659,8 +659,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 - **Workspace extension** (`createWorkspaceExtension(tools: ThreadTools)`):
   - `ThreadTools` is `{ target(machine?), settings(), network(),
     machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?), approve?, setMode?,
-    proposePlan?(PlanRequest), recordChange?(NewChange) }`.
-    `settings()` is the thread's effective settings.
+    proposePlan?(PlanRequest), recordChange?(NewChange), fileNotes?() }`.
+    `settings()` is the thread's effective settings. `fileNotes()` returns
+    `{ added, removed }` paths the Files panel changed since her last turn,
+    which the `workspace` prompt section names in one line.
   - `read`, `write`, `edit` and `bash` take an optional `machine`. On a
     machine the call's mode is `stricterMode(settings().mode, limit)`; a
     suspect `bash` (`suspectCommand`) asks in every mode unless
@@ -1007,8 +1009,11 @@ interface SshTransport { connect(to: SshEndpoint, verify(fingerprint): boolean):
 sandboxedTransport(sandbox: () => HelperSandbox): SshTransport  // the only client; Workspace.sshTransport (WorkspaceOptions.sshTransport for tests)
 // HelperSandbox { exclude, front?, frontHosts?, bwrap?, pasta?, refused? }: refused (the self-test's reason) fails the call
 helperSandbox(address, port, sandbox): Sandbox           // the helper's sandbox: no workspace, that address and port only
-forThread(t)  // { target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), folders(), recordChange() },
-              // each read fresh; settings() is effective
+forThread(t)  // { target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), folders(), recordChange(), fileNotes() },
+              // each read fresh; settings() is effective; fileNotes() takes (reads and clears) what the Files panel added and removed
+files(t): ThreadFiles                     // the Files panel, every call a fresh no-network sandbox over the thread's grants:
+  // roots(), list(dir), search(root, q), images(), read(path) → { stream, size, type }, upload(dir, name, bytes) → path,
+  // mkdir(path), rename(from, to), remove(paths), zip(paths) → Readable. FilesRefused: outside the grants, a root, .lyrica, read-only.
 changes(userId): FileChanges              // her write and edit calls' changes, for removing turns
 targetFor(t, machine?): ExecutionTarget  // the sandbox, or an SSH machine the thread may use now (a Proxmox one is refused)
 machinesFor(t): ThreadMachine[]           // { name, kind, limit, root }: granted by it and every ancestor, of its pool

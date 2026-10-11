@@ -184,5 +184,13 @@ For each part:
   the "Checked the other threads" marker, after #97 and #110.
 - 2026-10-11, PR 5 (Li's ask): messages from other threads collapse to one
   line, "Message received from <thread>", and expand on a tap; the rule is
-  in docs/ux.md §6. Next: the Files panel, Notifications, Pin in the
-  remaining places, the Models page and the Sleep section.
+  in docs/ux.md §6.
+- 2026-10-11, PR 6 (Files panel, back end): `Workspace.files(t)` and the
+  `…/files` routes (docs/daemon.md "Files"): listing one folder at a time
+  with the roots, search, images, content with a no-run CSP, upload, folder,
+  rename, delete, zip streamed from the sandbox, and the one-line note to her
+  about what the panel changed. No thumbnails yet (the panel shows the image
+  itself; a thumbnail route waits for an image library). Next: the panel
+  itself (Files | Images tabs in the panel column, context menu, multi-select,
+  drag-drop upload), then Notifications, Pin in the remaining places, the
+  Models page and the Sleep section.

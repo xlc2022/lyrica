@@ -320,6 +320,15 @@ takes is `lyrica@pve!agent=<that secret>`.
 - A file uploaded in the web UI goes into the thread's `uploads/` folder in the
   home workspace. `Workspace.saveUpload` writes it from inside a sandbox, so a
   symlink she left in `uploads/` can't point it anywhere else.
+- **The Files panel** (`core/src/workspace/files.ts`, `Workspace.files(t)`)
+  lists, searches, reads, uploads, renames, deletes and zips in the thread's
+  folder and its grants, every operation a fresh no-network sandbox over the
+  thread's grants (`find`, `cat`, `stat`, `mkdir`, `mv`, `rm`), so the panel
+  can reach exactly what she can and nothing else: a path outside, a symlink
+  out, a root, the panel's own `.lyrica` folder, and any change in a
+  read-only grant are refused (`FilesRefused`). Uploads land under a free name,
+  as in the message box. Adds and removes are noted (`panel_files` in
+  `user.db`) and told to her once, at her next turn, by `ThreadTools.fileNotes`.
 - An uploaded file is a file, not a memory. She notes what matters from it, as
   with anything else she reads.
 - **What her write and edit calls change is recorded**, so removing the

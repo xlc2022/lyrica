@@ -1,5 +1,5 @@
 import {
-  AuthError, WrongPassword, WORKDIR, CAPABILITIES, checkTask, isRestricted, profileFor, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS, projectSlug,
+  AuthError, WrongPassword, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS, projectSlug,
   type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type MachineConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
@@ -22,6 +22,15 @@ const MESSAGE_PAGE = 50;
 /** Every API route. Locked, only /api/state and /api/unlock answer (lyricad.ts enforces it). */
 export function apiRoutes(d: Lyricad): Route[] {
   const s = (): Services => d.services!;
+  /** The Files panel's operations for the request's thread, each inside the thread's sandbox. */
+  const files = (r: Request) => {
+    const user = d.userFor(r);
+    const thread = owner(d, user, (o) => threadOf(o, r));
+    return s().workspace.files({ userId: user.id, pool: poolOf(r), threadId: thread.id });
+  };
+  const refused = async <T>(fn: () => Promise<T>): Promise<T> => {
+    try { return await fn(); } catch (err) { throw err instanceof FilesRefused ? new HttpError(403, err.message) : err; }
+  };
   const u = "/api/u/:userId";
   const t = `${u}/threads/:pool/:threadId`;
 
@@ -741,6 +750,62 @@ export function apiRoutes(d: Lyricad): Route[] {
       const bytes = await r.bytes(d.opts.uploadLimit ?? 50 * 1024 * 1024);
       const path = await s().workspace.saveUpload({ userId: user.id, pool: poolOf(r), threadId: thread.id }, name, bytes);
       return { path };
+    }),
+    // --- The Files panel: the thread's folder and grants, every call inside the sandbox ---
+    route("GET", `${t}/files`, async (r): Promise<Api.FileListing> => {
+      const f = files(r);
+      const dir = r.query.get("dir") || WORKDIR;
+      return { roots: f.roots(), dir, ...(await refused(() => f.list(dir))) };
+    }),
+    route("GET", `${t}/files/search`, (r): Promise<Api.FileSearch> => refused(() => files(r).search(r.query.get("root") || WORKDIR, r.query.get("q") ?? ""))),
+    route("GET", `${t}/files/images`, (r): Promise<Api.ImageEntry[]> => refused(() => files(r).images())),
+    route("GET", `${t}/files/content`, async (r) => {
+      const path = r.query.get("path") ?? "";
+      const { stream, size, type } = await refused(() => files(r).read(path));
+      const name = path.split("/").pop() ?? "file";
+      r.res.writeHead(200, {
+        "content-type": type, "content-length": String(size), "cache-control": "no-store",
+        "content-disposition": `${r.query.get("download") ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(name)}`,
+        "content-security-policy": "default-src 'none'; sandbox", "x-content-type-options": "nosniff",
+      }),
+      stream.on("error", () => r.res.destroy());
+      stream.pipe(r.res);
+      return undefined;
+    }),
+    route("POST", `${t}/files/upload`, async (r): Promise<Api.UploadResponse> => {
+      const f = files(r);
+      const bytes = await r.bytes(d.opts.uploadLimit ?? 50 * 1024 * 1024);
+      return { path: await refused(() => f.upload(r.query.get("dir") || WORKDIR, r.query.get("name") ?? "", bytes)) };
+    }),
+    route("POST", `${t}/files/folder`, async (r): Promise<Api.Ok> => {
+      const { path } = await r.json<Api.FileFolderInput>();
+      await refused(() => files(r).mkdir(String(path ?? "")));
+      return { ok: true };
+    }),
+    route("POST", `${t}/files/rename`, async (r): Promise<Api.Ok> => {
+      const { from, to } = await r.json<Api.FileRenameInput>();
+      await refused(() => files(r).rename(String(from ?? ""), String(to ?? "")));
+      return { ok: true };
+    }),
+    route("POST", `${t}/files/delete`, async (r): Promise<Api.Ok> => {
+      const { paths } = await r.json<Api.FilePathsInput>();
+      if (!Array.isArray(paths)) throw new HttpError(400, "paths must be a list");
+      await refused(() => files(r).remove(paths.map(String)));
+      return { ok: true };
+    }),
+    route("POST", `${t}/files/zip`, async (r) => {
+      const { paths } = await r.json<Api.FilePathsInput>();
+      if (!Array.isArray(paths) || !paths.length) throw new HttpError(400, "paths must be a list");
+      const zip = await refused(() => files(r).zip(paths.map(String)));
+      const name = paths.length === 1 ? (String(paths[0]).split("/").pop() || "files") : "files";
+      r.res.writeHead(200, {
+        "content-type": "application/zip", "cache-control": "no-store",
+        "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(`${name}.zip`)}`,
+        "content-security-policy": "default-src 'none'", "x-content-type-options": "nosniff",
+      }),
+      zip.on("error", () => r.res.destroy());
+      zip.pipe(r.res);
+      return undefined;
     }),
     // --- Speech: Dictation and Read aloud ---
     route("GET", `${u}/speech`, (r): Api.Speech => {
