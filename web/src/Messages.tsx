@@ -164,7 +164,7 @@ function LookMarker({ text, told, env, n }: { text: string; told: Told[]; env: E
   return (
     <div className="marker look" data-type="watching" id={n !== undefined ? `m-${n}` : undefined}>
       <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
-        Checked the other threads{told.length > 0 && <> · told <span className="num">{told.length}</span></>}
+        Checked the other threads{told.length > 0 && <> · told <span className="num">{told.length}</span></>}<Icon name="down" />
       </button>
       {open && (
         <div className="marker-body">

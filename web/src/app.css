@@ -613,6 +613,8 @@ form.drawer-body { flex: 1; }
 /* A look at the project's threads: a marker like a tool call's, with a dot in the info colour. */
 .marker[data-type="watching"] > button::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--info); }
 .marker[data-type="watching"] .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.marker[data-type="watching"] > button .ic { width: 14px; height: 14px; flex: none; transition: transform 0.15s; }
+.marker[data-type="watching"] > button[aria-expanded="true"] .ic { transform: rotate(180deg); }
 .marker-body .prose.small { font-size: 13px; }
 
 /* A message from another thread: one line until tapped (docs/ux.md §6). */
