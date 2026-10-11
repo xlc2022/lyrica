@@ -122,7 +122,7 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
           {THREAD_TASKS.map((task) => (
             <TaskSelect key={task} task={task} value={settings.models[task]} allowed={settings.allowed} onChange={(m) => change({ models: { [task]: m } })} />
           ))}
-          <NetSwitch label="Fallback" hint="Off: only the first model in each list answers. If it can't, the message waits for it." value={settings.fallback} effective={settings.fallbackOn}
+          <NetSwitch label="Fallback" hint="When off, only the first model in each list answers; if it can't, the message waits for it." value={settings.fallback} effective={settings.fallbackOn}
             onChange={(v) => change({ fallback: v })} />
         </fieldset>
 

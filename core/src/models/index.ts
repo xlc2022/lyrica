@@ -1550,7 +1550,7 @@ export class Models {
     // Never wider than the parent: a branch of a thread with Voice to cloud off keeps it off, even if the default is turned on later.
     if (parent.voiceCloud === false || (parent.voiceCloud && !this.defaultVoiceCloud(userId))) this.setThreadVoiceCloud(userId, childThreadId, !!parent.voiceCloud);
     // A child starts with its parent's Fallback, whatever the default becomes; a subagent can't change it.
-    if (parent.fallback !== undefined && parent.fallback !== this.defaultFallback(userId)) this.setThreadFallback(userId, childThreadId, parent.fallback);
+    if (parent.fallback !== undefined) this.setThreadFallback(userId, childThreadId, parent.fallback);
     for (const [task, r] of Object.entries(parent.overrides ?? {})) {
       if (task !== "chat" || opts.chat !== false) this.setThreadModel(userId, pool, childThreadId, task as Task, r);
     }

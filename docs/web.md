@@ -325,8 +325,8 @@ A thread's address may carry what the panel beside it shows:
   used here. The message she is still writing has no button.
 - **Fallback** is a switch in the thread settings drawer's Models section,
   under the task models, following the user's default until changed (Use
-  default goes back); tooltip "Off: only the first model in each list
-  answers. If it can't, the message waits for it."
+  default goes back); tooltip "When off, only the first model in each list
+  answers; if it can't, the message waits for it."
 - **Voice to cloud** is a switch in the thread settings drawer's Privacy and
   network section, under Internet, following the user's default until
   changed (Use default goes back); the default is in Settings, Network. The Model profiles section has Dictation and Read aloud

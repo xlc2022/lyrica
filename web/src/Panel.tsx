@@ -363,7 +363,7 @@ function ProfilesSection({ ctx }: { ctx: ShellContext }) {
     <Section title="Model profiles">
       <p className="meta muted">General threads: {profiles.data.default} profile. Private and local-only threads: local profile.</p>
       <ErrorText error={error} />
-      <Switch label="Sleep fallback" hint="Off: each sleep phase uses its first model only. If that one is away, sleep waits for the next night."
+      <Switch label="Sleep fallback" hint="When off, each sleep phase uses its first model only; if that one is away, sleep waits for the next night."
         checked={profiles.data.sleepFallback} onChange={(sleepFallback) => run(async () => profiles.set(await patch<Profiles>(u(userId, "profiles"), { sleepFallback })))} />
       <div className="profiles">
         {(["local", "cloud", "custom"] as const).map((profile) => (
@@ -418,7 +418,7 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
             checked={profiles.data.voiceCloud} onChange={(voiceCloud) => run(async () => profiles.set(await patch<Profiles>(u(userId, "profiles"), { voiceCloud })))} />
         )}
         {profiles.data && (
-          <Switch label="Fallback" hint="Off: only the first model in each list answers. If it can't, the message waits for it."
+          <Switch label="Fallback" hint="When off, only the first model in each list answers; if it can't, the message waits for it."
             checked={profiles.data.fallback} onChange={(fallback) => run(async () => profiles.set(await patch<Profiles>(u(userId, "profiles"), { fallback })))} />
         )}
       </div>
