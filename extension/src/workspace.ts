@@ -2,17 +2,23 @@ import {
   createBashToolDefinition, createEditToolDefinition, createReadToolDefinition, createWriteToolDefinition,
   type ExtensionContext, type ExtensionFactory, type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { WORKDIR, type ExecutionTarget, type Network, type NewChange, type PermissionMode, type ThreadWorkspace, type ToolOps } from "@lyrica/core";
+import {
+  stricterMode, suspectCommand, WORKDIR, type ExecutionTarget, type Network, type NewChange, type PermissionMode, type ThreadMachine, type ThreadWorkspace, type ToolOps,
+} from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
 
 /** What the workspace tools need for one thread. `Workspace` from core provides it. */
 export interface ThreadTools {
-  /** Called on every tool call, so a change of target or grants applies at once. */
-  target(): ExecutionTarget;
+  /** Called on every tool call, so a change of grants applies at once: the sandbox, or one of the thread's machines. */
+  target(machine?: string): ExecutionTarget;
   /** What applies to the thread now, its ancestors' limits included. */
   settings(): ThreadWorkspace;
   network(): Network;
+  /** The machines the thread may use now, with their mode limits. Without it, none. */
+  machines?(): ThreadMachine[];
+  /** Whether Li allowed this exact suspect command on this machine in this thread. */
+  allowedInThread?(machine: string, command: string): boolean;
   /**
    * Asks whoever is watching the thread whether a tool call may run. lyricad
    * supplies it; without it, Pi's own UI asks, and with no UI the call is blocked.
@@ -34,6 +40,11 @@ export interface ApprovalRequest {
   toolCallId: string;
   tool: string;
   input: Record<string, unknown>;
+  /** The machine the call runs on, and the folder a command runs in there. The approval covers exactly this. */
+  machine?: string;
+  cwd?: string;
+  /** A suspect command: the warning sentence. The answer may allow it in this thread. */
+  warning?: string;
 }
 
 export interface PlanRequest {
@@ -82,6 +93,11 @@ export function toolsOff(s: Pick<ThreadWorkspace, "mode" | "webSearch" | "images
 }
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }], details: undefined });
+const MACHINE = Type.Optional(Type.String({ description: "One of your machines, by name, to run this there. Leave it out for the sandbox." }));
+
+/** What an approval covered: anything run that differs is denied. */
+const shown = (tool: string, input: Record<string, unknown>, machine: string | undefined, cwd: string | undefined) =>
+  JSON.stringify([tool, machine ?? null, cwd ?? null, tool === "bash" ? input.command : input.path]);
 
 /**
  * Lyrica's read, write, edit and bash: Pi's own tools, with every operation
@@ -93,19 +109,30 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
   return (pi) => {
     const off = () => toolsOff(tools.settings(), pi.getAllTools().map((t) => t.name));
     const gate = (ctx: ExtensionContext) => setToolsOff(pi, ctx, "workspace", off());
+    /** What each approved call was approved for, by tool call. */
+    const approved = new Map<string, string>();
+    /** Where her tools ran this turn: "sandbox" or a machine. */
+    let places = new Set<string>();
 
     for (const [name, create] of Object.entries(TOOLS) as [keyof ToolOps, Create][]) {
       const template = create(WORKDIR, { operations: undefined as never });
       pi.registerTool({
         ...template,
+        parameters: Type.Object({ ...(template.parameters as ReturnType<typeof Type.Object>).properties, machine: MACHINE }) as typeof template.parameters,
         async execute(id, params, signal, onUpdate, ctx) {
-          const target = tools.target();
+          const { machine, ...rest } = params as Record<string, unknown>;
+          const target = tools.target(machine as string | undefined);
           const cwd = await target.cwd();
+          const asked = approved.get(id);
+          approved.delete(id);
+          if (asked !== undefined && asked !== shown(name, rest, machine as string | undefined, machine ? cwd : undefined)) {
+            throw new Error("This isn't what was approved, so it didn't run.");
+          }
           const ops = name === "write" || name === "edit" ? recording(target, target.ops()[name], id, tools.recordChange) : target.ops()[name];
           const tool = create(cwd, { operations: ops as never });
           // Pi resolves paths against the session's cwd, which is on the host; use the target's.
           const here = new Proxy(ctx, { get: (t, k) => (k === "cwd" ? cwd : Reflect.get(t, k)) });
-          return tool.execute(id, params, signal, onUpdate, here);
+          return tool.execute(id, rest, signal, onUpdate, here);
         },
       });
     }
@@ -142,22 +169,40 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       if (off().includes(event.toolName)) {
         return { block: true, reason: `${event.toolName} is off in this thread${tools.settings().mode === "plan" ? " (Plan mode)" : ""}.` };
       }
-      const { mode } = tools.settings();
+      const input = event.input as Record<string, unknown>;
+      const place = event.toolName in TOOLS ? (input.machine as string | undefined) ?? "sandbox" : undefined;
+      const machine = place && place !== "sandbox" ? tools.machines?.().find((m) => m.name === place) : undefined;
+      if (place && place !== "sandbox" && !machine) return { block: true, reason: `${place} isn't one of this thread's machines.` };
+      // On a machine, the stricter of the thread's mode and the machine's limit.
+      const mode = machine ? stricterMode(tools.settings().mode, machine.limit) : tools.settings().mode;
       // Anything that reaches outside and changes things there can't be undone from here: it always asks.
       const a = pi.getAllTools().find((t) => t.name === event.toolName)?.annotations;
       const irreversible = !!a?.openWorldHint && !a.readOnlyHint;
-      if (!irreversible && !ASKS[mode].includes(event.toolName)) return undefined;
-      const input = event.input as Record<string, unknown>;
-      const allowed = tools.approve
-        ? await tools.approve({ toolCallId: event.toolCallId, tool: event.toolName, input })
-        : await approve(ctx, event.toolName, input);
-      return allowed ? undefined : { block: true, reason: "Not approved. Ask what to do instead." };
+      const warning = machine && event.toolName === "bash" ? suspectCommand(String(input.command)) : undefined;
+      const suspect = !!warning && !tools.allowedInThread?.(machine!.name, String(input.command));
+      // The first call on a machine in a turn asks if anything earlier ran somewhere else, so output from one place can't steer her onto another.
+      const moved = !!machine && !places.has(machine.name) && places.size > 0;
+      if (!irreversible && !suspect && !moved && !ASKS[mode].includes(event.toolName)) {
+        if (place) places.add(place);
+        return undefined;
+      }
+      const request: ApprovalRequest = { toolCallId: event.toolCallId, tool: event.toolName, input };
+      if (machine) Object.assign(request, { machine: machine.name, cwd: await tools.target(machine.name).cwd() }, suspect ? { warning } : {});
+      const allowed = tools.approve ? await tools.approve(request) : await approve(ctx, request);
+      if (!allowed) return { block: true, reason: "Not approved. Ask what to do instead." };
+      if (place) {
+        places.add(place);
+        const { machine: _, ...rest } = input;
+        approved.set(event.toolCallId, shown(event.toolName, rest, request.machine, request.cwd));
+      }
+      return undefined;
     });
 
     // Commands typed with "!" in the terminal run where her tools do.
     pi.on("user_bash", () => ({ operations: tools.target().ops().bash }));
 
     pi.on("before_agent_start", (event, ctx) => {
+      places = new Set();
       gate(ctx);
       const options = event.systemPromptOptions;
       options.sections = { ...options.sections, workspace: describe(tools) };
@@ -172,7 +217,8 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
  */
 export function recording<T extends ToolOps["write"] | ToolOps["edit"]>(target: ExecutionTarget, ops: T, toolCall: string, record?: (c: NewChange) => void): T {
   if (!record) return ops;
-  const read = target.ops().read;
+  // edit's read, which gets the file as it is (read masks keys on a machine).
+  const read = target.ops().edit;
   return {
     ...ops,
     async writeFile(path: string, content: string | Buffer) {
@@ -193,10 +239,10 @@ async function exists(target: ExecutionTarget, path: string): Promise<boolean> {
   return exitCode === 0;
 }
 
-async function approve(ctx: ExtensionContext, tool: string, input: Record<string, unknown>): Promise<boolean> {
+async function approve(ctx: ExtensionContext, r: ApprovalRequest): Promise<boolean> {
   if (!ctx.hasUI) return false;
-  const what = tool === "bash" ? String(input.command) : `${tool} ${String(input.path)}`;
-  return ctx.ui.confirm("Allow this?", what);
+  const what = r.tool === "bash" ? String(r.input.command) : `${r.tool} ${String(r.input.path)}`;
+  return ctx.ui.confirm(r.machine ? `Allow this on ${r.machine}?` : "Allow this?", [r.warning, what].filter(Boolean).join("\n"));
 }
 
 /** Pi's own UI: which mode to go ahead in, or keep planning. */
@@ -210,12 +256,13 @@ async function choose(ctx: ExtensionContext, plan: string): Promise<GoAhead | un
 /** A short, stable description of where she works, so the prompt stays cacheable. */
 export function describe(tools: ThreadTools): string {
   const s = tools.settings();
-  if (s.target !== "sandbox") return `Your file and command tools run on ${s.target.slice(4)} over SSH.`;
   const grants = s.grants.map((g) => `${g.path} (${g.writable ? "read-write" : "read-only"})`);
+  const machines = (tools.machines?.() ?? []).map((m) => `${m.name} (${m.limit === "auto" ? "works freely" : `asks like ${LABELS[m.limit]} at most`}${m.root ? `, in ${m.root}` : ""})`);
   return [
     `Your file and command tools run in a sandbox. ${WORKDIR} is this conversation's folder; uploads arrive in ${WORKDIR}/uploads.`,
     grants.length ? `Folders you were given: ${grants.join(", ")}.` : "No other folders were given to you in this conversation.",
     network(tools.network()),
+    ...(machines.length ? [`Machines you can work on over SSH, with the machine argument: ${machines.join(", ")}. The sandbox's network settings don't apply there.`] : []),
   ].join("\n");
 }
 

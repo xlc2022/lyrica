@@ -204,7 +204,7 @@ access to both of their own pools, for the memory browser and `lyrica mem`.
 It is never passed to the extension, a Pi session or sleep.
 
 **Pages can describe folders.** A page has an optional `folders` list of host
-paths or SSH locations. Sleep sets it. `forFolders(paths)` returns the pages
+paths or machine locations (`<machine>:<root>`). Sleep sets it. `forFolders(paths)` returns the pages
 whose folders contain or equal any of the given paths, which is how opening a
 folder brings back what she knows about it.
 
@@ -623,9 +623,17 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   active only while no reason has it off, and comes back only if a reason
   took it away.
 - **Workspace extension** (`createWorkspaceExtension(tools: ThreadTools)`):
-  - `ThreadTools` is `{ target(), settings(), network(), approve?,
-    setMode?, proposePlan?(PlanRequest), recordChange?(NewChange) }`.
+  - `ThreadTools` is `{ target(machine?), settings(), network(),
+    machines?(), allowedInThread?(machine, command), approve?, setMode?,
+    proposePlan?(PlanRequest), recordChange?(NewChange) }`.
     `settings()` is the thread's effective settings.
+  - `read`, `write`, `edit` and `bash` take an optional `machine`. On a
+    machine the call's mode is `stricterMode(settings().mode, limit)`; a
+    suspect `bash` (`suspectCommand`) asks in every mode unless
+    `allowedInThread`; the first call on a machine in a turn asks if
+    anything earlier ran elsewhere. `ApprovalRequest` is `{ toolCallId,
+    tool, input, machine?, cwd?, warning? }`, and the call runs only if its
+    arguments are still exactly what was approved.
   - `toolsOff(settings, registered)`: Plan mode leaves only `PLAN_TOOLS`
     (`read`, `recall`, `read_memory`, `web_search`, `web_fetch`,
     `delegate`, `ask_parent`, `threads`, `propose_plan`); outside Plan
@@ -704,8 +712,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 - **Permission prompts:** the workspace extension's `tool_call` hook calls
   `ThreadTools.approve?(request)`; `lyricad` supplies it and waits for an
   answer from any open view, denying on timeout or Stop. `proposePlan`
-  takes the same path: `PermissionAnswer { allow, mode?: GoAhead }`, and
-  approving a plan without `mode` is `400`. A plan switching the mode, or a
+  takes the same path: `PermissionAnswer { allow, mode?: GoAhead,
+  allowInThread? }`, and approving a plan without `mode` is `400`. A
+  request on a machine carries `machine` and `cwd`, a suspect one `suspect:
+  true` and `warning`; `allowInThread` stores that exact command for the
+  thread it runs in and is refused on any other request. A plan switching the mode, or a
   settings change, sends the thread a `{ type: "settings" }` event.
 - **Sweep** (`Lyricad.sweep`, nightly, before sleep): `sweepUser(services,
   userId)` for each user whose home workspace is mounted clears snapshots
@@ -889,26 +900,36 @@ interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
   ops(): { read; write; edit; bash };     // Pi's tool operations
   folders(): string[];                    // host folders, or "<ssh name>:<root>"
 }
-forThread(t)  // { target(), settings(), setMode(), network(), folders(), recordChange() }, each read fresh; settings() is effective
+forThread(t)  // { target(machine?), settings(), machines(), allowedInThread(machine, command), setMode(), network(), folders(), recordChange() },
+              // each read fresh; settings() is effective
 changes(userId): FileChanges              // her write and edit calls' changes, for removing turns
-targetFor(t): ExecutionTarget
+targetFor(t, machine?): ExecutionTarget  // the sandbox, or a machine the thread may use now
+machinesFor(t): ThreadMachine[]           // { name, limit, root }: granted by it and every ancestor, of its pool
+callMode(t, machine?): PermissionMode     // on a machine, stricterMode(effective(t).mode, its limit)
+probeMachine(userId, login, { name, address, draft? }): Promise<MachineProbe>
+  // a key pair kept in memory for an hour (by `draft`), its keyLine and setup steps, the host key seen,
+  // whether the login worked, offNetwork; saves nothing
+addMachine(userId, { name, address, root, pool, limit?, draft, hostKey, offNetworkConfirmed? }): Promise<MachineConfig>
+updateMachine(userId, name, { address?, root?, limit?, pool? })  // a new pool drops the machine from every thread
+setHostKey(userId, name, hostKey) / confirmOffNetwork(userId, name) / removeMachine(userId, name)
 grantsFor(t): Grant[]                     // { path, writable }
-folders(t): string[]
+folders(t): string[]                      // grants, and "<machine>:<root>" for its machines with a root
 network(t): Network
 inheritSettings(parent, childThreadId, narrower?)  // subagents and child threads: same or stricter (folders, network, mode, webSearch, images), never wider
 settings(userId).detach(threadId)          // a kept child, once its parent is forgotten: no longer narrowed by it
 // Planned (Projects): inheritSettings also grants a project's thread its project chat's folder (read-only for a read-only thread)
-settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, SSH targets
-// Planned (Machines, briefs/machines.md): SSH targets become machines. MachineConfig adds
-//   kind: "ssh" | "proxmox", pool, limit: "ask" | "acceptEdits" | "auto" (new machines "ask"), offNetwork, lastUsed;
-//   a Proxmox machine holds an API token in place of a key. addMachine(cfg, confirmedHostKey) replaces addSsh;
-//   probeHostKey(address) connects only to read the key. A thread's `target` becomes machines: string[] (the
-//   sandbox is always there); targetFor(t, machine?); callMode(t, machine) = stricterMode(effective(t).mode, limit).
-//   setThread refuses a machine of the other pool; inheritSettings takes a subset of machines.
-//   Approvals carry { machine, command | path, cwd } and match exactly or deny; a per-thread allow list of exact
-//   suspect commands lives in thread_workspaces. SUSPECT_COMMANDS and the write/edit path floor are exported constants.
-//   setMachinePool(name, pool) removes the machine from every thread that grants it. offNetwork is re-checked on each
-//   connection; a private machine newly off network is refused until confirmed again (confirmOffNetwork(name)).
+settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, machines
+// MachineConfig { name, kind: "ssh", host, port, username, privateKey, root, hostKey, pool,
+//   limit: "ask" | "acceptEdits" | "auto" (new machines "ask"), offNetwork, lastUsed }
+// settings(userId).machines() / machine(name) / addMachine(m, confirmedHostKey) / updateMachine / setMachinePool(name, pool)
+//   / setHostKey / setOffNetwork / confirmOffNetwork / removeMachine / allowInThread(threadId, machine, command) / allowedInThread(threadId)
+// A thread's `machines: string[]` (the sandbox is always there); setThread refuses a machine of the other pool;
+//   inheritSettings takes a subset; effective() keeps only machines every ancestor grants.
+// SUSPECT_COMMANDS, suspectCommand(command), onFloor(path), cleanOutput(onData), maskKeys(buf),
+//   authorizedKeysLine(publicKey), machineSetup(account, keyLine): core/src/workspace/machines.ts
+// SshTransport { connect(endpoint, verify(fingerprint)): Promise<SshSession> } (transport.ts); `inProcess` is ssh2 in
+//   lyricad; WorkspaceOptions.sshTransport replaces it. SshTarget(cfg, { transport?, address?, connected? }).
+// Planned (Proxmox, briefs/proxmox.md): kind "proxmox", holding an API token in place of a key.
 settings(userId).defaultMode() / setDefaultMode(mode)  // the mode new threads start in (default auto)
 settings(userId).startThread(threadId, pool)           // fixes the default mode on a new thread
 settings(userId).effective(threadId): ThreadWorkspace  // strictest mode and switches of it and its ancestors
@@ -922,7 +943,7 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   in the home workspace, and a read-only system.
 - **Workspace settings live in the user's `user.db`:** each thread's grants,
   network switches, permission mode, `webSearch` and `images` switches and
-  target, and the SSH targets. Allowed
+  machines and allowed suspect commands, and the machines. Allowed
   paths are the exception (below). Workspace never adds tables to the pool
   databases, which belong to Memory.
 - **Network:** every thread has two switches (internet, and this machine's
@@ -947,19 +968,24 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   - If `selfTest()` finds that a sandbox could undo its firewall, or can't
     start one, every thread runs with network off and the reason is kept in
     `networkRefused` for the UI.
-- **Planned (Machines):** the SSH client moves into a sandboxed helper
-  process per connection (`core/workspace/ssh-helper`), given one machine's
-  key on a pipe and network to that one address through the existing
-  nftables rules; `SshTarget` keeps its interface. A `proxmox` tool
+- **Machines API:** `lyricad`'s `/api/u/:userId/machines` (`GET`; `POST
+  …/machines/probe` for the Test step; `POST …/machines` to confirm;
+  `PATCH …/machines/:name` for address, root, pool and limit; `POST
+  …/machines/:name/key` with a confirmed host key; `POST
+  …/machines/:name/confirm-off-network`; `DELETE`). Thread settings carry
+  `machines`; permission events carry `machine`, `cwd`, and for a suspect
+  command `suspect: true` and `warning`; an answer may carry
+  `allowInThread: true`.
+- **Planned (SSH helper, Proxmox):** the SSH client moves into a sandboxed
+  helper process per connection (`core/workspace/ssh-helper`), an
+  `SshTransport` given one machine's key on a pipe and network to that one
+  address through the existing nftables rules; `SshTarget` keeps its
+  interface. A `proxmox` tool
   (`extension/src/proxmox.ts`) with named actions (status, list, start,
   stop, shutdown, reboot, snapshots) is a schema plus one call into
   `core/workspace`, which calls the Proxmox API with the machine's token;
   `destroy` is never offered; `stop` and `reboot` are suspect actions and
   ask in every mode until allowed in a thread.
-  `lyricad`'s `/api/u/:userId/ssh` routes become `/machines` (`PATCH` for
-  pool, limit, root and address; `POST …/machines/probe`; `POST
-  …/machines/:name/key`); permission events carry `machine` and
-  `suspect: true`, and an answer may carry `allowInThread: true`.
 - **Modes:** `PermissionMode` is `"auto" | "acceptEdits" | "ask" | "plan"`,
   strictest first plan, ask, acceptEdits, auto. Stored `ask-changes` and
   `ask-commands` migrate in place to `ask` and `acceptEdits`. A thread with

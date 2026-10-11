@@ -302,7 +302,8 @@ export class WorkspaceSettings {
     const t = this.thread(threadId);
     if (t.parent) {
       this.checkInherited(t.parent, pool);
-      this.checkNarrower(t.parent, pool, t);
+      // Machines a parent dropped later are dropped from the child by `effective`, not refused.
+      this.checkNarrower(t.parent, pool, { ...t, machines: [] });
     }
   }
 

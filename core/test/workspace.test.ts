@@ -4,7 +4,7 @@ import { connect } from "node:net";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { generateSshKey, nftRules, resolveAddresses, SshTarget, Users, Workspace, WorkspaceSettings, type SshTargetConfig } from "../src/index.ts";
+import { generateSshKey, nftRules, resolveAddresses, SshTarget, Users, Workspace, WorkspaceSettings, type MachineConfig } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -192,16 +192,18 @@ describe("modes and switches", () => {
   });
 });
 
-describe("ssh targets", () => {
-  const unreachable: SshTargetConfig = {
-    name: "nas", host: "127.0.0.1", port: 1, username: "lyrica", privateKey: generateSshKey("test").privateKey, root: null, hostKey: null,
-  };
+const unreachable: MachineConfig = {
+  name: "nas", kind: "ssh", host: "127.0.0.1", port: 1, username: "lyrica", privateKey: generateSshKey("test").privateKey, root: null,
+  hostKey: `SHA256:${"A".repeat(43)}`, pool: "general", limit: "ask", offNetwork: false, lastUsed: null,
+};
+
+describe("ssh machines", () => {
 
   it("fail without falling back to local execution", async () => {
     const dir = mkdtempSync(join(tmpdir(), "lyrica-ssh-"));
     dirs.push(dir);
     const marker = join(dir, "ran-locally");
-    const ops = new SshTarget(unreachable, () => {}).ops();
+    const ops = new SshTarget(unreachable).ops();
     await expect(ops.bash.exec(`touch ${marker}`, dir, { onData: () => {} })).rejects.toThrow(/ssh nas/);
     await expect(ops.write.writeFile(marker, "x")).rejects.toThrow(/ssh nas/);
     await expect(ops.read.readFile("/etc/hostname")).rejects.toThrow(/ssh nas/);
@@ -209,20 +211,20 @@ describe("ssh targets", () => {
   });
 
   it("keep file tools inside the root", async () => {
-    const ops = new SshTarget({ ...unreachable, root: "/srv/lyrica" }, () => {}).ops();
+    const ops = new SshTarget({ ...unreachable, root: "/srv/lyrica" }).ops();
     await expect(ops.read.readFile("/srv/lyrica/../etc/passwd")).rejects.toThrow(/outside \/srv\/lyrica/);
     await expect(ops.write.writeFile("/etc/passwd", "x")).rejects.toThrow(/outside/);
   });
 
-  it("are chosen per thread and stored with the user's settings", async () => {
+  it("are granted per thread and stored with the user's settings", async () => {
     const { keyring, users, li, settings } = await setup();
-    settings.addSsh({ ...unreachable, root: "/srv/lyrica" });
-    settings.setThread("t1", "general", { target: "ssh:nas" });
+    settings.addMachine({ ...unreachable, root: "/srv/lyrica" }, unreachable.hostKey!);
+    settings.setThread("t1", "general", { machines: ["nas"] });
     const workspace = new Workspace(keyring, users, { excludePorts: [] });
     const thread = { userId: li.id, pool: "general" as const, threadId: "t1" };
-    expect(workspace.targetFor(thread).name).toBe("ssh:nas");
+    expect(workspace.targetFor(thread, "nas").name).toBe("ssh:nas");
     expect(workspace.folders(thread)).toEqual(["nas:/srv/lyrica"]);
-    expect(() => settings.setThread("t1", "general", { target: "ssh:nope" })).toThrow(/unknown target/);
+    expect(() => settings.setThread("t1", "general", { machines: ["nope"] })).toThrow(/no machine nope/);
   });
 });
 
@@ -244,7 +246,7 @@ async function listening(port: number, server: ReturnType<typeof spawn>, log: ()
 // where sshd isn't installed or the tests run as root.
 const sshd = "/usr/sbin/sshd";
 describe.skipIf(!existsSync(sshd) || process.getuid?.() === 0)("an ssh target", () => {
-  it("reads, writes, edits and runs commands remotely, pinning the host key", async () => {
+  it("reads, writes, edits and runs commands remotely, with the confirmed host key", async () => {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), "lyrica-sshd-")));
     dirs.push(dir);
     const key = generateSshKey("lyrica");
@@ -260,10 +262,16 @@ describe.skipIf(!existsSync(sshd) || process.getuid?.() === 0)("an ssh target", 
     server.stderr.on("data", (d: Buffer) => { log += d.toString(); });
     try {
       await listening(port, server, () => log);
-      const seen: string[] = [];
+      // Probing reads the key the server shows, the way Add machine does.
+      const { keyring, users, li } = await setup();
+      const probe = new Workspace(keyring, users, { excludePorts: [] });
+      const first = await probe.probeMachine(li.id, "li", { name: "local", address: `${userInfo().username}@127.0.0.1:${port}` });
+      expect(first.fingerprint).toMatch(/^SHA256:/);
+      expect(first.login).toBe(false); // the draft's key isn't installed
+      expect(first.keyLine).toMatch(/^restrict(,from="[^"]*")? ssh-ed25519 /);
       const target = new SshTarget({
-        name: "local", host: "127.0.0.1", port, username: userInfo().username, privateKey: key.privateKey, root: join(dir, "root"), hostKey: null,
-      }, (fp) => seen.push(fp));
+        ...unreachable, name: "local", port, username: userInfo().username, privateKey: key.privateKey, root: join(dir, "root"), hostKey: first.fingerprint!,
+      });
       const ops = target.ops();
       const file = join(dir, "root", "todo.txt");
       await ops.write.writeFile(file, "buy milk\n");
@@ -285,10 +293,10 @@ describe.skipIf(!existsSync(sshd) || process.getuid?.() === 0)("an ssh target", 
       expect(out).toBe(`${join(dir, "root")}\nbuy milk\n`);
       symlinkSync("/etc", join(dir, "root", "etc"));
       await expect(ops.read.readFile(join(dir, "root", "etc", "hostname"))).rejects.toThrow(/leads outside/);
-      expect(seen).toEqual([expect.stringMatching(/^SHA256:/)]);
+      await expect(ops.write.writeFile(join(dir, "root", ".ssh", "authorized_keys"), "x")).rejects.toThrow(/SSH's or sudo's/);
       target.close();
-      const impostor = new SshTarget({ ...target["cfg"], hostKey: "SHA256:someone-else" }, () => {});
-      await expect(impostor.ops().read.readFile(file)).rejects.toThrow(/ssh local/);
+      const impostor = new SshTarget({ ...target["cfg"], hostKey: `SHA256:${"B".repeat(43)}` });
+      await expect(impostor.ops().read.readFile(file)).rejects.toThrow(/ssh local: its host key changed/);
     } finally {
       server.kill();
     }

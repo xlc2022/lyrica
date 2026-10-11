@@ -34,7 +34,7 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
 - **Thread settings drawer:** a model per task (each option says cloud or local first), local-only, the internet and
   this machine's services switches (each following the user's default until
   changed), allowed hosts, folders from the allowed paths (read-only or
-  read-write), where commands run (sandbox or an SSH target), the mode, the
+  read-write), a machine of the thread's pool, the mode, the
   Web search and Images switches, "Do not log", rename, hide, and forget. `lyricad` validates every
   change and its reason is shown.
 - **Subagents live inline**, not in the sidebar: see the `delegate` card
@@ -52,7 +52,7 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   two of these contradict), password, your personas (linking a separate persona needs both
   passwords), your suggestions for Lyrica's persona (edit, send on to the
   administrators, or drop), endpoints with probe status, both model profiles, the
-  default mode and network defaults per pool, and SSH targets. Administrators also
+  default mode and network defaults per pool, and Machines (listed, with Remove; `lyrica admin ssh add` adds one). Administrators also
   get the server's network self-test result, sleep time, saving the `self.db`
   passphrase, users with the administrator flag and their allowed folders,
   changes to Lyrica's persona that users sent on (who sent them, whether they edited

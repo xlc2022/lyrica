@@ -159,22 +159,26 @@ export class SshTarget implements ExecutionTarget {
 
   ops(): ToolOps {
     // edit reads the file as it is, so writing it back keeps any key in it; read masks keys.
-    const rawRead = async (p: string) => (await this.session()).readFile(await this.inside(p));
+    // The path is checked before anything else happens.
+    const at = async (p: string, check: (p: string) => Promise<string>) => { const q = await check(p); return { s: await this.session(), q }; };
+    const inside = (p: string) => at(p, (x) => this.inside(x));
+    const writable = (p: string) => at(p, (x) => this.writable(x));
+    const rawRead = async (p: string) => { const { s, q } = await inside(p); return s.readFile(q); };
     const writeFile = async (p: string, content: string | Buffer) => this.write(await this.writable(p), content);
     return {
       read: {
         readFile: async (p) => maskKeys(await rawRead(p)),
-        access: async (p) => (await this.session()).check(await this.inside(p), "r"),
-        detectImageMimeType: async (p) => sniffImage(await (await this.session()).readHead(await this.inside(p), 16)),
+        access: async (p) => { const { s, q } = await inside(p); return s.check(q, "r"); },
+        detectImageMimeType: async (p) => { const { s, q } = await inside(p); return sniffImage(await s.readHead(q, 16)); },
       },
       write: {
         writeFile,
         mkdir: async (dir) => {
-          const code = await (await this.session()).exec(`mkdir -p -- ${quote(await this.writable(dir))}`, { onData: () => {} });
-          if (code !== 0) throw new Error(`could not create ${dir} on ${this.cfg.name}`);
+          const { s, q } = await writable(dir);
+          if (await s.exec(`mkdir -p -- ${quote(q)}`, { onData: () => {} }) !== 0) throw new Error(`could not create ${dir} on ${this.cfg.name}`);
         },
       },
-      edit: { readFile: rawRead, writeFile, access: async (p) => (await this.session()).check(await this.writable(p), "r+") },
+      edit: { readFile: rawRead, writeFile, access: async (p) => { const { s, q } = await writable(p); return s.check(q, "r+"); } },
       bash: {
         exec: async (command, cwd, { onData, signal, timeout }) => {
           const base = await this.cwd();
