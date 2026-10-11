@@ -917,7 +917,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `ThreadSettings.speech` (`Speech`, also `GET /api/u/:userId/speech?pool=`)
     and `voiceCloud` (null follows `Profiles.voiceCloud`);
     `ThreadSettingsChange.voiceCloud`, `ProfilesChange.voiceCloud`;
-    `Profiles.readAloudLive` and `Speech.readAloudLive` (Read aloud while she
+    `Profiles.readAloudLive` and `Speech.readAloudLive` (Read aloud while agent
     writes, off by default), `ProfilesChange.readAloudLive`;
     `Capabilities.transcribe` and `speak`, `AnswerSettings.voices` and
     `speed`, `CallInfo.audioSeconds`. `VoiceCloudOff` is `400`;

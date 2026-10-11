@@ -45,7 +45,13 @@ Administration. No new model-facing tool, no new process of Lyrica's
    (Crockford's base32, no 0/O or 1/I, from `crypto.randomBytes`), 40
    bits, logged once ("Set up Lyrica at http://127.0.0.1:7340 with the
    code XXXX-XXXX") and written to `<runtime>/setup-code` (0600). `lyrica
-   admin setup-code` prints it. A wrong code is `403` and counts on the
+   admin setup-code` prints it, with the Direct certificate's fingerprint.
+   The file is the `lyrica` user's; the `lyrica` command on PATH from #118
+   (install.sh's wrapper on Debian and Ubuntu, the module's on NixOS)
+   switches to her user and sets `LYRICA_HOME` itself, so the operator
+   runs `lyrica admin setup-code` as root as is. On NixOS nothing prints
+   the code or the fingerprint at `nixos-rebuild`, so that command is the
+   operator's first-run step there. A wrong code is `403` and counts on the
    unlock limiter (`limited(d, ["unlock:<ip>"])` in `daemon/src/routes.ts`,
    the same counter); the file is deleted when setup completes.
 4. **Where the setup page is reachable: the Direct mode.** Without
@@ -158,8 +164,13 @@ Administration. No new model-facing tool, no new process of Lyrica's
    `lyricad.service`, and closing lines that print the setup addresses,
    the certificate fingerprint and the code instead of the `admin init`
    command. NixOS module: `services.lyrica.tailscale` (default on) declares
-   the same unit from `pkgs.tailscale`, `tailscale` on lyricad's PATH, and
-   `ConditionPathExists` removed. `nix/check-host.sh`: one more line,
+   the same unit from `pkgs.tailscale`, `tailscale` added to the `PATH`
+   list the module sets for lyricad, `ConditionPathExists` removed, and a
+   `services.lyrica.openFirewall` option that opens 7340. It defaults to
+   on, against the NixOS convention, on purpose: it matches Debian, a
+   headless first run needs it, and the port answers only while the setup
+   page or the Direct mode is on (NixOS blocks incoming ports by default;
+   Debian has no default firewall). `nix/check-host.sh`: one more line,
    `tailscale --socket … status` answers as `lyrica`.
 
 ## Out of scope
@@ -195,7 +206,9 @@ machines; later, if a host that isn't on the tailnet needs it).
   fake the admin socket.
 - docs/daemon.md (Starting and unlocking, Web access, Deployment, On
   NixOS) and docs/contracts.md describe what exists; the PR lists its
-  contract changes.
+  contract changes. The handoff names the operator's first-run command
+  on both systems (`lyrica admin setup-code`, through #118's wrappers) so
+  the guide gets it right.
 
 ## After merging
 
