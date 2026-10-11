@@ -86,7 +86,8 @@ existed before became general machines at Ask.
   machine and nothing else.
 - **The first call on a machine in a turn asks**, whatever the modes, if
   anything earlier in the turn ran somewhere else (the sandbox or another
-  machine).
+  machine). A subagent counts its own turn: what its parent ran before
+  doesn't count.
 - **Approvals are bound to what was shown.** A request for a machine carries
   the machine, the command or path, and the folder a command runs in. The
   call runs only if its arguments are still exactly those; anything else is
@@ -99,8 +100,9 @@ existed before became general machines at Ask.
   `chown` or `chgrp` on `/`; `userdel` or `deluser`; `shutdown`, `reboot`,
   `poweroff`, `halt`, `systemctl reboot|poweroff|halt|kexec`, `init 0|6`;
   `qm destroy` and `pct destroy`; and on a Proxmox machine the `stop` and
-  `reboot` actions (`PROXMOX_SUSPECT`). Wrappers such as `sudo` and `env` and a
-  program's path are looked through. The answer may say **Allow in this
+  `reboot` actions (`PROXMOX_SUSPECT`). Wrappers such as `sudo`, `env`, `nice` and
+  `timeout` (with their flag values), a program's path, and `bash -c '…'`
+  are looked through; `cd / && rm -rf *` is not caught. The answer may say **Allow in this
   thread**: that exact command on that machine no longer asks in that
   thread, and nowhere else (for Proxmox, that action on that VM:
   `suspectKey`). The list is short and fixed, a warning layer and
@@ -111,11 +113,13 @@ existed before became general machines at Ask.
   following symlinks.
 - **Output** of commands is capped as in the sandbox, stripped of terminal
   control sequences, and private-key blocks are replaced with `[private key
-  removed]`. `read` masks key blocks too; `edit` reads the file as it is, so
+  removed]` (PEM and OpenSSH keys, and PGP private key blocks). `read`
+  masks key blocks too; `edit` reads the file as it is, so
   writing it back keeps the key.
 - **The host key is confirmed when the machine is added**, never pinned on
-  first use: a machine with no confirmed key (one from before) can't be
-  reached until Li confirms one. A different key fails every call, with no
+  first use: a machine with no key from before can't be reached until Li
+  confirms one; a key pinned on first use before machines existed is kept
+  as confirmed. A different key fails every call, with no
   fallback, until Li confirms the new one (`setHostKey`). Strict key
   exchange (`kex-strict-*`) is required. No agent, no forwarding.
 - **Off network.** Before each connection the address is resolved and the
@@ -161,6 +165,10 @@ The test then reads the host key the machine shows and tries the login,
 and Li compares the fingerprint with `ssh-keygen -lf
 /etc/ssh/ssh_host_ed25519_key.pub` on the machine before confirming. A
 private machine that resolves off network needs a second confirmation.
+Replacing the key (`setHostKey`) re-confirms the host key only; her own key
+pair stays as it was. A test answers whatever the machine said (refused,
+timed out), so any signed-in user can learn whether an address answers on
+a port, as they could from a sandbox with network.
 
 ## Proxmox
 

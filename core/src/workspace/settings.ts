@@ -491,6 +491,18 @@ const columnsOf = (db: Db, table: string) => (db.prepare(`SELECT name FROM pragm
  * its one machine.
  */
 function migrate(db: Db): void {
+  // All or nothing: a crash halfway would leave a user.db the next start can't migrate.
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    migrateSteps(db);
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+}
+
+function migrateSteps(db: Db): void {
   const columns = columnsOf(db, "thread_workspaces");
   if (!columns.length) return;
   for (const c of ["web_search", "images"]) if (!columns.includes(c)) db.exec(`ALTER TABLE thread_workspaces ADD COLUMN ${c} INTEGER NOT NULL DEFAULT 1`);

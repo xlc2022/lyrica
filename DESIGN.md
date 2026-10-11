@@ -1421,3 +1421,12 @@ new evidence.
   machine starting at Ask and loosened one at a time, and Proxmox through a
   narrow API token rather than a root shell. The node that runs her own VM
   still waits.
+- **Operator guides added to the docs budget (2026-10-11).** Li asked for
+  human-readable documentation on running Lyrica: bootstrapping her on a new
+  system, deploying model hosts, adding CI runners. They live in
+  `docs/guides/`, one page per task, written from the scripts and the
+  component docs. They follow the component docs and never replace them: a
+  behaviour is described once, in its component's page, and a guide says
+  which steps to take and what has not yet been exercised. They are kept
+  current by the Operator docs thread, on notice from threads whose merged
+  PRs change what an operator does by hand, and by a weekly drift check.

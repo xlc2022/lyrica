@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS threads (
   hidden     INTEGER NOT NULL DEFAULT 0,
   unlogged   INTEGER NOT NULL DEFAULT 0,
   cut        INTEGER NOT NULL DEFAULT 0,
+  project    INTEGER NOT NULL DEFAULT 0,
+  goal       TEXT,
   created_at TEXT NOT NULL
 );
 -- Pi session entries, as Pi wrote them. unlogged: written while the thread wasn't logged;
@@ -132,4 +134,6 @@ export const POOL_UPGRADES = [
   { check: "SELECT 1 FROM pragma_table_info('threads') WHERE name = 'child'", sql: "ALTER TABLE threads ADD COLUMN child INTEGER NOT NULL DEFAULT 0" },
   { check: "SELECT 1 FROM pragma_table_info('threads') WHERE name = 'cut'", sql: "ALTER TABLE threads ADD COLUMN cut INTEGER NOT NULL DEFAULT 0" },
   { check: "SELECT 1 FROM pragma_table_info('entries') WHERE name = 'pinned'", sql: "ALTER TABLE entries ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0" },
+  { check: "SELECT 1 FROM pragma_table_info('threads') WHERE name = 'project'", sql: "ALTER TABLE threads ADD COLUMN project INTEGER NOT NULL DEFAULT 0" },
+  { check: "SELECT 1 FROM pragma_table_info('threads') WHERE name = 'goal'", sql: "ALTER TABLE threads ADD COLUMN goal TEXT" },
 ];

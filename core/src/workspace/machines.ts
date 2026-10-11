@@ -4,6 +4,7 @@
 // the root-owned keys file; these are a warning layer on top.
 
 import { networkInterfaces } from "node:os";
+import { StringDecoder } from "node:string_decoder";
 import { posix } from "node:path";
 import { within } from "./settings.ts";
 
@@ -27,7 +28,8 @@ export const SUSPECT_COMMANDS: readonly SuspectCommand[] = [
   { warning: "This writes straight onto a device, overwriting what's on it.", test: (w) => w[0] === "dd" && w.some((a) => a.startsWith("of=/dev/")) },
   {
     warning: "This changes permissions or owners across the whole system.",
-    test: (w) => (w[0] === "chmod" || w[0] === "chown" || w[0] === "chgrp") && flags(w).some((f) => /^-[a-zA-Z]*R|^--recursive$/.test(f)) && args(w).includes("/"),
+    test: (w) => (w[0] === "chmod" || w[0] === "chown" || w[0] === "chgrp") && flags(w).some((f) => /^-[a-zA-Z]*R|^--recursive$/.test(f))
+      && args(w).some((a) => /^\/+\*?$/.test(a)),
   },
   { warning: "This deletes an account.", test: (w) => w[0] === "userdel" || w[0] === "deluser" },
   {
@@ -39,17 +41,35 @@ export const SUSPECT_COMMANDS: readonly SuspectCommand[] = [
 ];
 
 /** Words that only run what follows them. */
-const PREFIXES = new Set(["sudo", "doas", "env", "nohup", "exec", "command", "time", "nice", "ionice", "builtin"]);
+const PREFIXES = new Set(["sudo", "doas", "env", "nohup", "exec", "command", "time", "nice", "ionice", "builtin", "timeout", "xargs", "stdbuf", "chroot"]);
+/** Their flags that take the next word as a value (`sudo -u root`, `nice -n 5`, `timeout -s KILL`). */
+const VALUE_FLAGS: Record<string, string[]> = {
+  sudo: ["-u", "-g", "-h", "-p", "-C", "-U"], doas: ["-u", "-C"], nice: ["-n"], ionice: ["-c", "-n", "-p"], timeout: ["-s", "-k"],
+  xargs: ["-I", "-P", "-L", "-d", "-n", "-s", "-a"], env: ["-u", "-C", "-S"],
+};
+const SHELLS = new Set(["sh", "bash", "dash", "zsh", "ksh"]);
 
 /** A command line's simple commands, each as words with quotes removed and the program's path dropped. */
-function simpleCommands(command: string): string[][] {
-  return command.split(/\$\(|[;&|\n()`{}]/).map((part) => {
+function simpleCommands(command: string, depth = 0): string[][] {
+  return command.split(/\$\(|[;&|\n()`{}]/).flatMap((part) => {
     const words = (part.match(/"[^"]*"|'[^']*'|\S+/g) ?? []).map((w) => w.replace(/^["']|["']$/g, ""));
-    // Skip wrappers, their flags and VAR=value assignments, so `sudo -n /sbin/reboot` is reboot.
-    while (words.length && (PREFIXES.has(posix.basename(words[0]!)) || words[0]!.startsWith("-") || /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0]!))) words.shift();
-    if (words.length) words[0] = posix.basename(words[0]!);
-    return words;
-  }).filter((w) => w.length > 0);
+    // Skip wrappers, their flags and values, a timeout's duration and VAR=value assignments, so `sudo -u root /sbin/reboot` is reboot.
+    let wrapper = "";
+    for (;;) {
+      const w = words[0];
+      if (w === undefined) break;
+      if (PREFIXES.has(posix.basename(w))) { wrapper = posix.basename(w); words.shift(); continue; }
+      if (w.startsWith("-")) { words.shift(); if (VALUE_FLAGS[wrapper]?.includes(w)) words.shift(); continue; }
+      if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w) || (wrapper === "timeout" && /^\d/.test(w))) { words.shift(); continue; }
+      break;
+    }
+    if (!words.length) return [];
+    words[0] = posix.basename(words[0]!);
+    // `bash -c '…'` runs its argument: look in there too.
+    const c = words.indexOf("-c");
+    if (SHELLS.has(words[0]!) && c > 0 && words[c + 1] && depth < 3) return [words, ...simpleCommands(words[c + 1]!, depth + 1)];
+    return [words];
+  });
 }
 
 /** The warning for a suspect command, or undefined. */
@@ -66,20 +86,20 @@ export function onFloor(path: string): boolean {
   return path.split("/").includes(".ssh") || within(path, "/etc/ssh") || path.startsWith("/etc/sudoers");
 }
 
-const KEY_BLOCK = /-----BEGIN ([A-Z0-9 ]*)PRIVATE KEY-----[\s\S]*?(?:-----END \1PRIVATE KEY-----|$)/g;
+const KEY_BLOCK = /-----BEGIN ([A-Z0-9 ]*)PRIVATE KEY( BLOCK)?-----[\s\S]*?(?:-----END \1PRIVATE KEY\2-----|$)/g;
 export const KEY_REMOVED = "[private key removed]";
 
 /** A file's contents with any private-key block replaced. Bytes are kept as they are otherwise. */
 export function maskKeys(content: Buffer): Buffer {
   const s = content.toString("latin1");
-  return s.includes("PRIVATE KEY-----") ? Buffer.from(s.replace(KEY_BLOCK, KEY_REMOVED), "latin1") : content;
+  return /PRIVATE KEY(?: BLOCK)?-----/.test(s) ? Buffer.from(s.replace(KEY_BLOCK, KEY_REMOVED), "latin1") : content;
 }
 
 // Terminal control: CSI and OSC sequences, other escapes, and control characters but tab and newline.
 // eslint-disable-next-line no-control-regex
 const CONTROL = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b[@-_]|[\x00-\x08\x0b-\x1f\x7f]/g;
-const BEGIN = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/;
-const END = /-----END [A-Z0-9 ]*PRIVATE KEY-----/;
+const BEGIN = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----/;
+const END = /-----END [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----/;
 /** A line longer than this is passed on without waiting for its end. */
 const LONG_LINE = 8 * 1024;
 
@@ -91,6 +111,8 @@ const LONG_LINE = 8 * 1024;
 export function cleanOutput(onData: (data: Buffer) => void): { push(data: Buffer): void; end(): void } {
   let partial = "";
   let inKey = false;
+  // Keeps a character split across chunks whole (Chinese output, say).
+  const decoder = new StringDecoder("utf8");
   /** The line as passed on, or undefined when it is dropped (inside a key). */
   const line = (l: string): string | undefined => {
     const clean = l.replace(CONTROL, "");
@@ -112,12 +134,21 @@ export function cleanOutput(onData: (data: Buffer) => void): { push(data: Buffer
   };
   return {
     push(data) {
-      const lines = (partial + data.toString("utf8")).split("\n");
+      const lines = (partial + decoder.write(data)).split("\n");
       partial = lines.pop()!;
-      if (partial.length > LONG_LINE && !BEGIN.test(partial)) { lines.push(partial); partial = ""; emit(lines, true); return; }
+      if (partial.length > LONG_LINE) {
+        // Pass a long line on, but hold back from its last "-----", where a key's header may be starting.
+        const cut = partial.lastIndexOf("-----");
+        const at = cut <= 0 || partial.length > 4 * LONG_LINE ? partial.length : cut;
+        lines.push(partial.slice(0, at));
+        partial = partial.slice(at);
+        emit(lines, true);
+        return;
+      }
       if (lines.length) emit(lines, false);
     },
     end() {
+      partial += decoder.end();
       if (partial) emit([partial], true);
       partial = "";
     },

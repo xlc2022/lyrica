@@ -17,6 +17,10 @@ export interface Thread {
   subagent: boolean;
   /** Started by Lyrica from its parent with `threads start`: one level deep, never a parent of another. */
   child: boolean;
+  /** A project chat: its child threads are the project's threads. */
+  project: boolean;
+  /** A project's goal, in the user's words. */
+  goal?: string;
   title?: string;
   hidden: boolean;
   unlogged: boolean;
@@ -152,8 +156,8 @@ export interface SleepItem {
 
 /** What a sleep run has to work with: everything after the watermark and before the run started. */
 export interface SleepMaterial {
-  /** Logged threads with new entries (not sleep's own threads, not exported copies), and which of them the user pinned. */
-  threads: { id: string; title?: string; entries: number; first: string; last: string; pinned?: string[] }[];
+  /** Logged threads with new entries (not sleep's own threads, not exported copies), which of them the user pinned, and the project chat of a project's thread. */
+  threads: { id: string; title?: string; entries: number; first: string; last: string; pinned?: string[]; project?: string }[];
   /** Notes written in conversation or by a user. */
   notes: Item[];
   /** Memories a user changed or added. */
@@ -176,6 +180,10 @@ const now = () => new Date().toISOString();
 const json = <T>(s: string): T => JSON.parse(s) as T;
 const entryId = (thread: string, n: number) => `e:${thread}#${n}`;
 const TOOL_TEXT_LIMIT = 2000;
+const GOAL_LIMIT = 2000;
+
+/** The slug of a project's page: thread IDs hold '/', which slugs don't. */
+export const projectSlug = (projectId: string) => `project-${projectId.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
 
 /** Read access to one pool database. A private thread view holds general memory only through this. */
 export class PoolReader {
@@ -197,6 +205,43 @@ export class PoolReader {
   getThread(id: string): Thread | undefined {
     const row = this.db.prepare("SELECT * FROM threads WHERE id = ?").get(id) as ThreadRow | undefined;
     return row && toThread(row);
+  }
+
+  /** The project chat a thread belongs to: itself if it is one, or its parent if it is a project's thread. */
+  projectOf(threadId: string): string | undefined {
+    const thread = this.getThread(threadId);
+    if (!thread) return undefined;
+    if (thread.project) return thread.id;
+    if (thread.child && thread.parent && this.getThread(thread.parent)?.project) return thread.parent;
+    return undefined;
+  }
+
+  /** A project chat and its threads (not their subagents). Empty if the thread is in no project. */
+  projectThreads(threadId: string): string[] {
+    const project = this.projectOf(threadId);
+    if (!project) return [];
+    const children = this.db.prepare("SELECT id FROM threads WHERE parent = ? AND child = 1 ORDER BY created_at").all(project) as { id: string }[];
+    return [project, ...children.map((r) => r.id)];
+  }
+
+  /** The page of the project a thread belongs to, `p:project-<id>`, if there is one yet. */
+  pageForProject(threadId: string): Item | undefined {
+    const project = this.projectOf(threadId);
+    return project ? this.get(`p:${projectSlug(project)}`) : undefined;
+  }
+
+  /**
+   * Current notes that cite the project chat or one of its threads, oldest
+   * first, written at or after `since`. Found by citation: a project's notes
+   * are never stored apart.
+   */
+  projectNotes(threadId: string, since?: string): Item[] {
+    const threads = this.projectThreads(threadId);
+    if (!threads.length) return [];
+    const rows = this.db.prepare(`SELECT n.id FROM notes n WHERE n.superseded_by IS NULL AND n.archived = 0 AND n.created_at >= @since
+      AND EXISTS (SELECT 1 FROM citations c, json_each(@threads) t WHERE c.src = n.id AND (c.dst = 't:' || t.value OR c.dst LIKE 'e:' || t.value || '#%'))
+      ORDER BY n.created_at, n.rowid`).all({ threads: JSON.stringify(threads), since: since ?? "" }) as { id: string }[];
+    return rows.map((r) => this.get(r.id)!);
   }
 
   /** With `parent`, only that thread's subagents, or with `children` its other daughters (child threads, branches, copies). */
@@ -354,7 +399,11 @@ export class PoolReader {
       .map((r) => {
         const pinned = (this.db.prepare("SELECT n FROM entries WHERE thread = ? AND pinned = 1 AND unlogged = 0 AND n BETWEEN ? AND ? ORDER BY n")
           .all(r.id, r.first, r.last) as { n: number }[]).map((p) => entryId(r.id, p.n));
-        return { id: r.id, ...(r.title ? { title: r.title } : {}), entries: r.entries, first: entryId(r.id, r.first), last: entryId(r.id, r.last), ...(pinned.length ? { pinned } : {}) };
+        const project = this.projectOf(r.id);
+        return {
+          id: r.id, ...(r.title ? { title: r.title } : {}), entries: r.entries, first: entryId(r.id, r.first), last: entryId(r.id, r.last),
+          ...(pinned.length ? { pinned } : {}), ...(project ? { project } : {}),
+        };
       });
     const notes = (this.db.prepare("SELECT id FROM notes WHERE origin != 'sleep' AND archived = 0 AND created_at >= ? AND created_at < ? ORDER BY created_at")
       .all(from, until) as { id: string }[]).map((r) => this.get(r.id)!);
@@ -471,18 +520,34 @@ export class PoolReader {
 export class PoolStore extends PoolReader {
   // Threads and entries
 
-  /** A daughter of an unlogged thread is always unlogged. */
-  createThread(opts: { interface: Interface; parent?: string; subagent?: boolean; child?: boolean; unlogged?: boolean; title?: string }): Thread {
+  /** A daughter of an unlogged thread is always unlogged. Only a top-level thread can be a project. */
+  createThread(opts: { interface: Interface; parent?: string; subagent?: boolean; child?: boolean; unlogged?: boolean; title?: string; project?: boolean; goal?: string }): Thread {
     const parent = opts.parent === undefined ? undefined : this.getThread(opts.parent);
     if (opts.parent !== undefined && !parent) throw new Error(`no such thread: ${opts.parent}`);
     if ((opts.subagent || opts.child) && !parent) throw new Error("a subagent's or child thread needs its parent");
     if (opts.child && (opts.subagent || parent!.child || parent!.subagent)) throw new Error("a child thread can't start child threads of its own");
+    if (opts.project && (opts.subagent || opts.child)) throw new Error("only a top-level thread can be a project");
+    if (opts.goal !== undefined && !opts.project) throw new Error("only a project has a goal");
+    const goal = opts.goal === undefined ? null : cleanGoal(opts.goal);
     let id: string;
     do id = `${opts.interface}/${randomBytes(4).toString("hex")}`; while (this.getThread(id));
     const unlogged = !!opts.unlogged || !!parent?.unlogged;
-    this.db.prepare("INSERT INTO threads (id, interface, parent, subagent, child, title, unlogged, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(id, opts.interface, parent?.id ?? null, opts.subagent ? 1 : 0, opts.child ? 1 : 0, opts.title ?? null, unlogged ? 1 : 0, now());
+    this.db.prepare("INSERT INTO threads (id, interface, parent, subagent, child, project, goal, title, unlogged, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(id, opts.interface, parent?.id ?? null, opts.subagent ? 1 : 0, opts.child ? 1 : 0, opts.project ? 1 : 0, goal, opts.title ?? null, unlogged ? 1 : 0, now());
     return this.getThread(id)!;
+  }
+
+  /** Makes a top-level thread a project. There is no way back; its child threads become the project's threads. */
+  setProject(id: string): void {
+    const thread = this.mustThread(id);
+    if (thread.child || thread.subagent) throw new Error("only a top-level thread can be a project");
+    this.db.prepare("UPDATE threads SET project = 1 WHERE id = ?").run(id);
+  }
+
+  /** A project's goal, in the user's words; empty clears it. */
+  setGoal(id: string, goal: string): void {
+    if (!this.mustThread(id).project) throw new Error("only a project has a goal");
+    this.db.prepare("UPDATE threads SET goal = ? WHERE id = ?").run(goal.trim() ? cleanGoal(goal) : null, id);
   }
 
   setTitle(id: string, title: string): void {
@@ -553,7 +618,9 @@ export class PoolStore extends PoolReader {
    * entry `n` (with the results of its tool calls), copied as an export
    * copies it, so citations to those entries still resolve and nothing is
    * processed twice. The source is left as it was. A branch of an unlogged
-   * thread is unlogged.
+   * thread is unlogged. In a project, a branch of the project chat or of one
+   * of its threads is a thread of the project (a child of the project chat),
+   * so threads stay one level deep.
    */
   branchThread(threadId: string, n: number, opts: { title?: string } = {}): Thread {
     const source = this.mustThread(threadId);
@@ -565,8 +632,11 @@ export class PoolStore extends PoolReader {
     // A note delivered mid-turn doesn't end the copy before the results.
     for (const r of results) if (r.role === "toolResult") upTo = r.n; else if (r.role !== "custom_message") break;
     const title = (opts.title?.trim() || `${source.title ?? "Untitled"} (branch)`).slice(0, 200);
+    const project = this.projectOf(threadId);
     return this.tx(() => {
-      const branch = this.createThread({ interface: source.interface, parent: source.id, title });
+      const branch = project
+        ? this.createThread({ interface: source.interface, parent: project, child: true, unlogged: source.unlogged, title })
+        : this.createThread({ interface: source.interface, parent: source.id, title });
       this.copyEntries(source.id, branch.id, { upTo });
       return branch;
     });
@@ -640,11 +710,13 @@ export class PoolStore extends PoolReader {
    * subagents' threads hold its tasks and results, so they go first. Its
    * other daughters (child threads, branches, copies) go too with `children`;
    * otherwise they are kept as threads of their own, with the settings they
-   * have (a kept child thread is no longer a child).
+   * have (a kept child thread is no longer a child). A project forgotten with
+   * `children` also takes its page and the notes that came only from it.
    */
   forgetThread(threadId: string, author: Author, opts: { children?: boolean } = {}): void {
     this.checkAuthor(author);
-    this.mustThread(threadId);
+    const thread = this.mustThread(threadId);
+    if (thread.project && opts.children) this.forgetProjectMemory(threadId, author);
     for (const sub of this.listThreads({ includeHidden: true, parent: threadId })) this.forgetThread(sub.id, author);
     if (opts.children) for (const child of this.listThreads({ includeHidden: true, parent: threadId, children: true })) this.forgetThread(child.id, author, opts);
     this.tx(() => {
@@ -661,6 +733,23 @@ export class PoolStore extends PoolReader {
       this.db.prepare("DELETE FROM threads WHERE id = ?").run(threadId);
       this.optimize();
     });
+  }
+
+  /** A project's page, and the notes whose every source is in the project chat or its threads. */
+  private forgetProjectMemory(projectId: string, author: Author): void {
+    const threads = this.projectThreads(projectId);
+    const inProject = (dst: string) => threads.some((t) => dst === `t:${t}` || dst.startsWith(`e:${t}#`));
+    this.tx(() => {
+      for (const note of this.projectNotesAll(threads)) if (this.cameFrom(note).every(inProject)) this.remove(note, author, true);
+      const page = `p:${projectSlug(projectId)}`;
+      if (this.load(page)) this.remove(page, author, true);
+    });
+  }
+
+  /** Every note citing one of the threads, superseded and archived ones too. */
+  private projectNotesAll(threads: string[]): string[] {
+    return (this.db.prepare(`SELECT DISTINCT c.src AS id FROM citations c, json_each(?) t
+      WHERE c.src LIKE 'n:%' AND (c.dst = 't:' || t.value OR c.dst LIKE 'e:' || t.value || '#%')`).all(JSON.stringify(threads)) as { id: string }[]).map((r) => r.id);
   }
 
   // Notes
@@ -943,6 +1032,12 @@ export class PoolStore extends PoolReader {
   }
 }
 
+function cleanGoal(goal: string): string {
+  const clean = goal.trim();
+  if (clean.length > GOAL_LIMIT) throw new Error(`a goal has at most ${GOAL_LIMIT} characters`);
+  return clean;
+}
+
 const originOf = (author: Author): Origin => (author.startsWith("user:") ? "user" : (author as Origin));
 
 function bodyOf(item: Item): Body {
@@ -952,7 +1047,7 @@ function bodyOf(item: Item): Body {
   return body;
 }
 
-interface ThreadRow { id: string; interface: Interface; parent: string | null; subagent?: number; child?: number; title: string | null; hidden: number; unlogged: number; created_at: string }
+interface ThreadRow { id: string; interface: Interface; parent: string | null; subagent?: number; child?: number; project?: number; goal?: string | null; title: string | null; hidden: number; unlogged: number; created_at: string }
 interface EntryRow { thread: string; n: number; role: string; text: string; unlogged: number; orig: string | null; created_at: string }
 interface NoteRow { text: string; about: string; origin: string; author: string; superseded_by: string | null; archived: number; created_at: string; updated_at: string }
 interface PageRow { slug: string; title: string; summary: string; text: string; folders: string; origin: string; author: string; archived: number; flagged: number; created_at: string; updated_at: string }
@@ -962,7 +1057,8 @@ interface RevisionRow { id: number; item: string; body: string; author: string; 
 
 function toThread(r: ThreadRow): Thread {
   return {
-    id: r.id, interface: r.interface, parent: r.parent ?? undefined, subagent: r.subagent === 1, child: r.child === 1, title: r.title ?? undefined,
+    id: r.id, interface: r.interface, parent: r.parent ?? undefined, subagent: r.subagent === 1, child: r.child === 1,
+    project: r.project === 1, ...(r.goal ? { goal: r.goal } : {}), title: r.title ?? undefined,
     hidden: r.hidden === 1, unlogged: r.unlogged === 1, createdAt: r.created_at,
   };
 }

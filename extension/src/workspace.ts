@@ -131,10 +131,12 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         ...template,
         parameters: Type.Object({ ...(template.parameters as ReturnType<typeof Type.Object>).properties, machine: MACHINE }) as typeof template.parameters,
         async execute(id, params, signal, onUpdate, ctx) {
-          const { machine, ...rest } = params as Record<string, unknown>;
-          const target = tools.target(machine as string | undefined);
+          const { machine: named, ...rest } = params as Record<string, unknown>;
+          // An empty machine is the sandbox, as in tool_call.
+          const machine = (named as string | undefined) || undefined;
+          const target = tools.target(machine);
           const cwd = await target.cwd();
-          bound(id, name, rest, machine as string | undefined, machine ? cwd : undefined);
+          bound(id, name, rest, machine, machine ? cwd : undefined);
           const ops = name === "write" || name === "edit" ? recording(target, target.ops()[name], id, tools.recordChange) : target.ops()[name];
           const tool = create(cwd, { operations: ops as never });
           // Pi resolves paths against the session's cwd, which is on the host; use the target's.
@@ -180,7 +182,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       }
       const input = event.input as Record<string, unknown>;
       const pve = event.toolName === "proxmox";
-      const place = event.toolName in TOOLS ? (input.machine as string | undefined) ?? "sandbox" : pve ? String(input.machine) : undefined;
+      const place = event.toolName in TOOLS ? (input.machine as string | undefined) || "sandbox" : pve ? String(input.machine) : undefined;
       const machine = place && place !== "sandbox" ? tools.machines?.().find((m) => m.name === place && (m.kind === "proxmox") === pve) : undefined;
       if (place && place !== "sandbox" && !machine) return { block: true, reason: `${place} isn't one of this thread's ${pve ? "Proxmox " : ""}machines.` };
       // On a machine, the stricter of the thread's mode and the machine's limit.

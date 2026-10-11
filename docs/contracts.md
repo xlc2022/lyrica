@@ -159,8 +159,9 @@ nothing else. No code path gives a general view a private handle.
 
 | Area | Methods |
 |---|---|
-| Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title? })` (a child of a child is refused), `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared), `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)`, `copyEntries(from, to, { upTo? })` (a thread's entries into another, for forks and branches), `entriesMentioning(needle)` → `{ thread, n }[]` (where an upload is still mentioned) |
+| Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title?, project?, goal? })` (a child of a child is refused), `setProject`, `setGoal`, `projectOf`, `projectThreads`, `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared), `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)`, `copyEntries(from, to, { upTo? })` (a thread's entries into another, for forks and branches), `entriesMentioning(needle)` → `{ thread, n }[]` (where an upload is still mentioned) |
 | Pins | `pinEntry(threadId, n, pinned)`, `pins(threadId?)` → `PinnedEntry[]` (one thread's, or the pool's), oldest first |
+| Projects | `pageForProject(threadId)`, `projectNotes(threadId, since?)` |
 | Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
 | Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `userIntroduced` |
@@ -232,19 +233,27 @@ thread's pool: a branch's `copyEntries` copies them, `truncateThread`
 removes and counts them, and `sleepMaterial` lists each thread's new pinned
 entries (`threads[].pinned`).
 
-**Planned (Projects,** [briefs/projects.md](briefs/projects.md)**):**
-`createThread({ ..., project? })` and `setProject(id)` (top-level threads
-only; a child or subagent is refused, and there is no way back);
-`Thread.project` and `Thread.goal` (Li's text, so in the pool with the
-title); `pageForProject(threadId)` → the page `p:project-<id>`, whose
-instructions part is User introduced; `projectNotes(threadId, since)`: notes
-that cite an entry of the project chat or one of its threads. `branchThread`
-of a project's thread makes a thread of the same project (`child`, parent
-the project chat, anchored at the source's anchor), so depth stays 1; a
-branch of the project chat is a project thread anchored where it branched.
-`forgetThread`
-on a project with `children` also forgets the project page and the notes
-that came only from it. `sleepMaterial` marks each thread's project.
+**Projects.** `createThread({ ..., project: true, goal? })` and
+`setProject(id)` make a project of a top-level thread (a child or subagent
+is refused, and there is no way back). `Thread.project` and `Thread.goal`
+(the user's text, so in the pool with the title; `setGoal`, at most 2,000
+characters). A project's threads are its child threads; `projectOf(id)`
+gives the project chat for the chat or any of its threads, and
+`projectThreads(id)` the chat and its threads.
+- `projectSlug(projectId)` names the project's page, `p:project-<id>`;
+  `pageForProject(threadId)` returns it once it exists. Its instructions
+  part is written by the user, so the user-text rule above keeps it.
+- `projectNotes(threadId, since?)`: current notes that cite the project chat
+  or one of its threads, oldest first. Found by citation, never stored apart.
+- `branchThread` of the project chat or one of its threads makes a thread of
+  the project (`child`, parent the project chat), so depth stays 1.
+- `forgetThread` on a project with `children` also forgets the project page
+  and the notes that came only from it.
+- `sleepMaterial` marks each thread of a project with `project`.
+
+**Planned (Projects,** [briefs/projects.md](briefs/projects.md)**):** a
+branch of a project's thread is anchored at its source's anchor; a branch of
+the project chat where it branched (anchors live in `user.db`).
 
 ## core/models: the cloud boundary lives here
 
@@ -883,9 +892,11 @@ sleep.events                       // started, phase, finished: IDs only, never 
   `no-key` skip is recorded once the key is back, since the pool can't be
   written without it.
 - Full details: [sleep.md](sleep.md).
-- **Planned (Projects):** sleep keeps the "what she knows" part of each
-  project's page from its notes and threads, and keeps the instructions part
-  word for word ([briefs/projects-sleep.md](briefs/projects-sleep.md)).
+- Consolidate keeps each project's page (`p:${projectSlug(id)}`) for every
+  project with new conversation, from its notes and threads; the user's
+  instructions on it are kept by the store. `write_page` refuses a
+  `project-…` slug that names no project in the pool (unless the page
+  exists) or an unlogged project's.
 
 ## core/workspace
 
