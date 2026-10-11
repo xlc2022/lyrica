@@ -39,8 +39,11 @@ Li notices the first update that goes wrong).
    child-thread starts wait too; gives up after 10 minutes and undrains,
    changing nothing); stops `lyricad`; snapshots the
    databases and settings into `/var/lib/lyrica-snapshots/<time>-<commit>/`
-   (not the users' homes; keep the last 3) with the tag's message beside
-   them; switches `current`; starts `lyricad`; runs probation. A `flock`
+   (not the users' homes) with the tag's message beside them, and checks
+   each copy against its source (size and SHA-256) before going on;
+   keeps the last 3, plus the newest snapshot taken before a schema change
+   until a later schema change has passed probation and for at least 30
+   days; switches `current`; starts `lyricad`; runs probation. A `flock`
    keeps runs from overlapping. It logs commits, tags and check names,
    never message text.
 3. **Probation.** Pass when `/health` reports every check ok after unlock
@@ -53,6 +56,9 @@ Li notices the first update that goes wrong).
 4. **`lyrica-rollback`** (`/usr/local/sbin`, also from `install.sh` only):
    point `current` at `previous` (or a named kept release), restore the
    pre-update snapshot only if the release being left wrote a newer schema,
+   first moving the databases it replaces into
+   `/var/lib/lyrica-snapshots/<time>-set-aside/` (encrypted, kept like a
+   pre-schema snapshot), never deleting them;
    start `lyricad`. Works with `lyricad` dead. Asks on a terminal before
    restoring a snapshot, saying from when data will be lost. Refuses a
    release with an older schema and no kept snapshot, naming the oldest
@@ -61,7 +67,9 @@ Li notices the first update that goes wrong).
 5. **In `lyricad`:** `update.sock` with `/health`, `/drain`, `/undrain`;
    `409 { updating: true }` on send while draining; a schema version in
    every encrypted database and `SchemaTooNew` on opening a newer one, set
-   by the existing `migrate` functions; the Administration `updates` API
+   by the existing `migrate` functions, each database's migration in one
+   transaction that runs `integrity_check` and `foreign_key_check` before
+   committing (the pool upgrades don't share one yet); the Administration `updates` API
    that lists state and writes requests into a directory only `lyricad`
    writes, which is refused as a grant.
 6. **Docs in the same PR:** docs/daemon.md "Deployment" (the layout, the
@@ -78,7 +86,11 @@ brief), model hosts, Proxmox snapshots.
 What Li would notice: a release that fails its checks is rolled back and
 the old one serves again; a rollback across a schema change restores the
 snapshot and one without keeps the data; a drain with a turn running waits
-and gives up cleanly; `SchemaTooNew` is thrown. The scripts get a test
+and gives up cleanly; `SchemaTooNew` is thrown; a migration that fails halfway leaves the
+database as it was; a restore sets the replaced databases aside. A
+migration test builds each database at every released schema version (by
+code, no real data), migrates it, and checks no rows were lost and the
+previous release's schema version still opens it after an expand. The scripts get a test
 that runs them against a temporary prefix as an unprivileged user where
 they can be, as the sandbox tests do.
 

@@ -881,7 +881,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   While draining, `SendRequest` is `409` with `{ updating: true }` (`503`
   stays "locked"). Each
   encrypted database records its schema version (`PRAGMA user_version`),
-  and opening one written by a newer schema throws `SchemaTooNew`. An
+  and opening one written by a newer schema throws `SchemaTooNew`. A
+  database migrates in one transaction that checks `integrity_check` and
+  `foreign_key_check` before committing; a failure leaves it unchanged and
+  shows as a failed `/health` check. An
   administrator's `GET /api/u/:userId/admin/updates` lists the running
   release, kept releases, the newest update note (tag, commit, message) and
   the updater's state; `POST …/updates` with `{ tag }` and `POST
