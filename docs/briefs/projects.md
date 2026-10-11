@@ -136,9 +136,13 @@ answers back. Li chose a project setting, on by default.
 5. **Limits.** At most 3 looks in a row without Li writing anywhere in the
    project; the count resets when Li writes. Each look is one turn of the
    project chat's model, so its cost is visible in Recent calls.
-6. **Web** (projects-web): a **Watch threads** switch on the General
-   page; a `[Watching threads]` message shows as a one-line notice
-   ("Looked at her threads"), expandable, never as Li's bubble.
+6. **Web** (projects-web; wording from UI review): a **Watching threads**
+   switch beside Paused, above New threads, with the tooltip "After you
+   write in a thread or one posts an update, Lyrica checks whether the
+   other threads are affected and tells them." A `[Watching threads]`
+   message shows as a marker like a tool call's, "Checked the other
+   threads" (with "· told 2" when she messaged threads), expanding to which
+   threads and what she sent each; never as Li's bubble.
 7. **Sleep** (projects-sleep): a look quotes Li; sleep takes Li's words
    from the thread where they were said, never from the look.
 8. **Tests:** a turn Li starts in a thread leads to one look after the

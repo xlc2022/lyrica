@@ -922,7 +922,7 @@ web part and sleep's project page are not yet. The briefs are
   **Resolved**. A thread is resolved by Li, by Lyrica when its work is
   delivered and nothing is owed, or after 7 days with no activity; a message
   in it reopens it.
-- **She watches her threads** (Li, 2026-10-11; a project setting, **Watch
+- **She watches her threads** (Li, 2026-10-11; a project setting, **Watching
   threads**, on by default). When Li writes in one of the project's threads,
   or a thread posts an update, the project chat takes one quiet turn a
   little later, batched across threads, with what was said. There she
