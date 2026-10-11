@@ -4,8 +4,8 @@
 // breaks the SSH library gets a key it could already use, not lyricad's memory.
 //
 // It speaks frames (ssh-frames.ts) on stdin and stdout. The first frame is
-// `connect`, with the private key as its body. The host key is sent back for
-// lyricad to judge; the connection goes on only on a yes. It exits when stdin
+// `connect`, with no key. The host key is sent back for lyricad to judge; the
+// private key comes only as the body of lyricad's yes. It exits when stdin
 // closes, so it never outlives lyricad.
 //
 // Run with Node's type stripping, so only erasable TypeScript here.
