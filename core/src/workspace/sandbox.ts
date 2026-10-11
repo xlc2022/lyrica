@@ -43,7 +43,7 @@ const ETC = [
   "alternatives", "ssl", "ca-certificates", "pki", "nsswitch.conf", "localtime",
   "passwd", "group", "ld.so.cache", "ld.so.conf", "ld.so.conf.d", "os-release",
 ].map((f) => `/etc/${f}`);
-// /usr/sbin is for nft, which lyricad runs with nsenter; the sandbox's PATH is the same.
+// /usr/sbin is for nft, which runs in the new namespaces before bwrap; the sandbox's PATH is the same.
 const PATH = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 // On NixOS there's no /usr to share. The service sets LYRICA_SANDBOX_TOOLS to
 // a Nix environment of the sandbox's tools, which becomes the sandbox's /usr,

@@ -550,10 +550,9 @@ system with the module on. Only x86_64-linux.
   (`systemd-creds`) and the sandbox tools.
 - **Caddy** is nixpkgs' Caddy with the DNS plugins read from
   `daemon/src/web/providers.ts` (`caddy.withPlugins`). Its `hash` in
-  `nix/module.nix` changes when that list or nixpkgs' Caddy does, as does the
-  package's `npmDepsHash` when `package-lock.json` does (`nix run
-  nixpkgs#prefetch-npm-deps package-lock.json`); `nix flake check` prints
-  the new ones.
+  `nix/module.nix` changes when that list or nixpkgs' Caddy does; `nix flake
+  check` prints the new one. npm packages come by their `package-lock.json`
+  integrity hashes (`importNpmLock`), so a lockfile change needs nothing here.
 - **Sandboxes.** NixOS has no `/usr` to share. The module sets
   `LYRICA_SANDBOX_TOOLS` to one directory of `sandboxPackages`
   (`nix/sandbox-tools.nix`: a shell, the usual command-line tools, git,

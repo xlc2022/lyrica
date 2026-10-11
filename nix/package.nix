@@ -1,6 +1,6 @@
 # lyricad, the lyrica CLI and the built web UI, from package-lock.json.
 # See docs/daemon.md, "On NixOS".
-{ lib, buildNpmPackage, nodejs_22, python3, makeWrapper, src, rev ? "dirty" }:
+{ lib, buildNpmPackage, importNpmLock, nodejs_22, python3, makeWrapper, src, rev ? "dirty" }:
 
 buildNpmPackage {
   pname = "lyrica";
@@ -8,8 +8,10 @@ buildNpmPackage {
   inherit src;
   nodejs = nodejs_22;
 
-  # Update with: nix run nixpkgs#prefetch-npm-deps package-lock.json
-  npmDepsHash = "sha256-dk0MRvHlu6MUy7lR5pVvJ8F1QmbW2P+9Sxdv02CoM48=";
+  # Each package fetched by the integrity hash in package-lock.json, so a
+  # lockfile change needs no hash here.
+  npmDeps = importNpmLock { npmRoot = src; };
+  npmConfigHook = importNpmLock.npmConfigHook;
 
   # better-sqlite3-multiple-ciphers builds from source: no prebuilt download in the Nix sandbox.
   nativeBuildInputs = [ python3 makeWrapper ];
