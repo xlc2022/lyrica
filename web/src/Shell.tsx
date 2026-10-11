@@ -78,7 +78,7 @@ export function Shell({ user, users, route, build, onAuthChange }: {
     <div className="app" data-side-open={sideOpen} data-panel={!!panel || undefined} onClick={wide && route.page === "thread" ? (e) => openInPanel(e, route, trail) : undefined}>
       <Sidebar ctx={ctx} users={users} route={shown} threads={threads.data ?? []} error={threads.error} onAuthChange={onAuthChange} onClose={() => setSideOpen(false)} />
       <div className="scrim" aria-hidden="true" onClick={() => setSideOpen(false)} />
-      {page(shown, () => dropDrawer("page"))}
+      {page(shown, () => dropDrawer(shown === route ? "page" : "panel"))}
       {panel && route.page === "thread" && (
         <PanelColumn route={route} panel={panel} trail={trail} threads={threads.data ?? []}>
           {page(panelRoute(route.userId, panel), () => dropDrawer("panel"))}
@@ -172,8 +172,9 @@ export function Main(props: React.HTMLAttributes<HTMLElement>) {
 
 function PanelColumn({ route, panel, trail, threads, children }: { route: Route & { page: "thread" }; panel: Panel; trail: Trail; threads: ThreadSummary[]; children: React.ReactNode }) {
   const ref = useRef<HTMLElement>(null);
-  const [width, setWidth] = useState(() => { const n = Number(localStorage.getItem(PANEL_WIDTH_KEY)); return n >= PANEL_MIN && n <= PANEL_MAX ? n : PANEL_DEFAULT; });
-  const resize = (w: number) => { const x = Math.round(Math.min(PANEL_MAX, Math.max(PANEL_MIN, w))); setWidth(x); localStorage.setItem(PANEL_WIDTH_KEY, String(x)); };
+  // The width kept per browser; where storage is off, the panel starts at the default each time.
+  const [width, setWidth] = useState(() => { try { const n = Number(localStorage.getItem(PANEL_WIDTH_KEY)); return n >= PANEL_MIN && n <= PANEL_MAX ? n : PANEL_DEFAULT; } catch { return PANEL_DEFAULT; } });
+  const resize = (w: number) => { const x = Math.round(Math.min(PANEL_MAX, Math.max(PANEL_MIN, w))); setWidth(x); try { localStorage.setItem(PANEL_WIDTH_KEY, String(x)); } catch { /* kept for this visit only */ } };
   const close = useCallback(() => go({ ...route, drawer: undefined, panel: undefined }), [route]);
   const label = (p: Panel) => p.page === "project" ? "Project settings" : findThread(threads, p.pool, p.threadId)?.title || "New thread";
   const crumbs = trail.crumbs.map((p) => ({ label: label(p), href: href(panelRoute(route.userId, p)) }));
