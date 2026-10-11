@@ -175,7 +175,7 @@ function LookMarker({ text, told, env, n }: { text: string; told: Told[]; env: E
           {ids.length > 0 && <div className="prose small"><HerProse text={`Looked at ${ids.map((id) => `[t:${id}]`).join(", ")}.`} env={env} /></div>}
           {told.map((t, i) => (
             <div key={i} className="prose small look-told">
-              <HerProse text={`To ${t.threads.map((x) => `[t:${x.pool === env.pool ? "" : `${x.pool}/`}${x.id}]`).join(", ") || "a thread"}: ${t.text}`} env={env} />
+              <HerProse text={`To ${t.threads.map((x) => `[t:${x.pool === env.pool ? "" : `${x.pool}/`}${x.id}]`).join(", ") || "a thread"}: ${t.text}`} env={env} elsewhere />
             </div>
           ))}
           {env.rewinder && n !== undefined && <div className="row"><MessageMenu n={n} role="user" rewinder={env.rewinder} /></div>}
