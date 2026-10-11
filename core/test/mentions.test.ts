@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PRONOUN_PRESETS, pronounLabel, queryTokens, render, toStored, type Profile } from "../src/index.ts";
+import { PRONOUN_PRESETS, pronounLabel, queryTokens, render, renderThreadMentions, toStored, type Profile } from "../src/index.ts";
 
 const profiles = new Map<string, Profile>([
   ["u1", { displayName: "Li", pronouns: PRONOUN_PRESETS.she, previousNames: [] }],
@@ -63,5 +63,14 @@ describe("mentions", () => {
     clash.set("u3", { displayName: "Ash", pronouns: PRONOUN_PRESETS.he, previousNames: [{ name: "Li", until: "2026-01-01" }] });
     expect(queryTokens("Li", clash)).toEqual([{ name: "Li", userId: "u1" }]);
     expect(queryTokens("Ash", clash)).toEqual([{ name: "Ash", userId: "u3" }]);
+  });
+
+  it("renders thread mentions by the thread's current title, wherever there is no chip", () => {
+    const titles = new Map([["web/aa11", "Homelab"], ["cli/bb22", "Taxes"]]);
+    const titleOf = (id: string, pool?: string) => (pool === "private" ? undefined : titles.get(id));
+    expect(renderThreadMentions("Moved to [t:web/aa11], see [e:cli/bb22#4] and [general/t:cli/bb22].", titleOf))
+      .toBe("Moved to Homelab, see Taxes and Taxes.");
+    expect(renderThreadMentions("[t:web/zz99] and [private/t:web/aa11]; t:web/aa11 stays", titleOf))
+      .toBe("a forgotten thread and a forgotten thread; t:web/aa11 stays");
   });
 });

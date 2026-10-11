@@ -75,6 +75,10 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
 - Her messages are prose, rendered with `react-markdown`. Raw HTML is
   skipped, links open in a new tab, and images are never loaded: they show
   as a link with their alt text.
+- A thread she mentions (`[t:<id>]`, `[e:<id>#<n>]`) shows as its current
+  title, linked to the thread in the same tab; "a forgotten thread" once it's
+  gone. Titles are fetched per thread and kept for 30 seconds, so a rename
+  shows on the next look. This covers her prose and the notice cards.
   The user's sit in a tinted block.
 - Thinking, recalls, saved notes and tool calls are one-line markers that
   expand when tapped. An expanded tool call stays open when the turn ends
