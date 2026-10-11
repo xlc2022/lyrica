@@ -1116,13 +1116,17 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   administrator in one step and signs that administrator in; then it
   joins the tailnet, turns web access on and adds one model endpoint
   through the normal API. The page asks for a one-time **setup code**
-  that `lyricad` logs at start and the install script prints, so it can
-  also be served on the host's existing Tailscale addresses (plain HTTP
-  inside WireGuard, as the external-proxy mode already allows) without a
-  device on the tailnet being able to claim her. `lyrica admin init` does
-  the same from a terminal; both call one function. Nothing of a user's
-  exists yet, so the code and loopback-or-WireGuard reach are the whole
-  fence (principle 2).
+  that `lyricad` logs at start and the install script prints. The host is
+  headless, so the page is reached from another machine: `lyricad` starts
+  in the **Direct** web access mode (below), HTTPS on the machine's LAN
+  addresses with its own certificate, whose fingerprint the install script
+  prints beside the code, and plain HTTP on the host's Tailscale addresses
+  if it has any (inside WireGuard, as the external-proxy mode already
+  allows). The passphrase and the first password cross the LAN only under
+  TLS; a device on the LAN or the tailnet can't claim her without the
+  code. `lyrica admin init` does the same from a terminal; both call one
+  function. Nothing of a user's exists yet, so the code and TLS-or-WireGuard
+  reach are the whole fence (principle 2).
 - Memory never goes into a git repository. Backups are encrypted.
 - What this protects against: a stolen disk, a leaked backup, or someone
   reading the files while a user is locked.
@@ -1305,12 +1309,15 @@ Details in [docs/sleep.md](docs/sleep.md).
   LXC container or VM on Li's Proxmox. No Docker. The host needs bubblewrap,
   gocryptfs, pasta, FUSE and unprivileged user namespaces. In an LXC container, that
   means turning on the nesting and FUSE features. One install script sets up
-  the service users, `lyricad`'s unit, the built-in Caddy, and Tailscale
-  with `lyrica` as its **operator**, so `lyricad` joins, leaves and serves
-  on the tailnet without root and with the unit's hardening unchanged. On NixOS,
+  the service users, `lyricad`'s unit, the built-in Caddy, and **her own
+  tailscaled** (`lyrica-tailscaled.service`: the `tailscale` package's
+  daemon in userspace-networking mode, as the `lyrica` user, with its own
+  state and socket), so she is a device of her own on the tailnet whatever
+  the host does, joins, leaves and serves without root, and the host's own
+  Tailscale, if any, is never touched. On NixOS,
   the repository's flake gives a package and a module, `services.lyrica`,
   that declares the same users, units and hardening as the install script,
-  and turns `services.tailscale` on with the same operator. Her sandboxes there mount the module's tools as `/usr` and only their
+  and runs the same second tailscaled from `pkgs.tailscale`. Her sandboxes there mount the module's tools as `/usr` and only their
   closure from `/nix/store`, never the whole store. Updates on NixOS use the
   same Update button, through a Lyrica-only Nix profile (Updates and
   self-editing). Details in [docs/daemon.md](docs/daemon.md), "On NixOS".
@@ -1324,34 +1331,46 @@ Details in [docs/sleep.md](docs/sleep.md).
   - Certificates come from a **DNS-01 challenge** through the DNS provider's
     API, because a Tailscale address can't be reached for the usual HTTP
     challenge.
-  - **The tailnet is managed from Administration** (2026-10-11): Connect
-    with an auth key (a hostname, default her name; a control server for
-    Headscale), Disconnect, Leave, and Connect to another tailnet, through
-    the `tailscale` CLI as its operator. An auth key is spent on joining
-    and never stored; Tailscale keeps the node key in its own state, and
-    `lyricad` reads the tailnet, address and MagicDNS name back from it
-    rather than keeping a copy. Who may reach her on the tailnet is
-    Tailscale's access rules; the login remains hers. Two limits, because
-    it is the **machine's** tailscaled she drives, not one of her own:
-    Disconnect, Leave and a switch of tailnet take the whole machine off
-    the tailnet, SSH included, so `lyricad` refuses them (409, with the
-    reason) when the request itself arrived over the tailnet, the rule
-    that a change never locks the administrator out; and she runs only a
-    fixed list of subcommands (status, login, up, down, logout, set
-    --hostname, serve on 443 to loopback, serve reset), never funnel, SSH,
-    routes or exit nodes, so the operator right can't put her login page
-    on the public internet (AGENTS.md: boundaries are structural). Settings
-    an operator made by hand survive: joining is `login`, not `up` with
-    flags.
+  - **She is her own device on the tailnet** (2026-10-11), managed from
+    Administration: Connect with an auth key (a hostname, default her
+    name; a control server for Headscale), Disconnect, Leave, and Connect
+    to another tailnet, through the `tailscale` CLI against her own
+    tailscaled's socket. She gets her own address and MagicDNS name,
+    `<her name>.<tailnet>.ts.net`, next to the host's if the host is on a
+    tailnet too, and the host's membership, SSH and routes are never hers
+    to change. An auth key is spent on joining and never stored; her
+    tailscaled keeps the node key in its state, and `lyricad` reads the
+    tailnet, address and name back from it rather than keeping a copy.
+    Who may reach her on the tailnet is Tailscale's access rules; the
+    login remains hers. Two limits: she runs only a fixed list of
+    subcommands (status, login, up, down, logout, set --hostname, serve on
+    443 to loopback, serve reset), never funnel, SSH, routes or exit
+    nodes, so her login page can't land on the public internet (AGENTS.md:
+    boundaries are structural); and a Disconnect, Leave or switch asked
+    for over her own tailnet address is refused (409, with the reason),
+    the rule that a change never locks the administrator out. Her
+    userspace device carries inbound connections to her; her own outbound
+    traffic to tailnet peers (model hosts, machines) goes through the
+    host's network as today, so a host that should reach peers over the
+    tailnet joins it itself.
   - An administrator chooses the proxy in the control panel, under **Web
     access**:
+    - **Direct** (2026-10-11), the mode she starts in: `lyricad` itself
+      serves HTTPS on the machine's LAN addresses with a certificate it
+      makes for those addresses (the one the external-proxy mode already
+      makes; its fingerprint is shown in Web access and printed by the
+      install script, for the browser's one-time warning), and plain HTTP
+      on the host's Tailscale addresses. It is what a headless host is
+      set up through, and it stays on until an administrator turns it off
+      or another mode replaces it, so finishing setup without a tailnet
+      never locks anyone out. Plain HTTP still never crosses the LAN.
     - **Tailnet** (2026-10-11), the default once the setup page has joined
-      one: `tailscale serve` terminates HTTPS for `lyrica.<tailnet>.ts.net`
-      with a certificate from Tailscale (the tailnet needs MagicDNS and
-      HTTPS certificates on) and proxies to the loopback port, as Caddy
-      does. No domain, DNS record or token; the front door is 443 on the
-      Tailscale addresses and that name. Built-in Caddy stays for a name
-      under Li's domain and for the LAN.
+      one: her tailscaled's `tailscale serve` terminates HTTPS for `<her
+      name>.<tailnet>.ts.net` with a certificate from Tailscale (the
+      tailnet needs MagicDNS and HTTPS certificates on) and proxies to
+      the loopback port, as Caddy does. No domain, DNS record or token;
+      the front door is 443 on her Tailscale address and that name.
+      Built-in Caddy stays for a name under Li's domain and for the LAN.
     - **Built-in Caddy**, for a name under Li's own domain. Lyrica's install includes a pinned
       Caddy, built with the DNS plugins for several common providers, running
       as its own service. `lyricad` writes Caddy's whole configuration through
@@ -1655,6 +1674,9 @@ new evidence.
   her first word. Li asked for the web UI to do it: `lyricad` now starts
   without `self.db` and serves the setup page, behind a one-time code; the
   tailnet is joined from that page and managed from Administration instead
-  of by hand, and a Tailnet web access mode through `tailscale serve`
-  replaces the domain and DNS token for the common case. She also gets a
-  name per deployment, so two installs can be told apart.
+  of by hand, with a tailscaled of her own so she is a device of her own
+  and the host's membership is never hers to break (Li's question and PR
+  review, the same evening), a Direct mode serves a headless host's setup
+  page over HTTPS on the LAN, and a Tailnet web access mode through
+  `tailscale serve` replaces the domain and DNS token for the common case.
+  She also gets a name per deployment, so two installs can be told apart.

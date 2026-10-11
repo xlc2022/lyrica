@@ -777,21 +777,26 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   only `GET /api/state` and `POST /api/setup` (`SetupRequest { code,
   passphrase, saveCredentials, name, admin: { login, password, displayName,
   pronouns } }` → `LoginResponse`) answer, on loopback, the Unix socket and
-  the host's Tailscale addresses; the one-time code is logged at start and
+  the Direct listener (below); the one-time code is logged at start and
   in `<runtime>/setup-code` (0600). `State.name` (her deployment name,
   `self.db` `settings` `self.name`, default Lyrica) answers in every state;
   `GET`/`PUT /api/u/:userId/admin/name` `{ name }`; `PersonaStore.read()`
   puts it in REGISTER's `Name:` line. The tailnet, through the `tailscale`
-  CLI as its operator (`daemon/src/tailnet.ts`): `GET
+  CLI against her own tailscaled's socket (`lyrica-tailscaled.service`,
+  userspace networking, the `lyrica` user; `daemon/src/tailnet.ts`): `GET
   /api/u/:userId/admin/tailnet` → `Tailnet { state, tailnet?, address?,
   dnsName?, hostname?, controlServer?, version?, reason? }`; `PUT` with
   `TailnetJoin { authKey, hostname?, controlServer?, leave? }` (409 when
   joined elsewhere without `leave`); `POST …/disconnect`, `POST …/connect`,
   `DELETE` (leave; turns the Tailnet web mode off). The auth key is written
   to a 0600 file for `--auth-key file:` and deleted at once, never stored
-  or logged. `WebMode` gains `"tailnet"` (`tailscale serve` to the loopback
-  port; `WebAccess.tailnet: { dnsName, certificates }`), and `frontDoor`
-  includes 443 on the Tailscale addresses and the DNS name. All additive.
+  or logged. `WebMode` gains `"direct"` (the external-proxy listener on
+  every LAN and Tailscale address, port 7340, HTTPS with lyricad's own
+  certificate on the LAN, no proxy list; the mode she starts in;
+  `WebAccess.direct: { addresses, fingerprint }`) and `"tailnet"`
+  (`tailscale serve` to the loopback port; `WebAccess.tailnet: { dnsName,
+  certificates }`), and `frontDoor` includes the Direct port on its
+  addresses and 443 on her Tailscale address and DNS name. All additive.
 - **HTTP/SSE API**, defined in `daemon/src/api.ts` and described in
   [daemon.md](daemon.md). The web UI imports its types from there:
   - auth;

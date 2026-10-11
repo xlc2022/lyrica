@@ -48,11 +48,21 @@ Administration. No new model-facing tool, no new process of Lyrica's
    admin setup-code` prints it. A wrong code is `403` and counts on the
    unlock limiter (`limited(d, ["unlock:<ip>"])` in `daemon/src/routes.ts`,
    the same counter); the file is deleted when setup completes.
-4. **Where the setup page is reachable:** `127.0.0.1` and the Unix socket
-   as always, and, only while setting up, the host's existing Tailscale
-   addresses (plain HTTP on Tailscale's own interface, the external-proxy
-   rule; `hostAddresses()` in `daemon/src/web/access.ts` already finds
-   them). That listener closes when setup completes.
+4. **Where the setup page is reachable: the Direct mode.** Without
+   `self.db`, and with no web access set, `lyricad` starts in a new
+   `WebMode` `"direct"`: the external-proxy mode's extra listener
+   (`web-external.json`, opened before unlock, `makeCertificate` for a LAN
+   address, plain HTTP on Tailscale's own interface) on **every** LAN and
+   Tailscale address `hostAddresses()` finds, port 7340, with no proxy
+   allow-list and the client's own address as its address. The host is
+   headless (Li), so this is how the setup page is reached:
+   `https://<lan address>:7340`, the browser's one-time certificate
+   warning, the fingerprint printed by `install.sh` and shown in Web access
+   for comparing. Direct stays on after setup until an administrator turns
+   it off or another mode replaces it (finishing setup without a tailnet
+   must not lock anyone out); `frontDoor` includes its port on those
+   addresses. The listener's settings file is written at first start when
+   none exists, so a host that already had web access set keeps it.
 5. **Her name** (`self.name` in `self.db` `settings`, default Lyrica):
    `PersonaStore.read()` puts it in REGISTER.md's `Name:` line (the seed
    file is unchanged); the delegate preambles and the "Ask Lyrica" label
@@ -60,21 +70,33 @@ Administration. No new model-facing tool, no new process of Lyrica's
    (while locked and setting up too); `GET`/`PUT /api/u/:userId/admin/name`
    (`{ name }`, administrators, 1 to 40 characters, trimmed). Nothing
    already written is rewritten.
-6. **The tailnet** (`daemon/src/tailnet.ts`), through the `tailscale` CLI,
-   run by the daemon directly (never in a sandbox, never a model tool):
+6. **The tailnet** (`daemon/src/tailnet.ts`): **her own tailscaled.**
+   `lyrica-tailscaled.service` (installed by `install.sh` from Tailscale's
+   package, and by the NixOS module from `pkgs.tailscale`) runs
+   `tailscaled --tun=userspace-networking --state=/var/lib/lyrica-tailscale/tailscaled.state
+   --socket=/run/lyrica-tailscale/tailscaled.sock --port=0` as the `lyrica`
+   user with its own `StateDirectory` and `RuntimeDirectory`; no root, no
+   TUN device, no operator setting, and the host's own Tailscale, if any,
+   untouched. She is a device of her own with her own address and MagicDNS
+   name, beside the host's. `lyricad` drives it with the `tailscale` CLI
+   and `--socket` pointing at hers, run by the daemon directly (never in a
+   sandbox, never a model tool). Userspace networking carries inbound
+   connections through `serve`; her outbound traffic to tailnet peers
+   (model hosts, machines, allowed hosts) keeps going through the host's
+   network as today, so DESIGN's "a host that should reach peers over the
+   tailnet joins it itself" holds; the brief doesn't add the SOCKS proxy.
    - `GET /api/u/:userId/admin/tailnet` → `Tailnet { state: "connected" |
      "disconnected" | "notJoined" | "notInstalled", tailnet?, address?,
      dnsName?, hostname?, controlServer?, version?, reason? }` from
      `tailscale status --json` (and `--peers=false`); `notInstalled`
-     covers a missing binary and `lyrica` not being the operator, with
+     covers a missing binary and her tailscaled not running, with
      `reason` saying which.
    - `PUT …/admin/tailnet` with `TailnetJoin { authKey, hostname?,
      controlServer?, leave?: boolean }`: `tailscale login --auth-key
      file:<path> [--login-server …]`, then `tailscale set --hostname …`
-     only when a hostname was given, so preferences an operator set by
-     hand (`--ssh`, `--accept-routes`, anything non-default) survive; never
-     `up` with flags, which fails unless every non-default flag is
-     repeated, and never `--reset`. Already joined to a different tailnet
+     only when a hostname was given, so preferences already set on her
+     device survive a second join; never `up` with flags, which fails
+     unless every non-default flag is repeated, and never `--reset`. Already joined to a different tailnet
      and `leave` not set is `409`; with `leave`, `logout` first. The key is written to a 0600 file under the runtime directory
      and deleted when `up` returns, whatever the outcome; it never appears
      in arguments, logs or the database. Errors from the CLI that could
@@ -82,35 +104,35 @@ Administration. No new model-facing tool, no new process of Lyrica's
    - `POST …/admin/tailnet/disconnect` (`down`), `POST
      …/admin/tailnet/connect` (a bare `up`), `DELETE …/admin/tailnet`
      (`logout`; turns the Tailnet web mode off first when it is on).
-   - **It is the machine's tailscaled.** Disconnect, Leave and a join that
-     leaves take the whole host off the tailnet, Li's SSH and anything
-     else reached over it included, and would cut the request that asked
-     for them. So each is refused with `409` and a reason when the request
-     arrived over the tailnet (a Tailscale address, or through the Tailnet
-     web mode: compare the connection's local address and the proxy's
-     forwarded address with `hostAddresses()`), the rule that a change
-     never locks the administrator out; the UI says to do it from another
-     way in. On a host where Lyrica is one service among others, the
-     operator is told this in the guide too.
+   - **Not over her own tailnet address.** Disconnect, Leave and a join
+     that leaves would cut the request that asked for them when it came
+     through her device (the Tailnet web mode: a connection from `serve`,
+     which `lyricad` tells by the listener and the forwarded address), so
+     each is refused with `409` and a reason then, the rule that a change
+     never locks the administrator out; the UI says to do it over the LAN
+     or on the machine. The host's own tailnet, SSH and routes are
+     unaffected either way.
    - **A fixed allow-list, structurally.** `tailnet.ts` builds every
      command from one table and nothing else can reach the binary:
      `status --json --peers=false`, `login --auth-key file:… [--login-server
      …]`, `up`, `down`, `logout`, `set --hostname …`, `serve --bg
      --https=443 http://127.0.0.1:<port>`, `serve reset`. Never `funnel`,
      `--ssh`, `--advertise-routes`, `--advertise-exit-node`, `--exit-node`
-     or `--reset`: the operator right would allow them, and funnel would
-     put her login page on the public internet.
+     or `--reset`: funnel would put her login page on the public
+     internet, and the rest are a host's business, not hers.
    - One change at a time, as Web access does. The setup page's default
      hostname is `self.name` lower-cased; it is sent only when it differs
      from what `status` reports.
    - **Verify at first deployment** (the brief's handoff lists it): that
-     `login --auth-key`, `up`, `down`, `logout`, `set --hostname` and
-     `serve` are allowed to the operator in the installed Tailscale, and
-     that preferences set by hand survive Connect, Disconnect and Connect
-     again. If one isn't, the fallback is one
-     `sudoers.d` line for exactly those subcommands, written by `install.sh`
-     and the module; nothing broader, and nothing in `lyricad.service`.
-7. **Web access: the Tailnet mode.** `WebMode` gains `"tailnet"`:
+     the userspace tailscaled runs as `lyrica` with `serve` on 443 (the
+     listener is inside tailscaled's own stack, so no capability should be
+     needed; if the installed version does bind a host port,
+     `AmbientCapabilities=CAP_NET_BIND_SERVICE` goes on its unit, nothing
+     on lyricad's), and that a host already on a tailnet shows two
+     devices with two addresses.
+7. **Web access: the Direct and Tailnet modes.** `WebMode` gains
+   `"direct"` (item 4; its state line shows the addresses and the
+   certificate's fingerprint) and `"tailnet"`:
    `tailscale serve --bg --https=443 http://127.0.0.1:<port>`, checked by
    fetching `https://<dnsName>/api/state` before it is saved; on failure
    `serve reset` and the previous mode stays, with the reason (the usual
@@ -121,22 +143,25 @@ Administration. No new model-facing tool, no new process of Lyrica's
    Tailscale addresses and the DNS name. The unlock page stays reachable
    after a restart because tailscaled keeps the serve configuration and
    `lyricad` listens on loopback from the start.
-8. **Installers.** `install.sh`: install `tailscale` from Tailscale's apt
-   repository when it isn't installed (keep an existing one), `tailscale
-   set --operator=lyrica`, `After=tailscaled.service` in `lyricad.service`,
-   and closing lines that print the setup address and code instead of the
-   `admin init` command. NixOS module: `services.lyrica.tailscale` (default
-   on) sets `services.tailscale.enable` and `extraSetFlags = [
-   "--operator=lyrica" ]`, `tailscale` on lyricad's PATH, and
+8. **Installers.** `install.sh`: install the `tailscale` package from
+   Tailscale's apt repository when the binaries are missing (a host's own
+   `tailscaled.service` is left as it is), install and enable
+   `lyrica-tailscaled.service` (`daemon/deploy/`), `After=` it in
+   `lyricad.service`, and closing lines that print the setup addresses,
+   the certificate fingerprint and the code instead of the `admin init`
+   command. NixOS module: `services.lyrica.tailscale` (default on) declares
+   the same unit from `pkgs.tailscale`, `tailscale` on lyricad's PATH, and
    `ConditionPathExists` removed. `nix/check-host.sh`: one more line,
-   `tailscale status` answers as `lyrica`.
+   `tailscale --socket … status` answers as `lyrica`.
 
 ## Out of scope
 
 The setup page and the Administration sections (Web: bootstrap); the
 getting-started guide (Operator docs, after the merge); the releases layout
 of `/opt/lyrica` (Releases); a per-user nickname for her (not now, Li
-2026-10-11); routes, exit nodes and Tailscale SSH.
+2026-10-11); routes, exit nodes and Tailscale SSH; her own outbound path
+to tailnet peers through her device (a SOCKS proxy for sandboxes and
+machines; later, if a host that isn't on the tailnet needs it).
 
 ## Done when
 
@@ -150,8 +175,10 @@ of `/opt/lyrica` (Releases); a per-user nickname for her (not now, Li
   line and nowhere else in the persona changes, and in `/api/state` while
   locked; the auth key file is gone after `up` succeeds and after it
   fails, and no log line contains the key; a join while joined elsewhere
-  is `409` without `leave`; a disconnect, leave or switch requested over
-  a Tailscale address is `409`; the fake CLI never receives `funnel`,
+  is `409` without `leave`; a disconnect, leave or switch requested
+  through her own tailnet listener is `409`; every `tailscale` call names
+  her socket; the Direct listener opens on every LAN address with the
+  certificate and refuses nothing by address; the fake CLI never receives `funnel`,
   `--ssh`, `--advertise-routes`, `--advertise-exit-node`, `--exit-node` or
   `--reset`, and joining is `login` followed by `set --hostname` only when
   one was given; the Tailnet mode adds its ports to `frontDoor`; leaving
@@ -165,9 +192,10 @@ of `/opt/lyrica` (Releases); a per-user nickname for her (not now, Li
 ## After merging
 
 Tell the standing Operator docs thread by cross-session message: first run
-is the setup page (the code, the tunnel only when the host isn't on a
-tailnet yet), the Tailnet mode, the Tailnet section, Tailscale installed by
-`install.sh` and the module, `check-host.sh` after the page. Tell Web:
+is the setup page (the LAN address, the fingerprint and the code; no
+tunnel), the Direct and Tailnet modes, the Tailnet section, her own
+tailscaled installed by `install.sh` and the module, `check-host.sh` after
+the page. Tell Web:
 bootstrap and Releases the merge commit.
 
 ## Handoff notes
