@@ -38,8 +38,6 @@ export interface CallContext {
   overrides?: Partial<Record<Task, ModelRef[]>>;
   /** The thread's thinking setting. */
   thinking?: ThinkingLevel;
-  /** Voice to cloud: the user's audio may go to a cloud model. Absent is off. */
-  voiceCloud?: boolean;
   /** Fallback: a later model in a task's list may answer when the first can't. Absent is on. */
   fallback?: boolean;
 }

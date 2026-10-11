@@ -9,14 +9,18 @@ import { Icon } from "./icons.tsx";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { go } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
-import { Confirm, ErrorText, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { Confirm, ConfirmDialog, ErrorText, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 export const TASK_LABELS: Record<ThreadTask, string> = {
   chat: "Main conversation",
   "subagent.cheap": "Cheap subagents",
   "subagent.strong": "Strong subagents",
   title: "Titles",
+  "speech.transcribe": "Dictation",
+  "speech.speak": "Read aloud",
 };
+/** Speech tasks offer only models that transcribe or speak. */
+const fits = (task: ThreadTask, m: EndpointInfo["models"][number]) => (task === "speech.transcribe" ? !!m.transcribe : task === "speech.speak" ? !!m.speak?.voices.length : true);
 
 
 const refKey = (m?: { offeringId: string }) => m?.offeringId ?? "";
@@ -133,10 +137,8 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
             onChange={(v) => change({ localOnly: v })} />
           <NetSwitch label="Internet" hint="For her commands and fetches." value={settings.internet} effective={settings.network.internet}
             onChange={(v) => change({ internet: v })} />
-          <NetSwitch label="This machine's services" hint="Local ports, except Lyrica's own." value={settings.services} effective={settings.network.services}
+          <NetSwitch label="Local services (localhost)" hint="Programs running on Lyrica's own server, such as a database. Never Lyrica's own page." value={settings.services} effective={settings.network.services}
             onChange={(v) => change({ services: v })} />
-          <NetSwitch label="Voice to cloud" hint="What you dictate may be sent to a cloud model." value={settings.voiceCloud} effective={settings.speech.voiceCloud}
-            onChange={(v) => change({ voiceCloud: v })} />
           <Hosts hosts={settings.hosts ?? settings.network.hosts} overridden={settings.hosts !== null} onChange={(hosts) => change({ hosts })} />
         </fieldset>
 
@@ -186,19 +188,27 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
 export function TaskSelect({ task, label, value, allowed, onChange }: {
   task: ThreadTask; label?: string; value: TaskModel; allowed: EndpointInfo[]; onChange: (m: ModelRef | null) => void;
 }) {
-  const current = value.source === "thread" ? refKey(value.model) : "";
+  // While no model can answer, `model` is absent: the thread's pick is still its list's first.
+  const first = value.list?.[0];
+  const current = value.source === "thread" ? refKey(value.model ?? (first && "offeringId" in first ? first : undefined)) : "";
   const fromProfile = value.source === "profile" && value.model
     ? `${value.kind ? `${value.kind} · ` : ""}${value.modelId ? `${value.modelId} · ${value.endpointName}` : named(value)}` : "nothing set";
-  return (
+  // Picking a cloud Dictation model is the consent to send this thread's voice to the cloud, so it asks first.
+  const [cloudPick, setCloudPick] = useState<{ id: string; name: string }>();
+  return (<>
     <label className="field">
       <span>{label ?? TASK_LABELS[task]}</span>
       <select value={current} onChange={(e) => {
-        onChange(e.target.value ? { offeringId: e.target.value } : null);
+        const id = e.target.value;
+        const ep = allowed.find((x) => x.models.some((m) => m.id === id));
+        const m = ep?.models.find((x) => x.id === id);
+        if (task === "speech.transcribe" && ep?.kind === "cloud" && m) setCloudPick({ id, name: `${m.modelId} on ${ep.name}` });
+        else onChange(id ? { offeringId: id } : null);
       }}>
         <option value="">Profile ({fromProfile})</option>
-        {allowed.map((ep) => (
+        {allowed.filter((ep) => ep.models.some((m) => fits(task, m))).map((ep) => (
           <optgroup key={ep.id} label={`${ep.name} (${ep.kind})`}>
-            {ep.models.map((m) => <option key={m.id} value={m.id}>{ep.kind} · {m.modelId} · {ep.name}</option>)}
+            {ep.models.filter((m) => fits(task, m)).map((m) => <option key={m.id} value={m.id}>{ep.kind} · {m.modelId} · {ep.name}</option>)}
           </optgroup>
         ))}
         {/* A thread choice that is no longer allowed still shows, so the select says what's set. */}
@@ -208,7 +218,12 @@ export function TaskSelect({ task, label, value, allowed, onChange }: {
       </select>
       {value.problem && <small className="error">{value.problem}</small>}
     </label>
-  );
+    {cloudPick && (
+      <ConfirmDialog title="Send your voice to the cloud?" confirm="Use cloud dictation"
+        sentence={`In this thread, what you dictate goes to ${cloudPick.name}, a cloud service, to be written out.`}
+        onCancel={() => setCloudPick(undefined)} onConfirm={() => { onChange({ offeringId: cloudPick.id }); setCloudPick(undefined); }} />
+    )}
+  </>);
 }
 
 /** A network switch: the thread's override, or the default for its pool. */

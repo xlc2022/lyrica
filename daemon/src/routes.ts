@@ -1,5 +1,5 @@
 import {
-  AuthError, WrongPassword, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS, projectSlug,
+  AuthError, WrongPassword, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS, projectSlug,
   type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type MachineConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
@@ -349,7 +349,6 @@ export function apiRoutes(d: Lyricad): Route[] {
       const c = await r.json<Api.ProfilesChange>();
       if (c.default !== undefined) s().models.setDefaultProfile(user.id, c.default);
       if (c.thinking !== undefined) s().models.setDefaultThinking(user.id, c.thinking);
-      if (c.voiceCloud !== undefined) s().models.setDefaultVoiceCloud(user.id, c.voiceCloud);
       if (c.fallback !== undefined) s().models.setDefaultFallback(user.id, c.fallback);
       if (c.sleepFallback !== undefined) s().sleep.setFallback(user.id, c.sleepFallback);
       if (c.readAloudLive !== undefined) s().models.setDefaultReadAloudLive(user.id, c.readAloudLive);
@@ -1283,7 +1282,7 @@ function profiles(d: Lyricad, userId: string): Api.Profiles {
   const m = d.services!.models;
   return {
     local: m.profile(userId, "local"), cloud: m.profile(userId, "cloud"), custom: m.profile(userId, "custom"),
-    default: m.defaultProfile(userId), thinking: m.defaultThinking(userId), voiceCloud: m.defaultVoiceCloud(userId),
+    default: m.defaultProfile(userId), thinking: m.defaultThinking(userId),
     fallback: m.defaultFallback(userId), sleepFallback: d.services!.sleep.fallback(userId),
     readAloudLive: m.defaultReadAloudLive(userId),
   };
@@ -1551,7 +1550,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     const override = ctx.overrides?.[task];
     const list = override?.length ? { list: override } : {};
     try {
-      const r = models.resolve(task, ctx);
+      const r = models.resolve(task, task === "speech.transcribe" ? voiceContext(ctx) : ctx);
       if (task === "chat") thinkingLevels = ["off", ...(r.offering.reasoning ?? [])];
       return {
         model: r.ref, ...list, kind: r.endpoint.kind, endpointName: r.endpoint.name, label: r.label, modelId: r.offering.modelId,
@@ -1573,7 +1572,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     internet: tw.internet, services: tw.services, hosts: tw.hosts,
     network: workspace.network({ userId: user.id, pool, threadId }),
     grants: tw.grants, machines: tw.machines, mode: applies.mode, webSearch: applies.webSearch, images: applies.images, unlogged: isUnlogged, parent: tw.parent,
-    voiceCloud: models.threadVoiceCloud(user.id, threadId), speech: speechState(models, ctx),
+    speech: speechState(models, ctx),
     fallback: models.threadFallback(user.id, threadId), fallbackOn: ctx.fallback !== false,
     allowed: models.allowed(ctx).map(({ endpoint }) => endpointInfo(d, user.id, endpoint.id)),
   };
@@ -1612,12 +1611,6 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
   }
 
   for (const k of ["webSearch", "images"] as const) if (change[k] !== undefined && typeof change[k] !== "boolean") throw new Error(`${k} is true or false`);
-  if (change.voiceCloud !== undefined && change.voiceCloud !== null && typeof change.voiceCloud !== "boolean") throw new Error("voiceCloud is true, false or null");
-  // Under a parent with Voice to cloud off, a branch can only keep it off, or follow the default when the parent does too.
-  if (parent && change.voiceCloud !== undefined && change.voiceCloud !== false && !models.callContext(user.id, pool, parent).voiceCloud
-    && !(change.voiceCloud === null && models.threadVoiceCloud(user.id, parent) === null)) {
-    throw new Error("the parent thread keeps Voice to cloud off, so this one does too");
-  }
   if (change.fallback !== undefined && change.fallback !== null && typeof change.fallback !== "boolean") throw new Error("fallback is true, false or null");
   // The workspace checks grants, hosts, mode, switches, machines and the parent's limits, and writes only if all pass.
   const wsChange = pick(change, ["grants", "internet", "services", "hosts", "mode", "webSearch", "images", "machines"]);
@@ -1628,7 +1621,6 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
   if (change.thinking !== undefined) models.setThinking(user.id, thread.id, change.thinking);
   for (const task of Object.keys(change.models ?? {})) models.setThreadModel(user.id, pool, thread.id, task as Api.ThreadTask, overrides[task as Api.ThreadTask]);
   if (change.unlogged !== undefined) owner(d, user, (o) => o[pool].setUnlogged(thread.id, !!change.unlogged));
-  if (change.voiceCloud !== undefined) models.setThreadVoiceCloud(user.id, thread.id, change.voiceCloud);
   if (change.fallback !== undefined) models.setThreadFallback(user.id, thread.id, change.fallback);
 }
 

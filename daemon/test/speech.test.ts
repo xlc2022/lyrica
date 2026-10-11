@@ -125,7 +125,7 @@ describe("dictation", () => {
     expect((await s.li.post(`${s.path}/transcribe`, wav(601), { "content-type": "audio/wav" })).status).toBe(413);
   });
 
-  it("refuses a cloud transcription with Voice to cloud off, before anything is sent, and the thread's switch beats the default", async () => {
+  it("sends a thread's voice to a cloud model only when Dictation picks it there", async () => {
     const s = await setup("general");
     const cloud = await fakeSpeech();
     const ep = (await s.li.post<EndpointInfo>(`${s.u}/endpoints`, { name: "openai", kind: "cloud", baseUrl: cloud.baseUrl, apiKey: "sk" })).body;
@@ -134,44 +134,27 @@ describe("dictation", () => {
     await s.li.put(`${s.u}/profiles/cloud/speech.transcribe`, { model: { offeringId: stt } });
     await s.li.patch(`${s.u}/profiles`, { default: "cloud" });
 
+    // The cloud profile names it, but without the thread's pick the local profile's model hears the clip.
     let settings = (await s.li.get<ThreadSettings>(`${s.path}/settings`)).body;
-    expect(settings.voiceCloud).toBeNull();
-    expect(settings.speech.transcribe).toEqual({ available: false, reason: "voiceCloud", problem: "openai/whisper-large-v3-turbo is a cloud model, and Voice to cloud is off" });
-    const refused = await s.li.post<{ error: string }>(`${s.path}/transcribe`, wav(1), { "content-type": "audio/wav" });
-    expect(refused).toMatchObject({ status: 400, body: { error: "openai/whisper-large-v3-turbo is a cloud model, and Voice to cloud is off, so the clip wasn't sent" } });
+    expect(settings.models["speech.transcribe"]).toMatchObject({ source: "profile", kind: "local" });
+    expect(settings.speech.transcribe).toMatchObject({ available: true, kind: "local" });
+    expect((await s.li.post(`${s.path}/transcribe`, wav(1), { "content-type": "audio/wav" })).status).toBe(200);
     expect(cloud.heard).toEqual([]);
+    expect((await s.li.get<Speech>(`${s.u}/speech?pool=general`)).body).toMatchObject({ transcribe: { available: true, kind: "local" } });
 
     // Read aloud while agent writes is a user setting, off by default, that ThreadSettings.speech carries.
     expect(settings.speech.readAloudLive).toBe(false);
     expect((await s.li.patch<Profiles>(`${s.u}/profiles`, { readAloudLive: true })).body.readAloudLive).toBe(true);
     expect((await s.li.get<ThreadSettings>(`${s.path}/settings`)).body.speech.readAloudLive).toBe(true);
     expect((await s.li.patch(`${s.u}/profiles`, { readAloudLive: "yes" })).status).toBe(400);
-    // On by default, off in this thread: off.
-    expect((await s.li.patch<Profiles>(`${s.u}/profiles`, { voiceCloud: true })).body.voiceCloud).toBe(true);
-    settings = (await s.li.patch<ThreadSettings>(`${s.path}/settings`, { voiceCloud: false })).body;
-    expect(settings).toMatchObject({ voiceCloud: false, speech: { voiceCloud: false, transcribe: { available: false, reason: "voiceCloud" } } });
-    expect((await s.li.post(`${s.path}/transcribe`, wav(1), { "content-type": "audio/wav" })).status).toBe(400);
-    expect(cloud.heard).toEqual([]);
-    // Following the default again: on.
-    await s.li.patch(`${s.path}/settings`, { voiceCloud: null });
+    // Picked in the thread's Dictation select: the cloud model hears it.
+    settings = (await s.li.patch<ThreadSettings>(`${s.path}/settings`, { models: { "speech.transcribe": { offeringId: stt } } })).body;
+    expect(settings.speech.transcribe).toMatchObject({ available: true, kind: "cloud" });
     expect((await s.li.post(`${s.path}/transcribe`, wav(1), { "content-type": "audio/wav" })).status).toBe(200);
     expect(cloud.heard).toHaveLength(1);
-    // The welcome page follows the default.
-    expect((await s.li.get<Speech>(`${s.u}/speech?pool=general`)).body).toMatchObject({ voiceCloud: true, transcribe: { available: true, kind: "cloud" } });
-  });
 
-  it("keeps Voice to cloud off in a branch of a thread that has it off, even after the default is turned on", async () => {
-    const s = await setup("general");
-    await s.turn("Hello.");
-    await s.li.patch(`${s.path}/settings`, { voiceCloud: false });
-    const branch = (await s.li.post<{ id: string }>(`${s.path}/messages/${await s.nOf("assistant")}/branch`, {})).body;
-    const child = `${s.u}/threads/general/${enc(branch.id)}`;
-    expect((await s.li.get<ThreadSettings>(`${child}/settings`)).body.voiceCloud).toBe(false);
-    for (const voiceCloud of [true, null]) {
-      expect(await s.li.patch(`${child}/settings`, { voiceCloud })).toMatchObject({ status: 400, body: { error: "the parent thread keeps Voice to cloud off, so this one does too" } });
-    }
-    await s.li.patch(`${s.u}/profiles`, { voiceCloud: true });
-    expect((await s.li.get<ThreadSettings>(`${child}/settings`)).body).toMatchObject({ voiceCloud: false, speech: { voiceCloud: false } });
+    // A local-only thread can't keep a cloud pick.
+    expect((await s.li.patch(`${s.path}/settings`, { localOnly: true })).status).toBe(400);
   });
 
   it("says plainly when every speech model is down, and the daemon carries on", async () => {

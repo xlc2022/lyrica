@@ -11,7 +11,7 @@ import { copyIdentity } from "./library.ts";
 import { acceptedSettings, ANSWER_SETTINGS, checkSettings, type AnswerSettings, type SettingSource } from "./settings.ts";
 import { collectRefs, isList, mapMembers, moveSettings, refId, rewrite, type Entry, type ProfileName, type Use } from "./refs.ts";
 import { ENDPOINT_SCHEMA, migrate, MODEL_CHOICE_SCHEMA, REDIRECT_SCHEMA, upgradeCalls } from "./schema.ts";
-import { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, speakAt, transcribeAt, VoiceCloudOff, wavSeconds, type SpeechTarget } from "./speech.ts";
+import { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, speakAt, transcribeAt, wavSeconds, type SpeechTarget } from "./speech.ts";
 
 export type SpeechTask = "speech.transcribe" | "speech.speak";
 
@@ -20,7 +20,7 @@ export { baseName } from "./identity.ts";
 export { acceptedSettings, ANSWER_SETTINGS, payloadFields, type AnswerSettings, type SettingSource } from "./settings.ts";
 export { fingerprint, HostIdentityChanged, HostRefused, hostOrigin, normaliseCode, PairingFailed, pairingProofs } from "./host.ts";
 export { refId, type Entry, type ProfileName, type Use } from "./refs.ts";
-export { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, pcmSeconds, SPEECH_CONTENT_TYPE, SPEECH_FORMAT, VoiceCloudOff, wavData, wavSeconds } from "./speech.ts";
+export { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, pcmSeconds, SPEECH_CONTENT_TYPE, SPEECH_FORMAT, wavData, wavSeconds } from "./speech.ts";
 
 /** A cloud model was asked for where only local models are allowed. Nothing falls back. */
 export class CloudModelForbidden extends Error {}
@@ -51,6 +51,14 @@ const AWAY_CODES = new Set(["unreachable", "paused", "busy", "restarting", "unav
  * be reached or is away, so the next model should try, rather than that the
  * model refused this request.
  */
+/**
+ * The context Dictation runs in: a thread's own Dictation choice may be a
+ * cloud model, since picking it there is the user's consent; without one,
+ * the local profile's list, so a user's voice never reaches a cloud model
+ * they didn't pick in that thread.
+ */
+export const voiceContext = (ctx: CallContext): CallContext => (ctx.overrides?.["speech.transcribe"]?.length ? ctx : { ...ctx, localOnly: true });
+
 export function isUnreachable(err: unknown): boolean {
   if (err instanceof HostRefused) return AWAY_CODES.has(err.code);
   if (typeof err === "string") return UNREACHABLE.test(err);
@@ -1397,16 +1405,6 @@ export class Models {
     this.setSetting(userId, "thinking", checkThinking(level));
   }
 
-  /** Voice to cloud: whether the user's audio may go to a cloud model, unless a thread says otherwise. Off by default. */
-  defaultVoiceCloud(userId: string): boolean {
-    return this.setting(userId, "voice_cloud") === "on";
-  }
-
-  setDefaultVoiceCloud(userId: string, on: boolean): void {
-    if (typeof on !== "boolean") throw new Error("voiceCloud is true or false");
-    this.setSetting(userId, "voice_cloud", on ? "on" : "off");
-  }
-
   /** Read aloud while agent writes: whether Read aloud is offered on the reply she is still writing. Off by default. */
   defaultReadAloudLive(userId: string): boolean {
     return this.setting(userId, "read_aloud_live") === "on";
@@ -1415,17 +1413,6 @@ export class Models {
   setDefaultReadAloudLive(userId: string, on: boolean): void {
     if (typeof on !== "boolean") throw new Error("readAloudLive is true or false");
     this.setSetting(userId, "read_aloud_live", on ? "on" : "off");
-  }
-
-  /** A thread's own Voice to cloud switch; null follows the user's default. */
-  setThreadVoiceCloud(userId: string, threadId: string, on: boolean | null): void {
-    if (on !== null && typeof on !== "boolean") throw new Error("voiceCloud is true, false or null");
-    this.threadChoice(userId, threadId, "voice_cloud", on === null ? null : on ? 1 : 0);
-  }
-
-  threadVoiceCloud(userId: string, threadId: string): boolean | null {
-    const v = this.withUser(userId, (db) => (db.prepare("SELECT voice_cloud FROM thread_choices WHERE thread = ?").get(threadId) as { voice_cloud: number | null } | undefined)?.voice_cloud);
-    return v === 1 ? true : v === 0 ? false : null;
   }
 
   /** Fallback: whether a later model in a list may answer when the first can't, unless a thread says otherwise. On by default. */
@@ -1514,14 +1501,13 @@ export class Models {
     return this.withUser(userId, (db) => {
       const rows = db.prepare("SELECT task, entry FROM thread_models WHERE pool = ? AND thread = ?").all(pool, threadId) as { task: Task; entry: string }[];
       const localOnly = pool === "private" || !!db.prepare("SELECT 1 FROM local_only_threads WHERE thread = ?").get(threadId);
-      const choice = db.prepare("SELECT profile, thinking, voice_cloud, fallback FROM thread_choices WHERE thread = ?").get(threadId) as { profile: string | null; thinking: string | null; voice_cloud: number | null; fallback: number | null } | undefined;
+      const choice = db.prepare("SELECT profile, thinking, fallback FROM thread_choices WHERE thread = ?").get(threadId) as { profile: string | null; thinking: string | null; fallback: number | null } | undefined;
       const setting = (key: string) => (db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined)?.value;
       const profile = (choice?.profile ?? setting("general_profile")) === "custom" ? "custom" : "cloud";
       const thinking = (choice?.thinking ?? setting("thinking") ?? "off") as ThinkingLevel;
-      const voiceCloud = choice?.voice_cloud !== null && choice?.voice_cloud !== undefined ? choice.voice_cloud === 1 : setting("voice_cloud") === "on";
       const fallback = choice?.fallback !== null && choice?.fallback !== undefined ? choice.fallback === 1 : setting("fallback") !== "off";
       return {
-        userId, pool, localOnly, ...(pool === "general" ? { profile } : {}), thinking: THINKING_LEVELS.includes(thinking) ? thinking : "off", voiceCloud, fallback,
+        userId, pool, localOnly, ...(pool === "general" ? { profile } : {}), thinking: THINKING_LEVELS.includes(thinking) ? thinking : "off", fallback,
         overrides: Object.fromEntries(rows.map((r) => [r.task, JSON.parse(r.entry) as ModelRef[]])),
       };
     });
@@ -1557,8 +1543,6 @@ export class Models {
     if (parent.localOnly) this.setLocalOnly(userId, pool, childThreadId, true);
     if (pool === "general" && parent.profile) this.setThreadProfile(userId, pool, childThreadId, parent.profile);
     if (parent.thinking) this.setThinking(userId, childThreadId, parent.thinking);
-    // Never wider than the parent: a branch of a thread with Voice to cloud off keeps it off, even if the default is turned on later.
-    if (parent.voiceCloud === false || (parent.voiceCloud && !this.defaultVoiceCloud(userId))) this.setThreadVoiceCloud(userId, childThreadId, !!parent.voiceCloud);
     // A child starts with its parent's Fallback, whatever the default becomes; a subagent can't change it.
     if (parent.fallback !== undefined) this.setThreadFallback(userId, childThreadId, parent.fallback);
     for (const [task, r] of Object.entries(parent.overrides ?? {})) {
@@ -1724,9 +1708,8 @@ export class Models {
 
   /**
    * Transcribes a WAV clip with the context's Dictation model: the only way
-   * a user's audio reaches a model. A cloud model needs Voice to cloud on
-   * (`ctx.voiceCloud`); otherwise VoiceCloudOff is thrown before any byte is
-   * sent. An endpoint that can't answer is marked down and the next model
+   * a user's audio reaches a model. A cloud model answers only when the
+   * thread picked it (`voiceContext`); otherwise the local profile's list. An endpoint that can't answer is marked down and the next model
    * in the list is tried, within the list's kind (`callWithFallback`); when
    * none can, Offline.
    * The audio is held in memory only. The caller records the call.
@@ -1736,8 +1719,7 @@ export class Models {
     if (wav.length > MAX_CLIP_BYTES) throw new Error(`a clip is at most ${MAX_CLIP_SECONDS / 60} minutes`);
     const seconds = wavSeconds(wav);
     if (seconds === undefined) throw new Error("the clip isn't PCM WAV audio");
-    return this.callWithFallback("speech.transcribe", ctx, {}, async (r) => {
-      if (r.endpoint.kind === "cloud" && !ctx.voiceCloud) throw new VoiceCloudOff(`${r.label} is a cloud model, and Voice to cloud is off, so the clip wasn't sent`);
+    return this.callWithFallback("speech.transcribe", voiceContext(ctx), {}, async (r) => {
       const text = await transcribeAt(this.speechTarget(r), wav, opts);
       return { text, resolution: r, audioSeconds: seconds };
     });
@@ -1770,10 +1752,10 @@ export class Models {
    * Whether a context has a model for a speech task now, without calling it:
    * the model's label and kind, or the plain reason it has none.
    */
-  speechModel(task: SpeechTask, ctx: CallContext): { label: string; kind: "cloud" | "local" } | { reason: "none" | "voiceCloud" | "down"; problem: string } {
+  speechModel(task: SpeechTask, ctx: CallContext): { label: string; kind: "cloud" | "local" } | { reason: "none" | "down"; problem: string } {
+    if (task === "speech.transcribe") ctx = voiceContext(ctx);
     try {
       const r = this.resolve(task, ctx);
-      if (task === "speech.transcribe" && r.endpoint.kind === "cloud" && !ctx.voiceCloud) return { reason: "voiceCloud", problem: `${r.label} is a cloud model, and Voice to cloud is off` };
       return { label: r.label, kind: r.endpoint.kind };
     } catch (e) {
       if (e instanceof Offline) return { reason: "down", problem: `${TASK_NAMES[task]} can't be reached now` };
@@ -2075,7 +2057,7 @@ export class Models {
     this.withUser(userId, (db) => db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, value));
   }
 
-  private threadChoice(userId: string, threadId: string, column: "profile" | "thinking" | "voice_cloud" | "fallback", value: string | number | null): void {
+  private threadChoice(userId: string, threadId: string, column: "profile" | "thinking" | "fallback", value: string | number | null): void {
     this.withUser(userId, (db) => {
       db.prepare("INSERT OR IGNORE INTO thread_choices (thread) VALUES (?)").run(threadId);
       db.prepare(`UPDATE thread_choices SET ${column} = ? WHERE thread = ?`).run(value, threadId);

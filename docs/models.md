@@ -250,7 +250,7 @@ with every model tried.
 `resolveModel` returns just the chosen `{ offeringId }`.
 
 `callContext(userId, pool, threadId)` reads a thread's local-only switch,
-profile, thinking level, Voice to cloud and Fallback switches and lists from `user.db`.
+profile, thinking level, Fallback switch and lists from `user.db`.
 
 ## Each turn
 
@@ -318,13 +318,13 @@ other endpoint they are set by hand (`setCapabilities`).
   private or local-only context uses local models only, and a host is
   called through `fetchFor`. The caller records the call
   (`recordCall(…, { audioSeconds })`), never with text.
-- **Voice to cloud** (`ctx.voiceCloud`): `transcribe` refuses a cloud model
-  with `VoiceCloudOff` before any byte is sent unless it is on. It is a
-  per-user default, off (`setDefaultVoiceCloud`), and a thread's own choice
-  (`setThreadVoiceCloud`, null follows the default; `thread_choices`). A
-  branch keeps its parent's off always, and its on when the default is off;
-  lyricad refuses turning a branch on under a parent that has it off. Read aloud
-  sends message text, so it follows the router's rules alone.
+- **A cloud model hears a voice only when the thread picked it.**
+  `transcribe` and `speechModel` run Dictation in `voiceContext(ctx)`: the
+  thread's own Dictation list when it has one (a branch inherits it),
+  otherwise the context made local-only, so the local profile's list
+  answers and a cloud model can't. Read aloud sends message text, so it
+  follows the router's rules alone. (`thread_choices.voice_cloud`, the old
+  switch, is no longer read.)
 - **Fallbacks** go through `callWithFallback`. When a call can't be made
   (the endpoint can't be reached or doesn't answer in time, a host answers
   one of its away codes, or another endpoint answers 5xx or 429), the
@@ -340,7 +340,7 @@ other endpoint they are set by hand (`setCapabilities`).
   language is yours. Without a setting, the model's first voice
   for the language is used, else its first voice.
 - `speechModel(task, ctx)` says without calling anything whether a task can
-  be used: its model's label and kind, or a reason (`none`, `voiceCloud`,
+  be used: its model's label and kind, or a reason (`none`,
   `down`) and a plain sentence.
 
 Audio is held in memory and passed straight through: no file, no log. Call

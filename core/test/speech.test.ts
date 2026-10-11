@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CloudModelForbidden, NoModel, Offline, VoiceCloudOff, type CallContext } from "../src/index.ts";
+import { CloudModelForbidden, NoModel, Offline, type CallContext } from "../src/index.ts";
 import { fakeHost } from "./fake-host.ts";
 import { deadUrl } from "./fake-openai.ts";
 import { fakeSpeech, wav } from "./fake-speech.ts";
@@ -40,43 +40,39 @@ describe("speech and the cloud boundary", () => {
     // A local profile can't hold one, and a thread list naming one is refused.
     expect(() => s.models.setProfile(s.li.id, "local", "speech.transcribe", [s.openai.stt])).toThrow(CloudModelForbidden);
     expect(() => s.models.setThreadModel(s.li.id, "private", "web/p", "speech.speak", [s.openai.tts])).toThrow(CloudModelForbidden);
-    // Even a context that names one directly, with Voice to cloud on.
+    // Even a context that names one directly.
     for (const ctx of [s.ctx({ pool: "private", localOnly: true }), s.ctx({ localOnly: true })]) {
-      const named: CallContext = { ...ctx, voiceCloud: true, overrides: { "speech.transcribe": [s.openai.stt], "speech.speak": [s.openai.tts] } };
+      const named: CallContext = { ...ctx, overrides: { "speech.transcribe": [s.openai.stt], "speech.speak": [s.openai.tts] } };
       await expect(s.models.transcribe(named, wav(1))).rejects.toThrow(CloudModelForbidden);
       await expect(s.models.speak(named, "Hello there.")).rejects.toThrow(CloudModelForbidden);
       // With the profile's lists, the local models answer.
-      expect((await s.models.transcribe({ ...ctx, voiceCloud: true }, wav(1))).resolution.label).toBe("speech/whisper-large-v3-turbo");
+      expect((await s.models.transcribe(ctx, wav(1))).resolution.label).toBe("speech/whisper-large-v3-turbo");
       expect(await read((await s.models.speak(ctx, "Hello there.")).audio)).toBe(9600);
     }
     expect(s.openai.server.heard).toEqual([]);
   });
 
-  it("with Voice to cloud off, refuses a cloud transcription before any byte is sent, and a thread's choice beats the default", async () => {
+  it("sends a general thread's voice to a cloud model only when the thread picked it; otherwise the local profile's", async () => {
     const s = await setup();
+    // The cloud profile names a cloud Dictation model, but without a pick in the thread the local one hears it.
     const general = s.models.callContext(s.li.id, "general", "web/g");
-    expect(general.voiceCloud).toBe(false); // off by default
-    await expect(s.models.transcribe(general, wav(2))).rejects.toThrow(VoiceCloudOff);
-    expect(s.models.speechModel("speech.transcribe", general)).toEqual({ reason: "voiceCloud", problem: "openai/whisper-large-v3-turbo is a cloud model, and Voice to cloud is off" });
+    expect((await s.models.transcribe(general, wav(2))).resolution.label).toBe("speech/whisper-large-v3-turbo");
+    expect(s.models.speechModel("speech.transcribe", general)).toEqual({ label: "speech/whisper-large-v3-turbo", kind: "local" });
     expect(s.openai.server.heard).toEqual([]);
 
     // Her text read aloud is message text: the router's rules alone.
     await read((await s.models.speak(general, "Hello there.")).audio);
     expect(s.openai.server.heard).toHaveLength(1);
 
-    s.models.setDefaultVoiceCloud(s.li.id, true);
+    // Picked in the thread: the cloud model hears it, and a branch keeps the pick.
+    s.models.setThreadModel(s.li.id, "general", "web/g", "speech.transcribe", [s.openai.stt]);
     const on = await s.models.transcribe(s.models.callContext(s.li.id, "general", "web/g"), wav(2), { language: "zh" });
     expect(on).toMatchObject({ text: "hello from the fake", audioSeconds: 2 });
     expect(s.openai.server.heard.at(-1)).toMatchObject({ url: "/v1/audio/transcriptions", model: "whisper-large-v3-turbo", language: "zh", bytes: 64_044 });
-
-    // The thread says off: off, whatever the default.
-    s.models.setThreadVoiceCloud(s.li.id, "web/g", false);
-    expect(s.models.threadVoiceCloud(s.li.id, "web/g")).toBe(false);
-    await expect(s.models.transcribe(s.models.callContext(s.li.id, "general", "web/g"), wav(1))).rejects.toThrow(VoiceCloudOff);
-    // A branch of it keeps it off; null follows the default again.
-    expect(s.models.inheritContext(s.models.callContext(s.li.id, "general", "web/g"), "web/branch").voiceCloud).toBe(false);
-    s.models.setThreadVoiceCloud(s.li.id, "web/g", null);
-    expect(s.models.callContext(s.li.id, "general", "web/g").voiceCloud).toBe(true);
+    expect(s.models.inheritContext(s.models.callContext(s.li.id, "general", "web/g"), "web/branch").overrides?.["speech.transcribe"]).toEqual([s.openai.stt]);
+    // Cleared, it's local again.
+    s.models.setThreadModel(s.li.id, "general", "web/g", "speech.transcribe");
+    expect((await s.models.transcribe(s.models.callContext(s.li.id, "general", "web/g"), wav(1))).resolution.endpoint.kind).toBe("local");
     expect(s.openai.server.heard.filter((h) => h.url === "/v1/audio/transcriptions")).toHaveLength(1);
   });
 });
