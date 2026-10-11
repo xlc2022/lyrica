@@ -61,11 +61,11 @@ $parts = [ordered]@{
   kokoro     = @{ python = "3.12"; torch = $null; script = "bench_kokoro.py"
                   packages = @("onnxruntime-gpu[cuda,cudnn]==1.23.2", "numpy", "soundfile", "huggingface_hub", "nvidia-ml-py") + $espeakAndG2p }
   chatterbox = @{ python = "3.11"; torch = "cu124"; script = "bench_chatterbox.py"
-                  packages = @("chatterbox-tts==0.1.7", "soundfile", "nvidia-ml-py") }
+                  packages = @("chatterbox-tts==0.1.7", "setuptools<81", "soundfile", "nvidia-ml-py") }
   cosyvoice  = @{ python = "3.10"; torch = "cu121"; script = "bench_cosyvoice.py"
                   packages = @("torch==2.3.1", "torchaudio==2.3.1", "conformer==0.3.2", "diffusers==0.29.0", "hydra-core==1.3.2", "HyperPyYAML==1.2.3",
                     "inflect==7.3.1", "librosa==0.10.2", "lightning==2.2.4", "modelscope==1.20.0", "networkx==3.1", "numpy==1.26.4", "omegaconf==2.3.0",
-                    "onnx==1.16.0", "onnxruntime==1.18.0", "openai-whisper==20231117", "protobuf==4.25.8", "pyarrow==18.1.0", "pydantic==2.7.0",
+                    "onnx==1.16.0", "onnxruntime==1.18.0", "openai-whisper==20250625", "setuptools<81", "protobuf==4.25.8", "pyarrow==18.1.0", "pydantic==2.7.0",
                     "pyworld==0.3.4", "rich", "soundfile==0.12.1", "transformers==4.51.3", "x-transformers==2.11.24", "wetext==0.0.4", "einops", "matplotlib",
                     "huggingface_hub<1", "nvidia-ml-py") }
   stt        = @{ python = "3.12"; torch = "cu128"; script = "bench_stt.py"

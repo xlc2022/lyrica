@@ -107,7 +107,7 @@ def voxtral_load():
 
 def voxtral(handle, wav, language):
     processor, model = handle
-    inputs = processor.apply_transcription_request(language=language, audio=wav, sampling_rate=16000, model_id=VOXTRAL)
+    inputs = processor.apply_transcription_request(language=language, audio=wav, sampling_rate=16000, format="wav", model_id=VOXTRAL)
     inputs = inputs.to("cuda:0", dtype=torch.bfloat16)
     out = model.generate(**inputs, max_new_tokens=300)
     return processor.batch_decode(out[:, inputs.input_ids.shape[1]:], skip_special_tokens=True)[0].strip()
