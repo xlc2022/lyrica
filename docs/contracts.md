@@ -725,7 +725,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 - **HTTP/SSE API**, defined in `daemon/src/api.ts` and described in
   [daemon.md](daemon.md). The web UI imports its types from there:
   - auth;
-  - threads (list, create, hide, forget);
+  - threads (list, create, hide, forget); the user's own view of them:
+    `Display.sort` (`ThreadSort`), `ThreadSummary.group` and `unread`,
+    `ThreadChange.group` and `unread`, `ThreadGroup` with `GET`/`POST
+    thread-groups` and `PATCH`/`DELETE thread-groups/:id` (in `user.db`,
+    never the pool); `State.version` and `build`;
   - `ThreadSettings.context` (`ContextInfo`: used, window, parts, reserve,
     free, measured at), `CallInfo.pace`, the `context` and `compacted`
     thread events, and a `compacted` message part (the stored notice);

@@ -6,7 +6,7 @@ import {
 } from "./api.ts";
 import { fromEditable, readable, toEditable } from "./mentions.ts";
 import { go, href, idHref } from "./route.ts";
-import type { ShellContext } from "./Shell.tsx";
+import { PageHead, type ShellContext } from "./Shell.tsx";
 import { Confirm, ErrorText, hidden, Prose, shortTime, useAction, useLoad } from "./ui.tsx";
 
 const KINDS: { kind: MemoryKind; label: string }[] = [
@@ -23,16 +23,14 @@ export function Memory({ ctx, pool, id }: { ctx: ShellContext; pool?: Pool; id?:
   const [adding, setAdding] = useState(false);
   return (
     <main className="main memory" data-detail={!!id || adding}>
-      <header className="head">
-        <button type="button" className="menu-btn" aria-label="Show threads" onClick={ctx.openSide}>☰</button>
-        <div className="head-title"><h1>Memory</h1></div>
-        <button type="button" className="gear" onClick={() => { setAdding(true); go({ page: "memory", userId }); }}>Add a memory</button>
-      </header>
+      <PageHead ctx={ctx} title="Memory">
+        <button type="button" className="sm" onClick={() => { setAdding(true); go({ page: "memory", userId }); }}>Add a memory</button>
+      </PageHead>
       <div className="memory-panes">
         <Search ctx={ctx} current={id} />
         <div className="memory-detail">
           {adding ? <AddMemory userId={userId} onDone={(d) => { setAdding(false); if (d) go({ page: "memory", userId, pool: d.item.pool, id: d.item.id }); }} />
-            : id && pool && hidden(ctx.me.display, pool) ? <p className="muted empty">{pool === "private" ? "Private" : "General"} is hidden. Turn on Show {pool} in the sidebar to see it.</p>
+            : id && pool && hidden(ctx.me.display, pool) ? <p className="muted empty">{pool === "private" ? "Private" : "General"} is hidden. Turn on {pool === "private" ? "Private" : "General"} in the Sort menu to see it.</p>
             : id && pool ? <Detail key={`${pool}/${id}`} userId={userId} pool={pool} id={id} />
             : <p className="muted empty">Search, or pick a memory to read it.</p>}
         </div>

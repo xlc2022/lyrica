@@ -13,7 +13,8 @@ type is in `daemon/src/api.ts`, with its route beside it.
 clients; they still log in.
 
 - It starts **locked**. Until `self.db` is unlocked, only `GET /api/state`
-  and `POST /api/unlock` answer (and the web UI's static files, so the unlock
+  (locked, the users, and lyricad's `version` from `package.json` and
+  `build` from `LYRICA_BUILD` or the git commit) and `POST /api/unlock` answer (and the web UI's static files, so the unlock
   page loads); everything else is `503`.
 - Run by hand in a terminal, it asks for the passphrase at a hidden prompt.
 - With a saved passphrase (below), it starts unlocked.
@@ -210,8 +211,13 @@ Each active thread is one Pi session from `openThreadSession`, with
   (updates not yet seen; reading its messages sees them). Lock stops working
   children before the key goes.
 - Thread lists are per interface (`web` by default), filtered by the user's
-  display settings, most recently active first, with child threads (Lyrica's,
-  branches, forks, copies) nested under their parent. Subagents aren't listed: they live in
+  display settings (which pools, hidden threads, and the sidebar's `sort`),
+  most recently active first, with child threads (Lyrica's,
+  branches, forks, copies) nested under their parent. Each summary carries the
+  user's own `group` and `unread` (`thread_groups` and `thread_prefs` in
+  `user.db`, `core/src/prefs.ts`; never in the pool): `PATCH threads/:id`
+  sets them, reading a thread's messages clears `unread`, and
+  `…/thread-groups` lists, adds, renames and removes groups. Subagents aren't listed: they live in
   their parent's `delegate` cards. Memory search honours the same pool filters; `?all=1` ignores
   them in both.
 

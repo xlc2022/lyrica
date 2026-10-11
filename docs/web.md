@@ -10,27 +10,47 @@ render mention tokens.
 ## Pages
 
 Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
-`…/panel`, `#/login`), so `lyricad` serves a single file.
+`…/settings/<section>`, `…/admin/<section>`, `#/login`), so `lyricad` serves
+a single file. The old `…/panel` opens Settings.
 
 - **Unlock** while `lyricad` is locked, then **login**. A browser holds one
-  person's users: the user menu switches between linked personas (separate users of the same person), logs in as
-  another, logs one out, or **Lock**s one. Logging in as a user who isn't
-  linked signs the browser's users out first, and a short notice says so
-  without naming them. Logging out says when the user stays unlocked
-  because another browser still holds them.
-- **Sidebar:** the user, the Show general, Show private and Show hidden
-  threads filters (saved per user), New thread (general or private), the
-  thread list with child threads (Lyrica's, branches, forks, copies) behind
-  `›`, a child showing when it works or waits and a count of its unseen
-  updates (at most two badges a row: waiting, then the count, then hidden),
-  and links to Memory and the Control
-  panel. Private threads carry a small lock in the private colour.
+  person's users: the user menu at the foot of the sidebar opens Settings and
+  Administration, switches between linked personas (separate users of the same
+  person), logs in as another, logs one out, or **Lock**s one. Logging in as a
+  user who isn't linked signs the browser's users out first, and a short
+  notice says so without naming them. Logging out says when the user stays
+  unlocked because another browser still holds them.
+- **Home:** the header reads "Lyrica (ver. 0.1.0, build b110619)" (the
+  version from `package.json`, the build from `LYRICA_BUILD` or the git
+  commit) with the date and time under it, then a greeting by the hour and a
+  message box that starts a thread in General or Private with its first
+  message.
+- **Sidebar:** New thread (General or Private), Search (filters the list by
+  title), Memory, the Sort menu, the thread list, and the user. The **Sort
+  menu** ("Sort: By date ▾") has the sorts By date (sections Today, Yesterday,
+  Previous 7 days, Previous 30 days, Older), Last activity, Start date, Title and My groups (one
+  section per group with its count, then Not in a group, and a New group
+  form), then the General, Private and Hidden checkboxes. The sort and the
+  checkboxes are saved per user (`Display`). A thread unread for this user
+  is bold; private threads carry a small lock in the private colour; child
+  threads (Lyrica's, branches, forks, copies) sit behind `›`, a child
+  showing when it works or waits and a count of its unseen updates (at most
+  two badges a row: waiting, then the count, then hidden).
+- **Thread menu** (`src/ThreadMenu.tsx`): right-click a thread, or hold it
+  for half a second on a touch screen. Mark as unread or read (U), Rename…
+  (R, inline), Move to group (M: the groups, Not in a group, New group… N),
+  Hide or Unhide (H), and Delete… (D), which confirms in a dialog and offers
+  to delete child threads too. Escape closes it. Groups and unread marks are
+  the user's own (`thread_groups`, `thread_prefs` in `user.db`); opening a
+  thread clears its unread mark.
 - **Hidden pools:** with Show general or Show private off, a thread or
   memory from that pool shows "General is hidden" or "Private is hidden"
   instead, and memory search leaves the pool out.
-- **Thread:** a header with the title, the pool badge, the model badge
-  (cloud or local, model and endpoint; it opens the model picker), and folder
-  badges. Below it the conversation and the composer.
+- **Thread:** a header with the title; under it the pool word, the model
+  badge (cloud or local, model and endpoint; it opens the model picker), the
+  thread's group as a link that changes it, and the folders and target as
+  words with the paths in their tooltip; at the right a Settings button. Below
+  it the conversation and the composer.
 - **Thread settings drawer:** a model per task (each option says cloud or local first), local-only, the internet and
   this machine's services switches (each following the user's default until
   changed), allowed hosts, folders from the allowed paths (read-only or
@@ -47,16 +67,20 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   adding a note or page, linked or free. Mention tokens show as current names;
   the editor shows them as `[[Name]]` or `[[Name:obj]]` and saves them back as
   tokens.
-- **Control panel:** profile (name, pronouns, accent colour, monogram, theme,
-  saved credentials, stay unlocked after logout, and `lyricad`'s warning when
-  two of these contradict), password, your personas (linking a separate persona needs both
-  passwords), your suggestions for Lyrica's persona (edit, send on to the
-  administrators, or drop), endpoints with probe status, both model profiles, the
-  default mode and network defaults per pool, and SSH targets. Administrators also
-  get the server's network self-test result, sleep time, saving the `self.db`
-  passphrase, users with the administrator flag and their allowed folders,
-  changes to Lyrica's persona that users sent on (who sent them, whether they edited
-  them, and a confirmation when the file changed since), and **Web access**:
+- **Settings** (`src/Panel.tsx`): a page with its sections listed at the
+  left (a scrolling row on a phone): Profile (name, pronouns, accent colour,
+  monogram), Appearance (theme), Unlock and lock (saved credentials, stay
+  unlocked after logout, and `lyricad`'s warning when the two contradict),
+  Password, Your personas (linking a separate persona needs both passwords),
+  Persona suggestions (edit, send on to the administrators, or drop),
+  Endpoints with probe status, Model profiles, Network (the default mode and
+  network defaults per pool, Voice to cloud), and SSH targets.
+- **Administration**, for administrators: Status (the server's network
+  self-test, sleep time, start unlocked), Users with the administrator flag and
+  their allowed folders, Sleep, Start unlocked (saving the `self.db`
+  passphrase), Web access, and Persona changes that users sent on (who sent
+  them, whether they edited them, and a confirmation when the file changed
+  since). **Web access** has:
   - the mode: only this machine, the built-in Caddy, or a proxy elsewhere;
   - the hostname, with a hint that its DNS record points at the Tailscale address;
   - for the built-in Caddy: the Tailscale and LAN addresses to serve on, the
@@ -182,8 +206,7 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   used here. The message she is still writing has no button.
 - **Voice to cloud** is a switch in the thread settings drawer's Privacy and
   network section, under Internet, following the user's default until
-  changed (Use default goes back); the default is in the Control panel's
-  Network section. The Model profiles section has Dictation and Read aloud
+  changed (Use default goes back); the default is in Settings, Network. The Model profiles section has Dictation and Read aloud
   rows that offer only models that transcribe or speak, and a speaking model
   in the Endpoints list has a Settings link opening its drawer: a voice per
   language (English, Mandarin) and the speed (a number, of 4, clamped when
@@ -200,10 +223,14 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
 
 ## Look
 
-`src/app.css` holds the design tokens as custom properties. The accent is the
-user's (`--user-accent`), lightened in dark mode; cloud, local and private
-keep fixed colours. The theme follows the device unless the user overrides it.
-System fonts only.
+`src/app.css` holds the design tokens as custom properties and follows
+[docs/ux.md](ux.md): IBM Plex Sans and IBM Plex Mono, self-hosted from the
+`@fontsource` packages (their licence ships as `OFL.txt`); type sizes 22,
+15, 14, 13, 12 and 11; three button looks (primary, secondary, link) plus
+icon buttons; one 16 px line icon set in `src/icons.tsx`, never a text
+glyph; labels are nouns and hints are tooltips. The accent is the user's
+(`--user-accent`), lightened in dark mode; cloud, local and private keep
+fixed colours. The theme follows the device unless the user overrides it.
 
 Below 760 px the sidebar and drawer become overlays, and the model picker
 spans the screen. Touch screens get 44 px tap targets. The app is sized to the visual
@@ -218,7 +245,8 @@ turns animations off.
   it.
 - `web/test/live.test.ts` tests the stream reducer; `web/test/voice.test.ts`
   the recorder's context fallback and the clip's limit.
-- `npm run e2e -w @lyrica/web` runs Playwright (after a build). Each viewport
+- `npm run e2e -w @lyrica/web` runs Playwright (after a build). The upload
+  test needs `gocryptfs`, as `lyricad` does. Each viewport
   (390×844 with touch, 1280×800) gets its own real `lyricad` from
   `web/e2e/serve.ts`, on a temporary runtime with a fake model server, which
   also serves a fake speech endpoint (whisper and kokoro, under `/speech/v1`,

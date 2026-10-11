@@ -1,6 +1,7 @@
 // Each message's menu: pin, branch, regenerate, edit and delete. Deleting waits a few seconds, so it can be undone.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ModelRef, Pins, RemovalPlan, RewindRequest, ThreadSettings } from "./api.ts";
+import { Icon } from "./icons.tsx";
 import { useDismiss } from "./ui.tsx";
 
 /** What a thread lets its messages do. Absent in a subagent's thread. */
@@ -30,7 +31,7 @@ export function MessageMenu({ n, role, rewinder, onEdit }: { n: number; role: "u
   return (
     <span className="msg-menu" ref={ref}>
       <button type="button" className="icon-btn" aria-label="Message actions" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.25" /><circle cx="8" cy="8" r="1.25" /><circle cx="12.5" cy="8" r="1.25" /></svg>
+        <Icon name="more" />
       </button>
       {open && (
         <div className="menu" role="menu">
@@ -124,9 +125,9 @@ export function PinnedBadge({ pins, you }: { pins: Pins; you: string }) {
   const preview = (t: string) => { const first = t.trim().split("\n")[0]!; return first.length > 90 ? `${first.slice(0, 90)}…` : first; };
   return (
     <span className="picker-anchor" ref={anchor}>
-      <button type="button" className="badge" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}
+      <button type="button" className="link" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}
         title={pins.shortened ? "Some pinned messages reach her as their first line only" : undefined}>
-        <span className="num">{pins.pins.length}</span>&nbsp;pinned{pins.shortened && <span className="warn"> · shortened</span>} ▾
+        <span className="num">{pins.pins.length}</span>&nbsp;pinned{pins.shortened && <span className="warn"> · shortened</span>} <span className="caret" aria-hidden="true">▾</span>
       </button>
       {open && (
         <div className="picker" role="dialog" aria-label="Pinned">
@@ -199,7 +200,7 @@ export function RemovalConfirm({ plan, onConfirm, onCancel }: { plan: RemovalPla
         <div className="removal-list">
           <h4 title="What commands changed isn't tracked">Not undone</h4>
           <details className="removal-commands">
-            <summary>{num(plan.commands.length)} {plan.commands.length === 1 ? "command" : "commands"} ▾</summary>
+            <summary>{num(plan.commands.length)} {plan.commands.length === 1 ? "command" : "commands"} <span className="caret" aria-hidden="true">▾</span></summary>
             {plan.commands.map((c, i) => <code key={i}>{c}</code>)}
           </details>
         </div>

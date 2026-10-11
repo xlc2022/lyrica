@@ -140,7 +140,7 @@ function Parts({ parts, env, model, streaming, n }: { parts: MessagePart[]; env:
       <div key={`p${key}`} className="msg her">
         <div className="body prose">
           <Prose text={prose.join("")} />
-          {streaming && last && <span className="caret" aria-hidden="true" />}
+          {streaming && last && <span className="caret-blink" aria-hidden="true" />}
         </div>
       </div>,
     );

@@ -5,6 +5,7 @@ import {
   type AllowedPaths, type EndpointInfo, type Grant, type ModelRef, type PermissionMode, type SshTargetInfo,
   type TaskModel, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTask,
 } from "./api.ts";
+import { Icon } from "./icons.tsx";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { go } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
@@ -65,7 +66,7 @@ function ModelPicker({ base, settings, task, onChange }: {
             const on = current.source === "thread" && refKey(current.model) === refKey(ref_);
             return (
               <button key={m.id} type="button" className="picker-item" aria-pressed={on} disabled={busy} onClick={() => choose(ref_)}>
-                {m.modelId}{on && <span aria-hidden="true"> ✓</span>}
+                {m.modelId}{on && <Icon name="check" />}
               </button>
             );
           })}
@@ -227,7 +228,7 @@ function Hosts({ hosts, overridden, onChange }: { hosts: string[]; overridden: b
       {hosts.length ? (
         <ul className="chips">
           {hosts.map((h) => (
-            <li key={h}>{h}<button type="button" className="quiet" aria-label={`Remove ${h}`} onClick={() => onChange(hosts.filter((x) => x !== h))}>✕</button></li>
+            <li key={h}>{h}<button type="button" className="icon sm" aria-label={`Remove ${h}`} onClick={() => onChange(hosts.filter((x) => x !== h))}><Icon name="close" /></button></li>
           ))}
         </ul>
       ) : <span className="muted small">None</span>}
@@ -252,7 +253,7 @@ function Folders({ grants, allowed, onChange }: { grants: Grant[]; allowed: stri
             <option value="ro">read-only</option>
             <option value="rw">read-write</option>
           </select>
-          <button type="button" className="quiet" aria-label={`Remove ${g.path}`} onClick={() => set(i, null)}>✕</button>
+          <button type="button" className="icon sm" aria-label={`Remove ${g.path}`} onClick={() => set(i, null)}><Icon name="close" /></button>
         </div>
       ))}
       {!grants.length && <span className="muted small">No folders granted.</span>}

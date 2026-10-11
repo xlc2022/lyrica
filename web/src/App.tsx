@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { get, post, whenAuthLost, type LoginResponse, type State } from "./api.ts";
 import { go, useRoute } from "./route.ts";
 import { Shell } from "./Shell.tsx";
+import { Icon } from "./icons.tsx";
 import { ErrorText, useAction } from "./ui.tsx";
 
 export function App() {
@@ -35,7 +36,7 @@ export function App() {
   }
   return (
     <>
-      <Shell key={user.id} user={user} users={state.users} route={route}
+      <Shell key={user.id} user={user} users={state.users} route={route} build={{ version: state.version, build: state.build }}
         onAuthChange={(text) => { if (text) setNotice(text); refresh(); }} />
       {toast}
     </>
@@ -74,7 +75,7 @@ function Toast({ text, onClose }: { text: string; onClose: () => void }) {
   return (
     <div className="toast" role="status">
       <span>{text}</span>
-      <button type="button" className="quiet" aria-label="Dismiss" onClick={onClose}>✕</button>
+      <button type="button" className="icon sm" aria-label="Dismiss" onClick={onClose}><Icon name="close" /></button>
     </div>
   );
 }
@@ -94,8 +95,8 @@ function Login({ canCancel, onDone }: { canCancel: boolean; onDone: (r: LoginRes
         </label>
         <ErrorText error={error} />
         <button className="primary" disabled={busy || !login || !password}>Log in</button>
-        {canCancel && <p className="muted small">Only your linked personas can share this browser. Logging in as anyone else signs the others out here first.</p>}
-        {canCancel && <a className="quiet" href="#/">Cancel</a>}
+        {canCancel && <p className="muted small">Logging in as anyone but a linked persona of yours signs the others out of this browser first.</p>}
+        {canCancel && <a className="link" href="#/">Cancel</a>}
       </form>
     </Gate>
   );

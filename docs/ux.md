@@ -141,7 +141,7 @@ Rules:
 | A subagent | a **card** in the conversation that expands to its work and takes messages |
 | Dictating a message | the mic in the message box's row; the box's placeholder while listening |
 | Hearing a message read aloud | her message's actions |
-| Voice to cloud | the thread's Privacy and network switches; its default beside the user's other defaults for new threads (the Control panel's Network section) |
+| Voice to cloud | the thread's Privacy and network switches; its default beside the user's other defaults for new threads (Settings, Network) |
 | A speech model's voice and speed | its Settings drawer in Models |
 | A child thread | nested under its parent in the **sidebar**, with its state and unseen count as badges; its updates as a **card** in the parent's conversation that links to it |
 | A project | a thread row in the **sidebar** with the project icon in the pool dot's place, its threads nested under it (each keeps its pool dot) and resolved ones folded under one **Resolved** disclosure row with the count in mono; an amber dot on the row when a thread waits on the user. **New project** in the empty thread list's context menu, **Make project** in a top-level thread's menu; a new project starts pinned, at the top with the other pinned threads |

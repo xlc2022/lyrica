@@ -155,3 +155,13 @@ For each part:
 ## Handoff notes
 
 (The thread fills this in if it stops before it's done.)
+
+- 2026-10-11, PR 1 (look and shell): done: fonts, icon set, sidebar with
+  Sort menu (sorts, groups, pool checkboxes), thread menu, Settings and
+  Administration pages with section lists, header with version and build,
+  home message box; back end for groups, unread, sort, version. Next, each
+  as its own PR: Files & Images panel (needs the Workspace API for
+  listing), Notifications page and Share with, Pin (after the Projects back
+  end's pins), the speech Settings drawer into the Models area, the Models
+  page, the Sleep section. Open: the mockup's Sleep and Models sidebar links
+  come with their parts.

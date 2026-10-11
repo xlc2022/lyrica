@@ -49,15 +49,14 @@ export function ErrorText({ error }: { error?: string }) {
   return error ? <p className="error" role="alert">{error}</p> : null;
 }
 
-/** A switch with a label and an optional hint underneath. */
+/** A switch with a label; a hint is its tooltip, never a caption (docs/ux.md §4). */
 export function Switch({ label, hint, checked, disabled, onChange }: {
   label: string; hint?: string; checked: boolean; disabled?: boolean; onChange: (v: boolean) => void;
 }) {
   return (
-    <label className="switch">
+    <label className="switch" title={hint}>
       <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       <span>{label}</span>
-      {hint && <small>{hint}</small>}
     </label>
   );
 }
@@ -99,4 +98,43 @@ const MARKDOWN: Components = {
 /** Markdown with raw HTML skipped. */
 export function Prose({ text }: { text: string }) {
   return <Markdown skipHtml components={MARKDOWN}>{text}</Markdown>;
+}
+
+/**
+ * A dialog confirms an action with a consequence: the sentence and two buttons (docs/ux.md §6).
+ * `option` adds one checkbox, ticked by default; `onConfirm` gets its state.
+ */
+export function ConfirmDialog({ title, sentence, confirm, danger, option, onConfirm, onCancel }: {
+  title: string; sentence: string; confirm: string; danger?: boolean; option?: string; onConfirm: (option: boolean) => void; onCancel: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const [ticked, setTicked] = useState(true);
+  useEffect(() => {
+    const el = ref.current;
+    if (el && !el.open) el.showModal();
+    return () => el?.close();
+  }, []);
+  return (
+    <dialog ref={ref} aria-labelledby="confirm-title" onCancel={(e) => { e.preventDefault(); onCancel(); }} onClick={(e) => { if (e.target === ref.current) onCancel(); }}>
+      <form method="dialog" className="dlg" onSubmit={(e) => { e.preventDefault(); onConfirm(!!option && ticked); }}>
+        <h2 id="confirm-title">{title}</h2>
+        <p>{sentence}</p>
+        {option && <label className="check"><input type="checkbox" checked={ticked} onChange={(e) => setTicked(e.target.checked)} />{" "}{option}</label>}
+        <div className="dlg-actions">
+          <button type="button" onClick={onCancel}>Cancel</button>
+          <button type="submit" className={danger ? "danger primary" : "primary"} autoFocus>{confirm}</button>
+        </div>
+      </form>
+    </dialog>
+  );
+}
+
+/** The current minute, for clocks in headers. */
+export function useNow(): Date {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 15_000);
+    return () => clearInterval(t);
+  }, []);
+  return now;
 }
