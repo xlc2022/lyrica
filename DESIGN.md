@@ -1418,8 +1418,8 @@ from Monika's runbooks.
 - **Working alongside Claude.** One repository, one set of rules
   (AGENTS.md), one review. Work is claimed as a GitHub issue with one
   assignee, her account or Li, so two never build the same thing; she
-  takes what she notices in use (the friction log, small features, her
-  own tooling), Claude's threads take briefs and boundary code. Her
+  takes what she notices in use (the friction log from PRINCIPLES.md's
+  Evaluation, small features, her own tooling), Claude's threads take briefs and boundary code. Her
   branches are `lyrica/*`, Claude's `feature/*` and `claude/*`. Whoever
   merges second merges `main` in first. She can't reach Claude's threads;
   an issue labelled `claude` is how she asks for something, and a PR
