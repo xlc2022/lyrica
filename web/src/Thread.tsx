@@ -130,7 +130,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
           <div className="badges">
             <span className="badge" data-kind={pool === "private" ? "private" : "general"}><span className="k">{pool}</span></span>
             {settings.data && <ModelBadge base={base} settings={settings.data} onChange={settings.set} readOnly={!!s?.subagent} />}
-            {pins.data && !s?.subagent && <PinnedBadge pins={pins.data} you={ctx.user.displayName} />}
+            {pins.data && !s?.subagent && <PinnedBadge pins={pins.data} you={ctx.user.displayName} userId={ctx.user.id} pool={pool} />}
             {settings.data?.localOnly && pool === "general" && <span className="badge"><span className="k local">local-only</span></span>}
             {settings.data?.grants.map((g) => (
               <span key={g.path} className="badge folder" title={g.path}>{g.path} <span className="muted">{g.writable ? "rw" : "ro"}</span></span>

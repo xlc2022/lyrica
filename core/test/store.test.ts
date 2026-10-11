@@ -469,10 +469,37 @@ describe("threads", () => {
     expect(own.pageForProject(thread.id)?.id).toBe(page);
     expect(own.sleepMaterial(undefined, "9999").threads.find((t) => t.id === thread.id)?.project).toBe(project.id);
     expect(own.sleepMaterial(undefined, "9999").threads.find((t) => t.id === other.thread)?.project).toBeUndefined();
+    own.setUnlogged(project.id, true);
+    expect(own.sleepMaterial(undefined, "9999").threads.find((t) => t.id === thread.id)?.project).toBeUndefined();
+    own.setUnlogged(project.id, false);
 
     own.forgetThread(project.id, "lyrica", { children: true });
     expect([own.get(n1!), own.get(n2!), own.get(n3!), own.get(mixed!), own.get(page)].map((x) => x?.id)).toEqual([undefined, undefined, undefined, mixed, undefined]);
     expect(own.get(elsewhere!)?.id).toBe(elsewhere);
+  });
+
+  it("keeps a project's instructions apart from what sleep writes on its page", async () => {
+    const { memory, li } = await setup();
+    const { own } = memory.openThreadView(li.id, "general");
+    const project = own.createThread({ interface: "web", project: true, title: "Homelab" });
+    const owner = memory.openOwnerView(li.id);
+    const me = `user:${li.id}` as const;
+    expect(() => own.setProjectInstructions(project.id, "x", "sleep")).toThrow(/only be changed by the user/);
+    owner.general.setProjectInstructions(project.id, "Ask before buying anything.", me);
+    const page = `p:${projectSlug(project.id)}`;
+    expect(own.get(page)).toMatchObject({ instructions: "Ask before buying anything.", text: "" });
+
+    // Sleep writes and rewrites the text; the instructions stay.
+    own.putPage({ slug: projectSlug(project.id), title: "Homelab", summary: "the move", text: "DNS moved first." }, "sleep");
+    owner.general.setProjectInstructions(project.id, "Ask before buying anything over $50.", me);
+    own.putPage({ slug: projectSlug(project.id), title: "Homelab", summary: "the move", text: "DNS is done; rack next." }, "sleep");
+    expect(own.pageForProject(project.id)).toMatchObject({ instructions: "Ask before buying anything over $50.", text: "DNS is done; rack next." });
+    expect(() => own.edit(page, { instructions: "Buy anything." }, "sleep")).toThrow(/only be changed by the user/);
+
+    // Text the user wrote on the page is still kept word for word.
+    owner.general.edit(page, { text: "DNS is done; rack next. Li: the rails are on order." }, me);
+    expect(() => own.edit(page, { text: "Rack next." }, "sleep")).toThrow(/text a user wrote/);
+    owner.close();
   });
 
   it("rewinds turns a branch still holds: their notes stay, and citations resolve through the copy", async () => {

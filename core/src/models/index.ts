@@ -1799,11 +1799,19 @@ export class Models {
   }
 
   /** The user's recent calls, newest first. With a thread, that thread's only; with `speech: false`, no Dictation or Read aloud. */
-  recentCalls(userId: string, opts: { limit?: number; threadId?: string; speech?: false } = {}): CallRecord[] {
-    const where = [...(opts.threadId ? ["thread = ?"] : []), ...(opts.speech === false ? ["task NOT LIKE 'speech.%'"] : [])];
-    const rows = this.withUser(userId, (db) => db.prepare(`SELECT * FROM model_calls ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY id DESC LIMIT ?`)
-      .all(...(opts.threadId ? [opts.threadId] : []), opts.limit ?? 50)) as CallRow[];
+  recentCalls(userId: string, opts: { limit?: number; threadId?: string; threadIds?: string[]; speech?: false } = {}): CallRecord[] {
+    const where = [...(opts.threadId ? ["thread = @thread"] : []), ...(opts.threadIds ? ["thread IN (SELECT value FROM json_each(@threads))"] : []),
+      ...(opts.speech === false ? ["task NOT LIKE 'speech.%'"] : [])];
+    const rows = this.withUser(userId, (db) => db.prepare(`SELECT * FROM model_calls ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY id DESC LIMIT @limit`)
+      .all({ ...(opts.threadId ? { thread: opts.threadId } : {}), ...(opts.threadIds ? { threads: JSON.stringify(opts.threadIds) } : {}), limit: opts.limit ?? 50 })) as CallRow[];
     return rows.map(toCall);
+  }
+
+  /** Every token the threads' recorded calls read and wrote: a project's usage. */
+  tokensFor(userId: string, threadIds: string[]): number {
+    const row = this.withUser(userId, (db) => db.prepare("SELECT coalesce(sum(coalesce(prompt_tokens, 0) + coalesce(output_tokens, 0)), 0) AS n FROM model_calls WHERE thread IN (SELECT value FROM json_each(?))")
+      .get(JSON.stringify(threadIds))) as { n: number };
+    return row.n;
   }
 
   /** Each copy's median speeds over its last twenty measured calls, for this user. */
