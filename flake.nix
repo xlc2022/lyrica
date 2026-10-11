@@ -46,6 +46,13 @@
             }
           ];
         }).config.system.build.toplevel;
+        # Everything a CI run builds and fetches, in one path: the nix job keeps
+        # the last 10 of these on each runner and collects the rest.
+        roots = pkgs.linkFarm "lyrica-ci-roots" {
+          inherit (self.packages.${system}) lyrica sandbox-tools sandbox-closure;
+          nixos = self.checks.${system}.system;
+          nixpkgs = nixpkgs.outPath;
+        };
       };
     };
 }
