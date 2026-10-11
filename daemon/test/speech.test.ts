@@ -1,5 +1,6 @@
-import { readdirSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
 import { fakeSpeech, wav } from "../../core/test/fake-speech.ts";
@@ -76,17 +77,25 @@ describe("making text speakable", () => {
 describe("dictation", () => {
   it("transcribes a clip in a thread and on the welcome page, records the seconds and model only, and writes no file", async () => {
     const s = await setup();
-    const before = readdirSync(tmpdir()).sort();
-    const r = await s.li.post<Transcription>(`${s.path}/transcribe?language=zh`, wav(3), { "content-type": "audio/wav" });
-    expect(r.status).toBe(200);
-    expect(r.body).toEqual({ text: "hello from the fake", seconds: 3, model: "speech/whisper-large-v3-turbo" });
-    expect(s.speech.heard.at(-1)).toMatchObject({ url: "/v1/audio/transcriptions", language: "zh", bytes: 96_044 });
-    const welcome = await s.li.post<Transcription>(`${s.u}/transcribe?pool=private`, wav(1), { "content-type": "audio/wav" });
-    expect(welcome.body.text).toBe("hello from the fake");
-    expect(readdirSync(tmpdir()).sort()).toEqual(before);
+    // A temp dir of its own, so other test files' temp files don't count.
+    const tmp = mkdtempSync(join(tmpdir(), "lyrica-speech-"));
+    const saved = process.env.TMPDIR;
+    process.env.TMPDIR = tmp;
+    try {
+      const r = await s.li.post<Transcription>(`${s.path}/transcribe?language=zh`, wav(3), { "content-type": "audio/wav" });
+      expect(r.status).toBe(200);
+      expect(r.body).toEqual({ text: "hello from the fake", seconds: 3, model: "speech/whisper-large-v3-turbo" });
+      expect(s.speech.heard.at(-1)).toMatchObject({ url: "/v1/audio/transcriptions", language: "zh", bytes: 96_044 });
+      const welcome = await s.li.post<Transcription>(`${s.u}/transcribe?pool=private`, wav(1), { "content-type": "audio/wav" });
+      expect(welcome.body.text).toBe("hello from the fake");
+      expect(readdirSync(tmp)).toEqual([]);
+    } finally {
+      if (saved === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = saved;
+      rmSync(tmp, { recursive: true, force: true });
+    }
 
     const calls = (await s.li.get<CallInfo[]>(`${s.u}/models/calls`)).body.filter((c) => c.task === "speech.transcribe");
-    expect(calls.map((c) => c.audioSeconds)).toEqual([1, 3]);
+    expect(calls.map((c) => c.audioSeconds).sort()).toEqual([1, 3]); // two calls in the same millisecond may come either way
     expect(JSON.stringify(calls)).not.toMatch(/hello from the fake/);
     expect(s.logs.join("\n")).not.toMatch(/hello from the fake/);
 
