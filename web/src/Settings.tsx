@@ -1,5 +1,5 @@
 // The model badge and its picker, and the thread settings drawer.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   del, get, patch, u, THREAD_TASKS,
   type AllowedPaths, type EndpointInfo, type Grant, type ModelRef, type PermissionMode, type MachineInfo,
@@ -82,12 +82,14 @@ function ModelPicker({ base, settings, task, onChange }: {
   );
 }
 
-export function SettingsDrawer({ ctx, base, summary, settings, machines, onSettings, onSummary, onClose, children = 0 }: {
+export function SettingsDrawer({ ctx, base, summary, settings, machines, onSettings, onSummary, onClose, children = 0, id = "thread-settings" }: {
   ctx: ShellContext; base: string; summary: ThreadSummary; settings: ThreadSettings;
   /** The user's machines; those of the thread's pool can be granted. */
   machines: MachineInfo[];
   /** Its child threads listed under it: forgetting asks whether they go too. */
   children?: number;
+  /** The element id the header button's aria-controls names; one per Thread tree, since two can share a page. */
+  id?: string;
   onSettings: (s: ThreadSettings) => void; onSummary: (s: ThreadSummary) => void; onClose: () => void;
 }) {
   const userId = ctx.user.id;
@@ -107,7 +109,7 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
   }, [onClose]);
 
   return (
-    <aside id="thread-settings" ref={ref} tabIndex={-1} className="drawer" aria-label="Thread settings">
+    <aside id={id} ref={ref} tabIndex={-1} className="drawer" aria-label="Thread settings">
       <div className="drawer-head">
         <h2>Thread settings</h2>
         <button type="button" onClick={onClose}>Close</button>
@@ -241,6 +243,7 @@ function Hosts({ hosts, overridden, onChange }: { hosts: string[]; overridden: b
 }
 
 function Folders({ grants, allowed, onChange }: { grants: Grant[]; allowed: string[]; onChange: (g: Grant[]) => void }) {
+  const listId = useId();
   const [draft, setDraft] = useState("");
   const set = (i: number, g: Grant | null) => onChange(grants.flatMap((x, j) => (j === i ? (g ? [g] : []) : [x])));
   return (
@@ -258,8 +261,8 @@ function Folders({ grants, allowed, onChange }: { grants: Grant[]; allowed: stri
       {!grants.length && <span className="muted small">No folders granted.</span>}
       {allowed.length > 0 ? (
         <form className="inline" onSubmit={(e) => { e.preventDefault(); if (draft) { onChange([...grants, { path: draft, writable: false }]); setDraft(""); } }}>
-          <input aria-label="Add a folder" list="allowed-paths" placeholder={allowed[0]} value={draft} onChange={(e) => setDraft(e.target.value)} />
-          <datalist id="allowed-paths">{allowed.map((p) => <option key={p} value={p} />)}</datalist>
+          <input aria-label="Add a folder" list={listId} placeholder={allowed[0]} value={draft} onChange={(e) => setDraft(e.target.value)} />
+          <datalist id={listId}>{allowed.map((p) => <option key={p} value={p} />)}</datalist>
           <button type="submit" disabled={!draft}>Add</button>
         </form>
       ) : <span className="muted small">An administrator hasn't allowed any folders for this pool.</span>}

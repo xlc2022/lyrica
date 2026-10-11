@@ -1,5 +1,5 @@
 // One thread: header with its badges, the conversation, and the composer.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { del, get, patch, post, put, threadPath, u, type MachineInfo, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { hasConsequences, PinnedBadge, RemovalConfirm, useUndo, type Rewinder } from "./Rewind.tsx";
@@ -28,6 +28,8 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   const granted = settings.data?.machines.flatMap((name) => { const m = machines.data?.find((x) => x.name === name); return m ? [{ name, limit: m.limit }] : []; }) ?? [];
   const t = useThread(userId, pool, threadId);
   const [drawer, setDrawer] = useState(!!drawerAtStart);
+  // Two Thread trees can share a page (the panel), so the drawer's id is this one's.
+  const drawerId = useId();
   const dropped = useRef(false);
   useEffect(() => { if (drawerAtStart && !drawer && !dropped.current) { dropped.current = true; dropDrawer?.(); } }, [drawer, drawerAtStart, dropDrawer]);
   const [sendError, setSendError] = useState("");
@@ -184,7 +186,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
           <div className="head-actions">
             {/* A project chat keeps its drawer (folders, network, local-only, the other task models); the page holds the project's own settings. */}
             {s?.project && <a className="link project-link" href={href({ page: "project", userId, pool, threadId })} aria-label="Project settings"><Icon name="project" /><span className="long">Project</span></a>}
-            <button type="button" className="sm" aria-label="Thread settings" aria-expanded={drawer} aria-controls="thread-settings" onClick={() => setDrawer(!drawer)}>
+            <button type="button" className="sm" aria-label="Thread settings" aria-expanded={drawer} aria-controls={drawerId} onClick={() => setDrawer(!drawer)}>
               <Icon name="gear" /><span className="long">Settings</span>
             </button>
           </div>
@@ -224,7 +226,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
         <SettingsDrawer
           ctx={ctx} base={base} summary={s} settings={settings.data} machines={machines.data ?? []} children={findThread(threads, pool, threadId)?.children.length ?? 0}
           onSettings={settings.set} onSummary={(x) => { summary.set(x); refreshThreads(); }}
-          onClose={() => setDrawer(false)}
+          onClose={() => setDrawer(false)} id={drawerId}
         />
       )}
       {drawer && <div className="scrim drawer-scrim" aria-hidden="true" onClick={() => setDrawer(false)} />}

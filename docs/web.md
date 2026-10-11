@@ -95,14 +95,16 @@ A thread's address may carry what the panel beside it shows:
   panel is `role="complementary"` named by its breadcrumb. Below 1180 px the
   same address shows the panel's page on its own.
 - **Project settings page** (`…/p/<pool>/<project>/general` or `/memory`),
-  sections at the left. **General**: Goal, the Paused switch, **New
+  sections at the left. **General**: Goal, the Paused and **Watching
+  threads** switches (`watchThreads`; the tooltip says what a look does), **New
   threads** (Model and Thinking the project's threads start with; "This
   chat's model" follows the project chat), **This chat** (Model, Mode,
   Group, then a **Thread settings** link that opens the project chat with
   its drawer showing, `…/t/<pool>/<thread>/settings`, for folders, machines,
   network, local-only and the other task models), and one Save, which
-  patches the thread (`goal`, `paused`, `threadsModel`, `threadsThinking`,
-  `group`) and, when they changed, its settings. **Memory**: the
+  patches the thread (`goal`, `paused`, `watchThreads` when it changed,
+  `threadsModel`, `threadsThinking`, `group`) and, when they changed, its
+  settings. **Memory**: the
   Instructions kept on the project page (2,000 characters, counted under
   the box), and a link to that page in the memory browser. Files and
   images come with the Files panel.
@@ -192,6 +194,13 @@ A thread's address may carry what the panel beside it shows:
 - Thinking, recalls, saved notes and tool calls are one-line markers that
   expand when tapped. An expanded tool call stays open when the turn ends
   and the stored copy replaces the live one.
+- In a project chat, a look at its threads (a message with `from.kind ===
+  "watching"`) is the marker **Checked the other threads**, with "· told 2"
+  (the count in mono) when her next turn messaged threads. It expands to the
+  threads looked at and, for each thread she told, the thread and what she
+  sent; those `threads message` calls fold into it instead of showing as
+  cards. It is never the user's bubble, and nothing shows when the setting
+  is off, since no look is sent.
 - A `delegate` call is a card for its subagents (the tool part's
   `threads`). Each expands to its work: the stored transcript, read-only,
   where each message says who sent it (Lyrica, the user by name, or the
