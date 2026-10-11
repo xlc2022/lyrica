@@ -469,6 +469,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   .tfacts .picker-anchor:has(> .badge) { flex: 1 1 0; min-width: min(100%, 120px); }
   .drawer { width: 100%; }
   .picker { position: fixed; top: 104px; left: 16px; right: 16px; width: auto; }
+  /* max-content keeps the section row at its height when a tall section would squeeze it (the scrolling row has no automatic minimum). */
   .body { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content 1fr; }
   .subnav { position: static; display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px var(--gutter); gap: 2px; scrollbar-width: none; mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
   .subnav a:last-child { margin-right: 24px; }
@@ -525,3 +526,37 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .who .read-aloud[data-reading="true"] .ic { animation: pulse 1.4s ease-in-out infinite; }
 /* The thread list's sections (Today, a group…), each a label and its rows. */
 .threads > li, .threads-in { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
+
+/* Machines (docs/ux.md section 6): rows in Settings, the drawer, the Add machine card, and the states' dots. */
+.machines { gap: 0; }
+.list > li.machine-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 4px 8px 4px 0; }
+.machine-open { display: grid; grid-template-columns: minmax(0, 1fr); justify-content: start; justify-items: start; gap: 2px; text-align: left; white-space: normal; border: 0; background: transparent; padding: 6px 14px; border-radius: 10px; min-width: 0; width: 100%; min-height: var(--tap); font-weight: 400; }
+@media (hover: hover) { .machine-open:hover:not(:disabled) { background: var(--bg); border: 0; } }
+.machine-name { font-size: 14px; font-weight: 600; }
+.machine-facts, .fact { font: 13px var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); overflow-wrap: anywhere; }
+.state-word { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; }
+.row-menu { position: relative; display: inline-flex; }
+.row-menu .menu { left: auto; right: 0; width: max-content; min-width: 160px; }
+.mono, input.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.mode-list { display: grid; gap: 2px; }
+.mode-list .mode-item { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px; text-align: left; border: 0; background: transparent; border-radius: 8px; padding: 6px 10px; font-size: 14px; font-weight: 400; justify-content: start; }
+.mode-list .mode-item:hover:not(:disabled) { background: var(--bg); border: 0; }
+.mode-list .mode-item[aria-checked="true"] { background: var(--tool); }
+form.drawer-body { flex: 1; }
+.drawer-foot { margin-top: auto; }
+/* The Add machine card: the kind segment, then steps as sections with eyebrows. */
+.steps { display: grid; gap: 22px; justify-items: start; }
+.steps > * { width: 100%; max-width: 72ch; }
+.steps > .seg { width: auto; }
+.step { display: grid; gap: 10px; }
+.setup { margin: 0; background: var(--tool); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+.fingerprint { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+/* On a machine, the permission card and the marker name it first. */
+.place { font: 600 0.78rem var(--mono); color: var(--fg); margin-right: 6px; }
+.permission .place { font-size: inherit; margin-right: 0; }
+.permission .warning { font-weight: 500; }
+@media (max-width: 760px) {
+  .list > li.machine-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .machine-row .state-word { grid-column: 1; justify-self: start; padding-left: 14px; padding-bottom: 6px; }
+  .machine-row .row-menu { grid-column: 2; grid-row: 1 / span 2; }
+}

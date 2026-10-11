@@ -12,14 +12,16 @@ export type Route =
 
 export function parse(hash: string): Route {
   const [, ...parts] = hash.replace(/^#/, "").split("/").map(decodeURIComponent);
-  const [first, userId, section, a, b] = parts;
+  const [first, userId, section, a, b, ...more] = parts;
   if (first === "login") return { page: "login" };
   if (first !== "u" || !userId) return { page: "home" };
   const pool = a === "general" || a === "private" ? a : undefined;
   if (section === "t" && pool && b) return { page: "thread", userId, pool, threadId: b };
   if (section === "memory") return { page: "memory", userId, pool, id: pool ? b : undefined };
-  if (section === "settings") return { page: "settings", userId, ...(a ? { section: a } : {}) };
-  if (section === "admin") return { page: "admin", userId, ...(a ? { section: a } : {}) };
+  // A section may have pages of its own under it (settings/machines/new): the rest of the path rides along.
+  const rest = [a, b, ...more].filter((x): x is string => x !== undefined).join("/");
+  if (section === "settings") return { page: "settings", userId, ...(rest ? { section: rest } : {}) };
+  if (section === "admin") return { page: "admin", userId, ...(rest ? { section: rest } : {}) };
   // The control panel became Settings and Administration.
   if (section === "panel") return { page: "settings", userId };
   return { page: "home", userId };
@@ -32,8 +34,8 @@ export function href(r: Route): string {
     case "login": return "#/login";
     case "thread": return `#/u/${e(r.userId)}/t/${r.pool}/${e(r.threadId)}`;
     case "memory": return `#/u/${e(r.userId)}/memory` + (r.pool && r.id ? `/${r.pool}/${e(r.id)}` : "");
-    case "settings": return `#/u/${e(r.userId)}/settings` + (r.section ? `/${e(r.section)}` : "");
-    case "admin": return `#/u/${e(r.userId)}/admin` + (r.section ? `/${e(r.section)}` : "");
+    case "settings": return `#/u/${e(r.userId)}/settings` + (r.section ? `/${r.section.split("/").map(e).join("/")}` : "");
+    case "admin": return `#/u/${e(r.userId)}/admin` + (r.section ? `/${r.section.split("/").map(e).join("/")}` : "");
   }
 }
 

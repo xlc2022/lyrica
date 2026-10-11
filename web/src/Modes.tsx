@@ -2,7 +2,7 @@
 // and the tool switches at the left; the thread's mode (Shift+Tab cycles) at
 // the right, before Send.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import type { GoAhead, PermissionMode, ThreadSettings, ThreadSettingsChange } from "./api.ts";
+import type { GoAhead, MachineLimit, PermissionMode, ThreadSettings, ThreadSettingsChange } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { Switch, useDismiss } from "./ui.tsx";
 
@@ -29,18 +29,32 @@ function useMenu() {
   return { open, setOpen, anchor };
 }
 
-/** One mode in a menu: a check on the current one, the name with its line, and its number key. */
-function ModeItem({ mode, checked, n, onClick }: { mode: PermissionMode; checked?: boolean; n?: number; onClick: () => void }) {
+/** Strictest first: a mode above a machine's limit asks there. */
+const RANK: Record<PermissionMode, number> = { plan: 0, ask: 1, acceptEdits: 2, auto: 3 };
+/** A thread's granted machine, for the mode menu's "Asks on" line. */
+export interface GrantedMachine { name: string; limit: MachineLimit }
+/** The machines whose limit is below `mode`, where that mode asks instead. */
+export const asksOn = (mode: PermissionMode, machines: GrantedMachine[]) => machines.filter((m) => RANK[m.limit] < RANK[mode]).map((m) => m.name);
+
+/**
+ * One mode in a menu or list: a check on the current one, the name with its
+ * line, and its number key. Above a granted machine's limit the line reads
+ * "Asks on <machine>".
+ */
+export function ModeItem({ mode, checked, n, role, machines = [], onClick }: {
+  mode: PermissionMode; checked?: boolean; n?: number; role?: "menuitem" | "menuitemradio" | "radio"; machines?: GrantedMachine[]; onClick: () => void;
+}) {
+  const asks = asksOn(mode, machines);
   return (
-    <button type="button" className="mode-item" role={checked === undefined ? "menuitem" : "menuitemradio"} aria-checked={checked} onClick={onClick}>
+    <button type="button" className="mode-item" role={role ?? (checked === undefined ? "menuitem" : "menuitemradio")} aria-checked={checked} onClick={onClick}>
       <span className="mk" aria-hidden="true">{checked ? <Icon name="check" /> : null}</span>
-      <span><span>{MODES[mode].label}</span><small>{MODES[mode].description}</small></span>
+      <span><span>{MODES[mode].label}</span><small>{asks.length ? `Asks on ${asks.join(", ")}` : MODES[mode].description}</small></span>
       {n !== undefined && <kbd>{n}</kbd>}
     </button>
   );
 }
 
-export function ModePicker({ mode, onChange }: { mode: PermissionMode; onChange: (m: PermissionMode) => void }) {
+export function ModePicker({ mode, machines, onChange }: { mode: PermissionMode; machines?: GrantedMachine[]; onChange: (m: PermissionMode) => void }) {
   const { open, setOpen, anchor } = useMenu();
   const pick = (m: PermissionMode) => { setOpen(false); if (m !== mode) onChange(m); };
   // While the menu is open, its number keys pick a mode.
@@ -61,7 +75,7 @@ export function ModePicker({ mode, onChange }: { mode: PermissionMode; onChange:
       </button>
       {open && (
         <div className="menu up end" role="menu" aria-label="Mode">
-          {MODE_ORDER.map((m, i) => <ModeItem key={m} mode={m} checked={m === mode} n={i + 1} onClick={() => pick(m)} />)}
+          {MODE_ORDER.map((m, i) => <ModeItem key={m} mode={m} checked={m === mode} n={i + 1} machines={machines} onClick={() => pick(m)} />)}
         </div>
       )}
     </div>
