@@ -341,6 +341,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       if (c.default !== undefined) s().models.setDefaultProfile(user.id, c.default);
       if (c.thinking !== undefined) s().models.setDefaultThinking(user.id, c.thinking);
       if (c.voiceCloud !== undefined) s().models.setDefaultVoiceCloud(user.id, c.voiceCloud);
+      if (c.readAloudLive !== undefined) s().models.setDefaultReadAloudLive(user.id, c.readAloudLive);
       return profiles(d, user.id);
     }),
     route("PUT", `${u}/profiles/:profile/:task`, async (r) => {
@@ -1214,6 +1215,7 @@ function profiles(d: Lyricad, userId: string): Api.Profiles {
   return {
     local: m.profile(userId, "local"), cloud: m.profile(userId, "cloud"), custom: m.profile(userId, "custom"),
     default: m.defaultProfile(userId), thinking: m.defaultThinking(userId), voiceCloud: m.defaultVoiceCloud(userId),
+    readAloudLive: m.defaultReadAloudLive(userId),
   };
 }
 

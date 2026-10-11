@@ -151,6 +151,7 @@ function ProfileSection({ ctx }: { ctx: ShellContext }) {
 
 function AppearanceSection({ ctx }: { ctx: ShellContext }) {
   const { me } = ctx;
+  const profiles = useLoad(() => get<Profiles>(u(me.user.id, "profiles")), [me.user.id]);
   const [run, , error] = useAction();
   return (
     <Section title="Appearance">
@@ -161,7 +162,14 @@ function AppearanceSection({ ctx }: { ctx: ShellContext }) {
           <option value="dark">Dark</option>
         </select>
       </label>
-      <ErrorText error={error} />
+      {profiles.data && (
+        <>
+          <div className="eyebrow">Speech</div>
+          <Switch label="Read aloud while she writes" hint="Offers Read aloud on her reply while she is still writing it."
+            checked={profiles.data.readAloudLive} onChange={(readAloudLive) => run(async () => profiles.set(await patch<Profiles>(u(me.user.id, "profiles"), { readAloudLive })))} />
+        </>
+      )}
+      <ErrorText error={profiles.error || error} />
     </Section>
   );
 }

@@ -98,7 +98,7 @@ Rules:
   Share with, Move to group, Sampling, Serving, Placement, Memory,
   Throughput, Template, Pinned, Excluded, Servers, Keep free, Not this
   model, Group, Add…, Reset, Dictation, Dictate, Read aloud, Stop reading,
-  Voice to cloud, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, Thread settings, New threads, This chat, Threads, Watching threads, Checked the other threads, Message received from, Show more, Show less, Open as a page, Close panel,
+  Voice to cloud, Read aloud while she writes, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, Thread settings, New threads, This chat, Threads, Watching threads, Checked the other threads, Message received from, Show more, Show less, Open as a page, Close panel,
   Start a thread, Suggested threads, Start all, Resolve, Reopen, Resolved,
   Waiting on you, Goal, Instructions, Paused, All threads, Only projects,
   No projects, Machines, Add machine, Mode limit, Replace key, Use anyway,
@@ -146,7 +146,8 @@ Rules:
 | Anything in the conversation waiting for an answer (a plan, a permission, a question from a subagent) | a **card** in the conversation, with its actions at its foot and one primary action at most. When the latest such card has scrolled out of view, a thin bar in the accent colour across the top of the chat names it and jumps to it; it is the one bar the chat may show |
 | A subagent | a **card** in the conversation that expands to its work and takes messages |
 | Dictating a message | the mic in the message box's row; the box's placeholder while listening |
-| Hearing a message read aloud | her message's actions |
+| Hearing a message read aloud | her message's actions; with **Read aloud while she writes** on, also on the reply she is still writing |
+| Read aloud while she writes | a switch under Speech in Settings, Appearance |
 | Voice to cloud | the thread's Privacy and network switches; its default beside the user's other defaults for new threads (Settings, Network) |
 | A speech model's voice and speed | its Settings drawer in Models |
 | A machine (an SSH account, a Proxmox token) | a row in the **Machines** section of Settings: name; a facts line in mono with the address, the pool, "SSH · key" or "Proxmox API · token", and the limit as a phrase ("up to Accept edits"); at most one state (Online green, Unreachable amber with the duration in mono after the word, Key changed red, Off network amber; none if never probed). The row opens the **drawer** (address, root, pool, **Mode limit** as the message box's three-item mode list); Replace key and Remove behind ⋯, Remove with its one sentence; a private machine that is Off network also has **Use anyway** there, which opens the Add machine dialog with the consequence, **Use anyway** primary and Cancel, and the row stays Off network |

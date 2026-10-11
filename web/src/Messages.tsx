@@ -47,6 +47,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   const env: Env = {
     userId: ctx.user.id, you: ctx.user.displayName, pool, base, threadId, subagent, openTools, toggleTool,
     permissions: live.permissions, ticks: live.subagents, show, rewinder, parentTitle, speech, onError: onError ?? (() => {}), project,
+    lastHers: messages.findLast((m) => m.role === "assistant")?.n,
   };
   // A project's threads whose anchor message is gone sit under the last message instead.
   const anchored = project ? project.overview.threads.filter((t) => t.anchor !== undefined && shownMessagesHave(messages, hideFrom, t.anchor)) : [];
@@ -100,6 +101,8 @@ interface Env {
   /** A delegate card shows or hides a subagent's work. */
   show: (threadId: string, on: boolean) => void;
   rewinder?: Rewinder;
+  /** Her last stored message, which takes over a reading begun while she wrote it. */
+  lastHers?: number;
   speech?: Speech;
   onError: (message: string) => void;
   project?: ProjectEnv;
@@ -246,7 +249,12 @@ function Parts({ parts, env, model, streaming, n, folded }: { parts: MessagePart
       <div className="who">
         {who}{model && <span className="muted"> · {model}</span>}
         {env.rewinder && n !== undefined && env.rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}
-        {env.rewinder && n !== undefined && <ReadAloudButton url={`${env.base}/messages/${n}/speech`} speech={env.speech} onError={env.onError} />}
+        {env.rewinder && n !== undefined && (
+          <ReadAloudButton url={`${env.base}/messages/${n}/speech`} also={n === env.lastHers ? `${env.base}/messages/live/speech` : undefined} speech={env.speech} onError={env.onError} />
+        )}
+        {env.rewinder && n === undefined && streaming && env.speech?.readAloudLive && (
+          <ReadAloudButton url={`${env.base}/messages/live/speech`} speech={env.speech} onError={env.onError} />
+        )}
         {env.rewinder && n !== undefined && <MessageMenu n={n} role="assistant" rewinder={env.rewinder} />}
       </div>
       {out}
