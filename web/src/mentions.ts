@@ -48,7 +48,7 @@ export function useThreadMentions(text: string, userId: string, pool: Pool): str
       if (PENDING.has(key) || (known && Date.now() - known.at < KEEP_MS)) return;
       PENDING.add(key);
       get<ThreadSummary>(threadPath(userId, f.pool, f.id))
-        .then((t) => TITLES.set(key, { title: t.title || "Untitled thread", at: Date.now() }))
+        .then((t) => TITLES.set(key, { title: t.title || "an untitled thread", at: Date.now() }))
         .catch((err) => { if (err instanceof HttpError && err.status === 404) TITLES.set(key, { title: null, at: Date.now() }); })
         .finally(() => { PENDING.delete(key); if (live) setTick((n) => n + 1); });
     });
