@@ -114,6 +114,8 @@ export class ChildThreads implements ThreadsHost {
       const noMachines = !!req.readOnly || !!req.folders || req.internet === false;
       ws.inheritSettings(parent.threadId, child.id, parent.pool, { grants, ...(req.internet === false ? { internet: false } : {}), ...(noMachines ? { machines: [] } : {}) });
       this.o.models.inheritContext(this.o.models.callContext(userId, parent.pool, parent.threadId), child.id);
+      // A cloud Dictation pick is consent for the thread it was made in: a new thread starts without it.
+      this.o.models.setThreadModel(userId, parent.pool, child.id, "speech.transcribe");
       const chosen = project ? this.o.project?.(userId, parent.pool, parent.threadId) : undefined;
       if (chosen?.model) this.o.models.setThreadModel(userId, parent.pool, child.id, "chat", chosen.model);
       if (chosen?.thinking) this.o.models.setThinking(userId, child.id, chosen.thinking);

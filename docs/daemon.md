@@ -390,7 +390,8 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
   the mic's and Read aloud's state. Dictation and Read aloud are thread
   tasks (`THREAD_TASKS`), chosen with `ThreadSettingsChange.models` like the
   others; a thread's own Dictation pick may be a cloud model, and without
-  one Dictation uses the local profile's.
+  one Dictation uses the local profile's. A thread Lyrica starts from
+  another doesn't inherit its Dictation pick.
   `Profiles.readAloudLive` (changed with `ProfilesChange.readAloudLive`, off
   by default) is Read aloud while agent writes; `Speech.readAloudLive`
   carries it so the web knows whether to offer `messages/live/speech`.

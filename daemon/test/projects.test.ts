@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
-import type { MessagePage, Profiles, ProjectOverview, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { EndpointInfo, MessagePage, Profiles, ProjectOverview, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 // Projects: a project chat whose child threads are the project's threads.
@@ -94,10 +94,15 @@ describe("projects", () => {
   it("start new threads with the project's Fallback, which each thread can change", async () => {
     const { li, u, path, script, say, threadPath } = await setup();
     expect((await li.patch<ThreadSummary>(path, { threadsFallback: false })).body.projectSettings).toMatchObject({ threadsFallback: false });
+    // The project chat's own Dictation pick was consent for that thread only: a new thread starts without it.
+    const stt = (await li.get<EndpointInfo[]>(`${u}/endpoints`)).body[0]!.models[0]!.id;
+    expect((await li.patch(`${u}/offerings/${stt}`, { transcribe: true })).status).toBe(200);
+    expect((await li.patch<ThreadSettings>(`${path}/settings`, { models: { "speech.transcribe": { offeringId: stt } } })).body.models["speech.transcribe"]).toMatchObject({ source: "thread" });
     script("chat").push(start(["DNS", "dns: move DNS to the router"]), { text: "Started." });
     const { events } = await say("move DNS");
     const dns = ends(events).find((e) => e.result.startsWith("Started"))!.threads![0]!.id;
     expect((await li.get<ThreadSettings>(`${threadPath(dns)}/settings`)).body).toMatchObject({ fallback: false, fallbackOn: false });
+    expect((await li.get<ThreadSettings>(`${threadPath(dns)}/settings`)).body.models["speech.transcribe"].source).not.toBe("thread");
     expect((await li.patch<ThreadSettings>(`${threadPath(dns)}/settings`, { fallback: null })).body).toMatchObject({ fallback: null, fallbackOn: true });
     expect((await li.patch(`${threadPath(dns)}/settings`, { fallback: "off" })).status).toBe(400);
     // Cleared, new threads follow the project chat's again.
