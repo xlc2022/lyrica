@@ -45,7 +45,10 @@ Administration. No new model-facing tool, no new process of Lyrica's
    (Crockford's base32, no 0/O or 1/I, from `crypto.randomBytes`), 40
    bits, logged once ("Set up Lyrica at http://127.0.0.1:7340 with the
    code XXXX-XXXX") and written to `<runtime>/setup-code` (0600). `lyrica
-   admin setup-code` prints it. A wrong code is `403` and counts on the
+   admin setup-code` prints it, with the Direct certificate's fingerprint:
+   on NixOS nothing prints them at `nixos-rebuild`, so that command is the
+   operator's step there, and the module wraps `lyrica` with `LYRICA_HOME`
+   set so it runs as is. A wrong code is `403` and counts on the
    unlock limiter (`limited(d, ["unlock:<ip>"])` in `daemon/src/routes.ts`,
    the same counter); the file is deleted when setup completes.
 4. **Where the setup page is reachable: the Direct mode.** Without
@@ -158,8 +161,12 @@ Administration. No new model-facing tool, no new process of Lyrica's
    `lyricad.service`, and closing lines that print the setup addresses,
    the certificate fingerprint and the code instead of the `admin init`
    command. NixOS module: `services.lyrica.tailscale` (default on) declares
-   the same unit from `pkgs.tailscale`, `tailscale` on lyricad's PATH, and
-   `ConditionPathExists` removed. `nix/check-host.sh`: one more line,
+   the same unit from `pkgs.tailscale`, `tailscale` added to the `PATH`
+   list the module sets for lyricad, `ConditionPathExists` removed, and a
+   `services.lyrica.openFirewall` option, on by default, that opens 7340
+   (NixOS blocks incoming ports by default, so without it the setup page
+   and the Direct mode are unreachable from the LAN; Debian has no default
+   firewall). `nix/check-host.sh`: one more line,
    `tailscale --socket … status` answers as `lyrica`.
 
 ## Out of scope
