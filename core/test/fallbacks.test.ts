@@ -154,7 +154,7 @@ describe("the custom profile", () => {
     s.models.setProfile(s.li.id, "custom", "chat", [s.router2.ref, s.blackwell.ref]);
     expect(s.models.resolveModel("chat", s.models.callContext(s.li.id, "general", "web/g"))).toEqual(s.router2.ref);
     for (const call of [s.models.callContext(s.li.id, "private", "web/p"), (s.models.setLocalOnly(s.li.id, "general", "web/lo", true), s.models.callContext(s.li.id, "general", "web/lo"))]) {
-      expect(() => s.models.resolve("chat", call)).toThrow(/no model is set for chat in the local profile/);
+      expect(() => s.models.resolve("chat", call)).toThrow(/no model is set for Main conversation in the local profile/);
       // Even handed a custom profile directly, the context is local.
       expect(() => s.models.resolve("chat", { ...call, profile: "custom" })).toThrow(/local profile/);
     }

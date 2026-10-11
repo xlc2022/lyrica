@@ -115,7 +115,7 @@ describe("speech fallbacks", () => {
     spare.fail(502);
     s.models.setProfile(s.li.id, "cloud", "speech.speak", [tts]);
     await expect(s.models.speak(general, "Hello again.")).rejects.toThrow(Offline);
-    await expect(s.models.speak(general, "Hello again.")).rejects.toThrow(/^no model for speech.speak can be reached now/);
+    await expect(s.models.speak(general, "Hello again.")).rejects.toThrow(/^no model for Read aloud can be reached now/);
     expect(s.speech.server.heard).toEqual([]);
   });
 

@@ -325,7 +325,7 @@ describe("errors and logs", () => {
     await stream.ready;
     const sent = await li.post<{ error: string }>(`${path}/messages`, { text: "hello?" });
     expect(sent.status).toBe(400);
-    expect(sent.body.error).toMatch(/no model is set for chat/i);
+    expect(sent.body.error).toMatch(/no model is set for Main conversation/i);
     await stream.until(is("error"));
     stream.close();
   });
