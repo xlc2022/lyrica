@@ -859,7 +859,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - modes: `GET`/`PUT /api/u/:userId/mode` (`ModeDefault`), the mode new
     threads start in; `ThreadSettings` and `ThreadSettingsChange` gain
     `webSearch` and `images`, and their mode and switches are the effective
-    ones;
+    ones, and so are its `grants` and `machines`;
   - models (paths under `/api/u/:userId/`):
     - **Endpoints:** `GET`/`POST endpoints`; `PATCH`/`DELETE endpoints/:id`;
       `POST endpoints/:id/discover`, `…/reset-ids`, `…/merge` (→ `EndpointInfo`),
@@ -1051,7 +1051,9 @@ settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overr
 //   path, verify(fingerprint)) }; `proxmoxHttps` is Node's TLS; WorkspaceOptions.proxmoxTransport and .self replace them.
 settings(userId).defaultMode() / setDefaultMode(mode)  // the mode new threads start in (default auto)
 settings(userId).startThread(threadId, pool)           // fixes the default mode on a new thread
-settings(userId).effective(threadId): ThreadWorkspace  // strictest mode and switches of it and its ancestors
+settings(userId).effective(threadId): ThreadWorkspace  // strictest mode and switches of it and its ancestors; only the folders
+//   (read-only where any ancestor's is) and machines every ancestor grants. Sandbox, Files panel, grantsFor and folders() use it.
+//   setThread on a parent writes the narrowing into its descendants' rows; checkInherited no longer refuses a dropped folder.
 allowedPaths.allow(actor, userId, pool, path) / disallow(...) / list(userId)
 saveUpload(t, name, bytes): Promise<string>  // cleans the name (cleanUploadName), never overwrites
 mountHome(userId) / unmountHome(userId)   // gocryptfs; mount when the user's key becomes available

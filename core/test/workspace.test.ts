@@ -143,8 +143,46 @@ describe("grants", () => {
     // Narrowing the parent later narrows what the child may keep.
     settings.setThread("parent", "general", { grants: [{ path: music, writable: false }] });
     expect(() => settings.setThread("child", "general", { grants: [{ path: music, writable: true }] })).toThrow(/read-only in the parent/);
-    expect(() => settings.checkInherited("child", "general")).toThrow(/read-only in the parent/);
     expect(settings.folderThread("child2")).toBe("parent");
+  });
+
+  it("narrow a running child's folders at once when its parent's are narrowed", async () => {
+    const { host, settings } = await setup();
+    const [shared, music] = [join(host, "shared"), join(host, "shared", "music")];
+    mkdirSync(join(host, "shared", "films"));
+    const films = join(host, "shared", "films");
+    settings.setThread("parent", "general", { grants: [{ path: music, writable: true }, { path: films, writable: true }] });
+    settings.inheritSettings("parent", "child", "general");
+    settings.inheritSettings("child", "grandchild", "general", { grants: [{ path: music, writable: true }] });
+    expect(settings.effective("grandchild").grants).toEqual([{ path: music, writable: true }]);
+
+    // Read-only in the parent: read-only in the child and its own subagent, and it stays so.
+    settings.setThread("parent", "general", { grants: [{ path: music, writable: false }, { path: films, writable: true }] });
+    expect(settings.effective("child").grants).toEqual([{ path: music, writable: false }, { path: films, writable: true }]);
+    expect(settings.effective("grandchild").grants).toEqual([{ path: music, writable: false }]);
+    settings.setThread("parent", "general", { grants: [{ path: music, writable: true }, { path: films, writable: true }] });
+    expect(settings.effective("grandchild").grants).toEqual([{ path: music, writable: false }]);
+    // Taken off the parent: gone from both, and nothing is refused for it.
+    settings.setThread("parent", "general", { grants: [{ path: films, writable: true }] });
+    expect(settings.effective("child").grants).toEqual([{ path: films, writable: true }]);
+    expect(settings.effective("grandchild").grants).toEqual([]);
+    expect(() => settings.checkInherited("grandchild", "general")).not.toThrow();
+    // Another change to the child carries the narrowing with it, rather than being refused.
+    expect(settings.setThread("child", "general", { mode: "ask" }).grants).toEqual([{ path: films, writable: true }]);
+    // A parent gaining a folder, or getting back one it lost, gives the child nothing new.
+    settings.setThread("parent", "general", { grants: [{ path: shared, writable: true }] });
+    expect(settings.effective("child").grants).toEqual([{ path: films, writable: true }]);
+    expect(settings.effective("grandchild").grants).toEqual([]);
+  });
+
+  it("keep a child's own narrower folders inside a wider parent's", async () => {
+    const { host, settings } = await setup();
+    const [shared, music] = [join(host, "shared"), join(host, "shared", "music")];
+    settings.setThread("parent", "general", { grants: [{ path: shared, writable: true }] });
+    settings.inheritSettings("parent", "child", "general", { grants: [{ path: music, writable: false }] });
+    expect(settings.effective("child").grants).toEqual([{ path: music, writable: false }]);
+    settings.setThread("parent", "general", { grants: [{ path: shared, writable: false }] });
+    expect(settings.effective("child").grants).toEqual([{ path: music, writable: false }]);
   });
 });
 

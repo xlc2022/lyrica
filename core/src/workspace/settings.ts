@@ -153,6 +153,14 @@ export const within = (a: string, b: string): boolean => a === b || a.startsWith
 export const overlaps = (a: string, b: string): boolean => within(a, b) || within(b, a);
 
 /** An absolute, normalized path with no trailing slash. */
+/** `grants` as far as `outer` allows: each inside one of its folders, and read-only where that one is. */
+export function narrowGrants(grants: Grant[], outer: Grant[]): Grant[] {
+  return grants.flatMap((g) => {
+    const from = outer.find((o) => within(g.path, o.path));
+    return from ? [{ path: g.path, writable: g.writable && from.writable }] : [];
+  });
+}
+
 export function cleanPath(path: string): string {
   if (!isAbsolute(path) || path.includes("\0")) throw new Error(`not an absolute path: ${path}`);
   const clean = posix.normalize(path);
@@ -243,9 +251,10 @@ export class WorkspaceSettings {
 
   /**
    * What applies to the thread now: its own settings, with the strictest mode,
-   * each switch off where any ancestor's is, and only the machines every
-   * ancestor grants. A parent changed after its subagent or child thread
-   * started narrows it at once.
+   * each switch off where any ancestor's is, only the folders and machines
+   * every ancestor grants, and a folder read-only where any ancestor has it
+   * read-only. A parent changed after its subagent or child thread started
+   * narrows it at once; a parent gaining something gives the child nothing.
    */
   effective(threadId: string): ThreadWorkspace {
     const t = this.thread(threadId);
@@ -254,6 +263,7 @@ export class WorkspaceSettings {
       t.mode = stricterMode(t.mode, up.mode);
       t.webSearch &&= up.webSearch;
       t.images &&= up.images;
+      t.grants = narrowGrants(t.grants, up.grants);
       t.machines = t.machines.filter((m) => up.machines.includes(m));
       id = up.parent;
     }
@@ -266,6 +276,12 @@ export class WorkspaceSettings {
    */
   setThread(threadId: string, pool: Pool, change: Partial<Omit<ThreadWorkspace, "parent">>): ThreadWorkspace {
     const next = { ...this.thread(threadId), ...change };
+    // Folders and machines a parent has since taken away go with any other change, rather than refusing it.
+    if (next.parent && (change.grants === undefined || change.machines === undefined)) {
+      const now = this.effective(threadId);
+      if (change.grants === undefined) next.grants = now.grants;
+      if (change.machines === undefined) next.machines = now.machines;
+    }
     next.grants = next.grants.map((g) => ({ path: cleanPath(g.path), writable: g.writable }));
     next.hosts = next.hosts?.map((h) => parseHost(h).entry) ?? null;
     const allowed = this.allowed();
@@ -283,7 +299,25 @@ export class WorkspaceSettings {
     }
     if (next.parent) this.checkNarrower(next.parent, pool, next);
     this.write(threadId, next);
+    this.narrowChildren(threadId);
     return next;
+  }
+
+  /**
+   * Writes what `effective` already applies into the rows of the thread's
+   * subagents and child threads, so a folder or machine taken away stays
+   * away: the parent getting it back later gives them nothing.
+   */
+  private narrowChildren(threadId: string, depth = 0): void {
+    if (depth > 100) return;
+    const rows = this.db.prepare("SELECT thread_id FROM thread_workspaces WHERE parent = ?").all(threadId) as { thread_id: string }[];
+    for (const { thread_id: id } of rows) {
+      const own = this.thread(id);
+      const now = this.effective(id);
+      const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+      if (!same(own.grants, now.grants) || !same(own.machines, now.machines)) this.write(id, { ...own, grants: now.grants, machines: now.machines });
+      this.narrowChildren(id, depth + 1);
+    }
   }
 
   private write(threadId: string, t: ThreadWorkspace): void {
@@ -331,8 +365,8 @@ export class WorkspaceSettings {
     const t = this.thread(threadId);
     if (t.parent) {
       this.checkInherited(t.parent, pool);
-      // Machines a parent dropped later are dropped from the child by `effective`, not refused.
-      this.checkNarrower(t.parent, pool, { ...t, machines: [] });
+      // Folders and machines a parent dropped later are dropped from the child by `effective`, not refused.
+      this.checkNarrower(t.parent, pool, { ...t, grants: [], machines: [] });
     }
   }
 

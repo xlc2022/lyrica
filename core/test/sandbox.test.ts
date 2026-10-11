@@ -354,6 +354,46 @@ describe.skipIf(!homeRunnable)("the home workspace", () => {
   });
 });
 
+describe.skipIf(!homeRunnable)("a running child thread's folders", () => {
+  it("narrow with its parent's: its Files panel and its next sandbox run lose what the parent lost", async () => {
+    const keyring = await freshKeyring();
+    const users = new Users(keyring);
+    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    await users.authenticate("li", "pw");
+    const workspace = new Workspace(keyring, users, { excludePorts: [] });
+    for (const d of ["rw", "ro"]) workspace.allowedPaths.allow(li, li.id, "general", p(d));
+    const settings = workspace.settings(li.id);
+    const child = { userId: li.id, pool: "general" as const, threadId: "child" };
+    settings.setThread("parent", "general", { grants: [{ path: p("rw"), writable: true }, { path: p("ro"), writable: false }] });
+    settings.inheritSettings("parent", "child", "general");
+    const file = p("rw", "child-thread.txt");
+    writeFileSync(file, "kept\n");
+    await workspace.mountHome(li.id);
+    try {
+      const roots = () => workspace.files(child).roots().map((r) => `${r.path} ${r.writable ? "rw" : "ro"}`);
+      expect(roots()).toEqual(["/workspace rw", `${p("rw")} rw`, `${p("ro")} ro`]);
+      expect((await sh(`cat ${file}`, workspace.targetFor(child) as Sandbox)).out).toContain("kept");
+
+      // Read-only in the parent: the child's next run can read the folder and not write it.
+      settings.setThread("parent", "general", { grants: [{ path: p("rw"), writable: false }, { path: p("ro"), writable: false }] });
+      expect(roots()).toContain(`${p("rw")} ro`);
+      const wrote = await sh(`echo three >> ${file}`, workspace.targetFor(child) as Sandbox);
+      expect(wrote.code).not.toBe(0);
+      expect(readFileSync(file, "utf8")).toBe("kept\n");
+
+      // Taken off the parent: gone from the child's panel and its next run, refused as outside its folders.
+      settings.setThread("parent", "general", { grants: [{ path: p("ro"), writable: false }] });
+      expect(roots()).toEqual(["/workspace rw", `${p("ro")} ro`]);
+      const ops = workspace.targetFor(child).ops();
+      await expect(ops.read.readFile(file)).rejects.toThrow(/outside this thread's folders/);
+      expect((await sh(`cat ${file}`, workspace.targetFor(child) as Sandbox)).out).not.toContain("kept");
+      expect(workspace.folders(child)).toEqual([p("ro")]);
+    } finally {
+      await workspace.unmountHome(li.id);
+    }
+  });
+});
+
 // The host's own LAN address stands in for a machine on the network: the
 // sandbox has an address of its own, so the host is just another peer to it.
 const lan = Object.values(networkInterfaces()).flat().find((i) => i?.family === "IPv4" && !i.internal)?.address;

@@ -815,9 +815,9 @@ export class Delegation {
     return this.o.models.callContext(run.parent.user.id, run.parent.pool, run.parent.threadId);
   }
 
-  /** The parent's grants, narrowed to `folders` if given. */
+  /** The parent's grants as they apply now, narrowed to `folders` if given. */
   private grants(run: Run, narrowing: Narrowing): Grant[] {
-    const from = this.o.workspace!.settings(run.parent.user.id).thread(run.parent.threadId).grants;
+    const from = this.o.workspace!.settings(run.parent.user.id).effective(run.parent.threadId).grants;
     if (!narrowing.folders) return from;
     return narrowing.folders.map((path) => {
       const outer = from.find((g) => path === g.path || path.startsWith(`${g.path}/`));
