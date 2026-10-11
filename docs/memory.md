@@ -257,7 +257,7 @@ found by where it came from:
 - **Project notes** are the notes citing the project chat or one of its
   threads (`projectNotes`). Nothing stores them apart.
 - **The project page** is `p:project-<id>` (`pageForProject`). The user's
-  instructions on it are User introduced, so sleep keeps them word for word.
+  instructions are a separate part of it that only they change.
   Sleep keeps the rest: what she knows about the project, citing its notes
   and threads ([sleep.md](sleep.md#projects)). A project's notes stay notes
   once they are on the page.
@@ -266,8 +266,11 @@ found by where it came from:
 - Forgetting a project with its threads also forgets its page and the notes
   that came only from it.
 
-The project's context section is not built yet
-([briefs/projects.md](briefs/projects.md)).
+Every thread of a project gets a **project section** in its context
+(`projectSection`, about 2,000 tokens): the goal, the project page, the
+project's notes since the last sleep, and in the project chat its threads
+with their state. A private project's section comes only from the private
+pool.
 
 ## Threads that aren't logged
 

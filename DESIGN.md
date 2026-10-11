@@ -880,7 +880,8 @@ local-only threads use local speech models only.
 A **project** is one place for a stream of related work, as in Claude's
 Projects: a running conversation, the **project chat**, where Li drops tasks,
 updates and questions as they come, and **threads** that Lyrica starts for
-the work and keeps track of. Agreed 2026-10-10; not built yet. The briefs are
+the work and keeps track of. Agreed 2026-10-10. The back end is built; the
+web part and sleep's project page are not yet. The briefs are
 `docs/briefs/projects.md`, `projects-web.md` and `projects-sleep.md`.
 
 - **A project is a top-level thread marked as a project**, and its threads

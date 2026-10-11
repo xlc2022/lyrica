@@ -112,4 +112,16 @@ local-only, "Do not log" and workspace settings are inherited as today.
 
 ## Handoff notes
 
-(The thread fills this in if it stops before it's done.)
+Done (2026-10-11): everything in scope except the items below.
+
+Left for a follow-up, each small:
+- A failed turn doesn't yet count as **waiting**; only an approval and
+  `needsYou` do.
+- The project section and `ThreadSummary` don't carry the first line of a
+  thread's last update, or `outputs` (the files it made).
+- A read-only project thread can still write in the shared project folder,
+  as a read-only child thread can today (threads work in their parent's
+  folder through `folderThread`).
+- There is no Notifications API yet, so there is no `waiting` type; the
+  `needsYou` summary field and the `waiting` notice carry it until Web UI 2
+  builds Notifications.

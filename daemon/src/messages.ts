@@ -83,7 +83,7 @@ export interface SubagentThread { userName(userId: string): string }
  * calls; recall joins the reply it fed. In a subagent's thread, each "user"
  * message says whether Lyrica or a user sent it.
  */
-export function toMessages(threadId: string, pool: Pool, entries: { n: number; data: unknown; createdAt: string; pinned?: boolean }[], runThreads?: RunThreads, subagent?: SubagentThread, opts: { child?: boolean } = {}): Message[] {
+export function toMessages(threadId: string, pool: Pool, entries: { n: number; data: unknown; createdAt: string; pinned?: boolean }[], runThreads?: RunThreads, subagent?: SubagentThread, opts: { parent?: string } = {}): Message[] {
   const out: Message[] = [];
   const calls = new Map<string, { part: Extract<MessagePart, { type: "tool" }>; owner: Message }>();
   let pendingRecall: string[] = [];
@@ -119,10 +119,11 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
     const base = { id: `e:${threadId}#${n}`, n, createdAt, ...(pinned ? { pinned: true } : {}) };
     if (m.role === "user") {
       if (textOf(m.content) === OPENING) continue; // a thread started from a sleep item: she speaks first
-      // Only a child thread has a parent's messages; lyricad refuses the mark on anything else.
-      const parent = opts.child ? FROM_PARENT.exec(textOf(m.content)) : null;
-      if (parent) {
-        out.push({ ...base, role: "user", from: { kind: "parent", threadId: parent[1]! }, parts: [{ type: "text", text: textOf(m.content).slice(parent[0].length) }] });
+      // Only a child thread has a parent's messages, or in a project a sibling's; lyricad refuses the mark on anything else.
+      const marked = opts.parent ? FROM_PARENT.exec(textOf(m.content)) : null;
+      if (marked) {
+        const from = marked[1] === opts.parent ? { kind: "parent" as const, threadId: marked[1]! } : { kind: "thread" as const, threadId: marked[1]! };
+        out.push({ ...base, role: "user", from, parts: [{ type: "text", text: textOf(m.content).slice(marked[0].length) }] });
         continue;
       }
       out.push({ ...base, role: "user", ...(subagent ? { from: { kind: "lyrica" as const } } : {}), parts: [{ type: "text", text: textOf(m.content) }] });

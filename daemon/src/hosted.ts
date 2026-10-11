@@ -31,6 +31,8 @@ export interface HostOptions {
   threads?: ThreadsHost;
   /** How often a thread whose message waits for a model asks the machines again. Default HEALTH_MS. */
   offlineRetryMs?: number;
+  /** A project chat's threads, one line each, for her project section. */
+  projectThreads?: (userId: string, pool: Pool, project: string) => string | undefined;
   /** A turn started or ended in a thread. */
   onTurn?: (userId: string, pool: Pool, threadId: string, working: boolean) => void;
 }
@@ -112,6 +114,11 @@ export class ThreadHost {
     const t = this.threads.get(`${userId}/${pool}/${threadId}`);
     t?.reload();
     t?.publish({ type: "settings" });
+  }
+
+  /** A project's thread changed state: the project chat's open views update its card. Creates no record. */
+  changed(userId: string, pool: Pool, parent: string, threadId: string): void {
+    this.threads.get(`${userId}/${pool}/${parent}`)?.publish({ type: "child", threadId });
   }
 
   /** Working (a turn runs), waiting (for an approval) or idle, without creating a record. */
@@ -246,12 +253,14 @@ export class HostedThread {
   /**
    * Starts a turn, or queues the message while one runs. Throws, with the
    * reason, if the session can't open. Only a child's parent sends with
-   * `fromParent`: anyone else's text can't carry the line that marks it.
+   * `fromParent`, and in a project another of its threads with `fromThread`;
+   * anyone else's text can't carry the line that marks it.
    */
-  async send(text: string, opts: { fromParent?: string } = {}): Promise<{ queued: boolean }> {
+  async send(text: string, opts: { fromParent?: string; fromThread?: string } = {}): Promise<{ queued: boolean }> {
     if (!text.trim()) throw new Error("the message is empty");
     if (FROM_PARENT.test(text)) throw new MarkedText("a message can't start with a [From t:…] line");
-    return this.post(opts.fromParent ? `${fromParent(opts.fromParent)}${text}` : text);
+    const from = opts.fromParent ?? opts.fromThread;
+    return this.post(from ? `${fromParent(from)}${text}` : text);
   }
 
   /** The text as it goes to the session, its marks already checked. */
@@ -536,7 +545,10 @@ export class HostedThread {
       const { session, runtime, prepare, dispose } = await openThreadSession({
         thread: ctx, models, cwd: this.o.cwd,
         extensions: [
-          createLyricaExtension(ctx, { persona: () => persona.read(), profile: () => users.get(this.userId)!.profile, folders: tools.folders, meter }),
+          createLyricaExtension(ctx, {
+            persona: () => persona.read(), profile: () => users.get(this.userId)!.profile, folders: tools.folders, meter,
+            ...(thread.project ? { projectThreads: () => this.o.projectThreads?.(this.userId, this.pool, this.threadId) } : {}),
+          }),
           createWorkspaceExtension({
             ...tools,
             approve: (r) => this.approve(r),

@@ -74,6 +74,8 @@ export interface Body {
   summary?: string;
   folders?: string[];
   about?: string[];
+  /** A page's instructions, kept apart from its text. Only the user changes them. */
+  instructions?: string;
 }
 
 export interface Item extends Body {
@@ -181,6 +183,7 @@ const json = <T>(s: string): T => JSON.parse(s) as T;
 const entryId = (thread: string, n: number) => `e:${thread}#${n}`;
 const TOOL_TEXT_LIMIT = 2000;
 const GOAL_LIMIT = 2000;
+const INSTRUCTIONS_LIMIT = 8000;
 
 /** The slug of a project's page: thread IDs hold '/', which slugs don't. */
 export const projectSlug = (projectId: string) => `project-${projectId.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
@@ -266,6 +269,14 @@ export class PoolReader {
     return { entries: rows.slice(0, opts.limit).reverse().map((r) => ({ n: r.n, data: json(r.data), createdAt: r.created_at, pinned: r.pinned === 1 })), hasMore };
   }
 
+  /** The number the thread's next entry will get: past every entry, and past what a rewind removed. */
+  nextEntryN(threadId: string): number {
+    const row = this.db.prepare("SELECT max(coalesce((SELECT max(n) FROM entries WHERE thread = @id), 0), cut) + 1 AS n FROM threads WHERE id = @id")
+      .get({ id: threadId }) as { n: number } | undefined;
+    if (!row) throw new Error(`no such thread: ${threadId}`);
+    return row.n;
+  }
+
   /** Pi entry IDs already stored for the thread. */
   storedPiIds(threadId: string): Set<string> {
     return new Set((this.db.prepare("SELECT pi_id FROM entries WHERE thread = ?").all(threadId) as { pi_id: string }[]).map((r) => r.pi_id));
@@ -309,7 +320,7 @@ export class PoolReader {
   get(id: string, opts: { raw?: boolean } = {}): Item | undefined {
     const item = this.load(id);
     if (!item || opts.raw) return item;
-    return { ...item, text: this.render(item.text), title: item.title && this.render(item.title), summary: item.summary && this.render(item.summary) };
+    return { ...item, text: this.render(item.text), title: item.title && this.render(item.title), summary: item.summary && this.render(item.summary), ...(item.instructions ? { instructions: this.render(item.instructions) } : {}) };
   }
 
   protected load(id: string): Item | undefined {
@@ -324,7 +335,7 @@ export class PoolReader {
       case "page": {
         const r = this.db.prepare("SELECT * FROM pages WHERE slug = ?").get(id.slice(2)) as PageRow | undefined;
         return r && {
-          id, kind: "page", text: r.text, title: r.title, summary: r.summary, folders: json(r.folders), origin: r.origin as Origin,
+          id, kind: "page", text: r.text, title: r.title, summary: r.summary, folders: json(r.folders), ...(r.instructions ? { instructions: r.instructions } : {}), origin: r.origin as Origin,
           author: r.author, archived: r.archived === 1, flagged: r.flagged === 1, createdAt: r.created_at, updatedAt: r.updated_at,
         };
       }
@@ -399,7 +410,9 @@ export class PoolReader {
       .map((r) => {
         const pinned = (this.db.prepare("SELECT n FROM entries WHERE thread = ? AND pinned = 1 AND unlogged = 0 AND n BETWEEN ? AND ? ORDER BY n")
           .all(r.id, r.first, r.last) as { n: number }[]).map((p) => entryId(r.id, p.n));
-        const project = this.projectOf(r.id);
+        // An unlogged project gets no page, so its logged threads are consolidated as ordinary threads.
+        const chat = this.projectOf(r.id);
+        const project = chat && !this.getThread(chat)!.unlogged ? chat : undefined;
         return {
           id: r.id, ...(r.title ? { title: r.title } : {}), entries: r.entries, first: entryId(r.id, r.first), last: entryId(r.id, r.last),
           ...(pinned.length ? { pinned } : {}), ...(project ? { project } : {}),
@@ -550,6 +563,22 @@ export class PoolStore extends PoolReader {
     this.db.prepare("UPDATE threads SET goal = ? WHERE id = ?").run(goal.trim() ? cleanGoal(goal) : null, id);
   }
 
+  /**
+   * A project's instructions, kept on its page apart from what sleep writes.
+   * Only the user sets them; the page is made, empty, if it isn't there yet.
+   */
+  setProjectInstructions(id: string, instructions: string, author: Author): void {
+    const thread = this.mustThread(id);
+    if (!thread.project) throw new Error("only a project has instructions");
+    if (!author.startsWith("user:")) throw new Error("a project's instructions can only be changed by the user");
+    if (instructions.length > INSTRUCTIONS_LIMIT) throw new Error(`instructions have at most ${INSTRUCTIONS_LIMIT} characters`);
+    const page = `p:${projectSlug(id)}`;
+    this.tx(() => {
+      if (!this.load(page)) this.putPage({ slug: projectSlug(id), title: thread.title ?? "Project", summary: "", text: "" }, author);
+      this.edit(page, { instructions }, author);
+    });
+  }
+
   setTitle(id: string, title: string): void {
     this.mustThread(id);
     const clean = title.trim();
@@ -576,8 +605,7 @@ export class PoolStore extends PoolReader {
     const thread = this.mustThread(threadId);
     return this.tx(() => {
       // After a rewind, numbering goes on past what was removed: an entry ID always means one entry.
-      const n = (this.db.prepare("SELECT max(coalesce((SELECT max(n) FROM entries WHERE thread = @id), 0), cut) + 1 AS n FROM threads WHERE id = @id")
-        .get({ id: threadId }) as { n: number }).n;
+      const n = this.nextEntryN(threadId);
       this.db.prepare("INSERT INTO entries (thread, n, pi_id, role, data, text, unlogged, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
         .run(threadId, n, entry.piId, entry.role, JSON.stringify(entry.data), entry.text, thread.unlogged ? 1 : 0, at);
       const id = entryId(threadId, n);
@@ -736,7 +764,8 @@ export class PoolStore extends PoolReader {
   }
 
   /** A project's page, and the notes whose every source is in the project chat or its threads. */
-  private forgetProjectMemory(projectId: string, author: Author): void {
+  forgetProjectMemory(projectId: string, author: Author): void {
+    this.checkAuthor(author);
     const threads = this.projectThreads(projectId);
     const inProject = (dst: string) => threads.some((t) => dst === `t:${t}` || dst.startsWith(`e:${t}#`));
     this.tx(() => {
@@ -884,6 +913,9 @@ export class PoolStore extends PoolReader {
       throw new Error("a memory a user added can only be changed by the user");
     }
     const body = this.stored({ ...bodyOf(item), ...change });
+    if (item.kind === "page" && !author.startsWith("user:") && (body.instructions ?? "") !== (item.instructions ?? "")) {
+      throw new Error("a page's instructions can only be changed by the user");
+    }
     // A page a user wrote or edited keeps their words: sleep may only add around them.
     const theirs = item.kind === "page" && !author.startsWith("user:") ? this.userText(id) : undefined;
     if (theirs && !body.text.includes(theirs)) {
@@ -896,8 +928,8 @@ export class PoolStore extends PoolReader {
           this.db.prepare("UPDATE notes SET text = ?, about = ?, updated_at = ? WHERE id = ?").run(body.text, (body.about ?? []).join(", "), at, id);
           break;
         case "page":
-          this.db.prepare("UPDATE pages SET text = ?, title = ?, summary = ?, folders = ?, flagged = 0, updated_at = ? WHERE slug = ?")
-            .run(body.text, body.title, body.summary, JSON.stringify(body.folders ?? []), at, id.slice(2));
+          this.db.prepare("UPDATE pages SET text = ?, title = ?, summary = ?, folders = ?, instructions = ?, flagged = 0, updated_at = ? WHERE slug = ?")
+            .run(body.text, body.title, body.summary, JSON.stringify(body.folders ?? []), body.instructions || null, at, id.slice(2));
           break;
         case "journal":
           this.db.prepare("UPDATE journal SET text = ?, updated_at = ? WHERE id = ?").run(body.text, at, id);
@@ -947,10 +979,17 @@ export class PoolStore extends PoolReader {
 
   // Internals
 
-  /** The text of the latest version a user wrote, if any. */
+  /** The text of the latest version in which a user changed the text, if any. */
   private userText(id: string): string | undefined {
-    const row = this.db.prepare("SELECT body FROM revisions WHERE item = ? AND author LIKE 'user:%' ORDER BY id DESC LIMIT 1").get(id) as { body: string } | undefined;
-    return row ? json<Body>(row.body).text.trim() : undefined;
+    const revs = this.db.prepare("SELECT body, author FROM revisions WHERE item = ? ORDER BY id").all(id) as { body: string; author: string }[];
+    let theirs: string | undefined;
+    let before: string | undefined;
+    for (const r of revs) {
+      const text = json<Body>(r.body).text.trim();
+      if (r.author.startsWith("user:") && text !== before) theirs = text;
+      before = text;
+    }
+    return theirs;
   }
 
   private newSleepId(prefix: "s" | "i", table: "sleep_runs" | "sleep_items"): string {
@@ -1000,7 +1039,7 @@ export class PoolStore extends PoolReader {
   private stored(body: Body): Body {
     const s = (t: string | undefined) => (t === undefined ? undefined : toStored(t, this.c.owner));
     citationsIn(body.text, this.pool); // general refuses to cite private
-    return { ...body, text: s(body.text)!, title: s(body.title), summary: s(body.summary) };
+    return { ...body, text: s(body.text)!, title: s(body.title), summary: s(body.summary), ...(body.instructions ? { instructions: s(body.instructions.trim()) } : { instructions: undefined }) };
   }
 
   /** Merges old segments so deleted text doesn't linger in the index. */
@@ -1042,7 +1081,7 @@ const originOf = (author: Author): Origin => (author.startsWith("user:") ? "user
 
 function bodyOf(item: Item): Body {
   const body: Body = { text: item.text };
-  if (item.kind === "page") Object.assign(body, { title: item.title, summary: item.summary, folders: item.folders });
+  if (item.kind === "page") Object.assign(body, { title: item.title, summary: item.summary, folders: item.folders, ...(item.instructions ? { instructions: item.instructions } : {}) });
   if (item.kind === "note") body.about = item.about;
   return body;
 }
@@ -1050,7 +1089,7 @@ function bodyOf(item: Item): Body {
 interface ThreadRow { id: string; interface: Interface; parent: string | null; subagent?: number; child?: number; project?: number; goal?: string | null; title: string | null; hidden: number; unlogged: number; created_at: string }
 interface EntryRow { thread: string; n: number; role: string; text: string; unlogged: number; orig: string | null; created_at: string }
 interface NoteRow { text: string; about: string; origin: string; author: string; superseded_by: string | null; archived: number; created_at: string; updated_at: string }
-interface PageRow { slug: string; title: string; summary: string; text: string; folders: string; origin: string; author: string; archived: number; flagged: number; created_at: string; updated_at: string }
+interface PageRow { slug: string; title: string; summary: string; text: string; folders: string; instructions?: string | null; origin: string; author: string; archived: number; flagged: number; created_at: string; updated_at: string }
 interface SleepRunRow { id: string; reason: string; status: string; skip_reason: string | null; until: string; phases: string; started_at: string; finished_at: string | null }
 interface ItemRow { id: string; run: string; kind: string; text: string; source: string | null; thread: string | null; dismissed: number; created_at: string }
 interface RevisionRow { id: number; item: string; body: string; author: string; created_at: string }

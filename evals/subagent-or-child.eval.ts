@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Memory, PersonaStore, type CallContext } from "@lyrica/core";
 import {
-  createDelegateExtension, createLyricaExtension, createThreadsExtension, Delegation, openThreadSession, type ThreadContext, type ThreadsHost,
+  createDelegateExtension, DEFAULT_THREADS_LIMITS, createLyricaExtension, createThreadsExtension, Delegation, openThreadSession, type ThreadContext, type ThreadsHost,
 } from "@lyrica/extension";
 import { afterAll, describe, expect, it } from "vitest";
 import type { ChatRequest } from "../core/test/fake-openai.ts";
@@ -37,7 +37,7 @@ const dirs: string[] = [];
 afterAll(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 const host: ThreadsHost = {
-  limits: { perRequest: 3, concurrency: 2 },
+  limits: DEFAULT_THREADS_LIMITS,
   start: async () => ({ id: "web/child", link: "#/child" }),
   message: async () => {},
   list: () => [],

@@ -293,6 +293,34 @@ parent mid-turn is stopped before the note, so the note is stored. Each
 update has its own ID, so two identical updates both show. Opening a
 child's messages sees its updates.
 
+**Projects.** A project chat's child threads are the project's threads
+(`daemon/src/projects.ts` and `children.ts`; the rule is in DESIGN.md,
+"Projects"):
+- `start` there records the thread's **anchor**, the first entry the
+  calling turn writes, and past the at-once limit **queues** the thread
+  instead of refusing: it starts, oldest first, when a turn ends and a slot
+  frees. The queued task is held in memory only; after a restart the project
+  chat is told the thread didn't start, and a message starts it.
+- A project's thread can **message another thread of the same project**
+  (`message({ id, text })`, at most 3 per turn), marked with the sender's
+  `[From t:<sender>]` line, and `list` shows it the project's other threads.
+  A thread outside the project is refused.
+- `message({ to: "parent", text, needsYou: true })` marks the thread
+  **waiting on the user**, and the update is a notice with status `waiting`.
+  The user's next message in the thread clears it.
+- **States:** working, waiting (an approval, or `needsYou`), queued, idle,
+  resolved. `resolve` (her tool; a thread resolves only itself, the project
+  chat any of its threads), the API, and the nightly tick for a thread idle
+  7 days resolve it; `reopen`, the API, any message in it, or a sibling's
+  message reopen it. `child_threads` keeps `anchor`, `resolved_at`,
+  `needs_you` and `queued` (no text).
+- `suggest({ threads })` proposes threads on a card and makes none; the
+  user starts them from the card, each once.
+- **Paused** (or hidden): working threads stop, nothing new starts, and
+  messages to its threads are refused.
+- A rewind of the project chat that removes a thread's anchor leaves the
+  thread, unanchored.
+
 **Forgetting** a parent forgets its child threads too when asked (the
 default in the UI); otherwise they are kept as threads of their own, detached
 from the parent's workspace, with the settings they have; a kept child is no

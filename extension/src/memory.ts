@@ -13,6 +13,8 @@ export interface MemorySections {
   folders?: string;
   /** The thread's pinned messages, oldest first. */
   pinned?: PinnedText[];
+  /** In a project chat or one of its threads: the goal, the project page, notes since the last sleep, and (in the chat) its threads. */
+  project?: string;
   recall?: string;
   /** The item from sleep this thread was started from: she opens with it. No other thread sees items. */
   opening?: string;
@@ -26,6 +28,8 @@ export interface MemoryContext {
   folders: string[];
   /** Memories this thread must not see (sleep's wake phase never sees dreams). */
   hide?: (id: string) => boolean;
+  /** In a project chat: its threads, one line each, from lyricad. */
+  projectThreads?: () => string | undefined;
 }
 
 export const UNLOGGED_NOTICE =
@@ -54,10 +58,33 @@ export async function memorySections(view: PoolView, prompt: string, ctx: Memory
     pageIndex: index || undefined,
     folders: folderPages.map((p) => `<page id="${p.id}" title="${p.title}">\n${p.text}\n</page>`).join("\n\n") || undefined,
     pinned: pinnedOf(own, ctx.threadId),
+    project: projectSection(own, ctx),
     recall: hits.map((h) => formatHit(h, ctx.user)).join("\n") || undefined,
     opening: item && `You're starting this conversation. Bring this up, in your own words: ${item.text}${item.source ? ` [${item.source}]` : ""}`,
     lastTalk: own.lastUserMessage(),
   };
+}
+
+/**
+ * The project section: the goal, the project page (the user's instructions
+ * first), the project's notes since the last sleep, and in the project chat
+ * its threads. Empty outside a project.
+ */
+export function projectSection(own: PoolView["own"], ctx: Pick<MemoryContext, "threadId" | "projectThreads">): string | undefined {
+  const id = own.projectOf(ctx.threadId);
+  if (!id) return undefined;
+  const chat = own.getThread(id)!;
+  const page = own.pageForProject(id);
+  const notes = own.projectNotes(id, own.watermark());
+  const threads = id === ctx.threadId ? ctx.projectThreads?.() : undefined;
+  return [
+    `Project [t:${id}]${chat.title ? ` "${chat.title}"` : ""}${id === ctx.threadId ? ": this is its project chat." : ": this thread is one of its threads."}`,
+    chat.goal && `Goal, in the person's words: ${chat.goal}`,
+    page?.instructions && `The person's instructions for this project:\n${page.instructions}`,
+    page && !page.archived && page.text.trim() && `<page id="${page.id}" title="${page.title}">\n${page.text}\n</page>`,
+    notes.length ? `Notes since the last sleep:\n${notes.map((n) => `- [${n.id}] ${n.text}`).join("\n")}` : undefined,
+    threads && `Its threads:\n${threads}`,
+  ].filter(Boolean).join("\n\n");
 }
 
 /** A thread's pinned messages, for the pinned section: only the user's messages and her replies. */
