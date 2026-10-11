@@ -105,7 +105,8 @@ UI. Skip the build and `lyricad` starts fine but serves no pages.
 What `install.sh` does, in order:
 
 1. Installs the packages her sandboxes need: bubblewrap, gocryptfs, FUSE,
-   passt, nftables, and openssl, curl, unzip and rsync for itself.
+   passt, nftables, ImageMagick (the Files panel's thumbnails are made in
+   the sandbox), and openssl, curl, unzip and rsync for itself.
 2. Creates the `lyrica` and `lyrica-caddy` system users. `lyricad` gets the
    `lyrica-caddy` group from its unit, so it alone can reach Caddy's admin
    socket.
@@ -480,7 +481,10 @@ the SSH ones, and `ssh remove <name>` takes one away.
 
   The script replaces `/opt/lyrica`, rebuilds Caddy only if a pin changed,
   and restarts `lyricad` (which logs everyone out). An install made before
-  2026-10-11 gets the `lyrica` command on this run. The home page header
+  2026-10-11 gets the `lyrica` command and ImageMagick on this run; until
+  then the Files panel shows images themselves instead of thumbnails. On
+  NixOS the next `nixos-rebuild switch` brings ImageMagick in with the
+  default `sandboxPackages`. The home page header
   ("Lyrica 0.1.0 · <build>") shows the git commit that is running.
 
 ## Checklist for the first install on Li's machine
