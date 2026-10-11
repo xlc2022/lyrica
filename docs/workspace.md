@@ -382,7 +382,8 @@ set again before every turn and when a plan is approved.
 `propose_plan({ plan })` shows the plan through the same path as an approval
 (`proposePlan`): the user picks Ask, Accept edits or Auto to go ahead in, or
 keeps planning. Approving switches the thread's mode (`setMode`), turns the
-tools back on, and she carries on with the plan in the same turn. A branch
+tools back on, and she carries on with the plan in the same turn. She is
+told which machines' limits still hold calls to a stricter mode. A branch
 of a thread in Plan mode stays in Plan mode, and she is told so. A subagent
 has no `propose_plan` and can't change its mode. Without `lyricad`, Pi's own
 UI asks; with no UI she keeps planning.

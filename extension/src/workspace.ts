@@ -159,7 +159,10 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
           }
           // Pi reads the active tools again before her next step, so she can carry on in this turn.
           gate(ctx);
-          return text(`Approved. The thread is in ${LABELS[mode]} mode now: go ahead with the plan.`);
+          // A machine's limit still applies, so she doesn't promise to run unattended where calls ask.
+          const held = (tools.machines?.() ?? []).filter((m) => stricterMode(mode, m.limit) !== mode)
+            .map((m) => ` Calls on ${m.name} still run in ${LABELS[m.limit]} mode, its limit.`).join("");
+          return text(`Approved. The thread is in ${LABELS[mode]} mode now: go ahead with the plan.${held}`);
         },
       });
     }
