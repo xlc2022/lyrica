@@ -37,7 +37,8 @@ Read these, in this order:
   every hypothetical.
 - **Migrations expand, then contract.** A schema change that removes or
   renames something waits one release, so the previous release can still
-  open the database and a rollback keeps its data. Each database migrates
+  open the database and a rollback keeps its data; the contract raises the
+  database's oldest-reader version. Each database migrates
   in one transaction, and a migration comes with a test from every
   released schema (DESIGN.md, Updates and self-editing).
 - **Deleting code is progress.**

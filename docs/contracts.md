@@ -880,8 +880,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   new turns; answers `{ busy: threadId[] }` until idle) and `POST /undrain`.
   While draining, `SendRequest` is `409` with `{ updating: true }` (`503`
   stays "locked"). Each
-  encrypted database records its schema version (`PRAGMA user_version`),
-  and opening one written by a newer schema throws `SchemaTooNew`. A
+  encrypted database records its schema version (`PRAGMA user_version`)
+  and the oldest schema that can read it (`meta.min_reader`: an expand
+  leaves it, a contract raises it); opening one whose `min_reader` is above
+  the release's schema throws `SchemaTooNew`. A
   database migrates in one transaction that checks `integrity_check` and
   `foreign_key_check` before committing; a failure leaves it unchanged and
   shows as a failed `/health` check. An

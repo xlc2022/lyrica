@@ -54,28 +54,35 @@ Li notices the first update that goes wrong).
    broken release can't break them; root or
    the service user, `lyricad` stopped). `lyrica-snapshot` copies the
    databases and settings into `/var/lib/lyrica-snapshots/<time>-<commit>/`
-   (not the users' homes) with the commit and schema versions beside them,
+   (not the users' homes) with the commit and schema versions beside them.
+   It runs only after a clean stop, checkpoints each database's WAL first
+   (`journal_mode = WAL`, core/src/db.ts) and refuses if a `-wal` is still
+   there, and refuses before copying when the disk lacks room for one more
+   snapshot,
    plus an update note when given one, and checks each copy against its
    source (size and SHA-256) before returning; keeps the last 3, plus the
-   newest snapshot taken before a schema change until a later schema
-   change has passed probation and for at least 30 days.
+   newest snapshot taken before a contract until a later contract has
+   passed probation and for at least 30 days.
    `lyrica-restore` first moves the databases it replaces into
    `/var/lib/lyrica-snapshots/<time>-set-aside/` (encrypted, kept like a
-   pre-schema snapshot), never deleting them, then copies the snapshot
-   back. The updater, the rollback and the NixOS module all use these two,
+   pre-contract snapshot, with their `-wal` and `-shm`), never deleting
+   them, then copies the snapshot back with no `-wal` or `-shm` beside it,
+   so SQLite never applies a stale log to it. The updater, the rollback and the NixOS module all use these two,
    so there is one snapshot tool.
 5. **`lyrica-rollback`** (`/usr/local/sbin`, also from `install.sh` only):
    point `current` at `previous` (or a named kept release), run `lyrica-restore`
-   on the pre-update snapshot only if the release being left wrote a newer
-   schema; start `lyricad`. Works with `lyricad` dead. Asks on a terminal before
+   on the pre-update snapshot only if the release it goes back to can't
+   read the databases (their oldest reader is above its schema); start `lyricad`. Works with `lyricad` dead. Asks on a terminal before
    restoring a snapshot, saying from when data will be lost. Refuses a
-   release with an older schema and no kept snapshot, naming the oldest
+   release that can't read the databases and has no kept snapshot it can, naming the oldest
    release it can go back to. An automatic rollback that restored a
    snapshot says from when in its Notification.
 6. **In `lyricad`:** `update.sock` with `/health`, `/drain`, `/undrain`;
-   `409 { updating: true }` on send while draining; a schema version in
-   every encrypted database and `SchemaTooNew` on opening a newer one, set
-   by the existing `migrate` functions, each database's migration in one
+   `409 { updating: true }` on send while draining; in every encrypted
+   database its schema version (`PRAGMA user_version`) and the oldest
+   schema that can read it (a `meta` row, `min_reader`; an expand leaves it,
+   a contract raises it), and `SchemaTooNew` when `min_reader` is above the
+   release's own schema, set by the existing `migrate` functions, each database's migration in one
    transaction that runs `integrity_check` and `foreign_key_check` before
    committing (the pool upgrades don't share one yet); the Administration `updates` API
    that lists state and writes requests into a directory only `lyricad`
@@ -88,9 +95,8 @@ Li notices the first update that goes wrong).
    previous profile generation instead of `previous`). A version change
    from `nixos-rebuild` instead goes through the module's `ExecStartPre`,
    which runs `lyrica-snapshot` when the package's commit differs from the
-   one beside the databases; a database with a newer schema than the
-   starting package is `SchemaTooNew`, and the module restores only on
-   that. The NixOS thread's first PR ships the flake and module; this
+   one beside the databases; a database the starting package can't read
+   is `SchemaTooNew`, and the module restores only on that. The NixOS thread's first PR ships the flake and module; this
    build adds the profile path.
 8. **Docs in the same PR:** docs/daemon.md "Deployment" (the layout, the
    update, probation, rollback, the console command); contracts entry moved
@@ -104,10 +110,11 @@ brief), model hosts, Proxmox snapshots.
 ## Tests
 
 What Li would notice: a release that fails its checks is rolled back and
-the old one serves again; a rollback across a schema change restores the
-snapshot and one without keeps the data; a drain with a turn running waits
+the old one serves again; a rollback across a contract restores the snapshot
+and one across only an expand keeps the data; a drain with a turn running waits
 and gives up cleanly; `SchemaTooNew` is thrown; a migration that fails halfway leaves the
-database as it was; a restore sets the replaced databases aside. A
+database as it was; a restore sets the replaced databases aside; a
+snapshot after a crash keeps every committed transaction. A
 migration test builds each database at every released schema version (by
 code, no real data), migrates it, and checks no rows were lost and the
 previous release's schema version still opens it after an expand. The scripts get a test
