@@ -340,7 +340,8 @@ A thread's address may carry what the panel beside it shows:
   drawer's Models section, under Titles, offering only models that
   transcribe or speak; "Profile (…)" names what applies without a pick
   (for Dictation, always the local profile's). A cloud pick for Dictation
-  is what sends that thread's voice to the cloud.
+  first asks in a dialog naming the model (Use cloud dictation or Cancel);
+  confirmed, it is what sends that thread's voice to the cloud.
   **Read aloud while agent writes** (`Profiles.readAloudLive`) is a switch
   under Speech in Settings, Appearance. The Model profiles
   section has Read aloud rows in every profile and a Dictation row in Local

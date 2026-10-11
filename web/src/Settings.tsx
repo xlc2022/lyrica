@@ -9,7 +9,7 @@ import { Icon } from "./icons.tsx";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { go } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
-import { Confirm, ErrorText, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { Confirm, ConfirmDialog, ErrorText, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 export const TASK_LABELS: Record<ThreadTask, string> = {
   chat: "Main conversation",
@@ -193,11 +193,17 @@ export function TaskSelect({ task, label, value, allowed, onChange }: {
   const current = value.source === "thread" ? refKey(value.model ?? (first && "offeringId" in first ? first : undefined)) : "";
   const fromProfile = value.source === "profile" && value.model
     ? `${value.kind ? `${value.kind} · ` : ""}${value.modelId ? `${value.modelId} · ${value.endpointName}` : named(value)}` : "nothing set";
-  return (
+  // Picking a cloud Dictation model is the consent to send this thread's voice to the cloud, so it asks first.
+  const [cloudPick, setCloudPick] = useState<{ id: string; name: string }>();
+  return (<>
     <label className="field">
       <span>{label ?? TASK_LABELS[task]}</span>
       <select value={current} onChange={(e) => {
-        onChange(e.target.value ? { offeringId: e.target.value } : null);
+        const id = e.target.value;
+        const ep = allowed.find((x) => x.models.some((m) => m.id === id));
+        const m = ep?.models.find((x) => x.id === id);
+        if (task === "speech.transcribe" && ep?.kind === "cloud" && m) setCloudPick({ id, name: `${m.modelId} on ${ep.name}` });
+        else onChange(id ? { offeringId: id } : null);
       }}>
         <option value="">Profile ({fromProfile})</option>
         {allowed.filter((ep) => ep.models.some((m) => fits(task, m))).map((ep) => (
@@ -212,7 +218,12 @@ export function TaskSelect({ task, label, value, allowed, onChange }: {
       </select>
       {value.problem && <small className="error">{value.problem}</small>}
     </label>
-  );
+    {cloudPick && (
+      <ConfirmDialog title="Send your voice to the cloud?" confirm="Use cloud dictation"
+        sentence={`In this thread, what you dictate goes to ${cloudPick.name}, a cloud service, to be written out.`}
+        onCancel={() => setCloudPick(undefined)} onConfirm={() => { onChange({ offeringId: cloudPick.id }); setCloudPick(undefined); }} />
+    )}
+  </>);
 }
 
 /** A network switch: the thread's override, or the default for its pool. */

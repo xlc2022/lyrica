@@ -127,7 +127,8 @@ export function ConfirmDialog({ title, sentence, confirm, danger, option, onConf
     return () => el?.close();
   }, []);
   return (
-    <dialog ref={ref} aria-labelledby="confirm-title" onCancel={(e) => { e.preventDefault(); onCancel(); }} onClick={(e) => { if (e.target === ref.current) onCancel(); }}>
+    <dialog ref={ref} aria-labelledby="confirm-title" onCancel={(e) => { e.preventDefault(); onCancel(); }} onClick={(e) => { if (e.target === ref.current) onCancel(); }}
+      onKeyDown={(e) => { if (e.key === "Escape") e.stopPropagation(); }}>
       <form method="dialog" className="dlg" onSubmit={(e) => { e.preventDefault(); onConfirm(!!option && ticked); }}>
         <h2 id="confirm-title">{title}</h2>
         <p>{sentence}</p>

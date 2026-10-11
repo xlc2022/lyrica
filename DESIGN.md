@@ -848,7 +848,8 @@ local-only threads use local speech models only.
   dictation to Google, which can't keep the local/cloud line.
 - **A user's voice is personal data.** Even in a general thread, audio
   goes to a cloud model only when the user picked that model in the
-  thread's **Dictation** select: the pick is the consent, for that thread
+  thread's **Dictation** select, after a short warning dialog: the
+  confirmed pick is the consent, for that thread
   (and its branches) only. Without one, Dictation uses the local profile's
   model, whatever the thread's profile (`voiceContext`). Li chose this over
   a separate Voice to cloud switch (2026-10-11). Her text read aloud is

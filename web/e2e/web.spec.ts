@@ -638,7 +638,16 @@ test("dictation goes in at the caret, Read aloud plays her reply, and a speech s
   const dictation = drawer.getByRole("combobox", { name: "Dictation" });
   await expect(dictation.locator("option")).toHaveText(["Profile (local · whisper · speech)", "cloud · whisper · openai", "local · whisper · speech"]);
   await expect(drawer.getByLabel("Voice to cloud")).toHaveCount(0);
+  // A cloud pick asks first: Cancel (or Escape) keeps the profile's, and the drawer stays open.
+  const ask = page.getByRole("dialog", { name: "Send your voice to the cloud?" });
   await dictation.selectOption({ label: "cloud · whisper · openai" });
+  await expect(ask).toContainText("whisper on openai");
+  await shot("dictation-cloud-confirm");
+  await page.keyboard.press("Escape");
+  await expect(ask).toHaveCount(0);
+  await expect(dictation.locator("option:checked")).toHaveText("Profile (local · whisper · speech)");
+  await dictation.selectOption({ label: "cloud · whisper · openai" });
+  await ask.getByRole("button", { name: "Use cloud dictation" }).click();
   await expect(dictation.locator("option:checked")).toHaveText("cloud · whisper · openai");
   await shot("dictation-select");
   await drawer.getByRole("button", { name: "Close" }).click();
