@@ -98,7 +98,7 @@ Rules:
   Share with, Move to group, Sampling, Serving, Placement, Memory,
   Throughput, Template, Pinned, Excluded, Servers, Keep free, Not this
   model, Group, Add…, Reset, Dictation, Dictate, Read aloud, Stop reading,
-  Voice to cloud, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, New threads, This chat, Threads,
+  Voice to cloud, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, Thread settings, New threads, This chat, Threads,
   Start a thread, Suggested threads, Start all, Resolve, Reopen, Resolved,
   Waiting on you, Goal, Instructions, Paused, All threads, Only projects,
   No projects, Machines, Add machine, Mode limit, Replace key, Use anyway,
@@ -159,7 +159,7 @@ Rules:
 | Threads she proposes | a **Suggested threads** card, like the plan card: a small secondary **Start** per row, one primary **Start all** at its foot; no Dismiss |
 | Starting a thread from a message | **Start a thread** in that message's menu, in a project chat only |
 | Resolving a project's thread | **Resolve** / **Reopen** in the thread menu and the card's ⋯; a resolved thread's message box is replaced by one **Reopen** link |
-| A project's settings, files and images | the **Project settings** page (Settings in the project chat's header), sections on the left: General (Goal; the **Paused** switch, tooltip "Running threads stop and queued ones wait."; an h3 **New threads** with Model and Thinking, tooltip "Threads Lyrica starts from this chat. Each one can be changed after it starts."; an h3 **This chat** with Model, Mode and Group; one Save), Memory (Instructions, a link to the project page), **Files and images** (a segmented control, Files and Images). Files in the header stays the quick view; the page manages the folder |
+| A project's settings, files and images | the **Project settings** page (**Project** in the project chat's header, before its Settings button, which keeps the thread drawer), sections on the left: General (Goal; the **Paused** switch, tooltip "Running threads stop and queued ones wait."; an h3 **New threads** with Model and Thinking, tooltip "Threads Lyrica starts from this chat. Each one can be changed after it starts."; an h3 **This chat** with Model, Mode and Group, then a **Thread settings** link that opens the chat with its drawer for folders, machines, network and local-only; one Save), Memory (Instructions with its count, a link to the project page), **Files and images** (a segmented control, Files and Images). Files in the header stays the quick view; the page manages the folder |
 | A project's usage | a fact in the project chat's facts line ("312k tokens"; on a phone, the first line of the Threads popover); the breakdown in Models → Recent calls, filtered to the project |
 
 The project rows are drawn in the app mockup's projects frame

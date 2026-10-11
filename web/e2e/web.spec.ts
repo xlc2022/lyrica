@@ -790,6 +790,9 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await sections.getByRole("link", { name: "General" }).click();
   await expect(page.getByLabel("Goal")).toHaveValue("Ship the garden plan.");
   await expect(page.getByRole("checkbox", { name: "Paused" })).toBeChecked();
+  // The chat keeps its own drawer for folders, network and local-only: the page links to it open.
+  await page.getByRole("link", { name: "Thread settings" }).click();
+  await expect(page.getByRole("complementary", { name: "Thread settings" })).toBeVisible();
   await noHorizontalScroll(page);
 });
 

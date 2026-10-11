@@ -13,7 +13,7 @@ import type { ShellContext } from "./Shell.tsx";
 import { ErrorText, useAction, useDismiss, useLoad } from "./ui.tsx";
 import { stopReading } from "./Voice.tsx";
 
-export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; pool: Pool; threadId: string; threads: ThreadSummary[] }) {
+export function Thread({ ctx, pool, threadId, threads, drawerAtStart }: { ctx: ShellContext; pool: Pool; threadId: string; threads: ThreadSummary[]; drawerAtStart?: boolean }) {
   const userId = ctx.user.id;
   const base = threadPath(userId, pool, threadId);
   const summary = useLoad(() => get<ThreadSummary>(base), [base]);
@@ -23,7 +23,7 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
   const machines = useLoad(() => get<MachineInfo[]>(u(userId, "machines")), [userId]);
   const granted = settings.data?.machines.flatMap((name) => { const m = machines.data?.find((x) => x.name === name); return m ? [{ name, limit: m.limit }] : []; }) ?? [];
   const t = useThread(userId, pool, threadId);
-  const [drawer, setDrawer] = useState(false);
+  const [drawer, setDrawer] = useState(!!drawerAtStart);
   const [sendError, setSendError] = useState("");
   const { refreshThreads } = ctx;
   // A project chat: its threads, reloaded when one changes state or a turn ends.
@@ -171,12 +171,10 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
             {settings.data?.machines.map((m) => <span key={m} className="badge folder" title="Machine">{m}</span>)}
           </div>
         </div>
-        {s?.project ? (
+        {!s?.subagent && (
           <div className="head-actions">
-            <a className="sm button" href={href({ page: "project", userId, pool, threadId })} aria-label="Project settings"><Icon name="gear" /><span className="long">Settings</span></a>
-          </div>
-        ) : !s?.subagent && (
-          <div className="head-actions">
+            {/* A project chat keeps its drawer (folders, network, local-only, the other task models); the page holds the project's own settings. */}
+            {s?.project && <a className="sm button" href={href({ page: "project", userId, pool, threadId })} aria-label="Project settings"><Icon name="project" /><span className="long">Project</span></a>}
             <button type="button" className="sm" aria-label="Thread settings" aria-expanded={drawer} aria-controls="thread-settings" onClick={() => setDrawer(!drawer)}>
               <Icon name="gear" /><span className="long">Settings</span>
             </button>

@@ -286,6 +286,9 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
         </label>
       </div>
 
+      {/* Folders, network, local-only, the other task models and speech stay in the chat's own drawer. */}
+      <p className="small"><a href={href({ page: "thread", userId: ctx.user.id, pool: summary.pool, threadId: summary.id, drawer: true })}>Thread settings</a> <span className="muted">· folders, machines, network and local-only, in the chat's drawer</span></p>
+
       <div className="row">
         <button type="submit" className="primary" disabled={busy}>Save</button>
         {saved && <span className="muted" role="status">Saved.</span>}
@@ -309,7 +312,8 @@ function MemorySection({ base, summary, pool, userId, onSummary }: { base: strin
       <h2 id="h-memory">Memory</h2>
       <label className="field">
         <span>Instructions</span>
-        <textarea rows={6} value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="How Lyrica should work in this project. Every thread of it reads this." />
+        <textarea rows={6} maxLength={2000} value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="How Lyrica should work in this project. Every thread of it reads this." />
+        <small className="muted num">{instructions.length} / 2000</small>
       </label>
       <p className="small"><a href={href({ page: "memory", userId, pool, id: page })}>Project page</a> <span className="muted">· what Lyrica knows about the project, rewritten while she sleeps</span></p>
       <div className="row">

@@ -70,19 +70,23 @@ for a project's settings, `…/memory`, `…/settings/<section>`, `…/admin/<se
   the count, opening a popover of the project's threads grouped Waiting on
   you, Working, Queued, Idle and Resolved (each a link, with its unseen
   count), and the project's tokens ("65 tokens", "312k tokens"; on a phone the tokens
-  are the popover's first line instead). Settings in
-  the header opens the project settings page instead of the drawer. The
+  are the popover's first line instead). The header has a **Project**
+  link to the project settings page before the Settings button, which
+  opens the thread's drawer as in any thread. The
   `child` stream event reloads the overview (`GET …/overview`) and the
   thread list, so cards and state words follow. A resolved project thread
   has a **Reopen** link where its message box was.
 - **Project settings page** (`…/p/<pool>/<project>/general` or `/memory`),
   sections at the left. **General**: Goal, the Paused switch, **New
   threads** (Model and Thinking the project's threads start with; "This
-  chat's model" follows the project chat), **This chat** (Main
-  conversation model, Mode, Group), and one Save, which patches the thread
-  (`goal`, `paused`, `threadsModel`, `threadsThinking`, `group`) and, when
-  they changed, its settings. **Memory**: the Instructions kept on the
-  project page, and a link to that page in the memory browser. Files and
+  chat's model" follows the project chat), **This chat** (Model, Mode,
+  Group, then a **Thread settings** link that opens the project chat with
+  its drawer showing, `…/t/<pool>/<thread>/settings`, for folders, machines,
+  network, local-only and the other task models), and one Save, which
+  patches the thread (`goal`, `paused`, `threadsModel`, `threadsThinking`,
+  `group`) and, when they changed, its settings. **Memory**: the
+  Instructions kept on the project page (2,000 characters, counted under
+  the box), and a link to that page in the memory browser. Files and
   images come with the Files panel.
 - **Thread settings drawer:** a model per task (each option says cloud or local first), local-only, the internet and
   this machine's services switches (each following the user's default until

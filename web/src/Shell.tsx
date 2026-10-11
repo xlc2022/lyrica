@@ -57,7 +57,7 @@ export function Shell({ user, users, route, build, onAuthChange }: {
       {route.page === "thread" && hidden(me.data.display, route.pool) ? (
         <HiddenPool ctx={ctx} pool={route.pool} />
       ) : route.page === "thread" ? (
-        <Thread key={`${route.pool}/${route.threadId}`} ctx={ctx} pool={route.pool} threadId={route.threadId} threads={threads.data ?? []} />
+        <Thread key={`${route.pool}/${route.threadId}`} ctx={ctx} pool={route.pool} threadId={route.threadId} threads={threads.data ?? []} drawerAtStart={route.drawer} />
       ) : route.page === "project" && hidden(me.data.display, route.pool) ? (
         <HiddenPool ctx={ctx} pool={route.pool} />
       ) : route.page === "project" ? (
