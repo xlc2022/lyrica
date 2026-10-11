@@ -552,6 +552,8 @@ system with the module on. Only x86_64-linux.
   `daemon/deploy/*.service` (same hardening, `LoadCredentialEncrypted`, the
   same deploy check), `ip_nonlocal_bind`, and `/etc/lyrica/caddy.json`.
   lyricad waits for `self.db` (`ConditionPathExists`), as install.sh does.
+  `lyrica` on the system path is the same wrapper as install.sh's, so
+  `lyrica admin init` works as root.
   It refuses to build with `security.allowUserNamespaces` off.
 - **PATH.** lyricad's starts with `/run/wrappers/bin`, so `fusermount3` is
   the setuid wrapper (`programs.fuse`), then gocryptfs, OpenSSL, systemd
