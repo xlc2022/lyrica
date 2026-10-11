@@ -6,6 +6,10 @@ on:
 # The jobs run on Li's own runner (docs/ci.md), so their token can only read.
 permissions:
   contents: read
+# One runner: a newer push to the same branch replaces the run waiting for it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   check:
     runs-on: lyrica-ci
