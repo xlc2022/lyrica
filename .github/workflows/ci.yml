@@ -57,6 +57,13 @@ jobs:
       - name: Install Nix
         run: |
           if [ ! -x /nix/var/nix/profiles/default/bin/nix ]; then
+            # A cancelled install leaves these, and the installer then refuses to run.
+            left=$(find /etc -maxdepth 2 -name '*.backup-before-nix' 2>/dev/null)
+            if [ -n "$left" ]; then
+              echo "$left"
+              echo "::error::An earlier Nix install on this runner stopped partway. Undo it with the Nix manual's multi-user uninstall steps (restore the files above, remove /nix and /etc/nix, the nix-daemon units and the nixbld users), then re-run this job."
+              exit 1
+            fi
             curl -fsSL -o "$RUNNER_TEMP/nix-install" https://releases.nixos.org/nix/nix-2.34.6/install
             echo "bf6d12da4aeaae38ab509dc736df648597bcdee051046ea76d3d53d5b18fa54a  $RUNNER_TEMP/nix-install" | sha256sum -c -
             sh "$RUNNER_TEMP/nix-install" --daemon --yes
