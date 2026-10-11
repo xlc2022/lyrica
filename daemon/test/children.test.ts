@@ -1,6 +1,7 @@
 import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pickThread } from "@lyrica/extension";
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
 import type { EndpointInfo, MachineProbe, MessagePage, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
@@ -60,6 +61,15 @@ async function until<T>(fn: () => Promise<T>, ok: (t: T) => boolean, ms = 8000):
   }
 }
 
+describe("naming a thread", () => {
+  it("finds it by ID in any form, or by its current title", () => {
+    const rows = [{ id: "web/aa11", title: "Homelab" }, { id: "web/bb22", title: "DNS" }, { id: "web/cc33", title: "dns" }, { id: "web/dd44" }];
+    expect(["web/aa11", "t:web/aa11", "[t:web/aa11]", "homelab", " Homelab "].map((r) => pickThread(r, rows))).toEqual(Array(5).fill("web/aa11"));
+    expect(() => pickThread("DNS", rows)).toThrow(/more than one thread is called "DNS": \[t:web\/bb22\], \[t:web\/cc33\]/);
+    expect(pickThread("web/zz99", rows)).toBe("web/zz99");
+  });
+});
+
 describe("child threads", () => {
   it("start one that works in the background, nests under its parent, and posts updates back", async () => {
     const { li, parent, child, thread, stream, say, list, childPath, messages, path, logs } = await setup();
@@ -71,7 +81,7 @@ describe("child threads", () => {
     // The tool returns at once, while the child still works.
     const events = await say("keep going on the NAS migration in its own thread");
     const end = toolEnd(events);
-    expect(end).toMatchObject({ name: "threads", isError: false, result: expect.stringContaining("Started child thread t:") });
+    expect(end).toMatchObject({ name: "threads", isError: false, result: expect.stringContaining("Started child thread [t:") });
     const id = end.threads![0]!.id;
     const nested = (await list()).find((t) => t.id === thread.id)!.children;
     expect(nested).toEqual([expect.objectContaining({ id, child: true, title: "NAS migration", status: "working", unseen: 0 })]);
@@ -270,7 +280,7 @@ describe("child threads", () => {
     await li.post(`${childPath(one)}/messages`, { text: "start one of your own" });
     await kstream.until((e) => e.type === "tool_end");
     kstream.close();
-    expect(kstream.events.find((e) => e.event.type === "tool_end")!.event).toMatchObject({ isError: false, result: expect.stringContaining("Started child thread t:") });
+    expect(kstream.events.find((e) => e.event.type === "tool_end")!.event).toMatchObject({ isError: false, result: expect.stringContaining("Started child thread [t:") });
 
     // With it: they go too.
     parent.push(start("Three", "c"), { text: "ok" });

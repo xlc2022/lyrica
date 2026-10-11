@@ -42,12 +42,30 @@ const Params = Type.Object({
   folders: Type.Optional(Type.Array(Type.String(), { description: "For start: only these of this thread's folders." })),
   readOnly: Type.Optional(Type.Boolean({ description: "For start: it may read the folders but not change them." })),
   internet: Type.Optional(Type.Literal(false, { description: "For start: false cuts it off from the internet." })),
-  id: Type.Optional(Type.String({ description: "For message: the child thread's ID." })),
+  id: Type.Optional(Type.String({ description: "For message: the child thread, by its ID ([t:…]) or its current title." })),
   to: Type.Optional(Type.Literal("parent", { description: "For message from a child thread: to its parent." })),
   text: Type.Optional(Type.String({ description: "For message: what to say." })),
   summary: Type.Optional(Type.String({ description: "For compact: what the next stretch needs: what you're doing, decisions, open questions, paths and names." })),
 });
 type Params = Static<typeof Params>;
+
+/** How she mentions a thread, in every thread: by ID, which the person sees as its current title. */
+export const MENTION_GUIDELINE = "Mention a thread as [t:<id>] and a message as [e:<id>#<n>]: the person sees the thread's current title, linked, so don't write the title beside it. A person may name a thread by its title; use its ID when you mention it.";
+
+/**
+ * A thread named by its ID (bare, `t:…` or `[t:…]`) or its current title,
+ * among `rows`. A title matches without regard to case; one that matches
+ * more than one thread is refused, listing them.
+ */
+export function pickThread(ref: string, rows: { id: string; title?: string }[]): string {
+  const bare = ref.trim().replace(/^\[(.*)\]$/, "$1").replace(/^t:/, "");
+  if (rows.some((r) => r.id === bare)) return bare;
+  const named = rows.filter((r) => r.title?.trim().toLowerCase() === ref.trim().toLowerCase());
+  if (named.length === 1) return named[0]!.id;
+  if (named.length > 1) throw new Error(`more than one thread is called ${JSON.stringify(ref.trim())}: ${named.map((r) => `[t:${r.id}]`).join(", ")}; use its ID`);
+  // Not one of these: the host says whether it exists at all.
+  return bare;
+}
 
 const text = (t: string, details?: unknown) => ({ content: [{ type: "text" as const, text: t }], details });
 
@@ -72,7 +90,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
       const o = event.systemPromptOptions;
       o.sections = {
         ...o.sections,
-        thread: `This is a child thread of t:${self.parent}${parent?.title ? ` ("${parent.title}")` : ""}: a stream of work of its own. `
+        thread: `This is a child thread of [t:${self.parent}]${parent?.title ? ` ("${parent.title}")` : ""}: a stream of work of its own. `
           + "Post a short update to the parent with threads message to: \"parent\" at milestones and when you finish, not after every step. "
           + "The person you're talking with may also write here; that conversation is yours and theirs, and the parent isn't told.",
       };
@@ -90,9 +108,9 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
       promptSnippet: [!host ? "" : child ? "post an update to the parent thread" : "start, message and list child threads", meter ? "compact this thread with your own summary" : ""].filter(Boolean).join("; "),
       promptGuidelines: [...(child || !host ? [] : [
         "Use a subagent (delegate) when you need an answer to carry on and the task is bounded: searching, reading, reviewing, checking.",
-        "Start a child thread (threads start) when the work is a stream of its own that outlasts this conversation, that the person may want to follow or steer, or that needs a long context of its own, such as \"I'll keep going on the homelab migration in its own thread.\" Say so, with its link.",
+        "Start a child thread (threads start) when the work is a stream of its own that outlasts this conversation, that the person may want to follow or steer, or that needs a long context of its own, such as \"I'll keep going on the homelab migration in its own thread.\" Say so, mentioning it.",
         "A child thread posts updates here as it goes. Message it with threads message; the person can also talk to it directly.",
-      ]), ...(meter ? COMPACT_GUIDELINES : [])],
+      ]), ...(host || meter ? [MENTION_GUIDELINE] : []), ...(meter ? COMPACT_GUIDELINES : [])],
       parameters: Params,
       async execute(_id, p: Params, _signal, _update, ctx) {
         if (p.action === "compact") {
@@ -108,14 +126,15 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
             await host.message(thread, "parent", p.text);
             return text("Sent to the parent thread.");
           }
-          if (!p.id) throw new Error("message needs the child thread's id");
-          await host.message(thread, p.id, p.text);
-          return text(`Sent to t:${p.id}.`, { threads: [p.id] });
+          if (!p.id) throw new Error("message needs the child thread's id or title");
+          const id = pickThread(p.id, host.list(thread));
+          await host.message(thread, id, p.text);
+          return text(`Sent to [t:${id}].`, { threads: [id] });
         }
         if (child) throw new Error("a child thread can't start or list child threads; it can delegate, and message its parent");
         if (p.action === "list") {
           const rows = host.list(thread);
-          return text(rows.length ? rows.map((r) => `t:${r.id} ${r.title ?? "(untitled)"}: ${r.status}, last ${r.updatedAt}`).join("\n") : "This thread has no child threads.",
+          return text(rows.length ? rows.map((r) => `[t:${r.id}] ${r.title ? JSON.stringify(r.title) : "(untitled)"}: ${r.status}, last ${r.updatedAt}`).join("\n") : "This thread has no child threads.",
             { threads: rows.map((r) => r.id) });
         }
         if (!p.title?.trim() || !p.task?.trim()) throw new Error("start needs a title and a task");
@@ -129,7 +148,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           started--;
           throw err;
         }
-        return text(`Started child thread t:${made.id}, working in the background: ${made.link}`, { threads: [made.id] });
+        return text(`Started child thread [t:${made.id}], working in the background.`, { threads: [made.id] });
       },
     });
   };

@@ -52,7 +52,7 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   two of these contradict), password, your personas (linking a separate persona needs both
   passwords), your suggestions for Lyrica's persona (edit, send on to the
   administrators, or drop), endpoints with probe status, both model profiles, the
-  default mode and network defaults per pool, and Machines (listed, with Remove; `lyrica admin ssh add` adds one). Administrators also
+  default mode and network defaults per pool, and Machines (listed, with Remove; `lyrica admin ssh add` or `lyrica admin proxmox add` adds one). Administrators also
   get the server's network self-test result, sleep time, saving the `self.db`
   passphrase, users with the administrator flag and their allowed folders,
   changes to Lyrica's persona that users sent on (who sent them, whether they edited
@@ -75,6 +75,10 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
 - Her messages are prose, rendered with `react-markdown`. Raw HTML is
   skipped, links open in a new tab, and images are never loaded: they show
   as a link with their alt text.
+- A thread she mentions (`[t:<id>]`, `[e:<id>#<n>]`) shows as its current
+  title, linked to the thread in the same tab; "a forgotten thread" once it's
+  gone. Titles are fetched per thread and kept for 30 seconds, so a rename
+  shows on the next look. This covers her prose and the notice cards.
   The user's sit in a tinted block.
 - Thinking, recalls, saved notes and tool calls are one-line markers that
   expand when tapped. An expanded tool call stays open when the turn ends
@@ -192,7 +196,7 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   the field is left), each with its source word (shared or yours) and a
   Reset link.
 - **The plan card:** a `propose_plan` request shows "Plan", its step count
-  when it has numbered or bulleted steps, the plan as prose, a primary
+  when it has numbered or bulleted steps, the plan as prose (thread mentions show as links), a primary
   "Go ahead in…" whose menu offers Ask, Accept edits or Auto, Keep planning,
   and the time left. Its tool marker stays hidden until it is answered.
 - **Waiting for an answer:** when the latest card waiting for her answer (a

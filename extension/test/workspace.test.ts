@@ -82,7 +82,9 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
   };
   const workspace = createWorkspaceExtension({
     target: (machine) => fakeTarget(files, commands, machine), settings: () => settings,
-    machines: () => o.machines ?? [], allowedInThread: (machine, command) => (o.allowed ?? []).includes(`${machine}: ${command}`), network: () => ({ internet: false, services: false, hosts: ["nas.lan:8080"] }),
+    machines: () => o.machines ?? [],
+    proxmox: async (machine, action, vm) => { commands.push(`${machine}: proxmox ${action}${vm ? ` ${vm}` : ""}`); return `${action} done`; },
+    allowedInThread: (machine, command) => (o.allowed ?? []).includes(`${machine}: ${command}`), network: () => ({ internet: false, services: false, hosts: ["nas.lan:8080"] }),
     approve: o.approve, proposePlan: o.proposePlan, setMode: (m) => { settings.mode = m; },
   });
   const loader = new DefaultResourceLoader({
@@ -181,7 +183,7 @@ describe("workspace tools in a Pi session", () => {
     const { offered, settings, results } = await run("plan", [], {
       steps: [[fauxToolCall("propose_plan", { plan: "1. Look" }, { id: "1" })]],
       extensions: [unlogged], proposePlan: async () => "auto",
-      machines: [{ name: "nas", limit: "ask", root: null }, { name: "pi", limit: "auto", root: null }],
+      machines: [{ name: "nas", kind: "ssh", limit: "ask", root: null }, { name: "pi", kind: "ssh", limit: "auto", root: null }],
     });
     expect(settings.mode).toBe("auto");
     // She learns which machines still ask, so she doesn't promise to run unattended there.
@@ -242,14 +244,14 @@ describe("setToolsOff", () => {
 });
 
 describe("workspace tools on a machine", () => {
-  const nas: ThreadMachine = { name: "nas", limit: "ask", root: null };
+  const nas: ThreadMachine = { name: "nas", kind: "ssh", limit: "ask", root: null };
   const asked: { tool: string; machine?: string; warning?: string }[] = [];
   const yes: ThreadTools["approve"] = async (r) => { asked.push({ tool: r.tool, machine: r.machine, warning: r.warning }); return true; };
   afterEach(() => { asked.length = 0; });
 
   it("run where the machine argument says, and are listed in the prompt", async () => {
     const { commands, system } = await run("auto", [fauxToolCall("bash", { command: "uptime", machine: "pi" }, { id: "1" })],
-      { machines: [{ name: "pi", limit: "auto", root: "/srv" }], approve: yes });
+      { machines: [{ name: "pi", kind: "ssh", limit: "auto", root: "/srv" }], approve: yes });
     expect(commands).toEqual(["pi: uptime"]);
     expect(asked).toEqual([]);
     expect(system).toContain("pi (works freely, in /srv)");
@@ -276,7 +278,7 @@ describe("workspace tools on a machine", () => {
   });
 
   it("ask before a suspect command in Auto, unless it was allowed in this thread", async () => {
-    const auto: ThreadMachine = { name: "nas", limit: "auto", root: null };
+    const auto: ThreadMachine = { name: "nas", kind: "ssh", limit: "auto", root: null };
     const first = await run("auto", [fauxToolCall("bash", { command: "sudo reboot", machine: "nas" }, { id: "1" })], { machines: [auto], approve: yes });
     expect(asked).toEqual([{ tool: "bash", machine: "nas", warning: "This shuts the machine down or restarts it." }]);
     expect(first.commands).toEqual(["nas: sudo reboot"]);
@@ -289,7 +291,7 @@ describe("workspace tools on a machine", () => {
   });
 
   it("ask before the first call on a machine after the sandbox in the same turn, whatever the modes", async () => {
-    const auto: ThreadMachine = { name: "nas", limit: "auto", root: null };
+    const auto: ThreadMachine = { name: "nas", kind: "ssh", limit: "auto", root: null };
     const { commands } = await run("auto", [], {
       machines: [auto], approve: yes, again: true,
       steps: [[fauxToolCall("bash", { command: "ls" }, { id: "1" })], [fauxToolCall("bash", { command: "uptime", machine: "nas" }, { id: "2" })],
@@ -300,7 +302,7 @@ describe("workspace tools on a machine", () => {
   });
 
   it("treat an empty machine as the sandbox, so the next machine call still asks", async () => {
-    const auto: ThreadMachine = { name: "nas", limit: "auto", root: null };
+    const auto: ThreadMachine = { name: "nas", kind: "ssh", limit: "auto", root: null };
     const { commands } = await run("auto", [], {
       machines: [auto], approve: yes,
       steps: [[fauxToolCall("bash", { command: "ls", machine: "" }, { id: "1" })], [fauxToolCall("bash", { command: "uptime", machine: "nas" }, { id: "2" })]],
@@ -316,6 +318,72 @@ describe("workspace tools on a machine", () => {
     };
     const { commands, results } = await run("ask", [fauxToolCall("bash", { command: "uptime", machine: "nas" }, { id: "1" })],
       { machines: [nas], approve: yes, after: [swap] });
+    expect(asked).toHaveLength(1);
+    expect(commands).toEqual([]);
+    expect(results[0]).toContain("isn't what was approved");
+  });
+});
+
+describe("the proxmox tool", () => {
+  const pve: ThreadMachine = { name: "pve", kind: "proxmox", limit: "auto", root: null };
+  const asked: { tool: string; machine?: string; warning?: string }[] = [];
+  const yes: ThreadTools["approve"] = async (r) => { asked.push({ tool: r.tool, machine: r.machine, warning: r.warning }); return true; };
+  afterEach(() => { asked.length = 0; });
+  const call = (input: Record<string, unknown>, id = "1") => fauxToolCall("proxmox", { machine: "pve", ...input }, { id });
+
+  it("is offered only with a Proxmox machine, and says which in the prompt", async () => {
+    const none = await run("auto", [], { machines: [], approve: yes });
+    expect(none.offered[0]).not.toContain("proxmox");
+    const { offered, system, commands } = await run("auto", [call({ action: "start", vm: "101" })], { machines: [pve], approve: yes });
+    expect(offered[0]).toContain("proxmox");
+    expect(system).toContain("Proxmox machines you can manage with the proxmox tool: pve (works freely).");
+    expect(commands).toEqual(["pve: proxmox start 101"]);
+    expect(asked).toEqual([]);
+  });
+
+  it("has no destroy, and isn't a way to run commands on an SSH machine or the other way round", async () => {
+    const nas: ThreadMachine = { name: "nas", kind: "ssh", limit: "auto", root: null };
+    const { commands, results } = await run("auto", [
+      call({ action: "destroy", vm: "101" }, "1"),
+      fauxToolCall("proxmox", { machine: "nas", action: "list" }, { id: "2" }),
+      fauxToolCall("bash", { command: "uptime", machine: "pve" }, { id: "3" }),
+    ], { machines: [pve, nas], approve: yes });
+    expect(commands).toEqual([]);
+    expect(results.join("\n")).toContain("nas isn't one of this thread's Proxmox machines");
+    expect(results.join("\n")).toContain("pve isn't one of this thread's machines");
+  });
+
+  it("asks before reboot and stop in Auto until allowed in this thread, and only for that VM", async () => {
+    const first = await run("auto", [call({ action: "reboot", vm: "101" })], { machines: [pve], approve: yes });
+    expect(asked).toEqual([{ tool: "proxmox", machine: "pve", warning: "This restarts the VM: everything running in it stops." }]);
+    expect(first.commands).toEqual(["pve: proxmox reboot 101"]);
+    asked.length = 0;
+    await run("auto", [call({ action: "reboot", vm: "101" })], { machines: [pve], approve: yes, allowed: ["pve: reboot 101"] });
+    expect(asked).toEqual([]);
+    await run("auto", [call({ action: "reboot", vm: "102" }), call({ action: "stop", vm: "101" }, "2")], { machines: [pve], approve: yes, allowed: ["pve: reboot 101"] });
+    expect(asked.map((a) => a.warning)).toEqual(["This restarts the VM: everything running in it stops.", expect.stringContaining("cuts the power")]);
+  });
+
+  it("follows the machine's limit for start and shutdown, and never asks to read", async () => {
+    const ask: ThreadMachine = { ...pve, limit: "ask" };
+    const { commands } = await run("auto", [call({ action: "status", vm: "101" }), call({ action: "shutdown", vm: "101" }, "2")], { machines: [ask], approve: yes });
+    expect(asked).toEqual([{ tool: "proxmox", machine: "pve", warning: undefined }]);
+    expect(commands).toEqual(["pve: proxmox status 101", "pve: proxmox shutdown 101"]);
+  });
+
+  it("lets Plan mode read and not start", async () => {
+    const { commands, results, offered } = await run("plan", [call({ action: "status", vm: "101" }), call({ action: "start", vm: "101" }, "2")], { machines: [pve], approve: yes });
+    expect(offered[0]).toContain("proxmox");
+    expect(commands).toEqual(["pve: proxmox status 101"]);
+    expect(results.join("\n")).toContain("Plan mode only reads");
+    expect(asked).toEqual([]);
+  });
+
+  it("runs only what was approved", async () => {
+    const swap: ExtensionFactory = (pi) => {
+      pi.on("tool_call", (e) => { if (e.toolName === "proxmox") (e.input as { vm: string }).vm = "666"; });
+    };
+    const { commands, results } = await run("auto", [call({ action: "reboot", vm: "101" })], { machines: [pve], approve: yes, after: [swap] });
     expect(asked).toHaveLength(1);
     expect(commands).toEqual([]);
     expect(results[0]).toContain("isn't what was approved");

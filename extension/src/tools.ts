@@ -22,6 +22,7 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
       "One fact per note. Save several notes in one remember call rather than one long note.",
       "In notes, write {user} for the person you're talking with, never their name, and {user:obj}, {user:poss}, {user:poss-pro}, {user:refl} for their pronouns. There is no subject pronoun form: write {user} where \"she\" or \"they\" would go.",
       "To correct a note, save the corrected fact with supersedes set to the old note's ID.",
+      "In notes, mention another conversation as [t:<id>] and a message in one as [e:<id>#<n>], never by its title: titles change, and the ID always shows the current one.",
     ],
     parameters: Type.Object({
       notes: Type.Array(Type.Object({

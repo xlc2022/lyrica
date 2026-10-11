@@ -3,10 +3,11 @@ import {
   type ExtensionContext, type ExtensionFactory, type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import {
-  stricterMode, suspectCommand, WORKDIR, type ExecutionTarget, type Network, type NewChange, type PermissionMode, type ThreadMachine, type ThreadWorkspace, type ToolOps,
+  PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, WORKDIR, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadMachine, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
+import { proxmoxTool } from "./proxmox.ts";
 
 /** What the workspace tools need for one thread. `Workspace` from core provides it. */
 export interface ThreadTools {
@@ -19,6 +20,8 @@ export interface ThreadTools {
   machines?(): ThreadMachine[];
   /** Whether Li allowed this exact suspect command on this machine in this thread. */
   allowedInThread?(machine: string, command: string): boolean;
+  /** One action on one of the thread's Proxmox machines. Without it, there is no proxmox tool. */
+  proxmox?(machine: string, action: ProxmoxAction, vm?: string): Promise<string>;
   /**
    * Asks whoever is watching the thread whether a tool call may run. lyricad
    * supplies it; without it, Pi's own UI asks, and with no UI the call is blocked.
@@ -74,7 +77,7 @@ const ASKS: Record<PermissionMode, string[]> = {
 };
 
 /** The only tools Plan mode leaves on: the ones that read, read-only delegation, her child threads (where compacting her own context is too), and propose_plan. */
-export const PLAN_TOOLS: ReadonlySet<string> = new Set(["read", "recall", "read_memory", "web_search", "web_fetch", "delegate", "ask_parent", "threads", "propose_plan"]);
+export const PLAN_TOOLS: ReadonlySet<string> = new Set(["read", "recall", "read_memory", "web_search", "web_fetch", "delegate", "ask_parent", "threads", "propose_plan", "proxmox"]);
 
 /** The tools each switch turns off. */
 export const SWITCHED_TOOLS = { webSearch: ["web_search", "web_fetch"], images: ["image"] } as const;
@@ -97,7 +100,7 @@ const MACHINE = Type.Optional(Type.String({ description: "One of your machines, 
 
 /** What an approval covered: anything run that differs is denied. */
 const shown = (tool: string, input: Record<string, unknown>, machine: string | undefined, cwd: string | undefined) =>
-  JSON.stringify([tool, machine ?? null, cwd ?? null, tool === "bash" ? input.command : input.path]);
+  JSON.stringify([tool, machine ?? null, cwd ?? null, tool === "bash" || tool === "proxmox" ? suspectKey(tool, input) : input.path]);
 
 /**
  * Lyrica's read, write, edit and bash: Pi's own tools, with every operation
@@ -107,10 +110,18 @@ const shown = (tool: string, input: Record<string, unknown>, machine: string | u
  */
 export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
   return (pi) => {
-    const off = () => toolsOff(tools.settings(), pi.getAllTools().map((t) => t.name));
+    // proxmox is offered only while the thread has a Proxmox machine.
+    const off = () => [...toolsOff(tools.settings(), pi.getAllTools().map((t) => t.name)),
+      ...(tools.proxmox && !tools.machines?.().some((m) => m.kind === "proxmox") ? ["proxmox"] : [])];
     const gate = (ctx: ExtensionContext) => setToolsOff(pi, ctx, "workspace", off());
     /** What each approved call was approved for, by tool call. */
     const approved = new Map<string, string>();
+    /** Throws if a call isn't what was approved for it. */
+    const bound = (id: string, tool: string, input: Record<string, unknown>, machine?: string, cwd?: string) => {
+      const asked = approved.get(id);
+      approved.delete(id);
+      if (asked !== undefined && asked !== shown(tool, input, machine, cwd)) throw new Error("This isn't what was approved, so it didn't run.");
+    };
     /** Where her tools ran this turn: "sandbox" or a machine. */
     let places = new Set<string>();
 
@@ -125,11 +136,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
           const machine = (named as string | undefined) || undefined;
           const target = tools.target(machine);
           const cwd = await target.cwd();
-          const asked = approved.get(id);
-          approved.delete(id);
-          if (asked !== undefined && asked !== shown(name, rest, machine, machine ? cwd : undefined)) {
-            throw new Error("This isn't what was approved, so it didn't run.");
-          }
+          bound(id, name, rest, machine, machine ? cwd : undefined);
           const ops = name === "write" || name === "edit" ? recording(target, target.ops()[name], id, tools.recordChange) : target.ops()[name];
           const tool = create(cwd, { operations: ops as never });
           // Pi resolves paths against the session's cwd, which is on the host; use the target's.
@@ -138,6 +145,8 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         },
       });
     }
+
+    if (tools.proxmox) pi.registerTool(proxmoxTool(tools.proxmox, (id, { machine, ...rest }) => bound(id, "proxmox", rest, machine as string)));
 
     if (tools.setMode) {
       const setMode = tools.setMode;
@@ -175,24 +184,29 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         return { block: true, reason: `${event.toolName} is off in this thread${tools.settings().mode === "plan" ? " (Plan mode)" : ""}.` };
       }
       const input = event.input as Record<string, unknown>;
-      const place = event.toolName in TOOLS ? (input.machine as string | undefined) || "sandbox" : undefined;
-      const machine = place && place !== "sandbox" ? tools.machines?.().find((m) => m.name === place) : undefined;
-      if (place && place !== "sandbox" && !machine) return { block: true, reason: `${place} isn't one of this thread's machines.` };
+      const pve = event.toolName === "proxmox";
+      const place = event.toolName in TOOLS ? (input.machine as string | undefined) || "sandbox" : pve ? String(input.machine) : undefined;
+      const machine = place && place !== "sandbox" ? tools.machines?.().find((m) => m.name === place && (m.kind === "proxmox") === pve) : undefined;
+      if (place && place !== "sandbox" && !machine) return { block: true, reason: `${place} isn't one of this thread's ${pve ? "Proxmox " : ""}machines.` };
       // On a machine, the stricter of the thread's mode and the machine's limit.
       const mode = machine ? stricterMode(tools.settings().mode, machine.limit) : tools.settings().mode;
+      // A Proxmox action that reads asks like read, and one that powers like bash; Plan mode only reads.
+      const reads = pve && PROXMOX_READS.has(input.action as ProxmoxAction);
+      if (pve && mode === "plan" && !reads) return { block: true, reason: "Plan mode only reads: proxmox status, list and snapshots." };
+      const as = pve ? (reads ? "read" : "bash") : event.toolName;
       // Anything that reaches outside and changes things there can't be undone from here: it always asks.
       const a = pi.getAllTools().find((t) => t.name === event.toolName)?.annotations;
       const irreversible = !!a?.openWorldHint && !a.readOnlyHint;
-      const warning = machine && event.toolName === "bash" ? suspectCommand(String(input.command)) : undefined;
-      const suspect = !!warning && !tools.allowedInThread?.(machine!.name, String(input.command));
+      const warning = !machine ? undefined : pve ? PROXMOX_SUSPECT[input.action as ProxmoxAction] : event.toolName === "bash" ? suspectCommand(String(input.command)) : undefined;
+      const suspect = !!warning && !tools.allowedInThread?.(machine!.name, suspectKey(event.toolName, input));
       // The first call on a machine in a turn asks if anything earlier ran somewhere else, so output from one place can't steer her onto another.
       const moved = !!machine && !places.has(machine.name) && places.size > 0;
-      if (!irreversible && !suspect && !moved && !ASKS[mode].includes(event.toolName)) {
+      if (!irreversible && !suspect && !moved && !ASKS[mode].includes(as)) {
         if (place) places.add(place);
         return undefined;
       }
       const request: ApprovalRequest = { toolCallId: event.toolCallId, tool: event.toolName, input };
-      if (machine) Object.assign(request, { machine: machine.name, cwd: await tools.target(machine.name).cwd() }, suspect ? { warning } : {});
+      if (machine) Object.assign(request, { machine: machine.name }, pve ? {} : { cwd: await tools.target(machine.name).cwd() }, suspect ? { warning } : {});
       const allowed = tools.approve ? await tools.approve(request) : await approve(ctx, request);
       if (!allowed) return { block: true, reason: "Not approved. Ask what to do instead." };
       if (place) {
@@ -246,7 +260,7 @@ async function exists(target: ExecutionTarget, path: string): Promise<boolean> {
 
 async function approve(ctx: ExtensionContext, r: ApprovalRequest): Promise<boolean> {
   if (!ctx.hasUI) return false;
-  const what = r.tool === "bash" ? String(r.input.command) : `${r.tool} ${String(r.input.path)}`;
+  const what = r.tool === "bash" ? String(r.input.command) : r.tool === "proxmox" ? `proxmox ${suspectKey(r.tool, r.input)}` : `${r.tool} ${String(r.input.path)}`;
   return ctx.ui.confirm(r.machine ? `Allow this on ${r.machine}?` : "Allow this?", [r.warning, what].filter(Boolean).join("\n"));
 }
 
@@ -262,12 +276,16 @@ async function choose(ctx: ExtensionContext, plan: string): Promise<GoAhead | un
 export function describe(tools: ThreadTools): string {
   const s = tools.settings();
   const grants = s.grants.map((g) => `${g.path} (${g.writable ? "read-write" : "read-only"})`);
-  const machines = (tools.machines?.() ?? []).map((m) => `${m.name} (${m.limit === "auto" ? "works freely" : `asks like ${LABELS[m.limit]} at most`}${m.root ? `, in ${m.root}` : ""})`);
+  const all = tools.machines?.() ?? [];
+  const limit = (m: ThreadMachine) => (m.limit === "auto" ? "works freely" : `asks like ${LABELS[m.limit]} at most`);
+  const machines = all.filter((m) => m.kind !== "proxmox").map((m) => `${m.name} (${limit(m)}${m.root ? `, in ${m.root}` : ""})`);
+  const pves = all.filter((m) => m.kind === "proxmox").map((m) => `${m.name} (${limit(m)})`);
   return [
     `Your file and command tools run in a sandbox. ${WORKDIR} is this conversation's folder; uploads arrive in ${WORKDIR}/uploads.`,
     grants.length ? `Folders you were given: ${grants.join(", ")}.` : "No other folders were given to you in this conversation.",
     network(tools.network()),
     ...(machines.length ? [`Machines you can work on over SSH, with the machine argument: ${machines.join(", ")}. The sandbox's network settings don't apply there.`] : []),
+    ...(pves.length ? [`Proxmox machines you can manage with the proxmox tool: ${pves.join(", ")}.`] : []),
   ].join("\n");
 }
 

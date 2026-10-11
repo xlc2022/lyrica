@@ -273,10 +273,11 @@ plan }`. Approving it takes `mode` too (`ask`, `acceptEdits` or `auto`;
 without it the answer is refused); `lyricad` switches the thread to it and
 sends `settings`. Denying it, a timeout or Stop keeps planning.
 
-A call on a machine adds `machine` and `cwd`; the answer covers exactly that
-command or path there. A suspect command adds `suspect: true` and `warning`,
-and its answer may carry `allowInThread: true`, which stores that exact
-command for the thread it runs in (a subagent's own thread for a subagent's
+A call on a machine adds `machine` and `cwd` (a `proxmox` call has no
+`cwd`); the answer covers exactly that command, path or Proxmox action
+there. A suspect command, or a Proxmox `stop` or `reboot`, adds `suspect:
+true` and `warning`, and its answer may carry `allowInThread: true`, which
+stores that exact command (or action on that VM) for the thread it runs in (a subagent's own thread for a subagent's
 request); `allowInThread` on any other request is refused.
 
 A subagent's request (`ThreadHost.approveSubagent`, given to `Delegation` as
@@ -306,7 +307,8 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
   the user's defaults for a new thread. The clip is held in memory only.
 - `GET …/threads/:pool/:threadId/messages/:n/speech` reads one of her
   messages aloud. lyricad reads it from the store (the client sends a
-  number, never text), drops code blocks, tables, images, links' URLs and
+  number, never text), reads each thread she mentions as its current title
+  (`titlesIn`), drops code blocks, tables, images, links' URLs and
   markdown, splits it into sentences (pieces of at most 400 characters), and
   asks for one sentence at a time while the one before plays, each in the
   voice for its language (Han characters mean Mandarin). It streams raw PCM
