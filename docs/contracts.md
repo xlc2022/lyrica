@@ -872,6 +872,21 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   with a password over the socket. Being on the machine isn't enough.
 - **Scheduler:** at `sleep.time` (default 04:00), for each user not in manual
   mode, sleep each pool, one run at a time.
+- **Planned (Updates,** [briefs/releases.md](briefs/releases.md)**):** an
+  update socket, `<runtime>/update.sock` (mode `0600`, the service user's,
+  for root's updater; no login, and like the rest of the runtime directory
+  never inside a sandbox), serving only `GET /health` (`{ commit,
+  locked, checks: { name, ok, error? }[] }`, no text), `POST /drain` (stop
+  new turns; answers `{ busy: threadId[] }` until idle) and `POST /undrain`.
+  While draining, `SendRequest` is `409` with `{ updating: true }` (`503`
+  stays "locked"). Each
+  encrypted database records its schema version (`PRAGMA user_version`),
+  and opening one written by a newer schema throws `SchemaTooNew`. An
+  administrator's `GET /api/u/:userId/admin/updates` lists the running
+  release, kept releases, the newest update note (tag, commit, message) and
+  the updater's state; `POST …/updates` with `{ tag }` and `POST
+  …/updates/rollback` with `{ commit }` write a request the updater's
+  path unit picks up. The request directory is refused as a grant.
 
 ## bin/lyrica
 
