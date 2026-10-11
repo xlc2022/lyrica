@@ -966,7 +966,10 @@ web part and sleep's project page are not yet. The briefs are
   notes and no page from sleep; its instructions still apply.
 - **Files.** The project chat's folder is the project folder, granted to
   each of its threads (read-only to a read-only thread), shown in each
-  thread's Files panel as a root named after the project. Two threads may
+  thread's Files panel as a root named after the project. A folder or
+  machine taken off the project chat leaves its running threads at once
+  (decided 2026-10-11; folders in
+  [briefs/folder-narrowing.md](docs/briefs/folder-narrowing.md)). Two threads may
   write one file; her guidance is a subfolder per thread for its outputs.
 - **What Li sees:**
   - In the sidebar a project is a thread row with a project icon, its
@@ -988,8 +991,10 @@ web part and sleep's project page are not yet. The briefs are
     card, with **Start** per thread and **Start all**.
   - **Project settings** is a page with sections: General (Goal; Threads,
     the model and thinking new threads start with; Paused; then the project
-    chat's own settings under **This chat**), Memory (Instructions, and a
-    link to the project page in the memory browser), and **Files and
+    chat's own settings under **This chat**, including the **Folders** and
+    **Machines** every thread of the project inherits), Memory
+    (Instructions, and a link to the project page in the memory browser),
+    and **Files and
     images** (Files | Images), where the project folder is managed. Files in the header stays the quick view.
   - **Paused** stops the project's working threads and starts nothing new.
     **Hide** stops it too. **Delete** forgets the project chat, its threads,
