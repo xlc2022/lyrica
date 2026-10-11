@@ -52,7 +52,7 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   two of these contradict), password, your personas (linking a separate persona needs both
   passwords), your suggestions for Lyrica's persona (edit, send on to the
   administrators, or drop), endpoints with probe status, both model profiles, the
-  default mode and network defaults per pool, and Machines (listed, with Remove; `lyrica admin ssh add` adds one). Administrators also
+  default mode and network defaults per pool, and Machines (listed, with Remove; `lyrica admin ssh add` or `lyrica admin proxmox add` adds one). Administrators also
   get the server's network self-test result, sleep time, saving the `self.db`
   passphrase, users with the administrator flag and their allowed folders,
   changes to Lyrica's persona that users sent on (who sent them, whether they edited

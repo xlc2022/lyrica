@@ -642,7 +642,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   took it away.
 - **Workspace extension** (`createWorkspaceExtension(tools: ThreadTools)`):
   - `ThreadTools` is `{ target(machine?), settings(), network(),
-    machines?(), allowedInThread?(machine, command), approve?, setMode?,
+    machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?), approve?, setMode?,
     proposePlan?(PlanRequest), recordChange?(NewChange) }`.
     `settings()` is the thread's effective settings.
   - `read`, `write`, `edit` and `bash` take an optional `machine`. On a
@@ -651,10 +651,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `allowedInThread`; the first call on a machine in a turn asks if
     anything earlier ran elsewhere. `ApprovalRequest` is `{ toolCallId,
     tool, input, machine?, cwd?, warning? }`, and the call runs only if its
-    arguments are still exactly what was approved.
+    arguments are still exactly what was approved. With `proxmox`, the
+    `proxmox` tool is registered, and offered only while `machines()` has a
+    Proxmox machine.
   - `toolsOff(settings, registered)`: Plan mode leaves only `PLAN_TOOLS`
     (`read`, `recall`, `read_memory`, `web_search`, `web_fetch`,
-    `delegate`, `ask_parent`, `threads`, `propose_plan`); outside Plan
+    `delegate`, `ask_parent`, `threads`, `propose_plan`, `proxmox`, whose
+    `tool_call` refuses all but its reading actions); outside Plan
     mode `propose_plan` is off. `SWITCHED_TOOLS`: `webSearch` turns off
     `web_search` and `web_fetch`, `images` turns off `image`. The gate runs
     on `session_start`, `before_agent_start` and right after a plan is
@@ -920,18 +923,21 @@ interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
   ops(): { read; write; edit; bash };     // Pi's tool operations
   folders(): string[];                    // host folders, or "<ssh name>:<root>"
 }
-forThread(t)  // { target(machine?), settings(), machines(), allowedInThread(machine, command), setMode(), network(), folders(), recordChange() },
+forThread(t)  // { target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), folders(), recordChange() },
               // each read fresh; settings() is effective
 changes(userId): FileChanges              // her write and edit calls' changes, for removing turns
-targetFor(t, machine?): ExecutionTarget  // the sandbox, or a machine the thread may use now
-machinesFor(t): ThreadMachine[]           // { name, limit, root }: granted by it and every ancestor, of its pool
+targetFor(t, machine?): ExecutionTarget  // the sandbox, or an SSH machine the thread may use now (a Proxmox one is refused)
+machinesFor(t): ThreadMachine[]           // { name, kind, limit, root }: granted by it and every ancestor, of its pool
+proxmox(t, machine, action, vm?): Promise<string>  // one PROXMOX_ACTIONS call on a thread's Proxmox machine, token sent only to the pinned certificate
 callMode(t, machine?): PermissionMode     // on a machine, stricterMode(effective(t).mode, its limit)
-probeMachine(userId, login, { name, address, draft? }): Promise<MachineProbe>
-  // a key pair kept in memory for an hour (by `draft`), its keyLine and setup steps, the host key seen,
-  // whether the login worked, offNetwork; saves nothing
-addMachine(userId, { name, address, root, pool, limit?, draft, hostKey, offNetworkConfirmed? }): Promise<MachineConfig>
-updateMachine(userId, name, { address?, root?, limit?, pool? })  // a new pool drops the machine from every thread
-setHostKey(userId, name, hostKey) / confirmOffNetwork(userId, name) / removeMachine(userId, name)
+probeMachine(userId, login, { kind?, name, address, draft? }): Promise<MachineProbe>
+  // SSH: a key pair kept in memory for an hour (by `draft`), its keyLine and setup steps, the host key seen,
+  // whether the login worked, offNetwork. Proxmox: the certificate's fingerprint and the pveum setup, no token sent.
+  // Saves nothing.
+addMachine(userId, { kind?, name, address, root, pool, limit?, draft? | token?, hostKey, offNetworkConfirmed? }): Promise<MachineConfig>
+  // Proxmox: tries the token against the confirmed certificate and refuses the Proxmox running Lyrica (ownNode)
+updateMachine(userId, name, { address?, root?, limit?, pool? }): Promise  // a new pool drops the machine from every thread; Proxmox: own-node address refused
+setHostKey(userId, name, hostKey, token?): Promise / confirmOffNetwork(userId, name) / removeMachine(userId, name)
 grantsFor(t): Grant[]                     // { path, writable }
 folders(t): string[]                      // grants, and "<machine>:<root>" for its machines with a root
 network(t): Network
@@ -939,7 +945,8 @@ inheritSettings(parent, childThreadId, narrower?)  // subagents and child thread
 settings(userId).detach(threadId)          // a kept child, once its parent is forgotten: no longer narrowed by it
 // Planned (Projects): inheritSettings also grants a project's thread its project chat's folder (read-only for a read-only thread)
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, machines
-// MachineConfig { name, kind: "ssh", host, port, username, privateKey, root, hostKey, pool,
+// MachineConfig { name, kind: "ssh" | "proxmox", host, port, username (Proxmox: token id), privateKey (Proxmox: the token),
+//   root (Proxmox: null), hostKey (Proxmox: certificate fingerprint AB:CD:…), pool,
 //   limit: "ask" | "acceptEdits" | "auto" (new machines "ask"), offNetwork, lastUsed }
 // settings(userId).machines() / machine(name) / addMachine(m, confirmedHostKey) / updateMachine / setMachinePool(name, pool)
 //   / setHostKey / setOffNetwork / confirmOffNetwork / removeMachine / allowInThread(threadId, machine, command) / allowedInThread(threadId)
@@ -949,7 +956,10 @@ settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overr
 //   authorizedKeysLine(publicKey), machineSetup(account, keyLine): core/src/workspace/machines.ts
 // SshTransport { connect(endpoint, verify(fingerprint)): Promise<SshSession> } (transport.ts); `inProcess` is ssh2 in
 //   lyricad; WorkspaceOptions.sshTransport replaces it. SshTarget(cfg, { transport?, address?, connected? }).
-// Planned (Proxmox, briefs/proxmox.md): kind "proxmox", holding an API token in place of a key.
+// proxmox.ts: PROXMOX_ACTIONS (status, list, start, stop, shutdown, reboot, snapshots), PROXMOX_READS, PROXMOX_SUSPECT (stop, reboot),
+//   suspectKey(tool, input) (what Allow in this thread stores), proxmoxAction(call, action, vm?), ownNode(call, addresses, self), ownAddress(addresses, self),
+//   proxmoxSetup(), parseProxmoxAddress, tokenId, certFingerprint. ProxmoxTransport { fingerprint(host, port), call(endpoint, method,
+//   path, verify(fingerprint)) }; `proxmoxHttps` is Node's TLS; WorkspaceOptions.proxmoxTransport and .self replace them.
 settings(userId).defaultMode() / setDefaultMode(mode)  // the mode new threads start in (default auto)
 settings(userId).startThread(threadId, pool)           // fixes the default mode on a new thread
 settings(userId).effective(threadId): ThreadWorkspace  // strictest mode and switches of it and its ancestors
@@ -995,17 +1005,19 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   …/machines/:name/confirm-off-network`; `DELETE`). Thread settings carry
   `machines`; permission events carry `machine`, `cwd`, and for a suspect
   command `suspect: true` and `warning`; an answer may carry
-  `allowInThread: true`.
-- **Planned (SSH helper, Proxmox):** the SSH client moves into a sandboxed
+  `allowInThread: true`. Proxmox: `kind: "proxmox"` on probe and confirm,
+  `token` in place of `draft`, the certificate's fingerprint as `hostKey`;
+  `MachineInfo` has `tokenId` and no `keyLine`; `…/key` may take a new
+  `token`; a `proxmox` permission event has no `cwd`.
+- **The `proxmox` tool** (`extension/src/proxmox.ts`) is a schema plus one
+  call to `ThreadTools.proxmox`; the workspace extension's `tool_call` does
+  the asking (reads like `read`, start and shutdown like `bash`, stop and
+  reboot suspect, Plan mode reads only). `destroy` is never offered.
+- **Planned (SSH helper):** the SSH client moves into a sandboxed
   helper process per connection (`core/workspace/ssh-helper`), an
   `SshTransport` given one machine's key on a pipe and network to that one
   address through the existing nftables rules; `SshTarget` keeps its
-  interface. A `proxmox` tool
-  (`extension/src/proxmox.ts`) with named actions (status, list, start,
-  stop, shutdown, reboot, snapshots) is a schema plus one call into
-  `core/workspace`, which calls the Proxmox API with the machine's token;
-  `destroy` is never offered; `stop` and `reboot` are suspect actions and
-  ask in every mode until allowed in a thread.
+  interface.
 - **Modes:** `PermissionMode` is `"auto" | "acceptEdits" | "ask" | "plan"`,
   strictest first plan, ask, acceptEdits, auto. Stored `ask-changes` and
   `ask-commands` migrate in place to `ask` and `acceptEdits`. A thread with
