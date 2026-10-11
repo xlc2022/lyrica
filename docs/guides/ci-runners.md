@@ -49,7 +49,10 @@ The script, in order:
 1. Installs what the jobs expect to find: `build-essential`, curl, git,
    jq, python3, iptables, and Ubuntu's Docker with the compose and buildx
    plugins. The jobs install the rest themselves with sudo, as they do on
-   GitHub's runners.
+   GitHub's runners. It also tells needrestart to only list services (it
+   once restarted the runner mid-job) and apt to wait up to ten minutes for
+   a busy dpkg lock; the check job writes the same two settings, so runners
+   set up before 2026-10-11 need nothing.
 2. Creates the `runner` user with passwordless sudo and Docker access.
 3. Downloads the latest GitHub Actions runner, checked against the
    checksum in its release notes, into `/home/runner/actions-runner`. It
