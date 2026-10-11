@@ -1544,7 +1544,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
   const { models, workspace } = d.services!;
   const ctx = models.callContext(user.id, pool, threadId);
   const tw = workspace.settings(user.id).thread(threadId);
-  // The mode and switches her tools follow: a parent's later narrowing included.
+  // The mode, switches, folders and machines her tools follow: a parent's later narrowing included.
   const applies = workspace.settings(user.id).effective(threadId);
   const isUnlogged = owner(d, user, (o) => o[pool].getThread(threadId)?.unlogged ?? false);
   let thinkingLevels: Api.ThinkingLevel[] = ["off"];
@@ -1573,7 +1573,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     localOnly: ctx.localOnly,
     internet: tw.internet, services: tw.services, hosts: tw.hosts,
     network: workspace.network({ userId: user.id, pool, threadId }),
-    grants: tw.grants, machines: applies.machines, mode: applies.mode, webSearch: applies.webSearch, images: applies.images, unlogged: isUnlogged, parent: tw.parent,
+    grants: applies.grants, machines: applies.machines, mode: applies.mode, webSearch: applies.webSearch, images: applies.images, unlogged: isUnlogged, parent: tw.parent,
     speech: speechState(models, ctx),
     fallback: models.threadFallback(user.id, threadId), fallbackOn: ctx.fallback !== false,
     allowed: models.allowed(ctx).map(({ endpoint }) => endpointInfo(d, user.id, endpoint.id)),
@@ -1629,9 +1629,7 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
   for (const k of ["webSearch", "images"] as const) if (change[k] !== undefined && typeof change[k] !== "boolean") throw new Error(`${k} is true or false`);
   if (change.fallback !== undefined && change.fallback !== null && typeof change.fallback !== "boolean") throw new Error("fallback is true, false or null");
   // The workspace checks grants, hosts, mode, switches, machines and the parent's limits, and writes only if all pass.
-  const wsChange: Partial<Pick<Api.ThreadSettingsChange, (typeof WORKSPACE_KEYS)[number]>> = pick(change, [...WORKSPACE_KEYS]);
-  // A machine an ancestor took off is gone from what the thread shows (`effective`): drop it from its own list too, so an unrelated change isn't refused for it.
-  if (parent && Object.keys(wsChange).length && wsChange.machines === undefined) wsChange.machines = ws.effective(thread.id).machines;
+  const wsChange = pick(change, [...WORKSPACE_KEYS]);
   if (Object.keys(wsChange).length) ws.setThread(thread.id, pool, wsChange);
 
   if (change.localOnly !== undefined && pool === "general") models.setLocalOnly(user.id, pool, thread.id, change.localOnly);

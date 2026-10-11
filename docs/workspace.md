@@ -466,10 +466,14 @@ copies the parent's settings, or the narrower ones it is given, and the
 subagent's settings are checked against its parent's whenever they change and
 before every use. What its tools follow is `effective(thread)`: its own
 settings with the strictest mode and switches of every ancestor, read on each
-call, so a parent switched to Plan, with a switch turned off or with a
-machine taken away narrows its subagents at once. Its settings show those
-machines, and changing a thread's workspace tells its descendants' open views
-to fetch their settings again. Parallel
+call, so a parent switched to Plan, with a switch turned off, or with a
+folder or machine taken away narrows its subagents and child threads at once.
+A folder the parent makes read-only is read-only below it too. Their sandbox
+mounts only what applies, their settings, facts line and Files panel show it, and `read`
+on a folder that's gone is refused as outside their folders. The narrowing is
+written into their own settings as well, so a parent that gets a folder back
+gives it to no one below it. Changing a thread's workspace tells its
+descendants' open views to fetch their settings again. Parallel
 writers get their own git worktrees (see [delegation.md](delegation.md)).
 
 ## Approval

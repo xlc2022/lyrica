@@ -106,7 +106,7 @@ export class ChildThreads implements ThreadsHost {
     Object.assign(slot, { pool: parent.pool, thread: child.id });
     try {
       const ws = this.o.workspace.settings(userId);
-      const grants = ws.thread(parent.threadId).grants
+      const grants = ws.effective(parent.threadId).grants
         .filter((g) => !req.folders || req.folders.some((f) => f.replace(/\/+$/, "") === g.path.replace(/\/+$/, "")))
         .map((g) => (req.readOnly ? { ...g, writable: false } : g));
       if (req.folders && grants.length < req.folders.length) throw new Error("a child thread can only have folders its parent has");

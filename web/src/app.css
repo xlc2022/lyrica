@@ -195,6 +195,8 @@ button.private { color: var(--private); border-color: color-mix(in oklab, var(--
 /* A thread's menu: right-click, or a long press on a phone. Letter shortcuts at the right edge. */
 .ctx-menu { position: fixed; z-index: 40; min-width: 220px; max-width: calc(100vw - 16px); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px; display: grid; gap: 1px; box-shadow: 0 8px 30px rgb(0 0 0 / 0.18); }
 .ctx-menu .eyebrow { padding: 4px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A file or folder name in the eyebrow reads as written (a path, ux.md §2). */
+.ctx-menu .eyebrow.name { text-transform: none; letter-spacing: normal; font-family: var(--mono); font-weight: 500; }
 .ctx-menu button { border: 0; background: transparent; justify-content: space-between; gap: 16px; min-height: var(--tap); border-radius: 8px; padding: 0 10px; font-weight: 400; }
 .ctx-menu button:hover:not(:disabled) { background: var(--tool); border: 0; }
 .ctx-menu button.danger { color: var(--danger); }
@@ -662,4 +664,64 @@ form.drawer-body { flex: 1; }
   .drawer { width: 100%; }
   .page-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content 1fr; }
   .subnav { position: static; display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px var(--gutter); gap: 2px; scrollbar-width: none; mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
+}
+
+/* ---- The Files panel (docs/ux.md §6): a thread's folder and its grants beside the conversation, or the page on its own. ---- */
+.files-page { display: flex; flex-direction: column; min-height: 0; container: files / inline-size; }
+.files-page.drop { box-shadow: inset 0 0 0 2px var(--accent); }
+.files-page .head .seg button[role="tab"] { padding: 0 12px; }
+.head-actions a.sm { min-height: 30px; padding: 0 9px; font-size: 13px; border-radius: 7px; border: 1px solid var(--edge); background: var(--panel); color: var(--fg); display: inline-flex; align-items: center; gap: 6px; }
+.head-actions a.sm:hover { border-color: color-mix(in oklab, var(--fg) 25%, var(--line)); text-decoration: none; }
+.fsearch { padding: 10px var(--gutter) 0; }
+.fsearch input { width: 100%; min-height: 34px; }
+.fbody { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(200px, 260px) minmax(0, 1fr); }
+.ftree { border-right: 1px solid var(--line); overflow-y: auto; padding: 8px calc(var(--gutter) - 8px) 24px var(--gutter); display: grid; align-content: start; gap: 1px; min-width: 0; }
+.fentry { display: grid; gap: 1px; min-width: 0; }
+.ftree button { justify-content: flex-start; border: 0; background: transparent; min-height: 30px; padding: 0 6px; font-size: 13px; width: 100%; border-radius: 6px; gap: 6px; font-weight: 400; min-width: 0; }
+.ftree button:hover { background: var(--tool); border: 0; }
+.ftree button[aria-current="true"] { background: var(--tool); font-weight: 500; }
+.ftree button.sel, .ftree button.sel:hover { background: color-mix(in oklab, var(--accent) 16%, var(--panel)); }
+.ftree button.root { font-weight: 600; margin-top: 6px; }
+.fentry:first-child > button.root { margin-top: 0; }
+.ftree .ic { width: 14px; height: 14px; flex: none; }
+.ftree .ic.dim { color: var(--muted); }
+.fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ftree .rw { margin-left: auto; font-size: 11px; color: var(--muted); }
+.ftree .empty { padding: 4px 6px; font-size: 13px; }
+.fview { overflow: auto; padding: 12px var(--gutter) 24px; display: grid; align-content: start; gap: 10px; min-width: 0; }
+.fhead { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.fhead .fname { font-size: 13px; margin-right: auto; flex: 1; }
+.fhead .num { font-size: 12px; white-space: nowrap; }
+.files-page .head .cap { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fview pre { margin: 0; font: 12px/1.5 var(--mono); background: var(--tool); padding: 10px 12px; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.fview img { max-width: 100%; border-radius: 8px; border: 1px solid var(--line); }
+.fview .pick { text-align: center; padding-top: 24vh; }
+.fback { display: none; }
+/* Narrow (a phone, or the panel column): one column, the tree or the file. The page is the container, since a query never matches its own element. */
+@container files (max-width: 560px) {
+  .fbody { grid-template-columns: minmax(0, 1fr); }
+  .ftree { border-right: 0; }
+  .fbody.viewing .ftree, .fbody:not(.viewing) .fview { display: none; }
+  .fback { display: inline-flex; }
+}
+@container files (max-width: 480px) {
+  .fview .fhead .num { display: none; }
+}
+.ifilter { padding: 10px var(--gutter) 0; }
+.igrid { flex: 1; min-height: 0; overflow-y: auto; padding: 12px var(--gutter) 24px; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; align-content: start; }
+.igrid > button { display: grid; gap: 4px; padding: 0; border: 0; background: transparent; min-height: 0; white-space: normal; text-align: left; align-content: start; min-width: 0; }
+.igrid > button:hover { border: 0; }
+.igrid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: var(--tool); display: block; }
+.igrid > button.sel img { outline: 3px solid var(--accent); outline-offset: 1px; }
+.igrid .meta { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; display: block; }
+.igrid .empty { grid-column: 1 / -1; }
+.selbar { display: flex; align-items: center; gap: 6px; padding: 6px var(--gutter); border-top: 1px solid var(--line); font-size: 13px; background: var(--panel); }
+.selbar > span { margin-right: auto; }
+dialog.lightbox { width: min(960px, calc(100vw - 32px)); }
+dialog.lightbox .fhead { padding: 10px 14px; }
+dialog.lightbox .lb-img { padding: 0 14px 14px; }
+dialog.lightbox img { display: block; max-width: 100%; max-height: 72vh; margin: 0 auto; border-radius: 8px; }
+.ctx-menu .empty { padding: 4px 10px; font-size: 13px; }
+@media (max-width: 760px) {
+  .ftree button, .igrid > button { min-height: 44px; }
 }

@@ -109,6 +109,15 @@ export function useUndo() {
   return { pending, later, undo };
 }
 
+/** Scrolls to a message and marks where it landed, for a moment. */
+export function jumpTo(n: number) {
+  const el = document.getElementById(`m-${n}`);
+  el?.scrollIntoView({ block: "center", behavior: "smooth" });
+  el?.classList.remove("flash");
+  void el?.offsetWidth;
+  el?.classList.add("flash");
+}
+
 /** "3 pinned ▾" in the thread's header: a popover of the pinned messages, each going to its place in the conversation. */
 export function PinnedBadge({ pins, you, userId, pool }: { pins: Pins; you: string; userId: string; pool: Pool }) {
   const [open, setOpen] = useState(false);
@@ -116,15 +125,7 @@ export function PinnedBadge({ pins, you, userId, pool }: { pins: Pins; you: stri
   const close = useCallback(() => setOpen(false), []);
   useDismiss(anchor, open, close);
   if (!pins.pins.length) return null;
-  const show = (n: number) => {
-    close();
-    const el = document.getElementById(`m-${n}`);
-    el?.scrollIntoView({ block: "center", behavior: "smooth" });
-    // Where it landed, for a moment.
-    el?.classList.remove("flash");
-    void el?.offsetWidth;
-    el?.classList.add("flash");
-  };
+  const show = (n: number) => { close(); jumpTo(n); };
   return (
     <span className="picker-anchor" ref={anchor}>
       <button type="button" className="link" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}

@@ -6,6 +6,7 @@ import { Icon } from "./icons.tsx";
 import { Thread, findThread } from "./Thread.tsx";
 import { Memory } from "./Memory.tsx";
 import { AdminPage, SettingsPage } from "./Panel.tsx";
+import { FilesPage } from "./Files.tsx";
 import { ThreadMenu, useThreadMenu } from "./ThreadMenu.tsx";
 import { ProjectPage, stateWord } from "./Project.tsx";
 import { ErrorText, hidden, menuArrows, shortTime, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
@@ -60,6 +61,10 @@ export function Shell({ user, users, route, build, onAuthChange }: {
       <HiddenPool ctx={ctx} pool={r.pool} />
     ) : r.page === "thread" ? (
       <Thread key={`${r.pool}/${r.threadId}`} ctx={ctx} pool={r.pool} threadId={r.threadId} threads={threads.data ?? []} drawerAtStart={r.drawer} dropDrawer={dropDrawer} />
+    ) : r.page === "files" && hidden(me.data!.display, r.pool) ? (
+      <HiddenPool ctx={ctx} pool={r.pool} />
+    ) : r.page === "files" ? (
+      <FilesPage key={`${r.pool}/${r.threadId}`} ctx={ctx} pool={r.pool} threadId={r.threadId} threads={threads.data ?? []} />
     ) : r.page === "project" && hidden(me.data!.display, r.pool) ? (
       <HiddenPool ctx={ctx} pool={r.pool} />
     ) : r.page === "project" ? (
@@ -138,7 +143,7 @@ function openInPanel(e: React.MouseEvent, route: Route & { page: "thread" }, tra
   const a = (e.target as Element).closest("a[href^='#/u/']");
   if (!a || a.closest(".side, .panel-actions")) return;
   const to = parse(a.getAttribute("href")!);
-  if (to.page !== "thread" && to.page !== "project") return;
+  if (to.page !== "thread" && to.page !== "project" && to.page !== "files") return;
   if (to.userId !== route.userId) return;
   e.preventDefault();
   if (to.page === "thread" && to.pool === route.pool && to.threadId === route.threadId) {
@@ -147,7 +152,10 @@ function openInPanel(e: React.MouseEvent, route: Route & { page: "thread" }, tra
   }
   const panel: Panel = to.page === "thread"
     ? { page: "thread", pool: to.pool, threadId: to.threadId, ...(to.drawer ? { drawer: true as const } : {}) }
+    : to.page === "files" ? { page: "files", pool: to.pool, threadId: to.threadId }
     : { page: "project", pool: to.pool, threadId: to.threadId, ...(to.section ? { section: to.section } : {}) };
+  // The Files button toggles its panel.
+  if (panel.page === "files" && route.panel?.page === "files" && route.panel.threadId === panel.threadId) { go({ ...route, drawer: undefined, panel: undefined }); return; }
   // A breadcrumb goes back to that page; a link in the panel goes one deeper; one in the conversation starts afresh.
   const crumb = (a as HTMLElement).dataset.crumb;
   trail.set(crumb !== undefined ? trail.crumbs.slice(0, Number(crumb) + 1) : a.closest(".panel") ? [...trail.crumbs, panel] : [panel]);
@@ -176,7 +184,7 @@ function PanelColumn({ route, panel, trail, threads, children }: { route: Route 
   const [width, setWidth] = useState(() => { try { const n = Number(localStorage.getItem(PANEL_WIDTH_KEY)); return n >= PANEL_MIN && n <= PANEL_MAX ? n : PANEL_DEFAULT; } catch { return PANEL_DEFAULT; } });
   const resize = (w: number) => { const x = Math.round(Math.min(PANEL_MAX, Math.max(PANEL_MIN, w))); setWidth(x); try { localStorage.setItem(PANEL_WIDTH_KEY, String(x)); } catch { /* kept for this visit only */ } };
   const close = useCallback(() => go({ ...route, drawer: undefined, panel: undefined }), [route]);
-  const label = (p: Panel) => p.page === "project" ? "Project settings" : findThread(threads, p.pool, p.threadId)?.title || "New thread";
+  const label = (p: Panel) => p.page === "project" ? "Project settings" : p.page === "files" ? "Files" : findThread(threads, p.pool, p.threadId)?.title || "New thread";
   const crumbs = trail.crumbs.map((p) => ({ label: label(p), href: href(panelRoute(route.userId, p)) }));
   const ctx: PanelContext = { crumbs, expand: href(panelRoute(route.userId, panel)), close };
   const current = href(panelRoute("", panel));
