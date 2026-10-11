@@ -91,7 +91,10 @@ runner keeps its registration, and the firewall is applied again.
 - **The nix job** installs Nix on the runner the first time (a pinned
   installer, checked by hash) and keeps it; it needs the internet for
   `releases.nixos.org`, `channels.nixos.org` and `cache.nixos.org`, which
-  the firewall allows like the rest of the internet. If that first install
+  the firewall allows like the rest of the internet. Its store does not
+  grow without bound: each run ends by keeping its builds as one generation
+  of a Nix profile, deleting all but the ten newest and collecting garbage,
+  so the disk settles at about ten runs' worth. If that first install
   was cancelled partway (a cancelled run, a rebooted VM), later nix jobs
   stop with "An earlier Nix install on this runner stopped partway" and
   list the `/etc/*.backup-before-nix` files it left. Undo it by hand with
