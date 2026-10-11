@@ -436,6 +436,12 @@ describe("threads", () => {
     const pages = (fromThread: string) => own.search("backup job", { kinds: ["page"], fromThread }).map((h) => h.id);
     expect(pages(other.thread)).toEqual(["p:jobs", `p:${projectSlug(project.id)}`]);
     expect(pages(thread.id)).toEqual([`p:${projectSlug(project.id)}`, "p:jobs"]);
+    // A project thread that isn't logged stays out of recall, boost or not; a logged one comes up.
+    const quiet = own.createThread({ interface: "web", parent: project.id, child: true, unlogged: true });
+    own.appendEntry(quiet.id, { piId: "u1", role: "user", data: {}, text: "the backup job failed again" });
+    const loud = own.appendEntry(project.id, { piId: "u2", role: "user", data: {}, text: "the backup job failed once" });
+    const entries = own.search("backup job failed", { kinds: ["entry"], fromThread: thread.id }).map((h) => h.id);
+    expect(entries).toEqual([loud]);
   });
 
   it("finds a project's notes by citation, and forgets its page and notes with it", async () => {
