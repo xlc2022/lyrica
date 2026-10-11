@@ -422,7 +422,7 @@ export interface Profiles {
   thinking: ThinkingLevel;
   /** Voice to cloud, unless a thread chooses: whether the user's audio may go to a cloud model. Off by default. */
   voiceCloud: boolean;
-  /** Read aloud while she writes: Read aloud is offered on the reply she is still writing (`messages/live/speech`). Off by default. */
+  /** Read aloud while agent writes: Read aloud is offered on the reply she is still writing (`messages/live/speech`). Off by default. */
   readAloudLive: boolean;
 }
 /**
@@ -788,7 +788,7 @@ export interface ThreadSettingsChange {
 export type SpeechState = { available: true; label: string; kind: "cloud" | "local" }
   /** reason: "none" nothing usable is set here; "voiceCloud" the model is cloud and Voice to cloud is off; "down" every model set can't be reached now. */
   | { available: false; reason: "none" | "voiceCloud" | "down"; problem: string };
-/** `readAloudLive` is the user's Read aloud while she writes setting (`Profiles.readAloudLive`). */
+/** `readAloudLive` is the user's Read aloud while agent writes setting (`Profiles.readAloudLive`). */
 export interface Speech { transcribe: SpeechState; speak: SpeechState; voiceCloud: boolean; readAloudLive: boolean }
 /** GET /api/u/:userId/speech?pool= → Speech: for the welcome page, before a thread exists (the user's defaults). */
 

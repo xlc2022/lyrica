@@ -541,7 +541,7 @@ test("linked users share a browser; logging in as anyone else signs this browser
   expect(state.users.map((x) => x.login)).toEqual(["sam"]);
 });
 
-test("with Read aloud while she writes on, a reply can be read aloud as it streams, and her stored copy takes the reading over", async ({ page, baseURL }) => {
+test("with Read aloud while agent writes on, a reply can be read aloud as it streams, and her stored copy takes the reading over", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const shot = async (name: string) => {
     if (!process.env.SCREENSHOTS) return;
@@ -562,13 +562,13 @@ test("with Read aloud while she writes on, a reply can be read aloud as it strea
 
   // The setting is under Speech in Settings, Appearance.
   await page.goto(`/#/u/${encodeURIComponent(userId)}/settings/appearance`);
-  const live = page.getByLabel("Read aloud while she writes");
+  const live = page.getByLabel("Read aloud while agent writes");
   await expect(live).not.toBeChecked();
   await live.click();
   await expect(live).toBeChecked();
   await shot("read-aloud-live-setting");
   await page.reload();
-  await expect(page.getByLabel("Read aloud while she writes")).toBeChecked();
+  await expect(page.getByLabel("Read aloud while agent writes")).toBeChecked();
 
   // On: Read aloud appears on the reply she is writing and follows it; her stored copy then owns the reading.
   await page.goBack();
@@ -593,14 +593,12 @@ test("with Read aloud while she writes on, a reply can be read aloud as it strea
   }
   await expect(page.locator(".turn").getByRole("button", { name: "Stop reading" })).toHaveCount(0, { timeout: 15_000 });
   await noHorizontalScroll(page);
-  // Later tests share this user: put the setting back to its default.
-  await page.goto(`/#/u/${encodeURIComponent(userId)}/settings/appearance`);
-  await page.getByLabel("Read aloud while she writes").click();
-  await expect(page.getByLabel("Read aloud while she writes")).not.toBeChecked();
 });
 
 test("dictation goes in at the caret, Read aloud plays her reply, and a speech server that is down disables both", async ({ page, baseURL, request }) => {
-  await enter(page, baseURL!);
+  const userId = await enter(page, baseURL!);
+  // The test before may have left Read aloud while agent writes on for this user.
+  await page.evaluate((u) => fetch(`/api/u/${encodeURIComponent(u)}/profiles`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ readAloudLive: false }) }), userId);
   await newThread(page, "General");
   const shot = async (name: string) => {
     if (!process.env.SCREENSHOTS) return;
