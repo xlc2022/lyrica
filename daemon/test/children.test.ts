@@ -217,6 +217,22 @@ describe("child threads", () => {
     expect(refused.body.error).toMatch(/cloud model/);
   });
 
+  it("lose a machine at once when the parent's is taken off, and their open views hear of it", async () => {
+    const { li, u, parent, child, path, say, childPath } = await setup();
+    const probe = (await li.post<MachineProbe>(`${u}/machines/probe`, { name: "nas", address: "lyrica@127.0.0.1:1" })).body;
+    expect((await li.post(`${u}/machines`, { name: "nas", address: "lyrica@127.0.0.1:1", pool: "general", draft: probe.draft, hostKey: `SHA256:${"A".repeat(43)}` })).status).toBe(200);
+    expect((await li.patch(`${path}/settings`, { machines: ["nas"] })).status).toBe(200);
+    parent.push(start("Backups", "Check the backups."), { text: "Started." });
+    child.push({ text: "Checked." });
+    const id = toolEnd(await say("check the backups in a child thread"))!.threads![0]!.id;
+    expect((await li.get<ThreadSettings>(`${childPath(id)}/settings`)).body.machines).toEqual(["nas"]);
+    const view = li.events(`${childPath(id)}/events`);
+    await view.ready;
+    expect((await li.patch(`${path}/settings`, { machines: [] })).status).toBe(200);
+    await view.until((e) => e.type === "settings");
+    expect((await li.get<ThreadSettings>(`${childPath(id)}/settings`)).body.machines).toEqual([]);
+  });
+
   it("hold the limits: a message that wakes an idle child counts, and so do another parent's children", async () => {
     const { li, u, parent, child, say, list, thread } = await setup({ threads: { concurrency: 1, perRequest: 3 } });
     parent.push(start("A", "job a"), { text: "Started." });

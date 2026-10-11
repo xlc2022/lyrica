@@ -903,7 +903,10 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await sections.getByRole("link", { name: "General" }).click();
   await expect(page.getByLabel("Goal")).toHaveValue("Ship the garden plan.");
   await expect(page.getByRole("checkbox", { name: "Paused" })).toBeChecked();
-  // The chat keeps its own drawer for folders, network and local-only: the page links to it open.
+  // Folders and Machines are the drawer's own two controls, under This chat.
+  await expect(page.getByRole("group", { name: "Folders" })).toContainText("An administrator hasn't allowed any folders for this pool.");
+  await expect(page.getByRole("group", { name: "Machines" })).toContainText("sandbox");
+  // The chat keeps its own drawer for network and local-only: the page links to it open.
   await page.getByRole("link", { name: "Thread settings" }).click();
   const chatDrawer = page.getByRole("complementary", { name: "Thread settings" });
   await expect(chatDrawer).toBeVisible();

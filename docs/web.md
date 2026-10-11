@@ -99,12 +99,19 @@ A thread's address may carry what the panel beside it shows:
   threads** switches (`watchThreads`; the tooltip says what a look does), **New
   threads** (Model, Thinking and Fallback the project's threads start with;
   "This chat's model", "This chat's fallback" follow the project chat), **This chat** (Model, Mode,
-  Group, then a **Thread settings** link that opens the project chat with
-  its drawer showing, `…/t/<pool>/<thread>/settings`, for folders, machines,
-  network, local-only and the other task models), and one Save, which
-  patches the thread (`goal`, `paused`, `watchThreads` when it changed,
-  `threadsModel`, `threadsThinking`, `threadsFallback`, `group`) and, when they changed, its
-  settings. **Memory**: the
+  Group, then **Folders** and **Machines**, the drawer's own two controls,
+  then a **Thread settings** link that opens the project chat with its
+  drawer showing, `…/t/<pool>/<thread>/settings`, for network, local-only
+  and the other task models), and one Save, which patches the thread
+  (`goal`, `paused`, `watchThreads` when it changed, `threadsModel`,
+  `threadsThinking`, `threadsFallback`, `group`) and, when they changed, its
+  settings (`grants`, `machines` among them); `lyricad`'s reason shows when
+  it refuses. Every thread the project starts gets these folders and
+  machines or fewer. A machine taken off here leaves the project's running
+  threads at once, and their open views show it gone. A folder taken off
+  doesn't yet: a thread that still holds it fails its next command or Files
+  call with "isn't in the parent thread's folders" until its own folders
+  are narrowed. **Memory**: the
   Instructions kept on the project page (2,000 characters, counted under
   the box), and a link to that page in the memory browser. Files and
   images come with the Files panel.

@@ -734,7 +734,7 @@ export interface ThreadSettings {
   /** What applies now, defaults included. All off while the host's network self-test refuses network. */
   network: Network;
   grants: Grant[];
-  /** The machines granted to it besides the sandbox, by name. */
+  /** The machines it may use besides the sandbox, by name: its own, less any an ancestor has since taken off (`effective`). */
   machines: string[];
   mode: PermissionMode;
   /** Switches: web_search and web_fetch, and the image tool. Off removes them from the session. */

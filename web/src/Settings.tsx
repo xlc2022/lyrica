@@ -259,10 +259,11 @@ function Hosts({ hosts, overridden, onChange }: { hosts: string[]; overridden: b
   );
 }
 
-function Folders({ grants, allowed, onChange }: { grants: Grant[]; allowed: string[]; onChange: (g: Grant[]) => void }) {
+export function Folders({ grants, allowed, onChange }: { grants: Grant[]; allowed: string[]; onChange: (g: Grant[]) => void }) {
   const listId = useId();
   const [draft, setDraft] = useState("");
   const set = (i: number, g: Grant | null) => onChange(grants.flatMap((x, j) => (j === i ? (g ? [g] : []) : [x])));
+  const add = () => { if (draft) { onChange([...grants, { path: draft, writable: false }]); setDraft(""); } };
   return (
     <>
       {grants.map((g, i) => (
@@ -277,18 +278,20 @@ function Folders({ grants, allowed, onChange }: { grants: Grant[]; allowed: stri
       ))}
       {!grants.length && <span className="muted small">No folders granted.</span>}
       {allowed.length > 0 ? (
-        <form className="inline" onSubmit={(e) => { e.preventDefault(); if (draft) { onChange([...grants, { path: draft, writable: false }]); setDraft(""); } }}>
-          <input aria-label="Add a folder" list={listId} placeholder={allowed[0]} value={draft} onChange={(e) => setDraft(e.target.value)} />
+        // Not a form of its own: on the Project settings page it sits inside the page's form.
+        <div className="inline">
+          <input aria-label="Add a folder" list={listId} placeholder={allowed[0]} value={draft} onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} />
           <datalist id={listId}>{allowed.map((p) => <option key={p} value={p} />)}</datalist>
-          <button type="submit" disabled={!draft}>Add</button>
-        </form>
+          <button type="button" disabled={!draft} onClick={add}>Add</button>
+        </div>
       ) : <span className="muted small">An administrator hasn't allowed any folders for this pool.</span>}
     </>
   );
 }
 
-/** The sandbox, always, then each machine of the thread's pool with a switch; a granted one that no longer exists still shows, so it can be taken off. */
-function Machines({ granted, machines, onChange }: { granted: string[]; machines: MachineInfo[]; onChange: (names: string[]) => void }) {
+/** The sandbox, always, then each machine of the thread's pool with a switch; a granted one that no longer exists still shows, so it can be taken off. Also on the Project settings page. */
+export function Machines({ granted, machines, onChange }: { granted: string[]; machines: MachineInfo[]; onChange: (names: string[]) => void }) {
   const gone = granted.filter((name) => !machines.some((m) => m.name === name));
   const toggle = (name: string, on: boolean) => onChange(on ? [...granted, name] : granted.filter((n) => n !== name));
   return (
