@@ -172,6 +172,8 @@ function Parts({ parts, env, model, streaming, n }: { parts: MessagePart[]; env:
   });
   flush(parts.length, true);
   if (streaming && parts.at(-1)?.type !== "text") out.push(<span key="caret" className="caret-blink alone" aria-hidden="true" />);
+  // A turn with nothing to show (a project chat's thread start, whose card stands under the message) takes no room.
+  if (!out.length && !streaming) return null;
   // In a subagent's thread, the replies are the subagent's own work.
   const who = env.subagent ? "Subagent" : "Lyrica";
   return (
