@@ -5,7 +5,7 @@
 // Beside the conversation from the split width; the page on its own below it.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { get, post, threadPath, upload, type FileEntry, type FileListing, type FileRoot, type FileSearch, type ImageEntry, type Pool, type ThreadSummary } from "./api.ts";
-import { ATTACH_EVENT, ATTACH_KEY, type AttachRequest } from "./Composer.tsx";
+import { ask, ATTACH_EVENT, ATTACH_KEY, keep, SHOW_EVENT, SHOW_KEY, type AttachRequest, type ShowRequest } from "./links.ts";
 import { Icon } from "./icons.tsx";
 import { go } from "./route.ts";
 import { Crumbs, Main, PanelButtons, type ShellContext } from "./Shell.tsx";
@@ -150,10 +150,16 @@ export function FilesPage({ ctx, pool, threadId, threads }: { ctx: ShellContext;
   const contentUrl = (p: string, download = false) => `${base}/content?path=${encodeURIComponent(p)}${download ? "&download=1" : ""}`;
   const attach = (paths: string[]) => {
     const req: AttachRequest = { base: thread, paths };
-    dispatchEvent(new CustomEvent(ATTACH_EVENT, { detail: req }));
-    if (req.handled) return;
+    if (ask(ATTACH_EVENT, req)) return;
     // No message box on this page (a phone): the thread's box takes them when it shows.
-    try { sessionStorage.setItem(ATTACH_KEY, JSON.stringify(req)); } catch { /* lost */ }
+    keep(ATTACH_KEY, req);
+    go({ page: "thread", userId, pool, threadId });
+  };
+  /** Show in thread: the conversation beside the panel scrolls to the message that names the file; on a phone, the thread page does. */
+  const showInThread = (path: string) => {
+    const req: ShowRequest = { base: thread, path };
+    if (ask(SHOW_EVENT, req)) { if (!req.found) setError("That file isn't named in the messages shown."); return; }
+    keep(SHOW_KEY, req);
     go({ page: "thread", userId, pool, threadId });
   };
   const download = (paths: string[]) => {
@@ -290,7 +296,7 @@ export function FilesPage({ ctx, pool, threadId, threads }: { ctx: ShellContext;
       {menu && (
         <FileMenu at={menu} writable={writable} onClose={() => setMenu(undefined)} shownName={shown}
           onAttach={(ps) => { setMenu(undefined); attach(ps); }} onDownload={(ps) => { setMenu(undefined); download(ps); }} onCopy={(ps) => { setMenu(undefined); void copy(ps); }}
-          onSelect={(p) => { setMenu(undefined); setSel((s) => new Set([...s, p])); }} onShow={(p) => { setMenu(undefined); const e = listingEntry(p); if (e) view(e); }}
+          onSelect={(p) => { setMenu(undefined); setSel((s) => new Set([...s, p])); }} onShow={(p) => { setMenu(undefined); showInThread(p); }}
           onUpload={(dir) => { setMenu(undefined); askUpload(dir); }} onMkdir={(dir, name) => act(() => mkdir(dir, name))} onRename={(p, name) => act(() => rename(p, name))}
           onDelete={(ps) => act(() => remove(ps))} />
       )}
@@ -383,7 +389,7 @@ function Item({ label, kbd, danger, onClick }: { label: ReactNode; kbd?: string;
   );
 }
 
-/** The right-click menu: Attach, Select, Show, Download, Copy path; Rename and Delete where the folder is writable; Upload and New folder on a folder. */
+/** The right-click menu: Attach, Select, Show in thread, Download, Copy path; Rename and Delete where the folder is writable; Upload and New folder on a folder. */
 function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCopy, onSelect, onShow, onUpload, onMkdir, onRename, onDelete }: {
   at: MenuAt; writable: (p: string) => boolean; shownName: (p: string) => string; onClose: () => void;
   onAttach: (paths: string[]) => void; onDownload: (paths: string[]) => void; onCopy: (paths: string[]) => void; onSelect: (path: string) => void; onShow: (path: string) => void;
@@ -456,7 +462,7 @@ function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCo
         <span className="eyebrow">{t.entry.name}</span>
         <Item label="Attach to message" kbd="A" onClick={() => onAttach(paths)} />
         <Item label="Select" kbd="X" onClick={() => onSelect(t.entry.path)} />
-        <Item label="Show" kbd="G" onClick={() => onShow(t.entry.path)} />
+        <Item label="Show in thread" kbd="G" onClick={() => onShow(t.entry.path)} />
         <Item label="Download" kbd="S" onClick={() => onDownload(paths)} />
         <Item label="Copy path" kbd="C" onClick={() => onCopy(paths)} />
         {canWrite && (

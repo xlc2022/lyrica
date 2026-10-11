@@ -6,15 +6,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { upload, type ThreadSettings, type ThreadSettingsChange } from "./api.ts";
 import { Icon } from "./icons.tsx";
+import { ATTACH_EVENT, ATTACH_KEY, take, type AttachRequest } from "./links.ts";
 import { ModePicker, nextMode, ToolsMenu, type GrantedMachine } from "./Modes.tsx";
 import { MicButton, stopReading, useDictation } from "./Voice.tsx";
 
 interface Upload { id: number; name: string; progress: number; error?: string }
-
-/** Paths the Files panel attaches to a thread's message box. */
-export interface AttachRequest { base: string; paths: string[]; handled?: boolean }
-export const ATTACH_EVENT = "lyrica:attach";
-export const ATTACH_KEY = "lyrica.attach";
 
 export function Composer({ base, busy, restored, onSend, onStop, settings, machines, onSettings, onError }: {
   base: string; busy: boolean; onSend: (text: string) => Promise<boolean>; onStop: () => void;
@@ -50,13 +46,8 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
       addPaths(detail.paths);
     };
     addEventListener(ATTACH_EVENT, on);
-    try {
-      const kept = sessionStorage.getItem(ATTACH_KEY);
-      if (kept) {
-        const req = JSON.parse(kept) as AttachRequest;
-        if (req.base === base) { sessionStorage.removeItem(ATTACH_KEY); addPaths(req.paths); }
-      }
-    } catch { /* nothing kept */ }
+    const kept = take<AttachRequest>(ATTACH_KEY, base);
+    if (kept) addPaths(kept.paths);
     return () => removeEventListener(ATTACH_EVENT, on);
   }, [base, addPaths]);
 

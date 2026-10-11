@@ -194,7 +194,7 @@ For each part:
   itself.
 - 2026-10-11, PR 7 (Files panel, the UI): `web/src/Files.tsx` and the
   `files` route and panel kind (docs/web.md "The Files panel", docs/ux.md
-  §6). Not built: "Show in thread" (the back end has no record of which
-  message made a file) and thumbnails. Next: Notifications, Pin in the
+  §6; Show in thread finds the first message naming the path, on Li's ask).
+  Not built: thumbnails. Next: Notifications, Pin in the
   remaining places, the Models page (carry the Fallback default), the Sleep
   section; Web: bootstrap on Li's go.

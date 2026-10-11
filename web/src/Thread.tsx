@@ -2,7 +2,8 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { del, get, patch, post, put, threadPath, u, type MachineInfo, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary } from "./api.ts";
 import { Icon } from "./icons.tsx";
-import { hasConsequences, PinnedBadge, RemovalConfirm, useUndo, type Rewinder } from "./Rewind.tsx";
+import { hasConsequences, jumpTo, PinnedBadge, RemovalConfirm, useUndo, type Rewinder } from "./Rewind.tsx";
+import { SHOW_EVENT, SHOW_KEY, take, type ShowRequest } from "./links.ts";
 import { go, href } from "./route.ts";
 import { ThreadsFact, tokenCount, useOverview, type ProjectEnv } from "./Project.tsx";
 import { useThread } from "./stream.ts";
@@ -75,6 +76,31 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
 
   // Leaving the thread stops anything being read aloud.
   useEffect(() => stopReading, [base]);
+
+  // Show in thread, from the Files panel: the first message that names the file (the upload, or her call that wrote it).
+  const messages = t.messages;
+  const showFile = useCallback((path: string) => {
+    const names = (m: typeof messages[number]) => m.parts.some((p) => (p.type === "text" || p.type === "delegation") ? p.text.includes(path) : p.type === "tool" ? JSON.stringify(p.args ?? "").includes(path) : false);
+    const m = messages.find(names);
+    if (m) jumpTo(m.n);
+    return !!m;
+  }, [messages]);
+  useEffect(() => {
+    const on = (e: Event) => {
+      const { detail } = e as CustomEvent<ShowRequest>;
+      if (detail.base !== base) return;
+      detail.handled = true;
+      detail.found = showFile(detail.path);
+    };
+    addEventListener(SHOW_EVENT, on);
+    return () => removeEventListener(SHOW_EVENT, on);
+  }, [base, showFile]);
+  // Kept by the Files page (a phone): shown once the messages are here.
+  useEffect(() => {
+    if (!messages.length) return;
+    const kept = take<ShowRequest>(SHOW_KEY, base);
+    if (kept && !showFile(kept.path)) setSendError("That file isn't named in the messages shown.");
+  }, [messages, base, showFile]);
 
   const send = useCallback(async (text: string) => {
     setSendError("");

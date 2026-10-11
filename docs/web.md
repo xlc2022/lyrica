@@ -105,8 +105,9 @@ A thread's address may carry what the panel beside it shows:
   `…/files/images`, filtered by source, and opens one large in a dialog.
   The right-click menu (a long press, or the ⋯ beside a shown file) attaches
   (the path goes into this thread's message box through a window event, or
-  waits in session storage when the page has no box), selects, shows,
-  downloads (one file by its address, several as `…/files/zip`), copies
+  waits in session storage when the page has no box), selects, shows in the
+  thread (the conversation scrolls to the first message naming the path, an
+  upload or her call that wrote it, through the same channel), downloads (one file by its address, several as `…/files/zip`), copies
   paths, renames and deletes (a confirm dialog), uploads and makes folders;
   dropping files on the panel uploads them to the folder last opened. After a
   change the folders it touched are reloaded. No thumbnails: the grid shows

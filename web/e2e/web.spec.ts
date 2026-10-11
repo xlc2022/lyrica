@@ -1052,6 +1052,10 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
 
   // The menu on a file: Attach puts its path in the message box.
   const open = async (name: string) => {
+    // Back on the Files page (a phone), the tree starts afresh with uploads folded.
+    const uploads = panel.getByRole("button", { name: "uploads" });
+    await expect(uploads).toBeVisible();
+    if ((await uploads.getAttribute("aria-expanded")) === "false") await uploads.click();
     if (phone(page)) { await panel.getByRole("button", { name }).click(); await panel.getByRole("button", { name: "File actions" }).click(); }
     else await panel.getByRole("button", { name }).click({ button: "right" });
     return page.getByRole("menu", { name: "File actions" });
@@ -1059,6 +1063,15 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   let menu = await open("plan.md");
   await menu.getByRole("menuitem", { name: "Attach to message" }).click();
   await expect(page.getByLabel("Message", { exact: true })).toHaveValue(/\/workspace\/uploads\/plan\.md/);
+  // Sent, the message names the file, and Show in thread goes to it.
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("You said: /workspace/uploads/plan.md")).toBeVisible();
+  // Once the turn ends, the stored message (with its number) replaces the live one.
+  await expect(page.locator(".msg.user", { hasText: "/workspace/uploads/plan.md" })).toHaveAttribute("id", /^m-/);
+  if (phone(page)) await page.getByRole("link", { name: "Files and images" }).click();
+  menu = await open("plan.md");
+  await menu.getByRole("menuitem", { name: "Show in thread" }).click();
+  await expect(page.locator(".msg.user.flash")).toContainText("/workspace/uploads/plan.md");
   if (phone(page)) await page.getByRole("link", { name: "Files and images" }).click();
   // A new folder under uploads, renamed, then deleted with the note.
   await expect(panel.getByRole("button", { name: "uploads" })).toBeVisible();
