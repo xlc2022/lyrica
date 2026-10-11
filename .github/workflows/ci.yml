@@ -14,7 +14,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+      # No actions cache for npm: the runner keeps ~/.npm between runs, so
+      # npm ci downloads only what changed.
       # The sandbox tests need these, and run as the runner's unprivileged user.
       # Ubuntu 24.04's AppArmor blocks unprivileged user namespaces by default.
       - run: |
