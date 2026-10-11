@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { AgentSession, ExtensionFactory, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
-  DelegationStore, isRestricted, LIVE_STATUSES, refId,
+  DelegationStore, isRestricted, LIVE_STATUSES, refId, renderThreadMentions,
   type CouncilSpec, type Grant, type LoopSpec, type Memory, type ModelRef, type Models, type Pool, type PoolStore, type Role,
   type Step, type SubagentRecord, type SubagentStatus, type Tier, type Usage, type User, type Users, type Workflow, type WorkflowSpec, type Workspace,
 } from "@lyrica/core";
@@ -861,7 +861,7 @@ export class Delegation {
     try {
       if (!view.own.getThread(parent.threadId)) throw new Error("its parent thread was forgotten");
       const child = earlier ? view.own.getThread(earlier.thread)
-        : view.own.createThread({ interface: parent.interface, parent: parent.threadId, subagent: true, title: `${role.name}: ${task.split("\n")[0]!.slice(0, 80)}` });
+        : view.own.createThread({ interface: parent.interface, parent: parent.threadId, subagent: true, title: `${role.name}: ${subagentTitle(task, view.own)}` });
       if (!child) throw new Error("that subagent's thread was forgotten");
       if (fork) forkConversation(view.own, parent.threadId, child.id);
       const parentThread = view.own.getThread(parent.threadId)!;
@@ -996,4 +996,11 @@ export function appendMessage(store: PoolStore, threadId: string, content: strin
     customType: DELEGATE_MESSAGE, content, display: true, details,
   } as unknown as SessionEntry;
   store.appendEntry(threadId, toStoredEntry(entry));
+}
+
+/** A subagent thread's title from its task's first line: threads it mentions by their current title, cut after. */
+function subagentTitle(task: string, own: { getThread(id: string): { title?: string } | undefined }): string {
+  // Another pool's thread (a general one from a private view) isn't looked up here.
+  const line = renderThreadMentions(task.split("\n")[0]!, (id, pool) => (pool ? "a thread" : own.getThread(id) && (own.getThread(id)!.title || "an untitled thread")));
+  return line.slice(0, 80);
 }
