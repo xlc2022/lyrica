@@ -1403,11 +1403,14 @@ from Monika's runbooks.
   never approve their own PRs.
 - **Review is the project's.** Her PRs go through the same PR review (and
   UI review) as Claude's, which approves and merges them, so Li doesn't
-  read every change. `CODEOWNERS` names Li for boundary code: keys, the
+  read every change. **Boundary code is hands off for her:** keys, the
   privacy boundary, the model router, the sandbox, authentication,
-  deployment, the updater and CI. Claude's reviews come from Li's own
-  account, so GitHub can't tell them from Li's; until that changes, Li's
-  approval of boundary code is a rule the reviewers follow, not a gate.
+  deployment, the updater and CI. A required CI check fails any pull
+  request from her account that touches those paths, and `.github/` is
+  one of them, so she can't change the check. When she wants a boundary
+  changed, she describes it and a Claude thread builds it under the usual
+  review. (Claude's reviews act through Li's account, so an approval
+  rule alone couldn't tell Li's approval from a reviewer's.)
 - **The outer net is the operator's:** a scheduled Proxmox backup of the
   container. The updater can't snapshot the container it runs in.
 - **Not covered:** her persona, which has its own revisions; model hosts,
