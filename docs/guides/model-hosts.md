@@ -264,7 +264,7 @@ a 24 GB card) and Kokoro, and leave the rest for chat models.
 
 Once paired, the host's models are offerings named `<host>/<model id>`
 (with `shared.` in front for a shared host). Put them in a profile's lists,
-from the control panel's Model profiles section or from a terminal on the
+from Settings, Model profiles, or from a terminal on the
 Lyrica machine (as the `lyrica` user with `LYRICA_HOME=/var/lib/lyrica`):
 
 ```sh
@@ -278,7 +278,8 @@ A model id is its path under the models folder, as the dashboard and
 `GET /host/v1/models` show it. Private and local-only threads use the local
 profile, so a host is how private threads get a model at all. Each user
 picks their own voice and speed per language under the speech model's
-**Settings** in the control panel's Endpoints section; without one, the model's first voice for the language is used.
+**Settings** link in Settings, Endpoints; without one, the model's first
+voice for the language is used.
 
 ## More than one host
 
