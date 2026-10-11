@@ -237,7 +237,7 @@ export class Workspace {
   files(t: WorkspaceThread): ThreadFiles {
     const s = this.settings(t.userId);
     s.checkInherited(t.threadId, t.pool);
-    const tw = s.thread(t.threadId);
+    const tw = s.effective(t.threadId);
     const box = new Sandbox({
       workdir: this.threadDir(t), grants: tw.grants, network: { internet: false, services: false, hosts: [] },
       check: (g) => checkGrant(s.allowed(), t.pool, g), bwrap: this.opts.bwrap,
@@ -294,12 +294,12 @@ export class Workspace {
     return this.settings(parent.userId).inheritSettings(parent.threadId, childThreadId, parent.pool, narrower);
   }
 
-  grantsFor(t: WorkspaceThread): Grant[] { return this.settings(t.userId).thread(t.threadId).grants; }
+  /** The folders the thread may use now: its own, as far as every ancestor still grants them. */
+  grantsFor(t: WorkspaceThread): Grant[] { return this.settings(t.userId).effective(t.threadId).grants; }
 
   /** What the thread works in: host folders, and `<machine>:<root>` for its machines with a root. Memory loads pages about them. */
   folders(t: WorkspaceThread): string[] {
-    const tw = this.settings(t.userId).thread(t.threadId);
-    return [...tw.grants.map((g) => g.path), ...this.machinesFor(t).filter((m) => m.root).map((m) => `${m.name}:${m.root}`)];
+    return [...this.grantsFor(t).map((g) => g.path), ...this.machinesFor(t).filter((m) => m.root).map((m) => `${m.name}:${m.root}`)];
   }
 
   /**
@@ -331,10 +331,9 @@ export class Workspace {
       if (m.kind === "proxmox") throw new Error(`${machine} is a Proxmox machine: use the proxmox tool`);
       return this.ssh(t.userId, machine);
     }
-    const tw = s.thread(t.threadId);
     return new Sandbox({
       workdir: this.threadDir(t),
-      grants: tw.grants,
+      grants: s.effective(t.threadId).grants,
       network: this.network(t),
       ...this.door(),
       check: (g) => checkGrant(s.allowed(), t.pool, g),
