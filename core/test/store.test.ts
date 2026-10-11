@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { isThreadView, Memory, readView, searchView, Users, type PoolStore } from "../src/index.ts";
+import { isThreadView, Memory, projectSlug, readView, searchView, Users, type PoolStore } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 async function setup() {
@@ -386,6 +386,65 @@ describe("threads", () => {
     const b2 = own.createThread({ interface: "web", parent: c2.id });
     own.forgetThread(p2.id, "lyrica", { children: true });
     expect([own.getThread(c2.id), own.getThread(b2.id)]).toEqual([undefined, undefined]);
+  });
+
+  it("makes projects of top-level threads only, and keeps their branches in the project", async () => {
+    const { memory, li } = await setup();
+    const { own } = memory.openThreadView(li.id, "general");
+    const project = own.createThread({ interface: "web", project: true, goal: "move the homelab", title: "Homelab" });
+    expect(project).toMatchObject({ project: true, goal: "move the homelab" });
+    const thread = own.createThread({ interface: "web", parent: project.id, child: true, title: "DNS" });
+    expect(() => own.setProject(thread.id)).toThrow(/top-level/);
+    expect(() => own.createThread({ interface: "web", parent: project.id, child: true, project: true })).toThrow(/top-level/);
+    expect(() => own.setGoal(thread.id, "x")).toThrow(/only a project/);
+    expect([own.projectOf(project.id), own.projectOf(thread.id)]).toEqual([project.id, project.id]);
+    // A child of a project's thread is refused, as for any child thread.
+    expect(() => own.createThread({ interface: "web", parent: thread.id, child: true })).toThrow(/can't start child threads/);
+
+    own.appendEntry(thread.id, { piId: "u1", role: "user", data: {}, text: "use the router for DNS" });
+    const branch = own.branchThread(thread.id, 1);
+    expect(branch).toMatchObject({ parent: project.id, child: true });
+    own.appendEntry(project.id, { piId: "u1", role: "user", data: {}, text: "two at a time" });
+    expect(own.branchThread(project.id, 1)).toMatchObject({ parent: project.id, child: true });
+    expect(own.projectThreads(project.id)).toHaveLength(4);
+
+    // Making a project of a thread that has children makes them the project's threads.
+    const plain = own.createThread({ interface: "web" });
+    const kid = own.createThread({ interface: "web", parent: plain.id, child: true });
+    expect(own.projectOf(kid.id)).toBeUndefined();
+    own.setProject(plain.id);
+    expect(own.projectOf(kid.id)).toBe(plain.id);
+  });
+
+  it("finds a project's notes by citation, and forgets its page and notes with it", async () => {
+    const { memory, li } = await setup();
+    const { own } = memory.openThreadView(li.id, "general");
+    const project = own.createThread({ interface: "web", project: true });
+    const thread = own.createThread({ interface: "web", parent: project.id, child: true });
+    const a = own.appendEntry(project.id, { piId: "u1", role: "user", data: {}, text: "run two at a time" });
+    const b = own.appendEntry(thread.id, { piId: "u1", role: "user", data: {}, text: "the router does DNS" });
+    const other = said(own, "unrelated");
+    const [n1] = own.addNotes([{ text: "Li wants two threads at a time", source: a }], { author: "lyrica", thread: project.id });
+    const [n2] = own.addNotes([{ text: "DNS is on the router", source: b }], { author: "lyrica", thread: thread.id });
+    const [mixed] = own.addNotes([{ text: `DNS also came up [${other.entry}]`, source: b }], { author: "lyrica", thread: thread.id });
+    const [elsewhere] = own.addNotes([{ text: "unrelated note", source: other.entry }], { author: "lyrica", thread: other.thread });
+    expect(own.projectNotes(thread.id).map((n) => n.id)).toEqual([n1, n2, mixed]);
+    expect(own.projectNotes(project.id, "9999")).toEqual([]);
+    const [n3] = own.addNotes([{ text: "DNS is on the NAS now", source: b, supersedes: [n2!] }], { author: "lyrica", thread: thread.id });
+    expect(own.projectNotes(project.id).map((n) => n.id)).toEqual([n1, mixed, n3]);
+    expect(own.projectNotes(other.thread)).toEqual([]);
+
+    const page = `p:${projectSlug(project.id)}`;
+    expect(page).toMatch(/^p:project-web-[0-9a-f]+$/);
+    expect(own.pageForProject(thread.id)).toBeUndefined();
+    own.putPage({ slug: projectSlug(project.id), title: "Homelab", summary: "the move", text: `two at a time [${n1}]` }, "sleep");
+    expect(own.pageForProject(thread.id)?.id).toBe(page);
+    expect(own.sleepMaterial(undefined, "9999").threads.find((t) => t.id === thread.id)?.project).toBe(project.id);
+    expect(own.sleepMaterial(undefined, "9999").threads.find((t) => t.id === other.thread)?.project).toBeUndefined();
+
+    own.forgetThread(project.id, "lyrica", { children: true });
+    expect([own.get(n1!), own.get(n2!), own.get(n3!), own.get(mixed!), own.get(page)].map((x) => x?.id)).toEqual([undefined, undefined, undefined, mixed, undefined]);
+    expect(own.get(elsewhere!)?.id).toBe(elsewhere);
   });
 
   it("rewinds turns a branch still holds: their notes stay, and citations resolve through the copy", async () => {
