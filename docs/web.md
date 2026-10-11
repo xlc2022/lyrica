@@ -118,9 +118,10 @@ A thread's address may carry what the panel beside it shows:
 - **Thread settings drawer:** a model per task (each option says cloud or local first), local-only, the internet and
   Local services (localhost) switches (each following the user's default until
   changed), allowed hosts, folders from the allowed paths (read-only or
-  read-write), **Machines** (the sandbox, always, then a switch per machine
-  of the thread's pool; a granted machine that no longer exists keeps its
-  switch so it can be taken off), the mode, the
+  read-write), **Machines** (the sandbox, always, then each granted machine
+  in mono with its limit and an ✕ to take it off, a machine that no longer
+  exists included; **+** (Add machine) opens a search of the pool's other
+  machines by name or address, Enter picks the first), the mode, the
   Web search and Images switches, "Do not log", rename, hide, and forget. `lyricad` validates every
   change and its reason is shown.
 - **Subagents live inline**, not in the sidebar: see the `delegate` card

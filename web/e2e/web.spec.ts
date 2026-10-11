@@ -905,7 +905,28 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await expect(page.getByRole("checkbox", { name: "Paused" })).toBeChecked();
   // Folders and Machines are the drawer's own two controls, under This chat.
   await expect(page.getByRole("group", { name: "Folders" })).toContainText("An administrator hasn't allowed any folders for this pool.");
-  await expect(page.getByRole("group", { name: "Machines" })).toContainText("sandbox");
+  const machinesRow = page.getByRole("group", { name: "Machines" });
+  await expect(machinesRow).toContainText("sandbox");
+  // A machine is added from + and its search, and taken off with its ✕.
+  await page.evaluate(async () => {
+    const userId = ((await (await fetch("/api/state")).json()) as { users: { id: string }[] }).users[0]!.id;
+    const call = async (path: string, body: unknown) => (await fetch(`/api/u/${userId}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })).json() as Promise<{ draft: unknown }>;
+    const probe = await call("/machines/probe", { name: "garden-pi", address: "pi@127.0.0.1:1" });
+    await call("/machines", { name: "garden-pi", address: "pi@127.0.0.1:1", pool: "general", draft: probe.draft, hostKey: `SHA256:${"A".repeat(43)}` });
+  });
+  await page.reload();
+  await machinesRow.getByRole("button", { name: "Add machine" }).click();
+  await page.getByRole("searchbox", { name: "Search machines" }).fill("garden");
+  await page.getByRole("dialog", { name: "Add machine" }).getByRole("button", { name: /garden-pi/ }).click();
+  await expect(machinesRow.getByRole("button", { name: "Remove garden-pi" })).toBeVisible();
+  await expect(machinesRow.getByRole("button", { name: "Add machine" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Saved.")).toBeVisible();
+  await page.reload();
+  await machinesRow.getByRole("button", { name: "Remove garden-pi" }).click();
+  await expect(machinesRow.getByRole("button", { name: "Add machine" })).toBeVisible();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Saved.")).toBeVisible();
   // The chat keeps its own drawer for network and local-only: the page links to it open.
   await page.getByRole("link", { name: "Thread settings" }).click();
   const chatDrawer = page.getByRole("complementary", { name: "Thread settings" });

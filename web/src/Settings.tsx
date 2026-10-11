@@ -292,15 +292,55 @@ export function Folders({ grants, allowed, onChange }: { grants: Grant[]; allowe
   );
 }
 
-/** The sandbox, always, then each machine of the thread's pool with a switch; a granted one that no longer exists still shows, so it can be taken off. Also on the Project settings page. */
+/**
+ * The sandbox, always, then each granted machine with ✕ to take it off; + opens a search of the pool's
+ * other machines. A granted one that no longer exists still shows, so it can be taken off. Also on the Project settings page.
+ */
 export function Machines({ granted, machines, onChange }: { granted: string[]; machines: MachineInfo[]; onChange: (names: string[]) => void }) {
-  const gone = granted.filter((name) => !machines.some((m) => m.name === name));
-  const toggle = (name: string, on: boolean) => onChange(on ? [...granted, name] : granted.filter((n) => n !== name));
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const anchor = useRef<HTMLSpanElement>(null);
+  const plus = useRef<HTMLButtonElement>(null);
+  const close = useCallback(() => { setOpen(false); setQuery(""); }, []);
+  useDismiss(anchor, open, close);
+  const others = machines.filter((m) => !granted.includes(m.name));
+  const q = query.trim().toLowerCase();
+  const found = others.filter((m) => !q || m.name.toLowerCase().includes(q) || m.address.toLowerCase().includes(q));
+  const add = (name: string) => { onChange([...granted, name]); close(); plus.current?.focus(); };
   return (
     <>
       <div className="folder"><span className="path">sandbox</span><span className="muted small">always</span><span /></div>
-      {machines.map((m) => <Switch key={m.name} label={m.name} hint={`${m.address} · up to ${MODES[m.limit].label}`} checked={granted.includes(m.name)} onChange={(on) => toggle(m.name, on)} />)}
-      {gone.map((name) => <Switch key={name} label={name} hint="No longer one of your machines." checked onChange={() => toggle(name, false)} />)}
+      {granted.map((name) => {
+        const m = machines.find((x) => x.name === name);
+        return (
+          <div key={name} className="folder">
+            <span className="path" title={m ? m.address : undefined}>{name}</span>
+            <span className="muted small">{m ? `up to ${MODES[m.limit].label}` : "removed"}</span>
+            <button type="button" className="icon sm" aria-label={`Remove ${name}`} title={m ? undefined : "No longer one of your machines."}
+              onClick={() => onChange(granted.filter((n) => n !== name))}><Icon name="close" /></button>
+          </div>
+        );
+      })}
+      {!machines.length && !granted.length && <span className="muted small">No machines in this pool.</span>}
+      {others.length > 0 && (
+        <span className="picker-anchor" ref={anchor}>
+          <button ref={plus} type="button" className="icon sm" aria-label="Add machine" title="Add machine" aria-haspopup="dialog" aria-expanded={open}
+            onClick={() => (open ? close() : setOpen(true))}><Icon name="plus" /></button>
+          {open && (
+            <div className="picker machine-pick" role="dialog" aria-label="Add machine"
+              onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); close(); plus.current?.focus(); } }}>
+              <input type="search" aria-label="Search machines" autoFocus value={query} onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (found[0]) add(found[0].name); } }} />
+              {found.map((m) => (
+                <button key={m.name} type="button" className="picker-item" onClick={() => add(m.name)}>
+                  <span className="mono">{m.name}</span> <span className="muted small">{m.address}</span>
+                </button>
+              ))}
+              {!found.length && <p className="muted small">No machine matches.</p>}
+            </div>
+          )}
+        </span>
+      )}
     </>
   );
 }
