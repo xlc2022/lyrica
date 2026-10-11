@@ -139,6 +139,8 @@ memory never needs rewriting when they do.
   writes `{user}`, `{user:obj}` and so on. Her instructions and the `remember`
   tool's description say so. The store turns these into `[[u:ID…]]` tokens on
   write. Anyone else she mentions (people who aren't users) is plain text.
+  A conversation is mentioned by ID (`[t:THREAD]`, `[e:THREAD#N]`), never by
+  its title, so a rename never leaves stale text.
 - **Reading.** Every read path (context assembly, tools, the memory browser)
   renders tokens with the user's current profile. Lyrica and the user both see
   natural text. The stored token form shows only in the browser's "raw" view.

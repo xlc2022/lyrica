@@ -94,6 +94,8 @@ decisions, requirements, pitfalls, who to ask, what's open, citing them.
   some of its threads are logged; those threads are slept as ordinary
   threads.
 - Notes she folds into the page stay notes.
+- She names a conversation by citing it (`[t:…]`), never by its title, so
+  a rename shows everywhere without rewriting the page.
 - Unfinished work in a project goes into WAKE like any other work.
 
 ## Memory pools
@@ -169,6 +171,9 @@ restart in between loses the record.
   `endpoint-down` or `no-activity`. Runs queue, so pools and users sleep one
   at a time. `check()` says at once what would stop a run, for `/sleep`.
   `stop(userId)` (Lock, shutdown) aborts the phase and marks the run partial.
+- **`core/src/store/sleep-prompt.ts`**: what each phase is told
+  (`sleepInstruction`), built from the night's material, and the pages a
+  private pool must rewrite (`danglingPages`).
 - **A run.** It opens the pool with `openThreadView`, so general sleep never
   holds a private handle. It covers entries written after the watermark and
   before it started, in logged threads other than sleep's own, plus user
