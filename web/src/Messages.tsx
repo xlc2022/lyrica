@@ -1,9 +1,10 @@
 // The conversation: stored messages, then what's streaming now.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { get, post, threadPath, type GoAhead, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
 import type { LiveItem } from "./live.ts";
 import { useMentionText, useThreadMentions } from "./mentions.ts";
 import { GoAheadMenu } from "./Modes.tsx";
+import { Icon } from "./icons.tsx";
 import { href, idHref } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
 import type { useThread } from "./stream.ts";
@@ -132,9 +133,9 @@ function foldLooks(messages: Message[]): { told: Map<string, Told[]>; folded: Se
 function StoredMessage({ m, env, you, cards, told, folded }: { m: Message; env: Env; you: string; cards?: ThreadSummary[]; told?: Told[]; folded?: boolean }) {
   const after = cards?.map((t) => <ThreadCard key={t.id} t={t} userId={env.userId} env={env.project!} />);
   if (m.role === "user") {
-    if (m.from?.kind === "parent") return <><FromParent text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} parent={m.from.threadId} env={env} n={m.n} />{after}</>;
+    if (m.from?.kind === "parent" || m.from?.kind === "thread") return <><FromThread text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} from={m.from} env={env} n={m.n} />{after}</>;
     if (m.from?.kind === "watching") return <><LookMarker text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} told={told ?? []} env={env} n={m.n} />{after}</>;
-    const hers = m.from?.kind === "lyrica" || m.from?.kind === "thread";
+    const hers = m.from?.kind === "lyrica";
     const who = hers ? "Lyrica" : m.from?.kind === "user" ? (m.from.name || you) : you;
     return <><UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} hers={hers ? env : undefined} />{after}</>;
   }
@@ -153,6 +154,8 @@ function StoredMessage({ m, env, you, cards, told, folded }: { m: Message; env: 
 }
 
 const WATCHING_MARK = "[Watching threads]\n\n";
+/** The line lyricad puts on what a parent or a sibling thread sent, as a live item carries it (core/src/threads.ts). */
+const FROM_PARENT = /^\[From t:([^\]\s]+)\]\n\n/;
 
 /**
  * A look at the project's threads (docs/ux.md §6: one-line markers for her inner workings): "Checked the other threads",
@@ -164,7 +167,7 @@ function LookMarker({ text, told, env, n }: { text: string; told: Told[]; env: E
   return (
     <div className="marker look" data-type="watching" id={n !== undefined ? `m-${n}` : undefined}>
       <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
-        Checked the other threads{told.length > 0 && <> · told <span className="num">{told.length}</span></>}
+        Checked the other threads{told.length > 0 && <> · told <span className="num">{told.length}</span></>}<Icon name="down" />
       </button>
       {open && (
         <div className="marker-body">
@@ -186,7 +189,12 @@ function shownMessagesHave(messages: Message[], hideFrom: number | undefined, n:
 }
 
 function LiveMessage({ item, env, you, streaming }: { item: LiveItem; env: Env; you: string; streaming: boolean }) {
-  if (item.role === "user") return item.text.startsWith(WATCHING_MARK) ? <LookMarker text={item.text.slice(WATCHING_MARK.length)} told={[]} env={env} /> : <UserMessage text={item.text} you={you} />;
+  if (item.role === "user") {
+    if (item.text.startsWith(WATCHING_MARK)) return <LookMarker text={item.text.slice(WATCHING_MARK.length)} told={[]} env={env} />;
+    const parent = FROM_PARENT.exec(item.text);
+    if (parent) return <FromThread text={item.text.slice(parent[0].length)} from={{ kind: "thread", threadId: parent[1]! }} env={env} />;
+    return <UserMessage text={item.text} you={you} />;
+  }
   if (item.role === "notice") return <Notice text={item.text} status={item.status} threads={item.threads} env={env} />;
   return <Parts parts={item.parts} env={env} model={item.model} streaming={streaming} />;
 }
@@ -340,16 +348,40 @@ function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" 
   );
 }
 
-/** In a child thread, what its parent thread sent: its task, or a message. */
-function FromParent({ text, parent, env, n }: { text: string; parent: string; env: Env; n?: number }) {
+/**
+ * A message written in another thread (the parent's, or a sibling's in a project): collapsed
+ * to one line, since it was said elsewhere, and expanded on tap; a long one shows its first lines
+ * and Show more (docs/ux.md §6).
+ */
+function FromThread({ text, from, env, n }: { text: string; from: { kind: "parent" | "thread"; threadId: string }; env: Env; n?: number }) {
+  const [open, setOpen] = useState(false);
+  const [more, setMore] = useState(false);
+  const [long, setLong] = useState(false);
+  const body = useRef<HTMLDivElement>(null);
+  const title = useMentionText(`[t:${from.threadId}]`, env.userId, env.pool);
+  const name = from.kind === "parent" ? env.parentTitle || title : title;
+  // Clamped until Show more; the button shows only when the clamp hides something.
+  useLayoutEffect(() => {
+    if (!open || more) return;
+    const el = body.current;
+    if (el) setLong(el.scrollHeight > el.clientHeight + 1);
+  }, [open, more, text]);
   return (
-    <div className="msg user">
-      <div className="who">
-        Lyrica<span className="muted"> · from <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: parent })}>{env.parentTitle || "the parent thread"}</a></span>
-        {/* Branch and delete, as any message; it isn't hers to edit. */}
-        {env.rewinder && n !== undefined && <MessageMenu n={n} role="user" rewinder={env.rewinder} />}
-      </div>
-      <div className="body prose"><HerProse text={text} env={env} /></div>
+    <div className="msg user from-thread" id={n !== undefined ? `m-${n}` : undefined}>
+      <button type="button" className="from-head" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span>Message received from <span className="from-name">{name}</span></span><Icon name="down" />
+      </button>
+      {open && (
+        <>
+          <div className="who">
+            Lyrica<span className="muted"> · from <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: from.threadId })}>{name}</a></span>
+            {/* Branch and delete, as any message; it isn't hers to edit. */}
+            {env.rewinder && n !== undefined && <MessageMenu n={n} role="user" rewinder={env.rewinder} />}
+          </div>
+          <div ref={body} className="body prose" data-clamped={more ? undefined : ""}><HerProse text={text} env={env} /></div>
+          {long && <button type="button" className="link show-more" onClick={() => setMore(!more)}>{more ? "Show less" : "Show more"}</button>}
+        </>
+      )}
     </div>
   );
 }

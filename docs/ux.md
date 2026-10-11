@@ -98,7 +98,7 @@ Rules:
   Share with, Move to group, Sampling, Serving, Placement, Memory,
   Throughput, Template, Pinned, Excluded, Servers, Keep free, Not this
   model, Group, Add…, Reset, Dictation, Dictate, Read aloud, Stop reading,
-  Voice to cloud, Read aloud while she writes, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, Thread settings, New threads, This chat, Threads, Watching threads, Checked the other threads, Open as a page, Close panel,
+  Voice to cloud, Read aloud while she writes, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, Thread settings, New threads, This chat, Threads, Watching threads, Checked the other threads, Message received from, Show more, Show less, Open as a page, Close panel,
   Start a thread, Suggested threads, Start all, Resolve, Reopen, Resolved,
   Waiting on you, Goal, Instructions, Paused, All threads, Only projects,
   No projects, Machines, Add machine, Mode limit, Replace key, Use anyway,
@@ -142,6 +142,7 @@ Rules:
 | Models, hosts, downloads, clean-up | the **Models** area: Overview, Tasks, Text models, Image models, Hosts and endpoints, Downloads, Clean up, Recent calls |
 | The app's version | the header, "Lyrica (ver. …, build …)" |
 | Lyrica's inner workings (recall, tools, notes) | one-line **markers** in the conversation that expand when tapped |
+| A message written in another thread (what a parent sent its child, a sibling's in a project, a look at a project's threads) | collapsed to one line, **Message received from <thread>** with a chevron (the look is its own marker, Checked the other threads); tapping it shows the message as a tinted block with its menu; a long one shows its first lines and **Show more**. Never shown open by default: said elsewhere, it would crowd this conversation |
 | The message box | one box holding the textarea and Send as a plain icon (Stop while she works); under it, a row with "+" (Attach and the tool switches), the mic, and, at its end, the mode word with a caret |
 | Anything in the conversation waiting for an answer (a plan, a permission, a question from a subagent) | a **card** in the conversation, with its actions at its foot and one primary action at most. When the latest such card has scrolled out of view, a thin bar in the accent colour across the top of the chat names it and jumps to it; it is the one bar the chat may show |
 | A subagent | a **card** in the conversation that expands to its work and takes messages |

@@ -488,7 +488,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 
 /* Touch screens: every control is at least 44 px. Last, so nothing above overrides it. */
 @media (pointer: coarse) {
-  button.badge, .chev, .chips button, .check, .marker > button, .picker-item, .showing > summary, .showing label { min-height: 44px; }
+  button.badge, .chev, .chips button, .check, .marker > button, .from-head, .picker-item, .showing > summary, .showing label { min-height: 44px; }
   .tfacts .link::after { content: ""; position: absolute; inset: -9px -6px; }
   .chev { width: 32px; height: 44px; }
   .threads .trow { grid-template-columns: 32px minmax(0, 1fr); }
@@ -613,7 +613,19 @@ form.drawer-body { flex: 1; }
 /* A look at the project's threads: a marker like a tool call's, with a dot in the info colour. */
 .marker[data-type="watching"] > button::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--info); }
 .marker[data-type="watching"] .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.marker[data-type="watching"] > button .ic { width: 14px; height: 14px; flex: none; transition: transform 0.15s; }
+.marker[data-type="watching"] > button[aria-expanded="true"] .ic { transform: rotate(180deg); }
 .marker-body .prose.small { font-size: 13px; }
+
+/* A message from another thread: one line until tapped (docs/ux.md §6). */
+.from-thread { gap: 6px; }
+.from-head { display: inline-flex; justify-self: start; align-items: center; gap: 6px; max-width: 100%; min-height: 28px; padding: 2px 0; border: 0; background: transparent; color: var(--muted); font-size: 13px; font-weight: 400; text-align: left; }
+.from-head .from-name { color: var(--fg); }
+.from-head .ic { width: 14px; height: 14px; flex: none; transition: transform 0.15s; }
+.from-head[aria-expanded="true"] .ic { transform: rotate(180deg); }
+.from-thread .body[data-clamped] { max-height: calc(12 * 1lh + 20px); overflow: hidden; }
+.from-thread .body[data-clamped]:has(+ .show-more) { mask-image: linear-gradient(#000 80%, transparent); }
+.from-thread .show-more { justify-self: start; font-size: 13px; }
 .project-form textarea { width: 100%; resize: vertical; }
 
 /* ---- The right panel (docs/ux.md §6): a third column from 1180 px up, 360-520 px wide, dragged on its divider. ---- */
