@@ -10,7 +10,7 @@ import { DEFAULT_BUDGETS, FROM_PARENT, OPENING, pinnedBlock, pinnedOf, reserveFo
 import { Busy } from "./hosted.ts";
 import { card, type Lyricad, type Services } from "./lyricad.ts";
 import { toMessages } from "./messages.ts";
-import { messageText, readAloud, readClip, speechState, storedSource, transcribeClip, type SpeechSource } from "./speech.ts";
+import { messageText, readAloud, readClip, speechState, storedSource, transcribeClip, titlesIn, type SpeechSource } from "./speech.ts";
 import { applyRemoval, entriesFrom, removalPlan, uploadsIn, type RemovalContext } from "./removal.ts";
 
 const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, showPrivate: true, showHidden: false, sort: "date" };
@@ -642,7 +642,19 @@ export function apiRoutes(d: Lyricad): Route[] {
         let read = "";
         let at = -1;
         // Made speakable as it grows; the text stays in memory only.
-        source = { text: () => { const raw = live.text(); if (raw.length !== at) { at = raw.length; read = messageText([{ type: "text", text: raw }]); } return read; }, done: live.done, more: live.more };
+        source = {
+          text: () => {
+            const raw = live.text();
+            if (raw.length !== at) {
+              at = raw.length;
+              // Titles need the pool open; most of a reply has no mention, so only then.
+              const parts = [{ type: "text" as const, text: raw }];
+              read = /\[(?:\w+\/)?[te]:/.test(raw) ? owner(d, user, (o) => messageText(parts, titlesIn(o, pool))) : messageText(parts);
+            }
+            return read;
+          },
+          done: live.done, more: live.more,
+        };
       } else {
         const n = entryN(r);
         const text = owner(d, user, (o) => {
@@ -650,7 +662,7 @@ export function apiRoutes(d: Lyricad): Route[] {
           const message = toMessages(thread.id, pool, entries)[0];
           if (!message) throw new HttpError(404, "no such message");
           if (message.role !== "assistant") throw new HttpError(400, "only her messages are read aloud");
-          return messageText(message.parts);
+          return messageText(message.parts, titlesIn(o, pool));
         });
         source = storedSource(text);
       }

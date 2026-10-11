@@ -101,9 +101,9 @@ export const shortTime = (iso: string) => {
   return d.toLocaleDateString([], { day: "numeric", month: "short" });
 };
 
-/** Links open in a new tab; images are never loaded, only linked by their alt text. */
+/** Links open in a new tab, except Lyrica's own (a mentioned thread); images are never loaded, only linked by their alt text. */
 const MARKDOWN: Components = {
-  a: ({ node: _, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+  a: ({ node: _, ...props }) => (props.href?.startsWith("#/") ? <a {...props} /> : <a {...props} target="_blank" rel="noopener noreferrer" />),
   img: ({ src, alt }) => (typeof src === "string" && src ? <a href={src} target="_blank" rel="noopener noreferrer">{alt || src}</a> : <>{alt}</>),
 };
 

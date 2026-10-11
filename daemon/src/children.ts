@@ -83,11 +83,11 @@ export class ChildThreads implements ThreadsHost {
       if (!row || !from.view.own.getThread(row.parent)) throw new Error("this thread's parent is gone");
       const title = from.view.own.getThread(from.threadId)?.title;
       this.db(userId, (db) => db.prepare("UPDATE child_threads SET unseen = unseen + 1 WHERE pool = ? AND thread = ?").run(from.pool, from.threadId));
-      this.deliver(userId, from.pool, row.parent, `Update from child thread t:${from.threadId}${title ? ` ("${title}")` : ""}:\n${text}`, from.threadId);
+      this.deliver(userId, from.pool, row.parent, `Update from child thread [t:${from.threadId}]${title ? ` ("${title}")` : ""}:\n${text}`, from.threadId);
       return;
     }
     const row = this.row(userId, from.pool, to);
-    if (!row || row.parent !== from.threadId) throw new Error(`t:${to} isn't a child thread of this one`);
+    if (!row || row.parent !== from.threadId) throw new Error(`[t:${to}] isn't a child thread of this one`);
     // An idle child starts a turn, so the limit holds here too; a working one takes it into its next turn.
     if (!this.o.host().busy(userId, from.pool, to)) this.mayStartTurn(userId);
     await this.o.host().get(userId, from.pool, to).send(text, { fromParent: from.threadId });
@@ -166,7 +166,7 @@ export class ChildThreads implements ThreadsHost {
   private idle(userId: string, rows: Row[], what: string): void {
     for (const r of rows) {
       this.turn(userId, r.pool, r.thread, false);
-      this.deliver(userId, r.pool, r.parent, `Child thread t:${r.thread} ${what}, and is idle. Message it to go on.`, r.thread);
+      this.deliver(userId, r.pool, r.parent, `Child thread [t:${r.thread}] ${what}, and is idle. Message it to go on.`, r.thread);
     }
   }
 

@@ -315,6 +315,7 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
 .prose table { border-collapse: collapse; display: block; overflow-x: auto; font-size: 13px; }
 .prose th, .prose td { border: 1px solid var(--line); padding: 4px 8px; }
 .prose img { max-width: 100%; }
+.caret-blink.alone { margin-left: 0; }
 .caret-blink { display: inline-block; width: 0.5em; height: 1em; background: var(--accent); vertical-align: -0.15em; margin-left: 2px; animation: pulse 1s steps(2) infinite; }
 .thinking-dots { color: var(--muted); margin: 0; font-size: 13px; }
 .marker { font-size: 13px; color: var(--muted); min-width: 0; }
