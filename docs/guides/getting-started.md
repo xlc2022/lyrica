@@ -153,7 +153,7 @@ is [docs/daemon.md](../daemon.md#on-nixos). Instead of the steps above:
    the system path, so
 
    ```sh
-   sudo -u lyrica env LYRICA_HOME=/var/lib/lyrica lyrica admin init
+   runuser -u lyrica -- env LYRICA_HOME=/var/lib/lyrica lyrica admin init
    systemctl start lyricad
    ```
 
@@ -167,7 +167,10 @@ is [docs/daemon.md](../daemon.md#on-nixos). Instead of the steps above:
 
 Everything from "Save the passphrase" on applies unchanged. Upgrading is
 only `nix flake update lyrica` and `nixos-rebuild switch`, which restarts
-`lyricad` on the new package with no database snapshot first.
+`lyricad` with no database snapshot first. The package is rebuilt only when
+the code it ships changed; a commit that touched only docs or tests reuses
+the built one, and the restart is quick. The home page header shows the
+commit that is running, as on Debian.
 
 ## First run
 
