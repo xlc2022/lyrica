@@ -167,6 +167,8 @@ function Parts({ parts, env, model, streaming, n }: { parts: MessagePart[]; env:
   };
   parts.forEach((p, i) => {
     if (p.type === "text") { prose.push(p.text); return; }
+    // In a project chat, a thread's start has its card under the message; no marker, so a turn that only started one takes no room.
+    if (p.type === "tool" && p.name === "threads" && env.project && !p.isError && (p.args as { action?: string } | null)?.action === "start") return;
     flush(i, false);
     out.push(<Marker key={i} part={p} env={env} />);
   });
@@ -199,8 +201,6 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" }>; e
   if (part.type === "tool" && part.name === "threads") {
     const action = (part.args as { action?: string } | null)?.action;
     if (action === "suggest") return <SuggestedCard part={part} userId={env.userId} pool={env.pool} projectId={env.threadId} env={env.project} />;
-    // In a project chat, the thread's own card stands under the message; the start marker would be a second copy.
-    if (action === "start" && env.project && !part.isError) return null;
     return <ThreadsCard part={part} env={env} />;
   }
   if (part.type === "delegation") return <Notice text={part.text} status={part.status} threads={part.threads} env={env} />;
