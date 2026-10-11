@@ -1271,7 +1271,12 @@ Details in [docs/sleep.md](docs/sleep.md).
   LXC container or VM on Li's Proxmox. No Docker. The host needs bubblewrap,
   gocryptfs, pasta, FUSE and unprivileged user namespaces. In an LXC container, that
   means turning on the nesting and FUSE features. One install script sets up
-  the service users, `lyricad`'s unit, and the built-in Caddy.
+  the service users, `lyricad`'s unit, and the built-in Caddy. On NixOS,
+  the repository's flake gives a module, `services.lyrica`, that declares
+  the same users, units and hardening; her sandboxes there mount the
+  module's tools as `/usr` ([docs/nixos.md](docs/nixos.md)). Updates on
+  NixOS use the same Update button, through a Lyrica-only Nix profile (see
+  Updates and self-editing; Li, 2026-10-11).
 - **Reaching the web UI:**
   - `lyricad` serves plain HTTP on `127.0.0.1` behind an HTTPS proxy. The
     browser never gets plain HTTP: login cookies are `Secure`.
