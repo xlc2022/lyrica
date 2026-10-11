@@ -988,7 +988,8 @@ web part and sleep's project page are not yet. The briefs are
     card, with **Start** per thread and **Start all**.
   - **Project settings** is a page with sections: General (Goal; Threads,
     the model and thinking new threads start with; Paused; then the project
-    chat's own settings under **This chat**), Memory (Instructions, and a
+    chat's own settings under **This chat**, including the **Folders** and
+    **Machines** every thread of the project inherits), Memory (Instructions, and a
     link to the project page in the memory browser), and **Files and
     images** (Files | Images), where the project folder is managed. Files in the header stays the quick view.
   - **Paused** stops the project's working threads and starts nothing new.
