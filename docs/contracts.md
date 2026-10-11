@@ -906,7 +906,18 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       `paused`, `busy`, `unpaired`, `identity_changed`, …) is `502` with the
       host's plain message.
   - users and admin;
-  - memory browser;
+  - memory browser. **Planned (Memory browser,**
+    [briefs/memory-browser.md](briefs/memory-browser.md)**):**
+    `MemoryDetail.links: Record<id, { title: string; snippet: string }>`
+    for every memory the text and the lineage cite, titles only from pools
+    the display filters show, never a private title to a general ID's
+    reader; `MemoryDetail.usedIn` entries gain the citing sentence
+    (`{ id, sentence }`); `GET …/memory/search` without `q` lists one layer
+    when `kinds` names exactly one (newest first, `limit` and `before`
+    paging) and takes `about=` to filter notes by a tag;
+    `GET …/memory/about` → the pool's distinct `about` words with counts.
+    Differences between revisions are computed in the browser from the
+    revisions already returned; nothing new is stored;
   - speech: `POST …/threads/:pool/:threadId/transcribe` and `POST
     /api/u/:userId/transcribe?pool=` (an `audio/wav` body, `?language=`) →
     `Transcription { text, seconds, model }`; `GET
