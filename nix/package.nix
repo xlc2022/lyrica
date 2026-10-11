@@ -4,7 +4,7 @@
 
 buildNpmPackage {
   pname = "lyrica";
-  version = "0-${builtins.substring 0 12 rev}";
+  version = (lib.importJSON (src + "/package.json")).version;
   inherit src;
   nodejs = nodejs_22;
 
@@ -33,13 +33,14 @@ buildNpmPackage {
     cp -r package.json bin core daemon extension host persona web/dist node_modules $out/lib/lyrica/
     mkdir -p $out/lib/lyrica/web && mv $out/lib/lyrica/dist $out/lib/lyrica/web/dist
     cp web/package.json $out/lib/lyrica/web/
-    echo ${rev} > $out/lib/lyrica/REVISION
     makeWrapper ${nodejs_22}/bin/node $out/bin/lyrica --add-flags $out/lib/lyrica/bin/lyrica
     runHook postInstall
   '';
 
   # The SSH helper runs on this Node; the module adds it to the sandbox closure.
-  passthru.nodejs = nodejs_22;
+  # The commit goes to lyricad as LYRICA_BUILD (the module), not into the
+  # build, so a new commit that leaves src alone rebuilds nothing.
+  passthru = { nodejs = nodejs_22; build = builtins.substring 0 7 rev; };
 
   meta = {
     description = "Lyrica, a personal AI companion (lyricad and the lyrica CLI)";
