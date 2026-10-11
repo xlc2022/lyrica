@@ -1304,3 +1304,12 @@ new evidence.
   room for web research, then because Lyrica works like a coding agent (files,
   commands, SSH). The budget still exists so that every tool has to justify
   itself.
+- **Operator guides added to the docs budget (2026-10-11).** Li asked for
+  human-readable documentation on running Lyrica: bootstrapping her on a new
+  system, deploying model hosts, adding CI runners. They live in
+  `docs/guides/`, one page per task, written from the scripts and the
+  component docs. They follow the component docs and never replace them: a
+  behaviour is described once, in its component's page, and a guide says
+  which steps to take and what has not yet been exercised. They are kept
+  current by the Operator docs thread, on notice from threads whose merged
+  PRs change what an operator does by hand, and by a weekly drift check.
