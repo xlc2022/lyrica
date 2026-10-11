@@ -375,11 +375,11 @@ main > .head, .composer, .subnote, .offline { flex: none; }
   .mode-picker > button.link { min-height: 44px; }
 }
 .tools-menu, .mode-picker, .go-ahead { position: relative; }
-.menu.up { top: auto; bottom: calc(100% + 4px); right: auto; min-width: 260px; max-width: calc(100vw - 2 * var(--gutter)); }
+.menu.up { top: auto; bottom: calc(100% + 4px); right: auto; min-width: min(300px, calc(100vw - 2 * var(--gutter))); max-width: calc(100vw - 2 * var(--gutter)); }
 .menu.up.end { left: auto; right: 0; }
 .tools-menu .menu .switch { padding: 0 10px; font-size: 14px; }
 /* A mode in a menu: check, name with its line, number key at the right edge. */
-.menu button.mode-item { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; padding-block: 6px; font-size: 14px; }
+.menu button.mode-item { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; padding-block: 6px; font-size: 14px; white-space: normal; }
 .mode-item .mk { color: var(--accent); display: inline-flex; }
 .mode-item > span:nth-child(2) { display: grid; gap: 1px; }
 .mode-item small { color: var(--muted); font-size: 12px; }
