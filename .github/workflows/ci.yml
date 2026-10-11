@@ -69,6 +69,11 @@ jobs:
             echo "bf6d12da4aeaae38ab509dc736df648597bcdee051046ea76d3d53d5b18fa54a  $RUNNER_TEMP/nix-install" | sha256sum -c -
             sh "$RUNNER_TEMP/nix-install" --daemon --yes
           fi
+          # Collecting garbage keeps what the kept builds were built from, so they stay cached.
+          if ! grep -qx 'keep-outputs = true' /etc/nix/nix.conf; then
+            echo 'keep-outputs = true' | sudo tee -a /etc/nix/nix.conf >/dev/null
+            sudo systemctl restart nix-daemon
+          fi
           echo /nix/var/nix/profiles/default/bin >>"$GITHUB_PATH"
       # The same needrestart and dpkg lock settings as the check job.
       - run: |
@@ -87,6 +92,15 @@ jobs:
           PATH="$tools/bin:$PATH" LYRICA_SANDBOX_TOOLS="$tools" LYRICA_SANDBOX_CLOSURE="$closure" npx vitest --run core/test/sandbox.test.ts
         env:
           LYRICA_SANDBOX_TESTS: require
+      # Each run's builds are one generation of a profile; the 10 newest stay, the rest are collected.
+      - name: Keep the last 10 builds
+        run: |
+          nix() { command nix --extra-experimental-features "nix-command flakes" "$@"; }
+          profile="$HOME/.local/state/nix/profiles/lyrica-ci"
+          mkdir -p "${profile%/*}"
+          nix build --profile "$profile" .#checks.x86_64-linux.roots
+          nix-env --profile "$profile" --delete-generations +10
+          nix store gc
   # The model host's Compose stack, without a GPU: install, then check the networks.
   host-stack:
     runs-on: lyrica-ci

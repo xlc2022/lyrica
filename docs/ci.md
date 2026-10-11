@@ -21,7 +21,11 @@ minutes on a private repository are billed past the plan's allowance.
   `nix flake check` and the sandbox tests with the NixOS sandbox tools and
   closure (docs/daemon.md "On NixOS"). Nix stays installed on the VM. If
   an install was cancelled partway, the job stops and names the leftover
-  files; the Nix manual's multi-user uninstall steps clear it.
+  files; the Nix manual's multi-user uninstall steps clear it. Each run
+  ends by keeping its builds as one generation of a profile
+  (`~/.local/state/nix/profiles/lyrica-ci`), deleting all but the 10 newest
+  and collecting garbage; `keep-outputs` in `/etc/nix/nix.conf` keeps what
+  those 10 were built from, so the next run still finds them cached.
 - The host-stack job removes what it installed (the stack and its volumes,
   the egress unit and rules, Docker's daemon.json) when it ends.
 - One runner runs one job at a time. A new push to a pull request
