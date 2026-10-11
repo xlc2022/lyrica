@@ -18,8 +18,12 @@ export const GO_AHEAD: GoAhead[] = ["ask", "acceptEdits", "auto"];
 
 export const nextMode = (m: PermissionMode) => MODE_ORDER[(MODE_ORDER.indexOf(m) + 1) % MODE_ORDER.length]!;
 
-/** Line icons for the message box's row: 1.5 px strokes on a 16 px grid. */
-const PATHS = { plus: "M8 3v10M3 8h10", up: "M8 13V3M3.5 7.5 8 3l4.5 4.5", stop: "M4.5 4.5h7v7h-7z", down: "M4.5 6.5 8 10l3.5-3.5" };
+/** Line icons for the message box's row and the message actions: 1.5 px strokes on a 16 px grid. */
+const PATHS = {
+  plus: "M8 3v10M3 8h10", up: "M8 13V3M3.5 7.5 8 3l4.5 4.5", stop: "M4.5 4.5h7v7h-7z", down: "M4.5 6.5 8 10l3.5-3.5",
+  mic: "M8 2.25a2.25 2.25 0 0 1 2.25 2.25v3.5a2.25 2.25 0 0 1-4.5 0V4.5A2.25 2.25 0 0 1 8 2.25zM3.75 8a4.25 4.25 0 0 0 8.5 0M8 12.25v1.5",
+  speaker: "M2.75 6.25v3.5h2.25L8 12.5v-9L5 6.25zM10.25 5.75a3.25 3.25 0 0 1 0 4.5M12.25 3.75a6 6 0 0 1 0 8.5",
+};
 export const Icon = ({ name }: { name: keyof typeof PATHS }) => (
   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={PATHS[name]} /></svg>
 );

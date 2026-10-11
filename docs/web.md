@@ -149,12 +149,46 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/memory`,
   icon, accent once there is text, or Stop as a square while she works and
   the box is empty. Under the box, a row of borderless controls: at the left
   the "+" icon, whose menu attaches a file and, after a separator, has the
-  Web search, Internet for commands and Images switches; at the right the
+  Web search, Internet for commands and Images switches; then the mic; at the right the
   mode, a link with a chevron that opens a menu of the four modes (a check on
   the current one, its line, its number key). Shift+Tab in the box cycles
   Ask, Accept edits, Plan, Auto, shown at once; a settings refresh that a
   change overtakes is dropped. A `settings` event (an approved plan)
   refreshes them.
+- **Dictation** (`src/Voice.tsx`, DESIGN.md "Voice"): the mic in the row
+  under the box records 16 kHz mono PCM through an AudioWorklet
+  (`public/dictation-worklet.js`). While it records the icon is accent and
+  pulses, the box's placeholder reads "Listening…" and the time runs beside
+  the icon in mono. Pressing it again, or Enter in the box, stops and sends
+  the clip as WAV to `…/transcribe`; the icon pulses in muted meanwhile, and
+  the text goes in at the caret. Escape throws the clip away, and so does
+  leaving the thread. A clip stops itself at ten minutes and is cut there
+  before it is sent, so a late timer can't make lyricad refuse it whole.
+  Where the browser won't connect the microphone to a 16 kHz context
+  (Firefox), the recorder uses the device's rate and resamples. The browser's own
+  speech features are never used, and nothing is kept in browser storage.
+  With no Dictation model usable here (`ThreadSettings.speech.transcribe`:
+  none set, a cloud one with Voice to cloud off, or every one down), the mic
+  is disabled and its tooltip is lyricad's reason. "Allow the microphone in
+  your browser" and lyricad's refusals show in the conversation's error line
+  above the box, never as a toast or in the placeholder.
+- **Read aloud** is a bordered speaker icon button in her message's actions,
+  before ⋯, that plays lyricad's PCM stream for that message
+  (`…/messages/:n/speech`) through Web Audio as it arrives; the AudioContext
+  is made in the press, which iPhone requires. While it plays the button is
+  **Stop reading**, a square in accent. Only one thing plays at a time: Stop
+  reading, the mic, sending, another Read aloud or leaving the thread stops
+  it. Disabled with the reason as its tooltip when no Read aloud model can be
+  used here. The message she is still writing has no button.
+- **Voice to cloud** is a switch in the thread settings drawer's Privacy and
+  network section, under Internet, following the user's default until
+  changed (Use default goes back); the default is in the Control panel's
+  Network section. The Model profiles section has Dictation and Read aloud
+  rows that offer only models that transcribe or speak, and a speaking model
+  in the Endpoints list has a Settings link opening its drawer: a voice per
+  language (English, Mandarin) and the speed (a number, of 4, clamped when
+  the field is left), each with its source word (shared or yours) and a
+  Reset link.
 - **The plan card:** a `propose_plan` request shows "Plan", its step count
   when it has numbered or bulleted steps, the plan as prose, a primary
   "Go ahead in…" whose menu offers Ask, Accept edits or Auto, Keep planning,
@@ -182,10 +216,13 @@ turns animations off.
 
 - `npm run typecheck` covers `web/` (`tsc -p web`), and `npm run build` builds
   it.
-- `web/test/live.test.ts` tests the stream reducer.
+- `web/test/live.test.ts` tests the stream reducer; `web/test/voice.test.ts`
+  the recorder's context fallback and the clip's limit.
 - `npm run e2e -w @lyrica/web` runs Playwright (after a build). Each viewport
   (390×844 with touch, 1280×800) gets its own real `lyricad` from
-  `web/e2e/serve.ts`, on a temporary runtime with a fake model server.
+  `web/e2e/serve.ts`, on a temporary runtime with a fake model server, which
+  also serves a fake speech endpoint (whisper and kokoro, under `/speech/v1`,
+  and `/speech/down` to make it fail). Chromium runs with a fake microphone.
 - For development, `npx tsx web/e2e/serve.ts 7340 7350` starts the same
   throwaway `lyricad` (passphrase `correct horse`, login `li` / `pw`), and
   `npm run dev -w @lyrica/web` serves the UI with `/api` passed to it.

@@ -1,6 +1,6 @@
 // The conversation: stored messages, then what's streaming now.
 import { useEffect, useState } from "react";
-import { get, post, threadPath, type GoAhead, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type SendResponse, type ThreadRef } from "./api.ts";
+import { get, post, threadPath, type GoAhead, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type SendResponse, type Speech, type ThreadRef } from "./api.ts";
 import type { LiveItem } from "./live.ts";
 import { GoAheadMenu } from "./Modes.tsx";
 import { href, idHref } from "./route.ts";
@@ -8,6 +8,7 @@ import type { ShellContext } from "./Shell.tsx";
 import type { useThread } from "./stream.ts";
 import { EditBox, MessageMenu, type Rewinder } from "./Rewind.tsx";
 import { ErrorText, Prose, useAction } from "./ui.tsx";
+import { ReadAloudButton } from "./Voice.tsx";
 
 interface Props {
   ctx: ShellContext;
@@ -23,9 +24,13 @@ interface Props {
   hideFrom?: number;
   /** A child thread's parent's title, for what the parent sent. */
   parentTitle?: string;
+  /** Whether Read aloud can be used here now, for its button's state. */
+  speech?: Speech;
+  /** Read aloud's problems, for the conversation's error line. */
+  onError?: (message: string) => void;
 }
 
-export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewinder, hideFrom, parentTitle }: Props) {
+export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewinder, hideFrom, parentTitle, speech, onError }: Props) {
   const { messages, live, hasMore, loadOlder, loaded } = thread;
   const [run, loading, error] = useAction();
   // Expanded tool markers, by call ID, so they stay open when the stored copy replaces the live one.
@@ -36,7 +41,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   const show = (id: string, on: boolean) => setShown((o) => { const n = new Set(o); if (on) n.add(id); else n.delete(id); return n; });
   const env: Env = {
     userId: ctx.user.id, you: ctx.user.displayName, pool, base, threadId, subagent, openTools, toggleTool,
-    permissions: live.permissions, ticks: live.subagents, show, rewinder, parentTitle,
+    permissions: live.permissions, ticks: live.subagents, show, rewinder, parentTitle, speech, onError: onError ?? (() => {}),
   };
   const shownMessages = hideFrom === undefined ? messages : messages.filter((m) => m.n < hideFrom);
   return (
@@ -83,6 +88,8 @@ interface Env {
   /** A delegate card shows or hides a subagent's work. */
   show: (threadId: string, on: boolean) => void;
   rewinder?: Rewinder;
+  speech?: Speech;
+  onError: (message: string) => void;
 }
 
 function StoredMessage({ m, env, you }: { m: Message; env: Env; you: string }) {
@@ -153,6 +160,7 @@ function Parts({ parts, env, model, streaming, n }: { parts: MessagePart[]; env:
       <div className="who">
         {who}{model && <span className="muted"> · {model}</span>}
         {env.rewinder && n !== undefined && env.rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}
+        {env.rewinder && n !== undefined && <ReadAloudButton url={`${env.base}/messages/${n}/speech`} speech={env.speech} onError={env.onError} />}
         {env.rewinder && n !== undefined && <MessageMenu n={n} role="assistant" rewinder={env.rewinder} />}
       </div>
       {out}

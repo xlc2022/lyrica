@@ -373,7 +373,7 @@ class Models {                                              // new Models(keyrin
 // Also exported: CloudModelForbidden, NoModel, Offline (a NoModel: code "offline", task, tried), isUnreachable(err),
 // HostRefused (with `code`), PairingFailed, HostIdentityChanged, VoiceCloudOff;
 // SPEECH_FORMAT (s16le, 24 kHz, mono), SPEECH_CONTENT_TYPE, MAX_CLIP_SECONDS (600), MAX_CLIP_BYTES, MAX_SPEAK_CHARS, wavData, wavSeconds, pcmSeconds, LANGUAGE;
-// STALE_DAYS, GONE_DAYS, HEALTH_MS, CAPABILITIES, ANSWER_SETTINGS, TASKS, THINKING_LEVELS; isRestricted, profileFor,
+// STALE_DAYS, GONE_DAYS, HEALTH_MS, CAPABILITIES, ANSWER_SETTINGS, TASKS, TASK_NAMES (each task in words, for messages), THINKING_LEVELS; isRestricted, profileFor,
 // checkTask, refId, baseName, acceptedSettings(endpoint), payloadFields(…); fingerprint, normaliseCode, pairingProofs,
 // hostOrigin; probeUrl(baseUrl, apiKey, timeoutMs?, fetchImpl?), discoverModels, addressesOutside.
 ```

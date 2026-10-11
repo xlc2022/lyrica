@@ -15,7 +15,12 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 10_000 },
   reporter: process.env.CI ? "github" : "list",
-  use: { trace: "retain-on-failure" },
+  use: {
+    trace: "retain-on-failure",
+    // Dictation records from a fake microphone, and Read aloud plays without a gesture.
+    permissions: ["microphone"],
+    launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"] },
+  },
   projects: servers.map((s) => ({ name: s.name, use: { ...s.use, baseURL: `http://127.0.0.1:${s.port}` } })),
   webServer: servers.map((s) => ({
     command: `npx tsx e2e/serve.ts ${s.port} ${s.port + 10}`,

@@ -1,5 +1,6 @@
-import { readdirSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
 import { fakeSpeech, wav } from "../../core/test/fake-speech.ts";
@@ -76,17 +77,25 @@ describe("making text speakable", () => {
 describe("dictation", () => {
   it("transcribes a clip in a thread and on the welcome page, records the seconds and model only, and writes no file", async () => {
     const s = await setup();
-    const before = readdirSync(tmpdir()).sort();
-    const r = await s.li.post<Transcription>(`${s.path}/transcribe?language=zh`, wav(3), { "content-type": "audio/wav" });
-    expect(r.status).toBe(200);
-    expect(r.body).toEqual({ text: "hello from the fake", seconds: 3, model: "speech/whisper-large-v3-turbo" });
-    expect(s.speech.heard.at(-1)).toMatchObject({ url: "/v1/audio/transcriptions", language: "zh", bytes: 96_044 });
-    const welcome = await s.li.post<Transcription>(`${s.u}/transcribe?pool=private`, wav(1), { "content-type": "audio/wav" });
-    expect(welcome.body.text).toBe("hello from the fake");
-    expect(readdirSync(tmpdir()).sort()).toEqual(before);
+    // A temp dir of its own, so other test files' temp files don't count.
+    const tmp = mkdtempSync(join(tmpdir(), "lyrica-speech-"));
+    const saved = process.env.TMPDIR;
+    process.env.TMPDIR = tmp;
+    try {
+      const r = await s.li.post<Transcription>(`${s.path}/transcribe?language=zh`, wav(3), { "content-type": "audio/wav" });
+      expect(r.status).toBe(200);
+      expect(r.body).toEqual({ text: "hello from the fake", seconds: 3, model: "speech/whisper-large-v3-turbo" });
+      expect(s.speech.heard.at(-1)).toMatchObject({ url: "/v1/audio/transcriptions", language: "zh", bytes: 96_044 });
+      const welcome = await s.li.post<Transcription>(`${s.u}/transcribe?pool=private`, wav(1), { "content-type": "audio/wav" });
+      expect(welcome.body.text).toBe("hello from the fake");
+      expect(readdirSync(tmp)).toEqual([]);
+    } finally {
+      if (saved === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = saved;
+      rmSync(tmp, { recursive: true, force: true });
+    }
 
     const calls = (await s.li.get<CallInfo[]>(`${s.u}/models/calls`)).body.filter((c) => c.task === "speech.transcribe");
-    expect(calls.map((c) => c.audioSeconds)).toEqual([1, 3]);
+    expect(calls.map((c) => c.audioSeconds).sort()).toEqual([1, 3]); // two calls in the same millisecond may come either way
     expect(JSON.stringify(calls)).not.toMatch(/hello from the fake/);
     expect(s.logs.join("\n")).not.toMatch(/hello from the fake/);
 
@@ -145,7 +154,7 @@ describe("dictation", () => {
     await s.speech.stop();
     const r = await s.li.post<{ error: string; code: string }>(`${s.path}/transcribe`, wav(1), { "content-type": "audio/wav" });
     expect(r.status).toBe(502);
-    expect(r.body.error).toMatch(/^no model for speech.transcribe can be reached now/);
+    expect(r.body.error).toMatch(/^no model for Dictation can be reached now/);
     expect(r.body).toMatchObject({ code: "offline", task: "speech.transcribe", tried: [{ label: "speech/whisper-large-v3-turbo" }] });
     const settings = (await s.li.get<ThreadSettings>(`${s.path}/settings`)).body;
     expect(settings.speech.transcribe).toEqual({ available: false, reason: "down", problem: "Dictation can't be reached now" });
@@ -154,7 +163,7 @@ describe("dictation", () => {
     await s.turn("Hello there.");
     const read = await s.audio(`${s.path}/messages/${await s.nOf("assistant")}/speech`);
     expect(read.status).toBe(502);
-    expect(((await read.json()) as { error: string }).error).toMatch(/^no model for speech.speak can be reached now/);
+    expect(((await read.json()) as { error: string }).error).toMatch(/^no model for Read aloud can be reached now/);
     // The daemon is fine: chat still works.
     await s.turn("Still here.");
     const page = (await s.li.get<MessagePage>(`${s.path}/messages`)).body;
