@@ -56,6 +56,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart }: { ctx: S
   // A refresh that a change overtakes is dropped, so it can't undo a Shift+Tab pressed meanwhile.
   const latest = useRef(0);
   const inFlight = useRef(0);
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
   const refreshSettings = useCallback(() => {
     const n = latest.current;
     get<ThreadSettings>(`${base}/settings`).then((s) => { if (n === latest.current && !inFlight.current) settings.set(s); }, () => {});
@@ -75,6 +76,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart }: { ctx: S
     setSendError("");
     stopReading();
     try {
+      await queue.current; // a mode just picked applies to this message
       const r = await post<SendResponse>(`${base}/messages`, { text });
       if (!r.queued) t.dispatch({ type: "sent", text });
       return true;
@@ -84,13 +86,13 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart }: { ctx: S
     }
   }, [base, t.dispatch]);
   // The mode and switches beside the message box: shown at once, so Shift+Tab pressed again cycles on from here.
-  // Only the latest change's answer is shown, so answers arriving out of order can't step back.
+  // Changes go to the server one at a time, so the last one pressed is the one saved; only its answer is shown.
   const changeSettings = useCallback((change: ThreadSettingsChange) => {
     setSendError("");
     const n = ++latest.current;
     inFlight.current++;
     if (settings.data && change.internet === undefined) settings.set({ ...settings.data, ...(change as Partial<ThreadSettings>) });
-    patch<ThreadSettings>(`${base}/settings`, change).finally(() => inFlight.current--).then(
+    queue.current = queue.current.then(() => patch<ThreadSettings>(`${base}/settings`, change)).finally(() => inFlight.current--).then(
       (s) => { if (n === latest.current) settings.set(s); },
       (e: Error) => { setSendError(e.message); settings.reload(); },
     );

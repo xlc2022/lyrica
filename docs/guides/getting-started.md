@@ -177,46 +177,48 @@ Two things to look at once she is unlocked:
 
 - **The network self-test passed.** At unlock, `lyricad` starts a sandbox
   and checks that it can't undo its own firewall rules. If that fails, the
-  journal says "network is off for every thread" with the reason, and the
-  control panel's Server section shows it to administrators. Until it is
+  journal says "network is off for every thread" with the reason, and
+  Administration, Status shows it to administrators. Until it is
   fixed, her commands have no network at all; everything else works.
 
 ### Save the passphrase
 
-In the control panel (Server section, administrators only), **Save the
-passphrase** seals it with `systemd-creds` into
+Under Administration, Start unlocked (administrators only; the user menu at
+the foot of the sidebar opens Administration), **Save the passphrase**
+seals it with `systemd-creds` into
 `/var/lib/lyrica/credentials/`; the unit unseals it at each start, so she
 comes up unlocked after a reboot. The button is disabled, with the reason,
 on a system where `systemd-creds` isn't available. Forget it there to go
 back to unlocking by hand.
 
-Each user can likewise save their own data key in their Profile section, so
+Each user can likewise save their own data key under Settings, Unlock and
+lock, so
 their home workspace mounts at start and sleep can run for them without a
 login.
 
 ## Reach her from other machines
 
 By default nothing but `127.0.0.1` can reach her. An administrator sets up
-**Web access** in the control panel. The common choice is the built-in
+**Web access** under Administration. The common choice is the built-in
 Caddy:
 
 1. Pick a name under a domain you control, such as `lyrica.example.net`, and
    point its DNS record at the machine's Tailscale address. On the LAN,
    split DNS can give the same name the LAN address.
 2. Make an API token at your DNS provider, limited to that one zone. The
-   panel lists the providers Caddy was built with (Cloudflare, Porkbun,
+   page lists the providers Caddy was built with (Cloudflare, Porkbun,
    Namecheap, Route 53, DigitalOcean, Hetzner, deSEC, Duck DNS) and how to
    scope each token.
 3. In Web access choose **Built-in Caddy**, enter the name, tick the
    Tailscale and LAN addresses to serve on, pick the provider and paste the
    token, and apply. The certificate comes by DNS-01 challenge, so the
    machine needn't be reachable from the internet. A new name can take
-   about 90 seconds; the panel shows the certificate's state and Caddy's
+   about 90 seconds; the page shows the certificate's state and Caddy's
    last error.
 
 A change never locks you out: the old setup keeps serving until the new one
 has a working certificate. The other mode, **External proxy**, is for a
-Caddy or other proxy elsewhere on your network; the panel gives it a
+Caddy or other proxy elsewhere on your network; the page gives it a
 Caddyfile snippet and a certificate to pin. Details are in
 [docs/daemon.md](../daemon.md#web-access).
 
@@ -231,7 +233,7 @@ sleep, dictation, read aloud and so on) to ordered lists of models; the
 first model that answers is used, and private and local-only threads use
 the local profile only. See [docs/models.md](../models.md).
 
-- **A cloud or OpenAI-compatible endpoint:** control panel, Endpoints, Add
+- **A cloud or OpenAI-compatible endpoint:** Settings, Endpoints, Add
   an endpoint (a name, cloud or local, the base URL, the API key). Shared
   endpoints, which every user can use, need an administrator. The same from
   a terminal, as the `lyrica` user with `LYRICA_HOME=/var/lib/lyrica`:
@@ -263,12 +265,13 @@ lyrica admin grants list --user li
 
 The folder must be a real directory with no symlinks on its path, readable
 by the `lyrica` user (through its group or an ACL for anything she should
-write), and may not be in both pools. The same lists are in the control
-panel under Users.
+write), and may not be in both pools. The same lists are under
+Administration, Users.
 
 Network defaults are per user and pool: general threads start with internet
 on and this machine's services off, private threads with both off. Change
-them in the control panel under Network, or with `lyrica admin net`. Each
+them under Settings, Network (below its "New threads" group, which holds
+the default mode and Voice to cloud), or with `lyrica admin net`. Each
 thread can narrow or widen its own from the thread settings drawer.
 
 ## Give her another computer
@@ -309,6 +312,12 @@ runs in three steps:
    folder, `mkfs`, `dd` onto a device, `shutdown` and the like) always
    asks with a warning, whatever the mode.
 
+The same three steps are in the web UI under Settings, Machines, **Add
+machine** (SSH or Proxmox); nothing is saved there before you confirm the
+fingerprint either. Each machine's row shows whether she can reach it, and
+its ⋯ menu has Replace key, Use anyway (a private machine outside your
+network) and Remove.
+
 The machine needs OpenSSH 9.6 or later, or a distribution build with the
 Terrapin fix (strict key exchange); adding an older one fails with "the
 server doesn't offer strict key exchange; update its OpenSSH". On Lyrica's
@@ -316,11 +325,15 @@ side, each SSH connection runs in a sandbox of its own, so machines need
 `bwrap`, `pasta` and `nft` on her host (the install script installs them)
 and a passed network self-test: when the journal says "network is off for
 every thread", every machine call fails too, with nothing to fall back to.
-If a machine's host key ever changes, every call fails until you confirm the new key; `lyrica
+If a machine's host key ever changes, every call fails until you confirm
+the new key (Replace key in its ⋯ menu); `lyrica
 admin ssh list` shows each machine's pool, limit and confirmed key, and
 `ssh remove` takes one away. SSH targets added before machines existed
 became general machines at Ask; one that had never connected has no
 confirmed key and must be added again (`ssh remove <name>`, then `add`).
+The same cure applies to a machine added before 2026-10-11 that never
+connects, even though its setup was run: about one key in 256 made before
+#96 was one OpenSSH could not load, and saved keys are not checked.
 
 ## Give her a Proxmox node
 
@@ -383,11 +396,11 @@ Threads grant it like any machine. Listing, status and snapshots never
 ask; start and shutdown ask like a command under the thread's mode and the
 machine's limit; stop and reboot always ask with a warning. If the node's
 certificate changes (Proxmox renews it), every call fails until you confirm
-the new fingerprint (`ssh remove <name>`, then `proxmox add` again).
-`lyrica admin ssh list` shows Proxmox machines with the SSH ones, and
-`ssh remove <name>` takes one away. An **Add machine**
-page in the web UI is on its way; until it lands this command is the only
-way.
+the new fingerprint (Replace key in the row's ⋯ menu under Settings,
+Machines, which takes a new token too; or `ssh remove <name>`, then
+`proxmox add` again). Add machine there, with Proxmox as the kind, is the
+same as the command. `lyrica admin ssh list` shows Proxmox machines with
+the SSH ones, and `ssh remove <name>` takes one away.
 
 ## Day to day
 
@@ -399,8 +412,8 @@ way.
   sleep, unmounts home workspaces and drops keys. With no saved passphrase,
   she comes back locked; browser sessions don't survive a restart, so
   everyone logs in again.
-- **Sleep** runs at `sleep.time` (04:00 local by default; the control
-  panel's Server section) for every user whose key is available.
+- **Sleep** runs at `sleep.time` (04:00 local by default; Administration,
+  Sleep) for every user whose key is available.
 - **Where the data is:** everything is under `/var/lib/lyrica`. `self.db`
   and each `users/<id>/` directory are encrypted at rest; a copy made while
   the service is stopped is a backup, and useless without the passphrase
@@ -414,7 +427,8 @@ way.
   ```
 
   The script replaces `/opt/lyrica`, rebuilds Caddy only if a pin changed,
-  and restarts `lyricad` (which logs everyone out).
+  and restarts `lyricad` (which logs everyone out). The home page header
+  ("Lyrica 0.1.0 · <build>") shows the git commit that is running.
 
 ## Checklist for the first install on Li's machine
 
@@ -432,7 +446,7 @@ something the code expects but nobody has confirmed on real hardware.
 3. `lyrica admin init`, `systemctl start lyricad`, unlock, login.
 4. `NoNewPrivs: 0` on the running process.
 5. The self-test: no "network is off for every thread" in the journal, and
-   the control panel's Server section shows no network warning.
+   Administration, Status shows no network warning.
 6. In a thread with a granted folder, `read` and a `bash` command work, and
    a command with internet on can reach the internet.
 7. A file uploaded in a thread opens with `read` (this proves the home
