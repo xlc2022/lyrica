@@ -489,7 +489,8 @@ and never logged; a Caddy error that quotes one has it replaced with
 ## Deployment
 
 `daemon/deploy/install.sh`, run as root on Debian or Ubuntu from a checkout,
-installs or upgrades everything. Running it again upgrades in place.
+installs or upgrades everything. Running it again upgrades in place. On NixOS, the flake's
+module does the same ("On NixOS" below).
 
 - It installs the packages (bubblewrap, gocryptfs, FUSE, passt, nftables,
   openssl), checks for Node.js 22.6 or later (the SSH helper runs with type
@@ -529,3 +530,43 @@ installs or upgrades everything. Running it again upgrades in place.
   loads (`caddy validate`) is moved aside, so Caddy still comes up with its
   admin socket and `lyricad` can apply the setup again. Its saved config,
   which holds the DNS token, stays in its own state directory (`0700`).
+
+### On NixOS
+
+`flake.nix` gives `packages.x86_64-linux.lyrica` (`nix/package.nix`: lyricad,
+the CLI and the built web UI, `buildNpmPackage` on nixpkgs' `nodejs_22`,
+refusing Node older than 22.6) and `nixosModules.default`
+(`nix/module.nix`, `services.lyrica`). nixpkgs is the `nixos-26.05` channel,
+locked in `flake.lock`. `nix flake check` builds the package and a NixOS
+system with the module on. Only x86_64-linux.
+
+- **The module** declares what install.sh does: the two users and groups,
+  `/var/lib/lyrica` (`0700`), both units written in Nix and kept in step with
+  `daemon/deploy/*.service` (same hardening, `LoadCredentialEncrypted`, the
+  same deploy check), `ip_nonlocal_bind`, and `/etc/lyrica/caddy.json`.
+  lyricad waits for `self.db` (`ConditionPathExists`), as install.sh does.
+  It refuses to build with `security.allowUserNamespaces` off.
+- **PATH.** lyricad's starts with `/run/wrappers/bin`, so `fusermount3` is
+  the setuid wrapper (`programs.fuse`), then gocryptfs, OpenSSL, systemd
+  (`systemd-creds`) and the sandbox tools.
+- **Caddy** is nixpkgs' Caddy with the DNS plugins read from
+  `daemon/src/web/providers.ts` (`caddy.withPlugins`). Its `hash` in
+  `nix/module.nix` changes when that list or nixpkgs' Caddy does; `nix flake
+  check` prints the new one. npm packages come by their `package-lock.json`
+  integrity hashes (`importNpmLock`), so a lockfile change needs nothing here.
+- **Sandboxes.** NixOS has no `/usr` to share. The module sets
+  `LYRICA_SANDBOX_TOOLS` to one directory of `sandboxPackages`
+  (`nix/sandbox-tools.nix`: a shell, the usual command-line tools, git,
+  OpenSSH, curl, jq, ripgrep, Python, bubblewrap, passt, nftables) and
+  `LYRICA_SANDBOX_CLOSURE` to the store paths of their closure, Node's and
+  the CA bundle's (`closureInfo`). See docs/workspace.md.
+- **Options:** `enable`, `package`, `port` (7340), `caddyPackage`,
+  `sandboxPackages`.
+- **Updates.** `nixos-rebuild switch` with a newer flake restarts lyricad on
+  the new package with no snapshot first, as re-running install.sh does
+  today; the releases build adds the snapshot, the Update button through a
+  Lyrica-only Nix profile, and rollback (docs/briefs/releases.md item 7).
+- **Host check:** `nix/check-host.sh`, as root after `lyrica admin init`:
+  both services run, `NoNewPrivs` is `0`, `fusermount3` is setuid, Caddy's
+  admin socket exists, a sandbox and `pasta` start as `lyrica`, the
+  self-test hasn't refused network, lyricad answers on port 7340.

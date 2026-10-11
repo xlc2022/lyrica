@@ -162,7 +162,8 @@ class Helper {
     const [major, minor] = process.versions.node.split(".").map(Number) as [number, number];
     if (major < 22 || (major === 22 && minor < 6)) throw new Error("the SSH helper needs Node 22.6 or later (type stripping)");
     const child = await helperSandbox(address, port, sandbox)
-      .start([realpathSync(process.execPath), "--experimental-strip-types", "--disable-warning=ExperimentalWarning", HELPER]);
+      .start([realpathSync(process.execPath), "--experimental-strip-types", "--disable-warning=ExperimentalWarning", HELPER])
+      .catch((err: Error) => { throw new Error(`the SSH helper didn't start: ${err.message}`); });
     const h = new Helper(child);
     let stderr = "";
     child.stderr.on("data", (d: Buffer) => { if (stderr.length < 2000) stderr += d.toString(); });
