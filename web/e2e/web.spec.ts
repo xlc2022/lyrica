@@ -537,8 +537,8 @@ test("with Read aloud while she writes on, a reply can be read aloud as it strea
   await expect(page.locator(".turn").filter({ has: page.locator(".caret-blink") }).getByRole("button", { name: "Read aloud" })).toHaveCount(0);
   await expect(page.getByText("in a few pieces.")).toBeVisible({ timeout: 15_000 });
 
-  // The setting sits beside Voice to cloud in Settings, Network.
-  await page.goto(`/#/u/${encodeURIComponent(userId)}/settings/network`);
+  // The setting is under Speech in Settings, Appearance.
+  await page.goto(`/#/u/${encodeURIComponent(userId)}/settings/appearance`);
   const live = page.getByLabel("Read aloud while she writes");
   await expect(live).not.toBeChecked();
   await live.click();

@@ -151,6 +151,7 @@ function ProfileSection({ ctx }: { ctx: ShellContext }) {
 
 function AppearanceSection({ ctx }: { ctx: ShellContext }) {
   const { me } = ctx;
+  const profiles = useLoad(() => get<Profiles>(u(me.user.id, "profiles")), [me.user.id]);
   const [run, , error] = useAction();
   return (
     <Section title="Appearance">
@@ -161,7 +162,14 @@ function AppearanceSection({ ctx }: { ctx: ShellContext }) {
           <option value="dark">Dark</option>
         </select>
       </label>
-      <ErrorText error={error} />
+      {profiles.data && (
+        <>
+          <div className="eyebrow">Speech</div>
+          <Switch label="Read aloud while she writes" hint="Starts reading her reply as it arrives instead of when it ends."
+            checked={profiles.data.readAloudLive} onChange={(readAloudLive) => run(async () => profiles.set(await patch<Profiles>(u(me.user.id, "profiles"), { readAloudLive })))} />
+        </>
+      )}
+      <ErrorText error={profiles.error || error} />
     </Section>
   );
 }
@@ -414,10 +422,6 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
         {profiles.data && (
           <Switch label="Voice to cloud" hint="What you dictate may be sent to a cloud model"
             checked={profiles.data.voiceCloud} onChange={(voiceCloud) => run(async () => profiles.set(await patch<Profiles>(u(userId, "profiles"), { voiceCloud })))} />
-        )}
-        {profiles.data && (
-          <Switch label="Read aloud while she writes" hint="Read aloud on a reply she is still writing"
-            checked={profiles.data.readAloudLive} onChange={(readAloudLive) => run(async () => profiles.set(await patch<Profiles>(u(userId, "profiles"), { readAloudLive })))} />
         )}
       </div>
       <div className="profiles">

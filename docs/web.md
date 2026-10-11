@@ -320,8 +320,9 @@ A thread's address may carry what the panel beside it shows:
   split view each pane's buttons are its own, and still only one plays.
 - **Voice to cloud** is a switch in the thread settings drawer's Privacy and
   network section, under Internet, following the user's default until
-  changed (Use default goes back); the default is in Settings, Network, with
-  **Read aloud while she writes** (`Profiles.readAloudLive`) beside it. The Model profiles section has Dictation and Read aloud
+  changed (Use default goes back); the default is in Settings, Network.
+  **Read aloud while she writes** (`Profiles.readAloudLive`) is a switch
+  under Speech in Settings, Appearance. The Model profiles section has Dictation and Read aloud
   rows that offer only models that transcribe or speak, and a speaking model
   in the Endpoints list has a Settings link opening its drawer: a voice per
   language (English, Mandarin) and the speed (a number, of 4, clamped when
