@@ -8,10 +8,17 @@ import { isMissing, type SshSession, type SshTransport } from "./transport.ts";
 
 const quote = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
 
-/** A new ed25519 key pair in OpenSSH format, generated in memory. */
+/**
+ * A new ed25519 key pair in OpenSSH format, generated in memory. ssh2 drops a
+ * public key's leading zero byte (1 key in 256), which OpenSSH can't load, so
+ * such a key is drawn again.
+ */
 export function generateSshKey(comment: string): { privateKey: string; publicKey: string } {
-  const { private: privateKey, public: publicKey } = ssh2.utils.generateKeyPairSync("ed25519", { comment });
-  return { privateKey, publicKey };
+  for (;;) {
+    const { private: privateKey, public: publicKey } = ssh2.utils.generateKeyPairSync("ed25519", { comment });
+    const blob = Buffer.from(publicKey.split(" ")[1]!, "base64");
+    if (blob.length === 51) return { privateKey, publicKey }; // "ssh-ed25519" and a 32-byte key, each with its length
+  }
 }
 
 /** The public half of a stored private key, in authorized_keys form. */

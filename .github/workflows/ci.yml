@@ -23,7 +23,12 @@ jobs:
       # npm ci downloads only what changed.
       # The sandbox tests need these, and run as the runner's unprivileged user.
       # Ubuntu 24.04's AppArmor blocks unprivileged user namespaces by default.
+      # needrestart must not restart services (it once restarted this runner
+      # mid-job), and apt waits for a busy dpkg lock instead of failing. The
+      # same as setup.sh, for runners set up before it did this.
       - run: |
+          echo "\$nrconf{restart} = 'l';" | sudo tee /etc/needrestart/conf.d/lyrica-ci.conf >/dev/null 2>&1 || true
+          echo 'DPkg::Lock::Timeout "600";' | sudo tee /etc/apt/apt.conf.d/90lyrica-ci >/dev/null
           sudo apt-get update
           sudo apt-get install -y build-essential bubblewrap gocryptfs fuse3 openssh-server passt nftables
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true

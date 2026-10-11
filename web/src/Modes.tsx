@@ -2,7 +2,8 @@
 // and the tool switches at the left; the thread's mode (Shift+Tab cycles) at
 // the right, before Send.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import type { GoAhead, PermissionMode, ThreadSettings, ThreadSettingsChange } from "./api.ts";
+import type { GoAhead, MachineLimit, PermissionMode, ThreadSettings, ThreadSettingsChange } from "./api.ts";
+import { Icon } from "./icons.tsx";
 import { Switch, useDismiss } from "./ui.tsx";
 
 /** In the order the menu lists them and Shift+Tab cycles. */
@@ -18,15 +19,6 @@ export const GO_AHEAD: GoAhead[] = ["ask", "acceptEdits", "auto"];
 
 export const nextMode = (m: PermissionMode) => MODE_ORDER[(MODE_ORDER.indexOf(m) + 1) % MODE_ORDER.length]!;
 
-/** Line icons for the message box's row and the message actions: 1.5 px strokes on a 16 px grid. */
-const PATHS = {
-  plus: "M8 3v10M3 8h10", up: "M8 13V3M3.5 7.5 8 3l4.5 4.5", stop: "M4.5 4.5h7v7h-7z", down: "M4.5 6.5 8 10l3.5-3.5",
-  mic: "M8 2.25a2.25 2.25 0 0 1 2.25 2.25v3.5a2.25 2.25 0 0 1-4.5 0V4.5A2.25 2.25 0 0 1 8 2.25zM3.75 8a4.25 4.25 0 0 0 8.5 0M8 12.25v1.5",
-  speaker: "M2.75 6.25v3.5h2.25L8 12.5v-9L5 6.25zM10.25 5.75a3.25 3.25 0 0 1 0 4.5M12.25 3.75a6 6 0 0 1 0 8.5",
-};
-export const Icon = ({ name }: { name: keyof typeof PATHS }) => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={PATHS[name]} /></svg>
-);
 
 /** A menu that opens above its button and closes on a pick, Escape or a click outside. */
 function useMenu() {
@@ -37,18 +29,32 @@ function useMenu() {
   return { open, setOpen, anchor };
 }
 
-/** One mode in a menu: a check on the current one, the name with its line, and its number key. */
-function ModeItem({ mode, checked, n, onClick }: { mode: PermissionMode; checked?: boolean; n?: number; onClick: () => void }) {
+/** Strictest first: a mode above a machine's limit asks there. */
+const RANK: Record<PermissionMode, number> = { plan: 0, ask: 1, acceptEdits: 2, auto: 3 };
+/** A thread's granted machine, for the mode menu's "Asks on" line. */
+export interface GrantedMachine { name: string; limit: MachineLimit }
+/** The machines whose limit is below `mode`, where that mode asks instead. */
+export const asksOn = (mode: PermissionMode, machines: GrantedMachine[]) => machines.filter((m) => RANK[m.limit] < RANK[mode]).map((m) => m.name);
+
+/**
+ * One mode in a menu or list: a check on the current one, the name with its
+ * line, and its number key. Above a granted machine's limit the line reads
+ * "Asks on <machine>".
+ */
+export function ModeItem({ mode, checked, n, role, machines = [], onClick }: {
+  mode: PermissionMode; checked?: boolean; n?: number; role?: "menuitem" | "menuitemradio" | "radio"; machines?: GrantedMachine[]; onClick: () => void;
+}) {
+  const asks = asksOn(mode, machines);
   return (
-    <button type="button" className="mode-item" role={checked === undefined ? "menuitem" : "menuitemradio"} aria-checked={checked} onClick={onClick}>
-      <span className="mk" aria-hidden="true">{checked ? "✓" : ""}</span>
-      <span><span>{MODES[mode].label}</span><small>{MODES[mode].description}</small></span>
+    <button type="button" className="mode-item" role={role ?? (checked === undefined ? "menuitem" : "menuitemradio")} aria-checked={checked} onClick={onClick}>
+      <span className="mk" aria-hidden="true">{checked ? <Icon name="check" /> : null}</span>
+      <span><span>{MODES[mode].label}</span><small>{asks.length ? `Asks on ${asks.join(", ")}` : MODES[mode].description}</small></span>
       {n !== undefined && <kbd>{n}</kbd>}
     </button>
   );
 }
 
-export function ModePicker({ mode, onChange }: { mode: PermissionMode; onChange: (m: PermissionMode) => void }) {
+export function ModePicker({ mode, machines, onChange }: { mode: PermissionMode; machines?: GrantedMachine[]; onChange: (m: PermissionMode) => void }) {
   const { open, setOpen, anchor } = useMenu();
   const pick = (m: PermissionMode) => { setOpen(false); if (m !== mode) onChange(m); };
   // While the menu is open, its number keys pick a mode.
@@ -69,7 +75,7 @@ export function ModePicker({ mode, onChange }: { mode: PermissionMode; onChange:
       </button>
       {open && (
         <div className="menu up end" role="menu" aria-label="Mode">
-          {MODE_ORDER.map((m, i) => <ModeItem key={m} mode={m} checked={m === mode} n={i + 1} onClick={() => pick(m)} />)}
+          {MODE_ORDER.map((m, i) => <ModeItem key={m} mode={m} checked={m === mode} n={i + 1} machines={machines} onClick={() => pick(m)} />)}
         </div>
       )}
     </div>

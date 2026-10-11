@@ -880,7 +880,8 @@ local-only threads use local speech models only.
 A **project** is one place for a stream of related work, as in Claude's
 Projects: a running conversation, the **project chat**, where Li drops tasks,
 updates and questions as they come, and **threads** that Lyrica starts for
-the work and keeps track of. Agreed 2026-10-10; not built yet. The briefs are
+the work and keeps track of. Agreed 2026-10-10. The back end is built; the
+web part and sleep's project page are not yet. The briefs are
 `docs/briefs/projects.md`, `projects-web.md` and `projects-sleep.md`.
 
 - **A project is a top-level thread marked as a project**, and its threads
@@ -994,7 +995,8 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   memory) with Add anyway as its one action, and its row shows **Off
   network** while that holds: the address is checked again on every
   connection, and a private machine that has newly gone off network is
-  refused until Li confirms the dialog again. Changing a machine's pool
+  refused until Li confirms the dialog again, from **Use anyway** behind the
+  row's ⋯. Changing a machine's pool
   removes it from every thread that grants it, and moving one from Private
   to General gets a dialog saying that what is already on the machine
   becomes reachable from general threads. The sandbox's
@@ -1366,7 +1368,8 @@ from Monika's runbooks.
   of encrypted files; homes are left to the operator's backup), keeping the
   last 3; switch `current`; start; **probation**.
 - **Probation.** The release must pass its checks once unlocked (every
-  database opens and migrates, the workspace self-test, the model router,
+  database opens, migrates and passes its integrity check, the workspace
+  self-test, the model router,
   the web UI's files) and stay up 10 minutes. With saved credentials that
   happens at start; without them, at the first unlock. A crash loop or a
   failed check rolls back by itself and tells administrators in
@@ -1374,14 +1377,31 @@ from Monika's runbooks.
   was restored, from when messages were lost.
 - **Rollback** goes back to the previous release: automatically in
   probation, from Administration, or with `sudo lyrica-rollback` on the
-  console when nothing else works. Each database records the schema version
-  that wrote it and a release refuses a newer one, so a rollback across a
-  schema change also restores the pre-update snapshot, and loses what was
-  written since; its dialog says from when. A migration that removes or
-  renames waits one release (expand, then contract), so most rollbacks keep
-  everything. A kept release older than the last snapshot that still
-  matches its schema can't be rolled back to; the dialog and the console
+  console when nothing else works. Each database records its schema version and
+  the oldest schema that can still read it: a migration that only adds
+  (expand) leaves that alone, one that removes or renames (contract)
+  raises it, and a release refuses a database it can't read. So only a
+  rollback across a contract restores the pre-update snapshot, and what
+  was written since leaves the app; its dialog says from when. A contract
+  waits one release after its expand, so most rollbacks keep everything.
+  A kept release that can't read the databases and is older than the last
+  snapshot it could read can't be rolled back to; the dialog and the console
   say so and name the oldest release that can.
+- **Her databases are never changed past undoing.** Each database migrates
+  in one transaction and checks itself (`integrity_check`,
+  `foreign_key_check`) before committing, so a failed migration leaves it
+  as it was and the release fails probation instead. The updater checks
+  each snapshot against its source before switching. The snapshot taken
+  before a contract is kept for 30 days and until a later contract has
+  passed probation, beyond the last 3, so damage found late
+  still has a way back. A restore first moves the databases it replaces
+  into the snapshots folder, still encrypted and kept as long, so what was
+  written since the update is set aside, never deleted. A migration that
+  removes or renames ships only after the release that stopped using it
+  has passed probation, and its update note names it. CI migrates
+  databases built at every released schema version (by code, never real
+  data) and checks that nothing was lost and that, after an expand, the
+  release before still opens them.
 - **Update notes.** Every update installs an update note, never a bare
   commit: an annotated tag (`update/<date>`) on a `main` commit whose
   message lists the merged PRs since the running version, what each

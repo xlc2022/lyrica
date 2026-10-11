@@ -29,6 +29,12 @@ esac
 # as they do on GitHub's runners.
 apt-get update
 apt-get install -y build-essential curl git jq python3 iptables docker.io docker-compose-v2 docker-buildx
+# A job's apt-get install must never restart services: needrestart once
+# restarted the runner mid-job and left apt holding the dpkg lock. And apt
+# waits for a busy lock (unattended upgrades) instead of failing the job.
+mkdir -p /etc/needrestart/conf.d
+echo "\$nrconf{restart} = 'l';" >/etc/needrestart/conf.d/lyrica-ci.conf
+echo 'DPkg::Lock::Timeout "600";' >/etc/apt/apt.conf.d/90lyrica-ci
 
 # The jobs run as an ordinary user with passwordless sudo and Docker, as on
 # GitHub's runners: the sandbox tests refuse to run as root, and the model

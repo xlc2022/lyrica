@@ -1,15 +1,17 @@
-import { chmodSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, SystemdCredentials, Users, Workspace,
-  type Argon2Params, type CredentialStore, type User,
+  Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, SystemdCredentials, ThreadPrefs, Users, Workspace,
+  type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
 } from "@lyrica/core";
-import { Delegation, Sleep, type Limits, type SleepLimits, type ThreadsLimits } from "@lyrica/extension";
+import { Delegation, Sleep, type Limits, type SleepLimits } from "@lyrica/extension";
 import { ChildThreads } from "./children.ts";
+import { Projects } from "./projects.ts";
 import type { State, UserCard } from "./api.ts";
 import { RateLimiter, Sessions } from "./auth.ts";
 import { ThreadHost } from "./hosted.ts";
@@ -77,15 +79,31 @@ export interface Services {
   /** Persona proposals: drafts in each user's user.db until they send them on. */
   proposals: PersonaProposals;
   delegation: Delegation;
-  /** Child threads Lyrica starts. */
+  /** Child threads Lyrica starts, and a project's threads. */
   children: ChildThreads;
+  /** Thread pins and project settings, per user. */
+  projects: Projects;
   /** Each pool's consolidate → dream → wake, one run at a time. */
   sleep: Sleep;
   host: ThreadHost;
   web: WebAccess;
+  /** The user's own groups and unread marks on threads, in user.db. */
+  prefs: ThreadPrefs;
 }
 
 const DEFAULT_WEB = fileURLToPath(new URL("../../web/dist", import.meta.url));
+
+/** The version from the repository's package.json, and the build: LYRICA_BUILD (set when building a release), else the git commit, else "dev". */
+const BUILD: Pick<State, "version" | "build"> = (() => {
+  const root = fileURLToPath(new URL("../..", import.meta.url));
+  let version = "0";
+  try { version = String((JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { version?: string }).version ?? "0"); } catch { /* no package.json beside us */ }
+  let build = process.env.LYRICA_BUILD?.trim() || "";
+  if (!build) {
+    try { build = execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: root, stdio: ["ignore", "pipe", "ignore"], timeout: 2000 }).toString().trim(); } catch { /* not a checkout */ }
+  }
+  return { version, build: build || "dev" };
+})();
 
 /**
  * lyricad: one process that unlocks, logs users in, hosts their threads as
@@ -201,15 +219,23 @@ export class Lyricad {
     // A subagent's approvals are asked in its thread and its parent's, through the host built next.
     let host!: ThreadHost;
     const delegation = new Delegation({ users, memory, models, workspace, cwd, limits: this.opts.delegation, approve: (r, signal) => host.approveSubagent(r, signal) });
-    const children = new ChildThreads({ users, memory, models, workspace, delegation, host: () => host, limits: this.opts.threads });
+    const projects = new Projects(users);
+    const children = new ChildThreads({
+      users, memory, models, workspace, delegation, host: () => host, limits: this.opts.threads,
+      // A hidden project stops as a paused one does.
+      paused: (u, p, project) => projects.paused(u, p, project) || hiddenThread(memory, u, p, project),
+      project: (u, p, project) => projects.settings(u, p, project),
+    });
     host = new ThreadHost({
       users, memory, models, workspace, persona, delegation, cwd, log: this.log,
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000, offlineRetryMs: this.opts.offlineRetryMs,
       threads: children, onTurn: (u, p, t, working) => children.turn(u, p, t, working),
+      projectThreads: (u, p, project) => children.projectLines(u, p, project),
     });
     const proposals = new PersonaProposals(keyring.self(), users, persona);
     const sleep = new Sleep({ users, memory, models, persona, proposals, hasKey: (id) => keyring.hasUserKey(id), cwd, limits: this.opts.sleep, log: this.log });
-    this.services = { users, memory, models, workspace, persona, proposals, delegation, children, sleep, host, web };
+    const prefs = new ThreadPrefs((id) => users.openUserDb(id));
+    this.services = { users, memory, models, workspace, persona, proposals, delegation, children, projects, sleep, host, web, prefs };
     await web.resume();
     for (const u of users.all()) {
       if (keyring.loadSavedKey(u.id)) {
@@ -278,6 +304,10 @@ export class Lyricad {
     this.sleptOn = now.toDateString();
     try { this.services.models.prune(); } catch (err) { this.log(`model cleanup failed: ${(err as Error).name}`); }
     this.sweep(now);
+    for (const u of this.services.users.all()) {
+      if (!this.keyring.hasUserKey(u.id)) continue;
+      try { this.services.children.autoResolve(u.id, now); } catch (err) { this.log(`resolving idle project threads failed: ${(err as Error).name}`); }
+    }
     void this.sleepNight();
   }
 
@@ -317,7 +347,7 @@ export class Lyricad {
     if (!this.services) return { locked: true, users: [] };
     const ids = this.sessions.users(cookie) ?? new Set<string>();
     const users = [...ids].map((id) => this.services!.users.get(id)).filter((u): u is User => !!u && this.keyring.hasUserKey(u.id));
-    return { locked: false, users: users.map(card) };
+    return { locked: false, users: users.map(card), ...BUILD };
   }
 
   /** On SIGTERM: stop sessions, close databases, stop listening. */
@@ -414,4 +444,9 @@ export function card(u: User): UserCard {
     id: u.id, login: u.login, displayName: p.displayName, pronouns: p.pronouns, admin: u.admin,
     ...(p.accent ? { accent: p.accent } : {}), ...(p.monogram ? { monogram: p.monogram } : {}),
   };
+}
+
+function hiddenThread(memory: Memory, userId: string, pool: Pool, threadId: string): boolean {
+  const view = memory.openThreadView(userId, pool);
+  try { return !!view.own.getThread(threadId)?.hidden; } finally { view.close(); }
 }

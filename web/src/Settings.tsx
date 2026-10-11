@@ -5,6 +5,7 @@ import {
   type AllowedPaths, type EndpointInfo, type Grant, type ModelRef, type PermissionMode, type MachineInfo,
   type TaskModel, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTask,
 } from "./api.ts";
+import { Icon } from "./icons.tsx";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { go } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
@@ -33,7 +34,7 @@ export function ModelBadge({ base, settings, onChange, readOnly }: {
   const label = (
     <>
       <span className={`k ${chat.kind ?? ""}`}>{chat.kind ?? "no model"}</span>
-      {chat.model ? (chat.modelId ? `${chat.modelId} · ${chat.endpointName}` : named(chat)) : "Choose a model"}
+      <span className="name">{chat.model ? (chat.modelId ? `${chat.modelId} · ${chat.endpointName}` : named(chat)) : "Choose a model"}</span>
       {chat.problem && <span className="warn" title={chat.problem}> ⚠</span>}
     </>
   );
@@ -65,7 +66,7 @@ function ModelPicker({ base, settings, task, onChange }: {
             const on = current.source === "thread" && refKey(current.model) === refKey(ref_);
             return (
               <button key={m.id} type="button" className="picker-item" aria-pressed={on} disabled={busy} onClick={() => choose(ref_)}>
-                {m.modelId}{on && <span aria-hidden="true"> ✓</span>}
+                {m.modelId}{on && <Icon name="check" />}
               </button>
             );
           })}
@@ -81,8 +82,10 @@ function ModelPicker({ base, settings, task, onChange }: {
   );
 }
 
-export function SettingsDrawer({ ctx, base, summary, settings, onSettings, onSummary, onClose, children = 0 }: {
+export function SettingsDrawer({ ctx, base, summary, settings, machines, onSettings, onSummary, onClose, children = 0 }: {
   ctx: ShellContext; base: string; summary: ThreadSummary; settings: ThreadSettings;
+  /** The user's machines; those of the thread's pool can be granted. */
+  machines: MachineInfo[];
   /** Its child threads listed under it: forgetting asks whether they go too. */
   children?: number;
   onSettings: (s: ThreadSettings) => void; onSummary: (s: ThreadSummary) => void; onClose: () => void;
@@ -94,7 +97,6 @@ export function SettingsDrawer({ ctx, base, summary, settings, onSettings, onSum
   const change = (c: ThreadSettingsChange) => run(async () => onSettings(await patch<ThreadSettings>(`${base}/settings`, c)));
   const changeThread = (c: { title?: string; hidden?: boolean }) => run(async () => onSummary(await patch<ThreadSummary>(base, c)));
   const paths = useLoad(() => get<AllowedPaths>(u(userId, "paths")), [userId]);
-  const machines = useLoad(() => get<MachineInfo[]>(u(userId, "machines")), [userId]);
   const [title, setTitle] = useState(summary.title ?? "");
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -137,12 +139,11 @@ export function SettingsDrawer({ ctx, base, summary, settings, onSettings, onSum
         <fieldset className="group" disabled={sub || busy}>
           <legend>Folders</legend>
           <Folders grants={settings.grants} allowed={paths.data?.[pool] ?? []} onChange={(grants) => change({ grants })} />
-          <label className="field"><span>Machine</span>
-            <select value={settings.machines[0] ?? ""} onChange={(e) => change({ machines: e.target.value ? [e.target.value] : [] })}>
-              <option value="">None</option>
-              {(machines.data ?? []).filter((m) => m.pool === pool).map((m) => <option key={m.name} value={m.name}>{m.name} ({m.address})</option>)}
-            </select>
-          </label>
+        </fieldset>
+
+        <fieldset className="group" disabled={sub || busy}>
+          <legend>Machines</legend>
+          <Machines granted={settings.machines} machines={machines.filter((m) => m.pool === pool)} onChange={(names) => change({ machines: names })} />
         </fieldset>
 
         <fieldset className="group" disabled={sub || busy}>
@@ -226,7 +227,7 @@ function Hosts({ hosts, overridden, onChange }: { hosts: string[]; overridden: b
       {hosts.length ? (
         <ul className="chips">
           {hosts.map((h) => (
-            <li key={h}>{h}<button type="button" className="quiet" aria-label={`Remove ${h}`} onClick={() => onChange(hosts.filter((x) => x !== h))}>✕</button></li>
+            <li key={h}>{h}<button type="button" className="icon sm" aria-label={`Remove ${h}`} onClick={() => onChange(hosts.filter((x) => x !== h))}><Icon name="close" /></button></li>
           ))}
         </ul>
       ) : <span className="muted small">None</span>}
@@ -251,7 +252,7 @@ function Folders({ grants, allowed, onChange }: { grants: Grant[]; allowed: stri
             <option value="ro">read-only</option>
             <option value="rw">read-write</option>
           </select>
-          <button type="button" className="quiet" aria-label={`Remove ${g.path}`} onClick={() => set(i, null)}>✕</button>
+          <button type="button" className="icon sm" aria-label={`Remove ${g.path}`} onClick={() => set(i, null)}><Icon name="close" /></button>
         </div>
       ))}
       {!grants.length && <span className="muted small">No folders granted.</span>}
@@ -262,6 +263,19 @@ function Folders({ grants, allowed, onChange }: { grants: Grant[]; allowed: stri
           <button type="submit" disabled={!draft}>Add</button>
         </form>
       ) : <span className="muted small">An administrator hasn't allowed any folders for this pool.</span>}
+    </>
+  );
+}
+
+/** The sandbox, always, then each machine of the thread's pool with a switch; a granted one that no longer exists still shows, so it can be taken off. */
+function Machines({ granted, machines, onChange }: { granted: string[]; machines: MachineInfo[]; onChange: (names: string[]) => void }) {
+  const gone = granted.filter((name) => !machines.some((m) => m.name === name));
+  const toggle = (name: string, on: boolean) => onChange(on ? [...granted, name] : granted.filter((n) => n !== name));
+  return (
+    <>
+      <div className="folder"><span className="path">sandbox</span><span className="muted small">always</span><span /></div>
+      {machines.map((m) => <Switch key={m.name} label={m.name} hint={`${m.address} · up to ${MODES[m.limit].label}`} checked={granted.includes(m.name)} onChange={(on) => toggle(m.name, on)} />)}
+      {gone.map((name) => <Switch key={name} label={name} hint="No longer one of your machines." checked onChange={() => toggle(name, false)} />)}
     </>
   );
 }

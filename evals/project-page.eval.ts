@@ -15,8 +15,8 @@ import { withModels } from "../core/test/helpers.ts";
 //
 // Thread 1 of the "Garden app" project: Li says "Let's use SQLite, not
 // Postgres." She notes it. That night, sleep keeps the project's page.
-// Expected: the page states the decision, citing the note, so every later
-// thread of the project starts with it.
+// Expected: the page states the decision, citing the note, and a later
+// thread of the project has it in context.
 //
 // By hand: in a project, say the first line in a thread, check she noted it,
 // run /sleep, and open the project's page in the memory browser.
@@ -33,10 +33,10 @@ const dirs: string[] = [];
 afterAll(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), "lyrica-eval-")); dirs.push(d); return d; };
 
-async function converse(thread: ThreadContext, prompt: string, steps: (() => ReturnType<typeof fauxAssistantMessage>)[]): Promise<void> {
+async function converse(thread: ThreadContext, prompt: string, steps: ((context: string) => ReturnType<typeof fauxAssistantMessage>)[]): Promise<void> {
   const dir = tmp();
   const faux = fauxProvider({ provider: "faux", models: [{ id: "echo" }] });
-  faux.setResponses(steps);
+  faux.setResponses(steps.map((step) => (ctx: { messages: unknown[] }) => step(JSON.stringify(ctx.messages))));
   const loader = new DefaultResourceLoader({
     cwd: dir, agentDir: dir, noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true,
     extensionFactories: [(pi) => pi.registerProvider(faux.provider), createLyricaExtension(thread, { persona: () => persona, profile: () => profile })],
@@ -91,6 +91,13 @@ describe("a project's decision carries over to its page", () => {
 
     const next = view.own.createThread({ interface: "web", parent: chat.id, child: true });
     expect(view.own.pageForProject(next.id)?.text).toContain("SQLite, not Postgres");
+    // After the night the note is past the watermark: it reaches the next thread through the page.
+    expect(view.own.projectNotes(chat.id, view.own.watermark())).toHaveLength(0);
+    let seen = "";
+    await converse({ ...first, threadId: next.id, call: m.models.callContext(m.li.id, "general", next.id) }, "Which database are we on?", [
+      (context) => { seen = context; return fauxAssistantMessage("SQLite."); },
+    ]);
+    expect(seen).toContain("Decided: SQLite, not Postgres");
     view.close();
   });
 });

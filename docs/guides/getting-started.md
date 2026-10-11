@@ -46,8 +46,10 @@ server on your network, or on a paired model host.
   systemd doesn't have. Debian 13 and Ubuntu 25.04 have it; Debian 12 and
   Ubuntu 24.04 don't. Without it everything else works, and you type the
   passphrase on the unlock page after each start.
-- **Node.js 22 or later**, installed before the script runs (it checks and
-  stops otherwise). NodeSource's packages are one way:
+- **Node.js 22.6 or later**, installed before the script runs (it checks
+  and stops otherwise). The SSH helper that machines use runs with
+  Node's type stripping, which arrived in 22.6; an older 22 fails every
+  machine call. NodeSource's packages are one way:
 
   ```sh
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
@@ -307,12 +309,21 @@ runs in three steps:
    folder, `mkfs`, `dd` onto a device, `shutdown` and the like) always
    asks with a warning, whatever the mode.
 
-The machine needs OpenSSH 9.6 or later (strict key exchange). If its host
-key ever changes, every call fails until you confirm the new key; `lyrica
+The machine needs OpenSSH 9.6 or later, or a distribution build with the
+Terrapin fix (strict key exchange); adding an older one fails with "the
+server doesn't offer strict key exchange; update its OpenSSH". On Lyrica's
+side, each SSH connection runs in a sandbox of its own, so machines need
+`bwrap`, `pasta` and `nft` on her host (the install script installs them)
+and a passed network self-test: when the journal says "network is off for
+every thread", every machine call fails too, with nothing to fall back to.
+If a machine's host key ever changes, every call fails until you confirm the new key; `lyrica
 admin ssh list` shows each machine's pool, limit and confirmed key, and
 `ssh remove` takes one away. SSH targets added before machines existed
 became general machines at Ask; one that had never connected has no
 confirmed key and must be added again (`ssh remove <name>`, then `add`).
+The same cure applies to a machine added before 2026-10-11 that never
+connects, even though its setup was run: about one key in 256 made before
+#96 was one OpenSSH could not load, and saved keys are not checked.
 
 ## Give her a Proxmox node
 

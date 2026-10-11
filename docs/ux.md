@@ -101,9 +101,10 @@ Rules:
   Voice to cloud, Voice, Speed, Project, New project, Make project, Threads,
   Start a thread, Suggested threads, Start all, Resolve, Reopen, Resolved,
   Waiting on you, Goal, Instructions, Paused, All threads, Only projects,
-  No projects, Machines, Add machine, Mode limit, Replace key, Allow in this
-  thread, Online, Unreachable, Key changed, Off network, Updates, Update,
-  Roll back, Running, Updating, Draining, Building, Testing, Probation.
+  No projects, Machines, Add machine, Mode limit, Replace key, Use anyway,
+  Allow in this thread, Online, Unreachable, Key changed, Off network,
+  Updates, Update, Roll back, Running, Updating, Draining, Building, Testing,
+  Probation.
 - Numbers get units beside the field (GB, %, tokens), and a maximum shown
   where one exists ("of 128k").
 
@@ -135,7 +136,7 @@ Rules:
 | Anything waiting for the user | **Notifications**: the sidebar link with its count, the Settings section, and the Notifications card on the welcome page. Never a banner elsewhere, except the chat's pending bar |
 | A user's own settings | **Settings**, sections on the left |
 | Server-wide settings | **Administration**, shown only to administrators |
-| Updates (the running version, the update note, kept releases) | the **Updates** section of Administration: the running version in mono; the newest update note as its tag in mono, then its text in a block; **Update** as the section's one primary, disabled while an update runs. The state is a status line beneath it, a dot and a word (Draining, Building, Testing, Probation in blue; Failed red); while draining the line continues "waiting for 2 threads" with the count in mono and the threads linked beneath. Kept releases as rows (commit in mono, date, Running as the one state); **Roll back** in each row's ⋯, except the Running row's, disabled while an update runs, confirmed by a **dialog** with its one sentence ("Roll back to the release from 9 October?" with the commit in mono after it, then "Messages since 14:02 will be lost." only when the schema changed). A failed probation is a **Notification** naming the commit and the check, and saying it rolled back |
+| Updates (the running version, the update note, kept releases) | the **Updates** section of Administration: the running version in mono; the newest update note as its tag in mono, then its text in a block; **Update** as the section's one primary, disabled while an update runs. The state is a status line beneath it, a dot and a word (Draining, Building, Testing, Probation in blue; Failed red); while draining the line continues "waiting for 2 threads" with the count in mono and the threads linked beneath. Kept releases as rows (commit in mono, date, Running as the one state); **Roll back** in each row's ⋯, except the Running row's, disabled while an update runs, confirmed by a **dialog** with its one sentence ("Roll back to the release from 9 October?" with the commit in mono after it, then "Messages since 14:02 will be lost." only when it restores a snapshot). A failed probation is a **Notification** naming the commit and the check, and saying it rolled back |
 | Models, hosts, downloads, clean-up | the **Models** area: Overview, Tasks, Text models, Image models, Hosts and endpoints, Downloads, Clean up, Recent calls |
 | The app's version | the header, "Lyrica (ver. …, build …)" |
 | Lyrica's inner workings (recall, tools, notes) | one-line **markers** in the conversation that expand when tapped |
@@ -144,9 +145,9 @@ Rules:
 | A subagent | a **card** in the conversation that expands to its work and takes messages |
 | Dictating a message | the mic in the message box's row; the box's placeholder while listening |
 | Hearing a message read aloud | her message's actions |
-| Voice to cloud | the thread's Privacy and network switches; its default beside the user's other defaults for new threads (the Control panel's Network section) |
+| Voice to cloud | the thread's Privacy and network switches; its default beside the user's other defaults for new threads (Settings, Network) |
 | A speech model's voice and speed | its Settings drawer in Models |
-| A machine (an SSH account, a Proxmox token) | a row in the **Machines** section of Settings: name; a facts line in mono with the address, the pool, "SSH · key" or "Proxmox API · token", and the limit as a phrase ("up to Accept edits"); at most one state (Online green, Unreachable amber with the duration in mono after the word, Key changed red, Off network amber; none if never probed). The row opens the **drawer** (address, root, pool, **Mode limit** as the message box's three-item mode list); Replace key and Remove behind ⋯, Remove with its one sentence |
+| A machine (an SSH account, a Proxmox token) | a row in the **Machines** section of Settings: name; a facts line in mono with the address, the pool, "SSH · key" or "Proxmox API · token", and the limit as a phrase ("up to Accept edits"); at most one state (Online green, Unreachable amber with the duration in mono after the word, Key changed red, Off network amber; none if never probed). The row opens the **drawer** (address, root, pool, **Mode limit** as the message box's three-item mode list); Replace key and Remove behind ⋯, Remove with its one sentence; a private machine that is Off network also has **Use anyway** there, which opens the Add machine dialog with the consequence, **Use anyway** primary and Cancel, and the row stays Off network |
 | Adding a machine | the **Add machine** page, like pairing a host: one h1, a kind segment (SSH \| Proxmox) at the top, steps as sections with eyebrows (Name and address, Key or Token, Test, Fingerprint), one primary on the page: the current step's action (Copy, then Test, then Confirm); a done step's button becomes secondary. Confirm is the last step; nothing is saved before it. Commands in a code block, the fingerprint in mono, no captions. Replace key and a changed key open it at the Fingerprint step. An off-network private machine gets a **dialog** with the consequence, **Add anyway** primary and Cancel |
 | A thread's machines | one Machines row in the thread's Settings drawer next to Folders: the sandbox plus the granted machines; their names in mono in the header's facts line beside the folders. The mode word stays the thread's mode; in the mode menu, a mode above a granted machine's limit reads "Asks on <machine>" |
 | A remote action waiting for approval | the permission **card**, the machine's name first in its title, the command or path in mono; for a suspect command, one plain warning sentence above the command and a third secondary choice, **Allow in this thread**. Allow stays the one primary; no third colour. Each remote call is a **marker** naming the machine |

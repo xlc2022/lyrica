@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { get, post, threadPath, type GoAhead, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type SendResponse, type Speech, type ThreadRef } from "./api.ts";
 import type { LiveItem } from "./live.ts";
-import { useThreadMentions } from "./mentions.ts";
+import { useMentionText, useThreadMentions } from "./mentions.ts";
 import { GoAheadMenu } from "./Modes.tsx";
 import { href, idHref } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
@@ -97,7 +97,7 @@ function StoredMessage({ m, env, you }: { m: Message; env: Env; you: string }) {
   if (m.role === "user") {
     if (m.from?.kind === "parent") return <FromParent text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} parent={m.from.threadId} env={env} n={m.n} />;
     const who = m.from?.kind === "lyrica" ? "Lyrica" : m.from?.kind === "user" ? (m.from.name || you) : you;
-    return <UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} />;
+    return <UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} hers={m.from?.kind === "lyrica" ? env : undefined} />;
   }
   if (m.role === "notice") {
     return <>{m.parts.map((p, i) => (p.type === "delegation"
@@ -118,7 +118,8 @@ function LiveMessage({ item, env, you, streaming }: { item: LiveItem; env: Env; 
   return <Parts parts={item.parts} env={env} model={item.model} streaming={streaming} />;
 }
 
-function UserMessage({ text, you, n, rewinder }: { text: string; you: string; n?: number; rewinder?: Rewinder }) {
+/** A message in the person's place; `hers` when Lyrica wrote it (a subagent's task), so the threads she mentions show by title. */
+function UserMessage({ text, you, n, rewinder, hers }: { text: string; you: string; n?: number; rewinder?: Rewinder; hers?: Pick<Env, "userId" | "pool"> }) {
   const [editing, setEditing] = useState(false);
   const menu = rewinder && n !== undefined;
   return (
@@ -126,7 +127,7 @@ function UserMessage({ text, you, n, rewinder }: { text: string; you: string; n?
       <div className="who">{you}{menu && rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}{menu && <MessageMenu n={n} role="user" rewinder={rewinder} onEdit={() => setEditing(true)} />}</div>
       {editing && menu
         ? <EditBox text={text} onCancel={() => setEditing(false)} onSend={(t) => { setEditing(false); rewinder.rewind(n, { action: "edit", text: t }, n); }} />
-        : <div className="body">{text}</div>}
+        : hers ? <div className="body prose"><HerProse text={text} env={hers} /></div> : <div className="body">{text}</div>}
     </div>
   );
 }
@@ -141,7 +142,7 @@ function Parts({ parts, env, model, streaming, n }: { parts: MessagePart[]; env:
       <div key={`p${key}`} className="msg her">
         <div className="body prose">
           <HerProse text={prose.join("")} env={env} />
-          {streaming && last && <span className="caret" aria-hidden="true" />}
+          {streaming && last && <span className="caret-blink" aria-hidden="true" />}
         </div>
       </div>,
     );
@@ -153,7 +154,7 @@ function Parts({ parts, env, model, streaming, n }: { parts: MessagePart[]; env:
     out.push(<Marker key={i} part={p} env={env} />);
   });
   flush(parts.length, true);
-  if (streaming && parts.at(-1)?.type !== "text") out.push(<span key="caret" className="caret alone" aria-hidden="true" />);
+  if (streaming && parts.at(-1)?.type !== "text") out.push(<span key="caret" className="caret-blink alone" aria-hidden="true" />);
   // In a subagent's thread, the replies are the subagent's own work.
   const who = env.subagent ? "Subagent" : "Lyrica";
   return (
@@ -194,7 +195,9 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" }>; e
       break;
     case "tool": {
       const state = part.result === undefined ? "running" : part.isError ? "failed" : "done";
-      label = <><b className="tool-name">{part.name}</b> <code>{summarizeArgs(part.args)}</code> <span className="state" data-state={state}>{state}</span></>;
+      // A call on a machine names it first.
+      const place = machineOf(part.args);
+      label = <>{place && <b className="place">{place}</b>}<b className="tool-name">{part.name}</b> <code>{summarizeArgs(part.args)}</code> <span className="state" data-state={state}>{state}</span></>;
       body = (
         <>
           <pre>{JSON.stringify(part.args, null, 2)}</pre>
@@ -223,7 +226,7 @@ function SubagentCard({ part, env }: { part: Extract<MessagePart, { type: "tool"
         {args.tier && <span className="muted">{args.tier}</span>}
         <ThreadLinks threads={part.threads} env={env} />
       </div>
-      {args.task && <p>{args.task}</p>}
+      {args.task && <div className="prose"><HerProse text={args.task} env={env} /></div>}
       {part.threads?.map((t, i) => <SubagentWork key={t.id} thread={t} label={part.threads!.length > 1 ? `Subagent ${i + 1}` : "Its work"} env={env} />)}
     </div>
   );
@@ -243,8 +246,8 @@ function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" 
         <b className="as-is">{head}</b>
         {args.to === "parent" ? null : <ThreadLinks threads={part.threads} env={env} />}
       </div>
-      {(args.task ?? args.text) && <p>{args.task ?? args.text}</p>}
-      {part.isError && <p className="error">{part.result}</p>}
+      {(args.task ?? args.text) && <div className="prose"><HerProse text={(args.task ?? args.text)!} env={env} /></div>}
+      {part.isError && <ToolError text={String(part.result ?? "")} env={env} />}
     </div>
   );
 }
@@ -258,9 +261,14 @@ function FromParent({ text, parent, env, n }: { text: string; parent: string; en
         {/* Branch and delete, as any message; it isn't hers to edit. */}
         {env.rewinder && n !== undefined && <MessageMenu n={n} role="user" rewinder={env.rewinder} />}
       </div>
-      <div className="body">{text}</div>
+      <div className="body prose"><HerProse text={text} env={env} /></div>
     </div>
   );
+}
+
+/** A failed tool call's message, written for her: threads it names show by their current title. */
+function ToolError({ text, env }: { text: string; env: Pick<Env, "userId" | "pool"> }) {
+  return <p className="error">{useMentionText(text, env.userId, env.pool)}</p>;
 }
 
 /** A subagent's work, inline: its transcript, its waiting approvals, and a message box. */
@@ -365,17 +373,34 @@ export function MessageBox({ thread, env, onSent }: { thread: ThreadRef; env: Pi
   );
 }
 
-/** One line for a tool call: the command, path or first argument. */
+/** One line for a tool call: the command, path, Proxmox action or first argument; never the machine, which is named on its own. */
 function summarizeArgs(args: unknown): string {
   if (!args || typeof args !== "object") return String(args ?? "");
-  const a = args as Record<string, unknown>;
+  const { machine: _, ...a } = args as Record<string, unknown>;
+  if (typeof a.action === "string") return [a.action, a.vm].filter((x) => typeof x === "string" && x).join(" ");
   const main = a.command ?? a.path ?? a.query ?? a.url ?? Object.values(a)[0];
   return typeof main === "string" ? main.split("\n")[0]! : JSON.stringify(main ?? "");
 }
 
+/** The machine a call runs on, when its arguments name one. */
+function machineOf(args: unknown): string | undefined {
+  const m = args && typeof args === "object" ? (args as { machine?: unknown }).machine : undefined;
+  return typeof m === "string" && m ? m : undefined;
+}
+
+/** What is being approved, in mono: the command, the path, or the Proxmox action and VM. */
+function permissionText(args: unknown): string {
+  if (!args || typeof args !== "object") return JSON.stringify(args);
+  const { machine: _, ...a } = args as Record<string, unknown>;
+  if (typeof a.command === "string") return a.command;
+  if (typeof a.action === "string") return [a.action, a.vm].filter((x) => typeof x === "string" && x).join(" ");
+  if (typeof a.path === "string" && Object.keys(a).length === 1) return a.path;
+  return JSON.stringify(a, null, 2);
+}
+
 function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest; env: Env }) {
   const [run, busy, error] = useAction();
-  const answer = (allow: boolean, mode?: GoAhead) => run(() => post(`${base}/permissions/${encodeURIComponent(p.requestId)}`, { allow, mode }));
+  const answer = (allow: boolean, mode?: GoAhead, allowInThread?: boolean) => run(() => post(`${base}/permissions/${encodeURIComponent(p.requestId)}`, { allow, mode, allowInThread }));
   const left = useCountdown(p.expiresAt);
   if (p.tool === "propose_plan" && !p.subagent) {
     // Her plan, from Plan mode: going ahead switches the thread to the mode picked.
@@ -400,13 +425,14 @@ function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest
     : sub.threadId === env.threadId ? <>This subagent ({sub.role}) wants</>
     : <>Her <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: sub.threadId })}>{sub.role} subagent</a> wants</>;
   return (
-    <div className="permission" role="group" data-pending="Approval" aria-label={`Allow ${p.tool}${sub ? ` for the ${sub.role} subagent` : ""}?`}>
-      <p>{p.machine && <><b>{p.machine}</b>: </>}{who} to use <b>{p.tool}</b>{p.machine && p.cwd ? <> in <span className="mono">{p.cwd}</span></> : null}:</p>
+    <div className="permission" role="group" data-pending="Approval" aria-label={`Allow ${p.tool}${p.machine ? ` on ${p.machine}` : ""}${sub ? ` for the ${sub.role} subagent` : ""}?`}>
+      <p>{p.machine && <><b className="mono">{p.machine}</b> · </>}{who} to use <b>{p.tool}</b>{p.machine && p.cwd ? <> in <span className="mono">{p.cwd}</span></> : null}:</p>
       {p.warning && <p role="alert">{p.warning}</p>}
-      <pre>{typeof p.args === "object" && p.args && "command" in p.args ? String((p.args as { command: unknown }).command) : JSON.stringify(p.args, null, 2)}</pre>
+      <pre>{permissionText(p.args)}</pre>
       <div className="row">
         <button type="button" className="primary" disabled={busy} onClick={() => answer(true)}>Allow</button>
         <button type="button" disabled={busy} onClick={() => answer(false)}>Deny</button>
+        {p.suspect && <button type="button" disabled={busy} onClick={() => answer(true, undefined, true)}>Allow in this thread</button>}
         <span className="muted">{left}</span>
       </div>
       <ErrorText error={error} />

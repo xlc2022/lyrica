@@ -13,7 +13,9 @@ type is in `daemon/src/api.ts`, with its route beside it.
 clients; they still log in.
 
 - It starts **locked**. Until `self.db` is unlocked, only `GET /api/state`
-  and `POST /api/unlock` answer (and the web UI's static files, so the unlock
+  (locked and the users; lyricad's `version` from `package.json` and
+  `build` from `LYRICA_BUILD` or the git commit join it once unlocked, so
+  the unlock page gives away no commit) and `POST /api/unlock` answer (and the web UI's static files, so the unlock
   page loads); everything else is `503`.
 - Run by hand in a terminal, it asks for the passphrase at a hidden prompt.
 - With a saved passphrase (below), it starts unlocked.
@@ -209,9 +211,35 @@ Each active thread is one Pi session from `openThreadSession`, with
   `onTurn` keeps its record. Its summary has `child`, `status` and `unseen`
   (updates not yet seen; reading its messages sees them). Lock stops working
   children before the key goes.
+- **Projects** ([delegation.md](delegation.md#child-threads), DESIGN.md
+  "Projects"). `POST threads` with `project` and an optional `goal` makes a
+  project, and `PATCH` with `project: true` makes one of a top-level thread
+  (no way back); either pins it. `PATCH` also sets `goal`, `instructions`
+  (kept on the project page apart from sleep's text), `paused`,
+  `threadsModel` and `threadsThinking` (the model and thinking its new
+  threads start with). Pausing or hiding stops its working threads; a
+  message to a paused project's thread is `409`. **Start a thread** (`POST
+  …/messages/:n/thread`, optional `title`) starts a thread of the project
+  from message n, with its text as the task. `POST …/resolve` and
+  `…/reopen` act on a project's thread; `POST
+  …/suggestions/:callId/start` starts one (`index`) or all of a Suggested
+  threads card's threads, each once. `GET …/overview` lists its threads, how
+  many wait on the user, its total tokens and which suggestions were
+  started; `models/calls?project=&pool=` its calls. A project's thread's
+  summary has `state`, `anchor` and `needsYou`; the project chat's stream
+  gets a `child` event when one of them changes. Deleting a project with its
+  threads forgets its page and the notes that came only from it first.
+- **Pins:** `PUT` and `DELETE …/pin` pin a thread for the user (`user.db`
+  `pinned_threads`), and `ThreadSummary.pinned` says so.
 - Thread lists are per interface (`web` by default), filtered by the user's
-  display settings, most recently active first, with child threads (Lyrica's,
-  branches, forks, copies) nested under their parent. Subagents aren't listed: they live in
+  display settings (which pools, hidden threads, the sidebar's `sort`, and
+  `projects`: all, only projects, or none), pinned threads first, then
+  most recently active, with child threads (Lyrica's, branches, forks,
+  copies) nested under their parent. Each summary carries the user's own
+  `group` and `unread` (`thread_groups` and `thread_prefs` in `user.db`,
+  `core/src/prefs.ts`; never in the pool): `PATCH threads/:id` sets them,
+  reading a thread's messages clears `unread`, and `…/thread-groups` lists,
+  adds, renames and removes groups. Subagents aren't listed: they live in
   their parent's `delegate` cards. Memory search honours the same pool filters; `?all=1` ignores
   them in both.
 
@@ -464,8 +492,9 @@ installs or upgrades everything. Running it again upgrades in place. On NixOS, t
 module does the same ("On NixOS" below).
 
 - It installs the packages (bubblewrap, gocryptfs, FUSE, passt, nftables,
-  openssl), checks for Node.js 22 or later, and creates two system users:
-  `lyrica` runs `lyricad`, `lyrica-caddy` runs Caddy. The `lyrica-caddy`
+  openssl), checks for Node.js 22.6 or later (the SSH helper runs with type
+  stripping), and creates two system users: `lyrica` runs `lyricad`,
+  `lyrica-caddy` runs Caddy. The `lyrica-caddy`
   group shares Caddy's admin socket (mode `0660`) and TLS log; lyricad's unit
   joins it (`SupplementaryGroups`), and nobody else can use them. An allowed
   path that overlaps `/run/lyrica-caddy` is refused, since sandboxes run with

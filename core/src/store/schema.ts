@@ -136,4 +136,5 @@ export const POOL_UPGRADES = [
   { check: "SELECT 1 FROM pragma_table_info('entries') WHERE name = 'pinned'", sql: "ALTER TABLE entries ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0" },
   { check: "SELECT 1 FROM pragma_table_info('threads') WHERE name = 'project'", sql: "ALTER TABLE threads ADD COLUMN project INTEGER NOT NULL DEFAULT 0" },
   { check: "SELECT 1 FROM pragma_table_info('threads') WHERE name = 'goal'", sql: "ALTER TABLE threads ADD COLUMN goal TEXT" },
+  { check: "SELECT 1 FROM pragma_table_info('pages') WHERE name = 'instructions'", sql: "ALTER TABLE pages ADD COLUMN instructions TEXT" },
 ];

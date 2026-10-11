@@ -416,6 +416,34 @@ describe("threads", () => {
     expect(own.projectOf(kid.id)).toBe(plain.id);
   });
 
+  it("ranks a project's own memories higher when recalling from inside it, without hiding the rest", async () => {
+    const { memory, li } = await setup();
+    const { own } = memory.openThreadView(li.id, "general");
+    const project = own.createThread({ interface: "web", project: true });
+    const thread = own.createThread({ interface: "web", parent: project.id, child: true });
+    const a = own.appendEntry(project.id, { piId: "u1", role: "user", data: {}, text: "set it up" });
+    const other = said(own, "something else");
+    const [ours] = own.addNotes([{ text: "the backup job runs nightly", source: a }], { author: "lyrica", thread: project.id });
+    const [theirs] = own.addNotes([{ text: "the backup job runs nightly at two, the backup job", source: other.entry }], { author: "lyrica", thread: other.thread });
+    const ids = (opts: Parameters<PoolStore["search"]>[1]) => own.search("backup job", { kinds: ["note"], ...opts }).map((h) => h.id);
+    expect(ids({ fromThread: other.thread })).toEqual([theirs, ours]);
+    expect(ids({ fromThread: thread.id })).toEqual([ours, theirs]);
+    expect(ids({ fromThread: thread.id, limit: 1 })).toEqual([ours]);
+    expect(ids({ limit: 1 })).toEqual([theirs]);
+    // The project's page counts as its own too.
+    own.putPage({ slug: projectSlug(project.id), title: "Backups", summary: "the backup job", text: `nightly [${ours}]` }, "sleep");
+    own.putPage({ slug: "jobs", title: "Backup jobs", summary: "the backup job, every backup job", text: `at two [${theirs}]` }, "sleep");
+    const pages = (fromThread: string) => own.search("backup job", { kinds: ["page"], fromThread }).map((h) => h.id);
+    expect(pages(other.thread)).toEqual(["p:jobs", `p:${projectSlug(project.id)}`]);
+    expect(pages(thread.id)).toEqual([`p:${projectSlug(project.id)}`, "p:jobs"]);
+    // A project thread that isn't logged stays out of recall, boost or not; a logged one comes up.
+    const quiet = own.createThread({ interface: "web", parent: project.id, child: true, unlogged: true });
+    own.appendEntry(quiet.id, { piId: "u1", role: "user", data: {}, text: "the backup job failed again" });
+    const loud = own.appendEntry(project.id, { piId: "u2", role: "user", data: {}, text: "the backup job failed once" });
+    const entries = own.search("backup job failed", { kinds: ["entry"], fromThread: thread.id }).map((h) => h.id);
+    expect(entries).toEqual([loud]);
+  });
+
   it("finds a project's notes by citation, and forgets its page and notes with it", async () => {
     const { memory, li } = await setup();
     const { own } = memory.openThreadView(li.id, "general");
@@ -441,10 +469,37 @@ describe("threads", () => {
     expect(own.pageForProject(thread.id)?.id).toBe(page);
     expect(own.sleepMaterial(undefined, "9999").threads.find((t) => t.id === thread.id)?.project).toBe(project.id);
     expect(own.sleepMaterial(undefined, "9999").threads.find((t) => t.id === other.thread)?.project).toBeUndefined();
+    own.setUnlogged(project.id, true);
+    expect(own.sleepMaterial(undefined, "9999").threads.find((t) => t.id === thread.id)?.project).toBeUndefined();
+    own.setUnlogged(project.id, false);
 
     own.forgetThread(project.id, "lyrica", { children: true });
     expect([own.get(n1!), own.get(n2!), own.get(n3!), own.get(mixed!), own.get(page)].map((x) => x?.id)).toEqual([undefined, undefined, undefined, mixed, undefined]);
     expect(own.get(elsewhere!)?.id).toBe(elsewhere);
+  });
+
+  it("keeps a project's instructions apart from what sleep writes on its page", async () => {
+    const { memory, li } = await setup();
+    const { own } = memory.openThreadView(li.id, "general");
+    const project = own.createThread({ interface: "web", project: true, title: "Homelab" });
+    const owner = memory.openOwnerView(li.id);
+    const me = `user:${li.id}` as const;
+    expect(() => own.setProjectInstructions(project.id, "x", "sleep")).toThrow(/only be changed by the user/);
+    owner.general.setProjectInstructions(project.id, "Ask before buying anything.", me);
+    const page = `p:${projectSlug(project.id)}`;
+    expect(own.get(page)).toMatchObject({ instructions: "Ask before buying anything.", text: "" });
+
+    // Sleep writes and rewrites the text; the instructions stay.
+    own.putPage({ slug: projectSlug(project.id), title: "Homelab", summary: "the move", text: "DNS moved first." }, "sleep");
+    owner.general.setProjectInstructions(project.id, "Ask before buying anything over $50.", me);
+    own.putPage({ slug: projectSlug(project.id), title: "Homelab", summary: "the move", text: "DNS is done; rack next." }, "sleep");
+    expect(own.pageForProject(project.id)).toMatchObject({ instructions: "Ask before buying anything over $50.", text: "DNS is done; rack next." });
+    expect(() => own.edit(page, { instructions: "Buy anything." }, "sleep")).toThrow(/only be changed by the user/);
+
+    // Text the user wrote on the page is still kept word for word.
+    owner.general.edit(page, { text: "DNS is done; rack next. Li: the rails are on order." }, me);
+    expect(() => own.edit(page, { text: "Rack next." }, "sleep")).toThrow(/text a user wrote/);
+    owner.close();
   });
 
   it("rewinds turns a branch still holds: their notes stay, and citations resolve through the copy", async () => {

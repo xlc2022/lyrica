@@ -62,6 +62,9 @@ export interface State {
   locked: boolean;
   /** Users logged in on this browser session. Empty while locked. */
   users: UserCard[];
+  /** lyricad's version (package.json) and build (the git commit it was built from, or "dev"). Shown in the header; absent while locked. */
+  version?: string;
+  build?: string;
 }
 
 /** POST /api/unlock → State. Only while locked. */
@@ -95,11 +98,17 @@ export interface LogoutResponse {
 
 // --- The signed-in user: /api/u/:userId/me ---
 
+/** How the sidebar orders threads: by date (grouped Today, Yesterday, …), last activity, start date, title, or the user's own groups. */
+export type ThreadSort = "date" | "activity" | "started" | "title" | "groups";
+
 export interface Display {
   theme: Theme;
   showGeneral: boolean;
   showPrivate: boolean;
   showHidden: boolean;
+  sort: ThreadSort;
+  /** The thread list's third part: every thread, only projects (with their threads), or none of them. */
+  projects: "all" | "only" | "none";
 }
 
 /** GET /api/u/:userId/me */
@@ -584,6 +593,34 @@ export interface ThreadSummary {
   unseen?: number;
   /** Child threads (Lyrica's, branches, forks, copies), nested under their parent. Subagents aren't listed. */
   children: ThreadSummary[];
+  /** The user's own group for it (GET …/thread-groups), when it is in one. Per user, never in the pool. */
+  group?: string;
+  /** Marked unread by the user; opening the thread clears it. */
+  unread?: boolean;
+  /** The user pinned it: it sits at the top of the list, whatever the sort. */
+  pinned: boolean;
+  /** A project chat; its threads are its children. */
+  project?: true;
+  /** A project's goal, in the user's words. */
+  goal?: string;
+  /** A project's instructions, in the user's words; kept on the project page apart from what sleep writes. */
+  instructions?: string;
+  /** A project's settings. */
+  projectSettings?: ProjectSettingsInfo;
+  /** A project's thread: the project chat's message it hangs off (an entry number), if that is still there. */
+  anchor?: number;
+  /** A project's thread: waiting covers an approval and a question for the user. */
+  state?: "working" | "waiting" | "queued" | "idle" | "resolved";
+  /** A project's thread is waiting on the user to decide something. */
+  needsYou?: true;
+}
+
+export interface ProjectSettingsInfo {
+  /** Paused: its threads stop, nothing new starts, and they take no messages. */
+  paused: boolean;
+  /** The chat model new threads of the project start with; none: the project chat's. */
+  threadsModel?: ModelRef | ModelRef[];
+  threadsThinking?: ThinkingLevel;
 }
 
 /**
@@ -592,11 +629,52 @@ export interface ThreadSummary {
  * display filters (pools, hidden); `?all=1` ignores them. Child threads
  * appear only under their parent; subagents not at all (their delegate cards show them).
  */
-/** POST /api/u/:userId/threads → ThreadSummary. Its interface is `web`. */
-export interface NewThread { pool: Pool; title?: string }
+/** POST /api/u/:userId/threads → ThreadSummary. Its interface is `web`. A new project starts pinned. */
+export interface NewThread { pool: Pool; title?: string; project?: boolean; goal?: string }
 /** GET /api/u/:userId/threads/:pool/:threadId → ThreadSummary */
-/** PATCH /api/u/:userId/threads/:pool/:threadId → ThreadSummary. Rename, hide or unhide. */
-export interface ThreadChange { title?: string; hidden?: boolean }
+/**
+ * PATCH /api/u/:userId/threads/:pool/:threadId → ThreadSummary. Rename, hide or unhide; make a
+ * top-level thread a project (`project: true`, no way back; it is pinned), and change a project's
+ * goal, instructions and settings. Pausing or hiding a project stops its working threads.
+ */
+export interface ThreadChange {
+  /** `group` and `unread` are the user's own view of the thread, kept in user.db; `null` takes it out of its group. */
+  group?: string | null; unread?: boolean;
+  title?: string; hidden?: boolean; project?: true; goal?: string; instructions?: string;
+  paused?: boolean; threadsModel?: ModelRef | ModelRef[] | null; threadsThinking?: ThinkingLevel | null;
+}
+/** PUT and DELETE /api/u/:userId/threads/:pool/:threadId/pin → ThreadSummary. The user's own pin, in user.db. */
+/**
+ * POST …/threads/:pool/:threadId/messages/:n/thread → ThreadSummary. Start a thread: in a project chat,
+ * a thread of the project anchored at message n, with that message as its task. Queued past the limit.
+ */
+export interface StartThread { title?: string }
+/** POST …/threads/:pool/:threadId/resolve and …/reopen → ThreadSummary. A project's thread only. */
+/**
+ * POST …/threads/:pool/:projectId/suggestions/:callId/start → ThreadSummary[]: starts one of a
+ * Suggested threads card's threads (`index`), or all of them not yet started.
+ */
+export interface StartSuggestion { index?: number }
+/** GET …/threads/:pool/:projectId/overview → ProjectOverview */
+export interface ProjectOverview {
+  threads: ThreadSummary[];
+  /** How many wait on the user: the project row's amber dot. */
+  waiting: number;
+  /** Tokens every call of the project chat and its threads read and wrote. */
+  tokens: number;
+  /** Which suggested threads were started, as `callId#index` → the thread made. */
+  started: Record<string, string>;
+}
+
+/**
+ * The user's own groups of threads, shown in the sidebar under "My groups" and in the thread menu's Move to group.
+ * GET /api/u/:userId/thread-groups → ThreadGroup[]
+ * POST /api/u/:userId/thread-groups (NewThreadGroup) → ThreadGroup
+ * PATCH /api/u/:userId/thread-groups/:groupId (NewThreadGroup) → ThreadGroup
+ * DELETE /api/u/:userId/thread-groups/:groupId → Ok. Its threads are in no group afterwards.
+ */
+export interface ThreadGroup { id: string; name: string }
+export interface NewThreadGroup { name: string }
 /**
  * DELETE /api/u/:userId/threads/:pool/:threadId → Ok. Forgets the thread (memory.md, "Deletion"),
  * with its subagents. Its child threads (Lyrica's, branches, copies) go too with `children`,
@@ -769,7 +847,8 @@ export interface Message {
    * wrote in the thread (with their current name). In a child thread, a
    * message from its parent thread.
    */
-  from?: { kind: "lyrica" } | { kind: "user"; userId: string; name: string } | { kind: "parent"; threadId: string };
+  /** `thread`: another thread of the same project wrote it (Lyrica, from there). */
+  from?: { kind: "lyrica" } | { kind: "user"; userId: string; name: string } | { kind: "parent"; threadId: string } | { kind: "thread"; threadId: string };
   parts: MessagePart[];
   createdAt: string;
   /** The model that wrote an assistant message. */
@@ -932,6 +1011,8 @@ export type ThreadEvent =
   | { type: "title"; title: string }
   /** The thread's settings changed (an approved plan switched its mode, say): fetch them again. */
   | { type: "settings" }
+  /** In a project chat: one of its threads changed state; fetch it (`GET threads/:pool/:id`) to update its card in place. */
+  | { type: "child"; threadId: string }
   /** The turn is over; the messages are stored. */
   | { type: "turn_end"; aborted: boolean }
   /** After each turn: the context as it now stands. */

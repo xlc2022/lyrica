@@ -82,8 +82,10 @@ project's goal, its page and whether it exists yet, its conversations and
 its notes from tonight, and writes what she knows about the project:
 decisions, requirements, pitfalls, who to ask, what's open, citing them.
 
-- **Instructions** on the page are the user's. She writes only what she
-  knows; the store keeps the user's words.
+- **Instructions** are the user's, kept apart from the page's text
+  (`Body.instructions`). `write_page` writes only the text, so sleep never
+  touches them, and the user editing them never stops sleep rewriting its
+  own part.
 - **A project's page belongs to a logged project in this pool.** `write_page`
   refuses a `project-…` slug that names no project here (unless that page
   already exists), and one whose project isn't logged. So general sleep
