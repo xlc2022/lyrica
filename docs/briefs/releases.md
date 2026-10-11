@@ -37,13 +37,9 @@ Li notices the first update that goes wrong).
    home and a test user (start, unlock, `/health` checks, the web UI's
    index), never real data; drains over `update.sock` (scheduled sleep and
    child-thread starts wait too; gives up after 10 minutes and undrains,
-   changing nothing); stops `lyricad`; snapshots the
-   databases and settings into `/var/lib/lyrica-snapshots/<time>-<commit>/`
-   (not the users' homes) with the tag's message beside them, and checks
-   each copy against its source (size and SHA-256) before going on;
-   keeps the last 3, plus the newest snapshot taken before a schema change
-   until a later schema change has passed probation and for at least 30
-   days; switches `current`; starts `lyricad`; runs probation. A `flock`
+   changing nothing); stops `lyricad`; runs `lyrica-snapshot` with the
+   tag's message; switches `current`; starts `lyricad`; runs probation.
+   A `flock`
    keeps runs from overlapping. It logs commits, tags and check names,
    never message text.
 3. **Probation.** Pass when `/health` reports every check ok after unlock
@@ -53,18 +49,30 @@ Li notices the first update that goes wrong).
    which acts only while a release is on probation. A failed check or crash
    loop rolls back and leaves a status file `lyricad` turns into a
    Notification for administrators (commit, check, time).
-4. **`lyrica-rollback`** (`/usr/local/sbin`, also from `install.sh` only):
-   point `current` at `previous` (or a named kept release), restore the
-   pre-update snapshot only if the release being left wrote a newer schema,
-   first moving the databases it replaces into
+4. **`lyrica-snapshot` and `lyrica-restore <dir>`** (`/usr/local/sbin`,
+   from `install.sh` only, or the NixOS module's system package, so a
+   broken release can't break them; root or
+   the service user, `lyricad` stopped). `lyrica-snapshot` copies the
+   databases and settings into `/var/lib/lyrica-snapshots/<time>-<commit>/`
+   (not the users' homes) with the commit and schema versions beside them,
+   plus an update note when given one, and checks each copy against its
+   source (size and SHA-256) before returning; keeps the last 3, plus the
+   newest snapshot taken before a schema change until a later schema
+   change has passed probation and for at least 30 days.
+   `lyrica-restore` first moves the databases it replaces into
    `/var/lib/lyrica-snapshots/<time>-set-aside/` (encrypted, kept like a
-   pre-schema snapshot), never deleting them;
-   start `lyricad`. Works with `lyricad` dead. Asks on a terminal before
+   pre-schema snapshot), never deleting them, then copies the snapshot
+   back. The updater, the rollback and the NixOS module all use these two,
+   so there is one snapshot tool.
+5. **`lyrica-rollback`** (`/usr/local/sbin`, also from `install.sh` only):
+   point `current` at `previous` (or a named kept release), run `lyrica-restore`
+   on the pre-update snapshot only if the release being left wrote a newer
+   schema; start `lyricad`. Works with `lyricad` dead. Asks on a terminal before
    restoring a snapshot, saying from when data will be lost. Refuses a
    release with an older schema and no kept snapshot, naming the oldest
    release it can go back to. An automatic rollback that restored a
    snapshot says from when in its Notification.
-5. **In `lyricad`:** `update.sock` with `/health`, `/drain`, `/undrain`;
+6. **In `lyricad`:** `update.sock` with `/health`, `/drain`, `/undrain`;
    `409 { updating: true }` on send while draining; a schema version in
    every encrypted database and `SchemaTooNew` on opening a newer one, set
    by the existing `migrate` functions, each database's migration in one
@@ -72,7 +80,19 @@ Li notices the first update that goes wrong).
    committing (the pool upgrades don't share one yet); the Administration `updates` API
    that lists state and writes requests into a directory only `lyricad`
    writes, which is refused as a grant.
-6. **Docs in the same PR:** docs/daemon.md "Deployment" (the layout, the
+7. **NixOS** (Li, 2026-10-11: the same Update button). On a NixOS host
+   `lyrica-update` builds the tagged release with Nix (`nix build
+   <repo>?rev=<commit>#lyrica`) into a Lyrica-only profile,
+   `/nix/var/nix/profiles/lyrica`, that the module's `lyricad` unit runs
+   from, with the same drain, snapshot, probation and rollback (the
+   previous profile generation instead of `previous`). A version change
+   from `nixos-rebuild` instead goes through the module's `ExecStartPre`,
+   which runs `lyrica-snapshot` when the package's commit differs from the
+   one beside the databases; a database with a newer schema than the
+   starting package is `SchemaTooNew`, and the module restores only on
+   that. The NixOS thread's first PR ships the flake and module; this
+   build adds the profile path.
+8. **Docs in the same PR:** docs/daemon.md "Deployment" (the layout, the
    update, probation, rollback, the console command); contracts entry moved
    from planned to current.
 
