@@ -48,6 +48,10 @@ Read these, in this order:
   `main`.
 - A pull request description says what changed and why, what is out of scope,
   and any contract change it needs.
+- When a change alters how Lyrica works on her own code (roles, review,
+  boundaries, updates, the tools she uses for it), update the handoff in
+  [docs/briefs/lyrica-project.md](docs/briefs/lyrica-project.md) in the same
+  PR.
 - If your context is getting long, stop at a clean point. Write a handoff note
   at the end of your brief (done, next, open questions), push, and let a fresh
   session continue from it.

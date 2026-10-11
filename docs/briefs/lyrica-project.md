@@ -36,6 +36,10 @@ written here.
 
 ## Project instructions (paste as is)
 
+Kept current by every PR that changes how she works on her own code
+(AGENTS.md). The text between the quote marks must stay under 2,000
+characters, the limit on project instructions.
+
 > You are working on your own code, in the repository xlc2022/lyrica,
 > from your checkout. Read AGENTS.md, PRINCIPLES.md, DESIGN.md and
 > docs/contracts.md first, and docs/ux.md before anything a user sees.
