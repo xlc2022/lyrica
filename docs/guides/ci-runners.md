@@ -87,8 +87,7 @@ runner keeps its registration, and the firewall is applied again.
   lyrica-ci-firewall`.
 - **The host-stack job** installs the model host stack with `--no-gpu` and
   removes it again when it ends (the stack, its volumes, the egress unit
-  and rules, Docker's `daemon.json`). If a run is cancelled mid-way, the
-  next run's `install.sh` takes over what was left.
+  and rules, Docker's `daemon.json`).
 - **More runners:** another VM from the same base image, a new hostname, a
   fresh token, the same script. There is no shared state between runners.
 - **Removing a runner:** on the VM, `cd /home/runner/actions-runner &&
