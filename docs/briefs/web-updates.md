@@ -17,13 +17,16 @@ go back (principle 6: make review easy).
 
 1. **Updates**, a section of Administration, as docs/ux.md's row says: the
    running version in mono; the newest update note, its tag in mono and its
-   text in a block; **Update** as the one primary. While draining it reads
-   "Waiting for 2 threads", with those threads linked beneath; while
-   building, smoke-testing or in probation, the step as one state word.
-   Kept releases as rows (commit in mono, date, Running on one), **Roll
-   back** behind ⋯.
-2. **Roll back dialog:** "Roll back to 3f7a2c1?" plus, when the schema
-   changed, "Messages since 14:02 will be lost." Roll back and Cancel.
+   text in a block; **Update** as the one primary, disabled while an update
+   runs. Beneath it a status line, a dot and a word (Draining, Building,
+   Testing, Probation in blue; Failed red); while draining it continues
+   "waiting for 2 threads", the count in mono, with those threads linked
+   beneath. The button's label never changes. Kept releases as rows (commit
+   in mono, date, Running on one), **Roll back** in each row's ⋯ except the
+   Running row's, disabled while an update runs.
+2. **Roll back dialog:** "Roll back to the release from 9 October?" with
+   the commit in mono after it, plus, when the schema changed, "Messages
+   since 14:02 will be lost." Roll back and Cancel.
 3. **A failed probation** in Notifications: the commit, the failed check,
    that it rolled back.
 4. **While draining**, a send that gets `409 { updating: true }` keeps the
