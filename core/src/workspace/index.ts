@@ -320,7 +320,8 @@ export class Workspace {
       target = new SshTarget(cfg, {
         transport: this.opts.sshTransport,
         address: () => this.checkAddress(userId, name),
-        connected: () => s.usedMachine(name),
+        connected: () => { s.usedMachine(name); s.machineState(name, "online"); },
+        failed: (keyChanged) => s.machineState(name, keyChanged ? "keyChanged" : "unreachable"),
       });
       this.sshTargets.set(key, target);
     }
@@ -413,6 +414,7 @@ export class Workspace {
     const address = change.address === undefined ? {} : parseMachineAddress(change.address);
     let m = s.updateMachine(name, { ...address, ...(change.root !== undefined ? { root: change.root || null } : {}), ...(change.limit ? { limit: change.limit } : {}) });
     if (change.pool) m = s.setMachinePool(name, change.pool);
+    if (change.address !== undefined) { s.machineState(name, null); m = s.machine(name)!; }
     this.disconnect(userId, name);
     return m;
   }

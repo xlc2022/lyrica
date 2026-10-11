@@ -73,10 +73,15 @@ export interface MachineConfig {
   offNetwork: boolean;
   /** When she last connected (ISO time). */
   lastUsed: string | null;
+  /** The last connection's outcome and when it began; null before the first one, or after its address or host key changed. */
+  state: MachineState | null;
 }
 
+/** How the last connection to a machine went: it got in, couldn't reach it, or saw a host key other than the confirmed one. */
+export interface MachineState { kind: "online" | "unreachable" | "keyChanged"; since: string }
+
 /** What adding a machine takes: the rest starts empty. */
-export type NewMachine = Omit<MachineConfig, "kind" | "hostKey" | "limit" | "lastUsed"> & { limit?: MachineLimit };
+export type NewMachine = Omit<MachineConfig, "kind" | "hostKey" | "limit" | "lastUsed" | "state"> & { limit?: MachineLimit };
 
 const MACHINE_NAME = /^[A-Za-z0-9._-]{1,64}$/;
 const HOST_KEY = /^SHA256:[A-Za-z0-9+/]{43}=?$/;
@@ -115,7 +120,9 @@ CREATE TABLE IF NOT EXISTS machines (
   pool        TEXT NOT NULL DEFAULT 'general',
   mode_limit  TEXT NOT NULL DEFAULT 'ask',
   off_network INTEGER NOT NULL DEFAULT 0,
-  last_used   TEXT
+  last_used   TEXT,
+  state       TEXT,
+  state_since TEXT
 );
 `;
 
@@ -410,7 +417,7 @@ export class WorkspaceSettings {
   setHostKey(name: string, confirmedHostKey: string): MachineConfig {
     this.need(name);
     if (!HOST_KEY.test(confirmedHostKey)) throw new Error("a host key looks like SHA256:…");
-    this.db.prepare("UPDATE machines SET host_key = ? WHERE name = ?").run(confirmedHostKey, name);
+    this.db.prepare("UPDATE machines SET host_key = ?, state = NULL, state_since = NULL WHERE name = ?").run(confirmedHostKey, name);
     return this.need(name);
   }
 
@@ -428,6 +435,12 @@ export class WorkspaceSettings {
 
   usedMachine(name: string): void {
     this.db.prepare("UPDATE machines SET last_used = ? WHERE name = ?").run(new Date().toISOString(), name);
+  }
+
+  /** Records a connection's outcome; `since` moves only when the outcome changes. */
+  machineState(name: string, kind: MachineState["kind"] | null): void {
+    this.db.prepare("UPDATE machines SET state = ?, state_since = ? WHERE name = ? AND state IS NOT ?")
+      .run(kind, kind && new Date().toISOString(), name, kind);
   }
 
   private dropGrants(name: string): void {
@@ -491,6 +504,10 @@ function migrateSteps(db: Db): void {
       ALTER TABLE machines ADD COLUMN off_network INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE machines ADD COLUMN last_used TEXT;`);
   }
+  const machineColumns = columnsOf(db, "machines");
+  if (machineColumns.length && !machineColumns.includes("state")) {
+    db.exec("ALTER TABLE machines ADD COLUMN state TEXT; ALTER TABLE machines ADD COLUMN state_since TEXT;");
+  }
   if (columns.includes("target")) {
     db.exec(`ALTER TABLE thread_workspaces ADD COLUMN machines TEXT NOT NULL DEFAULT '[]';
       ALTER TABLE thread_workspaces ADD COLUMN allowed TEXT NOT NULL DEFAULT '[]';
@@ -501,9 +518,10 @@ function migrateSteps(db: Db): void {
 
 interface MachineRow {
   name: string; host: string; port: number; username: string; private_key: string; root: string | null; host_key: string | null;
-  pool: Pool; mode_limit: MachineLimit; off_network: number; last_used: string | null;
+  pool: Pool; mode_limit: MachineLimit; off_network: number; last_used: string | null; state: MachineState["kind"] | null; state_since: string | null;
 }
 const toMachine = (r: MachineRow): MachineConfig => ({
   name: r.name, kind: "ssh", host: r.host, port: r.port, username: r.username, privateKey: r.private_key, root: r.root, hostKey: r.host_key,
   pool: r.pool, limit: r.mode_limit, offNetwork: r.off_network === 1, lastUsed: r.last_used,
+  state: r.state && r.state_since ? { kind: r.state, since: r.state_since } : null,
 });

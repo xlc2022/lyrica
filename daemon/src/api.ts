@@ -490,6 +490,14 @@ export interface MachineInfo {
   /** Its address resolved outside the LAN, loopback and tailnet at the last check. */
   offNetwork: boolean;
   lastUsed: string | null;
+  /**
+   * How the last connection went, for the row's state: online (she got in),
+   * unreachable (it couldn't be reached or logged in to), or keyChanged (it
+   * showed a host key other than the confirmed one). `since` is when that
+   * outcome began. Absent before the first connection, and after the address
+   * or host key changes.
+   */
+  state?: { kind: "online" | "unreachable" | "keyChanged"; since: string };
 }
 /** GET /api/u/:userId/machines → MachineInfo[] */
 /**

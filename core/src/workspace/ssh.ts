@@ -32,6 +32,8 @@ export interface SshTargetOptions {
   address?: () => Promise<string>;
   /** Called after each connection is made. */
   connected?: () => void;
+  /** Called when a connection fails: the machine couldn't be reached or logged in to, or showed another host key. */
+  failed?: (keyChanged: boolean) => void;
 }
 
 /**
@@ -69,7 +71,9 @@ export class SshTarget implements ExecutionTarget {
         { host, port: this.cfg.port, username: this.cfg.username, privateKey: this.cfg.privateKey },
         (fp) => { seen = fp; return fp === hostKey; },
       ).catch((err: Error) => {
-        throw seen && seen !== hostKey ? new Error(`its host key changed (now ${seen}); confirm the new key to use it again`) : err;
+        const changed = seen !== undefined && seen !== hostKey;
+        this.o.failed?.(changed);
+        throw changed ? new Error(`its host key changed (now ${seen}); confirm the new key to use it again`) : err;
       });
       session.onClose(() => { if (this.conn === conn) this.conn = undefined; });
       this.o.connected?.();

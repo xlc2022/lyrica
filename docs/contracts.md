@@ -931,9 +931,10 @@ settings(userId).detach(threadId)          // a kept child, once its parent is f
 // Planned (Projects): inheritSettings also grants a project's thread its project chat's folder (read-only for a read-only thread)
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, machines
 // MachineConfig { name, kind: "ssh", host, port, username, privateKey, root, hostKey, pool,
-//   limit: "ask" | "acceptEdits" | "auto" (new machines "ask"), offNetwork, lastUsed }
+//   limit: "ask" | "acceptEdits" | "auto" (new machines "ask"), offNetwork, lastUsed,
+//   state: { kind: "online" | "unreachable" | "keyChanged", since } | null }
 // settings(userId).machines() / machine(name) / addMachine(m, confirmedHostKey) / updateMachine / setMachinePool(name, pool)
-//   / setHostKey / setOffNetwork / confirmOffNetwork / removeMachine / allowInThread(threadId, machine, command) / allowedInThread(threadId)
+//   / setHostKey / setOffNetwork / confirmOffNetwork / machineState(name, kind) / removeMachine / allowInThread(threadId, machine, command) / allowedInThread(threadId)
 // A thread's `machines: string[]` (the sandbox is always there); setThread refuses a machine of the other pool;
 //   inheritSettings takes a subset; effective() keeps only machines every ancestor grants.
 // SUSPECT_COMMANDS, suspectCommand(command), onFloor(path), cleanOutput(onData), maskKeys(buf),
@@ -983,7 +984,9 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   …/machines/probe` for the Test step; `POST …/machines` to confirm;
   `PATCH …/machines/:name` for address, root, pool and limit; `POST
   …/machines/:name/key` with a confirmed host key; `POST
-  …/machines/:name/confirm-off-network`; `DELETE`). Thread settings carry
+  …/machines/:name/confirm-off-network`; `DELETE`). A machine carries
+  `state` (`online`, `unreachable` or `keyChanged`, with `since`) once a
+  connection has been tried. Thread settings carry
   `machines`; permission events carry `machine`, `cwd`, and for a suspect
   command `suspect: true` and `warning`; an answer may carry
   `allowInThread: true`.

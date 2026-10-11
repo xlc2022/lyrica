@@ -67,8 +67,10 @@ SSH targets that existed before became general machines at Ask.
 
 - **Kept in `user.db`** (`machines`): name, address, account, the private
   key, an optional root, the host key Li confirmed, the pool, the **mode
-  limit**, whether the address is off network, and when she last
-  connected. The key is generated in memory, stored only there, and handed to
+  limit**, whether the address is off network, when she last
+  connected, and how the last connection went (online, unreachable, or host
+  key changed) and since when. That state clears when the address or host key
+  changes. The key is generated in memory, stored only there, and handed to
   the SSH client in memory; she never sees it.
 - **One pool each.** A general thread grants general machines and a private
   thread private ones (`setThread` refuses the other pool, and every call
