@@ -51,6 +51,7 @@ host (#28, #31, #32, #33, #38, #39, #42, #45), Child threads 1/3 (#44),
 | Modes | done | #50 merged; the chat's pending bar in #55 |
 | Images | not started | docs/briefs/images.md |
 | Web UI 2 | not started | docs/briefs/web-2.md; reads docs/ux.md first |
+| Machines, SSH helper, Proxmox, Web: machines | not started, wait for Li's go | docs/briefs/machines.md, ssh-helper.md, proxmox.md, web-machines.md; decided in /mnt/project-files/remote/proposal.md |
 
 ## Open questions for Li
 
