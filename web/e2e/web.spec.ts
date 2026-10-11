@@ -884,6 +884,8 @@ test("watching threads: writing in a project's thread leads to a look, shown as 
   // Write in Alpha (beside the chat on a wide screen, as the page on a phone); the look comes to the project chat.
   await page.locator(".tcard").first().getByRole("link", { name: "Alpha" }).click();
   const alpha = phone(page) ? page : page.getByRole("complementary", { name: "Alpha" });
+  // On a phone the page is still the project chat for a moment after the click; its composer has the same label.
+  await expect(alpha.getByRole("heading", { level: 1, name: "Alpha" })).toBeVisible();
   await alpha.getByLabel("Message", { exact: true }).fill("use the raised beds");
   await alpha.getByRole("button", { name: "Send" }).click();
   await expect(alpha.getByText(/You said: use the raised beds/)).toBeVisible();
