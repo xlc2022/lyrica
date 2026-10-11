@@ -1,5 +1,5 @@
 import {
-  AuthError, WrongPassword, WORKDIR, CAPABILITIES, checkTask, isRestricted, profileFor, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, PRONOUN_PRESETS,
+  AuthError, WrongPassword, WORKDIR, CAPABILITIES, checkTask, isRestricted, profileFor, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS,
   type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type MachineConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
@@ -502,7 +502,7 @@ export function apiRoutes(d: Lyricad): Route[] {
           s().projects.pin(user.id, pool, thread.id, true);
         }
         const project = !!store.getThread(thread.id)!.project;
-        const settings = change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined;
+        const settings = change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined || change.watchThreads !== undefined;
         if ((change.goal !== undefined || change.instructions !== undefined || settings) && !project) {
           throw new HttpError(400, "only a project has a goal, instructions and project settings");
         }
@@ -520,6 +520,7 @@ export function apiRoutes(d: Lyricad): Route[] {
             ...(change.paused !== undefined ? { paused: !!change.paused } : {}),
             ...(change.threadsModel !== undefined ? { model: change.threadsModel } : {}),
             ...(change.threadsThinking !== undefined ? { thinking: change.threadsThinking } : {}),
+            ...(change.watchThreads !== undefined ? { watch: !!change.watchThreads } : {}),
           });
         }
         return { thread: thread.id, project, made: !!change.project && !thread.project };
@@ -1371,7 +1372,7 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
     ...(pref?.group ? { group: pref.group } : {}), ...(pref?.unread ? { unread: true } : {}),
     ...(th.project ? { project: true as const, ...(th.goal ? { goal: th.goal } : {}), ...instructionsOf(store, th.id) } : {}),
     ...(settings ? { projectSettings: {
-      paused: settings.paused, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
+      paused: settings.paused, watchThreads: settings.watch, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
     } } : {}),
     ...(mine ? { state: mine.state, ...(mine.anchor !== undefined ? { anchor: mine.anchor } : {}), ...(mine.needsYou ? { needsYou: true as const } : {}) } : {}),
   };
@@ -1605,6 +1606,7 @@ function pin(d: Lyricad, user: User, r: Request, pinned: boolean): Api.Ok {
 /** A user's text can't carry the line that marks a parent's message to its child thread. */
 function unmarked(text: string): string {
   if (FROM_PARENT.test(text)) throw new HttpError(400, "a message can't start with a [From t:…] line");
+  if (WATCHING.test(text)) throw new HttpError(400, "a message can't start with a [Watching threads] line");
   return text;
 }
 

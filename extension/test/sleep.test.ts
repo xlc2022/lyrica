@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Memory, PersonaProposals, PersonaStore, projectSlug, searchView, type Pool, type PoolView } from "@lyrica/core";
+import { Memory, PersonaProposals, PersonaStore, projectSlug, searchView, WATCHING_MARK, type Pool, type PoolView } from "@lyrica/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { deadUrl, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
 import { profile, withModels } from "../../core/test/helpers.ts";
@@ -390,6 +390,28 @@ describe("project pages", () => {
       instructions: "Always measure in metric. Prices in euros.",
       text: `Changelog in German [${p.note}]. Ships on the 1st [${later.note}].`,
     });
+    v.close();
+  });
+
+  it("shows a project chat's look at its threads as a pointer, never as the person's words", async () => {
+    const s = await setup();
+    const v = s.view();
+    const p = project(v, "Let's use SQLite, not Postgres.", "{user} decided the garden app uses SQLite, not Postgres");
+    const before = v.own.lastUserMessage();
+    v.own.appendEntry(p.chat, { piId: "look", role: "user", data: {}, text: `${WATCHING_MARK}In [t:${p.thread}]:\n- The person wrote: "Let's use SQLite, not Postgres."` });
+    // Not the person talking, and not something recall finds.
+    expect(v.own.lastUserMessage()).toEqual(before);
+    expect(v.own.search("SQLite Postgres").map((h) => h.id).some((id) => id.startsWith(`e:${p.chat}#`))).toBe(false);
+    const read: string[] = [];
+    s.script({
+      consolidate: [
+        call("read_memory", { id: `t:${p.chat}` }),
+        (c) => { read.push(said(c)); return { text: "Done." }; },
+      ],
+    });
+    await s.sleep.run(s.li.id, "general", "scheduled");
+    expect(read[0]).toContain(`watching threads: a look at [t:${p.thread}]`);
+    expect(read[0]).not.toContain("The person wrote");
     v.close();
   });
 
