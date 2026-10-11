@@ -75,3 +75,12 @@ services:
       timeout: 10s
       start_period: 180s
       retries: 3
+
+  # Voices on the GPUs: the CUDA build of ONNX Runtime, with CUDA and cuDNN
+  # from NVIDIA's wheels (see host/speech/lock.sh).
+  speech:
+    <<: *server
+    build:
+      args: { FLAVOUR: cuda }
+    image: lyrica-host-speech:cuda
+    tmpfs: ["/tmp:exec"] # the phonemizer loads espeak-ng from here

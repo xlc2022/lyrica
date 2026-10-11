@@ -5,11 +5,31 @@ import type { RecordEntry } from "./downloads.ts";
 import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./http.ts";
 import { scanTextModels, type TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
-import { SERVERS, contextOf, serverOf, validate, type Server } from "./placement.ts";
+import { SERVER_NAMES, SERVERS, contextOf, serverOf, validate, type Server } from "./placement.ts";
 import { PRIORITIES, type Priority, type Scheduler } from "./scheduler.ts";
-import type { StateFile, Usage } from "./state.ts";
+import { NO_USAGE, type StateFile, type Usage } from "./state.ts";
 
 const BODY_LIMIT = 64 * 1024 * 1024;
+/** The speech server's audio: 16-bit mono PCM at 24 kHz. */
+const SPEECH_RATE = 24000;
+const KIND_USE: Record<TextModel["kind"], string> = {
+  chat: "chat", embedding: "embeddings", image: "images", transcribe: "dictation", speak: "speech",
+};
+
+/** A WAV clip's length in seconds, from its header; 0 if it isn't one. */
+export function wavSeconds(b: Buffer): number {
+  if (b.length < 12 || b.toString("latin1", 0, 4) !== "RIFF" || b.toString("latin1", 8, 12) !== "WAVE") return 0;
+  let at = 12;
+  let byteRate = 0;
+  while (at + 8 <= b.length) {
+    const id = b.toString("latin1", at, at + 4);
+    const size = b.readUInt32LE(at + 4);
+    if (id === "fmt " && at + 16 <= b.length) byteRate = b.readUInt32LE(at + 16);
+    if (id === "data") return byteRate ? Math.min(size, b.length - at - 8) / byteRate : 0;
+    at += 8 + size + (size % 2);
+  }
+  return 0;
+}
 
 /** Finds the token counts in a response, streamed or not, without keeping its text. */
 class UsageSniffer {
@@ -102,7 +122,7 @@ export class Runtime {
   }
 
   count(id: string, add: Partial<Usage>): void {
-    const u = this.pending.get(id) ?? { requests: 0, promptTokens: 0, completionTokens: 0, images: 0, seconds: 0 };
+    const u = this.pending.get(id) ?? NO_USAGE();
     for (const k of Object.keys(add) as (keyof Usage)[]) u[k] += add[k] ?? 0;
     this.pending.set(id, u);
   }
@@ -113,7 +133,7 @@ export class Runtime {
     this.pending.clear();
     this.state.update((s) => {
       for (const [id, add] of pending) {
-        const u = (s.usage[id] ??= { requests: 0, promptTokens: 0, completionTokens: 0, images: 0, seconds: 0 });
+        const u = (s.usage[id] ??= NO_USAGE());
         for (const k of Object.keys(add) as (keyof Usage)[]) u[k] += add[k];
       }
     });
@@ -132,6 +152,14 @@ export class Runtime {
     }
     if ((pathname === "/v1/chat/completions" || pathname === "/v1/embeddings") && method === "POST") {
       await this.proxy(req, res, pathname);
+      return true;
+    }
+    if (pathname === "/v1/audio/transcriptions" && method === "POST") {
+      await this.transcribe(req, res);
+      return true;
+    }
+    if (pathname === "/v1/audio/speech" && method === "POST") {
+      await this.speak(req, res);
       return true;
     }
     if (pathname === "/host/v1/models" && method === "GET") {
@@ -160,7 +188,7 @@ export class Runtime {
       const model = this.find(body.model);
       if (!body.settings || typeof body.settings !== "object") throw invalid("settings is needed.");
       // Refused when saved if the placement can't work, with the reason. Applies at the next load, or on Reload.
-      const saved = validate(model, body.settings as Record<string, unknown>, s.gpusFor(serverOf(model)), (i) => s.gpuSettings(i));
+      const saved = validate(model, body.settings as Record<string, unknown>, s.gpusFor(serverOf(model)), (i) => s.gpuSettings(i), s.onCpu(model));
       s.saveSettings(model, saved);
       sendJson(res, 200, this.describe(model));
       return true;
@@ -217,7 +245,7 @@ export class Runtime {
     const at = this.scheduler.placement(m.id);
     const s = this.state.get();
     const entry = this.record.get(m.id);
-    const folder = m.format === "safetensors" ? [...this.record.values()].find((r) => r.path.startsWith(`${m.id}/`)) : undefined;
+    const folder = m.format !== "gguf" ? [...this.record.values()].find((r) => r.path.startsWith(`${m.id}/`)) : undefined;
     return {
       id: m.id,
       kind: m.kind,
@@ -229,7 +257,7 @@ export class Runtime {
       identity: { ...m.identity, card: (entry ?? folder)?.card ?? null },
       capabilities: m.capabilities,
       // The context it is served with; maxContextLength is what it was trained for.
-      contextLength: m.kind === "image" ? null : contextOf(m, this.scheduler.settings(m)),
+      contextLength: m.kind === "image" || m.kind === "speak" ? null : contextOf(m, this.scheduler.settings(m)),
       maxContextLength: m.contextLength,
       state: at?.state ?? "unloaded",
       gpus: at?.gpus ?? null,
@@ -237,6 +265,18 @@ export class Runtime {
       pinned: s.pins.includes(m.id),
       vram: Object.fromEntries(Object.entries(s.vram).filter(([k]) => k.startsWith(`${m.id}@`)).map(([k, v]) => [k.slice(m.id.length + 1), v])),
     };
+  }
+
+  private priority(req: IncomingMessage): Priority {
+    const header = req.headers["x-lyrica-priority"];
+    return PRIORITIES.includes(header as Priority) ? (header as Priority) : "chat";
+  }
+
+  /** The model a /v1 request names, refused unless it is of the kind the route serves. */
+  private modelFor(id: unknown, want: TextModel["kind"]): TextModel {
+    const model = this.find(id);
+    if (model.kind !== want) throw invalid(`That model is for ${KIND_USE[model.kind]}, not ${KIND_USE[want]}.`);
+    return model;
   }
 
   private async proxy(req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
@@ -247,34 +287,87 @@ export class Runtime {
     } catch {
       throw invalid("The body isn't valid JSON.");
     }
-    const model = this.find(body.model);
-    const want = path === "/v1/embeddings" ? "embedding" : "chat";
-    if (model.kind !== want) throw invalid(want === "chat" ? "That model is for embeddings." : "That model doesn't make embeddings.");
-    const header = req.headers["x-lyrica-priority"];
-    const priority: Priority = PRIORITIES.includes(header as Priority) ? (header as Priority) : "chat";
+    const model = this.modelFor(body.model, path === "/v1/embeddings" ? "embedding" : "chat");
     const started = Date.now();
-    // From here on, a client that goes away cancels its request, queued or running.
+    const sniffer = new UsageSniffer(body.stream === true);
+    await this.pass(req, res, model, path, raw, "application/json", (chunk) => sniffer.feed(chunk));
+    sniffer.done();
+    this.count(model.id, {
+      requests: 1,
+      promptTokens: sniffer.usage?.prompt_tokens ?? 0,
+      completionTokens: sniffer.usage?.completion_tokens ?? 0,
+      seconds: (Date.now() - started) / 1000,
+    });
+  }
+
+  /**
+   * Dictation: OpenAI's multipart form, passed to vLLM unchanged. Only the
+   * model's name is read from it; the audio is never kept.
+   */
+  private async transcribe(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const type = req.headers["content-type"] ?? "";
+    if (!type.startsWith("multipart/form-data")) throw invalid("Send the audio as multipart/form-data, with file and model.");
+    const raw = await readRaw(req);
+    let form: FormData;
+    try {
+      form = await new Response(raw, { headers: { "content-type": type } }).formData();
+    } catch {
+      throw invalid("The form couldn't be read.");
+    }
+    const file = form.get("file");
+    if (!(file instanceof Blob) || !file.size) throw invalid("file is missing: the audio to transcribe.");
+    const model = this.modelFor(form.get("model"), "transcribe");
+    const started = Date.now();
+    await this.pass(req, res, model, "/v1/audio/transcriptions", raw, type);
+    this.count(model.id, { requests: 1, seconds: (Date.now() - started) / 1000, audioSeconds: wavSeconds(Buffer.from(await file.arrayBuffer())) });
+  }
+
+  /** Her voice: the speech server's audio, streamed back as it is made. */
+  private async speak(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const body = await readJson(req, 128 * 1024);
+    onlyFields(body, ["model", "input", "voice", "speed", "response_format"]);
+    const model = this.modelFor(body.model, "speak");
+    if (typeof body.input !== "string" || !body.input.trim() || [...body.input].length > 4096) throw invalid("input is the text to read, 1 to 4096 characters.");
+    const voices = model.capabilities.speak?.voices ?? [];
+    if (typeof body.voice !== "string" || !voices.some((v) => v.id === body.voice)) {
+      throw invalid(`voice is one of this model's voices: ${voices.map((v) => v.id).slice(0, 12).join(", ")}${voices.length > 12 ? " …" : ""}.`);
+    }
+    const speed = body.speed ?? 1;
+    if (typeof speed !== "number" || !(speed >= 0.25 && speed <= 4)) throw invalid("speed is from 0.25 to 4.");
+    if (body.response_format !== undefined && body.response_format !== "pcm") throw invalid("response_format is pcm: 16-bit mono at 24 kHz.");
+    const raw = Buffer.from(JSON.stringify({ model: model.id, input: body.input, voice: body.voice, speed }));
+    const started = Date.now();
+    let bytes = 0;
+    await this.pass(req, res, model, "/v1/audio/speech", raw, "application/json", (chunk) => (bytes += chunk.length));
+    this.count(model.id, { requests: 1, seconds: (Date.now() - started) / 1000, audioSeconds: bytes / (SPEECH_RATE * 2) });
+  }
+
+  /**
+   * Passes one request to the server holding the model, loading it first,
+   * and its answer back as it arrives. A client that goes away cancels the
+   * request, queued or running; an answer the server cuts short is cut short
+   * too. A server that doesn't answer is `unavailable`.
+   */
+  private async pass(req: IncomingMessage, res: ServerResponse, model: TextModel, path: string, raw: Buffer, type: string, onChunk?: (chunk: Buffer) => void): Promise<void> {
     const abort = new AbortController();
     res.on("close", () => {
       if (!res.writableFinished) abort.abort();
     });
-
-    await this.scheduler.run(model, priority, async (base) => {
+    await this.scheduler.run(model, this.priority(req), async (base) => {
       // http.request, not fetch: fetch gives up on headers after 300 seconds,
       // which a long answer that isn't streamed can take.
       const url = new URL(base + path);
       const upstream = await new Promise<IncomingMessage>((resolve, reject) => {
-        const r = http.request(url, { method: "POST", headers: { "content-type": "application/json", "content-length": raw.length }, signal: abort.signal }, resolve);
-        r.on("error", () => reject(new HostError(503, "unavailable", "The model server didn't answer.")));
+        const r = http.request(url, { method: "POST", headers: { "content-type": type, "content-length": raw.length }, signal: abort.signal }, resolve);
+        r.on("error", () => reject(new HostError(503, "model_unavailable", `The ${SERVER_NAMES[serverOf(model)]} server didn't answer.`)));
         r.end(raw);
       });
       res.writeHead(upstream.statusCode ?? 502, { "content-type": upstream.headers["content-type"] ?? "application/json", "cache-control": "no-store" });
-      const sniffer = new UsageSniffer(body.stream === true);
       // A server that dies half way through ends the answer: "close" always
       // comes, and an answer cut short isn't "complete".
       await new Promise<void>((resolve) => {
         upstream.on("data", (chunk: Buffer) => {
-          sniffer.feed(chunk);
+          onChunk?.(chunk);
           res.write(chunk);
         });
         upstream.on("error", () => {});
@@ -283,13 +376,6 @@ export class Runtime {
           else res.destroy();
           resolve();
         });
-      });
-      sniffer.done();
-      this.count(model.id, {
-        requests: 1,
-        promptTokens: sniffer.usage?.prompt_tokens ?? 0,
-        completionTokens: sniffer.usage?.completion_tokens ?? 0,
-        seconds: (Date.now() - started) / 1000,
       });
     }, undefined, abort.signal);
   }

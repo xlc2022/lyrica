@@ -11,6 +11,7 @@ import { amdMonitor, noGpus, nvidiaMonitor } from "./gpus.ts";
 import { stdoutLog } from "./log.ts";
 import { Runtime } from "./runtime.ts";
 import { Scheduler } from "./scheduler.ts";
+import { Speech } from "./speech.ts";
 import { Host } from "./server.ts";
 
 /** Docker's gateway on our default route: where the published loopback port arrives from. */
@@ -48,6 +49,9 @@ const scheduler = new Scheduler({
   monitor: vendor === "nvidia" ? nvidiaMonitor : vendor === "amd" ? amdMonitor("/sys", { order: backend === "vulkan" ? "pci" : "kfd" }) : noGpus,
   gpuBackend: backend,
   servers: backend === "vulkan" ? ["llamacpp"] : undefined,
+  // The speech server runs on an NVIDIA GPU, and on the CPU anywhere else
+  // (its ONNX runtime has no ROCm or Vulkan build).
+  cpuServers: backend === "cuda" ? [] : ["speech"],
   // llama.cpp can use an integrated GPU's shared memory on Vulkan, or on ROCm
   // when install.sh turned on unified memory (an APU without a discrete GPU).
   sharedMemory: backend === "vulkan" || (backend === "rocm" && env.LLAMA_UNIFIED_MEMORY === "1") ? ["llamacpp"] : [],
@@ -55,6 +59,7 @@ const scheduler = new Scheduler({
     llamacpp: new LlamaCpp({ url: env.LLAMACPP_URL || "http://llamacpp:8080", serving, models: modelsDir, device: (i) => `${backend === "vulkan" ? "Vulkan" : backend === "rocm" ? "ROCm" : "CUDA"}${i}` }),
     vllm: new Vllm({ url: env.VLLM_URL || "http://vllm:{port}", serving, models: modelsDir }),
     comfyui: comfy,
+    speech: new Speech({ url: env.SPEECH_URL || "http://speech:8000", models: modelsDir }),
   },
   state: host.state,
   log: stdoutLog,

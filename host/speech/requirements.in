@@ -1,0 +1,16 @@
+# The speech server's packages. lock.sh pins them, with their hashes, in
+# requirements.cpu.txt and requirements.cuda.txt; only the ONNX runtime differs.
+numpy
+misaki==0.9.4
+# misaki's English (its "en" extra, without the transformer model) and Mandarin ("zh") parts
+num2words
+spacy
+phonemizer-fork
+espeakng-loader
+jieba
+pypinyin
+pypinyin-dict
+cn2an
+ordered-set
+# spaCy's small English model, which misaki loads by name
+en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl

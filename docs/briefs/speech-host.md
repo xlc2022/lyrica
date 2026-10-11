@@ -72,4 +72,12 @@ can use voice (principles 1 and 2).
 
 ## Handoff notes
 
-(The thread fills this in if it stops before it's done.)
+- Done: dictation on vLLM, the speech container (Kokoro's ONNX export, CPU
+  or CUDA), the host API and dashboard, `.onnx` and voice downloads, and
+  the Windows benchmark (`host/bench/speech/`). On a CPU, Kokoro reads at
+  about a quarter of real time.
+- Waiting: Li's benchmark results, for the numbers and the voice pick.
+  Proposed: Kokoro, the only one without pickled weights (CosyVoice 2's
+  `.pt` files and Chatterbox's `conds.pt` are pickles).
+- Next, once picked: pinned starter downloads, and placement notes for
+  pinning both models on the 3090.

@@ -11,7 +11,7 @@ import {
 import { basename, dirname, join, posix, relative, resolve, sep } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Transform } from "node:stream";
-import { checkRepo, checkRepoPath, verdict, type Card, type Hub, type HubFile, type Source } from "./hubs.ts";
+import { VOICE_FILE, checkRepo, checkRepoPath, verdict, type Card, type Hub, type HubFile, type Source } from "./hubs.ts";
 import { DownloadError, plainError, type Net } from "./net.ts";
 
 export interface RecordEntry {
@@ -463,7 +463,7 @@ export class Downloader {
 
 class ChecksumMismatch extends DownloadError {}
 
-/** The file is what its name says: a GGUF header, or a readable safetensors header. */
+/** The file is what its name says: a GGUF header, a readable safetensors header, an ONNX file or a plain voice array. */
 function checkFormat(path: string, name: string): void {
   const head = Buffer.alloc(8);
   const fd = openSync(path, "r");
@@ -484,6 +484,17 @@ function checkFormat(path: string, name: string): void {
     throw new ChecksumMismatch("The file isn't a valid model file, so it was deleted.");
   };
   if (name.endsWith(".gguf") && head.toString("latin1", 0, 4) !== "GGUF") bad();
+  // A voice is plain float32 numbers: not a pickle (opcode 0x80 and a
+  // protocol), not a zip (PyTorch's format), and whole numbers of 4 bytes.
+  if (VOICE_FILE.test(name.toLowerCase())) {
+    const pickle = head[0] === 0x80 && head[1]! >= 2 && head[1]! <= 5;
+    const zip = head.toString("latin1", 0, 4) === "PK\x03\x04";
+    if (pickle || zip || statSync(path).size % 4 !== 0) {
+      throw new ChecksumMismatch("The voice file isn't a plain array of numbers, so it was deleted.");
+    }
+  }
+  // ONNX is a protocol buffer that starts with its IR version (field 1, a varint).
+  if (name.endsWith(".onnx") && head[0] !== 0x08) bad();
   if (name.endsWith(".safetensors")) {
     try {
       if (!header || typeof JSON.parse(header.toString("utf8")) !== "object") bad();

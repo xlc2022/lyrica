@@ -126,7 +126,7 @@ describe("routing /v1 to the model servers", () => {
     expect(status.body.gpus[0].models[0]).toMatchObject({ id, state: "loaded", busy: false });
 
     const usage = await call({ port: s.tls, path: "/host/v1/usage", identity: s.me, pinned });
-    expect(usage.body.models).toEqual([{ id, requests: 2, promptTokens: 14, completionTokens: 6, images: 0, seconds: expect.any(Number) }]);
+    expect(usage.body.models).toEqual([{ id, requests: 2, promptTokens: 14, completionTokens: 6, images: 0, audioSeconds: 0, seconds: expect.any(Number) }]);
 
     expect(s.lines.join("\n")).not.toContain(MARKER);
     for (const f of readdirSync(s.dataDir)) expect(readFileSync(join(s.dataDir, f), "utf8")).not.toContain(MARKER);

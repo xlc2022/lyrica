@@ -215,6 +215,7 @@ export class Host {
       state: this.runtime?.scheduler.runState ?? (this.state.get().paused ? "paused" : "running"),
       backend: this.runtime?.scheduler.gpuBackend ?? null,
       servers: this.runtime?.scheduler.servers ?? [],
+      cpuServers: this.runtime?.scheduler.cpuServers ?? [],
       gpus: (await this.runtime?.scheduler.status()) ?? [],
       problems: this.runtime?.scheduler.problems ?? [],
       downloads: { active: this.downloads?.active ?? 0 },

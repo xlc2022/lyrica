@@ -334,7 +334,7 @@ export class Images {
       this.comfyGpu,
       abort.signal,
     );
-    if (!pngs.length) throw new HostError(503, "unavailable", "ComfyUI returned no image.");
+    if (!pngs.length) throw new HostError(503, "model_unavailable", "ComfyUI returned no image.");
     const seconds = (Date.now() - started) / 1000;
     this.runtime.count(recipe.id, { requests: 1, images: pngs.length, seconds });
     this.log("image", { recipe: recipe.id, action, images: pngs.length });
