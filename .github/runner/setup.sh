@@ -53,7 +53,8 @@ if [[ ! -x $DIR/config.sh ]]; then
   curl -fL --connect-timeout 20 --progress-bar -o "$tmp/$tarball" "https://github.com/actions/runner/releases/download/v$version/$tarball"
   echo "$sha  $tmp/$tarball" | sha256sum -c -
   install -d -o "$RUNNER_USER" -g "$RUNNER_USER" "$DIR"
-  sudo -u "$RUNNER_USER" tar xzf "$tmp/$tarball" -C "$DIR"
+  tar xzf "$tmp/$tarball" -C "$DIR"
+  chown -R "$RUNNER_USER:$RUNNER_USER" "$DIR"
   rm -rf "$tmp"
 fi
 cd "$DIR"
