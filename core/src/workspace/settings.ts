@@ -43,14 +43,20 @@ export interface ThreadWorkspace {
   /** Switches: web_search and web_fetch, and the image tool. Off removes the tools from the session. */
   webSearch: boolean;
   images: boolean;
-  /** "sandbox" or "ssh:<name>". */
-  target: string;
+  /** The machines it may work on besides the sandbox, by name, from its pool's machines. */
+  machines: string[];
   /** Set for a subagent's thread: its settings can only be the parent's or stricter. */
   parent: string | null;
 }
 
-export interface SshTargetConfig {
+/** The loosest mode she may use on a machine. */
+export type MachineLimit = Exclude<PermissionMode, "plan">;
+export const MACHINE_LIMITS: readonly MachineLimit[] = ["auto", "acceptEdits", "ask"];
+
+/** A computer she works on over SSH, with the account and key she signs in with. */
+export interface MachineConfig {
   name: string;
+  kind: "ssh";
   host: string;
   port: number;
   username: string;
@@ -58,14 +64,28 @@ export interface SshTargetConfig {
   privateKey: string;
   /** Optional remote folder that read, write and edit stay inside. */
   root: string | null;
-  /** SHA-256 of the host key, recorded on first connection. */
+  /** SHA-256 of the host key Li confirmed. A machine from before confirming may have none, and can't be reached until it does. */
   hostKey: string | null;
+  /** Reached only from threads of this pool. */
+  pool: Pool;
+  limit: MachineLimit;
+  /** Its address resolved outside the LAN, loopback and tailnet at the last check; for a private machine, Li confirmed that. */
+  offNetwork: boolean;
+  /** When she last connected (ISO time). */
+  lastUsed: string | null;
 }
+
+/** What adding a machine takes: the rest starts empty. */
+export type NewMachine = Omit<MachineConfig, "kind" | "hostKey" | "limit" | "lastUsed"> & { limit?: MachineLimit };
+
+const MACHINE_NAME = /^[A-Za-z0-9._-]{1,64}$/;
+const HOST_KEY = /^SHA256:[A-Za-z0-9+/]{43}=?$/;
 
 /** Workspace tables in the user's user.db. The pool databases belong to Memory. */
 export const WORKSPACE_SCHEMA = `
 -- What each thread was given: grants, network overrides, permission mode, switches,
--- target, and for a subagent the parent thread it can't be wider than.
+-- machines, the suspect commands allowed in it, and for a subagent the parent
+-- thread it can't be wider than.
 CREATE TABLE IF NOT EXISTS thread_workspaces (
   thread_id  TEXT PRIMARY KEY,
   grants     TEXT NOT NULL,
@@ -73,20 +93,29 @@ CREATE TABLE IF NOT EXISTS thread_workspaces (
   services   INTEGER,
   hosts      TEXT,
   mode       TEXT NOT NULL,
-  target     TEXT NOT NULL,
   parent     TEXT,
   web_search INTEGER NOT NULL DEFAULT 1,
-  images     INTEGER NOT NULL DEFAULT 1
+  images     INTEGER NOT NULL DEFAULT 1,
+  machines   TEXT NOT NULL DEFAULT '[]',
+  allowed    TEXT NOT NULL DEFAULT '[]'
 );
--- Remote machines she can work on, with the key she signs in with.
-CREATE TABLE IF NOT EXISTS ssh_targets (
+`;
+
+/** Machines she can work on, with the key she signs in with. Older databases call it ssh_targets; migrate renames it. */
+const MACHINES_SCHEMA = `
+CREATE TABLE IF NOT EXISTS machines (
   name        TEXT PRIMARY KEY,
+  kind        TEXT NOT NULL DEFAULT 'ssh',
   host        TEXT NOT NULL,
   port        INTEGER NOT NULL,
   username    TEXT NOT NULL,
   private_key TEXT NOT NULL,
   root        TEXT,
-  host_key    TEXT
+  host_key    TEXT,
+  pool        TEXT NOT NULL DEFAULT 'general',
+  mode_limit  TEXT NOT NULL DEFAULT 'ask',
+  off_network INTEGER NOT NULL DEFAULT 0,
+  last_used   TEXT
 );
 `;
 
@@ -132,8 +161,8 @@ const DEFAULTS: Record<Pool, Network> = {
  */
 export class WorkspaceSettings {
   constructor(private readonly db: Db, readonly allowed: () => Record<Pool, string[]>) {
-    db.exec(WORKSPACE_SCHEMA);
     migrate(db);
+    db.exec(WORKSPACE_SCHEMA + MACHINES_SCHEMA);
   }
 
   close(): void { this.db.close(); }
@@ -174,19 +203,20 @@ export class WorkspaceSettings {
   thread(threadId: string): ThreadWorkspace {
     const row = this.db.prepare("SELECT * FROM thread_workspaces WHERE thread_id = ?").get(threadId) as ThreadRow | undefined;
     // A thread from before modes were saved for every new thread: Auto, as it had then. New threads get the default from startThread.
-    if (!row) return { grants: [], internet: null, services: null, hosts: null, mode: "auto", webSearch: true, images: true, target: "sandbox", parent: null };
+    if (!row) return { grants: [], internet: null, services: null, hosts: null, mode: "auto", webSearch: true, images: true, machines: [], parent: null };
     const bool = (v: number | null) => (v === null ? null : v === 1);
     return {
       grants: JSON.parse(row.grants), internet: bool(row.internet), services: bool(row.services),
       hosts: row.hosts === null ? null : JSON.parse(row.hosts), mode: row.mode, webSearch: row.web_search === 1, images: row.images === 1,
-      target: row.target, parent: row.parent,
+      machines: JSON.parse(row.machines), parent: row.parent,
     };
   }
 
   /**
-   * What applies to the thread now: its own settings, with the strictest mode
-   * and each switch off where any ancestor's is. A parent changed after its
-   * subagent or child thread started narrows it at once.
+   * What applies to the thread now: its own settings, with the strictest mode,
+   * each switch off where any ancestor's is, and only the machines every
+   * ancestor grants. A parent changed after its subagent or child thread
+   * started narrows it at once.
    */
   effective(threadId: string): ThreadWorkspace {
     const t = this.thread(threadId);
@@ -195,6 +225,7 @@ export class WorkspaceSettings {
       t.mode = stricterMode(t.mode, up.mode);
       t.webSearch &&= up.webSearch;
       t.images &&= up.images;
+      t.machines = t.machines.filter((m) => up.machines.includes(m));
       id = up.parent;
     }
     return t;
@@ -215,7 +246,12 @@ export class WorkspaceSettings {
       if (outer) throw new Error(`${g.path} is inside ${outer.path}; grant one or the other`);
     }
     if (!PERMISSION_MODES.includes(next.mode)) throw new Error(`unknown permission mode: ${next.mode}`);
-    if (next.target !== "sandbox" && !this.ssh(next.target.replace(/^ssh:/, ""))) throw new Error(`unknown target: ${next.target}`);
+    next.machines = [...new Set(next.machines)];
+    for (const name of next.machines) {
+      const m = this.machine(name);
+      if (!m) throw new Error(`no machine ${name}`);
+      if (m.pool !== pool) throw new Error(`${name} is a ${m.pool} machine; a ${pool} thread can't use it`);
+    }
     if (next.parent) this.checkNarrower(next.parent, pool, next);
     this.write(threadId, next);
     return next;
@@ -223,23 +259,26 @@ export class WorkspaceSettings {
 
   private write(threadId: string, t: ThreadWorkspace): void {
     const int = (v: boolean | null) => (v === null ? null : v ? 1 : 0);
-    this.db.prepare(`INSERT OR REPLACE INTO thread_workspaces (thread_id, grants, internet, services, hosts, mode, target, parent, web_search, images)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(threadId, JSON.stringify(t.grants), int(t.internet), int(t.services),
-      t.hosts === null ? null : JSON.stringify(t.hosts), t.mode, t.target, t.parent, int(t.webSearch), int(t.images));
+    // The upsert keeps the thread's allowed commands.
+    this.db.prepare(`INSERT INTO thread_workspaces (thread_id, grants, internet, services, hosts, mode, parent, web_search, images, machines)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (thread_id) DO UPDATE SET grants = excluded.grants, internet = excluded.internet,
+      services = excluded.services, hosts = excluded.hosts, mode = excluded.mode, parent = excluded.parent, web_search = excluded.web_search,
+      images = excluded.images, machines = excluded.machines`).run(threadId, JSON.stringify(t.grants), int(t.internet), int(t.services),
+      t.hosts === null ? null : JSON.stringify(t.hosts), t.mode, t.parent, int(t.webSearch), int(t.images), JSON.stringify(t.machines));
   }
 
   /**
    * Gives a subagent's thread its parent's folders, network, permission mode,
-   * switches and target, or the stricter ones in `narrower`. It works in the
+   * switches and machines, or the stricter ones in `narrower`. It works in the
    * parent's folder. Anything wider than the parent's is refused.
    */
   inheritSettings(parentThreadId: string, childThreadId: string, pool: Pool,
-    narrower: Partial<Pick<ThreadWorkspace, "grants" | "mode" | "webSearch" | "images">> & Partial<Network> = {}): ThreadWorkspace {
+    narrower: Partial<Pick<ThreadWorkspace, "grants" | "mode" | "webSearch" | "images" | "machines">> & Partial<Network> = {}): ThreadWorkspace {
     const parent = this.effective(parentThreadId);
     const net = this.network(parentThreadId, pool);
     // Start from nothing, so a refused narrowing leaves the child with no access at all.
     this.write(childThreadId, {
-      grants: [], internet: false, services: false, hosts: [], mode: "plan", webSearch: false, images: false, target: parent.target, parent: parentThreadId,
+      grants: [], internet: false, services: false, hosts: [], mode: "plan", webSearch: false, images: false, machines: [], parent: parentThreadId,
     });
     return this.setThread(childThreadId, pool, {
       grants: narrower.grants ?? parent.grants,
@@ -249,7 +288,7 @@ export class WorkspaceSettings {
       mode: narrower.mode ?? parent.mode,
       webSearch: narrower.webSearch ?? parent.webSearch,
       images: narrower.images ?? parent.images,
-      target: parent.target,
+      machines: narrower.machines ?? parent.machines,
     });
   }
 
@@ -283,7 +322,8 @@ export class WorkspaceSettings {
     if (MODE_RANK[child.mode] < MODE_RANK[parent.mode]) throw new Error(`the parent thread's permission mode is ${parent.mode}`);
     if (child.webSearch && !parent.webSearch) throw new Error("the parent thread has web search off");
     if (child.images && !parent.images) throw new Error("the parent thread has images off");
-    if (child.target !== parent.target) throw new Error(`a subagent works where its parent does (${parent.target})`);
+    const machine = child.machines.find((m) => !parent.machines.includes(m));
+    if (machine) throw new Error(`${machine} isn't in the parent thread's machines`);
   }
 
   private resolve(t: ThreadWorkspace, pool: Pool): Network {
@@ -306,42 +346,151 @@ export class WorkspaceSettings {
     throw new Error(`thread ${threadId} has too many ancestors`);
   }
 
-  sshTargets(): SshTargetConfig[] {
-    return (this.db.prepare("SELECT * FROM ssh_targets ORDER BY name").all() as SshRow[]).map(toSsh);
+  machines(): MachineConfig[] {
+    return (this.db.prepare("SELECT * FROM machines ORDER BY name").all() as MachineRow[]).map(toMachine);
   }
 
-  ssh(name: string): SshTargetConfig | undefined {
-    const row = this.db.prepare("SELECT * FROM ssh_targets WHERE name = ?").get(name) as SshRow | undefined;
-    return row && toSsh(row);
+  machine(name: string): MachineConfig | undefined {
+    const row = this.db.prepare("SELECT * FROM machines WHERE name = ?").get(name) as MachineRow | undefined;
+    return row && toMachine(row);
   }
 
-  addSsh(t: Omit<SshTargetConfig, "hostKey">): void {
-    if (!/^[A-Za-z0-9._-]{1,64}$/.test(t.name)) throw new Error("target names use letters, digits, '.', '_' and '-'");
-    if (this.ssh(t.name)) throw new Error(`ssh target ${t.name} already exists`);
-    this.db.prepare("INSERT INTO ssh_targets (name, host, port, username, private_key, root) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(t.name, t.host, t.port, t.username, t.privateKey, t.root === null ? null : cleanPath(t.root));
+  private need(name: string): MachineConfig {
+    const m = this.machine(name);
+    if (!m) throw new Error(`no machine ${name}`);
+    return m;
   }
 
-  removeSsh(name: string): void {
-    if (!this.db.prepare("DELETE FROM ssh_targets WHERE name = ?").run(name).changes) throw new Error(`no ssh target ${name}`);
+  /** Adds a machine with the host key Li confirmed. New machines start at Ask. */
+  addMachine(m: NewMachine, confirmedHostKey: string): MachineConfig {
+    if (!MACHINE_NAME.test(m.name)) throw new Error("machine names use letters, digits, '.', '_' and '-'");
+    if (this.machine(m.name)) throw new Error(`machine ${m.name} already exists`);
+    if (!HOST_KEY.test(confirmedHostKey)) throw new Error("confirm the machine's host key (SHA256:…) before adding it");
+    if (m.pool !== "general" && m.pool !== "private") throw new Error("a machine is general or private");
+    const limit = m.limit ?? "ask";
+    if (!MACHINE_LIMITS.includes(limit)) throw new Error(`unknown mode limit: ${limit}`);
+    this.db.prepare(`INSERT INTO machines (name, kind, host, port, username, private_key, root, host_key, pool, mode_limit, off_network)
+      VALUES (?, 'ssh', ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(m.name, m.host, m.port, m.username, m.privateKey,
+      m.root === null ? null : cleanPath(m.root), confirmedHostKey, m.pool, limit, m.offNetwork ? 1 : 0);
+    return this.need(m.name);
   }
 
-  recordHostKey(name: string, hostKey: string): void {
-    this.db.prepare("UPDATE ssh_targets SET host_key = ? WHERE name = ? AND host_key IS NULL").run(hostKey, name);
+  /** Removes the machine and every thread's grant of it. */
+  removeMachine(name: string): void {
+    if (!this.db.prepare("DELETE FROM machines WHERE name = ?").run(name).changes) throw new Error(`no machine ${name}`);
+    this.dropGrants(name);
+  }
+
+  /**
+   * Changes a machine's address, root or limit. A new address keeps the
+   * confirmed host key: a different machine there fails until its key is
+   * confirmed with `setHostKey`.
+   */
+  updateMachine(name: string, change: Partial<Pick<MachineConfig, "host" | "port" | "username" | "root" | "limit">>): MachineConfig {
+    const next = { ...this.need(name), ...change };
+    if (!MACHINE_LIMITS.includes(next.limit)) throw new Error(`unknown mode limit: ${next.limit}`);
+    if (!next.host || !Number.isInteger(next.port) || next.port < 1 || next.port > 65535 || !next.username) throw new Error("the address looks like account@host or account@host:port");
+    this.db.prepare("UPDATE machines SET host = ?, port = ?, username = ?, root = ?, mode_limit = ? WHERE name = ?")
+      .run(next.host, next.port, next.username, next.root === null ? null : cleanPath(next.root), next.limit, name);
+    return this.need(name);
+  }
+
+  /** Moves a machine to the other pool, taking it from every thread that grants it, so it is never reached from both. */
+  setMachinePool(name: string, pool: Pool): MachineConfig {
+    const m = this.need(name);
+    if (pool !== "general" && pool !== "private") throw new Error("a machine is general or private");
+    if (m.pool === pool) return m;
+    this.db.prepare("UPDATE machines SET pool = ? WHERE name = ?").run(pool, name);
+    this.dropGrants(name);
+    return this.need(name);
+  }
+
+  /** Re-pairs a machine: the host key Li confirmed replaces the old one. */
+  setHostKey(name: string, confirmedHostKey: string): MachineConfig {
+    this.need(name);
+    if (!HOST_KEY.test(confirmedHostKey)) throw new Error("a host key looks like SHA256:…");
+    this.db.prepare("UPDATE machines SET host_key = ? WHERE name = ?").run(confirmedHostKey, name);
+    return this.need(name);
+  }
+
+  /** Records whether the address resolved outside Li's network at the last check. */
+  setOffNetwork(name: string, off: boolean): void {
+    this.db.prepare("UPDATE machines SET off_network = ? WHERE name = ?").run(off ? 1 : 0, name);
+  }
+
+  /** Li accepted that a private machine is off network: it can be reached again. */
+  confirmOffNetwork(name: string): MachineConfig {
+    this.need(name);
+    this.setOffNetwork(name, true);
+    return this.need(name);
+  }
+
+  usedMachine(name: string): void {
+    this.db.prepare("UPDATE machines SET last_used = ? WHERE name = ?").run(new Date().toISOString(), name);
+  }
+
+  private dropGrants(name: string): void {
+    for (const row of this.db.prepare("SELECT thread_id, machines, allowed FROM thread_workspaces").all() as { thread_id: string; machines: string; allowed: string }[]) {
+      const machines = (JSON.parse(row.machines) as string[]).filter((m) => m !== name);
+      const allowed = (JSON.parse(row.allowed) as AllowedCommand[]).filter((a) => a.machine !== name);
+      this.db.prepare("UPDATE thread_workspaces SET machines = ?, allowed = ? WHERE thread_id = ?").run(JSON.stringify(machines), JSON.stringify(allowed), row.thread_id);
+    }
+  }
+
+  /** A suspect command Li allowed in this thread: that exact command on that machine stops asking here, and only here. */
+  allowInThread(threadId: string, machine: string, command: string): void {
+    if (!this.db.prepare("SELECT 1 FROM thread_workspaces WHERE thread_id = ?").get(threadId)) this.write(threadId, this.thread(threadId));
+    const allowed = this.allowedInThread(threadId);
+    if (allowed.some((a) => a.machine === machine && a.command === command)) return;
+    this.db.prepare("UPDATE thread_workspaces SET allowed = ? WHERE thread_id = ?").run(JSON.stringify([...allowed, { machine, command }]), threadId);
+  }
+
+  allowedInThread(threadId: string): AllowedCommand[] {
+    const row = this.db.prepare("SELECT allowed FROM thread_workspaces WHERE thread_id = ?").get(threadId) as { allowed: string } | undefined;
+    return row ? JSON.parse(row.allowed) : [];
   }
 }
+
+export interface AllowedCommand { machine: string; command: string }
 
 interface ThreadRow {
   grants: string; internet: number | null; services: number | null; hosts: string | null;
-  mode: PermissionMode; target: string; parent: string | null; web_search: number; images: number;
+  mode: PermissionMode; parent: string | null; web_search: number; images: number; machines: string;
 }
 
-/** Adds the switches to an older table, and renames the old modes in place. */
+const columnsOf = (db: Db, table: string) => (db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as { name: string }[]).map((c) => c.name);
+
+/**
+ * Brings an older user.db up to date in place: the switches, the old mode
+ * names, SSH targets as general machines at Ask, and a thread's target as
+ * its one machine.
+ */
 function migrate(db: Db): void {
-  const columns = (db.prepare("SELECT name FROM pragma_table_info('thread_workspaces')").all() as { name: string }[]).map((c) => c.name);
+  const columns = columnsOf(db, "thread_workspaces");
+  if (!columns.length) return;
   for (const c of ["web_search", "images"]) if (!columns.includes(c)) db.exec(`ALTER TABLE thread_workspaces ADD COLUMN ${c} INTEGER NOT NULL DEFAULT 1`);
   for (const [old, mode] of Object.entries(OLD_MODES)) db.prepare("UPDATE thread_workspaces SET mode = ? WHERE mode = ?").run(mode, old);
+  if (columnsOf(db, "ssh_targets").length) {
+    db.exec(`ALTER TABLE ssh_targets RENAME TO machines;
+      ALTER TABLE machines ADD COLUMN kind TEXT NOT NULL DEFAULT 'ssh';
+      ALTER TABLE machines ADD COLUMN pool TEXT NOT NULL DEFAULT 'general';
+      ALTER TABLE machines ADD COLUMN mode_limit TEXT NOT NULL DEFAULT 'ask';
+      ALTER TABLE machines ADD COLUMN off_network INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE machines ADD COLUMN last_used TEXT;`);
+  }
+  if (columns.includes("target")) {
+    db.exec(`ALTER TABLE thread_workspaces ADD COLUMN machines TEXT NOT NULL DEFAULT '[]';
+      ALTER TABLE thread_workspaces ADD COLUMN allowed TEXT NOT NULL DEFAULT '[]';
+      UPDATE thread_workspaces SET machines = json_array(substr(target, 5)) WHERE target LIKE 'ssh:%';
+      ALTER TABLE thread_workspaces DROP COLUMN target;`);
+  }
 }
-interface SshRow { name: string; host: string; port: number; username: string; private_key: string; root: string | null; host_key: string | null }
-const toSsh = (r: SshRow): SshTargetConfig =>
-  ({ name: r.name, host: r.host, port: r.port, username: r.username, privateKey: r.private_key, root: r.root, hostKey: r.host_key });
+
+interface MachineRow {
+  name: string; host: string; port: number; username: string; private_key: string; root: string | null; host_key: string | null;
+  pool: Pool; mode_limit: MachineLimit; off_network: number; last_used: string | null;
+}
+const toMachine = (r: MachineRow): MachineConfig => ({
+  name: r.name, kind: "ssh", host: r.host, port: r.port, username: r.username, privateKey: r.private_key, root: r.root, hostKey: r.host_key,
+  pool: r.pool, limit: r.mode_limit, offNetwork: r.off_network === 1, lastUsed: r.last_used,
+});
