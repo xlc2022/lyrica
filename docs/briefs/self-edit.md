@@ -31,26 +31,22 @@ the boundaries structural).
 3. **Repository settings, written as a checklist for Li** (she owns the
    repository): her account as a collaborator with write; a fine-grained
    token for this repository only with contents and pull requests; `main`
-   protected (pull requests only, the CI jobs including the boundary check
-   required, one approval); a ruleset that lets her account create and
-   update only `lyrica/*` branches and `update/*` tags. Li's account may
-   bypass the rules as administrator ("Do not allow bypassing" stays off),
-   so Claude's PRs, which are authored as Li, keep merging as they do
-   today; merging threads never use that bypass on her PRs. She pushes
+   protected (pull requests only, the CI jobs required, one approval); a
+   ruleset that lets her account create and update only `lyrica/*`
+   branches and `update/*` tags. Li's account may bypass the rules as
+   administrator ("Do not allow bypassing" stays off), so Claude's PRs,
+   which are authored as Li, keep merging as they do today. She pushes
    branches to the repository, never a fork, so her PRs run
    `.github/workflows/ci.yml` on the `lyrica-ci` runners like Claude's,
    with no first-time-contributor approval.
-4. **The boundary check**, its own workflow on `pull_request_target`, so
-   it always runs the base branch's copy of itself and of the list, and a
-   PR can't edit the job that judges it. It checks out nothing from the
-   head: it reads the changed files from the API, counting both names of
-   a rename. It fails when the PR's author is her account or its head is
-   a `lyrica/*` branch and any changed path is in `.github/boundary-paths`,
-   naming them. The list: `core/src/keyring.ts`, `core/src/models/`,
-   `core/src/workspace/`, `core/src/store/memory.ts` (`openThreadView`),
-   `daemon/src/auth.ts`, `daemon/deploy/`, the updater scripts and
-   `.github/`. Claude's PRs pass it. The list and the workflow are in this
-   PR.
+4. **`CODEOWNERS`**, in this PR, naming `@xlc2022` for the boundary code:
+   `core/src/keyring.ts`, `core/src/models/`, `core/src/workspace/`,
+   `core/src/store/memory.ts` (`openThreadView`), `daemon/src/auth.ts`,
+   `daemon/deploy/`, the updater scripts and `.github/`. It makes GitHub
+   ask for Li's review on such a PR; it is not required for merging,
+   because Claude's approvals come from the same account. The rule is the
+   reviewers': PR review asks Li in the project before approving a PR of
+   hers that touches these paths.
 5. **Update notes.** How she writes one: an annotated tag `update/<date>`
    on the `main` commit to install, its message listing the merged PRs
    since the running version, what each changes, any schema change and
@@ -59,8 +55,8 @@ the boundaries structural).
    linked to the tag holds the post-mortem.
 6. **The self-primer** gains one short section: one branch and one PR per
    piece of work, the review flow, update notes, that Li presses Update, and
-   that rollbacks exist, and that boundary code is for a Claude thread:
-   she describes the change, and one builds it. Persona files stay about
+   that rollbacks exist, and that a PR touching boundary code says so
+   first and waits for Li. Persona files stay about
    her (principle 9).
 7. **Docs in the same PR:** docs/workspace.md "Grants" (her own code) and
    "Thread settings" if the token changes them.
@@ -73,15 +69,14 @@ work, and editing anything under `/opt/lyrica`.
 ## Tests
 
 The token never reaches a private thread's sandbox or a thread without the
-checkout; the boundary check fails her PR on a listed path and passes
-Claude's; the grant check refuses the checkout in a private list and the
+checkout; the grant check refuses the checkout in a private list and the
 runtime, release, snapshot and request folders.
 
 ## After merging
 
 Tell the standing Operator docs thread (Li's rule, 2026-10-11) by
 cross-session message: the checkout setup, her GitHub account and token,
-branch protection and the boundary check. Plus the merge notice to the project
+branch protection, the branch ruleset and `CODEOWNERS`. Plus the merge notice to the project
 chat.
 
 ## Handoff notes

@@ -56,10 +56,10 @@ characters, the limit on project instructions.
 > review, which approves and merges it; answer its comments on the PR.
 > Never ask anyone to merge past a red check.
 >
-> **Boundary code is not yours to change**: keys, the privacy boundary,
-> the model router, the sandbox, authentication, deployment, the updater
-> and CI (the list is `.github/boundary-paths`). If one needs changing,
-> open an issue labelled `claude` that says what and why.
+> **Boundary code needs Li**: keys, the privacy boundary, the model
+> router, the sandbox, authentication, deployment, the updater and CI
+> (listed in CODEOWNERS). A PR touching it says so in its first line and
+> waits for Li's own approval.
 >
 > **Handoffs.** Nobody waits silently: a thread that needs another thread
 > messages it, every time, naming the commit and what it needs, and the

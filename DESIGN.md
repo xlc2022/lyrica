@@ -1403,24 +1403,20 @@ from Monika's runbooks.
   never approve their own PRs.
 - **Review is the project's.** Her PRs go through the same PR review (and
   UI review) as Claude's, which approves and merges them, so Li doesn't
-  read every change. **Boundary code is hands off for her:** keys, the
-  privacy boundary, the model router, the sandbox, authentication,
-  deployment, the updater and CI. She may push only `lyrica/*` branches
-  and `update/*` tags. A required check, run from the base branch's
-  workflow (`pull_request_target`, so her branch can't edit it), fails any
-  pull request from her account or her branches that touches those paths,
-  counting both names of a rename. Her boundary PR fails visibly; merging
-  past it would take Li's administrator bypass, which merging threads
-  never use on her PRs. Fully structural would need Claude to work
-  through an account of its own, the later step. When she wants a
-  boundary changed, she describes it and a Claude thread builds it under
-  the usual review.
+  read every change. **Boundary code needs Li** (Li chose a rule over
+  a gate, 2026-10-11): keys, the privacy boundary, the model router, the
+  sandbox, authentication, deployment, the updater and CI. `CODEOWNERS`
+  names Li for those paths, so GitHub asks for Li's review on any PR
+  that touches them, and PR review asks Li before approving one of hers.
+  Claude's reviews act through Li's account, so GitHub can't tell the two
+  approvals apart: this is a rule the reviewers follow, not a gate. She
+  may push only `lyrica/*` branches and `update/*` tags.
 - **Working alongside Claude.** One repository, one set of rules
   (AGENTS.md), one review. Work is claimed as a GitHub issue with one
   assignee, her account or Li, so two never build the same thing; she
   takes what she notices in use (the friction log from PRINCIPLES.md's
-  Evaluation, small features, her own tooling), Claude's threads take briefs and boundary code. Her
-  branches are `lyrica/*`, Claude's `feature/*` and `claude/*`. Whoever
+  Evaluation, small features, her own tooling), Claude's threads take
+  briefs. Her branches are `lyrica/*`, Claude's `feature/*` and `claude/*`. Whoever
   merges second merges `main` in first. She can't reach Claude's threads;
   an issue labelled `claude` is how she asks for something, and a PR
   comment how she answers a review. Design changes go through the design
@@ -1440,10 +1436,8 @@ from Monika's runbooks.
   are git tags; CI is Actions-syntax workflows. Moving to Forgejo or
   Gitea means re-creating her account, token and branch protection
   there, running their Actions runner on Li's VMs with the same label,
-  and swapping the client (`tea` or `fj`). The boundary check needs that
-  forge's way to run the base branch's workflow on a PR, and the branch
-  limit needs its branch rules; where either is missing, the boundary
-  falls back to a rule the reviewers follow. Claude's project threads
+  and swapping the client (`tea` or `fj`), plus `CODEOWNERS` and the
+  branch limit in that forge's own rules. Claude's project threads
   are the part that is tied to GitHub.
 - **The outer net is the operator's:** a scheduled Proxmox backup of the
   container. The updater can't snapshot the container it runs in.
