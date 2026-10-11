@@ -1,0 +1,92 @@
+# Brief: her own project (the handoff)
+
+**For:** Li, who creates the project, and Lyrica, who runs it. **Model:**
+none to build; the threads it sets up follow the models below.
+**Depends on:** Projects (project instructions, pins, threads that message
+each other) and Self-editing merged.
+
+**Read first:** AGENTS.md, DESIGN.md "Updates and self-editing" and
+"Projects", docs/briefs/self-edit.md.
+
+## Goal
+
+When she starts editing her own code she works the way Claude's project
+does today, with the same roles, handoffs and review, instead of
+rediscovering them (principle 6: trust her judgment, make review easy).
+She starts with no memory of this project, so everything she needs is
+written here.
+
+## Setup, by Li, once
+
+1. In a general thread list, **New project** named "Lyrica", with her code
+   folder granted and the internet switch on (or `github.com` and
+   `registry.npmjs.org` in allowed hosts). Goal: "Improve Lyrica's own
+   code from what we notice in use, through review."
+2. Paste the **Project instructions** below into the project's
+   instructions (only Li can change them).
+3. Start and pin three standing threads, each with its model:
+   - **Review** (the strongest cloud model allowed): reviews every PR she
+     opens before it goes to Claude, against the brief or issue, AGENTS.md
+     and the docs; sends fixes to the building thread; says verified.
+   - **UI review** (the model the project uses for anything a user sees):
+     judges every change a user sees against docs/ux.md; a PR with UI goes
+     out only after it says verified.
+   - **Friction log**: keeps the list of what went wrong in use, one line
+     each, and turns the top items into GitHub issues assigned to her.
+
+## Project instructions (paste as is)
+
+> You are working on your own code, in the repository xlc2022/lyrica,
+> from your checkout. Read AGENTS.md, PRINCIPLES.md, DESIGN.md and
+> docs/contracts.md first, and docs/ux.md before anything a user sees.
+>
+> **Work.** One GitHub issue, assigned to you, per piece of work; claim it
+> before you start, so you and Claude never build the same thing. One
+> thread per issue, on a `lyrica/<short-name>` branch, one pull request
+> into `main` when it's done, with typecheck and tests passing in your
+> sandbox. Say which principle the change serves.
+>
+> **Review.** Message the Review thread with the PR and commit when it's
+> ready, and UI review too if a user would see it. Fix what they send
+> back. When both say verified and CI is green, the PR goes to Claude's
+> review, which approves and merges it; answer its comments on the PR.
+> Never ask anyone to merge past a red check.
+>
+> **Boundary code is not yours to change**: keys, the privacy boundary,
+> the model router, the sandbox, authentication, deployment, the updater
+> and CI (the list is `.github/boundary-paths`). If one needs changing,
+> open an issue labelled `claude` that says what and why.
+>
+> **Handoffs.** Nobody waits silently: a thread that needs another thread
+> messages it, every time, naming the commit and what it needs, and the
+> receiver answers in the same turn.
+>
+> **Updates.** Li presses Update. Before Li does, write the update note:
+> an annotated tag `update/<date>` on the `main` commit to install,
+> listing everything merged since the running version (Claude's PRs
+> too), what each changes, any schema change and what a rollback would
+> lose, and what to check afterwards. After a failed update, write the
+> post-mortem as an issue linked to the tag.
+>
+> **Hard rules.** No plaintext memory on disk; private memory never goes
+> into code, issues, PRs or notes; you delete only files you downloaded.
+> Code describes what exists: update a component's doc in the same PR.
+>
+> **This chat** posts only what needs Li: a decision, a blocker, an
+> update ready to press.
+
+## Claude's side
+
+Claude's project can't see her project. It learns about her work from
+GitHub: a routine in Claude's project checks for new PRs from her account
+and issues labelled `claude`, sends her PRs to its PR review thread and
+the issues to the project chat. The project chat sets that routine up when
+her account exists.
+
+## After merging
+
+Nothing for the Operator docs thread: this is set up in the web UI.
+
+## Handoff notes
+
+(Filled in if the setup stops before it's done.)

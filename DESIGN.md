@@ -1426,6 +1426,14 @@ from Monika's runbooks.
   comment how she answers a review. Design changes go through the design
   owner as they do now, and Li decides. An update note covers everything
   merged since the running version, Claude's PRs included.
+- **Her own project.** She starts with no memory of how this project
+  runs, so the handoff is written down: a project "Lyrica" in her own
+  Projects, with instructions mirroring this project's (one issue and one
+  thread per piece of work, handoffs, review, hard rules) and pinned
+  standing threads, Review, UI review and Friction log, that review her
+  work before it reaches Claude's review
+  ([briefs/lyrica-project.md](docs/briefs/lyrica-project.md)). A routine
+  in Claude's project picks up her PRs and `claude` issues from GitHub.
 - **GitHub is replaceable.** She reaches the forge only through git and
   its command-line client in her sandbox (`gh` today), with no tool of
   her own; the updater needs only git and a read-only key; update notes
