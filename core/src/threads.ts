@@ -77,9 +77,9 @@ export const threadLine = (r: ChildInfo) =>
   `[t:${r.id}] ${r.title ? JSON.stringify(r.title) : "(untitled)"}: ${r.state ?? r.status}${r.needsYou ? " (waiting on the person)" : ""}, last ${r.updatedAt}`;
 
 /**
- * The project section: the goal, the project page (the user's instructions
- * first), the project's notes since the last sleep, and in the project chat
- * its threads. Empty outside a project.
+ * The project section: the goal, the user's instructions, the project's
+ * notes since the last sleep, in the project chat its threads, then the
+ * project page. Empty outside a project.
  */
 export function projectSection(own: PoolView["own"], threadId: string, projectThreads?: () => string | undefined): string | undefined {
   const id = own.projectOf(threadId);
@@ -92,8 +92,9 @@ export function projectSection(own: PoolView["own"], threadId: string, projectTh
     `Project [t:${id}]${chat.title ? ` "${chat.title}"` : ""}${id === threadId ? ": this is its project chat." : ": this thread is one of its threads."}`,
     chat.goal && `Goal, in the person's words: ${chat.goal}`,
     page?.instructions && `The person's instructions for this project:\n${page.instructions}`,
-    page && !page.archived && page.text.trim() && `<page id="${page.id}" title="${page.title}">\n${page.text}\n</page>`,
+    // Before the page, so a long page is what the section budget cuts, not today's notes.
     notes.length ? `Notes since the last sleep:\n${notes.map((n) => `- [${n.id}] ${n.text}`).join("\n")}` : undefined,
     threads && `Its threads:\n${threads}`,
+    page && !page.archived && page.text.trim() && `<page id="${page.id}" title="${page.title}">\n${page.text}\n</page>`,
   ].filter(Boolean).join("\n\n");
 }

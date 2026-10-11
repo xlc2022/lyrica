@@ -513,6 +513,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       });
       // Paused or hidden, a project's working threads stop and nothing new starts.
       if (before.project && (change.paused === true || change.hidden === true)) await s().children.stopProject(user.id, pool, before.thread);
+      // Resumed or shown again: its queued threads may start.
+      if (before.project && (change.paused === false || change.hidden === false)) s().children.resume(user.id);
       // A thread made a project opens its next turn with the project's tools and guidance.
       if (before.made) s().host.reload(user.id, pool, before.thread);
       return owner(d, user, (o) => summary(d, user, pool, o[pool], o[pool].getThread(before.thread)!, []));
@@ -592,7 +594,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       if (thread.subagent) return toSubagent(d, user, poolOf(r), thread, String(text ?? ""));
       if (String(text ?? "").trim() === "/sleep") return { queued: false, sleep: await startSleep(d, user, poolOf(r), confirm === true) };
       const project = owner(d, user, (o) => o[poolOf(r)].projectOf(thread.id));
-      if (project && project !== thread.id && s().projects.paused(user.id, poolOf(r), project)) throw new HttpError(409, "this project is paused; resume it to write in its threads");
+      if (project && project !== thread.id && s().children.stopped(user.id, poolOf(r), project)) throw new HttpError(409, "this project is paused or hidden; resume it to write in its threads");
       const sent = await s().host.get(user.id, poolOf(r), thread.id).send(unmarked(String(text ?? "")));
       // The user wrote: the thread no longer waits on them, and a resolved one reopens.
       if (thread.child) s().children.userWrote(user.id, poolOf(r), thread.id);
@@ -630,7 +632,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         if (!said?.trim()) throw new HttpError(400, "start a thread from a message with text");
         return { project: thread.id, task: said };
       });
-      if (s().projects.paused(user.id, pool, project)) throw new HttpError(409, "this project is paused; resume it to start threads");
+      if (s().children.stopped(user.id, pool, project)) throw new HttpError(409, "this project is paused or hidden; resume it to start threads");
       const name = (typeof title === "string" && title.trim()) || task.trim().split("\n")[0]!.slice(0, 80);
       let id: string;
       try { id = await s().children.startFrom(user.id, pool, project, n, { title: name, task }); } catch (err) { throw new HttpError(409, (err as Error).message); }
@@ -654,10 +656,19 @@ export function apiRoutes(d: Lyricad): Route[] {
       const anchor = anchorOfCall(entries, callId) ?? owner(d, user, (o) => o[pool].nextEntryN(project.id));
       const made: string[] = [];
       for (const i of wanted) {
-        if (started.has(`${callId}#${i}`)) continue;
+        // Claimed before the await, so a second click can't start the same thread.
+        const key = `${user.id}/${pool}/${project.id}/${callId}#${i}`;
+        if (started.has(`${callId}#${i}`) || startingSuggestions.has(key)) continue;
+        startingSuggestions.add(key);
         let id: string;
-        try { id = await s().children.startFrom(user.id, pool, project.id, anchor, list[i]!); } catch (err) { throw new HttpError(409, (err as Error).message); }
-        s().projects.markStarted(user.id, pool, project.id, callId, i, id);
+        try {
+          id = await s().children.startFrom(user.id, pool, project.id, anchor, list[i]!);
+          s().projects.markStarted(user.id, pool, project.id, callId, i, id);
+        } catch (err) {
+          throw new HttpError(409, (err as Error).message);
+        } finally {
+          startingSuggestions.delete(key);
+        }
         made.push(id);
       }
       return owner(d, user, (o) => made.map((id) => summary(d, user, pool, o[pool], o[pool].getThread(id)!, [])));
@@ -1307,6 +1318,9 @@ function tree(d: Lyricad, user: User, pool: Pool, store: PoolStore, threads: Thr
   const build = (th: Thread): Api.ThreadSummary => summary(d, user, pool, store, th, (children.get(th.id) ?? []).map(build), look);
   return listed.filter((th) => !nested(th)).map(build);
 }
+
+/** Suggested threads being started now, so one started twice at once starts once. */
+const startingSuggestions = new Set<string>();
 
 function instructionsOf(store: PoolStore, project: string): { instructions?: string } {
   const instructions = store.pageForProject(project)?.instructions;

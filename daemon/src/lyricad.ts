@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, SystemdCredentials, Users, Workspace,
-  type Argon2Params, type CredentialStore, type User, type ThreadsLimits,
+  type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
 } from "@lyrica/core";
 import { Delegation, Sleep, type Limits, type SleepLimits } from "@lyrica/extension";
 import { ChildThreads } from "./children.ts";
@@ -207,7 +207,9 @@ export class Lyricad {
     const projects = new Projects(users);
     const children = new ChildThreads({
       users, memory, models, workspace, delegation, host: () => host, limits: this.opts.threads,
-      paused: (u, p, project) => projects.paused(u, p, project), project: (u, p, project) => projects.settings(u, p, project),
+      // A hidden project stops as a paused one does.
+      paused: (u, p, project) => projects.paused(u, p, project) || hiddenThread(memory, u, p, project),
+      project: (u, p, project) => projects.settings(u, p, project),
     });
     host = new ThreadHost({
       users, memory, models, workspace, persona, delegation, cwd, log: this.log,
@@ -426,4 +428,9 @@ export function card(u: User): UserCard {
     id: u.id, login: u.login, displayName: p.displayName, pronouns: p.pronouns, admin: u.admin,
     ...(p.accent ? { accent: p.accent } : {}), ...(p.monogram ? { monogram: p.monogram } : {}),
   };
+}
+
+function hiddenThread(memory: Memory, userId: string, pool: Pool, threadId: string): boolean {
+  const view = memory.openThreadView(userId, pool);
+  try { return !!view.own.getThread(threadId)?.hidden; } finally { view.close(); }
 }

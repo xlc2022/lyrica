@@ -54,7 +54,7 @@ export interface ChildOptions {
   delegation: Delegation;
   host: () => ThreadHost;
   limits?: Partial<ThreadsLimits>;
-  /** Whether a project is paused: its threads start nothing and take no messages. */
+  /** Whether a project is paused or hidden: its threads start nothing and take no messages. */
   paused?: (userId: string, pool: Pool, project: string) => boolean;
   /** The model and thinking a project's new threads start with, if the user chose them. */
   project?: (userId: string, pool: Pool, project: string) => ProjectSettings;
@@ -334,7 +334,17 @@ export class ChildThreads implements ThreadsHost {
     if (!working) void this.startQueued(userId);
   }
 
-  /** A slot freed: the oldest queued thread of a project that isn't paused starts. */
+  /** Whether a project is paused or hidden. */
+  stopped(userId: string, pool: Pool, project: string): boolean {
+    return !!this.o.paused?.(userId, pool, project);
+  }
+
+  /** A project was resumed or shown again: its queued threads may start. */
+  resume(userId: string): void {
+    void this.startQueued(userId);
+  }
+
+  /** A slot freed: the oldest queued thread of a project that isn't paused or hidden starts. */
   private async startQueued(userId: string): Promise<void> {
     let next: Row | undefined;
     try {

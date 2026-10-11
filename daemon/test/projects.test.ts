@@ -86,7 +86,7 @@ describe("projects", () => {
     expect((await li.get<ThreadSummary>(`${u}/threads/general/${enc(plain.id)}`)).body.pinned).toBe(false);
     expect((await li.patch<ThreadSummary>(path, { goal: "Rack by Friday" })).body.goal).toBe("Rack by Friday");
     expect((await li.patch<ThreadSummary>(path, { instructions: "Ask before buying anything." })).body.instructions).toBe("Ask before buying anything.");
-    expect((await li.patch(path, { instructions: "x".repeat(8001) })).status).toBe(400);
+    expect((await li.patch(path, { instructions: "x".repeat(2001) })).status).toBe(400);
   });
 
   it("queue a start past the limit, and run it when a slot frees", async () => {
@@ -106,6 +106,24 @@ describe("projects", () => {
     expect((await overview()).threads.map((t) => t.anchor)).toEqual([1, 1]);
     release();
     await until(() => messages(threadPath(backups!)), (m) => m.some((x) => x.role === "assistant" && JSON.stringify(x).includes("Backups copied")));
+  });
+
+  it("start nothing queued while a project is hidden", async () => {
+    const { li, path, script, say, get, messages, threadPath } = await setup({ threads: { concurrency: 1 } });
+    script("chat").push(start(["DNS", "dns: move DNS"], ["Backups", "backups: copy the backups"]), { text: "Started two." });
+    script("dns").push(async () => { await new Promise(() => {}); return { text: "never" }; });
+    script("backups").push({ text: "Backups copied." });
+    const { events } = await say("move DNS and copy the backups");
+    const dns = ends(events).find((e) => e.result.startsWith("Started"))!.threads![0]!.id;
+    const backups = ends(events).find((e) => e.result.startsWith("Queued"))!.threads![0]!.id;
+    await until(() => get(dns), (t) => t.state === "working");
+    // Hiding stops the working thread; the freed slot doesn't start the queued one.
+    expect((await li.patch(path, { hidden: true })).status).toBe(200);
+    await until(() => get(dns), (t) => t.state !== "working");
+    await new Promise((r) => setTimeout(r, 200));
+    expect((await get(backups)).state).toBe("queued");
+    expect((await messages(threadPath(backups))).some((m) => m.role === "assistant")).toBe(false);
+    expect((await li.post(`${threadPath(dns)}/messages`, { text: "hello?" })).status).toBe(409);
   });
 
   it("let a project's threads message each other, at most 3 a turn, and never a thread outside", async () => {

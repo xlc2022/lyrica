@@ -250,8 +250,9 @@ gives the project chat for the chat or any of its threads, and
 `projectThreads(id)` the chat and its threads.
 - `projectSlug(projectId)` names the project's page, `p:project-<id>`;
   `pageForProject(threadId)` returns it once it exists. A page's
-  `instructions` are kept apart from its text: only the user changes them
-  (`setProjectInstructions(id, text, author)` makes the page if needed), and
+  `instructions` (at most 2,000 characters) are kept apart from its text:
+  only the user changes them (`setProjectInstructions(id, text, author)`
+  makes the page if needed), and
   an edit by `lyrica` or `sleep` that changes them is refused. The user-text
   rule counts only user revisions that changed the text.
 - `projectNotes(threadId, since?)`: current notes that cite the project chat
@@ -707,10 +708,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `max_tokens`.
 - **Projects:** a `project` section in `assemble` (`projectSection`), with
   its own `DEFAULT_BUDGETS.project` (8,000 characters, about 2,000 tokens):
-  the goal, then the project page (the user's instructions on it first),
-  then project notes since the last sleep, then (in the project chat only)
-  its threads with their state, from `LyricaOptions.projectThreads`. Filled
-  for a project chat and each of its threads; empty elsewhere.
+  the goal, the user's instructions (at most 2,000 characters), project
+  notes since the last sleep, (in the project chat only) its threads with
+  their state from `LyricaOptions.projectThreads`, and last the project
+  page, so a long page is what the budget cuts. Filled for a project chat
+  and each of its threads; empty elsewhere.
 
 ## daemon
 

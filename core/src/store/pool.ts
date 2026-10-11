@@ -183,7 +183,8 @@ const json = <T>(s: string): T => JSON.parse(s) as T;
 const entryId = (thread: string, n: number) => `e:${thread}#${n}`;
 const TOOL_TEXT_LIMIT = 2000;
 const GOAL_LIMIT = 2000;
-const INSTRUCTIONS_LIMIT = 8000;
+/** Well under the project section's budget, so the notes and threads after them always fit. */
+const INSTRUCTIONS_LIMIT = 2000;
 
 /** The slug of a project's page: thread IDs hold '/', which slugs don't. */
 export const projectSlug = (projectId: string) => `project-${projectId.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
