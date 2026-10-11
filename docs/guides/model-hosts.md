@@ -265,7 +265,7 @@ a 24 GB card) and Kokoro, and leave the rest for chat models.
 Once paired, the host's models are offerings named `<host>/<model id>`
 (with `shared.` in front for a shared host). Put them in a profile's lists,
 from Settings, Model profiles, or from a terminal on the
-Lyrica machine (as the `lyrica` user with `LYRICA_HOME=/var/lib/lyrica`):
+Lyrica machine (`lyrica` runs as her user by itself):
 
 ```sh
 lyrica admin models profile set local chat 'shared.blackwell/lyrica/huggingface/Qwen/Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf' --user li

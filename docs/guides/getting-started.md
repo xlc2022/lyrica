@@ -149,16 +149,16 @@ is [docs/daemon.md](../daemon.md#on-nixos). Instead of the steps above:
    module refuses to build while `security.allowUserNamespaces` is off.
 2. `nixos-rebuild switch`. The package builds lyricad, the CLI and the web
    UI, and the service is installed but waits for `self.db`, as on Debian.
-3. The first run below is the same, with the module's paths: the CLI is on
-   the system path, so
+3. The first run below is the same: `lyrica` is on the system path and
+   runs as her user with her state folder, as on Debian, so
 
    ```sh
-   runuser -u lyrica -- env LYRICA_HOME=/var/lib/lyrica lyrica admin init
+   lyrica admin init
    systemctl start lyricad
    ```
 
-   (The CLI needs `LYRICA_HOME` on NixOS too; without it, it would make a
-   `runtime` folder wherever you are.)
+   (A host set up before 2026-10-11 gets that command on its next
+   `nixos-rebuild switch` with the updated flake.)
 4. Instead of "Check the deploy", run `nix/check-host.sh` from a checkout
    of the repository, as root. It checks both services, `NoNewPrivs`, the
    setuid `fusermount3`, Caddy's socket, a sandbox and `pasta` as the
@@ -167,20 +167,25 @@ is [docs/daemon.md](../daemon.md#on-nixos). Instead of the steps above:
 
 Everything from "Save the passphrase" on applies unchanged. Upgrading is
 only `nix flake update lyrica` and `nixos-rebuild switch`, which restarts
-`lyricad` with no database snapshot first. The package is rebuilt only when
-the code it ships changed; a commit that touched only docs or tests reuses
-the built one, and the restart is quick. The home page header shows the
+`lyricad` (which logs everyone out) with no database snapshot first. The
+package is rebuilt only when the code it ships changed; a commit that
+touched only docs or tests reuses the built one, and the restart is quick.
+The home page header shows the
 commit that is running, as on Debian.
 
 ## First run
 
 ### Create self.db and the first administrator
 
-The script prints this; run it as the `lyrica` user so the files are hers:
+The script prints this:
 
 ```sh
-runuser -u lyrica -- env LYRICA_HOME=/var/lib/lyrica /opt/lyrica/bin/lyrica admin init
+lyrica admin init
 ```
+
+`lyrica` (in `/usr/local/bin`) runs the CLI as the `lyrica` user with her
+state folder, from root or any sudoer, so the files it makes are hers; every
+`lyrica admin …` command in this guide works the same way from any shell.
 
 It asks, at hidden prompts, for a new `self.db` passphrase, the first
 administrator's login name (default `li`), a display name and pronouns, and
@@ -284,7 +289,7 @@ the local profile only. See [docs/models.md](../models.md).
 - **A cloud or OpenAI-compatible endpoint:** Settings, Endpoints, Add
   an endpoint (a name, cloud or local, the base URL, the API key). Shared
   endpoints, which every user can use, need an administrator. The same from
-  a terminal, as the `lyrica` user with `LYRICA_HOME=/var/lib/lyrica`:
+  a terminal:
 
   ```sh
   lyrica admin models endpoints add openrouter cloud https://openrouter.ai/api/v1 --shared
@@ -334,9 +339,8 @@ machines start at Ask). The reference is
 lyrica admin ssh add --user li office li-lyrica@office.lan --pool general --limit ask
 ```
 
-(As the `lyrica` user with `LYRICA_HOME=/var/lib/lyrica`, like the other
-`admin` commands; `--root <path>` limits her reads and writes there.) It
-runs in three steps:
+(`--root <path>` limits her reads and writes there.) It runs in three
+steps:
 
 1. She makes a key pair and prints the setup to run **as root on the
    machine**: her public key into `/etc/ssh/authorized_keys/<account>`, a
@@ -428,8 +432,7 @@ this computer's name or MAC address).
    ```
 
    (`pve-ssl.pem` in the same folder if there is no `pveproxy-ssl.pem`.)
-4. On Lyrica's machine, as the `lyrica` user with
-   `LYRICA_HOME=/var/lib/lyrica`:
+4. On Lyrica's machine:
 
    ```sh
    lyrica admin proxmox add --user li hypervisor https://pve.lan:8006 --pool general --limit ask
@@ -476,7 +479,8 @@ the SSH ones, and `ssh remove <name>` takes one away.
   ```
 
   The script replaces `/opt/lyrica`, rebuilds Caddy only if a pin changed,
-  and restarts `lyricad` (which logs everyone out). The home page header
+  and restarts `lyricad` (which logs everyone out). An install made before
+  2026-10-11 gets the `lyrica` command on this run. The home page header
   ("Lyrica 0.1.0 · <build>") shows the git commit that is running.
 
 ## Checklist for the first install on Li's machine
