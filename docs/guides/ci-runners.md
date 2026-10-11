@@ -88,6 +88,10 @@ runner keeps its registration, and the firewall is applied again.
 
   removes the table until the next boot or `systemctl restart
   lyrica-ci-firewall`.
+- **The nix job** installs Nix on the runner the first time (a pinned
+  installer, checked by hash) and keeps it; it needs the internet for
+  `releases.nixos.org`, `channels.nixos.org` and `cache.nixos.org`, which
+  the firewall allows like the rest of the internet.
 - **The host-stack job** installs the model host stack with `--no-gpu` and
   removes it again when it ends (the stack, its volumes, the egress unit
   and rules, Docker's `daemon.json`).

@@ -40,7 +40,8 @@ server on your network, or on a paired model host.
 ### The machine
 
 - Debian or Ubuntu, amd64 or arm64. The install script refuses anything
-  else.
+  else. NixOS on x86-64 is the other way in, through the flake: see "On
+  NixOS" under Install.
 - **systemd 256 or later** if you want her to start unlocked. Saving the
   `self.db` passphrase uses `systemd-creds encrypt --user`, which older
   systemd doesn't have. Debian 13 and Ubuntu 25.04 have it; Debian 12 and
@@ -124,6 +125,50 @@ What `install.sh` does, in order:
 
 Running it again later is the upgrade path (see "Upgrading").
 
+### On NixOS
+
+The repository is a flake, and its NixOS module sets up what the install
+script does on Debian: both users, `/var/lib/lyrica`, both units with the
+same hardening, and Caddy with the DNS plugins. x86-64 only. The reference
+is [docs/daemon.md](../daemon.md#on-nixos). Instead of the steps above:
+
+1. In your system flake, add the repository as an input and the module to
+   your configuration, then turn the service on:
+
+   ```nix
+   inputs.lyrica.url = "github:xlc2022/lyrica";
+   # among the configuration's modules:
+   inputs.lyrica.nixosModules.default
+   # in the configuration:
+   services.lyrica.enable = true;
+   ```
+
+   The options are `port` (7340), `caddyPackage`, and `sandboxPackages`,
+   the tools her commands see (NixOS has no `/usr` to share, so the module
+   builds one directory from that list; add to it to give her more). The
+   module refuses to build while `security.allowUserNamespaces` is off.
+2. `nixos-rebuild switch`. The package builds lyricad, the CLI and the web
+   UI, and the service is installed but waits for `self.db`, as on Debian.
+3. The first run below is the same, with the module's paths: the CLI is on
+   the system path, so
+
+   ```sh
+   sudo -u lyrica env LYRICA_HOME=/var/lib/lyrica lyrica admin init
+   systemctl start lyricad
+   ```
+
+   (The CLI needs `LYRICA_HOME` on NixOS too; without it, it would make a
+   `runtime` folder wherever you are.)
+4. Instead of "Check the deploy", run `nix/check-host.sh` from a checkout
+   of the repository, as root. It checks both services, `NoNewPrivs`, the
+   setuid `fusermount3`, Caddy's socket, a sandbox and `pasta` as the
+   `lyrica` user, the network self-test and the port, one line each, and
+   ends with "All checks passed." or stops at the first failure.
+
+Everything from "Save the passphrase" on applies unchanged. Upgrading is
+only `nix flake update lyrica` and `nixos-rebuild switch`, which restarts
+`lyricad` on the new package with no database snapshot first.
+
 ## First run
 
 ### Create self.db and the first administrator
@@ -184,8 +229,8 @@ Two things to look at once she is unlocked:
 ### Save the passphrase
 
 Under Administration, Start unlocked (administrators only; the user menu at
-the foot of the sidebar opens Administration), **Save the passphrase**
-seals it with `systemd-creds` into
+the foot of the sidebar opens Administration), enter the passphrase and
+**Save**: it is sealed with `systemd-creds` into
 `/var/lib/lyrica/credentials/`; the unit unseals it at each start, so she
 comes up unlocked after a reboot. The button is disabled, with the reason,
 on a system where `systemd-creds` isn't available. Forget it there to go
@@ -322,7 +367,8 @@ The machine needs OpenSSH 9.6 or later, or a distribution build with the
 Terrapin fix (strict key exchange); adding an older one fails with "the
 server doesn't offer strict key exchange; update its OpenSSH". On Lyrica's
 side, each SSH connection runs in a sandbox of its own, so machines need
-`bwrap`, `pasta` and `nft` on her host (the install script installs them)
+`bwrap`, `pasta`, `nft`, `unshare` and `bash` on her host (the install
+script installs them, and NixOS's module brings its own)
 and a passed network self-test: when the journal says "network is off for
 every thread", every machine call fails too, with nothing to fall back to.
 If a machine's host key ever changes, every call fails until you confirm
