@@ -76,19 +76,18 @@ can use voice (principles 1 and 2).
   export, CPU or CUDA), the host API and dashboard, `.onnx` and voice
   downloads, `model_unavailable` for a dead model server, and the Windows
   benchmark (`host/bench/speech/`).
-- Benchmark on Li's RTX 3090 machine (Windows 11, 2026-10-10):
-  - Kokoro v1.0 and v1.1-zh: 1.2 to 1.7 s for a 4.5 to 5.8 s sentence
-    (real-time factor about 0.27), on the CPU. The GPU rows fell back to
-    the CPU (cuDNN wouldn't load on Windows), so GPU speed is unmeasured;
-    the CPU is already fast enough. Apache-2.0.
-  - Whisper large-v3-turbo (transformers, fp16): no errors on English and
-    Mandarin; 6 s per minute of audio; 2.2 GB of VRAM; 52 s to load.
-    On mixed Mandarin and English it heard Kokoro 1.1's zm_010 almost
-    perfectly (CER 0.03); the other Mandarin voices mangle English words
-    (CER 0.34 to 0.41).
-  - Chatterbox (its watermarker didn't load), CosyVoice 2 (an install
-    failure) and Voxtral (a bug in the benchmark) gave no numbers.
-- The benchmark is fixed for those three, and for cuDNN on Windows, and
-  Li is running it again (Li's choice, 2026-10-11) before picking the
-  voice. Proposed: Kokoro v1.1-zh, the only candidate without pickled
-  weights. Its starters, and Whisper's, are in host/README.md.
+- Benchmark on Li's RTX 3090 machine (Windows 11, second run
+  2026-10-11; results in /mnt/project-files/audio/bench-results/round2/):
+  - Kokoro v1.0 and v1.1-zh (Apache-2.0): first audio in 0.25 to 0.3 s on
+    the GPU (about 1 GB of VRAM), 1.1 to 1.6 s on the CPU, for a 4.5 to
+    5.8 s sentence.
+  - Chatterbox multilingual (MIT): 12 to 20 s to first audio, about 4.5 GB
+    of VRAM, and its Mandarin sample ran to 19 s with invented words.
+  - CosyVoice 2 still failed to load (a missing package). Its weights are
+    pickles the host refuses, so it was dropped.
+  - Whisper large-v3-turbo: 4 s per minute of audio, 2.2 GB of VRAM, no
+    errors on English and Mandarin, CER 0.03 on Kokoro 1.1 zm_010's mixed
+    sentence. Voxtral Mini 3B: 36 s per minute, 8.9 GB, and it translated
+    the English words in mixed sentences into Mandarin.
+- Li picked Kokoro v1.1-zh for the voice (2026-10-11), with Whisper
+  large-v3-turbo for dictation. Their starters are in host/README.md.

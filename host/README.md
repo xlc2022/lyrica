@@ -158,7 +158,7 @@ fills the recipe's template in `workflows/` (one per architecture).
     `speech/lock.sh` remakes them), so nothing is fetched at run time.
 - **Starters**, pinned to the revisions that were benchmarked. Download
   them on the dashboard or with `POST /host/v1/downloads`:
-  - the proposed voice: `onnx-community/Kokoro-82M-v1.1-zh-ONNX` at
+  - the voice (Li's pick from the benchmark): `onnx-community/Kokoro-82M-v1.1-zh-ONNX` at
     `6cc0f0d2ebe369a68b0df87c2b65c1af8c0ac3e3`: `onnx/model.onnx`,
     `config.json`, `tokenizer.json`, `tokenizer_config.json` and every
     `voices/*.bin` (about 330 MB with all 103 voices);
@@ -169,8 +169,8 @@ fills the recipe's template in `workflows/` (one per architecture).
   for a load. Whisper takes about 2.2 GB of a GPU and Kokoro about 0.5 GB.
   On a host with one large GPU, place both on it (Whisper with a vLLM
   memory share of 0.1 on a 24 GB card) and leave the rest for chat.
-  Kokoro is quick enough on the CPU alone: about 1.3 s for a 5-second
-  sentence on a desktop CPU.
+  On an RTX 3090 Kokoro starts speaking in about 0.3 s; it is quick
+  enough on the CPU alone too, about 1.3 s for a 5-second sentence.
 - `bench/speech/` compares voice and dictation models on a Windows machine
   with an NVIDIA GPU, and makes samples to listen to.
 
