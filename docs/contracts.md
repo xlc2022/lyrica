@@ -891,6 +891,21 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   with a password over the socket. Being on the machine isn't enough.
 - **Scheduler:** at `sleep.time` (default 04:00), for each user not in manual
   mode, sleep each pool, one run at a time.
+- **Planned (Updates,** [briefs/releases.md](briefs/releases.md)**):** an
+  update socket, `<runtime>/update.sock` (mode `0600`, the service user's,
+  for root's updater; no login, and like the rest of the runtime directory
+  never inside a sandbox), serving only `GET /health` (`{ commit,
+  locked, checks: { name, ok, error? }[] }`, no text), `POST /drain` (stop
+  new turns; answers `{ busy: threadId[] }` until idle) and `POST /undrain`.
+  While draining, `SendRequest` is `409` with `{ updating: true }` (`503`
+  stays "locked"). Each
+  encrypted database records its schema version (`PRAGMA user_version`),
+  and opening one written by a newer schema throws `SchemaTooNew`. An
+  administrator's `GET /api/u/:userId/admin/updates` lists the running
+  release, kept releases, the newest update note (tag, commit, message) and
+  the updater's state; `POST …/updates` with `{ tag }` and `POST
+  …/updates/rollback` with `{ commit }` write a request the updater's
+  path unit picks up. The request directory is refused as a grant.
 
 ## bin/lyrica
 
@@ -942,6 +957,15 @@ interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
   ops(): { read; write; edit; bash };     // Pi's tool operations
   folders(): string[];                    // host folders, or "<ssh name>:<root>"
 }
+new SshTarget(cfg, { transport: SshTransport, address?, connected? })  // the host key must be cfg.hostKey
+interface SshTransport { connect(to: SshEndpoint, verify(fingerprint): boolean): Promise<SshSession> }
+// SshEndpoint { host, port, username, privateKey }. SshSession: home, exec(command, { onData, signal?, timeout? }),
+//   realpath, lstat (undefined when missing), readFile, readHead(path, n), check(path, "r" | "r+"),
+//   writeFile(path, content, mode?), chmod, chown, rename (posix-rename where it can), unlink, close, onClose.
+//   A missing path rejects with RemoteMissing (isMissing(err)).
+sandboxedTransport(sandbox: () => HelperSandbox): SshTransport  // the only client; Workspace.sshTransport (WorkspaceOptions.sshTransport for tests)
+// HelperSandbox { exclude, front?, frontHosts?, bwrap?, pasta?, refused? }: refused (the self-test's reason) fails the call
+helperSandbox(address, port, sandbox): Sandbox           // the helper's sandbox: no workspace, that address and port only
 forThread(t)  // { target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), folders(), recordChange() },
               // each read fresh; settings() is effective
 changes(userId): FileChanges              // her write and edit calls' changes, for removing turns
@@ -966,15 +990,14 @@ settings(userId).detach(threadId)          // a kept child, once its parent is f
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, machines
 // MachineConfig { name, kind: "ssh" | "proxmox", host, port, username (Proxmox: token id), privateKey (Proxmox: the token),
 //   root (Proxmox: null), hostKey (Proxmox: certificate fingerprint AB:CD:…), pool,
-//   limit: "ask" | "acceptEdits" | "auto" (new machines "ask"), offNetwork, lastUsed }
+//   limit: "ask" | "acceptEdits" | "auto" (new machines "ask"), offNetwork, lastUsed,
+//   state: { kind: "online" | "unreachable" | "keyChanged", since } | null }
 // settings(userId).machines() / machine(name) / addMachine(m, confirmedHostKey) / updateMachine / setMachinePool(name, pool)
-//   / setHostKey / setOffNetwork / confirmOffNetwork / removeMachine / allowInThread(threadId, machine, command) / allowedInThread(threadId)
+//   / setHostKey / setOffNetwork / confirmOffNetwork / machineState(name, kind) / removeMachine / allowInThread(threadId, machine, command) / allowedInThread(threadId)
 // A thread's `machines: string[]` (the sandbox is always there); setThread refuses a machine of the other pool;
 //   inheritSettings takes a subset; effective() keeps only machines every ancestor grants.
 // SUSPECT_COMMANDS, suspectCommand(command), onFloor(path), cleanOutput(onData), maskKeys(buf),
 //   authorizedKeysLine(publicKey), machineSetup(account, keyLine): core/src/workspace/machines.ts
-// SshTransport { connect(endpoint, verify(fingerprint)): Promise<SshSession> } (transport.ts); `inProcess` is ssh2 in
-//   lyricad; WorkspaceOptions.sshTransport replaces it. SshTarget(cfg, { transport?, address?, connected? }).
 // proxmox.ts: PROXMOX_ACTIONS (status, list, start, stop, shutdown, reboot, snapshots), PROXMOX_READS, PROXMOX_SUSPECT (stop, reboot),
 //   suspectKey(tool, input) (what Allow in this thread stores), proxmoxAction(call, action, vm?), ownNode(call, addresses, self), ownAddress(addresses, self),
 //   proxmoxSetup(), parseProxmoxAddress, tokenId, certFingerprint. ProxmoxTransport { fingerprint(host, port), call(endpoint, method,
@@ -1021,7 +1044,9 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   …/machines/probe` for the Test step; `POST …/machines` to confirm;
   `PATCH …/machines/:name` for address, root, pool and limit; `POST
   …/machines/:name/key` with a confirmed host key; `POST
-  …/machines/:name/confirm-off-network`; `DELETE`). Thread settings carry
+  …/machines/:name/confirm-off-network`; `DELETE`). A machine carries
+  `state` (`online`, `unreachable` or `keyChanged`, with `since`) once a
+  connection has been tried. Thread settings carry
   `machines`; permission events carry `machine`, `cwd`, and for a suspect
   command `suspect: true` and `warning`; an answer may carry
   `allowInThread: true`. Proxmox: `kind: "proxmox"` on probe and confirm,
@@ -1032,11 +1057,12 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   call to `ThreadTools.proxmox`; the workspace extension's `tool_call` does
   the asking (reads like `read`, start and shutdown like `bash`, stop and
   reboot suspect, Plan mode reads only). `destroy` is never offered.
-- **Planned (SSH helper):** the SSH client moves into a sandboxed
-  helper process per connection (`core/workspace/ssh-helper`), an
-  `SshTransport` given one machine's key on a pipe and network to that one
-  address through the existing nftables rules; `SshTarget` keeps its
-  interface.
+- **SSH helper:** the SSH client runs in a sandboxed helper process per
+  connection (`core/workspace/ssh-helper.ts`, behind `sandboxedTransport`),
+  given one machine's key on its stdin and network to that one address and
+  port through the existing nftables rules; it speaks length-prefixed frames
+  (`ssh-frames.ts`). The host key decision stays in `lyricad`; strict key
+  exchange is required. There is no in-process client.
 - **Modes:** `PermissionMode` is `"auto" | "acceptEdits" | "ask" | "plan"`,
   strictest first plan, ask, acceptEdits, auto. Stored `ask-changes` and
   `ask-commands` migrate in place to `ask` and `acceptEdits`. A thread with

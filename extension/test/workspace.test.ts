@@ -180,11 +180,14 @@ describe("workspace tools in a Pi session", () => {
     const unlogged: ExtensionFactory = (pi) => {
       pi.on("before_agent_start", (_e, ctx) => { setToolsOff(pi, ctx, "unlogged", ["remember"]); });
     };
-    const { offered, settings } = await run("plan", [], {
+    const { offered, settings, results } = await run("plan", [], {
       steps: [[fauxToolCall("propose_plan", { plan: "1. Look" }, { id: "1" })]],
       extensions: [unlogged], proposePlan: async () => "auto",
+      machines: [{ name: "nas", kind: "ssh", limit: "ask", root: null }, { name: "pi", kind: "ssh", limit: "auto", root: null }],
     });
     expect(settings.mode).toBe("auto");
+    // She learns which machines still ask, so she doesn't promise to run unattended there.
+    expect(results[0]).toBe("propose_plan: Approved. The thread is in Auto mode now: go ahead with the plan. Calls on nas still run in Ask mode, its limit.");
     expect(offered[1]).toContain("write");
     expect(offered[1]).not.toContain("remember");
   });

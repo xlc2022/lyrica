@@ -35,6 +35,10 @@ Read these, in this order:
 - **Tests protect what Li would notice:** context assembly, memory round trips,
   the privacy and cloud boundaries, and sleep output. Don't add a test for
   every hypothetical.
+- **Migrations expand, then contract.** A schema change that removes or
+  renames something waits one release, so the previous release can still
+  open the database and a rollback keeps its data (DESIGN.md, Updates and
+  self-editing).
 - **Deleting code is progress.**
 
 ## Workflow
@@ -44,6 +48,10 @@ Read these, in this order:
   `main`.
 - A pull request description says what changed and why, what is out of scope,
   and any contract change it needs.
+- When a change alters how Lyrica works on her own code (roles, review,
+  boundaries, updates, the tools she uses for it), update the handoff in
+  [docs/briefs/lyrica-project.md](docs/briefs/lyrica-project.md) in the same
+  PR.
 - If your context is getting long, stop at a clean point. Write a handoff note
   at the end of your brief (done, next, open questions), push, and let a fresh
   session continue from it.

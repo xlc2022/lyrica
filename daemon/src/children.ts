@@ -108,7 +108,9 @@ export class ChildThreads implements ThreadsHost {
         .filter((g) => !req.folders || req.folders.some((f) => f.replace(/\/+$/, "") === g.path.replace(/\/+$/, "")))
         .map((g) => (req.readOnly ? { ...g, writable: false } : g));
       if (req.folders && grants.length < req.folders.length) throw new Error("a child thread can only have folders its parent has");
-      ws.inheritSettings(parent.threadId, child.id, parent.pool, { grants, ...(req.internet === false ? { internet: false } : {}) });
+      // Machines are reached through bash, which no folder, read-only or network narrowing covers: a narrowed child gets none.
+      const noMachines = !!req.readOnly || !!req.folders || req.internet === false;
+      ws.inheritSettings(parent.threadId, child.id, parent.pool, { grants, ...(req.internet === false ? { internet: false } : {}), ...(noMachines ? { machines: [] } : {}) });
       this.o.models.inheritContext(this.o.models.callContext(userId, parent.pool, parent.threadId), child.id);
       const chosen = project ? this.o.project?.(userId, parent.pool, parent.threadId) : undefined;
       if (chosen?.model) this.o.models.setThreadModel(userId, parent.pool, child.id, "chat", chosen.model);

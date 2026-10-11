@@ -12,12 +12,13 @@ import { freshKeyring, profile } from "./helpers.ts";
 const KEY = `SHA256:${"A".repeat(43)}`;
 const OTHER = `SHA256:${"B".repeat(43)}`;
 
-interface FakeMachine { hostKey: string; files: Map<string, string>; commands: string[]; output?: string; connects: string[] }
+interface FakeMachine { hostKey: string; files: Map<string, string>; commands: string[]; output?: string; connects: string[]; down?: boolean }
 
 function fakeTransport(machine: FakeMachine): SshTransport {
   return {
     async connect(to, verify) {
       machine.connects.push(to.host);
+      if (machine.down) throw new Error("connect ECONNREFUSED");
       if (!verify(machine.hostKey)) throw new Error("host key refused");
       const missing = (p: string) => new RemoteMissing(`${p}: no such file`);
       const session: SshSession = {
@@ -147,9 +148,39 @@ describe("machines", () => {
     const target = workspace.targetFor(thread("g"), "nas");
     await expect(target.ops().bash.exec("uptime", "/", { onData: () => {} })).rejects.toThrow(/ssh nas: its host key changed/);
     expect(fake.commands).toEqual([]);
+    expect(settings.machine("nas")!.state?.kind).toBe("keyChanged");
     workspace.setHostKey(thread("g").userId, "nas", OTHER);
+    expect(settings.machine("nas")!.state).toBeNull();
     await workspace.targetFor(thread("g"), "nas").ops().bash.exec("uptime", "/", { onData: () => {} });
     expect(fake.commands).toEqual(["cd '/home/lyrica' && uptime"]);
+    expect(settings.machine("nas")!.state?.kind).toBe("online");
+  });
+
+  it("keep how the last connection went, and since when", async () => {
+    const { settings, add, workspace, thread, fake } = await setup();
+    add({ name: "nas" });
+    settings.setThread("g", "general", { machines: ["nas"] });
+    const run = () => workspace.targetFor(thread("g"), "nas").ops().bash.exec("uptime", "/", { onData: () => {} });
+    expect(settings.machine("nas")!.state).toBeNull();
+    fake.down = true;
+    await expect(run()).rejects.toThrow(/ECONNREFUSED/);
+    const down = settings.machine("nas")!.state!;
+    expect(down.kind).toBe("unreachable");
+    await new Promise((r) => setTimeout(r, 5));
+    await expect(run()).rejects.toThrow(/ECONNREFUSED/);
+    expect(settings.machine("nas")!.state).toEqual(down);
+    fake.down = false;
+    await run();
+    expect(settings.machine("nas")!.state?.kind).toBe("online");
+    // The same address again keeps it; a new one clears it.
+    workspace.updateMachine(thread("g").userId, "nas", { address: "lyrica@127.0.0.1" });
+    expect(settings.machine("nas")!.state?.kind).toBe("online");
+    workspace.updateMachine(thread("g").userId, "nas", { address: "lyrica@10.0.0.9" });
+    expect(settings.machine("nas")!.state).toBeNull();
+    // A name that no longer resolves is unreachable too.
+    workspace.updateMachine(thread("g").userId, "nas", { address: "lyrica@gone.invalid" });
+    await expect(run()).rejects.toThrow();
+    expect(settings.machine("nas")!.state?.kind).toBe("unreachable");
   });
 
   it("never let write or edit touch SSH's or sudo's files, in any mode", async () => {
@@ -242,7 +273,7 @@ describe("an older user.db", () => {
       INSERT INTO ssh_targets VALUES ('nas', 'nas.lan', 22, 'lyrica', 'key', NULL, NULL);
       INSERT INTO thread_workspaces (thread_id, grants, mode, target) VALUES ('t1', '[]', 'ask-changes', 'ssh:nas'), ('t2', '[]', 'auto', 'sandbox');`);
     const settings = new WorkspaceSettings(db, () => ({ general: [], private: [] }));
-    expect(settings.machine("nas")).toMatchObject({ pool: "general", limit: "ask", hostKey: null, offNetwork: false });
+    expect(settings.machine("nas")).toMatchObject({ pool: "general", limit: "ask", hostKey: null, offNetwork: false, state: null });
     expect(settings.thread("t1")).toMatchObject({ machines: ["nas"], mode: "ask" });
     expect(settings.thread("t2").machines).toEqual([]);
     settings.close();
