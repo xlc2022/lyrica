@@ -58,6 +58,13 @@ already use, not everything (principle 2).
 - The helper lives in `core/src/workspace`, outside the extension's line
   budget; the PR lists any contract change.
 
+## After merging
+
+Tell the standing Operator docs thread (Li's rule, 2026-10-11) by
+cross-session message what changed that an operator does by hand (setup
+steps, commands, config) and where, in addition to the merge notice to the
+project chat.
+
 ## Handoff notes
 
 (The thread fills this in if it stops before it's done.)

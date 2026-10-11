@@ -109,6 +109,13 @@ structural boundaries). The SSH targets that exist become machines.
 - docs/workspace.md describes what exists, and the PR lists its contract
   changes.
 
+## After merging
+
+Tell the standing Operator docs thread (Li's rule, 2026-10-11) by
+cross-session message what changed that an operator does by hand (setup
+steps, commands, config) and where, in addition to the merge notice to the
+project chat.
+
 ## Handoff notes
 
 (The thread fills this in if it stops before it's done.)
