@@ -3,20 +3,29 @@ on:
   pull_request:
   push:
     branches: [main]
+# The jobs run on Li's own runner (docs/ci.md), so their token can only read.
+permissions:
+  contents: read
+# One runner: a newer push to a PR replaces its older runs; main tests every commit.
+# (A group keeps one pending run, so main's groups are per commit.)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+      # No actions cache for npm: the runner keeps ~/.npm between runs, so
+      # npm ci downloads only what changed.
       # The sandbox tests need these, and run as the runner's unprivileged user.
       # Ubuntu 24.04's AppArmor blocks unprivileged user namespaces by default.
       - run: |
           sudo apt-get update
-          sudo apt-get install -y bubblewrap gocryptfs fuse3 openssh-server passt nftables
+          sudo apt-get install -y build-essential bubblewrap gocryptfs fuse3 openssh-server passt nftables
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - run: npm ci
       - run: npm run typecheck
@@ -30,16 +39,23 @@ jobs:
       - run: npm run e2e -w @lyrica/web
   # The model host's Compose stack, without a GPU: install, then check the networks.
   host-stack:
-    runs-on: ubuntu-latest
+    runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4
+      - run: mkdir -p "$RUNNER_TEMP/models"
+      # Build the images first: Docker 29 hands build steps the loopback
+      # resolver below as is, and they can't reach it. (GitHub's runners have
+      # Docker 28.)
+      - name: Build the images
+        run: |
+          host/install.sh --no-gpu --yes --models "$RUNNER_TEMP/models" --name ci-host --no-start
+          cd host && docker compose build
       # Docker forwards outside names to a loopback resolver from its own
       # namespace: the case host-api's blackhole DNS setting must cover.
       - name: Docker with a loopback DNS resolver
         run: |
           echo '{"dns": ["127.0.0.53"]}' | sudo tee /etc/docker/daemon.json
           sudo systemctl restart docker
-      - run: mkdir -p "$RUNNER_TEMP/models"
       - run: host/install.sh --no-gpu --yes --models "$RUNNER_TEMP/models" --name ci-host
       - run: host/test/stack/network.sh
       # Again with the Tailscale service (not logged in: no auth key in CI).
@@ -48,3 +64,16 @@ jobs:
       - if: failure()
         run: docker compose logs
         working-directory: host
+      # The runner is kept between jobs: leave nothing for the next run, not
+      # the stack and its volumes, the egress unit and rules, or the Docker
+      # setting from the DNS step (setup.sh leaves no daemon.json).
+      - if: always()
+        working-directory: host
+        run: |
+          docker compose down -v --remove-orphans || true
+          sudo systemctl disable --now lyrica-host-egress.service || true
+          sudo rm -f /etc/systemd/system/lyrica-host-egress.service
+          sudo systemctl daemon-reload
+          sudo ./egress.sh remove || true
+          sudo rm -f /etc/docker/daemon.json
+          sudo systemctl restart docker
