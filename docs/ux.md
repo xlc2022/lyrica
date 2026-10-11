@@ -104,7 +104,8 @@ Rules:
   No projects, Machines, Add machine, Mode limit, Replace key, Use anyway,
   Allow in this thread, Online, Unreachable, Key changed, Off network,
   Updates, Update, Roll back, Running, Updating, Draining, Building, Testing,
-  Probation.
+  Probation, Set up Lyrica, Persona, Tailnet, Connect, Disconnect, Leave,
+  Stay, Auth key, Hostname, Control server, Skip, Start a chat.
 - Numbers get units beside the field (GB, %, tokens), and a maximum shown
   where one exists ("of 128k").
 
@@ -160,6 +161,10 @@ Rules:
 | Starting a thread from a message | **Start a thread** in that message's menu, in a project chat only |
 | Resolving a project's thread | **Resolve** / **Reopen** in the thread menu and the card's ⋯; a resolved thread's message box is replaced by one **Reopen** link |
 | A project's settings, files and images | the **Project settings** page (**Project**, a link with the project icon in the project chat's header before its Settings button, which keeps the thread drawer), sections on the left: General (Goal; the **Paused** switch, tooltip "Running threads stop and queued ones wait."; an h3 **New threads** with Model and Thinking, tooltip "Threads Lyrica starts from this chat. Each one can be changed after it starts."; an h3 **This chat** with Model, Mode and Group, then a **Thread settings** link that opens the chat with its drawer for folders, machines, network and local-only; one Save), Memory (Instructions with its count, a link to the project page), **Files and images** (a segmented control, Files and Images). Files in the header stays the quick view; the page manages the folder |
+| Setting her up (no `self.db` yet) | the **Set up Lyrica** page in the unlock page's place: one h1, steps as sections with eyebrows (Code and passphrase, Lyrica, Administrator, Tailnet, Models, Done); the current step's button the one primary, a done step's secondary; Skip as a link on the optional steps; the code, addresses and names in mono; no captions. Each step's button applies at once, as the Add machine page's do |
+| Her name | **Name** at the top of Administration's **Persona** section (the Persona changes section, renamed), one Save with its one sentence; shown wherever the interface says Lyrica |
+| The tailnet | the **Tailnet** section of Administration: a facts line in mono (tailnet, address, MagicDNS name, control server), one state (Connected green, Disconnected amber, Not installed red, Not joined the word alone); **Connect** primary and **Disconnect** secondary; Leave and Connect to another tailnet behind ⋯, Leave with its one sentence in a dialog (**Leave** / **Stay**); joining happens in the **drawer** (Auth key, Hostname, Advanced → Control server) |
+| Web access over the tailnet | the **Tailnet** mode of Web access, next to Off, Built-in Caddy and External proxy; its state line shows the name and the certificate as the other modes do |
 | A project's usage | a fact in the project chat's facts line ("312k tokens"; on a phone, the first line of the Threads popover); the breakdown in Models → Recent calls, filtered to the project |
 
 The project rows are drawn in the app mockup's projects frame

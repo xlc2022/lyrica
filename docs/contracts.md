@@ -48,6 +48,7 @@ unlockUser(userId: string, password: string): Promise<void>
 saveUserKey(userId) / forgetSavedKey(userId) / hasSavedKey(userId)   // "save credentials"
 saveSelfPassphrase(p) / forgetSelfPassphrase() / hasSavedPassphrase()
 unlockSaved(): Promise<void>                              // at start: the saved passphrase and keys
+bootstrap({ passphrase, name, admin: { login, password, profile } })   // planned: self.db, the persona seed, self.name, the first administrator; admin init and POST /api/setup both call it
 hasUserKey(userId: string): boolean
 subkey(userId: string, purpose: "pool:general" | "pool:private" | "home"): Buffer  // HKDF-SHA256
 lockUser(userId: string): void
@@ -771,6 +772,26 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   and DNS credentials live in `self.db`. See [daemon.md](daemon.md).
 - **Unlocking:** when started as a service, `lyricad` starts locked, and the
   API serves only the unlock endpoint until `self.db` is unlocked.
+- **Planned (Bootstrap,** [briefs/bootstrap.md](briefs/bootstrap.md)**):**
+  without `self.db`, `lyricad` is **setting up**: `State.setup: true`, and
+  only `GET /api/state` and `POST /api/setup` (`SetupRequest { code,
+  passphrase, saveCredentials, name, admin: { login, password, displayName,
+  pronouns } }` → `LoginResponse`) answer, on loopback, the Unix socket and
+  the host's Tailscale addresses; the one-time code is logged at start and
+  in `<runtime>/setup-code` (0600). `State.name` (her deployment name,
+  `self.db` `settings` `self.name`, default Lyrica) answers in every state;
+  `GET`/`PUT /api/u/:userId/admin/name` `{ name }`; `PersonaStore.read()`
+  puts it in REGISTER's `Name:` line. The tailnet, through the `tailscale`
+  CLI as its operator (`daemon/src/tailnet.ts`): `GET
+  /api/u/:userId/admin/tailnet` → `Tailnet { state, tailnet?, address?,
+  dnsName?, hostname?, controlServer?, version?, reason? }`; `PUT` with
+  `TailnetJoin { authKey, hostname?, controlServer?, leave? }` (409 when
+  joined elsewhere without `leave`); `POST …/disconnect`, `POST …/connect`,
+  `DELETE` (leave; turns the Tailnet web mode off). The auth key is written
+  to a 0600 file for `--auth-key file:` and deleted at once, never stored
+  or logged. `WebMode` gains `"tailnet"` (`tailscale serve` to the loopback
+  port; `WebAccess.tailnet: { dnsName, certificates }`), and `frontDoor`
+  includes 443 on the Tailscale addresses and the DNS name. All additive.
 - **HTTP/SSE API**, defined in `daemon/src/api.ts` and described in
   [daemon.md](daemon.md). The web UI imports its types from there:
   - auth;

@@ -1110,6 +1110,19 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   - As a service, it starts **locked** and the web UI shows an unlock page.
   - Run by hand with `lyrica serve`, it can prompt in the terminal instead.
   - A "save credentials" option skips both, so it can start unattended.
+- **Before `self.db` exists, `lyricad` is setting up** (2026-10-11): it
+  starts anyway and serves a **Set up Lyrica** page in the unlock page's
+  place, which creates `self.db`, the persona, her name and the first
+  administrator in one step and signs that administrator in; then it
+  joins the tailnet, turns web access on and adds one model endpoint
+  through the normal API. The page asks for a one-time **setup code**
+  that `lyricad` logs at start and the install script prints, so it can
+  also be served on the host's existing Tailscale addresses (plain HTTP
+  inside WireGuard, as the external-proxy mode already allows) without a
+  device on the tailnet being able to claim her. `lyrica admin init` does
+  the same from a terminal; both call one function. Nothing of a user's
+  exists yet, so the code and loopback-or-WireGuard reach are the whole
+  fence (principle 2).
 - Memory never goes into a git repository. Backups are encrypted.
 - What this protects against: a stolen disk, a leaked backup, or someone
   reading the files while a user is locked.
@@ -1192,6 +1205,15 @@ Details in [docs/sleep.md](docs/sleep.md).
 ## Persona
 
 - The v1 persona in `persona/` is the seed.
+- **Her name is a setting of the deployment** (2026-10-11), one per
+  install, default Lyrica, set at setup and changed by administrators:
+  `self.name` in `self.db`. The seed's REGISTER.md keeps `Name: Lyrica`;
+  reading the persona puts the set name in that line's place, and the
+  header, the unlock page, her message labels and the subagent preambles
+  use it. Which install she is isn't about her (principle 9), so changing
+  the name is not a persona change and needs no review; what was written
+  under the old name stays as written (principle 7). There is no per-user
+  nickname: she is one identity across users.
 - She proposes changes when asked to reflect on how things have been going, and
   in her dream journal. Every change keeps a revision.
 - A proposal comes from one user's conversation or dream, so it may carry that
@@ -1283,10 +1305,12 @@ Details in [docs/sleep.md](docs/sleep.md).
   LXC container or VM on Li's Proxmox. No Docker. The host needs bubblewrap,
   gocryptfs, pasta, FUSE and unprivileged user namespaces. In an LXC container, that
   means turning on the nesting and FUSE features. One install script sets up
-  the service users, `lyricad`'s unit, and the built-in Caddy. On NixOS,
+  the service users, `lyricad`'s unit, the built-in Caddy, and Tailscale
+  with `lyrica` as its **operator**, so `lyricad` joins, leaves and serves
+  on the tailnet without root and with the unit's hardening unchanged. On NixOS,
   the repository's flake gives a package and a module, `services.lyrica`,
-  that declares the same users, units and hardening as the install script.
-  Her sandboxes there mount the module's tools as `/usr` and only their
+  that declares the same users, units and hardening as the install script,
+  and turns `services.tailscale` on with the same operator. Her sandboxes there mount the module's tools as `/usr` and only their
   closure from `/nix/store`, never the whole store. Updates on NixOS use the
   same Update button, through a Lyrica-only Nix profile (Updates and
   self-editing). Details in [docs/daemon.md](docs/daemon.md), "On NixOS".
@@ -1300,9 +1324,24 @@ Details in [docs/sleep.md](docs/sleep.md).
   - Certificates come from a **DNS-01 challenge** through the DNS provider's
     API, because a Tailscale address can't be reached for the usual HTTP
     challenge.
+  - **The tailnet is managed from Administration** (2026-10-11): Connect
+    with an auth key (a hostname, default her name; a control server for
+    Headscale), Disconnect, Leave, and Connect to another tailnet, through
+    the `tailscale` CLI as its operator. An auth key is spent on joining
+    and never stored; Tailscale keeps the node key in its own state, and
+    `lyricad` reads the tailnet, address and MagicDNS name back from it
+    rather than keeping a copy. Who may reach her on the tailnet is
+    Tailscale's access rules; the login remains hers.
   - An administrator chooses the proxy in the control panel, under **Web
     access**:
-    - **Built-in Caddy**, the default. Lyrica's install includes a pinned
+    - **Tailnet** (2026-10-11), the default once the setup page has joined
+      one: `tailscale serve` terminates HTTPS for `lyrica.<tailnet>.ts.net`
+      with a certificate from Tailscale (the tailnet needs MagicDNS and
+      HTTPS certificates on) and proxies to the loopback port, as Caddy
+      does. No domain, DNS record or token; the front door is 443 on the
+      Tailscale addresses and that name. Built-in Caddy stays for a name
+      under Li's domain and for the LAN.
+    - **Built-in Caddy**, for a name under Li's own domain. Lyrica's install includes a pinned
       Caddy, built with the DNS plugins for several common providers, running
       as its own service. `lyricad` writes Caddy's whole configuration through
       Caddy's admin API, on a Unix socket only `lyricad` can use. The panel
@@ -1599,3 +1638,12 @@ new evidence.
   her installation; every update now keeps the previous release and a
   database snapshot, and rolls back by itself. Her code changes go through
   the same review as Claude's.
+- **First run: a CLI step → the setup page (2026-10-11).** `lyrica admin
+  init` at a terminal, then an SSH tunnel, Start unlocked, Web access with
+  a domain and a DNS token, and Endpoints stood between installing her and
+  her first word. Li asked for the web UI to do it: `lyricad` now starts
+  without `self.db` and serves the setup page, behind a one-time code; the
+  tailnet is joined from that page and managed from Administration instead
+  of by hand, and a Tailnet web access mode through `tailscale serve`
+  replaces the domain and DNS token for the common case. She also gets a
+  name per deployment, so two installs can be told apart.
