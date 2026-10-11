@@ -166,9 +166,8 @@ is [docs/daemon.md](../daemon.md#on-nixos). Instead of the steps above:
    ends with "All checks passed." or stops at the first failure.
 
 Everything from "Save the passphrase" on applies unchanged. Upgrading is
-`nix flake update lyrica` and `nixos-rebuild switch`, which restarts
-`lyricad` on the new package with no database snapshot first; the Update
-button in the web UI doesn't work on NixOS yet.
+only `nix flake update lyrica` and `nixos-rebuild switch`, which restarts
+`lyricad` on the new package with no database snapshot first.
 
 ## First run
 
