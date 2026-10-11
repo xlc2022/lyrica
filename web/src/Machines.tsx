@@ -17,16 +17,8 @@ import { ConfirmDialog, ErrorText, useAction, useDismiss, useLoad } from "./ui.t
 const LIMITS: MachineLimit[] = ["ask", "acceptEdits", "auto"];
 const POOLS: Record<Pool, string> = { general: "General", private: "Private" };
 
-/**
- * The last connection's outcome, for the row's state. The Machines back end
- * is asked to add it to MachineInfo; until then it is absent and the row
- * shows Off network or nothing.
- */
-export interface MachineState { kind: "online" | "unreachable" | "keyChanged"; since: string }
-export type MachineRow = MachineInfo & { state?: MachineState };
-
 /** At most one state per row: a dot's colour and its word, with the duration in mono where there is one. */
-export function machineState(m: MachineRow, now = Date.now()): { tone: "ok" | "warn" | "bad"; word: string; detail?: string } | undefined {
+export function machineState(m: MachineInfo, now = Date.now()): { tone: "ok" | "warn" | "bad"; word: string; detail?: string } | undefined {
   if (m.state?.kind === "keyChanged" || m.hostKey === null) return { tone: "bad", word: "Key changed" };
   if (m.state?.kind === "unreachable") return { tone: "warn", word: "Unreachable", detail: duration(now - Date.parse(m.state.since)) };
   if (m.offNetwork) return { tone: "warn", word: "Off network" };
@@ -61,12 +53,12 @@ export function MachinesSection({ ctx, rest }: { ctx: ShellContext; rest: string
 
 function MachinesList({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
-  const machines = useLoad(() => get<MachineRow[]>(u(userId, "machines")), [userId]);
+  const machines = useLoad(() => get<MachineInfo[]>(u(userId, "machines")), [userId]);
   const [run, , error] = useAction();
   const [open, setOpen] = useState<string>();
-  const [removing, setRemoving] = useState<MachineRow>();
+  const [removing, setRemoving] = useState<MachineInfo>();
   // An off-network private machine her threads may use again, once its dialog is confirmed.
-  const [using, setUsing] = useState<MachineRow>();
+  const [using, setUsing] = useState<MachineInfo>();
   const list = machines.data ?? [];
   const current = list.find((m) => m.name === open);
   const replace = (m: MachineInfo) => machines.set(list.map((x) => (x.name === m.name ? { ...x, ...m } : x)));
@@ -149,7 +141,7 @@ function RowMenu({ label, items }: { label: string; items: { label: string; dang
 }
 
 /** Editing one machine: its address, folder and pool, and Mode limit as the message box's three-item mode list. Save at the foot. */
-function MachineDrawer({ userId, machine, onSaved, onClose }: { userId: string; machine: MachineRow; onSaved: (m: MachineInfo) => void; onClose: () => void }) {
+function MachineDrawer({ userId, machine, onSaved, onClose }: { userId: string; machine: MachineInfo; onSaved: (m: MachineInfo) => void; onClose: () => void }) {
   const [address, setAddress] = useState(machine.address);
   const [root, setRoot] = useState(machine.root ?? "");
   const [pool, setPool] = useState(machine.pool);

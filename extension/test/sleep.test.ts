@@ -360,24 +360,36 @@ describe("project pages", () => {
     v.close();
   });
 
-  it("keeps Li's instructions on a project's page word for word", async () => {
+  it("keeps Li's instructions on a project's page word for word, and still rewrites its own part after she edits them", async () => {
     const s = await setup();
     const v = s.view();
     const p = project(v, "Write the changelog in German.", "{user} wants the garden app's changelog in German");
-    const owner = s.memory.openOwnerView(s.li.id);
-    const mine = "Always measure in metric.";
-    owner.general.putPage({ slug: p.slug, title: "Garden app", summary: "the garden app project", text: mine }, `user:${s.li.id}`);
-    owner.close();
+    const instruct = (text: string) => {
+      const owner = s.memory.openOwnerView(s.li.id);
+      owner.general.setProjectInstructions(p.chat, text, `user:${s.li.id}`);
+      owner.close();
+    };
+    instruct("Always measure in metric.");
+    s.script({ consolidate: [call("write_page", { slug: p.slug, title: "Garden app", summary: "the garden app project", text: `Changelog in German [${p.note}].` })] });
+    await s.sleep.run(s.li.id, "general", "scheduled");
+    expect(v.own.get(`p:${p.slug}`)).toMatchObject({ instructions: "Always measure in metric.", text: `Changelog in German [${p.note}].` });
+
+    // Li changes her instructions; the next night sleep rewrites its own part as before.
+    instruct("Always measure in metric. Prices in euros.");
+    const later = s.talk(v, "Ship on the 1st.", "{user} ships the garden app on the 1st");
     const results: string[] = [];
     s.script({
       consolidate: [
-        call("write_page", { slug: p.slug, title: "Garden app", summary: "the garden app project", text: `Changelog in German [${p.note}].` }),
-        (c) => { results.push(said(c)); return call("write_page", { slug: p.slug, title: "Garden app", summary: "the garden app project", text: `${mine}\n\nChangelog in German [${p.note}].` }); },
+        call("write_page", { slug: p.slug, title: "Garden app", summary: "the garden app project", text: `Changelog in German [${p.note}]. Ships on the 1st [${later.note}].` }),
+        (c) => { results.push(said(c)); return { text: "Done." }; },
       ],
     });
     await s.sleep.run(s.li.id, "general", "scheduled");
-    expect(results[0]).toContain("has text a user wrote");
-    expect(v.own.get(`p:${p.slug}`)!.text).toBe(`${mine}\n\nChangelog in German [${p.note}].`);
+    expect(results[0]).toContain(`Wrote p:${p.slug}`);
+    expect(v.own.get(`p:${p.slug}`)).toMatchObject({
+      instructions: "Always measure in metric. Prices in euros.",
+      text: `Changelog in German [${p.note}]. Ships on the 1st [${later.note}].`,
+    });
     v.close();
   });
 

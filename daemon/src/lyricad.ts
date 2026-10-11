@@ -7,10 +7,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, SystemdCredentials, ThreadPrefs, Users, Workspace,
-  type Argon2Params, type CredentialStore, type User,
+  type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
 } from "@lyrica/core";
-import { Delegation, Sleep, type Limits, type SleepLimits, type ThreadsLimits } from "@lyrica/extension";
+import { Delegation, Sleep, type Limits, type SleepLimits } from "@lyrica/extension";
 import { ChildThreads } from "./children.ts";
+import { Projects } from "./projects.ts";
 import type { State, UserCard } from "./api.ts";
 import { RateLimiter, Sessions } from "./auth.ts";
 import { ThreadHost } from "./hosted.ts";
@@ -78,8 +79,10 @@ export interface Services {
   /** Persona proposals: drafts in each user's user.db until they send them on. */
   proposals: PersonaProposals;
   delegation: Delegation;
-  /** Child threads Lyrica starts. */
+  /** Child threads Lyrica starts, and a project's threads. */
   children: ChildThreads;
+  /** Thread pins and project settings, per user. */
+  projects: Projects;
   /** Each pool's consolidate → dream → wake, one run at a time. */
   sleep: Sleep;
   host: ThreadHost;
@@ -216,16 +219,23 @@ export class Lyricad {
     // A subagent's approvals are asked in its thread and its parent's, through the host built next.
     let host!: ThreadHost;
     const delegation = new Delegation({ users, memory, models, workspace, cwd, limits: this.opts.delegation, approve: (r, signal) => host.approveSubagent(r, signal) });
-    const children = new ChildThreads({ users, memory, models, workspace, delegation, host: () => host, limits: this.opts.threads });
+    const projects = new Projects(users);
+    const children = new ChildThreads({
+      users, memory, models, workspace, delegation, host: () => host, limits: this.opts.threads,
+      // A hidden project stops as a paused one does.
+      paused: (u, p, project) => projects.paused(u, p, project) || hiddenThread(memory, u, p, project),
+      project: (u, p, project) => projects.settings(u, p, project),
+    });
     host = new ThreadHost({
       users, memory, models, workspace, persona, delegation, cwd, log: this.log,
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000, offlineRetryMs: this.opts.offlineRetryMs,
       threads: children, onTurn: (u, p, t, working) => children.turn(u, p, t, working),
+      projectThreads: (u, p, project) => children.projectLines(u, p, project),
     });
     const proposals = new PersonaProposals(keyring.self(), users, persona);
     const sleep = new Sleep({ users, memory, models, persona, proposals, hasKey: (id) => keyring.hasUserKey(id), cwd, limits: this.opts.sleep, log: this.log });
     const prefs = new ThreadPrefs((id) => users.openUserDb(id));
-    this.services = { users, memory, models, workspace, persona, proposals, delegation, children, sleep, host, web, prefs };
+    this.services = { users, memory, models, workspace, persona, proposals, delegation, children, projects, sleep, host, web, prefs };
     await web.resume();
     for (const u of users.all()) {
       if (keyring.loadSavedKey(u.id)) {
@@ -294,6 +304,10 @@ export class Lyricad {
     this.sleptOn = now.toDateString();
     try { this.services.models.prune(); } catch (err) { this.log(`model cleanup failed: ${(err as Error).name}`); }
     this.sweep(now);
+    for (const u of this.services.users.all()) {
+      if (!this.keyring.hasUserKey(u.id)) continue;
+      try { this.services.children.autoResolve(u.id, now); } catch (err) { this.log(`resolving idle project threads failed: ${(err as Error).name}`); }
+    }
     void this.sleepNight();
   }
 
@@ -330,7 +344,7 @@ export class Lyricad {
   }
 
   state(cookie: string | undefined): State {
-    if (!this.services) return { locked: true, users: [], ...BUILD };
+    if (!this.services) return { locked: true, users: [] };
     const ids = this.sessions.users(cookie) ?? new Set<string>();
     const users = [...ids].map((id) => this.services!.users.get(id)).filter((u): u is User => !!u && this.keyring.hasUserKey(u.id));
     return { locked: false, users: users.map(card), ...BUILD };
@@ -430,4 +444,9 @@ export function card(u: User): UserCard {
     id: u.id, login: u.login, displayName: p.displayName, pronouns: p.pronouns, admin: u.admin,
     ...(p.accent ? { accent: p.accent } : {}), ...(p.monogram ? { monogram: p.monogram } : {}),
   };
+}
+
+function hiddenThread(memory: Memory, userId: string, pool: Pool, threadId: string): boolean {
+  const view = memory.openThreadView(userId, pool);
+  try { return !!view.own.getThread(threadId)?.hidden; } finally { view.close(); }
 }

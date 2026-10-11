@@ -134,15 +134,13 @@ export function Thread({ ctx, pool, threadId, threads }: { ctx: ShellContext; po
           <div className="tfacts">
             <span className={`k ${pool}`}>{pool}</span>
             {settings.data && <ModelBadge base={base} settings={settings.data} onChange={settings.set} readOnly={!!s?.subagent} />}
-            {settings.data?.localOnly && pool === "general" && <span className="k local">local-only</span>}
-            {pins.data && !s?.subagent && <PinnedBadge pins={pins.data} you={ctx.user.displayName} />}
+            {pins.data && !s?.subagent && <PinnedBadge pins={pins.data} you={ctx.user.displayName} userId={ctx.user.id} pool={pool} />}
             {s && !s.subagent && !s.child && <GroupPicker ctx={ctx} base={base} summary={s} onChange={(x) => { summary.set(x); refreshThreads(); }} />}
-            {settings.data && settings.data.grants.length > 0 && (
-              <span className="folder" title={settings.data.grants.map((g) => `${g.path} (${g.writable ? "read-write" : "read-only"})`).join("\n")}>
-                <Icon name="folder" />{settings.data.grants.length === 1 ? settings.data.grants[0]!.path : `${settings.data.grants.length} folders`}
-              </span>
-            )}
-            {settings.data?.machines.map((m) => <span key={m} className="folder mono" title="Machine">{m}</span>)}
+            {settings.data?.localOnly && pool === "general" && <span className="badge"><span className="k local">local-only</span></span>}
+            {settings.data?.grants.map((g) => (
+              <span key={g.path} className="badge folder" title={g.path}>{g.path} <span className="muted">{g.writable ? "rw" : "ro"}</span></span>
+            ))}
+            {settings.data?.machines.map((m) => <span key={m} className="badge folder" title="Machine">{m}</span>)}
           </div>
         </div>
         {!s?.subagent && (

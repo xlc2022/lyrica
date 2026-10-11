@@ -242,24 +242,28 @@ entries (`threads[].pinned`).
 
 **Projects.** `createThread({ ..., project: true, goal? })` and
 `setProject(id)` make a project of a top-level thread (a child or subagent
-is refused, and there is no way back). `Thread.project` and `Thread.goal`
+is refused; a branch of a plain thread counts as top-level, as it does in the
+thread list; there is no way back). `Thread.project` and `Thread.goal`
 (the user's text, so in the pool with the title; `setGoal`, at most 2,000
 characters). A project's threads are its child threads; `projectOf(id)`
 gives the project chat for the chat or any of its threads, and
 `projectThreads(id)` the chat and its threads.
 - `projectSlug(projectId)` names the project's page, `p:project-<id>`;
-  `pageForProject(threadId)` returns it once it exists. Its instructions
-  part is written by the user, so the user-text rule above keeps it.
+  `pageForProject(threadId)` returns it once it exists. A page's
+  `instructions` (at most 2,000 characters) are kept apart from its text:
+  only the user changes them (`setProjectInstructions(id, text, author)`
+  makes the page if needed), and
+  an edit by `lyrica` or `sleep` that changes them is refused. The user-text
+  rule counts only user revisions that changed the text.
 - `projectNotes(threadId, since?)`: current notes that cite the project chat
   or one of its threads, oldest first. Found by citation, never stored apart.
 - `branchThread` of the project chat or one of its threads makes a thread of
   the project (`child`, parent the project chat), so depth stays 1.
 - `forgetThread` on a project with `children` also forgets the project page
   and the notes that came only from it.
-- `sleepMaterial` marks each thread of a project with `project`.
+- `sleepMaterial` marks each thread of a logged project with `project`.
 
-**Planned (Projects,** [briefs/projects.md](briefs/projects.md)**):** a
-branch of a project's thread is anchored at its source's anchor; a branch of
+`lyricad` anchors such a branch where its source hangs, or for a branch of
 the project chat where it branched (anchors live in `user.db`).
 
 ## core/models: the cloud boundary lives here
@@ -538,16 +542,27 @@ One model-facing tool: `delegate({ action?, ... })`.
 - **Modes:** a thread in Plan mode starts only read-only roles; anything
   else is refused before a thread is made. A read-only subagent there runs
   in Plan mode itself.
-- **Planned (Projects):** in a project, `threads.start` records the anchor
-  (the project chat's entry it hangs off) and returns `queued` past the
-  at-once limit instead of refusing; `message({ to: "parent", text,
+- **Projects:** in a project chat, `threads.start` records the anchor (the
+  first entry the calling turn writes; the card goes under the first
+  message at or after it) and returns `queued` past the at-once limit
+  instead of refusing; a queued task is held in memory only, and a restart
+  tells the project chat it didn't start. `message({ to: "parent", text,
   needsYou? })`; `message({ id, text })` from a project's thread to another
-  thread of the same project, marked `fromThread(id)` (`FROM_THREAD`, which
-  only `lyricad` writes and `send` refuses from a user), at most 3 per turn;
-  new actions `suggest({ threads: { title, task }[] })` (a card, no thread
-  made), `resolve({ id? })` and `reopen({ id })` (in a project's thread,
-  `resolve` with no `id` acts on itself). `user.db` `child_threads` gains
-  `anchor`, `resolved` and `needs_you` (no text). Still one tool.
+  thread of the same project, marked with the same `[From t:<sender>]` line
+  (`HostedThread.send(text, { fromThread })`; only `lyricad` writes it, and
+  `Message.from.kind` is `thread`), at most `ThreadsLimits.siblingMessages`
+  (3) per turn; `list` in a project's thread lists the project's other
+  threads with `ChildInfo.state` (`ThreadState`) and `needsYou`; new actions
+  `suggest({ threads: { title, task }[] })` (a card, no thread made),
+  `resolve({ id? })` and `reopen({ id })` (`ThreadsHost.resolve`; a
+  project's thread resolves only itself). Guidance:
+  `PROJECT_CHAT_GUIDELINES` and `PROJECT_THREAD_GUIDELINES`. `user.db`
+  `child_threads` gains `anchor`, `resolved_at`, `needs_you` and `queued`
+  (no text). Still one tool.
+- The pure parts (`ChildInfo`, `ThreadState`, `StartRequest`,
+  `ThreadsLimits`, `fromParent`, `pickThread`, the guidance, `threadLine`
+  and `projectSection`) live in `core/src/threads.ts`; the extension keeps
+  the tool.
 
 Every run:
 - creates a child thread with `createThread({ parent, subagent: true })`;
@@ -694,11 +709,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `thinkingFormat: "qwen-chat-template"`; any other model with levels gets
   `reasoning_effort`. Local endpoints and hosts are sent `system` and
   `max_tokens`.
-- **Planned (Projects):** a `project` section in `assemble`, with its own
-  `DEFAULT_BUDGETS.project` (2,000 tokens to start): the goal and
-  instructions first, then project notes since the last sleep, then the
-  project page, then (in the project chat only) its threads with their
-  state. Filled for a project chat and each of its threads; empty elsewhere.
+- **Projects:** a `project` section in `assemble` (`projectSection`), with
+  its own `DEFAULT_BUDGETS.project` (8,000 characters, about 2,000 tokens):
+  the goal, the user's instructions (at most 2,000 characters), project
+  notes since the last sleep, (in the project chat only) its threads with
+  their state from `LyricaOptions.projectThreads`, and last the project
+  page, so a long page is what the budget cuts. Filled for a project chat
+  and each of its threads; empty elsewhere.
 
 ## daemon
 
@@ -761,7 +778,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `Display.sort` (`ThreadSort`), `ThreadSummary.group` and `unread`,
     `ThreadChange.group` and `unread`, `ThreadGroup` with `GET`/`POST
     thread-groups` and `PATCH`/`DELETE thread-groups/:id` (in `user.db`,
-    never the pool); `State.version` and `build`;
+    never the pool); `State.version` and `build` (once unlocked);
   - `ThreadSettings.context` (`ContextInfo`: used, window, parts, reserve,
     free, measured at), `CallInfo.pace`, the `context` and `compacted`
     thread events, and a `compacted` message part (the stored notice);
@@ -775,23 +792,25 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `ForgetThread` / `DELETE …?children=1`; `ThreadHost.status`,
     `delivered`, `HostedThread.waiting`, `send(text, { fromParent })` and
     `settled()`;
-  - **planned (Projects):** thread pins, per user: `user.db`
-    `pinned_threads` (pool, thread; no text), `PUT`/`DELETE
-    threads/:id/pin`, `ThreadSummary.pinned`; Web UI 2's thread menu uses
-    them. `POST threads` with `project` (and `PATCH` making one) also pins
-    the thread; the sidebar's saved
-    view gains `projects: "all" | "only" | "none"`; `PATCH
-    threads/:id` with `project`, `goal`, `paused` and the threads model and
-    thinking; `POST …/messages/:n/thread` (Start a thread) →
-    `ThreadSummary`; `POST threads/:id/resolve` and `…/reopen`; `POST
-    …/suggestions/:id/start` (one, or all with no id); `GET
-    threads/:id/overview` (its threads by state, the waiting dot, total
-    tokens); `models/calls?project=`. `ThreadSummary` gains `project`,
-    `anchor`, `state` (`working`, `waiting`, `queued`, `idle`, `resolved`),
-    `needsYou` and `outputs` (file names); a `child` event updates a card in
-    place. A Notifications type `waiting`. The nightly tick resolves a
-    project's threads idle for 7 days; Paused and Hide stop a project's
-    working threads the way Lock stops children;
+  - **projects** (`daemon/src/projects.ts`, `children.ts`): thread pins,
+    per user: `user.db` `pinned_threads` (pool, thread; no text), `PUT`/`DELETE
+    threads/:id/pin`, `ThreadSummary.pinned`, pinned first in the list;
+    Web UI 2's thread menu uses them. `POST threads` with `project` (and
+    `PATCH` making one) also pins the thread; `Display.projects: "all" |
+    "only" | "none"` filters the list; `PATCH threads/:id` with `project`,
+    `goal`, `paused`, `threadsModel` and `threadsThinking` (`user.db`
+    `project_settings`, IDs only); `POST …/messages/:n/thread` (Start a
+    thread) → `ThreadSummary`; `POST threads/:id/resolve` and `…/reopen`;
+    `POST …/suggestions/:callId/start` (`index`, or all with none; `user.db`
+    `started_suggestions`); `GET threads/:id/overview` (`ProjectOverview`:
+    its threads, the waiting count, total tokens, started suggestions);
+    `models/calls?project=&pool=`. `ThreadSummary` gains `project`, `goal`,
+    `projectSettings`, `anchor`, `state` and `needsYou`; a `child` event in
+    the project chat says a thread's card changed; an update that asks the
+    user is a notice with status `waiting`. The nightly tick resolves a
+    project's threads idle for 7 days (`AUTO_RESOLVE_DAYS`); Paused and Hide
+    stop a project's working threads; a user's message in a paused
+    project's thread is `409`;
   - pins: `PUT`/`DELETE …/messages/:n/pin` (the user's messages and her
     replies only, `400` otherwise, `409` in a subagent's thread), `GET
     …/pins` → `Pins { pins: Pin[], shortened }`, `Message.pinned`,
@@ -876,6 +895,26 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   with a password over the socket. Being on the machine isn't enough.
 - **Scheduler:** at `sleep.time` (default 04:00), for each user not in manual
   mode, sleep each pool, one run at a time.
+- **Planned (Updates,** [briefs/releases.md](briefs/releases.md)**):** an
+  update socket, `<runtime>/update.sock` (mode `0600`, the service user's,
+  for root's updater; no login, and like the rest of the runtime directory
+  never inside a sandbox), serving only `GET /health` (`{ commit,
+  locked, checks: { name, ok, error? }[] }`, no text), `POST /drain` (stop
+  new turns; answers `{ busy: threadId[] }` until idle) and `POST /undrain`.
+  While draining, `SendRequest` is `409` with `{ updating: true }` (`503`
+  stays "locked"). Each
+  encrypted database records its schema version (`PRAGMA user_version`)
+  and the oldest schema that can read it (`meta.min_reader`: an expand
+  leaves it, a contract raises it); opening one whose `min_reader` is above
+  the release's schema throws `SchemaTooNew`. A
+  database migrates in one transaction that checks `integrity_check` and
+  `foreign_key_check` before committing; a failure leaves it unchanged and
+  shows as a failed `/health` check. An
+  administrator's `GET /api/u/:userId/admin/updates` lists the running
+  release, kept releases, the newest update note (tag, commit, message) and
+  the updater's state; `POST …/updates` with `{ tag }` and `POST
+  …/updates/rollback` with `{ commit }` write a request the updater's
+  path unit picks up. The request directory is refused as a grant.
 
 ## bin/lyrica
 
@@ -927,6 +966,15 @@ interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
   ops(): { read; write; edit; bash };     // Pi's tool operations
   folders(): string[];                    // host folders, or "<ssh name>:<root>"
 }
+new SshTarget(cfg, { transport: SshTransport, address?, connected? })  // the host key must be cfg.hostKey
+interface SshTransport { connect(to: SshEndpoint, verify(fingerprint): boolean): Promise<SshSession> }
+// SshEndpoint { host, port, username, privateKey }. SshSession: home, exec(command, { onData, signal?, timeout? }),
+//   realpath, lstat (undefined when missing), readFile, readHead(path, n), check(path, "r" | "r+"),
+//   writeFile(path, content, mode?), chmod, chown, rename (posix-rename where it can), unlink, close, onClose.
+//   A missing path rejects with RemoteMissing (isMissing(err)).
+sandboxedTransport(sandbox: () => HelperSandbox): SshTransport  // the only client; Workspace.sshTransport (WorkspaceOptions.sshTransport for tests)
+// HelperSandbox { exclude, front?, frontHosts?, bwrap?, pasta?, refused? }: refused (the self-test's reason) fails the call
+helperSandbox(address, port, sandbox): Sandbox           // the helper's sandbox: no workspace, that address and port only
 forThread(t)  // { target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), folders(), recordChange() },
               // each read fresh; settings() is effective
 changes(userId): FileChanges              // her write and edit calls' changes, for removing turns
@@ -947,19 +995,18 @@ folders(t): string[]                      // grants, and "<machine>:<root>" for 
 network(t): Network
 inheritSettings(parent, childThreadId, narrower?)  // subagents and child threads: same or stricter (folders, network, mode, webSearch, images), never wider
 settings(userId).detach(threadId)          // a kept child, once its parent is forgotten: no longer narrowed by it
-// Planned (Projects): inheritSettings also grants a project's thread its project chat's folder (read-only for a read-only thread)
+// A project's threads, like any child thread, work in their project chat's folder (folderThread)
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, machines
 // MachineConfig { name, kind: "ssh" | "proxmox", host, port, username (Proxmox: token id), privateKey (Proxmox: the token),
 //   root (Proxmox: null), hostKey (Proxmox: certificate fingerprint AB:CD:…), pool,
-//   limit: "ask" | "acceptEdits" | "auto" (new machines "ask"), offNetwork, lastUsed }
+//   limit: "ask" | "acceptEdits" | "auto" (new machines "ask"), offNetwork, lastUsed,
+//   state: { kind: "online" | "unreachable" | "keyChanged", since } | null }
 // settings(userId).machines() / machine(name) / addMachine(m, confirmedHostKey) / updateMachine / setMachinePool(name, pool)
-//   / setHostKey / setOffNetwork / confirmOffNetwork / removeMachine / allowInThread(threadId, machine, command) / allowedInThread(threadId)
+//   / setHostKey / setOffNetwork / confirmOffNetwork / machineState(name, kind) / removeMachine / allowInThread(threadId, machine, command) / allowedInThread(threadId)
 // A thread's `machines: string[]` (the sandbox is always there); setThread refuses a machine of the other pool;
 //   inheritSettings takes a subset; effective() keeps only machines every ancestor grants.
 // SUSPECT_COMMANDS, suspectCommand(command), onFloor(path), cleanOutput(onData), maskKeys(buf),
 //   authorizedKeysLine(publicKey), machineSetup(account, keyLine): core/src/workspace/machines.ts
-// SshTransport { connect(endpoint, verify(fingerprint)): Promise<SshSession> } (transport.ts); `inProcess` is ssh2 in
-//   lyricad; WorkspaceOptions.sshTransport replaces it. SshTarget(cfg, { transport?, address?, connected? }).
 // proxmox.ts: PROXMOX_ACTIONS (status, list, start, stop, shutdown, reboot, snapshots), PROXMOX_READS, PROXMOX_SUSPECT (stop, reboot),
 //   suspectKey(tool, input) (what Allow in this thread stores), proxmoxAction(call, action, vm?), ownNode(call, addresses, self), ownAddress(addresses, self),
 //   proxmoxSetup(), parseProxmoxAddress, tokenId, certFingerprint. ProxmoxTransport { fingerprint(host, port), call(endpoint, method,
@@ -1006,7 +1053,9 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   …/machines/probe` for the Test step; `POST …/machines` to confirm;
   `PATCH …/machines/:name` for address, root, pool and limit; `POST
   …/machines/:name/key` with a confirmed host key; `POST
-  …/machines/:name/confirm-off-network`; `DELETE`). Thread settings carry
+  …/machines/:name/confirm-off-network`; `DELETE`). A machine carries
+  `state` (`online`, `unreachable` or `keyChanged`, with `since`) once a
+  connection has been tried. Thread settings carry
   `machines`; permission events carry `machine`, `cwd`, and for a suspect
   command `suspect: true` and `warning`; an answer may carry
   `allowInThread: true`. Proxmox: `kind: "proxmox"` on probe and confirm,
@@ -1017,11 +1066,12 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   call to `ThreadTools.proxmox`; the workspace extension's `tool_call` does
   the asking (reads like `read`, start and shutdown like `bash`, stop and
   reboot suspect, Plan mode reads only). `destroy` is never offered.
-- **Planned (SSH helper):** the SSH client moves into a sandboxed
-  helper process per connection (`core/workspace/ssh-helper`), an
-  `SshTransport` given one machine's key on a pipe and network to that one
-  address through the existing nftables rules; `SshTarget` keeps its
-  interface.
+- **SSH helper:** the SSH client runs in a sandboxed helper process per
+  connection (`core/workspace/ssh-helper.ts`, behind `sandboxedTransport`),
+  given one machine's key on its stdin and network to that one address and
+  port through the existing nftables rules; it speaks length-prefixed frames
+  (`ssh-frames.ts`). The host key decision stays in `lyricad`; strict key
+  exchange is required. There is no in-process client.
 - **Modes:** `PermissionMode` is `"auto" | "acceptEdits" | "ask" | "plan"`,
   strictest first plan, ask, acceptEdits, auto. Stored `ask-changes` and
   `ask-commands` migrate in place to `ask` and `acceptEdits`. A thread with

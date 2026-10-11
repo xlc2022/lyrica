@@ -880,7 +880,8 @@ local-only threads use local speech models only.
 A **project** is one place for a stream of related work, as in Claude's
 Projects: a running conversation, the **project chat**, where Li drops tasks,
 updates and questions as they come, and **threads** that Lyrica starts for
-the work and keeps track of. Agreed 2026-10-10; not built yet. The briefs are
+the work and keeps track of. Agreed 2026-10-10. The back end is built; the
+web part and sleep's project page are not yet. The briefs are
 `docs/briefs/projects.md`, `projects-web.md` and `projects-sleep.md`.
 
 - **A project is a top-level thread marked as a project**, and its threads
@@ -1336,6 +1337,133 @@ Details in [docs/sleep.md](docs/sleep.md).
   - The same in-process setup, run headless, drives the continuity evals.
 - Interfaces between components are in [docs/contracts.md](docs/contracts.md).
 
+## Updates and self-editing
+
+Every update can be undone without her, and she can change her own code
+only through review. Decided 2026-10-11 from
+`/mnt/project-files/self-edit/proposal.md`, which takes its deploy rules
+from Monika's runbooks.
+
+- **Releases.** Each version is built into its own read-only folder,
+  `/opt/lyrica/releases/<commit>`, and `/opt/lyrica/current` points at the
+  running one; the last 5 are kept. `install.sh` builds a release the same
+  way, so a hand install and an update are one path.
+- **The updater runs as root, outside her.** `lyrica-update` and
+  `lyrica-rollback` are oneshot systemd units, not daemons, installed by
+  `install.sh` only, never by an update, so a broken release can't break
+  what removes it. The updater installs only a commit on `main`, fetched
+  with a read-only deploy key; that is the line she can't cross.
+- **An update**, in order: build the release as an unprivileged build
+  user; **smoke test** it on a spare port with a scratch home and a test
+  user, never real data; **drain**: stop taking new turns and wait until no
+  turn, sleep run, subagent or child thread is working (new messages get
+  "Updating", and scheduled sleep and child-thread starts wait), giving up after 10 minutes with nothing changed, so a restart
+  never cuts a turn in half; **snapshot** her databases and settings (copies
+  of encrypted files; homes are left to the operator's backup), keeping the
+  last 3; switch `current`; start; **probation**.
+- **Probation.** The release must pass its checks once unlocked (every
+  database opens, migrates and passes its integrity check, the workspace
+  self-test, the model router,
+  the web UI's files) and stay up 10 minutes. With saved credentials that
+  happens at start; without them, at the first unlock. A crash loop or a
+  failed check rolls back by itself and tells administrators in
+  Notifications which commit failed, which check, and, when the snapshot
+  was restored, from when messages were lost.
+- **Rollback** goes back to the previous release: automatically in
+  probation, from Administration, or with `sudo lyrica-rollback` on the
+  console when nothing else works. Each database records its schema version and
+  the oldest schema that can still read it: a migration that only adds
+  (expand) leaves that alone, one that removes or renames (contract)
+  raises it, and a release refuses a database it can't read. So only a
+  rollback across a contract restores the pre-update snapshot, and what
+  was written since leaves the app; its dialog says from when. A contract
+  waits one release after its expand, so most rollbacks keep everything.
+  A kept release that can't read the databases and is older than the last
+  snapshot it could read can't be rolled back to; the dialog and the console
+  say so and name the oldest release that can.
+- **Her databases are never changed past undoing.** Each database migrates
+  in one transaction and checks itself (`integrity_check`,
+  `foreign_key_check`) before committing, so a failed migration leaves it
+  as it was and the release fails probation instead. The updater checks
+  each snapshot against its source before switching. The snapshot taken
+  before a contract is kept for 30 days and until a later contract has
+  passed probation, beyond the last 3, so damage found late
+  still has a way back. A restore first moves the databases it replaces
+  into the snapshots folder, still encrypted and kept as long, so what was
+  written since the update is set aside, never deleted. A migration that
+  removes or renames ships only after the release that stopped using it
+  has passed probation, and its update note names it. CI migrates
+  databases built at every released schema version (by code, never real
+  data) and checks that nothing was lost and that, after an expand, the
+  release before still opens them.
+- **Update notes.** Every update installs an update note, never a bare
+  commit: an annotated tag (`update/<date>`) on a `main` commit whose
+  message lists the merged PRs since the running version, what each
+  changes, any schema change and what a rollback would lose, and what to
+  check afterwards. She writes it, or the Claude thread that built the
+  change. It lives on GitHub, so no rollback or lost thread can take it; the
+  updater keeps a copy beside the snapshot. It describes code, never
+  conversations. After a failed probation, she writes the post-mortem as an
+  issue linked to the tag.
+- **Updates are manual.** An administrator presses **Update** in
+  Administration. She can say an update is ready; she can't press it.
+- **Her own code** is a checkout granted like any folder, to general
+  threads only: the code goes to GitHub and CI, so private memory
+  never reaches a commit. She works like a feature thread: one branch and
+  one pull request per piece of work, typecheck and tests in her sandbox.
+- **Her own GitHub account**, a collaborator with a fine-grained token for
+  this repository (contents, pull requests), stored encrypted in her user's
+  settings and handed to the sandbox only in a thread with the checkout.
+  She pushes branches to the repository itself, never a fork, so her pull
+  requests run the same CI as Claude's on Li's runners (docs/ci.md), with
+  no first-time-contributor approval. `main` is protected: pull requests
+  only, green CI, one approval from someone other than the author; nothing
+  of hers merges without both. Li's own account may bypass the rules as
+  administrator, because Claude's threads work through it and could
+  never approve their own PRs.
+- **Review is the project's.** Her PRs go through the same PR review (and
+  UI review) as Claude's, which approves and merges them, so Li doesn't
+  read every change. **Boundary code needs Li** (Li chose a rule over
+  a gate, 2026-10-11): keys, the privacy boundary, the model router, the
+  sandbox, authentication, deployment, the updater and CI. `CODEOWNERS`
+  names Li for those paths, so GitHub asks for Li's review on any PR
+  that touches them, and PR review asks Li before approving one of hers.
+  Claude's reviews act through Li's account, so GitHub can't tell the two
+  approvals apart: this is a rule the reviewers follow, not a gate. She
+  may push only `lyrica/*` branches and `update/*` tags.
+- **Working alongside Claude.** One repository, one set of rules
+  (AGENTS.md), one review. Work is claimed as a GitHub issue with one
+  assignee, her account or Li, so two never build the same thing; she
+  takes what she notices in use (the friction log from PRINCIPLES.md's
+  Evaluation, small features, her own tooling), Claude's threads take
+  briefs. Her branches are `lyrica/*`, Claude's `feature/*` and `claude/*`. Whoever
+  merges second merges `main` in first. She can't reach Claude's threads;
+  an issue labelled `claude` is how she asks for something, and a PR
+  comment how she answers a review. Design changes go through the design
+  owner as they do now, and Li decides. An update note covers everything
+  merged since the running version, Claude's PRs included.
+- **Her own project.** She starts with no memory of how this project
+  runs, so the handoff is written down: a project "Lyrica" in her own
+  Projects, with instructions mirroring this project's (one issue and one
+  thread per piece of work, handoffs, review, hard rules) and pinned
+  standing threads, Review, UI review and Friction log, that review her
+  work before it reaches Claude's review
+  ([briefs/lyrica-project.md](docs/briefs/lyrica-project.md)). A routine
+  in Claude's project picks up her PRs and `claude` issues from GitHub.
+- **GitHub is replaceable.** She reaches the forge only through git and
+  its command-line client in her sandbox (`gh` today), with no tool of
+  her own; the updater needs only git and a read-only key; update notes
+  are git tags; CI is Actions-syntax workflows. Moving to Forgejo or
+  Gitea means re-creating her account, token and branch protection
+  there, running their Actions runner on Li's VMs with the same label,
+  and swapping the client (`tea` or `fj`), plus `CODEOWNERS` and the
+  branch limit in that forge's own rules. Claude's project threads
+  are the part that is tied to GitHub.
+- **The outer net is the operator's:** a scheduled Proxmox backup of the
+  container. The updater can't snapshot the container it runs in.
+- **Not covered:** her persona, which has its own revisions; model hosts,
+  which keep `host/install.sh` until this has proved itself.
+
 ## How the project runs
 
 - **Claude does most of the rebuild.** Lyrica edits herself with other models
@@ -1441,3 +1569,9 @@ new evidence.
   which steps to take and what has not yet been exercised. They are kept
   current by the Operator docs thread, on notice from threads whose merged
   PRs change what an operator does by hand, and by a weekly drift check.
+- **Updates: copy over → releases with rollback (2026-10-11).** `install.sh`
+  replaced the code in place, so a bad update could only be fixed by hand.
+  Li asked for a way for Lyrica to edit herself without permanently breaking
+  her installation; every update now keeps the previous release and a
+  database snapshot, and rolls back by itself. Her code changes go through
+  the same review as Claude's.

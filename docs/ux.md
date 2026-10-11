@@ -102,7 +102,9 @@ Rules:
   Start a thread, Suggested threads, Start all, Resolve, Reopen, Resolved,
   Waiting on you, Goal, Instructions, Paused, All threads, Only projects,
   No projects, Machines, Add machine, Mode limit, Replace key, Use anyway,
-  Allow in this thread, Online, Unreachable, Key changed, Off network.
+  Allow in this thread, Online, Unreachable, Key changed, Off network,
+  Updates, Update, Roll back, Running, Updating, Draining, Building, Testing,
+  Probation.
 - Numbers get units beside the field (GB, %, tokens), and a maximum shown
   where one exists ("of 128k").
 
@@ -134,6 +136,7 @@ Rules:
 | Anything waiting for the user | **Notifications**: the sidebar link with its count, the Settings section, and the Notifications card on the welcome page. Never a banner elsewhere, except the chat's pending bar |
 | A user's own settings | **Settings**, sections on the left |
 | Server-wide settings | **Administration**, shown only to administrators |
+| Updates (the running version, the update note, kept releases) | the **Updates** section of Administration: the running version in mono; the newest update note as its tag in mono, then its text in a block; **Update** as the section's one primary, disabled while an update runs. The state is a status line beneath it, a dot and a word (Draining, Building, Testing, Probation in blue; Failed red); while draining the line continues "waiting for 2 threads" with the count in mono and the threads linked beneath. Kept releases as rows (commit in mono, date, Running as the one state); **Roll back** in each row's ⋯, except the Running row's, disabled while an update runs, confirmed by a **dialog** with its one sentence ("Roll back to the release from 9 October?" with the commit in mono after it, then "Messages since 14:02 will be lost." only when it restores a snapshot). A failed probation is a **Notification** naming the commit and the check, and saying it rolled back |
 | Models, hosts, downloads, clean-up | the **Models** area: Overview, Tasks, Text models, Image models, Hosts and endpoints, Downloads, Clean up, Recent calls |
 | The app's version | the header, "Lyrica (ver. …, build …)" |
 | Lyrica's inner workings (recall, tools, notes) | one-line **markers** in the conversation that expand when tapped |

@@ -4,14 +4,21 @@ import ssh2 from "ssh2";
 import { cleanOutput, maskKeys, onFloor } from "./machines.ts";
 import { capOutput, sniffImage, type ExecutionTarget, type ToolOps } from "./ops.ts";
 import { cleanPath, within, type MachineConfig } from "./settings.ts";
-import { inProcess, isMissing, type SshSession, type SshTransport } from "./transport.ts";
+import { isMissing, type SshSession, type SshTransport } from "./transport.ts";
 
 const quote = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
 
-/** A new ed25519 key pair in OpenSSH format, generated in memory. */
+/**
+ * A new ed25519 key pair in OpenSSH format, generated in memory. ssh2 drops a
+ * public key's leading zero byte (1 key in 256), which OpenSSH can't load, so
+ * such a key is drawn again.
+ */
 export function generateSshKey(comment: string): { privateKey: string; publicKey: string } {
-  const { private: privateKey, public: publicKey } = ssh2.utils.generateKeyPairSync("ed25519", { comment });
-  return { privateKey, publicKey };
+  for (;;) {
+    const { private: privateKey, public: publicKey } = ssh2.utils.generateKeyPairSync("ed25519", { comment });
+    const blob = Buffer.from(publicKey.split(" ")[1]!, "base64");
+    if (blob.length === 51) return { privateKey, publicKey }; // "ssh-ed25519" and a 32-byte key, each with its length
+  }
 }
 
 /** The public half of a stored private key, in authorized_keys form. */
@@ -23,8 +30,8 @@ export function publicKeyOf(privateKey: string): string {
 }
 
 export interface SshTargetOptions {
-  /** The SSH client. Default: ssh2 in this process. */
-  transport?: SshTransport;
+  /** The SSH client: Workspace.sshTransport, a sandboxed helper per connection. */
+  transport: SshTransport;
   /**
    * The address to connect to, checked before every connection (the
    * machine's network check). Default: the configured host.
@@ -32,6 +39,8 @@ export interface SshTargetOptions {
   address?: () => Promise<string>;
   /** Called after each connection is made. */
   connected?: () => void;
+  /** Called when a connection fails: the machine couldn't be reached or logged in to, or showed another host key. */
+  failed?: (keyChanged: boolean) => void;
 }
 
 /**
@@ -44,8 +53,10 @@ export interface SshTargetOptions {
 export class SshTarget implements ExecutionTarget {
   readonly name: string;
   private conn: Promise<SshSession> | undefined;
+  /** Set by close(): a connection still in flight then reports nothing, so it can't overwrite a cleared state. */
+  private closed = false;
 
-  constructor(private readonly cfg: MachineConfig, private readonly o: SshTargetOptions = {}) {
+  constructor(private readonly cfg: MachineConfig, private readonly o: SshTargetOptions) {
     this.name = `ssh:${cfg.name}`;
   }
 
@@ -54,6 +65,7 @@ export class SshTarget implements ExecutionTarget {
   async cwd(): Promise<string> { return this.cfg.root ?? (await this.connect()).home; }
 
   close(): void {
+    this.closed = true;
     void this.conn?.then((c) => c.close(), () => {});
     this.conn = undefined;
   }
@@ -65,19 +77,27 @@ export class SshTarget implements ExecutionTarget {
       if (!hostKey) throw new Error("its host key hasn't been confirmed");
       const host = this.o.address ? await this.o.address() : this.cfg.host;
       let seen: string | undefined;
-      const session = await (this.o.transport ?? inProcess).connect(
+      const session = await this.o.transport.connect(
         { host, port: this.cfg.port, username: this.cfg.username, privateKey: this.cfg.privateKey },
         (fp) => { seen = fp; return fp === hostKey; },
       ).catch((err: Error) => {
-        throw seen && seen !== hostKey ? new Error(`its host key changed (now ${seen}); confirm the new key to use it again`) : err;
+        const changed = seen !== undefined && seen !== hostKey;
+        this.report(() => this.o.failed?.(changed));
+        throw changed ? new Error(`its host key changed (now ${seen}); confirm the new key to use it again`) : err;
       });
       session.onClose(() => { if (this.conn === conn) this.conn = undefined; });
-      this.o.connected?.();
+      this.report(() => this.o.connected?.());
       return session;
     })().catch((err: Error) => { throw new Error(`ssh ${name}: ${err.message}`); });
     this.conn = conn;
     conn.catch(() => { if (this.conn === conn) this.conn = undefined; });
     return conn;
+  }
+
+  /** Runs a state callback unless closed; its own failure never changes the connection's outcome. */
+  private report(fn: () => void): void {
+    if (this.closed) return;
+    try { fn(); } catch { /* the state is only shown, never relied on */ }
   }
 
   private async session(): Promise<SshSession> { return this.connect(); }

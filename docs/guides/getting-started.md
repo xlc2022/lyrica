@@ -46,8 +46,10 @@ server on your network, or on a paired model host.
   systemd doesn't have. Debian 13 and Ubuntu 25.04 have it; Debian 12 and
   Ubuntu 24.04 don't. Without it everything else works, and you type the
   passphrase on the unlock page after each start.
-- **Node.js 22 or later**, installed before the script runs (it checks and
-  stops otherwise). NodeSource's packages are one way:
+- **Node.js 22.6 or later**, installed before the script runs (it checks
+  and stops otherwise). The SSH helper that machines use runs with
+  Node's type stripping, which arrived in 22.6; an older 22 fails every
+  machine call. NodeSource's packages are one way:
 
   ```sh
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
@@ -307,12 +309,85 @@ runs in three steps:
    folder, `mkfs`, `dd` onto a device, `shutdown` and the like) always
    asks with a warning, whatever the mode.
 
-The machine needs OpenSSH 9.6 or later (strict key exchange). If its host
-key ever changes, every call fails until you confirm the new key; `lyrica
+The machine needs OpenSSH 9.6 or later, or a distribution build with the
+Terrapin fix (strict key exchange); adding an older one fails with "the
+server doesn't offer strict key exchange; update its OpenSSH". On Lyrica's
+side, each SSH connection runs in a sandbox of its own, so machines need
+`bwrap`, `pasta` and `nft` on her host (the install script installs them)
+and a passed network self-test: when the journal says "network is off for
+every thread", every machine call fails too, with nothing to fall back to.
+If a machine's host key ever changes, every call fails until you confirm the new key; `lyrica
 admin ssh list` shows each machine's pool, limit and confirmed key, and
 `ssh remove` takes one away. SSH targets added before machines existed
 became general machines at Ask; one that had never connected has no
 confirmed key and must be added again (`ssh remove <name>`, then `add`).
+
+## Give her a Proxmox node
+
+A **Proxmox machine** is a Proxmox VE node or cluster she reaches over its
+HTTPS API with a token, never a shell: she can list VMs and containers,
+read their status and snapshots, and start, shut down, stop or reboot the
+ones the token may. Nothing else (no destroy, create, console or snapshot
+changes), and her file and shell tools refuse it. It lives in the same
+list as SSH machines, with a pool and a mode limit. The reference is
+[docs/workspace.md](../workspace.md#proxmox).
+
+**The Proxmox that runs Lyrica's own VM or container is refused**, on
+purpose, and there is no way to add it yet. She tells which sign gave it
+away (its address is this computer or its gateway, or a guest there has
+this computer's name or MAC address).
+
+1. On the Proxmox node, as root, make her a user, a role that can only
+   see and power VMs, and a privilege-separated token:
+
+   ```sh
+   pveum user add lyrica@pve --comment Lyrica
+   pveum role add LyricaPower --privs "VM.Audit VM.PowerMgmt"
+   pveum user token add lyrica@pve agent --privsep 1
+   ```
+
+   The last command prints the token's secret once. The token she takes
+   is `lyrica@pve!agent=<that secret>`.
+2. Grant reads everywhere and power only on the VMs she may manage, one
+   `/vms/<id>` at a time or a `/pool/<name>`. A separated token has only
+   what both it and its user have, so both get each role:
+
+   ```sh
+   pveum acl modify / --roles PVEAuditor --users lyrica@pve --tokens 'lyrica@pve!agent'
+   pveum acl modify /vms/101 --roles LyricaPower --users lyrica@pve --tokens 'lyrica@pve!agent'
+   ```
+
+   Never give her `PVEVMUser` (its console and guest-agent rights run code
+   inside the guests) or `Sys.PowerMgmt`.
+3. Note the node's certificate fingerprint, to compare in the next step:
+
+   ```sh
+   openssl x509 -noout -fingerprint -sha256 -in /etc/pve/local/pveproxy-ssl.pem
+   ```
+
+   (`pve-ssl.pem` in the same folder if there is no `pveproxy-ssl.pem`.)
+4. On Lyrica's machine, as the `lyrica` user with
+   `LYRICA_HOME=/var/lib/lyrica`:
+
+   ```sh
+   lyrica admin proxmox add --user li hypervisor https://pve.lan:8006 --pool general --limit ask
+   ```
+
+   It prints the setup above again, shows the certificate's fingerprint
+   and asks you to confirm it, then asks for the token at a hidden prompt.
+   The token is not sent anywhere until the fingerprint is confirmed, and
+   the machine is saved only once the token works. A private machine whose
+   address resolves outside your network asks a second time.
+
+Threads grant it like any machine. Listing, status and snapshots never
+ask; start and shutdown ask like a command under the thread's mode and the
+machine's limit; stop and reboot always ask with a warning. If the node's
+certificate changes (Proxmox renews it), every call fails until you confirm
+the new fingerprint (`ssh remove <name>`, then `proxmox add` again).
+`lyrica admin ssh list` shows Proxmox machines with the SSH ones, and
+`ssh remove <name>` takes one away. An **Add machine**
+page in the web UI is on its way; until it lands this command is the only
+way.
 
 ## Day to day
 

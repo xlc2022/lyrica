@@ -1,5 +1,5 @@
 import type { PinnedText } from "./assemble.ts";
-import { readView, resolve, searchView, type Hit, type SearchOptions, type PoolView, type Profile, type StoredEntry, type Item } from "@lyrica/core";
+import { projectSection, readView, resolve, searchView, type Hit, type SearchOptions, type PoolView, type Profile, type StoredEntry, type Item } from "@lyrica/core";
 
 /** What memory contributes to the prompt. Every field is optional. */
 export interface MemorySections {
@@ -13,6 +13,8 @@ export interface MemorySections {
   folders?: string;
   /** The thread's pinned messages, oldest first. */
   pinned?: PinnedText[];
+  /** In a project chat or one of its threads: the goal, the project page, notes since the last sleep, and (in the chat) its threads. */
+  project?: string;
   recall?: string;
   /** The item from sleep this thread was started from: she opens with it. No other thread sees items. */
   opening?: string;
@@ -26,6 +28,8 @@ export interface MemoryContext {
   folders: string[];
   /** Memories this thread must not see (sleep's wake phase never sees dreams). */
   hide?: (id: string) => boolean;
+  /** In a project chat: its threads, one line each, from lyricad. */
+  projectThreads?: () => string | undefined;
 }
 
 export const UNLOGGED_NOTICE =
@@ -43,7 +47,7 @@ export async function memorySections(view: PoolView, prompt: string, ctx: Memory
   const index = own.pageIndex().map((p) => `- [${p.id}] ${p.title}: ${p.summary}`).join("\n");
   const stores = [{ prefix: "", store: own }, ...view.reads.map((store) => ({ prefix: `${store.pool}/`, store }))];
   const folderPages = stores.flatMap(({ prefix, store }) => store.forFolders(ctx.folders).map((p) => ({ ...p, id: prefix + p.id })));
-  const hits = prompt.trim() ? search(view, prompt, { current: true, limit: RECALL_HITS, excludeThread: ctx.threadId }, ctx.hide) : [];
+  const hits = prompt.trim() ? search(view, prompt, { current: true, limit: RECALL_HITS, excludeThread: ctx.threadId, fromThread: ctx.threadId }, ctx.hide) : [];
   const item = own.itemForThread(ctx.threadId);
   return {
     notice: own.getThread(ctx.threadId)?.unlogged ? UNLOGGED_NOTICE : undefined,
@@ -54,6 +58,7 @@ export async function memorySections(view: PoolView, prompt: string, ctx: Memory
     pageIndex: index || undefined,
     folders: folderPages.map((p) => `<page id="${p.id}" title="${p.title}">\n${p.text}\n</page>`).join("\n\n") || undefined,
     pinned: pinnedOf(own, ctx.threadId),
+    project: projectSection(own, ctx.threadId, ctx.projectThreads),
     recall: hits.map((h) => formatHit(h, ctx.user)).join("\n") || undefined,
     opening: item && `You're starting this conversation. Bring this up, in your own words: ${item.text}${item.source ? ` [${item.source}]` : ""}`,
     lastTalk: own.lastUserMessage(),

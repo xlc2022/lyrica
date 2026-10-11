@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createLocalBashOperations } from "@earendil-works/pi-coding-agent";
-import { Memory, PRONOUN_PRESETS, Workspace, type ExecutionTarget, type Persona, type Pool, type ToolOps, type WorkspaceThread } from "@lyrica/core";
+import { generateSshKey, Memory, PRONOUN_PRESETS, Workspace, type ExecutionTarget, type Persona, type Pool, type ToolOps, type WorkspaceThread } from "@lyrica/core";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ChatRequest } from "../../core/test/fake-openai.ts";
 import { withModels } from "../../core/test/helpers.ts";
@@ -105,7 +105,8 @@ describe("delegate", () => {
       return ws;
     } });
     const parent = s.thread();
-    ws.settings(s.li.id).setThread(parent.threadId, "general", { grants: [{ path: join(host, "a"), writable: true }], internet: false, hosts: ["10.0.0.5"], mode: "acceptEdits" });
+    ws.settings(s.li.id).addMachine({ name: "nas", host: "127.0.0.1", port: 22, username: "lyrica", privateKey: generateSshKey("test").privateKey, root: null, pool: "general", offNetwork: false }, `SHA256:${"A".repeat(43)}`);
+    ws.settings(s.li.id).setThread(parent.threadId, "general", { grants: [{ path: join(host, "a"), writable: true }], internet: false, hosts: ["10.0.0.5"], mode: "acceptEdits", machines: ["nas"] });
 
     const outside = await s.run(parent, { task: "read there", role: "scout", folders: [join(host, "b")] });
     expect(outside.status).toBe("failed");
@@ -113,10 +114,14 @@ describe("delegate", () => {
     await s.run(parent, { task: "look", role: "scout" });
     ws.settings(s.li.id).setThread(parent.threadId, "general", { mode: "auto" });
     await s.run(parent, { task: "change it", role: "worker" });
-    const [worker, scout] = s.delegation.status(parent);
+    await s.run(parent, { task: "change only a", role: "worker", folders: [join(host, "a")] });
+    await s.run(parent, { task: "change it offline", role: "worker", internet: false });
+    const [offline, narrowed, worker, scout] = s.delegation.status(parent);
     const child = (thread: string) => ({ ...ws.settings(s.li.id).thread(thread), network: ws.network({ userId: s.li.id, pool: "general", threadId: thread }) });
     expect(child(scout!.thread)).toMatchObject({ grants: [{ path: join(host, "a"), writable: false }], mode: "acceptEdits", parent: parent.threadId, network: { internet: false, services: false, hosts: ["10.0.0.5"] } });
     expect(child(worker!.thread)).toMatchObject({ grants: [{ path: join(host, "a"), writable: true }], network: { internet: false, hosts: ["10.0.0.5"] } });
+    // Bash on a machine follows no folder or read-only narrowing, so only an unnarrowed writer keeps the parent's machines.
+    expect([scout, worker, narrowed, offline].map((r) => child(r!.thread).machines)).toEqual([[], ["nas"], [], []]);
     // Anything wider is refused by the workspace itself.
     const p = { userId: s.li.id, pool: "general" as const, threadId: parent.threadId };
     expect(() => ws.inheritSettings(p, worker!.thread, { internet: true })).toThrow("no internet");
@@ -129,6 +134,8 @@ describe("delegate", () => {
     let most = 0;
     s.cloud.respond(async (r) => {
       most = Math.max(most, ++working);
+      // Waits for a second call to arrive (or a second to pass), so a slow runner still sees them overlap.
+      for (let t = 0; t < 100 && working < 2; t++) await sleep(10);
       await sleep(30);
       working--;
       return { text: `done: ${told(r)}` };

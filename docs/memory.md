@@ -259,17 +259,26 @@ found by where it came from:
 - **Project notes** are the notes citing the project chat or one of its
   threads (`projectNotes`). Nothing stores them apart.
 - **The project page** is `p:project-<id>` (`pageForProject`). The user's
-  instructions on it are User introduced, so sleep keeps them word for word.
+  instructions are a separate part of it that only they change.
   Sleep keeps the rest: what she knows about the project, citing its notes
   and threads ([sleep.md](sleep.md#projects)). A project's notes stay notes
   once they are on the page.
+- **Recall from inside a project favours it.** Searching from one of its
+  threads (automatic recall and `recall`) weighs its notes, its page and its
+  threads' entries 1.5 times higher (`PROJECT_BOOST`) among the closest
+  matches. It's a boost, not a filter: the rest of the pool still comes up,
+  and nothing crosses pools.
 - A branch of the project chat or of one of its threads is a thread of the
   project.
 - Forgetting a project with its threads also forgets its page and the notes
   that came only from it.
 
-The project's context section is not built yet
-([briefs/projects.md](briefs/projects.md)).
+Every thread of a project gets a **project section** in its context
+(`projectSection`, about 2,000 tokens): the goal, the user's instructions,
+the project's notes since the last sleep, in the project chat its threads
+with their state, and last the project page, so a long page is what gets
+cut. A private project's section comes only from the private
+pool.
 
 ## Threads that aren't logged
 

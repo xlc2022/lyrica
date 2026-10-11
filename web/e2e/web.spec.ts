@@ -633,7 +633,7 @@ test("a speaking model's Settings drawer sets its voice and clamps its speed; Vo
 test("the header names the version and build, and the home box starts a thread", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}`);
-  await expect(page.getByRole("heading", { level: 1, name: /^Lyrica \(ver\. \S+, build \S+\)$/ })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: /^Lyrica \S+ · \S+$/ })).toBeVisible();
   await page.getByLabel("Message", { exact: true }).fill("From the home box");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.locator(".msg.user").getByText("From the home box")).toBeVisible();

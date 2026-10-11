@@ -34,7 +34,7 @@ export function ModelBadge({ base, settings, onChange, readOnly }: {
   const label = (
     <>
       <span className={`k ${chat.kind ?? ""}`}>{chat.kind ?? "no model"}</span>
-      {chat.model ? (chat.modelId ? `${chat.modelId} · ${chat.endpointName}` : named(chat)) : "Choose a model"}
+      <span className="name">{chat.model ? (chat.modelId ? `${chat.modelId} · ${chat.endpointName}` : named(chat)) : "Choose a model"}</span>
       {chat.problem && <span className="warn" title={chat.problem}> ⚠</span>}
     </>
   );

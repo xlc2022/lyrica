@@ -99,6 +99,9 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       return { ...s, title: e.title };
     case "settings":
       return { ...s, settings: s.settings + 1 };
+    case "child":
+      // A project's thread card: drawn by Projects (web); nothing here yet.
+      return s;
     case "turn_end":
       // A subagent's request outlives the parent's turn: it ends with its own permission_end.
       return { ...s, busy: false, permissions: s.permissions.filter((p) => p.subagent), reload: s.reload + 1, ended: s.items.length };

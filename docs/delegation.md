@@ -33,7 +33,9 @@ subagent:
   model. A refused model fails the run before any thread is made;
 - gets its workspace from `inheritSettings`: the parent's folders (or the
   ones asked for), read-only for a read-only role or `readOnly: true`, and
-  internet off if asked. The workspace refuses anything wider;
+  internet off if asked. It gets the parent's machines only when none of
+  those narrowings apply and it isn't a writer in a worktree: bash on a
+  machine follows none of them. The workspace refuses anything wider;
 - gets a short preamble plus its role's prompt instead of Lyrica's persona,
   `recall` and `read_memory` (never `remember`), `ask_parent`, and only the
   tools its role lists.
@@ -253,7 +255,7 @@ checks it reaches her, and with a real model which she picks. Code:
   returns its ID at once, as `[t:<id>]`, which she mentions it by. It gets the parent's model context
   (`models.inheritContext`: pool, local-only, profile, thinking, models) and
   workspace (`inheritSettings`, narrowed by `folders`, `readOnly` and
-  `internet: false`); the workspace refuses anything wider, and a folder the
+  `internet: false`; any of those also leaves it no machines); the workspace refuses anything wider, and a folder the
   parent doesn't have is refused. It inherits "Do not log" from the store.
   If the child's first turn can't start, the child is forgotten.
 - `message({ id, text })` to one of the thread's children, named by its ID
@@ -292,6 +294,34 @@ Lock stops working children first, and tells their parents the same way; a
 parent mid-turn is stopped before the note, so the note is stored. Each
 update has its own ID, so two identical updates both show. Opening a
 child's messages sees its updates.
+
+**Projects.** A project chat's child threads are the project's threads
+(`daemon/src/projects.ts` and `children.ts`; the rule is in DESIGN.md,
+"Projects"):
+- `start` there records the thread's **anchor**, the first entry the
+  calling turn writes, and past the at-once limit **queues** the thread
+  instead of refusing: it starts, oldest first, when a turn ends and a slot
+  frees. The queued task is held in memory only; after a restart the project
+  chat is told the thread didn't start, and a message starts it.
+- A project's thread can **message another thread of the same project**
+  (`message({ id, text })`, at most 3 per turn), marked with the sender's
+  `[From t:<sender>]` line, and `list` shows it the project's other threads.
+  A thread outside the project is refused.
+- `message({ to: "parent", text, needsYou: true })` marks the thread
+  **waiting on the user**, and the update is a notice with status `waiting`.
+  The user's next message in the thread clears it.
+- **States:** working, waiting (an approval, or `needsYou`), queued, idle,
+  resolved. `resolve` (her tool; a thread resolves only itself, the project
+  chat any of its threads), the API, and the nightly tick for a thread idle
+  7 days resolve it; `reopen`, the API, any message in it, or a sibling's
+  message reopen it. `child_threads` keeps `anchor`, `resolved_at`,
+  `needs_you` and `queued` (no text).
+- `suggest({ threads })` proposes threads on a card and makes none; the
+  user starts them from the card, each once.
+- **Paused** (or hidden): working threads stop, nothing new starts, and
+  messages to its threads are refused.
+- A rewind of the project chat that removes a thread's anchor leaves the
+  thread, unanchored.
 
 **Forgetting** a parent forgets its child threads too when asked (the
 default in the UI); otherwise they are kept as threads of their own, detached

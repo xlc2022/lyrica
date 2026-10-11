@@ -34,7 +34,8 @@ const TITLES = new Map<string, { title: string | null; at: number }>();
 const PENDING = new Set<string>();
 const KEEP_MS = 30_000;
 
-export function useThreadMentions(text: string, userId: string, pool: Pool): string {
+/** Fetches the titles of the threads a text mentions; re-renders as they arrive. */
+function useMentionTitles(text: string, userId: string, pool: Pool): (pool: Pool, id: string) => string | null | undefined {
   const [, setTick] = useState(0);
   // A general message never resolves a private thread, so those aren't fetched.
   const found = [...text.matchAll(THREAD_MENTION)].map((m) => ({ pool: (m[1] as Pool | undefined) ?? pool, id: m[3]! }))
@@ -54,7 +55,27 @@ export function useThreadMentions(text: string, userId: string, pool: Pool): str
     });
     return () => { live = false; };
   }, [keys.join(" ")]); // eslint-disable-line react-hooks/exhaustive-deps
-  return linkMentions(text, userId, pool, (p, id) => TITLES.get(`${userId}/${p}/${id}`)?.title);
+  return (p, id) => TITLES.get(`${userId}/${p}/${id}`)?.title;
+}
+
+/** Markdown with each mention as a link titled with the thread's current title. */
+export function useThreadMentions(text: string, userId: string, pool: Pool): string {
+  return linkMentions(text, userId, pool, useMentionTitles(text, userId, pool));
+}
+
+/** Plain text with each mention as the thread's current title, where a link can't go (a button, a title). */
+export function useMentionText(text: string, userId: string, pool: Pool): string {
+  return plainMentions(text, pool, useMentionTitles(text, userId, pool));
+}
+
+/** Each mention as its title, unlinked. */
+export function plainMentions(text: string, pool: Pool, titleOf: (pool: Pool, id: string) => string | null | undefined): string {
+  return text.replace(THREAD_MENTION, (_whole, other: string | undefined, _kind: string, id: string) => {
+    const p = (other as Pool | undefined) ?? pool;
+    if (pool === "general" && p === "private") return "a forgotten thread";
+    const title = titleOf(p, id);
+    return title === null ? "a forgotten thread" : title ?? "a thread";
+  });
 }
 
 /** Each mention as a markdown link with the title (`null`: gone; undefined: not known yet). A general message never shows a private thread. */

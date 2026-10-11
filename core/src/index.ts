@@ -7,6 +7,7 @@ export * from "./persona.ts";
 export * from "./profile.ts";
 export * from "./prefs.ts";
 export * from "./mentions.ts";
+export * from "./threads.ts";
 export * from "./store/pool.ts";
 export * from "./store/memory.ts";
 export * from "./store/sleep-prompt.ts";

@@ -20,9 +20,9 @@ a single file. The old `…/panel` opens Settings.
   user who isn't linked signs the browser's users out first, and a short
   notice says so without naming them. Logging out says when the user stays
   unlocked because another browser still holds them.
-- **Home:** the header reads "Lyrica (ver. 0.1.0, build b110619)" (the
-  version from `package.json`, the build from `LYRICA_BUILD` or the git
-  commit) with the date and time under it, then a greeting by the hour and a
+- **Home:** the header reads "Lyrica 0.1.0 · b110619" (the version from
+  `package.json`, the build from `LYRICA_BUILD` or the git commit; both
+  come with `GET /api/state` once unlocked) with the date and time under it, then a greeting by the hour and a
   message box that starts a thread in General or Private with its first
   message.
 - **Sidebar:** New thread (General or Private), Search (filters the list by
@@ -79,8 +79,8 @@ a single file. The old `…/panel` opens Settings.
   unlocked after logout, and `lyricad`'s warning when the two contradict),
   Password, Your personas (linking a separate persona needs both passwords),
   Persona suggestions (edit, send on to the administrators, or drop),
-  Endpoints with probe status, Model profiles, Network (the default mode and
-  network defaults per pool, Voice to cloud), and **Machines**
+  Endpoints with probe status, Model profiles, Network (New threads: the default
+  mode and Voice to cloud; then network defaults per pool), and **Machines**
   (`src/Machines.tsx`, docs/ux.md section 6): a row per machine with its
   name, a facts line in mono (address, pool, "SSH · key" or "Proxmox API ·
   token", "up to Accept edits") and at most one state as a dot and a word
@@ -131,7 +131,10 @@ a single file. The old `…/panel` opens Settings.
 - A thread she mentions (`[t:<id>]`, `[e:<id>#<n>]`) shows as its current
   title, linked to the thread in the same tab; "a forgotten thread" once it's
   gone. Titles are fetched per thread and kept for 30 seconds, so a rename
-  shows on the next look. This covers her prose and the notice cards.
+  shows on the next look. This covers her prose, the notice cards, the task
+  or message on a delegate or threads card, what a parent thread sent its
+  child, and a subagent's task. Where a link can't go (the pinned list, a
+  failed tool call's message) the title shows as plain text.
   The user's sit in a tinted block.
 - Thinking, recalls, saved notes and tool calls are one-line markers that
   expand when tapped. An expanded tool call stays open when the turn ends
