@@ -130,7 +130,7 @@ renderThreadMentions(text, titleOf: (id, pool?) => string | undefined): string  
 ```
 
 - **Thread mentions** stay IDs in everything stored; only display swaps in
-  the title. The web draws a chip; text with no chip (Read aloud) goes
+  the title. The web shows the title as a link; text with no link (Read aloud) goes
   through `renderThreadMentions`. A mention in a general thread never
   resolves a private thread.
 

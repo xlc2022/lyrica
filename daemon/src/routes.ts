@@ -617,7 +617,12 @@ export function apiRoutes(d: Lyricad): Route[] {
         source = {
           text: () => {
             const raw = live.text();
-            if (raw.length !== at) { at = raw.length; read = owner(d, user, (o) => messageText([{ type: "text", text: raw }], titlesIn(o, pool))); }
+            if (raw.length !== at) {
+              at = raw.length;
+              // Titles need the pool open; most of a reply has no mention, so only then.
+              const parts = [{ type: "text" as const, text: raw }];
+              read = /\[(?:\w+\/)?[te]:/.test(raw) ? owner(d, user, (o) => messageText(parts, titlesIn(o, pool))) : messageText(parts);
+            }
             return read;
           },
           done: live.done, more: live.more,

@@ -98,7 +98,6 @@ export function titlesIn(o: OwnerView, pool: Pool): TitleOf {
   };
 }
 
-
 /** Where Read aloud gets its text: a stored message, or one still being written. */
 export interface SpeechSource {
   /** The text so far, already made speakable. */

@@ -175,10 +175,9 @@ Each user has two pools of memory.
   is only a label. Lyrica writes a thread as `[t:<id>]` and a message as
   `[e:<id>#<n>]` (from a private thread, a general one as
   `[general/t:<id>]`), the form memory already cites them by. The web shows
-  each mention as a chip with the thread's current title and state, linking
-  to it, so a rename shows in every past mention without rewriting
+  each mention as the thread's current title, linked to it, so a rename shows in every past mention without rewriting
   anything. A thread that's gone, or that this pool can't see, shows as "a
-  forgotten thread". Where there is no chip (Read aloud), the mention reads
+  forgotten thread". Where there is no link (Read aloud), the mention reads
   as the current title. Anyone can still name a thread by its title: the
   `threads` tool finds it by title or ID. This holds for every thread,
   subagent and session, not only projects.
