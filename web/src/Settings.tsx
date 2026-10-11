@@ -16,7 +16,11 @@ export const TASK_LABELS: Record<ThreadTask, string> = {
   "subagent.cheap": "Cheap subagents",
   "subagent.strong": "Strong subagents",
   title: "Titles",
+  "speech.transcribe": "Dictation",
+  "speech.speak": "Read aloud",
 };
+/** Speech tasks offer only models that transcribe or speak. */
+const fits = (task: ThreadTask, m: EndpointInfo["models"][number]) => (task === "speech.transcribe" ? !!m.transcribe : task === "speech.speak" ? !!m.speak?.voices.length : true);
 
 
 const refKey = (m?: { offeringId: string }) => m?.offeringId ?? "";
@@ -135,8 +139,6 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
             onChange={(v) => change({ internet: v })} />
           <NetSwitch label="Local services (localhost)" hint="Programs running on Lyrica's own server, such as a database. Never Lyrica's own page." value={settings.services} effective={settings.network.services}
             onChange={(v) => change({ services: v })} />
-          <NetSwitch label="Voice to cloud" hint="What you dictate may be sent to a cloud model." value={settings.voiceCloud} effective={settings.speech.voiceCloud}
-            onChange={(v) => change({ voiceCloud: v })} />
           <Hosts hosts={settings.hosts ?? settings.network.hosts} overridden={settings.hosts !== null} onChange={(hosts) => change({ hosts })} />
         </fieldset>
 
@@ -186,7 +188,9 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
 export function TaskSelect({ task, label, value, allowed, onChange }: {
   task: ThreadTask; label?: string; value: TaskModel; allowed: EndpointInfo[]; onChange: (m: ModelRef | null) => void;
 }) {
-  const current = value.source === "thread" ? refKey(value.model) : "";
+  // While no model can answer, `model` is absent: the thread's pick is still its list's first.
+  const first = value.list?.[0];
+  const current = value.source === "thread" ? refKey(value.model ?? (first && "offeringId" in first ? first : undefined)) : "";
   const fromProfile = value.source === "profile" && value.model
     ? `${value.kind ? `${value.kind} · ` : ""}${value.modelId ? `${value.modelId} · ${value.endpointName}` : named(value)}` : "nothing set";
   return (
@@ -196,9 +200,9 @@ export function TaskSelect({ task, label, value, allowed, onChange }: {
         onChange(e.target.value ? { offeringId: e.target.value } : null);
       }}>
         <option value="">Profile ({fromProfile})</option>
-        {allowed.map((ep) => (
+        {allowed.filter((ep) => ep.models.some((m) => fits(task, m))).map((ep) => (
           <optgroup key={ep.id} label={`${ep.name} (${ep.kind})`}>
-            {ep.models.map((m) => <option key={m.id} value={m.id}>{ep.kind} · {m.modelId} · {ep.name}</option>)}
+            {ep.models.filter((m) => fits(task, m)).map((m) => <option key={m.id} value={m.id}>{ep.kind} · {m.modelId} · {ep.name}</option>)}
           </optgroup>
         ))}
         {/* A thread choice that is no longer allowed still shows, so the select says what's set. */}

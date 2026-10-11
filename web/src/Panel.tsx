@@ -377,7 +377,8 @@ function ProfilesSection({ ctx }: { ctx: ShellContext }) {
         {(["local", "cloud", "custom"] as const).map((profile) => (
           <fieldset key={profile} className="group">
             <legend>{profile === "cloud" ? "Cloud profile" : profile === "local" ? "Local profile" : "Custom profile"}</legend>
-            {TASKS.map(({ task, label }) => {
+            {/* Dictation without a thread's own pick always uses the local profile's, so only Local offers it. */}
+            {TASKS.filter(({ task }) => task !== "speech.transcribe" || profile === "local").map(({ task, label }) => {
               const cur = profiles.data![profile][task];
               const first = Array.isArray(cur) && cur[0] && "offeringId" in cur[0] ? cur[0].offeringId : "";
               return (
@@ -420,10 +421,6 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
               {MODE_ORDER.map((m) => <option key={m} value={m} title={MODES[m].description}>{MODES[m].label}</option>)}
             </select>
           </label>
-        )}
-        {profiles.data && (
-          <Switch label="Voice to cloud" hint="What you dictate may be sent to a cloud model"
-            checked={profiles.data.voiceCloud} onChange={(voiceCloud) => run(async () => profiles.set(await patch<Profiles>(u(userId, "profiles"), { voiceCloud })))} />
         )}
         {profiles.data && (
           <Switch label="Fallback" hint="When off, only the first model in each list answers; if it can't, the message waits for it."

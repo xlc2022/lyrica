@@ -382,19 +382,18 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
   its end; when she is writing nothing (she finished as it was pressed), it
   reads her last message. Closing the connection, Logout or Lock stops it and cancels the
   model's work. One call record per reading, with the seconds of audio.
-- Refusals come before any audio, as JSON: `VoiceCloudOff`, `NoModel` and
+- Refusals come before any audio, as JSON: `NoModel` and
   `CloudModelForbidden` are 400, `Offline` (every model set is down) is
   502; a message that isn't hers is 400, a missing one 404.
 - `ThreadSettings.speech` (and `GET /api/u/:userId/speech?pool=` before a
   thread exists) says whether each task can be used now, or why not, for
-  the mic's and Read aloud's state. `ThreadSettings.voiceCloud` is the
-  thread's switch (null follows the default), changed with
-  `ThreadSettingsChange.voiceCloud`; the default is `Profiles.voiceCloud`.
-  Under a parent with it off, a branch can only keep it off, or follow the
-  default when the parent does too. `Profiles.readAloudLive` (changed with
-  `ProfilesChange.readAloudLive`, off by default) is Read aloud while agent
-  writes; `Speech.readAloudLive` carries it so the web knows whether to
-  offer `messages/live/speech`.
+  the mic's and Read aloud's state. Dictation and Read aloud are thread
+  tasks (`THREAD_TASKS`), chosen with `ThreadSettingsChange.models` like the
+  others; a thread's own Dictation pick may be a cloud model, and without
+  one Dictation uses the local profile's.
+  `Profiles.readAloudLive` (changed with `ProfilesChange.readAloudLive`, off
+  by default) is Read aloud while agent writes; `Speech.readAloudLive`
+  carries it so the web knows whether to offer `messages/live/speech`.
 - **Fallback.** `ThreadSettings.fallback` is the thread's switch (null
   follows `Profiles.fallback`, on by default) and `fallbackOn` what applies;
   `ThreadSettingsChange.fallback` changes it. Off, only the first model in

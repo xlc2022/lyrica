@@ -305,7 +305,6 @@ interface CallContext {
   profile?: "cloud" | "custom";             // general threads only; ignored where localOnly
   overrides?: Partial<Record<Task, ModelRef[]>>;   // the thread's own lists, which beat the profile
   thinking?: ThinkingLevel;
-  voiceCloud?: boolean;                     // Voice to cloud; absent is off
   fallback?: boolean;                       // Fallback; false: only a list's first entry answers; absent is on
 }
 interface Need { tools?: boolean; tokens?: number }        // what the call needs from a model
@@ -372,10 +371,9 @@ class Models {                                              // new Models(keyrin
   setHostAddresses(actor, id, addresses): Endpoint / fetchFor(endpoint): typeof fetch | undefined   // undefined for a plain endpoint
   hostStatus(userId, id) / hostControl(actor, id, "pause" | "resume" | "restart")
   // Speech: the only way audio reaches a model
-  transcribe(ctx, wav, { language?, signal? }): Promise<{ text; resolution; audioSeconds? }>   // VoiceCloudOff, CloudModelForbidden, NoModel, Offline
+  transcribe(ctx, wav, { language?, signal? }): Promise<{ text; resolution; audioSeconds? }>   // in voiceContext(ctx); CloudModelForbidden, NoModel, Offline
   speak(ctx, text, { voice?, speed?, language?, signal? }): Promise<{ audio: ReadableStream<Uint8Array>; resolution; voice? }>   // raw PCM, SPEECH_FORMAT
-  speechModel(task, ctx): { label; kind } | { reason: "none" | "voiceCloud" | "down"; problem }
-  defaultVoiceCloud(userId) / setDefaultVoiceCloud(userId, on) / threadVoiceCloud(userId, threadId) / setThreadVoiceCloud(userId, threadId, on | null)
+  speechModel(task, ctx): { label; kind } | { reason: "none" | "down"; problem }
   // Settings
   offeringSettings(userId, offeringId): { values: AnswerSettings; sources: Partial<Record<keyof AnswerSettings, SettingSource>>;
                                           dropped: (keyof AnswerSettings)[]; contextWindow?: { value; source: "host" | "hand" | "discovered" } }
@@ -393,7 +391,7 @@ class Models {                                              // new Models(keyrin
   hostDashboard(userId, hostId): string                     // a direct link, at the address that last answered
 }
 // Also exported: CloudModelForbidden, NoModel, Offline (a NoModel: code "offline", task, tried), isUnreachable(err),
-// HostRefused (with `code`), PairingFailed, HostIdentityChanged, VoiceCloudOff;
+// HostRefused (with `code`), PairingFailed, HostIdentityChanged, voiceContext(ctx);
 // SPEECH_FORMAT (s16le, 24 kHz, mono), SPEECH_CONTENT_TYPE, MAX_CLIP_SECONDS (600), MAX_CLIP_BYTES, MAX_SPEAK_CHARS, wavData, wavSeconds, pcmSeconds, LANGUAGE;
 // STALE_DAYS, GONE_DAYS, HEALTH_MS, CAPABILITIES, ANSWER_SETTINGS, TASKS, TASK_NAMES (each task in words, for messages), THINKING_LEVELS; isRestricted, profileFor,
 // checkTask, refId, baseName, acceptedSettings(endpoint), payloadFields(…); fingerprint, normaliseCode, pairingProofs,
@@ -464,8 +462,8 @@ class Models {                                              // new Models(keyrin
 - **Speech.** `speech.transcribe` and `speech.speak` have lists of their
   own (neither follows chat) and take models with the `transcribe` or
   `speak` capability, reported by a host or set by hand. `transcribe` and
-  `speak` follow the same boundary as `resolve`; `transcribe` also refuses
-  a cloud model unless `ctx.voiceCloud` (`VoiceCloudOff`, nothing sent).
+  `speak` follow the same boundary as `resolve`; `transcribe` runs in
+  `voiceContext(ctx)`, so only the thread's own pick can be a cloud model.
   Both run through `callWithFallback`: an endpoint that can't answer is
   marked down and the next model in the list answers; a list with nothing
   that can answer throws `Offline`.
@@ -916,15 +914,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     streams raw PCM (`audio/pcm;rate=24000;encoding=s16le;channels=1`), with
     the message read from the store, never sent by the client;
     `ThreadSettings.speech` (`Speech`, also `GET /api/u/:userId/speech?pool=`)
-    and `voiceCloud` (null follows `Profiles.voiceCloud`);
-    `ThreadSettingsChange.voiceCloud`, `ProfilesChange.voiceCloud`;
+    and `models["speech.transcribe"]`, `models["speech.speak"]` (thread tasks);
     `ThreadSettings.fallback` (null follows `Profiles.fallback`) and
     `fallbackOn`, `ThreadSettingsChange.fallback`, `ProfilesChange.fallback`
     and `sleepFallback`;
     `Profiles.readAloudLive` and `Speech.readAloudLive` (Read aloud while she
     writes, off by default), `ProfilesChange.readAloudLive`;
     `Capabilities.transcribe` and `speak`, `AnswerSettings.voices` and
-    `speed`, `CallInfo.audioSeconds`. `VoiceCloudOff` is `400`;
+    `speed`, `CallInfo.audioSeconds`;
   - sleep: overview, run detail, items (start a chat, dismiss), `sleep.mode`,
     start a run, and an event stream. `/sleep` typed in a thread is
     `SendRequest.confirm` and `SendResponse.sleep`.

@@ -630,18 +630,17 @@ test("dictation goes in at the caret, Read aloud plays her reply, and a speech s
     await page.emulateMedia({ colorScheme: null });
   };
   const message = page.getByLabel("Message", { exact: true });
-  // A general thread's Dictation model is a cloud one, so the mic is off until Voice to cloud is on.
+  // Without a pick in the thread, Dictation is the local profile's model, even in a cloud-profile thread.
   const mic = page.getByRole("button", { name: "Dictate" });
-  await expect(mic).toBeDisabled();
-  await expect(mic).toHaveAttribute("title", /is a cloud model, and Voice to cloud is off/);
-  await shot("mic-off");
-  // Voice to cloud: a switch among the thread's privacy and network switches, following the default until changed.
+  await expect(mic).toBeEnabled();
+  // Dictation and Read aloud selects in the drawer's Models, offering only models that transcribe or speak; a cloud pick is this thread's.
   let drawer = await openSettings(page);
-  const voiceCloud = drawer.getByLabel("Voice to cloud");
-  await expect(voiceCloud).not.toBeChecked();
-  await voiceCloud.click();
-  await expect(voiceCloud).toBeChecked();
-  await shot("voice-to-cloud");
+  const dictation = drawer.getByRole("combobox", { name: "Dictation" });
+  await expect(dictation.locator("option")).toHaveText(["Profile (local · whisper · speech)", "cloud · whisper · openai", "local · whisper · speech"]);
+  await expect(drawer.getByLabel("Voice to cloud")).toHaveCount(0);
+  await dictation.selectOption({ label: "cloud · whisper · openai" });
+  await expect(dictation.locator("option:checked")).toHaveText("cloud · whisper · openai");
+  await shot("dictation-select");
   await drawer.getByRole("button", { name: "Close" }).click();
   await expect(mic).toBeEnabled();
 
@@ -694,21 +693,21 @@ test("dictation goes in at the caret, Read aloud plays her reply, and a speech s
     await noHorizontalScroll(page);
     // The thread's own choice held.
     drawer = await openSettings(page);
-    await expect(drawer.getByLabel("Voice to cloud")).toBeChecked();
-    await drawer.getByRole("button", { name: "Use default" }).last().click();
-    await expect(drawer.getByLabel("Voice to cloud")).not.toBeChecked();
+    const picked = drawer.getByRole("combobox", { name: "Dictation" });
+    await expect(picked.locator("option:checked")).toHaveText("cloud · whisper · openai");
+    await picked.selectOption({ index: 0 });
+    await expect(picked.locator("option:checked")).toHaveText("Profile (local · whisper · speech)");
   } finally {
     await request.post(`${models}/speech/up`);
   }
 });
 
-test("a speaking model's Settings drawer sets its voice and clamps its speed; Voice to cloud has its default beside the network defaults", async ({ page, baseURL }) => {
+test("a speaking model's Settings drawer sets its voice and clamps its speed; only the local profile has Dictation", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
-  await page.goto(`/#/u/${encodeURIComponent(userId)}/settings/network`);
-  await expect(page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible();
-  await expect(page.getByLabel("Voice to cloud")).not.toBeChecked();
   await page.goto(`/#/u/${encodeURIComponent(userId)}/settings/profiles`);
-  // Dictation and Read aloud rows offer only models that transcribe or speak.
+  await expect(page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible();
+  // Dictation and Read aloud rows offer only models that transcribe or speak; a cloud model hears a voice only when a thread picks it.
+  await expect(page.getByRole("group", { name: "Cloud profile" }).getByLabel("Dictation")).toHaveCount(0);
   const local = page.getByRole("group", { name: "Local profile" });
   await expect(local.getByLabel("Dictation").locator("option")).toHaveText(["Not set", "whisper"]);
   await expect(local.getByLabel("Read aloud").locator("option")).toHaveText(["Not set", "kokoro"]);

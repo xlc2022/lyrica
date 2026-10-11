@@ -847,10 +847,12 @@ local-only threads use local speech models only.
   first). The browser's own speech features are never used: Chrome sends
   dictation to Google, which can't keep the local/cloud line.
 - **A user's voice is personal data.** Even in a general thread, audio
-  goes to a cloud model only when the **Voice to cloud** switch is on: a
-  per-user default, off unless the user turns it on, with a per-thread
-  override. `lyricad` checks it before the router is asked. Her text read
-  aloud is message text and follows the router's rules alone.
+  goes to a cloud model only when the user picked that model in the
+  thread's **Dictation** select: the pick is the consent, for that thread
+  (and its branches) only. Without one, Dictation uses the local profile's
+  model, whatever the thread's profile (`voiceContext`). Li chose this over
+  a separate Voice to cloud switch (2026-10-11). Her text read aloud is
+  message text and follows the router's rules alone.
 - **Nothing is kept but text.** Audio is never written to disk or logged,
   in `lyricad`, on the host or in the browser. What the user says becomes
   their message's text; call records hold the model and the seconds of

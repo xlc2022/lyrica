@@ -324,7 +324,7 @@ Administration, Users.
 Network defaults are per user and pool: general threads start with internet
 on and local services off, private threads with both off. Change
 them under Settings, Network (below its "New threads" group, which holds
-the default mode and Voice to cloud), or with `lyrica admin net`. Each
+the default mode and Fallback), or with `lyrica admin net`. Each
 thread can narrow or widen its own from the thread settings drawer.
 
 ## Give her another computer

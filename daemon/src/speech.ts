@@ -208,5 +208,5 @@ export function speechState(models: Models, ctx: CallContext): Api.Speech {
     const m = models.speechModel(task, ctx);
     return "problem" in m ? { available: false, reason: m.reason, problem: m.problem } : { available: true, label: m.label, kind: m.kind };
   };
-  return { transcribe: state("speech.transcribe"), speak: state("speech.speak"), voiceCloud: !!ctx.voiceCloud, readAloudLive: models.defaultReadAloudLive(ctx.userId) };
+  return { transcribe: state("speech.transcribe"), speak: state("speech.speak"), readAloudLive: models.defaultReadAloudLive(ctx.userId) };
 }
