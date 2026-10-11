@@ -6,7 +6,8 @@
 // bash with that command (then says "The command finished."), "start: <title>"
 // starts a child thread with that title (then says "Started it."), "suggest: <a>, <b>"
 // proposes threads with those titles (then says "Suggested."), "plan: <plan>"
-// calls propose_plan with that plan (then says "On it."), anything else
+// calls propose_plan with that plan (then says "On it."), a "[Watching threads]"
+// look messages the first thread it names (then says "Told it."), anything else
 // gets a few streamed sentences that echo it. /local/v1 serves "local-model"
 // and /cloud/v1 "cloud-model". /speech/v1 is a speech server: "whisper"
 // transcribes any clip as "hello from the fake" and "kokoro" speaks a second
@@ -79,13 +80,16 @@ function fakeModel() {
       const plan = /plan: (.+)/.exec(said)?.[1];
       const child = /^start: (.+)/.exec(said)?.[1];
       const suggest = /^suggest: (.+)/.exec(said)?.[1];
-      if ((child || suggest) && last?.role !== "tool") {
+      // A look at the project's threads ("[Watching threads]"): tell the first thread it names.
+      const looked = said.startsWith("[Watching threads]") ? /^In \[t:([^\]\s]+)\]:/m.exec(said)?.[1] : undefined;
+      if ((child || suggest || looked) && last?.role !== "tool") {
         const args = child ? { action: "start", title: child, task: `Work on ${child}.` }
+          : looked ? { action: "message", id: looked, text: "Heads up: the plan changed." }
           : { action: "suggest", threads: suggest!.split(",").map((t) => t.trim()).map((title) => ({ title, task: `Work on ${title}.` })) };
         send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: { name: "threads", arguments: JSON.stringify(args) } }] });
         send({}, "tool_calls");
-      } else if (child || suggest) {
-        send({ role: "assistant", content: child ? "Started it." : "Suggested." });
+      } else if (child || suggest || looked) {
+        send({ role: "assistant", content: child ? "Started it." : looked ? "Told it." : "Suggested." });
         send({}, "stop");
       } else if ((command || plan) && last?.role !== "tool") {
         const call = command ? { name: "bash", arguments: JSON.stringify({ command }) } : { name: "propose_plan", arguments: JSON.stringify({ plan }) };
@@ -117,7 +121,7 @@ keyring.self().close();
 const model = fakeModel();
 await new Promise<void>((r) => model.listen(modelPort, "127.0.0.1", r));
 const daemon = new Lyricad({
-  home, port, argon2: ARGON2, selfTest: false, socket: false, permissionMs: 60_000,
+  home, port, argon2: ARGON2, selfTest: false, socket: false, permissionMs: 60_000, watchMs: 1500,
   credentials: new SystemdCredentials(join(home, "credentials")),
   log: () => {},
 });

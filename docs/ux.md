@@ -98,7 +98,7 @@ Rules:
   Share with, Move to group, Sampling, Serving, Placement, Memory,
   Throughput, Template, Pinned, Excluded, Servers, Keep free, Not this
   model, Group, Add…, Reset, Dictation, Dictate, Read aloud, Stop reading,
-  Voice to cloud, Read aloud while she writes, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, Thread settings, New threads, This chat, Threads, Open as a page, Close panel,
+  Voice to cloud, Read aloud while she writes, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, Thread settings, New threads, This chat, Threads, Watching threads, Checked the other threads, Open as a page, Close panel,
   Start a thread, Suggested threads, Start all, Resolve, Reopen, Resolved,
   Waiting on you, Goal, Instructions, Paused, All threads, Only projects,
   No projects, Machines, Add machine, Mode limit, Replace key, Use anyway,

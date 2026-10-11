@@ -31,7 +31,8 @@ export function fromEditable(text: string, users: UserMap): string {
 // and kept briefly, so a rename shows on the next look.
 
 const TITLES = new Map<string, { title: string | null; at: number }>();
-const PENDING = new Set<string>();
+/** Fetches under way, with every mention waiting on each, so all of them re-render when the title arrives. */
+const PENDING = new Map<string, Set<() => void>>();
 const KEEP_MS = 30_000;
 
 /** Fetches the titles of the threads a text mentions; re-renders as they arrive. */
@@ -43,15 +44,18 @@ function useMentionTitles(text: string, userId: string, pool: Pool): (pool: Pool
   const keys = found.map((f) => `${userId}/${f.pool}/${f.id}`);
   useEffect(() => {
     let live = true;
+    const tick = () => { if (live) setTick((n) => n + 1); };
     found.forEach((f, i) => {
       const key = keys[i]!;
       const known = TITLES.get(key);
-      if (PENDING.has(key) || (known && Date.now() - known.at < KEEP_MS)) return;
-      PENDING.add(key);
+      const pending = PENDING.get(key);
+      if (pending) return void pending.add(tick);
+      if (known && Date.now() - known.at < KEEP_MS) return;
+      PENDING.set(key, new Set([tick]));
       get<ThreadSummary>(threadPath(userId, f.pool, f.id))
         .then((t) => TITLES.set(key, { title: t.title || "an untitled thread", at: Date.now() }))
         .catch((err) => { if (err instanceof HttpError && err.status === 404) TITLES.set(key, { title: null, at: Date.now() }); })
-        .finally(() => { PENDING.delete(key); if (live) setTick((n) => n + 1); });
+        .finally(() => { const waiting = PENDING.get(key); PENDING.delete(key); waiting?.forEach((w) => w()); });
     });
     return () => { live = false; };
   }, [keys.join(" ")]); // eslint-disable-line react-hooks/exhaustive-deps

@@ -2,7 +2,7 @@
 
 **For:** Li, who creates the project, and Lyrica, who runs it. **Model:**
 none to build; the threads it sets up follow the models below.
-**Depends on:** Projects (project instructions, pins, threads that message
+**Depends on:** Projects (project instructions, threads that message
 each other) and Self-editing merged.
 
 **Read first:** AGENTS.md, DESIGN.md "Updates and self-editing" and
@@ -18,13 +18,19 @@ written here.
 
 ## Setup, by Li, once
 
-1. In a general thread list, **New project** named "Lyrica", with her code
-   folder granted and the internet switch on (or `github.com` and
-   `registry.npmjs.org` in allowed hosts). Goal: "Improve Lyrica's own
-   code from what we notice in use, through review."
-2. Paste the **Project instructions** below into the project's
-   instructions (only Li can change them).
-3. Start and pin three standing threads, each with its model:
+1. **New project** from the thread list's own menu (right-click or long
+   press its empty space), in the general pool, and name it "Lyrica"
+   (**Rename…** in its menu). In **Project settings** (the **Project** link in the project chat's header):
+   General → Goal: "Improve Lyrica's own code from what we notice in use,
+   through review."; then **Thread settings** under This chat: grant her
+   code folder and turn the internet on (or allow `github.com` and
+   `registry.npmjs.org`).
+2. Paste the **Project instructions** below into Project settings →
+   Memory → Instructions (the count shows it is under 2,000; only Li can
+   change them).
+3. Start three standing threads in the project chat (**Start a thread**
+   on a message; they sit under the project row) and pick each one's
+   model:
    - **Review** (the strongest cloud model allowed): reviews every PR she
      opens before it goes to Claude, against the brief or issue, AGENTS.md
      and the docs; sends fixes to the building thread; says verified.
@@ -33,6 +39,12 @@ written here.
      out only after it says verified.
    - **Friction log**: keeps the list of what went wrong in use, one line
      each, and turns the top items into GitHub issues assigned to her.
+
+4. Leave the project's `watchThreads` setting on (the default): the
+   project chat then takes a batched look at its threads 30 s after one
+   ends a turn Li started or posts an update, marked `[Watching threads]`,
+   tells the threads a change affects and speaks only when Li must know
+   or decide (docs/delegation.md, "Watching threads").
 
 ## Project instructions (paste as is)
 

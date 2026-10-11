@@ -1,5 +1,5 @@
 // The conversation: stored messages, then what's streaming now.
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { get, post, threadPath, type GoAhead, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
 import type { LiveItem } from "./live.ts";
 import { useMentionText, useThreadMentions } from "./mentions.ts";
@@ -52,13 +52,14 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   const anchored = project ? project.overview.threads.filter((t) => t.anchor !== undefined && shownMessagesHave(messages, hideFrom, t.anchor)) : [];
   const loose = project ? project.overview.threads.filter((t) => !anchored.includes(t)) : [];
   const shownMessages = hideFrom === undefined ? messages : messages.filter((m) => m.n < hideFrom);
+  const looks = useMemo(() => foldLooks(shownMessages), [shownMessages]);
   return (
     <>
       {hasMore && <button type="button" className="older" disabled={loading} onClick={() => run(loadOlder)}>Show earlier messages</button>}
       <ErrorText error={error} />
       {loaded && !messages.length && !live.items.length && <p className="muted empty">Say hello.</p>}
       {shownMessages.map((m, i) => (
-        <StoredMessage key={m.id} m={m} env={env} you={ctx.user.displayName}
+        <StoredMessage key={m.id} m={m} env={env} you={ctx.user.displayName} told={looks.told.get(m.id)} folded={looks.folded.has(m.id)}
           cards={project && [...anchored.filter((t) => t.anchor === m.n), ...(i === shownMessages.length - 1 ? loose : [])]} />
       ))}
       {hideFrom === undefined && live.items.map((item, i) => (
@@ -106,11 +107,34 @@ interface Env {
   project?: ProjectEnv;
 }
 
-function StoredMessage({ m, env, you, cards }: { m: Message; env: Env; you: string; cards?: ThreadSummary[] }) {
+/** What a look at the project's threads led to: the threads she messaged in the turn after it, with what she sent each. */
+interface Told { threads: ThreadRef[]; text: string }
+
+/**
+ * Pairs each look (`from.kind === "watching"`) with her next turn: the look's marker names the threads she told,
+ * and that turn's `threads message` cards fold into it rather than showing twice.
+ */
+function foldLooks(messages: Message[]): { told: Map<string, Told[]>; folded: Set<string> } {
+  const told = new Map<string, Told[]>();
+  const folded = new Set<string>();
+  messages.forEach((m, i) => {
+    if (m.role !== "user" || m.from?.kind !== "watching") return;
+    const next = messages.slice(i + 1).find((x) => x.role === "assistant" || (x.role === "user" && x.from?.kind !== "parent"));
+    if (next?.role !== "assistant") return void told.set(m.id, []);
+    const sent = next.parts.flatMap((p) => p.type === "tool" && p.name === "threads" && !p.isError && (p.args as { action?: string } | null)?.action === "message" && !(p.args as { to?: string }).to
+      ? [{ threads: p.threads ?? [], text: (p.args as { text?: string }).text ?? "" }] : []);
+    told.set(m.id, sent);
+    if (sent.length) folded.add(next.id);
+  });
+  return { told, folded };
+}
+
+function StoredMessage({ m, env, you, cards, told, folded }: { m: Message; env: Env; you: string; cards?: ThreadSummary[]; told?: Told[]; folded?: boolean }) {
   const after = cards?.map((t) => <ThreadCard key={t.id} t={t} userId={env.userId} env={env.project!} />);
   if (m.role === "user") {
     if (m.from?.kind === "parent") return <><FromParent text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} parent={m.from.threadId} env={env} n={m.n} />{after}</>;
-    const hers = m.from?.kind === "lyrica" || m.from?.kind === "thread" || m.from?.kind === "watching";
+    if (m.from?.kind === "watching") return <><LookMarker text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} told={told ?? []} env={env} n={m.n} />{after}</>;
+    const hers = m.from?.kind === "lyrica" || m.from?.kind === "thread";
     const who = hers ? "Lyrica" : m.from?.kind === "user" ? (m.from.name || you) : you;
     return <><UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} hers={hers ? env : undefined} />{after}</>;
   }
@@ -121,10 +145,39 @@ function StoredMessage({ m, env, you, cards }: { m: Message; env: Env; you: stri
   }
   return (
     <>
-      <Parts parts={m.parts} env={env} model={m.model} n={m.n} />
+      <Parts parts={m.parts} env={env} model={m.model} n={m.n} folded={folded} />
       {m.error && <p className="error turn-error">{m.error}</p>}
       {after}
     </>
+  );
+}
+
+const WATCHING_MARK = "[Watching threads]\n\n";
+
+/**
+ * A look at the project's threads (docs/ux.md §6: one-line markers for her inner workings): "Checked the other threads",
+ * with how many she told, expanding to the threads looked at and what she sent each. Never the person's bubble.
+ */
+function LookMarker({ text, told, env, n }: { text: string; told: Told[]; env: Env; n?: number }) {
+  const [open, setOpen] = useState(false);
+  const ids = [...new Set([...text.matchAll(/^In \[t:([^\]\s]+)\]:/gm)].map((m) => m[1]!))];
+  return (
+    <div className="marker look" data-type="watching" id={n !== undefined ? `m-${n}` : undefined}>
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
+        Checked the other threads{told.length > 0 && <> · told <span className="num">{told.length}</span></>}
+      </button>
+      {open && (
+        <div className="marker-body">
+          {ids.length > 0 && <div className="prose small"><HerProse text={`Looked at ${ids.map((id) => `[t:${id}]`).join(", ")}.`} env={env} /></div>}
+          {told.map((t, i) => (
+            <div key={i} className="prose small look-told">
+              <HerProse text={`To ${t.threads.map((x) => `[t:${x.pool === env.pool ? "" : `${x.pool}/`}${x.id}]`).join(", ") || "a thread"}: ${t.text}`} env={env} />
+            </div>
+          ))}
+          {env.rewinder && n !== undefined && <div className="row"><MessageMenu n={n} role="user" rewinder={env.rewinder} /></div>}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -133,7 +186,7 @@ function shownMessagesHave(messages: Message[], hideFrom: number | undefined, n:
 }
 
 function LiveMessage({ item, env, you, streaming }: { item: LiveItem; env: Env; you: string; streaming: boolean }) {
-  if (item.role === "user") return <UserMessage text={item.text} you={you} />;
+  if (item.role === "user") return item.text.startsWith(WATCHING_MARK) ? <LookMarker text={item.text.slice(WATCHING_MARK.length)} told={[]} env={env} /> : <UserMessage text={item.text} you={you} />;
   if (item.role === "notice") return <Notice text={item.text} status={item.status} threads={item.threads} env={env} />;
   return <Parts parts={item.parts} env={env} model={item.model} streaming={streaming} />;
 }
@@ -153,7 +206,7 @@ function UserMessage({ text, you, n, rewinder, hers }: { text: string; you: stri
 }
 
 /** Her message: prose for text, one-line markers for everything else. */
-function Parts({ parts, env, model, streaming, n }: { parts: MessagePart[]; env: Env; model?: string; streaming?: boolean; n?: number }) {
+function Parts({ parts, env, model, streaming, n, folded }: { parts: MessagePart[]; env: Env; model?: string; streaming?: boolean; n?: number; folded?: boolean }) {
   const out: React.ReactNode[] = [];
   let prose: string[] = [];
   const flush = (key: number, last: boolean) => {
@@ -172,6 +225,8 @@ function Parts({ parts, env, model, streaming, n }: { parts: MessagePart[]; env:
     if (p.type === "text") { prose.push(p.text); return; }
     // In a project chat, a thread's start has its card under the message; no marker, so a turn that only started one takes no room.
     if (p.type === "tool" && p.name === "threads" && env.project && !p.isError && (p.args as { action?: string } | null)?.action === "start") return;
+    // After a look, the threads she told are in the look's marker; the messages would show twice.
+    if (folded && p.type === "tool" && p.name === "threads" && !p.isError && (p.args as { action?: string } | null)?.action === "message") return;
     flush(i, false);
     out.push(<Marker key={i} part={p} env={env} />);
   });

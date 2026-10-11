@@ -206,13 +206,14 @@ export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContex
   );
 }
 
-/** Goal and Paused; New threads (Model, Thinking); This chat (Model, Mode, Group); one Save. */
+/** Goal, Paused and Watching threads; New threads (Model, Thinking); This chat (Model, Mode, Group); one Save. */
 function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }: {
   ctx: ShellContext; base: string; summary: ThreadSummary; settings: ThreadSettings; onSummary: (s: ThreadSummary) => void; onSettings: (s: ThreadSettings) => void;
 }) {
   const ps = summary.projectSettings;
   const [goal, setGoal] = useState(summary.goal ?? "");
   const [paused, setPaused] = useState(!!ps?.paused);
+  const [watch, setWatch] = useState(ps?.watchThreads !== false);
   const [model, setModel] = useState(refOf(ps?.threadsModel));
   const [thinking, setThinking] = useState<ThinkingLevel | "">(ps?.threadsThinking ?? "");
   const [chat, setChat] = useState<{ offeringId: string } | null | undefined>(undefined);
@@ -224,6 +225,7 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
     setSaved(false);
     const change: ThreadChange = {
       goal, paused,
+      ...(watch !== (ps?.watchThreads !== false) ? { watchThreads: watch } : {}),
       threadsModel: model ? { offeringId: model } : null,
       threadsThinking: thinking || null,
       ...(group !== (summary.group ?? "") ? { group: group || null } : {}),
@@ -243,7 +245,10 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
         <span>Goal</span>
         <textarea rows={3} value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="What the project is for, in your words." />
       </label>
-      <Switch label="Paused" hint="Running threads stop and queued ones wait." checked={paused} onChange={setPaused} />
+      <div className="row switches">
+        <Switch label="Paused" hint="Running threads stop and queued ones wait." checked={paused} onChange={setPaused} />
+        <Switch label="Watching threads" hint="After you write in a thread or one posts an update, Lyrica checks whether the other threads are affected and tells them." checked={watch} onChange={setWatch} />
+      </div>
 
       <h3 title={newThreadsHint}>New threads</h3>
       <div className="row top defaults">

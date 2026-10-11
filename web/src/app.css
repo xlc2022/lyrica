@@ -609,6 +609,11 @@ form.drawer-body { flex: 1; }
 .resolved-box { padding-block: 12px; }
 .resolved-box p { margin: 0; display: flex; gap: 6px; align-items: center; }
 .project-form h3 { font-size: 15px; margin: 8px 0 0; }
+.project-form .switches { gap: 20px; }
+/* A look at the project's threads: a marker like a tool call's, with a dot in the info colour. */
+.marker[data-type="watching"] > button::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--info); }
+.marker[data-type="watching"] .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.marker-body .prose.small { font-size: 13px; }
 .project-form textarea { width: 100%; resize: vertical; }
 
 /* ---- The right panel (docs/ux.md §6): a third column from 1180 px up, 360-520 px wide, dragged on its divider. ---- */
