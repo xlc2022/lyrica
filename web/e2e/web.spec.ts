@@ -232,6 +232,9 @@ test("a child thread nests under its parent, opens from its card, and goes with 
   const view = phone(page) ? page : page.getByRole("complementary", { name: "Seed list" });
   await expect(view.getByRole("heading", { level: 1, name: "Seed list" })).toBeVisible();
   await expect(view.getByText("Child thread of")).toBeVisible();
+  // What the parent sent is one line until tapped.
+  await expect(view.getByText("Work on Seed list.", { exact: true })).toHaveCount(0);
+  await view.getByRole("button", { name: /^Message received from/ }).click();
   await expect(view.locator(".msg.user .who").getByText("· from")).toBeVisible();
   await expect(view.getByText("Work on Seed list.", { exact: true })).toBeVisible();
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/child-${page.viewportSize()!.width}.png` });

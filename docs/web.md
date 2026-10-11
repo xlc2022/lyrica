@@ -277,9 +277,13 @@ A thread's address may carry what the panel beside it shows:
   card: each proposed thread with Start, one primary Start all; started ones
   show Open (`GET …/overview` says which, by call and index). **Start a
   thread** in a message's menu (project chats only) starts one from that
-  message (`POST …/messages/:n/thread`). In a child thread, what the parent
-  sent shows as "Lyrica · from <parent title>", with the message menu
-  (Branch, Delete; not Edit). Forgetting a thread with child threads asks
+  message (`POST …/messages/:n/thread`). What a parent sent its child, or
+  a project's thread sent a sibling (`from.kind` "parent" or "thread"), is
+  one line, "Message received from <thread title>" with a chevron, until
+  tapped (Li, 2026-10-11: said elsewhere, it would clutter the chat); open,
+  it is a tinted block headed "Lyrica · from <title>" with the message menu
+  (Branch, Delete; not Edit), and one taller than twelve lines shows
+  **Show more**. Forgetting a thread with child threads asks
   whether to forget them too, ticked, in the shared `Confirm` with one option.
 - Files attach from the "+" menu, by dragging onto the composer, or by
   pasting. Each shows its progress, and its path in the thread goes into the

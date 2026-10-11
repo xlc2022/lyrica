@@ -181,6 +181,8 @@ For each part:
   panel becomes this column when it comes; a project's Overview and Threads
   as pages wait for a design.
 - 2026-10-11, PR 4 (Watching threads): the switch on Project settings and
-  the "Checked the other threads" marker, after #97 and #110. Next: the
-  Files panel, Notifications, Pin in the remaining places, the Models page
-  and the Sleep section.
+  the "Checked the other threads" marker, after #97 and #110.
+- 2026-10-11, PR 5 (Li's ask): messages from other threads collapse to one
+  line, "Message received from <thread>", and expand on a tap; the rule is
+  in docs/ux.md §6. Next: the Files panel, Notifications, Pin in the
+  remaining places, the Models page and the Sleep section.
