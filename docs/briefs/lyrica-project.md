@@ -2,7 +2,7 @@
 
 **For:** Li, who creates the project, and Lyrica, who runs it. **Model:**
 none to build; the threads it sets up follow the models below.
-**Depends on:** Projects (project instructions, pins, threads that message
+**Depends on:** Projects (project instructions, threads that message
 each other) and Self-editing merged.
 
 **Read first:** AGENTS.md, DESIGN.md "Updates and self-editing" and
@@ -19,8 +19,8 @@ written here.
 ## Setup, by Li, once
 
 1. **New project** from the thread list's own menu (right-click or long
-   press its empty space), in the general pool, named "Lyrica". In
-   **Project settings** (the link in the project chat's header):
+   press its empty space), in the general pool, and name it "Lyrica"
+   (**Rename…** in its menu). In **Project settings** (the link in the project chat's header):
    General → Goal: "Improve Lyrica's own code from what we notice in use,
    through review."; then **Thread settings** under This chat: grant her
    code folder and turn the internet on (or allow `github.com` and
@@ -29,7 +29,8 @@ written here.
    Memory → Instructions (the count shows it is under 2,000; only Li can
    change them).
 3. Start three standing threads in the project chat (**Start a thread**
-   on a message), pin each, and pick each one's model:
+   on a message; they sit under the project row) and pick each one's
+   model:
    - **Review** (the strongest cloud model allowed): reviews every PR she
      opens before it goes to Claude, against the brief or issue, AGENTS.md
      and the docs; sends fixes to the building thread; says verified.
