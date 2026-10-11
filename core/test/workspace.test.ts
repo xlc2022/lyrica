@@ -5,7 +5,7 @@ import { networkInterfaces, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { generateSshKey, helperSandbox, nftRules, probeHostKey, resolveAddresses, SshTarget, Users, Workspace, WorkspaceSettings, type HelperSandbox, type SshTargetConfig } from "../src/index.ts";
+import { generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, Users, Workspace, WorkspaceSettings, type HelperSandbox, type SshTargetConfig } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -199,7 +199,7 @@ const pinning = (cfg: SshTargetConfig, seen: string[] = [], sandbox: HelperSandb
     if (!cfg.hostKey) { cfg.hostKey = fp; seen.push(fp); }
     return cfg.hostKey === fp;
   },
-  sandbox: () => sandbox,
+  transport: sandboxedTransport(() => sandbox),
 });
 
 describe("ssh targets", () => {
@@ -315,7 +315,9 @@ describe.skipIf(!helperRunnable)("an ssh target", () => {
       expect(seen).toEqual([expect.stringMatching(/^SHA256:/)]);
       target.close();
       // The key Lyrica would show when adding the machine is the one pinned.
-      expect(await probeHostKey({ host: "127.0.0.1", port }, { exclude: [] })).toBe(seen[0]);
+      let probed = "";
+      (await sandboxedTransport(() => ({ exclude: [] })).connect(cfg, (fp) => { probed = fp; return true; })).close();
+      expect(probed).toBe(seen[0]);
       const pinned = { ...cfg, hostKey: "SHA256:someone-else" };
       const impostor = new SshTarget(pinned, pinning(pinned));
       await expect(impostor.ops().read.readFile(file)).rejects.toThrow(/ssh local: the host key changed/);

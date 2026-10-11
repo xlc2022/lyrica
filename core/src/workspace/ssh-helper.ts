@@ -13,7 +13,7 @@
 import ssh2 from "ssh2";
 import type { ClientChannel, SFTPWrapper, Stats } from "ssh2";
 import { capOutput } from "./ops.ts";
-import { decoder, encode, type Frame } from "./ssh-frames.ts";
+import { decoder, encode, MAX_BODY, type Frame } from "./ssh-frames.ts";
 
 const send = (head: object, body?: Buffer) => { process.stdout.write(encode(head, body)); };
 const client = new ssh2.Client();
@@ -62,7 +62,18 @@ function request(id: number, head: Frame["head"], body: Buffer): void {
   switch (head.op) {
     case "realpath": return s.realpath(path, (err, value) => done(err, { value }));
     case "lstat": return s.lstat(path, (err, st) => done(err, err ? {} : { stats: statsOf(st) }));
-    case "readFile": return s.readFile(path, (err, data) => done(err, {}, data));
+    case "readFile": {
+      // Refused here rather than as an oversized frame, which would end the connection.
+      return s.stat(path, (err, st) => {
+        if (err) return done(err);
+        if (st.size > MAX_BODY) return done(new Error(`${path} is larger than ${MAX_BODY / 1024 / 1024} MB`));
+        s.readFile(path, (err2, data) => {
+          if (err2) return done(err2);
+          if (data.length > MAX_BODY) return done(new Error(`${path} grew too large to read`));
+          done(null, {}, data);
+        });
+      });
+    }
     case "head": {
       return s.open(path, "r", (err, handle) => {
         if (err) return done(err);

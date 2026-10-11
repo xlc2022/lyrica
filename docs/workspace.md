@@ -87,8 +87,10 @@ that breaks the library's parsing gets one key it could already use, not
 - The helper exits when its stdin closes, so it never outlives `lyricad`. If
   it can't start, or the network self-test has refused networked sandboxes,
   the call fails; there is no client in `lyricad` to fall back to.
-- `probeHostKey({ host, port })` reads a server's host key through a helper
-  without logging in.
+- `SshTarget` talks to the helper only through `SshTransport` and
+  `SshSession` (`transport.ts`); `sandboxedTransport` is the one
+  implementation. Reading a key to show when adding a machine goes through it
+  too. A file over 64 MB is refused rather than read.
 - No system `ssh` agent is involved. The helper needs Node 22.6 or later
   (it runs with type stripping).
 - `lyrica admin ssh add` generates an ed25519 key and prints the public half

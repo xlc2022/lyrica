@@ -889,9 +889,14 @@ interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
   ops(): { read; write; edit; bash };     // Pi's tool operations
   folders(): string[];                    // host folders, or "<ssh name>:<root>"
 }
-new SshTarget(cfg, { hostKey(fingerprint): boolean, sandbox(): HelperSandbox })  // asked each connection
+new SshTarget(cfg, { transport: SshTransport, hostKey(fingerprint): boolean })  // hostKey asked each connection
+interface SshTransport { connect(to: SshEndpoint, verify(fingerprint): boolean): Promise<SshSession> }
+// SshEndpoint { host, port, username, privateKey }. SshSession: home, exec(command, { onData, signal?, timeout? }),
+//   realpath, lstat (undefined when missing), readFile, readHead(path, n), check(path, "r" | "r+"),
+//   writeFile(path, content, mode?), chmod, chown, rename (posix-rename where it can), unlink, close, onClose.
+//   A missing path rejects with RemoteMissing (isMissing(err)).
+sandboxedTransport(sandbox: () => HelperSandbox): SshTransport  // the only client; Workspace.sshTransport
 // HelperSandbox { exclude, front?, frontHosts?, bwrap?, pasta?, refused? }: refused (the self-test's reason) fails the call
-probeHostKey({ host, port }, sandbox): Promise<string>   // "SHA256:…", read through a helper, no login
 helperSandbox(address, port, sandbox): Sandbox           // the helper's sandbox: no workspace, that address and port only
 forThread(t)  // { target(), settings(), setMode(), network(), folders(), recordChange() }, each read fresh; settings() is effective
 changes(userId): FileChanges              // her write and edit calls' changes, for removing turns

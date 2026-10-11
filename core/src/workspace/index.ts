@@ -11,6 +11,7 @@ import { Sandbox, WORKDIR } from "./sandbox.ts";
 import { checkGrant, WorkspaceSettings, type Grant, type Network, type PermissionMode, type ThreadWorkspace } from "./settings.ts";
 import { AllowedPaths } from "./paths.ts";
 import { SshTarget } from "./ssh.ts";
+import { sandboxedTransport } from "./transport.ts";
 
 export * from "./changes.ts";
 export * from "./home.ts";
@@ -20,6 +21,7 @@ export * from "./ops.ts";
 export * from "./sandbox.ts";
 export * from "./settings.ts";
 export * from "./ssh.ts";
+export * from "./transport.ts";
 
 /** The parts of a thread the workspace needs. */
 export interface WorkspaceThread {
@@ -63,6 +65,8 @@ export class Workspace {
   private readonly settingsByUser = new Map<string, WorkspaceSettings>();
   private readonly changesByUser = new Map<string, FileChanges>();
   private readonly sshTargets = new Map<string, SshTarget>();
+  /** The SSH client, a sandboxed helper per connection, under the same front door and self-test as the sandbox. */
+  readonly sshTransport = sandboxedTransport(() => ({ ...this.door(), bwrap: this.opts.bwrap, pasta: this.opts.pasta, refused: this.networkRefused }));
   /** Which folders each user may grant. Only administrators change them. */
   readonly allowedPaths: AllowedPaths;
 
@@ -241,12 +245,12 @@ export class Workspace {
       const cfg = s.ssh(name);
       if (!cfg) throw new Error(`no ssh target ${name}`);
       target = new SshTarget(cfg, {
+        transport: this.sshTransport,
         // Pinned on first use for now; Machines confirms the key when a machine is added.
         hostKey: (fp) => {
           if (!cfg.hostKey) { cfg.hostKey = fp; s.recordHostKey(name, fp); }
           return cfg.hostKey === fp;
         },
-        sandbox: () => ({ ...this.door(), bwrap: this.opts.bwrap, pasta: this.opts.pasta, refused: this.networkRefused }),
       });
       this.sshTargets.set(key, target);
     }
