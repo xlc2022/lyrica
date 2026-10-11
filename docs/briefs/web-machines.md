@@ -21,17 +21,20 @@ the fingerprint before anything is trusted.
 1. **Machines**, a section of Settings where SSH targets are today: rows as
    docs/ux.md describes (name; facts line in mono: address, pool, "SSH ·
    key" or "Proxmox API · token", "up to Accept edits"; at most one state:
-   Online, "Unreachable 2 days", Key changed, Off network; none if never
-   probed). The row opens the drawer: address, root, pool, **Mode limit**
+   Online, Unreachable with the duration in mono, Key changed, Off network;
+   none if never probed). The row opens the drawer: address, root, pool, **Mode limit**
    as the message box's three-item mode list. ⋯: **Replace key**, Remove
    (dialog with its one sentence).
 2. **Add machine**, a page: one h1, a kind segment (SSH | Proxmox), steps as
-   sections with eyebrows (Name and address, Key or Token, Fingerprint,
-   Test), one primary per step (Copy, Confirm, Test), the setup commands in
-   a code block, the fingerprint in mono, no captions. Nothing is saved
-   until Confirm. Replace key and a Key changed row open it at the
-   Fingerprint step. An off-network private machine gets a dialog with the
-   consequence before Confirm saves it.
+   sections with eyebrows (Name and address, Key or Token, Test,
+   Fingerprint). One primary on the page, the current step's action (Copy,
+   then Test, then Confirm); a done step's button becomes secondary.
+   Confirm is the last step and nothing is saved before it; a test on an
+   unsaved machine still proves the key and shows the fingerprint. The setup
+   commands in a code block, the fingerprint in mono, no captions. Replace
+   key and a Key changed row open it at the Fingerprint step. An off-network
+   private machine gets a dialog with the consequence, Add anyway primary
+   and Cancel, before Confirm saves it.
 3. **The thread.** The "where commands run" select in the thread's Settings
    drawer becomes one Machines row next to Folders: the sandbox plus the
    granted machines. The header's facts line shows the machines' names in

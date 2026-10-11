@@ -979,9 +979,9 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
 - **A machine belongs to one pool.** A general thread uses general machines,
   a private thread private ones; a machine is never in both. A private
   machine whose address resolves outside Li's LAN, loopback and tailnet is
-  allowed with a warning dialog that states the consequence (what she reads
+  allowed through a dialog that states the consequence (what she reads
   and writes there leaves the network, and so can the thread's private
-  memory), and its row shows **Off network** while that holds. The sandbox's
+  memory) with Add anyway as its one action, and its row shows **Off network** while that holds. The sandbox's
   internet switch and allowed hosts cover the sandbox only: a machine's
   network is its own.
 - **A machine has a mode limit**, the loosest mode she may use there: Ask,
