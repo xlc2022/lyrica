@@ -593,6 +593,10 @@ test("with Read aloud while she writes on, a reply can be read aloud as it strea
   }
   await expect(page.locator(".turn").getByRole("button", { name: "Stop reading" })).toHaveCount(0, { timeout: 15_000 });
   await noHorizontalScroll(page);
+  // Later tests share this user: put the setting back to its default.
+  await page.goto(`/#/u/${encodeURIComponent(userId)}/settings/appearance`);
+  await page.getByLabel("Read aloud while she writes").click();
+  await expect(page.getByLabel("Read aloud while she writes")).not.toBeChecked();
 });
 
 test("dictation goes in at the caret, Read aloud plays her reply, and a speech server that is down disables both", async ({ page, baseURL, request }) => {
@@ -644,6 +648,8 @@ test("dictation goes in at the caret, Read aloud plays her reply, and a speech s
   // Read aloud on her reply is Stop reading while it plays, then comes back.
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.getByText("in a few pieces.")).toBeVisible();
+  // Her stored copy, once she has finished: the one Read aloud on the page.
+  await expect(page.locator(".caret-blink")).toHaveCount(0, { timeout: 15_000 });
   await page.getByRole("button", { name: "Read aloud" }).click();
   const stop = page.getByRole("button", { name: "Stop reading" });
   await expect(stop).toBeVisible();
