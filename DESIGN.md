@@ -1391,8 +1391,11 @@ from Monika's runbooks.
 - **Her own GitHub account**, a collaborator with a fine-grained token for
   this repository (contents, pull requests), stored encrypted in her user's
   settings and handed to the sandbox only in a thread with the checkout.
-  `main` is protected: pull requests only, green CI, one approval from
-  someone other than the author.
+  She pushes branches to the repository itself, never a fork, so her pull
+  requests run the same CI as Claude's on Li's runners (docs/ci.md), with
+  no first-time-contributor approval. `main` is protected: pull requests
+  only, green CI, one approval from someone other than the author; nothing
+  merges without both.
 - **Review is the project's.** Her PRs go through the same PR review (and
   UI review) as Claude's, which approves and merges them, so Li doesn't
   read every change. `CODEOWNERS` names Li for boundary code (keys, the

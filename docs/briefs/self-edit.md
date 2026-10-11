@@ -31,8 +31,10 @@ the boundaries structural).
 3. **Repository settings, written as a checklist for Li** (she owns the
    repository): her account as a collaborator with write; a fine-grained
    token for this repository only with contents and pull requests; `main`
-   protected (pull requests only, the `check` job required, one approval,
-   code-owner review); a `CODEOWNERS` file naming `@xlc2022` for
+   protected (pull requests only, the CI jobs required, one approval,
+   code-owner review); she pushes branches to the repository, never a
+   fork, so her PRs run `.github/workflows/ci.yml` on the `lyrica-ci`
+   runners like Claude's, with no first-time-contributor approval; a `CODEOWNERS` file naming `@xlc2022` for
    `core/src/keyring.ts`, `core/src/models/`, `core/src/workspace/`,
    `daemon/src/auth.ts`, `daemon/deploy/`, the updater scripts and
    `CODEOWNERS` itself. The `CODEOWNERS` file is in this PR.
