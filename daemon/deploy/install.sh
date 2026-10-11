@@ -36,9 +36,10 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
   bubblewrap gocryptfs fuse3 passt nftables openssl ca-certificates curl unzip rsync >/dev/null
-command -v node >/dev/null || die "install Node.js 22 or later (for example from NodeSource), then run this again"
-NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]')
-[ "$NODE_MAJOR" -ge 22 ] || die "Node.js $NODE_MAJOR is too old: lyricad needs 22 or later"
+command -v node >/dev/null || die "install Node.js 22.6 or later (for example from NodeSource), then run this again"
+# 22.6 for the SSH helper, which runs with type stripping.
+node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 6) ? 0 : 1)' \
+  || die "Node.js $(node -v) is too old: lyricad needs 22.6 or later"
 
 # --- Users ---
 # lyrica runs lyricad; lyrica-caddy runs Caddy. The lyrica-caddy group shares

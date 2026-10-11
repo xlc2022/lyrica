@@ -491,8 +491,9 @@ and never logged; a Caddy error that quotes one has it replaced with
 installs or upgrades everything. Running it again upgrades in place.
 
 - It installs the packages (bubblewrap, gocryptfs, FUSE, passt, nftables,
-  openssl), checks for Node.js 22 or later, and creates two system users:
-  `lyrica` runs `lyricad`, `lyrica-caddy` runs Caddy. The `lyrica-caddy`
+  openssl), checks for Node.js 22.6 or later (the SSH helper runs with type
+  stripping), and creates two system users: `lyrica` runs `lyricad`,
+  `lyrica-caddy` runs Caddy. The `lyrica-caddy`
   group shares Caddy's admin socket (mode `0660`) and TLS log; lyricad's unit
   joins it (`SupplementaryGroups`), and nobody else can use them. An allowed
   path that overlaps `/run/lyrica-caddy` is refused, since sandboxes run with
