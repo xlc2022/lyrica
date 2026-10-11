@@ -56,3 +56,6 @@ npm run typecheck
 npm test
 npm run evals      # continuity scenarios in evals/; a failure is evidence, not a broken build
 ```
+
+CI runs on Li's own runner ([docs/ci.md](docs/ci.md)); a job waiting in the
+queue means the runner is busy or offline.
