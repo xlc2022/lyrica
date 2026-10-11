@@ -151,7 +151,8 @@ answers back. Li chose a project setting, on by default.
    waits for Li; a user can't write the mark.
 
 Built (back end): items 1 to 5, and the test for a look, the setting off,
-the mark and a run of looks. Item 6 is projects-web's, item 7
+the mark and a run of looks. Item 6 is built (Web UI 2: the switch, the
+marker and an e2e test where a look leads to one thread told); item 7 is
 projects-sleep's. Found while building: an update to a project chat that is
 mid-turn arrives as a follow-up that starts a turn (Delegation's delivery,
 as for any busy parent), with or without watching.

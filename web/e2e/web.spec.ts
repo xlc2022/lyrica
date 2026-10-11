@@ -869,6 +869,45 @@ test("the split view: a thread from its card opens in the panel, links inside it
   await noHorizontalScroll(page);
 });
 
+test("watching threads: writing in a project's thread leads to a look, shown as a marker that names the thread she told; the switch turns it off", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  const list = page.locator(".threads");
+  const box = (await list.boundingBox())!;
+  await list.dispatchEvent("contextmenu", { clientX: box.x + box.width / 2, clientY: box.y + box.height - 6 });
+  await page.getByRole("menu", { name: "Thread list menu" }).getByRole("menuitem", { name: "New project" }).click();
+  await page.getByRole("menuitem", { name: "General" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "New project" })).toBeVisible();
+  const projectUrl = page.url();
+  await send(page, "start: Alpha");
+  await expect(page.getByText("Started it.")).toBeVisible();
+  // Write in Alpha (beside the chat on a wide screen, as the page on a phone); the look comes to the project chat.
+  await page.locator(".tcard").first().getByRole("link", { name: "Alpha" }).click();
+  const alpha = phone(page) ? page : page.getByRole("complementary", { name: "Alpha" });
+  await alpha.getByLabel("Message", { exact: true }).fill("use the raised beds");
+  await alpha.getByRole("button", { name: "Send" }).click();
+  await expect(alpha.getByText(/You said: use the raised beds/)).toBeVisible();
+  if (phone(page)) await page.goto(projectUrl);
+  const look = page.locator("main .marker[data-type='watching']");
+  await expect(look.getByRole("button")).toContainText("Checked the other threads", { timeout: 20_000 });
+  await expect(look.getByRole("button")).toContainText("told 1", { timeout: 20_000 });
+  await look.getByRole("button").click();
+  await expect(look.getByText("Heads up: the plan changed.")).toBeVisible();
+  await expect(look.getByRole("link", { name: "Alpha" })).toHaveCount(2);
+  await expect(page.locator("main .threads-card")).toHaveCount(0);
+  await expect(page.locator("main .msg.user").filter({ hasText: "[Watching threads]" })).toHaveCount(0);
+  // The switch, on by default, saves off.
+  await page.getByRole("link", { name: "Project settings" }).first().click();
+  const watch = page.getByRole("checkbox", { name: "Watching threads" });
+  await expect(watch).toBeChecked();
+  await watch.uncheck();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Saved.")).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("checkbox", { name: "Watching threads" })).not.toBeChecked();
+  await noHorizontalScroll(page);
+});
+
 test("no horizontal scrolling and big enough tap targets on a phone", async ({ page, baseURL }) => {
   test.skip(!phone(page), "phone only");
   const userId = await enter(page, baseURL!);

@@ -179,6 +179,8 @@ For each part:
   divider, breadcrumbs, Open as a page and Close panel, the address carrying the panel,
   the page on its own below 1180 px (docs/web.md "The panel"). The Files
   panel becomes this column when it comes; a project's Overview and Threads
-  as pages wait for a design. Next: the Files panel, the Watching threads
-  switch and markers once #97 lands, Notifications, Pin in the remaining
-  places, the Models page and the Sleep section.
+  as pages wait for a design.
+- 2026-10-11, PR 4 (Watching threads): the switch on Project settings and
+  the "Checked the other threads" marker, after #97 and #110. Next: the
+  Files panel, Notifications, Pin in the remaining places, the Models page
+  and the Sleep section.
