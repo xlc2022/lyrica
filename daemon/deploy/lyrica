@@ -1,0 +1,15 @@
+#!/bin/sh
+# `lyrica` on the PATH: the CLI, run as the lyrica user with her state folder,
+# so the files it makes are hers. install.sh fills in the two paths.
+cli=@CLI@
+home=@STATE@
+if [ "$(id -un)" = lyrica ]; then
+  exec env LYRICA_HOME="$home" "$cli" "$@"
+elif [ "$(id -u)" = 0 ]; then
+  exec runuser -u lyrica -- env LYRICA_HOME="$home" "$cli" "$@"
+elif command -v sudo >/dev/null; then
+  exec sudo -u lyrica env LYRICA_HOME="$home" "$cli" "$@"
+else
+  echo "lyrica: run this as root or as the lyrica user" >&2
+  exit 1
+fi

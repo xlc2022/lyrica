@@ -59,6 +59,9 @@ fi
 chown -R root:root "$PREFIX"
 chmod -R a+rX,go-w "$PREFIX"
 install -d -o lyrica -g lyrica -m 0700 "$STATE"
+# `lyrica` on the PATH runs the CLI as the lyrica user with her state folder.
+sed -e "s|@CLI@|$PREFIX/bin/lyrica|" -e "s|@STATE@|$STATE|" "$PREFIX/daemon/deploy/lyrica" >/usr/local/bin/lyrica
+chmod 0755 /usr/local/bin/lyrica
 
 # --- The built-in Caddy ---
 MODULES=$(sed -n 's/.*module: "\([^"]*\)".*/\1/p' "$PREFIX/daemon/src/web/providers.ts" | sort)
@@ -110,7 +113,7 @@ if [ -d /run/systemd/system ]; then
     say "lyricad restarted."
   else
     say "Next: create self.db and the first administrator, then start lyricad:"
-    say "  runuser -u lyrica -- env LYRICA_HOME=$STATE $PREFIX/bin/lyrica admin init"
+    say "  lyrica admin init"
     say "  systemctl start lyricad"
   fi
 else
