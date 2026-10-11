@@ -1335,6 +1335,74 @@ Details in [docs/sleep.md](docs/sleep.md).
   - The same in-process setup, run headless, drives the continuity evals.
 - Interfaces between components are in [docs/contracts.md](docs/contracts.md).
 
+## Updates and self-editing
+
+Every update can be undone without her, and she can change her own code
+only through review. Decided 2026-10-11 from
+`/mnt/project-files/self-edit/proposal.md`, which takes its deploy rules
+from Monika's runbooks.
+
+- **Releases.** Each version is built into its own read-only folder,
+  `/opt/lyrica/releases/<commit>`, and `/opt/lyrica/current` points at the
+  running one; the last 5 are kept. `install.sh` builds a release the same
+  way, so a hand install and an update are one path.
+- **The updater runs as root, outside her.** `lyrica-update` and
+  `lyrica-rollback` are oneshot systemd units, not daemons, installed by
+  `install.sh` only, never by an update, so a broken release can't break
+  what removes it. The updater installs only a commit on `main`, fetched
+  with a read-only deploy key; that is the line she can't cross.
+- **An update**, in order: build the release as an unprivileged build
+  user; **smoke test** it on a spare port with a scratch home and a test
+  user, never real data; **drain**: stop taking new turns and wait until no
+  turn, sleep run, subagent or child thread is working (new messages get
+  "Updating"), giving up after 10 minutes with nothing changed, so a restart
+  never cuts a turn in half; **snapshot** her databases and settings (copies
+  of encrypted files; homes are left to the operator's backup), keeping the
+  last 3; switch `current`; start; **probation**.
+- **Probation.** The release must pass its checks once unlocked (every
+  database opens and migrates, the workspace self-test, the model router,
+  the web UI's files) and stay up 10 minutes. With saved credentials that
+  happens at start; without them, at the first unlock. A crash loop or a
+  failed check rolls back by itself and tells administrators in
+  Notifications which commit failed and which check.
+- **Rollback** goes back to the previous release: automatically in
+  probation, from Administration, or with `sudo lyrica-rollback` on the
+  console when nothing else works. Each database records the schema version
+  that wrote it and a release refuses a newer one, so a rollback across a
+  schema change also restores the pre-update snapshot, and loses what was
+  written since; its dialog says from when. A migration that removes or
+  renames waits one release (expand, then contract), so most rollbacks keep
+  everything.
+- **Update notes.** Every update installs an update note, never a bare
+  commit: an annotated tag (`update/<date>`) on a `main` commit whose
+  message lists the merged PRs since the running version, what each
+  changes, any schema change and what a rollback would lose, and what to
+  check afterwards. She writes it, or the Claude thread that built the
+  change. It lives on GitHub, so no rollback or lost thread can take it; the
+  updater keeps a copy beside the snapshot. It describes code, never
+  conversations. After a failed probation, she writes the post-mortem as an
+  issue linked to the tag.
+- **Updates are manual.** An administrator presses **Update** in
+  Administration. She can say an update is ready; she can't press it.
+- **Her own code** is a checkout granted like any folder, to general
+  threads only: the code goes to GitHub and cloud CI, so private memory
+  never reaches a commit. She works like a feature thread: one branch and
+  one pull request per piece of work, typecheck and tests in her sandbox.
+- **Her own GitHub account**, a collaborator with a fine-grained token for
+  this repository (contents, pull requests), stored encrypted in her user's
+  settings and handed to the sandbox only in a thread with the checkout.
+  `main` is protected: pull requests only, green CI, one approval from
+  someone other than the author.
+- **Review is the project's.** Her PRs go through the same PR review (and
+  UI review) as Claude's, which approves and merges them, so Li doesn't
+  read every change. `CODEOWNERS` names Li for boundary code (keys, the
+  model router, the sandbox, authentication, deployment and the updater),
+  where her own approval is required.
+- **The outer net is the operator's:** a scheduled Proxmox backup of the
+  container. The updater can't snapshot the container it runs in.
+- **Not covered:** her persona, which has its own revisions; model hosts,
+  which keep `host/install.sh` until this has proved itself.
+
 ## How the project runs
 
 - **Claude does most of the rebuild.** Lyrica edits herself with other models
@@ -1440,3 +1508,9 @@ new evidence.
   which steps to take and what has not yet been exercised. They are kept
   current by the Operator docs thread, on notice from threads whose merged
   PRs change what an operator does by hand, and by a weekly drift check.
+- **Updates: copy over → releases with rollback (2026-10-11).** `install.sh`
+  replaced the code in place, so a bad update could only be fixed by hand.
+  Li asked for a way for Lyrica to edit herself without permanently breaking
+  her installation; every update now keeps the previous release and a
+  database snapshot, and rolls back by itself. Her code changes go through
+  the same review as Claude's.

@@ -35,6 +35,10 @@ Read these, in this order:
 - **Tests protect what Li would notice:** context assembly, memory round trips,
   the privacy and cloud boundaries, and sleep output. Don't add a test for
   every hypothetical.
+- **Migrations expand, then contract.** A schema change that removes or
+  renames something waits one release, so the previous release can still
+  open the database and a rollback keeps its data (DESIGN.md, Updates and
+  self-editing).
 - **Deleting code is progress.**
 
 ## Workflow
