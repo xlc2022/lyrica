@@ -321,6 +321,9 @@ admin ssh list` shows each machine's pool, limit and confirmed key, and
 `ssh remove` takes one away. SSH targets added before machines existed
 became general machines at Ask; one that had never connected has no
 confirmed key and must be added again (`ssh remove <name>`, then `add`).
+The same cure applies to a machine added before 2026-10-11 that never
+connects, even though its setup was run: about one key in 256 made before
+#96 was one OpenSSH could not load, and saved keys are not checked.
 
 ## Give her a Proxmox node
 
