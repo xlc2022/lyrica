@@ -43,7 +43,13 @@ const ETC = [
   "passwd", "group", "ld.so.cache", "ld.so.conf", "ld.so.conf.d", "os-release",
 ].map((f) => `/etc/${f}`);
 // /usr/sbin is for nft, which runs before bwrap; the sandbox's PATH is the same.
-const ENV = { PATH: "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin", HOME: WORKDIR, LANG: "C.UTF-8", TERM: "dumb" };
+const PATH = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+// On NixOS there's no /usr to share. The service sets LYRICA_SANDBOX_TOOLS to
+// a Nix environment of the sandbox's tools: it becomes the sandbox's /usr, with
+// /nix/store read-only beneath it, and its bin is first on the host's PATH too,
+// for pasta, nft and bwrap.
+const tools = () => process.env.LYRICA_SANDBOX_TOOLS || undefined;
+const env = () => ({ PATH: tools() ? `${tools()}/bin:${PATH}` : PATH, HOME: WORKDIR, LANG: "C.UTF-8", TERM: "dumb" });
 // Loads the firewall into pasta's namespace, then starts bwrap. Fails closed if nft fails.
 const LOAD_RULES = 'printf "%s" "$1" | nft -f - || exit 125; shift; exec "$@"';
 
@@ -181,7 +187,7 @@ export class Sandbox implements ExecutionTarget {
         "--", "sh", "-c", LOAD_RULES, "sh", rules, ...cmd];
     }
     const child = spawn(cmd[0]!, cmd.slice(1), {
-      env: ENV,
+      env: env(),
       stdio: ["pipe", "pipe", "pipe", ...fds, ...data.map(() => "pipe" as const)],
     });
     child.on("error", () => {}); // reported to the caller's own listener; never an uncaught error
@@ -200,11 +206,16 @@ export class Sandbox implements ExecutionTarget {
     // With network on, bwrap runs inside pasta's own namespace and keeps it.
     // The host's network is never shared.
     if (networked) args.push("--share-net");
-    for (const dir of SYSTEM_DIRS) {
-      if (!existsSync(dir)) continue;
-      const stat = lstatSync(dir);
-      if (stat.isSymbolicLink()) args.push("--symlink", readlinkSync(dir), dir);
-      else args.push("--ro-bind", dir, dir);
+    const nix = tools();
+    if (nix) {
+      args.push("--ro-bind", "/nix/store", "/nix/store", "--ro-bind", nix, "/usr", "--symlink", "usr/bin", "/bin", "--symlink", "usr/bin", "/sbin");
+    } else {
+      for (const dir of SYSTEM_DIRS) {
+        if (!existsSync(dir)) continue;
+        const stat = lstatSync(dir);
+        if (stat.isSymbolicLink()) args.push("--symlink", readlinkSync(dir), dir);
+        else args.push("--ro-bind", dir, dir);
+      }
     }
     for (const f of ETC) args.push("--ro-bind-try", f, f);
     args.push("--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp");

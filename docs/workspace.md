@@ -38,6 +38,9 @@ database files. A command that could see either one could read everything.
   cache), `/proc`, `/dev`, an empty `/tmp`, the thread's folder at
   `/workspace`, and each grant at its own host path. Its environment is a
   fixed minimal set; nothing of `lyricad`'s is passed in.
+- On NixOS the system is the module's sandbox tools instead: `/nix/store`
+  read-only, the tools as `/usr`, `/bin` and `/sbin` linking to `usr/bin`
+  (`LYRICA_SANDBOX_TOOLS`, docs/nixos.md).
 - **Every operation is a fresh sandbox**, file reads and writes included, so
   paths and symlinks always resolve inside it. `read`, `write` and `edit`
   first refuse paths outside `/workspace` and the grants (and writes to

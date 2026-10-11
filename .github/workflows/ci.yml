@@ -37,6 +37,37 @@ jobs:
       - run: npx playwright install --with-deps chromium
         working-directory: web
       - run: npm run e2e -w @lyrica/web
+  # The flake (docs/nixos.md): the package and a NixOS system with the module
+  # build, and the sandbox tests pass with the module's sandbox tools as /usr.
+  nix:
+    runs-on: lyrica-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Nix stays on the runner between runs, like the apt packages. The
+      # installer is pinned by hash and checks its own download.
+      - name: Install Nix
+        run: |
+          if [ ! -x /nix/var/nix/profiles/default/bin/nix ]; then
+            curl -fsSL -o "$RUNNER_TEMP/nix-install" https://releases.nixos.org/nix/nix-2.34.6/install
+            echo "bf6d12da4aeaae38ab509dc736df648597bcdee051046ea76d3d53d5b18fa54a  $RUNNER_TEMP/nix-install" | sha256sum -c -
+            sh "$RUNNER_TEMP/nix-install" --daemon --yes
+          fi
+          echo /nix/var/nix/profiles/default/bin >>"$GITHUB_PATH"
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gocryptfs fuse3
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - run: nix --extra-experimental-features "nix-command flakes" flake check -L
+      - run: npm ci
+      - name: Sandbox tests with the NixOS sandbox tools
+        run: |
+          tools=$(nix --extra-experimental-features "nix-command flakes" build --no-link --print-out-paths .#sandbox-tools)
+          PATH="$tools/bin:$PATH" LYRICA_SANDBOX_TOOLS="$tools" npx vitest --run core/test/sandbox.test.ts
+        env:
+          LYRICA_SANDBOX_TESTS: require
   # The model host's Compose stack, without a GPU: install, then check the networks.
   host-stack:
     runs-on: lyrica-ci

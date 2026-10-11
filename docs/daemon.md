@@ -460,7 +460,8 @@ and never logged; a Caddy error that quotes one has it replaced with
 ## Deployment
 
 `daemon/deploy/install.sh`, run as root on Debian or Ubuntu from a checkout,
-installs or upgrades everything. Running it again upgrades in place.
+installs or upgrades everything. Running it again upgrades in place. On NixOS, the flake's
+module does the same (docs/nixos.md).
 
 - It installs the packages (bubblewrap, gocryptfs, FUSE, passt, nftables,
   openssl), checks for Node.js 22 or later, and creates two system users:
