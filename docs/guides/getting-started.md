@@ -269,6 +269,51 @@ on and this machine's services off, private threads with both off. Change
 them in the control panel under Network, or with `lyrica admin net`. Each
 thread can narrow or widen its own from the thread settings drawer.
 
+## Give her another computer
+
+A **machine** is one of your other computers that she works on over SSH,
+with a dedicated account there, in one pool (general or private) and with
+a **mode limit** she can't exceed on it (Ask, Accept edits or Auto; new
+machines start at Ask). The reference is
+[docs/workspace.md](../workspace.md#machines).
+
+```sh
+lyrica admin ssh add --user li office li-lyrica@office.lan --pool general --limit ask
+```
+
+(As the `lyrica` user with `LYRICA_HOME=/var/lib/lyrica`, like the other
+`admin` commands; `--root <path>` limits her reads and writes there.) It
+runs in three steps:
+
+1. She makes a key pair and prints the setup to run **as root on the
+   machine**: her public key into `/etc/ssh/authorized_keys/<account>`, a
+   file only root can change, with a `Match User` block in
+   `/etc/ssh/sshd_config.d/lyrica.conf`, then `sshd -t && systemctl reload
+   ssh`. The key line is restricted to connections from this computer. If
+   she should run some commands as root there, give the account exact
+   commands with `visudo -f /etc/sudoers.d/lyrica`, never a password.
+2. Press Enter. She connects, prints the machine's host key fingerprint
+   and whether her key was accepted, and asks you to confirm the
+   fingerprint. Compare it with what the machine prints:
+
+   ```sh
+   ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+   ```
+
+   Nothing is saved until you say yes. A private machine whose address
+   resolves outside your network asks for a second confirmation.
+3. Threads grant the machine like a folder, and her tools take it as a
+   target. A command that could wreck the machine (deleting `/` or a home
+   folder, `mkfs`, `dd` onto a device, `shutdown` and the like) always
+   asks with a warning, whatever the mode.
+
+The machine needs OpenSSH 9.6 or later (strict key exchange). If its host
+key ever changes, every call fails until you confirm the new key; `lyrica
+admin ssh list` shows each machine's pool, limit and confirmed key, and
+`ssh remove` takes one away. SSH targets added before machines existed
+became general machines at Ask; one that had never connected has no
+confirmed key and must be added again.
+
 ## Day to day
 
 - **Logs:** `journalctl -u lyricad` and `journalctl -u lyrica-caddy`. One
