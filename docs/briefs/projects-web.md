@@ -26,7 +26,11 @@ desktop and at 390 px (principle 1). Every control has its row in ux.md §6.
    state and unseen count; resolved threads under one **Resolved** disclosure
    row with the count in mono; an amber dot on the row when a thread waits
    on Li. **New project** in the empty thread list's context menu (beside New
-   group): an empty project chat, like New thread. **Make project** (K) in a
+   group): an empty project chat, like New thread. A new project, by New
+   project or Make project, starts pinned (at the top with the other pinned
+   threads; Unpin as usual). The Sort menu gains, below a second line, **All
+   threads**, **Only projects** and **No projects** (one of three, saved per
+   user; Only projects keeps each project's nested threads). **Make project** (K) in a
    top-level thread's menu; **Resolve** / **Reopen** (E) in a project
    thread's menu.
 2. **Project chat.** The facts line gains **Threads** with its count (mono,

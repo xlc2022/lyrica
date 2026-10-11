@@ -37,6 +37,7 @@ phone (principle 1).
      choices and the General / Private / Hidden checkboxes.
    - The thread menu (right-click or long press, letter shortcuts): Pin,
      Mark as unread, Rename, Share with ›, Move to group ›, Hide, Delete.
+     Pin uses the per-user thread pins that Projects (back end) builds.
      **Share with** sends a copy to another user on the server: a
      notification for them with Add to General, Add to Private and Decline;
      accepting copies the entries into a new thread in their pool, as an
