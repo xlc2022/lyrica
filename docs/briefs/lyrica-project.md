@@ -20,7 +20,7 @@ written here.
 
 1. **New project** from the thread list's own menu (right-click or long
    press its empty space), in the general pool, and name it "Lyrica"
-   (**Rename…** in its menu). In **Project settings** (the link in the project chat's header):
+   (**Rename…** in its menu). In **Project settings** (the **Project** link in the project chat's header):
    General → Goal: "Improve Lyrica's own code from what we notice in use,
    through review."; then **Thread settings** under This chat: grant her
    code folder and turn the internet on (or allow `github.com` and
