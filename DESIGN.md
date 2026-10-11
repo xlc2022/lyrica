@@ -981,7 +981,13 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   machine whose address resolves outside Li's LAN, loopback and tailnet is
   allowed through a dialog that states the consequence (what she reads
   and writes there leaves the network, and so can the thread's private
-  memory) with Add anyway as its one action, and its row shows **Off network** while that holds. The sandbox's
+  memory) with Add anyway as its one action, and its row shows **Off
+  network** while that holds: the address is checked again on every
+  connection, and a private machine that has newly gone off network is
+  refused until Li confirms the dialog again. Changing a machine's pool
+  removes it from every thread that grants it, and moving one from Private
+  to General gets a dialog saying that what is already on the machine
+  becomes reachable from general threads. The sandbox's
   internet switch and allowed hosts cover the sandbox only: a machine's
   network is its own.
 - **A machine has a mode limit**, the loosest mode she may use there: Ask,
@@ -1026,8 +1032,9 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   choice, **Allow in this thread**: that exact command no longer asks in
   that thread, and nowhere else. The list is a warning layer; the boundary
   is the account's rights and the root-owned keys file.
-- **The first call on a different machine in a turn asks**, whatever the
-  modes, so output from one machine can't quietly steer her onto another.
+- **The first call on a machine in a turn asks** if anything earlier in the
+  turn ran somewhere else (the sandbox or another machine), whatever the
+  modes, so output from one place can't quietly steer her onto another.
 - **A floor no mode lifts** for `write` and `edit` on a machine: `~/.ssh/`,
   `/etc/ssh/` and `/etc/sudoers*` are refused.
 - **Output** is capped as in the sandbox, stripped of terminal control
@@ -1041,8 +1048,10 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   the built-in PVEVMUser, whose console and guest-agent file rights amount
   to running code in the guest, and never `Sys.PowerMgmt`. One tool,
   `proxmox`, with named actions: status, list, start, stop, shutdown,
-  reboot, snapshot list. No destroy. Stop, shutdown and reboot follow the
-  machine's mode limit. The node that runs Lyrica's own VM is not added until
+  reboot, snapshots (list only). No destroy. Shutdown follows the machine's
+  mode limit like a command; stop and reboot are on the suspect list and ask
+  with the warning in every mode until allowed in a thread. The node that
+  runs Lyrica's own VM is not added until
   Li finds her reliable; the Add machine page refuses it where it can tell.
 - **The record is the thread.** Each remote call is a thread entry,
   encrypted in its pool; `write` and `edit` changes are recorded with

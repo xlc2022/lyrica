@@ -907,6 +907,8 @@ settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overr
 //   setThread refuses a machine of the other pool; inheritSettings takes a subset of machines.
 //   Approvals carry { machine, command | path, cwd } and match exactly or deny; a per-thread allow list of exact
 //   suspect commands lives in thread_workspaces. SUSPECT_COMMANDS and the write/edit path floor are exported constants.
+//   setMachinePool(name, pool) removes the machine from every thread that grants it. offNetwork is re-checked on each
+//   connection; a private machine newly off network is refused until confirmed again (confirmOffNetwork(name)).
 settings(userId).defaultMode() / setDefaultMode(mode)  // the mode new threads start in (default auto)
 settings(userId).startThread(threadId, pool)           // fixes the default mode on a new thread
 settings(userId).effective(threadId): ThreadWorkspace  // strictest mode and switches of it and its ancestors
@@ -950,8 +952,10 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   key on a pipe and network to that one address through the existing
   nftables rules; `SshTarget` keeps its interface. A `proxmox` tool
   (`extension/src/proxmox.ts`) with named actions (status, list, start,
-  stop, shutdown, reboot, snapshots) calls the Proxmox API with the
-  machine's token through `core/workspace`; `destroy` is never offered.
+  stop, shutdown, reboot, snapshots) is a schema plus one call into
+  `core/workspace`, which calls the Proxmox API with the machine's token;
+  `destroy` is never offered; `stop` and `reboot` are suspect actions and
+  ask in every mode until allowed in a thread.
   `lyricad`'s `/api/u/:userId/ssh` routes become `/machines` (`PATCH` for
   pool, limit, root and address; `POST …/machines/probe`; `POST
   …/machines/:name/key`); permission events carry `machine` and

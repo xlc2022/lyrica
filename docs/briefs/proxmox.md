@@ -28,18 +28,22 @@ does the job; principle 6: start and stop are what Li asks for).
    an address that is this VM's default gateway, or a node whose
    `/cluster/resources` lists a VM whose MAC or name matches this machine's.
    The refusal says why. Li adds that node later, by hand, when she decides.
-3. **One tool, `proxmox`**, in `extension/src/proxmox.ts`, with named
+3. **One tool, `proxmox`**, in `extension/src/proxmox.ts`: a schema plus
+   one call into `core/workspace`, which makes the API call; nothing else
+   lives in the extension, which is at about 1,900 of its 2,000-line budget
+   (principle 8). The PR reports the extension's line count; if it goes
+   over, it says what is removed or asks for the DESIGN change. Named
    actions: `status`, `list` (VMs and containers the token can see),
    `start`, `stop`, `shutdown`, `reboot`, `snapshots` (list only). Each is
-   one API call made by `core/workspace`, never by a command. No `destroy`,
+   one API call, never a command. No `destroy`,
    no `create`, no console, no guest-agent file access, no snapshot
    creation or rollback in this version. Say the new tool total against the
    budget of 30 (count the registered tools; the number in the proposal was a guess).
 4. **Modes.** `status`, `list` and `snapshots` are read-only and work in Plan
-   mode. `start`, `stop`, `shutdown` and `reboot` follow the machine's mode
-   limit and the thread's mode like `bash` on a machine; `stop` and `reboot`
-   are on the suspect list, so they ask with the warning in every mode until
-   Li allows them in a thread.
+   mode. `start` and `shutdown` follow the machine's mode limit and the
+   thread's mode like `bash` on a machine; `stop` and `reboot` are suspect
+   actions (as DESIGN.md's Proxmox bullet says), so they ask with the
+   warning in every mode until Li allows them in a thread.
 5. **Setup text** on the Add machine page and in `lyrica admin proxmox add`:
    the `pveum` commands for a privilege-separated token with a custom role
    of `VM.Audit` and `VM.PowerMgmt` on the chosen VMs or pool, and

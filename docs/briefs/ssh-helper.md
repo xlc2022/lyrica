@@ -55,8 +55,8 @@ already use, not everything (principle 2).
   address and port; a connection to a server whose key differs from the pin
   fails with no fallback; a failed helper start fails the call; the
   existing SSH tests pass unchanged through the helper.
-- The PR says how much the helper adds to the core extension's line budget
-  (principle 8) and lists any contract change.
+- The helper lives in `core/src/workspace`, outside the extension's line
+  budget; the PR lists any contract change.
 
 ## Handoff notes
 
