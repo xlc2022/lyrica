@@ -33,7 +33,9 @@ subagent:
   model. A refused model fails the run before any thread is made;
 - gets its workspace from `inheritSettings`: the parent's folders (or the
   ones asked for), read-only for a read-only role or `readOnly: true`, and
-  internet off if asked. The workspace refuses anything wider;
+  internet off if asked. It gets the parent's machines only when none of
+  those narrowings apply and it isn't a writer in a worktree: bash on a
+  machine follows none of them. The workspace refuses anything wider;
 - gets a short preamble plus its role's prompt instead of Lyrica's persona,
   `recall` and `read_memory` (never `remember`), `ask_parent`, and only the
   tools its role lists.
@@ -253,7 +255,7 @@ checks it reaches her, and with a real model which she picks. Code:
   returns its ID and link at once. It gets the parent's model context
   (`models.inheritContext`: pool, local-only, profile, thinking, models) and
   workspace (`inheritSettings`, narrowed by `folders`, `readOnly` and
-  `internet: false`); the workspace refuses anything wider, and a folder the
+  `internet: false`; any of those also leaves it no machines); the workspace refuses anything wider, and a folder the
   parent doesn't have is refused. It inherits "Do not log" from the store.
   If the child's first turn can't start, the child is forgotten.
 - `message({ id, text })` to one of the thread's children: sent as its next

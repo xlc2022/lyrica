@@ -335,7 +335,9 @@ settings:
 - **Mode:** the parent's or stricter, in the order Plan, Ask, Accept edits,
   Auto.
 - **Switches:** each off if the parent's is off.
-- **Machines:** the parent's or a subset.
+- **Machines:** the parent's or a subset. Delegation gives none to a read-only,
+  offline or folder-narrowed subagent or child thread, or to a writer in a
+  worktree, since bash on a machine follows none of those narrowings.
 
 A subagent can never widen what its parent was given. `inheritSettings`
 copies the parent's settings, or the narrower ones it is given, and the
