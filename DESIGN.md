@@ -928,7 +928,8 @@ web part and sleep's project page are not yet. The briefs are
   little later, batched across threads, with what was said. There she
   decides whether another thread is affected, messages it, and relays its
   answer; she posts in the project chat only what needs Li. A thread that
-  isn't logged is left out. A run of such turns stops after 3 until Li
+  isn't logged is left out, and so is a local-only thread unless the
+  project chat is local-only too, since a look quotes Li's words. A run of such turns stops after 3 until Li
   writes in the project again, so threads can't keep each other going.
   With the setting off, updates only change their cards and she speaks in
   the project chat when Li writes. The back end is built; the switch and

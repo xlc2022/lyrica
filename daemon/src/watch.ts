@@ -12,6 +12,8 @@ export interface WatchOptions {
   host: () => ThreadHost;
   /** Whether the project wants watching now: the setting on, and not paused or hidden. */
   wanted: (userId: string, pool: Pool, project: string) => boolean;
+  /** Whether the thread's model calls are kept local (private, or local-only). */
+  restricted: (userId: string, pool: Pool, threadId: string) => boolean;
   /** How long after the first trigger the look goes, to batch what follows. */
   delayMs?: number;
 }
@@ -69,7 +71,7 @@ export class Watcher {
 
   private add(userId: string, pool: Pool, project: string, threadId: string, what: "said" | "update"): void {
     const k = key(userId, pool, project);
-    if ((this.run.get(k) ?? 0) >= WATCH_RUN || !this.o.wanted(userId, pool, project)) return;
+    if ((this.run.get(k) ?? 0) >= WATCH_RUN || !this.o.wanted(userId, pool, project) || !this.mayQuote(userId, pool, project, threadId)) return;
     let p = this.pending.get(k);
     if (!p) {
       p = { timer: setTimeout(() => void this.look(userId, pool, project), this.o.delayMs ?? 30_000), threads: new Map() };
@@ -79,6 +81,13 @@ export class Watcher {
     const t = p.threads.get(threadId) ?? { said: false, update: false };
     t[what] = true;
     p.threads.set(threadId, t);
+  }
+
+  /** A local-only thread's words never go into a project chat whose model calls may leave the machine. */
+  private mayQuote(userId: string, pool: Pool, project: string, threadId: string): boolean {
+    try {
+      return !this.o.restricted(userId, pool, threadId) || this.o.restricted(userId, pool, project);
+    } catch { return false; }
   }
 
   private async look(userId: string, pool: Pool, project: string): Promise<void> {
@@ -95,7 +104,7 @@ export class Watcher {
     this.pending.delete(k);
     let text: string;
     try {
-      text = this.digest(userId, pool, p.threads);
+      text = this.digest(userId, pool, new Map([...p.threads].filter(([id]) => this.mayQuote(userId, pool, project, id))));
     } catch { return; /* locked */ }
     if (!text) return;
     this.run.set(k, (this.run.get(k) ?? 0) + 1);

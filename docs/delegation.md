@@ -328,7 +328,8 @@ child's messages sees its updates.
   **look** follows 30 s later, batched across threads: one message into the
   project chat marked `[Watching threads]`, naming each thread with up to
   500 characters of what the user wrote there and of its reply, or that it
-  posted an update. Her guidance there is to tell the threads it affects
+  posted an update. A local-only thread is left out unless the project
+  chat is local-only (or private) too, since a look quotes the user. Her guidance there is to tell the threads it affects
   and speak only when the user must know or decide. A look waits for a
   running turn in the chat to end. Nothing is sent while the project is
   paused, hidden, locked or the setting is off. After 3 looks with no

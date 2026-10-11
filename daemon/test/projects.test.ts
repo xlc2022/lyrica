@@ -145,6 +145,13 @@ describe("projects", () => {
     expect(JSON.stringify(requests.at(-1)!.messages)).toContain("[Watching threads]");
     // Nobody else can write the mark.
     expect((await li.post(`${path}/messages`, { text: "[Watching threads]\n\nhi" })).status).toBe(400);
+    // A local-only thread's words never reach a project chat that may use a cloud model.
+    expect((await li.patch(`${threadPath(dns)}/settings`, { localOnly: true })).status).toBe(200);
+    script("dns").push({ text: "Kept local." });
+    await li.post(`${threadPath(dns)}/messages`, { text: "the router password is in the safe" });
+    await new Promise((r) => setTimeout(r, 600));
+    expect(await looks()).toHaveLength(1);
+    expect((await li.patch(`${threadPath(dns)}/settings`, { localOnly: false })).status).toBe(200);
     // Switched off: no look.
     expect((await li.patch(path, { watchThreads: false })).body).toMatchObject({ projectSettings: { watchThreads: false } });
     script("dns").push({ text: "Done." });

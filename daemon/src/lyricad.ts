@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, SystemdCredentials, Users, Workspace,
+  isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, SystemdCredentials, Users, Workspace,
   type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
 } from "@lyrica/core";
 import { Delegation, Sleep, type Limits, type SleepLimits } from "@lyrica/extension";
@@ -212,7 +212,9 @@ export class Lyricad {
     const projects = new Projects(users);
     // A hidden project stops as a paused one does.
     const stopped = (u: string, p: Pool, project: string) => projects.paused(u, p, project) || hiddenThread(memory, u, p, project);
-    const watcher = new Watcher({ memory, host: () => host, delayMs: this.opts.watchMs, wanted: (u, p, project) => projects.settings(u, p, project).watch && !stopped(u, p, project) });
+    const watcher = new Watcher({ memory, host: () => host, delayMs: this.opts.watchMs, wanted: (u, p, project) => projects.settings(u, p, project).watch && !stopped(u, p, project),
+      restricted: (u, p, thread) => isRestricted(models.callContext(u, p, thread)),
+    });
     const children = new ChildThreads({
       users, memory, models, workspace, delegation, host: () => host, limits: this.opts.threads,
       paused: stopped,
