@@ -412,4 +412,20 @@ describe("project pages", () => {
     g.close();
     pv.close();
   });
+
+  it("keeps an unlogged project chat's title and goal out of sleep, even when its threads are logged", async () => {
+    const s = await setup();
+    const v = s.view();
+    const p = project(v, "We pick the paint on Friday.", "{user} picks the paint on Friday");
+    v.own.setUnlogged(p.chat, true);
+    let instruction = "";
+    s.script({ consolidate: [(c) => { instruction = said(c); return { text: "Done." }; }] });
+    await s.sleep.run(s.li.id, "general", "scheduled");
+    // The thread itself is still slept, as an ordinary thread.
+    expect(instruction).toContain(`t:${p.thread}`);
+    expect(instruction).not.toContain(p.chat);
+    expect(instruction).not.toContain("Ship the garden app");
+    expect(instruction).not.toContain(p.slug);
+    v.close();
+  });
 });

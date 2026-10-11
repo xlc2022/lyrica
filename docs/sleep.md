@@ -88,6 +88,11 @@ decisions, requirements, pitfalls, who to ask, what's open, citing them.
   refuses a `project-…` slug that names no project here (unless that page
   already exists), and one whose project isn't logged. So general sleep
   can't write a private project's page, and an unlogged project gets none.
+  The exception is on purpose: a page whose project was forgotten without
+  it can still be rewritten, for example when it is flagged.
+- An unlogged project chat's title and goal never reach sleep, even when
+  some of its threads are logged; those threads are slept as ordinary
+  threads.
 - Notes she folds into the page stay notes.
 - Unfinished work in a project goes into WAKE like any other work.
 

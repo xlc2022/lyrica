@@ -362,15 +362,19 @@ function instruction(phase: SleepPhase, c: { view: PoolView; user: string; mater
   ].filter(Boolean).join("\n\n");
 }
 
-/** Each project with new conversation tonight: its page's slug, and the notes and conversations behind it. */
+/**
+ * Each logged project with new conversation tonight: its page's slug, and the
+ * notes and conversations behind it. An unlogged project chat's title and goal
+ * never reach sleep, even when its threads are logged.
+ */
 function projectLines(view: PoolView, m: SleepMaterial): string[] {
   const own = view.own;
   const since = own.watermark();
-  const ids = [...new Set(m.threads.flatMap((t) => (t.project ? [t.project] : [])))];
+  const tonight = new Set(m.notes.map((n) => n.id));
+  const ids = [...new Set(m.threads.flatMap((t) => (t.project ? [t.project] : [])))].filter((id) => !own.getThread(id)!.unlogged);
   return ids.map((id) => {
     const project = own.getThread(id)!;
     const slug = projectSlug(id);
-    const tonight = new Set(m.notes.map((n) => n.id));
     const notes = own.projectNotes(id, since).filter((n) => tonight.has(n.id)).map((n) => `[${n.id}]`);
     const threads = m.threads.filter((t) => t.project === id).map((t) => `[t:${t.id}]`);
     return `- ${project.title ? `"${project.title}"` : "A project"} [t:${id}]${project.goal ? `, goal: ${short(project.goal)}` : ""}. `
