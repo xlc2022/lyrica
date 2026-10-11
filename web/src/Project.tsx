@@ -287,7 +287,7 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
       </div>
 
       {/* Folders, network, local-only, the other task models and speech stay in the chat's own drawer. */}
-      <p className="small"><a href={href({ page: "thread", userId: ctx.user.id, pool: summary.pool, threadId: summary.id, drawer: true })}>Thread settings</a> <span className="muted">· folders, machines, network and local-only, in the chat's drawer</span></p>
+      <p className="small"><a href={href({ page: "thread", userId: ctx.user.id, pool: summary.pool, threadId: summary.id, drawer: true })} title="Folders, machines, network, local-only and the other task models, in the chat's drawer.">Thread settings</a></p>
 
       <div className="row">
         <button type="submit" className="primary" disabled={busy}>Save</button>
