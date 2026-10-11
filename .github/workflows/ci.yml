@@ -42,13 +42,20 @@ jobs:
     runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4
+      - run: mkdir -p "$RUNNER_TEMP/models"
+      # Build the images first: Docker 29 hands build steps the loopback
+      # resolver below as is, and they can't reach it. (GitHub's runners have
+      # Docker 28.)
+      - name: Build the images
+        run: |
+          host/install.sh --no-gpu --yes --models "$RUNNER_TEMP/models" --name ci-host --no-start
+          cd host && docker compose build
       # Docker forwards outside names to a loopback resolver from its own
       # namespace: the case host-api's blackhole DNS setting must cover.
       - name: Docker with a loopback DNS resolver
         run: |
           echo '{"dns": ["127.0.0.53"]}' | sudo tee /etc/docker/daemon.json
           sudo systemctl restart docker
-      - run: mkdir -p "$RUNNER_TEMP/models"
       - run: host/install.sh --no-gpu --yes --models "$RUNNER_TEMP/models" --name ci-host
       - run: host/test/stack/network.sh
       # Again with the Tailscale service (not logged in: no auth key in CI).
@@ -57,16 +64,9 @@ jobs:
       - if: failure()
         run: docker compose logs
         working-directory: host
-      # TEMPORARY (self-hosted runner bring-up): why builds can't resolve names.
-      - if: failure()
-        run: |
-          docker version --format '{{.Server.Version}}'; cat /etc/docker/daemon.json || true
-          resolvectl dns || true; sudo nft list tables || true
-          printf 'FROM busybox:1.36\nRUN cat /etc/resolv.conf; nslookup github.com\n' | docker build --no-cache --progress=plain - || true
-          docker run --rm busybox:1.36 sh -c 'cat /etc/resolv.conf; nslookup github.com' || true
       # The runner is kept between jobs: leave nothing for the next run, not
       # the stack and its volumes, the egress unit and rules, or the Docker
-      # setting from the first step (setup.sh leaves no daemon.json).
+      # setting from the DNS step (setup.sh leaves no daemon.json).
       - if: always()
         working-directory: host
         run: |
