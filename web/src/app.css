@@ -461,7 +461,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   .tfacts .folder { display: none; }
   .drawer { width: 100%; }
   .picker { position: fixed; top: 104px; left: 16px; right: 16px; width: auto; }
-  .body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
+  .body { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content 1fr; }
   .subnav { position: static; display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px var(--gutter); gap: 2px; scrollbar-width: none; mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
   .subnav a:last-child { margin-right: 24px; }
   .subnav a { white-space: nowrap; }
