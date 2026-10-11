@@ -20,7 +20,10 @@ Li notices the first update that goes wrong).
 1. **Release layout.** `/opt/lyrica/releases/<commit>/` (built: `npm ci
    --omit=dev`, the web UI built), root-owned and read-only;
    `/opt/lyrica/current` and `previous` symlinks; `lyricad.service` runs
-   `/opt/lyrica/current/bin/lyrica serve`. Keep the last 5 plus `previous`.
+   `/opt/lyrica/current/bin/lyrica serve`. A release has no git checkout,
+   so the build writes its commit where `lyricad` reads its build id
+   (`LYRICA_BUILD`, for the header's "Lyrica (ver. …, build …)"), for
+   example a drop-in setting `LYRICA_BUILD=<commit>` on each switch. Keep the last 5 plus `previous`.
    `install.sh` builds a release from its checkout the same way and moves
    today's flat `/opt/lyrica` into the first release. It also installs what
    it was missing (build-essential, building the web UI).
