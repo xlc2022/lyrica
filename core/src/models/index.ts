@@ -1407,6 +1407,16 @@ export class Models {
     this.setSetting(userId, "voice_cloud", on ? "on" : "off");
   }
 
+  /** Read aloud while she writes: whether Read aloud is offered on the reply she is still writing. Off by default. */
+  defaultReadAloudLive(userId: string): boolean {
+    return this.setting(userId, "read_aloud_live") === "on";
+  }
+
+  setDefaultReadAloudLive(userId: string, on: boolean): void {
+    if (typeof on !== "boolean") throw new Error("readAloudLive is true or false");
+    this.setSetting(userId, "read_aloud_live", on ? "on" : "off");
+  }
+
   /** A thread's own Voice to cloud switch; null follows the user's default. */
   setThreadVoiceCloud(userId: string, threadId: string, on: boolean | null): void {
     if (on !== null && typeof on !== "boolean") throw new Error("voiceCloud is true, false or null");

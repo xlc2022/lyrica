@@ -356,7 +356,10 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
   thread's switch (null follows the default), changed with
   `ThreadSettingsChange.voiceCloud`; the default is `Profiles.voiceCloud`.
   Under a parent with it off, a branch can only keep it off, or follow the
-  default when the parent does too.
+  default when the parent does too. `Profiles.readAloudLive` (changed with
+  `ProfilesChange.readAloudLive`, off by default) is Read aloud while she
+  writes; `Speech.readAloudLive` carries it so the web knows whether to
+  offer `messages/live/speech`.
 - **Fallback.** `ThreadSettings.fallback` is the thread's switch (null
   follows `Profiles.fallback`, on by default) and `fallbackOn` what applies;
   `ThreadSettingsChange.fallback` changes it. Off, only the first model in
@@ -511,6 +514,9 @@ module does the same ("On NixOS" below).
   path that overlaps `/run/lyrica-caddy` is refused, since sandboxes run with
   lyricad's groups.
 - It copies the code to `/opt/lyrica` and runs `npm ci --omit=dev`.
+- It puts `lyrica` in `/usr/local/bin`: the CLI, run as the `lyrica` user
+  (through `runuser` from root, `sudo` from anyone else) with
+  `LYRICA_HOME=/var/lib/lyrica`, so `lyrica admin …` works from any shell.
 - It builds Caddy (`/usr/local/bin/lyrica-caddy`) with `xcaddy`, from pinned
   versions, in a clean environment (`env -i`, `GOENV=off`, `GOPROXY` and
   `GOSUMDB` set): Go from `proxy.golang.org`, checked against the sha256 in
@@ -555,6 +561,8 @@ system with the module on. Only x86_64-linux.
   `daemon/deploy/*.service` (same hardening, `LoadCredentialEncrypted`, the
   same deploy check), `ip_nonlocal_bind`, and `/etc/lyrica/caddy.json`.
   lyricad waits for `self.db` (`ConditionPathExists`), as install.sh does.
+  `lyrica` on the system path is the same wrapper as install.sh's, so
+  `lyrica admin init` works as root.
   It refuses to build with `security.allowUserNamespaces` off.
 - **PATH.** lyricad's starts with `/run/wrappers/bin`, so `fusermount3` is
   the setuid wrapper (`programs.fuse`), then gocryptfs, OpenSSL, systemd

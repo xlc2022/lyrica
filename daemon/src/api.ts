@@ -426,6 +426,8 @@ export interface Profiles {
   fallback: boolean;
   /** Fallback for sleep's phases. On by default; off, a phase whose first model is away waits for the next night. */
   sleepFallback: boolean;
+  /** Read aloud while she writes: Read aloud is offered on the reply she is still writing (`messages/live/speech`). Off by default. */
+  readAloudLive: boolean;
 }
 /**
  * PUT /api/u/:userId/profiles/:profile/:task → Profiles. Local takes local
@@ -435,7 +437,7 @@ export interface Profiles {
  */
 export type ProfileEntryChange = { models: ModelRef[] | null } | { same: Task } | { model: ModelRef | null };
 /** PATCH /api/u/:userId/profiles → Profiles */
-export interface ProfilesChange { default?: "cloud" | "custom"; thinking?: ThinkingLevel; voiceCloud?: boolean; fallback?: boolean; sleepFallback?: boolean }
+export interface ProfilesChange { default?: "cloud" | "custom"; thinking?: ThinkingLevel; voiceCloud?: boolean; fallback?: boolean; sleepFallback?: boolean; readAloudLive?: boolean }
 
 /**
  * One turn's counts and times. `promptTokens` is the whole prompt of its last
@@ -798,7 +800,8 @@ export interface ThreadSettingsChange {
 export type SpeechState = { available: true; label: string; kind: "cloud" | "local" }
   /** reason: "none" nothing usable is set here; "voiceCloud" the model is cloud and Voice to cloud is off; "down" every model set can't be reached now. */
   | { available: false; reason: "none" | "voiceCloud" | "down"; problem: string };
-export interface Speech { transcribe: SpeechState; speak: SpeechState; voiceCloud: boolean }
+/** `readAloudLive` is the user's Read aloud while she writes setting (`Profiles.readAloudLive`). */
+export interface Speech { transcribe: SpeechState; speak: SpeechState; voiceCloud: boolean; readAloudLive: boolean }
 /** GET /api/u/:userId/speech?pool= → Speech: for the welcome page, before a thread exists (the user's defaults). */
 
 /**

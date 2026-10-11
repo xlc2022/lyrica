@@ -98,13 +98,14 @@ Rules:
   Share with, Move to group, Sampling, Serving, Placement, Memory,
   Throughput, Template, Pinned, Excluded, Servers, Keep free, Not this
   model, Group, Add…, Reset, Dictation, Dictate, Read aloud, Stop reading,
-  Voice to cloud, Fallback, Sleep fallback, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, Thread settings, New threads, This chat, Threads, Watching threads, Checked the other threads, Open as a page, Close panel,
+  Voice to cloud, Read aloud while she writes, Fallback, Sleep fallback, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, Thread settings, New threads, This chat, Threads, Watching threads, Checked the other threads, Message received from, Show more, Show less, Open as a page, Close panel,
   Start a thread, Suggested threads, Start all, Resolve, Reopen, Resolved,
   Waiting on you, Goal, Instructions, Paused, All threads, Only projects,
   No projects, Machines, Add machine, Mode limit, Replace key, Use anyway,
   Allow in this thread, Online, Unreachable, Key changed, Off network,
   Updates, Update, Roll back, Running, Updating, Draining, Building, Testing,
-  Probation.
+  Probation, Set up Lyrica, Persona, Tailnet, Connect, Disconnect, Leave,
+  Stay, Auth key, Hostname, Control server, Skip, Start a chat.
 - Numbers get units beside the field (GB, %, tokens), and a maximum shown
   where one exists ("of 128k").
 
@@ -141,11 +142,13 @@ Rules:
 | Models, hosts, downloads, clean-up | the **Models** area: Overview, Tasks, Text models, Image models, Hosts and endpoints, Downloads, Clean up, Recent calls |
 | The app's version | the header, "Lyrica (ver. …, build …)" |
 | Lyrica's inner workings (recall, tools, notes) | one-line **markers** in the conversation that expand when tapped |
+| A message written in another thread (what a parent sent its child, a sibling's in a project, a look at a project's threads) | collapsed to one line, **Message received from <thread>** with a chevron (the look is its own marker, Checked the other threads); tapping it shows the message as a tinted block with its menu; a long one shows its first lines and **Show more**. Never shown open by default: said elsewhere, it would crowd this conversation |
 | The message box | one box holding the textarea and Send as a plain icon (Stop while she works); under it, a row with "+" (Attach and the tool switches), the mic, and, at its end, the mode word with a caret |
 | Anything in the conversation waiting for an answer (a plan, a permission, a question from a subagent) | a **card** in the conversation, with its actions at its foot and one primary action at most. When the latest such card has scrolled out of view, a thin bar in the accent colour across the top of the chat names it and jumps to it; it is the one bar the chat may show |
 | A subagent | a **card** in the conversation that expands to its work and takes messages |
 | Dictating a message | the mic in the message box's row; the box's placeholder while listening |
-| Hearing a message read aloud | her message's actions |
+| Hearing a message read aloud | her message's actions; with **Read aloud while she writes** on, also on the reply she is still writing |
+| Read aloud while she writes | a switch under Speech in Settings, Appearance |
 | Voice to cloud | the thread's Privacy and network switches; its default beside the user's other defaults for new threads (Settings, Network) |
 | Fallback (only a list's first model answers when off) | a switch at the foot of the thread drawer's Models section; its default beside Voice to cloud (Settings, Network, New threads); a project's under Project settings → New threads, a select beside Thinking; sleep's as **Sleep fallback** at the top of Settings → Model profiles. Tooltip "When off, only the first model in each list answers; if it can't, the message waits for it." |
 | A speech model's voice and speed | its Settings drawer in Models |
@@ -162,6 +165,10 @@ Rules:
 | Starting a thread from a message | **Start a thread** in that message's menu, in a project chat only |
 | Resolving a project's thread | **Resolve** / **Reopen** in the thread menu and the card's ⋯; a resolved thread's message box is replaced by one **Reopen** link |
 | A project's settings, files and images | the **Project settings** page (**Project**, a link with the project icon in the project chat's header before its Settings button, which keeps the thread drawer), sections on the left: General (Goal; the **Paused** switch, tooltip "Running threads stop and queued ones wait."; an h3 **New threads** with Model, Thinking and Fallback, tooltip "Threads Lyrica starts from this chat. Each one can be changed after it starts."; an h3 **This chat** with Model, Mode and Group, then a **Thread settings** link that opens the chat with its drawer for folders, machines, network and local-only; one Save), Memory (Instructions with its count, a link to the project page), **Files and images** (a segmented control, Files and Images). Files in the header stays the quick view; the page manages the folder |
+| Setting her up (no `self.db` yet) | the **Set up Lyrica** page in the unlock page's place: one h1, steps as sections with eyebrows (Code and passphrase, Lyrica, Administrator, Tailnet, Models, Done); the current step's button the one primary, a done step's secondary; Skip as a link on the optional steps; the code, addresses and names in mono; no captions. Each step's button applies at once, as the Add machine page's do |
+| Her name | **Name** at the top of Administration's **Persona** section (the Persona changes section, renamed), one Save with its one sentence; shown wherever the interface says Lyrica |
+| The tailnet | the **Tailnet** section of Administration: a facts line in mono (tailnet, address, MagicDNS name, control server), one state (Connected green, Disconnected amber, Not installed red, Not joined the word alone); **Connect** primary and **Disconnect** secondary; Leave and Connect to another tailnet behind ⋯; Disconnect and Leave each confirmed by a **dialog** with its one sentence (**Disconnect** / **Stay connected**, **Leave** / **Stay**); joining happens in the **drawer** (Auth key, Hostname, Advanced → Control server) |
+| Web access over the tailnet, or straight to the machine | the **Tailnet** and **Direct** modes of Web access, next to Off, Built-in Caddy and External proxy; their state lines show the name and the certificate, or the addresses and the fingerprint in mono, as the other modes do |
 | A project's usage | a fact in the project chat's facts line ("312k tokens"; on a phone, the first line of the Threads popover); the breakdown in Models → Recent calls, filtered to the project |
 
 The project rows are drawn in the app mockup's projects frame

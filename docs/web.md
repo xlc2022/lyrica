@@ -278,9 +278,13 @@ A thread's address may carry what the panel beside it shows:
   card: each proposed thread with Start, one primary Start all; started ones
   show Open (`GET …/overview` says which, by call and index). **Start a
   thread** in a message's menu (project chats only) starts one from that
-  message (`POST …/messages/:n/thread`). In a child thread, what the parent
-  sent shows as "Lyrica · from <parent title>", with the message menu
-  (Branch, Delete; not Edit). Forgetting a thread with child threads asks
+  message (`POST …/messages/:n/thread`). What a parent sent its child, or
+  a project's thread sent a sibling (`from.kind` "parent" or "thread"), is
+  one line, "Message received from <thread title>" with a chevron, until
+  tapped (Li, 2026-10-11: said elsewhere, it would clutter the chat); open,
+  it is a tinted block headed "Lyrica · from <title>" with the message menu
+  (Branch, Delete; not Edit), and one taller than twelve lines shows
+  **Show more**. Forgetting a thread with child threads asks
   whether to forget them too, ticked, in the shared `Confirm` with one option.
 - Files attach from the "+" menu, by dragging onto the composer, or by
   pasting. Each shows its progress, and its path in the thread goes into the
@@ -322,14 +326,21 @@ A thread's address may carry what the panel beside it shows:
   **Stop reading**, a square in accent. Only one thing plays at a time: Stop
   reading, the mic, sending, another Read aloud or leaving the thread stops
   it. Disabled with the reason as its tooltip when no Read aloud model can be
-  used here. The message she is still writing has no button.
+  used here. The message she is still writing has no button unless
+  **Read aloud while she writes** is on (`ThreadSettings.speech.readAloudLive`):
+  then its actions hold one too, playing `…/messages/live/speech`, which
+  follows her to the end; when her stored copy replaces it, the last
+  message's button owns that reading (Stop reading until it ends). In a
+  split view each pane's buttons are its own, and still only one plays.
 - **Fallback** is a switch in the thread settings drawer's Models section,
   under the task models, following the user's default until changed (Use
   default goes back); tooltip "When off, only the first model in each list
   answers; if it can't, the message waits for it."
 - **Voice to cloud** is a switch in the thread settings drawer's Privacy and
   network section, under Internet, following the user's default until
-  changed (Use default goes back); the default is in Settings, Network. The Model profiles section has Dictation and Read aloud
+  changed (Use default goes back); the default is in Settings, Network.
+  **Read aloud while she writes** (`Profiles.readAloudLive`) is a switch
+  under Speech in Settings, Appearance. The Model profiles section has Dictation and Read aloud
   rows that offer only models that transcribe or speak, and a speaking model
   in the Endpoints list has a Settings link opening its drawer: a voice per
   language (English, Mandarin) and the speed (a number, of 4, clamped when

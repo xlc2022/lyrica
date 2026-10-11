@@ -66,6 +66,9 @@ No commands yet.
 
 ## Running it: `bin/lyrica`
 
+In a checkout it's `bin/lyrica`. On a machine set up with install.sh it's
+`lyrica`, which runs as the `lyrica` user with her state folder.
+
 ```sh
 bin/lyrica admin init                  # self.db passphrase, first administrator (suggests Li)
 bin/lyrica admin user add <login> [--admin]

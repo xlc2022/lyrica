@@ -232,6 +232,9 @@ test("a child thread nests under its parent, opens from its card, and goes with 
   const view = phone(page) ? page : page.getByRole("complementary", { name: "Seed list" });
   await expect(view.getByRole("heading", { level: 1, name: "Seed list" })).toBeVisible();
   await expect(view.getByText("Child thread of")).toBeVisible();
+  // What the parent sent is one line until tapped.
+  await expect(view.getByText("Work on Seed list.", { exact: true })).toHaveCount(0);
+  await view.getByRole("button", { name: /^Message received from/ }).click();
   await expect(view.locator(".msg.user .who").getByText("· from")).toBeVisible();
   await expect(view.getByText("Work on Seed list.", { exact: true })).toBeVisible();
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/child-${page.viewportSize()!.width}.png` });
@@ -244,6 +247,26 @@ test("a child thread nests under its parent, opens from its card, and goes with 
   await drawer.getByRole("button", { name: "Forget it" }).click();
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
   await expect(page.locator(".side").getByText("Seed list")).toHaveCount(0);
+  await noHorizontalScroll(page);
+});
+
+test("a long message from the parent shows its first lines and Show more", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "start long: Long plan");
+  await expect(page.getByText("Started it.")).toBeVisible();
+  await page.locator(".threads-card").getByRole("link", { name: "Open" }).click();
+  const view = phone(page) ? page : page.getByRole("complementary", { name: "Long plan" });
+  await expect(view.getByRole("heading", { level: 1, name: "Long plan" })).toBeVisible();
+  await view.getByRole("button", { name: /^Message received from/ }).click();
+  const block = view.locator(".from-thread .body"); // her reply echoes the task, so look in the block
+  await expect(block.getByText("Step 1 of the plan for Long plan.")).toBeVisible();
+  const last = block.getByText("Step 30 of the plan for Long plan.");
+  await expect(last).not.toBeInViewport();
+  await view.getByRole("button", { name: "Show more" }).click();
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toBeInViewport();
+  await expect(view.getByRole("button", { name: "Show less" })).toBeVisible();
   await noHorizontalScroll(page);
 });
 
@@ -537,6 +560,60 @@ test("Fallback is on by default and turns off per thread, with Use default to fo
   }
   await back.first().click();
   await expect(fallback).toBeChecked();
+});
+
+test("with Read aloud while she writes on, a reply can be read aloud as it streams, and her stored copy takes the reading over", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const shot = async (name: string) => {
+    if (!process.env.SCREENSHOTS) return;
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.screenshot({ path: `${process.env.SCREENSHOTS}/${name}-${page.viewportSize()!.width}-${colorScheme}.png` });
+    }
+    await page.emulateMedia({ colorScheme: null });
+  };
+  // Off by default: a reply being written has no Read aloud.
+  await newThread(page, "General");
+  const message = page.getByLabel("Message", { exact: true });
+  await message.fill("Say this slowly");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("You said: Say this slowly")).toBeVisible();
+  await expect(page.locator(".turn").filter({ has: page.locator(".caret-blink") }).getByRole("button", { name: "Read aloud" })).toHaveCount(0);
+  await expect(page.getByText("in a few pieces.")).toBeVisible({ timeout: 15_000 });
+
+  // The setting is under Speech in Settings, Appearance.
+  await page.goto(`/#/u/${encodeURIComponent(userId)}/settings/appearance`);
+  const live = page.getByLabel("Read aloud while she writes");
+  await expect(live).not.toBeChecked();
+  await live.click();
+  await expect(live).toBeChecked();
+  await shot("read-aloud-live-setting");
+  await page.reload();
+  await expect(page.getByLabel("Read aloud while she writes")).toBeChecked();
+
+  // On: Read aloud appears on the reply she is writing and follows it; her stored copy then owns the reading.
+  await page.goBack();
+  await page.goBack();
+  await expect(message).toBeVisible();
+  await message.fill("Say this slowly too");
+  await page.getByRole("button", { name: "Send" }).click();
+  const writing = page.locator(".turn").filter({ has: page.locator(".caret-blink") });
+  await expect(writing.getByRole("button", { name: "Read aloud" })).toBeEnabled();
+  await writing.getByRole("button", { name: "Read aloud" }).click();
+  await expect(writing.getByRole("button", { name: "Stop reading" })).toBeVisible();
+  await shot("read-aloud-live");
+  await expect(page.getByText("You said: Say this slowly too. This reply comes from the fake cloud-model, in a few pieces.")).toBeVisible({ timeout: 20_000 });
+  const stored = page.locator(".turn").last();
+  await expect(stored).not.toContainText("Lyrica is thinking");
+  // The reading goes on past the end of the text; the stored copy's button is the one to stop it.
+  const button = stored.getByRole("button", { name: /Stop reading|Read aloud/ });
+  await expect(button).toBeVisible();
+  if ((await button.getAttribute("aria-label")) === "Stop reading") {
+    await button.click();
+    await expect(stored.getByRole("button", { name: "Read aloud" })).toBeVisible();
+  }
+  await expect(page.locator(".turn").getByRole("button", { name: "Stop reading" })).toHaveCount(0, { timeout: 15_000 });
+  await noHorizontalScroll(page);
 });
 
 test("dictation goes in at the caret, Read aloud plays her reply, and a speech server that is down disables both", async ({ page, baseURL, request }) => {
