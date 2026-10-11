@@ -375,8 +375,9 @@ Threads grant it like any machine. Listing, status and snapshots never
 ask; start and shutdown ask like a command under the thread's mode and the
 machine's limit; stop and reboot always ask with a warning. If the node's
 certificate changes (Proxmox renews it), every call fails until you confirm
-the new fingerprint. `lyrica admin ssh list` shows Proxmox machines with
-the SSH ones, and `ssh remove <name>` takes one away. An **Add machine**
+the new fingerprint (`ssh remove <name>`, then `proxmox add` again).
+`lyrica admin ssh list` shows Proxmox machines with the SSH ones, and
+`ssh remove <name>` takes one away. An **Add machine**
 page in the web UI is on its way; until it lands this command is the only
 way.
 
