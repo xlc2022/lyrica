@@ -28,8 +28,11 @@ local-only, "Do not log" and workspace settings are inherited as today.
 
 1. **The project flag.** `createThread({ project: true })` and
    `setProject(id)` on a top-level thread (a child or subagent is refused;
-   there is no way back). Making a project pins it, as Pin in the thread
-   menu does. `Thread.project`, `Thread.goal`. Project settings
+   there is no way back). Making a project pins it. This brief builds
+   **thread pins** for every thread, since Projects comes first: a per-user
+   `pinned_threads` table in `user.db` (thread and pool, no text; never in
+   the pool, like `thread_groups`), `PUT`/`DELETE threads/:id/pin`, and
+   `ThreadSummary.pinned`. Web UI 2's Pin in the thread menu uses them. `Thread.project`, `Thread.goal`. Project settings
    with no text (threads model and thinking, paused) in `user.db` with the
    thread's other settings.
 2. **Anchors and states.** `child_threads.anchor`, `resolved`, `needs_you`.

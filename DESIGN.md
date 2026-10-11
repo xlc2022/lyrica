@@ -105,7 +105,8 @@ Each user has two pools of memory.
     choice and the groups are saved per user, in `user.db`. A group can hold
     general and private threads; hiding a pool still hides its threads.
     Pinned threads (Pin in the thread menu) sit at the top of the list,
-    whatever the sort.
+    whatever the sort. A thread's pin is the user's own setting, in
+    `user.db` like its group, never in the pool.
   - **One Sort menu** above the threads holds the sort choices; below a
     line, the General, Private and Hidden checkboxes; and below another,
     **All threads**, **Only projects** or **No projects** (one of three,
