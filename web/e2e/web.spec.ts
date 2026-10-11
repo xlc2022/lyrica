@@ -228,12 +228,15 @@ test("a child thread nests under its parent, opens from its card, and goes with 
   const card = page.locator(".threads-card");
   await expect(card).toContainText("Child thread: Seed list");
   await card.getByRole("link", { name: "Open" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Seed list" })).toBeVisible();
-  await expect(page.getByText("Child thread of")).toBeVisible();
-  await expect(page.locator(".msg.user .who").getByText("· from")).toBeVisible();
-  await expect(page.getByText("Work on Seed list.", { exact: true })).toBeVisible();
+  // On a wide screen the child opens in the panel beside its parent; on a phone it is the page.
+  const view = phone(page) ? page : page.getByRole("complementary", { name: "Seed list" });
+  await expect(view.getByRole("heading", { level: 1, name: "Seed list" })).toBeVisible();
+  await expect(view.getByText("Child thread of")).toBeVisible();
+  await expect(view.locator(".msg.user .who").getByText("· from")).toBeVisible();
+  await expect(view.getByText("Work on Seed list.", { exact: true })).toBeVisible();
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/child-${page.viewportSize()!.width}.png` });
-  await page.getByText("Child thread of").getByRole("link").click();
+  await view.getByText("Child thread of").getByRole("link").click();
+  if (!phone(page)) await expect(page.getByRole("complementary", { name: "Seed list" })).toHaveCount(0);
 
   const drawer = await openSettings(page);
   await drawer.getByRole("button", { name: "Forget this thread" }).click();
@@ -795,6 +798,74 @@ test("a project: New project, suggested threads start into cards, the Threads po
   const chatDrawer = page.getByRole("complementary", { name: "Thread settings" });
   await expect(chatDrawer).toBeVisible();
   await chatDrawer.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+  await noHorizontalScroll(page);
+});
+
+test("the split view: a thread from its card opens in the panel, links inside it grow the breadcrumb, Open as a page and Close panel, and below 1180 px the address is the page", async ({ page, baseURL }) => {
+  test.skip(phone(page), "the panel starts at 1180 px");
+  await enter(page, baseURL!);
+  const list = page.locator(".threads");
+  const box = (await list.boundingBox())!;
+  await list.dispatchEvent("contextmenu", { clientX: box.x + box.width / 2, clientY: box.y + box.height - 6 });
+  await page.getByRole("menu", { name: "Thread list menu" }).getByRole("menuitem", { name: "New project" }).click();
+  await page.getByRole("menuitem", { name: "General" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "New project" })).toBeVisible();
+  await send(page, "start: Alpha");
+  const card = page.locator(".tcard").first();
+  await expect(card).toContainText("Alpha");
+  // The card's title opens the thread beside the chat; focus lands on its heading, Esc closes it.
+  await card.getByRole("link", { name: "Alpha" }).click();
+  const panel = page.getByRole("complementary", { name: "Alpha" });
+  await expect(panel.getByRole("heading", { level: 1, name: "Alpha" })).toBeFocused();
+  await expect(panel.getByLabel("Message", { exact: true })).toBeVisible();
+  await expect(page.locator("main .tcard")).toHaveCount(1);
+  expect(page.url()).toContain("/panel/t/general/");
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+  expect(page.url()).not.toContain("/panel/");
+  // A link inside the panel replaces what it shows and the breadcrumb grows: a mention of Beta, written in Alpha's box.
+  await send(page, "start: Beta");
+  const betaHref = (await page.locator(".side .children a.thread", { hasText: "Beta" }).getAttribute("href"))!;
+  const betaId = decodeURIComponent(betaHref.split("/t/general/")[1]!);
+  await card.getByRole("link", { name: "Alpha" }).click();
+  await expect(panel).toBeVisible();
+  await panel.getByLabel("Message", { exact: true }).fill(`[t:${betaId}]`);
+  await panel.getByRole("button", { name: "Send" }).click();
+  await panel.locator(".msg.her").last().getByRole("link", { name: "Beta" }).click();
+  const beta = page.getByRole("complementary", { name: "Alpha › Beta" });
+  await expect(beta.getByRole("heading", { level: 1, name: "Beta" })).toBeFocused();
+  await expect(beta.getByRole("navigation", { name: "Opened from" })).toContainText("Alpha");
+  await beta.getByRole("navigation", { name: "Opened from" }).getByRole("link", { name: "Alpha" }).click();
+  await expect(page.getByRole("complementary", { name: "Alpha" })).toBeVisible();
+  // From the chat's header, Project settings opens in the panel afresh; Open as a page is the page on its own.
+  await page.getByRole("link", { name: "Project settings" }).click();
+  const settings = page.getByRole("complementary", { name: "Project settings" });
+  await expect(settings.getByLabel("Goal")).toBeVisible();
+  await settings.getByLabel("Goal").fill("A split view.");
+  await settings.getByRole("button", { name: "Save" }).click();
+  await expect(settings.getByText("Saved.")).toBeVisible();
+  // The divider resizes the panel with the keyboard, and the width is remembered.
+  const divider = page.getByRole("separator", { name: "Panel width" });
+  await divider.focus();
+  await page.keyboard.press("Shift+ArrowLeft");
+  await expect(divider).toHaveAttribute("aria-valuenow", "460");
+  await page.reload();
+  await expect(page.getByRole("separator", { name: "Panel width" })).toHaveAttribute("aria-valuenow", "460");
+  await page.getByRole("complementary", { name: "Project settings" }).getByRole("link", { name: "Open as a page" }).click();
+  await expect(page.getByRole("complementary", { name: "Project settings" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1, name: "Project settings" })).toBeVisible();
+  expect(page.url()).toContain("/p/general/");
+  await page.goBack();
+  await expect(page.getByRole("complementary", { name: "Project settings" })).toBeVisible();
+  // Below 1180 px the same address shows the panel's page on its own.
+  const size = page.viewportSize()!;
+  await page.setViewportSize({ width: 1000, height: size.height });
+  await expect(page.getByRole("complementary", { name: "Project settings" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1, name: "Project settings" })).toBeVisible();
+  await page.setViewportSize(size);
+  await expect(page.getByRole("complementary", { name: "Project settings" })).toBeVisible();
+  await page.getByRole("button", { name: "Close panel" }).click();
+  await expect(page.getByRole("complementary", { name: "Project settings" })).toHaveCount(0);
   await noHorizontalScroll(page);
 });
 

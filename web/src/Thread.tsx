@@ -9,11 +9,15 @@ import { useThread } from "./stream.ts";
 import { Conversation, MessageBox } from "./Messages.tsx";
 import { Composer } from "./Composer.tsx";
 import { ModelBadge, SettingsDrawer } from "./Settings.tsx";
-import type { ShellContext } from "./Shell.tsx";
+import { Crumbs, Main, PanelButtons, type ShellContext } from "./Shell.tsx";
 import { ErrorText, useAction, useDismiss, useLoad } from "./ui.tsx";
 import { stopReading } from "./Voice.tsx";
 
-export function Thread({ ctx, pool, threadId, threads, drawerAtStart }: { ctx: ShellContext; pool: Pool; threadId: string; threads: ThreadSummary[]; drawerAtStart?: boolean }) {
+export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer }: {
+  ctx: ShellContext; pool: Pool; threadId: string; threads: ThreadSummary[];
+  /** Opened by its address (…/settings): the drawer shows, and `dropDrawer` takes that off the address once it closes, so a reload doesn't reopen it. */
+  drawerAtStart?: boolean; dropDrawer?: () => void;
+}) {
   const userId = ctx.user.id;
   const base = threadPath(userId, pool, threadId);
   const summary = useLoad(() => get<ThreadSummary>(base), [base]);
@@ -24,10 +28,8 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart }: { ctx: S
   const granted = settings.data?.machines.flatMap((name) => { const m = machines.data?.find((x) => x.name === name); return m ? [{ name, limit: m.limit }] : []; }) ?? [];
   const t = useThread(userId, pool, threadId);
   const [drawer, setDrawer] = useState(!!drawerAtStart);
-  // Opened by its address (…/settings): once closed, the address drops it, so a reload doesn't reopen it.
-  useEffect(() => {
-    if (drawerAtStart && !drawer && location.hash.endsWith("/settings")) history.replaceState(null, "", location.hash.slice(0, -"/settings".length));
-  }, [drawer, drawerAtStart]);
+  const dropped = useRef(false);
+  useEffect(() => { if (drawerAtStart && !drawer && !dropped.current) { dropped.current = true; dropDrawer?.(); } }, [drawer, drawerAtStart, dropDrawer]);
   const [sendError, setSendError] = useState("");
   const { refreshThreads } = ctx;
   // A project chat: its threads, reloaded when one changes state or a turn ends.
@@ -158,10 +160,11 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart }: { ctx: S
   const phone = usePhone();
 
   return (
-    <main className="main" data-drawer-open={drawer}>
+    <Main className="main" data-drawer-open={drawer}>
       <header className="head thread-head">
         <button type="button" className="menu-btn icon" aria-label="Show threads" onClick={ctx.openSide}><Icon name="menu" /></button>
         <div className="head-title">
+          <Crumbs />
           <h1>{title}</h1>
           <div className="tfacts">
             <span className={`k ${pool}`}>{pool}</span>
@@ -186,6 +189,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart }: { ctx: S
             </button>
           </div>
         )}
+        <PanelButtons />
       </header>
       {parent && (
         <p className="subnote">{s?.subagent ? "Subagent of" : s?.child ? "Child thread of" : "Branched from"} <a href={`#/u/${encodeURIComponent(userId)}/t/${pool}/${encodeURIComponent(parent.id)}`}>{parent.title || "the parent thread"}</a></p>
@@ -224,7 +228,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart }: { ctx: S
         />
       )}
       {drawer && <div className="scrim drawer-scrim" aria-hidden="true" onClick={() => setDrawer(false)} />}
-    </main>
+    </Main>
   );
 }
 
@@ -285,7 +289,7 @@ function afterHead(text: string): string {
   return nl === -1 ? text : text.slice(nl + 1);
 }
 
-function findThread(list: ThreadSummary[], pool: Pool, id: string): ThreadSummary | undefined {
+export function findThread(list: ThreadSummary[], pool: Pool, id: string): ThreadSummary | undefined {
   for (const t of list) {
     if (t.pool === pool && t.id === id) return t;
     const c = findThread(t.children, pool, id);

@@ -1,9 +1,9 @@
 // The signed-in layout: the sidebar, and the page the route points at.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { get, patch, post, u, type Display, type DisplayChange, type LogoutResponse, type Me, type Pool, type State, type ThreadGroup, type ThreadSort, type ThreadSummary, type UserCard } from "./api.ts";
-import { href, go, type Route } from "./route.ts";
+import { href, go, panelRoute, parse, type Panel, type Route } from "./route.ts";
 import { Icon } from "./icons.tsx";
-import { Thread } from "./Thread.tsx";
+import { Thread, findThread } from "./Thread.tsx";
 import { Memory } from "./Memory.tsx";
 import { AdminPage, SettingsPage } from "./Panel.tsx";
 import { ThreadMenu, useThreadMenu } from "./ThreadMenu.tsx";
@@ -33,6 +33,10 @@ export function Shell({ user, users, route, build, onAuthChange }: {
   const threads = useLoad(() => get<ThreadSummary[]>(u(user.id, "threads")), [user.id]);
   const groups = useLoad(() => get<ThreadGroup[]>(u(user.id, "thread-groups")), [user.id]);
   const [sideOpen, setSideOpen] = useState(false);
+  const wide = useWide();
+  // Below the split width the panel's address is the page itself (docs/ux.md §6).
+  const shown: Route = route.page === "thread" && route.panel && !wide ? panelRoute(route.userId, route.panel) : route;
+  const trail = usePanelTrail(route);
 
   // Close the sidebar overlay whenever the page changes.
   useEffect(() => setSideOpen(false), [route]);
@@ -50,27 +54,181 @@ export function Shell({ user, users, route, build, onAuthChange }: {
     groups: groups.data ?? [], refreshGroups: groups.reload, openSide: () => setSideOpen(true),
   };
 
+  const panel = wide && route.page === "thread" ? route.panel : undefined;
+  const page = (r: Route, dropDrawer?: () => void) =>
+    r.page === "thread" && hidden(me.data!.display, r.pool) ? (
+      <HiddenPool ctx={ctx} pool={r.pool} />
+    ) : r.page === "thread" ? (
+      <Thread key={`${r.pool}/${r.threadId}`} ctx={ctx} pool={r.pool} threadId={r.threadId} threads={threads.data ?? []} drawerAtStart={r.drawer} dropDrawer={dropDrawer} />
+    ) : r.page === "project" && hidden(me.data!.display, r.pool) ? (
+      <HiddenPool ctx={ctx} pool={r.pool} />
+    ) : r.page === "project" ? (
+      <ProjectPage key={`${r.pool}/${r.threadId}`} ctx={ctx} pool={r.pool} threadId={r.threadId} section={r.section} />
+    ) : r.page === "memory" ? (
+      <Memory ctx={ctx} pool={r.pool} id={r.id} />
+    ) : r.page === "settings" ? (
+      <SettingsPage ctx={ctx} section={r.section} />
+    ) : r.page === "admin" ? (
+      <AdminPage ctx={ctx} section={r.section} />
+    ) : (
+      <Welcome ctx={ctx} />
+    );
+
   return (
-    <div className="app" data-side-open={sideOpen}>
-      <Sidebar ctx={ctx} users={users} route={route} threads={threads.data ?? []} error={threads.error} onAuthChange={onAuthChange} onClose={() => setSideOpen(false)} />
+    <div className="app" data-side-open={sideOpen} data-panel={!!panel || undefined} onClick={wide && route.page === "thread" ? (e) => openInPanel(e, route, trail) : undefined}>
+      <Sidebar ctx={ctx} users={users} route={shown} threads={threads.data ?? []} error={threads.error} onAuthChange={onAuthChange} onClose={() => setSideOpen(false)} />
       <div className="scrim" aria-hidden="true" onClick={() => setSideOpen(false)} />
-      {route.page === "thread" && hidden(me.data.display, route.pool) ? (
-        <HiddenPool ctx={ctx} pool={route.pool} />
-      ) : route.page === "thread" ? (
-        <Thread key={`${route.pool}/${route.threadId}`} ctx={ctx} pool={route.pool} threadId={route.threadId} threads={threads.data ?? []} drawerAtStart={route.drawer} />
-      ) : route.page === "project" && hidden(me.data.display, route.pool) ? (
-        <HiddenPool ctx={ctx} pool={route.pool} />
-      ) : route.page === "project" ? (
-        <ProjectPage key={`${route.pool}/${route.threadId}`} ctx={ctx} pool={route.pool} threadId={route.threadId} section={route.section} />
-      ) : route.page === "memory" ? (
-        <Memory ctx={ctx} pool={route.pool} id={route.id} />
-      ) : route.page === "settings" ? (
-        <SettingsPage ctx={ctx} section={route.section} />
-      ) : route.page === "admin" ? (
-        <AdminPage ctx={ctx} section={route.section} />
-      ) : (
-        <Welcome ctx={ctx} />
+      {page(shown, () => dropDrawer("page"))}
+      {panel && route.page === "thread" && (
+        <PanelColumn route={route} panel={panel} trail={trail} threads={threads.data ?? []}>
+          {page(panelRoute(route.userId, panel), () => dropDrawer("panel"))}
+        </PanelColumn>
       )}
+    </div>
+  );
+}
+
+/** Takes `/settings` off the address of the thread shown on its own or in the panel, once its drawer closes (no navigation). */
+function dropDrawer(which: "page" | "panel") {
+  const r = parse(location.hash);
+  if (r.page !== "thread") return;
+  const next: Route = which === "page" ? { ...r, drawer: undefined } : r.panel?.page === "thread" ? { ...r, panel: { ...r.panel, drawer: undefined } } : r;
+  if (href(next) !== href(r)) history.replaceState(null, "", href(next));
+}
+
+/* ---- The right panel (docs/ux.md §6): what is looked at without leaving a conversation. ---- */
+
+/** The split view starts at this width; below it the panel's address is the page. */
+const SPLIT_WIDTH = 1180;
+const PANEL_MIN = 360, PANEL_MAX = 520, PANEL_DEFAULT = 420;
+const PANEL_WIDTH_KEY = "lyrica.panel-width";
+
+function useWide(): boolean {
+  const q = `(min-width: ${SPLIT_WIDTH}px)`;
+  const [wide, setWide] = useState(() => matchMedia(q).matches);
+  useEffect(() => {
+    const m = matchMedia(q);
+    const on = () => setWide(m.matches);
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, [q]);
+  return wide;
+}
+
+/** The pages opened in the panel in turn, for its breadcrumb: the current one last. */
+interface Trail { crumbs: Panel[]; set: (crumbs: Panel[]) => void }
+
+function usePanelTrail(route: Route): Trail {
+  const ref = useRef<Panel[]>([]);
+  const cur = route.page === "thread" ? route.panel : undefined;
+  const last = ref.current.at(-1);
+  // A panel reached any other way than a link inside it starts a new trail.
+  if (!cur) ref.current = [];
+  else if (!last || href(panelRoute("", last)) !== href(panelRoute("", cur))) ref.current = [cur];
+  return { crumbs: ref.current, set: (c) => { ref.current = c; } };
+}
+
+/**
+ * Links in a conversation to a thread or a project's settings open in the panel, and links inside the
+ * panel replace what it shows; the sidebar's rows navigate. A link to the conversation's own thread
+ * closes the panel (its Thread settings link opens the drawer).
+ */
+function openInPanel(e: React.MouseEvent, route: Route & { page: "thread" }, trail: Trail) {
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  const a = (e.target as Element).closest("a[href^='#/u/']");
+  if (!a || a.closest(".side, .panel-actions")) return;
+  const to = parse(a.getAttribute("href")!);
+  if (to.page !== "thread" && to.page !== "project") return;
+  if (to.userId !== route.userId) return;
+  e.preventDefault();
+  if (to.page === "thread" && to.pool === route.pool && to.threadId === route.threadId) {
+    go({ page: "thread", userId: route.userId, pool: route.pool, threadId: route.threadId, ...(to.drawer ? { drawer: true } : {}) });
+    return;
+  }
+  const panel: Panel = to.page === "thread"
+    ? { page: "thread", pool: to.pool, threadId: to.threadId, ...(to.drawer ? { drawer: true as const } : {}) }
+    : { page: "project", pool: to.pool, threadId: to.threadId, ...(to.section ? { section: to.section } : {}) };
+  // A breadcrumb goes back to that page; a link in the panel goes one deeper; one in the conversation starts afresh.
+  const crumb = (a as HTMLElement).dataset.crumb;
+  trail.set(crumb !== undefined ? trail.crumbs.slice(0, Number(crumb) + 1) : a.closest(".panel") ? [...trail.crumbs, panel] : [panel]);
+  go({ ...route, drawer: undefined, panel });
+}
+
+interface PanelContext {
+  /** The pages opened in turn; the current one last. */
+  crumbs: { label: string; href: string }[];
+  /** The panel's page on its own. */
+  expand: string;
+  close: () => void;
+}
+const PanelCtx = createContext<PanelContext | undefined>(undefined);
+/** The panel's breadcrumb and buttons, when inside it. */
+export const usePanel = () => useContext(PanelCtx);
+
+/** The page's root: `main` on its own, a plain block inside the panel (one main per document). */
+export function Main(props: React.HTMLAttributes<HTMLElement>) {
+  return usePanel() ? <div {...props} /> : <main {...props} />;
+}
+
+function PanelColumn({ route, panel, trail, threads, children }: { route: Route & { page: "thread" }; panel: Panel; trail: Trail; threads: ThreadSummary[]; children: React.ReactNode }) {
+  const ref = useRef<HTMLElement>(null);
+  const [width, setWidth] = useState(() => { const n = Number(localStorage.getItem(PANEL_WIDTH_KEY)); return n >= PANEL_MIN && n <= PANEL_MAX ? n : PANEL_DEFAULT; });
+  const resize = (w: number) => { const x = Math.round(Math.min(PANEL_MAX, Math.max(PANEL_MIN, w))); setWidth(x); localStorage.setItem(PANEL_WIDTH_KEY, String(x)); };
+  const close = useCallback(() => go({ ...route, drawer: undefined, panel: undefined }), [route]);
+  const label = (p: Panel) => p.page === "project" ? "Project settings" : findThread(threads, p.pool, p.threadId)?.title || "New thread";
+  const crumbs = trail.crumbs.map((p) => ({ label: label(p), href: href(panelRoute(route.userId, p)) }));
+  const ctx: PanelContext = { crumbs, expand: href(panelRoute(route.userId, panel)), close };
+  const current = href(panelRoute("", panel));
+  // Focus lands on the page's heading each time the panel shows something else.
+  useEffect(() => { const h = ref.current?.querySelector("h1"); if (h) { h.tabIndex = -1; h.focus(); } }, [current]);
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== "Escape" || e.defaultPrevented) return;
+    if ((e.target as Element).closest("dialog, [role='menu'], .drawer, .picker, [aria-expanded='true']")) return;
+    close();
+  };
+  const drag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const startX = e.clientX, startW = width;
+    el.setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent) => resize(startW + (startX - ev.clientX));
+    const up = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+  };
+  const keys = (e: React.KeyboardEvent) => {
+    const step = e.shiftKey ? 40 : 10;
+    if (e.key === "ArrowLeft") { resize(width + step); e.preventDefault(); }
+    else if (e.key === "ArrowRight") { resize(width - step); e.preventDefault(); }
+    else if (e.key === "Home") { resize(PANEL_MAX); e.preventDefault(); }
+    else if (e.key === "End") { resize(PANEL_MIN); e.preventDefault(); }
+  };
+  return (
+    <aside ref={ref} className="panel" role="complementary" aria-label={crumbs.map((c) => c.label).join(" › ")} style={{ "--panel-w": `${width}px` } as React.CSSProperties} onKeyDown={onKeyDown}>
+      <div className="divider" role="separator" aria-orientation="vertical" aria-label="Panel width" aria-valuemin={PANEL_MIN} aria-valuemax={PANEL_MAX} aria-valuenow={width} tabIndex={0} onPointerDown={drag} onKeyDown={keys} />
+      <PanelCtx.Provider value={ctx}>{children}</PanelCtx.Provider>
+    </aside>
+  );
+}
+
+/** The pages before this one in the panel, above its title; nothing on a page on its own. */
+export function Crumbs() {
+  const p = usePanel();
+  if (!p || p.crumbs.length < 2) return null;
+  return (
+    <nav className="crumbs" aria-label="Opened from">
+      {p.crumbs.slice(0, -1).map((c, i) => <a key={i} href={c.href} data-crumb={i}>{c.label}</a>)}
+    </nav>
+  );
+}
+
+/** Open as a page and Close panel, at the end of the panel's header. */
+export function PanelButtons() {
+  const p = usePanel();
+  if (!p) return null;
+  return (
+    <div className="head-actions panel-actions">
+      <a className="icon sm" href={p.expand} aria-label="Open as a page" title="Open as a page"><Icon name="expand" /></a>
+      <button type="button" className="icon sm" aria-label="Close panel" title="Close panel" onClick={p.close}><Icon name="close" /></button>
     </div>
   );
 }
@@ -94,10 +252,12 @@ export function PageHead({ ctx, title, facts, children }: { ctx: ShellContext; t
     <header className="head">
       <button type="button" className="menu-btn icon" aria-label="Show threads" onClick={ctx.openSide}><Icon name="menu" /></button>
       <div className="head-title">
+        <Crumbs />
         <h1>{title}</h1>
         {facts && <span className="cap">{facts}</span>}
       </div>
       {children}
+      <PanelButtons />
     </header>
   );
 }
