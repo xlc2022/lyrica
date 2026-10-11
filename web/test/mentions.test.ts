@@ -13,5 +13,6 @@ describe("thread mentions in her text", () => {
 
   it("follows the pool a mention names", () => {
     expect(linkMentions("[general/t:web/aa]", "li", "private", () => "DNS")).toBe("[DNS](#/u/li/t/general/web%2Faa)");
+    expect(linkMentions("[private/t:web/aa]", "li", "general", () => "Secret")).toBe("a forgotten thread");
   });
 });

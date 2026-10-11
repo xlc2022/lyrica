@@ -36,7 +36,9 @@ const KEEP_MS = 30_000;
 
 export function useThreadMentions(text: string, userId: string, pool: Pool): string {
   const [, setTick] = useState(0);
-  const found = [...text.matchAll(THREAD_MENTION)].map((m) => ({ pool: (m[1] as Pool | undefined) ?? pool, id: m[3]! }));
+  // A general message never resolves a private thread, so those aren't fetched.
+  const found = [...text.matchAll(THREAD_MENTION)].map((m) => ({ pool: (m[1] as Pool | undefined) ?? pool, id: m[3]! }))
+    .filter((f) => !(pool === "general" && f.pool === "private"));
   const keys = found.map((f) => `${userId}/${f.pool}/${f.id}`);
   useEffect(() => {
     let live = true;
@@ -55,10 +57,11 @@ export function useThreadMentions(text: string, userId: string, pool: Pool): str
   return linkMentions(text, userId, pool, (p, id) => TITLES.get(`${userId}/${p}/${id}`)?.title);
 }
 
-/** Each mention as a markdown link with the title (`null`: gone; undefined: not known yet). */
+/** Each mention as a markdown link with the title (`null`: gone; undefined: not known yet). A general message never shows a private thread. */
 export function linkMentions(text: string, userId: string, pool: Pool, titleOf: (pool: Pool, id: string) => string | null | undefined): string {
   return text.replace(THREAD_MENTION, (_whole, other: string | undefined, _kind: string, id: string) => {
     const p = (other as Pool | undefined) ?? pool;
+    if (pool === "general" && p === "private") return "a forgotten thread";
     const title = titleOf(p, id);
     if (title === null) return "a forgotten thread";
     return `[${(title ?? "a thread").replace(/[\\[\]]/g, "\\$&")}](${href({ page: "thread", userId, pool: p, threadId: id })})`;
