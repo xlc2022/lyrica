@@ -553,6 +553,10 @@ system with the module on. Only x86_64-linux.
   `nix/module.nix` changes when that list or nixpkgs' Caddy does; `nix flake
   check` prints the new one. npm packages come by their `package-lock.json`
   integrity hashes (`importNpmLock`), so a lockfile change needs nothing here.
+- **Rebuilds.** The package reads only the code it ships (no docs, evals,
+  tests or `nix/`), and the commit reaches lyricad as `LYRICA_BUILD` from
+  the module, so a commit that changes none of that code reuses the built
+  package.
 - **Sandboxes.** NixOS has no `/usr` to share. The module sets
   `LYRICA_SANDBOX_TOOLS` to one directory of `sandboxPackages`
   (`nix/sandbox-tools.nix`: a shell, the usual command-line tools, git,

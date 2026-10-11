@@ -8,9 +8,18 @@
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
       rev = self.rev or self.dirtyRev or "dirty";
+      fs = nixpkgs.lib.fileset;
+      # Only what the package build reads. Docs, evals, tests and the Nix files
+      # stay out, so changing them rebuilds nothing.
+      src = fs.toSource {
+        root = ./.;
+        fileset = fs.difference
+          (fs.unions [ ./package.json ./package-lock.json ./tsconfig.json ./bin ./core ./daemon ./extension ./host ./persona ./web ])
+          (fs.unions [ ./bin/test ./core/test ./daemon/test ./extension/test ./host/test ./web/test ./web/e2e ]);
+      };
     in {
       packages.${system} = rec {
-        lyrica = pkgs.callPackage ./nix/package.nix { src = self; inherit rev; };
+        lyrica = pkgs.callPackage ./nix/package.nix { inherit src rev; };
         default = lyrica;
         # The module's default sandbox tools; CI runs the sandbox tests with them.
         sandbox-tools = pkgs.callPackage ./nix/sandbox-env.nix { packages = import ./nix/sandbox-tools.nix pkgs; };

@@ -151,6 +151,7 @@ in {
       unitConfig.ConditionPathExists = "${state}/self.db";
       environment = {
         LYRICA_HOME = state;
+        LYRICA_BUILD = cfg.package.build or "nix";
         LYRICA_SANDBOX_TOOLS = "${sandboxTools}";
         LYRICA_SANDBOX_CLOSURE = "${sandboxClosure}/store-paths";
         # The setuid wrappers first: fusermount3 must be the setuid one.
