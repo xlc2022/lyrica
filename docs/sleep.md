@@ -74,6 +74,23 @@ thread started from an item also gets that item, and she opens with it.
 threads never really "end," so an open thread just keeps going, and the next
 sleep picks up after the watermark.
 
+## Projects
+
+Consolidation also keeps each project's page, `p:project-<id>`, for every
+project with new conversation since the last sleep. She's told each such
+project's goal, its page and whether it exists yet, its conversations and
+its notes from tonight, and writes what she knows about the project:
+decisions, requirements, pitfalls, who to ask, what's open, citing them.
+
+- **Instructions** on the page are the user's. She writes only what she
+  knows; the store keeps the user's words.
+- **A project's page belongs to a logged project in this pool.** `write_page`
+  refuses a `project-…` slug that names no project here (unless that page
+  already exists), and one whose project isn't logged. So general sleep
+  can't write a private project's page, and an unlogged project gets none.
+- Notes she folds into the page stay notes.
+- Unfinished work in a project goes into WAKE like any other work.
+
 ## Memory pools
 
 Sleep never mixes general and private memory:

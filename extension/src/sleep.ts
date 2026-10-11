@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { AgentSessionEvent, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import {
-  citationsIn, kindOf, NoModel, CloudModelForbidden,
+  citationsIn, kindOf, NoModel, CloudModelForbidden, projectSlug,
   type CallContext, type Memory, type ModelRef, type Models, type PersonaProposals, type PersonaStore, type Pool, type PoolView,
   type SkipReason, type SleepItem, type SleepMaterial, type SleepPhase, type SleepRunRecord, type Users,
 } from "@lyrica/core";
@@ -319,6 +319,7 @@ function instruction(phase: SleepPhase, c: { view: PoolView; user: string; mater
     const threads = m.threads.map((t) => `- [t:${t.id}]${t.title ? ` "${t.title}"` : ""}: ${t.entries} new entries, ${t.first} to ${t.last}`
       + (t.pinned ? `; ${user} pinned ${t.pinned.map((id) => `[${id}]`).join(", ")}` : ""));
     const edited = m.edited.map((e) => `- [${e.id}] on ${e.at.slice(0, 10)}`);
+    const projects = projectLines(view, m);
     const about = view.own.get("p:about-user");
     const aboutLine = !about ? `There is no page about ${user} yet: create p:about-user.`
       : view.own.revisions("p:about-user").some((r) => r.author.startsWith("user:"))
@@ -330,6 +331,7 @@ function instruction(phase: SleepPhase, c: { view: PoolView; user: string; mater
       section("Conversations with something new (skim them with read_memory)", threads),
       section(`Memories ${user} changed or added (authoritative)`, edited),
       section("Pages to rewrite (something they cited was deleted)", m.flagged.map((id) => `- [${id}]`)),
+      section("Projects with something new", projects),
       [
         "What to do:",
         "1. Skim the conversations. If something important was never noted, note it with remember, citing the entry it came from ([e:…]). Keep this light.",
@@ -338,6 +340,7 @@ function instruction(phase: SleepPhase, c: { view: PoolView; user: string; mater
         `4. What ${user} wrote or edited is authoritative: build on it, and never change their words. If newer conversation contradicts it, raise a question instead.`,
         "5. When two things contradict each other, raise a question rather than guessing.",
         "6. Rewrite the pages listed above without the deleted source.",
+        ...(projects.length ? [`7. Keep each project's page (the slug given above): what you know about the project, such as decisions, requirements, pitfalls, who to ask and what's open, citing its notes and conversations. Its instructions are ${user}'s and stay as they are; write only what you know.`] : []),
         "Write {user} for the person, never their name, in notes and pages.",
       ].join("\n"),
     ].filter(Boolean).join("\n\n");
@@ -353,10 +356,27 @@ function instruction(phase: SleepPhase, c: { view: PoolView; user: string; mater
   const changes = view.own.sleepChanges(view.own.getSleepRun(c.runId)!.startedAt, new Date().toISOString()).pages.map((p) => `- [${p.id}]`);
   return [
     `Morning: the last part of sleep. Write WAKE with write_wake: 400 to 800 words, first person, in your own voice, not a bulleted briefing. It's what you'll wake up with in the next conversation: where things stand with ${user}, what's in motion, and what's unresolved, including the open questions below.${privateNote}`,
-    "WAKE is orientation only. Leave your dreams out of it.",
+    "WAKE is orientation only. Leave your dreams out of it. Unfinished work in a project belongs in it like any other work.",
     section("Open questions from tonight", questions),
     section("Pages changed tonight", changes),
   ].filter(Boolean).join("\n\n");
+}
+
+/** Each project with new conversation tonight: its page's slug, and the notes and conversations behind it. */
+function projectLines(view: PoolView, m: SleepMaterial): string[] {
+  const own = view.own;
+  const since = own.watermark();
+  const ids = [...new Set(m.threads.flatMap((t) => (t.project ? [t.project] : [])))];
+  return ids.map((id) => {
+    const project = own.getThread(id)!;
+    const slug = projectSlug(id);
+    const tonight = new Set(m.notes.map((n) => n.id));
+    const notes = own.projectNotes(id, since).filter((n) => tonight.has(n.id)).map((n) => `[${n.id}]`);
+    const threads = m.threads.filter((t) => t.project === id).map((t) => `[t:${t.id}]`);
+    return `- ${project.title ? `"${project.title}"` : "A project"} [t:${id}]${project.goal ? `, goal: ${short(project.goal)}` : ""}. `
+      + `Page: ${slug} (${own.get(`p:${slug}`) ? "update it" : "create it"}). Conversations: ${threads.join(", ")}.`
+      + (notes.length ? ` Notes: ${notes.join(", ")}.` : "");
+  });
 }
 
 const section = (title: string, lines: string[]) => (lines.length ? `${title}:\n${lines.join("\n")}` : "");
@@ -421,6 +441,12 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
           if (!cites.length) throw new Error("a page cites what it rests on, like [n:20261009-a1b2c3d4]");
           // A dream is reflection: a page can't rest on one.
           if (cites.some((c) => hideDreams(c))) throw new Error("a page can't cite the journal or sleep's own threads: dreams aren't facts");
+          // A project's page belongs to a logged project in this pool: never one in another pool, or one kept out of memory.
+          if (params.slug.startsWith("project-")) {
+            const project = own.listThreads({ includeHidden: true }).find((t) => t.project && projectSlug(t.id) === params.slug);
+            if (!project && !own.get(`p:${params.slug}`)) throw new Error("pages named project-… are projects' pages, and there's no such project here");
+            if (project?.unlogged) throw new Error("that project isn't logged in memory, so it keeps no page");
+          }
           const id = own.putPage(params, "sleep");
           return text(`Wrote ${id}.`);
         },

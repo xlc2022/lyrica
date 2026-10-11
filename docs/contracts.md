@@ -878,9 +878,11 @@ sleep.events                       // started, phase, finished: IDs only, never 
   `no-key` skip is recorded once the key is back, since the pool can't be
   written without it.
 - Full details: [sleep.md](sleep.md).
-- **Planned (Projects):** sleep keeps the "what she knows" part of each
-  project's page from its notes and threads, and keeps the instructions part
-  word for word ([briefs/projects-sleep.md](briefs/projects-sleep.md)).
+- Consolidate keeps each project's page (`p:${projectSlug(id)}`) for every
+  project with new conversation, from its notes and threads; the user's
+  instructions on it are kept by the store. `write_page` refuses a
+  `project-…` slug that names no project in the pool (unless the page
+  exists) or an unlogged project's.
 
 ## core/workspace
 
