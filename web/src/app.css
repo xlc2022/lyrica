@@ -470,6 +470,9 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   .tfacts .picker-anchor:has(> .badge) { flex: 1 1 0; min-width: min(100%, 120px); }
   .drawer { width: 100%; }
   .picker { position: fixed; top: 104px; left: 16px; right: 16px; width: auto; }
+  /* In a scrolling form the search opens under its +, where the finger is, not at the top like a header picker. */
+  .machine-add { display: block; }
+  .machine-add .machine-pick { position: static; width: auto; margin-top: 6px; box-shadow: none; }
   /* max-content keeps the section row at its height when a tall section would squeeze it (the scrolling row has no automatic minimum). */
   .page-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content 1fr; }
   .subnav { position: static; display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px var(--gutter); gap: 2px; scrollbar-width: none; mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }

@@ -323,7 +323,7 @@ export function Machines({ granted, machines, onChange }: { granted: string[]; m
       })}
       {!machines.length && !granted.length && <span className="muted small">No machines in this pool.</span>}
       {others.length > 0 && (
-        <span className="picker-anchor" ref={anchor}>
+        <span className="picker-anchor machine-add" ref={anchor}>
           <button ref={plus} type="button" className="icon sm" aria-label="Add machine" title="Add machine" aria-haspopup="dialog" aria-expanded={open}
             onClick={() => (open ? close() : setOpen(true))}><Icon name="plus" /></button>
           {open && (
