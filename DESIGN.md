@@ -104,9 +104,13 @@ Each user has two pools of memory.
     right-clicking empty space in the thread list (**New group**). The
     choice and the groups are saved per user, in `user.db`. A group can hold
     general and private threads; hiding a pool still hides its threads.
-  - **One Sort menu** above the threads holds the sort choices and, below
-    a line, the General, Private and Hidden
-    checkboxes. Nothing on screen says that hidden content exists.
+    Pinned threads (Pin in the thread menu) sit at the top of the list,
+    whatever the sort.
+  - **One Sort menu** above the threads holds the sort choices; below a
+    line, the General, Private and Hidden checkboxes; and below another,
+    **All threads**, **Only projects** or **No projects** (one of three,
+    All threads by default). Nothing on screen says that hidden content
+    exists.
   - **The thread menu** opens by right-clicking a thread (a long press on a
     phone), with a letter shortcut for each item: Pin (P), Mark as unread
     (U), Rename (R), **Share with ›** (S), **Move to group ›** (M), Hide (H)
@@ -170,6 +174,8 @@ Each user has two pools of memory.
   - Two checkboxes in the Sort menu, **General** and **Private**,
     show or hide all content from a pool.
   - Any thread can be hidden, and **Hidden** reveals them.
+  - **Only projects** shows just projects, with their threads nested under
+    them; **No projects** leaves projects and their threads out.
   - These settings are saved per user. They only affect what's displayed:
     hiding doesn't change what Lyrica remembers.
 
@@ -931,8 +937,11 @@ the work and keeps track of. Agreed 2026-10-10; not built yet. The briefs are
     threads nested under it with their state and unseen count, resolved ones
     folded under one **Resolved** row, and an amber dot on the project when a
     thread waits on Li. Projects sit in the thread list, sorted and grouped
-    like any thread. **New project** is on the context menu of the thread
-    list's empty space; it opens an empty project chat, like New thread.
+    like any thread, and a project is **pinned** when it is made (New project
+    or Make project), so it stays at the top; Unpin works as for any thread.
+    **New project** is on the context menu of the thread list's empty space;
+    it opens an empty project chat, like New thread. The Sort menu can show
+    only projects or leave them out.
   - The project chat's facts line adds **Threads** with a count, opening a
     popover of its threads grouped by state, and the project's total tokens.
     Its actions stay **Files** and **Settings**.

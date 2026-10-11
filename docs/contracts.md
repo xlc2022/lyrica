@@ -739,7 +739,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `ForgetThread` / `DELETE …?children=1`; `ThreadHost.status`,
     `delivered`, `HostedThread.waiting`, `send(text, { fromParent })` and
     `settled()`;
-  - **planned (Projects):** `POST threads` with `project`; `PATCH
+  - **planned (Projects):** `POST threads` with `project` (and `PATCH`
+    making one) also pins the thread for its user; the sidebar's saved
+    view gains `projects: "all" | "only" | "none"`; `PATCH
     threads/:id` with `project`, `goal`, `paused` and the threads model and
     thinking; `POST …/messages/:n/thread` (Start a thread) →
     `ThreadSummary`; `POST threads/:id/resolve` and `…/reopen`; `POST

@@ -100,7 +100,8 @@ Rules:
   model, Group, Add…, Reset, Dictation, Dictate, Read aloud, Stop reading,
   Voice to cloud, Voice, Speed, Project, New project, Make project, Threads,
   Start a thread, Suggested threads, Start all, Resolve, Reopen, Resolved,
-  Waiting on you, Goal, Instructions, Paused.
+  Waiting on you, Goal, Instructions, Paused, All threads, Only projects,
+  No projects.
 - Numbers get units beside the field (GB, %, tokens), and a maximum shown
   where one exists ("of 128k").
 
@@ -128,7 +129,7 @@ Rules:
 | A flow with steps (download a model, pair a host) | a **page** with its own address, never a dialog |
 | Actions on a thread (pin, rename, share, move, hide, delete) | the thread's **right-click menu** in the sidebar, letter shortcuts, long press on a phone |
 | Rare actions on a row | the row's **⋯** menu |
-| Sorting and what's shown | the one **Sort** menu above the thread list |
+| Sorting and what's shown | the one **Sort** menu above the thread list: the sort choices; below a line, General, Private and Hidden; below another, All threads, Only projects or No projects |
 | Anything waiting for the user | **Notifications**: the sidebar link with its count, the Settings section, and the Notifications card on the welcome page. Never a banner elsewhere, except the chat's pending bar |
 | A user's own settings | **Settings**, sections on the left |
 | Server-wide settings | **Administration**, shown only to administrators |
@@ -143,7 +144,7 @@ Rules:
 | Voice to cloud | the thread's Privacy and network switches; its default beside the user's other defaults for new threads (the Control panel's Network section) |
 | A speech model's voice and speed | its Settings drawer in Models |
 | A child thread | nested under its parent in the **sidebar**, with its state and unseen count as badges; its updates as a **card** in the parent's conversation that links to it |
-| A project | a thread row in the **sidebar** with the project icon in the pool dot's place, its threads nested under it (each keeps its pool dot) and resolved ones folded under one **Resolved** disclosure row with the count in mono; an amber dot on the row when a thread waits on the user. **New project** in the empty thread list's context menu, **Make project** in a top-level thread's menu |
+| A project | a thread row in the **sidebar** with the project icon in the pool dot's place, its threads nested under it (each keeps its pool dot) and resolved ones folded under one **Resolved** disclosure row with the count in mono; an amber dot on the row when a thread waits on the user. **New project** in the empty thread list's context menu, **Make project** in a top-level thread's menu; a new project starts pinned, at the top with the other pinned threads |
 | A project's threads at a glance | **Threads** with its count in the project chat's facts line, a popover grouped Waiting on you, Working, Queued, Idle, Resolved, in the sidebar's words and order; full width on a phone |
 | A thread of a project, in the project chat | one **card** under the message that started it, updated in place (no card per update): title, state as a dot and word (Working blue; Waiting on you and Waiting for approval amber; Resolved green; Idle the word alone), what it waits on beneath, the last update's first line, up to three file names in mono then "+n"; Open, Stop, Resolve or Reopen behind ⋯. Waiting on you counts as waiting for an answer, so the pending bar covers it |
 | Threads she proposes | a **Suggested threads** card, like the plan card: a small secondary **Start** per row, one primary **Start all** at its foot; no Dismiss |
