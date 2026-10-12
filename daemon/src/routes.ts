@@ -231,6 +231,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       if (!isPlan(plan)) throw new HttpError(endpointId ? 404 : 400, endpointId ? "no such plan" : "a plan is ChatGPT or Grok");
       if (!endpointId) {
         if (!name) throw new HttpError(400, "a plan needs a name");
+        s().models.checkEndpointName(name);
         if (s().models.findEndpoint(user.id, name)) throw new HttpError(400, `endpoint ${name} already exists`);
       }
       for (const [id, p] of signIns) if (p.userId === user.id) dropSignIn(id);
