@@ -118,7 +118,7 @@ export class ChildThreads implements ThreadsHost {
       throw err;
     }
     // A project's thread hangs off the first entry the calling turn writes.
-    const anchor = project ? own.nextEntryN(parent.threadId) : null;
+    const anchor = project ? own.turnStartN(parent.threadId) : null;
     this.db(userId, (db) => db.prepare("INSERT INTO child_threads (pool, thread, parent, started_at, anchor, queued) VALUES (?, ?, ?, ?, ?, ?)")
       .run(parent.pool, child.id, parent.threadId, new Date().toISOString(), anchor, queued ? 1 : 0));
     const link = `#/u/${encodeURIComponent(userId)}/t/${parent.pool}/${encodeURIComponent(child.id)}`;
