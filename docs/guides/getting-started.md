@@ -783,7 +783,12 @@ the SSH ones, and `ssh remove <name>` takes one away.
   has been unlocked for 10 minutes with every health check passing, so
   without a saved passphrase someone has to unlock her. A failed check or a
   crash loop rolls back by itself, and Notifications says so for a week.
-  The Updates page shows each step; the updater's state is in
+  A reboot during probation starts it over at boot
+  (`lyrica-probation.service`), so the 10 minutes count again from the
+  next unlock; if another release is running by then (a rebuild or a
+  rollback), that probation just ends. An install from before the unit
+  existed gets it on its next `install.sh` run, NixOS on its next
+  rebuild; an Update doesn't add it. The Updates page shows each step; the updater's state is in
   `/var/lib/lyrica-update`. An update installs no packages: when a release
   needs a new one, install it by hand or run `install.sh` from a checkout.
 - **Rollback:** under Updates, **Roll back** in a kept release's ⋯ goes
