@@ -12,6 +12,7 @@ import { Icon } from "./icons.tsx";
 import { groupWarnings, type LibraryCopy as Copy } from "./library.ts";
 import { RowMenu } from "./Machines.tsx";
 import { canEdit, Frame, gb, hostOf, Kind, plural, useWords, VoiceDrawer, type MCtx } from "./ModelsFrame.tsx";
+import { go } from "./route.ts";
 import { ConfirmDialog, ErrorText, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 type Entry = LibraryEntry;
@@ -169,7 +170,8 @@ export function TextModels({ ctx }: { ctx: MCtx }) {
     .flatMap((s) => { const at = byCopy.get(s.members[0]!); return at ? [[at.entry.key, at.entry] as const] : []; })).values()];
   const chip = (label: React.ReactNode, on: boolean, onClick: () => void) => <button type="button" className="chip" aria-pressed={on} onClick={onClick}>{label}</button>;
   return (
-    <Frame ctx={ctx} tab="text" title="Text models" facts={facts}>
+    <Frame ctx={ctx} tab="text" title="Text models" facts={facts}
+      actions={<button type="button" className="primary" onClick={() => go({ page: "models", userId, tab: "downloads", add: "text" })}>Download model</button>}>
       <ErrorText error={lib.error || groups.error || suggestions.error || error} />
       {same.length > 0 && (
         <div className="banner info" role="status">

@@ -246,8 +246,8 @@ A thread's address may carry what the panel beside it shows:
   (`GET …/models/cleanup`, reread every 30 s and on focus; nothing probes
   an endpoint until the area is open). Tabs down the left (a scrolling row
   on a phone), so far **Overview**, **Tasks**, **Text models**, **Hosts and
-  endpoints**, **Clean up** and **Recent calls**; Image models and Downloads
-  come with their own PRs. The area reads `GET …/models/page` while open (30 s,
+  endpoints**, **Downloads**, **Clean up** and **Recent calls**; Image
+  models comes with its own PR. The area reads `GET …/models/page` while open (30 s,
   focus), which probes each endpoint (3 s each, one seen down in the last
   30 s not asked again). Overview: a banner for a paused host or a stale
   endpoint; tiles Endpoints (n of m up, then a dot and "All reachable" or
@@ -351,7 +351,30 @@ A thread's address may carry what the panel beside it shows:
   …/reload`) when the model is loaded and the serving draft changed, **Save
   anyway** after `above_recommended` (it repeats the refused save, reload
   included), and Save; a toast after. A speaking model's Settings opens its
-  Voice drawer.
+  Voice drawer. The header's **Download model**, the tab's one primary,
+  opens Download text model.
+  Downloads (`src/Downloads.tsx`, its wording in `src/downloads.ts`) lists
+  the downloads of every host the user may manage (`GET
+  …/hosts/:id/downloads`; a shared host's need an administrator), newest
+  first, In progress then Finished, read again 2 s after each answer while
+  anything runs; that count is the Downloads link's, which elsewhere in the
+  area is the hosts' own `downloads.active`. A running download has its
+  bar and **Cancel** (`DELETE …/downloads/:id`); a finished one its ending
+  and, once it is a model, its group or **Add to the group “<g>”** (a group
+  holding a copy the strong suggestions pair it with); **Clear finished**
+  deletes each finished one. **Download text model**
+  (`…/models/downloads/text`) looks the repository up on the chosen host
+  (`GET …/hub/files`; owner/name or the page's link), offers each GGUF file
+  (a split one as one choice) or, with no GGUF in it, the whole repository,
+  names the big files the host refuses with its reason, and starts the
+  download (`POST …/downloads`), then shows the queue. lyricad sends a hub
+  only a saved token, so one typed for a gated repository is saved first
+  and removed again after the start when Save it for next time is off. The
+  page's Cancel goes back to the Models address it was opened from, else
+  to Downloads. **Accounts** (`GET|PUT|DELETE …/hub-tokens`) shows per hub
+  the token a download uses, the user's own before a shared one, as its
+  last four characters; Remove is there only where the user may remove it
+  (a shared token needs an administrator).
 - **Notifications** (`src/Notifications.tsx`; docs/ux.md §6 "Anything
   waiting for the user"): the first section of Settings, one list from
   `GET …/notifications`. Chips filter by type (All with the count, Needs a
