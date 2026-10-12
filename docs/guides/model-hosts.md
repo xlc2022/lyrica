@@ -37,10 +37,9 @@ back each other up.
 
 ## The machine
 
-- Linux. `host/install.sh` is written and documented for Debian or
-  Ubuntu only. On NixOS it would need `virtualisation.docker` and, for
-  NVIDIA, `hardware.nvidia-container-toolkit.enable` in the system
-  configuration; nobody has run it there yet.
+- Linux: Debian or Ubuntu, or NixOS with the flake's `model-host` module
+  first ([host/README.md](../../host/README.md), "On NixOS"). Nobody has run
+  it on NixOS yet.
 - The GPU driver: NVIDIA's, or `amdgpu` (with ROCm kernel support,
   `/dev/kfd`, for the ROCm backend).
 - Docker with the compose plugin, using its **iptables** firewall backend

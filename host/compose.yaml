@@ -1,6 +1,7 @@
 # The model host. Run through install.sh, which writes .env (including
 # COMPOSE_FILE, which adds the model servers' file: compose.nvidia.yaml
-# (CUDA), compose.amd.yaml (ROCm) or compose.vulkan.yaml (Vulkan); for ROCm,
+# (CUDA, with compose.cdi.yaml for CDI devices), compose.amd.yaml (ROCm) or
+# compose.vulkan.yaml (Vulkan); for ROCm,
 # compose.hsa.yaml (a gfx override) and compose.apu.yaml (unified memory on
 # an APU); and compose.lan.yaml and compose.tailscale.yaml).
 #

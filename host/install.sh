@@ -49,6 +49,7 @@ VENDOR=$(env_value GPU_VENDOR)
 AMD_BACKEND=$(env_value GPU_BACKEND)
 HSA_OVERRIDE=$(env_value HSA_OVERRIDE_GFX_VERSION)
 AMD_FLAGS=0 APU_ONLY=0 DISCRETE_SUPPORTED=0
+NVIDIA_CDI=0
 COMFY_GPU=$(env_value COMFY_GPU)
 TS_HOSTNAME=$(env_value TS_HOSTNAME)
 TS_AUTHKEY=$(env_value TS_AUTHKEY)
@@ -152,8 +153,12 @@ if [[ $CHECK_GPU == 1 ]]; then
   case $VENDOR in
     nvidia)
       nvidia-smi -L >/dev/null 2>&1 || fail "nvidia-smi can't talk to the driver. Install or fix the NVIDIA driver."
-      docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q nvidia || ls /etc/cdi/nvidia*.yaml /var/run/cdi/nvidia*.yaml >/dev/null 2>&1 ||
-        fail "Docker has no NVIDIA support. Install nvidia-container-toolkit and run: sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker"
+      # Docker's nvidia runtime, or else the toolkit's CDI devices (NixOS).
+      if ! docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q nvidia; then
+        compgen -G '/etc/cdi/nvidia*' >/dev/null || compgen -G '/var/run/cdi/nvidia*' >/dev/null ||
+          fail "Docker has no NVIDIA support. Install nvidia-container-toolkit and run: sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker"
+        NVIDIA_CDI=1
+      fi
       say "GPUs: $(nvidia-smi --query-gpu=name --format=csv,noheader | paste -sd, -)" ;;
     amd)
       compgen -G '/dev/dri/renderD*' >/dev/null || fail "no /dev/dri/renderD*: install the amdgpu driver."
@@ -207,6 +212,7 @@ fi
 UNIFIED=
 [[ $VENDOR == amd && $AMD_BACKEND == rocm && $APU_ONLY == 1 ]] && UNIFIED=1
 [[ $VENDOR == nvidia ]] && FILES+=:compose.nvidia.yaml
+[[ $VENDOR == nvidia && $NVIDIA_CDI == 1 ]] && FILES+=:compose.cdi.yaml
 [[ $VENDOR == amd && $AMD_BACKEND == vulkan ]] && FILES+=:compose.vulkan.yaml
 [[ $VENDOR == amd && $AMD_BACKEND != vulkan ]] && FILES+=:compose.amd.yaml
 [[ -n $HSA_OVERRIDE ]] && FILES+=:compose.hsa.yaml
@@ -260,7 +266,14 @@ command -v iptables >/dev/null || fail "iptables is needed to keep host-api with
 [[ $(docker info --format '{{.FirewallBackend.Driver}}' 2>/dev/null) == nftables ]] &&
   fail "Docker uses its nftables firewall backend, which egress.sh doesn't support yet. Use the iptables backend."
 "${SUDO[@]}" ./egress.sh apply "$HOST_API_IP"
-if [[ -d /run/systemd/system ]]; then
+if [[ -e /etc/NIXOS ]]; then
+  # NixOS's /etc is read-only: services.lyrica-host declares the unit (nix/host-module.nix).
+  systemctl cat lyrica-host-egress.service >/dev/null 2>&1 ||
+    fail "add services.lyrica-host to this machine's NixOS configuration (host/README.md, \"On NixOS\"), rebuild, and run install.sh again."
+  [[ $(systemctl show -p ExecStart --value lyrica-host-egress.service) == *"$PWD/egress.sh"* ]] ||
+    fail "services.lyrica-host.checkout doesn't name this clone ($(dirname "$PWD")). Set it, rebuild, and run install.sh again."
+  "${SUDO[@]}" systemctl restart lyrica-host-egress.service
+elif [[ -d /run/systemd/system ]]; then
   sed "s#@HOST_DIR@#$PWD#g" lyrica-host-egress.service | "${SUDO[@]}" tee /etc/systemd/system/lyrica-host-egress.service >/dev/null
   "${SUDO[@]}" systemctl daemon-reload
   "${SUDO[@]}" systemctl enable --now lyrica-host-egress.service >/dev/null
