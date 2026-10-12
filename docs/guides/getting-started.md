@@ -26,11 +26,16 @@ One machine, in practice an LXC container or a VM on Li's Proxmox, running:
 - `lyricad` as the `lyrica` system user, from `/opt/lyrica`, with its state
   in `/var/lib/lyrica` (`self.db`, each user's encrypted databases and home
   workspace, saved credentials). It listens on `127.0.0.1:7340` and on a
-  Unix socket only.
+  Unix socket. A fresh install also serves HTTPS itself on port 7340 of
+  every LAN and Tailscale address, with its own certificate (Web access,
+  Direct).
+- Her own `tailscaled` (`lyrica-tailscaled.service`), as the `lyrica` user
+  in userspace networking, so she can be a device of her own on a tailnet.
+  The host's own Tailscale, if it has one, is left alone.
 - The built-in Caddy (`/usr/local/bin/lyrica-caddy`) as the `lyrica-caddy`
-  user, which is what other machines connect to over HTTPS once Web access
-  is set up. It is built once by the install script, with DNS plugins, and
-  configured by `lyricad` through a Unix socket.
+  user, for when Web access serves a name of yours with a real certificate.
+  It is built once by the install script, with DNS plugins, and configured
+  by `lyricad` through a Unix socket.
 
 Her models run elsewhere: on cloud endpoints, on any OpenAI-compatible
 server on your network, or on a paired model host.
@@ -61,8 +66,8 @@ server on your network, or on a paired model host.
   binding when no prebuilt one matches. CI installs `build-essential` on a
   fresh Ubuntu for this reason; the install script doesn't.
 - `git`, to clone the repository.
-- Internet access during the install: npm, and `proxy.golang.org` for the
-  Caddy build.
+- Internet access during the install: npm, `proxy.golang.org` for the
+  Caddy build, and `pkgs.tailscale.com` when Tailscale isn't installed yet.
 
 ### In a Proxmox LXC container
 
@@ -106,7 +111,10 @@ What `install.sh` does, in order:
 
 1. Installs the packages her sandboxes need: bubblewrap, gocryptfs, FUSE,
    passt, nftables, ImageMagick (the Files panel's thumbnails are made in
-   the sandbox), and openssl, curl, unzip and rsync for itself.
+   the sandbox), and openssl, curl, unzip and rsync for itself. When
+   Tailscale's binaries are missing it adds Tailscale's apt repository and
+   installs `tailscale`; the package turns on the host's own `tailscaled`,
+   and the script turns it off again unless it was on before.
 2. Creates the `lyrica` and `lyrica-caddy` system users. `lyricad` gets the
    `lyrica-caddy` group from its unit, so it alone can reach Caddy's admin
    socket.
@@ -120,17 +128,19 @@ What `install.sh` does, in order:
    again rebuilds only when a pin changed.
 5. Sets `net.ipv4.ip_nonlocal_bind=1`, so Caddy can bind a Tailscale address
    before Tailscale is up.
-6. Installs and enables `lyrica-caddy.service` and `lyricad.service`, starts
-   Caddy, and either restarts `lyricad` (an upgrade) or tells you to create
-   `self.db` first (a fresh install).
+6. Installs, enables and starts `lyrica-caddy.service`,
+   `lyrica-tailscaled.service` and `lyricad.service`. On an upgrade it
+   restarts `lyricad`. On a fresh install `lyricad` starts setting up, and
+   the script ends by printing a one-time setup code, the addresses to open
+   and the certificate's fingerprint (see "First run").
 
 Running it again later is the upgrade path (see "Upgrading").
 
 ### On NixOS
 
 The repository is a flake, and its NixOS module sets up what the install
-script does on Debian: both users, `/var/lib/lyrica`, both units with the
-same hardening, and Caddy with the DNS plugins. x86-64 only. The reference
+script does on Debian: both users, `/var/lib/lyrica`, the units with the
+same hardening, her own `tailscaled`, and Caddy with the DNS plugins. x86-64 only. The reference
 is [docs/daemon.md](../daemon.md#on-nixos). Instead of the steps above:
 
 1. In your system flake, add the repository as an input and the module to
@@ -144,25 +154,23 @@ is [docs/daemon.md](../daemon.md#on-nixos). Instead of the steps above:
    services.lyrica.enable = true;
    ```
 
-   The options are `port` (7340), `caddyPackage`, and `sandboxPackages`,
-   the tools her commands see (NixOS has no `/usr` to share, so the module
-   builds one directory from that list; add to it to give her more). The
-   module refuses to build while `security.allowUserNamespaces` is off.
+   The options are `port` (7340), `tailscale` (on: her own `tailscaled`,
+   from `tailscalePackage`), `openFirewall` (on: opens port 7340 for
+   Direct, whatever `port` is, so the machine can be set up from another
+   one), `caddyPackage`, and `sandboxPackages`, the tools her commands see
+   (NixOS has no `/usr` to share, so the module builds one directory from
+   that list; add to it to give her more). The module refuses to build
+   while `security.allowUserNamespaces` is off.
 2. `nixos-rebuild switch`. The package builds lyricad, the CLI and the web
-   UI, and the service is installed but waits for `self.db`, as on Debian.
-3. The first run below is the same: `lyrica` is on the system path and
-   runs as her user with her state folder, as on Debian, so
-
-   ```sh
-   lyrica admin init
-   systemctl start lyricad
-   ```
-
-   (A host set up before 2026-10-11 gets that command on its next
-   `nixos-rebuild switch` with the updated flake.)
+   UI, and `lyricad` starts setting up, as on Debian. Nothing prints the
+   setup code at the rebuild: `lyrica admin setup-code`, as root, prints
+   it with the addresses and the fingerprint.
+3. The first run below is the same. `lyrica` is on the system path and
+   runs as her user with her state folder, as on Debian.
 4. Instead of "Check the deploy", run `nix/check-host.sh` from a checkout
-   of the repository, as root. It checks both services, `NoNewPrivs`, the
-   setuid `fusermount3`, Caddy's socket, a sandbox and `pasta` as the
+   of the repository, as root, after the first run. It checks `lyricad`
+   and Caddy, that her `tailscaled` answers on its socket, `NoNewPrivs`,
+   the setuid `fusermount3`, Caddy's socket, a sandbox and `pasta` as the
    `lyrica` user, the network self-test and the port, one line each, and
    ends with "All checks passed." or stops at the first failure.
 
@@ -176,42 +184,56 @@ commit that is running, as on Debian.
 
 ## First run
 
-### Create self.db and the first administrator
+### Note the addresses and the fingerprint
 
-The script prints this:
+Without `self.db`, `lyricad` runs **setting up**: it answers nothing but
+the setup call, and serves HTTPS with a certificate of its own on port 7340
+of the machine's LAN and Tailscale addresses. A fresh install ends by
+printing what you need, and this prints it again until she is set up:
 
 ```sh
-lyrica admin init
+lyrica admin setup-code
+```
+
+```text
+Setup code: XXXX-XXXX
+Open:       https://<address>:7340
+Certificate fingerprint (SHA-256), to compare with the browser's warning:
+  <fingerprint>
 ```
 
 `lyrica` (in `/usr/local/bin`) runs the CLI as the `lyrica` user with her
 state folder, from root or any sudoer, so the files it makes are hers; every
 `lyrica admin …` command in this guide works the same way from any shell.
+Keep the addresses and the fingerprint for "Unlock her" below. The code is
+for the setup page; `lyrica admin init` doesn't need it.
 
-It asks, at hidden prompts, for a new `self.db` passphrase, the first
-administrator's login name (default `li`), a display name and pronouns, and
-that user's password. It then imports the persona seed from `persona/`.
-Passwords and passphrases are only ever typed at prompts, never passed as
-arguments.
+### Create self.db and the first administrator
 
-### Start her
+The web UI has no setup page for the code yet: the address shows the
+unlock form, which can't unlock anything before setup. Set her up from a
+terminal instead, then restart her:
 
 ```sh
-systemctl start lyricad
-journalctl -u lyricad -f
+lyrica admin init
+systemctl restart lyricad
 ```
+
+It asks, at hidden prompts, for a new `self.db` passphrase, her name
+(default Lyrica), the first administrator's login name (default `li`), a
+display name and pronouns, and that user's password. It then imports the
+persona seed from `persona/`. Passwords and passphrases are only ever typed
+at prompts, never passed as arguments.
+
+### Unlock her
 
 She starts **locked**: until `self.db` is unlocked, the API answers only
-the state and unlock calls, and the web UI serves its unlock page. Open
-`http://127.0.0.1:7340` from the machine. From your own computer the
-simplest way, before Web access exists, is an SSH tunnel:
-
-```sh
-ssh -L 7340:127.0.0.1:7340 root@<the machine>
-```
-
-then `http://127.0.0.1:7340` in your browser. Enter the passphrase, then log
-in as the administrator you created.
+the state and unlock calls, and the web UI serves its unlock page. Open one
+of the addresses printed above from any machine on your network. The
+browser warns about the certificate once; go on only if its SHA-256
+fingerprint matches the one printed. Enter the passphrase, then log in as
+the administrator you created. `journalctl -u lyricad -f` shows her
+starting.
 
 ### Check the deploy
 
@@ -261,8 +283,15 @@ once first.
 
 ## Reach her from other machines
 
-By default nothing but `127.0.0.1` can reach her. An administrator sets up
-**Web access** under Administration. The common choice is the built-in
+A fresh install starts in **Direct**: `lyricad` serves HTTPS itself on port
+7340 of every LAN and Tailscale address, with its own certificate. When the
+machine's addresses change, the next start makes a new certificate and logs
+its fingerprint. Direct stays on until an administrator picks another mode
+under Administration, **Web access**, which offers Only this machine,
+Built-in Caddy and A proxy elsewhere. Direct isn't among them yet, so the
+page can't turn it back on.
+
+For a name of your own with a certificate browsers trust, use the built-in
 Caddy:
 
 1. Pick a name under a domain you control, such as `lyrica.example.net`, and
@@ -285,8 +314,13 @@ Caddy or other proxy elsewhere on your network; the page gives it a
 Caddyfile snippet and a certificate to pin. Details are in
 [docs/daemon.md](../daemon.md#web-access).
 
-Caddy keeps serving while `lyricad` is locked, so after a reboot the unlock
-page is reachable at the name.
+Caddy and Direct keep serving while `lyricad` is locked, so after a reboot
+the unlock page is reachable.
+
+Her own `tailscaled` runs from the install on, but on no tailnet. Joining
+one with an auth key, and the **Tailnet** mode (`tailscale serve` at her
+own ts.net name), are administrator API calls with no page in the web UI
+yet; see [docs/daemon.md](../daemon.md#the-tailnet).
 
 ## Give her models
 
@@ -466,7 +500,8 @@ the SSH ones, and `ssh remove <name>` takes one away.
 
 ## Day to day
 
-- **Logs:** `journalctl -u lyricad` and `journalctl -u lyrica-caddy`. One
+- **Logs:** `journalctl -u lyricad`, `journalctl -u lyrica-caddy` and
+  `journalctl -u lyrica-tailscaled`. One
   line per request with the route pattern and status; never message or
   memory text. Caddy's TLS errors go to `/run/lyrica-caddy/tls.log` instead
   of the journal, since a DNS plugin can quote its token in one.
@@ -494,7 +529,9 @@ the SSH ones, and `ssh remove <name>` takes one away.
   2026-10-11 gets the `lyrica` command and ImageMagick on this run; until
   then the Files panel shows images themselves instead of thumbnails. On
   NixOS the next `nixos-rebuild switch` brings ImageMagick in with the
-  default `sandboxPackages`. The home page header
+  default `sandboxPackages`. An existing install gets Tailscale and her
+  `tailscaled` on its next run and keeps its web access as it was; Direct
+  comes only with a fresh install. The home page header
   ("Lyrica 0.1.0 · <build>") shows the git commit that is running.
 
 ## Checklist for the first install on Li's machine
@@ -510,7 +547,11 @@ something the code expects but nobody has confirmed on real hardware.
 2. `install.sh` runs to the end on a fresh system. Expected soft spots: the
    Node check, `npm ci` needing `build-essential`, the Caddy build (a
    checksum mismatch stops it; the tail of its build log is printed).
-3. `lyrica admin init`, `systemctl start lyricad`, unlock, login.
+3. `install.sh` prints the setup code, an address and a fingerprint; the
+   browser's certificate warning shows the same fingerprint at that
+   address. Then `lyrica admin init`, `systemctl restart lyricad`, unlock,
+   login. `systemctl status lyrica-tailscaled` shows it running as
+   `lyrica`.
 4. `NoNewPrivs: 0` on the running process.
 5. The self-test: no "network is off for every thread" in the journal, and
    Administration, Status shows no network warning.
