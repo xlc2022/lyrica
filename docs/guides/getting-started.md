@@ -225,35 +225,41 @@ Certificate fingerprint (SHA-256), to compare with the browser's warning:
 `lyrica` (in `/usr/local/bin`) runs the CLI as the `lyrica` user with her
 state folder, from root or any sudoer, so the files it makes are hers; every
 `lyrica admin …` command in this guide works the same way from any shell.
-Keep the addresses and the fingerprint for "Unlock her" below. The code is
-for the setup page; `lyrica admin init` doesn't need it.
+Each restart while she is still setting up makes a new code.
 
-### Create self.db and the first administrator
+### Set her up in the browser
 
-The web UI has no setup page for the code yet: the address shows the
-unlock form, which can't unlock anything before setup. Set her up from a
-terminal instead, then restart her:
+Open one of the printed addresses from any machine on your network. The
+browser warns about the certificate once; go on only if its SHA-256
+fingerprint matches the one printed. The page is **Set up Lyrica**:
 
-```sh
-lyrica admin init
-systemctl restart lyricad
-```
+1. **Code and passphrase:** the setup code, a new `self.db` passphrase
+   twice, and **Start unlocked**, which saves the passphrase (see "Save the
+   passphrase" below). It is off, with the reason, where saving isn't
+   available.
+2. **Name:** her name, Lyrica by default.
+3. **Administrator:** the first administrator's login, password, display
+   name and pronouns. **Create** makes `self.db`, imports the persona seed
+   from `persona/`, unlocks her and signs you in. A wrong code says so; too
+   many wrong codes make you wait a minute.
+4. **Tailnet** (or Skip): an auth key and hostname to put her on your
+   tailnet, then whether to serve the web UI there too.
+5. **Models** (or Skip): one shared endpoint, whose first chat model
+   becomes the default.
+6. **Done:** the addresses to open her at with the fingerprint, your
+   login, the tailnet, and whether she starts locked. **Start a chat**.
 
-It asks, at hidden prompts, for a new `self.db` passphrase, her name
-(default Lyrica), the first administrator's login name (default `li`), a
-display name and pronouns, and that user's password. It then imports the
-persona seed from `persona/`. Passwords and passphrases are only ever typed
-at prompts, never passed as arguments.
+`journalctl -u lyricad -f` shows her starting. No restart is needed.
+
+The other way is a terminal: `lyrica admin init` asks the same questions at
+hidden prompts (no code needed; passwords and passphrases are never passed
+as arguments), then `systemctl restart lyricad`, and she starts locked.
 
 ### Unlock her
 
-She starts **locked**: until `self.db` is unlocked, the API answers only
-the state and unlock calls, and the web UI serves its unlock page. Open one
-of the addresses printed above from any machine on your network. The
-browser warns about the certificate once; go on only if its SHA-256
-fingerprint matches the one printed. Enter the passphrase, then log in as
-the administrator you created. `journalctl -u lyricad -f` shows her
-starting.
+After every restart without a saved passphrase she starts **locked**: the
+API answers only the state and unlock calls, and the web UI serves its
+unlock page. Enter the passphrase there, then log in.
 
 ### Check the deploy
 
@@ -293,8 +299,9 @@ their home workspace mounts at start and sleep can run for them without a
 login.
 
 An administrator can set any user's password with **Change password…** on
-that user's row under Administration, Users. The user's data stays, and
-they are told who set it until they change it under Settings, Password.
+that user's row under Administration, Users, giving their own password too.
+The user's data stays; they are logged out everywhere and told who set it
+until they change it under Settings, Password.
 This works because `self.db` keeps a recovery copy of each user's key, so
 whoever holds the passphrase can open every user's data. A user created
 before that copy existed gets it at their next login, or when their saved
@@ -307,9 +314,8 @@ A fresh install starts in **Direct**: `lyricad` serves HTTPS itself on port
 7340 of every LAN and Tailscale address, with its own certificate. When the
 machine's addresses change, the next start makes a new certificate and logs
 its fingerprint. Direct stays on until an administrator picks another mode
-under Administration, **Web access**, which offers Only this machine,
-Built-in Caddy and A proxy elsewhere. Direct isn't among them yet, so the
-page can't turn it back on.
+under Administration, **Web access**: Only this machine, Direct, Tailnet,
+Built-in Caddy or A proxy elsewhere.
 
 For a name of your own with a certificate browsers trust, use the built-in
 Caddy:
@@ -337,10 +343,11 @@ Caddyfile snippet and a certificate to pin. Details are in
 Caddy and Direct keep serving while `lyricad` is locked, so after a reboot
 the unlock page is reachable.
 
-Her own `tailscaled` runs from the install on, but on no tailnet. Joining
-one with an auth key, and the **Tailnet** mode (`tailscale serve` at her
-own ts.net name), are administrator API calls with no page in the web UI
-yet; see [docs/daemon.md](../daemon.md#the-tailnet).
+Her own `tailscaled` runs from the install on, but on no tailnet until the
+setup page or Administration, **Tailnet** joins one with an auth key. Then
+the **Tailnet** mode in Web access serves her at her own ts.net name
+through `tailscale serve`. Details are in
+[docs/daemon.md](../daemon.md#the-tailnet).
 
 ## Give her models
 
@@ -529,6 +536,8 @@ the SSH ones, and `ssh remove <name>` takes one away.
   sleep, unmounts home workspaces and drops keys. With no saved passphrase,
   she comes back locked; browser sessions don't survive a restart, so
   everyone logs in again.
+- **Her name** is under Administration, Persona, Name. Memories and threads
+  written so far keep the old one.
 - **Sleep** runs at `sleep.time` (04:00 local by default; Administration,
   Sleep) for every user whose key is available.
 - **Where the data is:** everything is under `/var/lib/lyrica`. `self.db`
@@ -538,9 +547,13 @@ the SSH ones, and `ssh remove <name>` takes one away.
   passphrase as carefully as the backup. The updater's snapshots are in
   `/var/lib/lyrica-snapshots`, readable by root only. It keeps the last
   three, and any taken before a release that drops old schema stay until a
-  later such release has passed probation and they are 30 days old.
+  later such release has passed probation and they are 30 days old. A
+  restore keeps the databases it replaced in a `<time>-set-aside` folder
+  there, kept the same way.
 - **Updates:** an update is an annotated `update/<name>` tag on a `main`
-  commit, whose message is the update note. As root:
+  commit, whose message is the update note. Administration, **Updates**
+  shows the running version and the newest note; **Check** looks for one
+  and **Update** installs it. From a terminal, as root:
 
   ```sh
   lyrica-update --tag update/<name>
@@ -552,9 +565,11 @@ the SSH ones, and `ssh remove <name>` takes one away.
   databases, switches and starts her. She is then on probation until she
   has been unlocked for 10 minutes with every health check passing, so
   without a saved passphrase someone has to unlock her. A failed check or a
-  crash loop rolls back by itself. The web UI has no Updates page yet; the
-  updater's state is in `/var/lib/lyrica-update`.
-- **Rollback:** `lyrica-rollback` as root goes back to the previous
+  crash loop rolls back by itself, and Notifications says so for a week.
+  The Updates page shows each step; the updater's state is in
+  `/var/lib/lyrica-update`.
+- **Rollback:** under Updates, **Roll back** in a kept release's ⋯ goes
+  back to it. As root, `lyrica-rollback` goes back to the previous
   release, or `lyrica-rollback <commit>` to another kept one. When that
   release can't read her databases, it restores the newest snapshot it can
   read, asking first (`--yes` skips the question), or refuses and names the
@@ -596,8 +611,8 @@ something the code expects but nobody has confirmed on real hardware.
    of its build log when it fails; a checksum mismatch stops Caddy's).
 3. `install.sh` prints the setup code, an address and a fingerprint; the
    browser's certificate warning shows the same fingerprint at that
-   address. Then `lyrica admin init`, `systemctl restart lyricad`, unlock,
-   login. `systemctl status lyrica-tailscaled` shows it running as
+   address. The setup page creates her and signs you in; note any step
+   that fails. `systemctl status lyrica-tailscaled` shows it running as
    `lyrica`.
 4. `NoNewPrivs: 0` on the running process.
 5. The self-test: no "network is off for every thread" in the journal, and
@@ -611,8 +626,9 @@ something the code expects but nobody has confirmed on real hardware.
 9. Web access with the built-in Caddy: the name gets a certificate, and the
    unlock page is reachable at it after a restart.
 10. Add the deploy key, push an annotated `update/<name>` tag on `main`, and
-    `lyrica-update --tag update/<name>` runs through probation. Then
-    `lyrica-rollback` goes back to the release before.
+    Update on Administration, Updates runs through probation. Then Roll
+    back goes back to the release before; `lyrica-update` and
+    `lyrica-rollback` do the same from a terminal.
 
 Report what fails, with the journal lines, in the Operator docs thread; the
 guide gets corrected from the real run.
