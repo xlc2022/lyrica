@@ -92,12 +92,14 @@ service.
   The response lists who stays unlocked because another session holds them.
   `Me.warning` points out saved credentials with stay-unlocked off: the key
   then comes back at every start.
-- **An administrator sets a password** with `PUT …/admin/users/:targetId/password`.
-  The user's data key comes from its recovery copy in `self.db` and goes
-  under the new password, so their data stays; `Me.warning` tells them who
-  set it and when, until they change it in Settings → Password. A user
-  created before recovery copies has none until they next log in (409
-  with the reason).
+- **An administrator sets a password** with `PUT …/admin/users/:targetId/password`,
+  giving their own password again (401 when it is wrong). The user's data
+  key comes from its recovery copy in `self.db` and goes under the new
+  password, so their data stays. The user is locked as by **Lock** below,
+  so every session of theirs ends, and `Me.warning` tells them who set it
+  and when, until they change it in Settings → Password. A user created
+  before recovery copies has none until they next log in (409 with the
+  reason).
 - **Lock** (`POST /api/u/:userId/lock`) at once removes the user from every
   session, stops their subagent runs and sleep (which record how they ended), drops
   their key, then stops their threads and unmounts their home. Event

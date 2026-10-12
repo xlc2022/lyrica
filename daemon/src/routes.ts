@@ -1150,13 +1150,17 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("PUT", `${u}/admin/users/:targetId/password`, async (r) => {
       const actor = d.adminFor(r);
-      const { password } = await r.json<Api.AdminPassword>();
+      const { password, yourPassword } = await r.json<Api.AdminPassword>();
+      const t = target(d, r);
       try {
-        await s().users.setPassword(actor, target(d, r), String(password ?? ""));
+        await s().users.setPassword(actor, String(yourPassword ?? ""), t, String(password ?? ""));
       } catch (err) {
         if (err instanceof NoRecoveryCopy) throw new HttpError(409, err.message);
+        if (err instanceof AuthError) throw new HttpError(401, "that isn't your password");
         throw err;
       }
+      // The old password's sessions end: the user logs in again with the new one.
+      await d.lockUser(t.id);
       return { ok: true };
     }),
     route("PATCH", `${u}/admin/users/:targetId/profile`, async (r) => {

@@ -206,8 +206,9 @@ A thread's address may carry what the panel beside it shows:
   Fingerprint step, with a Replace token field for Proxmox.
 - **Administration**, for administrators: Status (the server's network
   self-test, sleep time, start unlocked), Users with the administrator flag,
-  **Change password…** (one field in the row; the user's data stays and
-  they are told at their next visit) and their allowed folders, Sleep, Start unlocked (saving the `self.db`
+  **Change password…** (the new password and the administrator's own, in
+  the row; the user's data stays, they are logged out and told at their
+  next visit) and their allowed folders, Sleep, Start unlocked (saving the `self.db`
   passphrase), Web access, and Persona changes that users sent on (who sent
   them, whether they edited them, and a confirmation when the file changed
   since). **Web access** has:

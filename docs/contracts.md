@@ -76,7 +76,8 @@ class Users {
   createUser(login, password, profile: Omit<Profile, "previousNames">, { admin }): Promise<User>  // first user must be admin
   authenticate(login, password): Promise<User>               // also unlocks the user's key; Argon2 runs for unknown logins too
   changePassword(user, oldPassword, newPassword): Promise<void>  // rewraps the same data key; clears passwordSetBy
-  setPassword(actor: User, target: User, newPassword): Promise<void>  // admin; the key from its recovery copy, under the new password; NoRecoveryCopy if none yet
+  setPassword(actor: User, actorPassword, target: User, newPassword): Promise<void>  // admin, confirming their own password (AuthError); the key from its recovery copy, under the new password; NoRecoveryCopy if none yet
+  checkPassword(user: User, password): Promise<boolean>     // is it theirs; unlocks nothing
   passwordSetBy(userId): { by; at } | undefined              // an administrator set it and the user hasn't changed it since
   ensureRecoveryCopy(userId): void                           // writes the copy for a user from before, once their key is in memory
   setAdmin(actor: User, target: User, admin: boolean): void  // refuses to demote the last admin

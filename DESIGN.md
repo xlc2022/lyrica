@@ -25,7 +25,8 @@ individual: her persona is the only thing users share.
 
   They can also **set any user's password** from Administration → Users
   (2026-10-11, Li's decision): the server keeps a recovery copy of each
-  user's key in `self.db`, so nothing is lost, and the user is told who set
+  user's key in `self.db`, so nothing is lost. The administrator gives their
+  own password again; the user is logged out everywhere and told who set
   it, until they change it themselves. So each user's data is encrypted with
   that user's own key and private from other users, but an administrator who
   sets a password can log in as that user: users are protected from each

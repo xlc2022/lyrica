@@ -1326,8 +1326,8 @@ export interface PassphraseChange { save: boolean; passphrase?: string }
 /** POST /api/u/:userId/admin/users → UserCard */
 export interface NewUser { login: string; password: string; displayName: string; pronouns: Pronouns; admin: boolean }
 /** PUT /api/u/:userId/admin/users/:targetId/admin → UserCard. The last administrator can't be demoted. */
-/** PUT /api/u/:userId/admin/users/:targetId/password (AdminPassword) → Ok. The user's data stays (DESIGN.md, "Users"); `Me.warning` tells them until they change it. 409 for a user with no recovery copy yet. */
-export interface AdminPassword { password: string }
+/** PUT /api/u/:userId/admin/users/:targetId/password (AdminPassword) → Ok. The user's data stays (DESIGN.md, "Users"); they are logged out everywhere, and `Me.warning` tells them until they change it. 401 when `yourPassword` is wrong; 409 for a user with no recovery copy yet. */
+export interface AdminPassword { password: string; /** The administrator's own password, asked again. */ yourPassword: string }
 export interface AdminFlag { admin: boolean }
 /** PATCH /api/u/:userId/admin/users/:targetId/profile → UserCard */
 

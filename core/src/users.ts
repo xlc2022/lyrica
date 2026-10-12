@@ -105,11 +105,14 @@ export class Users {
   /**
    * An administrator sets a user's password (DESIGN.md, "Users"): the data
    * key from its recovery copy goes under the new password, so nothing is
-   * lost. The user is told until they change the password themselves.
+   * lost. The user is told until they change the password themselves. The
+   * administrator confirms with their own password (AuthError when wrong),
+   * so an open session isn't enough.
    */
-  async setPassword(actor: User, target: User, newPassword: string): Promise<void> {
+  async setPassword(actor: User, actorPassword: string, target: User, newPassword: string): Promise<void> {
     if (!this.get(actor.id)?.admin) throw new Forbidden("only an administrator can set another user's password");
     if (!newPassword) throw new Error("password must not be empty");
+    if (!(await this.checkPassword(actor, actorPassword))) throw new AuthError();
     const row = this.db.prepare("SELECT recovery_wrap FROM users WHERE id = ?").get(target.id) as { recovery_wrap: string | null } | undefined;
     if (!row) throw new Error(`no such user: ${target.login}`);
     if (!row.recovery_wrap) throw new NoRecoveryCopy(`${target.profile.displayName} hasn't logged in since recovery copies began, so there is no key here to put under a new password.`);
@@ -118,6 +121,19 @@ export class Users {
     dataKey.fill(0);
     this.db.prepare("UPDATE users SET wrapped_key = ?, password_set_by = ?, password_set_at = ? WHERE id = ?")
       .run(JSON.stringify(wrapped), actor.id, new Date().toISOString(), target.id);
+  }
+
+  /** Whether this is the user's password. Nothing is unlocked. */
+  async checkPassword(user: User, password: string): Promise<boolean> {
+    const row = this.db.prepare("SELECT wrapped_key FROM users WHERE id = ?").get(user.id) as { wrapped_key: string } | undefined;
+    if (!row) return false;
+    try {
+      (await this.keyring.unwrap(JSON.parse(row.wrapped_key), password)).fill(0);
+      return true;
+    } catch (err) {
+      if (err instanceof WrongPassword) return false;
+      throw err;
+    }
   }
 
   /** The administrator who set the password and when, until the user changes it. */

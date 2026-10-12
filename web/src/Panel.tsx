@@ -515,27 +515,31 @@ function UnlockedSection({ ctx }: { ctx: ShellContext }) {
   );
 }
 
-/** Change password… on a user's row (docs/ux.md §6, editing in place): one field and one button; the user's data stays. */
+/** Change password… on a user's row (docs/ux.md §6, editing in place): the new password, the administrator's own, one button; the user's data stays. */
 function PasswordSetter({ userId, target }: { userId: string; target: UserCard }) {
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
+  const [own, setOwn] = useState("");
   const [done, setDone] = useState(false);
   const [run, busy, error] = useAction();
   if (!open) {
     return (
       <div className="row">
         <button type="button" className="sm" onClick={() => { setOpen(true); setDone(false); }}>Change password…</button>
-        {done && <span className="muted small" role="status">Password changed. {target.displayName} is told at their next visit.</span>}
+        {done && <span className="muted small" role="status">Password changed. {target.displayName} is logged out and told at their next visit.</span>}
       </div>
     );
   }
   return (
-    <form className="row" onSubmit={(e) => { e.preventDefault(); void run(async () => { await put(u(userId, "admin", "users", target.id, "password"), { password }); setPassword(""); setOpen(false); setDone(true); }); }}>
+    <form className="row" onSubmit={(e) => { e.preventDefault(); void run(async () => { await put(u(userId, "admin", "users", target.id, "password"), { password, yourPassword: own }); setPassword(""); setOwn(""); setOpen(false); setDone(true); }); }}>
       <label className="field"><span>New password for {target.displayName}</span>
         <input type="password" autoComplete="new-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} />
       </label>
-      <button type="submit" className="primary sm" disabled={busy || !password}>Change password</button>
-      <button type="button" className="sm" onClick={() => { setOpen(false); setPassword(""); }}>Cancel</button>
+      <label className="field"><span>Your password</span>
+        <input type="password" autoComplete="current-password" value={own} onChange={(e) => setOwn(e.target.value)} />
+      </label>
+      <button type="submit" className="primary sm" disabled={busy || !password || !own}>Change password</button>
+      <button type="button" className="sm" onClick={() => { setOpen(false); setPassword(""); setOwn(""); }}>Cancel</button>
       <ErrorText error={error} />
     </form>
   );
