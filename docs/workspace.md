@@ -574,6 +574,19 @@ her account is general.
   each changes, any schema change and what a rollback would lose, and what
   to check afterwards. It describes code, never conversations. After a
   failed probation, a GitHub issue linked to the tag holds the post-mortem.
+- **Her checks.** `npm run typecheck` and `npm test` run in her sandbox
+  with the thread's internet on. The tests that need FUSE or a tun device
+  (encrypted homes, rewind, uploads, network switches, the SSH helper)
+  skip there, since her sandbox has neither; CI runs them with
+  `LYRICA_SANDBOX_TESTS=require`, so they can't skip.
+- **Screenshots.** After `npm run build`, `npx tsx web/e2e/shot.ts
+  [page]...` starts a throwaway `lyricad` with li signed in (the e2e one,
+  web/e2e/serve.ts), saves each page at 390×844 and 1280×800, light and
+  dark, as PNGs under `shots/`, and prints their paths for `read`. It
+  needs no internet. The browser is the sandbox's headless Chromium:
+  `chromium` in the NixOS sandbox tools, or the
+  `/usr/local/bin/chromium-headless-shell` that install.sh puts in `/usr`
+  on Debian and Ubuntu.
 - **Her self-primer** (`extension/src/primer.ts`) comes up when her code
   does, like a persona topic: where to read first, the branch and review
   flow, boundary code, update notes and rollbacks.

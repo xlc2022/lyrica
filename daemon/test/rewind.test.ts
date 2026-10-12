@@ -7,7 +7,7 @@ import type { EndpointInfo, MessagePage, Pins, RemovalPlan, RewindResponse, Thre
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 const has = (cmd: string) => { try { execFileSync("which", [cmd], { stdio: "ignore" }); return true; } catch { return false; } };
-const homeRunnable = process.getuid?.() !== 0 && has("bwrap") && has("gocryptfs") && has("fusermount3");
+const homeRunnable = process.getuid?.() !== 0 && has("bwrap") && has("gocryptfs") && has("fusermount3") && existsSync("/dev/fuse");
 
 /** Li with a local chat model, subagent models on a second server, and one general thread. */
 async function setup() {

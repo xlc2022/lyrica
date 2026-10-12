@@ -44,8 +44,9 @@ written here.
      opens before it goes to Claude, against the brief or issue, AGENTS.md
      and the docs; sends fixes to the building thread; says verified.
    - **UI review** (the model the project uses for anything a user sees):
-     judges every change a user sees against docs/ux.md; a PR with UI goes
-     out only after it says verified.
+     judges every change a user sees against docs/ux.md, from the
+     screenshots `web/e2e/shot.ts` takes (docs/workspace.md, "Her own
+     code"); a PR with UI goes out only after it says verified.
    - **Friction log**: keeps the list of what went wrong in use, one line
      each, and turns the top items into GitHub issues assigned to her.
 
