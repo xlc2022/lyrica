@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # lyrica-update [--tag update/<name> | --check | --request | --resume]
 # Installs an update note's commit, run as root by lyrica-update.service when
 # lyricad writes a request (lyrica-update.path), or by hand. In order: fetch

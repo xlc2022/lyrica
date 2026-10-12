@@ -12,6 +12,9 @@ minutes on a private repository are billed past the plan's allowance.
   keeps its 12 GB of compressed layers beside the 30 GB unpacked. Ubuntu's
   installer gives the root volume only part of the disk; `sudo lvextend -r
   -l +100%FREE /dev/ubuntu-vg/ubuntu-lv` gives it the rest.
+- Any machine that runs the tests (the runner, a developer's, a NixOS test
+  host) needs `openssl` and `bash` on its PATH; `vitest.config.ts`
+  runs them in UTC.
 - `.github/runner/setup.sh TOKEN`, run as root, installs Docker, a `runner`
   user with passwordless sudo, and the runner as a systemd service. TOKEN comes
   from the repository's Settings, Actions, Runners, New self-hosted runner.

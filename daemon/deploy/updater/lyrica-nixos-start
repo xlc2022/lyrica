@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # lyrica-nixos-start <module package> <its commit>
 # NixOS only: lyricad's ExecStartPre, as root. lyricad runs from the profile
 # /nix/var/nix/profiles/lyrica, which an Update or a rollback switches. When
