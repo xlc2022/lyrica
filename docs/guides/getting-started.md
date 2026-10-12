@@ -256,7 +256,8 @@ they are told who set it until they change it under Settings, Password.
 This works because `self.db` keeps a recovery copy of each user's key, so
 whoever holds the passphrase can open every user's data. A user created
 before that copy existed gets it at their next login, or when their saved
-key loads at start; until then their row says so instead.
+key loads at start; until then, Change password… says they need to log in
+once first.
 
 ## Reach her from other machines
 
