@@ -422,6 +422,9 @@ class Models {                                              // new Models(keyrin
   // Host management and serving
   manageHost(actor, hostId, method, path, body?)            // only models/load|unload|pin|reload, gpus/<n>, scan, usage
   servingSettings(userId, offeringId) / setServingSettings(actor, offeringId, settings) / reloadModel(actor, offeringId)
+  // settings may carry stretch: { type: "yarn"; factor; originalContext } (host models only); servingSettings returns
+  // recommended: { native, stretched?, factor?, originalContext?, source: { hub, repo, revision, at } } | null
+  lookupRecommended(actor, offeringId, repo?)               // reads the card through the host's fetch service; administrator (shared) or owner
   hostDashboard(userId, hostId): string                     // a direct link, at the address that last answered
 }
 // Also exported: CloudModelForbidden, NoModel, Offline (a NoModel: code "offline", task, tried), isUnreachable(err),
@@ -687,6 +690,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `image`, with `create` and `edit` (Images thread);
   - `web_search` and `web_fetch` (research, carried over from v1 or taken from
     a Pi package);
+  - `proxmox` (Machines; see [core/workspace](#coreworkspace)) and
+    `add_repository` (Repositories; see [core/workspace](#coreworkspace));
+  - `models`, with `lookup { offering, repo? }` and `propose { offering,
+    stretch, contextLength }`, in general threads only (Context stretching;
+    see [docs/briefs/context-stretch.md](briefs/context-stretch.md));
   - in sleep sessions only: `write_page`, `write_journal`, `write_wake`,
     `raise` and `propose_persona` (Sleep thread; see [sleep.md](sleep.md)).
   - `propose_plan({ plan })`, only in Plan mode and never in a subagent
@@ -932,7 +940,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       `HostStatus`, `HostManage`, `DownloadInput`, `RecipeAction`.
     - **Offerings:** `PATCH`/`DELETE offerings/:id`; `POST …/replace`; `GET
       …/same`; `GET`/`PUT …/settings`; `PUT …/star`; `PUT …/separate`; `POST
-      …/delete-copy`; `GET`/`PUT …/serving`; `POST …/reload`. Types:
+      …/delete-copy`; `GET`/`PUT …/serving`; `POST …/reload`; `POST
+      …/lookup`. Types:
       `CapabilitiesChange`, `ReplaceInput`, `AnswerSettings`, `OfferingSettings`
       (`sources`, `dropped`, `contextWindow` with its source),
       `OfferingSettingsChange` (`scope: "shared" | "mine"`), `DeleteCopy`

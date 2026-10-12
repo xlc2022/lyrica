@@ -215,6 +215,12 @@ For each part:
   of each user's key in `self.db` (DESIGN.md "Users" and "Storage",
   contracts core/users; Li chose this over a reset that loses data). Nothing
   for sleep or the pools changes; the privacy boundary note is in DESIGN.
+- 2026-10-12, PR 13 (the Sleep section): `src/Sleep.tsx`, the sidebar link
+  with its badge, the Sleep mode select in Settings → Model profiles, the
+  administrator's Sleep section moved into the same file (docs/web.md, ux
+  row "What she did at night"). Memory links open the Memory page, not the
+  panel: the panel exists only beside a thread. Next: the Models page (carry
+  the Fallback default), Pin in the remaining places, the speech drawer.
 - 2026-10-12, PR 12 (the rest of the queue in one PR, Li's ask): the
   password follow-up (the administrator's own password, the user logged
   out); reactions on messages, hers too (DESIGN.md "Reactions",

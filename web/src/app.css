@@ -136,7 +136,8 @@ textarea { resize: vertical; }
 .side-nav a:hover, .side-nav > button:hover, .side-nav summary:hover { background: color-mix(in oklab, var(--panel) 60%, transparent); text-decoration: none; border: 0; }
 .side-nav a[aria-current="page"] { background: var(--panel); font-weight: 500; box-shadow: inset 0 0 0 1px var(--line); }
 .side-nav .ic { color: var(--muted); width: 18px; height: 18px; }
-.side-nav .count { margin-left: auto; }
+.side-nav .count, .side-nav .busy { margin-left: auto; }
+.side-nav .busy { margin-right: 6px; }
 .side-nav .new-choice { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; padding: 2px 0 4px; }
 button.private { color: var(--private); border-color: color-mix(in oklab, var(--private) 40%, var(--line)); }
 .side-nav details { position: relative; }
@@ -497,8 +498,8 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .hist summary .by { color: var(--muted); }
 .hist summary .n { margin-left: auto; }
 .hist .wdiff { border-top: 1px solid var(--line); padding: 10px 12px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
-.hist .wdiff del { color: var(--danger); text-decoration: line-through; text-decoration-thickness: 1px; background: color-mix(in oklab, var(--danger) 10%, transparent); border-radius: 3px; }
-.hist .wdiff ins { color: var(--ok); text-decoration: none; background: color-mix(in oklab, var(--ok) 12%, transparent); border-radius: 3px; }
+.hist .wdiff del, .sleep-detail .wdiff del { color: var(--danger); text-decoration: line-through; text-decoration-thickness: 1px; background: color-mix(in oklab, var(--danger) 10%, transparent); border-radius: 3px; }
+.hist .wdiff ins, .sleep-detail .wdiff ins { color: var(--ok); text-decoration: none; background: color-mix(in oklab, var(--ok) 12%, transparent); border-radius: 3px; }
 .hist .actions { padding: 0 12px 10px; }
 /* Editing in place: the textarea with its [[ popover, Edit | Preview as a segment. */
 .mem-edit .seg { justify-self: start; }
@@ -876,3 +877,37 @@ pre.note { white-space: pre-wrap; max-height: 40vh; overflow: auto; }
 .releases .release-row > .state-word { margin-left: auto; }
 .state-line .plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .dlg-commit { font-weight: 400; font-size: 15px; color: var(--muted); }
+/* Sleep (docs/sleep.md "Sleep in the UI"): her items, then the runs as disclosures, then Sleep now. */
+.sleep { display: grid; gap: 20px; }
+.sleep-block { display: grid; gap: 8px; min-width: 0; }
+.sleep-day + .sleep-day { margin-top: 10px; }
+.sleep-day > .eyebrow { padding: 0 0 6px; }
+.sleep .kind { display: inline-flex; align-items: center; gap: 4px; }
+.sleep .kind .pool-lock { width: 9px; height: 11px; }
+.list > li.sleep-item { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; }
+.sleep-item .main-col { display: grid; gap: 4px; min-width: 0; }
+.sleep-item .text { overflow-wrap: anywhere; }
+.sleep-item .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: end; }
+.sleep-sum { display: grid; gap: 2px; padding: 10px 14px; min-height: 48px; cursor: default; }
+summary.sleep-sum { list-style: none; cursor: pointer; }
+summary.sleep-sum::-webkit-details-marker { display: none; }
+summary.sleep-sum:hover { background: color-mix(in oklab, var(--tool) 50%, transparent); }
+.sleep-sum .t { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sleep-sum .when { margin-left: auto; font-size: 12px; color: var(--muted); }
+.sleep-sum .meta { color: var(--muted); overflow-wrap: anywhere; }
+.sleep-detail { display: grid; gap: 14px; padding: 4px 14px 14px; min-width: 0; }
+.sleep-part { display: grid; gap: 6px; min-width: 0; }
+.sleep-part > a.eyebrow { justify-self: start; }
+.sleep-part .plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.sleep-part li { overflow-wrap: anywhere; min-width: 0; }
+.sleep-detail .wdiff { margin-top: 4px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow-y: auto; background: var(--bg); }
+.sleep-detail .prose { font-size: 14px; }
+.sleep-foot { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.sleep-foot .msg-menu { margin-left: 0; }
+.sleep-foot .menu { min-width: 160px; }
+.sleep-foot .menu .pool-lock { width: 10px; height: 12px; }
+@media (max-width: 700px) {
+  .list > li.sleep-item { grid-template-columns: minmax(0, 1fr); }
+  .sleep-item .actions { justify-content: start; }
+}
+.sleep-mode-field { max-width: 260px; }

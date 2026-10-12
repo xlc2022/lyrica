@@ -62,7 +62,7 @@ host/          model and speech hosts for GPU machines
 nix/           NixOS module, package, sandbox tools and check-host.sh
 persona/       seed, imported into self.db on first run
 evals/         continuity scenarios
-bin/lyrica     one command: serve, admin, dev, version
+bin/lyrica     one command: serve, admin, dev, version, smoke-test
 docs/          component docs, guides and briefs
 ```
 
