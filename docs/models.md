@@ -518,7 +518,7 @@ if it is idle. lyricad registers it only when `hostCopies` lists a model:
 host chat models the user can manage, and none in a private or local-only
 thread, since a lookup is an outside call. Never in a subagent.
 
-`hostDashboard` gives a link to the host's dashboard, at the address
+`hostDashboard` (a shared host's only for an administrator) gives a link to the host's dashboard, at the address
 it last answered on, and the dashboard keeps its own password away from the
 machine.
 

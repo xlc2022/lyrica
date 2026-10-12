@@ -426,7 +426,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       return s().models.lookupRecommended(d.userFor(r), r.params.offeringId!, b?.repo as string | undefined);
     }),
     route("POST", `${u}/offerings/:offeringId/reload`, async (r) => s().models.reloadModel(d.userFor(r), r.params.offeringId!)),
-    route("GET", `${u}/hosts/:endpointId/dashboard`, (r) => ({ url: s().models.hostDashboard(d.userFor(r).id, r.params.endpointId!) })),
+    route("GET", `${u}/hosts/:endpointId/dashboard`, (r) => ({ url: s().models.hostDashboard(d.userFor(r), r.params.endpointId!) })),
     route("GET", `${u}/models/page`, async (r): Promise<Api.ModelsPage> => {
       const user = d.userFor(r);
       const m = s().models;
