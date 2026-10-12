@@ -36,7 +36,7 @@ export interface SandboxSpec {
   repos?: string;
   /** Mount `repos` read-only: a read-only subagent's view of its parent's clones. */
   reposReadOnly?: boolean;
-  /** Added to the command's environment: Git tokens where Workspace.forgeEnv allows them. Never on the command line. */
+  /** Added to the command's environment: Git tokens and the Claude Code token where Workspace allows them. Never on the command line. */
   env?: Record<string, string>;
   bwrap?: string;
   pasta?: string;
@@ -62,6 +62,14 @@ const env = () => ({ PATH: tools() ? `${tools()}/bin:${PATH}` : PATH, HOME: WORK
 // The gh and tea wrappers for a run with repositories (forge.sh), first on its PATH.
 const FORGE_BIN = "/run/lyrica/bin";
 const FORGE = readFileSync(new URL("./forge.sh", import.meta.url), "utf8");
+// The claude wrapper for a run with Claude Code (claude.sh), in the same folder.
+const CLAUDE = readFileSync(new URL("./claude.sh", import.meta.url), "utf8");
+
+/** Whether the `claude` program is among the sandbox's tools: in LYRICA_SANDBOX_TOOLS on NixOS, else in the host's /usr. */
+export function claudeCodeInstalled(): boolean {
+  const dirs = tools() ? [`${tools()}/bin`] : PATH.split(":");
+  return dirs.some((d) => existsSync(`${d}/claude`));
+}
 const inStore = (p: string) => /^\/nix\/store\/[0-9a-z]{32}-[^/]+$/.test(p);
 let closure: { file: string; paths: string[] } | undefined;
 function nixSystem(dir: string): string[] {
@@ -225,10 +233,12 @@ export class Sandbox implements ExecutionTarget {
     // Files written into the sandbox's /etc. Hostnames are pinned when it starts;
     // with internet off there is no resolver at all, so DNS can't carry data out.
     const forge = this.spec.env?.LYRICA_GIT_COUNT !== undefined;
+    const claude = this.spec.env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined;
     const data: (readonly [string, string, string?])[] = [
       ["/etc/hosts", ["127.0.0.1 localhost", "::1 localhost", ...resolved.pinned].join("\n") + "\n"],
       ["/etc/resolv.conf", internet ? `nameserver ${SANDBOX_GATEWAY}\n` : ""],
       ...forge ? [[`${FORGE_BIN}/gh`, FORGE, "0555"], [`${FORGE_BIN}/tea`, FORGE, "0555"]] as const : [],
+      ...claude ? [[`${FORGE_BIN}/claude`, CLAUDE, "0555"]] as const : [],
     ];
     const fds: number[] = [];
     let args: string[];
@@ -254,7 +264,7 @@ export class Sandbox implements ExecutionTarget {
       cmd = ["unshare", "--user", "--map-root-user", "--net", "--", "bash", "-c", HOLD, "bash", rules, String(ready), String(ready + 1), ...cmd];
     }
     const child = spawn(cmd[0]!, cmd.slice(1), {
-      env: { ...this.spec.env, ...env(), ...forge ? { PATH: `${FORGE_BIN}:${env().PATH}` } : {} },
+      env: { ...this.spec.env, ...env(), ...forge || claude ? { PATH: `${FORGE_BIN}:${env().PATH}` } : {} },
       stdio: ["pipe", "pipe", "pipe", ...fds, ...data.map(() => "pipe" as const), ...(networked ? ["pipe", "pipe"] as const : [])],
     });
     child.on("error", () => {}); // reported to the caller's own listener; never an uncaught error

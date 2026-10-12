@@ -85,6 +85,12 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect((await sh("command -v gh || echo NONE")).out).not.toContain("/run/lyrica");
   });
 
+  it("puts the claude wrapper first on a run with Claude Code's token, and only there", async () => {
+    const claude = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], env: { CLAUDE_CODE_OAUTH_TOKEN: "made-up" } });
+    expect((await sh("command -v claude", claude)).out).toBe("/run/lyrica/bin/claude\n");
+    expect((await sh("command -v claude || echo NONE")).out).not.toContain("/run/lyrica");
+  });
+
   it("mounts a thread's clones at /workspace/repos, read-only for a read-only subagent", async () => {
     mkdirSync(p("clones", "lyrica"), { recursive: true });
     writeFileSync(p("clones", "lyrica", "README.md"), "hello\n");

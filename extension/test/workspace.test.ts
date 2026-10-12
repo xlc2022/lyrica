@@ -58,6 +58,8 @@ interface Run {
   added?: ThreadRepository[];
   /** The thread's MCP servers, read on every call (a test may empty it mid-turn), and the tools allowed in the thread as "<server>/<tool>". */
   mcp?: { servers: ThreadMcpServer[]; allowed?: string[] };
+  /** Whether the thread's runs have Claude Code. */
+  claudeCode?: boolean;
 }
 
 /** Tools any thread has besides the workspace's: memory, and the switched ones, which do nothing here. */
@@ -89,7 +91,7 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
     ...(o.again ? [(_ctx: unknown) => { offered.push(session!.getActiveToolNames()); return fauxAssistantMessage("again"); }] : []),
   ]);
   const settings: ThreadWorkspace = {
-    grants: [{ path: "/srv/music", writable: false }], internet: false, services: false, hosts: [], mode, webSearch: true, images: true,
+    grants: [{ path: "/srv/music", writable: false }], internet: false, services: false, hosts: [], mode, webSearch: true, images: true, claudeCode: false,
     machines: (o.machines ?? []).map((m) => m.name), repositories: [], mcpServers: [], parent: null, ...o.settings,
   };
   const workspace = createWorkspaceExtension({
@@ -98,6 +100,7 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
     proxmox: async (machine, action, vm) => { commands.push(`${machine}: proxmox ${action}${vm ? ` ${vm}` : ""}`); return `${action} done`; },
     allowedInThread: (machine, command) => (o.allowed ?? []).includes(`${machine}: ${command}`), network: () => ({ internet: false, services: false, hosts: ["nas.lan:8080"] }),
     approve: o.approve, proposePlan: o.proposePlan, setMode: (m) => { settings.mode = m; },
+    claudeCode: () => !!o.claudeCode,
     repositories: () => o.repositories ?? [], cloneRepositories: async () => o.cloneProblems ?? [],
     gitAccounts: () => (o.gitAccounts ?? []).map((name) => ({ name, kind: "github", host: "github.com" })),
     addRepository: (r) => { o.added?.push(r); return [...(o.repositories ?? []), ...(o.added ?? [])]; },
@@ -468,6 +471,13 @@ describe("Git in a thread", () => {
     expect(results.join("\n")).toContain("cloned at the start of your next turn");
     const { offered } = await run("auto", [], { added: [] });
     expect(offered[0]).not.toContain("add_repository");
+  });
+
+  it("tells her about Claude Code in one line only where her runs have it, with no tool of its own", async () => {
+    const on = await run("auto", [], { claudeCode: true });
+    expect(on.system).toContain("Claude Code is in your sandbox");
+    expect(on.offered[0]).not.toContain("claude");
+    expect((await run("auto", [])).system).not.toContain("Claude Code");
   });
 });
 

@@ -33,7 +33,12 @@ written here.
    looking things up, set a SearXNG in Administration → Web search
    (docs/guides/searxng.md) and leave each thread's Web search switch on:
    `web_search`, and `web_fetch` for reading a page, which needs the
-   thread's internet or the page's host allowed.
+   thread's internet or the page's host allowed. To let her hand big or
+   hard coding jobs to Claude Code on the owner's Claude plan, save the
+   token from `claude setup-token` in **Settings → Claude Code** and turn
+   on the project chat's **Claude Code** switch in Thread settings, so the
+   project's threads inherit it (docs/workspace.md, "Claude Code"); with
+   the internet off, also allow `api.anthropic.com`.
 2. Paste the **Project instructions** below into Project settings →
    Memory → Instructions (the count shows it is under 2,000; only Li can
    change them).

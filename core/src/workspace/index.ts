@@ -78,7 +78,16 @@ export interface WorkspaceOptions {
   self?: () => Self;
   /** How lyricad asks a Git host's API about a token and its repositories. Default: fetch. */
   forgeFetch?: typeof fetch;
+  /**
+   * Whether a thread's model calls must stay local (private or local-only):
+   * such a thread never gets Claude Code. Without it, every thread counts as
+   * restricted, so Claude Code is never given by mistake.
+   */
+  restricted?: (userId: string, pool: Pool, threadId: string) => boolean;
 }
+
+/** Where Claude Code sends what it reads: a run gets the token only if its network reaches this. */
+export const CLAUDE_CODE_HOST = "api.anthropic.com";
 
 /** A repository as one thread sees it: where it is cloned, and through which account. */
 export interface ThreadGitRepository extends ThreadRepository {
@@ -320,6 +329,8 @@ export class Workspace {
       /** An approved plan switching the thread's mode. */
       setMode: (mode: PermissionMode) => { this.settings(t.userId).setThread(t.threadId, t.pool, { mode }); },
       network: (): Network => this.network(t),
+      /** Whether her sandbox runs here have Claude Code now. */
+      claudeCode: () => this.claudeCodeFor(t),
       folders: () => this.folders(t),
       /** Called after her write or edit tool changed a file, so removing the turn can undo it. */
       recordChange: (c: NewChange) => { this.changes(t.userId).record(t.pool, t.threadId, c); },
@@ -464,7 +475,7 @@ export class Workspace {
       network: this.network(t),
       repos: this.reposDir(t),
       reposReadOnly: t.reposReadOnly,
-      env: this.forgeEnv(t),
+      env: { ...this.forgeEnv(t), ...this.claudeEnv(t) },
       ...this.door(),
       check: (g) => checkGrant(s.allowed(), t.pool, g),
       bwrap: this.opts.bwrap,
@@ -482,6 +493,28 @@ export class Workspace {
     const s = this.settings(t.userId);
     const repos = this.repositoriesFor(t).filter((r) => r.reachable);
     return gitEnv(repos.map((r) => ({ name: r.name, account: s.gitAccount(r.account)! })));
+  }
+
+  /**
+   * Whether the thread's sandbox runs get Claude Code now: a general thread,
+   * neither it nor any ancestor local-only, with the switch on along its
+   * chain, the user's token saved, and a network that reaches Anthropic.
+   */
+  claudeCodeFor(t: WorkspaceThread): boolean {
+    if (t.pool !== "general") return false;
+    const s = this.settings(t.userId);
+    if (!s.effective(t.threadId).claudeCode || !s.claudeCodeToken()) return false;
+    const restricted = this.opts.restricted ?? (() => true);
+    for (let id: string | null = t.threadId, i = 0; id && i < 100; id = s.thread(id).parent, i++) {
+      if (restricted(t.userId, t.pool, id)) return false;
+    }
+    return reachesHost(this.network(t), CLAUDE_CODE_HOST);
+  }
+
+  /** The token as the sandbox's environment where `claudeCodeFor` allows it, for the `claude` wrapper (claude.sh). Anywhere else nothing. */
+  claudeEnv(t: WorkspaceThread): Record<string, string> {
+    if (!this.claudeCodeFor(t)) return {};
+    return { CLAUDE_CODE_OAUTH_TOKEN: this.settings(t.userId).claudeCodeToken()! };
   }
 
   /**

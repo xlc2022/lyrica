@@ -1228,6 +1228,28 @@ Decided 2026-10-12 (docs/briefs/mcp.md).
 - **Budget.** MCP tools are deferred, loaded by `tool_search` when she
   needs one, and count as one tool together (principle 8).
 
+## Claude Code
+
+Anthropic forbids Claude plan sign-in in other apps, but lets a person run
+the unmodified `claude` program on their own plan. So her sandbox has that
+program, and she hands it coding and repository jobs from `bash`.
+Decided 2026-10-12 (docs/briefs/claude-code.md).
+
+- **A program, not a model.** Her chat, persona and memory never go
+  through it; no tool is added (principle 8), only one prompt line where
+  it's available.
+- **The user's own sign-in.** `claude setup-token` on their own computer;
+  the token is kept in `user.db` and reaches only the environment of a run
+  that may use it, never argv or a file.
+- **Off until a thread turns it on**, and never in a private or local-only
+  thread, since what it reads goes to Anthropic. Children inherit it,
+  narrower or the same.
+- **No prompts of its own:** the sandbox is the fence, and her `bash`
+  call already went through the thread's mode (the owner's call). Its
+  transcripts stay in the thread's encrypted folder.
+- **Installed by default** with the sandbox tools on NixOS (unfree,
+  allowed by itself) and by `install.sh` on Debian and Ubuntu.
+
 ## Storage, encryption and unlocking
 
 - Each user's memory and threads live in encrypted SQLite (SQLCipher): a
