@@ -600,7 +600,15 @@ One model-facing tool: `delegate({ action?, ... })`.
   (`WAKEUP`), which only `lyricad` writes; `Message.from.kind` is
   `wakeup`. `ThreadSettings.wakeups`, `ThreadSummary.wakeAt`, the
   `wakeups` thread event and `DELETE …/threads/:pool/:id/wakeups/:id`
-  carry times and IDs, never the note. Its results
+  carry times and IDs, never the note. `steps` (`steps: ThreadStep[]`,
+  `{ text, state: "todo" | "doing" | "done" }`, through `cleanSteps` and
+  `STEPS_LIMITS`) replaces the calling thread's checklist in pool step 5's
+  `thread_steps` (`PoolReader.steps`, `PoolStore.setSteps`) and calls
+  `ThreadsHost.stepsChanged`, which publishes the `steps` thread event and
+  tells the parent's card; `ThreadSummary.steps` and `ChildInfo.steps`
+  carry it. It is offered only while `ThreadsHost.checklistsOn` is true
+  (`Display.checklists`, default on; changing it reloads the user's
+  sessions). Its results
   and guidance mention threads as `[t:<id>]`. A child thread is
   `createThread({ parent, child: true })`, hosted like any thread, with the
   parent's pool, models (`models.inheritContext`) and workspace
