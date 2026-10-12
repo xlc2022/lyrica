@@ -146,7 +146,7 @@ choose_amd_backend() {
 if [[ $CHECK_GPU == 1 ]]; then
   if [[ -z $VENDOR || $VENDOR == none ]]; then
     if command -v nvidia-smi >/dev/null; then VENDOR=nvidia
-    elif [[ -e /dev/kfd ]] || lsmod | grep -q '^amdgpu'; then VENDOR=amd
+    elif [[ -e /dev/kfd ]] || lsmod | grep '^amdgpu' >/dev/null; then VENDOR=amd
     else fail "no NVIDIA or AMD GPU found (no nvidia-smi, no amdgpu driver). Install the GPU driver first."
     fi
   fi
@@ -188,7 +188,8 @@ if [[ $WANT_LAN == 1 ]]; then
   [[ $LAN_GIVEN == 1 || $YES == 0 ]] || private "$LAN" || fail "$LAN isn't a private address. Give it with --lan if you mean it."
   [[ -n $LAN && $LAN != 0.0.0.0 && $LAN != "::" ]] || fail "give a LAN address (--lan), never every interface."
   [[ $LAN =~ ^127\. ]] && fail "a loopback address isn't a LAN address. The dashboard is always on 127.0.0.1:7236."
-  ip -o addr show 2>/dev/null | grep -qw "inet ${LAN}" || ip -o addr show 2>/dev/null | grep -q "inet6 ${LAN}/" ||
+  # grep -q stops reading early; under pipefail the writer's SIGPIPE would fail the check on a busy machine.
+  ip -o addr show 2>/dev/null | grep -w "inet ${LAN}" >/dev/null || ip -o addr show 2>/dev/null | grep "inet6 ${LAN}/" >/dev/null ||
     fail "$LAN isn't an address of this machine."
 fi
 
