@@ -193,9 +193,11 @@ describe("sleep in lyricad", () => {
       expect(entries.filter((e) => e.message?.role === "assistant")).toHaveLength(1);
       expect(entries.filter((e) => e.message?.role === "user")).toHaveLength(1);
     } finally { view.close(); }
-    expect(s.model.requests).toHaveLength(2);
+    // Her turns carry tools; a title call that may land after her reply doesn't count.
+    const turns = s.model.requests.filter((r) => r.tools?.length);
+    expect(turns).toHaveLength(2);
     // Pi also projects her per-turn context as a user message. Count the opening itself.
-    expect(s.model.requests[1]!.messages.filter((m) => m.role === "user" && JSON.stringify(m.content).includes(OPENING))).toHaveLength(1);
+    expect(turns[1]!.messages.filter((m) => m.role === "user" && JSON.stringify(m.content).includes(OPENING))).toHaveLength(1);
   });
 
   it("stops at Lock with the run partial, and logs no text", async () => {
