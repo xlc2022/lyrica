@@ -1155,9 +1155,10 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
 - Memory never goes into a git repository. Backups are encrypted.
 - What this protects against: a stolen disk, a leaked backup, or someone
   reading the files while a user is locked.
-- What it doesn't protect against: root on the running server while a user is
-  unlocked, whoever holds the `self.db` passphrase (the recovery copies open
-  with it), or anything already sent to a cloud model.
+- What it doesn't protect against: root on the running server while `self.db`
+  is unlocked (every user's key is recoverable then, a locked user's too),
+  whoever holds the `self.db` passphrase, or anything already sent to a cloud
+  model.
 
 ## Memory
 
