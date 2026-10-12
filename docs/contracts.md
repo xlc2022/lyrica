@@ -777,8 +777,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   different. A run of 25 calls to one tool, with any arguments, also stops
   the turn. Calls beyond either limit in a batch are refused; after the
   batch's results the loop ends, without another model call. A stored
-  `lyrica-tool-limit` message shows “Turn stopped after N tool calls.” in
-  the thread, live and after reload. Counters reset on the next agent run.
+  `lyrica-tool-limit` message shows “Turn stopped after 100 tool calls.”
+  or “Turn stopped after 25 calls in a row to <tool>.” (count and tool in mono, under the heading Tool limit) in the thread, live and after reload. Counters reset on the next agent run.
   Pi validates tool schemas before execution and returns validation errors
   naming missing fields, including an empty `image` call. These limits
   serve principles 1 and 2: real runaway turns stop structurally.

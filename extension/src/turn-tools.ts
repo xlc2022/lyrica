@@ -15,11 +15,11 @@ function normalized(value: unknown): string {
 /** One budget per prompt/agent run, including every model continuation and nested tool call. */
 export function createTurnToolsExtension(): ExtensionFactory {
   return pi => {
-    let calls = 0, run = 0, last = "", stopped = false, notified = false;
+    let calls = 0, run = 0, last = "", stopped = false, notified = false, why = "";
     const repeats = new Map<string, number>();
     const refused = new Map<string, string>();
     pi.on("agent_start", () => {
-      calls = run = 0; last = ""; stopped = notified = false;
+      calls = run = 0; last = why = ""; stopped = notified = false;
       repeats.clear(); refused.clear();
     });
     // This event precedes schema validation, so malformed and unknown calls count too.
@@ -32,7 +32,8 @@ export function createTurnToolsExtension(): ExtensionFactory {
       const count = (repeats.get(key) ?? 0) + 1;
       repeats.set(key, count);
       if (count >= MAX_IDENTICAL_TOOL_CALLS) refused.set(e.toolCallId, "You already have this result: this tool was called with identical arguments twice. Answer or try something different.");
-      if (calls >= MAX_TURN_TOOL_CALLS || run >= MAX_SAME_TOOL_RUN) stopped = true;
+      if (calls >= MAX_TURN_TOOL_CALLS) { stopped = true; why = `Turn stopped after \`${calls}\` tool calls.`; }
+      else if (run >= MAX_SAME_TOOL_RUN) { stopped = true; why = `Turn stopped after \`${run}\` calls in a row to \`${e.toolName}\`.`; }
     });
     pi.on("tool_call", e => {
       const reason = refused.get(e.toolCallId);
@@ -44,7 +45,7 @@ export function createTurnToolsExtension(): ExtensionFactory {
       // End after results are persisted, including a mixed or parallel tool batch.
       ctx.abort();
       return { entries: [{ type: "custom_message", customType: TURN_TOOL_NOTICE,
-        content: `Turn stopped after ${calls} tool calls.`, display: true }] };
+        content: why, display: true }] };
     });
   };
 }

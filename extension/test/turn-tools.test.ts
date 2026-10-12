@@ -44,7 +44,7 @@ it("ends a looping model at the per-turn cap and shows the notice", async () => 
   expect(r.executed).toBe(MAX_TURN_TOOL_CALLS);
   expect(r.requested).toBe(MAX_TURN_TOOL_CALLS);
   expect(r.notices).toHaveLength(1);
-  expect(JSON.stringify(r.shown)).toContain("Turn stopped after 100 tool calls.");
+  expect(JSON.stringify(r.shown)).toContain("Turn stopped after `100` tool calls.");
 });
 
 it("refuses the third identical call despite different object key order", async () => {
@@ -63,7 +63,7 @@ it("ends after 25 consecutive calls to the same tool with changing arguments", a
   const r = await scenario(Array.from({ length: 30 }, (_, i) => ({ name: "search", args: { query: String(i) } })));
   expect(r.executed).toBe(25);
   expect(r.requested).toBe(25);
-  expect(JSON.stringify(r.shown)).toContain("Turn stopped after 25 tool calls.");
+  expect(JSON.stringify(r.shown)).toContain("Turn stopped after `25` calls in a row to `search`.");
 });
 
 it("validates missing required fields before executing", async () => {

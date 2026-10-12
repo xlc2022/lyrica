@@ -138,7 +138,9 @@ function StoredMessage({ m, env, you, cards, told, folded }: { m: Message; env: 
   if (m.role === "notice") {
     return <>{m.parts.map((p, i) => (p.type === "delegation"
       ? <Notice key={i} text={p.text} status={p.status} threads={p.threads} env={env} />
-      : <Notice key={i} text={p.type === "text" ? p.text : p.type === "compacted" ? compactedLabel(p) : ""} env={env} />))}{after}</>;
+      : p.type === "text" && p.text.startsWith("Turn stopped after ")
+        ? <Notice key={i} text={p.text} status="limit" env={env} />
+        : <Notice key={i} text={p.type === "text" ? p.text : p.type === "compacted" ? compactedLabel(p) : ""} env={env} />))}{after}</>;
   }
   return (
     <>
@@ -547,7 +549,7 @@ function ThreadLinks({ threads, env }: { threads?: ThreadRef[]; env: Env }) {
 
 const NOTICE_HEADS: Record<string, string> = {
   question: "Subagent asks", note: "Subagent note", user_message: "Message to a subagent", interrupted: "Subagent interrupted",
-  update: "Child thread",
+  update: "Child thread", limit: "Tool limit",
 };
 
 /** Something a subagent run delivered into the thread: a result, a question, a note, or what someone wrote to one. */
