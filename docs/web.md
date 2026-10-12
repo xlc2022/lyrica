@@ -668,7 +668,11 @@ A thread's address may carry what the panel beside it shows:
   goes back into the composer. A message from another thread or a look
   never waits there: it shows where it reached the turn (`received`).
 - `src/live.ts` turns stream events into the in-progress turn. When a turn
-  ends, the stored messages are reloaded and the live copy is dropped.
+  ends, the stored messages are reloaded and the live copy is dropped. A sent
+  user message already in the stored page is shown only there, even before
+  turn end or if the send response arrives after the reload. Copies match by
+  text in send order, using the last stored message number before sending
+  so an earlier identical message does not hide a new one.
   `src/stream.ts` listens for every `ThreadEvent` type by name, from a
   record keyed by the type, so a new type fails the typecheck until it's
   listed.

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { initialLive, liveReducer, type Live, type LiveAction } from "../src/live.ts";
+import { initialLive, liveReducer, storedUserItems, type Live, type LiveAction } from "../src/live.ts";
+
+import type { Message } from "../src/api.ts";
 
 const run = (actions: LiveAction[], from: Live = initialLive) => actions.reduce(liveReducer, from);
 
@@ -141,5 +143,35 @@ describe("the live view of a thread's stream", () => {
     expect(run([{ type: "rewound", from: 3 }], s).context).toBeNull();
     expect(run([{ type: "reset" }], s).context).toBeNull();
     expect(run([{ type: "rewound", from: 3 }, { type: "context", context }], s).context).toEqual(context);
+  });
+});
+
+// Principle 1: an early persisted upload must appear once while the reply streams.
+describe("stored user messages replacing live copies", () => {
+  const message = (n: number, text: string): Message => ({
+    id: `e:web/test#${n}`, n, role: "user", parts: [{ type: "text", text }], createdAt: "2026-10-12T10:00:00Z",
+  });
+  const text = "/workspace/uploads/plan.md";
+
+  it("shows the sent message until its stored copy arrives, preserving the streaming reply", () => {
+    const live = run([{ type: "sent", text, afterN: 7 }, { type: "turn_start" }, { type: "text", delta: "Reading." }]);
+    expect(storedUserItems(live.items, [message(7, text)])).toEqual(new Set());
+    const hidden = storedUserItems(live.items, [message(7, text), message(8, text)]);
+    expect(hidden).toEqual(new Set([0]));
+    expect(live.items.filter((_, i) => !hidden.has(i))).toEqual([{ role: "assistant", parts: [{ type: "text", text: "Reading." }] }]);
+  });
+
+  it("dedupes a send response that arrives after the turn's stored reload", () => {
+    const live = run([{ type: "turn_start" }, { type: "text", delta: "Done." },
+      { type: "turn_end", aborted: false }, { type: "stored" }, { type: "sent", text, afterN: 7 }]);
+    expect(storedUserItems(live.items, [message(8, text)])).toEqual(new Set([0]));
+  });
+
+  it("matches repeated sends once each in order, without hiding an unstored repeat", () => {
+    const live = run([{ type: "sent", text, afterN: 7 }, { type: "sent", text, afterN: 7 }]);
+    expect(storedUserItems(live.items, [message(7, text), message(8, text)])).toEqual(new Set([0]));
+    expect(storedUserItems(live.items, [message(8, text), message(10, text)])).toEqual(new Set([0, 1]));
+    expect(storedUserItems(live.items, [{ ...message(8, text), from: { kind: "parent", threadId: "web/parent" } }])).toEqual(new Set());
+    expect(storedUserItems(live.items, [message(8, "another file")])).toEqual(new Set());
   });
 });

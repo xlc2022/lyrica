@@ -146,15 +146,16 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
     stopReading();
     try {
       await queue.current; // a mode just picked applies to this message
+      const afterN = t.messages.at(-1)?.n ?? 0;
       const r = await post<SendResponse>(`${base}/messages`, { text });
-      if (!r.queued) t.dispatch({ type: "sent", text });
+      if (!r.queued) t.dispatch({ type: "sent", text, afterN });
       return true;
     } catch (e) {
       // While an update drains, the message stays in the box and the line says Updating.
       setSendError((e as HttpError).updating ? "Updating" : (e as Error).message);
       return false;
     }
-  }, [base, t.dispatch]);
+  }, [base, t.dispatch, t.messages]);
   // The mode and switches beside the message box: shown at once, so Shift+Tab pressed again cycles on from here.
   // Changes go to the server one at a time, so the last one pressed is the one saved; only its answer is shown.
   const changeSettings = useCallback((change: ThreadSettingsChange) => {
