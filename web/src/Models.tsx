@@ -77,7 +77,7 @@ function stateOf(ep: Endpoint, host?: Host): { dot: string; word: string; since?
     if (s === "restarting") return { dot: "info", word: "Restarting" };
     return { dot: "away", word: s === "pausing" ? "Pausing" : "Paused" };
   }
-  if (unpaired(host)) return { dot: "away", word: "Unpaired" };
+  if (unpaired(host)) return { dot: "down", word: "Unpaired" };
   if (ep.signedOut) return { dot: "down", word: "Signed out" };
   if (ep.state === "up") return { dot: "up", word: ep.api === "host" ? "Online" : "Up" };
   return { dot: "down", word: "Unreachable", since };
@@ -211,7 +211,7 @@ function Tiles({ ctx, p }: { ctx: MCtx; p: ModelsPage }) {
   const first = down[0];
   const reach = !first ? { dot: "up", word: "All reachable" }
     : paused(hostOf(p, first.id)) ? { dot: "away", word: `${first.name} paused` }
-    : unpaired(hostOf(p, first.id)) ? { dot: "away", word: `${first.name} unpaired` } : { dot: "down", word: `${first.name} unreachable` };
+    : unpaired(hostOf(p, first.id)) ? { dot: "down", word: `${first.name} unpaired` } : { dot: "down", word: `${first.name} unreachable` };
   const general = firstChat(p, p.profiles.default);
   const local = firstChat(p, "local");
   const needGroups = !!(general && "groupId" in general) || !!(local && "groupId" in local);
@@ -798,7 +798,7 @@ function HostCard({ ctx, ep, host, others, onVoice }: { ctx: MCtx; ep: Endpoint;
         <span className="spacer" />
         <div className="actions">
           {editable && (revoked
-            ? <button type="button" className="sm" aria-expanded={code !== undefined} onClick={() => setCode(code === undefined ? "" : undefined)}>Pair again…</button>
+            ? <button type="button" className="sm" aria-expanded={code !== undefined} aria-controls={`${id}-pair`} onClick={() => setCode(code === undefined ? "" : undefined)}>Pair again…</button>
             : <PauseButton ctx={ctx} ep={ep} host={host} />)}
           <DashboardButton ctx={ctx} ep={ep} />
           <button type="button" className="link sm" aria-expanded={open} onClick={() => setOpen(!open)}>{plural(ep.models.length, "model", "models")}</button>
@@ -819,7 +819,7 @@ function HostCard({ ctx, ep, host, others, onVoice }: { ctx: MCtx; ep: Endpoint;
         </form>
       )}
       {code !== undefined && (
-        <form className="inline" onSubmit={(e) => { e.preventDefault(); void pair(); }}>
+        <form className="inline" id={`${id}-pair`} onSubmit={(e) => { e.preventDefault(); void pair(); }}>
           <label className="field grow"><span>Pairing code</span><input className="mono" autoFocus autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} /></label>
           <button className="sm" disabled={busy || !code.trim()}>Pair</button>
           <button type="button" className="sm" onClick={() => setCode(undefined)}>Cancel</button>
