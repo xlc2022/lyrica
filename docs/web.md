@@ -78,8 +78,8 @@ A thread's address may carry what the panel beside it shows:
   After the group, **Context** and the percent (`src/ContextMeter.tsx`)
   open a popover of the parts, the reserve and what's free, when measured,
   and the last turn's speed. It reads `ThreadSettings.context` and then each
-  `context` stream event, so it follows every turn without a reload; a
-  rewind drops the live reading until the settings reload.
+  `context` stream event, so it follows every turn without a reload. After
+  a rewind or a reset it is hidden until the next turn measures again.
 - **Project chat** (`src/Project.tsx`): the facts line adds **Threads** with
   the count, opening a popover of the project's threads grouped Waiting on
   you, Working, Queued, Idle and Resolved (each a link, with its unseen
@@ -423,7 +423,12 @@ A thread's address may carry what the panel beside it shows:
   server makes none) and opens large, from `…/files/content`, in the
   Images tab's dialog; the conversation holds which image is open, so the
   stored copy replacing a live message doesn't close it (an SVG stays a link, since `…/files/content` serves it as text, never as a page); a remote image is never loaded and shows as a link with its
-  alt text.
+  alt text. A fenced code block has a strip along its top edge with the
+  fence's language and **Copy**, which writes the block's text to the
+  clipboard (`navigator.clipboard`, `CodeBlock.tsx`) and reads **Copied**, or
+  **Copy failed** where the browser refuses, for 2 s; inline code, tool
+  results, the permission card, the Files viewer and the Machines page's
+  setup block have none.
 - A thread she mentions (`[t:<id>]`, `[e:<id>#<n>]`) shows as its current
   title, linked to the thread in the same tab; "a forgotten thread" once it's
   gone. Titles are fetched per thread and kept for 30 seconds, so a rename
@@ -658,7 +663,8 @@ turns animations off.
 - `npm run typecheck` covers `web/` (`tsc -p web`), and `npm run build` builds
   it.
 - `web/test/` has unit tests for the stream reducer (`live.test.ts`), memory
-  links and word diffs, mentions, which paths become links, and the
+  links and word diffs, mentions, which paths become links, which code
+  blocks get Copy and what it copies (`codeblock.test.ts`), and the
   recorder's context fallback and clip limit (`voice.test.ts`).
 - `npm run e2e -w @lyrica/web` runs Playwright (after a build). The upload
   test needs `gocryptfs`, as `lyricad` does. Each project in

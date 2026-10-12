@@ -46,6 +46,8 @@ Work through these in order. Most additions end at step 1 or 2.
   message box: its "+", the mic and Send are plain icons, because the box is the
   border.
 - **Spacing:** a 16 px gutter on phones; cards and drawers share one radius.
+- **A label that changes shows a result, not a caption:** Copy reads Copied
+  for two seconds, as Read aloud reads Stop reading while it plays.
 
 ## 3. Controls
 
@@ -123,7 +125,8 @@ Rules:
   Stay, Auth key, Hostname, Control server, Skip, Remove,
   Use a host outside your network?, Add anyway, Save anyway, Keep, Look up,
   Web search, SearXNG address, Reachable, Context, About, Recall, Tools,
-  Conversation, Reserve, Free, Used, Measured, Last turn.
+  Conversation, Reserve, Free, Used, Measured, Last turn, Copy code, Copied,
+  Copy failed.
 - Numbers get units beside the field (GB, %, tokens), and a maximum shown
   where one exists ("of 128k").
 
@@ -148,6 +151,7 @@ Rules:
 | How full the thread's context is | **Context** with the percent in mono in the facts line after Group, from the first measured turn; the percent in warn from 80 % and danger from 95 %. Its popover: "<n> of <window> tokens", a thin bar of the parts in order (Persona, About, Memory, Pinned, Recall, Tools, Conversation, then Reserve hatched and Free empty), a row per part with its tokens in mono, then "Measured <time>" and, when known, "Last turn: <n> tok/s · <n> prompt tok/s · first token <n> ms". Read from a call record there are no parts: Used, Reserve, Free |
 | A thread's own files and images | the **Files** panel: **Files** in the thread header opens it in the panel column (the page on its own below 1180 px), with **Files** and **Images** as a segmented control in its header. Files: a search box, then the tree, one folder at a time, **Thread folder** first and each granted folder after it with `rw` or `ro`; a file shows beside the tree, or in its place when the column is narrow (a **Files** back button returns). Images: All, Uploaded, Made by Lyrica, and a grid that opens an image large. Every action is in the **right-click menu** (a long press on a phone, or the **⋯** beside a shown file): Attach to message, Select, Show in thread, Download, Copy path; Rename… and Delete… where the folder is writable; Upload…, New folder… and Download as zip on a folder. Ctrl- or Cmd-click and Shift-click select several; a bar at the foot names the count with the selection's ⋯. Dropping files on the panel uploads them to the folder last opened. Delete is confirmed by a **dialog** named after the file ("Delete plan.md?") with its one sentence, which in a grant says the file is your own, not a copy |
 | A file or image named in a message | a path under the thread folder, in her prose or the person's message, is a **link** that opens the file in the Files panel with its folders open (a command in a code block stays as written); an image she writes from the thread folder shows **in the message** as its thumbnail, at most 320 px tall, and opens **large** in the Images tab's dialog; a remote image stays a link with its alt text |
+| Code in a message | a fenced block in her prose has a **strip** along its top edge: the fence's language in mono at the left (nothing when the fence names none) and **Copy** at the right, always shown, a small secondary button. Copy puts the block's text on the clipboard and reads **Copied** for 2 s, or **Copy failed** where the browser refuses; no toast. A long line scrolls inside the block, and the strip stays put. Inline code has none; neither do a tool call's result, the permission card, the Files viewer or a Machines setup block |
 | Anything looked at without leaving a conversation (a thread from its card, a mention or the Threads popover; a project's settings from the chat's header) | the **panel**: a third column from 1180 px up, 360 to 520 px wide (420 to start), dragged on its divider, the width kept per browser. One panel; a link inside it replaces what it shows and the breadcrumb above its title grows. Its header is the page's own with **Open as a page** and **Close panel** as icon buttons at the end; Esc closes it. The divider takes focus and shows itself on hover. Below 1180 px the same address is the page. The sidebar's rows, Search and the welcome page navigate |
 | Editing one thing in context (a task's list, a model's settings, a GPU's settings) | the **drawer** on the right, sections with eyebrows, one Save at its foot when saving has a consequence |
 | Confirming an action with a consequence | a **dialog** with the sentence and two buttons. Dialogs confirm; they never hold forms or flows |
