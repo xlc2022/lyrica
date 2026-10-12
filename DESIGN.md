@@ -1938,3 +1938,8 @@ new evidence.
   page over HTTPS on the LAN, and a Tailnet web access mode through
   `tailscale serve` replaces the domain and DNS token for the common case.
   She also gets a name per deployment, so two installs can be told apart.
+- **Core extension budget: about 2,500 → about 8,000 lines (2026-10-12).**
+  The extension had grown to about 4,150 lines (delegation, child threads,
+  sleep, MCP, web search and the models tool) against a budget of about
+  2,500. The owner raised the budget to about 8,000 lines rather than move
+  working code out to fit.
