@@ -469,7 +469,10 @@ administrator's Update.
   file holds it) only when the thread is general, has the whole checkout
   granted (a folder inside it isn't enough), and can reach GitHub: internet
   on, or `github.com` (and `api.github.com`, for `gh`) as allowed hosts.
-  Otherwise the run has no token. There is no model-facing tool for
+  Otherwise the run has no token. Every command in such a run can read
+  it, so with internet on a page she reads could ask her to send it
+  somewhere; that is why it is a fine-grained token for this one
+  repository, with no admin rights. There is no model-facing tool for
   GitHub: she uses `git` and `gh` in her sandbox (on NixOS the sandbox's
   tools include `git`, `gh` and Node 22; on Debian install `gh`, which
   `install.sh` does).
@@ -487,7 +490,8 @@ administrator's Update.
   5. She pushes to the repository, never a fork, so her pull requests run
      CI on the `lyrica-ci` runners like Claude's, with no
      first-time-contributor approval.
-- **`.github/CODEOWNERS`** names Li for the boundary code: keys, the model
+- **`.github/CODEOWNERS`** names Li for the boundary code: keys and users
+  (each user's key and its recovery wrap), database migrations, the model
   router, the workspace (sandbox and grants), `openThreadView`,
   authentication, deployment, the updater and CI. GitHub then asks for
   Li's review on a pull request that touches them; it isn't required for

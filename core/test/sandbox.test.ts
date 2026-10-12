@@ -5,7 +5,7 @@ import { lookup } from "node:dns/promises";
 import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { FilesRefused, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Grant, type Network } from "../src/index.ts";
+import { FilesRefused, githubEnv, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Grant, type Network } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 // Escaping the sandbox is the main failure. These tests must run as an
@@ -423,6 +423,14 @@ describe.skipIf(!netRunnable || !lan)("a sandbox's network switches", () => {
   const tcp = (host: string, port: number) => `timeout 5 bash -c 'exec 3<>/dev/tcp/${host}/${port} && cat <&3'`;
   const reach = async (net: Partial<Network>, host: string, port: number, exclude: number[] = []) =>
     (await sh(tcp(host, port), box(net, [], exclude))).out;
+
+  it("hands a GitHub token to a networked command through its environment, as git's credential for github.com", async () => {
+    const token = "github_pat_11AAAAAAA0abcdefghijklmnopqrstuvwxyz";
+    const sandbox = new Sandbox({ workdir: p("work"), grants: grants(), network: { ...OFF, internet: true }, self: [], env: githubEnv(token) });
+    const r = await sh("printenv GH_TOKEN; printf 'protocol=https\\nhost=github.com\\n\\n' | GIT_TERMINAL_PROMPT=0 git credential fill", sandbox);
+    expect(r.out).toBe(`${token}\nprotocol=https\nhost=github.com\nusername=x-access-token\npassword=${token}\n`);
+    expect((await sh("printenv GH_TOKEN || echo NONE", box({ internet: true }))).out).toBe("NONE\n");
+  });
 
   it("with internet only, reaches the network but not this machine's loopback", async () => {
     expect(await reach({ internet: true }, lan!, peer)).toContain("PEER");
