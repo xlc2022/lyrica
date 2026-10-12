@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ssh2 from "ssh2";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, Users, Workspace, WorkspaceSettings, type HelperSandbox, type MachineConfig } from "../src/index.ts";
+import { generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, migrate, Users, Workspace, WorkspaceSettings, type HelperSandbox, type MachineConfig } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -193,7 +193,9 @@ describe("modes and switches", () => {
     db.exec(`DROP TABLE IF EXISTS thread_workspaces;
       CREATE TABLE thread_workspaces (thread_id TEXT PRIMARY KEY, grants TEXT NOT NULL, internet INTEGER, services INTEGER, hosts TEXT, mode TEXT NOT NULL, target TEXT NOT NULL, parent TEXT);
       INSERT INTO thread_workspaces VALUES ('a', '[]', NULL, NULL, NULL, 'ask-changes', 'sandbox', NULL),
-        ('b', '[]', NULL, NULL, NULL, 'ask-commands', 'sandbox', NULL), ('c', '[]', NULL, NULL, NULL, 'auto', 'sandbox', NULL);`);
+        ('b', '[]', NULL, NULL, NULL, 'ask-commands', 'sandbox', NULL), ('c', '[]', NULL, NULL, NULL, 'auto', 'sandbox', NULL);
+      PRAGMA user_version = 0;`);
+    migrate(db, "user");
     const settings = new WorkspaceSettings(db, () => ({ general: [], private: [] }));
     expect(["a", "b", "c"].map((id) => settings.thread(id).mode)).toEqual(["ask", "acceptEdits", "auto"]);
     expect(settings.thread("a")).toMatchObject({ webSearch: true, images: true });

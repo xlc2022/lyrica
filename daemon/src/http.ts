@@ -1,12 +1,17 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, normalize, sep } from "node:path";
-import { AuthError, CloudModelForbidden, Forbidden, HostRefused, Locked, NoModel, Offline, PairingFailed, WrongPassword } from "@lyrica/core";
+import { AuthError, CloudModelForbidden, Forbidden, HostRefused, Locked, MigrationFailed, NoModel, Offline, PairingFailed, SchemaTooNew, WrongPassword } from "@lyrica/core";
 import { COOKIE } from "./auth.ts";
 
 /** An error with an HTTP status. Its message is shown to the user. */
 export class HttpError extends Error {
   constructor(readonly status: number, message: string, readonly headers: Record<string, string> = {}) { super(message); }
+}
+
+/** An update is draining: a send is 409 with `{ updating: true }`, so the message stays in the box. */
+export class Updating extends HttpError {
+  constructor() { super(409, "Lyrica is updating"); }
 }
 
 export interface Request {
@@ -152,6 +157,8 @@ export function statusOf(err: unknown): number {
   // 502 like a host that can't be reached: 503 means locked, and sends the web UI to unlock.
   if (err instanceof Offline) return 502;
   if (err instanceof AuthError || err instanceof WrongPassword) return 401;
+  // A database this release can't read or migrate: said plainly, and a failed health check for the updater.
+  if (err instanceof SchemaTooNew || err instanceof MigrationFailed) return 409;
   if (err instanceof CloudModelForbidden || err instanceof NoModel || err instanceof PairingFailed) return 400;
   // A model host's refusal keeps its meaning; anything else from it is a bad gateway.
   if (err instanceof HostRefused) return ({ invalid: 400, refused: 403, not_found: 404, in_use: 409, too_big: 413, no_space: 507 } as Record<string, number>)[err.code] ?? 502;

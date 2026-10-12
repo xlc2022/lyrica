@@ -58,9 +58,7 @@ const SNAPSHOT = /^[0-9a-f]{32}$/;
 
 /** One user's file changes: rows in their user.db, snapshots in `<home>/snapshots`. */
 export class FileChanges {
-  constructor(private readonly db: Db, private readonly home: () => string) {
-    db.exec(CHANGES_SCHEMA);
-  }
+  constructor(private readonly db: Db, private readonly home: () => string) {}
 
   close(): void { this.db.close(); }
 

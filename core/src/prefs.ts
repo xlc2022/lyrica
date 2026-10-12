@@ -34,7 +34,6 @@ export class ThreadPrefs {
   private with<T>(userId: string, fn: (db: Db) => T): T {
     const db = this.open(userId);
     try {
-      db.exec(PREFS_SCHEMA);
       return fn(db);
     } finally {
       db.close();

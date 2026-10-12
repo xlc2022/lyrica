@@ -227,10 +227,6 @@ export class DelegationStore {
   private db<T>(userId: string, fn: (db: Db) => T): T {
     const db = this.users.openUserDb(userId);
     try {
-      db.exec(DELEGATION_SCHEMA);
-      // Added with Delegation 2: how to continue a subagent.
-      const columns = (db.prepare("PRAGMA table_info(subagent_runs)").all() as { name: string }[]).map((c) => c.name);
-      for (const c of ["pick", "narrowing", "offering"]) if (!columns.includes(c)) db.exec(`ALTER TABLE subagent_runs ADD COLUMN ${c} TEXT`);
       return fn(db);
     } finally {
       db.close();

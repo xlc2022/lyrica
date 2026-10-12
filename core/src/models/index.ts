@@ -11,7 +11,7 @@ import { baseName } from "./identity.ts";
 import { copyIdentity } from "./library.ts";
 import { acceptedSettings, ANSWER_SETTINGS, checkSettings, type AnswerSettings, type SettingSource } from "./settings.ts";
 import { collectRefs, isList, mapMembers, moveSettings, refId, rewrite, type Entry, type ProfileName, type Use } from "./refs.ts";
-import { ENDPOINT_SCHEMA, migrate, MODEL_CHOICE_SCHEMA, REDIRECT_SCHEMA, upgradeCalls } from "./schema.ts";
+import { addNotice, NOTICE } from "./schema.ts";
 import { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, speakAt, transcribeAt, wavSeconds, type SpeechTarget } from "./speech.ts";
 
 export type SpeechTask = "speech.transcribe" | "speech.speak";
@@ -294,7 +294,6 @@ const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
 /** A primary language tag: "en", "zh", "yue". */
 export const LANGUAGE = /^[a-zA-Z]{2,3}$/;
 const SHARED = "shared.";
-const NOTICE = "models_notice";
 
 /** Loopback or the tailnet, by the URL's host alone. */
 function nearby(host: string): boolean {
@@ -379,7 +378,6 @@ interface Catalog {
  * replacements and removals made while they were locked.
  */
 export class Models {
-  private selfReady = false;
   /** Users whose user.db was migrated and indexed since this process started. */
   private readonly ready = new Set<string>();
   /** Endpoint ID → whether it answered lately, from probes and calls. */
@@ -2066,31 +2064,12 @@ export class Models {
     });
   }
 
-  private self(): Db {
-    const db = this.keyring.self();
-    if (!this.selfReady) {
-      db.exec(ENDPOINT_SCHEMA + REDIRECT_SCHEMA);
-      migrate(db, {
-        legacy: (pairs) => { for (const p of pairs) db.prepare("INSERT OR IGNORE INTO legacy_refs (endpoint, model, offering) VALUES (?, ?, ?)").run(p.endpoint, p.model, p.offering); },
-      });
-      this.selfReady = true;
-    }
-    return db;
-  }
+  private self(): Db { return this.keyring.self(); }
 
   private withUser<T>(userId: string, fn: (db: Db) => T): T {
     const self = this.self();
     const db = this.users.openUserDb(userId);
     try {
-      if (!this.ready.has(userId)) {
-        db.exec(ENDPOINT_SCHEMA);
-        const dropped = migrate(db, {
-          shared: (endpoint, model) => (self.prepare("SELECT offering FROM legacy_refs WHERE endpoint = ? AND model = ?").get(endpoint, model) as { offering: string } | undefined)?.offering,
-        });
-        db.exec(MODEL_CHOICE_SCHEMA);
-        upgradeCalls(db);
-        if (dropped.length) addNotice(db, [`Models that no longer existed were taken out of your lists: ${dropped.join(", ")}.`]);
-      }
       this.sync(userId, db, self);
       // After the redirects, so a replaced shared model's kind is known.
       if (!this.ready.has(userId)) splitCloudProfile(db, self);
@@ -2283,11 +2262,6 @@ function checkUrl(baseUrl: string): string {
 }
 
 const clean = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
-
-function addNotice(db: Db, lines: string[]): void {
-  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(NOTICE) as { value: string } | undefined;
-  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(NOTICE, JSON.stringify([...(row ? JSON.parse(row.value) : []), ...lines]));
-}
 
 /** A download request checked as the host would (host/API.md "Downloads"), so a bad one is refused here with the reason. */
 function downloadBody(b: unknown): { source: Hub; repo: string; revision?: string; files: string[] } | { source: "url"; url: string; sha256?: string } {

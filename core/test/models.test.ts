@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { addressesOutside, CloudModelForbidden, Forbidden, NoModel, baseName, type Db } from "../src/index.ts";
 import { deadUrl, fakeOpenAI } from "./fake-openai.ts";
-import { freshKeyring, profile, withModels } from "./helpers.ts";
+import { beforeVersions, freshKeyring, profile, withModels } from "./helpers.ts";
 import { Models, Users } from "../src/index.ts";
-import { migrate } from "../src/models/schema.ts";
+import { ENDPOINT_SCHEMA, migrate, MODEL_CHOICE_SCHEMA, REDIRECT_SCHEMA } from "../src/models/schema.ts";
 
 const UUID = /^[0-9a-f-]{36}$/;
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
@@ -145,6 +145,7 @@ describe("migrating to permanent IDs", () => {
     const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
     await users.authenticate("li", "pw");
     const db = users.openUserDb(li.id);
+    beforeVersions(db, ENDPOINT_SCHEMA, MODEL_CHOICE_SCHEMA);
     db.exec(`
       CREATE TABLE endpoints (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, api TEXT NOT NULL, base_url TEXT NOT NULL, api_key TEXT, created_at TEXT NOT NULL);
       CREATE TABLE endpoint_models (endpoint TEXT NOT NULL REFERENCES endpoints (id) ON DELETE CASCADE, model TEXT NOT NULL, context_window INTEGER, tools INTEGER, manual INTEGER NOT NULL, PRIMARY KEY (endpoint, model));
@@ -161,7 +162,7 @@ describe("migrating to permanent IDs", () => {
     expect(db.prepare("SELECT endpoint, model FROM model_profiles WHERE task = 'chat'").get()).toEqual({ endpoint: "gpu", model: "qwen" });
     db.close();
     // Run again, it completes.
-    const models = new Models(keyring, users);
+    const models = new Models(keyring, new Users(keyring));
     expect(models.profile(li.id, "local").chat).toEqual([models.find(li.id, "gpu/qwen")]);
   });
 
@@ -181,10 +182,14 @@ describe("migrating to permanent IDs", () => {
       CREATE TABLE local_only_threads (thread TEXT PRIMARY KEY);`;
     const now = new Date().toISOString();
     const self = keyring.self();
+    beforeVersions(self, ENDPOINT_SCHEMA, REDIRECT_SCHEMA);
     self.exec(OLD);
     set(self, "INSERT INTO endpoints VALUES ('shared.lan', 'lan', 'local', 'openai-compatible', 'http://127.0.0.1:9/v1', NULL, ?)", now);
     set(self, "INSERT INTO endpoint_models VALUES ('shared.lan', 'qwen3.8-27b', 32768, 1, 0)");
+    // Unlocking again migrates self.db, keeping the old pairs for users still to migrate.
+    await keyring.unlockSelf("passphrase");
     const liDb = users.openUserDb(li.id);
+    beforeVersions(liDb, ENDPOINT_SCHEMA, MODEL_CHOICE_SCHEMA);
     liDb.exec(OLD + CHOICES);
     set(liDb, "INSERT INTO endpoints VALUES ('openrouter', 'openrouter', 'cloud', 'openai-compatible', 'http://127.0.0.1:9/v1', 'sk', ?)", now);
     set(liDb, "INSERT INTO endpoint_models VALUES ('openrouter', 'deepseek/deepseek-4.1-flash', NULL, NULL, 1)");
@@ -194,12 +199,13 @@ describe("migrating to permanent IDs", () => {
     set(liDb, "INSERT INTO thread_models VALUES ('private', 'web/p', 'chat', 'shared.lan', 'qwen3.8-27b')");
     liDb.close();
     const bobDb = users.openUserDb(bob.id);
+    beforeVersions(bobDb, ENDPOINT_SCHEMA, MODEL_CHOICE_SCHEMA);
     bobDb.exec(CHOICES);
     set(bobDb, "INSERT INTO model_profiles VALUES ('local', 'chat', 'shared.lan', 'qwen3.8-27b')");
     bobDb.close();
     keyring.lockUser(bob.id);
 
-    const models = new Models(keyring, users);
+    const models = new Models(keyring, new Users(keyring));
     const lan = models.findEndpoint(li.id, "shared.lan")!;
     expect(lan.id).toMatch(UUID);
     const [qwen] = models.offerings(li.id, lan.id);

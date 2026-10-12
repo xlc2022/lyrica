@@ -177,7 +177,9 @@ describe("setting up", () => {
         const db = k.self();
         const out = {
           tables: (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as { name: string }[]).map((r) => r.name),
-          settings: (db.prepare("SELECT key, value FROM settings ORDER BY key").all() as { key: string; value: string }[]),
+          // The recovery key is random per install: only that it exists compares.
+          settings: (db.prepare("SELECT key, value FROM settings ORDER BY key").all() as { key: string; value: string }[])
+            .map((r) => (r.key === "recovery.key" ? { key: r.key, value: "(random)" } : r)),
           persona: [...new PersonaStore(db).files().keys()],
           users: (db.prepare("SELECT login, admin, profile FROM users").all()),
         };

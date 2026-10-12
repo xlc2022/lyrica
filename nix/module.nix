@@ -25,6 +25,23 @@ let
   sandboxClosure = pkgs.callPackage ./sandbox-closure.nix {
     rootPaths = [ sandboxTools cfg.package.nodejs config.security.pki.caBundle ];
   };
+
+  # Releases: lyricad runs from this profile, which an Update (Administration →
+  # Updates) or `lyrica-rollback` switches and nixos-rebuild resets to cfg.package.
+  profile = "/nix/var/nix/profiles/lyrica";
+  # The updater, from the store: never part of an update, as on Debian.
+  updater = pkgs.runCommand "lyrica-updater" { } ''
+    mkdir -p $out/lib/lyrica-update $out/bin
+    { echo 'PATH=${lib.makeBinPath (with pkgs; [ bash coreutils findutils gnugrep gnused jq curl git openssh util-linux config.nix.package systemd ])}:$PATH'
+      cat ${../daemon/deploy/updater/common.sh}; } >$out/lib/lyrica-update/common.sh
+    for t in lyrica-update lyrica-snapshot lyrica-restore lyrica-rollback lyrica-nixos-start; do
+      install -m755 ${../daemon/deploy/updater}/$t $out/bin/$t
+      substituteInPlace $out/bin/$t \
+        --replace-quiet /usr/local/lib/lyrica-update $out/lib/lyrica-update --replace-quiet /usr/local/sbin $out/bin
+    done
+    patchShebangs $out/bin
+  '';
+  githubHostKey = "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl";
 in {
   options.services.lyrica = {
     enable = lib.mkEnableOption "Lyrica (lyricad and its built-in Caddy)";
@@ -108,6 +125,12 @@ in {
       group = "lyrica";
       home = state;
     };
+    # Builds releases and runs their smoke tests: no access to her data.
+    users.groups.lyrica-build = { };
+    users.users.lyrica-build = {
+      isSystemUser = true;
+      group = "lyrica-build";
+    };
     users.users.lyrica-caddy = {
       isSystemUser = true;
       group = "lyrica-caddy";
@@ -115,7 +138,12 @@ in {
     };
 
     # Exists before the first start, for `lyrica admin setup-code` and `lyrica admin init`.
-    systemd.tmpfiles.rules = [ "d ${state} 0700 lyrica lyrica -" ];
+    systemd.tmpfiles.rules = [
+      "d ${state} 0700 lyrica lyrica -"
+      "d /var/lib/lyrica-update 0755 root root -"
+      "d /var/lib/lyrica-snapshots 0700 root root -"
+      "d /opt/lyrica 0755 root root -"
+    ];
 
     networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall [ directPort ];
 
@@ -158,12 +186,15 @@ in {
     programs.fuse.enable = lib.mkDefault true;
 
     # `lyrica` on the PATH runs the CLI as lyrica with her state folder, as on Debian.
+    # It runs the release lyricad runs; `lyrica-rollback` and the other updater commands are root's.
     environment.systemPackages = [
       (pkgs.runCommand "lyrica-cli" { } ''
         install -Dm755 ${../daemon/deploy/lyrica} $out/bin/lyrica
-        substituteInPlace $out/bin/lyrica --replace-fail @CLI@ ${lib.getExe cfg.package} --replace-fail @STATE@ ${state}
+        substituteInPlace $out/bin/lyrica --replace-fail @CLI@ ${profile}/bin/lyrica --replace-fail @STATE@ ${state}
       '')
+      updater
     ];
+    environment.etc."lyrica/known_hosts".text = githubHostKey + "\n";
 
     # Caddy binds its addresses even before they're up (Tailscale at boot, a DHCP renewal).
     boot.kernel.sysctl."net.ipv4.ip_nonlocal_bind" = 1;
@@ -216,15 +247,52 @@ in {
       };
     };
 
+    # As daemon/deploy/lyrica-update.service, .path and lyrica-rollback.service.
+    systemd.services.lyrica-update = {
+      description = "Lyrica's updater (build, smoke test, drain, snapshot, switch, probation)";
+      after = [ "network-online.target" ];
+      wants = [ "network-online.target" ];
+      environment = {
+        # Updates build on the host's nixpkgs: the same Node as the sandbox closure's.
+        LYRICA_NIXPKGS = "${pkgs.path}";
+        LYRICA_SANDBOX_TOOLS = "${sandboxTools}";
+        LYRICA_SANDBOX_CLOSURE = "${sandboxClosure}/store-paths";
+        LYRICA_SMOKE_PATH = "/run/wrappers/bin:${lib.makeBinPath [ pkgs.gocryptfs pkgs.openssl pkgs.coreutils pkgs.bash sandboxTools ]}";
+      };
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${updater}/bin/lyrica-update --request";
+        TimeoutStartSec = "infinity";
+        Nice = 10;
+        IOSchedulingClass = "idle";
+        PrivateTmp = true;
+      };
+    };
+    systemd.paths.lyrica-update = {
+      description = "Lyrica's update requests";
+      wantedBy = [ "multi-user.target" ];
+      pathConfig.PathExists = "${state}/updates/request.json";
+    };
+    systemd.services.lyrica-rollback = {
+      description = "Roll Lyrica back if the release on probation crash-loops";
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${updater}/bin/lyrica-rollback --auto";
+      };
+    };
+
     systemd.services.lyricad = {
       description = "Lyrica (lyricad)";
       after = [ "network-online.target" "lyrica-caddy.service" ] ++ lib.optional cfg.tailscale "lyrica-tailscaled.service";
       wants = [ "network-online.target" "lyrica-caddy.service" ] ++ lib.optional cfg.tailscale "lyrica-tailscaled.service";
       wantedBy = [ "multi-user.target" ];
       # Without self.db it starts setting up: `lyrica admin setup-code` prints the code.
+      # A crash loop on probation rolls back (lyrica-rollback.service).
+      startLimitBurst = 3;
+      startLimitIntervalSec = 120;
+      onFailure = [ "lyrica-rollback.service" ];
       environment = {
         LYRICA_HOME = state;
-        LYRICA_BUILD = cfg.package.build or "nix";
         LYRICA_SANDBOX_TOOLS = "${sandboxTools}";
         LYRICA_SANDBOX_CLOSURE = "${sandboxClosure}/store-paths";
         # The setuid wrappers first: fusermount3 must be the setuid one.
@@ -238,7 +306,11 @@ in {
         StateDirectory = [ "lyrica" "lyrica/credentials" ];
         StateDirectoryMode = "0700";
         UMask = "0077";
-        ExecStart = "${lib.getExe cfg.package} serve --port ${toString cfg.port}";
+        # As root: a changed cfg.package becomes the profile, after a snapshot.
+        ExecStartPre = "+${updater}/bin/lyrica-nixos-start ${cfg.package} ${cfg.package.build or "dirty"}";
+        ExecStart = "${profile}/bin/lyrica serve --port ${toString cfg.port}";
+        # LYRICA_BUILD for the release the profile holds.
+        EnvironmentFile = "-/var/lib/lyrica-update/build.env";
         LoadCredentialEncrypted = "lyrica:${state}/credentials";
         KillSignal = "SIGTERM";
         TimeoutStopSec = 30;

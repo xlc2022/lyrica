@@ -579,6 +579,11 @@ export class Delegation {
     }
   }
 
+  /** The parent thread of every live run: what an update's drain waits for. */
+  working(): { userId: string; pool: Pool; threadId: string }[] {
+    return [...this.live.values()].map((r) => ({ userId: r.parent.user.id, pool: r.parent.pool, threadId: r.parent.threadId }));
+  }
+
   /** Stops every live run, or one user's, and waits until they have ended. For Lock and shutdown. */
   async stopAll(userId?: string): Promise<void> {
     const runs = [...this.live.values()].filter((r) => !userId || r.parent.user.id === userId);

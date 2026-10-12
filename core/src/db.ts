@@ -29,29 +29,6 @@ export function openEncrypted(path: string, key: DbKey, opts: { readonly?: boole
   }
 }
 
-/**
- * Columns added to self.db since its first release, applied when it opens if
- * missing (expand only; DESIGN.md, Updates and self-editing). users.recovery_wrap:
- * the user's data key under the server's recovery key (`settings` 'recovery.key'),
- * so an administrator can set them a new password without losing their data;
- * users.password_set_by/_at: an administrator set the password and the user hasn't
- * changed it since.
- */
-export const SELF_UPGRADES: readonly { table: string; column: string; sql: string }[] = [
-  { table: "users", column: "recovery_wrap", sql: "ALTER TABLE users ADD COLUMN recovery_wrap TEXT" },
-  { table: "users", column: "password_set_by", sql: "ALTER TABLE users ADD COLUMN password_set_by TEXT" },
-  { table: "users", column: "password_set_at", sql: "ALTER TABLE users ADD COLUMN password_set_at TEXT" },
-];
-
-/** Runs a schema, then adds the columns later releases introduced. */
-export function applySchema(db: Db, schema: string, upgrades: typeof SELF_UPGRADES): void {
-  db.exec(schema);
-  for (const u of upgrades) {
-    const has = (db.pragma(`table_info(${u.table})`) as { name: string }[]).some((c) => c.name === u.column);
-    if (!has) db.exec(u.sql);
-  }
-}
-
 /** self.db: shared by all users. */
 export const SELF_SCHEMA = `
 -- Who can log in. The wrapped key lives here because it is needed before user.db
