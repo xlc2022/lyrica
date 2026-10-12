@@ -1,6 +1,6 @@
 import { FROM_PARENT, LYRICA_REACTS, WATCHING, type Reaction as StoredReaction } from "@lyrica/core";
 import { DELEGATE_MESSAGE, OPENING, USER_MESSAGE } from "@lyrica/extension";
-import type { Message, MessagePart, Pool, Reaction, ThreadRef } from "./api.ts";
+import type { Message, MessagePart, Pool, Reaction, ThreadRef, Told } from "./api.ts";
 
 // Stored Pi entries as the web UI shows them, and the memory markers that both
 // stored messages and the live stream carry.
@@ -104,6 +104,13 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
     }
     if (e.type === "custom_message" && e.customType === DELEGATE_MESSAGE) {
       const details = (e as { details?: unknown }).details;
+      // A look at a project's threads, kept without a turn (watch.ts): shown as a look, never as a notice card.
+      const look = (details as { status?: unknown } | undefined)?.status === "watching" ? WATCHING.exec(textOf(e.content)) : null;
+      if (look) {
+        const text = textOf(e.content).slice(look[0].length);
+        out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "user", from: { kind: "watching", told: toldLines(text) }, parts: [{ type: "text", text }] });
+        continue;
+      }
       const part = delegationPart(e.content, details);
       const threads = delegateThreads("delegate", details, pool, runThreads);
       out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "notice", parts: [threads ? { ...part, threads } : part] });
@@ -138,7 +145,10 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
       // lyricad refuses the mark on anything a user sends.
       const watching = WATCHING.exec(textOf(m.content));
       if (watching) {
-        out.push({ ...base, role: "user", from: { kind: "watching" }, parts: [{ type: "text", text: textOf(m.content).slice(watching[0].length) }] });
+        const text = textOf(m.content).slice(watching[0].length);
+        // A look that raised something carries its Told lines; an older look, which was always a turn, doesn't.
+        const told = /^Told /m.test(text) ? { told: toldLines(text) } : {};
+        out.push({ ...base, role: "user", from: { kind: "watching", ...told }, parts: [{ type: "text", text }] });
         continue;
       }
       out.push({ ...base, role: "user", ...(subagent ? { from: { kind: "lyrica" as const } } : {}), parts: [{ type: "text", text: textOf(m.content) }] });
@@ -170,13 +180,23 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
   return out;
 }
 
-/** What delegate delivers into a thread: a background run's result or question. */
+/** What delegate delivers into a thread: a background run's result or question. A look (status `watching`) also says who it told. */
 export function delegationPart(content: unknown, details: unknown): Extract<MessagePart, { type: "delegation" }> {
   const d = (details ?? {}) as { runId?: unknown; status?: unknown };
+  const text = textOf(content as Content);
   return {
-    type: "delegation", text: textOf(content as Content),
+    type: "delegation", text,
     ...(typeof d.runId === "string" ? { runId: d.runId } : {}), ...(typeof d.status === "string" ? { status: d.status } : {}),
+    ...(d.status === "watching" ? { told: toldLines(text) } : {}),
   };
+}
+
+/** The `Told [t:<id>]: "<line>"` lines of a look (watch.ts): the threads it told, and what. */
+export function toldLines(text: string): Told[] {
+  // One line per tell: `JSON.stringify` escapes any newline in the told text, so `.*` reaches the closing quote.
+  return [...text.matchAll(/^Told \[t:([^\]\s]+)\]: (".*")$/gm)].flatMap((m) => {
+    try { return [{ threadId: m[1]!, text: JSON.parse(m[2]!) as string }]; } catch { return []; }
+  });
 }
 
 /** A model or endpoint failure, in plain words. */

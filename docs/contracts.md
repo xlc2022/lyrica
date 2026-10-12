@@ -304,8 +304,8 @@ the project chat where it branched (anchors live in `user.db`).
 ## core/models: the cloud boundary lives here
 
 ```ts
-type Task = "chat" | "subagent.cheap" | "subagent.strong" | "compaction" | "title" | "embedding"
-          | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "image.create" | "image.edit"
+type Task = "chat" | "subagent.cheap" | "subagent.strong" | "compaction" | "title" | "watching"
+          | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "image.create" | "image.edit"
           | "speech.transcribe" | "speech.speak";
 type ThinkingLevel = "off" | "low" | "medium" | "high";
 
@@ -498,6 +498,12 @@ class Models {                                              // new Models(keyrin
   with an administrator actor. A `user.db` is migrated, has pending shared
   redirects applied, and is indexed into `shared_refs` the first time it is
   opened in a process.
+- **Watching.** `watching` ("Watching threads") is a text task: a new
+  profile starts it following `subagent.cheap`, and a stored profile with
+  no entry for it reads as following `subagent.cheap` too (unless that
+  itself follows another task). It is a thread task (`THREAD_TASKS` in
+  daemon/src/api.ts) for project chats only: the project chat can choose
+  its own, and `PATCH …/settings` choosing it for any other thread is 400.
 - **Speech.** `speech.transcribe` and `speech.speak` have lists of their
   own (neither follows chat) and take models with the `transcribe` or
   `speak` capability, reported by a host or set by hand. `transcribe` and
@@ -874,7 +880,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     user's send or edit starting with the parent's mark is `400`;
     `ForgetThread` / `DELETE …?children=1`; `ThreadHost.status`,
     `delivered`, `HostedThread.waiting`, `send(text, { fromParent })` and
-    `settled()`;
+    `settled()`; a `received` thread event (`text`) when a message from
+    another thread or a look reaches the running turn, or is kept in the
+    stored thread because no turn took it;
   - **projects** (`daemon/src/projects.ts`, `children.ts`): thread pins,
     per user: `user.db` `pinned_threads` (pool, thread; no text), `PUT`/`DELETE
     threads/:id/pin`, `ThreadSummary.pinned`, pinned first in the list;
@@ -884,9 +892,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `goal`, `paused`, `threadsModel`, `threadsThinking`, `threadsFallback` and `watchThreads`
     (`user.db` `project_settings`, IDs and switches only), and
     `projectSettings.pageId` names the project page's memory ID; a project chat's
-    look at its threads is a user message marked `[Watching threads]`
-    (`WATCHING_MARK`, core/src/threads.ts), which only `daemon/src/watch.ts`
-    writes and `Message.from` shows as `{ kind: "watching" }`; `POST …/messages/:n/thread` (Start a
+    look at its threads is marked `[Watching threads]` (`WATCHING_MARK`,
+    core/src/threads.ts), which only `daemon/src/watch.ts` writes: a
+    delivered entry, or the message of the turn it raised; `Message.from`
+    shows it as `{ kind: "watching", told?: Told[] }` (`Told`: `threadId`,
+    `text`; absent on looks from before looks were one call), and its live
+    `notice` event has `status: "watching"` and `told`; `POST …/messages/:n/thread` (Start a
     thread) → `ThreadSummary`; `POST threads/:id/resolve` and `…/reopen`;
     `POST …/suggestions/:callId/start` (`index`, or all with none; `user.db`
     `started_suggestions`); `GET threads/:id/overview` (`ProjectOverview`:

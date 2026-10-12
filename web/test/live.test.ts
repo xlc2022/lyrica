@@ -56,6 +56,26 @@ describe("the live view of a thread's stream", () => {
     expect(s.items).toEqual([{ role: "user", text: "one" }]);
   });
 
+  it("shows another thread's message where it reached the turn, never as waiting", () => {
+    const s = run([
+      { type: "turn_start" },
+      { type: "message_start" },
+      { type: "text", delta: "Checking." },
+      { type: "received", text: "[From t:web/p1]\n\nAdd tulips." },
+      { type: "message_start" },
+    ]);
+    expect(s.queued).toEqual([]);
+    expect(s.items.map((i) => i.role)).toEqual(["assistant", "user", "assistant"]);
+    expect(s.items[1]).toEqual({ role: "user", text: "[From t:web/p1]\n\nAdd tulips." });
+  });
+
+  it("keeps who a look told on its notice, for the marker", () => {
+    const told = [{ threadId: "b", text: "Go." }];
+    const text = "[Watching threads]\n\nIn [t:a]: it posted.\n\nTold [t:b]: \"Go.\"";
+    const s = run([{ type: "notice", text, status: "watching", told }]);
+    expect(s.items).toEqual([{ role: "notice", text, status: "watching", told }]);
+  });
+
   it("shows a message no model took as waiting, once, until a turn starts", () => {
     const tried = [{ label: "gpu/qwen", reason: "gpu is down" }];
     const s = run([

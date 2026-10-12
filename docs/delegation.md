@@ -260,12 +260,16 @@ checks it reaches her, and with a real model which she picks. Code:
   If the child's first turn can't start, the child is forgotten.
 - `message({ id, text })` to one of the thread's children, named by its ID
   or its current title (`pickThread`; a title two children share is
-  refused): sent as its next
-  turn (or queued behind the running one), marked as from the parent with a
-  first line `[From t:<parent>]`. Only `ChildThreads` sends it
+  refused): it starts a turn there, or, if the child is busy, joins its
+  running turn as a Pi steer, taken after the current tool call (daemon.md,
+  "Threads"). It is marked as from the parent with a
+  first line `[From t:<parent>]`. Only `ChildThreads` sends that mark
   (`HostedThread.send(text, { fromParent })`); `send` refuses any other text
   that starts with it, so a user can't type it, and the UI shows it as hers
-  only in a child thread. `message({ to: "parent", text })` from a child posts an update:
+  only in a child thread. A sibling's message in a project, and a look,
+  reach a busy thread the same way. If the turn is stopped or fails before
+  taking the message, it is appended to the thread's stored messages, so it
+  is never lost. `message({ to: "parent", text })` from a child posts an update:
   delivered like a background subagent's result (`Delegation.deliver`, a
   `notice` with status `update` naming the child), into the live parent or
   its stored thread, without starting a turn there.
@@ -323,18 +327,21 @@ child's messages sees its updates.
 - A rewind of the project chat that removes a thread's anchor leaves the
   thread, unanchored.
 - **Watching threads** (`daemon/src/watch.ts`; the project setting
-  `watchThreads`, on by default). When a turn the user started in a logged
-  thread of the project ends, or a thread posts to the project chat, a
-  **look** follows 30 s later, batched across threads: one message into the
-  project chat marked `[Watching threads]`, naming each thread with up to
-  500 characters of what the user wrote there and of its reply, or that it
-  posted an update. A local-only thread is left out unless the project
-  chat is local-only (or private) too, since a look quotes the user. Her guidance there is to tell the threads it affects
-  and speak only when the user must know or decide. A look waits for a
-  running turn in the chat to end. Nothing is sent while the project is
-  paused, hidden, locked or the setting is off. After 3 looks with no
-  message from the user anywhere in the project, watching waits for one, so
-  threads can't keep each other going. Pending looks live in memory only.
+  `watchThreads`, on by default). A **look** follows 30 s after any of
+  these in a logged thread of the project, batched across threads: a turn
+  the user started there ends, the thread posts to the project chat, its
+  turn ends with an error, or it starts waiting for a permission answer
+  (the last two once a turn). A look is one `watching` call (see
+  docs/daemon.md). A local-only thread is left out unless the project chat
+  is local-only (or private) too, since the call quotes the user. A look
+  waits for a running turn in the chat to end. Nothing is sent while the
+  project is paused, hidden, locked or the setting is off. After 3 looks
+  of any kind with no message from the user anywhere in the project, the
+  user's messages and updates wait for one, so threads can't keep each
+  other going; a failure or a wait still brings a look, which tells no
+  thread but may raise. A look never tells a thread it was about unless
+  that thread asked something.
+  Pending looks and the once-a-turn flags live in memory only.
 
 **Forgetting** a parent forgets its child threads too when asked (the
 default in the UI); otherwise they are kept as threads of their own, detached

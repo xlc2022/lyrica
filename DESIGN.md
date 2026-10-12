@@ -980,16 +980,29 @@ web part and sleep's project page are not yet. The briefs are
   in it reopens it.
 - **She watches her threads** (Li, 2026-10-11; a project setting, **Watching
   threads**, on by default). When Li writes in one of the project's threads,
-  or a thread posts an update, the project chat takes one quiet turn a
-  little later, batched across threads, with what was said. There she
-  decides whether another thread is affected, messages it, and relays its
-  answer; she posts in the project chat only what needs Li. A thread that
-  isn't logged is left out, and so is a local-only thread unless the
-  project chat is local-only too, since a look quotes Li's words. A run of such turns stops after 3 until Li
-  writes in the project again, so threads can't keep each other going.
-  With the setting off, updates only change their cards and she speaks in
-  the project chat when Li writes. The back end is built; the switch and
-  the notice are in the web part.
+  a thread posts an update, a thread's turn ends with an error, or a thread
+  starts waiting for an approval, a **look** follows a little later,
+  batched across threads (Li, 2026-10-12: a look costs one small call, not
+  a turn). It is one call to the **Watching threads** model (a task that
+  follows Cheap subagents unless set), through the project chat's own
+  model settings, so a private or local-only project's look stays local. It
+  sees her name, the project's goal and instructions, its threads' lines,
+  what was said, and what the last three looks told threads, and answers
+  which threads to tell (at most 3, open ones of this project, one or two
+  lines each, never a thread it was about unless that thread asked
+  something, which `lyricad` checks) and, rarely, one line to raise with Li. Each line goes to its
+  thread as a message from the project chat. The look is kept in the
+  project chat as a short entry, without a turn: which threads it was about
+  and why, and who was told what, never the quoted words. Only a raise
+  starts a project-chat turn, on the chat's own model, with that entry and
+  the raised line. A thread that isn't logged is left out, and so is a
+  local-only thread unless the project chat is local-only too, since the
+  call quotes Li's words. Every look counts toward a run of 3 in a row
+  without Li; past it, Li's messages and updates bring no look until Li
+  writes in the project again, and a failure or an approval still brings
+  one, which tells no thread but may raise, so threads can't keep each
+  other going. Each failure or approval counts once a turn. With the
+  setting off, nothing is looked at.
 - **Context set once.** Every thread of a project starts with the same
   project context, assembled each turn in its own budget:
   - **Goal**: one line Li writes.

@@ -21,10 +21,10 @@ export type Pool = "general" | "private";
 export type Interface = "web" | "cli" | "matrix" | "forum" | "sleep";
 export type Task =
   | "chat" | "subagent.cheap" | "subagent.strong" | "compaction"
-  | "title" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
+  | "title" | "watching" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
   | "image.create" | "image.edit" | "speech.transcribe" | "speech.speak";
 /** The tasks a thread can choose models for. Compaction isn't one: Pi compacts with the thread's chat model. */
-export const THREAD_TASKS = ["chat", "subagent.cheap", "subagent.strong", "title", "speech.transcribe", "speech.speak"] as const satisfies readonly Task[];
+export const THREAD_TASKS = ["chat", "subagent.cheap", "subagent.strong", "title", "watching", "speech.transcribe", "speech.speak"] as const satisfies readonly Task[];
 export type ThreadTask = (typeof THREAD_TASKS)[number];
 
 /** One model on one endpoint, by its permanent offering ID, or a model group, which expands into its members in order. */
@@ -972,12 +972,15 @@ export type MessagePart =
    * result or question, a note, or what a user wrote to one of its subagents.
    * `status` says which ("finished", "question", "note", "user_message", …).
    */
-  | { type: "delegation"; text: string; runId?: string; status?: string; threads?: ThreadRef[] }
+  | { type: "delegation"; text: string; runId?: string; status?: string; threads?: ThreadRef[]; told?: Told[] }
   /** The thread was compacted: tokens before and (estimated) after, and the summary that replaced the older messages. */
   | { type: "compacted"; before: number; after?: number; summary: string };
 
 /** A `delegate` call's subagent threads, so its card can open them. */
 export interface ThreadRef { pool: Pool; id: string }
+
+/** A thread a look at the project's threads told, and the line it sent. */
+export interface Told { threadId: string; text: string }
 
 export interface Message {
   /** The entry ID, `e:<thread>#<n>`. */
@@ -993,9 +996,11 @@ export interface Message {
    */
   /**
    * `thread`: another thread of the same project wrote it (Lyrica, from there).
-   * `watching`: in a project chat, lyricad showing her what was said in its threads.
+   * `watching`: in a project chat, a look at its threads (watch.ts): the text names the threads it was
+   * about (`In [t:<id>]: …` lines) and who it told; `told` is those threads with the line each was sent.
+   * A look stored before looks were one model call has no `told`: her next turn's messages are what it led to.
    */
-  from?: { kind: "lyrica" } | { kind: "watching" } | { kind: "user"; userId: string; name: string } | { kind: "parent"; threadId: string } | { kind: "thread"; threadId: string };
+  from?: { kind: "lyrica" } | { kind: "watching"; told?: Told[] } | { kind: "user"; userId: string; name: string } | { kind: "parent"; threadId: string } | { kind: "thread"; threadId: string };
   parts: MessagePart[];
   createdAt: string;
   /** The model that wrote an assistant message. */
@@ -1194,6 +1199,13 @@ export type ThreadEvent =
   | { type: "usage"; input: number; output: number; cacheRead: number; cacheWrite: number; total: number }
   /** Messages waiting as follow-ups. */
   | { type: "queue"; queued: string[] }
+  /**
+   * A message from another thread (`[From t:…]`) or a look (`[Watching
+   * threads]`) that reached the running turn, or was kept in the stored
+   * thread because the turn stopped or failed before taking it. Stored as a
+   * user message with its mark.
+   */
+  | { type: "received"; text: string }
   /** In plain words: a model the router refused, an endpoint that's down, a failed tool setup. */
   | { type: "error"; message: string }
   /**
@@ -1221,7 +1233,7 @@ export type ThreadEvent =
    */
   | { type: "delegation"; event: DelegationEvent }
   /** A background run's result or question, just delivered into this thread (also stored, as a `notice` message). */
-  | { type: "notice"; text: string; runId?: string; status?: string; threads?: ThreadRef[] }
+  | { type: "notice"; text: string; runId?: string; status?: string; threads?: ThreadRef[]; told?: Told[] }
   /** Messages from entry `from` on were removed (a rewind): drop them, and reload. `resend`: a message is being sent in their place. */
   | { type: "rewound"; from: number; resend?: true };
 

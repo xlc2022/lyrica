@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
-import type { EndpointInfo, MessagePage, Profiles, ProjectOverview, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { CallInfo, EndpointInfo, MessagePage, Profiles, ProjectOverview, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 // Projects: a project chat whose child threads are the project's threads.
 
 const said = (c: ChatRequest) => JSON.stringify(c.messages);
 /** Which thread a request is from: its first user message's text says so in these tests. */
-const who = (c: ChatRequest) => /\[From t:[^\]]+\]\\n\\n(\w+)/.exec(said(c))?.[1] ?? "chat";
+const who = (c: ChatRequest) => (JSON.stringify(c.messages[0]?.content ?? "").includes("Reply with JSON only") ? "watching"
+  : /\[From t:[^\]]+\]\\n\\n(\w+)/.exec(said(c))?.[1] ?? "chat");
 
 type Script = Reply | ((c: ChatRequest) => Reply | Promise<Reply>);
 
@@ -105,6 +106,9 @@ describe("projects", () => {
     expect((await li.get<ThreadSettings>(`${threadPath(dns)}/settings`)).body.models["speech.transcribe"].source).not.toBe("thread");
     expect((await li.patch<ThreadSettings>(`${threadPath(dns)}/settings`, { fallback: null })).body).toMatchObject({ fallback: null, fallbackOn: true });
     expect((await li.patch(`${threadPath(dns)}/settings`, { fallback: "off" })).status).toBe(400);
+    // Only a project chat makes looks, so only it chooses a Watching threads model.
+    expect((await li.patch(`${threadPath(dns)}/settings`, { models: { watching: { offeringId: stt } } })).status).toBe(400);
+    expect((await li.patch<ThreadSettings>(`${path}/settings`, { models: { watching: { offeringId: stt } } })).body.models.watching).toMatchObject({ source: "thread" });
     // Cleared, new threads follow the project chat's again.
     expect((await li.patch<ThreadSummary>(path, { threadsFallback: null })).body.projectSettings?.threadsFallback).toBeUndefined();
     // The defaults: new threads, and sleep's phases.
@@ -149,50 +153,230 @@ describe("projects", () => {
     expect((await li.post(`${threadPath(dns)}/messages`, { text: "hello?" })).status).toBe(409);
   });
 
-  it("watch its threads: look after the person writes in one, stop when switched off, and break a run of looks", async () => {
-    const { li, path, script, requests, say, threadPath, messages } = await setup({ threads: { concurrency: 5 }, watchMs: 100 });
+  it("watch its threads: a look is one call to the Watching model that tells the thread it affects, with no turn of the project chat", async () => {
+    const { li, u, project, path, script, requests, say, threadPath, messages } = await setup({ threads: { concurrency: 5 }, watchMs: 100 });
     const looks = async () => (await messages(path)).filter((m) => m.from?.kind === "watching");
-    script("chat").push(start(["DNS", "dns: move DNS to the router"]), { text: "Started." });
+    const asked = () => requests.filter((c) => who(c) === "watching");
+    const chatTurns = () => requests.filter((c) => who(c) === "chat" && !!c.tools?.length).length;
+    script("chat").push(start(["DNS", "dns: move DNS to the router"], ["Backups", "backups: copy the backups"]), { text: "Started." });
     script("dns").push({ text: "DNS moved." });
-    const { events } = await say("move DNS");
-    const dns = ends(events).find((e) => e.result.startsWith("Started"))!.threads![0]!.id;
-    await until(() => messages(threadPath(dns)), (m) => m.some((x) => x.role === "assistant"));
-    // Li writes in the thread: one look in the project chat, quoting both sides, shown as not Li's.
+    script("backups").push({ text: "Copying." });
+    const { events } = await say("move DNS and copy the backups");
+    const ids = ends(events).flatMap((e) => e.threads ?? []).map((t) => t.id);
+    const titles = await Promise.all(ids.map(async (id) => [(await li.get<ThreadSummary>(threadPath(id))).body.title, id] as const));
+    const [dns, backups] = ["DNS", "Backups"].map((t) => titles.find(([title]) => title === t)![1]);
+    await until(() => messages(threadPath(dns!)), (m) => m.some((x) => x.role === "assistant"));
+    await until(() => messages(threadPath(backups!)), (m) => m.some((x) => x.role === "assistant"));
+    const turnsBefore = chatTurns();
+
+    // Li writes in DNS: one call to the Watching model, which sees both sides, and tells Backups.
     script("dns").push({ text: "Using 10.0.0.53 then." });
-    script("chat").push({ text: "Nothing else is affected." });
-    expect((await li.post(`${threadPath(dns)}/messages`, { text: "use 10.0.0.53, not .1" })).status).toBe(200);
+    script("watching").push({ text: JSON.stringify({ tell: [{ thread: backups, text: "DNS is 10.0.0.53 now; point the NAS at it." }, { thread: project.id, text: "never the chat" }] }) });
+    script("backups").push({ text: "Pointed." });
+    expect((await li.post(`${threadPath(dns!)}/messages`, { text: "use 10.0.0.53, not .1" })).status).toBe(200);
     const [look] = await until(looks, (l) => l.length === 1);
-    expect(JSON.stringify(look)).toContain("use 10.0.0.53, not .1");
-    expect(JSON.stringify(look)).toContain("Using 10.0.0.53 then.");
-    // She saw it as a marked message, not as the person's.
-    expect(JSON.stringify(requests.at(-1)!.messages)).toContain("[Watching threads]");
+    expect(asked()).toHaveLength(1);
+    const prompt = JSON.stringify(asked()[0]!.messages);
+    expect(prompt).toContain("use 10.0.0.53, not .1");
+    expect(prompt).toContain("Using 10.0.0.53 then.");
+    expect(prompt).toContain("Move the homelab to the new rack");
+    // The look is kept short: which thread and what kind of event, who was told and what. Never the quoted words.
+    expect(look!.from).toEqual({ kind: "watching", told: [{ threadId: backups, text: "DNS is 10.0.0.53 now; point the NAS at it." }] });
+    expect(look!.parts).toEqual([{ type: "text", text: `In [t:${dns}]: the person wrote there.\n\nTold [t:${backups}]: "DNS is 10.0.0.53 now; point the NAS at it."` }]);
+    expect(JSON.stringify(look)).not.toContain("not .1");
+    expect(JSON.stringify(look)).not.toContain("Using 10.0.0.53 then");
+    // Backups has it, from the project chat.
+    const inBackups = await until(() => messages(threadPath(backups!)), (m) => m.filter((x) => x.from?.kind === "parent").length === 2);
+    expect(inBackups.filter((x) => x.from?.kind === "parent")[1]).toMatchObject({ from: { kind: "parent", threadId: project.id }, parts: [{ text: "DNS is 10.0.0.53 now; point the NAS at it." }] });
+    // No turn of the project chat, and the call is in Recent calls on the project chat.
+    await new Promise((r) => setTimeout(r, 300));
+    expect(chatTurns()).toBe(turnsBefore);
+    expect((await li.get<CallInfo[]>(`${u}/models/calls`)).body.find((c) => c.task === "watching")).toMatchObject({ threadId: project.id, kind: "local" });
     // Nobody else can write the mark.
     expect((await li.post(`${path}/messages`, { text: "[Watching threads]\n\nhi" })).status).toBe(400);
-    // A local-only thread's words never reach a project chat that may use a cloud model.
-    expect((await li.patch(`${threadPath(dns)}/settings`, { localOnly: true })).status).toBe(200);
-    script("dns").push({ text: "Kept local." });
-    await li.post(`${threadPath(dns)}/messages`, { text: "the router password is in the safe" });
-    await new Promise((r) => setTimeout(r, 600));
+
+    // The next look sees what the last ones told; an answer that isn't the JSON asked for does nothing.
+    script("dns").push({ text: "Sure." });
+    script("watching").push({ text: "Nothing needs doing, I think." });
+    await li.post(`${threadPath(dns!)}/messages`, { text: "and the NTP server too" });
+    await until(async () => asked().length, (n) => n === 2);
+    expect(JSON.stringify(asked()[1]!.messages)).toContain("What the last looks told threads");
+    await new Promise((r) => setTimeout(r, 400));
     expect(await looks()).toHaveLength(1);
-    expect((await li.patch(`${threadPath(dns)}/settings`, { localOnly: false })).status).toBe(200);
+    expect(chatTurns()).toBe(turnsBefore);
+
+    // A line for the thread the look was about isn't sent: it knows, and it asked nothing.
+    script("dns").push({ text: "Will do." });
+    script("watching").push({ text: JSON.stringify({ tell: [{ thread: dns, text: "back to you, DNS" }] }) });
+    await li.post(`${threadPath(dns!)}/messages`, { text: "and the DHCP range" });
+    const [, back] = await until(looks, (l) => l.length === 2);
+    expect(back!.from).toEqual({ kind: "watching", told: [] });
+    expect(back!.parts).toEqual([{ type: "text", text: `In [t:${dns}]: the person wrote there.\n\nTold no thread.` }]);
+    expect(JSON.stringify(await messages(threadPath(dns!)))).not.toContain("back to you, DNS");
+
+    // A local-only thread's words never reach a project chat that may use a cloud model.
+    expect((await li.patch(`${threadPath(dns!)}/settings`, { localOnly: true })).status).toBe(200);
+    script("dns").push({ text: "Kept local." });
+    await li.post(`${threadPath(dns!)}/messages`, { text: "the router password is in the safe" });
+    await new Promise((r) => setTimeout(r, 600));
+    expect(asked()).toHaveLength(3);
+    expect((await li.patch(`${threadPath(dns!)}/settings`, { localOnly: false })).status).toBe(200);
     // Switched off: no look.
     expect((await li.patch(path, { watchThreads: false })).body).toMatchObject({ projectSettings: { watchThreads: false } });
     script("dns").push({ text: "Done." });
-    await li.post(`${threadPath(dns)}/messages`, { text: "thanks" });
+    await li.post(`${threadPath(dns!)}/messages`, { text: "thanks" });
     await new Promise((r) => setTimeout(r, 600));
-    expect(await looks()).toHaveLength(1);
-    // On again, and the chat and the thread keep each other going: the run stops after 3 looks.
-    await li.patch(path, { watchThreads: true });
-    const pingPong = (): Reply => ({ tools: [{ name: "threads", args: { action: "message", id: dns, text: "anything new?" } }] });
-    for (let i = 0; i < 6; i++) script("chat").push(pingPong(), { text: "Asked DNS." });
-    // Answering after the chat's turn ends, so each update lands while it's idle and only a look wakes it.
-    const later = async (): Promise<Reply> => { await new Promise((r) => setTimeout(r, 300)); return tool({ action: "message", to: "parent", text: "Still fine." }); };
-    for (let i = 0; i < 6; i++) script("dns").push(later, { text: "Posted." });
-    script("dns").unshift({ text: "Noted." });
+    expect(asked()).toHaveLength(3);
+  });
+
+  it("keep a quiet look that answers during a turn Li started for after that turn, starting no other", async () => {
+    const { li, path, script, requests, say, threadPath, messages, stream } = await setup({ threads: { concurrency: 5 }, watchMs: 100 });
+    const asked = () => requests.filter((c) => who(c) === "watching");
+    const chatTurns = () => requests.filter((c) => who(c) === "chat" && !!c.tools?.length).length;
+    script("chat").push(start(["DNS", "dns: move DNS to the router"]), { text: "Started." });
+    script("dns").push({ text: "DNS moved." });
+    const dns = ends((await say("move DNS")).events).find((e) => e.result.startsWith("Started"))!.threads![0]!.id;
+    await until(() => messages(threadPath(dns)), (m) => m.some((x) => x.role === "assistant"));
+    // The look's call waits until Li has started a turn in the project chat, and that turn waits for the look's answer.
+    let answer!: () => void;
+    const answered = new Promise<void>((r) => (answer = r));
+    let reply!: () => void;
+    const replied = new Promise<void>((r) => (reply = r));
+    script("watching").push(async () => { await answered; return { text: '{"tell":[]}' }; });
+    script("chat").push(async () => { await replied; return { text: "Here's where it stands." }; });
+    script("dns").push({ text: "Using 10.0.0.53." });
+    await li.post(`${threadPath(dns)}/messages`, { text: "use 10.0.0.53" });
+    await until(async () => asked().length, (n) => n === 1);
+    const turnsBefore = chatTurns();
+    const from = stream.events.length;
+    expect((await li.post(`${path}/messages`, { text: "how is it going?" })).status).toBe(200);
+    await until(async () => chatTurns(), (n) => n === turnsBefore + 1);
+    answer();
+    await new Promise((r) => setTimeout(r, 300));
+    expect((await messages(path)).filter((m) => m.from?.kind === "watching")).toHaveLength(0);
+    reply();
+    await stream.until((e) => e.type === "turn_end", from);
+    // Kept after the turn, as a delivery, and no turn of its own.
+    const all = await until(() => messages(path), (m) => m.some((x) => x.from?.kind === "watching"));
+    const at = all.findIndex((m) => m.from?.kind === "watching");
+    expect(all.findIndex((m) => m.role === "assistant" && JSON.stringify(m).includes("where it stands"))).toBeLessThan(at);
+    await new Promise((r) => setTimeout(r, 600));
+    expect(chatTurns()).toBe(turnsBefore + 1);
+  });
+
+  it("raise something with the person: one turn of the project chat, with the short look and the line raised", async () => {
+    const { li, path, script, requests, say, threadPath, messages } = await setup({ threads: { concurrency: 5 }, watchMs: 100 });
+    script("chat").push(start(["DNS", "dns: move DNS to the router"]), { text: "Started." });
+    script("dns").push({ text: "DNS moved." });
+    const dns = ends((await say("move DNS")).events).find((e) => e.result.startsWith("Started"))!.threads![0]!.id;
+    await until(() => messages(threadPath(dns)), (m) => m.some((x) => x.role === "assistant"));
+    script("dns").push({ text: "Then the NAS loses its leases." });
+    script("watching").push({ text: '```json\n{"tell":[],"raise":"Moving DNS to the router breaks the NAS leases: which first?"}\n```' });
+    script("chat").push({ text: "Li, which first: the router or the NAS?" });
+    await li.post(`${threadPath(dns)}/messages`, { text: "move it to the router tonight" });
+    const raised = await until(() => messages(path), (m) => m.some((x) => x.role === "assistant" && JSON.stringify(x).includes("which first: the router")));
+    const look = raised.filter((m) => m.from?.kind === "watching");
+    expect(look).toHaveLength(1);
+    expect(look[0]!.from).toEqual({ kind: "watching", told: [] });
+    expect(look[0]!.parts[0]).toEqual({ type: "text", text: `In [t:${dns}]: the person wrote there.\n\nTold no thread.\nRaised: "Moving DNS to the router breaks the NAS leases: which first?"` });
+    // Her turn saw the marked look and the line raised; the quotes went only to the Watching model.
+    const turn = requests.filter((c) => who(c) === "chat").at(-1)!;
+    expect(JSON.stringify(turn.messages)).toContain("[Watching threads]");
+    expect(JSON.stringify(turn.messages)).toContain("breaks the NAS leases");
+    expect(JSON.stringify(look)).not.toContain("tonight");
+  });
+
+  it("look on a failure and on a waiting approval past a run of 3 looks, telling no thread but raising", async () => {
+    const { li, path, script, requests, say, threadPath, messages } = await setup({ threads: { concurrency: 5 }, watchMs: 100, permissionMs: 10_000 });
+    const looks = async () => (await messages(path)).filter((m) => m.from?.kind === "watching");
+    const asked = () => requests.filter((c) => who(c) === "watching");
+    const chatTurns = () => requests.filter((c) => who(c) === "chat" && !!c.tools?.length).length;
+    script("chat").push(start(["DNS", "dns: move DNS to the router"], ["Backups", "backups: copy the backups"]), { text: "Started." });
+    script("dns").push({ text: "DNS moved." });
+    script("backups").push({ text: "Copying." });
+    const { events } = await say("move DNS and copy the backups");
+    const ids = ends(events).flatMap((e) => e.threads ?? []).map((t) => t.id);
+    const titles = await Promise.all(ids.map(async (id) => [(await li.get<ThreadSummary>(threadPath(id))).body.title, id] as const));
+    const [dns, backups] = ["DNS", "Backups"].map((t) => titles.find(([title]) => title === t)![1]) as [string, string];
+    await until(() => messages(threadPath(dns)), (m) => m.some((x) => x.role === "assistant"));
+    await until(() => messages(threadPath(backups)), (m) => m.some((x) => x.role === "assistant"));
+    await li.patch(`${threadPath(backups)}/settings`, { mode: "acceptEdits" });
+    const turnsBefore = chatTurns();
+    // The two threads keep each other going: each look tells the other one, which posts an update.
+    const tell = (to: string, text = "anything new?") => ({ text: JSON.stringify({ tell: [{ thread: to, text }] }) });
+    script("watching").push(tell(backups), tell(dns), tell(backups));
+    const later = async (): Promise<Reply> => { await new Promise((r) => setTimeout(r, 200)); return tool({ action: "message", to: "parent", text: "Still fine." }); };
+    script("dns").push({ text: "Noted." }, later, { text: "Posted." });
+    // Told a third time, past the run: its update brings no look, its approval brings one, and after a no it fails.
+    script("backups").push(later, { text: "Posted." }, tool({ action: "message", to: "parent", text: "One more thing." }), { tools: [{ name: "bash", args: { command: "true" } }] }, { status: 400 });
+    script("watching").push(tell(backups, "approve it"), { text: JSON.stringify({ tell: [{ thread: dns, text: "Backups failed" }], raise: "Backups stopped with an error after you said no." }) });
+    script("chat").push({ text: "Li, Backups stopped." });
+    const stream = li.events(`${threadPath(backups)}/events`);
+    await stream.ready;
     await li.post(`${threadPath(dns)}/messages`, { text: "check again" });
-    await until(looks, (l) => l.length === 4, 15000);
-    await new Promise((r) => setTimeout(r, 1500));
-    expect(await looks()).toHaveLength(4);
+    // Three looks: Li's message, then each thread's update.
+    await until(async () => asked().length, (n) => n === 3, 15000);
+    await stream.until((e) => e.type === "permission");
+    await until(async () => asked().length, (n) => n === 4, 15000);
+    expect(JSON.stringify(asked()[3]!.messages)).toContain("It is waiting for an approval.");
+    expect(JSON.stringify(asked()[3]!.messages)).toContain("this look tells no thread");
+    await until(looks, (l) => l.length === 4);
+    const request = stream.events.find((e) => e.event.type === "permission")!.event as { requestId: string };
+    await li.post(`${threadPath(backups)}/permissions/${request.requestId}`, { allow: false });
+    await until(async () => asked().length, (n) => n === 5, 15000);
+    expect(JSON.stringify(asked()[4]!.messages)).toContain("It stopped with an error.");
+    const all = await until(looks, (l) => l.length === 5);
+    expect(all.map((l) => (l.parts[0] as { text: string }).text)).toEqual([
+      `In [t:${dns}]: the person wrote there.\n\nTold [t:${backups}]: "anything new?"`,
+      `In [t:${backups}]: it posted an update.\n\nTold [t:${dns}]: "anything new?"`,
+      `In [t:${dns}]: it posted an update.\n\nTold [t:${backups}]: "anything new?"`,
+      `In [t:${backups}]: it is waiting for an approval.\n\nTold no thread.`,
+      `In [t:${backups}]: it stopped with an error.\n\nTold no thread.\nRaised: "Backups stopped with an error after you said no."`,
+    ]);
+    // The raise is one turn of the project chat; neither line past the run was sent.
+    await until(() => messages(path), (m) => m.some((x) => x.role === "assistant" && JSON.stringify(x).includes("Backups stopped.")));
+    await new Promise((r) => setTimeout(r, 600));
+    expect(chatTurns()).toBe(turnsBefore + 1);
+    expect(asked()).toHaveLength(5);
+    expect(JSON.stringify(await messages(threadPath(dns)))).not.toContain("Backups failed");
+    expect(JSON.stringify(await messages(threadPath(backups)))).not.toContain("approve it");
+    stream.close();
+  });
+
+  it("keep a private project's looks on local models", async () => {
+    const { li, u, script, requests } = await setup({ threads: { concurrency: 5 }, watchMs: 100 });
+    // Watching on a cloud model in the custom profile, which general projects use.
+    const cloud = await fakeOpenAI({ label: "cloud", models: [{ id: "deepseek" }] });
+    const deepseek = { offeringId: (await li.post<EndpointInfo>(`${u}/endpoints`, { name: "openrouter", kind: "cloud", baseUrl: cloud.baseUrl })).body.models[0]!.id };
+    expect((await li.put(`${u}/profiles/custom/watching`, { model: deepseek })).status).toBe(200);
+    const asked = () => requests.filter((c) => who(c) === "watching");
+    const watchIn = async (pool: "general" | "private") => {
+      const project = (await li.post<ThreadSummary>(`${u}/threads`, { pool, title: "Garden", project: true, goal: "Plant the beds" })).body;
+      const at = `${u}/threads/${pool}/${enc(project.id)}`;
+      const stream = li.events(`${at}/events`);
+      await stream.ready;
+      script("chat").push(start(["Beds", "beds: dig the beds"]), { text: "Started." });
+      script("beds").push({ text: "Dug." });
+      await li.post(`${at}/messages`, { text: "dig the beds" });
+      await stream.until((e) => e.type === "turn_end");
+      stream.close();
+      const beds = (await li.get<ProjectOverview>(`${at}/overview`)).body.threads[0]!.id;
+      const bedsAt = `${u}/threads/${pool}/${enc(beds)}`;
+      await until(async () => (await li.get<MessagePage>(`${bedsAt}/messages`)).body.messages, (m) => m.some((x) => x.role === "assistant"));
+      script("beds").push({ text: "Roses then." });
+      await li.post(`${bedsAt}/messages`, { text: "roses in the south bed" });
+    };
+    // A general project's look goes to the cloud model it was given.
+    await watchIn("general");
+    await until(async () => cloud.requests.length, (n) => n === 1);
+    // A private project's look resolves through its own context: the local profile, local models only.
+    script("watching").push({ text: '{"tell":[]}' });
+    await watchIn("private");
+    await until(async () => asked().length, (n) => n === 1);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(cloud.requests).toHaveLength(1);
+    expect(JSON.stringify(asked()[0]!.messages)).toContain("roses in the south bed");
+    expect((await li.get<CallInfo[]>(`${u}/models/calls`)).body.filter((c) => c.task === "watching").map((c) => [c.pool, c.kind])).toEqual([["private", "local"], ["general", "cloud"]]);
   });
 
   it("let a project's threads message each other, at most 3 a turn, and never a thread outside", async () => {
