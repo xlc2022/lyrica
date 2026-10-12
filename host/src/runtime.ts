@@ -5,7 +5,7 @@ import type { RecordEntry } from "./downloads.ts";
 import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./http.ts";
 import { scanTextModels, type TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
-import { SERVER_NAMES, SERVERS, contextOf, serverOf, validate, type Server } from "./placement.ts";
+import { SERVER_NAMES, SERVERS, contextOf, maxContextOf, serverOf, sizes, validate, type Server } from "./placement.ts";
 import { PRIORITIES, type Priority, type Scheduler } from "./scheduler.ts";
 import { NO_USAGE, type StateFile, type Usage } from "./state.ts";
 
@@ -88,7 +88,7 @@ export class Runtime {
   afterScan: (() => { parts: number; proposals: number }) | null = null;
   readonly scheduler: Scheduler;
   private readonly modelsDir: string;
-  private readonly state: StateFile;
+  readonly state: StateFile;
   private readonly log: Logger;
   private readonly pending = new Map<string, Usage>();
   private readonly flusher: NodeJS.Timeout;
@@ -179,21 +179,27 @@ export class Runtime {
     const s = this.scheduler;
     if (pathname === "/host/v1/models/settings" && method === "GET") {
       const model = this.find(new URL(req.url ?? "/", "http://host").searchParams.get("model"));
-      sendJson(res, 200, { model: model.id, settings: s.settings(model), contextLength: contextOf(model, s.settings(model)) });
+      sendJson(res, 200, this.servingEntry(model));
       return true;
     }
     if (pathname === "/host/v1/models/settings" && method === "PUT") {
       const body = await readJson(req);
-      onlyFields(body, ["model", "settings"]);
+      onlyFields(body, ["model", "settings", "anyway"]);
       const model = this.find(body.model);
       if (!body.settings || typeof body.settings !== "object") throw invalid("settings is needed.");
       // Refused when saved if the placement can't work, with the reason. Applies at the next load, or on Reload.
       const saved = validate(model, body.settings as Record<string, unknown>, s.gpusFor(serverOf(model)), (i) => s.gpuSettings(i), s.onCpu(model));
+      // A stretch past what the publisher documents was never tested by them: saved only when asked for anyway.
+      const rec = this.state.get().recommended[model.id];
+      if (saved.stretch && rec?.factor && saved.stretch.factor > rec.factor && body.anyway !== true) {
+        throw new HostError(409, "above_recommended", `${rec.source.repo.split("/")[0]} documents ${rec.factor}.`);
+      }
       s.saveSettings(model, saved);
       sendJson(res, 200, this.describe(model));
       return true;
     }
-    if (method === "POST" && pathname.startsWith("/host/v1/models/")) {
+    // Look up is the download side's: it goes through fetch.
+    if (method === "POST" && pathname.startsWith("/host/v1/models/") && pathname !== "/host/v1/models/lookup") {
       const body = await readJson(req);
       const action = pathname.slice("/host/v1/models/".length);
       if (action === "load") {
@@ -241,6 +247,27 @@ export class Runtime {
     return false;
   }
 
+  /**
+   * A model's serving settings, with what they mean: the context it is
+   * served with and its maximum, what it was trained for, the KV cache at
+   * that context, and what its card recommends.
+   */
+  servingEntry(m: TextModel) {
+    const settings = this.scheduler.settings(m);
+    const sized = m.kind === "image" || m.kind === "speak" ? null : sizes(m, settings);
+    return {
+      model: m.id,
+      settings,
+      contextLength: contextOf(m, settings),
+      maxContextLength: maxContextOf(m, settings),
+      trainedContextLength: m.contextLength,
+      kvBytes: sized && m.kvPerToken !== null ? sized.kv : null,
+      recommended: this.state.get().recommended[m.id] ?? null,
+      // vLLM 0.30 misreads the original context on Qwen3.5-style M-RoPE (vllm#58870).
+      stretchUntested: m.server === "vllm",
+    };
+  }
+
   describe(m: TextModel) {
     const at = this.scheduler.placement(m.id);
     const s = this.state.get();
@@ -259,6 +286,7 @@ export class Runtime {
       // The context it is served with; maxContextLength is what it was trained for.
       contextLength: m.kind === "image" || m.kind === "speak" ? null : contextOf(m, this.scheduler.settings(m)),
       maxContextLength: m.contextLength,
+      kvBytes: this.servingEntry(m).kvBytes,
       state: at?.state ?? "unloaded",
       gpus: at?.gpus ?? null,
       placement: this.scheduler.settings(m).placement,

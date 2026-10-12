@@ -57,6 +57,9 @@ export type DownloadRequest =
   | { source: "url"; url: string; sha256?: string };
 
 const MARGIN = 1024 ** 3;
+/** The files a lookup may read without saving them, and how large. */
+const READABLE = ["config.json", "generation_config.json", "README.md"];
+const READ_LIMIT = 1024 * 1024;
 const PUBLIC_FIELDS = ["id", "source", "repo", "revision", "url", "path", "size", "received", "state", "verified", "error", "startedAt", "finishedAt"] as const;
 
 export function shown(d: Download, link?: string) {
@@ -174,6 +177,33 @@ export class Downloader {
         };
       }),
     };
+  }
+
+  /**
+   * One small file of a repository, returned as text and never written:
+   * config.json, generation_config.json or README.md, at most 1 MB, through
+   * the same guard, redirects and token rule as a download. With the
+   * revision it came from and the card's base model, for a lookup.
+   */
+  async readFile(source: Source, repo: string, revision: string | undefined, path: string, token?: string) {
+    if (!READABLE.includes(path)) throw new DownloadError(`Only ${READABLE.join(", ")} can be read.`, 403);
+    const hub = this.hub(source);
+    const listing = await hub.list(checkRepo(repo), revision, token);
+    const file = listing.files.find((f) => f.path === path);
+    if (!file) throw new DownloadError(`${path} isn't in that repository.`, 404);
+    if (file.size > READ_LIMIT) throw new DownloadError(`${path} is larger than 1 MB.`, 403);
+    const res = await this.o.net.get({ url: hub.fileUrl(repo, listing.revision, path), token, tokenHost: hub.host });
+    const chunks: Buffer[] = [];
+    let size = 0;
+    for await (const c of res) {
+      size += (c as Buffer).length;
+      if (size > READ_LIMIT) {
+        res.destroy();
+        throw new DownloadError(`${path} is larger than 1 MB.`, 403);
+      }
+      chunks.push(c as Buffer);
+    }
+    return { source, repo, revision: listing.revision, card: listing.card, path, text: Buffer.concat(chunks).toString("utf8") };
   }
 
   private destination(source: Source, repo: string, path: string): string {

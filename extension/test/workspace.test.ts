@@ -6,7 +6,7 @@ import { createAgentSession, DefaultResourceLoader, SessionManager, type AgentSe
 import type { ExecutionTarget, ThreadGitRepository, ThreadMachine, ThreadRepository, ThreadWorkspace, ToolOps } from "@lyrica/core";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
-import { createWorkspaceExtension, setToolsOff, type ThreadTools } from "../src/index.ts";
+import { createModelsExtension, createWorkspaceExtension, setToolsOff, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
 
 // Runs the workspace tools in a real Pi session against pi-ai's fake model,
 // with a target that records what it is asked to do.
@@ -223,6 +223,41 @@ describe("workspace tools in a Pi session", () => {
     expect(sent).toEqual([]);
     await run("auto", calls, { extensions: [send], approve: async () => true });
     expect(sent).toEqual(["a@example.net"]);
+  });
+
+  it("looks a model up without asking, and proposes on its own card, applying the stretch only when allowed", async () => {
+    const entry = {
+      model: "m.gguf", settings: { placement: { mode: "auto" }, contextLength: 32768 }, contextLength: 32768, maxContextLength: 262144, trainedContextLength: 262144,
+      kvBytes: 2 * 1024 ** 3, recommended: { native: 262144, factor: 4, originalContext: 262144, stretched: 1010000, source: { hub: "huggingface" as const, repo: "Qwen/M", revision: "r", at: "t" } }, stretchUntested: false,
+    };
+    const cards: ServingProposal[] = [];
+    const applied: [Record<string, unknown>, boolean][] = [];
+    let allow = false;
+    const host: ModelsHost = {
+      copies: () => [{ offering: "o1", name: "M", host: "blackwell" }],
+      serving: async () => entry, lookup: async () => entry,
+      propose: async (p) => { cards.push(p); return allow; },
+      apply: async (_o, settings, anyway) => { applied.push([settings, anyway]); return { reloaded: true }; },
+    };
+    const asked: string[] = [];
+    const calls = [
+      fauxToolCall("models", { action: "lookup", offering: "o1" }, { id: "1" }),
+      fauxToolCall("models", { action: "propose", offering: "o1", contextLength: 1010000, stretch: 4 }, { id: "2" }),
+    ];
+    const denied = await run("ask", calls, { extensions: [createModelsExtension(host)], approve: async (r) => { asked.push(r.tool); return true; } });
+    // Numbers only, never the card's text.
+    expect(JSON.parse(denied.results[0]!.slice("models: ".length))).toMatchObject({ recommended: { factor: 4, stretched: 1010000, repo: "Qwen/M" }, kvBytesAtRecommended: Math.round((2 * 1024 ** 3 / 32768) * 1010000) });
+    expect(cards).toEqual([{ toolCallId: "2", offering: "o1", name: "M", contextLength: 1010000, stretch: { factor: 4, originalContext: 262144 }, kvBytes: Math.round((2 * 1024 ** 3 / 32768) * 1010000) }]);
+    expect(applied).toEqual([]);
+    // Its own card is the question: the generic approval never asks.
+    expect(asked).toEqual([]);
+    allow = true;
+    await run("ask", [fauxToolCall("models", { action: "propose", offering: "o1", contextLength: 1010000, stretch: 6 }, { id: "3" })], { extensions: [createModelsExtension(host)] });
+    expect(cards.at(-1)!.documented).toEqual({ factor: 4, by: "Qwen" });
+    expect(applied).toEqual([[{ placement: { mode: "auto" }, contextLength: 1010000, stretch: { type: "yarn", factor: 6, originalContext: 262144 } }, true]]);
+    // Not a copy she may manage: refused, naming the ones she may.
+    const other = await run("ask", [fauxToolCall("models", { action: "lookup", offering: "nope" }, { id: "4" })], { extensions: [createModelsExtension(host)] });
+    expect(other.results[0]).toContain("o1 (M on blackwell)");
   });
 
   it("removes a switched-off tool from the session and refuses a call to it", async () => {

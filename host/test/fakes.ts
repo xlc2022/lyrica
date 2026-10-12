@@ -137,7 +137,12 @@ export const sha256 = (b: Buffer) => createHash("sha256").update(b).digest("hex"
 const gitSha1 = (b: Buffer) => createHash("sha1").update(`blob ${b.length}\0`).update(b).digest("hex");
 
 /** A fake Hugging Face over HTTPS on localhost. */
-export async function fakeHub(opts: { lie?: boolean; redirectTo?: string; gated?: boolean; oversend?: boolean } = {}) {
+/**
+ * opts.readme: org/repo's README.md (a model card); opts.base: an org/base
+ * repository (revision def456) with its own config.json and README.md, for
+ * a card that names its base model.
+ */
+export async function fakeHub(opts: { lie?: boolean; redirectTo?: string; gated?: boolean; oversend?: boolean; readme?: string; base?: { config: string; readme: string } } = {}) {
   const id = makeIdentity("hub", ["localhost"]);
   const files: Record<string, Buffer> = {
     "model-Q4_K_M.gguf": Buffer.concat([Buffer.from("GGUF"), Buffer.alloc(299_996, 7)]),
@@ -150,17 +155,23 @@ export async function fakeHub(opts: { lie?: boolean; redirectTo?: string; gated?
     "fake.onnx": Buffer.alloc(1000, 7),
     "voices/af_heart.bin": Buffer.alloc(1024, 0),
     "voices/zf_pickled.bin": Buffer.concat([Buffer.from([0x80, 0x04]), Buffer.alloc(1022, 0)]),
+    ...(opts.readme !== undefined ? { "README.md": Buffer.from(opts.readme) } : {}),
   };
+  const base: Record<string, Buffer> = opts.base ? { "config.json": Buffer.from(opts.base.config), "README.md": Buffer.from(opts.base.readme) } : {};
   const seen: string[] = [];
   const server = https.createServer({ key: id.key, cert: id.cert }, (req, res) => {
     seen.push(req.headers.authorization ?? "");
     const url = new URL(req.url!, "https://localhost");
     if (opts.gated && req.headers.authorization !== `Bearer ${TOKEN}`) return void res.writeHead(401).end();
     const json = (v: unknown) => res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(v));
-    if (url.pathname === "/api/models/org/repo/revision/main") return json({ sha: "abc123", gated: !!opts.gated, cardData: { base_model: "org/base", base_model_relation: "quantized" } });
+    if (url.pathname === "/api/models/org/repo/revision/main" || url.pathname === "/api/models/org/repo/revision/abc123") return json({ sha: "abc123", gated: !!opts.gated, cardData: { base_model: "org/base", base_model_relation: "quantized" } });
+    if (opts.base && url.pathname === "/api/models/org/base/revision/main") return json({ sha: "def456", gated: false, cardData: {} });
+    if (opts.base && url.pathname === "/api/models/org/base/tree/def456") return json(Object.entries(base).map(([path, b]) => ({ type: "file", path, size: b.length, oid: gitSha1(b) })));
+    const fromBase = url.pathname.match(/^\/org\/base\/resolve\/def456\/(.+)$/);
+    if (fromBase && base[fromBase[1]!]) return void res.writeHead(200, { "content-length": base[fromBase[1]!]!.length }).end(base[fromBase[1]!]);
     if (url.pathname === "/api/models/org/repo/tree/abc123") {
       return json(Object.entries(files).map(([path, b]) =>
-        path.endsWith(".json") ? { type: "file", path, size: b.length, oid: gitSha1(b) } : { type: "file", path, size: b.length, oid: "x", lfs: { oid: opts.lie ? "0".repeat(64) : sha256(b), size: b.length } }));
+        path.endsWith(".json") || path.endsWith(".md") ? { type: "file", path, size: b.length, oid: gitSha1(b) } : { type: "file", path, size: b.length, oid: "x", lfs: { oid: opts.lie ? "0".repeat(64) : sha256(b), size: b.length } }));
     }
     const file = url.pathname.match(/^\/org\/repo\/resolve\/abc123\/(.+)$/);
     if (file && opts.redirectTo) return void res.writeHead(302, { location: opts.redirectTo }).end();

@@ -10,6 +10,8 @@ export interface Identity {
   sizeLabel: string | null;
   finetune: string | null;
   baseModels: { name: string | null; organization: string | null; repoUrl: string | null }[];
+  /** The repository a GGUF was converted from, when its header says. */
+  sourceRepo?: string | null;
 }
 
 export interface Capabilities {
@@ -41,7 +43,7 @@ export interface TextModel {
   capabilities: Capabilities;
   /** The longest context the model was trained for, if known. */
   contextLength: number | null;
-  /** KV-cache elements per token (keys and values, all layers), to size the cache; null if unknown. */
+  /** KV-cache elements per token (keys and values, every layer that holds a cache), to size the cache; null if unknown. */
   kvPerToken: number | null;
   /** A vision projector next to a GGUF model, relative like `id`. */
   mmproj: string | null;
@@ -95,18 +97,45 @@ function ggufModel(root: string, path: string, siblings: string[]): TextModel | 
       sizeLabel: str(meta["general.size_label"]),
       finetune: str(meta["general.finetune"]),
       baseModels,
+      sourceRepo: str(meta["general.source.huggingface.repository"]) ?? str(meta["general.source.url"]),
     },
     capabilities: { ...templateCapabilities(embedding ? null : str(meta["tokenizer.chat_template"])), vision: !!mmproj && !embedding, embedding },
     contextLength: context === undefined || context === null ? null : Number(context),
     kvPerToken: kvElements(
-      Number(meta[`${arch}.block_count`]),
+      ggufKvLayers(meta, arch),
       Number(meta[`${arch}.embedding_length`]),
       Number(meta[`${arch}.attention.head_count`]),
       Number(meta[`${arch}.attention.head_count_kv`] ?? meta[`${arch}.attention.head_count`]),
+      meta[`${arch}.attention.key_length`] === undefined ? undefined : Number(meta[`${arch}.attention.key_length`]),
     ),
     mmproj: mmproj ? relative(root, join(dirname(path), mmproj)).split("\\").join("/") : null,
     remoteCode: false,
   };
+}
+
+/**
+ * The GGUF's layers that hold a KV cache: all of them, less the linear
+ * attention layers of a hybrid (Qwen3.5 and later: one attention layer in
+ * every `full_attention_interval`).
+ */
+function ggufKvLayers(meta: Record<string, GgufValue>, arch: string): number {
+  const layers = Number(meta[`${arch}.block_count`]);
+  const interval = Number(meta[`${arch}.full_attention_interval`]);
+  return Number.isInteger(interval) && interval > 1 ? Math.floor(layers / interval) : layers;
+}
+
+/**
+ * A config.json's layers that hold a KV cache: `layer_types` counted for
+ * attention (not linear attention), else one in every
+ * `full_attention_interval`, else `num_hidden_layers`.
+ */
+export function configKvLayers(text: any): number {
+  const layers = text.num_hidden_layers;
+  if (Array.isArray(text.layer_types) && text.layer_types.length) {
+    return text.layer_types.filter((t: unknown) => typeof t === "string" && /attention/.test(t) && !/linear/.test(t)).length;
+  }
+  if (Number.isInteger(text.full_attention_interval) && text.full_attention_interval > 1) return Math.floor(layers / text.full_attention_interval);
+  return layers;
 }
 
 /** 2 × layers × KV heads × head size, or null when the header doesn't say. */
@@ -148,7 +177,7 @@ function vllmModel(root: string, dir: string, files: string[]): TextModel | null
     identity: { basename: basename(dir), sizeLabel: null, finetune: null, baseModels: [] },
     capabilities: { ...templateCapabilities(embedding ? null : template), vision: !!config.vision_config && !embedding, embedding },
     contextLength: typeof text.max_position_embeddings === "number" ? text.max_position_embeddings : null,
-    kvPerToken: kvElements(text.num_hidden_layers, text.hidden_size, text.num_attention_heads, text.num_key_value_heads ?? text.num_attention_heads, text.head_dim),
+    kvPerToken: kvElements(configKvLayers(text), text.hidden_size, text.num_attention_heads, text.num_key_value_heads ?? text.num_attention_heads, text.head_dim),
     mmproj: null,
     remoteCode: !!config.auto_map,
   };

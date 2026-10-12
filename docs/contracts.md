@@ -425,6 +425,8 @@ class Models {                                              // new Models(keyrin
   // settings may carry stretch: { type: "yarn"; factor; originalContext } (host models only); servingSettings returns
   // recommended: { native, stretched?, factor?, originalContext?, source: { hub, repo, revision, at } } | null
   lookupRecommended(actor, offeringId, repo?)               // reads the card through the host's fetch service; administrator (shared) or owner
+  // setServingSettings(…, { anyway: true }) saves a stretch above the card's factor (host code above_recommended otherwise)
+  hostCopies(actor, ctx): { offering, name, host }[]       // host chat models the actor can manage; [] for a private or local-only ctx
   hostDashboard(userId, hostId): string                     // a direct link, at the address that last answered
 }
 // Also exported: CloudModelForbidden, NoModel, Offline (a NoModel: code "offline", task, tried), isUnreachable(err),
