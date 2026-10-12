@@ -98,11 +98,14 @@ export function Section({ title, children }: { title: string; children: React.Re
 }
 
 export function PronounFields({ value, onChange }: { value: Pronouns; onChange: (p: Pronouns) => void }) {
-  const preset = Object.entries(PRESETS).find(([, p]) => JSON.stringify(p) === JSON.stringify(value))?.[0] ?? "custom";
+  const matched = Object.entries(PRESETS).find(([, p]) => JSON.stringify(p) === JSON.stringify(value))?.[0];
+  // Custom… is a choice of its own: picking it keeps the current words and opens them for editing, even while they still match a preset.
+  const [chosen, setChosen] = useState(!matched);
+  const preset = chosen || !matched ? "custom" : matched;
   return (
     <>
       <label className="field"><span>Pronouns</span>
-        <select value={preset} onChange={(e) => { const p = PRESETS[e.target.value]; if (p) onChange(p); }}>
+        <select value={preset} onChange={(e) => { const p = PRESETS[e.target.value]; setChosen(!p); if (p) onChange(p); }}>
           {Object.keys(PRESETS).map((k) => <option key={k}>{k}</option>)}
           <option value="custom">Custom…</option>
         </select>
