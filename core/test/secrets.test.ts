@@ -30,6 +30,14 @@ describe("hiding a sandbox run's credentials", () => {
     expect(Buffer.concat(seen).toString()).toBe(`export T=${SECRET_HIDDEN}\nok\n`);
   });
 
+  it("holds back only what could begin a token, so other output isn't delayed", () => {
+    const seen: string[] = [];
+    const m = secretMasker([token], (d) => seen.push(d.toString()));
+    m.push(Buffer.from("http://127.0.0.1:4100\n"));
+    m.push(Buffer.from("next gith"));
+    expect(seen).toEqual(["http://127.0.0.1:4100\n", "next "]);
+  });
+
   it("passes output through as is when the run holds none", () => {
     const seen: string[] = [];
     const m = secretMasker([], (d) => seen.push(d.toString()));

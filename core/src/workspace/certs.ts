@@ -49,7 +49,9 @@ function certificate(o: { subject: string; spki: Buffer; issuer: string; issuerK
 }
 
 /** An IPv6 address's 16 bytes. */
-function ipv6(host: string): Buffer {
+function ipv6(raw: string): Buffer {
+  // The URL parser writes an IPv4 tail (::ffff:192.0.2.1) in hex groups.
+  const host = new URL(`http://[${raw}]`).hostname.slice(1, -1);
   const [head = "", tail] = host.split("::");
   const groups = (s: string) => s ? s.split(":").map((g) => parseInt(g, 16)) : [];
   const h = groups(head);

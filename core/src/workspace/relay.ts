@@ -2,7 +2,8 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, request as httpRequest, type IncomingHttpHeaders, type IncomingMessage, type ServerResponse } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { connect, type AddressInfo, type Socket } from "node:net";
-import { createSecureContext, getCACertificates, TLSSocket, type SecureContext } from "node:tls";
+import * as tls from "node:tls";
+import { createSecureContext, TLSSocket, type SecureContext } from "node:tls";
 import { makeAuthority } from "./certs.ts";
 import type { GitKind } from "./settings.ts";
 
@@ -69,10 +70,12 @@ const DOWNLOADS = [/\.githubusercontent\.com$/, /^codeload\.github\.com$/, /\.bl
 /**
  * What the relay trusts upstream: Node's roots and the host system's, as git
  * in the sandbox did, so a Forgejo behind a CA only this machine trusts still
- * works.
+ * works. Node before 22.15 has no way to read the system's, so there it
+ * trusts Node's own roots only.
  */
 let trusted: string[] | undefined;
-const upstreamCAs = () => trusted ??= [...new Set([...getCACertificates("default"), ...getCACertificates("system")])];
+const upstreamCAs = () => typeof tls.getCACertificates !== "function" ? undefined
+  : trusted ??= [...new Set([...tls.getCACertificates("default"), ...tls.getCACertificates("system")])];
 
 /** host:port as a CONNECT names it, without :443. */
 const target = (hostPort: string) => hostPort.toLowerCase().replace(/:443$/, "");

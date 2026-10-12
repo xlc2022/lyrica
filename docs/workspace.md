@@ -526,7 +526,9 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   and `uploads.github.com` for GitHub, `/api/` on GitHub Enterprise,
   `/api/v1/` on Forgejo and Gitea). A placeholder anywhere else is
   refused, and a request without one goes as it is. The relay goes only
-  to hosts the run's network reaches, and with internet on it also passes
+  to hosts the run's network reaches, trusting the system's certificate
+  authorities as well as Node's (Node before 22.15: Node's only), and with
+  internet on it also passes
   through, untouched, gh's downloads (`*.githubusercontent.com`,
   `codeload.github.com`, `*.blob.core.windows.net`); everything else is
   refused. A run gets a repository's token only when the thread's pool is
