@@ -263,7 +263,7 @@ Each active thread is one Pi session from `openThreadSession`, with
   under a project chat or only the rest; `pool` only narrows. Unlogged entries aren't indexed, so
   they are never found. Each hit carries its thread, title, message
   number, `who` (`you`, or `agent` for hers, including what she sent from
-  another thread and her wake-up notes), the time, and the sentence that
+  another thread and her wake-up or routine notes), the time, and the sentence that
   matched (at most 160 characters, cut around the match, without
   citations or Markdown marks) with the matches' offsets in it. 50 a
   page, newest first; `before` (a hit's `at`) pages. Nothing is logged.
@@ -321,7 +321,9 @@ Each active thread is one Pi session from `openThreadSession`, with
 - **Wake-ups** (`daemon/src/wakeups.ts`). `threads later` stores a note
   for the thread she's in, in its pool, so it is as encrypted as the thread
   and survives a restart; a thread has at most 3 waiting, and wake-ups
-  and routines share a cap of 24 fires in a rolling day. At unlock `lyricad` loads the due times (never the notes) into
+  and routines share a cap of 24 fires per thread in a rolling day. At the
+  cap, pending wake-ups wait and new ones are refused. At unlock `lyricad`
+  loads the due times (never the notes) into
   memory, and Lock drops them. Its 20-second tick fires what is due: the
   note becomes the thread's next turn, or joins the running one, marked
   `[Wake-up, set …]` and, when more than two minutes late, with when it
@@ -336,7 +338,8 @@ Each active thread is one Pi session from `openThreadSession`, with
   its project is paused or hidden, or the at-once budget is full. A working
   last run or the daily cap skips the run and advances `next_at`; missed
   runs otherwise fire once, saying how many were due. Lock stops firing;
-  schedules survive restart. Only the daemon can send the routine mark; a
+  schedules survive restart; last-run tracking is cleared on Lock or restart.
+  Only the daemon can send the routine mark; a
   user message or edit carrying it is rejected with HTTP 400. The web API
   lists only the signed-in user's routine metadata across their own pools,
   and pauses, resumes or removes a routine in its own thread; routes and

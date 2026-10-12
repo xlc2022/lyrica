@@ -59,6 +59,7 @@ deployment.
 | MCP servers | built | docs/briefs/mcp.md |
 | Subscription logins | ChatGPT and Grok plans built in #169 | docs/briefs/subscription-logins.md |
 | Claude Code | built | docs/briefs/claude-code.md |
+| Routines | parts A–E built on `feature/routines` | PR, PR review and UI review (docs/briefs/routines.md) |
 
 ## Open questions for the owner
 

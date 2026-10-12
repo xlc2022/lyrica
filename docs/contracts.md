@@ -594,8 +594,8 @@ One model-facing tool: `delegate({ action?, ... })`.
   Add takes `schedule`, `note`, optional `newThread` (false by default).
   `parseSchedule` validates it; `every` gets its `from` at creation.
   List returns only the calling thread's IDs, schedule descriptions, next
-  times, paused state and destination choice, without notes. Pause, resume
-  and remove take numeric `routineId`; store mutations always include the
+  times for active routines, paused state and destination choice, without
+  notes. Pause, resume and remove take numeric `routineId`; tool mutations always include the
   calling thread ID. Add refuses more than 10 routines including paused
   ones. Errors return plain text with `isError: true`.
 - **Routine storage and firing** (`core/src/routines.ts`,
@@ -607,9 +607,10 @@ One model-facing tool: `delegate({ action?, ... })`.
   routines; `PoolStore.addRoutine`, `pauseRoutine`, `removeRoutine` and
   `advanceRoutine` store and advance them. A fire sets `last_at` and adds a
   note-free fired row to `wakeups`, the shared rolling-day ledger:
-  `wakeupsFired` counts both kinds against `WAKEUP_LIMITS.perDay` (24).
+  `wakeupsFired` counts both kinds against `WAKEUP_LIMITS.perDay`
+  (24 per source thread).
   `Routines.load` / `drop` enable / disable a user's firing at unlock / Lock;
-  the wake-up tick calls `Routines.tick` unless an update drains. It sends
+  the daemon tick calls both schedulers unless an update drains. It sends
   `HostedThread.send(note, { routine: "[Routine, <describe>]\n\n" })`;
   ordinary messages cannot carry `ROUTINE`. A fresh thread stays in the
   same pool and project or thread list, inheriting source workspace and
@@ -617,10 +618,10 @@ One model-facing tool: `delegate({ action?, ... })`.
   routines and paused or hidden projects wait. Routine turns share the
   child at-once budget; a working last run or daily cap advances without
   firing. Missed runs otherwise fire once with their due count. Wake-ups
-  at the cap wait. In-memory last-run destinations do not resume after a
-  restart.
+  at the cap wait. Last-run destination tracking is in memory and is cleared on
+  Lock or restart; interrupted turns do not resume after a restart.
 - **Routine web routes**: `GET /api/u/:userId/routines` lists that signed-in
-  user's routines across both own pools, grouped in the UI by thread.
+  user's routines across both own pools, sorted in the UI by pool and thread.
   `GET /api/u/:userId/threads/:pool/:threadId/routines` lists one thread;
   `PATCH …/routines/:id` with `{ paused: boolean }` pauses or resumes;
   `DELETE …/routines/:id` removes it. Both mutations return the thread's
@@ -641,7 +642,7 @@ One model-facing tool: `delegate({ action?, ... })`.
   from a child), `list` (`ChildInfo` with `ChildStatus`), `read` (`id`,
   `last`: the latest messages of a listed, logged thread (`PoolReader.latestEntries`), `READ_DEFAULT`
   10, `READ_MAX` 30, formatted by `formatEntry`) and `stop` (`id`: a
-  parent's child, `ThreadsHost.stop`). `later` (`minutes`, clamped to 1 to
+  parent's child, `ThreadsHost.stop`), and `routine` (above). `later` (`minutes`, clamped to 1 to
   `WAKEUP_LIMITS.maxMinutes`, and `note`; or `cancel: true`) sets a
   wake-up for the calling thread through `ThreadsHost.later` /
   `cancelLater`: pool step 4's `wakeups` table (thread, due, note, set and

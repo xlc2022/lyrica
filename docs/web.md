@@ -118,8 +118,9 @@ A thread's address may carry what the panel beside it shows:
   same style of popover listing schedules, next times in mono, Pause or
   Resume and Remove, never notes. Its fact shows the earliest active next
   time, or Paused when all are paused, and disappears when none remain.
-  Changes reload settings and send the existing `settings` event to open
-  thread views; finished turns and focus refresh routines too.
+  Web Pause, Resume and Remove reload settings and publish the existing
+  `settings` event to the source thread; finished turns and focus refresh
+  routines too.
 - **Project chat** (`src/Project.tsx`): the facts line adds **Threads** with
   the count, opening a popover of the project's threads grouped Waiting on
   you, Working, Queued, Idle and Resolved (each a link, with its unseen
@@ -522,7 +523,7 @@ A thread's address may carry what the panel beside it shows:
   …/mcp-servers`); a private server off network asks first (**Add
   anyway**, or **Save anyway** for a changed URL).
   **Routines** (`src/Routines.tsx`), after MCP servers: every routine of
-  the user across both pools (`GET …/routines`), grouped by thread, its
+  the user across both pools (`GET …/routines`), sorted by pool and thread, its
   thread linked, schedule from `describe()`, next time in mono or Paused,
   **Pause** or **Resume** (`PATCH …/threads/:pool/:threadId/routines/:id`
   with `paused`) and the bordered Remove icon (`DELETE` at the same path).

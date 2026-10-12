@@ -15,8 +15,8 @@ docs/ux.md (the Routines rows), and the wake-ups code this reuses:
 
 The user asks her for something on a schedule, and it happens: a morning
 CI check in a project thread, a weekday check-in in a chat, a birthday.
-Today she can only chain one-shot wake-ups, which stop silently when she
-forgets to re-arm one. Serves principle 1 (the user notices it this month)
+Previously she had to chain one-shot wake-ups and re-arm each one. Serves
+principle 1 (the user notices it this month)
 and principle 8: no new tool or process, it extends `threads` and lyricad's
 tick.
 
@@ -44,8 +44,9 @@ words the facts line shows, such as "Weekdays 08:00").
 - Guards, per DESIGN: waits while its project is paused; counts against the
   at-once limit; skipped (and next_at moved on) while its last run is still
   working; a locked user's missed runs fire once at unlock, saying how
-  many were due; a thread's wake-ups and routines fire at most 24 times a
-  day together (raise `WAKEUP_LIMITS.perDay` to that shared cap).
+  many were due; a thread's wake-ups and routines share
+  `WAKEUP_LIMITS.perDay`: 24 fires in a rolling day. At the cap, routines
+  advance to their next run and wake-ups wait.
 
 **C. Her side** (Codex). `threads routine` actions in the existing
 `threads` tool: `add` (schedule, note, new thread or not), `list`,
@@ -79,4 +80,6 @@ disk outside the encrypted pool.
 
 ## Handoff notes
 
-(Filled in if the build stops before it's done.)
+Parts A–E are built on `feature/routines`, including the docs check against
+the code. Left: open the PR, then PR review and UI review of its head commit.
+Serves principles 1 and 8: recurring turns use the existing tool and daemon tick.
