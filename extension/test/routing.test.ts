@@ -1,5 +1,6 @@
 import type { Topic } from "@lyrica/core";
 import { describe, expect, it } from "vitest";
+import { SELF_PRIMER } from "../src/primer.ts";
 import { MAX_TOPICS, PERSIST_TURNS, scoreTopic, TopicRouter } from "../src/routing.ts";
 
 const topic = (id: string, triggers: string[], priority = 1): Topic => ({ id, summary: "", triggers, priority, text: `${id} text` });
@@ -58,5 +59,14 @@ describe("topic routing", () => {
     const r = router.route(topics, "a story about the archive notes and schedule");
     expect(ids(r).slice(0, 2)).toEqual(["organization", "narrative"]);
     expect(r).toHaveLength(MAX_TOPICS);
+  });
+});
+
+describe("her self-primer", () => {
+  it("comes up when her own code does, and not in ordinary talk", () => {
+    expect(scoreTopic(SELF_PRIMER, "could you open a pull request for that fix in your code?")).toBeGreaterThan(0);
+    expect(scoreTopic(SELF_PRIMER, "write the update note before I press Update")).toBeGreaterThan(0);
+    expect(scoreTopic(SELF_PRIMER, "I can't commit to Friday, and the branch of the river flooded")).toBe(0);
+    expect(SELF_PRIMER.text).toContain("update/<date>");
   });
 });

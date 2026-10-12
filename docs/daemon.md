@@ -525,7 +525,9 @@ with live status, at most 3 seconds each, and none asked again while it was
 seen down in the last 30 seconds), offerings, model
 groups, Clean up and the models notice, the three profiles with the default
 profile and thinking level, recent calls, network
-defaults, machines, and for administrators users, allowed paths, shared
+defaults, machines, Git accounts (`…/git-accounts`, with what each can see
+at `…/git-accounts/:name/repositories?q=`; docs/workspace.md), and for
+administrators users, allowed paths, shared
 endpoints, the sleep time (`sleep.time` in `self.db`'s `settings`) and persona
 proposals.
 

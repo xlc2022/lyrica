@@ -889,9 +889,10 @@ export class Delegation {
         // A machine is reached through bash, which no sandbox mount or network rule narrows: a read-only,
         // offline or folder-narrowed subagent, or a writer in its own worktree, gets none.
         const noMachines = role.readOnly || narrowing.readOnly || narrowing.internet === false || !!narrowing.folders || worktrees.length > 0;
-        workspace.inheritSettings(p, child.id, { grants, ...(narrowing.internet === false ? { internet: false } : {}), ...(noMachines ? { machines: [] } : {}) });
+        workspace.inheritSettings(p, child.id, { grants, ...(narrowing.internet === false ? { internet: false } : {}), ...(noMachines ? { machines: [], repositories: [] } : {}) });
         // Its settings follow its parent's as they are now (the stricter mode, switches off where theirs are); it can't leave Plan mode itself.
-        const { setMode: _own, ...tools } = workspace.forThread({ ...p, threadId: child.id });
+        // It works in its parent's clones, which the parent fetched at its turn's start.
+        const { setMode: _own, cloneRepositories: _fetched, addRepository: _asks, ...tools } = workspace.forThread({ ...p, threadId: child.id, reposOf: parent.threadId });
         extensions.push(createWorkspaceExtension({ ...tools, approve: (r) => this.approve(sub!, r) }));
       }
       const nested = this.depth(ctx) < this.limits.depth;

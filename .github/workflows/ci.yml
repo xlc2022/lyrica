@@ -6,20 +6,32 @@ on:
 # The jobs run on Li's own runner (docs/ci.md), so their token can only read.
 permissions:
   contents: read
-# One runner: a newer push to a PR replaces its older runs; main tests every commit.
-# (A group keeps one pending run, so main's groups are per commit.)
+# A newer push to a PR cancels its older runs. Main runs the newest merge
+# only: a main run still waiting for a runner gives way to the next merge
+# (a group keeps one pending run), and one already running finishes.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
-  # A change only to docs/ or the top-level Markdown files (AGENTS.md,
-  # DESIGN.md and the like) runs no job below: nothing builds, tests or
-  # ships them. persona/ is her seed and counts as code. Skipped jobs count
-  # as passed for required checks. When the diff can't be read, all run.
+  # Each job below runs only when the diff touches what it checks; skipped
+  # jobs count as passed for required checks, and when the diff can't be
+  # read, all run. A change to the workflows runs all of them.
+  # - check: anything but docs/ and the top-level Markdown files (AGENTS.md,
+  #   DESIGN.md and the like). persona/ is her seed and counts as code.
+  # - nix: anything the flake builds or tests, so not the tests it leaves
+  #   out of its source (flake.nix) except core/test, which has the sandbox
+  #   tests, and not evals/.
+  # - host-stack: host/, the only directory its images and install read.
   changes:
     runs-on: lyrica-ci
+    # Reads main's last passing run.
+    permissions:
+      contents: read
+      actions: read
     outputs:
       code: ${{ steps.diff.outputs.code }}
+      nix: ${{ steps.diff.outputs.nix }}
+      host: ${{ steps.diff.outputs.host }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,17 +39,30 @@ jobs:
       - id: diff
         env:
           EVENT: ${{ github.event_name }}
-          BEFORE: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
+          RUNS: ${{ github.api_url }}/repos/${{ github.repository }}/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=1
         run: |
           # A pull request's checkout is its merge into the base: the first parent is the base.
-          if [ "$EVENT" = pull_request ]; then base=HEAD^1; else base=$BEFORE; fi
-          if files=$(git diff --name-only "$base" HEAD 2>/dev/null) && [ -n "$files" ]; then
-            if printf '%s\n' "$files" | grep -qvE '^docs/|^[^/]+\.md$'; then code=true; else code=false; fi
+          # Main diffs from its last passing run, since merges in between may not have run.
+          if [ "$EVENT" = pull_request ]; then
+            base=HEAD^1
           else
-            code=true
+            base=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" "$RUNS" | grep -o '"head_sha": *"[0-9a-f]*"' | head -1 | grep -o '[0-9a-f]\{40\}') || true
+            echo "last passing run on main: ${base:-none}"
+          fi
+          # outside PATTERN: some changed file is not one PATTERN matches.
+          outside() { printf '%s\n' "$files" | grep -qvE "$1"; }
+          if files=$(git diff --name-only "$base" HEAD 2>/dev/null) && [ -n "$files" ]; then
+            docs='^docs/|^[^/]+\.md$'
+            if outside "$docs"; then code=true; else code=false; fi
+            if outside "$docs|^evals/|^web/e2e/|^(bin|daemon|extension|host|web)/test/"; then nix=true; else nix=false; fi
+            if printf '%s\n' "$files" | grep -qE '^host/|^\.github/'; then host=true; else host=false; fi
+            if printf '%s\n' "$files" | grep -qE '^\.github/'; then code=true nix=true; fi
+          else
+            code=true nix=true host=true
           fi
           printf '%s\n' "$files" | head -50
-          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+          printf 'code=%s\nnix=%s\nhost=%s\n' "$code" "$nix" "$host" | tee -a "$GITHUB_OUTPUT"
   check:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -75,7 +100,7 @@ jobs:
   # and only their closure in /nix/store.
   nix:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.nix == 'true'
     runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4
@@ -134,7 +159,7 @@ jobs:
   # The model host's Compose stack, without a GPU: install, then check the networks.
   host-stack:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.host == 'true'
     runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4

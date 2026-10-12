@@ -41,13 +41,12 @@ The repository was rebuilt from scratch starting 2026-10-09.
   projects, files, machines, voice, notifications, reactions and settings,
   with a setup page, her name, the tailnet and updates in Administration.
 - Sleep, which writes notes, pages, WAKE and the journal.
-- Delegation and child threads, modes, and remote machines over SSH or
-  Proxmox.
+- Delegation and child threads, modes, remote machines over SSH or
+  Proxmox, and Git accounts with project repositories.
 - Model and speech hosts on GPU machines.
 - Releases with automatic rollback, and numbered database migrations.
 
-Not built yet: `lyrica chat` and `lyrica mem` (clients of `lyricad`), Git
-accounts and project repositories, images, and
+Not built yet: `lyrica chat` and `lyrica mem` (clients of `lyricad`), images, and
 calendar and sorting. After that comes living with her for a few weeks while
 keeping the evals and a friction log.
 
@@ -63,7 +62,7 @@ host/          model and speech hosts for GPU machines
 nix/           NixOS module, package, sandbox tools and check-host.sh
 persona/       seed, imported into self.db on first run
 evals/         continuity scenarios
-bin/lyrica     one command: serve, admin, dev, version
+bin/lyrica     one command: serve, admin, dev, version, smoke-test
 docs/          component docs, guides and briefs
 ```
 

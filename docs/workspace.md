@@ -288,7 +288,11 @@ takes is `lyrica@pve!agent=<that secret>`.
   to the model badge.
 - The rules, checked when settings change and again before every sandbox run:
   - A listed folder must be a real directory, with no symlinks on its path,
-    and must not overlap Lyrica's runtime directory.
+    and must not overlap Lyrica's runtime directory (which holds the update
+    requests), the releases (`/opt/lyrica`), the updater's state and
+    snapshots (`/var/lib/lyrica-update`, `/var/lib/lyrica-snapshots`) or
+    Caddy's runtime directory. A row that overlaps one of them, whenever it
+    was listed, doesn't count.
   - No folder may be in both lists, or overlap one in the other list.
   - A general thread can't take a folder that overlaps a private one.
   - A private thread may also take general folders, read-only, the same way
@@ -303,9 +307,8 @@ takes is `lyrica@pve!agent=<that secret>`.
   mount units, with credentials in system config). Once mounted, they're
   ordinary paths an administrator can add to a user's grant lists. Lyrica never
   handles share credentials.
-- **Her own code.** When she edits her own code, the repository is granted to
-  threads like a folder, from a Git account in Settings (DESIGN.md, "Updates
-  and self-editing"; built from docs/briefs/repositories.md).
+- **Repositories** are granted to threads like folders, each from a Git
+  account in Settings (Git accounts and repositories, below).
 
 ## The home workspace and uploads
 
@@ -365,6 +368,8 @@ values are always visible next to the model badge:
 | **Local-only** | Whether every model call stays on the custom endpoint. Always on in private threads. |
 | **Internet access for tools** | Whether `bash` and fetches inside the sandbox can reach the network. |
 | **Folders** | The thread's grants, each read-only or read-write. |
+| **Machines** | The SSH accounts and Proxmox nodes the thread may use (Machines). |
+| **Repositories** | The repositories the thread clones, each with the Git account it uses (Git accounts and repositories). |
 | **Mode** | Ask, Accept edits, Plan or Auto (see Approval). |
 | **Web search, Images** | Switches for `web_search` and `web_fetch`, and for `image`. On unless turned off. |
 | **Do not log thread in memory** | See [memory.md](memory.md#threads-that-arent-logged). |
@@ -443,6 +448,109 @@ How it is enforced:
   network to its machine alone, whatever the thread's switches say. If the
   self-test refuses network, machine calls fail too. Model calls come from
   `lyricad`, so local-only and the switches are independent.
+
+## Git accounts and repositories
+
+She works on code the way Claude's project threads do: a project lists
+repositories, every thread of it clones its own copy, and the credentials
+come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
+
+- **A Git account** is a row in Settings → **Git accounts**, kept in the
+  user's `user.db` (`git_accounts`): a name, a kind (GitHub, Forgejo, Gitea
+  or Other), a host, the account's login, a token never shown back, and a
+  pool. Adding one, or replacing its token, checks the token against the
+  host first (GitHub's `/user`, Gitea's and Forgejo's `/api/v1/user`, and
+  the login must be the account's; Other only checks that the host
+  answers) and saves nothing when that fails. Each use records Signed in,
+  Token rejected or Unreachable. A GitHub account is general only. A
+  private account's host must resolve on her own network (LAN, loopback or
+  the tailnet, as for private machines); when it stops doing so the
+  account is Off network and no token goes out until the user confirms
+  **Use anyway**. A new pool, or removing the account, takes its
+  repositories from every thread at once.
+- **A thread's repositories** (`owner/name` and the account each uses) are
+  granted like folders: the Repositories row in the thread drawer and
+  under This chat on Project settings, so a project's threads get the
+  project chat's list or fewer. A child or subagent gets a subset, never
+  more, and a parent's change narrows its running children at once. She can
+  add one herself with `add_repository`, from an account of the thread's
+  pool; it always asks the user with a permission card, and is off in Plan
+  mode or when the pool has no Git account.
+- **Clones.** At the start of each turn, `cloneFor` clones each repository
+  into the thread's own folder in the home workspace (`repos/<name>`,
+  mounted at `/workspace/repos`; a subagent uses its parent's) or fetches
+  it, in the sandbox with that run's credential. A clone that fails is a
+  line in the turn's prompt, not an error. A clone stays when its
+  repository leaves the thread, since it may hold unpushed work; it goes
+  with the thread's folder when the sweep removes it. Two threads never
+  share a working tree.
+- **Credentials** travel in a sandbox run's environment only, never argv
+  or a file in the workspace (`forgeEnv`, `gitEnv` in
+  `core/src/workspace/index.ts`): a git credential helper per repository
+  URL (`useHttpPath`, through git's `GIT_CONFIG_*` environment), so another
+  repository on the same host gets nothing. A run gets a repository's
+  token only when the thread's pool is the account's, the thread has the
+  repository, and the run can reach the host: internet on, or the host as
+  an allowed host (`api.github.com` too, for `gh` on GitHub). Every
+  command in such a run can read it, so with internet on a page she reads
+  could ask her to send it somewhere; that is why tokens are
+  fine-grained, for the repositories she works on, with no admin rights.
+- **`gh` and `tea`** are wrapped (`core/src/workspace/forge.sh`, mounted at
+  `/run/lyrica/bin`, first on the PATH of a run with repositories): each
+  takes the token of the account whose repository the current clone's
+  `origin` is, so two accounts on one host never mix, and none outside such
+  a clone. `tea` reads logins only from a file, so its wrapper writes one
+  under `/tmp`, the run's own tmpfs, gone when the run ends. There is no
+  model-facing tool for a forge beyond `add_repository`. On NixOS the
+  sandbox's tools include `git`, `gh`, `tea` and Node 22; on Debian,
+  `install.sh` installs `gh` and `tea` where they are packaged.
+- **The Git guide** (`extension/src/git.md`) is in the prompt of every turn
+  of a thread with repositories, with the repository list and their
+  folders: a branch per piece of work, never commits on the default
+  branch, merge or rebase the base before pushing, a pull request, wait
+  for CI and never merge on red, the merge queue where there is one, delete
+  merged branches. The project's instructions win where they differ.
+
+## Her own code
+
+She changes her own code the way Claude's feature threads do: the
+`xlc2022/lyrica` repository in her "Lyrica" project, from her own GitHub
+account (docs/briefs/lyrica-project.md), on `lyrica/*` branches, through
+pull requests that the project's review approves and merges. Nothing she
+does reaches `main` or the server without that review and an
+administrator's Update. A private thread can't have the repository, since
+her account is general.
+
+- **The repository's settings**, Li's to set, once:
+  1. Her GitHub account as a collaborator with **Write**.
+  2. Under her account, a fine-grained token for this repository only,
+     with **Contents** and **Pull requests** read and write, added in
+     Settings → Git accounts as a GitHub account.
+  3. A branch protection rule (or ruleset) on `main`: pull requests only,
+     the CI jobs from `.github/workflows/ci.yml` required, one approval;
+     "Do not allow bypassing" off, so Li's account, which Claude's threads
+     work through, still merges as administrator.
+  4. A ruleset that lets her account create and update only `lyrica/*`
+     branches and `update/*` tags.
+  5. She pushes to the repository, never a fork, so her pull requests run
+     CI on the `lyrica-ci` runners like Claude's, with no
+     first-time-contributor approval.
+- **`.github/CODEOWNERS`** names Li for the boundary code: keys and users
+  (each user's key and its recovery wrap), database migrations, the model
+  router, the workspace (sandbox and grants), `openThreadView`,
+  authentication, deployment, the updater and CI. GitHub then asks for
+  Li's review on a pull request that touches them; it isn't required for
+  merging, since Claude's approvals come from the same account. PR review
+  asks Li before approving such a pull request of hers.
+- **Update notes.** Before Li presses Update she writes one: an annotated
+  tag `update/<date>` on the `main` commit to install, its message listing
+  the pull requests merged since the running version (Claude's too), what
+  each changes, any schema change and what a rollback would lose, and what
+  to check afterwards. It describes code, never conversations. After a
+  failed probation, a GitHub issue linked to the tag holds the post-mortem.
+- **Her self-primer** (`extension/src/primer.ts`) comes up when her code
+  does, like a persona topic: where to read first, the branch and review
+  flow, boundary code, update notes and rollbacks.
 
 ## Subagents
 
