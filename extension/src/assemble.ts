@@ -1,4 +1,4 @@
-import { pronounLabel, type Persona, type Profile } from "@lyrica/core";
+import { CORE_LIMIT, coreText, pronounLabel, type Persona, type Profile } from "@lyrica/core";
 import type { MemorySections } from "./memory.ts";
 import type { RoutedTopic } from "./routing.ts";
 
@@ -20,7 +20,7 @@ export interface Budgets {
 }
 
 export const DEFAULT_BUDGETS: Budgets = {
-  persona: 8000,
+  persona: CORE_LIMIT,
   topics: 9000,
   notice: 400,
   opening: 1500,
@@ -79,7 +79,7 @@ export function assemble(input: PromptInput, budgets: Budgets = DEFAULT_BUDGETS)
     return text;
   };
 
-  const customPrompt = add("persona", input.persona.core.map((f) => f.text.trim()).join("\n\n"), "system") ?? "";
+  const customPrompt = add("persona", coreText(input.persona.core), "system") ?? "";
 
   const sections: Record<string, string> = {};
   const topics = topicBlocks(input.topics, budgets.topics);
