@@ -33,8 +33,8 @@ and how every later connection is checked. Both sides implement exactly this.
 
 ## The pairing code
 
-- On the dashboard, **Pair with Lyrica** makes a code and shows it there and
-  in the host's log. It lasts **10 minutes** or until used. Making a new
+- On the dashboard, **Pair with Lyrica** makes a code and shows it there (never
+  in the host's log). It lasts **10 minutes** or until used. Making a new
   code voids the old one. There is at most one code at a time.
 - 16 symbols from Crockford's base32 alphabet,
   `0123456789ABCDEFGHJKMNPQRSTVWXYZ` (80 bits), shown in groups of four:

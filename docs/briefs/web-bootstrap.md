@@ -34,8 +34,8 @@ looks, the drawer and the dialog (docs/ux.md §1.4).
    | Models | Kind (Cloud \| Local), Base URL, API key, Name: the Add an endpoint fields, saved shared and put first in the administrator's profile for the main conversation | Add; Skip |
    | Done | Facts: her addresses (the LAN one with its fingerprint while Direct is on; her tailnet name), the administrator's login, the tailnet; one sentence only with Start unlocked off ("She starts locked after each restart; the passphrase unlocks her.") | Start a chat |
    Errors replace the step's estimate line and say what happened, why
-   and what to do ("The code doesn't match. It is in the journal:
-   journalctl -u lyricad." / "Tailscale isn't installed on this machine.
+   and what to do ("The code doesn't match. Run lyrica admin
+   setup-code on the server to see it." / "Tailscale isn't installed on this machine.
    Run install.sh again." / "Her tailscaled isn't running: systemctl
    status lyrica-tailscaled." /
    "HTTPS certificates are off in this tailnet. Turn them on under DNS in

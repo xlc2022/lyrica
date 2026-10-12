@@ -278,7 +278,7 @@ export class Host {
   private async dashboard(req: IncomingMessage, res: ServerResponse, pathname: string, method: string, access: Access): Promise<void> {
     if (pathname === "/dashboard/pairing" && method === "POST") {
       const made = this.codes.make();
-      this.opts.log("pairing code", { code: made.code, expiresAt: made.expiresAt });
+      this.opts.log("pairing code made", { expiresAt: made.expiresAt });
       return sendJson(res, 200, made);
     }
     if (pathname === "/dashboard/clients" && method === "GET") {

@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import { clamp, fetchArgv, fetchedPage, searxngSearch, type ExecutionTarget } from "@lyrica/core";
+import { clamp, fetchArgv, fetchedPage, maskSecrets, searxngSearch, type ExecutionTarget } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
 
@@ -59,6 +59,10 @@ export function createWebExtension(web: WebTools): ExtensionFactory {
         if (!target.run) return text("web_fetch runs only in the sandbox.", true);
         try {
           const r = await target.run(fetchArgv(url.href), { signal, timeoutMs: 30_000 });
+          // A page that echoes a request back never shows her the sandbox's credentials.
+          const secrets = target.secrets?.() ?? [];
+          r.stdout = maskSecrets(r.stdout, secrets);
+          r.stderr = maskSecrets(r.stderr, secrets);
           const page = fetchedPage(url.href, r, clamp(p.maxChars, 20_000, 50_000));
           return text(page.text, page.isError);
         } catch (err) {

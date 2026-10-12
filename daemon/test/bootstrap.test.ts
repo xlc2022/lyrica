@@ -117,7 +117,8 @@ describe("setting up", () => {
     const { d, home, base, code, logs } = await fresh();
     expect(code).toMatch(/^[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/);
     expect(statSync(join(home, "setup-code")).mode & 0o777).toBe(0o600);
-    expect(logs.join("\n")).toContain(`with the code ${code}`);
+    expect(logs.join("\n")).toContain(`with the code in ${join(home, "setup-code")}`);
+    expect(logs.join("\n")).not.toContain(code);
 
     const b = browser(base);
     expect((await b.get<State>("/api/state")).body).toEqual({ locked: true, setup: true, name: "Lyrica", users: [], credentials: { available: true } });
