@@ -30,6 +30,15 @@ export interface ModelSettings {
   dtype?: "auto" | "bfloat16" | "float16";
   /** A Jinja chat template used instead of the model's own. */
   chatTemplate?: string;
+  /** YaRN: raises the context's limit to the trained length times the factor. Off unless set. */
+  stretch?: Stretch;
+}
+
+export interface Stretch {
+  type: "yarn";
+  factor: number;
+  /** The context the model was trained for, as the recipe names it. */
+  originalContext: number;
 }
 
 export interface GpuSettings {
@@ -51,9 +60,14 @@ export function serverOf(model: TextModel): Server {
   return model.server === "comfyui" ? "images" : model.server;
 }
 
-/** The context the model is served with: its setting, else 32k, never past what it was trained for. */
+/** The longest context a model may be served with: what it was trained for, times its stretch. */
+export function maxContextOf(model: TextModel, s: ModelSettings): number | null {
+  return model.contextLength === null ? null : model.contextLength * (s.stretch?.factor ?? 1);
+}
+
+/** The context the model is served with: its setting, else 32k, never past its maximum. */
 export function contextOf(model: TextModel, s: ModelSettings): number {
-  return Math.min(s.contextLength ?? DEFAULT_CONTEXT, model.contextLength ?? Infinity);
+  return Math.min(s.contextLength ?? DEFAULT_CONTEXT, maxContextOf(model, s) ?? Infinity);
 }
 
 /** Bytes for the weights, and for the KV cache at the model's context. */
@@ -161,7 +175,29 @@ const oneOf = (v: unknown, values: readonly string[], what: string) => {
 
 const LLAMA_ONLY = ["kvCacheType", "flashAttention", "gpuLayers", "parallel"] as const;
 const VLLM_ONLY = ["memoryShare", "maxSeqs", "dtype"] as const;
-const KEYS = ["placement", "contextLength", "batchSize", "chatTemplate", ...LLAMA_ONLY, ...VLLM_ONLY];
+const KEYS = ["placement", "contextLength", "batchSize", "chatTemplate", "stretch", ...LLAMA_ONLY, ...VLLM_ONLY];
+
+const MAX_CONTEXT = 1_048_576;
+
+/**
+ * A stretch as saved: YaRN, a factor from 1 to 8 (whole for llama.cpp's
+ * rope-scale), and the original context, which defaults to the trained
+ * length. Only for chat models whose trained length the host read.
+ */
+function checkStretch(model: TextModel, server: Server, v: unknown): Stretch {
+  if (model.kind !== "chat") throw invalid("Only chat models can be stretched.");
+  if (!model.contextLength) throw invalid("The host couldn't read how long a context this model was trained for, so there is nothing to stretch from.");
+  if (!v || typeof v !== "object" || Array.isArray(v)) throw invalid("stretch is { type: \"yarn\", factor, originalContext }.");
+  const o = v as Record<string, unknown>;
+  for (const k of Object.keys(o)) if (!["type", "factor", "originalContext"].includes(k)) throw invalid(`Unknown stretch field: ${k}.`);
+  if (o.type !== "yarn") throw invalid("stretch.type must be yarn.");
+  const whole = server === "llamacpp";
+  if (typeof o.factor !== "number" || !Number.isFinite(o.factor) || o.factor < 1 || o.factor > 8 || (whole && !Number.isInteger(o.factor))) {
+    throw invalid(whole ? "stretch.factor must be a whole number from 1 to 8 for llama.cpp." : "stretch.factor must be from 1 to 8.");
+  }
+  int(o.originalContext, 512, MAX_CONTEXT, "stretch.originalContext");
+  return { type: "yarn", factor: o.factor, originalContext: (o.originalContext as number | undefined) ?? model.contextLength };
+}
 
 /** The one way to run a server on the CPU: no GPUs, nothing counted against them. */
 export const CPU_OPTION: Option = { gpus: [], split: null, parallel: null, share: null, need: {} };
@@ -184,9 +220,16 @@ export function validate(model: TextModel, body: Record<string, unknown>, gpus: 
   for (const k of server === "vllm" ? LLAMA_ONLY : VLLM_ONLY) {
     if (body[k] !== undefined) throw invalid(`${k} is for ${server === "vllm" ? "llama.cpp" : "vLLM"} models.`);
   }
-  int(body.contextLength, 512, 1_048_576, "contextLength");
-  if (typeof body.contextLength === "number" && model.contextLength && body.contextLength > model.contextLength) {
-    throw invalid(`This model was trained for ${model.contextLength} tokens of context at most.`);
+  int(body.contextLength, 512, MAX_CONTEXT, "contextLength");
+  if (body.stretch !== undefined) body.stretch = checkStretch(model, server, body.stretch);
+  // A factor of 1 is no stretch: nothing is passed to the server.
+  if ((body.stretch as Stretch | undefined)?.factor === 1) delete body.stretch;
+  const max = maxContextOf(model, body as unknown as ModelSettings);
+  if (typeof body.contextLength === "number" && max && body.contextLength > max) {
+    const stretch = (body.stretch as Stretch | undefined)?.factor;
+    throw invalid(stretch && stretch > 1
+      ? `This model was trained for ${model.contextLength} tokens; with a stretch of ${stretch} it serves ${max} at most.`
+      : `This model was trained for ${model.contextLength} tokens of context at most.`);
   }
   oneOf(body.kvCacheType, ["f16", "q8_0", "q4_0"], "kvCacheType");
   oneOf(body.flashAttention, ["auto", "on", "off"], "flashAttention");

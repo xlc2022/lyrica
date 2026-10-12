@@ -36,6 +36,7 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
   const served = new Map<string, unknown>();
   const parts: { file: string; role: string; downloaded: boolean }[] = [];
   const tokens: (string | undefined)[] = [];
+  const lookups: { model: string; repo?: string; hub?: string; token?: string }[] = [];
   const downloads: { id: string; path: string; state: string }[] = [];
   /** More files in the download record (a split model's other shards), and files a running request holds. */
   const record: string[] = [];
@@ -139,12 +140,19 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
           return json(res, 200, { deleted, kept });
         }
       }
+      if (req.method === "POST" && url.pathname === "/host/v1/models/lookup") {
+        const { model, repo } = JSON.parse(raw) as { model: string; repo?: string };
+        lookups.push({ model, repo, hub: req.headers["x-hub"] as string | undefined, token: req.headers["x-hub-token"] as string | undefined });
+        if (!repo && model.startsWith("shared/")) return json(res, 400, { error: { code: "need_repo", message: "Name the repository." } });
+        return json(res, 200, { model, settings: { placement: { mode: "auto" } }, contextLength: 32768, recommended: { native: 32768, factor: 4, originalContext: 32768, stretched: 131072, source: { hub: "huggingface", repo: repo ?? "Qwen/Qwen3-8B", revision: "r1", at: "2026-10-12T00:00:00Z" } } });
+      }
       if (url.pathname === "/host/v1/models/settings") {
         const id = req.method === "GET" ? url.searchParams.get("model") : (JSON.parse(raw) as { model: string }).model;
         const m = models.find((x) => x.id === id);
         if (!m) return json(res, 404, { error: { code: "not_found", message: "No such model." } });
         if (req.method === "GET") return json(res, 200, { model: m.id, settings: served.get(m.id) ?? { placement: { mode: "auto" } }, contextLength: m.contextLength ?? 32768 });
-        const { settings } = JSON.parse(raw) as { settings: { contextLength?: number; placement?: { gpus?: number[] } } };
+        const { settings, anyway } = JSON.parse(raw) as { settings: { contextLength?: number; placement?: { gpus?: number[] }; stretch?: { factor: number } }; anyway?: boolean };
+        if ((settings.stretch?.factor ?? 0) > 4 && !anyway) return json(res, 409, { error: { code: "above_recommended", message: "Qwen documents 4." } });
         if (settings.placement?.gpus?.includes(2)) return json(res, 400, { error: { code: "invalid", message: "GPU 2 doesn't allow vLLM." } });
         served.set(m.id, settings);
         if (settings.contextLength) m.contextLength = settings.contextLength;
@@ -198,6 +206,7 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
     recipes,
     parts,
     tokens,
+    lookups,
     downloads,
     record,
     busy,

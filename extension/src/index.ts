@@ -13,6 +13,7 @@ export * from "./assemble.ts";
 export * from "./context.ts";
 export * from "./gate.ts";
 export * from "./memory.ts";
+export * from "./models-tool.ts";
 export * from "./react.ts";
 export * from "./record.ts";
 export * from "./routing.ts";

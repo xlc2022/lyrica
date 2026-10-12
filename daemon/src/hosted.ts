@@ -5,8 +5,8 @@ import {
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  ContextMeter, createDelegateExtension, createLyricaExtension, createReactExtension, createThreadsExtension, createWorkspaceExtension, DELEGATE_MESSAGE, OPENING, openThreadSession, piModelFor,
-  GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
+  ContextMeter, createDelegateExtension, createLyricaExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWorkspaceExtension, DELEGATE_MESSAGE, OPENING, openThreadSession, piModelFor,
+  GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
@@ -502,6 +502,29 @@ export class HostedThread {
 
   // --- Permission prompts ---
 
+  /** What her `models` tool reaches: the thread's context is read again on each call, so a thread turned local-only loses it at once. */
+  private modelsHost(): ModelsHost {
+    const { models, users } = this.o;
+    const actor = () => users.get(this.userId)!;
+    const copies = () => models.hostCopies(actor(), models.callContext(this.userId, this.pool, this.threadId));
+    const mine = (offering: string) => {
+      if (!copies().some((c) => c.offering === offering)) throw new Error("That isn't a host model you can manage here.");
+      return offering;
+    };
+    return {
+      copies,
+      serving: (offering) => models.servingSettings(this.userId, mine(offering)),
+      lookup: (offering, repo) => models.lookupRecommended(actor(), mine(offering), repo),
+      propose: async (p) => (await this.ask(p.toolCallId, "models", { action: "propose", name: p.name, contextLength: p.contextLength, stretch: p.stretch, kvBytes: p.kvBytes, documented: p.documented ?? null })).allowed,
+      apply: async (offering, settings, anyway) => {
+        await models.setServingSettings(actor(), mine(offering), settings, { anyway });
+        // Loaded and idle: reload now. In use or not loaded: it applies at the next load.
+        const reloaded = await models.reloadModel(actor(), offering).then(() => true, () => false);
+        return { reloaded };
+      },
+    };
+  }
+
   /** Asks every open view of the thread. A timeout or Stop denies. */
   private async approve(r: ApprovalRequest): Promise<boolean> {
     return (await this.ask(r.toolCallId, r.tool, r.input, onMachine(r))).allowed;
@@ -604,6 +627,8 @@ export class HostedThread {
           ...(!thread.subagent ? [createThreadsExtension(ctx, this.o.threads, meter)] : []),
           // Her reactions. Never a subagent's: the messages there are hers.
           ...(!thread.subagent ? [createReactExtension(ctx, { reacted: (n, reactions) => this.reacted(n, toReactions(reactions, this.userId) ?? []) })] : []),
+          // The models tool: general threads only, for a user who can manage a host. Never a subagent's.
+          ...(!thread.subagent && models.hostCopies(user, call).length ? [createModelsExtension(this.modelsHost())] : []),
         ],
       });
       const unsubscribe = session.subscribe((e) => this.forward(e));

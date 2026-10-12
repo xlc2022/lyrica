@@ -4,7 +4,7 @@ const $ = (id) => document.getElementById(id);
 async function api(path, options = {}) {
   const res = await fetch(path, { ...options, headers: { "content-type": "application/json" }, credentials: "same-origin" });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error?.message ?? `Request failed (${res.status}).`);
+  if (!res.ok) throw Object.assign(new Error(body.error?.message ?? `Request failed (${res.status}).`), { code: body.error?.code });
   return body;
 }
 
@@ -123,20 +123,22 @@ function renderModels(models, cpuServers) {
     const row = table.insertRow();
     row.insertCell().textContent = m.id;
     const where = cpuServers.includes(m.server) ? "on the CPU" : m.placement.mode === "auto" ? "auto" : `GPU ${m.placement.gpus.join("+")}`;
-    const extra = m.capabilities.speak ? `${m.capabilities.speak.voices.length} voices` : `${m.contextLength ?? "?"} context`;
+    const extra = m.capabilities.speak ? `${m.capabilities.speak.voices.length} voices` : `${m.contextLength ?? "?"} context${m.stretch ? `, stretched ×${m.stretch}` : ""}${m.kvBytes ? `, ${gib(m.kvBytes)} KV` : ""}`;
     row.insertCell().textContent = `${m.kind}, ${m.server}, ${gib(m.size)}, ${where}, ${extra}`;
     const actions = row.insertCell();
     if (m.state === "unloaded") actions.append(button("Load", () => post("/host/v1/models/load", { model: m.id })));
     else actions.append(button("Reload", () => post("/host/v1/models/reload", { model: m.id })));
     actions.append(" ", button(m.pinned ? "Unpin" : "Pin", () => post("/host/v1/models/pin", { model: m.id, pinned: !m.pinned })));
     actions.append(" ", button("Settings", () => editSettings(m)));
+    if (m.kind === "chat") actions.append(" ", button("Look up", () => lookUp(m)));
   }
 }
 
 /** Placement and serving settings, edited as JSON; the host says why a change can't work. */
 async function editSettings(m) {
-  const { settings } = await api(`/host/v1/models/settings?model=${encodeURIComponent(m.id)}`);
-  const text = prompt(`Settings for ${m.id} (placement { "mode": "auto" } or { "mode": "gpus", "gpus": [0, 1] }; contextLength, and more in the host's API.md). They apply at the next load, or on Reload.`, JSON.stringify(settings));
+  const { settings, recommended } = await api(`/host/v1/models/settings?model=${encodeURIComponent(m.id)}`);
+  const recipe = recommended?.factor ? ` Its card recommends a stretch of ${recommended.factor} from ${recommended.originalContext} for ${recommended.stretched} tokens: "stretch": { "type": "yarn", "factor": ${recommended.factor} }.` : "";
+  const text = prompt(`Settings for ${m.id} (placement { "mode": "auto" } or { "mode": "gpus", "gpus": [0, 1] }; contextLength, stretch, and more in the host's API.md). They apply at the next load, or on Reload.${recipe}`, JSON.stringify(settings));
   if (text === null) return;
   let next;
   try {
@@ -144,7 +146,30 @@ async function editSettings(m) {
   } catch {
     throw new Error("That isn't valid JSON.");
   }
-  await api("/host/v1/models/settings", { method: "PUT", body: JSON.stringify({ model: m.id, settings: next }) });
+  const save = (anyway) => api("/host/v1/models/settings", { method: "PUT", body: JSON.stringify({ model: m.id, settings: next, ...(anyway ? { anyway } : {}) }) });
+  try {
+    await save(false);
+  } catch (e) {
+    // A stretch past the publisher's: saved only on purpose.
+    if (e.code !== "above_recommended" || !confirm(`${e.message} Save anyway?`)) throw e;
+    await save(true);
+  }
+}
+
+/** Reads the model's card for its recommended context; asks for the repository when the host doesn't know it. */
+async function lookUp(m) {
+  const look = (repo) => api("/host/v1/models/lookup", { method: "POST", body: JSON.stringify({ model: m.id, ...(repo ? { repo } : {}) }) });
+  let entry;
+  try {
+    entry = await look();
+  } catch (e) {
+    if (e.code !== "need_repo") throw e;
+    const repo = prompt(`Repository for ${m.id} (owner/name, or modelscope:owner/name)`);
+    if (!repo) return;
+    entry = await look(repo);
+  }
+  const r = entry.recommended;
+  alert(r?.factor ? `${r.source.repo}: ${r.native} tokens, or ${r.stretched} with a stretch of ${r.factor} from ${r.originalContext}.` : `${r?.source.repo ?? m.id}: ${r?.native ?? "?"} tokens; no stretch documented.`);
 }
 
 async function renderRecipes() {

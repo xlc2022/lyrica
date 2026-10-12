@@ -65,7 +65,7 @@ describe("the models folder", () => {
       ["vllm/remote", "chat", "vllm"],
     ]);
     const qwen = models[0]!;
-    expect(qwen.identity).toEqual({ basename: "Qwen3", sizeLabel: "8B", finetune: null, baseModels: [{ name: "Qwen3 8B Base", organization: "Qwen", repoUrl: null }] });
+    expect(qwen.identity).toEqual({ basename: "Qwen3", sizeLabel: "8B", finetune: null, baseModels: [{ name: "Qwen3 8B Base", organization: "Qwen", repoUrl: null }], sourceRepo: null });
     expect(qwen.capabilities).toEqual({ tools: true, vision: false, embedding: false, reasoning: ["off", "on"] });
     expect(qwen.contextLength).toBe(40960);
     expect(models[3]!.remoteCode).toBe(true);
@@ -210,6 +210,26 @@ describe("routing /v1 to the model servers", () => {
     await call({ port: s.tls, path: "/host/v1/models/reload", identity: s.me, pinned, body: { model: id } });
     expect(readFileSync(join(s.serving, "llamacpp.ini"), "utf8")).toContain("c = 8192");
     expect(readFileSync(join(s.serving, "llamacpp.ini"), "utf8")).not.toContain("cache-type-k");
+  });
+
+  it("serves a stretched model with llama.cpp's YaRN flags, and a stretch past the card's only when asked for anyway", async () => {
+    const s = await stack();
+    const pinned = await paired(s);
+    const id = "lyrica/huggingface/Qwen/Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf";
+    const put = (settings: object, anyway?: boolean) => call({ port: s.tls, path: "/host/v1/models/settings", method: "PUT", identity: s.me, pinned, body: { model: id, settings, ...(anyway ? { anyway } : {}) } });
+    const stretch = (factor: number) => ({ placement: { mode: "auto" }, contextLength: 65536, stretch: { type: "yarn", factor, originalContext: 32768 } });
+    expect((await put(stretch(2))).status).toBe(200);
+    const got = await call({ port: s.tls, path: `/host/v1/models/settings?model=${encodeURIComponent(id)}`, identity: s.me, pinned });
+    expect(got.body).toMatchObject({ contextLength: 65536, maxContextLength: 81920, trainedContextLength: 40960, recommended: null, stretchUntested: false });
+    await call({ port: s.tls, path: "/host/v1/models/load", identity: s.me, pinned, body: { model: id } });
+    expect(readFileSync(join(s.serving, "llamacpp.ini"), "utf8")).toContain("c = 65536\nrope-scaling = yarn\nrope-scale = 2\nyarn-orig-ctx = 32768\n");
+    // The card documents 2: a stretch of 3 is refused until asked for anyway.
+    s.host.state.update((st) => {
+      st.recommended[id] = { native: 32768, factor: 2, originalContext: 32768, stretched: 65536, source: { hub: "huggingface", repo: "Qwen/Qwen3-8B", revision: "r1", at: "2026-10-12T00:00:00Z" } };
+    });
+    const above = await put(stretch(3));
+    expect(above.body.error).toEqual({ code: "above_recommended", message: "Qwen documents 2." });
+    expect((await put(stretch(3), true)).status).toBe(200);
   });
 
   it("refuses a model that would need remote code", async () => {

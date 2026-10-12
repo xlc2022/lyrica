@@ -90,6 +90,9 @@ const ASKS: Record<PermissionMode, string[]> = {
 /** The only tools Plan mode leaves on: the ones that read, read-only delegation, her child threads (where compacting her own context is too), and propose_plan. */
 export const PLAN_TOOLS: ReadonlySet<string> = new Set(["read", "recall", "read_memory", "web_search", "web_fetch", "delegate", "ask_parent", "threads", "react", "propose_plan", "proxmox"]);
 
+/** Tools that change things outside but ask on their own card, with the change in words, so the generic approval doesn't ask too. */
+const OWN_CARD: ReadonlySet<string> = new Set(["models"]);
+
 /** The tools each switch turns off. */
 export const SWITCHED_TOOLS = { webSearch: ["web_search", "web_fetch"], images: ["image"] } as const;
 
@@ -229,7 +232,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const as = pve ? (reads ? "read" : "bash") : event.toolName;
       // Anything that reaches outside and changes things there can't be undone from here: it always asks.
       const a = pi.getAllTools().find((t) => t.name === event.toolName)?.annotations;
-      const irreversible = !!a?.openWorldHint && !a.readOnlyHint;
+      const irreversible = !!a?.openWorldHint && !a.readOnlyHint && !OWN_CARD.has(event.toolName);
       const warning = !machine ? undefined : pve ? PROXMOX_SUSPECT[input.action as ProxmoxAction] : event.toolName === "bash" ? suspectCommand(String(input.command)) : undefined;
       const suspect = !!warning && !tools.allowedInThread?.(machine!.name, suspectKey(event.toolName, input));
       // The first call on a machine in a turn asks if anything earlier ran somewhere else, so output from one place can't steer her onto another.

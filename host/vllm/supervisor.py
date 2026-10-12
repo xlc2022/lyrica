@@ -18,6 +18,32 @@ STATUS = os.environ.get("VLLM_STATUS", "/status/vllm.json")
 COMMAND = os.environ.get("VLLM_COMMAND", "vllm").split()
 
 
+def rope_override(spec):
+    """--hf-overrides for YaRN: the model's own RoPE settings with the YaRN
+    fields merged in, under the key its config uses (rope_parameters, or the
+    older rope_scaling), and in text_config when that holds them. Nothing
+    else changes, so rope_theta and mrope_section stay the publisher's."""
+    o = spec.get("ropeOverride")
+    if not o:
+        return None
+    try:
+        with open(os.path.join(spec["model"], "config.json")) as f:
+            config = json.load(f)
+    except (OSError, ValueError):
+        config = {}
+    nested = isinstance(config.get("text_config"), dict) and any(
+        k in config["text_config"] for k in ("rope_parameters", "rope_scaling", "rope_theta"))
+    text = config["text_config"] if nested else config
+    key = "rope_scaling" if "rope_scaling" in text and "rope_parameters" not in text else "rope_parameters"
+    rope = dict(text.get(key) or {})
+    rope.update({
+        "rope_type": "yarn",
+        "factor": float(o["factor"]),
+        "original_max_position_embeddings": int(o["originalContext"]),
+    })
+    return {"text_config": {key: rope}} if nested else {key: rope}
+
+
 def argv(spec):
     args = COMMAND + [
         "serve", spec["model"],
@@ -42,6 +68,9 @@ def argv(spec):
         args += ["--dtype", spec["dtype"]]
     if spec.get("chatTemplate"):
         args += ["--chat-template", spec["chatTemplate"]]
+    override = rope_override(spec)
+    if override:
+        args += ["--hf-overrides", json.dumps(override, separators=(",", ":"))]
     return args
 
 
@@ -50,6 +79,9 @@ def start(spec):
     gpus = ",".join(str(g) for g in spec["gpus"])
     for var in ("CUDA_VISIBLE_DEVICES", "HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES"):
         env[var] = gpus
+    # A stretched model is served past its config's max_position_embeddings.
+    if spec.get("ropeOverride"):
+        env["VLLM_ALLOW_LONG_MAX_MODEL_LEN"] = "1"
     # Its own process group, so stopping it also stops vLLM's engine processes.
     return subprocess.Popen(argv(spec), env=env, start_new_session=True)
 

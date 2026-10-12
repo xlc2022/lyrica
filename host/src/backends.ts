@@ -106,7 +106,10 @@ export class LlamaCpp implements Backend {
       lines.push(`[${model.id}]`, `model = ${this.o.models}/${model.id}`, `device = ${at.gpus.map(this.o.device).join(",")}`);
       if (at.split) lines.push("split-mode = layer", `tensor-split = ${at.split.map((r) => +r.toFixed(3)).join(",")}`);
       else lines.push("split-mode = none");
-      lines.push(`c = ${contextOf(model, s)}`, `n-gpu-layers = ${s.gpuLayers ?? 999}`, `flash-attn = ${s.flashAttention ?? "auto"}`);
+      lines.push(`c = ${contextOf(model, s)}`);
+      // YaRN, as the publisher's card gives it for llama-server.
+      if (s.stretch) lines.push("rope-scaling = yarn", `rope-scale = ${s.stretch.factor}`, `yarn-orig-ctx = ${s.stretch.originalContext}`);
+      lines.push(`n-gpu-layers = ${s.gpuLayers ?? 999}`, `flash-attn = ${s.flashAttention ?? "auto"}`);
       if (s.kvCacheType) lines.push(`cache-type-k = ${s.kvCacheType}`, `cache-type-v = ${s.kvCacheType}`);
       if (s.parallel) lines.push(`parallel = ${s.parallel}`);
       if (s.batchSize) lines.push(`batch-size = ${s.batchSize}`);
@@ -228,6 +231,8 @@ export class Vllm implements Backend {
         memoryShare: at.share, maxModelLen: contextOf(m, s),
         maxNumSeqs: s.maxSeqs ?? null, maxNumBatchedTokens: s.batchSize ?? null, dtype: s.dtype ?? null,
         chatTemplate: s.chatTemplate ? this.templates.write(s.chatTemplate) : null,
+        // The supervisor merges these into the model's own RoPE settings.
+        ropeOverride: s.stretch ? { factor: s.stretch.factor, originalContext: s.stretch.originalContext } : null,
       };
     }
     writeAtomic(this.statePath, JSON.stringify({ generation: this.generation, servers }, null, 2));

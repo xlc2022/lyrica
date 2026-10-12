@@ -597,6 +597,7 @@ function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest
       </div>
     );
   }
+  if (p.tool === "models" && !p.subagent) return <ServingPrompt p={p} answer={answer} busy={busy} left={left} error={error} />;
   const sub = p.subagent;
   // A subagent's request shows here and in its parent's thread; the first answer counts.
   const who = !sub ? <>{her()} wants</>
@@ -611,6 +612,27 @@ function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest
         <button type="button" className="primary" disabled={busy} onClick={() => answer(true)}>Allow</button>
         <button type="button" disabled={busy} onClick={() => answer(false)}>Deny</button>
         {p.suspect && <button type="button" disabled={busy} onClick={() => answer(true, undefined, true)}>Allow in this thread</button>}
+        <span className="muted">{left}</span>
+      </div>
+      <ErrorText error={error} />
+    </div>
+  );
+}
+
+/** Her `models` tool's proposal: the change in one question, its numbers in mono. */
+function ServingPrompt({ p, answer, busy, left, error }: { p: PermissionRequest; answer: (allow: boolean) => void; busy: boolean; left: string; error: string }) {
+  const a = (p.args ?? {}) as { name?: string; contextLength?: number; kvBytes?: number | null; documented?: { factor: number; by: string } | null };
+  const gb = (n: number) => { const g = n / 1024 ** 3; return g >= 10 ? String(Math.round(g)) : g.toFixed(1); };
+  return (
+    <div className="permission" role="group" data-pending="Approval" aria-label={`Serve ${a.name ?? "this model"} with a longer context?`}>
+      <p>
+        Serve <b>{a.name}</b> with <span className="mono">{(a.contextLength ?? 0).toLocaleString("en-US")}</span> tokens of context? It reloads
+        {typeof a.kvBytes === "number" ? <>, and its KV cache grows to <span className="mono">{gb(a.kvBytes)}</span> GB.</> : "."}
+        {a.documented && <> {a.documented.by} documents <span className="mono">{a.documented.factor}</span>.</>}
+      </p>
+      <div className="row">
+        <button type="button" className="primary" disabled={busy} onClick={() => answer(true)}>Allow</button>
+        <button type="button" disabled={busy} onClick={() => answer(false)}>Deny</button>
         <span className="muted">{left}</span>
       </div>
       <ErrorText error={error} />
