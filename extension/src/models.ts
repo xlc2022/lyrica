@@ -1,7 +1,8 @@
-import { InMemoryCredentialStore, type Api, type Model } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import { ModelRuntime, type ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import { acceptedSettings, CloudModelForbidden, isRestricted, payloadFields, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
+import { PlanCredentials, planProvider } from "./plans.ts";
+import { acceptedSettings, isPlan, CloudModelForbidden, isRestricted, payloadFields, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
 
 const FREE = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const DEFAULT_CONTEXT = 32_768;
@@ -33,14 +34,16 @@ function piModel(ep: Endpoint, m: Offering): ProviderModelConfig {
  * The runtime is sealed: nothing can register another provider into it.
  */
 export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise<ModelRuntime> {
-  const runtime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false });
+  const allowed = models.allowed(ctx);
+  // A plan's sign-in lives in the user's user.db, where Pi's refresh writes it back.
+  const plans = new Set(allowed.filter(({ endpoint }) => isPlan(endpoint.api)).map(({ endpoint }) => endpoint.id));
+  const runtime = await ModelRuntime.create({ credentials: new PlanCredentials(models, ctx.userId, plans), modelsPath: null, refreshOnCreate: false });
   // Pi 1.1.0 always loads its built-in catalog. Drop it, so the runtime starts empty.
   const internals = runtime as unknown as { defaultBuiltins: Map<string, unknown>; builtins: Map<string, unknown>; rebuildProviders(): void };
   internals.defaultBuiltins.clear();
   internals.builtins.clear();
   internals.rebuildProviders();
 
-  const allowed = models.allowed(ctx);
   // Each request carries the offering's saved settings (only those set), and a model host's requests its pinned fetch.
   const fetches = new Map(allowed.flatMap(({ endpoint }) => { const f = models.fetchFor(endpoint); return f ? [[endpoint.id, f] as const] : []; }));
   const offerings = new Map(allowed.flatMap(({ endpoint, offerings: list }) => list.map((o) => [`${endpoint.id}\u0000${o.modelId}`, { endpoint, offering: o }] as const)));
@@ -67,6 +70,10 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
   };
   for (const { endpoint, offerings: list } of allowed) {
     if (!list.length) continue;
+    if (isPlan(endpoint.api)) {
+      runtime.registerNativeProvider(planProvider({ ...endpoint, api: endpoint.api }, list.map((m) => m.modelId)));
+      continue;
+    }
     runtime.registerProvider(endpoint.id, {
       name: `${endpoint.name} (${endpoint.kind})`, baseUrl: endpoint.baseUrl, api: "openai-completions",
       models: list.map((m) => piModel(endpoint, m)),
