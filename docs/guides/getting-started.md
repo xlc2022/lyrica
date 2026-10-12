@@ -2,7 +2,7 @@
 
 How to bootstrap `lyricad`, the one process that is Lyrica, on a fresh
 Debian or Ubuntu system, and what to do on the first day. This guide follows
-`daemon/deploy/install.sh` and the two systemd units next to it; the
+`daemon/deploy/install.sh` and the systemd units next to it; the
 reference for each piece is [docs/daemon.md](../daemon.md) ("Deployment")
 and [docs/workspace.md](../workspace.md) ("Host requirements"). Model hosts
 (the GPU machines that run her models) have their own guide,
@@ -23,7 +23,8 @@ Debian.
 
 One machine, in practice an LXC container or a VM on Li's Proxmox, running:
 
-- `lyricad` as the `lyrica` system user, from `/opt/lyrica`, with its state
+- `lyricad` as the `lyrica` system user, from the release that
+  `/opt/lyrica/current` points at, with its state
   in `/var/lib/lyrica` (`self.db`, each user's encrypted databases and home
   workspace, saved credentials). It listens on `127.0.0.1:7340` and on a
   Unix socket. A fresh install also serves HTTPS itself on port 7340 of
@@ -36,6 +37,10 @@ One machine, in practice an LXC container or a VM on Li's Proxmox, running:
   user, for when Web access serves a name of yours with a real certificate.
   It is built once by the install script, with DNS plugins, and configured
   by `lyricad` through a Unix socket.
+- The updater (`lyrica-update`, `lyrica-rollback` and their units), run as
+  root. It installs releases from annotated `update/*` tags on `main`,
+  built by the `lyrica-build` user, with a snapshot of her databases before
+  each switch.
 
 Her models run elsewhere: on cloud endpoints, on any OpenAI-compatible
 server on your network, or on a paired model host.
@@ -62,12 +67,10 @@ server on your network, or on a paired model host.
   apt-get install -y nodejs
   ```
 
-- `build-essential` and `python3`, so `npm ci` can build the SQLite
-  binding when no prebuilt one matches. CI installs `build-essential` on a
-  fresh Ubuntu for this reason; the install script doesn't.
 - `git`, to clone the repository.
 - Internet access during the install: npm, `proxy.golang.org` for the
   Caddy build, and `pkgs.tailscale.com` when Tailscale isn't installed yet.
+  Updates later fetch from GitHub over SSH with a deploy key.
 
 ### In a Proxmox LXC container
 
@@ -92,49 +95,62 @@ The full checklist, with the commands that prove each piece works, is in
 
 ## Install
 
-As root, from a checkout of the repository:
+As root, from a git checkout of the repository outside `/opt/lyrica`:
 
 ```sh
 git clone https://github.com/xlc2022/lyrica /root/lyrica
 cd /root/lyrica
-npm ci
-npm run build
 daemon/deploy/install.sh
 ```
 
-`npm run build` matters: it builds the web UI into `web/dist`, which is
-ignored by git, and the install script copies the checkout as it is. The
-script itself installs only production dependencies, so it can't build the
-UI. Skip the build and `lyricad` starts fine but serves no pages.
+A release is exactly one commit, so the script refuses a checkout with
+uncommitted changes. It builds the web UI itself.
 
 What `install.sh` does, in order:
 
 1. Installs the packages her sandboxes need: bubblewrap, gocryptfs, FUSE,
    passt, nftables, ImageMagick (the Files panel's thumbnails are made in
-   the sandbox), and openssl, curl, unzip and rsync for itself. When
+   the sandbox), openssl, curl, unzip and rsync for itself, and
+   build-essential, python3, git, openssh-client and jq for building
+   releases and fetching updates. When
    Tailscale's binaries are missing it adds Tailscale's apt repository and
    installs `tailscale`; the package turns on the host's own `tailscaled`,
    and the script turns it off again unless it was on before.
-2. Creates the `lyrica` and `lyrica-caddy` system users. `lyricad` gets the
-   `lyrica-caddy` group from its unit, so it alone can reach Caddy's admin
-   socket.
-3. Copies the checkout to `/opt/lyrica` (without `.git`, `node_modules` and
-   `runtime`), runs `npm ci --omit=dev` there, and makes it root-owned and
-   read-only for everyone else. `/var/lib/lyrica` is created for the
+2. Creates the `lyrica`, `lyrica-caddy` and `lyrica-build` system users.
+   `lyricad` gets the `lyrica-caddy` group from its unit, so it alone can
+   reach Caddy's admin socket. `lyrica-build` builds releases with no
+   access to her data.
+3. Builds the checkout's commit, as `lyrica-build`, into
+   `/opt/lyrica/releases/<commit>`, makes it root-owned and read-only, and
+   points `/opt/lyrica/current` at it (`previous` at the one before). When
+   `lyricad` was running another release, it lets turns finish, stops her
+   and snapshots her databases first. `/var/lib/lyrica` is created for the
    `lyrica` user, mode 0700.
-4. Builds Caddy with `xcaddy` from pinned versions of Go, xcaddy, Caddy and
+4. Installs the updater, its units, the bare repository
+   `/opt/lyrica/repo.git`, GitHub's pinned host key in
+   `/etc/lyrica/known_hosts`, and a deploy key in `/etc/lyrica/deploy-key`,
+   whose public half it prints at the end.
+5. Builds Caddy with `xcaddy` from pinned versions of Go, xcaddy, Caddy and
    every DNS plugin in `daemon/src/web/providers.ts`, in a clean
    environment. This takes a few minutes the first time. Running the script
    again rebuilds only when a pin changed.
-5. Sets `net.ipv4.ip_nonlocal_bind=1`, so Caddy can bind a Tailscale address
+6. Sets `net.ipv4.ip_nonlocal_bind=1`, so Caddy can bind a Tailscale address
    before Tailscale is up.
-6. Installs, enables and starts `lyrica-caddy.service`,
-   `lyrica-tailscaled.service` and `lyricad.service`. On an upgrade it
-   restarts `lyricad`. On a fresh install `lyricad` starts setting up, and
+7. Installs, enables and starts `lyrica-caddy.service`,
+   `lyrica-tailscaled.service` and `lyricad.service`, and enables
+   `lyrica-update.path`. On an upgrade it restarts `lyricad`. On a fresh install `lyricad` starts setting up, and
    the script ends by printing a one-time setup code, the addresses to open
    and the certificate's fingerprint (see "First run").
 
-Running it again later is the upgrade path (see "Upgrading").
+Running it again later installs the checkout's commit as a new release
+(see "Upgrading").
+
+**Add the deploy key.** Updates fetch from GitHub with that key. Add the
+printed line (also in `/etc/lyrica/deploy-key.pub`) to the repository on
+GitHub under Settings, Deploy keys, without write access.
+
+**Keep a scheduled Proxmox backup of the container.** The updater
+snapshots her databases, but it can't snapshot the container it runs in.
 
 ### On NixOS
 
@@ -174,13 +190,17 @@ is [docs/daemon.md](../daemon.md#on-nixos). Instead of the steps above:
    `lyrica` user, the network self-test and the port, one line each, and
    ends with "All checks passed." or stops at the first failure.
 
-Everything from "Save the passphrase" on applies unchanged. Upgrading is
-only `nix flake update lyrica` and `nixos-rebuild switch`, which restarts
-`lyricad` (which logs everyone out) with no database snapshot first. The
-package is rebuilt only when the code it ships changed; a commit that
+Everything from "Save the passphrase" on applies unchanged. `lyricad`
+runs from the profile `/nix/var/nix/profiles/lyrica`, and its first start
+makes `/etc/lyrica/deploy-key`: add its `.pub` as above. Upgrading is
+`nix flake update lyrica` and `nixos-rebuild switch`, which restarts
+`lyricad` (which logs everyone out). Before that start, when the package
+changed, her databases are snapshotted and the profile moves to it; if the
+new package can't read them, the newest snapshot it can read is restored.
+The package is rebuilt only when the code it ships changed; a commit that
 touched only docs or tests reuses the built one, and the restart is quick.
-The home page header shows the
-commit that is running, as on Debian.
+Updates and rollback from "Upgrading" work on NixOS too. The home page
+header shows the commit that is running, as on Debian.
 
 ## First run
 
@@ -515,17 +535,44 @@ the SSH ones, and `ssh remove <name>` takes one away.
   and each `users/<id>/` directory are encrypted at rest; a copy made while
   the service is stopped is a backup, and useless without the passphrase.
   With it, every user's data opens through the recovery copies, so keep the
-  passphrase as carefully as the backup.
-- **Upgrading:** in the checkout, as root:
+  passphrase as carefully as the backup. The updater's snapshots are in
+  `/var/lib/lyrica-snapshots`, readable by root only. It keeps the last
+  three, and any taken before a release that drops old schema stay until a
+  later such release has passed probation and they are 30 days old.
+- **Updates:** an update is an annotated `update/<name>` tag on a `main`
+  commit, whose message is the update note. As root:
+
+  ```sh
+  lyrica-update --tag update/<name>
+  ```
+
+  It fetches with the deploy key, builds the release as `lyrica-build`,
+  smoke-tests it in a scratch home, lets running turns finish (up to 10
+  minutes, or it changes nothing), stops `lyricad`, snapshots her
+  databases, switches and starts her. She is then on probation until she
+  has been unlocked for 10 minutes with every health check passing, so
+  without a saved passphrase someone has to unlock her. A failed check or a
+  crash loop rolls back by itself. The web UI has no Updates page yet; the
+  updater's state is in `/var/lib/lyrica-update`.
+- **Rollback:** `lyrica-rollback` as root goes back to the previous
+  release, or `lyrica-rollback <commit>` to another kept one. When that
+  release can't read her databases, it restores the newest snapshot it can
+  read, asking first (`--yes` skips the question), or refuses and names the
+  oldest release it could go back to.
+- **Upgrading from a checkout:** as root:
 
   ```sh
   cd /root/lyrica && git pull
-  npm ci && npm run build
   daemon/deploy/install.sh
   ```
 
-  The script replaces `/opt/lyrica`, rebuilds Caddy only if a pin changed,
-  and restarts `lyricad` (which logs everyone out). An install made before
+  The script installs that commit as a release the same way: turns finish,
+  a snapshot, the switch and a restart, which logs everyone out. It
+  rebuilds Caddy only if a pin changed. Its first run over an install from
+  before releases can't wait for turns, because the old `lyricad` has no
+  update socket: stop `lyricad` first, or let turns finish. That run moves
+  the old code to `/opt/lyrica/before-releases`; delete it once the new
+  release runs. An install made before
   2026-10-11 gets the `lyrica` command and ImageMagick on this run; until
   then the Files panel shows images themselves instead of thumbnails. On
   NixOS the next `nixos-rebuild switch` brings ImageMagick in with the
@@ -545,8 +592,8 @@ something the code expects but nobody has confirmed on real hardware.
    user. On Ubuntu 24.04 or later, a bubblewrap "Permission denied" means
    `kernel.apparmor_restrict_unprivileged_userns=0` on the Proxmox host.
 2. `install.sh` runs to the end on a fresh system. Expected soft spots: the
-   Node check, `npm ci` needing `build-essential`, the Caddy build (a
-   checksum mismatch stops it; the tail of its build log is printed).
+   Node check, the release build and the Caddy build (each prints the tail
+   of its build log when it fails; a checksum mismatch stops Caddy's).
 3. `install.sh` prints the setup code, an address and a fingerprint; the
    browser's certificate warning shows the same fingerprint at that
    address. Then `lyrica admin init`, `systemctl restart lyricad`, unlock,
@@ -563,6 +610,9 @@ something the code expects but nobody has confirmed on real hardware.
    unlocked. If the button is disabled, note the reason it shows.
 9. Web access with the built-in Caddy: the name gets a certificate, and the
    unlock page is reachable at it after a restart.
+10. Add the deploy key, push an annotated `update/<name>` tag on `main`, and
+    `lyrica-update --tag update/<name>` runs through probation. Then
+    `lyrica-rollback` goes back to the release before.
 
 Report what fails, with the journal lines, in the Operator docs thread; the
 guide gets corrected from the real run.
