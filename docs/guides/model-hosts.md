@@ -140,8 +140,9 @@ Options, for a second run or a non-interactive one (`host/install.sh --help`):
 | `--no-gpu` | `host-api` alone, no model servers. What CI uses. |
 
 Running the script again keeps `.env`'s values as defaults, rebuilds, and
-restarts the stack in place. That is how you change a setting or upgrade
-(`git pull && host/install.sh`).
+restarts the stack in place, also on a machine with many network
+interfaces (Docker's, for one). That is how you change a setting or
+upgrade (`git pull && host/install.sh`).
 
 ## The dashboard
 
@@ -192,6 +193,9 @@ Three ways a model gets into the library:
   host also scans at start and after each download). GGUF files are served
   by llama.cpp; a folder with a `config.json` and safetensors by vLLM (a
   model whose config asks for remote code is listed but never loaded).
+  vLLM gets tool calling only for families the host knows (Qwen2.5,
+  Qwen3.x, Llama 3.x, Mistral and Mixtral, DeepSeek; see `host/API.md`);
+  any other family shows tools off and chats without them.
 - **Download on the dashboard** from Hugging Face, ModelScope or an https
   link, into `lyrica/<source>/<repository>/` in the models folder. Only
   GGUF, safetensors and ONNX files are taken; pickles and code are refused;
