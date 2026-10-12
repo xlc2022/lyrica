@@ -12,6 +12,7 @@ import { Busy } from "./hosted.ts";
 import { card, type Lyricad, type Services } from "./lyricad.ts";
 import { toMessages } from "./messages.ts";
 import { messageText, readAloud, readClip, speechState, storedSource, transcribeClip, titlesIn, type SpeechSource } from "./speech.ts";
+import { notifications } from "./notifications.ts";
 import { applyRemoval, entriesFrom, removalPlan, uploadsIn, type RemovalContext } from "./removal.ts";
 
 const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, showPrivate: true, showHidden: false, sort: "date", projects: "all" };
@@ -466,6 +467,54 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("POST", `${u}/thread-groups`, async (r): Promise<Api.ThreadGroup> => s().prefs.addGroup(d.userFor(r).id, String((await r.json<Api.NewThreadGroup>()).name ?? ""))),
     route("PATCH", `${u}/thread-groups/:groupId`, async (r): Promise<Api.ThreadGroup> => s().prefs.renameGroup(d.userFor(r).id, r.params.groupId!, String((await r.json<Api.NewThreadGroup>()).name ?? ""))),
     route("DELETE", `${u}/thread-groups/:groupId`, (r) => { s().prefs.removeGroup(d.userFor(r).id, r.params.groupId!); return { ok: true }; }),
+
+    // --- Share with, and Notifications (daemon/src/notifications.ts) ---
+    route("GET", `${u}/people`, (r): Api.Person[] => {
+      const user = d.userFor(r);
+      const linked = new Set(s().users.linked(user.id));
+      return s().users.all().filter((x) => x.id !== user.id).map((x) => ({ id: x.id, displayName: x.profile.displayName, linked: linked.has(x.id) }));
+    }),
+    route("POST", `${t}/share`, async (r) => {
+      const user = d.userFor(r);
+      const { to } = await r.json<Api.ShareRequest>();
+      const recipient = typeof to === "string" ? s().users.get(to) : undefined;
+      if (!recipient || recipient.id === user.id) throw new HttpError(400, "pick another user on this server");
+      const pool = poolOf(r);
+      owner(d, user, (o) => {
+        const thread = threadOf(o, r);
+        if (thread.project) throw new HttpError(400, "a project isn't shared; share one of its threads");
+        if (thread.subagent) throw new HttpError(400, "a subagent's thread isn't shared on its own");
+        s().shares.send({ from: user.id, to: recipient.id, ...(thread.title ? { title: thread.title } : {}), unlogged: thread.unlogged, entries: o[pool].exportEntries(thread.id) });
+      });
+      return { ok: true };
+    }),
+    route("POST", `${u}/shares/:shareId/accept`, async (r) => {
+      const user = d.userFor(r);
+      const pool = checkPool((await r.json<Api.AcceptShare>()).pool);
+      const share = s().shares.get(r.params.shareId!, user.id);
+      if (!share) throw new HttpError(404, "that share is no longer waiting");
+      return owner(d, user, (o) => {
+        const thread = o[pool].createThread({ interface: "web", ...(share.title ? { title: share.title } : {}), unlogged: share.unlogged });
+        o[pool].importEntries(thread.id, share.entries);
+        s().workspace.settings(user.id).startThread(thread.id, pool);
+        s().shares.remove(share.id, user.id);
+        return summary(d, user, pool, o[pool], thread, []);
+      });
+    }),
+    route("DELETE", `${u}/shares/:shareId`, (r) => {
+      if (!s().shares.remove(r.params.shareId!, d.userFor(r).id)) throw new HttpError(404, "that share is no longer waiting");
+      return { ok: true };
+    }),
+    route("GET", `${u}/notifications`, (r): Api.NotificationPage => {
+      const q = r.query;
+      const num = (k: string) => (q.get(k) === null ? undefined : Number(q.get(k)));
+      return notifications(d, d.userFor(r), { type: q.get("type") ?? undefined, scope: q.get("scope") ?? undefined, sort: q.get("sort") ?? undefined, offset: num("offset"), limit: num("limit") });
+    }),
+    route("POST", `${t}/seen`, (r) => {
+      const user = d.userFor(r);
+      owner(d, user, (o) => { const thread = threadOf(o, r); s().children.seen(user.id, poolOf(r), thread.id); });
+      return { ok: true };
+    }),
 
     // --- Threads ---
     route("GET", `${u}/threads`, (r) => {

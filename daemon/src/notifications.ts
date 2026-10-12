@@ -1,0 +1,131 @@
+// Notifications (DESIGN.md, "Where things are"): one list over everything
+// waiting for the user, read from where each thing lives. Nothing is stored
+// here; acting on an item changes its source, and the item goes.
+import type { Pool, PoolStore, User } from "@lyrica/core";
+import type * as Api from "./api.ts";
+import type { Lyricad } from "./lyricad.ts";
+
+const POOLS: Pool[] = ["general", "private"];
+const DETAIL = 160;
+const TYPE_ORDER: Api.NotificationType[] = ["permission", "share", "update", "approval", "suggestion", "sleep"];
+
+export interface NotificationQuery { type?: string; scope?: string; sort?: string; offset?: number; limit?: number }
+
+/** Everything waiting for the user, filtered, sorted and paged. */
+export function notifications(d: Lyricad, user: User, q: NotificationQuery): Api.NotificationPage {
+  const all = collect(d, user);
+  const waiting = all.filter((n) => n.decision).length;
+  const types = TYPE_ORDER.filter((t) => all.some((n) => n.type === t));
+  let items = all;
+  if (q.type === "decision") items = items.filter((n) => n.decision);
+  else if (q.type) items = items.filter((n) => n.type === q.type);
+  if (q.scope) items = items.filter((n) => n.scope === q.scope);
+  const newest = (a: Api.Notification, b: Api.Notification) => b.at.localeCompare(a.at);
+  items.sort(q.sort === "oldest" ? (a, b) => a.at.localeCompare(b.at)
+    : q.sort === "type" ? (a, b) => TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type) || newest(a, b)
+    : q.sort === "scope" ? (a, b) => a.scope.localeCompare(b.scope) || newest(a, b)
+    : newest);
+  const offset = Math.max(0, q.offset ?? 0);
+  const limit = Math.min(200, Math.max(0, q.limit ?? 50));
+  return { items: items.slice(offset, offset + limit), total: items.length, waiting, types };
+}
+
+function collect(d: Lyricad, user: User): Api.Notification[] {
+  const s = d.services!;
+  const u = `/api/u/${encodeURIComponent(user.id)}`;
+  const t = (pool: Pool, id: string) => `${u}/threads/${pool}/${encodeURIComponent(id)}`;
+  const out: Api.Notification[] = [];
+  const o = s.memory.openOwnerView(user.id);
+  try {
+    const titleOf = (store: PoolStore, id: string) => store.getThread(id)?.title || "A new thread";
+    // Threads shared with the user: add to a pool, or decline.
+    for (const sh of s.shares.forUser(user.id)) {
+      const from = s.users.get(sh.from)?.profile.displayName ?? "Someone";
+      out.push({
+        id: `share:${sh.id}`, type: "share", title: `${from} shared “${sh.title ?? "a thread"}” with you`,
+        detail: `${sh.entryCount} ${sh.entryCount === 1 ? "entry" : "entries"}, as it was when sent. Add it to your threads, or decline.`,
+        scope: "general", decision: true, at: sh.createdAt,
+        actions: [
+          { label: "Add to General", method: "POST", path: `${u}/shares/${sh.id}/accept`, body: { pool: "general" }, opens: true },
+          { label: "Add to Private", method: "POST", path: `${u}/shares/${sh.id}/accept`, body: { pool: "private" }, opens: true },
+          { label: "Decline", method: "DELETE", path: `${u}/shares/${sh.id}`, danger: true },
+        ],
+      });
+    }
+    // A thread waiting for an approval.
+    for (const { pool, threadId, request } of s.host.pending(user.id)) {
+      const title = titleOf(o[pool], threadId);
+      const path = `${t(pool, threadId)}/permissions/${encodeURIComponent(request.requestId)}`;
+      out.push({
+        id: `permission:${request.requestId}`, type: "permission",
+        title: request.tool === "propose_plan" ? `${title} has a plan to approve` : `${title} wants to run ${request.tool}${request.machine ? ` on ${request.machine}` : ""}`,
+        ...(detailOf(request.args) ? { detail: detailOf(request.args) } : {}),
+        scope: pool, decision: true, thread: { pool, id: threadId }, at: new Date(new Date(request.expiresAt).getTime() - s.host.opts.permissionMs).toISOString(),
+        actions: [{ label: "Allow", method: "POST", path, body: { allow: true } }, { label: "Deny", method: "POST", path, body: { allow: false }, danger: true }],
+      });
+    }
+    // A child thread posted an update, or waits on the user.
+    for (const c of s.children.updates(user.id)) {
+      const th = o[c.pool].getThread(c.thread);
+      if (!th) continue;
+      const title = th.title || "A child thread";
+      const last = o[c.pool].lastEntry(c.thread);
+      out.push({
+        id: `update:${c.pool}/${c.thread}`, type: "update",
+        title: c.needsYou ? `${title} is waiting on you` : `${title} posted ${c.unseen === 1 ? "an update" : `${c.unseen} updates`}`,
+        ...(last?.text.trim() ? { detail: last.text.trim().slice(0, DETAIL) } : {}),
+        scope: c.pool, decision: c.needsYou, thread: { pool: c.pool, id: c.thread }, at: last?.createdAt ?? th.createdAt,
+        actions: c.needsYou ? [] : [{ label: "Dismiss", method: "POST", path: `${t(c.pool, c.thread)}/seen` }],
+      });
+    }
+    // Her items from the night.
+    for (const pool of POOLS) {
+      for (const i of o[pool].listItems()) {
+        if (i.thread) continue;
+        const path = `${u}/sleep/${pool}/items/${encodeURIComponent(i.id)}`;
+        out.push({
+          id: `sleep:${i.id}`, type: "sleep", title: i.text.length > DETAIL ? `${i.text.slice(0, DETAIL - 1)}…` : i.text,
+          detail: i.kind === "question" ? "A question from the night" : i.kind === "persona" ? "A suggestion about her persona" : "Something from last night",
+          scope: pool, decision: true, at: i.createdAt,
+          actions: [{ label: "Start a chat", method: "POST", path: `${path}/chat`, opens: true }, { label: "Dismiss", method: "DELETE", path }],
+        });
+      }
+    }
+    // Her suggested persona changes, for the user to send on.
+    for (const dr of s.proposals.drafts(user.id)) {
+      out.push({
+        id: `suggestion:${dr.id}`, type: "suggestion", title: `A suggested change to ${dr.path}`, detail: dr.reason.slice(0, DETAIL),
+        scope: "general", decision: true, section: "settings/suggestions", at: dr.createdAt,
+        actions: [{ label: "Drop", method: "DELETE", path: `${u}/proposals/${dr.id}`, danger: true }],
+      });
+    }
+    // Persona changes sent on by users, for administrators to approve.
+    if (user.admin) {
+      for (const p of s.persona.proposals()) {
+        const by = s.users.get(p.sentBy.replace(/^user:/, ""))?.profile.displayName ?? "a user";
+        const path = `${u}/admin/proposals/${p.id}`;
+        out.push({
+          id: `approval:${p.id}`, type: "approval", title: `A change to ${p.path} from ${by} waits for approval`,
+          detail: `${p.reason.slice(0, DETAIL)}${p.stale ? " The file has changed since." : ""}`,
+          scope: "general", decision: true, section: "admin/persona", at: p.createdAt,
+          actions: [
+            ...(p.stale ? [] : [{ label: "Approve", method: "POST" as const, path, body: { approve: true } }]),
+            { label: "Reject", method: "POST", path, body: { approve: false }, danger: true },
+          ],
+        });
+      }
+    }
+  } finally {
+    o.close();
+  }
+  return out;
+}
+
+/** The first string in a tool's arguments (a command, a path), shortened. */
+function detailOf(args: unknown): string | undefined {
+  if (!args || typeof args !== "object") return undefined;
+  for (const v of Object.values(args as Record<string, unknown>)) {
+    if (typeof v === "string" && v.trim()) return v.trim().length > DETAIL ? `${v.trim().slice(0, DETAIL - 1)}…` : v.trim();
+  }
+  return undefined;
+}

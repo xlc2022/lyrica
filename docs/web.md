@@ -29,7 +29,8 @@ A thread's address may carry what the panel beside it shows:
   message box that starts a thread in General or Private with its first
   message.
 - **Sidebar:** New thread (General or Private), Search (filters the list by
-  title), Memory, the Sort menu, the thread list, and the user. The **Sort
+  title), **Notifications** with the count of decisions waiting (read with
+  the thread list, every 30 seconds and on focus), Memory, the Sort menu, the thread list, and the user. The **Sort
   menu** ("Sort: By date ▾") has the sorts By date (sections Today, Yesterday,
   Previous 7 days, Previous 30 days, Older), Last activity, Start date, Title and My groups (one
   section per group with its count, then Not in a group, and a New group
@@ -51,7 +52,11 @@ A thread's address may carry what the panel beside it shows:
   an empty, pinned project chat) and **New group…**.
 - **Thread menu** (`src/ThreadMenu.tsx`): right-click a thread, or hold it
   for half a second on a touch screen. Mark as unread or read (U), Rename…
-  (R, inline), Move to group (M: the groups, Not in a group, New group… N),
+  (R, inline), **Share with** (S: the other users on this server, from
+  `GET …/people`, linked personas marked; picking one confirms in a dialog
+  that says the copy is as it is now, that later messages and memories
+  don't go, and that the thread is private when it is; `POST …/share`;
+  not on a project chat or a subagent's thread), Move to group (M: the groups, Not in a group, New group… N),
   **Pin** or **Unpin** (P, top-level threads), **Make project…** (K, a
   top-level thread; confirms in a dialog, since there is no way back),
   **Resolve** or **Reopen** (E, a project's thread), Hide or Unhide (H), and
@@ -154,8 +159,20 @@ A thread's address may carry what the panel beside it shows:
   tokens. A thread mention (`[t:<id>]`, `[e:<id>#<n>]`) in a memory's text or
   history shows as a link with the thread's current title, as in her
   messages.
+- **Notifications** (`src/Notifications.tsx`; docs/ux.md §6 "Anything
+  waiting for the user"): the first section of Settings, one list from
+  `GET …/notifications`. Chips filter by type (All with the count, Needs a
+  decision, then the types that exist now); Sort offers Newest, Oldest, By
+  type and By pool (the last two group the rows under eyebrows); Where
+  narrows to a pool. Each row has its kind, pool and time, Open thread or
+  Open where the item leads, and its actions as buttons (an action that
+  answers with a thread goes there). Checkboxes select rows for the bulk
+  bar: Act on selected when every selected row's first action is the same,
+  and Dismiss (Dismiss or Decline per row). Twenty rows at a time, with
+  Show more. The welcome page shows the first four decisions in a card
+  with All N.
 - **Settings** (`src/Panel.tsx`): a page with its sections listed at the
-  left (a scrolling row on a phone): Profile (name, pronouns, accent colour,
+  left (a scrolling row on a phone): Notifications, Profile (name, pronouns, accent colour,
   monogram), Appearance (theme), Unlock and lock (saved credentials, stay
   unlocked after logout, and `lyricad`'s warning when the two contradict),
   Password, Your personas (linking a separate persona needs both passwords),

@@ -36,6 +36,9 @@ export interface NewEntry {
   text: string;
 }
 
+/** An entry as a share carries it between pools. */
+export interface ExportedEntry extends NewEntry { createdAt: string }
+
 export interface StoredEntry {
   /** `e:<thread>#<n>`, or the original entry's ID for an exported copy. */
   id: string;
@@ -645,6 +648,25 @@ export class PoolStore extends PoolReader {
       this.copyEntries(source.id, copy.id);
       return copy;
     });
+  }
+
+  /** A thread's entries as they are stored, oldest first: what a share carries to another user. */
+  exportEntries(threadId: string): ExportedEntry[] {
+    this.mustThread(threadId);
+    return (this.db.prepare("SELECT pi_id, role, data, text, created_at FROM entries WHERE thread = ? ORDER BY n").all(threadId) as
+      { pi_id: string; role: string; data: string; text: string; created_at: string }[])
+      .map((r) => ({ piId: r.pi_id, role: r.role, data: JSON.parse(r.data), text: r.text, createdAt: r.created_at }));
+  }
+
+  /**
+   * Stores exported entries in an empty thread of this pool, keeping their
+   * times. Unlike `copyEntries`, each is a new entry here (indexed unless the
+   * thread is unlogged): a thread shared from another user's pool is this
+   * pool's own from then on.
+   */
+  importEntries(threadId: string, entries: ExportedEntry[]): void {
+    if ((this.db.prepare("SELECT count(*) AS c FROM entries WHERE thread = ?").get(threadId) as { c: number }).c) throw new Error("entries are imported only into an empty thread");
+    this.tx(() => { for (const e of entries) this.appendEntry(threadId, { piId: e.piId, role: e.role, data: e.data, text: e.text }, e.createdAt); });
   }
 
   /**

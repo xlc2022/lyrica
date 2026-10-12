@@ -1140,6 +1140,54 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   await noHorizontalScroll(page);
 });
 
+test("Share with sends a copy; the recipient sees it in Notifications and adds it to Private", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const pronouns = { subj: "they", obj: "them", poss: "their", possPro: "theirs", refl: "themself" };
+  await page.evaluate(async ([path, data]) => {
+    const r = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
+    if (!r.ok && r.status !== 400) throw new Error(`${path}: ${r.status} ${await r.text()}`);
+  }, [`/api/u/${userId}/admin/users`, { login: "sam", password: "pw-sam", displayName: "Sam", pronouns, admin: false }] as const);
+  // Li's thread with one exchange.
+  const t = await page.evaluate(async ([uid]) => {
+    const r = await fetch(`/api/u/${uid}/threads`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pool: "general", title: "Seed order" }) });
+    const th = (await r.json()) as { id: string };
+    await fetch(`/api/u/${uid}/threads/general/${encodeURIComponent(th.id)}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "beans and squash" }) });
+    return th.id;
+  }, [userId] as const);
+  await page.goto(`/#/u/${userId}/t/general/${encodeURIComponent(t)}`);
+  await expect(page.getByText("You said: beans and squash").last()).toBeVisible({ timeout: 15_000 });
+  // On a phone the sidebar is an overlay: open it when its user button isn't showing.
+  const openSide = async () => { if (phone(page) && !(await page.getByRole("button", { name: /Switch user/ }).isVisible())) await page.getByRole("button", { name: "Show threads" }).click(); };
+  // Share with › Sam, confirm.
+  await openSide();
+  await page.getByRole("link", { name: "Seed order" }).first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Share with" }).click();
+  await page.getByRole("menuitem", { name: "Sam" }).click();
+  await expect(page.getByRole("heading", { name: "Send a copy to Sam?" })).toBeVisible();
+  await page.getByRole("button", { name: "Send a copy" }).click();
+  await expect(page.getByRole("heading", { name: "Send a copy to Sam?" })).toBeHidden();
+  // Sam logs in: the sidebar counts one, the page shows the share, Add to Private opens the copy.
+  await openSide();
+  await page.getByRole("button", { name: /Switch user/ }).click();
+  await page.getByRole("menuitem", { name: "Log in as another user…" }).click();
+  await page.getByLabel("Login name", { exact: true }).fill("sam");
+  await page.getByLabel("Password", { exact: true }).fill("pw-sam");
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page.getByText("Switch user")).toBeAttached();
+  await openSide();
+  const link = page.getByRole("link", { name: /^Notifications/ });
+  await expect(link.locator(".count")).toHaveText("1");
+  await link.click();
+  const row = page.locator(".nrow", { hasText: "Li shared “Seed order” with you" });
+  await expect(row).toBeVisible();
+  await row.getByRole("button", { name: "Add to Private" }).click();
+  await expect(page.getByText("You said: beans and squash").last()).toBeVisible();
+  await expect(page).toHaveURL(/\/t\/private\//);
+  await openSide();
+  await expect(page.getByRole("link", { name: /^Notifications/ }).locator(".count")).toHaveCount(0);
+  await noHorizontalScroll(page);
+});
+
 test("no horizontal scrolling and big enough tap targets on a phone", async ({ page, baseURL }) => {
   test.skip(!phone(page), "phone only");
   const userId = await enter(page, baseURL!);

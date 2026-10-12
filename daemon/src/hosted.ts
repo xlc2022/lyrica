@@ -61,6 +61,13 @@ export class ThreadHost {
     });
   }
 
+  /** The permission requests waiting in any of the user's threads. */
+  pending(userId: string): { pool: Pool; threadId: string; request: PermissionRequest }[] {
+    const out: { pool: Pool; threadId: string; request: PermissionRequest }[] = [];
+    for (const t of this.threads.values()) if (t.userId === userId) for (const request of t.permissions) out.push({ pool: t.pool, threadId: t.threadId, request });
+    return out;
+  }
+
   /** The thread's record if it has one now; unlike `get`, never makes one. */
   peek(userId: string, pool: Pool, threadId: string): HostedThread | undefined {
     return this.threads.get(`${userId}/${pool}/${threadId}`);
@@ -304,6 +311,7 @@ export class HostedThread {
 
   /** Waiting for an answer to a permission request. */
   get waiting(): boolean { return this.pending.size > 0; }
+  get permissions(): PermissionRequest[] { return [...this.pending.values()].map((p) => p.request); }
 
   private async run(text: string): Promise<void> {
     this.stopIdle();

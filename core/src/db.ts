@@ -96,6 +96,19 @@ CREATE TABLE IF NOT EXISTS user_links (
   PRIMARY KEY (a, b),
   CHECK (a < b)
 );
+-- A thread one user sent to another (Share with), held here until the recipient adds it to a
+-- pool or declines: each user's pools open only with their own key, and self.db is the one place
+-- both can reach. entries: the conversation as it was sent, as JSON; nothing of the sender's memory.
+-- Accepting or declining deletes the row.
+CREATE TABLE IF NOT EXISTS thread_shares (
+  id         TEXT PRIMARY KEY,
+  from_user  TEXT NOT NULL,
+  to_user    TEXT NOT NULL,
+  title      TEXT,
+  unlogged   INTEGER NOT NULL,
+  entries    TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
 -- Global settings by key, such as the sleep time.
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,

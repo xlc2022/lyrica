@@ -252,6 +252,37 @@ Each active thread is one Pi session from `openThreadSession`, with
   their parent's `delegate` cards. Memory search honours the same pool filters; `?all=1` ignores
   them in both.
 
+## Share with and Notifications
+
+`core/src/shares.ts`, `daemon/src/notifications.ts`; DESIGN.md "Where
+things are".
+
+- **Share with.** `POST …/threads/:pool/:threadId/share` with the recipient's
+  user ID (from `GET …/people`, the other users on the server with their
+  names and whether they are a linked persona) copies the thread's entries
+  as they are into `thread_shares` in `self.db`, the one place both users
+  can reach, since each user's pools open only with their own key. A
+  project chat or a subagent's thread is refused. The recipient's
+  `POST …/shares/:shareId/accept` with a pool creates a thread there with
+  the title, imports the entries (indexed in that pool, so she remembers it
+  there), and deletes the share; `DELETE …/shares/:shareId` declines and
+  deletes it. The sender's later messages never reach the copy, and nothing
+  of the sender's memory goes with it. Only the recipient can accept or
+  decline.
+- **Notifications.** `GET …/notifications?type=&scope=&sort=&offset=&limit=`
+  is one list over what waits for the user, built from where each thing
+  lives: shares, permission requests in hosted threads, child thread updates
+  and threads waiting on them, her items from the night, her persona
+  suggestions, and, for administrators, persona changes to approve. Each
+  item has its type, pool, time, whether it is a decision, where it leads,
+  and its actions as requests the UI sends as they are; `total` counts the
+  filtered items, `waiting` the decisions over everything (the sidebar's
+  count), `types` the types present. `type=decision` keeps decisions; sorts
+  are newest, oldest, type and scope; `limit` goes up to 200.
+  `POST …/threads/:pool/:threadId/seen` marks a child thread's updates seen
+  without opening it. Not in the list yet: downloads, clean-up items, image
+  models to review, host problems.
+
 ## The event stream
 
 `GET …/threads/:pool/:threadId/events` is one SSE stream per thread. It

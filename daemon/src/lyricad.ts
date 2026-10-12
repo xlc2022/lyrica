@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, SystemdCredentials, ThreadPrefs, Users, Workspace,
+  isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, SystemdCredentials, ThreadPrefs, ThreadShares, Users, Workspace,
   type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
 } from "@lyrica/core";
 import { Delegation, Sleep, type Limits, type SleepLimits } from "@lyrica/extension";
@@ -94,6 +94,8 @@ export interface Services {
   web: WebAccess;
   /** The user's own groups and unread marks on threads, in user.db. */
   prefs: ThreadPrefs;
+  /** Threads shared with a user, waiting in self.db for them to add or decline. */
+  shares: ThreadShares;
 }
 
 const DEFAULT_WEB = fileURLToPath(new URL("../../web/dist", import.meta.url));
@@ -248,7 +250,8 @@ export class Lyricad {
     const proposals = new PersonaProposals(keyring.self(), users, persona);
     const sleep = new Sleep({ users, memory, models, persona, proposals, hasKey: (id) => keyring.hasUserKey(id), cwd, limits: this.opts.sleep, log: this.log });
     const prefs = new ThreadPrefs((id) => users.openUserDb(id));
-    this.services = { users, memory, models, workspace, persona, proposals, delegation, children, projects, watcher, sleep, host, web, prefs };
+    const shares = new ThreadShares(keyring.self());
+    this.services = { users, memory, models, workspace, persona, proposals, delegation, children, projects, watcher, sleep, host, web, prefs, shares };
     await web.resume();
     for (const u of users.all()) {
       if (keyring.loadSavedKey(u.id)) {
