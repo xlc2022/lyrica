@@ -9,7 +9,8 @@ Docker Compose stack that Lyrica reaches over mutual TLS after pairing.
 ## Install
 
 The machine needs:
-- Debian or Ubuntu (other Linux distributions should work), with iptables;
+- Debian or Ubuntu (other Linux distributions should work), with iptables,
+  or NixOS (see "On NixOS" below);
 - the GPU driver;
 - Docker with the compose plugin, and its iptables firewall backend (the
   default). Podman isn't supported;
@@ -30,6 +31,38 @@ host/install.sh
 
 To upgrade, or to change a setting, run it again: `git pull && host/install.sh`.
 Options: `host/install.sh --help`.
+
+### On NixOS
+
+NixOS can't have packages or units installed by a script, so the flake's
+`model-host` module declares what `install.sh` needs: Docker (iptables
+backend), the GPU driver, `iptables`, `git` and `curl`, the models folder,
+and `lyrica-host-egress.service`. Add it to the machine's flake
+configuration, beside `services.lyrica` if Lyrica runs there too:
+
+```nix
+inputs.lyrica.url = "github:xlc2022/lyrica";
+# in nixosSystem's modules:
+lyrica.nixosModules.model-host
+{
+  services.lyrica-host.enable = true;
+  services.lyrica-host.gpu = "nvidia";      # or "amd", or "none"
+  services.lyrica-host.checkout = "/srv/lyrica-host"; # where you clone the repo
+  nixpkgs.config.allowUnfree = true;        # NVIDIA's driver is unfree
+  users.users.you.extraGroups = [ "docker" ]; # the user who runs install.sh
+}
+```
+
+Then `nixos-rebuild switch`, clone the repo to `checkout` (never
+`/opt/lyrica`, which is lyricad's), and run `host/install.sh` from it as on
+Debian. With `gpu = "nvidia"`, the driver
+uses NVIDIA's open kernel modules (Turing or newer; set
+`hardware.nvidia.open = false` for older cards) and Docker reaches the GPUs
+through the container toolkit's CDI devices: `install.sh` sees the CDI spec
+and adds `compose.cdi.yaml`. With `gpu = "amd"`, `amdgpu` loads at boot;
+ROCm and Vulkan come inside the images. In a VM, pass the whole GPU through
+(on Proxmox, a PCI device with All Functions and PCI-Express on a q35
+machine). Upgrading is the same `git pull && host/install.sh`.
 
 ### AMD GPUs
 
@@ -243,7 +276,9 @@ revoked. A revoked server must pair again.
   digest. `compose.nvidia.yaml` uses CUDA images, `compose.amd.yaml` ROCm,
   and `compose.vulkan.yaml` Vulkan (llama.cpp only); `install.sh` picks one,
   and for ROCm adds `compose.hsa.yaml` for `--hsa-override` and
-  `compose.apu.yaml` (unified memory) on an APU alone. They log nothing
+  `compose.apu.yaml` (unified memory) on an APU alone. For NVIDIA without
+  Docker's nvidia runtime (NixOS), `compose.cdi.yaml` swaps the GPU
+  reservations for CDI devices. They log nothing
   (Docker's `none` log driver).
   - llama.cpp runs in router mode. host-api writes its preset file (each
     model's file, GPU and context), then loads and unloads models through

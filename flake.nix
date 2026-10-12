@@ -31,6 +31,9 @@
         services.lyrica.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.lyrica;
       };
 
+      # The model host's prerequisites (host/README.md, "On NixOS").
+      nixosModules.model-host = ./nix/host-module.nix;
+
       checks.${system} = {
         package = self.packages.${system}.lyrica;
         # A whole NixOS system with the module on: it evaluates and builds.
@@ -46,6 +49,24 @@
             }
           ];
         }).config.system.build.toplevel;
+        # A machine with both modules and the NVIDIA driver: it evaluates.
+        # Only evaluated, so CI never builds the unfree driver.
+        model-host = pkgs.writeText "lyrica-model-host-system" (builtins.unsafeDiscardStringContext
+          (nixpkgs.lib.nixosSystem {
+            inherit system;
+            modules = [
+              self.nixosModules.default
+              self.nixosModules.model-host
+              {
+                services.lyrica.enable = true;
+                services.lyrica-host.enable = true;
+                nixpkgs.config.allowUnfree = true;
+                boot.loader.grub.enable = false;
+                fileSystems."/" = { device = "/dev/null"; fsType = "ext4"; };
+                system.stateVersion = "26.05";
+              }
+            ];
+          }).config.system.build.toplevel.drvPath);
         # Everything a CI run builds and fetches, in one path: the nix job keeps
         # the last 10 of these on each runner and collects the rest.
         roots = pkgs.linkFarm "lyrica-ci-roots" {
