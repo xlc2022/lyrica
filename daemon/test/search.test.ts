@@ -79,6 +79,21 @@ describe("message search", () => {
     await me.patch(`${mu}/me/display`, { showPrivate: true, showHidden: true });
     expect(where(await find("quokka"))).toEqual(["private/Diary#1", "general/Garden#2", "general/Garden#1", "general/Old plans#1"]);
     await me.patch(`${mu}/me/display`, { showHidden: false });
+    // Only projects and No projects as the list has them: a project's own threads go with its chat.
+    const project = (await me.post<ThreadSummary>(`${mu}/threads`, { pool: "general", title: "Burrow", project: true })).body;
+    say(d, user.id, "general", project.id, "user", "A wombat burrow plan.", "2026-09-20T08:00:00.000Z");
+    const ov = d.services!.memory.openOwnerView(user.id);
+    let dig: string;
+    try { dig = ov.general.createThread({ interface: "web", parent: project.id, child: true, title: "Dig" }).id; } finally { ov.close(); }
+    say(d, user.id, "general", dig, "user", "Dig the wombat burrow deeper.", "2026-09-21T08:00:00.000Z");
+    expect(where(await find("wombat"))).toEqual(["general/Dig#1", "general/Burrow#1"]);
+    await me.patch(`${mu}/me/display`, { projects: "none" });
+    expect(await find("wombat")).toEqual([]);
+    expect(where(await find("quokka"))).toEqual(["private/Diary#1", "general/Garden#2", "general/Garden#1"]);
+    await me.patch(`${mu}/me/display`, { projects: "only" });
+    expect(where(await find("wombat"))).toEqual(["general/Dig#1", "general/Burrow#1"]);
+    expect(await find("quokka")).toEqual([]);
+    await me.patch(`${mu}/me/display`, { projects: "all" });
 
     // A long sentence is cut around the word, to 160 characters at most, and the marks still point at it.
     const long = await thread("general", "Long");

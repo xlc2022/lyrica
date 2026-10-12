@@ -622,10 +622,10 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   shows; `src/Search.tsx` turns the sidebar's list into result groups, and a
   hit opens its thread at the message (`loadUntil` in `stream.ts`, the
   request kept as Show in thread keeps its own). Every word must match, as a
-  word or a word's start. Not built: the mockup's radios. Open: hits ignore
-  the Sort menu's projects choice (a hit's thread outside the list gets a
-  row drawn from the hit), and **Show more** under a full page of 50 is an
-  addition the brief didn't name.
+  word or a word's start, over what the list shows, the Sort menu's
+  projects choice included. Not built: the mockup's radios. Hits are up to
+  two lines, their time as a message shows it (UI review). **Show more**
+  under a full page of 50 is an addition the brief didn't name.
 - 2026-10-12, PR 18 (context meter): `src/ContextMeter.tsx`, the facts
   line's **Context <n>% ▾** after Group with its popover of parts, Reserve
   and Free, Measured and Last turn; `live.ts` keeps the streamed reading

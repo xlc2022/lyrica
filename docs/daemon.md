@@ -228,7 +228,8 @@ Each active thread is one Pi session from `openThreadSession`, with
   search index recall keeps (`PoolStore.searchMessages`), through the
   owner view. It covers what the thread list shows: the pools the saved
   display turns on, hidden threads only with `showHidden`, web threads but
-  no subagent's; `pool` only narrows. Unlogged entries aren't indexed, so
+  no subagent's, and with Only projects or No projects only the threads
+  under a project chat or only the rest; `pool` only narrows. Unlogged entries aren't indexed, so
   they are never found. Each hit carries its thread, title, message
   number, `who` (`you`, or `agent` for hers, including what she sent from
   another thread and her wake-up notes), the time, and the sentence that

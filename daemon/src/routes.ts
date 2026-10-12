@@ -676,7 +676,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const limit = Math.min(SEARCH_PAGE, Math.max(1, Number(r.query.get("limit") ?? SEARCH_PAGE) || SEARCH_PAGE));
       const before = r.query.get("before") || undefined;
       if ([...q].length < 2 || !pools.length) return { hits: [] };
-      return owner(d, user, (o) => ({ hits: searchMessages(o, pools, q, { limit, before, showHidden: show.showHidden }) }));
+      return owner(d, user, (o) => ({ hits: searchMessages(o, pools, q, { limit, before, showHidden: show.showHidden, projects: show.projects }) }));
     }),
     route("POST", `${u}/threads`, async (r) => {
       const user = d.userFor(r);

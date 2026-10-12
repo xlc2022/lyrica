@@ -990,8 +990,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     recall keeps (`search` in each pool): logged entries only, never one
     written unlogged. Only the user's own pools and what the thread list
     shows: the server reads the saved `Display` itself, leaves out a pool
-    turned off and hidden threads unless `showHidden`, and lists web
-    threads, not subagents'; `pool` narrows, never widens. `q` needs 2
+    turned off and hidden threads unless `showHidden`, follows the
+    projects choice (a thread goes with the row it is nested under), and
+    lists web threads, not subagents'; `pool` narrows, never widens. `q` needs 2
     characters; 50 hits a page, newest first, `before` a hit's `at`. The
     snippet is the sentence holding most of the words, at most 160
     characters, without citations; message text is never logged;

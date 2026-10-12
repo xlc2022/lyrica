@@ -98,7 +98,7 @@ function HitGroup({ g, t, userId, current, menu, onOpen }: {
   return (
     <li className="hit-group">
       {t ? <ThreadLink t={t} userId={userId} on={current === `${g.pool}/${g.threadId}`} menu={menu} /> : (
-        // Not in the list as it is shown (the Sort menu's projects choice): the row from the hit.
+        // Not in the list yet (it hasn't reloaded since the thread began): the row from the hit.
         <a className="thread" href={to} aria-current={current === `${g.pool}/${g.threadId}` ? "page" : undefined}>
           {g.pool === "private" ? <PoolLock /> : <span className="pool-dot" aria-hidden="true" />}
           <span className="title">{title}</span>

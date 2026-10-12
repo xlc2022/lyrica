@@ -2,23 +2,31 @@
 // entries, through the owner view, as hits the browser marks without guessing.
 // Message text goes only into the response, never into a log.
 import { FROM_PARENT, WAKEUP, searchWords, stripCitations, type MessageHit, type OwnerView, type Pool } from "@lyrica/core";
-import type { SearchHit } from "./api.ts";
+import type { Display, SearchHit } from "./api.ts";
 
 export const SEARCH_PAGE = 50;
 export const SNIPPET_MAX = 160;
 
 /**
- * Up to `limit` hits over `pools`, newest first: web threads only (the
- * thread list's), hidden ones only with `showHidden`, never a subagent's.
+ * Up to `limit` hits over `pools`, newest first, in the threads the list
+ * shows: web threads, hidden ones only with `showHidden`, never a
+ * subagent's, and with Only projects or No projects, those under a project
+ * chat or not (a thread goes with the row it is nested under).
  */
-export function searchMessages(o: OwnerView, pools: Pool[], query: string, opts: { limit: number; before?: string; showHidden: boolean }): SearchHit[] {
+export function searchMessages(o: OwnerView, pools: Pool[], query: string, opts: { limit: number; before?: string; showHidden: boolean; projects: Display["projects"] }): SearchHit[] {
   const words = searchWords(query).map(fold).filter(Boolean);
   if (!words.length) return [];
   return pools.flatMap((pool) => {
     const store = o[pool];
     const threads = new Map(store.listThreads({ includeHidden: opts.showHidden }).filter((t) => t.interface === "web" && !t.subagent).map((t) => [t.id, t]));
-    if (!threads.size) return [];
-    return store.searchMessages(query, { limit: opts.limit, before: opts.before, threads: [...threads.keys()] })
+    const top = (id: string) => {
+      let t = threads.get(id)!;
+      while (t.parent && threads.has(t.parent)) t = threads.get(t.parent)!;
+      return t;
+    };
+    const ids = [...threads.keys()].filter((id) => opts.projects === "all" || (opts.projects === "only") === top(id).project);
+    if (!ids.length) return [];
+    return store.searchMessages(query, { limit: opts.limit, before: opts.before, threads: ids })
       .map((m) => toHit(pool, threads.get(m.thread)?.title, m, words));
   }).sort((a, b) => b.at.localeCompare(a.at)).slice(0, opts.limit);
 }
