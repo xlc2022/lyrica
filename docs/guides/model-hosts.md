@@ -18,20 +18,6 @@ dictation choices below come from a benchmark the owner ran on a Windows machine
 with an RTX 3090, outside this stack. Expect the first real install to turn
 something up; the checklist at the end is for that.
 
-## Image calls from conversation
-
-Confirmed, ready recipes can be put in `image.create`, `image.edit` and
-`image.upscale` ordered task lists. The one `image` tool calls those recipes
-through `core/models`, keeps their defaults unless size or count is supplied,
-and never chooses parts or LoRAs itself. Fast and quality use the same host
-list and recipe defaults. A workstation followed by the 3090 is an ordered
-fallback, and private threads keep every attempt local. SeedVR2 recipes handle
-upscaling. Results return as images and are saved without prompt metadata in
-the encrypted thread folder. Portrait consent is checked before any cloud
-fallback. The [getting-started guide](getting-started.md#image-models) covers
-OpenAI setup and offline Chromium diagrams on the lyricad host, separate from
-this GPU stack. Real GPU image jobs still await the first deployment check.
-
 ## What a host is to Lyrica
 
 - An **endpoint** of kind local, with a list of addresses tried in order
@@ -317,6 +303,18 @@ profile, so a host is how private threads get a model at all. Each user
 picks their own voice and speed per language with the speech model's
 **Settings**, in its host's "N models" list under Models, Hosts and
 endpoints; without one, the model's first voice for the language is used.
+
+## Images
+
+Confirmed, ready recipes can go in the `image.create`, `image.edit` and
+`image.upscale` lists, like any other model (see "Use it from Lyrica").
+Her `image` tool keeps a recipe's defaults unless she gives a size or
+count, and never picks parts or LoRAs itself. Each list is an ordered
+fallback, and private threads only use local models. SeedVR2 recipes
+upscale. Before any cloud fallback, a portrait photo's cloud setting is
+checked. OpenAI setup and offline diagrams are in the
+[getting-started guide](getting-started.md#image-models). No real GPU image
+job has run yet: item 9 of the checklist below.
 
 ## More than one host
 

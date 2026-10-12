@@ -535,40 +535,44 @@ the local profile only. See [docs/models.md](../models.md).
 
 ### Image models
 
-The `image` tool creates and edits through OpenAI or confirmed recipes on a
-paired model host, and upscales through host recipes. Put models in the
-`image.create`, `image.edit` and `image.upscale` task lists; private and
-local-only threads always use the Local lists. Order workstation recipes
-before the 3090's for fallback. Hosts keep recipe defaults for both fast and
-quality; OpenAI uses low or high quality.
+Her `image` tool creates and edits pictures through OpenAI or through
+confirmed recipes on a paired model host, and upscales through host recipes
+only. It uses the `image.create`, `image.edit` and `image.upscale` task
+lists; private and local-only threads always use the local profile's. Each
+list is an ordered fallback, so put the faster host's recipes first. Hosts
+keep their recipe defaults for both fast and quality; OpenAI uses low or
+high quality. Results are saved in the encrypted thread folder, with no
+prompt metadata.
 
-For OpenAI images, add an endpoint in Models → Hosts and endpoints: Name
-`openai-images`, Kind cloud, Base URL `https://api.openai.com/v1`, and the API
-key in the password field. A ChatGPT subscription endpoint is separate and
-does not supply this image API. If discovery doesn't report image capabilities,
-use the authenticated HTTP API to add or update the offering:
+For OpenAI, add an endpoint under Models, Hosts and endpoints: Name
+`openai-images`, Kind cloud, Base URL `https://api.openai.com/v1`, and the
+API key. A ChatGPT subscription endpoint doesn't supply this API. If
+discovery doesn't mark the model as able to make and edit images, record it
+through the HTTP API (signed in, with an `Origin` matching her address);
+there is no CLI flag for it yet:
 
 ```text
-POST /api/u/:userId/endpoints/:endpointId/models
+POST /api/u/<user-id>/endpoints/<endpoint-id>/models
 { "modelId": "gpt-image-1", "image": true, "edit": true }
 ```
 
-Every API mutation needs the login cookie and an Origin matching the daemon.
-Use its returned offering ID in the Cloud or Custom image task list. The
-create/edit task drawers in Models → Tasks can choose it. Upscale is host-only;
-its list can be set with `PUT …/profiles/local/image.upscale` and
-`{ "models": [{ "offeringId": "<id>" }] }`. Results live in the encrypted
-thread folder, with no prompt metadata. Portrait upload and cloud policy APIs
-are in [daemon.md](../daemon.md#images-and-portrait-photos); dedicated portrait
-controls in the web UI are separate work.
+Then put models in the lists, under Models, Tasks, or from a terminal:
 
-Headless Chromium and fonts already ship on the lyricad host: the NixOS
-module's default `sandboxPackages` includes them and mounts their closure
-read-only; Debian/Ubuntu's `install.sh` installs the pinned headless shell.
-Keep Chromium and fonts when overriding `sandboxPackages`. Rebuild NixOS or
-rerun `install.sh` for a host that predates those packages. Exact layouts use
-the [offline HTML/SVG render command](../workspace.md#images-and-portrait-photos),
-with Internet and Local services off and allowed hosts empty; no GPU is needed.
+```sh
+lyrica admin models profile set cloud image.create openai-images/gpt-image-1 --user ada
+lyrica admin models profile set cloud image.edit openai-images/gpt-image-1 --user ada
+lyrica admin models profile set local image.upscale '<host>/<recipe>' --user ada
+```
+
+Portrait photos and their cloud setting are set through the API for now:
+[daemon.md](../daemon.md#images-and-portrait-photos).
+
+Diagrams with exact layouts render offline with the headless Chromium and
+fonts already in her sandbox (`install.sh` installs them; on NixOS they are
+in the default `sandboxPackages`, so keep them if you override it). An
+install from before them gets them on its next `install.sh` run or rebuild.
+No GPU is needed: see
+[docs/workspace.md](../workspace.md#images-and-portrait-photos).
 
 ## Give her folders and a network
 
@@ -825,9 +829,10 @@ the SSH ones, and `ssh remove <name>` takes one away.
   next unlock; if another release is running by then (a rebuild or a
   rollback), that probation just ends. An install from before the unit
   existed gets it on its next `install.sh` run, NixOS on its next
-  rebuild; an Update doesn't add it. The Updates page shows each step; the updater's state is in
-  `/var/lib/lyrica-update`. An update installs no packages: when a release
-  needs a new one, install it by hand or run `install.sh` from a checkout.
+  rebuild; an Update doesn't add it. The Updates page shows each step;
+  the updater's state is in `/var/lib/lyrica-update`. An update installs
+  no packages: when a release needs a new one, install it by hand or run
+  `install.sh` from a checkout.
 - **Rollback:** under Updates, **Roll back** in a kept release's ⋯ goes
   back to it. As root, `lyrica-rollback` goes back to the previous
   release, or `lyrica-rollback <commit>` to another kept one. When that
