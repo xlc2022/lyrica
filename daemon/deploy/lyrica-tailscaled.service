@@ -1,0 +1,43 @@
+# Her own tailscaled: she is a device of her own on the tailnet, with her own
+# address and name, whatever the host does. Userspace networking, so no root
+# and no TUN device; the host's own Tailscale, if any, is untouched.
+# daemon/deploy/install.sh installs it as /etc/systemd/system/lyrica-tailscaled.service.
+# lyricad drives it with `tailscale --socket /run/lyrica-tailscale/tailscaled.sock`.
+[Unit]
+Description=Tailscale for Lyrica (her own device, userspace networking)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=lyrica
+Group=lyrica
+# --port=0 picks a free UDP port, so it never fights the host's tailscaled over 41641.
+ExecStart=/usr/sbin/tailscaled --tun=userspace-networking --state=/var/lib/lyrica-tailscale/tailscaled.state --socket=/run/lyrica-tailscale/tailscaled.sock --port=0
+# Its node key lives here; lyricad never keeps a copy.
+StateDirectory=lyrica-tailscale
+StateDirectoryMode=0700
+# The socket, for lyricad (the same user).
+RuntimeDirectory=lyrica-tailscale
+RuntimeDirectoryMode=0700
+CacheDirectory=lyrica-tailscale
+CacheDirectoryMode=0700
+Environment=HOME=/var/lib/lyrica-tailscale
+UMask=0077
+# It needs none of what lyricad's sandboxes need, so it is hardened fully.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

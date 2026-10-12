@@ -9,6 +9,31 @@ export const CORE_FILES = ["SOUL.md", "STYLE.md", "REGISTER.md"] as const;
 const TOPIC_DIR = "persona_topics";
 const VALID_PATH = /^(persona_topics\/)?[A-Za-z0-9_.-]+\.md$/;
 
+/** Her name when none is set. */
+export const DEFAULT_NAME = "Lyrica";
+const NAME_KEY = "self.name";
+
+/** Her name for this deployment (self.db `settings` `self.name`), default Lyrica. */
+export function selfName(self: Db): string {
+  const row = self.prepare("SELECT value FROM settings WHERE key = ?").get(NAME_KEY) as { value: string } | undefined;
+  return row?.value || DEFAULT_NAME;
+}
+
+/** Checks and trims a name: 1 to 40 characters on one line. */
+export function checkName(name: unknown): string {
+  const n = String(name ?? "").trim();
+  if (!n || [...n].length > 40) throw new Error("her name is 1 to 40 characters");
+  if (/[\p{Cc}\p{Zl}\p{Zp}]/u.test(n)) throw new Error("her name is one line of text");
+  return n;
+}
+
+export function setSelfName(self: Db, name: string): string {
+  const n = checkName(name);
+  self.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(NAME_KEY, n);
+  return n;
+}
+
+
 export interface Topic {
   id: string;
   summary: string;
@@ -78,7 +103,7 @@ export class PersonaStore {
   read(): Persona {
     const files = this.files();
     return {
-      core: CORE_FILES.filter((p) => files.has(p)).map((path) => ({ path, text: files.get(path)! })),
+      core: CORE_FILES.filter((p) => files.has(p)).map((path) => ({ path, text: path === "REGISTER.md" ? named(files.get(path)!, selfName(this.db)) : files.get(path)! })),
       topics: parseMatrix(files.get(MATRIX) ?? "").map((t) => ({
         id: t.id,
         summary: t.summary,
@@ -136,6 +161,11 @@ export class PersonaStore {
     this.db.prepare("INSERT INTO persona_revisions (path, text, author, created_at) VALUES (?, ?, ?, ?)")
       .run(path, text, author, new Date().toISOString());
   }
+}
+
+/** REGISTER.md with her set name in its `Name:` line. The stored file is left as it is. */
+function named(register: string, name: string): string {
+  return register.replace(/^Name:.*$/m, () => `Name: ${name}`);
 }
 
 interface MatrixTopic {

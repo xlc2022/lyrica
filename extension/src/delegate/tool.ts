@@ -5,7 +5,7 @@ import { setToolsOff } from "../gate.ts";
 import { toolGuidance, type ThreadContext } from "../index.ts";
 import { syncEntries } from "../record.ts";
 import { registerMemoryTools } from "../tools.ts";
-import { SUBAGENT_PREAMBLE } from "./roles.ts";
+import { subagentPrompt } from "./roles.ts";
 import { DELEGATE_MESSAGE, outcome, Stopped, type Delegation, type Deliver, type Request, type Run, type SubagentHooks } from "./runs.ts";
 
 const text = (t: string, details?: unknown) => ({ content: [{ type: "text" as const, text: t }], details });
@@ -182,16 +182,16 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
  * A subagent's own extension: the preamble and its role's prompt, read-only
  * memory, ask_parent, and only the tools its role allows.
  */
-export function createSubagentExtension(thread: ThreadContext, role: Role, hooks: SubagentHooks, allowed: Set<string>): ExtensionFactory {
+export function createSubagentExtension(thread: ThreadContext, role: Role, hooks: SubagentHooks, allowed: Set<string>, name = "Lyrica"): ExtensionFactory {
   const who = () => ({ threadId: thread.threadId, user: { id: thread.user.id, profile: thread.user.profile } });
   return (pi) => {
     registerMemoryTools(pi, thread.view, who, { readOnly: true });
     pi.registerTool({
       name: "ask_parent",
-      label: "Ask Lyrica",
-      description: "Stop and ask Lyrica one question you can't go on without; her answer arrives as your next message. "
+      label: `Ask ${name}`,
+      description: `Stop and ask ${name} one question you can't go on without; her answer arrives as your next message. `
         + "With wait: false, send her a short note instead and keep working.",
-      promptSnippet: "ask Lyrica a question you can't go on without, then stop; or send her a note and keep working",
+      promptSnippet: `ask ${name} a question you can't go on without, then stop; or send her a note and keep working`,
       parameters: Type.Object({
         question: Type.String({ description: "The question, or the note." }),
         wait: Type.Optional(Type.Boolean({ description: "true (the default) stops until she answers; false sends a note and you keep working." })),
@@ -211,7 +211,7 @@ export function createSubagentExtension(thread: ThreadContext, role: Role, hooks
     pi.on("before_agent_start", (event) => {
       const o = event.systemPromptOptions;
       const tools = toolGuidance(o);
-      o.customPrompt = `${SUBAGENT_PREAMBLE}\n\n${role.prompt}`;
+      o.customPrompt = subagentPrompt(role, name);
       o.sections = { ...(tools ? { tools } : {}), ...o.sections };
     });
   };

@@ -57,7 +57,7 @@ export class Keyring {
   }
 
   async unlockSelf(passphrase: string): Promise<void> {
-    if (!this.selfExists()) throw new Error(`${this.selfPath} does not exist; run "lyrica admin init"`);
+    if (!this.selfExists()) throw new Error(`${this.selfPath} does not exist; set Lyrica up first`);
     try {
       this.openSelf(passphrase);
     } catch {
@@ -74,6 +74,12 @@ export class Keyring {
   self(): Db {
     if (!this.selfDb) throw new Locked("self.db is locked");
     return this.selfDb;
+  }
+
+  /** Closes self.db, if open: it is locked again. */
+  closeSelf(): void {
+    this.selfDb?.close();
+    this.selfDb = undefined;
   }
 
   async unlockUser(userId: string, password: string): Promise<void> {

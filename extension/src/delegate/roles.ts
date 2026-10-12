@@ -4,12 +4,17 @@ import type { Role } from "@lyrica/core";
 // Copyright (c) 2026 Nico Bailon, MIT License. Changed for Lyrica: no
 // supervisor bridge, progress files or output files; questions go through ask_parent.
 
-/** Said to every subagent, before its role's prompt. */
+/** Said to every subagent, before its role's prompt, with her set name in place of Lyrica. */
 export const SUBAGENT_PREAMBLE = `You are a subagent: Lyrica handed you one task. You see none of her conversation, only the task.
 Do it with the tools you have. Your final reply goes back to her as it is, so make it the result itself: what you found or did, briefly, with file paths, line numbers and memory IDs where they help.
 You can search and read her memory, but not add to it.
 If you can't go on without a decision that isn't yours to make, call ask_parent with one clear question and stop. Don't end your final reply with a question instead. To tell her something she should know now, call ask_parent with wait: false and keep working.
 Messages come from Lyrica, unless one says it is from the person she works with: then it is theirs.`;
+
+/** The preamble and a role's prompt, with her set name in place of Lyrica. */
+export function subagentPrompt(role: Role, name = "Lyrica"): string {
+  return `${SUBAGENT_PREAMBLE}\n\n${role.prompt}`.replace(/\bLyrica\b/g, () => name);
+}
 
 const READ = ["read", "bash", "recall", "read_memory"];
 
