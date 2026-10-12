@@ -545,10 +545,10 @@ the header's "<n> pinned ▾" popover. Remaining, per the mockup:
 
 ### The speech drawer in the remaining places
 
-The speaking model's Settings drawer (VoiceDrawer in Models.tsx: a voice
-per language, speed, source words, Reset) opens from an endpoint's model
-list. Remaining: the same drawer from Text models' copy rows for a
-speak-capable copy (PR C above) and from the thread drawer's Read aloud
+The speaking model's Settings drawer (VoiceDrawer in ModelsFrame.tsx: a
+voice per language, speed, source words, Reset) opens from an endpoint's
+model list and from Text models' copy rows for a speak-capable copy (PR C
+above). Remaining: the same drawer from the thread drawer's Read aloud
 select (a small Settings link after the select, opening the drawer for the
 chosen model, or the profile's when none is chosen). No new strings;
 docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
@@ -618,8 +618,9 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   for sleep or the pools changes; the privacy boundary note is in DESIGN.
 - 2026-10-12, PR 22 (text models): the Text models tab,
   `src/TextModels.tsx`, its pure parts in `src/library.ts` (the group warn
-  lines, tested in `web/test/library.test.ts`); `Frame` and a few helpers
-  are exported from `src/Models.tsx`, an import cycle only functions cross.
+  lines, tested in `web/test/library.test.ts`); `Frame`, the area's
+  context and words, the small helpers and VoiceDrawer moved to
+  `src/ModelsFrame.tsx`, so `TextModels.tsx` never imports `Models.tsx`.
   The tab reads the whole library at once, 200 a request, and filters in
   the page, since the facts line and the Starred chip need every entry; a
   star stars or unstars every copy. `HttpError.code` carries the host's

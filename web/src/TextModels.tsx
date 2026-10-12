@@ -11,7 +11,7 @@ import {
 import { Icon } from "./icons.tsx";
 import { groupWarnings, type LibraryCopy as Copy } from "./library.ts";
 import { RowMenu } from "./Machines.tsx";
-import { canEdit, Frame, gb, hostOf, Kind, plural, useWords, VoiceDrawer, type MCtx } from "./Models.tsx";
+import { canEdit, Frame, gb, hostOf, Kind, plural, useWords, VoiceDrawer, type MCtx } from "./ModelsFrame.tsx";
 import { ConfirmDialog, ErrorText, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 type Entry = LibraryEntry;

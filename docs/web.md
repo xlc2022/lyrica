@@ -230,7 +230,8 @@ A thread's address may carry what the panel beside it shows:
   the Sort menu is left out: its items, runs and **Sleep now** choice, with the
   same "<Pool> is hidden. Turn on <Pool> in the Sort menu to see it." line as
   Memory, and the sidebar badge counts only the pools shown.
-- **Models** (`src/Models.tsx`; [models.md](models.md); docs/ux.md §6
+- **Models** (`src/Models.tsx`, its frame and what the tabs share in
+  `src/ModelsFrame.tsx`; [models.md](models.md); docs/ux.md §6
   "Models, hosts, downloads, clean-up"): `#/u/<user>/models[/<tab>]`, from
   the sidebar's Models link, whose badge counts Clean up's items
   (`GET …/models/cleanup`, reread every 30 s and on focus; nothing probes
