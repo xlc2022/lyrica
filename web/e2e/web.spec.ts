@@ -1840,7 +1840,8 @@ test("Tasks: the table shows each profile's models; a cell's drawer adds, reorde
   await page.locator('[data-cell="cloud:subagent.cheap"]').click();
   const cheap = page.getByRole("complementary", { name: "Edit Cheap subagents" });
   await expect(cheap.getByRole("radio", { name: "Same as" })).toBeDisabled();
-  await expect(cheap.locator("label").filter({ hasText: "Same as" })).toHaveAttribute("title", "Compaction, Titles and Watching threads use this list.");
+  await expect(cheap).toContainText("Compaction, Titles and Watching threads use this list.");
+  await expect(cheap.getByRole("radio", { name: "Same as" })).toHaveAccessibleDescription("Compaction, Titles and Watching threads use this list.");
   await cheap.getByRole("button", { name: "Close" }).click();
 
   // Use Custom instead flips the header and the General column; and back. Each head's sentence is its name's tooltip.

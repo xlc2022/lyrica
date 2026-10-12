@@ -293,7 +293,8 @@ A thread's address may carry what the panel beside it shows:
   only. A cell opens the task's drawer, its title's tooltip naming the
   profile and the threads it serves: **Its own list** or **Same as** a task
   of the same kind (**Task to share with**; a task with followers can't
-  follow, and Same as's tooltip names them), the ordered list with Move up,
+  follow, and a line under the choice names them, which describes the
+  disabled Same as), the ordered list with Move up,
   Move down and Remove (in Custom, "Falls back to cloud from here" where the
   kind changes), and **Add…**, a picker with a search box, group chips and
   only models the task can use; each change is a `PUT

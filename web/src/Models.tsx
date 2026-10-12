@@ -556,7 +556,7 @@ function TaskDrawer({ ctx, p, all, groups, profile, task, onClose }: {
   const move = (i: number, by: number) => { const next = [...list]; [next[i], next[i + by]] = [next[i + by]!, next[i]!]; void saveList(next); };
   const add = (r: ModelRef) => { setPicking(false); setQ(""); void saveList([...list, r]); };
   const about = `${PROFILE_WORD[profile]} profile · ${profile === "local" ? "private and local-only threads" : profile === p.profiles.default ? "general threads by default" : "general threads that choose it"}`;
-  // Why Same as is off: other tasks follow this one.
+  // Why Same as is off: other tasks follow this one. A fact about the list, so it stays in view (a tooltip doesn't show on a phone).
   const followed = followers.length ? `${andList(followers.map((t) => TASK_WORD[t]))} ${followers.length > 1 ? "use" : "uses"} this list.` : undefined;
   let prevKind: string | undefined;
   return (
@@ -567,13 +567,16 @@ function TaskDrawer({ ctx, p, all, groups, profile, task, onClose }: {
       </div>
       <div className="drawer-body">
         {options.length > 0 && (
-          <div className="follow" role="radiogroup" aria-label={`Models for ${name}`}>
-            <label><input type="radio" name="follow" checked={own} disabled={busy} onChange={() => void saveList(listOf(prof, task))} /> Its own list</label>
-            <label title={followed}><input type="radio" name="follow" checked={!own} disabled={busy || followers.length > 0} onChange={() => sel && void save({ same: sel })} /> Same as</label>
-            <select aria-label="Task to share with" value={sel} disabled={own || busy}
-              onChange={(e) => { const t = e.target.value as Task; setTarget(t); if (!own) void save({ same: t }); }}>
-              {options.map((t) => <option key={t} value={t}>{TASK_WORD[t]}</option>)}
-            </select>
+          <div className="follow-block">
+            <div className="follow" role="radiogroup" aria-label={`Models for ${name}`}>
+              <label><input type="radio" name="follow" checked={own} disabled={busy} onChange={() => void saveList(listOf(prof, task))} /> Its own list</label>
+              <label><input type="radio" name="follow" checked={!own} disabled={busy || !!followed} aria-describedby={followed ? "follow-why" : undefined} onChange={() => sel && void save({ same: sel })} /> Same as</label>
+              <select aria-label="Task to share with" value={sel} disabled={own || busy}
+                onChange={(e) => { const t = e.target.value as Task; setTarget(t); if (!own) void save({ same: t }); }}>
+                {options.map((t) => <option key={t} value={t}>{TASK_WORD[t]}</option>)}
+              </select>
+            </div>
+            {followed && <p className="cap" id="follow-why">{followed}</p>}
           </div>
         )}
         <ErrorText error={error} />

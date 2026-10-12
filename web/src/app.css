@@ -1044,8 +1044,10 @@ a.tile:hover { text-decoration: none; border-color: var(--accent); }
 .ttable .cell.other { color: var(--muted); }
 .task-drawer .drawer-body { gap: 12px; }
 .task-drawer .actions { justify-content: start; }
+.follow-block { display: grid; gap: 4px; }
 .follow { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
 .follow label { display: inline-flex; gap: 6px; align-items: center; min-height: var(--tap); }
+.follow-block .cap { margin: 0; }
 .olist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .oentry { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 6px 6px 6px 10px; background: var(--bg); }
 .onum { color: var(--muted); font-size: 13px; }
