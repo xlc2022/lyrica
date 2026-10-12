@@ -32,8 +32,10 @@ export interface SandboxSpec {
   files?: string[];
   /** Loopback TCP ports forwarded to the host's loopback, whatever the services switch says: an SSH machine on 127.0.0.1. */
   forward?: number[];
-  /** Host path of the thread's own clones, mounted read-write at /workspace/repos over whatever the folder holds there. */
+  /** Host path of the thread's own clones, mounted at /workspace/repos over whatever the folder holds there. */
   repos?: string;
+  /** Mount `repos` read-only: a read-only subagent's view of its parent's clones. */
+  reposReadOnly?: boolean;
   /** Added to the command's environment: Git tokens where Workspace.forgeEnv allows them. Never on the command line. */
   env?: Record<string, string>;
   bwrap?: string;
@@ -315,7 +317,7 @@ export class Sandbox implements ExecutionTarget {
       args.push(writable ? "--bind-fd" : "--ro-bind-fd", String(fds.length + 2), dest);
     };
     if (this.spec.workdir) mount(cleanPath(this.spec.workdir), true, WORKDIR);
-    if (this.spec.workdir && this.spec.repos) mount(cleanPath(this.spec.repos), true, `${WORKDIR}/repos`);
+    if (this.spec.workdir && this.spec.repos) mount(cleanPath(this.spec.repos), !this.spec.reposReadOnly, `${WORKDIR}/repos`);
     for (const g of this.grants) mount(g.path, g.writable, g.path, () => this.spec.check?.(g));
     for (const f of this.spec.files ?? []) args.push("--ro-bind", f, f);
 
