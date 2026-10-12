@@ -249,8 +249,8 @@ function Tiles({ ctx, p }: { ctx: MCtx; p: ModelsPage }) {
   const up = p.endpoints.filter((e) => e.state === "up");
   const down = p.endpoints.filter((e) => e.state !== "up");
   const first = down[0];
-  const downLine = !first ? "All reachable"
-    : `${first.name} ${paused(hostOf(p, first.id)) ? "paused" : "unreachable"}${down.length > 1 ? ` +${down.length - 1}` : ""}`;
+  const reach = !first ? { dot: "up", word: "All reachable" }
+    : paused(hostOf(p, first.id)) ? { dot: "away", word: `${first.name} paused` } : { dot: "down", word: `${first.name} unreachable` };
   const general = firstChat(p, p.profiles.default);
   const local = firstChat(p, "local");
   const needGroups = !!(general && "groupId" in general) || !!(local && "groupId" in local);
@@ -264,7 +264,7 @@ function Tiles({ ctx, p }: { ctx: MCtx; p: ModelsPage }) {
       <a className="tile" href={href({ page: "models", userId, tab: "hosts" })} data-tile="endpoints">
         <span className="cap">Endpoints</span>
         <span className="big num">{up.length}<small>of {p.endpoints.length} up</small></span>
-        <span className="cap">{downLine}</span>
+        <span className="cap"><span className={`dot ${reach.dot}`} aria-hidden="true" /> {reach.word}{down.length > 1 && <> +<span className="num">{down.length - 1}</span></>}</span>
       </a>
       <a className="tile" href={href({ page: "models", userId, tab: "tasks" })} data-tile="backend">
         <span className="cap">Backend</span>
@@ -275,8 +275,7 @@ function Tiles({ ctx, p }: { ctx: MCtx; p: ModelsPage }) {
       </a>
       <a className="tile" href={href({ page: "models", userId, tab: "cleanup" })} data-tile="cleanup">
         <span className="cap">Clean up</span>
-        <span className="big num">{cleanup}<small>{cleanup === 1 ? "item" : "items"}</small></span>
-        <span className="cap">{cleanup ? "To decide" : "Nothing to clean up"}</span>
+        <span className="big num" title={cleanup ? "To decide" : "Nothing to clean up"}>{cleanup}<small>{cleanup === 1 ? "item" : "items"}</small></span>
       </a>
     </div>
   );
@@ -354,7 +353,7 @@ function HostRow({ ctx, ep, host }: { ctx: MCtx; ep: Endpoint; host?: Host }) {
 type ProfileName = "cloud" | "local" | "custom";
 type ProfileMap = Partial<Record<Task, ProfileEntry>>;
 
-/** The table's rows, under their eyebrows, each with a one-line hint. */
+/** The table's rows, under their eyebrows, each with a hint that is its name's tooltip (docs/ux.md §4). */
 const TASK_ROWS: { group: string; tasks: { task: Task; hint: string }[] }[] = [
   { group: "Conversation", tasks: [
     { task: "chat", hint: "The main conversation" },
@@ -483,12 +482,12 @@ function Tasks({ ctx }: { ctx: MCtx }) {
             <thead>
               <tr>
                 <th>Task</th>
-                <th><b>Private threads</b>Local profile · local models only</th>
+                <th><b title="Local profile · local models only">Private threads</b></th>
                 <th>
-                  <b>General threads</b>{G} profile · {general === "custom" ? "local and cloud, falls back across" : "cloud models only"}
+                  <b title={`${G} profile · ${general === "custom" ? "local and cloud, falls back across" : "cloud models only"}`}>General threads</b>
                   <div className="actions"><button type="button" className="sm" disabled={busy} onClick={() => void useOther()}>Use {O} instead</button></div>
                 </th>
-                {showOther && <th><b>{O} profile</b>Not the default. A general thread can switch to it.</th>}
+                {showOther && <th><b title="Not the default. A general thread can switch to it.">{O} profile</b></th>}
               </tr>
             </thead>
             <tbody>
@@ -497,7 +496,7 @@ function Tasks({ ctx }: { ctx: MCtx }) {
                   <tr className="tgroup"><td colSpan={cols}><span className="eyebrow">{g.group}</span></td></tr>
                   {g.tasks.map(({ task, hint }) => (
                     <tr key={task} data-task={task}>
-                      <td className="task"><b>{TASK_WORD[task]}</b><div>{hint}</div></td>
+                      <td className="task"><b title={hint}>{TASK_WORD[task]}</b></td>
                       {cell("local", task, "Private threads")}
                       {cell(general, task, "General threads")}
                       {showOther && cell(other, task, `${O} profile`)}
@@ -556,26 +555,25 @@ function TaskDrawer({ ctx, p, all, groups, profile, task, onClose }: {
   const saveList = (next: ModelRef[]) => save({ models: next });
   const move = (i: number, by: number) => { const next = [...list]; [next[i], next[i + by]] = [next[i + by]!, next[i]!]; void saveList(next); };
   const add = (r: ModelRef) => { setPicking(false); setQ(""); void saveList([...list, r]); };
-  const cap = `${PROFILE_WORD[profile]} profile · ${profile === "local" ? "private and local-only threads" : profile === p.profiles.default ? "general threads by default" : "general threads that choose it"}`;
+  const about = `${PROFILE_WORD[profile]} profile · ${profile === "local" ? "private and local-only threads" : profile === p.profiles.default ? "general threads by default" : "general threads that choose it"}`;
+  // Why Same as is off: other tasks follow this one.
+  const followed = followers.length ? `${andList(followers.map((t) => TASK_WORD[t]))} ${followers.length > 1 ? "use" : "uses"} this list.` : undefined;
   let prevKind: string | undefined;
   return (
     <aside ref={ref} tabIndex={-1} className="drawer task-drawer" aria-label={`Edit ${name}`}>
       <div className="drawer-head">
-        <div className="drawer-title"><h2>{name}</h2><span className="cap">{cap}</span></div>
+        <h2 title={about}>{name}</h2>
         <button type="button" className="icon sm" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
       </div>
       <div className="drawer-body">
         {options.length > 0 && (
-          <div className="follow-block">
-            <div className="follow" role="radiogroup" aria-label={`Models for ${name}`}>
-              <label><input type="radio" name="follow" checked={own} disabled={busy} onChange={() => void saveList(listOf(prof, task))} /> Its own list</label>
-              <label><input type="radio" name="follow" checked={!own} disabled={busy || followers.length > 0} onChange={() => sel && void save({ same: sel })} /> Same as</label>
-              <select aria-label="Task to share with" value={sel} disabled={own || busy}
-                onChange={(e) => { const t = e.target.value as Task; setTarget(t); if (!own) void save({ same: t }); }}>
-                {options.map((t) => <option key={t} value={t}>{TASK_WORD[t]}</option>)}
-              </select>
-            </div>
-            {followers.length > 0 && <p className="cap">{andList(followers.map((t) => TASK_WORD[t]))} {followers.length > 1 ? "use" : "uses"} this list.</p>}
+          <div className="follow" role="radiogroup" aria-label={`Models for ${name}`}>
+            <label><input type="radio" name="follow" checked={own} disabled={busy} onChange={() => void saveList(listOf(prof, task))} /> Its own list</label>
+            <label title={followed}><input type="radio" name="follow" checked={!own} disabled={busy || followers.length > 0} onChange={() => sel && void save({ same: sel })} /> Same as</label>
+            <select aria-label="Task to share with" value={sel} disabled={own || busy}
+              onChange={(e) => { const t = e.target.value as Task; setTarget(t); if (!own) void save({ same: t }); }}>
+              {options.map((t) => <option key={t} value={t}>{TASK_WORD[t]}</option>)}
+            </select>
           </div>
         )}
         <ErrorText error={error} />

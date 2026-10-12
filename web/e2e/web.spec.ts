@@ -1694,7 +1694,7 @@ test("Models: the sidebar link opens Overview, Hosts and endpoints lists the end
   await expect(page.locator('[data-tile="endpoints"]')).toContainText(/[34]\s*of 4 up/);
   await expect(page.locator('[data-tile="backend"]')).toContainText("cloud-model");
   await expect(page.locator('[data-tile="backend"]')).toContainText("local-model");
-  await expect(page.locator('[data-tile="cleanup"]')).toContainText("Nothing to clean up");
+  await expect(page.locator('[data-tile="cleanup"] .big')).toHaveAttribute("title", "Nothing to clean up");
   const summary = page.getByRole("region", { name: "Hosts and endpoints" });
   for (const name of ["gpu", "router", "speech", "openai"]) await expect(summary.locator("li.hostrow").filter({ hasText: new RegExp(`^${name}`) })).toBeVisible();
   const recent = page.getByRole("region", { name: "Recent calls" });
@@ -1786,7 +1786,7 @@ test("Tasks: the table shows each profile's models; a cell's drawer adds, reorde
   await general.click();
   await expect(general).toHaveAttribute("aria-pressed", "true");
   const drawer = page.getByRole("complementary", { name: "Edit Chat" });
-  await expect(drawer).toContainText("Cloud profile · general threads by default");
+  await expect(drawer.getByRole("heading", { level: 2, name: "Chat", exact: true })).toHaveAttribute("title", "Cloud profile · general threads by default");
   await drawer.getByRole("button", { name: "Add…" }).click();
   const picker = drawer.getByRole("region", { name: "Add to Chat" });
   await expect(picker.locator(".pick-row")).toHaveCount(1);
@@ -1840,20 +1840,21 @@ test("Tasks: the table shows each profile's models; a cell's drawer adds, reorde
   await page.locator('[data-cell="cloud:subagent.cheap"]').click();
   const cheap = page.getByRole("complementary", { name: "Edit Cheap subagents" });
   await expect(cheap.getByRole("radio", { name: "Same as" })).toBeDisabled();
-  await expect(cheap).toContainText("Compaction, Titles and Watching threads use this list.");
+  await expect(cheap.locator("label").filter({ hasText: "Same as" })).toHaveAttribute("title", "Compaction, Titles and Watching threads use this list.");
   await cheap.getByRole("button", { name: "Close" }).click();
 
-  // Use Custom instead flips the header and the General column; and back.
+  // Use Custom instead flips the header and the General column; and back. Each head's sentence is its name's tooltip.
+  const head = (name: string) => page.locator(".ttable thead b").filter({ hasText: name });
   await page.getByRole("button", { name: "Use Custom instead" }).click();
-  await expect(page.locator(".ttable thead")).toContainText("Custom profile · local and cloud, falls back across");
+  await expect(head("General threads")).toHaveAttribute("title", "Custom profile · local and cloud, falls back across");
   await expect(page.locator('[data-cell="custom:chat"]')).toBeVisible();
   await expect(page.getByRole("button", { name: "Show Cloud too" })).toBeVisible();
   await page.getByRole("button", { name: "Use Cloud instead" }).click();
-  await expect(page.locator(".ttable thead")).toContainText("Cloud profile · cloud models only");
+  await expect(head("General threads")).toHaveAttribute("title", "Cloud profile · cloud models only");
 
   // Show Custom too adds its column; Hide Custom takes it away.
   await page.getByRole("button", { name: "Show Custom too" }).click();
-  await expect(page.locator(".ttable thead")).toContainText("Not the default. A general thread can switch to it.");
+  await expect(head("Custom profile")).toHaveAttribute("title", "Not the default. A general thread can switch to it.");
   await expect(page.locator('[data-cell="custom:chat"]')).toBeVisible();
   await noHorizontalScroll(page);
   await shot("custom");

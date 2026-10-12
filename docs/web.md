@@ -93,6 +93,12 @@ A thread's address may carry what the panel beside it shows:
   and the last turn's speed. It reads `ThreadSettings.context` and then each
   `context` stream event, so it follows every turn without a reload. After
   a rewind or a reset it is hidden until the next turn measures again.
+  Then, while she has wake-ups waiting (`ThreadSettings.wakeups`, soonest
+  first), **Wake-up** and the soonest time in mono (`wakeTime`: HH:MM today,
+  the date before it otherwise) open a popover with each one's time and an
+  ✕ (Remove, `DELETE …/wakeups/:id`), never her note. Each `wakeups` stream
+  event replaces the list, so one set, removed or fired shows at once; the
+  fact goes when none is left.
 - **Project chat** (`src/Project.tsx`): the facts line adds **Threads** with
   the count, opening a popover of the project's threads grouped Waiting on
   you, Working, Queued, Idle and Resolved (each a link, with its unseen
@@ -234,10 +240,12 @@ A thread's address may carry what the panel beside it shows:
   come with their own PRs. The area reads `GET …/models/page` while open (30 s,
   focus), which probes each endpoint (3 s each, one seen down in the last
   30 s not asked again). Overview: a banner for a paused host or a stale
-  endpoint; tiles Endpoints (n of m up), Backend (the first `chat` model of
-  the general profile and of Local, following Same as; links to Tasks)
-  and Clean up; then the hosts and endpoints
-  summary (a host with its combined VRAM bar, Pause or Resume, Dashboard;
+  endpoint; tiles Endpoints (n of m up, then a dot and "All reachable" or
+  the first one down, "+N" for more), Backend (the first `chat` model of
+  the general profile and of Local, following Same as, each with its pool
+  and profile beneath; links to Tasks) and Clean up (the count, with "To
+  decide" or "Nothing to clean up" as its tooltip); then the hosts and
+  endpoints summary (a host with its combined VRAM bar, Pause or Resume, Dashboard;
   a plain endpoint with its model count) and the first five calls. Hosts
   and endpoints: **Add endpoint** (a drawer: Name, Kind, Base URL, API key,
   Shared for administrators; a plain-HTTP warning for a local URL off
@@ -273,20 +281,23 @@ A thread's address may carry what the panel beside it shows:
   endpoint"), Note (the fallback or note, warn text); hidden pools left
   out; the table stacks on a phone. Tasks (`GET …/profiles`, the former
   Settings → Model profiles): a table of every task (grouped Conversation,
-  Memory, Sleep, Images, Speech, with a hint under each name) by profile,
-  **Private threads** (Local) and **General threads** (the default profile;
-  **Use Custom instead** in its head sends `PATCH …/profiles`; **Show
-  Custom too** adds the third column). A cell shows the first model with
-  its state dot (up; away when only a later entry can answer; down when
-  none can), then "+N fallbacks", "no fallback" (warn) or "= Chat" for a
-  task following another; Dictation has a cell under Private threads only.
-  A cell opens the task's drawer: **Its own list** or **Same as** a task of
-  the same kind (**Task to share with**; a task with followers can't
-  follow), the ordered list with Move up, Move down and Remove (in Custom,
-  "Falls back to cloud from here" where the kind changes), and **Add…**, a
-  picker with a search box, group chips and only models the task can use;
-  each change is a `PUT …/profiles/<profile>/<task>` at once, a refusal
-  shown as an error line. Settings → Sleep holds the Sleep mode select and
+  Memory, Sleep, Images, Speech; each name's tooltip says what the task
+  does) by profile, **Private threads** (Local) and **General threads** (the
+  default profile; **Use Custom instead** in its head sends `PATCH
+  …/profiles`; **Show Custom too** adds the third column); each head's name
+  has a tooltip about its profile ("Local profile · local models only"). A
+  cell shows the first model with its state dot (up; away when only a later
+  entry can answer; down when none can), or "No model" with a down dot when
+  the list is empty, then "+N fallbacks", "no fallback" (warn) or "= Chat"
+  for a task following another; Dictation has a cell under Private threads
+  only. A cell opens the task's drawer, its title's tooltip naming the
+  profile and the threads it serves: **Its own list** or **Same as** a task
+  of the same kind (**Task to share with**; a task with followers can't
+  follow, and Same as's tooltip names them), the ordered list with Move up,
+  Move down and Remove (in Custom, "Falls back to cloud from here" where the
+  kind changes), and **Add…**, a picker with a search box, group chips and
+  only models the task can use; each change is a `PUT
+  …/profiles/<profile>/<task>` at once, a refusal shown as an error line. Settings → Sleep holds the Sleep mode select and
   Sleep fallback; `…/settings/profiles` goes to the Tasks tab.
 - **Notifications** (`src/Notifications.tsx`; docs/ux.md §6 "Anything
   waiting for the user"): the first section of Settings, one list from
@@ -316,7 +327,8 @@ A thread's address may carry what the panel beside it shows:
   sentence when she starts locked), **Start a chat**. The current step's
   button is the one primary; a done step's turns secondary; the fields of a
   done step stay editable until Create. A wrong code says so at Create and
-  counts on the unlock limiter; too many say to wait a minute.
+  counts on the unlock limiter; too many say to wait, longer after each
+  wrong code, up to 15 minutes.
 - **Settings** (`src/Panel.tsx`): a page with its sections listed at the
   left (a scrolling row on a phone): Notifications, Profile (name, pronouns, accent colour,
   monogram), Appearance (theme), Unlock and lock (saved credentials, stay
@@ -577,8 +589,9 @@ A thread's address may carry what the panel beside it shows:
   under the message that started it (its anchor; threads whose anchor is
   gone sit under the last message), updated in place from the overview:
   title, state as a dot and word (Working blue, Waiting amber, Resolved
-  green, Idle plain), the first line of its last update beneath, and Open,
-  Stop, Resolve or Reopen behind ⋯. A card waiting on the user carries
+  green, Idle plain), "wakes" and its next wake-up's time in mono after the
+  word while one waits (`ThreadSummary.wakeAt`), the first line of its last
+  update beneath, and Open, Stop, Resolve or Reopen behind ⋯. A card waiting on the user carries
   `data-pending`, so the pending bar reads "Thread waiting for your answer".
   A `threads suggest` call is the **Suggested threads** card, like the plan
   card: each proposed thread with Start, one primary Start all; started ones
@@ -592,6 +605,12 @@ A thread's address may carry what the panel beside it shows:
   (Branch, Delete; not Edit), and one taller than twelve lines shows
   **Show more**. Forgetting a thread with child threads asks
   whether to forget them too, ticked, in the shared `Confirm` with one option.
+- When a wake-up fires (her `threads later`), her note arrives as a message
+  with `from.kind === "wakeup"` (live, text starting `[Wake-up, set …]`). It
+  is one line, **Woke up · set <time>**, with "· due <time>" when it fired
+  late (the user was locked), the times in mono, and a chevron; tapped, the
+  note opens as a tinted block under her name with the message menu, as
+  Message received does.
 - Files attach from the "+" menu, by dragging onto the composer, or by
   pasting. Each shows its progress, and its path in the thread goes into the
   draft.
