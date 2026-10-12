@@ -729,7 +729,7 @@ function DraftsSection({ ctx }: { ctx: ShellContext }) {
   const drafts = useLoad(() => get<ProposalDraft[]>(u(userId, "proposals")), [userId]);
   const [run, , error] = useAction();
   return (
-    <Section title="Your suggestions for Lyrica's persona">
+    <Section title={`Your suggestions for ${her()}'s persona`}>
       <ErrorText error={drafts.error || error} />
       {drafts.data && !drafts.data.length && <p className="muted">No suggestions.</p>}
       <ul className="list">

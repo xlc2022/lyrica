@@ -15,7 +15,9 @@ tailscaled's `tailscale serve` targets (Web access, Tailnet); a request on it
 came through her tailnet address.
 
 - **Setting up.** Without `<runtime>/self.db` it starts anyway, setting up:
-  `GET /api/state` says `{ locked: true, setup: true, name, users: [] }` and
+  `GET /api/state` says `{ locked: true, setup: true, name, users: [],
+  credentials }` (`credentials` says whether saving the passphrase is
+  available here, and why not; the setup page's Start unlocked follows it) and
   only `POST /api/setup` answers besides (and the web UI's files); everything
   else is `503`. At start it makes a one-time code, eight characters in two
   groups from 32 symbols (digits and capitals without 0, O, 1 and I; 40
@@ -315,7 +317,9 @@ things are".
   is one list over what waits for the user, built from where each thing
   lives: shares, permission requests in hosted threads, child thread updates
   and threads waiting on them, her items from the night, her persona
-  suggestions, and, for administrators, persona changes to approve. Each
+  suggestions, and, for administrators, persona changes to approve and an
+  update that failed its probation and rolled back (`rollback`, for seven
+  days after it, leading to Administration → Updates). Each
   item has its type, pool, time, whether it is a decision, where it leads,
   and its actions as requests the UI sends as they are; `total` counts the
   filtered items, `waiting` the decisions over everything (the sidebar's

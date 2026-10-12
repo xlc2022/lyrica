@@ -220,7 +220,10 @@ For each part:
   out); reactions on messages, hers too (DESIGN.md "Reactions",
   docs/daemon.md, docs/web.md, ux row "Reacting to a message"; pool schema
   step 2 adds `entries.reactions`); the setup page, her name and the Tailnet
-  section (web-bootstrap.md); the Updates section (web-updates.md).
+  section (web-bootstrap.md); the Updates section (web-updates.md); Direct
+  and Tailnet as Web access modes. Next: the Models page (carry the
+  Fallback default), the Sleep section, Pin in the remaining places, the
+  speech drawer.
 - 2026-10-12, PR 11 (Notifications and Share with): `thread_shares` in
   `self.db` holds a sent copy until the recipient adds or declines it;
   `GET …/notifications` lists what waits (docs/daemon.md "Share with and
