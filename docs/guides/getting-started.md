@@ -554,11 +554,11 @@ admin rights. The token stays in `lyricad` and never enters her sandbox,
 but every command in a thread that has the repository can use it on that
 host.
 
-A Forgejo or Gitea with a certificate from your own authority works only
-when the machine trusts that authority (on Debian and Ubuntu, copy it to
-`/usr/local/share/ca-certificates/` and run `update-ca-certificates`; on
-NixOS, add it to `security.pki.certificateFiles`) and Node is 22.15 or
-later. Older Node trusts only its own list, so such a host fails there.
+A Forgejo or Gitea needs a publicly trusted certificate, such as one
+from Let's Encrypt or from `tailscale cert` (Tailscale Serve uses it).
+One whose certificate comes from your own authority can't be added yet:
+`lyricad` checks the account against the host and trusts only Node's own
+list of authorities.
 
 A project's **Repositories** row (Project settings, under This chat) and
 the thread drawer list which repositories a thread has. Each thread clones
