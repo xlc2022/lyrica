@@ -6,6 +6,7 @@ import {
 } from "@lyrica/core";
 import { askCompaction, COMPACT_GUIDELINES, type ContextMeter } from "./context.ts";
 import type { ThreadContext } from "./index.ts";
+import { formatEntry } from "./memory.ts";
 
 // Child threads: streams of work Lyrica starts under the thread she's in. Each
 // is a thread like any other, hosted by lyricad, which supplies `ThreadsHost`.
@@ -29,16 +30,23 @@ export interface ThreadsHost {
   list(parent: ThreadContext): ChildInfo[];
   /** Resolves a project's thread (`id`, or the calling thread itself), or reopens one. */
   resolve?(from: ThreadContext, id: string | undefined, resolved: boolean): void;
+  /** Stops a child's running turn, as Pause does. False if it wasn't working. */
+  stop?(from: ThreadContext, id: string): Promise<boolean>;
 }
 
+/** Messages `threads read` returns by default, and at most. */
+export const READ_DEFAULT = 10;
+export const READ_MAX = 30;
+
 const Params = Type.Object({
-  action: Type.Union(["start", "message", "list", "suggest", "resolve", "reopen", "compact"].map((a) => Type.Literal(a))),
+  action: Type.Union(["start", "message", "list", "read", "stop", "suggest", "resolve", "reopen", "compact"].map((a) => Type.Literal(a))),
   title: Type.Optional(Type.String({ description: "For start: the child thread's title." })),
   task: Type.Optional(Type.String({ description: "For start: what to work on, with everything it needs. It starts with your persona and memory, but none of this conversation." })),
   folders: Type.Optional(Type.Array(Type.String(), { description: "For start: only these of this thread's folders." })),
   readOnly: Type.Optional(Type.Boolean({ description: "For start: it may read the folders but not change them." })),
   internet: Type.Optional(Type.Literal(false, { description: "For start: false cuts it off from the internet." })),
-  id: Type.Optional(Type.String({ description: "For message, resolve and reopen: the thread, by its ID ([t:…]) or its current title." })),
+  id: Type.Optional(Type.String({ description: "For message, read, stop, resolve and reopen: the thread, by its ID ([t:…]) or its current title." })),
+  last: Type.Optional(Type.Number({ description: `For read: how many of its latest messages, ${READ_DEFAULT} by default, at most ${READ_MAX}.` })),
   to: Type.Optional(Type.Literal("parent", { description: "For message from a child thread: to its parent." })),
   text: Type.Optional(Type.String({ description: "For message: what to say." })),
   needsYou: Type.Optional(Type.Boolean({ description: "For message to the parent from a project's thread: the person must decide something before you can go on." })),
@@ -90,10 +98,10 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
 
     const description = () => [
       !host ? "" : projectThread()
-        ? "Post an update to the project chat (to: \"parent\", needsYou when the person must decide), message another thread of the project, list them, or resolve this thread when its work is delivered."
+        ? "Post an update to the project chat (to: \"parent\", needsYou when the person must decide), message another thread of the project, list them, read one's latest messages, or resolve this thread when its work is delivered."
         : child
           ? "Send your parent thread a short update: threads({ action: \"message\", to: \"parent\", text })."
-          : "Child threads: start one on a stream of work of its own, which works in the background and which the person can open and steer; message one; list them."
+          : "Child threads: start one on a stream of work of its own, which works in the background and which the person can open and steer; message one; list them; read one's latest messages; stop one's running turn."
             + (inProjectChat() ? " In this project chat, also suggest threads (a card the person starts them from), and resolve or reopen one." : ""),
       meter ? "When your context is filling up, compact this thread: threads({ action: \"compact\", summary }) replaces the older part of the conversation with your summary when this turn ends; recent messages stay." : "",
     ].filter(Boolean).join(" ");
@@ -141,6 +149,25 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           const rows = host.list(thread);
           return text(rows.length ? rows.map(threadLine).join("\n") : inProject ? "The project has no other threads." : "This thread has no child threads.",
             { threads: rows.map((r) => r.id) });
+        }
+        if (p.action === "read") {
+          if (child && !inProject) throw new Error("a child thread can't read other threads");
+          if (!p.id) throw new Error("read needs the thread's id or title");
+          const rows = host.list(thread);
+          const id = pickThread(p.id, rows);
+          if (!rows.some((r) => r.id === id)) throw new Error(`[t:${id}] isn't ${inProject ? "another thread of this project" : "a child thread of this one"}`);
+          if (store.getThread(id)?.unlogged) throw new Error(`[t:${id}] isn't logged, so it can't be read from here`);
+          const last = Math.min(READ_MAX, Math.max(1, Math.round(p.last ?? READ_DEFAULT)));
+          // Read as from another thread, so entries written unlogged are left out; so are tool results and empty tool calls.
+          const entries = store.latestEntries(id, last);
+          return text(entries.length ? entries.map(formatEntry).join("\n\n") : `[t:${id}] has no messages to read.`, { threads: [id] });
+        }
+        if (p.action === "stop") {
+          if (child) throw new Error("a thread stops only its own child threads");
+          if (!host.stop) throw new Error("stop isn't available here");
+          if (!p.id) throw new Error("stop needs the thread's id or title");
+          const id = pickThread(p.id, host.list(thread));
+          return text(await host.stop(thread, id) ? `Stopped [t:${id}]; it is idle. Message it to go on.` : `[t:${id}] wasn't working.`, { threads: [id] });
         }
         if (p.action === "resolve" || p.action === "reopen") {
           if (!host.resolve || (!inProject && !inProjectChat())) throw new Error(`${p.action} is for a project's threads`);

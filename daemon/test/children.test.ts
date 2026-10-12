@@ -407,3 +407,115 @@ describe("child threads", () => {
     expect((await li.get(childPath(three))).status).toBe(404);
   });
 });
+
+describe("a child's end, reading and stopping", () => {
+  const notices = async (messages: () => Promise<{ role: string; parts: unknown[] }[]>) =>
+    (await messages()).filter((m) => m.role === "notice").map((m) => (m.parts[0] as { text: string }).text);
+  const call = (args: object): Reply => ({ tools: [{ name: "threads", args }] });
+
+  it("the parent hears of a child that finished without a report, and not of one that reported", async () => {
+    const { parent, child, say, path, messages } = await setup();
+    parent.push(start("Silent", "Plan the beds."), { text: "Started." });
+    child.push({ text: "Planned." });
+    const silent = toolEnd(await say("start the silent one"))!.threads![0]!.id;
+    await until(() => notices(() => messages(path)), (n) => n.some((t) => t.includes(`[t:${silent}] finished without a report, and is idle`)));
+
+    parent.push(start("Loud", "Plan the paths."), { text: "Started." });
+    child.push(toParent("Paths planned."), { text: "Done." });
+    const loud = toolEnd(await say("start the loud one"))!.threads![0]!.id;
+    await until(() => notices(() => messages(path)), (n) => n.some((t) => t.includes("Paths planned.")));
+    await new Promise((r) => setTimeout(r, 300));
+    const all = (await notices(() => messages(path))).join("\n");
+    expect(all).toContain(`[t:${silent}] finished without a report`);
+    expect(all).not.toContain(`[t:${loud}] finished without a report`);
+    expect(all).not.toContain("stopped with an error");
+  });
+
+  it("the parent hears of a child whose model call fails", async () => {
+    const { parent, child, say, path, messages } = await setup();
+    parent.push(start("Garden", "Plan the beds."), { text: "Started." });
+    child.push({ status: 400 });
+    const id = toolEnd(await say("plan the garden in its own thread"))!.threads![0]!.id;
+    const got = await until(() => notices(() => messages(path)), (n) => n.some((t) => t.includes("stopped with an error")));
+    expect(got.join("\n")).toContain(`Child thread [t:${id}] stopped with an error, and is idle`);
+    expect(got.join("\n")).not.toContain("finished without a report");
+  });
+
+  it("the parent hears of a child that fails every time only once, until it reports", async () => {
+    const { parent, child, say, path, messages } = await setup();
+    parent.push(start("Garden", "Plan the beds."), { text: "Started." });
+    child.push({ status: 400 });
+    const id = toolEnd(await say("plan the garden in its own thread"))!.threads![0]!.id;
+    const failed = (n: string[]) => n.filter((t) => t.includes(`[t:${id}] stopped with an error`)).length;
+    await until(() => notices(() => messages(path)), (n) => failed(n) === 1);
+
+    parent.push(call({ action: "message", id, text: "Try again." }), { text: "Asked it again." });
+    child.push({ status: 400 });
+    await say("ask it to try again");
+    await until(() => messages(`${path.replace(/[^/]+$/, "")}${enc(id)}`), (m) => m.filter((x) => x.role === "assistant" && x.error).length === 2);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(failed(await notices(() => messages(path)))).toBe(1);
+  });
+
+  it("the parent reads a child's latest messages, but not another thread's", async () => {
+    const { li, u, parent, child, say, path, messages } = await setup();
+    parent.push(start("Garden", "Plan the beds."), { text: "Started." });
+    child.push({ text: "Tulips go by the wall." });
+    const id = toolEnd(await say("plan the garden in its own thread"))!.threads![0]!.id;
+    await until(() => notices(() => messages(path)), (n) => n.length > 0);
+
+    parent.push(call({ action: "read", id, last: 1 }), { text: "Read it." });
+    const one = toolEnd(await say("read its last message"));
+    expect(one).toMatchObject({ isError: false });
+    expect(one.result).toContain("Tulips go by the wall.");
+    expect(one.result).not.toContain("Plan the beds.");
+    expect(one.result!.match(/\[e:/g)).toHaveLength(1);
+
+    const other = (await li.post<ThreadSummary>(`${u}/threads`, { pool: "general", title: "Other" })).body;
+    parent.push(call({ action: "read", id: other.id }), { text: "Refused." });
+    expect(toolEnd(await say("read the other thread"))).toMatchObject({ isError: true, result: expect.stringMatching(/isn't a child thread/) });
+
+    parent.push(call({ action: "read", id }), { text: "Read it." });
+    const all = toolEnd(await say("read what it did"));
+    expect(all).toMatchObject({ isError: false });
+    expect(all.result).toContain("Plan the beds.");
+    expect(all.result).toContain("Tulips go by the wall.");
+  });
+
+  it("the parent stops a working child, and nobody is told it ended", async () => {
+    const { parent, child, say, list, thread, path, messages } = await setup();
+    const turn = held();
+    parent.push(start("Garden", "Plan the beds."), { text: "Started." });
+    child.push(turn.first);
+    const id = toolEnd(await say("plan the garden in its own thread"))!.threads![0]!.id;
+    await turn.busy;
+
+    parent.push(call({ action: "stop", id }), { text: "Stopped it." });
+    expect(toolEnd(await say("stop it"))).toMatchObject({ isError: false, result: expect.stringContaining(`Stopped [t:${id}]`) });
+    await until(list, (l) => l.find((t) => t.id === thread.id)!.children[0]?.status === "idle");
+    turn.release();
+    await new Promise((r) => setTimeout(r, 300));
+    const all = (await notices(() => messages(path))).join("\n");
+    expect(all).not.toContain("finished without a report");
+    expect(all).not.toContain("stopped with an error");
+
+    parent.push(call({ action: "stop", id }), { text: "Already idle." });
+    expect(toolEnd(await say("stop it again"))).toMatchObject({ isError: false, result: `[t:${id}] wasn't working.` });
+  });
+
+  it("the person writing in a child that reported doesn't tell the parent", async () => {
+    const { li, parent, child, say, childPath, path, messages } = await setup();
+    parent.push(start("Garden", "Plan the beds."), { text: "Started." });
+    child.push(toParent("Beds planned."), { text: "Done." });
+    const id = toolEnd(await say("plan the garden in its own thread"))!.threads![0]!.id;
+    await until(() => messages(childPath(id)), (m) => m.some((x) => x.role === "assistant" && !x.error && x.parts.some((p) => p.type === "text")));
+    await until(() => notices(() => messages(path)), (n) => n.some((t) => t.includes("Beds planned.")));
+    const before = (await messages(path)).length;
+
+    child.push({ text: "Sure, roses too." });
+    expect((await li.post(`${childPath(id)}/messages`, { text: "and roses" })).status).toBe(200);
+    await until(() => messages(childPath(id)), (m) => m.filter((x) => x.role === "assistant").length === 3);
+    await new Promise((r) => setTimeout(r, 300));
+    expect((await messages(path)).length).toBe(before);
+  });
+});

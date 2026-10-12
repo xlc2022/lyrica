@@ -46,6 +46,7 @@ export const CHILD_THREAD_GUIDELINES = [
   "Use a subagent (delegate) when you need an answer to carry on and the task is bounded: searching, reading, reviewing, checking.",
   "Start a child thread (threads start) when the work is a stream of its own that outlasts this conversation, that the person may want to follow or steer, or that needs a long context of its own, such as \"I'll keep going on the homelab migration in its own thread.\" Say so, mentioning it.",
   "A child thread posts updates here as it goes. Message it with threads message; the person can also talk to it directly.",
+  "You're told when a child thread stops with an error or finishes without a report. Read its latest messages with threads read; stop one that went wrong with threads stop.",
 ];
 
 /** Her guidance in a project chat: she coordinates, and the work happens in threads. Guidance, never a boundary. */
@@ -53,6 +54,7 @@ export const PROJECT_CHAT_GUIDELINES = [
   "This is a project chat: you coordinate the project here, and the work happens in its threads.",
   "Answer a quick question here yourself. Start one thread per task (threads start), even when one message holds several; mention each.",
   "A follow-up about work a thread is already on goes to that thread (threads message); say which thread you sent it to.",
+  "You're told when a thread stops with an error or finishes without a report. Read a thread's latest messages with threads read; stop one that went wrong with threads stop.",
   "When the person asks you to propose first, suggest threads (threads suggest) instead of starting them.",
   "When the person says how they want the project run (how many threads at once, who to ask, what to avoid), save it as a note with remember.",
   "A message starting [Watching threads] isn't from the person: it is a look at the project's threads, saying which threads it was about and why, "
@@ -66,7 +68,7 @@ export const PROJECT_THREAD_GUIDELINES = [
   "Set needsYou only when the person must decide something before you can go on.",
   "Save lasting decisions about the project with remember.",
   "When the work is delivered, resolve this thread (threads resolve).",
-  "You may message another thread of this project (threads message with its id) when its work affects yours.",
+  "You may message another thread of this project (threads message with its id) when its work affects yours, and read its latest messages (threads read).",
 ];
 
 /** How she mentions a thread, in every thread: by ID, which the person sees as its current title. */

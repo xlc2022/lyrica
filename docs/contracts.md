@@ -575,7 +575,10 @@ One model-facing tool: `delegate({ action?, ... })`.
   ... })`: `start` (`title`, `task`, optional narrower `folders`,
   `readOnly`, `internet`), `message` (to a child, by ID or current title
   (`pickThread`; a title two threads share is refused), or `to: "parent"`
-  from a child), and `list` (`ChildInfo` with `ChildStatus`). Its results
+  from a child), `list` (`ChildInfo` with `ChildStatus`), `read` (`id`,
+  `last`: the latest messages of a listed, logged thread (`PoolReader.latestEntries`), `READ_DEFAULT`
+  10, `READ_MAX` 30, formatted by `formatEntry`) and `stop` (`id`: a
+  parent's child, `ThreadsHost.stop`). Its results
   and guidance mention threads as `[t:<id>]`. A child thread is
   `createThread({ parent, child: true })`, hosted like any thread, with the
   parent's pool, models (`models.inheritContext`) and workspace
@@ -585,7 +588,10 @@ One model-facing tool: `delegate({ action?, ... })`.
   child. A parent's message is the child's next turn, marked with
   `fromParent(id)` (`FROM_PARENT`), which only `lyricad` writes; a child's
   update reaches the parent through `Delegation.deliver` as a notice with
-  status `update`, and every delivery's details carry an `id`.
+  status `update`, and every delivery's details carry an `id`. A child on
+  a task from its parent whose turn ends idle with an error, or without an
+  update since the task, gets the parent the same kind of notice
+  (`ChildThreads.ended`, fed by `lyricad`'s turn events).
 - **Modes:** a thread in Plan mode starts only read-only roles; anything
   else is refused before a thread is made. A read-only subagent there runs
   in Plan mode itself.
