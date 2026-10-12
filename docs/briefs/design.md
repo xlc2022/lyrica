@@ -36,22 +36,26 @@ own handoff, so a fresh session (or a project conversation) can take over.
 - The interface follows docs/ux.md. Labels are nouns, no captions, numbers
   typed with their maximum shown, one idiom for everything.
 
-## Where things stand (10 October 2026, evening)
+## Where things stand (12 October 2026)
 
-Merged on `main`: Core, Memory, Workspace, Models, Delegation, Daemon, Web
-UI, Sleep, Delegation 2, Models 2 (#30, #34, #36, #37, #40, #41, #46), Model
-host (#28, #31, #32, #33, #38, #39, #42, #45), Child threads 1/3 (#44),
-2/3 (#47) and pinned messages (#48).
+Done, each brief built and merged on `main`: Core, Memory, Workspace,
+Models, Daemon and web access, Delegation and Delegation 2, Web UI, Sleep,
+Model host, Models 2, Child threads, Modes, Projects (back end and sleep),
+Speech, Model host speech, Web: voice, Machines, SSH helper, Proxmox, Web:
+machines, Project workspace (#128), Folder narrowing (#129), NixOS,
+Bootstrap (#134), Web: bootstrap and Web: updates (#144), Releases (#136,
+#139), Self-editing and Git accounts and repositories (#141), Memory
+browser (#135). Checks that need real hardware (GPUs, a NixOS host, a
+first SSH machine and Proxmox node, the systemd units) wait for the first
+deployment.
 
-| Thread | Branch | State |
+| Thread | State | What's left |
 |---|---|---|
-| Models 2 | done | context and pace merged in #46 |
-| Model host | done | AMD and integrated GPUs merged in #45; hardware checks listed in its handoff notes |
-| Child threads | done | #47, #48, #51 and #53 merged |
-| Modes | done | #50 merged; the chat's pending bar in #55 |
+| Web UI 2 | partly: #80, #100, #107, #112, #115, #122, #125, #127, #130, #133, #137, #144, #150 | Models page, Pin in the remaining places, the speech drawer, Images and portrait photos (docs/briefs/web-2.md) |
+| Context and pace | partly: API in #46, pins counted in #48 | the context meter and the speed columns in Recent calls, with the Models page |
+| Projects (web) | partly: #80, #100, #110, #150 | Files and images on the Project settings page, Recent calls by project (docs/briefs/projects-web.md) |
+| Context stretching | building; design in #151, #152 | docs/briefs/context-stretch.md |
 | Images | not started | docs/briefs/images.md |
-| Web UI 2 | not started | docs/briefs/web-2.md; reads docs/ux.md first |
-| Machines, SSH helper, Proxmox, Web: machines | done | #75, #76, #79, #82 and #83 merged; Project settings rows in #128 and folder narrowing in #129; a first real SSH machine and Proxmox node wait for deployment |
 
 ## Open questions for Li
 
