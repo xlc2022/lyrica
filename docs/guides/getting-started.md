@@ -452,8 +452,9 @@ reboot. If the saved file can't be decrypted, she starts locked; unlock by
 hand. The button is disabled, with the reason, on a system where
 `systemd-creds` isn't available. Forget it there to go back to unlocking
 by hand. On Debian or Ubuntu, an install from before lyricad unsealed it
-itself gets the new `lyricad.service` at its next `install.sh` run (an
-Update doesn't change the unit). Run it before saving the passphrase: the
+itself gets the new `lyricad.service` only from an `install.sh` run:
+Updates never replace units, so an install that only takes Updates keeps
+the old one. Run `install.sh` once before saving the passphrase: the
 old unit has systemd unseal the file itself, which can fail and stop
 lyricad from starting.
 
