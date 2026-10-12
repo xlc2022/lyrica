@@ -2862,3 +2862,14 @@ test("Administration has Her name after Status and saves the name throughout the
   await expect(name).toHaveValue("Lyrica");
   await expect(page).toHaveTitle("Lyrica");
 });
+
+test("Custom… pronouns opens the five fields, starting from the current words", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}/settings/profile`);
+  const section = page.getByRole("region", { name: "Profile" });
+  await section.getByLabel("Pronouns").selectOption("custom");
+  await expect(section.getByLabel("herself")).toBeVisible();
+  await expect(section.getByLabel("herself")).not.toHaveValue("");
+  await section.getByLabel("Pronouns").selectOption("they/them");
+  await expect(section.getByLabel("herself")).toHaveCount(0);
+});
