@@ -786,8 +786,10 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       images, then background work (sleep, cheap subagents). If a request
       can't fit, it fails with a plain reason, such as "the GPU is busy with a
       chat model", rather than running out of memory.
-    - Each model's VRAM use is measured per GPU on its first load with each
-      placement, and remembered. The
+    - Each model's VRAM use is measured per GPU at load with each
+      placement, keeping the larger saved value. After its first attributable completed request,
+      the host keeps the larger measurement, including buffers grown on first
+      use, so eviction counts the memory they free. The
       control panel shows each GPU's use, what is loaded, and the queue.
 
 ## Images

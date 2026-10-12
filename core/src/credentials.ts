@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -12,8 +12,8 @@ export interface CredentialStore {
   remove(name: string): Promise<void>;
   /** Whether a sealed copy exists. */
   saved(name: string): boolean;
-  /** The secret as it was handed to this process at startup, if it was. */
-  load(name: string): Buffer | undefined;
+  /** Unseals a saved secret into memory; failures return undefined. */
+  load(name: string): Promise<Buffer | undefined>;
   /** Why saving can't work here, if it can't. */
   unavailable(): string | undefined;
 }
@@ -21,21 +21,23 @@ export interface CredentialStore {
 /** Seals `secret` into `out`, bound to the credential name `id`. */
 export type Seal = (id: string, secret: Buffer, out: string) => Promise<void>;
 
+/** Unseals `file`, bound to credential name `id`, into memory only. */
+export type Unseal = (id: string, file: string) => Promise<Buffer>;
+
 /**
- * systemd credentials. Each secret is sealed with `systemd-creds encrypt`
- * (to the TPM where one exists, else the host key) into `dir`, which the unit
- * loads with `LoadCredentialEncrypted=lyrica:<dir>`. systemd decrypts them at
- * service start into `$CREDENTIALS_DIRECTORY` as `lyrica_<name>`, readable only
- * by the service. A non-root service user seals with `--user` (systemd 256 or
- * later), so no root step is needed.
+ * Secrets are sealed in `dir` with `systemd-creds encrypt` (TPM where one
+ * exists, else the host key). lyricad unseals them itself at startup with
+ * `systemd-creds decrypt --user`, reading only the child's stdout pipe.
+ * Plaintext never goes to disk or /run. A non-root service user seals with
+ * `--user` (systemd 256 or later), so no root step is needed.
  */
 export class SystemdCredentials implements CredentialStore {
   constructor(
     /** Sealed files, one per name. */
     readonly dir: string,
-    /** Where systemd put the unsealed credentials at start: `$CREDENTIALS_DIRECTORY`. */
-    private readonly loaded: string | undefined = process.env.CREDENTIALS_DIRECTORY,
     private readonly seal: Seal = systemdSeal,
+    private readonly unseal: Unseal = systemdUnseal,
+    private readonly log: (line: string) => void = (line) => { process.stderr.write(`${line}\n`); },
   ) {}
 
   async save(name: string, secret: Buffer): Promise<void> {
@@ -54,10 +56,19 @@ export class SystemdCredentials implements CredentialStore {
 
   saved(name: string): boolean { return existsSync(this.path(name)); }
 
-  load(name: string): Buffer | undefined {
-    if (!this.loaded) return undefined;
-    const path = join(this.loaded, `lyrica_${checkName(name)}`);
-    return existsSync(path) ? readFileSync(path) : undefined;
+  async load(name: string): Promise<Buffer | undefined> {
+    const file = this.path(name);
+    if (!existsSync(file)) return undefined;
+    try {
+      const secret = await this.unseal(`lyrica_${name}`, file);
+      if (!secret.length) throw new UnsealFailed("empty output");
+      return secret;
+    } catch (err) {
+      // Only our fixed failure classes are printable; injected errors may contain secrets.
+      const reason = err instanceof UnsealFailed ? err.message : "unseal error";
+      this.log(`credential ${name}: decrypt failed: ${reason}`);
+      return undefined;
+    }
   }
 
   unavailable(): string | undefined {
@@ -84,4 +95,28 @@ export const systemdSeal: Seal = (id, secret, out) => new Promise((resolve, reje
   child.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`systemd-creds encrypt failed: ${err.trim() || `exit ${code}`}`))));
   child.stdin.on("error", () => {}); // the exit code says why
   child.stdin.end(secret);
+});
+
+class UnsealFailed extends Error {}
+
+/** Plaintext is read from stdout only; stderr is discarded because it may contain data. */
+export const systemdUnseal: Unseal = (id, file) => new Promise((resolve, reject) => {
+  const child = spawn("systemd-creds", ["decrypt", "--user", `--name=${id}`, file, "-"], { stdio: ["ignore", "pipe", "ignore"] });
+  const chunks: Buffer[] = [];
+  const clear = () => { for (const chunk of chunks) chunk.fill(0); };
+  child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
+  child.on("error", (err: NodeJS.ErrnoException) => {
+    clear();
+    reject(new UnsealFailed(err.code === "ENOENT" ? "command missing" : "spawn error"));
+  });
+  child.on("close", (code) => {
+    if (code !== 0) {
+      clear();
+      reject(new UnsealFailed(code === null ? "terminated" : `exit ${code}`));
+    } else {
+      const secret = Buffer.concat(chunks);
+      clear();
+      resolve(secret);
+    }
+  });
 });

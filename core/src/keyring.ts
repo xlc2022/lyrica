@@ -130,10 +130,11 @@ export class Keyring {
 
   hasSavedKey(userId: string): boolean { return this.credentials?.saved(`user-${userId}`) ?? false; }
 
-  /** Takes the key saved for the user, if one was handed over at startup. Returns whether it did. */
-  loadSavedKey(userId: string): boolean {
-    const key = this.credentials?.load(`user-${userId}`);
-    if (!key || key.length !== 32) return false;
+  /** Takes the key saved for the user, if one is saved. Returns whether it did. */
+  async loadSavedKey(userId: string): Promise<boolean> {
+    const key = await this.credentials?.load(`user-${userId}`);
+    if (!key) return false;
+    if (key.length !== 32) { key.fill(0); return false; }
     this.keys.set(userId, key);
     return true;
   }
@@ -152,12 +153,16 @@ export class Keyring {
 
   hasSavedPassphrase(): boolean { return this.credentials?.saved("self") ?? false; }
 
-  /** Unlocks self.db with the passphrase handed over at startup, if there is one. Returns whether it did. */
+  /** Unlocks self.db with the saved passphrase, if there is one. Returns whether it did. */
   async unlockSaved(): Promise<boolean> {
-    const saved = this.credentials?.load("self");
+    const saved = await this.credentials?.load("self");
     if (!saved) return false;
-    await this.unlockSelf(saved.toString());
-    return true;
+    try {
+      await this.unlockSelf(saved.toString());
+      return true;
+    } finally {
+      saved.fill(0);
+    }
   }
 
   private store(): CredentialStore {

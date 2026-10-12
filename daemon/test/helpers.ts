@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,23 +25,20 @@ export async function runtime() {
   const sam = await users.createUser("sam", "pw2", { displayName: "Sam", pronouns: PRONOUN_PRESETS.they }, { admin: false });
   keyring.self().close();
   const sealed = join(home, "credentials");
-  const loaded = join(home, "loaded-credentials");
-  return { home, ada, sam, sealed, loaded };
+  const secrets = new Map<string, Buffer>();
+  return { home, ada, sam, sealed, secrets };
 }
 
-/** "systemd decrypting at start": copies sealed (here, plain) files into the loaded directory as `lyrica_<name>`. */
-export function systemdStart(rt: { sealed: string; loaded: string }): void {
-  rmSync(rt.loaded, { recursive: true, force: true });
-  mkdirSync(rt.loaded, { recursive: true });
-  for (const f of readdirSync(rt.sealed)) cpSync(join(rt.sealed, f), join(rt.loaded, `lyrica_${f}`));
-}
-
-/** A started lyricad on a free port, with captured logs and a plain-file credential store. */
+/** A started lyricad on a free port, with captured logs and an in-memory fake unsealer. */
 export async function daemon(rt: Awaited<ReturnType<typeof runtime>>, opts: Partial<LyricadOptions> = {}) {
   const logs: string[] = [];
   const d = new Lyricad({
     home: rt.home, port: 0, argon2: ARGON2, selfTest: false, webDir: join(rt.home, "no-web"),
-    credentials: new SystemdCredentials(rt.sealed, rt.loaded, async (_id, secret, out) => writeFileSync(out, secret)),
+    credentials: new SystemdCredentials(rt.sealed, async (id, secret, out) => { rt.secrets.set(id, Buffer.from(secret)); writeFileSync(out, "sealed"); }, async (id) => {
+      const secret = rt.secrets.get(id);
+      if (!secret) throw new Error("bad sealed credential");
+      return Buffer.from(secret);
+    }, (line) => logs.push(line)),
     log: (l) => logs.push(l), ...opts,
   });
   await d.start();

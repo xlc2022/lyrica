@@ -99,7 +99,8 @@ games on, so the host has to be easy to live with and hard to misuse.
      one in use;
    - a priority queue per GPU (chat, then images, then background work);
    - plain errors instead of running out of memory;
-   - each model's VRAM use is measured on first load.
+   - each model's VRAM use is measured at load and after its first attributable
+     completed request, keeping the larger value for eviction.
 
    It works through each server's own API: vLLM sleep and wake, llama.cpp's
    model loading, ComfyUI's `/free`. Never the Docker socket.
@@ -215,7 +216,7 @@ Each step depends on the one before. Note what goes wrong against the step.
    match. Set a dashboard password and open the dashboard from another machine.
 3. **A llama.cpp model.** Put a GGUF in the models folder, Scan, and chat with
    it from Lyrica. Check the context length, that the model unloads when idle,
-   and the VRAM measured after its first load.
+   and the VRAM measured after load and its first completed request.
 4. **A vLLM model.** A safetensors folder (no remote code). Check that its
    memory share is what the dashboard says, and that a context too long for
    the share is refused when saved. Then kill its server (or give it a context

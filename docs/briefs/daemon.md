@@ -172,8 +172,8 @@ only on the developer bench.
   needs bubblewrap and gocryptfs as a non-root user, so it runs in CI only.
 - **Not verified on a real host:** the systemd unit (no systemd in the build
   container). Check on the owner's LXC: the service starts and unlocks with saved
-  credentials (`LoadCredentialEncrypted` from a directory, `systemd-creds
-  encrypt --user`, systemd 256 or later), and `PrivateTmp`,
+  credentials (lyricad decrypts sealed files itself through stdout with
+  `systemd-creds decrypt --user`, systemd 256 or later), and `PrivateTmp`,
   `ProtectControlGroups` and `ProtectHostname` don't break bubblewrap, pasta
   or gocryptfs. Drop any that do.
 - **Open:** Delegation's events reach the stream through

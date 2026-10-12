@@ -17,8 +17,9 @@ Keys, users and the persona store. No Pi dependency.
   - "Save credentials": `saveUserKey`, `forgetSavedKey`, `loadSavedKey`,
     `saveSelfPassphrase` and `unlockSaved` go through a `CredentialStore`
     that lyricad sets. **`credentials.ts`** (`SystemdCredentials`) seals with
-    `systemd-creds encrypt` and reads what systemd unsealed at start from
-    `$CREDENTIALS_DIRECTORY`. See [docs/daemon.md](../docs/daemon.md#saving-credentials).
+    `systemd-creds encrypt --user`; its async load runs
+    `systemd-creds decrypt --user` into a stdout pipe at start. Failed or
+    empty loads return no secret, logging only the name and error class. See [docs/daemon.md](../docs/daemon.md#saving-credentials).
 - **`users.ts`** (`Users`): `createUser` (the first must be an administrator),
   `authenticate` (also unlocks the key; Argon2 runs for unknown logins too),
   `changePassword` (rewraps the same key, so data isn't re-encrypted),
