@@ -63,12 +63,23 @@ describe("deleting a recipe", () => {
       part("lyrica/l/style.safetensors", { size: 0.5 * GB }),
     ];
     const names: Record<string, string> = { r2: "Krea 2", r3: "FLUX dev" };
-    const plan = deletePlan(r, parts, (id) => names[id]);
+    const plan = deletePlan(r, parts, (id) => (names[id] ? { name: names[id], state: "confirmed" } : undefined));
     expect(plan.goes.map((p) => p.file)).toEqual(["lyrica/z/z_image_turbo_bf16.safetensors", "lyrica/l/style.safetensors"]);
     expect(plan.frees).toBe(12.5 * GB);
     expect(plan.keeps).toEqual([
       { file: "lyrica/z/qwen_3_4b.safetensors", why: "Krea 2 and FLUX dev use it" },
       { file: "lyrica/z/ae.safetensors", why: "not Lyrica's" },
     ]);
+  });
+  it("counts an ignored recipe as no user, since the host deletes what only ignored recipes name", () => {
+    const parts = [
+      part("lyrica/z/z_image_turbo_bf16.safetensors", { usedBy: ["r1", "r2"] }),
+      part("lyrica/z/qwen_3_4b.safetensors", { usedBy: ["r1", "r2", "r3"] }),
+      part("lyrica/z/ae.safetensors"),
+    ];
+    const others: Record<string, Pick<HostRecipe, "name" | "state">> = { r2: { name: "Old proposal", state: "ignored" }, r3: { name: "Krea 2", state: "proposed" } };
+    const plan = deletePlan(recipe({}), parts, (id) => others[id]);
+    expect(plan.goes.map((p) => p.file)).toEqual(["lyrica/z/z_image_turbo_bf16.safetensors", "lyrica/z/ae.safetensors"]);
+    expect(plan.keeps).toEqual([{ file: "lyrica/z/qwen_3_4b.safetensors", why: "Krea 2 uses it" }]);
   });
 });

@@ -65,7 +65,8 @@ interface Lib {
   onAddPart?: (c: RecipeCopy) => void;
   onDelete?: (c: RecipeCopy) => void;
 }
-const nameOf = (L: Lib, hostId: string, id: string) => L.libOf(hostId)?.recipes.find((r) => r.id === id)?.name;
+const recipeOf = (L: Lib, hostId: string, id: string) => L.libOf(hostId)?.recipes.find((r) => r.id === id);
+const nameOf = (L: Lib, hostId: string, id: string) => recipeOf(L, hostId, id)?.name;
 
 const chip = (label: React.ReactNode, on: boolean, onClick: () => void) => <button type="button" className="chip" aria-pressed={on} onClick={onClick}>{label}</button>;
 
@@ -145,7 +146,7 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
   };
   const remove = () => {
     const { c } = deleting!;
-    const plan = deletePlan(c.recipe, L.libOf(c.hostId)?.parts ?? [], (id) => nameOf(L, c.hostId, id));
+    const plan = deletePlan(c.recipe, L.libOf(c.hostId)?.parts ?? [], (id) => recipeOf(L, c.hostId, id));
     setDeleting(undefined);
     void run(async () => {
       const done = await post<{ kept?: { file: string; reason: string }[] }>(u(userId, "hosts", c.hostId, "recipes", c.recipe.id), { do: "delete" });
@@ -253,7 +254,7 @@ function RecipeRow({ L, row, groups, offeringOf, open, reveal, onToggle }: {
         <div className="ldetail">
           {base && (
             <p className="meta">
-              <button type="button" className="link" onClick={() => reveal(base.trim().toLowerCase())}>{base}</button> with a LoRA built in. Its results differ, so it's a model of its own, linked to its base.
+              Built on <button type="button" className="link" onClick={() => reveal(base.trim().toLowerCase())}>{base}</button> with a LoRA.
             </p>
           )}
           {row.copies.map((c) => <CopyBlock key={c.hostId} L={L} c={c} />)}
@@ -274,7 +275,7 @@ function PlainRow({ ep, m, open, onToggle }: { ep: Endpoint; m: OfferingInfo; op
       </button>
       {open && (
         <div className="ldetail">
-          <p className="meta">Runs on {ep.name}: there are no parts to manage.{ep.kind === "cloud" && " Portrait photos go to it only as your setting allows."}</p>
+          <p className="meta">Runs on {ep.name}.</p>
         </div>
       )}
     </li>
@@ -313,7 +314,7 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
     <button type="button" className="sm" disabled={L.busy} onClick={() => L.onAddPart?.(c)}>Add a part</button>
     {mainPart?.downloaded && <button type="button" className="sm danger" disabled={L.busy} onClick={() => L.onDelete?.(c)}>Delete</button>}
   </>;
-  const where = mainPart?.downloaded ? "her downloads" : "the shared folder";
+  const where = mainPart?.downloaded ? `${her()}'s downloads` : "the shared folder";
   return (
     <section className="copyblock" aria-label={`${r.name} on ${c.host}`} data-recipe={r.id}>
       <div className="copyhead">
@@ -438,7 +439,7 @@ function AddPart({ L, c, onAdd, onCancel }: {
           ))}
         </div>
       ) : <p className="muted">No {roleWord(role)} for {archWord(r.arch)} on {c.host} yet.</p>}
-      <p className="meta">Need another? <a href={href({ page: "models", userId: L.ctx.user.id, tab: "images", add: "image" })}>Download one</a> from the Image models page.</p>
+      <p className="meta"><a href={href({ page: "models", userId: L.ctx.user.id, tab: "images", add: "image" })}>Download another…</a></p>
       {role === "lora" && files.length > 0 && <>
         <label className="field strength"><span>Strength <span className="num">{strength.toFixed(2)}</span></span>
           <input type="range" min={0} max={1.5} step={0.05} value={strength} onChange={(e) => setStrength(Number(e.target.value))} />
@@ -455,7 +456,7 @@ function AddPart({ L, c, onAdd, onCancel }: {
 
 /** Delete a recipe: what goes and what it frees, what stays and why, and which lists skip it from now on. */
 function DeleteRecipe({ L, c, usedIn, onConfirm, onCancel }: { L: Lib; c: RecipeCopy; usedIn: ModelUse[]; onConfirm: () => void; onCancel: () => void }) {
-  const plan = deletePlan(c.recipe, L.libOf(c.hostId)?.parts ?? [], (id) => nameOf(L, c.hostId, id));
+  const plan = deletePlan(c.recipe, L.libOf(c.hostId)?.parts ?? [], (id) => recipeOf(L, c.hostId, id));
   const names = (files: string[]) => files.map((f, i) => <Fragment key={f}>{i > 0 && ", "}<code>{fileName(f)}</code></Fragment>);
   return (
     <Dialog labelledBy="delete-recipe-title" onCancel={onCancel} onSubmit={onConfirm}>
@@ -493,7 +494,7 @@ function ReviewRow({ L, c, selected, menu, setMenu, onPick, onSelect, details, o
           {r.name}{selected && <span className="sr-only"> (selected)</span>}
           {r.ready ? <span className="pill ok">ready</span> : <span className="pill warn"><span>{plural(miss.count, "part missing", "parts missing")}{miss.bytes > 0 && <> · <Size text={size(miss.bytes)} /></>}</span></span>}
         </span>
-        <span className="meta">{[archWord(r.arch), ...r.does].join(" · ")}{main && <> · <span className="mono">{main}</span>{others.length > 0 && ` with ${others.join(", ")}`}</>}</span>
+        <span className="meta">{[archWord(r.arch), ...r.does].join(" · ")}{main && <> · <span className="mono">{main}</span>{others.length > 0 && <> with {others.map((f, i) => <Fragment key={f}>{i > 0 && ", "}<span className="mono">{f}</span></Fragment>)}</>}</>}</span>
       </div>
       {L.editable(c.hostId) && (
         <div className="actions">

@@ -92,14 +92,17 @@ export function recipeRows(libs: HostLibrary[]): ImageRow[] {
   return out.sort((a, b) => Number(!a.pill) - Number(!b.pill) || a.name.localeCompare(b.name));
 }
 
-/** What deleting a recipe deletes: the parts Lyrica downloaded that nothing else uses. The rest stays, each with why. */
-export function deletePlan(r: HostRecipe, parts: HostPart[], nameOf: (id: string) => string | undefined): { goes: HostPart[]; keeps: { file: string; why: string }[]; frees: number } {
+/**
+ * What deleting a recipe deletes: the parts Lyrica downloaded that no other recipe still in use needs. The rest stays,
+ * each with why. An ignored recipe doesn't keep a file, as on the host (host/src/recipes.ts, `remove`).
+ */
+export function deletePlan(r: HostRecipe, parts: HostPart[], recipeOf: (id: string) => Pick<HostRecipe, "name" | "state"> | undefined): { goes: HostPart[]; keeps: { file: string; why: string }[]; frees: number } {
   const goes: HostPart[] = [];
   const keeps: { file: string; why: string }[] = [];
   for (const file of [...r.parts.map((p) => p.file), ...r.loras.map((l) => l.file)]) {
     if (!file) continue;
     const part = parts.find((p) => p.file === file);
-    const others = (part?.usedBy ?? []).filter((id) => id !== r.id).map((id) => nameOf(id) ?? "another recipe");
+    const others = (part?.usedBy ?? []).filter((id) => id !== r.id).map(recipeOf).flatMap((o) => (o && o.state !== "ignored" ? [o.name] : []));
     if (part?.downloaded && !others.length) goes.push(part);
     else keeps.push({ file, why: !part?.downloaded ? "not Lyrica's" : `${others.join(" and ")} ${others.length > 1 ? "use" : "uses"} it` });
   }

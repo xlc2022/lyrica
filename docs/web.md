@@ -372,8 +372,8 @@ A thread's address may carry what the panel beside it shows:
   (`addPart`) or a LoRA with its strength (`addLora`), by default into a
   copy named "<name> + <LoRA>" (`copy` first) so the recipe stays as it is.
   **Delete** (shown when Lyrica downloaded the recipe's main file) works
-  out from the parts' `downloaded` and `usedBy` what goes and what stays,
-  names the lists that skip it from a first `delete-copy` without confirm on
+  out from the parts' `downloaded` and `usedBy` what goes and what stays
+  (an ignored recipe keeps nothing, as on the host), names the lists that skip it from a first `delete-copy` without confirm on
   its offering (`recipe/<id>`), then sends `delete`; a file the host kept
   goes to a toast. A recipe copied from another links to it. Parts lists
   every file of the chosen type (or Unused files) with its host, facts and
