@@ -1172,6 +1172,13 @@ export type ThreadEvent =
   | { type: "usage"; input: number; output: number; cacheRead: number; cacheWrite: number; total: number }
   /** Messages waiting as follow-ups. */
   | { type: "queue"; queued: string[] }
+  /**
+   * A message from another thread (`[From t:…]`) or a look (`[Watching
+   * threads]`) that reached the running turn, or was kept in the stored
+   * thread because the turn stopped or failed before taking it. Stored as a
+   * user message with its mark.
+   */
+  | { type: "received"; text: string }
   /** In plain words: a model the router refused, an endpoint that's down, a failed tool setup. */
   | { type: "error"; message: string }
   /**

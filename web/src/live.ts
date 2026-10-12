@@ -91,6 +91,9 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       const taken = s.queued.slice(0, Math.max(0, s.queued.length - e.queued.length));
       return { ...s, queued: e.queued, items: [...s.items, ...taken.map((text) => ({ role: "user" as const, text }))] };
     }
+    case "received":
+      // From another thread or a look, where it reached the turn; drawn by its mark.
+      return { ...s, items: [...s.items, { role: "user", text: e.text }] };
     case "error":
       return { ...s, errors: [...s.errors, e.message] };
     case "offline":

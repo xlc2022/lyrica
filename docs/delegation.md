@@ -260,12 +260,16 @@ checks it reaches her, and with a real model which she picks. Code:
   If the child's first turn can't start, the child is forgotten.
 - `message({ id, text })` to one of the thread's children, named by its ID
   or its current title (`pickThread`; a title two children share is
-  refused): sent as its next
-  turn (or queued behind the running one), marked as from the parent with a
-  first line `[From t:<parent>]`. Only `ChildThreads` sends it
+  refused): it starts a turn there, or, if the child is busy, joins its
+  running turn as a Pi steer, taken after the current tool call (daemon.md,
+  "Threads"). It is marked as from the parent with a
+  first line `[From t:<parent>]`. Only `ChildThreads` sends that mark
   (`HostedThread.send(text, { fromParent })`); `send` refuses any other text
   that starts with it, so a user can't type it, and the UI shows it as hers
-  only in a child thread. `message({ to: "parent", text })` from a child posts an update:
+  only in a child thread. A sibling's message in a project, and a look,
+  reach a busy thread the same way. If the turn is stopped or fails before
+  taking the message, it is appended to the thread's stored messages, so it
+  is never lost. `message({ to: "parent", text })` from a child posts an update:
   delivered like a background subagent's result (`Delegation.deliver`, a
   `notice` with status `update` naming the child), into the live parent or
   its stored thread, without starting a turn there.

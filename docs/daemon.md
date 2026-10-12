@@ -131,9 +131,17 @@ Each active thread is one Pi session from `openThreadSession`, with
 - A session opens on the first message and is disposed after 15 idle
   minutes. Entries are stored as turns end, so reopening loses nothing. With
   no stream open, the thread's whole record (with its event buffer) goes too.
-- One turn runs at a time. A message sent during a turn waits; queued messages
-  go together as the next turn. **Stop** aborts the turn, denies waiting
-  permission requests and drops the queue.
+- One turn runs at a time. A message the person sends during a turn waits as
+  a follow-up; queued messages go together as the next turn. A marked message
+  (from another thread, `[From t:…]`, or a look, `[Watching threads]`) joins
+  the running turn instead: Pi takes it as a steer after the current tool
+  call, or after the reply being written, and stores it as a user message
+  with its mark; the stream gets `received` when it lands. One that came
+  too late for the turn goes as the next one. **Stop** aborts the turn,
+  denies waiting permission requests and drops the person's queue. A marked
+  message the turn didn't take, because it was stopped or failed, the
+  thread closed, or no model answered, is appended to the stored thread as
+  that user message, never dropped.
 - Before each turn the chat model is chosen again (`prepare`,
   [models.md](models.md)): a machine that is away is passed over for the next
   model in the list, the thinking level is set, and the call is recorded. A
@@ -346,7 +354,8 @@ carries text and thinking deltas, tool calls (start with arguments; end with
 the first lines of the result), recall and remember markers, permission
 requests and their outcome, usage, errors in plain words (a model the router
 refused, an endpoint that didn't answer), `offline` when no model could be
-reached, the queue, the title, `settings`
+reached, the queue, `received` (a marked message that reached the turn, or
+was kept), the title, `settings`
 when the thread's settings changed (an approved plan switching its mode),
 and turn end, then the thread's `context` after each turn and a `compacted`
 marker when it compacts.

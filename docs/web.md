@@ -358,7 +358,8 @@ A thread's address may carry what the panel beside it shows:
   to the summary are the Web UI 2 thread's.
 - A message sent during a turn waits as a follow-up and shows as waiting.
   Stop aborts the turn; `lyricad` drops the waiting follow-ups, so their text
-  goes back into the composer.
+  goes back into the composer. A message from another thread or a look
+  never waits there: it shows where it reached the turn (`received`).
 - `src/live.ts` turns stream events into the in-progress turn. When a turn
   ends, the stored messages are reloaded and the live copy is dropped.
   `EventSource` reconnects with `Last-Event-ID`. If it gives up, a new one
