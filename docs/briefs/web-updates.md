@@ -10,7 +10,7 @@ screenshots before the PR.
 
 ## Goal
 
-Li sees what an update will change before pressing it, and can always
+The user sees what an update will change before pressing it, and can always
 go back (principle 6: make review easy).
 
 ## In scope
@@ -39,7 +39,7 @@ The updater, anything outside Administration, her own editing.
 
 ## After merging
 
-Tell the standing Operator docs thread (Li's rule, 2026-10-11) by
+Tell the standing Operator docs thread (the owner's rule, 2026-10-11) by
 cross-session message that updates and rollbacks are now pressed in
 Administration → Updates. Plus the merge notice to the project chat.
 

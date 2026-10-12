@@ -1,9 +1,9 @@
 // Screenshots of the web UI, so a UI change can be looked at without a person:
-// a throwaway lyricad from serve.ts with li signed in, then each page at the
+// a throwaway lyricad from serve.ts with ada signed in, then each page at the
 // phone (390×844) and desktop (1280×800) widths, light and dark.
 // Usage, after `npm run build`:
 //   npx tsx web/e2e/shot.ts [--out dir] [--phone|--desktop] [--light|--dark] [--full] [page]...
-// A page is li's route without `#/u/<id>/` (`settings`, `models/hosts`,
+// A page is ada's route without `#/u/<id>/` (`settings`, `models/hosts`,
 // `memory`; nothing for home), or a whole `#/...` route.
 // Each picture is <out>/<page>-<width>-<theme>.png (out defaults to shots/);
 // their paths are printed. The browser is $LYRICA_CHROMIUM, else the first of
@@ -55,7 +55,7 @@ try {
     for (const size of sizes) for (const theme of themes) {
       const context = await browser.newContext({ baseURL: base, viewport: { width: size.width, height: size.height }, isMobile: size.mobile, hasTouch: size.mobile, colorScheme: theme });
       // The page shares the context's cookies, so this signs it in.
-      const login = await context.request.post("/api/login", { data: { login: "li", password: "pw" }, headers: { origin: base } });
+      const login = await context.request.post("/api/login", { data: { login: "ada", password: "pw" }, headers: { origin: base } });
       if (!login.ok()) throw new Error(`log in: ${login.status()} ${await login.text()}`);
       const { user } = await login.json() as { user: { id: string } };
       const page = await context.newPage();

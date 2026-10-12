@@ -44,7 +44,7 @@ only on the developer bench.
    - A login name and password unlock the user's key. The session cookie is
      `Secure`, `HttpOnly` and `SameSite=Strict`, with a random 256-bit ID.
      Sessions live in memory only.
-   - A browser can stay logged in as several users (Li's personas) at once,
+   - A browser can stay logged in as several users (a user's personas) at once,
      and switching between them needs no new password. How that's carried is
      your call.
    - Logging out ends the cookie session. The user's key stays in memory so
@@ -171,7 +171,7 @@ only on the developer bench.
 - **Done:** everything in scope, with the tests listed above. The upload test
   needs bubblewrap and gocryptfs as a non-root user, so it runs in CI only.
 - **Not verified on a real host:** the systemd unit (no systemd in the build
-  container). Check on Li's LXC: the service starts and unlocks with saved
+  container). Check on the owner's LXC: the service starts and unlocks with saved
   credentials (`LoadCredentialEncrypted` from a directory, `systemd-creds
   encrypt --user`, systemd 256 or later), and `PrivateTmp`,
   `ProtectControlGroups` and `ProtectHostname` don't break bubblewrap, pasta

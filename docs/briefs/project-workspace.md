@@ -13,11 +13,11 @@ controls.
 
 ## Goal
 
-A project is set up on one page. Li asked (2026-10-11) whether a project's
+A project is set up on one page. The owner asked (2026-10-11) whether a project's
 settings panel can set which machines and mounts its threads may use. It
 can today, but only through the **Thread settings** link under This chat,
 which opens the project chat's drawer. This moves the two rows that define
-a project's workspace onto the page itself (principle 1: what Li does
+a project's workspace onto the page itself (principle 1: what the user does
 often, in one place; docs/ux.md: settings reached often live in the thing's
 own settings, not behind a hop).
 
@@ -55,7 +55,7 @@ own settings, not behind a hop).
 
 ## Decided
 
-Li decided (2026-10-11) that a folder taken off a project narrows its
+The owner decided (2026-10-11) that a folder taken off a project narrows its
 running threads at once, as machines do. That is its own brief,
 [folder-narrowing.md](folder-narrowing.md), in `core/workspace`, not this
 one; once it lands, the docs/web.md sentence about the old failure goes.

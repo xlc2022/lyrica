@@ -13,9 +13,9 @@ import { withMemory } from "../extension/test/helpers.ts";
 
 // Scenario: a dislike carries over to an unrelated conversation.
 //
-// Thread 1: Li says "Please don't call me sweetie, I can't stand it." She notes it.
+// Thread 1: Ada says "Please don't call me sweetie, I can't stand it." She notes it.
 // Thread 2, later, on something else: "Can you help me plan dinner for Saturday?"
-// Expected: the dislike is in front of her in thread 2, so she doesn't call Li
+// Expected: the dislike is in front of her in thread 2, so she doesn't call Ada
 // sweetie, even though nothing in the new message mentions names or nicknames.
 //
 // By hand: on the bench (`lyrica dev`), say the first line, check she noted it,
@@ -23,12 +23,12 @@ import { withMemory } from "../extension/test/helpers.ts";
 //
 // Scripted: pi-ai's fake model plays her part, so this checks what reaches
 // her context, not what a real model does with it. The baseline (recall alone)
-// misses it; the page about the user (p:about-user) carries it, whether Li
+// misses it; the page about the user (p:about-user) carries it, whether Ada
 // wrote it or sleep did. In the sleep case a scripted model plays the night:
 // it checks that the note reaches consolidation, not how well a model writes.
 
 const persona: Persona = { core: [{ path: "SOUL.md", text: "She is Lyrica." }], topics: [] };
-const profile: Profile = { displayName: "Li", pronouns: PRONOUN_PRESETS.she, previousNames: [] };
+const profile: Profile = { displayName: "Ada", pronouns: PRONOUN_PRESETS.she, previousNames: [] };
 
 const dirs: string[] = [];
 afterAll(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -68,9 +68,9 @@ async function scenario(opts: { aboutPage: boolean }) {
     () => fauxAssistantMessage("Understood, I won't."),
   ]);
   if (opts.aboutPage) {
-    // Li writes her own page in the memory browser (sleep will keep it up later).
+    // Ada writes her own page in the memory browser (sleep will keep it up later).
     const owner = m.memory.openOwnerView(m.user.id);
-    owner.general.putPage({ slug: "about-user", title: "About Li", summary: "who Li is", text: "{user} can't stand being called sweetie." }, `user:${m.user.id}`);
+    owner.general.putPage({ slug: "about-user", title: "About Ada", summary: "who Ada is", text: "{user} can't stand being called sweetie." }, `user:${m.user.id}`);
     owner.close();
   }
   let seen = "";
@@ -83,12 +83,12 @@ async function scenario(opts: { aboutPage: boolean }) {
 /** Thread 1 notes the dislike; a night's sleep writes p:about-user from the note; thread 2 returns what the model saw. */
 async function afterSleep() {
   const m = await withModels();
-  m.models.setProfile(m.li.id, "cloud", "chat", m.cloudRef);
+  m.models.setProfile(m.ada.id, "cloud", "chat", m.cloudRef);
   const memory = new Memory(m.keyring, m.users);
   const thread = (): ThreadContext => {
-    const view = memory.openThreadView(m.li.id, "general");
+    const view = memory.openThreadView(m.ada.id, "general");
     const { id } = view.own.createThread({ interface: "web" });
-    return { user: m.li, pool: "general", interface: "web", threadId: id, view, call: m.models.callContext(m.li.id, "general", id) };
+    return { user: m.ada, pool: "general", interface: "web", threadId: id, view, call: m.models.callContext(m.ada.id, "general", id) };
   };
   const first = thread();
   await converse(first, "Please don't call me sweetie, I can't stand it.", [
@@ -103,7 +103,7 @@ async function afterSleep() {
       return { tools: [{ name: "write_page", args: { slug: "about-user", title: "About {user}", summary: "who {user} is", text: `{user} can't stand being called sweetie [${note}].` } }] };
     }
     if (tools.includes("write_journal")) return { tools: [{ name: "write_journal", args: { text: "A quiet night." } }] };
-    if (tools.includes("write_wake")) return { tools: [{ name: "write_wake", args: { text: "Li and I talked about names." } }] };
+    if (tools.includes("write_wake")) return { tools: [{ name: "write_wake", args: { text: "Ada and I talked about names." } }] };
     return { text: "Done." };
   };
   m.cloud.respond(night);
@@ -115,7 +115,7 @@ async function afterSleep() {
     users: m.users, memory, models: m.models, persona, proposals: new PersonaProposals(m.keyring.self(), m.users, persona), cwd,
     hasKey: (id) => m.keyring.hasUserKey(id), limits: { retries: 0 },
   });
-  const run = await sleep.run(m.li.id, "general", "scheduled");
+  const run = await sleep.run(m.ada.id, "general", "scheduled");
   let seen = "";
   await converse(thread(), "Can you help me plan dinner for Saturday?", [
     (context) => { seen = context; return fauxAssistantMessage("Of course."); },

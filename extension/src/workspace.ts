@@ -21,7 +21,7 @@ export interface ThreadTools {
   claudeCode?(): boolean;
   /** The machines the thread may use now, with their mode limits. Without it, none. */
   machines?(): ThreadMachine[];
-  /** Whether Li allowed this exact suspect command on this machine in this thread. */
+  /** Whether the user allowed this exact suspect command on this machine in this thread. */
   allowedInThread?(machine: string, command: string): boolean;
   /** The thread's repositories, where each is cloned, and whether its token reaches the sandbox now. Without it, none. */
   repositories?(): ThreadGitRepository[];
@@ -33,7 +33,7 @@ export interface ThreadTools {
   gitAccounts?(): { name: string; kind: string; host: string }[];
   /** The MCP servers the thread may use now, by name. Without it, none: a call to an MCP tool is refused. */
   mcpServers?(): { name: string }[];
-  /** Whether Li allowed this MCP tool on this server in this thread. */
+  /** Whether the user allowed this MCP tool on this server in this thread. */
   toolAllowedInThread?(server: string, tool: string): boolean;
   /** One action on one of the thread's Proxmox machines. Without it, there is no proxmox tool. */
   proxmox?(machine: string, action: ProxmoxAction, vm?: string): Promise<string>;

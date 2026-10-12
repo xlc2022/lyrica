@@ -14,7 +14,7 @@ network layout on the running containers. The CUDA and ROCm images build
 only when the files that go into them change. Nothing has run on a GPU,
 with a real model, or against a real hub (the model host brief's handoff
 says so, and no later thread has reported otherwise). The voice and
-dictation choices below come from a benchmark Li ran on a Windows machine
+dictation choices below come from a benchmark the owner ran on a Windows machine
 with an RTX 3090, outside this stack. Expect the first real install to turn
 something up; the checklist at the end is for that.
 
@@ -199,7 +199,7 @@ Three ways a model gets into the library:
 
 ### The voice and dictation starters
 
-Li chose these after the benchmark; the host's README names them and the
+The owner chose these after the benchmark; the host's README names them and the
 exact revisions. The dashboard's Downloads takes a repository and
 downloads its `main` branch; to get the benchmarked revision, use the API
 from the machine, where the dashboard port needs no password. List a
@@ -278,10 +278,10 @@ from Models, Tasks, or from a terminal on the
 Lyrica machine (`lyrica` runs as her user by itself):
 
 ```sh
-lyrica admin models profile set local chat 'shared.blackwell/lyrica/huggingface/Qwen/Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf' --user li
-lyrica admin models profile set local speech.speak 'shared.blackwell/lyrica/huggingface/onnx-community/Kokoro-82M-v1.1-zh-ONNX' --user li
-lyrica admin models profile set local speech.transcribe 'shared.blackwell/lyrica/huggingface/openai/whisper-large-v3-turbo' --user li
-lyrica admin models profile show --user li
+lyrica admin models profile set local chat 'shared.blackwell/lyrica/huggingface/Qwen/Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf' --user ada
+lyrica admin models profile set local speech.speak 'shared.blackwell/lyrica/huggingface/onnx-community/Kokoro-82M-v1.1-zh-ONNX' --user ada
+lyrica admin models profile set local speech.transcribe 'shared.blackwell/lyrica/huggingface/openai/whisper-large-v3-turbo' --user ada
+lyrica admin models profile show --user ada
 ```
 
 A model id is its path under the models folder, as the dashboard and
@@ -338,7 +338,7 @@ second pairing. Then:
   `sudo systemctl disable --now lyrica-host-egress` with `sudo
   host/egress.sh remove` takes the rules out. The models folder stays.
 
-## Checklist for the first host on Li's GPU machine
+## Checklist for the first host on your GPU machine
 
 The model host brief lists the same steps in more detail ("Try it on the
 workstation"). Note what goes wrong against each.

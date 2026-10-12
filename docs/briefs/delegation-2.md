@@ -13,8 +13,8 @@
 ## Goal
 
 Lyrica and her subagents can talk back and forth, the way Claude works with
-its agents, and Li can talk to a subagent too. Subagents that change things
-work in threads that ask before acting, because their approvals reach Li.
+its agents, and the user can talk to a subagent too. Subagents that change things
+work in threads that ask before acting, because their approvals reach the user.
 This serves principle 1 (work keeps going instead of being refused) and keeps
 the permission boundary structural.
 
@@ -78,7 +78,7 @@ the permission boundary structural.
    - The `delegate` card expands inline to each subagent's work, with a
      message box, its notes and its approvals; notice cards link to it.
    - The sidebar lists child threads only, not subagents.
-   - A subagent's transcript shows who sent each message: Lyrica, Li, or the
+   - A subagent's transcript shows who sent each message: Lyrica, the user, or the
      subagent's own work.
 6. **Docs.** docs/delegation.md, docs/daemon.md and docs/web.md describe
    what exists; the PR lists the contract changes.

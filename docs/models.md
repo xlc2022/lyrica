@@ -39,7 +39,7 @@ it, never inferred), an OpenAI-compatible base URL and an optional API key.
   set by hand (`setCapabilities`), which wins over discovery.
 - `probe(userId, endpointId)` is `up` when `/v1/models` answers within 5
   seconds. For a local endpoint it also warns, without blocking, when the
-  host resolves outside Li's own network: loopback, RFC 1918, `fd00::/8`, or
+  host resolves outside the owner's own network: loopback, RFC 1918, `fd00::/8`, or
   the Tailscale tailnet (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`). `*.ts.net`
   names resolve through the host's resolver.
 - A local endpoint over plain HTTP whose host isn't loopback or the tailnet

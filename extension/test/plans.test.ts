@@ -11,9 +11,9 @@ afterEach(() => { globalThis.fetch = realFetch; vi.restoreAllMocks(); });
 async function setup(expires = Date.now() + 3_600_000, kind: "chatgpt" | "grok" = "chatgpt") {
   const m = await withModels();
   m.models.setPlanCatalog(planCatalog);
-  const plan = m.models.addPlan(m.li, { name: kind, plan: kind, credential: { access: "at-1", refresh: "rt-1", expires, clientId: "client-1", scopes: [] } });
-  const offerings = await m.models.discover(m.li, plan.id);
-  m.models.setProfile(m.li.id, "cloud", "chat", { offeringId: offerings.find((o) => o.modelId === "gpt-5")?.id ?? offerings[0]!.id });
+  const plan = m.models.addPlan(m.ada, { name: kind, plan: kind, credential: { access: "at-1", refresh: "rt-1", expires, clientId: "client-1", scopes: [] } });
+  const offerings = await m.models.discover(m.ada, plan.id);
+  m.models.setProfile(m.ada.id, "cloud", "chat", { offeringId: offerings.find((o) => o.modelId === "gpt-5")?.id ?? offerings[0]!.id });
   return { ...m, plan, offerings };
 }
 
@@ -50,9 +50,9 @@ describe("a ChatGPT plan", () => {
 
   it("has no URL or key to edit, and merges only with another plan", async () => {
     const s = await setup();
-    expect(() => s.models.editEndpoint(s.li, s.plan.id, { baseUrl: "https://example.com/v1" })).toThrow(/signs in with ChatGPT/);
-    expect(() => s.models.editEndpoint(s.li, s.plan.id, { apiKey: "sk-x" })).toThrow(/signs in with ChatGPT/);
-    expect(() => s.models.merge(s.li, s.plan.id, s.openrouter.id)).toThrow(/only with another plan of the same kind/);
+    expect(() => s.models.editEndpoint(s.ada, s.plan.id, { baseUrl: "https://example.com/v1" })).toThrow(/signs in with ChatGPT/);
+    expect(() => s.models.editEndpoint(s.ada, s.plan.id, { apiKey: "sk-x" })).toThrow(/signs in with ChatGPT/);
+    expect(() => s.models.merge(s.ada, s.plan.id, s.openrouter.id)).toThrow(/only with another plan of the same kind/);
   });
 
   it("refreshes once for concurrent calls and keeps the new sign-in", async () => {
@@ -63,7 +63,7 @@ describe("a ChatGPT plan", () => {
     expect(calls).toHaveLength(1);
     expect(a?.auth.apiKey).toBe("at-2");
     expect(b?.auth.apiKey).toBe("at-2");
-    expect(s.models.planCredential(s.li.id, s.plan.id)).toMatchObject({ access: "at-2", refresh: "rt-2", clientId: "client-1" });
+    expect(s.models.planCredential(s.ada.id, s.plan.id)).toMatchObject({ access: "at-2", refresh: "rt-2", clientId: "client-1" });
     // A runtime made later, as after a restart, uses the saved sign-in without refreshing.
     await (await modelRuntimeFor(s.models, s.ctx())).getAuth(s.plan.id);
     expect(calls).toHaveLength(1);
@@ -74,17 +74,17 @@ describe("a ChatGPT plan", () => {
     tokenEndpoint(400);
     const runtime = await modelRuntimeFor(s.models, s.ctx());
     await expect(runtime.getAuth(s.plan.id)).rejects.toThrow();
-    expect(s.models.endpoint(s.li.id, s.plan.id)?.signedOut).toBe(true);
-    expect(s.models.planCredential(s.li.id, s.plan.id)).toBeUndefined();
+    expect(s.models.endpoint(s.ada.id, s.plan.id)?.signedOut).toBe(true);
+    expect(s.models.planCredential(s.ada.id, s.plan.id)).toBeUndefined();
     expect(() => s.models.resolve("chat", s.ctx())).toThrow(/chatgpt is signed out/);
 
-    s.models.setPlanCredential(s.li.id, s.plan.id, { access: "at-9", refresh: "rt-9", expires: Date.now() + 3_600_000 });
+    s.models.setPlanCredential(s.ada.id, s.plan.id, { access: "at-9", refresh: "rt-9", expires: Date.now() + 3_600_000 });
     expect(s.models.resolve("chat", s.ctx()).endpoint.id).toBe(s.plan.id);
   });
 
   it("is skipped for a while once its usage limit is reached, so the next turn falls back", async () => {
     const s = await setup();
-    s.models.setProfile(s.li.id, "cloud", "chat", [s.offerings[0]!.id, s.cloudRef.offeringId].map((offeringId) => ({ offeringId })));
+    s.models.setProfile(s.ada.id, "cloud", "chat", [s.offerings[0]!.id, s.cloudRef.offeringId].map((offeringId) => ({ offeringId })));
     s.models.reportPlanLimit(s.plan.id);
     const r = s.models.resolve("chat", s.ctx());
     expect(r.endpoint.id).toBe(s.openrouter.id);
@@ -96,7 +96,7 @@ describe("a ChatGPT plan", () => {
     tokenEndpoint(503);
     const runtime = await modelRuntimeFor(s.models, s.ctx());
     await expect(runtime.getAuth(s.plan.id)).rejects.toThrow();
-    expect(s.models.endpoint(s.li.id, s.plan.id)?.signedOut).toBeUndefined();
+    expect(s.models.endpoint(s.ada.id, s.plan.id)?.signedOut).toBeUndefined();
   });
 
   it("works the same for a Grok plan, on xAI's provider", async () => {
@@ -107,7 +107,7 @@ describe("a ChatGPT plan", () => {
     expect(runtime.getModels(s.plan.id).length).toBe(s.offerings.length);
     tokenEndpoint(400, "grok");
     await expect(runtime.getAuth(s.plan.id)).rejects.toThrow();
-    expect(s.models.endpoint(s.li.id, s.plan.id)?.signedOut).toBe(true);
+    expect(s.models.endpoint(s.ada.id, s.plan.id)?.signedOut).toBe(true);
   });
 });
 

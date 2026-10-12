@@ -110,7 +110,7 @@ is the main failure to test against.
     results and rendered text with no rewrite;
   - deletion removes text and revisions, leaves a text-free tombstone, and
     flags citing pages;
-  - "Li-ion" and name searches both work;
+  - "Al-ion" (with a user named Al) and name searches both work;
   - an edit keeps mention tokens, updates citations and search, and can be
     restored from its revisions;
   - an owner view can't be passed to a session;

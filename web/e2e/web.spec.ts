@@ -7,7 +7,7 @@ test.describe.configure({ mode: "serial" });
 
 const phone = (page: Page) => (page.viewportSize()?.width ?? 1000) < 760;
 
-/** Unlocks and logs in as needed, and makes sure li has a cloud and a local endpoint. Returns li's user ID. */
+/** Unlocks and logs in as needed, and makes sure ada has a cloud and a local endpoint. Returns ada's user ID. */
 async function enter(page: Page, baseURL: string): Promise<string> {
   await page.goto("/");
   const passphrase = page.getByLabel("Passphrase");
@@ -20,7 +20,7 @@ async function enter(page: Page, baseURL: string): Promise<string> {
     await expect(login.or(signedIn)).toBeAttached();
   }
   if (await login.isVisible()) {
-    await login.fill("li");
+    await login.fill("ada");
     await page.getByLabel("Password").fill("pw");
     await page.getByRole("button", { name: "Log in" }).click();
   }
@@ -793,7 +793,7 @@ test("linked users share a browser; logging in as anyone else signs this browser
   await admin("", { login: "lark", password: "pw-lark", displayName: "Lark", pronouns, admin: false });
   await admin("", { login: "sam", password: "pw-sam", displayName: "Sam", pronouns, admin: false });
 
-  // Link Lark to Li from Settings.
+  // Link Lark to Ada from Settings.
   await page.goto(`/#/u/${userId}/settings/personas`);
   const links = page.getByRole("region", { name: "Your personas" });
   await links.getByLabel("Your password").fill("pw");
@@ -813,7 +813,7 @@ test("linked users share a browser; logging in as anyone else signs this browser
     await expect(page.getByText("Switch user")).toBeAttached();
   };
 
-  // A linked user joins Li on this browser.
+  // A linked user joins Ada on this browser.
   await logInAs("lark", "pw-lark");
   await expect(page.getByText("Signed out the previous user")).toHaveCount(0);
   expect((await page.evaluate(() => fetch("/api/state").then((r) => r.json())) as { users: unknown[] }).users).toHaveLength(2);
@@ -1441,7 +1441,7 @@ test("Share with sends a copy; the recipient sees it in Notifications and adds i
     const r = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
     if (!r.ok && r.status !== 400) throw new Error(`${path}: ${r.status} ${await r.text()}`);
   }, [`/api/u/${userId}/admin/users`, { login: "sam", password: "pw-sam", displayName: "Sam", pronouns, admin: false }] as const);
-  // Li's thread with one exchange.
+  // Ada's thread with one exchange.
   const t = await page.evaluate(async ([uid]) => {
     const r = await fetch(`/api/u/${uid}/threads`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pool: "general", title: "Seed order" }) });
     const th = (await r.json()) as { id: string };
@@ -1472,7 +1472,7 @@ test("Share with sends a copy; the recipient sees it in Notifications and adds i
   const link = page.getByRole("link", { name: /^Notifications/ });
   await expect(link.locator(".count")).toHaveText("1");
   await link.click();
-  const row = page.locator(".nrow", { hasText: "Li shared “Seed order” with you" });
+  const row = page.locator(".nrow", { hasText: "Ada shared “Seed order” with you" });
   await expect(row).toBeVisible();
   await row.getByRole("button", { name: "Add to Private" }).click();
   await expect(page.getByText("You said: beans and squash").last()).toBeVisible();

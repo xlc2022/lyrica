@@ -12,7 +12,7 @@ import {
   type DelegationEvent, type DelegationOptions, type Limits, type Request, type ThreadContext,
 } from "../src/index.ts";
 
-// Delegation against fake model servers: Li's cloud endpoint ("openrouter")
+// Delegation against fake model servers: Ada's cloud endpoint ("openrouter")
 // and local one ("gpu"). Subagents are told apart from their parent by the
 // preamble every subagent gets.
 
@@ -36,26 +36,26 @@ function gate() {
   return { open, opened };
 }
 
-/** Li with cloud subagent models, a Memory, and a Delegation over them. */
+/** Ada with cloud subagent models, a Memory, and a Delegation over them. */
 async function setup(o: { limits?: Partial<Limits>; workspace?: (m: Awaited<ReturnType<typeof withModels>>) => Workspace; approve?: DelegationOptions["approve"]; searxng?: () => string } = {}) {
   const m = await withModels();
-  for (const task of ["chat", "subagent.cheap", "subagent.strong"] as const) m.models.setProfile(m.li.id, "cloud", task, m.cloudRef);
-  m.models.setProfile(m.li.id, "local", "chat", m.localRef);
+  for (const task of ["chat", "subagent.cheap", "subagent.strong"] as const) m.models.setProfile(m.ada.id, "cloud", task, m.cloudRef);
+  m.models.setProfile(m.ada.id, "local", "chat", m.localRef);
   const memory = new Memory(m.keyring, m.users);
   const cwd = tempDir();
   const workspace = o.workspace?.(m);
   const options = { users: m.users, memory, models: m.models, cwd, limits: o.limits, workspace, approve: o.approve, searxng: o.searxng };
   const delegation = new Delegation(options);
   const thread = (pool: Pool = "general", t: { localOnly?: boolean; unlogged?: boolean } = {}): ThreadContext => {
-    const view = memory.openThreadView(m.li.id, pool);
+    const view = memory.openThreadView(m.ada.id, pool);
     const { id } = view.own.createThread({ interface: "cli", unlogged: t.unlogged });
-    if (t.localOnly) m.models.setLocalOnly(m.li.id, pool, id, true);
-    return { user: m.li, pool, interface: "cli", threadId: id, view, call: m.models.callContext(m.li.id, pool, id) };
+    if (t.localOnly) m.models.setLocalOnly(m.ada.id, pool, id, true);
+    return { user: m.ada, pool, interface: "cli", threadId: id, view, call: m.models.callContext(m.ada.id, pool, id) };
   };
   const open = (t: ThreadContext) => openThreadSession({
     thread: t, models: m.models, cwd,
     extensions: [
-      createLyricaExtension(t, { persona: () => persona, profile: () => ({ displayName: "Li", pronouns: PRONOUN_PRESETS.she, previousNames: [] }) }),
+      createLyricaExtension(t, { persona: () => persona, profile: () => ({ displayName: "Ada", pronouns: PRONOUN_PRESETS.she, previousNames: [] }) }),
       createDelegateExtension(t, delegation),
     ],
   });
@@ -101,12 +101,12 @@ describe("delegate", () => {
     let ws!: Workspace;
     const s = await setup({ workspace: (m) => {
       ws = new Workspace(m.keyring, m.users, { excludePorts: [] });
-      for (const d of ["a", "b"]) ws.allowedPaths.allow(m.li, m.li.id, "general", join(host, d));
+      for (const d of ["a", "b"]) ws.allowedPaths.allow(m.ada, m.ada.id, "general", join(host, d));
       return ws;
     } });
     const parent = s.thread();
-    ws.settings(s.li.id).addMachine({ name: "nas", host: "127.0.0.1", port: 22, username: "lyrica", privateKey: generateSshKey("test").privateKey, root: null, pool: "general", offNetwork: false }, `SHA256:${"A".repeat(43)}`);
-    ws.settings(s.li.id).setThread(parent.threadId, "general", { grants: [{ path: join(host, "a"), writable: true }], internet: false, hosts: ["10.0.0.5"], mode: "acceptEdits", machines: ["nas"] });
+    ws.settings(s.ada.id).addMachine({ name: "nas", host: "127.0.0.1", port: 22, username: "lyrica", privateKey: generateSshKey("test").privateKey, root: null, pool: "general", offNetwork: false }, `SHA256:${"A".repeat(43)}`);
+    ws.settings(s.ada.id).setThread(parent.threadId, "general", { grants: [{ path: join(host, "a"), writable: true }], internet: false, hosts: ["10.0.0.5"], mode: "acceptEdits", machines: ["nas"] });
 
     const opened: WorkspaceThread[] = [];
     const forThread = ws.forThread.bind(ws);
@@ -116,12 +116,12 @@ describe("delegate", () => {
     expect(outside.status).toBe("failed");
     expect(outside.result).toContain("isn't one of this thread's folders");
     await s.run(parent, { task: "look", role: "scout" });
-    ws.settings(s.li.id).setThread(parent.threadId, "general", { mode: "auto" });
+    ws.settings(s.ada.id).setThread(parent.threadId, "general", { mode: "auto" });
     await s.run(parent, { task: "change it", role: "worker" });
     await s.run(parent, { task: "change only a", role: "worker", folders: [join(host, "a")] });
     await s.run(parent, { task: "change it offline", role: "worker", internet: false });
     const [offline, narrowed, worker, scout] = s.delegation.status(parent);
-    const child = (thread: string) => ({ ...ws.settings(s.li.id).thread(thread), network: ws.network({ userId: s.li.id, pool: "general", threadId: thread }) });
+    const child = (thread: string) => ({ ...ws.settings(s.ada.id).thread(thread), network: ws.network({ userId: s.ada.id, pool: "general", threadId: thread }) });
     expect(child(scout!.thread)).toMatchObject({ grants: [{ path: join(host, "a"), writable: false }], mode: "acceptEdits", parent: parent.threadId, network: { internet: false, services: false, hosts: ["10.0.0.5"] } });
     expect(child(worker!.thread)).toMatchObject({ grants: [{ path: join(host, "a"), writable: true }], network: { internet: false, hosts: ["10.0.0.5"] } });
     // Bash on a machine follows no folder or read-only narrowing, so only an unnarrowed writer keeps the parent's machines.
@@ -130,7 +130,7 @@ describe("delegate", () => {
     expect([scout, worker, narrowed, offline].map((r) => opened.find((t) => t.threadId === r!.thread)))
       .toMatchObject([true, false, true, true].map((reposReadOnly) => ({ reposOf: parent.threadId, reposReadOnly })));
     // Anything wider is refused by the workspace itself.
-    const p = { userId: s.li.id, pool: "general" as const, threadId: parent.threadId };
+    const p = { userId: s.ada.id, pool: "general" as const, threadId: parent.threadId };
     expect(() => ws.inheritSettings(p, worker!.thread, { internet: true })).toThrow("no internet");
     expect(() => ws.inheritSettings(p, worker!.thread, { hosts: ["10.0.0.6"] })).toThrow("isn't in the parent thread's hosts");
   });
@@ -146,7 +146,7 @@ describe("delegate", () => {
     expect(online).toEqual(expect.arrayContaining(["web_search", "web_fetch"]));
     expect(offline!.filter((t) => t.startsWith("web_"))).toEqual([]);
     const [last] = s.delegation.status(parent);
-    expect(ws.settings(s.li.id).thread(last!.thread).webSearch).toBe(false);
+    expect(ws.settings(s.ada.id).thread(last!.thread).webSearch).toBe(false);
   });
 
   it("runs parallel tasks within the concurrency limit, and counts their tokens", async () => {
@@ -311,8 +311,8 @@ describe("delegate", () => {
     let ws!: Workspace;
     const s = await setup({ limits: { concurrency: 3 }, workspace: (m) => {
       ws = new (class extends Workspace { override targetFor(_t: WorkspaceThread) { return target; } })(m.keyring, m.users, { excludePorts: [] });
-      ws.allowedPaths.allow(m.li, m.li.id, "general", repo);
-      ws.allowedPaths.allow(m.li, m.li.id, "general", plain);
+      ws.allowedPaths.allow(m.ada, m.ada.id, "general", repo);
+      ws.allowedPaths.allow(m.ada, m.ada.id, "general", plain);
       return ws;
     } });
     let working = 0;
@@ -320,7 +320,7 @@ describe("delegate", () => {
     s.cloud.respond(async () => { most = Math.max(most, ++working); await sleep(30); working--; return { text: "changed" }; });
 
     const parent = s.thread();
-    ws.settings(s.li.id).setThread(parent.threadId, "general", { grants: [{ path: repo, writable: true }] });
+    ws.settings(s.ada.id).setThread(parent.threadId, "general", { grants: [{ path: repo, writable: true }] });
     const run = await s.run(parent, { tasks: [{ task: "change A" }, { task: "change B" }, { task: "look", role: "scout" }] });
     expect(run.status).toBe("finished");
     expect(most).toBe(3);
@@ -331,14 +331,14 @@ describe("delegate", () => {
     expect(git("branch", "--list", "lyrica/*")).toContain(`lyrica/${run.id}-2`);
     expect(run.result).toContain(`its commits are on branch lyrica/${run.id}-1`);
     const writers = s.delegation.status(parent).filter((r) => r.role === "worker");
-    expect(writers.map((r) => ws.settings(s.li.id).thread(r.thread).grants)).toEqual([[{ path: `${repo}/.git`, writable: true }], [{ path: `${repo}/.git`, writable: true }]]);
+    expect(writers.map((r) => ws.settings(s.ada.id).thread(r.thread).grants)).toEqual([[{ path: `${repo}/.git`, writable: true }], [{ path: `${repo}/.git`, writable: true }]]);
     const tasks = s.cloud.requests.map(told).filter((t) => t.startsWith("change"));
     expect(tasks.filter((t) => t.includes(trees[0]!))).toHaveLength(1);
     expect(tasks.filter((t) => t.includes(trees[1]!))).toHaveLength(1);
 
     // Not a git repository: the writers take turns.
     const other = s.thread();
-    ws.settings(s.li.id).setThread(other.threadId, "general", { grants: [{ path: plain, writable: true }] });
+    ws.settings(s.ada.id).setThread(other.threadId, "general", { grants: [{ path: plain, writable: true }] });
     most = 0;
     const serial = await s.run(other, { tasks: [{ task: "change C" }, { task: "change D" }] });
     expect(serial.status).toBe("finished");
@@ -367,7 +367,7 @@ describe("delegate", () => {
     expect(sent).not.toContain("delegate");
     expect(sent).not.toContain("remember");
     const [row] = s.delegation.status(parent);
-    const child: ThreadContext = { ...parent, threadId: row!.thread, call: s.models.callContext(s.li.id, "general", row!.thread) };
+    const child: ThreadContext = { ...parent, threadId: row!.thread, call: s.models.callContext(s.ada.id, "general", row!.thread) };
     expect(() => createDelegateExtension(child, s.delegation)).toThrow("depth limit");
     expect(() => s.delegation.start(child, { task: "more" }, { background: false, budget: s.delegation.newBudget() })).toThrow("depth limit");
 
@@ -389,7 +389,7 @@ describe("delegate", () => {
     const after = new Delegation(s.options);
     const events: DelegationEvent[] = [];
     after.events.on("interrupted", (e) => events.push(e));
-    after.recover(s.li.id);
+    after.recover(s.ada.id);
     expect(after.status(parent)[0]).toMatchObject({ run: run.id, status: "interrupted" });
     expect(events).toEqual([expect.objectContaining({ type: "interrupted", runId: run.id, parentThreadId: parent.threadId })]);
     expect(JSON.stringify(parent.view.own.loadEntries(parent.threadId))).toContain(`Subagent run ${run.id} was interrupted`);
@@ -399,8 +399,8 @@ describe("delegate", () => {
 
   it("runs a saved workflow by name, with custom roles", async () => {
     const s = await setup();
-    s.delegation.store.setRole(s.li.id, { name: "poet", description: "Writes verse.", prompt: "You write short poems.", tier: "cheap", tools: [], readOnly: true, thinking: "low" });
-    s.delegation.store.setWorkflow(s.li.id, { name: "verse", description: "A poem, then a check.", spec: { chain: [{ task: "A poem about {input}", role: "poet" }, { task: "Check: {previous}", role: "reviewer" }] } });
+    s.delegation.store.setRole(s.ada.id, { name: "poet", description: "Writes verse.", prompt: "You write short poems.", tier: "cheap", tools: [], readOnly: true, thinking: "low" });
+    s.delegation.store.setWorkflow(s.ada.id, { name: "verse", description: "A poem, then a check.", spec: { chain: [{ task: "A poem about {input}", role: "poet" }, { task: "Check: {previous}", role: "reviewer" }] } });
     s.cloud.respond((r) => ({ text: told(r).startsWith("A poem") ? "Roses and rain" : "Scans well." }));
     const run = await s.run(s.thread(), { workflow: "verse", input: "spring" });
     expect(run.result).toBe("Scans well.");
@@ -421,7 +421,7 @@ describe("delegate", () => {
     const parent = s.thread();
     const chain = s.delegation.start(parent, { chain: [{ task: "first" }, { task: "second" }] }, { background: true, budget: s.delegation.newBudget() });
     await until(() => s.cloud.requests.length === 1);
-    s.models.setLocalOnly(s.li.id, "general", parent.threadId, true);
+    s.models.setLocalOnly(s.ada.id, "general", parent.threadId, true);
     g.open();
     await chain.checkpoint();
     expect(chain.result).toBe("local step");
@@ -432,7 +432,7 @@ describe("delegate", () => {
       const p = s.thread();
       const run = await s.run(p, { task: "pick" }, true);
       expect(run.status).toBe("question");
-      if (change === "local-only") s.models.setLocalOnly(s.li.id, "general", p.threadId, true);
+      if (change === "local-only") s.models.setLocalOnly(s.ada.id, "general", p.threadId, true);
       else p.view.own.setUnlogged(p.threadId, true);
       run.answer("the secret one");
       await run.checkpoint();
@@ -450,7 +450,7 @@ describe("delegate", () => {
     const parent = s.thread();
     const run = s.delegation.start(parent, { task: "long job" }, { background: true, budget: s.delegation.newBudget() });
     await until(() => s.cloud.requests.length === 1);
-    await s.delegation.forget(s.li.id, "general", parent.threadId);
+    await s.delegation.forget(s.ada.id, "general", parent.threadId);
     expect(run.status).toBe("stopped");
     expect(run.result).toContain("forgotten");
     expect(s.delegation.status(parent)).toEqual([]);
@@ -463,7 +463,7 @@ describe("delegate", () => {
     await until(() => s.cloud.requests.length === 2);
     other.view.own.forgetThread(other.threadId, "lyrica");
     const after = new Delegation(s.options);
-    expect(() => after.recover(s.li.id)).not.toThrow();
+    expect(() => after.recover(s.ada.id)).not.toThrow();
     left.stop();
     g.open();
   });
@@ -552,7 +552,7 @@ describe("talking with subagents", () => {
     await until(() => s.cloud.requests.length === 1);
 
     const after = new Delegation(s.options);
-    after.recover(s.li.id);
+    after.recover(s.ada.id);
     const [row] = after.status(parent);
     expect(row).toMatchObject({ status: "interrupted" });
     expect(stored(parent)).toContain("To go on, send it a message");
@@ -574,7 +574,7 @@ describe("talking with subagents", () => {
     const run = await s.run(parent, { task: "plan the beds", tier: "strong" });
     expect(s.delegation.status(parent)[0]!.model).toBe("openrouter/deepseek/deepseek-4.1-flash");
 
-    s.models.setLocalOnly(s.li.id, "general", parent.threadId, true);
+    s.models.setLocalOnly(s.ada.id, "general", parent.threadId, true);
     const local = s.delegation.message(parent, run.id, { text: "and the paths?" }, { budget: s.delegation.newBudget() });
     await local.opened;
     await local.run.checkpoint();
@@ -653,8 +653,8 @@ describe("talking with subagents", () => {
       const run = await s.run(restricted, { task: "recall it", fork: true });
       expect(run.result).toBe("local fork knows HEMLOCK");
       const [row] = s.delegation.status(restricted);
-      expect(s.models.callContext(s.li.id, restricted.pool, row!.thread).localOnly).toBe(true);
-      if (restricted.pool === "general") s.models.setLocalOnly(s.li.id, "general", restricted.threadId, false);
+      expect(s.models.callContext(s.ada.id, restricted.pool, row!.thread).localOnly).toBe(true);
+      if (restricted.pool === "general") s.models.setLocalOnly(s.ada.id, "general", restricted.threadId, false);
       const again = s.delegation.message(restricted, run.id, { text: "once more" }, { budget: s.delegation.newBudget() });
       await again.opened;
       await again.run.checkpoint();
@@ -697,7 +697,7 @@ describe("talking with subagents", () => {
       return { tools: [{ name: "bash", args: { command: `echo hi > ${told(r)}.txt` } }] };
     });
     const parent = s.thread();
-    ws.settings(s.li.id).setThread(parent.threadId, "general", { mode: "acceptEdits" });
+    ws.settings(s.ada.id).setThread(parent.threadId, "general", { mode: "acceptEdits" });
 
     const allowed = await s.run(parent, { task: "yes", role: "worker" });
     expect(allowed.status).toBe("finished");
@@ -725,7 +725,7 @@ describe("talking with subagents", () => {
     expect(existsSync(join(scratch, "stop.txt"))).toBe(false);
 
     // In "auto", nothing is asked.
-    ws.settings(s.li.id).setThread(parent.threadId, "general", { mode: "auto" });
+    ws.settings(s.ada.id).setThread(parent.threadId, "general", { mode: "auto" });
     await s.run(parent, { task: "auto", role: "worker" });
     expect(asked).toHaveLength(3);
     expect(existsSync(join(scratch, "auto.txt"))).toBe(true);
@@ -741,7 +741,7 @@ describe("talking with subagents", () => {
       return { tools: [{ name: "bash", args: { command: "echo hi > scout.txt" } }] };
     });
     const parent = s.thread();
-    ws.settings(s.li.id).setThread(parent.threadId, "general", { mode: "plan" });
+    ws.settings(s.ada.id).setThread(parent.threadId, "general", { mode: "plan" });
 
     const writer = await s.run(parent, { task: "change it", role: "worker" });
     expect(writer.status).toBe("failed");

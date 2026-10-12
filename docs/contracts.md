@@ -29,7 +29,7 @@ evals/       continuity scenarios, run with `npm run evals`
 
 | Term | Meaning |
 |---|---|
-| **User** | One account with its own login and data: one of Li's, or another person's. Either an administrator or a normal user. Linked users belong to the same person. |
+| **User** | One account with its own login and data: one of the owner's, or another person's. Either an administrator or a normal user. Linked users belong to the same person. |
 | **Pool** | `general` or `private`. Each user has one of each. |
 | **Interface** | Where a thread lives: `web`, `cli`, `matrix`, `forum` or `sleep`. |
 | **Thread** | One conversation. It belongs to one user, one pool and one interface. |
@@ -136,7 +136,7 @@ interface Profile {
   affects signing in.
 - Pronoun presets are she/her, he/him and they/them, plus a custom option that
   fills in all five forms.
-- `subj` is used only in live prompts (for example, "Li's pronouns are
+- `subj` is used only in live prompts (for example, "Sam's pronouns are
   they/them"). It is never substituted into stored memory.
 
 ## core/shares
@@ -177,7 +177,7 @@ renderThreadMentions(text, titleOf: (id, pool?) => string | undefined): string  
 - **Search must keep the literal words.** A user's name in a query (current or
   previous) adds that user's token as an *alternative*. It never replaces the
   word.
-  - Example: "Li-ion battery" must still match notes that say "Li-ion".
+  - Example: with a user named Al, "Al-ion battery" must still match notes that say "Al-ion".
   - `queryTokens` returns the name matches found in the query, as names and
     user IDs. The Memory thread builds the full-text query from them, as
     word OR token.

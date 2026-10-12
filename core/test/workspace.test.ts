@@ -16,16 +16,16 @@ afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, f
 async function setup() {
   const keyring = await freshKeyring();
   const users = new Users(keyring);
-  const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
-  await users.authenticate("li", "pw");
+  const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+  await users.authenticate("ada", "pw");
   const host = realpathSync(mkdtempSync(join(tmpdir(), "lyrica-host-")));
   dirs.push(host);
   for (const d of ["shared", "shared/music", "diary", "both"]) mkdirSync(join(host, d));
   const workspace = new Workspace(keyring, users, { excludePorts: [] });
   const paths = workspace.allowedPaths;
-  paths.allow(li, li.id, "general", join(host, "shared"));
-  paths.allow(li, li.id, "private", join(host, "diary"));
-  return { keyring, users, li, host, workspace, paths, settings: workspace.settings(li.id) };
+  paths.allow(ada, ada.id, "general", join(host, "shared"));
+  paths.allow(ada, ada.id, "private", join(host, "diary"));
+  return { keyring, users, ada, host, workspace, paths, settings: workspace.settings(ada.id) };
 }
 
 describe("the front door in a sandbox's rules", () => {
@@ -50,7 +50,7 @@ describe("the front door in a sandbox's rules", () => {
 
 describe("grants", () => {
   it("keep general threads out of private folders", async () => {
-    const { li, host, paths, settings } = await setup();
+    const { ada, host, paths, settings } = await setup();
     expect(() => settings.setThread("g1", "general", { grants: [{ path: join(host, "diary"), writable: false }] }))
       .toThrow(/overlaps a private folder/);
     expect(() => settings.setThread("g1", "general", { grants: [{ path: join(host, "shared", "..", "diary"), writable: false }] }))
@@ -58,8 +58,8 @@ describe("grants", () => {
     expect(() => settings.setThread("g1", "general", { grants: [{ path: host, writable: false }] })).toThrow(/overlaps a private folder/);
     expect(() => settings.setThread("g1", "general", { grants: [{ path: "/etc", writable: false }] })).toThrow(/not in this user's general folders/);
     // An administrator can't list one folder in both pools either.
-    expect(() => paths.allow(li, li.id, "general", join(host, "diary"))).toThrow(/overlaps/);
-    expect(() => paths.allow(li, li.id, "private", host)).toThrow(/overlaps/);
+    expect(() => paths.allow(ada, ada.id, "general", join(host, "diary"))).toThrow(/overlaps/);
+    expect(() => paths.allow(ada, ada.id, "private", host)).toThrow(/overlaps/);
 
     const ok = settings.setThread("g1", "general", { grants: [{ path: join(host, "shared", "music"), writable: true }] });
     expect(ok.grants).toEqual([{ path: join(host, "shared", "music"), writable: true }]);
@@ -75,26 +75,26 @@ describe("grants", () => {
   });
 
   it("refuse symlinks, Lyrica's runtime and nested grants", async () => {
-    const { keyring, li, host, paths, settings } = await setup();
+    const { keyring, ada, host, paths, settings } = await setup();
     symlinkSync(join(host, "shared"), join(host, "link"));
-    expect(() => paths.allow(li, li.id, "general", join(host, "link"))).toThrow(/symlink/);
-    expect(() => paths.allow(li, li.id, "general", keyring.home)).toThrow(/runtime/);
-    expect(() => paths.allow(li, li.id, "general", "/")).toThrow(/runtime|overlaps/);
+    expect(() => paths.allow(ada, ada.id, "general", join(host, "link"))).toThrow(/symlink/);
+    expect(() => paths.allow(ada, ada.id, "general", keyring.home)).toThrow(/runtime/);
+    expect(() => paths.allow(ada, ada.id, "general", "/")).toThrow(/runtime|overlaps/);
     // The built-in Caddy's runtime directory holds its admin socket, which lyricad's user (and so a sandbox) can open.
-    expect(() => paths.allow(li, li.id, "general", "/run")).toThrow(/lyrica-caddy/);
+    expect(() => paths.allow(ada, ada.id, "general", "/run")).toThrow(/lyrica-caddy/);
     expect(() => settings.setThread("g1", "general", {
       grants: [{ path: join(host, "shared"), writable: false }, { path: join(host, "shared", "music"), writable: true }],
     })).toThrow(/inside/);
   });
 
   it("are an administrator's to change, not the user's", async () => {
-    const { users, li, host, paths } = await setup();
+    const { users, ada, host, paths } = await setup();
     const sam = await users.createUser("sam", "pw", profile("Sam"), { admin: false });
     expect(() => paths.allow(sam, sam.id, "general", join(host, "shared"))).toThrow(/only an administrator/);
-    expect(() => paths.disallow(sam, li.id, "general", join(host, "shared"))).toThrow(/only an administrator/);
-    paths.allow(li, sam.id, "general", join(host, "shared"));
+    expect(() => paths.disallow(sam, ada.id, "general", join(host, "shared"))).toThrow(/only an administrator/);
+    paths.allow(ada, sam.id, "general", join(host, "shared"));
     expect(paths.list(sam.id).general).toEqual([join(host, "shared")]);
-    expect(paths.list(li.id).general).toEqual([join(host, "shared")]);
+    expect(paths.list(ada.id).general).toEqual([join(host, "shared")]);
   });
 
   it("follow each pool's network defaults unless the thread overrides them", async () => {
@@ -189,13 +189,13 @@ describe("grants", () => {
 
 describe("never granted", () => {
   it("refuses releases, snapshots, the updater's state and update requests, whenever they were listed", async () => {
-    const { keyring, li, paths } = await setup();
+    const { keyring, ada, paths } = await setup();
     for (const never of ["/opt/lyrica", "/opt/lyrica/releases/abc", "/var/lib/lyrica-snapshots", "/var/lib/lyrica-update", join(keyring.home, "updates")]) {
-      expect(() => paths.allow(li, li.id, "general", never), never).toThrow(/never granted/);
+      expect(() => paths.allow(ada, ada.id, "general", never), never).toThrow(/never granted/);
     }
     // A row listed before a folder became never granted is dropped when read, so the check before each run refuses it.
-    keyring.self().prepare("INSERT INTO workspace_paths (user_id, pool, path) VALUES (?, 'general', '/opt/lyrica')").run(li.id);
-    expect(paths.list(li.id).general).not.toContain("/opt/lyrica");
+    keyring.self().prepare("INSERT INTO workspace_paths (user_id, pool, path) VALUES (?, 'general', '/opt/lyrica')").run(ada.id);
+    expect(paths.list(ada.id).general).not.toContain("/opt/lyrica");
   });
 });
 
@@ -212,41 +212,41 @@ describe("Git accounts and repositories", () => {
     return Response.json({ data: repos.map((full_name) => ({ full_name })) });
   }) as typeof fetch;
 
-  async function withAccounts(fetch = forge({ "lyrica-bot": TOKEN, li: "li-token", forge: "forge-token" })) {
+  async function withAccounts(fetch = forge({ "lyrica-bot": TOKEN, ada: "ada-token", forge: "forge-token" })) {
     const s = await setup();
     const workspace = new Workspace(s.keyring, s.users, { excludePorts: [], forgeFetch: fetch });
-    const settings = workspace.settings(s.li.id);
+    const settings = workspace.settings(s.ada.id);
     // IP hosts: no resolver needed; 127.0.0.1 is her own machine, 192.0.2.7 is outside her network.
     settings.addGitAccount({ name: "bot", kind: "github", host: "github.com", account: "lyrica-bot", token: TOKEN, pool: "general", offNetwork: true });
-    settings.addGitAccount({ name: "li", kind: "github", host: "github.com", account: "li", token: "li-token", pool: "general", offNetwork: true });
+    settings.addGitAccount({ name: "ada", kind: "github", host: "github.com", account: "ada", token: "ada-token", pool: "general", offNetwork: true });
     settings.addGitAccount({ name: "forge", kind: "forgejo", host: "127.0.0.1:3000", account: "forge", token: "forge-token", pool: "private", offNetwork: false });
-    return { ...s, workspace, settings, thread: (threadId: string, pool: "general" | "private" = "general") => ({ userId: s.li.id, pool, threadId }) };
+    return { ...s, workspace, settings, thread: (threadId: string, pool: "general" | "private" = "general") => ({ userId: s.ada.id, pool, threadId }) };
   }
 
-  it("keeps a GitHub account general and a private account on her network unless Li confirms", async () => {
-    const { li, workspace, settings } = await withAccounts();
+  it("keeps a GitHub account general and a private account on her network unless Ada confirms", async () => {
+    const { ada, workspace, settings } = await withAccounts();
     const add = (name: string, host: string, pool: "general" | "private", more = {}) =>
-      workspace.addGitAccount(li.id, { name, kind: "gitea", host, account: "forge", token: "forge-token", pool, ...more });
-    await expect(workspace.addGitAccount(li.id, { name: "gh", kind: "github", host: "github.com", account: "li", token: "li-token", pool: "private" }))
+      workspace.addGitAccount(ada.id, { name, kind: "gitea", host, account: "forge", token: "forge-token", pool, ...more });
+    await expect(workspace.addGitAccount(ada.id, { name: "gh", kind: "github", host: "github.com", account: "ada", token: "ada-token", pool: "private" }))
       .rejects.toThrow(/GitHub account is general/);
-    expect(() => settings.updateGitAccount("li", { pool: "private" })).toThrow(/GitHub account is general/);
+    expect(() => settings.updateGitAccount("ada", { pool: "private" })).toThrow(/GitHub account is general/);
     await expect(add("away", "192.0.2.7", "private")).rejects.toThrow(/outside your network/);
     expect((await add("away", "192.0.2.7", "private", { offNetworkConfirmed: true })).offNetwork).toBe(true);
     expect((await add("home", "https://127.0.0.1:3000/", "private")).host).toBe("127.0.0.1:3000");
     // The token is checked first: a wrong one, or another account's, saves nothing.
-    await expect(workspace.addGitAccount(li.id, { name: "x", kind: "github", host: "github.com", account: "li", token: "nope", pool: "general" })).rejects.toThrow(/rejected the token/);
-    await expect(workspace.addGitAccount(li.id, { name: "x", kind: "github", host: "github.com", account: "li", token: TOKEN, pool: "general" })).rejects.toThrow(/lyrica-bot's, not li's/);
+    await expect(workspace.addGitAccount(ada.id, { name: "x", kind: "github", host: "github.com", account: "ada", token: "nope", pool: "general" })).rejects.toThrow(/rejected the token/);
+    await expect(workspace.addGitAccount(ada.id, { name: "x", kind: "github", host: "github.com", account: "ada", token: TOKEN, pool: "general" })).rejects.toThrow(/lyrica-bot's, not ada's/);
     expect(settings.gitAccount("x")).toBeUndefined();
     expect(settings.gitAccount("home")!.state?.kind).toBe("signedIn");
   });
 
   it("gives a repository's token only to a sandbox of its pool, in a thread that has it, that can reach its host, and each account only its own", async () => {
     const { workspace, settings, thread } = await withAccounts();
-    expect(() => settings.setThread("p", "private", { repositories: [{ name: "xlc2022/lyrica", account: "li" }] })).toThrow(/general Git account; a private thread/);
-    expect(() => settings.setThread("g", "general", { repositories: [{ name: "li/notes", account: "forge" }] })).toThrow(/private Git account; a general thread/);
-    expect(() => settings.setThread("g", "general", { repositories: [{ name: "../x", account: "li" }] })).toThrow(/owner\/name/);
+    expect(() => settings.setThread("p", "private", { repositories: [{ name: "xlc2022/lyrica", account: "ada" }] })).toThrow(/general Git account; a private thread/);
+    expect(() => settings.setThread("g", "general", { repositories: [{ name: "ada/notes", account: "forge" }] })).toThrow(/private Git account; a general thread/);
+    expect(() => settings.setThread("g", "general", { repositories: [{ name: "../x", account: "ada" }] })).toThrow(/owner\/name/);
 
-    settings.setThread("code", "general", { repositories: [{ name: "xlc2022/lyrica", account: "li" }, { name: "lyrica-bot/scratch.git", account: "bot" }] });
+    settings.setThread("code", "general", { repositories: [{ name: "xlc2022/lyrica", account: "ada" }, { name: "lyrica-bot/scratch.git", account: "bot" }] });
     const env = workspace.forgeEnv(thread("code"));
     const helpers = Object.entries(env).filter(([k]) => k.startsWith("GIT_CONFIG_KEY_")).map(([k, v]) => [v, env[k.replace("KEY", "VALUE")]]);
     expect(helpers.map(([k]) => k)).toEqual([
@@ -254,7 +254,7 @@ describe("Git accounts and repositories", () => {
     ]);
     // Each helper reads its own pair of variables, so two accounts on one host never mix.
     expect(helpers[1]![1]).toContain("$LYRICA_GIT_TOKEN_0");
-    expect(env).toMatchObject({ LYRICA_GIT_USER_0: "li", LYRICA_GIT_TOKEN_0: "li-token", LYRICA_GIT_USER_1: "lyrica-bot", LYRICA_GIT_TOKEN_1: TOKEN, LYRICA_GIT_COUNT: "2",
+    expect(env).toMatchObject({ LYRICA_GIT_USER_0: "ada", LYRICA_GIT_TOKEN_0: "ada-token", LYRICA_GIT_USER_1: "lyrica-bot", LYRICA_GIT_TOKEN_1: TOKEN, LYRICA_GIT_COUNT: "2",
       LYRICA_GIT_REPO_0: "github.com/xlc2022/lyrica", LYRICA_GIT_KIND_0: "github", LYRICA_GIT_REPO_1: "github.com/lyrica-bot/scratch" });
     // GH_TOKEN is one value, so it is never set: the gh wrapper picks by the clone (core/test/forge.test.ts).
     expect(env.GH_TOKEN).toBeUndefined();
@@ -266,63 +266,63 @@ describe("Git accounts and repositories", () => {
     settings.setThread("code", "general", { internet: false });
     expect(workspace.forgeEnv(thread("code"))).toEqual({});
     settings.setThread("code", "general", { hosts: ["github.com"] });
-    expect(workspace.forgeEnv(thread("code")).LYRICA_GIT_TOKEN_0).toBe("li-token");
+    expect(workspace.forgeEnv(thread("code")).LYRICA_GIT_TOKEN_0).toBe("ada-token");
 
     // A private thread: only with the host allowed, and only its private account's token, for tea.
-    settings.setThread("p", "private", { repositories: [{ name: "li/notes", account: "forge" }] });
+    settings.setThread("p", "private", { repositories: [{ name: "ada/notes", account: "forge" }] });
     expect(workspace.forgeEnv(thread("p", "private"))).toEqual({});
     settings.setThread("p", "private", { hosts: ["127.0.0.1:3000"] });
-    expect(workspace.forgeEnv(thread("p", "private"))).toMatchObject({ LYRICA_GIT_COUNT: "1", LYRICA_GIT_TOKEN_0: "forge-token", LYRICA_GIT_REPO_0: "127.0.0.1:3000/li/notes", LYRICA_GIT_KIND_0: "forgejo" });
-    expect(JSON.stringify(workspace.forgeEnv(thread("p", "private")))).not.toContain("li-token");
+    expect(workspace.forgeEnv(thread("p", "private"))).toMatchObject({ LYRICA_GIT_COUNT: "1", LYRICA_GIT_TOKEN_0: "forge-token", LYRICA_GIT_REPO_0: "127.0.0.1:3000/ada/notes", LYRICA_GIT_KIND_0: "forgejo" });
+    expect(JSON.stringify(workspace.forgeEnv(thread("p", "private")))).not.toContain("ada-token");
   });
 
   it("takes a removed account's repositories, or one taken off a project, from its running threads at once", async () => {
     const { settings } = await withAccounts();
-    const lyrica = { name: "xlc2022/lyrica", account: "li" };
+    const lyrica = { name: "xlc2022/lyrica", account: "ada" };
     const scratch = { name: "lyrica-bot/scratch", account: "bot" };
     settings.setThread("project", "general", { repositories: [lyrica, scratch] });
     settings.inheritSettings("project", "thread", "general");
     expect(settings.effective("thread").repositories).toEqual([lyrica, scratch]);
-    expect(() => settings.setThread("thread", "general", { repositories: [lyrica, scratch, { name: "li/other", account: "li" }] })).toThrow(/isn't in the parent thread's repositories/);
+    expect(() => settings.setThread("thread", "general", { repositories: [lyrica, scratch, { name: "ada/other", account: "ada" }] })).toThrow(/isn't in the parent thread's repositories/);
     settings.setThread("project", "general", { repositories: [lyrica] });
     expect(settings.effective("thread").repositories).toEqual([lyrica]);
     // Given back to the project, it doesn't come back to the thread.
     settings.setThread("project", "general", { repositories: [lyrica, scratch] });
     expect(settings.effective("thread").repositories).toEqual([lyrica]);
-    settings.removeGitAccount("li");
+    settings.removeGitAccount("ada");
     expect(settings.effective("project").repositories).toEqual([scratch]);
     expect(settings.effective("thread").repositories).toEqual([]);
     // A new pool, or a new name, follows too.
     settings.updateGitAccount("bot", { name: "robot" });
     expect(settings.effective("project").repositories).toEqual([{ ...scratch, account: "robot" }]);
-    settings.addGitAccount({ name: "gitea", kind: "gitea", host: "127.0.0.1", account: "li", token: "t", pool: "general", offNetwork: false });
-    settings.setThread("project", "general", { repositories: [{ ...scratch, account: "robot" }, { name: "li/notes", account: "gitea" }] });
+    settings.addGitAccount({ name: "gitea", kind: "gitea", host: "127.0.0.1", account: "ada", token: "t", pool: "general", offNetwork: false });
+    settings.setThread("project", "general", { repositories: [{ ...scratch, account: "robot" }, { name: "ada/notes", account: "gitea" }] });
     settings.updateGitAccount("gitea", { pool: "private" });
     expect(settings.effective("project").repositories).toEqual([{ ...scratch, account: "robot" }]);
   });
 
   it("lists what an account can see, and records a rejected token", async () => {
-    const { li, workspace, settings } = await withAccounts(forge({ li: "li-token", "lyrica-bot": TOKEN }, ["xlc2022/lyrica", "xlc2022/dotfiles"]));
-    expect(await workspace.listRepositories(li.id, "li", "dot")).toEqual([{ name: "xlc2022/dotfiles", account: "li" }]);
-    settings.addGitAccount({ name: "old", kind: "gitea", host: "127.0.0.1", account: "li", token: "expired", pool: "general", offNetwork: false });
-    await expect(workspace.listRepositories(li.id, "old")).rejects.toThrow(/rejected the token/);
+    const { ada, workspace, settings } = await withAccounts(forge({ ada: "ada-token", "lyrica-bot": TOKEN }, ["xlc2022/lyrica", "xlc2022/dotfiles"]));
+    expect(await workspace.listRepositories(ada.id, "ada", "dot")).toEqual([{ name: "xlc2022/dotfiles", account: "ada" }]);
+    settings.addGitAccount({ name: "old", kind: "gitea", host: "127.0.0.1", account: "ada", token: "expired", pool: "general", offNetwork: false });
+    await expect(workspace.listRepositories(ada.id, "old")).rejects.toThrow(/rejected the token/);
     expect(settings.gitAccount("old")!.state?.kind).toBe("rejected");
-    await expect(workspace.setGitToken(li.id, "old", "wrong")).rejects.toThrow(/rejected/);
+    await expect(workspace.setGitToken(ada.id, "old", "wrong")).rejects.toThrow(/rejected/);
     expect(settings.gitAccount("old")!.token).toBe("expired");
   });
 });
 
 describe("MCP servers", () => {
-  it("checks a server before saving it, and keeps a private one on her network unless Li confirms", async () => {
-    const { li, workspace, settings } = await setup();
+  it("checks a server before saving it, and keeps a private one on her network unless the user confirms", async () => {
+    const { ada, workspace, settings } = await setup();
     const house = await testMcpServer({ token: "ha-token", instructions: "Home Assistant: lights and sensors.\nMore." });
     try {
-      await expect(workspace.addMcpServer(li.id, { name: "house", url: house.url, token: "wrong", pool: "private" })).rejects.toThrow(/rejected the token/);
+      await expect(workspace.addMcpServer(ada.id, { name: "house", url: house.url, token: "wrong", pool: "private" })).rejects.toThrow(/rejected the token/);
       expect(settings.mcpServer("house")).toBeUndefined();
-      await expect(workspace.addMcpServer(li.id, { name: "away", url: "http://192.0.2.7/mcp", pool: "private" })).rejects.toThrow(/outside your network/);
-      await expect(workspace.addMcpServer(li.id, { name: "plain", url: house.url, token: "ha-token", pool: "general" })).rejects.toThrow(/only over https/);
-      await expect(workspace.addMcpServer(li.id, { name: "local", url: "stdio:npx server", pool: "private" })).rejects.toThrow(/local servers/);
-      const m = await workspace.addMcpServer(li.id, { name: "house", url: house.url, token: "ha-token", pool: "private" });
+      await expect(workspace.addMcpServer(ada.id, { name: "away", url: "http://192.0.2.7/mcp", pool: "private" })).rejects.toThrow(/outside your network/);
+      await expect(workspace.addMcpServer(ada.id, { name: "plain", url: house.url, token: "ha-token", pool: "general" })).rejects.toThrow(/only over https/);
+      await expect(workspace.addMcpServer(ada.id, { name: "local", url: "stdio:npx server", pool: "private" })).rejects.toThrow(/local servers/);
+      const m = await workspace.addMcpServer(ada.id, { name: "house", url: house.url, token: "ha-token", pool: "private" });
       expect(m).toMatchObject({ tools: 2, description: "Home Assistant: lights and sensors.", offNetwork: false, state: { kind: "online" } });
       // Names that are one server to Pi.
       settings.addMcpServer({ name: "my-house", url: house.url, token: "", pool: "private", description: null, tools: 0, offNetwork: false });
@@ -333,23 +333,23 @@ describe("MCP servers", () => {
   });
 
   it("never gives a private thread a general server, and takes one off a project from its running threads at once", async () => {
-    const { li, settings, workspace } = await setup();
+    const { ada, settings, workspace } = await setup();
     settings.addMcpServer({ name: "docs", url: "https://mcp.example.com/mcp", token: "t", pool: "general", description: null, tools: 3, offNetwork: true });
     settings.addMcpServer({ name: "house", url: "http://127.0.0.1:8123/mcp", token: "", pool: "private", description: null, tools: 2, offNetwork: false });
     expect(() => settings.setThread("p", "private", { mcpServers: ["docs"] })).toThrow(/general MCP server; a private thread/);
     expect(() => settings.setThread("g", "general", { mcpServers: ["house"] })).toThrow(/private MCP server; a general thread/);
     settings.setThread("p", "private", { mcpServers: ["house"] });
     // A private server is used only once its host has passed the check in this process.
-    expect(workspace.mcpServersFor({ userId: li.id, pool: "private", threadId: "p" })).toEqual([]);
-    expect(await workspace.checkMcpServers({ userId: li.id, pool: "private", threadId: "p" })).toEqual([]);
+    expect(workspace.mcpServersFor({ userId: ada.id, pool: "private", threadId: "p" })).toEqual([]);
+    expect(await workspace.checkMcpServers({ userId: ada.id, pool: "private", threadId: "p" })).toEqual([]);
     // An older row of the wrong pool still gives nothing.
-    expect(workspace.mcpServersFor({ userId: li.id, pool: "general", threadId: "p" })).toEqual([]);
-    expect(workspace.mcpServersFor({ userId: li.id, pool: "private", threadId: "p" }).map((m) => m.name)).toEqual(["house"]);
+    expect(workspace.mcpServersFor({ userId: ada.id, pool: "general", threadId: "p" })).toEqual([]);
+    expect(workspace.mcpServersFor({ userId: ada.id, pool: "private", threadId: "p" }).map((m) => m.name)).toEqual(["house"]);
 
     settings.addMcpServer({ name: "cal", url: "https://cal.example.com/mcp", token: "", pool: "general", description: null, tools: 1, offNetwork: true });
     settings.setThread("project", "general", { mcpServers: ["docs", "cal"] });
     settings.inheritSettings("project", "thread", "general");
-    const running = () => workspace.mcpServersFor({ userId: li.id, pool: "general", threadId: "thread" }).map((m) => m.name);
+    const running = () => workspace.mcpServersFor({ userId: ada.id, pool: "general", threadId: "thread" }).map((m) => m.name);
     expect(running()).toEqual(["docs", "cal"]);
     settings.setThread("project", "general", { mcpServers: ["cal"] });
     expect(running()).toEqual(["cal"]);
@@ -375,8 +375,8 @@ describe("MCP servers", () => {
 
 describe("modes and switches", () => {
   it("renames stored modes in place and adds the switches, on", async () => {
-    const { users, li } = await setup();
-    const db = users.openUserDb(li.id);
+    const { users, ada } = await setup();
+    const db = users.openUserDb(ada.id);
     db.exec(`DROP TABLE IF EXISTS thread_workspaces;
       CREATE TABLE thread_workspaces (thread_id TEXT PRIMARY KEY, grants TEXT NOT NULL, internet INTEGER, services INTEGER, hosts TEXT, mode TEXT NOT NULL, target TEXT NOT NULL, parent TEXT);
       INSERT INTO thread_workspaces VALUES ('a', '[]', NULL, NULL, NULL, 'ask-changes', 'sandbox', NULL),
@@ -460,11 +460,11 @@ describe("ssh machines", () => {
   });
 
   it("are granted per thread and stored with the user's settings", async () => {
-    const { keyring, users, li, settings } = await setup();
+    const { keyring, users, ada, settings } = await setup();
     settings.addMachine({ ...unreachable, root: "/srv/lyrica" }, unreachable.hostKey!);
     settings.setThread("t1", "general", { machines: ["nas"] });
     const workspace = new Workspace(keyring, users, { excludePorts: [] });
-    const thread = { userId: li.id, pool: "general" as const, threadId: "t1" };
+    const thread = { userId: ada.id, pool: "general" as const, threadId: "t1" };
     expect(workspace.targetFor(thread, "nas").name).toBe("ssh:nas");
     expect(workspace.folders(thread)).toEqual(["nas:/srv/lyrica"]);
     expect(() => settings.setThread("t1", "general", { machines: ["nope"] })).toThrow(/no machine nope/);
@@ -510,9 +510,9 @@ describe.skipIf(!helperRunnable)("an ssh target", () => {
     try {
       await listening(port, server, () => log);
       // Probing reads the key the server shows, the way Add machine does.
-      const { keyring, users, li } = await setup();
+      const { keyring, users, ada } = await setup();
       const probe = new Workspace(keyring, users, { excludePorts: [] });
-      const first = await probe.probeMachine(li.id, "li", { name: "local", address: `${userInfo().username}@127.0.0.1:${port}` });
+      const first = await probe.probeMachine(ada.id, "ada", { name: "local", address: `${userInfo().username}@127.0.0.1:${port}` });
       expect(first.fingerprint).toMatch(/^SHA256:/);
       expect(first.login).toBe(false); // the draft's key isn't installed
       expect(first.keyLine).toMatch(/^restrict(,from="[^"]*")? ssh-ed25519 /);

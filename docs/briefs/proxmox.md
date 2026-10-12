@@ -12,9 +12,9 @@ docs/workspace.md after Machines, and the Proxmox API reference for
 
 ## Goal
 
-Lyrica manages Li's VMs through Proxmox's API with a narrow token, never a
+Lyrica manages the user's VMs through Proxmox's API with a narrow token, never a
 root shell on the hypervisor (principle 2: the smallest blast radius that
-does the job; principle 6: start and stop are what Li asks for).
+does the job; principle 6: start and stop are what the user asks for).
 
 ## In scope
 
@@ -27,7 +27,7 @@ does the job; principle 6: start and stop are what Li asks for).
 2. **The node that runs Lyrica's own VM is refused** where it can be told:
    an address that is this VM's default gateway, or a node whose
    `/cluster/resources` lists a VM whose MAC or name matches this machine's.
-   The refusal says why. Li adds that node later, by hand, when she decides.
+   The refusal says why. The owner adds that node later, by hand, when they decide.
 3. **One tool, `proxmox`**, in `extension/src/proxmox.ts`: a schema plus
    one call into `core/workspace`, which makes the API call; nothing else
    lives in the extension, which is at about 1,900 of its 2,000-line budget
@@ -43,7 +43,7 @@ does the job; principle 6: start and stop are what Li asks for).
    mode. `start` and `shutdown` follow the machine's mode limit and the
    thread's mode like `bash` on a machine; `stop` and `reboot` are suspect
    actions (as DESIGN.md's Proxmox bullet says), so they ask with the
-   warning in every mode until Li allows them in a thread.
+   warning in every mode until the user allows them in a thread.
 5. **Setup text** on the Add machine page and in `lyrica admin proxmox add`:
    the `pveum` commands for a privilege-separated token with a custom role
    of `VM.Audit` and `VM.PowerMgmt` on the chosen VMs or pool, and
@@ -78,7 +78,7 @@ does the job; principle 6: start and stop are what Li asks for).
 
 ## After merging
 
-Tell the standing Operator docs thread (Li's rule, 2026-10-11) by
+Tell the standing Operator docs thread (the owner's rule, 2026-10-11) by
 cross-session message what changed that an operator does by hand (setup
 steps, commands, config) and where, in addition to the merge notice to the
 project chat.
