@@ -598,13 +598,22 @@ it adds no tool.
   subagents inherit it, never wider; a read-only or narrowed one gets it
   off. A private thread can't turn it on, and a local-only one is refused
   it, since Claude Code sends what it reads to Anthropic.
-- **A run** gets `CLAUDE_CODE_OAUTH_TOKEN` in its environment only when
-  `Workspace.claudeCodeFor` allows it: a general thread that isn't
-  local-only, itself or any ancestor (lyricad's `restricted` option; without
-  it, never), with the switch on, a saved token, and a network that reaches
-  `api.anthropic.com`. Such a run also gets the `claude` wrapper
-  (`core/src/workspace/claude.sh`) at `/run/lyrica/bin/claude`, first on
-  its PATH. The wrapper runs the real program with `CLAUDE_CONFIG_DIR` at
+- **A run** gets Claude Code only when `Workspace.claudeCodeFor` allows
+  it: a general thread that isn't local-only, itself or any ancestor
+  (lyricad's `restricted` option; without it, never), with the switch on,
+  a saved token, and a network that reaches `api.anthropic.com`.
+- **The token never enters the sandbox.** Such a run gets its own relay
+  (`openClaudeRelay`, `core/src/workspace/claude-relay.ts`): a server in
+  `lyricad` on a random loopback port, forwarded into the run's sandbox
+  like a machine on `127.0.0.1`, that lives as long as the run. The run's
+  environment has `ANTHROPIC_BASE_URL` pointing at it and, as
+  `CLAUDE_CODE_OAUTH_TOKEN`, a random capability for this run only. The
+  relay refuses any other bearer and any path outside `/v1/`, drops the
+  run's own keys, swaps in the user's token, and passes the request to
+  `https://api.anthropic.com`, logging and keeping nothing. A command that
+  reads the environment learns only a capability that dies with the run.
+- **The wrapper** (`core/src/workspace/claude.sh`) is at
+  `/run/lyrica/bin/claude`, first on the run's PATH. It runs the real program with `CLAUDE_CONFIG_DIR` at
   `/workspace/.claude`, in the thread's folder in the encrypted home
   workspace, so its transcripts stay encrypted and `claude -c` continues
   the thread's last job. It drops any other Anthropic key, turns off

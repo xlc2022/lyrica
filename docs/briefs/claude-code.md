@@ -34,6 +34,14 @@ ours (principle 3), and adds no model-facing tool (principle 8).
   it is allowed by itself in its own import, so no machine configuration
   changes. On Debian and Ubuntu, `install.sh` installs the version NixOS
   packages.
+- **The token never enters the sandbox** (the credential audit of
+  2026-10-12 and PR review): everything in a run shares one user and its
+  namespaces, so no process there can hold a secret the others can't
+  read, and a prompt injection could run `env`. Each run reaches
+  Anthropic through its own relay in `lyricad` with a random capability,
+  so the worst an injected command can do is spend the plan during that
+  run, which skipping prompts allows anyway. Claude Code honours
+  `ANTHROPIC_BASE_URL` with a plan token (checked with 2.1.296).
 - **Its notes stay encrypted:** `CLAUDE_CONFIG_DIR` is in the thread's
   folder of the encrypted home workspace.
 
@@ -42,14 +50,14 @@ ours (principle 3), and adds no model-facing tool (principle 8).
 - Settings → Claude Code (token, Remove, Not installed) and the thread
   drawer's Claude Code switch.
 - `thread_workspaces.claude_code`, user step 4; the token in `settings`.
-- `Workspace.claudeCodeFor` / `claudeEnv`: the token reaches a run's
-  environment only in a general thread that isn't local-only along its
-  chain, with the switch on, a token saved and `api.anthropic.com`
-  reachable.
+- `Workspace.claudeCodeFor` / `claudeFor`: a run gets Claude Code only in
+  a general thread that isn't local-only along its chain, with the switch
+  on, a token saved and `api.anthropic.com` reachable.
+- The per-run relay (`core/src/workspace/claude-relay.ts`).
 - The `claude` wrapper (`core/src/workspace/claude.sh`) and the prompt line.
-- Tests: `core/test/claude-code.test.ts` (who gets the token; the
-  wrapper), `daemon/test/claude-code.test.ts` (routes, local-only),
-  the sandbox's PATH in `core/test/sandbox.test.ts`, the prompt line in
+- Tests: `core/test/claude-code.test.ts` (who gets Claude Code; the
+  relay; the wrapper), `daemon/test/claude-code.test.ts` (routes, local-only),
+  a run's environment holding no token in `core/test/sandbox.test.ts`, the prompt line in
   `extension/test/workspace.test.ts`.
 
 ## Budgets

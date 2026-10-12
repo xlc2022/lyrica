@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { createServer as createHttpServer } from "node:http";
 import { connect as connectTcp, createServer, type Server } from "node:net";
 import { lookup } from "node:dns/promises";
 import { networkInterfaces, tmpdir } from "node:os";
@@ -85,9 +86,22 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect((await sh("command -v gh || echo NONE")).out).not.toContain("/run/lyrica");
   });
 
-  it("puts the claude wrapper first on a run with Claude Code's token, and only there", async () => {
-    const claude = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], env: { CLAUDE_CODE_OAUTH_TOKEN: "made-up" } });
-    expect((await sh("command -v claude", claude)).out).toBe("/run/lyrica/bin/claude\n");
+  it("gives a run with Claude Code the wrapper and its relay, and never the token", async () => {
+    const TOKEN = "sk-ant-oat01-made-up-for-tests-only";
+    const seen: string[] = [];
+    const upstream = createHttpServer((req, res) => { seen.push(String(req.headers.authorization)); req.resume(); res.end("ok"); });
+    await new Promise<void>((r) => upstream.listen(0, "127.0.0.1", r));
+    try {
+      const claude = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], claude: { token: TOKEN, upstream: `http://127.0.0.1:${(upstream.address() as { port: number }).port}` } });
+      const r = await sh('command -v claude; env; curl -s -H "authorization: Bearer $CLAUDE_CODE_OAUTH_TOKEN" "$ANTHROPIC_BASE_URL/v1/messages"', claude);
+      expect(r.out).toContain("/run/lyrica/bin/claude\n");
+      expect(r.out).toMatch(/ANTHROPIC_BASE_URL=http:\/\/127\.0\.0\.1:\d+/);
+      expect(r.out).not.toContain(TOKEN);
+      expect(r.out.endsWith("ok")).toBe(true);
+      expect(seen).toEqual([`Bearer ${TOKEN}`]);
+    } finally {
+      upstream.close();
+    }
     expect((await sh("command -v claude || echo NONE")).out).not.toContain("/run/lyrica");
   });
 

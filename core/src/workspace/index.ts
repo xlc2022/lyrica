@@ -37,6 +37,7 @@ export * from "./net.ts";
 export * from "./paths.ts";
 export * from "./ops.ts";
 export * from "./proxmox.ts";
+export * from "./claude-relay.ts";
 export * from "./sandbox.ts";
 export * from "./settings.ts";
 export * from "./ssh.ts";
@@ -84,9 +85,11 @@ export interface WorkspaceOptions {
    * restricted, so Claude Code is never given by mistake.
    */
   restricted?: (userId: string, pool: Pool, threadId: string) => boolean;
+  /** Where Claude Code's relay sends requests. Default: Anthropic's API; tests use their own. */
+  anthropic?: string;
 }
 
-/** Where Claude Code sends what it reads: a run gets the token only if its network reaches this. */
+/** Where Claude Code sends what it reads: a run gets Claude Code only if its network reaches this. */
 export const CLAUDE_CODE_HOST = "api.anthropic.com";
 
 /** A repository as one thread sees it: where it is cloned, and through which account. */
@@ -475,7 +478,8 @@ export class Workspace {
       network: this.network(t),
       repos: this.reposDir(t),
       reposReadOnly: t.reposReadOnly,
-      env: { ...this.forgeEnv(t), ...this.claudeEnv(t) },
+      env: this.forgeEnv(t),
+      ...this.claudeFor(t),
       ...this.door(),
       check: (g) => checkGrant(s.allowed(), t.pool, g),
       bwrap: this.opts.bwrap,
@@ -511,10 +515,14 @@ export class Workspace {
     return reachesHost(this.network(t), CLAUDE_CODE_HOST);
   }
 
-  /** The token as the sandbox's environment where `claudeCodeFor` allows it, for the `claude` wrapper (claude.sh). Anywhere else nothing. */
-  claudeEnv(t: WorkspaceThread): Record<string, string> {
+  /**
+   * Claude Code for the thread's sandbox runs where `claudeCodeFor` allows
+   * it: the token for the run's relay, which keeps it in this process
+   * (claude-relay.ts). Anywhere else nothing.
+   */
+  claudeFor(t: WorkspaceThread): { claude?: { token: string; upstream?: string } } {
     if (!this.claudeCodeFor(t)) return {};
-    return { CLAUDE_CODE_OAUTH_TOKEN: this.settings(t.userId).claudeCodeToken()! };
+    return { claude: { token: this.settings(t.userId).claudeCodeToken()!, ...(this.opts.anthropic ? { upstream: this.opts.anthropic } : {}) } };
   }
 
   /**

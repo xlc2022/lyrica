@@ -1,10 +1,11 @@
 #!/bin/sh
 # Claude Code in a sandbox run of a thread that has it on (docs/workspace.md,
 # "Claude Code"). Mounted as /run/lyrica/bin/claude, first on PATH. Runs the
-# unmodified program, signed in with the user's own token from
-# CLAUDE_CODE_OAUTH_TOKEN. Its settings, transcripts and notes go to .claude
-# in the thread's folder, in the encrypted home workspace, so `claude -c`
-# continues the thread's last job. It asks none of its own permission
+# unmodified program. Its requests go to this run's relay in lyricad
+# (ANTHROPIC_BASE_URL), and CLAUDE_CODE_OAUTH_TOKEN holds only the run's
+# capability: the user's token never enters the sandbox. Its settings,
+# transcripts and notes go to .claude in the thread's folder, in the
+# encrypted home workspace, so `claude -c` continues the thread's last job. It asks none of its own permission
 # questions: the sandbox is the fence, and her bash call already went through
 # the thread's mode.
 real=
@@ -18,7 +19,7 @@ if [ -z "$real" ]; then
   echo "claude: Claude Code isn't installed on this server (docs/workspace.md, \"Claude Code\")" >&2
   exit 127
 fi
-unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL
+unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN
 export CLAUDE_CONFIG_DIR=/workspace/.claude
 # It runs as root inside the sandbox, which Claude Code allows only when told it's sandboxed.
 export IS_SANDBOX=1

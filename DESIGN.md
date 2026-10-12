@@ -1239,8 +1239,10 @@ Decided 2026-10-12 (docs/briefs/claude-code.md).
   through it; no tool is added (principle 8), only one prompt line where
   it's available.
 - **The user's own sign-in.** `claude setup-token` on their own computer;
-  the token is kept in `user.db` and reaches only the environment of a run
-  that may use it, never argv or a file.
+  the token is kept in `user.db` and never enters a sandbox. A run that may
+  use Claude Code reaches Anthropic through its own relay in `lyricad`,
+  with a capability that dies with the run, so nothing a command reads
+  can carry the token out.
 - **Off until a thread turns it on**, and never in a private or local-only
   thread, since what it reads goes to Anthropic. Children inherit it,
   narrower or the same.

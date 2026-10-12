@@ -1204,7 +1204,7 @@ grantsFor(t): Grant[]                     // { path, writable }
 folders(t): string[]                      // grants, and "<machine>:<root>" for its machines with a root
 network(t): Network
 inheritSettings(parent, childThreadId, narrower?)  // subagents and child threads: same or stricter (folders, network, mode, webSearch, images, claudeCode), never wider
-claudeCodeFor(t): boolean / claudeEnv(t)  // Claude Code's token for a run: general, not local-only along its chain (WorkspaceOptions.restricted; without it never), switch on, token saved, reaches api.anthropic.com
+claudeCodeFor(t): boolean / claudeFor(t)  // Claude Code for a run: general, not local-only along its chain (WorkspaceOptions.restricted; without it never), switch on, token saved, reaches api.anthropic.com; the token goes to SandboxSpec.claude, never the env
 settings(userId).detach(threadId)          // a kept child, once its parent is forgotten: no longer narrowed by it
 // A project's threads, like any child thread, work in their project chat's folder (folderThread)
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, machines
@@ -1333,10 +1333,14 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   while it is on, is `400`. User database step 4 adds
   `thread_workspaces.claude_code`; the token is `claude_code.token` in
   `settings` (`settings(userId).claudeCodeToken() /
-  setClaudeCodeToken(token | null)`). A run with the token gets the
-  `claude` wrapper (`core/src/workspace/claude.sh`) at
-  `/run/lyrica/bin/claude`; `claudeCodeInstalled()` says whether the
-  program is among the sandbox's tools.
+  setClaudeCodeToken(token | null)`). A run with `SandboxSpec.claude`
+  gets `openClaudeRelay(token)` (`core/src/workspace/claude-relay.ts`):
+  a loopback port forwarded into the run, `ANTHROPIC_BASE_URL` and a
+  per-run capability as `CLAUDE_CODE_OAUTH_TOKEN` in its environment, and
+  the `claude` wrapper (`core/src/workspace/claude.sh`) at
+  `/run/lyrica/bin/claude`; the relay closes when the run ends.
+  `claudeCodeInstalled()` says whether the program is among the sandbox's
+  tools.
 - **Machines API:** `lyricad`'s `/api/u/:userId/machines` (`GET`; `POST
   …/machines/probe` for the Test step; `POST …/machines` to confirm;
   `PATCH …/machines/:name` for address, root, pool and limit; `POST

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { capOutput, sniffImage, type ExecutionTarget, type ToolOps } from "./ops.ts";
+import { openClaudeRelay, type ClaudeRelay } from "./claude-relay.ts";
 import { hostAddresses, nftRules, pastaArgs, resolveAddresses, resolveHosts, SANDBOX_GATEWAY } from "./net.ts";
 import { cleanPath, within, type Grant, type Network } from "./settings.ts";
 
@@ -36,8 +37,15 @@ export interface SandboxSpec {
   repos?: string;
   /** Mount `repos` read-only: a read-only subagent's view of its parent's clones. */
   reposReadOnly?: boolean;
-  /** Added to the command's environment: Git tokens and the Claude Code token where Workspace allows them. Never on the command line. */
+  /** Added to the command's environment: Git tokens where Workspace.forgeEnv allows them. Never on the command line. */
   env?: Record<string, string>;
+  /**
+   * Claude Code for this run (Workspace.claudeCodeFor): the user's token,
+   * which stays in this process. The run gets a relay (claude-relay.ts)
+   * forwarded to its loopback, a capability in place of the token, and the
+   * claude wrapper.
+   */
+  claude?: { token: string; upstream?: string };
   bwrap?: string;
   pasta?: string;
 }
@@ -223,8 +231,19 @@ export class Sandbox implements ExecutionTarget {
    * still open: run() for one command, the SSH helper for a connection.
    */
   async start(argv: string[], cwd?: string): Promise<Sandboxed> {
-    let { internet, services, hosts } = this.spec.network;
     let forward = this.spec.forward ?? [];
+    const relay = this.spec.claude ? await openClaudeRelay(this.spec.claude.token, this.spec.claude.upstream) : undefined;
+    try {
+      return await this.launch(argv, cwd, forward, relay);
+    } catch (err) {
+      relay?.close();
+      throw err;
+    }
+  }
+
+  private async launch(argv: string[], cwd: string | undefined, forward: number[], relay: ClaudeRelay | undefined): Promise<Sandboxed> {
+    let { internet, services, hosts } = this.spec.network;
+    if (relay) forward = [...forward, relay.port];
     // The front door's names must resolve (now or before), or this run gets no network at all: its rules can't be trusted.
     const frontAddresses = internet || services || hosts.length || forward.length ? await resolveAddresses(this.spec.frontHosts ?? []) : [];
     if (!frontAddresses) [internet, services, hosts, forward] = [false, false, [], []];
@@ -233,7 +252,9 @@ export class Sandbox implements ExecutionTarget {
     // Files written into the sandbox's /etc. Hostnames are pinned when it starts;
     // with internet off there is no resolver at all, so DNS can't carry data out.
     const forge = this.spec.env?.LYRICA_GIT_COUNT !== undefined;
-    const claude = this.spec.env?.CLAUDE_CODE_OAUTH_TOKEN !== undefined;
+    const claude = !!relay;
+    // The capability and the relay's address, never the token.
+    const claudeEnv = relay ? { CLAUDE_CODE_OAUTH_TOKEN: relay.capability, ANTHROPIC_BASE_URL: `http://127.0.0.1:${relay.port}` } : {};
     const data: (readonly [string, string, string?])[] = [
       ["/etc/hosts", ["127.0.0.1 localhost", "::1 localhost", ...resolved.pinned].join("\n") + "\n"],
       ["/etc/resolv.conf", internet ? `nameserver ${SANDBOX_GATEWAY}\n` : ""],
@@ -264,10 +285,11 @@ export class Sandbox implements ExecutionTarget {
       cmd = ["unshare", "--user", "--map-root-user", "--net", "--", "bash", "-c", HOLD, "bash", rules, String(ready), String(ready + 1), ...cmd];
     }
     const child = spawn(cmd[0]!, cmd.slice(1), {
-      env: { ...this.spec.env, ...env(), ...forge || claude ? { PATH: `${FORGE_BIN}:${env().PATH}` } : {} },
+      env: { ...this.spec.env, ...claudeEnv, ...env(), ...forge || claude ? { PATH: `${FORGE_BIN}:${env().PATH}` } : {} },
       stdio: ["pipe", "pipe", "pipe", ...fds, ...data.map(() => "pipe" as const), ...(networked ? ["pipe", "pipe"] as const : [])],
     });
     child.on("error", () => {}); // reported to the caller's own listener; never an uncaught error
+    if (relay) child.on("close", () => relay.close());
     for (const fd of fds) closeSync(fd);
     data.forEach(([, text], i) => {
       const pipe = child.stdio[3 + fds.length + i] as Writable;
