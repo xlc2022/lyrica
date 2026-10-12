@@ -587,9 +587,9 @@ function plainHttp(url: string): boolean {
 /** Add endpoint, or Edit one: in the drawer, with one Save at its foot. */
 function EndpointDrawer({ ctx, ep, signIn, onClose }: { ctx: MCtx; ep?: EndpointInfo; signIn?: boolean; onClose: () => void }) {
   const userId = ctx.user.id;
-  const [type, setType] = useState<"openai-compatible" | PlanKind>(ep ? planOf(ep.api) ?? "openai-compatible" : "openai-compatible");
   const [name, setName] = useState(ep?.name ?? "");
-  const [kind, setKind] = useState<"local" | "cloud">(ep?.kind ?? "local");
+  // A plan is a kind of its own here: always cloud, signed in rather than given a URL and key.
+  const [kind, setKind] = useState<"local" | "cloud" | PlanKind>(ep ? planOf(ep.api) ?? ep.kind : "local");
   const [baseUrl, setBaseUrl] = useState(ep?.baseUrl ?? "");
   const [apiKey, setApiKey] = useState("");
   const [removeKey, setRemoveKey] = useState(false);
@@ -607,12 +607,12 @@ function EndpointDrawer({ ctx, ep, signIn, onClose }: { ctx: MCtx; ep?: Endpoint
     ...(baseUrl.trim() !== ep.baseUrl ? { baseUrl: baseUrl.trim() } : {}),
     ...(removeKey ? { apiKey: null } : apiKey ? { apiKey } : {}),
   } : {};
-  const plan = type === "openai-compatible" ? undefined : type;
+  const plan = kind === "local" || kind === "cloud" ? undefined : kind;
   const ready = plan ? !!ep && !!name.trim() && name.trim() !== ep.name
     : ep ? Object.keys(change).length > 0 && !!name.trim() && !!baseUrl.trim() : !!name.trim() && !!baseUrl.trim();
   const save = () => run(async () => {
     if (ep) await patch(u(userId, "endpoints", ep.id), change);
-    else await post(u(userId, "endpoints"), { name: name.trim(), kind, baseUrl: baseUrl.trim(), ...(apiKey ? { apiKey } : {}), ...(shared ? { shared } : {}) });
+    else if (!plan) await post(u(userId, "endpoints"), { name: name.trim(), kind, baseUrl: baseUrl.trim(), ...(apiKey ? { apiKey } : {}), ...(shared ? { shared } : {}) });
     ctx.models.reload();
     onClose();
   });
@@ -625,22 +625,15 @@ function EndpointDrawer({ ctx, ep, signIn, onClose }: { ctx: MCtx; ep?: Endpoint
       </div>
       <form className="drawer-body" onSubmit={(e) => { e.preventDefault(); if (ready) void save(); }}>
         <fieldset className="group" disabled={busy}>
-          {!ep && (
-            <label className="field"><span>Type</span>
-              <select value={type} onChange={(e) => setType(e.target.value as "openai-compatible" | PlanKind)}>
-                <option value="openai-compatible">OpenAI-compatible</option><option value="chatgpt">ChatGPT plan</option><option value="grok">Grok plan</option>
-              </select>
-            </label>
-          )}
           <label className="field"><span>Name</span><input value={name} onChange={(e) => setName(e.target.value)} /></label>
-          {plan && (!ep || signIn) && <PlanSignIn key={plan} ctx={ctx} plan={plan} name={name.trim()} ep={ep} onDone={onClose} />}
-          {!plan && !ep && (
+          {!ep && (
             <label className="field"><span>Kind</span>
-              <select value={kind} title="Local means on your own network: this machine, the LAN or the tailnet." onChange={(e) => setKind(e.target.value as "local" | "cloud")}>
-                <option value="local">Local</option><option value="cloud">Cloud</option>
+              <select value={kind} title="Local means on your own network: this machine, the LAN or the tailnet." onChange={(e) => setKind(e.target.value as "local" | "cloud" | PlanKind)}>
+                <option value="local">Local</option><option value="cloud">Cloud</option><option value="chatgpt">ChatGPT plan</option><option value="grok">Grok plan</option>
               </select>
             </label>
           )}
+          {plan && (!ep || signIn) && <PlanSignIn key={plan} ctx={ctx} plan={plan} name={name.trim()} ep={ep} onDone={onClose} />}
           {!plan && <>
           <label className="field"><span>Base URL</span><input className="mono" inputMode="url" autoCapitalize="none" placeholder="http://192.168.1.50:1234/v1" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} /></label>
           {(ep?.kind ?? kind) === "local" && plainHttp(baseUrl) && <p className="warn-text" role="note">Plain HTTP: the API key and every message cross the network unencrypted.</p>}

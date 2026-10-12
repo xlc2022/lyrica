@@ -128,7 +128,12 @@ export async function startPlanSignIn(kind: PlanKind, installationId: string): P
       return paste;
     },
   };
-  const login = PROVIDERS[kind]().auth.oauth!.login(interaction, { getDeviceId: () => installationId, agentName: "Lyrica" });
+  const login = PROVIDERS[kind]().auth.oauth!.login(interaction, { getDeviceId: () => installationId, agentName: "Lyrica" })
+    .catch((e: unknown) => {
+      // Pi's ChatGPT listener holds 127.0.0.1:1455 for one sign-in at a time on this server.
+      if (/Port \d+ is in use/.test(e instanceof Error ? e.message : "")) throw new Error("Another sign-in is under way on this server. Try again in a few minutes.");
+      throw e;
+    });
   login.catch(() => {});
   const first = await Promise.race([show, login.then(() => { throw new Error("the sign-in gave no address to open"); })]);
   return {

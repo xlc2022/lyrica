@@ -526,8 +526,9 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   and `scopes`) is kept as JSON in the endpoint's `api_key` column in their
   `user.db`, read only through `planCredential`; `Endpoint.apiKey` is never
   set for a plan, and it has no URL or key to edit. It merges only with a
-  plan of the same kind. No schema change: an older release sees a plan as
-  an endpoint with a key its calls can't use.
+  plan of the same kind. No schema change: after a rollback, an older release
+  sends the stored JSON (refresh token included) as its bearer key to the
+  provider that issued it, whose refusal marks the endpoint down.
 - **Signing in** (`startPlanSignIn`, `POST …/plans/sign-in`), with Pi's own
   flows and the agent name "Lyrica":
   - **ChatGPT:** Sign in with ChatGPT, with this installation's ID

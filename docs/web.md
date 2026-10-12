@@ -217,11 +217,11 @@ A thread's address may carry what the panel beside it shows:
   profiles until Tasks exists) and Clean up; then the hosts and endpoints
   summary (a host with its combined VRAM bar, Pause or Resume, Dashboard;
   a plain endpoint with its model count) and the first five calls. Hosts
-  and endpoints: **Add endpoint** (a drawer: Type, Name, Kind, Base URL, API key,
+  and endpoints: **Add endpoint** (a drawer: Name, Kind, Base URL, API key,
   Shared for administrators; a plain-HTTP warning for a local URL off
-  loopback and the tailnet. Type ChatGPT plan has Name, **Sign in with
+  loopback and the tailnet. Kind also offers ChatGPT plan, with **Sign in with
   ChatGPT**, which opens OpenAI's page in a new tab, then **Redirect URL**
-  and **Finish**; Grok plan has Name, **Sign in with Grok**, which opens
+  and **Finish** in place of the URL and key; and Grok plan, with **Sign in with Grok**, which opens
   xAI's page, then its **Code** and **Finish**; closing the drawer cancels
   the sign-in) and **Add model host** (the one primary; a page
   at `…/models/hosts/add-host`: Name, Addresses, Pairing code, Shared,

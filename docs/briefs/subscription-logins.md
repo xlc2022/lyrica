@@ -72,7 +72,7 @@ and the provider, so this is wiring, not a client of our own (principle 3).
   new one means no migration, so the build doesn't wait for MCP's user
   step 3.
 - `POST …/plans/sign-in` and `…/:id` in `lyricad`, with Pi's flows; the
-  Add endpoint drawer's Type, the plan row's pill, Signed out and Sign in
+  Add endpoint drawer's Kind (which offers the plans), the plan row's pill, Signed out and Sign in
   again.
 - `PlanCredentials`: Pi's refresh written back to `user.db`, serialised per
   plan; a refused refresh signs the plan out.
