@@ -13,6 +13,7 @@ import { SuggestedCard, ThreadCard, type ProjectEnv } from "./Project.tsx";
 import { EditBox, MessageMenu, type Rewinder } from "./Rewind.tsx";
 import { ErrorText, Prose, useAction } from "./ui.tsx";
 import { Lightbox, PathText, useFileLinks, type FileLinks } from "./paths.tsx";
+import { foldLooks, raisedIn, toldIn, type Told } from "./looks.ts";
 import { her } from "./name.ts";
 import { ReactButton, ReactionChips } from "./Reactions.tsx";
 import { ReadAloudButton } from "./Voice.tsx";
@@ -60,7 +61,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   const anchored = project ? project.overview.threads.filter((t) => t.anchor !== undefined && shownMessagesHave(messages, hideFrom, t.anchor)) : [];
   const loose = project ? project.overview.threads.filter((t) => !anchored.includes(t)) : [];
   const shownMessages = hideFrom === undefined ? messages : messages.filter((m) => m.n < hideFrom);
-  const looks = useMemo(() => foldLooks(shownMessages), [shownMessages]);
+  const looks = useMemo(() => foldLooks(shownMessages, pool), [shownMessages, pool]);
   return (
     <>
       {hasMore && <button type="button" className="older" disabled={loading} onClick={() => run(loadOlder)}>Show earlier messages</button>}
@@ -118,28 +119,6 @@ interface Env {
   large: (path: string, files: FileLinks) => void;
 }
 
-/** What a look at the project's threads led to: the threads she messaged in the turn after it, with what she sent each. */
-interface Told { threads: ThreadRef[]; text: string }
-
-/**
- * Pairs each look (`from.kind === "watching"`) with her next turn: the look's marker names the threads she told,
- * and that turn's `threads message` cards fold into it rather than showing twice.
- */
-function foldLooks(messages: Message[]): { told: Map<string, Told[]>; folded: Set<string> } {
-  const told = new Map<string, Told[]>();
-  const folded = new Set<string>();
-  messages.forEach((m, i) => {
-    if (m.role !== "user" || m.from?.kind !== "watching") return;
-    const next = messages.slice(i + 1).find((x) => x.role === "assistant" || (x.role === "user" && x.from?.kind !== "parent"));
-    if (next?.role !== "assistant") return void told.set(m.id, []);
-    const sent = next.parts.flatMap((p) => p.type === "tool" && p.name === "threads" && !p.isError && (p.args as { action?: string } | null)?.action === "message" && !(p.args as { to?: string }).to
-      ? [{ threads: p.threads ?? [], text: (p.args as { text?: string }).text ?? "" }] : []);
-    told.set(m.id, sent);
-    if (sent.length) folded.add(next.id);
-  });
-  return { told, folded };
-}
-
 function StoredMessage({ m, env, you, cards, told, folded }: { m: Message; env: Env; you: string; cards?: ThreadSummary[]; told?: Told[]; folded?: boolean }) {
   const after = cards?.map((t) => <ThreadCard key={t.id} t={t} userId={env.userId} env={env.project!} />);
   if (m.role === "user") {
@@ -174,6 +153,7 @@ const FROM_PARENT = /^\[From t:([^\]\s]+)\]\n\n/;
 function LookMarker({ text, told, env, n }: { text: string; told: Told[]; env: Env; n?: number }) {
   const [open, setOpen] = useState(false);
   const ids = [...new Set([...text.matchAll(/^In \[t:([^\]\s]+)\]:/gm)].map((m) => m[1]!))];
+  const raised = raisedIn(text);
   return (
     <div className="marker look" data-type="watching" id={n !== undefined ? `m-${n}` : undefined}>
       <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
@@ -187,6 +167,7 @@ function LookMarker({ text, told, env, n }: { text: string; told: Told[]; env: E
               <HerProse text={`To ${t.threads.map((x) => `[t:${x.pool === env.pool ? "" : `${x.pool}/`}${x.id}]`).join(", ") || "a thread"}: ${t.text}`} env={env} elsewhere />
             </div>
           ))}
+          {raised && <div className="prose small"><HerProse text={`Raised with you: ${raised}`} env={env} /></div>}
           {env.rewinder && n !== undefined && <div className="row"><MessageMenu n={n} role="user" rewinder={env.rewinder} /></div>}
         </div>
       )}
@@ -200,10 +181,15 @@ function shownMessagesHave(messages: Message[], hideFrom: number | undefined, n:
 
 function LiveMessage({ item, env, you, streaming }: { item: LiveItem; env: Env; you: string; streaming: boolean }) {
   if (item.role === "user") {
-    if (item.text.startsWith(WATCHING_MARK)) return <LookMarker text={item.text.slice(WATCHING_MARK.length)} told={[]} env={env} />;
+    if (item.text.startsWith(WATCHING_MARK)) { const text = item.text.slice(WATCHING_MARK.length); return <LookMarker text={text} told={toldIn(text, env.pool)} env={env} />; }
     const parent = FROM_PARENT.exec(item.text);
     if (parent) return <FromThread text={item.text.slice(parent[0].length)} from={{ kind: "thread", threadId: parent[1]! }} env={env} />;
     return <UserMessage text={item.text} you={you} env={env} />;
+  }
+  // A look kept without a turn: the same marker, until its stored copy replaces this one.
+  if (item.role === "notice" && item.status === "watching") {
+    const text = item.text.startsWith(WATCHING_MARK) ? item.text.slice(WATCHING_MARK.length) : item.text;
+    return <LookMarker text={text} told={item.told ? item.told.map((t) => ({ threads: [{ pool: env.pool, id: t.threadId }], text: t.text })) : toldIn(text, env.pool)} env={env} />;
   }
   if (item.role === "notice") return <Notice text={item.text} status={item.status} threads={item.threads} env={env} />;
   return <Parts parts={item.parts} env={env} model={item.model} streaming={streaming} />;

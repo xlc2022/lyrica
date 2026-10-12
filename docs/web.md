@@ -141,7 +141,8 @@ A thread's address may carry what the panel beside it shows:
   Instructions kept on the project page (2,000 characters, counted under
   the box), and a link to that page in the memory browser. Files and
   images come with the Files panel.
-- **Thread settings drawer:** a model per task (each option says cloud or local first), local-only, the internet and
+- **Thread settings drawer:** a model per task (each option says cloud or local first; **Watching threads**, under
+  Titles, only in a project chat), local-only, the internet and
   Local services (localhost) switches (each following the user's default until
   changed), allowed hosts, folders from the allowed paths (read-only or
   read-write), **Machines** (the sandbox, always, then each granted machine
@@ -393,11 +394,20 @@ A thread's address may carry what the panel beside it shows:
   and the stored copy replaces the live one.
 - In a project chat, a look at its threads (a message with `from.kind ===
   "watching"`) is the marker **Checked the other threads**, with "· told 2"
-  (the count in mono) when her next turn messaged threads. It expands to the
-  threads looked at and, for each thread she told, the thread and what she
-  sent; those `threads message` calls fold into it instead of showing as
-  cards. It is never the user's bubble, and nothing shows when the setting
-  is off, since no look is sent.
+  (the count in mono) when it messaged threads. A look made by one model
+  call carries `from.told` (each thread told, `threadId`, and the line sent,
+  `text`), and the count comes from that; her turn after it is her own. Its
+  text is `In [t:<id>]: …` lines, then `Told` lines and maybe `Raised: "…"`.
+  It expands to the threads looked at, each thread told with the line sent,
+  and, when the look raised something, one line, "Raised with you: …"; the
+  `Told` and `Raised` lines are not shown as text. An older look, stored
+  before looks were one call, has no `told`: the count is the `threads
+  message` calls of her next turn, which fold into the marker instead of
+  showing as cards. Live, a look is a `notice` event with `status:
+  "watching"` and `told`, or `received` when it raised something (its
+  `Told` lines are read from the text); both draw the same marker until the
+  stored copy replaces them (`src/looks.ts`). It is never the user's
+  bubble, and nothing shows when the setting is off, since no look is sent.
 - A `delegate` call is a card for its subagents (the tool part's
   `threads`). Each expands to its work: the stored transcript, read-only,
   where each message says who sent it (Lyrica, the user by name, or the
@@ -430,7 +440,8 @@ A thread's address may carry what the panel beside it shows:
   to the summary are the Web UI 2 thread's.
 - A message sent during a turn waits as a follow-up and shows as waiting.
   Stop aborts the turn; `lyricad` drops the waiting follow-ups, so their text
-  goes back into the composer.
+  goes back into the composer. A message from another thread or a look
+  never waits there: it shows where it reached the turn (`received`).
 - `src/live.ts` turns stream events into the in-progress turn. When a turn
   ends, the stored messages are reloaded and the live copy is dropped.
   `EventSource` reconnects with `Last-Event-ID`. If it gives up, a new one

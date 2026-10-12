@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { AgentSession, SessionEntry } from "@earendil-works/pi-coding-agent";
 import { MEMORY_TOOLS, type NewEntry, type PoolStore } from "@lyrica/core";
 
@@ -28,6 +29,19 @@ export function recordEntries(session: AgentSession, store: PoolStore, threadId:
   return session.subscribe((event) => {
     if (event.type === "turn_end" || event.type === "agent_end" || event.type === "compaction_end") syncEntries(session.sessionManager, store, threadId);
   });
+}
+
+/**
+ * Appends a user message to a stored thread, after its last entry, as Pi
+ * stores one: her next session on the thread loads it with the rest.
+ */
+export function appendUserMessage(store: PoolStore, threadId: string, text: string): void {
+  const last = store.loadEntries(threadId).filter((e) => (e as { type?: string }).type !== "session").at(-1) as { id: string } | undefined;
+  const entry = {
+    type: "message", id: randomBytes(4).toString("hex"), parentId: last?.id ?? null, timestamp: new Date().toISOString(),
+    message: { role: "user", content: [{ type: "text", text }], timestamp: Date.now() },
+  } as unknown as SessionEntry;
+  store.appendEntry(threadId, toStoredEntry(entry), entry.timestamp);
 }
 
 /**

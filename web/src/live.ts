@@ -1,12 +1,12 @@
 // What a thread's event stream says is happening now, before it is stored.
 // Pure, so it can be tested without a browser.
-import type { MessagePart, PermissionRequest, ThreadEvent, ThreadRef } from "./api.ts";
+import type { MessagePart, PermissionRequest, ThreadEvent, ThreadRef, Told } from "./api.ts";
 
 export type LiveItem =
   | { role: "user"; text: string }
   | { role: "assistant"; model?: string; parts: MessagePart[] }
   /** Delivered into the thread, such as a background subagent run's result. */
-  | { role: "notice"; text: string; status?: string; threads?: ThreadRef[] };
+  | { role: "notice"; text: string; status?: string; threads?: ThreadRef[]; told?: Told[] };
 
 export interface Live {
   busy: boolean;
@@ -91,6 +91,9 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       const taken = s.queued.slice(0, Math.max(0, s.queued.length - e.queued.length));
       return { ...s, queued: e.queued, items: [...s.items, ...taken.map((text) => ({ role: "user" as const, text }))] };
     }
+    case "received":
+      // From another thread or a look, where it reached the turn; drawn by its mark.
+      return { ...s, items: [...s.items, { role: "user", text: e.text }] };
     case "error":
       return { ...s, errors: [...s.errors, e.message] };
     case "offline":
@@ -111,7 +114,7 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     case "stopping":
       return { ...s, queued: [], offline: undefined };
     case "notice":
-      return { ...s, items: [...s.items, { role: "notice", text: e.text, status: e.status, threads: e.threads }] };
+      return { ...s, items: [...s.items, { role: "notice", text: e.text, status: e.status, threads: e.threads, told: e.told }] };
     case "refresh":
       return { ...s, reload: s.reload + 1, ended: s.items.length };
     case "delegation": {

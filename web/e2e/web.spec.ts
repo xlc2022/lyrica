@@ -1104,7 +1104,7 @@ test("the split view: a thread from its card opens in the panel, links inside it
   await noHorizontalScroll(page);
 });
 
-test("watching threads: writing in a project's thread leads to a look, shown as a marker that names the thread she told; the switch turns it off", async ({ page, baseURL }) => {
+test("watching threads: writing in a project's thread leads to a look, shown as a marker that names the other thread she told; the switch turns it off", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
   const list = page.locator(".threads");
@@ -1116,6 +1116,8 @@ test("watching threads: writing in a project's thread leads to a look, shown as 
   const projectUrl = page.url();
   await send(page, "start: Alpha");
   await expect(page.getByText("Started it.")).toBeVisible();
+  await send(page, "start: Beta");
+  await expect(page.getByText("Started it.")).toHaveCount(2);
   // Write in Alpha (beside the chat on a wide screen, as the page on a phone); the look comes to the project chat.
   await page.locator(".tcard").first().getByRole("link", { name: "Alpha" }).click();
   const alpha = phone(page) ? page : page.getByRole("complementary", { name: "Alpha" });
@@ -1130,7 +1132,9 @@ test("watching threads: writing in a project's thread leads to a look, shown as 
   await expect(look.getByRole("button")).toContainText("told 1", { timeout: 20_000 });
   await look.getByRole("button").click();
   await expect(look.getByText("Heads up: the plan changed.")).toBeVisible();
-  await expect(look.getByRole("link", { name: "Alpha" })).toHaveCount(2);
+  // Looked at Alpha, told Beta.
+  await expect(look.getByRole("link", { name: "Alpha" })).toHaveCount(1);
+  await expect(look.getByRole("link", { name: "Beta" })).toHaveCount(1);
   await expect(page.locator("main .threads-card")).toHaveCount(0);
   await expect(page.locator("main .msg.user").filter({ hasText: "[Watching threads]" })).toHaveCount(0);
   // The switch, on by default, saves off.

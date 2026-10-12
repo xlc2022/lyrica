@@ -18,6 +18,7 @@ export const TASK_LABELS: Record<ThreadTask, string> = {
   "subagent.cheap": "Cheap subagents",
   "subagent.strong": "Strong subagents",
   title: "Titles",
+  watching: "Watching threads",
   "speech.transcribe": "Dictation",
   "speech.speak": "Read aloud",
 };
@@ -125,7 +126,8 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
         <ErrorText error={error} />
         <fieldset className="group" disabled={sub || busy}>
           <legend>Models</legend>
-          {THREAD_TASKS.map((task) => (
+          {/* Watching threads only in a project chat, the one thread that makes looks; it comes after Titles. */}
+          {THREAD_TASKS.filter((task) => task !== "watching" || summary.project).map((task) => (
             <TaskSelect key={task} task={task} value={settings.models[task]} allowed={settings.allowed} onChange={(m) => change({ models: { [task]: m } })} />
           ))}
           <NetSwitch label="Fallback" hint="When off, only the first model in each list answers; if it can't, the message waits for it." value={settings.fallback} effective={settings.fallbackOn}

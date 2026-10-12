@@ -413,9 +413,21 @@ export class Lyricad implements Drainable {
     const projects = new Projects(users);
     // A hidden project stops as a paused one does.
     const stopped = (u: string, p: Pool, project: string) => projects.paused(u, p, project) || hiddenThread(memory, u, p, project);
-    const watcher = new Watcher({ memory, host: () => host, delayMs: this.opts.watchMs, wanted: (u, p, project) => projects.settings(u, p, project).watch && !stopped(u, p, project),
+    const watcher = new Watcher({ memory, models, host: () => host, delayMs: this.opts.watchMs, log: this.log, name: () => selfName(keyring.self()),
+      wanted: (u, p, project) => projects.settings(u, p, project).watch && !stopped(u, p, project),
       restricted: (u, p, thread) => isRestricted(models.callContext(u, p, thread)),
+      threads: (u, p, project) => ({
+        open: children.projectThreads(u, p, project).filter((t) => t.state !== "resolved").map((t) => t.id), lines: children.projectLines(u, p, project),
+      }),
+      tell: (u, p, project, thread, text) => children.tellFromProject(u, p, project, thread, text),
+      store: (u, p, project, content, details) => children.storeLook(u, p, project, content, details),
     });
+    // A project's thread whose turn ended with an error, or that waits for an approval, is a trigger for a look.
+    const projectOf = (u: string, p: Pool, thread: string) => {
+      try { const v = memory.openThreadView(u, p); try { return v.own.projectOf(thread); } finally { v.close(); } } catch { return undefined; }
+    };
+    /** Threads whose turn's last word so far is an error, by `user/pool/thread`: a retry that answers clears it. */
+    const erred = new Set<string>();
     const children = new ChildThreads({
       users, memory, models, workspace, delegation, host: () => host, limits: this.opts.threads,
       paused: stopped,
@@ -427,7 +439,21 @@ export class Lyricad implements Drainable {
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000, offlineRetryMs: this.opts.offlineRetryMs,
       threads: children, onTurn: (u, p, t, working) => {
         children.turn(u, p, t, working);
-        if (!working) watcher.turnEnded(u, p, t);
+        const k = `${u}/${p}/${t}`;
+        if (working) { erred.delete(k); return watcher.turnStarted(u, p, t); }
+        watcher.turnEnded(u, p, t);
+        if (!erred.delete(k)) return;
+        const project = projectOf(u, p, t);
+        if (project) watcher.failed(u, p, project, t);
+      },
+      onEvent: (u, p, t, e) => {
+        const k = `${u}/${p}/${t}`;
+        if (e.type === "error" && host.busy(u, p, t)) erred.add(k);
+        else if (e.type === "message_start" || e.type === "turn_start") erred.delete(k);
+        else if (e.type === "permission") {
+          const project = projectOf(u, p, t);
+          if (project) watcher.waiting(u, p, project, t);
+        }
       },
       projectThreads: (u, p, project) => children.projectLines(u, p, project),
     });
