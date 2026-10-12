@@ -711,6 +711,8 @@ export interface ThreadSummary {
   state?: "working" | "waiting" | "queued" | "idle" | "resolved";
   /** A project's thread is waiting on the user to decide something. */
   needsYou?: true;
+  /** Its next wake-up, if one is waiting (her `threads later`). */
+  wakeAt?: string;
 }
 
 export interface ProjectSettingsInfo {
@@ -853,6 +855,8 @@ export interface TaskModel {
 
 export interface ThreadSettings {
   models: Record<ThreadTask, TaskModel>;
+  /** Wake-ups waiting, soonest first; the user may remove each (`DELETE …/wakeups/:id`). */
+  wakeups: WakeupInfo[];
   /** Local in a private or local-only thread; otherwise the thread's choice or the user's default. */
   profile: "local" | "cloud" | "custom";
   /** Set when the thread chose its profile rather than following the default. */
@@ -1016,8 +1020,9 @@ export interface Message {
    * `watching`: in a project chat, a look at its threads (watch.ts): the text names the threads it was
    * about (`In [t:<id>]: …` lines) and who it told; `told` is those threads with the line each was sent.
    * A look stored before looks were one model call has no `told`: her next turn's messages are what it led to.
+   * `wakeup`: her note to herself from `threads later`, set at `setAt`; `dueAt` when it fired late (the user was locked).
    */
-  from?: { kind: "lyrica" } | { kind: "watching"; told?: Told[] } | { kind: "user"; userId: string; name: string } | { kind: "parent"; threadId: string } | { kind: "thread"; threadId: string };
+  from?: { kind: "lyrica" } | { kind: "watching"; told?: Told[] } | { kind: "wakeup"; setAt: string; dueAt?: string } | { kind: "user"; userId: string; name: string } | { kind: "parent"; threadId: string } | { kind: "thread"; threadId: string };
   parts: MessagePart[];
   createdAt: string;
   /** The model that wrote an assistant message. */
@@ -1246,6 +1251,8 @@ export type ThreadEvent =
   | { type: "settings" }
   /** In a project chat: one of its threads changed state; fetch it (`GET threads/:pool/:id`) to update its card in place. */
   | { type: "child"; threadId: string }
+  /** The thread's pending wake-ups changed: set, removed or fired. Soonest first. */
+  | { type: "wakeups"; wakeups: WakeupInfo[] }
   /** The turn is over; the messages are stored. */
   | { type: "turn_end"; aborted: boolean }
   /** After each turn: the context as it now stands. */
@@ -1777,3 +1784,6 @@ export interface UpdateRequest { tag: string }
 /** POST …/admin/updates/rollback → Updates: goes back to a kept release. */
 export interface RollbackRequest { commit: string }
 /** POST …/admin/updates/check → Updates: fetches, so the newest update note shows. */
+
+/** A thread's wake-up, waiting: her note to herself stays in the pool, so only its time and ID are shown. */
+export interface WakeupInfo { id: number; dueAt: string }

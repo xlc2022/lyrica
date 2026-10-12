@@ -1070,7 +1070,18 @@ Project settings and Recent calls by project. The briefs are
     **Hide** stops it too. **Delete** forgets the project chat, its threads,
     its page, the notes that came only from it, and its folder.
   - **Waiting on you** is a type in Notifications.
-- **Not in projects:** schedules (routines), moving an existing
+- **Wake-ups** (Li, 2026-10-12). Any thread with the `threads` tool can set
+  a one-shot wake-up for itself, `threads later` with minutes (1 to 7 days)
+  and a note to itself; at that time the note starts a turn there, marked
+  as a wake-up (a mark only `lyricad` writes), or joins the running turn.
+  It wakes only the thread that set it. At most 3 wait per thread and 12
+  fire a day, so a forgotten chain stops by itself; it counts against the
+  at-once limit, waits while its project is paused, and a locked user's
+  fire at unlock, saying when they were due. Stored in the thread's pool,
+  so it survives a restart. Li sees **Wake-up** and the next time in the
+  thread's facts line, with Remove on each, and the time on a project
+  thread's card.
+- **Not in projects:** routines (recurring schedules), moving an existing
   thread into a project, and sharing a project (Share with copies one
   thread).
 
