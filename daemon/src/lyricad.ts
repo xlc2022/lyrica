@@ -185,7 +185,7 @@ export class Lyricad implements Drainable {
 
   constructor(readonly opts: LyricadOptions) {
     this.keyring = new Keyring(opts.home, opts.argon2);
-    this.keyring.credentials = opts.credentials ?? new SystemdCredentials(join(opts.home, "credentials"));
+    this.keyring.credentials = opts.credentials ?? new SystemdCredentials(join(opts.home, "credentials"), undefined, undefined, (line) => this.log(line));
     this.limiter = new RateLimiter(opts.rateLimit);
     // An expired session's users are logged out like any others: keys go for those who chose that.
     this.sessions = new Sessions(Date.now, (ids) => void this.loggedOut(ids));
@@ -207,7 +207,7 @@ export class Lyricad implements Drainable {
   private get codePath(): string { return join(this.opts.home, "setup-code"); }
   private get namePath(): string { return join(this.opts.home, "name"); }
 
-  /** Listens, then unlocks with a saved passphrase if one was handed over. */
+  /** Listens, then unseals a saved passphrase and unlocks if it is available. */
   async start(): Promise<void> {
     const tcp = createServer((req, res) => void this.handle(req, res));
     await new Promise<void>((resolve, reject) => { tcp.once("error", reject); tcp.listen(this.opts.port, "127.0.0.1", resolve); });
@@ -482,7 +482,7 @@ export class Lyricad implements Drainable {
     this.rememberName(selfName(keyring.self()));
     await web.resume();
     for (const u of users.all()) {
-      if (keyring.loadSavedKey(u.id)) {
+      if (await keyring.loadSavedKey(u.id)) {
         await this.keyAvailable(u.id);
         this.log(`unlocked a user with saved credentials`);
       }

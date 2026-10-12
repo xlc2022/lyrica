@@ -84,18 +84,20 @@ came through her tailnet address.
 
 "Save credentials" uses systemd credentials. `lyricad` seals a secret with
 `systemd-creds encrypt` (to the TPM where there is one, else the host key),
-reading it on stdin, into `<runtime>/credentials/<name>`. The unit loads that
-directory with `LoadCredentialEncrypted=lyrica:…`, and systemd unseals each file
-at start into `$CREDENTIALS_DIRECTORY/lyrica_<name>`, readable only by the
-service.
+reading it on stdin, into `<runtime>/credentials/<name>`. At start lyricad
+runs `systemd-creds decrypt --user --name=lyrica_<name> <file> -` itself,
+reading plaintext only from the child's stdout pipe into memory. Plaintext
+never goes to disk or `/run`. Missing, failed or empty credentials leave
+self.db locked or that user's key unloaded. Logs contain only the credential
+name/id and error class; stderr is discarded.
 
 - `self`: the `self.db` passphrase. An administrator saves it with
   `PUT …/admin/passphrase` (typing the passphrase, which is checked first).
 - `user-<id>`: a user's data key, saved by that user with
   `PUT …/me/credentials` (`Keyring.saveUserKey`). At start `lyricad` takes
   every saved key and mounts those users' home workspaces, so sleep can run.
-- Turning either off deletes the sealed file. The unsealed copy lasts until
-  the service stops.
+- Turning either off deletes the sealed file. The loaded key remains in
+  memory until locked or the service stops.
 - As a non-root service user it seals with `--user`, which needs systemd 256
   or later. No root step is needed.
 
@@ -900,8 +902,8 @@ same ("On NixOS" below).
 - **lyricad's unit** runs `/opt/lyrica/current/bin/lyrica serve` as
   `lyrica`; a crash loop (3 starts in 2 minutes) starts
   `lyrica-rollback.service` (`OnFailure`), which acts only on probation. It has `StateDirectory`
-  for the runtime and the credentials directory, and `LoadCredentialEncrypted`
-  for saved credentials. Hardening: `NoNewPrivileges` breaks the setuid
+  for the runtime and the sealed credentials directory; lyricad decrypts
+  saved credentials itself into memory. Hardening: `NoNewPrivileges` breaks the setuid
   `fusermount3`, so homes never mount, and so does every option that makes
   systemd set it for a non-root service, because they install seccomp filters
   (listed in the unit; `ProtectHostname` is one of them). `RestrictNamespaces`
@@ -1000,7 +1002,7 @@ system with the module on. Only x86_64-linux.
 
 - **The module** declares what install.sh does: the users and groups,
   `/var/lib/lyrica` (`0700`), both units written in Nix and kept in step with
-  `daemon/deploy/*.service` (same hardening, `LoadCredentialEncrypted`, the
+  `daemon/deploy/*.service` (same hardening, sealed credential directory, the
   same deploy check), `ip_nonlocal_bind`, and `/etc/lyrica/caddy.json`.
   With `tailscale` on (the default) it also declares `lyrica-tailscaled`
   from `tailscalePackage` (`pkgs.tailscale`). lyricad starts without
