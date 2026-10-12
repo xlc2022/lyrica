@@ -1,3 +1,4 @@
+import { StaleUnitsLine } from "./StaleUnitsLine.tsx";
 // Settings (the user's own) and Administration (server-wide), each a page with
 // its sections listed at the left. The old control panel's cards moved here.
 import { useState } from "react";
@@ -304,6 +305,7 @@ function StatusSection({ ctx }: { ctx: ShellContext }) {
   const s = status.data;
   return (
     <Section title="Status">
+      <StaleUnitsLine units={s?.unitsStale} />
       <ErrorText error={status.error} />
       {s?.networkRefused && (
         <div className="notice" role="alert">

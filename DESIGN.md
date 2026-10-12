@@ -1697,6 +1697,8 @@ from Monika's runbooks.
   `install.sh` only, never by an update, so a broken release can't break
   what removes it. The updater installs only a commit on `main`, fetched
   with a read-only deploy key; that is the line she can't cross.
+- On Debian and Ubuntu, stale systemd units are reported, never rewritten,
+  because a root rewrite of `lyricad.service` could loosen her confinement.
 - **An update**, in order: build the release as an unprivileged build
   user; **smoke test** it on a spare port with a scratch home and a test
   user, never real data; **drain**: stop taking new turns and wait until no
