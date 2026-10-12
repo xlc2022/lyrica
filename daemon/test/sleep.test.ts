@@ -1,3 +1,4 @@
+import { OPENING } from "@lyrica/extension";
 import { describe, expect, it, vi } from "vitest";
 import { PoolStore } from "@lyrica/core";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
@@ -193,7 +194,8 @@ describe("sleep in lyricad", () => {
       expect(entries.filter((e) => e.message?.role === "user")).toHaveLength(1);
     } finally { view.close(); }
     expect(s.model.requests).toHaveLength(2);
-    expect(s.model.requests[1]!.messages.filter((m) => m.role === "user")).toHaveLength(1);
+    // Pi also projects her per-turn context as a user message. Count the opening itself.
+    expect(s.model.requests[1]!.messages.filter((m) => m.role === "user" && JSON.stringify(m.content).includes(OPENING))).toHaveLength(1);
   });
 
   it("stops at Lock with the run partial, and logs no text", async () => {

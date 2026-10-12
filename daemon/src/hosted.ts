@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, NoModel, Offline, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
@@ -483,7 +484,12 @@ export class HostedThread {
         // A compaction belongs to the turn that asked for it, even one that failed.
         opened.meter.pending = undefined;
         this.failed = false;
-        await opened.session.prompt(next);
+        const entry = (next === OPENING ? opened.view.own.loadEntries(this.threadId).at(-1) : undefined) as { message?: { role?: string; content?: unknown } } | undefined;
+        if (next === OPENING && entry?.message?.role === "user" && textOf(entry.message.content) === OPENING) {
+          await this.answerOpening(opened.session);
+        } else {
+          await opened.session.prompt(next);
+        }
         aborted = this.aborted;
         await this.afterTurn(opened, aborted);
         // What the turn didn't take goes next, or, if it was stopped or failed, is kept in the stored thread.
@@ -911,6 +917,24 @@ export class HostedThread {
       return undefined;
     } catch (err) {
       return err instanceof Offline ? err : undefined;
+    }
+  }
+
+  /** Answer the stored opening, retaining Pi's prompt hooks, loadout and retry lifecycle. */
+  private async answerOpening(session: AgentSession): Promise<void> {
+    // AgentSession has no public continuation API. Omit its new opening at
+    // the agent boundary; the existing user message is already in context.
+    const agent = session.agent;
+    const prompt = agent.prompt;
+    agent.prompt = async (input: string | AgentMessage | AgentMessage[]) => {
+      agent.prompt = prompt;
+      if (!Array.isArray(input)) throw new Error("expected Pi's prepared prompt messages");
+      await prompt.bind(agent)(input.filter((m) => !(m.role === "user" && textOf(m.content) === OPENING)));
+    };
+    try {
+      await session.prompt(OPENING);
+    } finally {
+      agent.prompt = prompt;
     }
   }
 

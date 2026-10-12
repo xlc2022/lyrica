@@ -211,7 +211,8 @@ restart in between loses the record.
 - **Items** live in the pool (`sleep_items`), each with its source. Only a
   thread started from one (`itemForThread`) gets it in its context, as the
   `opening` section, and `lyricad` prompts that thread with a hidden opening
-  line so she speaks first.
+  line so she speaks first. Retrying an interrupted opening answers the
+  existing last opening user entry without appending a second one.
 - **`lyricad`** runs every user's pools at `sleep.time` (a user in manual mode
   is left out), serves the Sleep section's API and its event stream, and
   takes `/sleep` typed in a thread. See [daemon.md](daemon.md#sleep). The

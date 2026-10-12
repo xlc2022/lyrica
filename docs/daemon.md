@@ -693,8 +693,9 @@ drafted against: if the file has changed since, approving it needs
   caught up on, pages with their text before and after, questions, the dream,
   WAKE and items. `POST …/sleep/:pool/items/:itemId/chat` starts a web thread
   from an item and has her speak first. Retrying returns the same thread;
-  if it has no assistant message and is idle, it sends the hidden opening
-  again. After her reply it sends nothing. `409` means the linked thread is
+  if it has no assistant message with text and is idle, it retries her opening.
+  A stored unanswered hidden opening is answered without appending another
+  user entry. After her reply it sends nothing. `409` means the linked thread is
   gone. Opening a thread never re-sends the opening. `DELETE` dismisses one.
   `GET …/sleep/events` streams `started`, `phase`, `finished` and `thread`.
 

@@ -1294,8 +1294,9 @@ sleep.events                       // started, phase, finished: IDs only, never 
   `no-key` skip is recorded once the key is back, since the pool can't be
   written without it.
 - `POST …/sleep/:pool/items/:itemId/chat` returns the item's existing thread
-  on retry. If it has no assistant message and is idle, it sends the hidden
-  opening again; after her reply it sends nothing. `409` means the linked
+  on retry. If it has no assistant message with text and is idle, it retries
+  her opening, answering an existing last hidden opening user entry without
+  appending another; after her reply it sends nothing. `409` means the linked
   thread is gone. Opening a thread never re-sends the opening.
 - Full details: [sleep.md](sleep.md).
 - Consolidate keeps each project's page (`p:${projectSlug(id)}`) for every
