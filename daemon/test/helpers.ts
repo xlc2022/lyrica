@@ -21,7 +21,7 @@ export async function runtime() {
   await keyring.initSelf("passphrase");
   new PersonaStore(keyring.self()).importSeed(SEED);
   const users = new Users(keyring);
-  const li = await users.createUser("li", "pw", { displayName: "Li", pronouns: PRONOUN_PRESETS.she }, { admin: true });
+  const li = await users.createUser("li", "pw", { displayName: "Ada", pronouns: PRONOUN_PRESETS.she }, { admin: true });
   const sam = await users.createUser("sam", "pw2", { displayName: "Sam", pronouns: PRONOUN_PRESETS.they }, { admin: false });
   keyring.self().close();
   const sealed = join(home, "credentials");

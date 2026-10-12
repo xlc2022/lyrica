@@ -60,7 +60,7 @@ already use, not everything (principle 2).
 
 ## After merging
 
-Tell the standing Operator docs thread (Li's rule, 2026-10-11) by
+Tell the standing Operator docs thread (the owner's rule, 2026-10-11) by
 cross-session message what changed that an operator does by hand (setup
 steps, commands, config) and where, in addition to the merge notice to the
 project chat.

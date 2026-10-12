@@ -12,7 +12,7 @@ import {
   type DelegationEvent, type DelegationOptions, type Limits, type Request, type ThreadContext,
 } from "../src/index.ts";
 
-// Delegation against fake model servers: Li's cloud endpoint ("openrouter")
+// Delegation against fake model servers: Ada's cloud endpoint ("openrouter")
 // and local one ("gpu"). Subagents are told apart from their parent by the
 // preamble every subagent gets.
 
@@ -36,7 +36,7 @@ function gate() {
   return { open, opened };
 }
 
-/** Li with cloud subagent models, a Memory, and a Delegation over them. */
+/** Ada with cloud subagent models, a Memory, and a Delegation over them. */
 async function setup(o: { limits?: Partial<Limits>; workspace?: (m: Awaited<ReturnType<typeof withModels>>) => Workspace; approve?: DelegationOptions["approve"]; searxng?: () => string } = {}) {
   const m = await withModels();
   for (const task of ["chat", "subagent.cheap", "subagent.strong"] as const) m.models.setProfile(m.li.id, "cloud", task, m.cloudRef);
@@ -55,7 +55,7 @@ async function setup(o: { limits?: Partial<Limits>; workspace?: (m: Awaited<Retu
   const open = (t: ThreadContext) => openThreadSession({
     thread: t, models: m.models, cwd,
     extensions: [
-      createLyricaExtension(t, { persona: () => persona, profile: () => ({ displayName: "Li", pronouns: PRONOUN_PRESETS.she, previousNames: [] }) }),
+      createLyricaExtension(t, { persona: () => persona, profile: () => ({ displayName: "Ada", pronouns: PRONOUN_PRESETS.she, previousNames: [] }) }),
       createDelegateExtension(t, delegation),
     ],
   });

@@ -75,7 +75,7 @@ export interface MachineConfig {
   /** Optional remote folder that read, write and edit stay inside. Always null for Proxmox. */
   root: string | null;
   /**
-   * SHA-256 of the host key Li confirmed (`SHA256:…`), or for Proxmox of its
+   * SHA-256 of the host key the user confirmed (`SHA256:…`), or for Proxmox of its
    * TLS certificate (`AB:CD:…`). A machine from before confirming may have
    * none, and can't be reached until it does.
    */
@@ -83,7 +83,7 @@ export interface MachineConfig {
   /** Reached only from threads of this pool. */
   pool: Pool;
   limit: MachineLimit;
-  /** Its address resolved outside the LAN, loopback and tailnet at the last check; for a private machine, Li confirmed that. */
+  /** Its address resolved outside the LAN, loopback and tailnet at the last check; for a private machine, the user confirmed that. */
   offNetwork: boolean;
   /** When she last connected (ISO time). */
   lastUsed: string | null;
@@ -113,7 +113,7 @@ export interface GitAccountConfig {
   token: string;
   /** Used only by threads of this pool. A GitHub account is always general. */
   pool: Pool;
-  /** The host resolved outside the LAN, loopback and tailnet at the last check; for a private account, Li confirmed that. */
+  /** The host resolved outside the LAN, loopback and tailnet at the last check; for a private account, the user confirmed that. */
   offNetwork: boolean;
   /** How the last use went, and since when; null before the first, or after its host, account or token changed. */
   state: GitAccountState | null;
@@ -135,7 +135,7 @@ export interface McpServerConfig {
   description: string | null;
   /** How many tools it offered at the last check. */
   tools: number;
-  /** Its host resolved outside the LAN, loopback and tailnet at the last check; for a private server, Li confirmed that. */
+  /** Its host resolved outside the LAN, loopback and tailnet at the last check; for a private server, the user confirmed that. */
   offNetwork: boolean;
   /** How the last connection went, and since when; null before the first, or after its URL changed. */
   state: McpServerState | null;
@@ -551,7 +551,7 @@ export class WorkspaceSettings {
     return m;
   }
 
-  /** Adds a machine with the host key (or Proxmox certificate) Li confirmed. New machines start at Ask. */
+  /** Adds a machine with the host key (or Proxmox certificate) the user confirmed. New machines start at Ask. */
   addMachine(m: NewMachine, confirmedHostKey: string): MachineConfig {
     if (!MACHINE_NAME.test(m.name)) throw new Error("machine names use letters, digits, '.', '_' and '-'");
     if (this.machine(m.name)) throw new Error(`machine ${m.name} already exists`);
@@ -598,7 +598,7 @@ export class WorkspaceSettings {
     return this.need(name);
   }
 
-  /** Re-pairs a machine: the host key (or Proxmox certificate) Li confirmed replaces the old one. */
+  /** Re-pairs a machine: the host key (or Proxmox certificate) the user confirmed replaces the old one. */
   setHostKey(name: string, confirmedHostKey: string): MachineConfig {
     const key = confirmedKey(this.need(name).kind, confirmedHostKey);
     this.db.prepare("UPDATE machines SET host_key = ?, state = NULL, state_since = NULL WHERE name = ?").run(key, name);
@@ -612,12 +612,12 @@ export class WorkspaceSettings {
     return this.need(name);
   }
 
-  /** Records whether the address resolved outside Li's network at the last check. */
+  /** Records whether the address resolved outside the operator's network at the last check. */
   setOffNetwork(name: string, off: boolean): void {
     this.db.prepare("UPDATE machines SET off_network = ? WHERE name = ?").run(off ? 1 : 0, name);
   }
 
-  /** Li accepted that a private machine is off network: it can be reached again. */
+  /** the user accepted that a private machine is off network: it can be reached again. */
   confirmOffNetwork(name: string): MachineConfig {
     this.need(name);
     this.setOffNetwork(name, true);
@@ -708,12 +708,12 @@ export class WorkspaceSettings {
       .run(kind, kind && new Date().toISOString(), name, kind);
   }
 
-  /** Records whether the host resolved outside Li's network at the last check. */
+  /** Records whether the host resolved outside the operator's network at the last check. */
   setGitOffNetwork(name: string, off: boolean): void {
     this.db.prepare("UPDATE git_accounts SET off_network = ? WHERE name = ?").run(off ? 1 : 0, name);
   }
 
-  /** Li accepted that a private account's host is off network: it can be used again. */
+  /** the user accepted that a private account's host is off network: it can be used again. */
   confirmGitOffNetwork(name: string): GitAccountConfig {
     this.needGit(name);
     this.setGitOffNetwork(name, true);
@@ -802,12 +802,12 @@ export class WorkspaceSettings {
       .run(kind, kind && new Date().toISOString(), name, kind);
   }
 
-  /** Records whether the host resolved outside Li's network at the last check. */
+  /** Records whether the host resolved outside the operator's network at the last check. */
   setMcpOffNetwork(name: string, off: boolean): void {
     this.db.prepare("UPDATE mcp_servers SET off_network = ? WHERE name = ?").run(off ? 1 : 0, name);
   }
 
-  /** Li accepted that a private server's host is off network: it can be used again. */
+  /** The user accepted that a private server's host is off network: it can be used again. */
   confirmMcpOffNetwork(name: string): McpServerConfig {
     this.needMcp(name);
     this.setMcpOffNetwork(name, true);
@@ -837,7 +837,7 @@ export class WorkspaceSettings {
     this.eachMcp((list, allowed) => [list.map((m) => (m === from ? to : m)), allowed.map((a) => (a.machine === mcpKey(from) ? { ...a, machine: mcpKey(to) } : a))]);
   }
 
-  /** An MCP tool Li allowed in this thread: that tool on that server stops asking here, and only here. */
+  /** An MCP tool the user allowed in this thread: that tool on that server stops asking here, and only here. */
   allowToolInThread(threadId: string, server: string, tool: string): void {
     this.allowInThread(threadId, mcpKey(server), tool);
   }
@@ -846,7 +846,7 @@ export class WorkspaceSettings {
     return this.allowedInThread(threadId).some((a) => a.machine === mcpKey(server) && a.command === tool);
   }
 
-  /** A suspect command Li allowed in this thread: that exact command on that machine stops asking here, and only here. */
+  /** A suspect command the user allowed in this thread: that exact command on that machine stops asking here, and only here. */
   allowInThread(threadId: string, machine: string, command: string): void {
     if (!this.db.prepare("SELECT 1 FROM thread_workspaces WHERE thread_id = ?").get(threadId)) this.write(threadId, this.thread(threadId));
     const allowed = this.allowedInThread(threadId);

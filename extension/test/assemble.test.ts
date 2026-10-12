@@ -14,7 +14,7 @@ const routed = (id: string, text: string): RoutedTopic => ({
   turnsLeft: 3,
 });
 const now = new Date("2026-10-09T12:00:00Z");
-const li: Profile = { displayName: "Li", pronouns: PRONOUN_PRESETS.they, previousNames: [] };
+const li: Profile = { displayName: "Ada", pronouns: PRONOUN_PRESETS.they, previousNames: [] };
 
 describe("prompt assembly", () => {
   it("puts stable content in the system prompt and omits empty memory", () => {
@@ -22,7 +22,7 @@ describe("prompt assembly", () => {
     expect(a.customPrompt).toBe("# Soul\nShe is Lyrica.\n\n# Style\nWarm.");
     expect(Object.keys(a.sections)).toEqual(["topics", "user"]);
     expect(a.sections.topics).toBe('<topic id="music">\nMusic is structured feeling.\n</topic>');
-    expect(a.sections.user).toBe("You are talking with Li (pronouns: they/them).");
+    expect(a.sections.user).toBe("You are talking with Ada (pronouns: they/them).");
   });
 
   it("keeps per-turn content (recall, time) out of the system prompt", () => {
@@ -44,10 +44,10 @@ describe("prompt assembly", () => {
   });
 
   it("tells her who she's talking with, including previous names", () => {
-    const renamed: Profile = { ...li, displayName: "Lin", previousNames: [{ name: "Li", until: "2026-10-09" }] };
+    const renamed: Profile = { ...li, displayName: "Lin", previousNames: [{ name: "Ada", until: "2026-10-09" }] };
     const { sections } = assemble({ persona, topics: [], memory: {}, profile: renamed, now });
     expect(sections.user).toContain("You are talking with Lin (pronouns: they/them).");
-    expect(sections.user).toContain("previous name: Li (until 2026-10-09)");
+    expect(sections.user).toContain("previous name: Ada (until 2026-10-09)");
   });
 
   it("keeps every section within its budget", () => {

@@ -33,7 +33,7 @@ can be off, paused or busy gaming without Lyrica going dark.
      certificate, and Lyrica's own key and certificate, which is one per
      `lyricad`, kept in `self.db`.
    - Hosts are always local. The existing warning applies when an address
-     resolves outside Li's network.
+     resolves outside the owner's network.
 2. **The pairing client**, exactly as `host/PAIRING.md` specifies:
    - add a host from its addresses and a pairing code, then pin;
    - edit addresses without pairing again;

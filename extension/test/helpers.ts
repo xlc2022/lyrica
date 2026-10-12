@@ -5,7 +5,7 @@ import { freshKeyring } from "../../core/test/helpers.ts";
 export async function withMemory() {
   const keyring = await freshKeyring();
   const users = new Users(keyring);
-  const user = await users.createUser("li", "pw", { displayName: "Li", pronouns: PRONOUN_PRESETS.she }, { admin: true });
+  const user = await users.createUser("li", "pw", { displayName: "Ada", pronouns: PRONOUN_PRESETS.she }, { admin: true });
   await users.authenticate("li", "pw");
   const memory = new Memory(keyring, users);
   const thread = (pool: Pool = "general", opts: { unlogged?: boolean } = {}) => {

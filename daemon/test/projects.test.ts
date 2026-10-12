@@ -13,7 +13,7 @@ const who = (c: ChatRequest) => (JSON.stringify(c.messages[0]?.content ?? "").in
 type Script = Reply | ((c: ChatRequest) => Reply | Promise<Reply>);
 
 /**
- * Li with a local model and a project. The fake model answers each thread
+ * Ada with a local model and a project. The fake model answers each thread
  * from its own script, by the first word of its task ("chat" for the
  * project chat), so turns can run at once.
  */
@@ -169,7 +169,7 @@ describe("projects", () => {
     await until(() => messages(threadPath(backups!)), (m) => m.some((x) => x.role === "assistant"));
     const turnsBefore = chatTurns();
 
-    // Li writes in DNS: one call to the Watching model, which sees both sides, and tells Backups.
+    // Ada writes in DNS: one call to the Watching model, which sees both sides, and tells Backups.
     script("dns").push({ text: "Using 10.0.0.53 then." });
     script("watching").push({ text: JSON.stringify({ tell: [{ thread: backups, text: "DNS is 10.0.0.53 now; point the NAS at it." }, { thread: project.id, text: "never the chat" }] }) });
     script("backups").push({ text: "Pointed." });
@@ -243,7 +243,7 @@ describe("projects", () => {
     expect(requests.filter((c) => who(c) === "watching")).toHaveLength(0);
   });
 
-  it("keep a quiet look that answers during a turn Li started for after that turn, starting no other", async () => {
+  it("keep a quiet look that answers during a turn Ada started for after that turn, starting no other", async () => {
     const { li, path, script, requests, say, threadPath, messages, stream } = await setup({ threads: { concurrency: 5 }, watchMs: 100 });
     const asked = () => requests.filter((c) => who(c) === "watching");
     const chatTurns = () => requests.filter((c) => who(c) === "chat" && !!c.tools?.length).length;
@@ -251,7 +251,7 @@ describe("projects", () => {
     script("dns").push({ text: "DNS moved." });
     const dns = ends((await say("move DNS")).events).find((e) => e.result.startsWith("Started"))!.threads![0]!.id;
     await until(() => messages(threadPath(dns)), (m) => m.some((x) => x.role === "assistant"));
-    // The look's call waits until Li has started a turn in the project chat, and that turn waits for the look's answer.
+    // The look's call waits until Ada has started a turn in the project chat, and that turn waits for the look's answer.
     let answer!: () => void;
     const answered = new Promise<void>((r) => (answer = r));
     let reply!: () => void;
@@ -286,7 +286,7 @@ describe("projects", () => {
     await until(() => messages(threadPath(dns)), (m) => m.some((x) => x.role === "assistant"));
     script("dns").push({ text: "Then the NAS loses its leases." });
     script("watching").push({ text: '```json\n{"tell":[],"raise":"Moving DNS to the router breaks the NAS leases: which first?"}\n```' });
-    script("chat").push({ text: "Li, which first: the router or the NAS?" });
+    script("chat").push({ text: "Ada, which first: the router or the NAS?" });
     await li.post(`${threadPath(dns)}/messages`, { text: "move it to the router tonight" });
     const raised = await until(() => messages(path), (m) => m.some((x) => x.role === "assistant" && JSON.stringify(x).includes("which first: the router")));
     const look = raised.filter((m) => m.from?.kind === "watching");
@@ -324,11 +324,11 @@ describe("projects", () => {
     // Told a third time, past the run: its update brings no look, its approval brings one, and after a no it fails.
     script("backups").push(later, { text: "Posted." }, tool({ action: "message", to: "parent", text: "One more thing." }), { tools: [{ name: "bash", args: { command: "true" } }] }, { status: 400 });
     script("watching").push(tell(backups, "approve it"), { text: JSON.stringify({ tell: [{ thread: dns, text: "Backups failed" }], raise: "Backups stopped with an error after you said no." }) });
-    script("chat").push({ text: "Li, Backups stopped." });
+    script("chat").push({ text: "Ada, Backups stopped." });
     const stream = li.events(`${threadPath(backups)}/events`);
     await stream.ready;
     await li.post(`${threadPath(dns)}/messages`, { text: "check again" });
-    // Three looks: Li's message, then each thread's update.
+    // Three looks: Ada's message, then each thread's update.
     await until(async () => asked().length, (n) => n === 3, 15000);
     await stream.until((e) => e.type === "permission");
     await until(async () => asked().length, (n) => n === 4, 15000);

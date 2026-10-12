@@ -12,7 +12,7 @@ const isChild = (c: ChatRequest) => JSON.stringify(c.messages).includes("[From t
 const said = (c: ChatRequest) => JSON.stringify(c.messages);
 
 /**
- * Li with a local model and a general thread. The fake model answers the
+ * Ada with a local model and a general thread. The fake model answers the
  * parent from `parent` and children from `child`, in order, so their turns
  * can run at once.
  */

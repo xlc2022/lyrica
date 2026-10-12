@@ -17,7 +17,7 @@
 One self-contained package that turns a Linux GPU machine, NVIDIA or AMD,
 into a model host for Lyrica. It must be easy to deploy, safe on a personal
 workstation, and manageable from Lyrica or from its own dashboard. This
-serves principles 1 and 2: Lyrica's best models live on a machine Li also
+serves principles 1 and 2: Lyrica's best models live on a machine the owner also
 games on, so the host has to be easy to live with and hard to misuse.
 
 ## In scope
@@ -238,7 +238,7 @@ Each step depends on the one before. Note what goes wrong against the step.
 
 ### For a future thread
 
-- **Older AMD GPUs and integrated GPUs** (Li's question about Vega and the
+- **Older AMD GPUs and integrated GPUs** (the owner's question about Vega and the
   780M):
   - ROCm's images cover gfx908, gfx90a, gfx942, gfx1030, gfx1100–1102,
     gfx1150–1151 and gfx1200–1201 (the llama.cpp ROCm image, b11459).

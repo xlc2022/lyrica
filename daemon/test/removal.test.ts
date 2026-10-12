@@ -31,7 +31,7 @@ function localTarget(cwd: string): ExecutionTarget {
 async function setup() {
   const keyring = await freshKeyring();
   const users = new Users(keyring);
-  const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+  const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
   await users.authenticate("li", "pw");
   const root = mkdtempSync(join(tmpdir(), "lyrica-removal-"));
   const home = join(root, "home");

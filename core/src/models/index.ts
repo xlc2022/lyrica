@@ -578,7 +578,7 @@ export class Models {
 
   /**
    * Whether the endpoint answers. For a local endpoint, also a warning when its
-   * host resolves outside Li's own network. It only warns: the kind stays as declared.
+   * host resolves outside the operator's own network. It only warns: the kind stays as declared.
    */
   async probe(userId: string, endpointId: string, timeoutMs?: number): Promise<{ state: "up" | "down"; warning?: string }> {
     const ep = this.endpoint(userId, endpointId);

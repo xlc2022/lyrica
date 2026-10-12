@@ -53,7 +53,7 @@ describe("session IDs", () => {
     const laptop = await login(base, "sam", "pw2");
     const copied = laptop.cookie;
     await laptop.post(`/api/u/${rt.sam.id}/lock`);
-    // Li logs in on that laptop.
+    // Ada logs in on that laptop.
     const li = await laptop.post<LoginResponse>("/api/login", { login: "li", password: "pw" });
     expect(li.body.replaced).toBe(false);
     expect(laptop.cookie).not.toBe(copied);
@@ -124,7 +124,7 @@ describe("persona proposals", () => {
     const sam = await login(base, "sam", "pw2");
     const proposals = d.services!.proposals;
     const t = threadOf(d, rt.sam.id);
-    const secret = "Sam told her about the surprise party for Li";
+    const secret = "Sam told her about the surprise party for Ada";
     const sams = proposals.propose(t.view, t.threadId, { path: "persona_topics/friends.md", text: secret, reason: "a dream", author: "sleep" });
     expect(sams.sent).toBe(false);
 

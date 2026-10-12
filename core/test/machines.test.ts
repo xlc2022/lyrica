@@ -51,7 +51,7 @@ afterEach(() => { for (const c of closers.splice(0)) c(); });
 async function setup(machine: Partial<FakeMachine> = {}) {
   const keyring = await freshKeyring();
   const users = new Users(keyring);
-  const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+  const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
   await users.authenticate("li", "pw");
   const fake: FakeMachine = { hostKey: KEY, files: new Map(), commands: [], connects: [], ...machine };
   const workspace = new Workspace(keyring, users, { excludePorts: [], sshTransport: fakeTransport(fake) });
@@ -122,7 +122,7 @@ describe("machines", () => {
     expect(settings.allowedInThread("a")).toEqual([{ machine: "nas", command: "sudo reboot" }]);
   });
 
-  it("refuse a private machine whose address newly resolves off network, until Li confirms", async () => {
+  it("refuse a private machine whose address newly resolves off network, until Ada confirms", async () => {
     const { settings, add, workspace, thread, fake } = await setup();
     add({ name: "vault", pool: "private" });
     settings.setThread("p", "private", { machines: ["vault"] });
@@ -264,7 +264,7 @@ describe("an older user.db", () => {
   it("turns SSH targets into general machines at Ask, and a thread's target into its machine", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
     await users.authenticate("li", "pw");
     const db: Db = users.openUserDb(li.id);
     db.exec(`DROP TABLE thread_workspaces; DROP TABLE machines; PRAGMA user_version = 0;

@@ -15,7 +15,7 @@ const persona: Persona = {
   core: [{ path: "SOUL.md", text: "She is Lyrica." }],
   topics: [{ id: "music", summary: "", triggers: ["song"], priority: 2, text: "Music is structured feeling." }],
 };
-const profile: Profile = { displayName: "Li", pronouns: PRONOUN_PRESETS.she, previousNames: [] };
+const profile: Profile = { displayName: "Ada", pronouns: PRONOUN_PRESETS.she, previousNames: [] };
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -71,7 +71,7 @@ describe("in a Pi session", () => {
     const [first, second] = seen;
     expect(first!.system).toContain("She is Lyrica.");
     expect(first!.system).toContain('<topic id=\\"music\\">');
-    expect(first!.system).toContain("You are talking with Li (pronouns: she/her).");
+    expect(first!.system).toContain("You are talking with Ada (pronouns: she/her).");
     expect(first!.system).not.toContain("<time>");
     expect(first!.system).not.toContain("expert coding assistant");
     expect(second!.system).toBe(first!.system);
@@ -108,7 +108,7 @@ describe("in a Pi session", () => {
     // The note cites the message it came from.
     const said = first.view.own.lastEntry(first.threadId, ["user"])!;
     expect(said.text).toBe("My cat Miso hates the vacuum cleaner.");
-    expect(note.text).toBe(`Li's cat Miso hates the vacuum cleaner [${said.id}]`);
+    expect(note.text).toBe(`Ada's cat Miso hates the vacuum cleaner [${said.id}]`);
     expect(first.view.own.loadEntries(first.threadId).length).toBeGreaterThanOrEqual(4);
 
     const second = m.thread();
@@ -118,7 +118,7 @@ describe("in a Pi session", () => {
     } finally {
       s2.dispose();
     }
-    expect(seen[0]!.turn).toContain(`[${hit!.id}] (note) Li's cat Miso hates the vacuum cleaner`);
+    expect(seen[0]!.turn).toContain(`[${hit!.id}] (note) Ada's cat Miso hates the vacuum cleaner`);
     expect(second.view.own.loadEntries(second.threadId).length).toBeGreaterThanOrEqual(2);
   });
 });

@@ -16,7 +16,7 @@ afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, f
 async function setup() {
   const keyring = await freshKeyring();
   const users = new Users(keyring);
-  const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+  const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
   await users.authenticate("li", "pw");
   const host = realpathSync(mkdtempSync(join(tmpdir(), "lyrica-host-")));
   dirs.push(host);
@@ -223,7 +223,7 @@ describe("Git accounts and repositories", () => {
     return { ...s, workspace, settings, thread: (threadId: string, pool: "general" | "private" = "general") => ({ userId: s.li.id, pool, threadId }) };
   }
 
-  it("keeps a GitHub account general and a private account on her network unless Li confirms", async () => {
+  it("keeps a GitHub account general and a private account on her network unless Ada confirms", async () => {
     const { li, workspace, settings } = await withAccounts();
     const add = (name: string, host: string, pool: "general" | "private", more = {}) =>
       workspace.addGitAccount(li.id, { name, kind: "gitea", host, account: "forge", token: "forge-token", pool, ...more });
@@ -313,7 +313,7 @@ describe("Git accounts and repositories", () => {
 });
 
 describe("MCP servers", () => {
-  it("checks a server before saving it, and keeps a private one on her network unless Li confirms", async () => {
+  it("checks a server before saving it, and keeps a private one on her network unless the user confirms", async () => {
     const { li, workspace, settings } = await setup();
     const house = await testMcpServer({ token: "ha-token", instructions: "Home Assistant: lights and sensors.\nMore." });
     try {

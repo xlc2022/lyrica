@@ -215,7 +215,7 @@ The project rows are drawn in the app mockup's projects frame
 (https://claude.ai/artifact/96BoPXPoxL2LDBg8eLxjHx, version 22: `#t/p1` and
 `#project/p1/general`); the Memory page in its memory frame (version 27:
 `#memory/none/p:proxmox-homelab`, a note at `#memory/none/n:20261009-k3f9`;
-the `local` and `pool` frames there are the graph options Li declined);
+the `local` and `pool` frames there are the graph options the owner declined);
 the Git accounts rows and drawer, and the Folders, Machines and Repositories
 lists under This chat, in version 29 (`#settings/git`, `#project/p1/general`).
 

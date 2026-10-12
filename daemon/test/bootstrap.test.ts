@@ -101,7 +101,7 @@ async function fresh(opts: Partial<LyricadOptions> & { home?: string } = {}) {
   return { d, home, logs, ts, directPort, code, base: `http://127.0.0.1:${d.port}`, stop };
 }
 
-const ADMIN = { login: "li", password: "pw", displayName: "Li", pronouns: PRONOUN_PRESETS.she };
+const ADMIN = { login: "li", password: "pw", displayName: "Ada", pronouns: PRONOUN_PRESETS.she };
 
 /** GET over HTTPS on 127.0.0.1, trusting only the given certificate. */
 function getTls(port: number, path: string, ca: string): Promise<number | string> {
@@ -135,7 +135,7 @@ describe("setting up", () => {
     // The code works whatever its case or dashes.
     const done = await b.post<LoginResponse>("/api/setup", { code: code.toLowerCase().replace("-", " "), passphrase: "passphrase", name: "Aria", admin: ADMIN });
     expect(done.status).toBe(200);
-    expect(done.body.user).toMatchObject({ login: "li", displayName: "Li", admin: true });
+    expect(done.body.user).toMatchObject({ login: "li", displayName: "Ada", admin: true });
     expect(b.cookie).toBeTruthy();
     const state = (await b.get<State>("/api/state")).body;
     expect(state).toMatchObject({ locked: false, name: "Aria", users: [{ login: "li" }] });
@@ -189,7 +189,7 @@ describe("setting up", () => {
     };
     const cli = tmp("lyrica-init-");
     const k = new Keyring(cli, ARGON2);
-    await bootstrap(k, { passphrase: "passphrase", name: "Aria", seed: SEED, admin: { login: "li", password: "pw", profile: { displayName: "Li", pronouns: PRONOUN_PRESETS.she } } });
+    await bootstrap(k, { passphrase: "passphrase", name: "Aria", seed: SEED, admin: { login: "li", password: "pw", profile: { displayName: "Ada", pronouns: PRONOUN_PRESETS.she } } });
     k.closeSelf();
     // Then lyricad's first start, as after admin init.
     const started = await fresh({ home: cli });

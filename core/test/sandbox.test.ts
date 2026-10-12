@@ -359,15 +359,15 @@ describe.skipIf(!homeRunnable)("the home workspace", () => {
   it("is encrypted on disk and readable only while mounted", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
     await users.authenticate("li", "pw");
     const workspace = new Workspace(keyring, users, { excludePorts: [] });
     const thread = { userId: li.id, pool: "general" as const, threadId: "t1" };
     try {
       await workspace.mountHome(li.id);
-      expect(await workspace.saveUpload(thread, "letter.txt", Buffer.from("Dear Li, a secret plan"))).toBe("/workspace/uploads/letter.txt");
+      expect(await workspace.saveUpload(thread, "letter.txt", Buffer.from("Dear Ada, a secret plan"))).toBe("/workspace/uploads/letter.txt");
       const ops = workspace.targetFor(thread).ops();
-      expect((await ops.read.readFile("/workspace/uploads/letter.txt")).toString()).toBe("Dear Li, a secret plan");
+      expect((await ops.read.readFile("/workspace/uploads/letter.txt")).toString()).toBe("Dear Ada, a secret plan");
 
       const cipher = join(users.userDir(li.id), "home.crypt");
       const all = execFileSync("sh", ["-c", `find ${cipher} -type f -exec cat {} +; find ${cipher}`]).toString("latin1");
@@ -394,7 +394,7 @@ describe.skipIf(!homeRunnable)("a running child thread's folders", () => {
   it("narrow with its parent's: its Files panel and its next sandbox run lose what the parent lost", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
     await users.authenticate("li", "pw");
     const workspace = new Workspace(keyring, users, { excludePorts: [] });
     for (const d of ["rw", "ro"]) workspace.allowedPaths.allow(li, li.id, "general", p(d));
@@ -434,7 +434,7 @@ describe.skipIf(!homeRunnable)("a thread's clones", () => {
   it("are its own: a project's thread works in the project's folder but sees only its own repos/, and they go with its folder", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
     await users.authenticate("li", "pw");
     const workspace = new Workspace(keyring, users, { excludePorts: [] });
     const settings = workspace.settings(li.id);
@@ -568,7 +568,7 @@ describe.skipIf(!netRunnable)("the network self-test", () => {
   it("passes on this host, and refuses network modes when a networked sandbox can't start", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
     await users.authenticate("li", "pw");
     const thread = { userId: li.id, pool: "general" as const, threadId: "t1" };
 
@@ -586,7 +586,7 @@ describe.skipIf(!homeRunnable || !netRunnable)("a thread's switches", () => {
   it("cut the network in either pool", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
     await users.authenticate("li", "pw");
     const workspace = new Workspace(keyring, users, { excludePorts: [] });
     const thread = (pool: "general" | "private", threadId: string) => ({ userId: li.id, pool, threadId });

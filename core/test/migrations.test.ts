@@ -87,7 +87,7 @@ describe("schema versions", () => {
   it("refuses a pool database a newer release contracted when a thread opens it", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
     await users.authenticate("li", "pw");
     const memory = new Memory(keyring, users);
     memory.openOwnerView(li.id).close();

@@ -7,7 +7,7 @@ import { fakeProxmox, TOKEN as PVE_TOKEN } from "../../core/test/fake-proxmox.ts
 import type { CallInfo, EndpointInfo, MachineInfo, MachineProbe, MessagePage, PermissionRequest, ThreadEvent, ThreadSettings, ThreadSummary, UploadResponse } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
-/** An unlocked lyricad, Li logged in, a local model, and one general thread. */
+/** An unlocked lyricad, Ada logged in, a local model, and one general thread. */
 async function setup(opts: Parameters<typeof daemon>[1] = {}, title: string | null = "test thread") {
   const rt = await runtime();
   const dm = await daemon(rt, opts);
@@ -26,7 +26,7 @@ const is = (type: ThreadEvent["type"]) => (e: ThreadEvent) => e.type === type;
 describe("a conversation", () => {
   it("streams a reply, stores it, and still has it after a restart", async () => {
     const { rt, li, model, path, stop } = await setup();
-    model.reply({ text: "Hello, Li." });
+    model.reply({ text: "Hello, Ada." });
     await li.post(`/api/u/${rt.li.id}/threads`, { pool: "general", title: "newer" });
     const stream = li.events(`${path}/events`);
     await stream.ready;
@@ -35,7 +35,7 @@ describe("a conversation", () => {
     await stream.until(is("turn_end"));
     const types = stream.events.map((e) => e.event.type);
     expect(types).toEqual(expect.arrayContaining(["hello", "turn_start", "message_start", "text", "usage", "turn_end"]));
-    expect(stream.events.filter((e) => e.event.type === "text").map((e) => (e.event as { delta: string }).delta).join("")).toBe("Hello, Li.");
+    expect(stream.events.filter((e) => e.event.type === "text").map((e) => (e.event as { delta: string }).delta).join("")).toBe("Hello, Ada.");
     stream.close();
 
     // The thread with recent activity comes first, ahead of a newer, quiet one.
@@ -46,7 +46,7 @@ describe("a conversation", () => {
     const page = (await li.get<MessagePage>(`${path}/messages`)).body;
     expect(page.messages.map((m) => [m.role, m.parts.find((p) => p.type === "text")])).toEqual([
       ["user", { type: "text", text: "hi there" }],
-      ["assistant", { type: "text", text: "Hello, Li." }],
+      ["assistant", { type: "text", text: "Hello, Ada." }],
     ]);
 
     await stop();
@@ -482,7 +482,7 @@ describe.skipIf(!homeRunnable)("uploads", () => {
     const up2 = async (name: string) =>
       (await li.call<UploadResponse>("POST", `${path}/uploads?name=${enc(name)}`, Buffer.from("x"), { "content-type": "application/octet-stream" })).body.path;
     expect(await up2("notes.txt")).toBe("/workspace/uploads/notes-2.txt");
-    expect(await up2("Li's résumé.pdf")).toBe("/workspace/uploads/Li's résumé.pdf");
+    expect(await up2("Ada's résumé.pdf")).toBe("/workspace/uploads/Ada's résumé.pdf");
     expect(await up2("../../etc/passwd")).toBe("/workspace/uploads/passwd");
   });
 });

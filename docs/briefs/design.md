@@ -15,8 +15,8 @@ own handoff, so a fresh session (or a project conversation) can take over.
 - Reviews every feature pull request: a full read of the diff against the
   brief, the contracts and docs/ux.md, usually with background agents
   checking the privacy and cloud boundaries, then a fix round with the
-  thread. Blocking items are fixed and verified in code before Li is asked.
-- Merges only when Li says so, pull request by pull request. A stacked
+  thread. Blocking items are fixed and verified in code before the owner is asked.
+- Merges only when the owner says so, pull request by pull request. A stacked
   branch is merged with a merge commit, not a squash, after its base is
   retargeted to `main` (a squash of the base makes the stack conflict).
 - Keeps mockups, not code: the app at
@@ -24,7 +24,7 @@ own handoff, so a fresh session (or a project conversation) can take over.
   https://claude.ai/artifact/U3xANiSAFje8cuinWpHo7V. Always update them in
   place.
 
-## Li's standing decisions
+## The owner's standing decisions
 
 - Private memory never reaches general contexts or cloud models. A local-only
   switch on a thread forbids every cloud model for every purpose.
@@ -58,7 +58,7 @@ deployment.
 | Images | not started | docs/briefs/images.md |
 | MCP servers | built | docs/briefs/mcp.md |
 
-## Open questions for Li
+## Open questions for the owner
 
 From reading the merged Models 2 code against its pull requests:
 

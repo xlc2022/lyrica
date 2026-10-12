@@ -9,7 +9,7 @@ import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 const has = (cmd: string) => { try { execFileSync("which", [cmd], { stdio: "ignore" }); return true; } catch { return false; } };
 const homeRunnable = process.getuid?.() !== 0 && has("bwrap") && has("gocryptfs") && has("fusermount3") && existsSync("/dev/fuse");
 
-/** Li with a local chat model, subagent models on a second server, and one general thread. */
+/** Ada with a local chat model, subagent models on a second server, and one general thread. */
 async function setup() {
   const rt = await runtime();
   const dm = await daemon(rt);
@@ -123,7 +123,7 @@ describe("rewinding a thread", () => {
 
     const view = d.services!.memory.openThreadView(rt.li.id, "general");
     const note = view.own.search("bees", { kinds: ["note"] })[0]!.id;
-    view.own.putPage({ slug: "bees", title: "Bees", summary: "x", text: `Li keeps bees [${note}].` }, "sleep");
+    view.own.putPage({ slug: "bees", title: "Bees", summary: "x", text: `Ada keeps bees [${note}].` }, "sleep");
     view.close();
 
     const first = (await messages()).find((m) => m.role === "user")!;

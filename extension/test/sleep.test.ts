@@ -27,7 +27,7 @@ const call = (name: string, args: unknown): Reply => ({ tools: [{ name, args }] 
 const said = (c: ChatRequest) => JSON.stringify(c.messages);
 const words = (n: number) => Array.from({ length: n }, (_, i) => `word${i}`).join(" ");
 
-/** Li (administrator) with cloud and local models, a Memory, the seed persona, and Sleep over them. */
+/** Ada (administrator) with cloud and local models, a Memory, the seed persona, and Sleep over them. */
 async function setup(limits: Partial<SleepLimits> = {}) {
   const m = await withModels();
   for (const [p, ref] of [["cloud", m.cloudRef], ["local", m.localRef]] as const) m.models.setProfile(m.li.id, p, "chat", ref);
@@ -59,7 +59,7 @@ async function setup(limits: Partial<SleepLimits> = {}) {
     return seen;
   };
   const view = (pool: Pool = "general", userId = m.li.id) => memory.openThreadView(userId, pool);
-  /** A conversation in which Li says something and Lyrica notes it. */
+  /** A conversation in which Ada says something and Lyrica notes it. */
   const talk = (v: PoolView, said: string, note?: string) => {
     const t = v.own.createThread({ interface: "web" });
     const e = v.own.appendEntry(t.id, { piId: `p${Math.random()}`, role: "user", data: {}, text: said });
@@ -164,9 +164,9 @@ describe("a night's sleep", () => {
     const first = s.talk(v, "Please don't call me sweetie.", "{user} can't stand being called sweetie");
     s.script({ consolidate: [call("write_page", { slug: "about-user", title: "About {user}", summary: "who {user} is", text: `{user} can't stand being called sweetie [${first.note}].` })] });
     expect((await s.sleep.run(s.li.id, "general", "manual")).status).toBe("complete");
-    expect(v.own.get("p:about-user")!.text).toBe(`Li can't stand being called sweetie [${first.note}].`);
+    expect(v.own.get("p:about-user")!.text).toBe(`Ada can't stand being called sweetie [${first.note}].`);
 
-    // Li writes her own line on the page; then says something new.
+    // Ada writes her own line on the page; then says something new.
     const owner = s.memory.openOwnerView(s.li.id);
     const mine = "I'm a night owl, and I like it that way.";
     owner.general.edit("p:about-user", { text: `${mine}\n\n${owner.general.get("p:about-user", { raw: true })!.text}` }, `user:${s.li.id}`);
@@ -347,7 +347,7 @@ describe("a night's sleep", () => {
 });
 
 describe("project pages", () => {
-  /** A project chat with one thread, where Li says something and Lyrica notes it. */
+  /** A project chat with one thread, where Ada says something and Lyrica notes it. */
   const project = (v: PoolView, said: string, note: string, opts: { unlogged?: boolean } = {}) => {
     const chat = v.own.createThread({ interface: "web", project: true, goal: "Ship the garden app", title: "Garden app", unlogged: opts.unlogged });
     const thread = v.own.createThread({ interface: "web", parent: chat.id, child: true });
@@ -378,7 +378,7 @@ describe("project pages", () => {
     v.close();
   });
 
-  it("keeps Li's instructions on a project's page word for word, and still rewrites its own part after she edits them", async () => {
+  it("keeps Ada's instructions on a project's page word for word, and still rewrites its own part after she edits them", async () => {
     const s = await setup();
     const v = s.view();
     const p = project(v, "Write the changelog in German.", "{user} wants the garden app's changelog in German");
@@ -392,7 +392,7 @@ describe("project pages", () => {
     await s.sleep.run(s.li.id, "general", "scheduled");
     expect(v.own.get(`p:${p.slug}`)).toMatchObject({ instructions: "Always measure in metric.", text: `Changelog in German [${p.note}].` });
 
-    // Li changes her instructions; the next night sleep rewrites its own part as before.
+    // Ada changes her instructions; the next night sleep rewrites its own part as before.
     instruct("Always measure in metric. Prices in euros.");
     const later = s.talk(v, "Ship on the 1st.", "{user} ships the garden app on the 1st");
     const results: string[] = [];

@@ -31,11 +31,11 @@ export async function freshKeyring(): Promise<Keyring> {
 
 export const profile = (displayName: string): Omit<Profile, "previousNames"> => ({ displayName, pronouns: PRONOUN_PRESETS.she });
 
-/** Li (administrator) with a cloud and a local endpoint of her own, each serving one model. */
+/** Ada (administrator) with a cloud and a local endpoint of her own, each serving one model. */
 export async function withModels() {
   const keyring = await freshKeyring();
   const users = new Users(keyring);
-  const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+  const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
   await users.authenticate("li", "pw");
   const models = new Models(keyring, users);
   const cloud = await fakeOpenAI({ label: "cloud", models: [{ id: "deepseek/deepseek-4.1-flash", context_length: 128000, supported_parameters: ["tools", "temperature"] }] });

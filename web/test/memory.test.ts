@@ -25,7 +25,7 @@ describe("citations in a memory's text", () => {
   });
   it("read plainly for a sentence or a difference, with the source marks dropped", () => {
     expect(plainWords(text, "general", links, hidePrivate, "u1")).toBe("Seeds arrive Friday. The beds are in The garden, planned in Garden bed plan; the rest is in a deleted note and Private is hidden.");
-    expect(firstWords("Li wants the cluster off the old NAS. [e:web/3f7a2c#41]")).toBe("Li wants the cluster off the old NAS.");
+    expect(firstWords("Ada wants the cluster off the old NAS. [e:web/3f7a2c#41]")).toBe("Ada wants the cluster off the old NAS.");
   });
 });
 

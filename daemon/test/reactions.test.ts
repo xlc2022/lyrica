@@ -46,8 +46,8 @@ describe("reactions", () => {
     // Her next turn's message names them; the stored user message carries no mark.
     await say("thanks");
     const sent = JSON.stringify(model.requests.at(-1)!.messages);
-    expect(sent).toContain(`Li reacted 🎉 to your message [e:${reply!.id.slice(2)}]`);
-    expect(sent).toContain(`Li reacted 👀 to their own message [e:${question!.id.slice(2)}]`);
+    expect(sent).toContain(`Ada reacted 🎉 to your message [e:${reply!.id.slice(2)}]`);
+    expect(sent).toContain(`Ada reacted 👀 to their own message [e:${question!.id.slice(2)}]`);
     expect((await messages()).at(-2)!.parts).toEqual([{ type: "text", text: "thanks" }]);
     // Taken off: the chip goes, and she hears of that too, once.
     from = stream.events.length;
@@ -57,7 +57,7 @@ describe("reactions", () => {
     model.reply({ text: "Sure." });
     await say("ok");
     const last = JSON.stringify(model.requests.at(-1)!.messages.at(-1));
-    expect(last).toContain("Li took back 🎉 from your message");
+    expect(last).toContain("Ada took back 🎉 from your message");
     expect(last).not.toContain("reacted 👀");
   });
 

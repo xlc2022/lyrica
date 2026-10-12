@@ -12,7 +12,7 @@ import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 const VOICES = [{ id: "af_heart", language: "en" }, { id: "zf_xiaobei", language: "zh" }];
 
-/** Lyricad unlocked, Li logged in, a local chat model, a local speech endpoint for both speech tasks, and a thread in `pool`. */
+/** Lyricad unlocked, Ada logged in, a local chat model, a local speech endpoint for both speech tasks, and a thread in `pool`. */
 async function setup(pool: "general" | "private" = "private", speechOpts: { gapMs?: number } = {}) {
   const rt = await runtime();
   const dm = await daemon(rt);
@@ -80,7 +80,7 @@ describe("thread mentions read aloud", () => {
   it("read as the thread's current title, and a general message never names a private thread", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
     await users.authenticate("li", "pw");
     const o = new Memory(keyring, users).openOwnerView(li.id);
     const g = o.general.createThread({ interface: "web", title: "Garden" });

@@ -39,7 +39,7 @@ async function setup() {
     try { return o.general.search("pelicans", { kinds: ["note"] })[0]?.id; } finally { o.close(); }
   };
   model.respond((c) => night(c, { note }));
-  /** A conversation where Li mentions the marker and she notes it. */
+  /** A conversation where Ada mentions the marker and she notes it. */
   const talk = async () => {
     const thread = (await li.post<ThreadSummary>(`${u}/threads`, { pool: "general" })).body;
     const path = `${u}/threads/general/${enc(thread.id)}`;
@@ -70,7 +70,7 @@ describe("sleep in lyricad", () => {
     expect(detail.pages).toEqual([{ id: "p:birds", title: "Birds", after: `[[u:${s.rt.li.id}]] likes pelicans [${s.note()}].` }]);
     expect(detail.dream[0]!.text).toContain("pelicans over a harbour");
     expect(detail.wake).toMatch(/^Waking up/);
-    expect(detail.users[s.rt.li.id]!.displayName).toBe("Li");
+    expect(detail.users[s.rt.li.id]!.displayName).toBe("Ada");
     // The phases are threads of the sleep interface.
     const sleepThreads = (await s.li.get<ThreadSummary[]>(`${s.u}/threads?interface=sleep&all=1`)).body;
     expect(sleepThreads.map((t) => t.title).sort()).toEqual(["Sleep: consolidate", "Sleep: dream", "Sleep: wake"]);

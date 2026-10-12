@@ -8,7 +8,7 @@ import { profile, withModels } from "./helpers.ts";
 const VOICES = [{ id: "af_heart", language: "en" }, { id: "zf_xiaobei", language: "zh" }, { id: "zm_yunxi", language: "zh" }];
 
 /**
- * Li with a cloud speech endpoint ("openai") and a local one ("speech"),
+ * Ada with a cloud speech endpoint ("openai") and a local one ("speech"),
  * each with a Dictation and a Read aloud model set by hand, in the cloud
  * and local profiles.
  */

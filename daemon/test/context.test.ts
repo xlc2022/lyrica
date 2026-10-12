@@ -3,7 +3,7 @@ import { fakeOpenAI } from "../../core/test/fake-openai.ts";
 import type { CallInfo, EndpointInfo, MessagePage, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
-/** An unlocked lyricad, Li logged in, a local model with a 16k window, and one thread in `pool`. */
+/** An unlocked lyricad, Ada logged in, a local model with a 16k window, and one thread in `pool`. */
 async function setup(pool: "general" | "private" = "general", window = 16_384) {
   const rt = await runtime();
   const dm = await daemon(rt);
@@ -27,7 +27,7 @@ async function setup(pool: "general" | "private" = "general", window = 16_384) {
 /** A long message with a word to find it by. */
 const long = (mark: string) => `${mark} ${"the quick brown fox jumps over the lazy dog ".repeat(200)}`;
 const SUMMARY = (`SUMMARY-MARK. We are writing the migration guide for the offering IDs. Decided: one transaction per database, redirects one hop long. ` +
-  `Open: whether Clean up should suggest groups. Paths: docs/models.md, core/src/models/schema.ts. Names: Li, the blackwell host. `.repeat(3)).trim();
+  `Open: whether Clean up should suggest groups. Paths: docs/models.md, core/src/models/schema.ts. Names: Ada, the blackwell host. `.repeat(3)).trim();
 const sent = (r: { messages: { content?: unknown }[] }) => JSON.stringify(r.messages);
 
 describe("her context", () => {

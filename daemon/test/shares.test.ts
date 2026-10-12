@@ -25,7 +25,7 @@ describe("Share with", () => {
     const sam = await login(base, "sam", "pw2");
     const lu = `/api/u/${rt.li.id}`;
     const su = `/api/u/${rt.sam.id}`;
-    // Li has a private thread with two entries, and knows who else is on the server.
+    // Ada has a private thread with two entries, and knows who else is on the server.
     const t = (await li.post<ThreadSummary>(`${lu}/threads`, { pool: "private", title: "Garden plans" })).body;
     say(d, rt.li.id, "private", t.id, "user", "Where do the tomatoes go?");
     say(d, rt.li.id, "private", t.id, "assistant", "The south bed, by the fence.");
@@ -37,13 +37,13 @@ describe("Share with", () => {
     expect((await li.post(`${lu}/threads/general/${enc(project.id)}/share`, { to: rt.sam.id })).status).toBe(400);
     expect((await li.post(share, { to: rt.sam.id })).status).toBe(200);
 
-    // Sam sees it in Notifications, as a decision; Li sees nothing.
+    // Sam sees it in Notifications, as a decision; Ada sees nothing.
     let page = (await sam.get<NotificationPage>(`${su}/notifications`)).body;
     expect(page.waiting).toBe(1);
     expect(page.types).toEqual(["share"]);
     const n = page.items[0]!;
     // A private thread goes to Private only.
-    expect(n).toMatchObject({ type: "share", title: "Li shared “Garden plans” with you", decision: true, scope: "private" });
+    expect(n).toMatchObject({ type: "share", title: "Ada shared “Garden plans” with you", decision: true, scope: "private" });
     expect(n.actions.map((a) => a.label)).toEqual(["Add to Private", "Decline"]);
     expect((await sam.post(`${su}/shares/${n.id.slice("share:".length)}/accept`, { pool: "general" })).status).toBe(409);
     expect((await li.get<NotificationPage>(`${lu}/notifications`)).body.total).toBe(0);
@@ -59,7 +59,7 @@ describe("Share with", () => {
     expect((await sam.get<NotificationPage>(`${su}/notifications`)).body.total).toBe(0);
     expect((await sam.del(`${su}/shares/${shareId}`)).status).toBe(404);
 
-    // Shared again; Li goes on talking afterwards.
+    // Shared again; Ada goes on talking afterwards.
     expect((await li.post(share, { to: rt.sam.id })).status).toBe(200);
     say(d, rt.li.id, "private", t.id, "user", "And the beans?");
     page = (await sam.get<NotificationPage>(`${su}/notifications`)).body;
@@ -73,7 +73,7 @@ describe("Share with", () => {
     const messages = (await sam.get<{ messages: { role: string; parts: { text?: string }[] }[] }>(`${su}/threads/private/${enc(copy.id)}/messages`)).body.messages;
     expect(messages.map((m) => m.parts[0]!.text)).toEqual(["Where do the tomatoes go?", "The south bed, by the fence."]);
     expect((await sam.get<NotificationPage>(`${su}/notifications`)).body.total).toBe(0);
-    // Indexed in Sam's pool: search finds it there; Li's own thread still has three entries.
+    // Indexed in Sam's pool: search finds it there; Ada's own thread still has three entries.
     expect((await sam.get<{ hits?: unknown[] } | unknown[]>(`${su}/memory/search?q=tomatoes`)).status).toBe(200);
     const lis = (await li.get<{ messages: unknown[] }>(`${lu}/threads/private/${enc(t.id)}/messages`)).body.messages;
     expect(lis).toHaveLength(3);
@@ -163,7 +163,7 @@ describe("Share with", () => {
       say(d, rt.li.id, "general", t.id, "user", title);
       expect((await li.post(`${lu}/threads/general/${enc(t.id)}/share`, { to: rt.sam.id })).status).toBe(200);
     }
-    const titles = (p: NotificationPage) => p.items.map((n: Notification) => n.title.replace(/^Li shared “(.*)” with you$/, "$1"));
+    const titles = (p: NotificationPage) => p.items.map((n: Notification) => n.title.replace(/^Ada shared “(.*)” with you$/, "$1"));
     const all = (await sam.get<NotificationPage>(`${su}/notifications`)).body;
     expect(all.total).toBe(3);
     expect(titles(all)).toEqual(["Three", "Two", "One"]);

@@ -7,7 +7,7 @@ import { freshKeyring, profile } from "./helpers.ts";
 describe("users and keys", () => {
   it("refuses a wrong password and leaves the user locked", async () => {
     const users = new Users(await freshKeyring());
-    await users.createUser("li", "right", profile("Li"), { admin: true });
+    await users.createUser("li", "right", profile("Ada"), { admin: true });
     await expect(users.authenticate("li", "wrong")).rejects.toBeInstanceOf(AuthError);
     await expect(users.authenticate("nobody", "right")).rejects.toBeInstanceOf(AuthError);
     expect(() => users.openUserDb(users.find("li")!.id)).toThrow(/locked/);
@@ -23,7 +23,7 @@ describe("users and keys", () => {
   it("keeps data readable after a password change", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "old", profile("Li"), { admin: true });
+    const li = await users.createUser("li", "old", profile("Ada"), { admin: true });
     await users.authenticate("li", "old");
     const db = users.openUserDb(li.id);
     db.prepare("INSERT INTO settings (key, value) VALUES ('favourite', 'Satie')").run();
@@ -55,7 +55,7 @@ describe("users and keys", () => {
 
   it("won't demote the last administrator", async () => {
     const users = new Users(await freshKeyring());
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
     const mina = await users.createUser("Mina", "pw", profile("Mina"), { admin: false });
 
     expect(() => users.setAdmin(li, li, false)).toThrow(Forbidden);
@@ -72,11 +72,11 @@ describe("users and keys", () => {
 describe("profiles", () => {
   it("keeps the login separate and records renames with a date", async () => {
     const users = new Users(await freshKeyring());
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
     const p = users.updateProfile(li, li, { displayName: "Lin", pronouns: PRONOUN_PRESETS.they });
     expect(p.displayName).toBe("Lin");
     expect(p.pronouns.obj).toBe("them");
-    expect(p.previousNames).toEqual([{ name: "Li", until: new Date().toISOString().slice(0, 10) }]);
+    expect(p.previousNames).toEqual([{ name: "Ada", until: new Date().toISOString().slice(0, 10) }]);
     expect(users.find("li")!.profile).toEqual(p);
     await users.authenticate("li", "pw");
 
@@ -86,7 +86,7 @@ describe("profiles", () => {
 
   it("lets only the user or an administrator change a profile", async () => {
     const users = new Users(await freshKeyring());
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
     const mina = await users.createUser("mina", "pw", profile("Mina"), { admin: false });
     expect(() => users.updateProfile(mina, li, { displayName: "X" })).toThrow(Forbidden);
     users.updateProfile(mina, mina, { displayName: "Mina R." });

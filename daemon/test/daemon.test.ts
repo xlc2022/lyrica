@@ -278,11 +278,11 @@ describe("the memory browser", () => {
     expect(added.status).toBe(200);
     const { item } = added.body;
     expect(item).toMatchObject({ origin: "user", text: `[[u:${rt.li.id}]] grows tomatoes` });
-    expect(added.body.users[rt.li.id]!.displayName).toBe("Li");
+    expect(added.body.users[rt.li.id]!.displayName).toBe("Ada");
 
     const hits = (await li.get<MemoryHit[]>(`${m}/search?q=tomatoes`)).body;
     expect(hits.map((h) => [h.pool, h.id])).toEqual([["general", item.id]]);
-    expect(hits[0]!.snippet).toContain("Li");
+    expect(hits[0]!.snippet).toContain("Ada");
     // Show general off hides the pool from search too, unless ?all=1.
     await li.patch(`/api/u/${rt.li.id}/me/display`, { showGeneral: false });
     expect((await li.get<MemoryHit[]>(`${m}/search?q=tomatoes`)).body).toEqual([]);

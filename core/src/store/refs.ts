@@ -69,8 +69,8 @@ const STOP = new Set(("a an and are as at be but by can do did does for from had
 
 /**
  * An FTS5 query for free text: every word, OR'd. A user's name found in the
- * query adds that user's token as one more alternative, so "Li" finds
- * `[[u:…]]` and "Li-ion" still finds "Li-ion".
+ * query adds that user's token as one more alternative, so "Al" finds
+ * `[[u:…]]` and "Al-ion" still finds "Al-ion".
  */
 export function ftsQuery(query: string, profiles: Map<UserId, Profile>): string | undefined {
   const words = [...new Set((query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter((w) => !STOP.has(w)))].slice(0, 32);

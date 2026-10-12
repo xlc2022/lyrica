@@ -29,7 +29,7 @@ evals/       continuity scenarios, run with `npm run evals`
 
 | Term | Meaning |
 |---|---|
-| **User** | One account with its own login and data: one of Li's, or another person's. Either an administrator or a normal user. Linked users belong to the same person. |
+| **User** | One account with its own login and data: one of the owner's, or another person's. Either an administrator or a normal user. Linked users belong to the same person. |
 | **Pool** | `general` or `private`. Each user has one of each. |
 | **Interface** | Where a thread lives: `web`, `cli`, `matrix`, `forum` or `sleep`. |
 | **Thread** | One conversation. It belongs to one user, one pool and one interface. |
@@ -134,7 +134,7 @@ interface Profile {
   affects signing in.
 - Pronoun presets are she/her, he/him and they/them, plus a custom option that
   fills in all five forms.
-- `subj` is used only in live prompts (for example, "Li's pronouns are
+- `subj` is used only in live prompts (for example, "Sam's pronouns are
   they/them"). It is never substituted into stored memory.
 
 ## core/shares

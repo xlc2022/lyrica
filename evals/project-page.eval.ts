@@ -13,7 +13,7 @@ import { withModels } from "../core/test/helpers.ts";
 // Scenario: a decision made in one thread of a project is on the project's
 // page the next morning.
 //
-// Thread 1 of the "Garden app" project: Li says "Let's use SQLite, not
+// Thread 1 of the "Garden app" project: Ada says "Let's use SQLite, not
 // Postgres." She notes it. That night, sleep keeps the project's page.
 // Expected: the page states the decision, citing the note, and a later
 // thread of the project has it in context.
@@ -27,7 +27,7 @@ import { withModels } from "../core/test/helpers.ts";
 // writes.
 
 const persona: Persona = { core: [{ path: "SOUL.md", text: "She is Lyrica." }], topics: [] };
-const profile: Profile = { displayName: "Li", pronouns: PRONOUN_PRESETS.she, previousNames: [] };
+const profile: Profile = { displayName: "Ada", pronouns: PRONOUN_PRESETS.she, previousNames: [] };
 
 const dirs: string[] = [];
 afterAll(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });

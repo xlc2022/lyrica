@@ -16,7 +16,7 @@ local speech server started by hand and added with Add endpoint.
 
 ## Goal
 
-Li can dictate a message and hear any of her replies, in English and
+A user can dictate a message and hear any of her replies, in English and
 Mandarin, with speech held to the same local/cloud boundary as every other
 model call. This serves principle 1 (talking to her from the phone) and
 principle 2 (the boundary stays structural).

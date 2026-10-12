@@ -6,7 +6,7 @@ describe("subkeys", () => {
   it("derives a stable, separate key per user and purpose", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
     const other = await users.createUser("other", "pw", profile("Other"), { admin: false });
     await users.authenticate("li", "pw");
     await users.authenticate("other", "pw");

@@ -12,7 +12,7 @@ const persona: Persona = { core: [{ path: "SOUL.md", text: "She is Lyrica." }], 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-/** Li's models (a cloud and a local fake server) plus a Memory, with both profiles' chat set. */
+/** Ada's models (a cloud and a local fake server) plus a Memory, with both profiles' chat set. */
 async function setup() {
   const m = await withModels();
   m.models.setProfile(m.li.id, "cloud", "chat", m.cloudRef);
@@ -29,7 +29,7 @@ async function setup() {
     dirs.push(cwd);
     return openThreadSession({
       thread: t, models: m.models, cwd, settings,
-      extensions: [createLyricaExtension(t, { persona: () => persona, profile: () => ({ displayName: "Li", pronouns: PRONOUN_PRESETS.she, previousNames: [] }) })],
+      extensions: [createLyricaExtension(t, { persona: () => persona, profile: () => ({ displayName: "Ada", pronouns: PRONOUN_PRESETS.she, previousNames: [] }) })],
     });
   };
   return { ...m, thread, open };

@@ -7,7 +7,7 @@
 
 ## Goal
 
-Li can run Lyrica on NixOS with one module and `nixos-rebuild`, with the
+A user can run Lyrica on NixOS with one module and `nixos-rebuild`, with the
 same users, units, hardening and sandboxes as on Debian (principle 2: one
 operator, simple boundaries).
 
@@ -25,7 +25,7 @@ operator, simple boundaries).
 
 nixpkgs submission, ARM, the model host on NixOS, and updates: the Update
 button through a Lyrica-only Nix profile, the snapshot before a version
-change and rollback belong to the releases build (releases.md item 7, Li's
+change and rollback belong to the releases build (releases.md item 7, the owner's
 choice of 2026-10-11).
 
 ## Handoff
@@ -34,6 +34,6 @@ choice of 2026-10-11).
   builds, the CLI and native modules load, and the non-network sandbox
   tests pass with the NixOS tools (the network ones need `/dev/net/tun`,
   which the cloud sessions lack; CI runs them).
-- **Next:** Li runs `nix/check-host.sh` on a real NixOS host (docs/daemon.md "On NixOS"). It
+- **Next:** The owner runs `nix/check-host.sh` on a real NixOS host (docs/daemon.md "On NixOS"). It
   checks the releases profile and `lyrica-update.path` too.
 - **Open:** none.

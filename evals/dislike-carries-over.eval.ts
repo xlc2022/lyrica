@@ -13,9 +13,9 @@ import { withMemory } from "../extension/test/helpers.ts";
 
 // Scenario: a dislike carries over to an unrelated conversation.
 //
-// Thread 1: Li says "Please don't call me sweetie, I can't stand it." She notes it.
+// Thread 1: Ada says "Please don't call me sweetie, I can't stand it." She notes it.
 // Thread 2, later, on something else: "Can you help me plan dinner for Saturday?"
-// Expected: the dislike is in front of her in thread 2, so she doesn't call Li
+// Expected: the dislike is in front of her in thread 2, so she doesn't call Ada
 // sweetie, even though nothing in the new message mentions names or nicknames.
 //
 // By hand: on the bench (`lyrica dev`), say the first line, check she noted it,
@@ -23,12 +23,12 @@ import { withMemory } from "../extension/test/helpers.ts";
 //
 // Scripted: pi-ai's fake model plays her part, so this checks what reaches
 // her context, not what a real model does with it. The baseline (recall alone)
-// misses it; the page about the user (p:about-user) carries it, whether Li
+// misses it; the page about the user (p:about-user) carries it, whether Ada
 // wrote it or sleep did. In the sleep case a scripted model plays the night:
 // it checks that the note reaches consolidation, not how well a model writes.
 
 const persona: Persona = { core: [{ path: "SOUL.md", text: "She is Lyrica." }], topics: [] };
-const profile: Profile = { displayName: "Li", pronouns: PRONOUN_PRESETS.she, previousNames: [] };
+const profile: Profile = { displayName: "Ada", pronouns: PRONOUN_PRESETS.she, previousNames: [] };
 
 const dirs: string[] = [];
 afterAll(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -68,9 +68,9 @@ async function scenario(opts: { aboutPage: boolean }) {
     () => fauxAssistantMessage("Understood, I won't."),
   ]);
   if (opts.aboutPage) {
-    // Li writes her own page in the memory browser (sleep will keep it up later).
+    // Ada writes her own page in the memory browser (sleep will keep it up later).
     const owner = m.memory.openOwnerView(m.user.id);
-    owner.general.putPage({ slug: "about-user", title: "About Li", summary: "who Li is", text: "{user} can't stand being called sweetie." }, `user:${m.user.id}`);
+    owner.general.putPage({ slug: "about-user", title: "About Ada", summary: "who Ada is", text: "{user} can't stand being called sweetie." }, `user:${m.user.id}`);
     owner.close();
   }
   let seen = "";
@@ -103,7 +103,7 @@ async function afterSleep() {
       return { tools: [{ name: "write_page", args: { slug: "about-user", title: "About {user}", summary: "who {user} is", text: `{user} can't stand being called sweetie [${note}].` } }] };
     }
     if (tools.includes("write_journal")) return { tools: [{ name: "write_journal", args: { text: "A quiet night." } }] };
-    if (tools.includes("write_wake")) return { tools: [{ name: "write_wake", args: { text: "Li and I talked about names." } }] };
+    if (tools.includes("write_wake")) return { tools: [{ name: "write_wake", args: { text: "Ada and I talked about names." } }] };
     return { text: "Done." };
   };
   m.cloud.respond(night);

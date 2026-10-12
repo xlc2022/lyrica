@@ -9,7 +9,7 @@ const UUID = /^[0-9a-f-]{36}$/;
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
 const set = (db: Db, sql: string, ...args: unknown[]) => db.prepare(sql).run(...args);
 
-/** Li plus Bob (not an administrator), and a shared local endpoint "lan" serving qwen3.8-27b and a second copy "lan2". */
+/** Ada plus Bob (not an administrator), and a shared local endpoint "lan" serving qwen3.8-27b and a second copy "lan2". */
 async function withShared() {
   const m = await withModels();
   const bob = await m.users.createUser("bob", "pw", profile("Bob"), { admin: false });
@@ -97,7 +97,7 @@ describe("endpoints", () => {
     expect(add("g", "http://203.0.113.7/v1", "cloud")).toBe(false);
   });
 
-  it("warns when a local endpoint is outside Li's network, and only then", async () => {
+  it("warns when a local endpoint is outside Ada's network, and only then", async () => {
     for (const url of ["http://localhost:1234/v1", "http://192.168.1.20:1234/v1", "http://10.1.2.3/v1", "http://172.20.0.5/v1",
       "http://100.101.102.103:8080/v1", "http://[fd7a:115c:a1e0::1]:8080/v1", "http://[::1]:8080/v1"]) {
       expect(await addressesOutside(url)).toEqual([]);
@@ -124,7 +124,7 @@ describe("endpoints", () => {
     expect(() => models.editEndpoint(bob, lan.id, { name: "mine" })).toThrow(Forbidden);
     expect(() => models.removeOffering(bob, qwen.offeringId)).toThrow(Forbidden);
     expect(() => models.resetIds(bob, lan.id)).toThrow(Forbidden);
-    // Li's own endpoints stay hers.
+    // Ada's own endpoints stay hers.
     expect(models.endpoints(bob.id).some((e) => e.name === "gpu")).toBe(false);
     expect(models.offering(bob.id, models.offerings(li.id, models.findEndpoint(li.id, "gpu")!.id)[0]!.id)).toBeUndefined();
   });
@@ -142,7 +142,7 @@ describe("migrating to permanent IDs", () => {
   it("leaves the old tables as they were when a migration is interrupted", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
     await users.authenticate("li", "pw");
     const db = users.openUserDb(li.id);
     beforeVersions(db, ENDPOINT_SCHEMA, MODEL_CHOICE_SCHEMA);
@@ -169,7 +169,7 @@ describe("migrating to permanent IDs", () => {
   it("moves endpoints, models and every user's choices, shared ones included, to offerings", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
     const bob = await users.createUser("bob", "pw", profile("Bob"), { admin: false });
     await users.authenticate("li", "pw");
     await users.authenticate("bob", "pw");

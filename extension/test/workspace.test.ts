@@ -539,7 +539,7 @@ describe("MCP servers in a thread", () => {
     try {
       const keyring = await freshKeyring();
       const users = new Users(keyring);
-      const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+      const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
       await users.authenticate("li", "pw");
       // A fresh Workspace, as after a restart: nothing checked.
       const ws = new Workspace(keyring, users, { excludePorts: [] });
@@ -548,7 +548,7 @@ describe("MCP servers in a thread", () => {
       settings.addMcpServer({ name: "home", url: home.url, token: "home-token", pool: "private", description: null, tools: 2, offNetwork: false });
       settings.setThread("t", "private", { mcpServers: ["away", "home"] });
       const host = ws.forThread({ userId: li.id, pool: "private", threadId: "t" });
-      // Time between opening the session and the first prompt, as when a thread opens before Li writes.
+      // Time between opening the session and the first prompt, as when a thread opens before the user writes.
       const idle: ExtensionFactory = (pi) => void pi.on("session_start", () => new Promise<void>((r) => setTimeout(r, 1000)));
       await run("auto", [], { steps: [[search]], after: [createMcpServersExtension(host), idle] });
       for (let i = 0; i < 40 && !home.seen.requests; i++) await new Promise((r) => setTimeout(r, 50));

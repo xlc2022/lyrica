@@ -5,7 +5,7 @@ import type { DelegationEvent, EndpointInfo, McpServerInfo, MessagePage, Permiss
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 /**
- * Li with a thread whose chat model and subagent models are on two fake
+ * Ada with a thread whose chat model and subagent models are on two fake
  * servers, so the parent's and the subagents' scripted replies never mix.
  */
 async function setup(opts: Parameters<typeof daemon>[1] = {}) {
@@ -284,14 +284,14 @@ describe("talking with subagents in lyricad", () => {
     await stream.until((e) => e.type === "notice" && e.status === "finished" && e.text.includes("The attic is empty."));
     stream.close();
     const told = JSON.stringify(sub.requests.at(-1)!.messages);
-    expect(told).toContain("Li writes to you directly");
+    expect(told).toContain("Ada writes to you directly");
     expect(told).toContain(marker);
     expect(told).toContain("Done looking.");
 
     // Its thread shows who sent what; the parent has the note, linking to it.
     const messages = (await li.get<MessagePage>(`${childPath}/messages`)).body.messages;
     expect(messages.filter((m) => m.role === "user").map((m) => [m.from, (m.parts[0] as { text: string }).text])).toEqual([
-      [{ kind: "lyrica" }, "look around"], [{ kind: "user", userId: rt.li.id, name: "Li" }, marker],
+      [{ kind: "lyrica" }, "look around"], [{ kind: "user", userId: rt.li.id, name: "Ada" }, marker],
     ]);
     const notes = (await li.get<MessagePage>(`${path}/messages`)).body.messages.flatMap((m) => m.parts).filter((p) => p.type === "delegation" && p.status === "user_message");
     expect(notes).toEqual([expect.objectContaining({ threads: [{ pool: "general", id: childId }], text: expect.stringContaining(marker) })]);

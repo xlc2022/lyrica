@@ -14,7 +14,7 @@ const ELSEWHERE: Self = { hostname: "lyrica", macs: ["02:00:00:00:00:01"], addre
 async function setup(self: Self = ELSEWHERE) {
   const keyring = await freshKeyring();
   const users = new Users(keyring);
-  const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+  const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
   await users.authenticate("li", "pw");
   const pve = await fakeProxmox();
   fakes.push(pve);
@@ -27,7 +27,7 @@ async function setup(self: Self = ELSEWHERE) {
 }
 
 describe("a Proxmox machine", () => {
-  it("is added after Li confirms the certificate, and the token is sent only then", async () => {
+  it("is added after Ada confirms the certificate, and the token is sent only then", async () => {
     const { li, workspace, pve, add } = await setup();
     const probe = await workspace.probeMachine(li.id, "li", { kind: "proxmox", name: "pve", address: pve.address });
     expect(probe).toMatchObject({ fingerprint: pve.fingerprint, login: false, offNetwork: false });
@@ -70,7 +70,7 @@ describe("a Proxmox machine", () => {
     pve.requests.length = 0;
     await expect(workspace.proxmox(t, "pve", "list")).rejects.toThrow(/certificate isn't the one you confirmed/);
     expect(pve.requests).toEqual([]);
-    // Li confirms the new one: it works again.
+    // Ada confirms the new one: it works again.
     await workspace.setHostKey(li.id, "pve", next);
     expect(await workspace.proxmox(t, "pve", "list")).toContain("101 web");
   });

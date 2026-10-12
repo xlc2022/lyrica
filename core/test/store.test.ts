@@ -7,7 +7,7 @@ import { freshKeyring, profile } from "./helpers.ts";
 async function setup() {
   const keyring = await freshKeyring();
   const users = new Users(keyring);
-  const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+  const li = await users.createUser("li", "pw", profile("Al"), { admin: true });
   await users.authenticate("li", "pw");
   return { keyring, users, li, memory: new Memory(keyring, users) };
 }
@@ -50,7 +50,7 @@ describe("the privacy boundary", () => {
     const priv = memory.openThreadView(li.id, "private");
     expect(priv.reads.map((r) => r.pool)).toEqual(["general"]);
     expect(searchView(priv, "Satie").map((h) => h.id)).toContain(`general/${note}`);
-    expect(readView(priv, `general/${note}`)?.item?.text).toMatch(/^Li plays Satie/);
+    expect(readView(priv, `general/${note}`)?.item?.text).toMatch(/^Al plays Satie/);
 
     const p = said(priv.own, "private aside");
     const [mine] = priv.own.addNotes([{ text: `builds on [general/${note}]`, source: p.entry }], { author: "lyrica", thread: p.thread });
@@ -113,27 +113,27 @@ describe("notes", () => {
     const s = said(own, "I love Satie");
     const [id] = own.addNotes([{ text: "{user} loves Satie; play {user:obj} Gymnopédies", about: ["music"], source: s.entry }], { author: "lyrica", thread: s.thread });
     expect(own.get(id!, { raw: true })!.text).toBe(`[[u:${li.id}]] loves Satie; play [[u:${li.id}:obj]] Gymnopédies [${s.entry}]`);
-    expect(own.get(id!)!.text).toBe(`Li loves Satie; play her Gymnopédies [${s.entry}]`);
+    expect(own.get(id!)!.text).toBe(`Al loves Satie; play her Gymnopédies [${s.entry}]`);
     expect(own.cameFrom(id!)).toEqual([s.entry]);
-    expect(own.search("Li").map((h) => h.id)).toContain(id);
+    expect(own.search("Al").map((h) => h.id)).toContain(id);
 
     users.updateProfile(li, li, { displayName: "Lin", pronouns: { subj: "they", obj: "them", poss: "their", possPro: "theirs", refl: "themself" } });
     expect(own.get(id!)!.text).toBe(`Lin loves Satie; play them Gymnopédies [${s.entry}]`);
     expect(own.search("Lin").map((h) => h.id)).toContain(id);
-    expect(own.search("Li").map((h) => h.id)).toContain(id); // a previous name
+    expect(own.search("Al").map((h) => h.id)).toContain(id); // a previous name
     expect(own.revisions(id!)).toHaveLength(1);
   });
 
-  it("finds 'Li-ion' literally as well as by name", async () => {
+  it("finds 'Al-ion' literally as well as by name", async () => {
     const { memory, li } = await setup();
     const { own } = memory.openThreadView(li.id, "general");
     const s = said(own, "batteries");
     const [battery, tea] = own.addNotes([
-      { text: "The drone uses a Li-ion battery", source: s.entry },
+      { text: "The drone uses an Al-ion battery", source: s.entry },
       { text: "{user} drinks green tea", source: s.entry },
     ], { author: "lyrica", thread: s.thread });
-    expect(own.search("Li-ion")[0]!.id).toBe(battery);
-    expect(own.search("what does Li drink?").map((h) => h.id)).toContain(tea);
+    expect(own.search("Al-ion")[0]!.id).toBe(battery);
+    expect(own.search("what does Al drink?").map((h) => h.id)).toContain(tea);
   });
 
   it("supersedes without losing the old note", async () => {
@@ -181,12 +181,12 @@ describe("editing", () => {
   it("lets WAKE and the journal be edited too", async () => {
     const { memory, li } = await setup();
     const { own } = memory.openThreadView(li.id, "general");
-    own.putWake("Li is moving next week.", "sleep");
+    own.putWake("Al is moving next week.", "sleep");
     const j = own.addJournal("A dream about trains.", "sleep");
     const owner = memory.openOwnerView(li.id);
-    owner.general.edit("wake", { text: "Li moved last week." }, `user:${li.id}`);
+    owner.general.edit("wake", { text: "Al moved last week." }, `user:${li.id}`);
     owner.general.edit(j, { text: "A dream about boats." }, `user:${li.id}`);
-    expect(own.getWake()).toBe("Li moved last week.");
+    expect(own.getWake()).toBe("Al moved last week.");
     expect(own.listJournal()[0]!.text).toBe("A dream about boats.");
     expect(own.revisions("wake")).toHaveLength(2);
     owner.close();
@@ -454,7 +454,7 @@ describe("threads", () => {
     const a = own.appendEntry(project.id, { piId: "u1", role: "user", data: {}, text: "run two at a time" });
     const b = own.appendEntry(thread.id, { piId: "u1", role: "user", data: {}, text: "the router does DNS" });
     const other = said(own, "unrelated");
-    const [n1] = own.addNotes([{ text: "Li wants two threads at a time", source: a }], { author: "lyrica", thread: project.id });
+    const [n1] = own.addNotes([{ text: "Al wants two threads at a time", source: a }], { author: "lyrica", thread: project.id });
     const [n2] = own.addNotes([{ text: "DNS is on the router", source: b }], { author: "lyrica", thread: thread.id });
     const [mixed] = own.addNotes([{ text: `DNS also came up [${other.entry}]`, source: b }], { author: "lyrica", thread: thread.id });
     const [elsewhere] = own.addNotes([{ text: "unrelated note", source: other.entry }], { author: "lyrica", thread: other.thread });
@@ -499,7 +499,7 @@ describe("threads", () => {
     expect(() => own.edit(page, { instructions: "Buy anything." }, "sleep")).toThrow(/only be changed by the user/);
 
     // Text the user wrote on the page is still kept word for word.
-    owner.general.edit(page, { text: "DNS is done; rack next. Li: the rails are on order." }, me);
+    owner.general.edit(page, { text: "DNS is done; rack next. Al: the rails are on order." }, me);
     expect(() => own.edit(page, { text: "Rack next." }, "sleep")).toThrow(/text a user wrote/);
     owner.close();
   });
@@ -527,7 +527,7 @@ describe("threads", () => {
   it("brings back pages about granted folders", async () => {
     const { memory, li } = await setup();
     const { own } = memory.openThreadView(li.id, "general");
-    own.putPage({ slug: "site", title: "Website", summary: "Li's site", text: "Astro.", folders: ["/srv/site"] }, "sleep");
+    own.putPage({ slug: "site", title: "Website", summary: "Al's site", text: "Astro.", folders: ["/srv/site"] }, "sleep");
     own.putPage({ slug: "other", title: "Other", summary: "x", text: "y" }, "sleep");
     expect(own.forFolders(["/srv/site/src"]).map((p) => p.id)).toEqual(["p:site"]);
     expect(own.forFolders(["/srv/site/"]).map((p) => p.id)).toEqual(["p:site"]);

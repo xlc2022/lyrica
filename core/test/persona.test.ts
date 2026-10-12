@@ -21,7 +21,7 @@ describe("persona", () => {
   it("keeps every change as a revision, and only administrators can change it", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
     const mina = await users.createUser("Mina", "pw", profile("Mina"), { admin: false });
     const store = new PersonaStore(keyring.self());
     store.importSeed(SEED);
@@ -39,7 +39,7 @@ describe("persona", () => {
 
   it("rejects a matrix it can't parse", async () => {
     const keyring = await freshKeyring();
-    const li = await new Users(keyring).createUser("li", "pw", profile("Li"), { admin: true });
+    const li = await new Users(keyring).createUser("li", "pw", profile("Ada"), { admin: true });
     const store = new PersonaStore(keyring.self());
     store.importSeed(SEED);
     expect(() => store.apply(li, MATRIX, "no front matter")).toThrow(/front matter/);

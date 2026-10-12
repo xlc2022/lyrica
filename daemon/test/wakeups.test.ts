@@ -7,7 +7,7 @@ const said = (c: ChatRequest) => JSON.stringify(c.messages);
 const later = (args: object): Reply => ({ tools: [{ name: "threads", args: { action: "later", ...args } }] });
 const toolEnd = (events: ThreadEvent[]) => events.find((e) => e.type === "tool_end") as Extract<ThreadEvent, { type: "tool_end" }>;
 
-/** Li with a local model and a general thread; the fake model answers from `replies`, in order. */
+/** Ada with a local model and a general thread; the fake model answers from `replies`, in order. */
 async function setup(rt?: Awaited<ReturnType<typeof runtime>>) {
   rt ??= await runtime();
   const dm = await daemon(rt);

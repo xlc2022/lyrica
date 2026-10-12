@@ -4,7 +4,7 @@ import { deadUrl, fakeOpenAI } from "./fake-openai.ts";
 import { profile, withModels } from "./helpers.ts";
 
 /**
- * Li with: her own cloud endpoint (openrouter) and local one (gpu), a local
+ * Ada with: her own cloud endpoint (openrouter) and local one (gpu), a local
  * "blackwell" and a local "spare" serving the same model, and a cloud
  * "router2" serving it too. Bob is a second, non-administrator user.
  */
