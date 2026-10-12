@@ -63,7 +63,7 @@ export interface ApprovalRequest {
   /** The machine the call runs on, and the folder a command runs in there. The approval covers exactly this. */
   machine?: string;
   cwd?: string;
-  /** A suspect command: the warning sentence. The answer may allow it in this thread. */
+  /** A suspect command's warning (which may be allowed in this thread), or a portrait-photo consent question. */
   warning?: string;
   /** An MCP call: the server's name and the tool's own name on it. The answer may allow that tool in this thread. */
   server?: string;
@@ -104,7 +104,7 @@ const ASKS: Record<PermissionMode, string[]> = {
 export const PLAN_TOOLS: ReadonlySet<string> = new Set(["read", "recall", "read_memory", "web_search", "web_fetch", "delegate", "ask_parent", "threads", "react", "propose_plan", "proxmox", "tool_search"]);
 
 /** Tools whose input leaves Lyrica for someone else: SearXNG's engines, a web page's server. */
-const LEAVES: ReadonlySet<string> = new Set(["web_search", "web_fetch"]);
+const LEAVES: ReadonlySet<string> = new Set(["web_search", "web_fetch", "image"]);
 
 /** Tools that change things outside but ask on their own card, with the change in words, so the generic approval doesn't ask too. */
 const OWN_CARD: ReadonlySet<string> = new Set(["models"]);

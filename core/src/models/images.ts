@@ -64,7 +64,13 @@ async function openai(t: Target, r: ImageRequest, signal?: AbortSignal): Promise
   const fields: Record<string, string> = { model: t.modelId, prompt: r.prompt, output_format: "png", ...(r.count === undefined ? {} : { n: String(r.count) }) };
   if (r.action === "create") {
     fields.quality = r.tier === "fast" ? "low" : "high";
-    if (r.size) fields.size = `${r.size.width}x${r.size.height}`;
+    if (r.size) {
+      // GPT Image 1 models offer three canvas shapes; use the nearest aspect ratio.
+      const ratio = r.size.width / r.size.height;
+      fields.size = t.modelId.startsWith("gpt-image-1")
+        ? ratio > 1.2 ? "1536x1024" : ratio < 1 / 1.2 ? "1024x1536" : "1024x1024"
+        : `${r.size.width}x${r.size.height}`;
+    }
   }
   const inputs = [...(r.action === "edit" ? [r.image] : []), ...(r.references ?? [])];
   let body: string | FormData, path: string, headers: Record<string, string> = { authorization: `Bearer ${t.apiKey}` };

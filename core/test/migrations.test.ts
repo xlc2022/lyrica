@@ -61,7 +61,7 @@ describe("schema versions", () => {
         const before = rowCounts(db);
         migrate(db, kind);
         const after = rowCounts(db);
-        for (const [table, n] of Object.entries(before)) expect(after[table], `${kind} v${v} → ${SCHEMA[kind]}: ${table}`).toBe(n);
+        for (const [table, n] of Object.entries(before)) expect(after[table], `${kind} v${v} → ${SCHEMA[kind]}: ${table}`).toBe(n + (kind === "user" && v < 5 && table === "settings" ? 1 : 0));
         const previous = STEPS[kind].filter((s) => s.version < SCHEMA[kind]);
         const current = STEPS[kind].find((s) => s.version === SCHEMA[kind])!;
         if (previous.length && !current.contract) expect(() => checkReadable(db, kind, previous)).not.toThrow();
@@ -119,6 +119,25 @@ describe("user step 3 (MCP servers)", () => {
       expect(new WorkspaceSettings(db, () => ({ general: [], private: [] })).thread("web/a").mcpServers).toEqual([]);
       expect(tables(db)).toContain("mcp_servers");
       expect(() => checkReadable(db, "user", STEPS.user.filter((s) => s.version < 3))).not.toThrow();
+      db.close();
+    }
+  });
+});
+
+describe("user step 5 (portrait-photo cloud choice)", () => {
+  it("expands every released user schema with Ask once a day and preserves an existing choice", () => {
+    for (let v = 1; v < 5; v++) for (const policy of [undefined, "never", "always"]) {
+      const db = scratchDb();
+      migrate(db, "user", {}, STEPS.user.filter(s => s.version <= v));
+      SEED.user(db);
+      if (policy) db.prepare("INSERT INTO settings (key, value) VALUES ('images.photos.cloud', ?)").run(policy);
+      migrate(db, "user");
+      const settings = new WorkspaceSettings(db, () => ({ general: [], private: [] }));
+      expect(settings.photoCloudPolicy()).toBe(policy ?? "ask");
+      expect(settings.photoCloudApproved("2026-10-12")).toBe(false);
+      expect(db.prepare("SELECT value FROM settings WHERE key = 'k'").get()).toEqual({ value: "v" });
+      expect(schemaOf(db)).toEqual({ version: 5, minReader: 1 });
+      expect(() => checkReadable(db, "user", STEPS.user.filter(s => s.version <= v))).not.toThrow();
       db.close();
     }
   });

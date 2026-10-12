@@ -108,6 +108,11 @@ characters, the limit on project instructions.
 > lose, and what to check afterwards. After a failed update, write the
 > post-mortem as an issue linked to the tag.
 >
+> **Images in project work.** Use the `image` tool for artwork and photo edits;
+> it returns images and saves them in the encrypted thread folder. Draw exact
+> layouts and diagrams as code. The Images switch and Plan mode apply, and
+> portrait photos going to a cloud model follow the user's own photo policy.
+>
 > **Hard rules.** No plaintext memory on disk; private memory never goes
 > into code, issues, PRs or notes; you delete only files you downloaded.
 > Docs describe what exists: update a component's doc in the same PR.

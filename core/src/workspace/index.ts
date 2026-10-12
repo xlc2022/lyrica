@@ -1,3 +1,5 @@
+import { ensurePhotosDir, ThreadImages } from "./images.ts";
+export * from "./images.ts";
 import { randomBytes } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
@@ -227,6 +229,7 @@ export class Workspace {
     } finally {
       key.fill(0);
     }
+    ensurePhotosDir(this.imageHome(userId));
     return this.homeDir(userId);
   }
 
@@ -295,6 +298,21 @@ export class Workspace {
       /** Files the panel added or removed since her last turn, names only; taking them clears them. */
       fileNotes: () => this.settings(t.userId).takeFileNotes(t.threadId),
     };
+  }
+
+  private imageHome(userId: string): string {
+    this.keyring.userKey(userId);
+    const home = this.homeDir(userId);
+    if (!isMounted(home)) throw new Locked("the home workspace is not mounted");
+    return home;
+  }
+
+  imageFiles(t: WorkspaceThread): ThreadImages {
+    return new ThreadImages(() => this.imageHome(t.userId), () => {
+      const id = encodeURIComponent(this.settings(t.userId).folderThread(t.threadId));
+      if (!id || id === "." || id === "..") throw new Error("unusable thread id");
+      return ["threads", id];
+    }, path => this.files(t).read(path));
   }
 
   /**

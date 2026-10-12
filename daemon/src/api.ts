@@ -1035,7 +1035,10 @@ export interface Transcription { text: string; seconds: number; model: string }
 // --- Messages ---
 
 /** One part of a stored message, as the UI draws it. */
+export interface ImagePart { type: "image"; paths: string[]; model: string; tier?: "fast" | "quality" }
+
 export type MessagePart =
+  | ImagePart
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
   | { type: "tool"; toolCallId: string; name: string; args: unknown; result?: string; isError?: boolean; threads?: ThreadRef[] }
@@ -1302,7 +1305,7 @@ export type ThreadEvent =
   | { type: "thinking"; delta: string }
   | { type: "tool_start"; toolCallId: string; name: string; args: unknown }
   /** `result` is short: the first lines of the tool's output. */
-  | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean; threads?: ThreadRef[] }
+  | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean; threads?: ThreadRef[]; image?: ImagePart }
   /** Memories recalled for this turn, automatically or with recall/read_memory. */
   | { type: "recall"; ids: string[] }
   /** Notes she saved. */

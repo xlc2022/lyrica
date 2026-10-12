@@ -1872,9 +1872,11 @@ export class Models {
   }
 
   /** Images stay in memory; the caller stores results and records the call. */
-  async image(ctx: CallContext, request: ImageRequest, opts: { signal?: AbortSignal } = {}): Promise<{ images: GeneratedImage[]; resolution: Resolution }> {
+  async image(ctx: CallContext, request: ImageRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void> } = {}): Promise<{ images: GeneratedImage[]; resolution: Resolution }> {
     validateImageRequest(request);
     return this.callWithFallback(`image.${request.action}`, ctx, {}, async (r) => {
+      opts.signal?.throwIfAborted();
+      await opts.beforeSend?.(r);
       opts.signal?.throwIfAborted();
       const ep = r.endpoint;
       const images = await imageAt({ fetch: this.fetchFor(ep) ?? fetch, baseUrl: ep.api === "host" ? hostOrigin(ep.addresses![0]!) : ep.baseUrl,

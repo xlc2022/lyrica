@@ -5,14 +5,12 @@
 **Depends on:** Models 2 (hosts and fallbacks) and Model host (the image API
 and workflow templates). Both are merged.
 
-**Where things stand (2026-10-12).** The host side is built: recipes, parts,
-ComfyUI templates and SeedVR2 (`host/src/images.ts`, `host/API.md`, "Image
-models" and "Making images"). `core/models` already lists confirmed recipes as
-image offerings and routes `image.create` and `image.edit` by capability, and
-the web Models page has an Image models library. Missing on Lyrica's side:
-`image.upscale` in `TASKS`, a `core/models` call that makes an image, the
-`image` tool, `photos-of-me/` with its setting, and the routes below. Nothing
-has run on a real ComfyUI yet, so tests use fakes that follow `host/API.md`.
+**Where things stand (2026-10-12).** Host recipes, parts, ComfyUI templates
+and SeedVR2 are built. Step A is committed as `69ec66c`: image calls through
+`core/models`, including upscale, host recipes and OpenAI. Step B adds the
+image tool, portrait policy and storage, and image message metadata. Step C's
+routes and headless-browser deployment remain. Nothing has run on real
+ComfyUI yet; the image tests use in-memory API fakes.
 
 **Read first:**
 - AGENTS.md and PRINCIPLES.md;
@@ -119,33 +117,36 @@ of how she works with the user, from storyboards to edits of the user's own phot
 
 ## Handoff notes
 
-**Step A (2026-10-12): done.** Principles 1 (images in conversation), 2
-(structural cloud boundary) and 8 (reuse the router; no new tools here).
-`Models.image` creates, edits and upscales in memory with ordered fallbacks,
-capability filtering and the thread's CallContext. Confirmed host recipes use
-host defaults; fast/quality share image.create's list and retain those defaults.
-OpenAI GPT image generation/editing is the sole cloud table adapter (key required;
-fast=low quality, quality=high). PNG outputs lose metadata. No extra cloud provider:
-a second distinct API would add work without a current need. Contracts and models
-docs updated. No commits or pushes, as instructed; the supervisor handles them.
+**Done:** A was committed/pushed by the supervisor as `69ec66c`; supervisor
+checks had no new failures. B is complete, uncommitted/unpushed, serving
+principles 1, 2, 4 and 8. One `image` tool handles create/edit/upscale in hosted
+and bench sessions, and subagents whose role permits it. Inputs use workspace
+paths or the tool-only `/photos-of-me/<file>` path. GPT Image 1 maps requested
+sizes/ratios to its nearest supported canvas; host recipe defaults stay intact.
 
-**Validation:** `npm run typecheck` passes. `core/test/images.test.ts`: five
-passing tests with in-memory host/OpenAI API fakes, covering host create/edit/upscale,
-cloud create/edit, tiers, defaults, references/masks, restricted contexts, recipe
-discovery, workstation → 3090 fallback and PNG metadata removal. Socket-based host
-fakes hung in this sandbox, so these tests don't open sockets; paired TLS is covered
-by the existing host tests. The known environmental main-suite failures weren't
-addressed. The shared daemon Task type gained image.upscale; the web's exhaustive
-shared task-label map gained its required label to keep typecheck passing. No
-controls, screens or image UI were added.
+`Workspace.imageFiles` checks the unlocked/mounted encrypted home, refuses
+symlinks, saves metadata-free `images/<uuid>.png`, and returns Pi image content.
+User schema 5 adds the photo-cloud default Ask (expand only, oldest reader 1).
+The tool checks Never/Ask/Always against every actual provider attempt through
+`Models.image.beforeSend`, including local → cloud fallbacks. Daily approval is
+per user, persists encrypted across threads/restarts, expires at server-local
+midnight and clears on a policy change; the clock is injectable. Messages and
+`tool_end.image` carry `ImagePart` path/model/tier metadata, never base64 bytes.
+Component docs/contracts and the own-project handoff are updated. No web UI,
+management routes, host API, deployment or new profile shape changed in B.
 
-**Next:** B: image tool, portrait-photo policy and additive user setting/migration,
-encrypted results, returning image content/message parts. C: authenticated routes,
-Chromium deployment and workspace command documentation. Workspace and host API
-docs need no step-A change: their behavior is unchanged. Run the complete suite on
-the supervisor/CI host before merging.
+**Checks:** typecheck passes; 31 image/storage/migration/message tests and 12
+existing workspace-gate tests pass (43 total). One real encrypted-home test
+skips here for missing FUSE; CI's `LYRICA_SANDBOX_TESTS=require` requires it.
+Fakes are shared in `core/test/fake-images.ts`; no sockets. Run the full suite
+on the supervisor host. No real ComfyUI has been exercised.
 
-**Open questions:** no real ComfyUI was exercised. Hosts' fast/quality behavior
-comes from the selected recipe; the tier isn't a host API parameter. Portrait
-permission is deliberately left to B's tool, before cloud calls. Future cloud
-adapters can be added to CLOUD_IMAGE_PROVIDERS when needed.
+**Next:** C only: authenticated owner-checked file serving, photo/policy
+management routes, Chromium deployment and the offline render command/test.
+The shared ImagePart is ready for the separate Web UI thread.
+
+**Open:** current recipes/router have no speed-tier metadata, so host fast and
+quality share the image.create list and defaults. If use needs separation,
+propose exposing a recipe's supported tier as capability metadata and filtering
+the existing ordered list, rather than changing profiles. Portrait consent uses
+server-local midnight because there is no per-user time-zone setting.

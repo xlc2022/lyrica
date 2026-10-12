@@ -11,6 +11,7 @@ import { syncEntries, toStoredEntry } from "../record.ts";
 import { openThreadSession } from "../session.ts";
 import { createMcpServersExtension } from "../mcp.ts";
 import { createWebExtension } from "../web.ts";
+import { createImageExtension } from "../images.ts";
 import { createWorkspaceExtension, type ApprovalRequest } from "../workspace.ts";
 import { rolesFor } from "./roles.ts";
 import { createDelegateExtension, createSubagentExtension } from "./tool.ts";
@@ -33,7 +34,7 @@ export interface Limits {
 }
 export const DEFAULT_LIMITS: Limits = { depth: 1, concurrency: 2, runsPerRequest: 8, timeoutMs: 15 * 60_000, notes: 3 };
 
-export type DelegateWorkspace = Pick<Workspace, "inheritSettings" | "forThread" | "settings">;
+export type DelegateWorkspace = Pick<Workspace, "inheritSettings" | "forThread" | "settings"> & Partial<Pick<Workspace, "imageFiles">>;
 
 export interface DelegationOptions {
   users: Users;
@@ -904,6 +905,12 @@ export class Delegation {
         // no repositories, so a narrowed or read-only subagent, or a writer in a worktree, can't change them.
         const { setMode: _own, cloneRepositories: _fetched, addRepository: _asks, ...tools } = workspace.forThread({ ...p, threadId: child.id, reposOf: parent.threadId, reposReadOnly: noMachines });
         extensions.push(createWorkspaceExtension({ ...tools, approve: (r) => this.approve(sub!, r) }));
+        if (workspace.imageFiles) extensions.push(createImageExtension({ models: this.o.models, threadId: child.id,
+          call: () => this.o.models.callContext(parent.user.id, parent.pool, child.id),
+          files: workspace.imageFiles({ ...p, threadId: child.id }), settings: () => workspace.settings(parent.user.id),
+          enabled: () => !role.readOnly && !narrowing.readOnly && tools.settings().images && tools.settings().mode !== "plan",
+          approve: r => this.approve(sub!, r),
+        }));
         // Its role says whether it searches; its Web search switch is its parent's or off.
         extensions.push(createWebExtension({ searxng: () => this.o.searxng?.(), target: () => tools.target() }));
         // Its parent's MCP servers, read live, so one taken from the parent goes from it too; its calls ask in both threads.

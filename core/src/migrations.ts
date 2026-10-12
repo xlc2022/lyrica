@@ -218,6 +218,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Each thread's Claude Code switch (docs/workspace.md, "Claude Code"), off for every thread. Adds only.
     version: 4,
     run(db) { addColumns(db, [["thread_workspaces", "claude_code", "INTEGER NOT NULL DEFAULT 0"]]); },
+  }, {
+    // Principle 2: the user's portrait-photo cloud choice, default Ask once a day. Expand only.
+    version: 5,
+    run(db) { db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('images.photos.cloud', 'ask')").run(); },
   }],
   pool: [{
     version: 1, contract: true,

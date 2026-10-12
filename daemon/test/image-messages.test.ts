@@ -1,0 +1,33 @@
+import { describe, expect, it } from "vitest";
+import { HostedThread } from "../src/hosted.ts";
+import { imagePart, toMessages } from "../src/messages.ts";
+import type { ThreadEvent } from "../src/api.ts";
+
+const image = { type: "image" as const, paths: ["/workspace/images/result.png"], model: "workstation/Art", tier: "quality" as const };
+const details = { image };
+
+describe("image message metadata (principle 1)", () => {
+  it("attaches the image part to the assistant message that made the tool call", () => {
+    const messages = toMessages("web/a", "general", [
+      { n: 1, createdAt: "2026-10-12", data: { type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "i1", name: "image", arguments: { action: "create" } }] } } },
+      { n: 2, createdAt: "2026-10-12", data: { type: "message", message: { role: "toolResult", toolCallId: "i1", toolName: "image", content: [{ type: "text", text: "Saved result.png." }, { type: "image", data: "bytes", mimeType: "image/png" }], details } } },
+    ]);
+    expect(messages[0]?.parts).toContainEqual(image);
+    expect(JSON.stringify(messages)).not.toContain('"data":"bytes"');
+  });
+  it("sends image paths/model/tier on tool_end without the image bytes", () => {
+    const events: ThreadEvent[] = [];
+    // Only the event adapter is exercised: no socket or Pi session is needed.
+    const hosted = Object.create(HostedThread.prototype) as { forward(e: unknown): void; emit(e: ThreadEvent): void; pool: string };
+    hosted.pool = "general"; hosted.emit = e => { events.push(e); };
+    hosted.forward({ type: "tool_execution_end", toolCallId: "i1", toolName: "image", isError: false,
+      result: { content: [{ type: "text", text: "Saved result.png." }, { type: "image", data: "bytes", mimeType: "image/png" }], details } });
+    expect(events[0]).toMatchObject({ type: "tool_end", image });
+    expect(JSON.stringify(events)).not.toContain('"data":"bytes"');
+  });
+  it("ignores malformed metadata and another tool's metadata", () => {
+    expect(imagePart("read", details)).toBeUndefined();
+    expect(imagePart("image", { image: { ...image, paths: [17] } })).toBeUndefined();
+    expect(imagePart("image", { image: { ...image, tier: "unknown" } })).toBeUndefined();
+  });
+});

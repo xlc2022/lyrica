@@ -305,10 +305,13 @@ the thread but never made searchable.
 
 ## Image calls
 
-`image(ctx, request, { signal? })` creates, edits or upscales through the
+`image(ctx, request, { signal?, beforeSend? })` creates, edits or upscales through the
 thread's `CallContext`, returning `{ images, resolution }`. Each image has
 PNG `bytes`, `type`, `width`, `height` and an optional host `seed`. Everything
 stays in memory; the caller stores results and records the call without prompts.
+`beforeSend(resolution)` runs before each provider attempt, including fallbacks;
+a refusal stops the call. The image tool uses it for portrait-photo permission
+against the model that would actually receive the bytes.
 The tasks `image.create`, `image.edit` and `image.upscale` have their own
 ordered lists and require `image`, `edit` and `upscale` capabilities respectively.
 Private and local-only threads use local lists only; unavailable endpoints
@@ -330,7 +333,9 @@ GPT image API only. Add a cloud OpenAI-compatible endpoint with an API key,
 then a GPT image offering with `image` and `edit` capabilities. Creation uses
 `/images/generations` (or `/images/edits` when references are supplied), and
 editing uses multipart `/images/edits`; fast requests low quality and quality
-requests high. Upscale is host-only. Returned PNGs lose text, EXIF and other
+requests high. GPT Image 1 models use the nearest supported canvas shape
+(square, portrait or landscape) when a size or aspect ratio is requested;
+other GPT image models receive the requested dimensions. Upscale is host-only. Returned PNGs lose text, EXIF and other
 metadata before reaching the caller. Provider errors report status and host
 error codes, never a provider's potentially prompt-bearing error text.
 

@@ -490,6 +490,14 @@ taken gets a suffix (`image-2.jpg`) rather than overwriting.
 
 ## Files
 
+Image tool results add an `image` part to the assistant message that made the
+call: `{ type: "image", paths, model, tier? }`. The live `tool_end` event carries
+the same part as `image`; neither sends base64 image bytes. `model` is the model
+label and `tier` is present for create. The image tool itself uses the existing
+permission flow for portrait photos, with `Send photos of you to <endpoint>?`
+in its warning and `{ question, provider }` in its arguments. Approval is per
+user through the end of that server-local day, without Allow in this thread.
+
 The Files panel (DESIGN, "Files and images") reaches a thread's folder and its
 grants only through `Workspace.files(t)`, so every listing, read and change
 runs in the thread's sandbox: no host path is ever handled by `lyricad`, and
