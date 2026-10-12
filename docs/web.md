@@ -963,6 +963,8 @@ turns animations off.
   `web/e2e/serve.ts`, on a temporary runtime with a fake model server, which
   also serves a fake speech endpoint (whisper and kokoro, under `/speech/v1`,
   and `/speech/down` to make it fail). Chromium runs with a fake microphone.
+  The desktop project listens on 7342, `lyricad`'s own loopback port for
+  `tailscale serve`, so e2e can't run on a machine where `lyricad` runs.
 - For development, `npx tsx web/e2e/serve.ts 7340 7350` starts the same
   throwaway `lyricad` (passphrase `correct horse`, login `ada` / `pw`), and
   `npm run dev -w @lyrica/web` serves the UI with `/api` passed to it.
