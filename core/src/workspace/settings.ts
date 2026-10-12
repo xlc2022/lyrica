@@ -273,6 +273,8 @@ const DEFAULTS: Record<Pool, Network> = {
   private: { internet: false, services: false, hosts: [] },
 };
 
+export type PhotoCloudPolicy = "never" | "ask" | "always";
+
 /**
  * One user's workspace settings, in their user.db. The folders the user may
  * grant are an administrator's, in self.db; `allowed` reads them.
@@ -284,6 +286,31 @@ export class WorkspaceSettings {
 
   private setting(key: string): string | undefined {
     return (this.db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined)?.value;
+  }
+
+  /** Portrait photos sent by the image tool; ask once per server-local calendar day. */
+  photoCloudPolicy(): PhotoCloudPolicy {
+    const policy = this.setting("images.photos.cloud");
+    return policy === "never" || policy === "always" ? policy : "ask";
+  }
+
+  setPhotoCloudPolicy(policy: PhotoCloudPolicy): void {
+    if (!["never", "ask", "always"].includes(policy)) throw new Error("photo cloud policy is never, ask or always");
+    this.db.transaction(() => {
+      this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('images.photos.cloud', ?)").run(policy);
+      this.db.prepare("DELETE FROM settings WHERE key = 'images.photos.approved_day'").run();
+    })();
+  }
+
+  photoCloudApproved(day: string): boolean { return this.setting("images.photos.approved_day") === day; }
+  approvePhotoCloud(day: string): void {
+    this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('images.photos.approved_day', ?)").run(day);
+  }
+
+  /** Principle 2: derived portraits retain their cloud policy across copies and renames. */
+  isPortraitImage(hash: string): boolean { return this.setting(`images.portrait.sha256.${hash}`) === "1"; }
+  recordPortraitImage(hash: string): void {
+    this.db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, '1')").run(`images.portrait.sha256.${hash}`);
   }
 
   /** The user's network defaults for threads in `pool`. */

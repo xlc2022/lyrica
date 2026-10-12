@@ -5,12 +5,12 @@ import {
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  appendUserMessage, ContextMeter, createDelegateExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, OPENING, openThreadSession, piModelFor, syncEntries,
+  appendUserMessage, ContextMeter, createDelegateExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, OPENING, openThreadSession, piModelFor, syncEntries,
   GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
-import { delegateThreads, delegationPart, markersFor, plainError, shortResult, toReactions, turnRecall } from "./messages.ts";
+import { delegateThreads, delegationPart, imagePart, markersFor, plainError, shortResult, toReactions, turnRecall } from "./messages.ts";
 
 export interface HostOptions {
   users: Users;
@@ -774,6 +774,12 @@ export class HostedThread {
             proposePlan: (r) => this.proposePlan(r),
             setMode: (mode) => { tools.setMode(mode); this.emit({ type: "settings" }); },
           }),
+          createImageExtension({ models, threadId: this.threadId,
+            call: () => models.callContext(this.userId, this.pool, this.threadId),
+            files: workspace.imageFiles({ userId: this.userId, pool: this.pool, threadId: this.threadId }),
+            settings: () => workspace.settings(this.userId), enabled: () => tools.settings().images && tools.settings().mode !== "plan",
+            approve: r => this.approve(r),
+          }),
           // web_search and web_fetch, behind the Web search switch; a fetch runs in the thread's sandbox.
           createWebExtension({ searxng: () => this.o.searxng?.(), target: () => tools.target() }),
           // Pi's MCP client and tool_search, only while the thread has a server: a change of grants reopens the session.
@@ -884,7 +890,8 @@ export class HostedThread {
         const content = (e.result as { content?: unknown } | undefined)?.content;
         const result = shortResult(content);
         const threads = delegateThreads(e.toolName, (e.result as { details?: unknown } | undefined)?.details, this.pool);
-        this.emit({ type: "tool_end", toolCallId: e.toolCallId, name: e.toolName, result, isError: e.isError, ...(threads ? { threads } : {}) });
+        const image = !e.isError ? imagePart(e.toolName, (e.result as { details?: unknown } | undefined)?.details) : undefined;
+        this.emit({ type: "tool_end", toolCallId: e.toolCallId, name: e.toolName, result, isError: e.isError, ...(threads ? { threads } : {}), ...(image ? { image } : {}) });
         const full = Array.isArray(content) ? content.map((p: { text?: string }) => p.text ?? "").join("\n") : String(content ?? "");
         for (const m of markersFor(e.toolName, (e as { args?: unknown }).args, full)) this.emit(m);
         break;
@@ -1009,6 +1016,6 @@ function conversationLine(entry: unknown): string {
 /** A call on a machine: its name and folder, and for a suspect command the warning. */
 function onMachine(r: ApprovalRequest): Partial<PermissionRequest> {
   if (r.server) return { server: r.server, ...(r.serverTool ? { serverTool: r.serverTool } : {}) };
-  if (!r.machine) return {};
+  if (!r.machine) return r.warning ? { warning: r.warning } : {};
   return { machine: r.machine, ...(r.cwd ? { cwd: r.cwd } : {}), ...(r.warning ? { suspect: true as const, warning: r.warning } : {}) };
 }

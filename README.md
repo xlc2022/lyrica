@@ -52,10 +52,14 @@ The repository was rebuilt from scratch starting 2026-10-09.
 - MCP servers (remote, per thread).
 - Model and speech hosts on GPU machines, and the web's Models area for
   text and image models, their downloads and hub tokens.
+- The `image` tool for creation, edits and upscaling, with encrypted results,
+  portrait consent and authenticated file/photo APIs; offline diagram rendering
+  through the sandbox's Chromium.
 - Releases with automatic rollback, and numbered database migrations.
 
-Not built yet: `lyrica chat` and `lyrica mem` (clients of `lyricad`) and images
-in conversation. A calendar and sorting data wait until real use asks. Next
+Not built yet: `lyrica chat` and `lyrica mem` (clients of `lyricad`), dedicated
+image-part rendering and portrait settings in the web UI. A calendar and
+sorting data wait until real use asks. Next
 comes living with her for a few weeks while keeping the evals and a friction
 log.
 

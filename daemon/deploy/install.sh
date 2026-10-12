@@ -56,6 +56,7 @@ node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.ex
   || die "Node.js $(node -v) is too old: lyricad needs 22.6 or later"
 
 # --- A browser for her screenshots ---
+# Principle 1: render HTML/SVG diagrams offline in the thread sandbox.
 # Playwright's headless Chromium, at the version this checkout's Playwright
 # expects, with the libraries it needs; her sandbox sees it as
 # /usr/local/bin/chromium-headless-shell (web/e2e/shot.ts). Ubuntu ships

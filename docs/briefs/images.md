@@ -3,8 +3,13 @@
 **Thread:** Images. **Branch:** `feature/images`.
 
 **Depends on:** Models 2 (hosts and fallbacks) and Model host (the image API
-and workflow templates). Start once both are merged. Cloud image services
-don't need a host, so that part can start earlier if useful.
+and workflow templates). Both are merged.
+
+**Where things stand (2026-10-12).** Built in #219: image calls and the tool,
+portrait policy (including derived results), encrypted storage and image parts,
+owner-only file/photo APIs, and offline rendering. Chromium/fonts ship in the
+Nix and Debian deployment. Still open: a real ComfyUI run and the separate
+Web UI. Image provider tests use in-memory API fakes.
 
 **Read first:**
 - AGENTS.md and PRINCIPLES.md;
@@ -111,4 +116,22 @@ of how she works with the user, from storyboards to edits of the user's own phot
 
 ## Handoff notes
 
-(The thread fills this in if it stops before it's done.)
+**Done:** built in #219 (principles 1, 2, 4 and 8): one routed image tool,
+portrait consent before every provider attempt, encrypted results and image
+parts, safe file/photo/policy APIs, and offline Chromium rendering. User schema
+5 is expand-only with migration coverage from every released schema. Derived
+portrait SHA-256 markers use additive encrypted user.db settings; copies,
+renames and later generations retain the portrait rule without a schema step.
+The project instructions are back within their cap: 1,985 characters including
+the final newline. Component docs, guides and status tables match the behavior.
+
+**Checks:** the review fix round passes typecheck and 36 image/storage/
+migration/message/route tests; one real encrypted-home test skips here without
+FUSE/gocryptfs. Earlier checks passed 12 workspace-gating tests; the context
+suite needs sockets and offline rendering needs Chromium and an encrypted
+sandbox, unavailable in this sandbox. Provider tests use in-memory fakes.
+
+**Next/open:** a real ComfyUI run and the separate Web UI (ImagePart rendering
+and portrait controls). Hosts' fast/quality retain the same image.create list
+and recipe defaults; no tier metadata was added. Portrait approval expires at
+server-local midnight.

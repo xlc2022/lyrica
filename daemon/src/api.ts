@@ -22,7 +22,7 @@ export type Interface = "web" | "cli" | "matrix" | "forum" | "sleep";
 export type Task =
   | "chat" | "subagent.cheap" | "subagent.strong" | "compaction"
   | "title" | "watching" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
-  | "image.create" | "image.edit" | "speech.transcribe" | "speech.speak";
+  | "image.create" | "image.edit" | "image.upscale" | "speech.transcribe" | "speech.speak";
 /** The tasks a thread can choose models for. Compaction isn't one: Pi compacts with the thread's chat model. */
 export const THREAD_TASKS = ["chat", "subagent.cheap", "subagent.strong", "title", "watching", "speech.transcribe", "speech.speak"] as const satisfies readonly Task[];
 export type ThreadTask = (typeof THREAD_TASKS)[number];
@@ -190,7 +190,7 @@ export interface CredentialsChange { save: boolean }
 
 /** What a model can do: discovered where the endpoint says, else set by hand. */
 export interface Capabilities {
-  contextWindow?: number; tools?: boolean; vision?: boolean; embedding?: boolean; image?: boolean; edit?: boolean;
+  contextWindow?: number; tools?: boolean; vision?: boolean; embedding?: boolean; image?: boolean; edit?: boolean; upscale?: boolean;
   /** The thinking levels it offers, besides off. */
   reasoning?: ("low" | "medium" | "high")[];
   /** Speech to text (Dictation). */
@@ -1036,7 +1036,10 @@ export interface Transcription { text: string; seconds: number; model: string }
 // --- Messages ---
 
 /** One part of a stored message, as the UI draws it. */
+export interface ImagePart { type: "image"; paths: string[]; model: string; tier?: "fast" | "quality" }
+
 export type MessagePart =
+  | ImagePart
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
   | { type: "tool"; toolCallId: string; name: string; args: unknown; result?: string; isError?: boolean; threads?: ThreadRef[] }
@@ -1303,7 +1306,7 @@ export type ThreadEvent =
   | { type: "thinking"; delta: string }
   | { type: "tool_start"; toolCallId: string; name: string; args: unknown }
   /** `result` is short: the first lines of the tool's output. */
-  | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean; threads?: ThreadRef[] }
+  | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean; threads?: ThreadRef[]; image?: ImagePart }
   /** Memories recalled for this turn, automatically or with recall/read_memory. */
   | { type: "recall"; ids: string[] }
   /** Notes she saved. */
@@ -1882,3 +1885,9 @@ export interface ClaudeCodeStatus { token: boolean; installed: boolean }
 
 /** Saves the token `claude setup-token` printed. */
 export interface ClaudeCodeTokenInput { token: string }
+// --- Image files and portrait photos ---
+/** GET /api/u/:userId/threads/:pool/:threadId/file?path=… → sniffed file bytes, no-store; thread folder only. */
+/** GET /api/u/:userId/photos-of-me → PortraitPhoto[]; POST raw image bytes → UploadResponse; DELETE …/:name → Ok. */
+export interface PortraitPhoto { path: string; size: number; type: string }
+/** GET /api/u/:userId/photo-cloud; PUT { policy } → PhotoCloudSetting. */
+export interface PhotoCloudSetting { policy: "never" | "ask" | "always" }

@@ -158,13 +158,11 @@ untested until it is.
    (administrator for a shared host, owner for a personal one) through the
    host's management API and `manageHost`'s allowed paths.
 7. **One model-facing tool, `models`** (principle 8's budget is thirty;
-   with `models` she has about 25, counting Pi's four, the memory three,
+   with `models` she has 24, counting Pi's four, the memory three,
    `delegate` and `ask_parent`, `threads`, `react`, `image`, `web_search`,
    `web_fetch`, the sleep five, `propose_plan`, `proxmox`, `add_repository`
-   and the planned
-   calendar and sort; the build adds `proxmox`, `add_repository` and
-   `models` to docs/contracts.md's Tools list, which misses the first two
-   today):
+   and `tool_search`; the built tools, including `image`, `proxmox`,
+   `add_repository` and `models`, are listed in docs/contracts.md):
    `lookup { offering, repo? }` returns the recommended settings and the
    host's fit estimate as numbers; `propose { offering, stretch,
    contextLength }` posts an approval card in the thread ("Serve Qwen3.8-27B

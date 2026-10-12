@@ -5,7 +5,8 @@
 # gh and tea are for threads with repositories (docs/workspace.md, "Git
 # accounts and repositories"), nodejs_22 for her own code, and claude-code
 # for threads with Claude Code on (docs/workspace.md, "Claude Code").
-# chromium and the fonts are for screenshots of her web UI (web/e2e/shot.ts).
+# chromium and the fonts render HTML/SVG diagrams offline (principle 1),
+# and take screenshots of her web UI (web/e2e/shot.ts).
 pkgs:
 let
   # Claude Code is unfree. Only it is allowed, in its own import, so the

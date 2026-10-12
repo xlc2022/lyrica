@@ -310,7 +310,7 @@ the project chat where it branched (anchors live in `user.db`).
 
 ```ts
 type Task = "chat" | "subagent.cheap" | "subagent.strong" | "compaction" | "title" | "watching"
-          | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "image.create" | "image.edit"
+          | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "image.create" | "image.edit" | "image.upscale"
           | "speech.transcribe" | "speech.speak";
 type ThinkingLevel = "off" | "low" | "medium" | "high";
 
@@ -326,7 +326,7 @@ interface Endpoint {
   unencrypted: boolean;                     // local, plain HTTP, outside this machine and the tailnet
   downSince?: string; stale: boolean;       // stale: unreachable for STALE_DAYS (14)
 }
-interface Capabilities { contextWindow?; tools?; vision?; embedding?; image?; edit?; reasoning?: ("low" | "medium" | "high")[];
+interface Capabilities { contextWindow?; tools?; vision?; embedding?; image?; edit?; upscale?; reasoning?: ("low" | "medium" | "high")[];
                          transcribe?: boolean; speak?: { voices: Voice[] } }
 interface Voice { id; language }                             // language: a primary tag, "en" or "zh"
 interface Offering extends Capabilities {   // one model on one endpoint, with a permanent id
@@ -401,6 +401,14 @@ class Models {                                              // new Models(keyrin
   callWithFallback(task, ctx, need, call: (r) => Promise<T>, { probeMs? }?): Promise<T>   // the next model on isUnreachable; Offline when none answers
   resolveModel(task, ctx, need?): { offeringId }             // resolve(…).ref
   allowed(ctx): { endpoint; offerings }[]                   // local endpoints only when restricted
+  // Images (memory only; caller stores and records results)
+  image(ctx, request: ImageRequest, { signal?, beforeSend?: (resolution) => Promise<void> }?): Promise<{ images: GeneratedImage[]; resolution }>
+  // ImageInput { bytes: Uint8Array; type: "image/png" | "image/jpeg" | "image/webp" }
+  // ImageRequest: create { prompt, tier: "fast" | "quality", size?: { width, height }, count?, references?: ImageInput[] }
+  //   | edit { prompt, image: ImageInput, mask?: ImageInput, count?, references?: ImageInput[] }
+  //   | upscale { image: ImageInput, scale?, maxSize? }; each has action: "create" | "edit" | "upscale"
+  // GeneratedImage { bytes: Uint8Array; type: "image/png"; width; height; seed? }; no prompt metadata
+  // beforeSend runs on every resolved attempt, including fallbacks, before any image or prompt is sent; a refusal stops the call.
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
   thinkingFor(resolution, asked): { level; note? }
@@ -728,7 +736,28 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     the `reactions` event. `LyricaOptions.reactions()` hands the extension
     the user's reactions since her last turn; `reactionLines` puts them in
     the turn message as `<reactions>`;
-  - `image`, with `create` and `edit` (Images thread);
+  - `image` (`createImageExtension(ImageTools)`), one tool with `create`, `edit`
+    and `upscale`. Create takes `prompt`, `tier` (`fast` or `quality`), optional
+    `size: { width, height }` or `aspectRatio` (`width:height`), `count` and
+    `references`; edit takes `image`, `instruction`, optional `mask`, `count`
+    and `references`; upscale takes `image`, optional `scale` and `maxSize`.
+    Inputs name workspace paths or `/photos-of-me/<file>`. `ImageTools` supplies
+    `models`, fresh `call()`, `threadId`, `files: ThreadImages`, user `settings()`,
+    `enabled()`, optional `approve(ApprovalRequest)` and injectable `now()`.
+    It checks portrait consent in `Models.image.beforeSend` for the actual
+    endpoint on each attempt, including fallbacks. Never is a plain refusal; Ask uses
+    `Send photos of you to <endpoint>?` through the existing approval flow;
+    Always and local models allow. Ask's approval is per user through the end
+    of that server-local day; a policy change clears it. No viewer means denial.
+    Outputs save in the encrypted thread folder and return Pi image content
+    (`{ type: "image", data: base64, mimeType: "image/png" }`) plus path text.
+    Tool details are `{ image: ImagePart }`, where `ImagePart` is
+    `{ type: "image", paths: string[], model: string, tier?: "fast" | "quality" }`.
+    `model` is the answering model's label. Saved messages carry this part
+    beside the originating tool call; `tool_end` carries `image?: ImagePart`.
+    API messages and events carry paths, never the PNG's base64 bytes.
+    The Images switch and Plan mode gate it; subagents also need the tool in
+    their role and may not be read-only. It adds one tool within the budget;
   - `web_search({ query, count? })` and `web_fetch({ url, maxChars? })`
     (`createWebExtension({ searxng(), target() })`, `core/src/web.ts`), in
     every hosted thread and in a subagent whose role lists them (the
@@ -772,7 +801,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `ExecutionTarget.secrets?()` is the sandbox's tokens and placeholders
     (core/src/workspace/ops.ts): `bash` output (`secretMasker`), `read` and
     `web_fetch` pages (`maskSecrets`) show `SECRET_HIDDEN` for each, and the
-    `tool_call` gate refuses a `web_search`, `web_fetch` or MCP call whose
+    `tool_call` gate refuses a `web_search`, `web_fetch`, `image` or MCP call whose
     input holds one (`holdsSecret`).
   - `ThreadTools` is `{ target(machine?), settings(), network(),
     claudeCode?(), machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?),
@@ -880,6 +909,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   allowInThread? }`, and approving a plan without `mode` is `400`. A
   request on a machine carries `machine` and `cwd`, a suspect one `suspect:
   true` and `warning`, an MCP one `server` and `serverTool`;
+  image portrait consent uses `tool: "image"`, `args: { question, provider }`
+  and `warning` with its question, without a thread-wide Allow option;
   `allowInThread` stores that exact command, or that server's tool, for the
   thread it runs in and is refused on any other request. A plan switching the mode, or a
   settings change, sends the thread a `{ type: "settings" }` event.
@@ -1022,6 +1053,17 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     (`removalPlan` and `applyRemoval` in `daemon/src/removal.ts`; uploads
     found with `PoolStore.entriesMentioning`); the `rewound` event carries
     `from` and `resend`, never text);
+  - images: `GET /api/u/:userId/threads/:pool/:threadId/file?path=` serves
+    sniffed regular file bytes from that thread's folder only (relative or
+    `/workspace/` paths), with `no-store`, `nosniff` and a sandbox CSP.
+    Grants, traversal, symlinks and another user's files are 404; no login is
+    401. `GET /api/u/:userId/photos-of-me` → `PortraitPhoto[]` (`path`, `size`,
+    `type`); `POST` raw PNG/JPEG/WebP, at most 20 MB → `UploadResponse`, with
+    metadata removed and an exclusive generated filename; `DELETE …/:name`
+    → `Ok`. `GET`/`PUT /api/u/:userId/photo-cloud` → `PhotoCloudSetting`
+    (`policy: "never" | "ask" | "always"`); PUT validates and clears daily
+    approval. All follow session/key checks and mutations require same-origin.
+    HTTP `Capabilities` includes `upscale`, as core does.
   - modes: `GET`/`PUT /api/u/:userId/mode` (`ModeDefault`), the mode new
     threads start in; `ThreadSettings` and `ThreadSettingsChange` gain
     `webSearch` and `images`, and their mode and switches are the effective
@@ -1268,7 +1310,22 @@ allowedPaths.allow(actor, userId, pool, path) / disallow(...) / list(userId)
 credentialsFor(t): Credentials            // the thread's reachable repositories' tokens and Claude Code's, for SandboxSpec.credentials, never the env (Git accounts below); targetFor
   // passes it as the sandbox's env, never argv, and `repos` (reposDir(t)) mounted at /workspace/repos
 saveUpload(t, name, bytes): Promise<string>  // cleans the name (cleanUploadName), never overwrites
-mountHome(userId) / unmountHome(userId)   // gocryptfs; mount when the user's key becomes available
+imageFiles(t): ThreadImages
+// ThreadImages.content(path): HomeFile { stream: Readable; size; type }; relative or /workspace/ paths,
+//   the thread's folder only (including the shared project folder); traversal/symlinks/nonfiles → HomeFileMissing.
+// ThreadImages.read(path): Promise<{ input: ImageInput; portrait: boolean }>; ordinary paths via ThreadFiles,
+//   /photos-of-me/<file> from that user's mounted encrypted home, refusing symlinks/traversal; at most 20 MB, PNG/JPEG/WebP.
+// ThreadImages.read also marks bytes whose SHA-256 was recorded as a derived portrait, regardless of path.
+// ThreadImages.save(GeneratedImage[], portrait = false): string[]; exclusive images/<uuid>.png in the encrypted thread folder,
+//   removes PNG metadata, refuses symlinks, returns /workspace/images/<uuid>.png paths.
+//   With a portrait input, records each result's SHA-256 in encrypted user.db settings before writing; descendants inherit the rule.
+photos(userId): PortraitPhotos
+// list(): PortraitPhoto[] { path; size; type }; upload(bytes): path (PNG/JPEG/WebP, 20 MB, metadata removed,
+//   exclusive generated name); remove(name): void. Every access checks the user's key and mounted home.
+settings(userId).photoCloudPolicy(): "never" | "ask" | "always" / setPhotoCloudPolicy(policy)
+settings(userId).photoCloudApproved(day): boolean / approvePhotoCloud(day) // encrypted day only; no prompt
+settings(userId).isPortraitImage(hash): boolean / recordPortraitImage(hash) // additive images.portrait.sha256.<hash> settings, no schema step
+mountHome(userId) / unmountHome(userId)   // gocryptfs; mount when the user's key becomes available; makes photos-of-me/ outside thread folders
 selfTest(): Promise<string | undefined>   // lyricad calls this at startup
 ```
 

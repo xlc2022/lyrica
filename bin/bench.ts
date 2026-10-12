@@ -2,7 +2,7 @@ import { join } from "node:path";
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Memory, Models, PersonaProposals, PersonaStore, TASKS, Workspace, type Keyring, type Pool, type User, type Users } from "@lyrica/core";
-import { createDelegateExtension, createLyricaExtension, createWorkspaceExtension, Delegation, openThreadSession, Sleep, syncEntries, type ThreadContext } from "@lyrica/extension";
+import { createDelegateExtension, createImageExtension, createLyricaExtension, createWorkspaceExtension, Delegation, openThreadSession, Sleep, syncEntries, type ThreadContext } from "@lyrica/extension";
 
 export interface BenchOptions {
   pool?: Pool;
@@ -81,6 +81,9 @@ export async function openBench(keyring: Keyring, users: Users, user: User, opts
     extensions: [
       createLyricaExtension(ctx, { persona: () => persona.read(), profile: () => users.get(user.id)!.profile, folders: tools.folders, debugPrompt: opts.debugPrompt, sleep: sleepNow }),
       createWorkspaceExtension(tools),
+      createImageExtension({ models, threadId: thread.id, call: () => models.callContext(user.id, pool, thread.id),
+        files: workspace.imageFiles({ userId: user.id, pool, threadId: thread.id }), settings: () => workspace.settings(user.id),
+        enabled: () => tools.settings().images && tools.settings().mode !== "plan" }),
       createDelegateExtension(ctx, delegation),
       onShutdown,
     ],

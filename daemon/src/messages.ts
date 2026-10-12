@@ -11,6 +11,17 @@ const RESULT_CHARS = 600;
 type Content = string | { type: string; text?: string; thinking?: string; id?: string; name?: string; arguments?: unknown }[];
 interface PiMessage { role: string; content?: Content; toolCallId?: string; toolName?: string; isError?: boolean; model?: string; stopReason?: string; errorMessage?: string; customType?: string; details?: unknown }
 
+/** Image result metadata only: the PNG bytes remain in Pi's encrypted tool result and home. */
+export function imagePart(tool: string, details: unknown): Extract<MessagePart, { type: "image" }> | undefined {
+  if (tool !== "image") return undefined;
+  const p = (details as { image?: unknown } | undefined)?.image;
+  if (!p || typeof p !== "object") return undefined;
+  const i = p as { type?: unknown; paths?: unknown; model?: unknown; tier?: unknown };
+  if (i.type !== "image" || !Array.isArray(i.paths) || !i.paths.length || !i.paths.every(p => typeof p === "string") || typeof i.model !== "string") return undefined;
+  if (i.tier !== undefined && i.tier !== "fast" && i.tier !== "quality") return undefined;
+  return { type: "image", paths: i.paths, model: i.model, ...(i.tier ? { tier: i.tier } : {}) };
+}
+
 /** A run's subagent threads, from its records: a background run's result names only the run. */
 export type RunThreads = (runId: string) => string[];
 
@@ -180,6 +191,8 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
       call.part.isError = !!m.isError;
       const threads = delegateThreads(call.part.name, m.details, pool, runThreads);
       if (threads) call.part.threads = threads;
+      const image = !m.isError ? imagePart(call.part.name, m.details) : undefined;
+      if (image) call.owner.parts.push(image);
       call.owner.parts.push(...markersFor(call.part.name, call.part.args, textOf(m.content)));
     }
   }

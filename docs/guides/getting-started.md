@@ -533,6 +533,43 @@ the local profile only. See [docs/models.md](../models.md).
   `--jinja_tools`) for tool calling, and enter a context window by hand
   where the server doesn't report one (`endpoints model … --context`).
 
+### Image models
+
+The `image` tool creates and edits through OpenAI or confirmed recipes on a
+paired model host, and upscales through host recipes. Put models in the
+`image.create`, `image.edit` and `image.upscale` task lists; private and
+local-only threads always use the Local lists. Order workstation recipes
+before the 3090's for fallback. Hosts keep recipe defaults for both fast and
+quality; OpenAI uses low or high quality.
+
+For OpenAI images, add an endpoint in Models → Hosts and endpoints: Name
+`openai-images`, Kind cloud, Base URL `https://api.openai.com/v1`, and the API
+key in the password field. A ChatGPT subscription endpoint is separate and
+does not supply this image API. If discovery doesn't report image capabilities,
+use the authenticated HTTP API to add or update the offering:
+
+```text
+POST /api/u/:userId/endpoints/:endpointId/models
+{ "modelId": "gpt-image-1", "image": true, "edit": true }
+```
+
+Every API mutation needs the login cookie and an Origin matching the daemon.
+Use its returned offering ID in the Cloud or Custom image task list. The
+create/edit task drawers in Models → Tasks can choose it. Upscale is host-only;
+its list can be set with `PUT …/profiles/local/image.upscale` and
+`{ "models": [{ "offeringId": "<id>" }] }`. Results live in the encrypted
+thread folder, with no prompt metadata. Portrait upload and cloud policy APIs
+are in [daemon.md](../daemon.md#images-and-portrait-photos); dedicated portrait
+controls in the web UI are separate work.
+
+Headless Chromium and fonts already ship on the lyricad host: the NixOS
+module's default `sandboxPackages` includes them and mounts their closure
+read-only; Debian/Ubuntu's `install.sh` installs the pinned headless shell.
+Keep Chromium and fonts when overriding `sandboxPackages`. Rebuild NixOS or
+rerun `install.sh` for a host that predates those packages. Exact layouts use
+the [offline HTML/SVG render command](../workspace.md#images-and-portrait-photos),
+with Internet and Local services off and allowed hosts empty; no GPU is needed.
+
 ## Give her folders and a network
 
 Her `read`, `write`, `edit` and `bash` run in a sandbox that sees only the

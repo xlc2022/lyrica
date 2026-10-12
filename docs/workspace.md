@@ -358,6 +358,88 @@ takes is `lyrica@pve!agent=<that secret>`.
 - **Granted host paths outside the home workspace are ordinary files.** Their
   protection is whatever the host gives them.
 
+## Images and portrait photos
+
+The `image` tool creates, edits and upscales through the thread's model router.
+It names inputs by workspace path: uploads, earlier results or granted files.
+Create takes a prompt, fast or quality, optional size or `width:height` aspect
+ratio, count and references. Edit takes an image path, instruction, optional
+mask and references. Upscale takes an image, optional scale and maximum size.
+Ratios become a canvas near one megapixel, on a 16-pixel grid; GPT Image 1
+cloud models use their nearest supported canvas shape. Without size or count,
+host recipe defaults apply. Neither tier overrides a host recipe's settings.
+
+Each user's mounted home also has `photos-of-me/`, outside the thread folders
+and sandbox grants. The tool reaches it through `/photos-of-me/<file>` (or
+`photos-of-me/<file>`). `Workspace.imageFiles(t).read` marks these inputs as
+portraits, sniffs PNG/JPEG/WebP and limits each to 20 MB. It refuses traversal
+and symlinks; ordinary workspace images are read through the thread's Files
+sandbox under its current grants.
+
+Images made from portraits follow the same rule. `ThreadImages.save(images,
+portrait)` records each cleaned result's SHA-256 in encrypted `user.db` settings
+before writing it; `read` checks that hash for every workspace input. Copies
+and renames retain the rule, and a result used to make another result passes it
+on. Only hashes are stored, under additive `images.portrait.sha256.<hash>` keys
+in the existing settings table; no schema change or prompt metadata is needed.
+
+`WorkspaceSettings.photoCloudPolicy()` is Never, Ask once a day (default), or
+Always (`never`, `ask`, `always`), in encrypted `user.db` settings. User schema
+5 adds its default, preserving every previous schema and keeping the oldest
+reader at 1. `setPhotoCloudPolicy` clears any previous daily approval.
+When an input, mask or reference is a portrait, the tool checks the actual
+resolved endpoint before each call, including fallback attempts. Never is a
+plain refusal for cloud sends; Ask shows `Send photos of you to <endpoint>?` through the existing
+approval flow, denies without a viewer, and retains a yes for that user until
+server-local midnight. The approved day is encrypted in `user.db`, so it works
+across threads and restarts. Always and local models need no portrait approval.
+The clock is injectable for tests; a policy or local-only change while approval
+is pending is checked again before sending.
+
+Results have exclusive `images/<uuid>.png` names under the thread's encrypted
+folder, following its shared project/parent folder where applicable. Writes
+require an unlocked key and mounted home, follow no symlinks, and strip PNG
+metadata. Nothing stores a prompt beside an image. Pi gets the bytes as image
+content so Lyrica can look and try again; messages and `tool_end` carry paths,
+model label and the create tier. The prompt stays only in the encrypted tool
+call. The Images switch and Plan mode disable the tool.
+
+The daemon's `GET …/threads/:pool/:threadId/file?path=/workspace/images/<file>`
+serves only the authenticated user's thread folder, never grants or portraits.
+It sniffs Content-Type, sends `Cache-Control: no-store`, and returns 404 for
+another user's files, traversal and symlinks. `ThreadImages.content(path)`
+anchors every directory and the regular file without following symlinks.
+`Workspace.photos(userId)` lists, uploads and deletes portraits in the mounted
+home; uploads are at most 20 MB, PNG/JPEG/WebP, with metadata stripped and
+exclusive generated names. Management and policy routes are in
+[daemon.md](daemon.md#images-and-portrait-photos).
+
+For exact wireframes and diagrams, write HTML or SVG in the encrypted thread
+folder, turn Internet and Local services off and leave allowed hosts empty,
+then run this through `bash` (replace the input filename for SVG):
+
+```sh
+mkdir -p images
+browser=$(command -v chromium || command -v chromium-headless-shell || command -v chromium-browser)
+"$browser" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \
+  --no-first-run --no-default-browser-check --user-data-dir=/tmp/chromium \
+  --screenshot=/workspace/images/diagram.png --window-size=800,600 \
+  file:///workspace/diagram.html
+```
+
+The outer bubblewrap sandbox provides isolation and no network; Chromium's
+profile is on its temporary tmpfs. NixOS includes Chromium and fonts through
+`nix/sandbox-tools.nix` and the module's read-only closure. Debian/Ubuntu's
+`daemon/deploy/install.sh` installs `chromium-headless-shell` under `/usr`.
+`npx vitest run core/test/image-render.test.ts` renders inside a real encrypted
+home with internet off, using `describe.skipIf` when Chromium or the encrypted
+sandbox prerequisites are missing.
+
+`npx vitest run core/test/image-storage.test.ts extension/test/images.test.ts`
+checks these boundaries without sockets. The real encrypted-home test skips
+when FUSE/gocryptfs isn't available; CI's `LYRICA_SANDBOX_TESTS=require` requires
+it. Other storage tests use synthetic bitmap bytes in a stand-in home.
+
 ## Thread settings
 
 A workspace is not a separate kind of session. It's any thread that has

@@ -5,6 +5,37 @@ their threads as in-process Pi sessions, and serves the HTTP and SSE API the
 web UI is built on. Code: `daemon/src/`. Every request, response and event
 type is in `daemon/src/api.ts`, with its route beside it.
 
+## Images and portrait photos
+
+Principles 1 and 2: image results and portraits stay in the user's encrypted
+home. All routes below require an unlocked daemon, a login holding that user's
+key, and the usual same-origin check for mutations. Another user's resource
+is 404; a missing login is 401.
+
+- `GET /api/u/:userId/threads/:pool/:threadId/file?path=<path>` serves a
+  regular file in that thread's folder only, including `images/` results.
+  Paths are relative or start with `/workspace/`. Grants, absolute host paths,
+  traversal, symlinks and missing files are 404. Content-Type is sniffed from
+  bytes (images/PDF, otherwise text or binary), `Cache-Control` is `no-store`,
+  `nosniff` is set, and a sandbox CSP prevents executable content. Project
+  and child threads use their workspace's shared folder, as their tools do.
+- `GET /api/u/:userId/photos-of-me` returns `PortraitPhoto[]` (`path`, `size`,
+  `type`), sorted by path. `POST` accepts raw PNG/JPEG/WebP bytes, at most
+  20 MB, removes metadata and saves an exclusive generated filename;
+  it returns `{ path: "/photos-of-me/<file>" }`. `DELETE …/photos-of-me/:name`
+  deletes one regular file, returning `{ ok: true }`; names with traversal
+  and symlinks are 404. Portraits are outside thread folders and sandbox grants.
+- `GET /api/u/:userId/photo-cloud` returns `{ policy }`; `PUT` accepts
+  `{ policy: "never" | "ask" | "always" }`, returns the saved setting, and
+  clears the user's daily approval. Other values are 400. Default is `ask`;
+  the `image` tool enforces consent before each actual cloud attempt, including
+  fallbacks, with approval lasting until server-local midnight.
+
+`daemon/test/image-routes.test.ts` exercises the actual handlers, sessions and
+encrypted databases without sockets. The image tool returns Pi image content;
+messages and `tool_end.image` carry paths/model/tier rather than image bytes.
+Dedicated portrait controls and image-part rendering are separate Web UI work.
+
 ## Starting and unlocking
 
 `lyrica serve [--runtime <dir>] [--port <port>]` starts it. It listens on
@@ -489,6 +520,14 @@ The name is cleaned (no path, no control characters), and a name already
 taken gets a suffix (`image-2.jpg`) rather than overwriting.
 
 ## Files
+
+Image tool results add an `image` part to the assistant message that made the
+call: `{ type: "image", paths, model, tier? }`. The live `tool_end` event carries
+the same part as `image`; neither sends base64 image bytes. `model` is the model
+label and `tier` is present for create. The image tool itself uses the existing
+permission flow for portrait photos, with `Send photos of you to <endpoint>?`
+in its warning and `{ question, provider }` in its arguments. Approval is per
+user through the end of that server-local day, without Allow in this thread.
 
 The Files panel (DESIGN, "Files and images") reaches a thread's folder and its
 grants only through `Workspace.files(t)`, so every listing, read and change

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, WATCHING, PRONOUN_PRESETS, projectSlug,
-  citationsIn, firstLine, GIT_KINDS, mcpHost, sentenceCiting, splitId,
+  citationsIn, firstLine, GIT_KINDS, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress, claudeCodeInstalled,
 } from "@lyrica/core";
@@ -42,8 +42,46 @@ export function apiRoutes(d: Lyricad): Route[] {
   };
   const u = "/api/u/:userId";
   const t = `${u}/threads/:pool/:threadId`;
+  const imageUser = (r: Request) => {
+    const ids = d.sessions.users(r.cookie);
+    if (ids && !ids.has(r.params.userId!)) throw new HttpError(404, "not found");
+    return d.userFor(r);
+  };
+  const imageFile = <T>(fn: () => T): T => {
+    try { return fn(); } catch (err) { if (err instanceof HomeFileMissing) throw new HttpError(404, "file not found"); throw err; }
+  };
 
   return [
+    // Principles 1 and 2: images for display, confined to this user's encrypted folders.
+    route("GET", `${t}/file`, (r) => {
+      const user = imageUser(r);
+      const pool = poolOf(r), threadId = r.params.threadId!;
+      const view = s().memory.openThreadView(user.id, pool);
+      try { if (!view.own.getThread(threadId)) throw new HttpError(404, "no such thread"); } finally { view.close(); }
+      const file = imageFile(() => s().workspace.imageFiles({ userId: user.id, pool, threadId }).content(r.query.get("path") ?? ""));
+      r.res.writeHead(200, { "content-type": file.type, "content-length": String(file.size), "cache-control": "no-store",
+        "content-security-policy": "default-src 'none'; sandbox", "x-content-type-options": "nosniff" });
+      file.stream.on("error", () => r.res.destroy()); file.stream.pipe(r.res);
+      return undefined;
+    }),
+    route("GET", `${u}/photos-of-me`, (r): Api.PortraitPhoto[] => imageFile(() => s().workspace.photos(imageUser(r).id).list())),
+    route("POST", `${u}/photos-of-me`, async (r): Promise<Api.UploadResponse> => {
+      const user = imageUser(r);
+      const bytes = await r.bytes(MAX_IMAGE_BYTES);
+      return { path: s().workspace.photos(user.id).upload(bytes) };
+    }),
+    route("DELETE", `${u}/photos-of-me/:name`, (r): Api.Ok => {
+      imageFile(() => s().workspace.photos(imageUser(r).id).remove(r.params.name!));
+      return { ok: true };
+    }),
+    route("GET", `${u}/photo-cloud`, (r): Api.PhotoCloudSetting => ({ policy: s().workspace.settings(imageUser(r).id).photoCloudPolicy() })),
+    route("PUT", `${u}/photo-cloud`, async (r): Promise<Api.PhotoCloudSetting> => {
+      const user = imageUser(r);
+      const { policy } = await r.json<Api.PhotoCloudSetting>();
+      if (policy !== "never" && policy !== "ask" && policy !== "always") throw new HttpError(400, "photo cloud policy is never, ask or always");
+      const settings = s().workspace.settings(user.id); settings.setPhotoCloudPolicy(policy);
+      return { policy: settings.photoCloudPolicy() };
+    }),
     // --- State, unlock, login ---
     route("GET", "/api/state", (r) => d.state(r.cookie)),
     route("POST", "/api/unlock", async (r) => {

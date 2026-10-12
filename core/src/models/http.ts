@@ -25,6 +25,7 @@ export async function addressesOutside(baseUrl: string): Promise<string[]> {
 
 export interface DiscoveredModel {
   modelId: string; contextWindow?: number; tools?: boolean; vision?: boolean; image?: boolean; embedding?: boolean;
+  edit?: boolean; upscale?: boolean;
   transcribe?: boolean; speak?: { voices: { id: string; language: string }[] };
   reasoning?: ("low" | "medium" | "high")[];
   /** The file's SHA-256, where a host reports it: the same file on two hosts is the same model. */
