@@ -645,7 +645,7 @@ the one-time code the page shows; `finish` posts the code and verifier to
 `https://openrouter.ai/api/v1/auth/keys`, which returns an ordinary key that
 belongs to them. The route (`POST …/openrouter/sign-in`, then
 `…/:signInId`) stores that key on a plain cloud endpoint at
-`https://openrouter.ai/api/v1` (`api: "openai"`), exactly as if it had been
+`https://openrouter.ai/api/v1` (`api: "openai-compatible"`), exactly as if it had been
 typed, so nothing else differs from the plain-endpoint flow: no refresh, no
 signed-out state, no schema change. A sign-in under way is held in
 `lyricad`'s memory for 10 minutes, one per user. OpenRouter's refusal reaches
