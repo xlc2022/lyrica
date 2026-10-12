@@ -503,7 +503,7 @@ test("GitHub saves her token, never shows it back, and removes it after a dialog
   await page.reload();
   await expect(section.getByLabel("Token")).toHaveAttribute("placeholder", "Saved");
   await section.getByRole("button", { name: "Remove" }).click();
-  const dialog = page.getByRole("dialog", { name: "Remove token" });
+  const dialog = page.getByRole("dialog", { name: "Remove the GitHub token?" });
   await dialog.getByRole("button", { name: "Remove" }).click();
   await expect(section.getByRole("button", { name: "Remove" })).toHaveCount(0);
   await expect(section.getByLabel("Token")).toHaveAttribute("placeholder", "");

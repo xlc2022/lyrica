@@ -247,7 +247,7 @@ function GithubSection({ ctx }: { ctx: ShellContext }) {
         </div>
       </form>
       {removing && (
-        <ConfirmDialog title="Remove token" sentence="Remove the GitHub token? Threads with the checkout can no longer push or open pull requests."
+        <ConfirmDialog title="Remove the GitHub token?" sentence="Threads with the checkout can no longer push or open pull requests."
           confirm="Remove" danger onCancel={() => setRemoving(false)}
           onConfirm={() => { setRemoving(false); void run(async () => info.set(await del<GithubInfo>(u(userId, "github")))); }} />
       )}
