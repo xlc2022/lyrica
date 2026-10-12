@@ -303,8 +303,8 @@ told. Its approvals work as in any thread.
 the thread she is in, any thread with the tool: the note becomes its next
 turn, marked `[Wake-up, set <time>]`, or joins a running turn as a steer.
 `later({ cancel: true })` drops its pending ones. Limits
-(`WAKEUP_LIMITS`): 1 minute to 7 days ahead, clamped; 3 pending; 12 fired
-in a day, so a chain she forgets stops by itself. The note is stored in
+(`WAKEUP_LIMITS`): 1 minute to 7 days ahead, clamped; 3 pending; wake-ups and routines together fire at most 24 times
+in a rolling day, so a chain she forgets stops by itself. The note is stored in
 the thread's pool (step 4, `wakeups`), so it is encrypted and survives a
 restart; due times are held in memory while the user is unlocked, and
 lyricad's 20-second tick fires them, not while an update drains. A child
@@ -313,6 +313,17 @@ thread wait; a resolved project thread reopens. A locked user's wake-ups
 fire at the first tick after unlock, marked with when they were due. The
 views get times and IDs only, never the note; the user removes one from
 the facts line.
+
+**Routines** (`daemon/src/routines.ts`). Pool step 6's `routines` keeps
+its schedule and note encrypted. The same 20-second tick starts a turn
+marked `[Routine, <schedule in words>]`, with the note, or opens a fresh
+thread in the source's project or thread list. New threads inherit the
+source's workspace and model privacy, and the project's new-thread choices.
+Paused routines, paused or hidden projects and queued threads wait; turns
+share the child at-once budget. A still-working last run is skipped and
+`next_at` moves on. Missed runs fire once, saying how many were due; Lock
+stops firing until unlock. Wake-ups and routines share the text-free daily
+firing ledger. At the daily cap, a routine moves on and a wake-up waits.
 
 **Checklist** (`threads steps`). Any thread with the tool keeps a
 checklist of its own work: `steps({ steps })` replaces the whole list,
@@ -411,4 +422,4 @@ start child threads of its own.
 - External coding CLIs (Claude Code, Codex) as subagents: they would send her
   work outside the router.
 - A watchdog or LSP checks: use the reviewer role or a loop.
-- Durable runs that keep working across a restart, missions and schedules.
+- Durable runs that keep working across a restart, and missions.

@@ -298,6 +298,59 @@ export class ChildThreads implements ThreadsHost {
     return this.o.host().busy(userId, pool, thread) || this.workingCount(userId) < this.limits.concurrency;
   }
 
+  /** Routine turns share the child at-once budget, including standalone chats. */
+  private readonly routineThreads = new Map<string, { userId: string; pool: Pool; thread: string }>();
+
+  routineWaiting(userId: string, pool: Pool, thread: string): boolean {
+    const view = this.o.memory.openThreadView(userId, pool);
+    try {
+      const project = view.own.projectOf(thread);
+      return !!this.row(userId, pool, thread)?.queued || !!(project && this.o.paused?.(userId, pool, project));
+    } finally { view.close(); }
+  }
+
+  reserveRoutine(userId: string, pool: Pool, thread: string): { track(thread: string): void; release(): void } | undefined {
+    if (this.routineWaiting(userId, pool, thread)) return;
+    if (!this.mayWake(userId, pool, thread) || this.workingCount(userId) >= this.limits.concurrency) return;
+    const slot: { pool?: Pool; thread?: string } = {};
+    const mine = this.starting.get(userId) ?? new Set();
+    this.starting.set(userId, mine);
+    mine.add(slot);
+    return {
+      track: target => {
+        Object.assign(slot, { pool, thread: target });
+        this.routineThreads.set(`${userId}/${pool}/${target}`, { userId, pool, thread: target });
+      },
+      release: () => { mine.delete(slot); },
+    };
+  }
+
+  /** A fresh thread in the source's project or thread list, with its privacy and workspace. */
+  async routineThread(userId: string, pool: Pool, source: string, title: string): Promise<string> {
+    const view = this.o.memory.openThreadView(userId, pool);
+    try {
+      const own = view.own;
+      const from = own.getThread(source)!;
+      const project = own.projectOf(source);
+      const made = own.createThread({ interface: from.interface, ...(project ? { parent: project, child: true } : {}), title, unlogged: from.unlogged });
+      try {
+        this.o.workspace.settings(userId).inheritSettings(source, made.id, pool);
+        this.o.models.inheritContext(this.o.models.callContext(userId, pool, source), made.id);
+        this.o.models.setThreadModel(userId, pool, made.id, "speech.transcribe");
+        const chosen = project ? this.o.project?.(userId, pool, project) : undefined;
+        if (chosen?.model) this.o.models.setThreadModel(userId, pool, made.id, "chat", chosen.model);
+        if (chosen?.thinking) this.o.models.setThinking(userId, made.id, chosen.thinking);
+        if (chosen?.fallback !== undefined) this.o.models.setThreadFallback(userId, made.id, chosen.fallback);
+        if (project) this.db(userId, db => db.prepare("INSERT INTO child_threads (pool, thread, parent, started_at) VALUES (?, ?, ?, ?)").run(pool, made.id, project, new Date().toISOString()));
+        return made.id;
+      } catch (err) {
+        own.forgetThread(made.id, "lyrica");
+        this.o.models.forgetThread(userId, pool, made.id);
+        throw err;
+      }
+    } finally { view.close(); }
+  }
+
   /** A wake-up fired in the thread: a resolved project thread reopens, as a message reopens it. */
   woke(userId: string, pool: Pool, thread: string): void {
     if (this.row(userId, pool, thread)?.resolved_at) this.setResolved(userId, pool, thread, false);
@@ -459,7 +512,10 @@ export class ChildThreads implements ThreadsHost {
       const row = this.row(userId, pool, thread);
       if (row) this.o.host().changed(userId, pool, row.parent, thread);
     } catch { /* locked meanwhile; recover() catches it up */ }
-    if (!working) void this.startQueued(userId);
+    if (!working) {
+      this.routineThreads.delete(`${userId}/${pool}/${thread}`);
+      void this.startQueued(userId);
+    }
   }
 
   /** Whether a project is paused or hidden. */
@@ -534,7 +590,13 @@ export class ChildThreads implements ThreadsHost {
   private workingCount(userId: string): number {
     const host = this.o.host();
     const starting = [...this.starting.get(userId) ?? []].filter((s) => !s.thread || !host.busy(userId, s.pool!, s.thread)).length;
-    return this.rows(userId).filter((r) => host.busy(userId, r.pool, r.thread)).length + starting;
+    const working = new Set(this.rows(userId).filter(r => host.busy(userId, r.pool, r.thread)).map(r => `${r.pool}/${r.thread}`));
+    for (const [key, r] of this.routineThreads) {
+      if (r.userId !== userId) continue;
+      if (host.busy(userId, r.pool, r.thread)) working.add(`${r.pool}/${r.thread}`);
+      else this.routineThreads.delete(key);
+    }
+    return working.size + starting;
   }
 
   private idle(userId: string, rows: Row[], what: string): void {

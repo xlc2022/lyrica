@@ -19,7 +19,7 @@ export const WAKEUP = /^\[Wake-up, set ([0-9T:-]+Z)(?:, due ([0-9T:-]+Z))?\]\n\n
 const minute = (iso: string) => `${iso.slice(0, 16)}Z`;
 
 /** A thread's wake-ups: pending at once, fired in a day, and how far ahead, in minutes. */
-export const WAKEUP_LIMITS = { pending: 3, perDay: 12, maxMinutes: 7 * 24 * 60 };
+export const WAKEUP_LIMITS = { pending: 3, perDay: 24, maxMinutes: 7 * 24 * 60 };
 
 /**
  * A look as memory shows it: which threads it pointed at, never what it
@@ -108,7 +108,7 @@ export const PROJECT_THREAD_GUIDELINES = [
 
 /** Her guidance on wake-ups, in every thread with the threads tool. */
 export const WAKEUP_GUIDELINE = "To come back to something later without waiting in this turn (CI to finish, a review to land), set a wake-up: threads later with minutes and a note to yourself. "
-  + "At that time the note starts a turn here, marked [Wake-up, set …]. One wakes only this thread; at most 3 wait at once and 12 fire a day.";
+  + "At that time the note starts a turn here, marked [Wake-up, set …]. One wakes only this thread; at most 3 wait at once and wake-ups and routines together fire at most 24 times a day.";
 
 /** How she mentions a thread, in every thread: by ID, which the person sees as its current title. */
 export const MENTION_GUIDELINE = "Mention a thread as [t:<id>] and a message as [e:<id>#<n>]: the person sees the thread's current title, linked, so don't write the title beside it. A person may name a thread by its title; use its ID when you mention it.";
@@ -154,3 +154,6 @@ export function projectSection(own: PoolView["own"], threadId: string, projectTh
     page && !page.archived && page.text.trim() && `<page id="${page.id}" title="${page.title}">\n${page.text}\n</page>`,
   ].filter(Boolean).join("\n\n");
 }
+
+/** Only lyricad writes a routine marker. */
+export const ROUTINE = /^\[Routine, ([^\]\n]+)\]\n\n/;

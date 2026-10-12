@@ -589,6 +589,27 @@ One model-facing tool: `delegate({ action?, ... })`.
   `narrowing` so a subagent can be continued.
 - Subagents aren't listed in the thread list; child threads (forks, copies)
   nest under their parent.
+- **Routine storage and firing** (`core/src/routines.ts`,
+  `daemon/src/routines.ts`): `parseSchedule`, `nextRun` and `describe`
+  supply local-time schedule maths. Expand-only pool step 6 adds `routines`
+  (`id`, `thread`, JSON `schedule`, `note`, `new_thread`, `paused`,
+  `next_at`, `last_at`, `created_at`), encrypted with the thread's pool;
+  forgetting its thread deletes it. `PoolReader.routines` includes paused
+  routines; `PoolStore.addRoutine`, `pauseRoutine`, `removeRoutine` and
+  `advanceRoutine` store and advance them. A fire sets `last_at` and adds a
+  note-free fired row to `wakeups`, the shared rolling-day ledger:
+  `wakeupsFired` counts both kinds against `WAKEUP_LIMITS.perDay` (24).
+  `Routines.load` / `drop` enable / disable a user's firing at unlock / Lock;
+  the wake-up tick calls `Routines.tick` unless an update drains. It sends
+  `HostedThread.send(note, { routine: "[Routine, <describe>]\n\n" })`;
+  ordinary messages cannot carry `ROUTINE`. A fresh thread stays in the
+  same pool and project or thread list, inheriting source workspace and
+  model privacy plus project new-thread choices. Queued threads, paused
+  routines and paused or hidden projects wait. Routine turns share the
+  child at-once budget; a working last run or daily cap advances without
+  firing. Missed runs otherwise fire once with their due count. Wake-ups
+  at the cap wait. In-memory last-run destinations do not resume after a
+  restart.
 - **Child threads** (`createThreadsExtension(thread, host?: ThreadsHost, meter?)`,
   never in a subagent's thread): one model-facing tool, `threads({ action,
   ... })`: `start` (`title`, `task`, optional narrower `folders`,

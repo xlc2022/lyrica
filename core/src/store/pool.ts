@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { nextRun, parseSchedule, type Schedule } from "../routines.ts";
 import type { Db } from "../db.ts";
 import { render, toStored, type UserId } from "../mentions.ts";
 import type { Profile } from "../profile.ts";
@@ -80,6 +81,8 @@ export interface StoredEntry {
 
 /** A thread's note to itself, for `dueAt` (DESIGN.md, Projects). */
 export interface Wakeup { id: number; thread: string; dueAt: string; note: string; setAt: string }
+
+export interface Routine { id: number; thread: string; schedule: Schedule; note: string; newThread: boolean; paused: boolean; nextAt: string; lastAt?: string; createdAt: string }
 
 /** One emoji on a message and who put it there: user IDs, or "lyrica". */
 export interface Reaction { emoji: string; by: string[] }
@@ -373,7 +376,15 @@ export class PoolReader {
     return rows.map((r) => ({ id: r.id, thread: r.thread, dueAt: r.due_at, note: r.note, setAt: r.set_at }));
   }
 
-  /** When a thread's wake-ups fired since `since`, oldest first. */
+  /** Recurring turns belonging to this pool, including paused ones. */
+  routines(threadId?: string): Routine[] {
+    const rows = this.db.prepare(`SELECT * FROM routines ${threadId ? "WHERE thread = ?" : ""} ORDER BY next_at, id`).all(...(threadId ? [threadId] : [])) as {
+      id: number; thread: string; schedule: string; note: string; new_thread: number; paused: number; next_at: string; last_at: string | null; created_at: string;
+    }[];
+    return rows.map(r => ({ id: r.id, thread: r.thread, schedule: parseSchedule(JSON.parse(r.schedule)), note: r.note, newThread: !!r.new_thread, paused: !!r.paused, nextAt: r.next_at, lastAt: r.last_at ?? undefined, createdAt: r.created_at }));
+  }
+
+  /** When a thread's wake-ups or routines fired since `since`, oldest first. */
   wakeupsFired(threadId: string, since: string): string[] {
     return (this.db.prepare("SELECT fired_at FROM wakeups WHERE thread = ? AND fired_at >= ? ORDER BY fired_at").all(threadId, since) as { fired_at: string }[]).map((r) => r.fired_at);
   }
@@ -387,7 +398,7 @@ export class PoolReader {
 
   /** When the user last spoke in this pool, in any thread. */
   lastUserMessage(): Date | undefined {
-    const row = this.db.prepare("SELECT max(created_at) AS at FROM entries WHERE role = 'user' AND unlogged = 0 AND text != '' AND text NOT LIKE '[Watching threads]%' AND text NOT LIKE '[Wake-up, set %'").get() as { at: string | null };
+    const row = this.db.prepare("SELECT max(created_at) AS at FROM entries WHERE role = 'user' AND unlogged = 0 AND text != '' AND text NOT LIKE '[Watching threads]%' AND text NOT LIKE '[Wake-up, set %' AND text NOT LIKE '[Routine, %'").get() as { at: string | null };
     return row.at ? new Date(row.at) : undefined;
   }
 
@@ -983,15 +994,35 @@ export class PoolStore extends PoolReader {
     });
   }
 
-  /**
-   * Deletes the thread and its entries, and the notes whose only sources were
-   * in it (each leaves a tombstone, and pages citing them are flagged). Its
-   * subagents' threads hold its tasks and results, so they go first. Its
-   * other daughters (child threads, branches, copies) go too with `children`;
-   * otherwise they are kept as threads of their own, with the settings they
-   * have (a kept child thread is no longer a child). A project forgotten with
-   * `children` also takes its page and the notes that came only from it.
-   */
+  /** A recurring turn in this thread or a fresh thread in the same place. */
+  addRoutine(threadId: string, schedule: Schedule, note: string, newThread = false, at = now()): number {
+    this.mustThread(threadId);
+    const checked = parseSchedule(schedule);
+    return Number(this.db.prepare("INSERT INTO routines (thread, schedule, note, new_thread, next_at, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(threadId, JSON.stringify(checked), note, newThread ? 1 : 0, nextRun(checked, new Date(at)).toISOString(), at).lastInsertRowid);
+  }
+
+  pauseRoutine(threadId: string, id: number, paused: boolean): boolean {
+    return this.db.prepare("UPDATE routines SET paused = ? WHERE thread = ? AND id = ?").run(paused ? 1 : 0, threadId, id).changes > 0;
+  }
+
+  removeRoutine(threadId: string, id: number): boolean {
+    return this.db.prepare("DELETE FROM routines WHERE thread = ? AND id = ?").run(threadId, id).changes > 0;
+  }
+
+  /** Move past due runs; a fired run also joins the wake-ups' text-free daily ledger. */
+  advanceRoutine(id: number, nextAt: string, firedAt?: string): void {
+    this.tx(() => {
+      const r = this.db.prepare("SELECT thread FROM routines WHERE id = ?").get(id) as { thread: string } | undefined;
+      if (!r) return;
+      this.db.prepare("UPDATE routines SET next_at = ?, last_at = coalesce(?, last_at) WHERE id = ?").run(nextAt, firedAt ?? null, id);
+      if (firedAt) {
+        const ledger = this.addWakeup(r.thread, firedAt, "", firedAt);
+        this.fireWakeup(ledger, firedAt);
+      }
+    });
+  }
+
   /** A wake-up for the thread at `dueAt`, with its note. Returns its ID. */
   addWakeup(threadId: string, dueAt: string, note: string, at = now()): number {
     this.mustThread(threadId);
@@ -1012,6 +1043,15 @@ export class PoolStore extends PoolReader {
       .run(threadId, ...(id !== undefined ? [id] : [])).changes;
   }
 
+  /**
+   * Deletes the thread and its entries, and the notes whose only sources were
+   * in it (each leaves a tombstone, and pages citing them are flagged). Its
+   * subagents' threads hold its tasks and results, so they go first. Its
+   * other daughters (child threads, branches, copies) go too with `children`;
+   * otherwise they are kept as threads of their own, with the settings they
+   * have (a kept child thread is no longer a child). A project forgotten with
+   * `children` also takes its page and the notes that came only from it.
+   */
   forgetThread(threadId: string, author: Author, opts: { children?: boolean } = {}): void {
     this.checkAuthor(author);
     const thread = this.mustThread(threadId);

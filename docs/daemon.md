@@ -320,8 +320,8 @@ Each active thread is one Pi session from `openThreadSession`, with
   children before the key goes.
 - **Wake-ups** (`daemon/src/wakeups.ts`). `threads later` stores a note
   for the thread she's in, in its pool, so it is as encrypted as the thread
-  and survives a restart; a thread has at most 3 waiting and 12 fired a
-  day. At unlock `lyricad` loads the due times (never the notes) into
+  and survives a restart; a thread has at most 3 waiting, and wake-ups
+  and routines share a cap of 24 fires in a rolling day. At unlock `lyricad` loads the due times (never the notes) into
   memory, and Lock drops them. Its 20-second tick fires what is due: the
   note becomes the thread's next turn, or joins the running one, marked
   `[Wake-up, set …]` and, when more than two minutes late, with when it
@@ -329,6 +329,15 @@ Each active thread is one Pi session from `openThreadSession`, with
   project's thread waits. A user's message can't start with that mark
   (400). `DELETE …/threads/:pool/:threadId/wakeups/:id` removes one, and
   the `wakeups` event and the parent's card follow every change.
+- **Routines** (`daemon/src/routines.ts`). The same tick reads unlocked
+  users' encrypted pool schedules. A due routine sends its note with
+  `[Routine, <describe>]`, or creates a thread in the same project or list,
+  inheriting workspace and model privacy. It waits while paused, queued,
+  its project is paused or hidden, or the at-once budget is full. A working
+  last run or the daily cap skips the run and advances `next_at`; missed
+  runs otherwise fire once, saying how many were due. Lock stops firing;
+  schedules survive restart. Only the daemon can send the routine mark; a
+  user message or edit carrying it is rejected with HTTP 400.
 - **Projects** ([delegation.md](delegation.md#child-threads), DESIGN.md
   "Projects"). `POST threads` with `project` and an optional `goal` makes a
   project, and `PATCH` with `project: true` makes one of a top-level thread

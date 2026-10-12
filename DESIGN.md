@@ -1102,8 +1102,8 @@ Project settings and Recent calls by project. The briefs are
   a one-shot wake-up for itself, `threads later` with minutes (1 to 7 days)
   and a note to itself; at that time the note starts a turn there, marked
   as a wake-up (a mark only `lyricad` writes), or joins the running turn.
-  It wakes only the thread that set it. At most 3 wait per thread and 12
-  fire a day, so a forgotten chain stops by itself; it counts against the
+  It wakes only the thread that set it. At most 3 wait per thread; wake-ups
+  and routines together fire at most 24 times in a rolling day, so a forgotten chain stops by itself; it counts against the
   at-once limit, waits while its project is paused, and a locked user's
   fire at unlock, saying when they were due. Stored in the thread's pool,
   so it survives a restart. The user sees **Wake-up** and the next time in the
