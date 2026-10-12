@@ -3,6 +3,7 @@ import { ModelRuntime, type ProviderModelConfig } from "@earendil-works/pi-codin
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { PlanCredentials, planProvider } from "./plans.ts";
 import { acceptedSettings, DEFAULT_CONTEXT, replyCap, isPlan, CloudModelForbidden, isRestricted, payloadFields, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
+import { streamWithInlineThinking } from "./inline-thinking.ts";
 
 const FREE = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
@@ -23,6 +24,11 @@ function piModel(ep: Endpoint, m: Offering): ProviderModelConfig {
     contextWindow, maxTokens: replyCap(contextWindow),
     ...(compat ? { compat } : {}),
   };
+}
+
+/** A reply can start inside a thought when the template opens `<think>` itself: always, or when its switch is on. */
+export function startsMidThought(o: Offering | undefined, level: string | undefined): boolean {
+  return !!o?.opensThinking && (!o.reasoning?.length || (!!level && level !== "off"));
 }
 
 /**
@@ -76,6 +82,8 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
     runtime.registerProvider(endpoint.id, {
       name: `${endpoint.name} (${endpoint.kind})`, baseUrl: endpoint.baseUrl, api: "openai-completions",
       models: list.map((m) => piModel(endpoint, m)),
+      streamSimple: (model, context, options) =>
+        streamWithInlineThinking(model as Model<"openai-completions">, context, options, startsMidThought(list.find((m) => m.modelId === model.id), options?.reasoning)),
     });
     // A runtime key is used literally; a key in the provider config would be read as `$ENV` or `!command`.
     await runtime.setRuntimeApiKey(endpoint.id, endpoint.apiKey ?? "none");

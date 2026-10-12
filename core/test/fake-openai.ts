@@ -2,8 +2,8 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach } from "vitest";
 
-/** What the fake answers to one chat request: text, a tool call, or an HTTP error. */
-export type Reply = { text: string; slowMs?: number } | { tools: { name: string; args: unknown; id?: string }[] } | { status: number };
+/** What the fake answers to one chat request: text, streamed deltas, a tool call, or an HTTP error. */
+export type Reply = { text: string; slowMs?: number } | { tools: { name: string; args: unknown; id?: string }[] } | { status: number } | { deltas: { content?: string; reasoning_content?: string }[] };
 /** Picks the reply from the request, and may take its time. */
 export type Responder = (chat: ChatRequest) => Reply | Promise<Reply>;
 
@@ -41,11 +41,13 @@ export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; lab
       const base = { id: "chatcmpl-1", object: "chat.completion.chunk", created: 0, model: chat.model };
       const delta = "text" in reply
         ? { role: "assistant", content: reply.text }
-        : { role: "assistant", tool_calls: reply.tools.map((t, index) => ({ index, id: t.id ?? `call_${index + 1}`, type: "function", function: { name: t.name, arguments: JSON.stringify(t.args) } })) };
-      const finish = "text" in reply ? "stop" : "tool_calls";
+        : "deltas" in reply ? {} : { role: "assistant", tool_calls: reply.tools.map((t, index) => ({ index, id: t.id ?? `call_${index + 1}`, type: "function", function: { name: t.name, arguments: JSON.stringify(t.args) } })) };
+      const finish = "tools" in reply ? "tool_calls" : "stop";
       res.writeHead(200, { "content-type": "text/event-stream" });
       const send = (o: unknown) => res.write(`data: ${JSON.stringify(o)}\n\n`);
-      if ("text" in reply && reply.slowMs) {
+      if ("deltas" in reply) {
+        for (const delta of reply.deltas) send({ ...base, choices: [{ index: 0, delta, finish_reason: null }] });
+      } else if ("text" in reply && reply.slowMs) {
         // A model that takes its time: the first word, a pause, then the rest.
         const [head, ...rest] = reply.text.split(" ");
         send({ ...base, choices: [{ index: 0, delta: { role: "assistant", content: head }, finish_reason: null }] });

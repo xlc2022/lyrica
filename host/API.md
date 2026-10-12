@@ -203,7 +203,10 @@ seconds of audio.
     `base_model_relation`, kept with a download; `null` for other files.
   - `capabilities` are what the host can tell from the file (the chat
     template's tool and thinking support, a vision projector next to it,
-    pooling for embeddings). `reasoning` is `null` or the levels it takes.
+    pooling for embeddings). `reasoning` is `null` or the levels it takes:
+    `["off", "on"]` when the template reads `enable_thinking`.
+    `opensThinking: true` when the template writes `<think>` itself, so a
+    reply can start mid-thought with only `</think>`.
     A `transcribe` model has `"transcribe": true`. A `speak` model has
     `"speak": { "voices": [{ "id": "af_heart", "language": "en" },
     { "id": "zf_xiaoxiao", "language": "zh" }] }`: the voices the speech

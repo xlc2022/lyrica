@@ -18,9 +18,9 @@ and in the stored message (principle 1: experience before infrastructure).
   (`daemon/src/hosted.ts:828-833`). Stored messages keep Pi's `thinking`
   blocks as `thinking` parts (`daemon/src/messages.ts:178`). The web app
   shows them as a collapsed Thought marker (`web/src/Messages.tsx:347-377`).
-- Lyrica itself does no tag parsing. Splitting `<think>` tags,
-  `reasoning_content` (DeepSeek's API, LM Studio, llama.cpp), `reasoning`
-  (OpenRouter) and Anthropic thinking blocks is up to Pi and the server.
+- Pi handles provider reasoning fields and thinking blocks. Lyrica's
+  extension wrapper handles inline and split `<think>` tags, and a missing
+  opening tag when thinking was requested for the call.
 - The host offers a thinking switch only when the chat template mentions
   `enable_thinking` or `<think>` (`host/src/library.ts:62-66`). A switch
   always sends Qwen's `enable_thinking` (`extension/src/models.ts:19`).
@@ -58,6 +58,47 @@ reasoning is replayed into later context.
 
 ## Handoff
 
-- **Done:** nothing yet.
-- **Next:** item 1.
+- **Done:** item 1 (principle 3: lean on Pi). Installed
+  `node_modules/@earendil-works/pi-ai/package.json` confirms version 1.1.0.
+  Findings below refer to `stream` in
+  `node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js`
+  and its local helpers `ensureThinkingBlock`, `ensureTextBlock` and
+  `finishBlock`.
+
+  | Case | Handled? | Stream and final assistant message |
+  |---|---|---|
+  | (a) `reasoning_content` deltas | Yes | `stream` uses `ensureThinkingBlock`, appends to `thinking`, emits `thinking_delta`; final block is `thinking`, with field name as `thinkingSignature`. |
+  | (b) `reasoning` deltas (OpenRouter) | Yes | Same path as (a). Per chunk, only the first nonempty string among `reasoning_content`, `reasoning`, `reasoning_text` is used. |
+  | (c) Inline `<think>...</think>` in content | No | `stream` uses `ensureTextBlock`, appends content unchanged and emits `text_delta`; reasoning and both tags remain in final `text`. |
+  | (d) Either tag split across chunks | No | Same content path: fragments stream as text and concatenate verbatim into final `text`; no tag buffer or parser. |
+  | (e) Mid-thought start with only `</think>` | No | Same content path: initial reasoning, closing tag and answer all remain `text`. |
+  | (f) Final blocks | Yes for (a–b), no separation for (c–e) | `finishBlock` emits end events without reclassifying blocks; `stream` returns the same `output` in `done.message`. Separate content alongside (a–b) remains a `text` block. |
+
+  No shared thinking/tag parser is called by this provider. In
+  `node_modules/@earendil-works/pi-ai/dist/utils/event-stream.js`,
+  `AssistantMessageEventStream` passes through `done.message` as the result;
+  `EventStream.result` returns it without parsing.
+- **Done:** items 2 and 4 (principles 1 and 3). `extension/src/inline-thinking.ts`
+  wraps Pi's provider `streamSimple` hook, registered in `extension/src/models.ts`,
+  for inline and split tags in streamed events and final blocks. Leading content
+  is held for a template-opened thought only when the call requests thinking
+  after Pi clamps the level. Plain replies with thinking off stream live;
+  plain and dedicated reasoning replies preserve Pi's events and final blocks.
+  `extension/test/inline-thinking.test.ts` covers these cases using made-up
+  replies from `core/test/fake-openai.ts`, including live plain text and a
+  closing-only tag with thinking requested.
+- **Done:** item 5. `docs/models.md` describes how provider reasoning and
+  inline tags reach the Thought marker live and stored. `docs/contracts.md`
+  was checked: stream and thinking-switch contracts remain current.
+  `docs/web.md` needs no change because the marker did not change.
+- **Done:** item 3. `templateCapabilities` in `host/src/library.ts` offers
+  the on/off switch only when the chat template reads `enable_thinking`, and
+  reports `opensThinking` when the template writes `<think>` itself. Core
+  carries it on the offering; `startsMidThought` in `extension/src/models.ts`
+  holds the reply's start only for such a model that always thinks or has its
+  switch on, so other models stream live even with thinking requested.
+  Tested in `host/test/routing.test.ts`, `core/test/hosts.test.ts` and
+  `extension/test/inline-thinking.test.ts`.
+- **Next:** none. A plain OpenAI-compatible endpoint (LM Studio) reports no
+  template, so it relies on the server splitting `reasoning_content`.
 - **Open:** none.

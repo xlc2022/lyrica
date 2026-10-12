@@ -30,7 +30,7 @@ describe("pairing", () => {
     const { fingerprint } = await import("../src/index.ts");
     expect([...s.host.pinned.keys()]).toEqual([fingerprint(mine)]);
     const [o] = await s.models.discover(s.ada, ep.id);
-    expect(o).toMatchObject({ modelId: "lyrica/huggingface/Qwen/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf", contextWindow: 32768, tools: true, reasoning: ["medium"], digest: "ab".repeat(32) });
+    expect(o).toMatchObject({ modelId: "lyrica/huggingface/Qwen/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf", contextWindow: 32768, tools: true, reasoning: ["medium"], opensThinking: true, digest: "ab".repeat(32) });
     expect(await s.models.probe(s.ada.id, ep.id)).toEqual({ state: "up" });
   });
 

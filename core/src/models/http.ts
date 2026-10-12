@@ -28,6 +28,8 @@ export interface DiscoveredModel {
   edit?: boolean; upscale?: boolean;
   transcribe?: boolean; speak?: { voices: { id: string; language: string }[] };
   reasoning?: ("low" | "medium" | "high")[];
+  /** A host's chat template writes `<think>` itself (host/API.md "Models"). */
+  opensThinking?: boolean;
   /** The file's SHA-256, where a host reports it: the same file on two hosts is the same model. */
   digest?: string;
   /** What a host read from the file or its model card, for the library. */

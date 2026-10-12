@@ -92,8 +92,10 @@ administrator pairs or manages them; a personal host lives in its user's
   `/host/v1/status` and counts only `running` as up.
 - **Discovery** reads `/host/v1/models`: context length, tools, vision,
   embeddings, the file's checksum (`digest`, for strong group suggestions)
-  and thinking. A thinking switch in the chat template is one level, sent as
-  `chat_template_kwargs.enable_thinking`; a host model that reports levels
+  and thinking. A chat template with an `enable_thinking` switch has one level, sent as
+  `chat_template_kwargs.enable_thinking`; a template that always thinks (it opens
+  `<think>` itself, like DeepSeek R1's) gets no switch. A template that writes
+  `<think>` itself is reported as `opensThinking`. A host model that reports levels
   gets `reasoning_effort` like any OpenAI-compatible endpoint.
 - `hostStatus` returns the host's status (GPUs, placements, loaded and
   pinned models, VRAM, queue) to anyone who can use it; `hostControl`
@@ -307,6 +309,16 @@ was asked; on a plain endpoint, a single level is the nearest level, with the
 note. Pi passes it as `reasoning_effort` to OpenAI-compatible
 endpoints. Subagent roles keep their own level. Thinking text is stored with
 the thread but never made searchable.
+
+Pi handles provider `reasoning_content` and `reasoning` fields. Lyrica's
+extension wrapper (`extension/src/inline-thinking.ts`) turns inline `<think>`
+tags and split tags into thinking blocks. For an `opensThinking` model that
+always thinks, or has its switch on, it holds the reply's start until the
+first tag, so a reply that opens mid-thought with only `</think>` is
+recognised; every other reply streams live. A server's own reasoning stream
+releases the hold. These reach the Thought marker both live and in stored
+messages. An ordinary reply that writes a literal `<think>` tag, such as
+code about the tags, is parsed too: an accepted trade-off.
 
 ## Image calls
 

@@ -333,6 +333,7 @@ interface Offering extends Capabilities {   // one model on one endpoint, with a
   id; endpointId; modelId; manual: boolean;
   status: "listed" | "missing" | "gone"; missingSince?;      // gone: missing for GONE_DAYS (30)
   digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; separate?;   // reported by a host
+  opensThinking?;                                            // a host's chat template writes <think> itself
 }
 type ModelRef = { offeringId: string } | { groupId: string };
 interface Group { id; name; shared; members: string[] }      // offering IDs, in order, one per endpoint

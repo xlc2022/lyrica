@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { LlamaCpp, Vllm } from "../src/backends.ts";
 import { ggufBytes } from "../src/gguf.ts";
-import { familyParsers, scanTextModels } from "../src/library.ts";
+import { familyParsers, scanTextModels, templateCapabilities } from "../src/library.ts";
 import { stdoutLog, type Logger } from "../src/log.ts";
 import { Runtime } from "../src/runtime.ts";
 import { Scheduler } from "../src/scheduler.ts";
@@ -66,7 +66,7 @@ describe("the models folder", () => {
     ]);
     const qwen = models[0]!;
     expect(qwen.identity).toEqual({ basename: "Qwen3", sizeLabel: "8B", finetune: null, baseModels: [{ name: "Qwen3 8B Base", organization: "Qwen", repoUrl: null }], sourceRepo: null });
-    expect(qwen.capabilities).toEqual({ tools: true, vision: false, embedding: false, reasoning: ["off", "on"] });
+    expect(qwen.capabilities).toEqual({ tools: true, vision: false, embedding: false, reasoning: ["off", "on"], opensThinking: true });
     expect(qwen.contextLength).toBe(40960);
     expect(models[3]!.remoteCode).toBe(true);
   });
@@ -319,6 +319,13 @@ it("uses DeepSeek reasoning only for R1 models", () => {
   expect(familyParsers("deepseek_v3")).toEqual({ toolCallParser: "deepseek_v3" });
   expect(familyParsers("deepseek_r1")).toEqual({ toolCallParser: "deepseek_v3", reasoningParser: "deepseek_r1" });
   expect(familyParsers("deepseek_v3", "DeepSeek-R1-Distill")).toEqual({ toolCallParser: "deepseek_v3", reasoningParser: "deepseek_r1" });
+});
+
+it("offers a thinking switch only for templates that read enable_thinking, and says which open the tag", () => {
+  expect(templateCapabilities("{% if enable_thinking %}<think>{% endif %}").reasoning).toEqual(["off", "on"]);
+  // DeepSeek R1's template opens <think> itself: the model always thinks, so there's nothing to switch.
+  expect(templateCapabilities("{{ '<|Assistant|>' }}<think>\n")).toMatchObject({ reasoning: null, opensThinking: true });
+  expect(templateCapabilities("{{ messages }}").reasoning).toBeNull();
 });
 
 it("uses the Llama tool parser only for Llama 3.x families", () => {
