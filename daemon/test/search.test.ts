@@ -27,7 +27,7 @@ describe("message search", () => {
     const rt = await runtime();
     const { d, base, logs } = await daemon(rt);
     await browser(base).post("/api/unlock", { passphrase: "passphrase" });
-    const user = rt.li;
+    const user = rt.ada;
     const me = await login(base, user.login, "pw");
     const other = await login(base, rt.sam.login, "pw2");
     const mu = `/api/u/${user.id}`;
