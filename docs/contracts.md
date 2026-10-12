@@ -1314,7 +1314,7 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   description, offNetwork, state? }`, with any query value named like a
   credential (key, token, secret, sig, auth, pass) shown as `•••`, as in
   `EndpointInfo.baseUrl`; a `PATCH` that sends `•••` back keeps the stored
-  value (`daemon/src/redact.ts`); a body with `command` (stdio) is
+  value if the origin is unchanged (`daemon/src/redact.ts`); a body with `command` (stdio) is
   `400`. Thread settings carry `mcpServers` (names). User database step 3
   adds `mcp_servers` and `thread_workspaces.mcp_servers`. In core:
   `settings(userId).mcpServers() / addMcpServer / updateMcpServer /

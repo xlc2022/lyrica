@@ -22,8 +22,8 @@ came through her tailnet address.
   else is `503`. At start it makes a one-time code, eight characters in two
   groups from 32 symbols (digits and capitals without 0, O, 1 and I; 40
   bits), writes it to `<runtime>/setup-code` (`0600`) and logs where to
-  open the page and where the code is, never the code itself. `lyrica admin setup-code` prints it with
-  the Direct addresses and the certificate's SHA-256 fingerprint; on both
+  open the page and where the code is, never the code itself. `lyrica
+  admin setup-code` prints it with the Direct addresses and the certificate's SHA-256 fingerprint; on both
   systems the `lyrica` wrapper runs it as her user, so it works as root.
   `POST /api/setup` (`SetupRequest`) checks the code (wrong: `403`, counted
   on the unlock limiter), runs `bootstrap()` from `core/src/bootstrap.ts`

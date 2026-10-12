@@ -26,8 +26,6 @@ jobs:
         vendor: [nvidia, amd]
     steps:
       - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
       # The ROCm base image is about 12 GB compressed and over 30 GB unpacked.
       # Free the runner's disk, and use Docker's classic overlay2 store, which
       # drops each compressed layer once it is unpacked (the containerd store
@@ -55,16 +53,12 @@ jobs:
     runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
       - name: Build the CUDA image
         run: docker buildx build -f host/speech/Dockerfile --build-arg FLAVOUR=cuda --output type=cacheonly .
   starters:
     runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22

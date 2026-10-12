@@ -317,7 +317,8 @@ second pairing. Then:
   use the GPU for something else. Resume loads the pinned models again.
   Pause survives a restart. Lyrica falls back to the next model meanwhile.
 - **Logs:** `docker compose logs host-api` in `host/`. They hold event
-  names, ids and counts; never a pairing code or a prompt. The model servers log nothing at all.
+  names, ids and counts; never a pairing code or a prompt. The model
+  servers log nothing at all.
 - **Upgrade:** `git pull && host/install.sh` in the checkout. It rebuilds
   the images and restarts the stack; `.env` keeps the settings, and the
   `data` volume keeps the host's key, so pairing survives.

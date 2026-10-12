@@ -212,8 +212,8 @@ fills the recipe's template in `workflows/` (one per architecture).
 ## Pairing
 
 1. On the dashboard, choose **Pair with Lyrica**. A code like
-   `7KQ2-M9XD-4RTB-W1HZ` appears there and in the log
-   (`docker compose logs host-api`). It works once, for 10 minutes.
+   `7KQ2-M9XD-4RTB-W1HZ` appears there; it is never logged. It works once,
+   for 10 minutes.
 2. In Lyrica, add the host with its addresses (`192.168.1.20`, or its
    tailnet name) and the code. The steps are in the
    [model hosts guide](../docs/guides/model-hosts.md#pair-it-with-lyrica).
