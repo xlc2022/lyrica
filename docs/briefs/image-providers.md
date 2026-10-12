@@ -37,9 +37,13 @@ sizes, count) and how fast and quality map onto its options.
 - **OpenAI-compatible with a key:** today's adapter, no longer limited to
   `gpt-image-*` model IDs; any model the endpoint marks as making images.
 - Results are cleaned to PNG without metadata as today; errors carry codes,
-  never provider text. A provider's content refusal falls down the task's
-  list like any other failure (the existing behavior), so a plan refusal can
-  land on the API key or a local model.
+  never provider text. Outages and limits still fall down the task's list.
+  A content refusal (decided by the user, 2026-10-12) does not: the call
+  stops, the image marker shows the failure with its code, and under it
+  three small text links, not buttons: **Edit message** (the triggering
+  message back in the composer), **Resend**, and **Try <next model>** (the
+  next model in the task's list that is a different endpoint). A new
+  refusal code from the provider adapters marks it apart from other errors.
 
 **B. Use for on cloud models.** A cloud image model can be tagged fast,
 quality or both (default both), like a host recipe, so a cheap model can be
@@ -83,6 +87,8 @@ list, replacing the HTTP-only step in the getting-started guide.
   private or local-only thread never reaches it (test with a fake plan).
 - A keyed endpoint serves a non-`gpt-image` model marked as making images.
 - A cloud model tagged fast-only is skipped for quality and used for fast.
+- A refusal stops with the three links, and Try <next model> makes the
+  image on that model.
 - Hosts and endpoints shows the pills and facts lines in C and D; every
   picker names the endpoint.
 - docs/ux.md (§5 exception, the Hosts and endpoints row), DESIGN.md "Images",
