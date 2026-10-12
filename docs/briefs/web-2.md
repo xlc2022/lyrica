@@ -616,6 +616,21 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   of each user's key in `self.db` (DESIGN.md "Users" and "Storage",
   contracts core/users; the owner chose this over a reset that loses data). Nothing
   for sleep or the pools changes; the privacy boundary note is in DESIGN.
+- 2026-10-12, PR 23 (thread checklist): `src/Checklist.tsx`, as UI review
+  settled it after #185: **Checklist** and its count in the facts line after
+  Context, read from `live.steps` once a `steps` event came, else the
+  summary; the one popover, also from "2 of 5" after a project card's state
+  word, with the current step as the card's first line; the **Checklists**
+  switch under Theme. `ChildInfo` never reaches the web, so a plain parent's
+  "child's card" is the child's start card (`threads start`), fed from the
+  thread list's `ThreadSummary.steps`. Her `threads steps` call is a tool
+  marker, not the "Message to a child thread" card the other actions get.
+  The fake model's "steps: done <a>; doing <b>; todo <c>" sets a list. The
+  stream hadn't listened for `steps`, `wakeups`, `context`, `offline` or
+  `compacted`, so the wake-ups fact, the context meter and "No model can be
+  reached" never heard from it; its list is now a record keyed by
+  `ThreadEvent`'s types. Open: `later` and the other non-start actions still
+  show that card.
 - 2026-10-12, PR 22 (text models): the Text models tab,
   `src/TextModels.tsx`, its pure parts in `src/library.ts` (the group warn
   lines, tested in `web/test/library.test.ts`); `Frame`, the area's

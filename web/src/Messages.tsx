@@ -10,6 +10,8 @@ import { href, idHref } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
 import type { useThread } from "./stream.ts";
 import { SuggestedCard, ThreadCard, type ProjectEnv } from "./Project.tsx";
+import { ChecklistButton, StepLine } from "./Checklist.tsx";
+import { findThread } from "./Thread.tsx";
 import { EditBox, MessageMenu, type Rewinder } from "./Rewind.tsx";
 import { ErrorText, fullTime, Prose, useAction, wakeTime } from "./ui.tsx";
 import { Lightbox, PathText, useFileLinks, type FileLinks } from "./paths.tsx";
@@ -55,7 +57,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   const env: Env = {
     userId: ctx.user.id, you: ctx.user.displayName, pool, base, threadId, subagent, openTools, toggleTool,
     permissions: live.permissions, ticks: live.subagents, show, rewinder, parentTitle, speech, onError: onError ?? (() => {}), project,
-    lastHers: messages.findLast((m) => m.role === "assistant")?.n, large: openLarge,
+    lastHers: messages.findLast((m) => m.role === "assistant")?.n, large: openLarge, threads: ctx.threads,
   };
   // A project's threads whose anchor message is gone sit under the last message instead.
   const anchored = project ? project.overview.threads.filter((t) => t.anchor !== undefined && shownMessagesHave(messages, hideFrom, t.anchor)) : [];
@@ -115,6 +117,8 @@ interface Env {
   speech?: Speech;
   onError: (message: string) => void;
   project?: ProjectEnv;
+  /** The thread list, where a child's card finds its checklist. */
+  threads: ThreadSummary[];
   /** Opens an image from a message large, over the conversation. */
   large: (path: string, files: FileLinks) => void;
 }
@@ -333,7 +337,8 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" }>; e
   if (part.type === "tool" && part.name === "threads") {
     const action = (part.args as { action?: string } | null)?.action;
     if (action === "suggest") return <SuggestedCard part={part} userId={env.userId} pool={env.pool} projectId={env.threadId} env={env.project} />;
-    return <ThreadsCard part={part} env={env} />;
+    // Her checklist shows in the header's facts line; its call is a marker like any tool's.
+    if (action !== "steps") return <ThreadsCard part={part} env={env} />;
   }
   if (part.type === "delegation") return <Notice text={part.text} status={part.status} threads={part.threads} env={env} />;
   let label: React.ReactNode;
@@ -390,20 +395,24 @@ function SubagentCard({ part, env }: { part: Extract<MessagePart, { type: "tool"
   );
 }
 
-/** A `threads` call: a child thread started, messaged or listed, linking to it. */
+/** A `threads` call: a child thread started (with its checklist's count and current step), messaged or listed, linking to it. */
 function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" }>; env: Env }) {
   const args = (part.args ?? {}) as { action?: string; title?: string; task?: string; text?: string; to?: string };
   const state = part.result === undefined ? "running" : part.isError ? "failed" : "done";
   const head = args.action === "start" ? `Child thread: ${args.title ?? ""}` : args.action === "list" ? "Child threads"
     : args.to === "parent" ? "Update to the parent thread" : "Message to a child thread";
+  const started = args.action === "start" ? part.threads?.[0] : undefined;
+  const child = started && findThread(env.threads, started.pool, started.id);
   return (
     <div className="subagent threads-card">
       <div className="sub-head">
         <span className="status" data-state={state} aria-label={state} />
         {/* A thread's title is as the user wrote it, so this head isn't capitalised as a role's is. */}
         <b className="as-is">{head}</b>
+        {!!child?.steps?.length && <ChecklistButton steps={child.steps} card />}
         {args.to === "parent" ? null : <ThreadLinks threads={part.threads} env={env} />}
       </div>
+      {child?.steps && child.state !== "resolved" && <StepLine steps={child.steps} />}
       {(args.task ?? args.text) && <div className="prose"><HerProse text={(args.task ?? args.text)!} env={env} /></div>}
       {part.isError && <ToolError text={String(part.result ?? "")} env={env} />}
     </div>

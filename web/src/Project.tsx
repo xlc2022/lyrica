@@ -6,6 +6,7 @@ import {
   get, patch, post, threadPath, u,
   type AllowedPaths, type GitRepository, type Grant, type MachineInfo, type MessagePart, type ModelRef, type PermissionMode, type Pool, type ProjectOverview, type ThinkingLevel, type ThreadChange, type ThreadSettings, type ThreadSummary,
 } from "./api.ts";
+import { ChecklistButton, StepLine } from "./Checklist.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
@@ -94,8 +95,9 @@ export function ThreadsFact({ userId, overview, phone }: { userId: string; overv
 
 /**
  * One of the project's threads, under the message that started it: its title as written,
- * its state as a dot and a word (and when it next wakes), what it waits on, the last update's first line, and Open,
- * Stop, Resolve or Reopen behind ⋯. A thread waiting on the user counts as waiting for an answer.
+ * its state as a dot and a word (then its checklist's count, and when it next wakes), its current step, what it
+ * waits on, the last update's first line, and Open, Stop, Resolve or Reopen behind ⋯. A thread waiting on the user
+ * counts as waiting for an answer.
  */
 export function ThreadCard({ t, userId, env }: { t: ThreadSummary; userId: string; env: ProjectEnv }) {
   const [open, setOpen] = useState(false);
@@ -115,6 +117,7 @@ export function ThreadCard({ t, userId, env }: { t: ThreadSummary; userId: strin
         {state !== "idle" && state !== "queued" && <span className="status" data-state={state} aria-hidden="true" />}
         <a className="tcard-title" href={open_}>{t.title || "New thread"}</a>
         <span className="tstate" data-state={state}>{stateWord(t)}</span>
+        {!!t.steps?.length && <ChecklistButton steps={t.steps} card />}
         {t.wakeAt && <span className="twake">wakes <span className="num">{wakeTime(t.wakeAt)}</span></span>}
         <span className="msg-menu" ref={ref}>
           <button type="button" className="icon-btn" aria-label={`Actions for ${t.title || "the thread"}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}><Icon name="more" /></button>
@@ -129,6 +132,7 @@ export function ThreadCard({ t, userId, env }: { t: ThreadSummary; userId: strin
           )}
         </span>
       </div>
+      {t.steps && t.state !== "resolved" && <StepLine steps={t.steps} />}
       {line && <p className="tcard-line">{t.needsYou ? <><span className="muted">Waits on you: </span>{line}</> : line}</p>}
       {!line && t.state === "waiting" && !t.needsYou && <p className="tcard-line muted">Waiting for an approval in the thread.</p>}
       <ErrorText error={error} />
