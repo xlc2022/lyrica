@@ -166,8 +166,8 @@ nothing ever removed them. These rules work against that:
 4. **Deleting code counts as progress.** Ask a model for a removal pass
    regularly.
 5. **Docs describe what exists or has been agreed.** Work in progress lives in
-   briefs or issues, not in architecture documents that keep growing. No doc should say "staged,
-   not yet validated."
+   briefs or issues, not in architecture documents that keep growing. No doc
+   should say "staged, not yet validated."
 6. **Tests protect what Li would notice:** context assembly, memory round trips
    and sleep output. Don't add a test for every hypothetical guard.
 7. **Choose what models know best.** Models write almost all of the code and
