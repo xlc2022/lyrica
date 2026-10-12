@@ -30,7 +30,7 @@ export function useSleepOverview(userId: string, display?: Display): SleepState 
   return {
     overview: o.data,
     fresh: display ? o.data?.items.filter((i) => i.new && !hidden(display, i.pool)).length ?? 0 : 0,
-    running: !!o.data?.runs.some((r) => r.status === "running"),
+    running: !!display && !!o.data?.runs.some((r) => r.status === "running" && !hidden(display, r.pool)),
     error: o.error,
     reload: o.reload,
     set: o.set,
