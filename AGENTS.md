@@ -132,5 +132,6 @@ npm test
 npm run evals      # continuity scenarios in evals/; a failure is evidence, not a broken build
 ```
 
-CI runs on the owner's own runner ([docs/ci.md](docs/ci.md)); a job waiting in the
+A test host needs `openssl`, `sqlite3` and `bash` on its PATH; tests run in UTC
+whatever the host's zone. CI runs on the owner's own runner ([docs/ci.md](docs/ci.md)); a job waiting in the
 queue means the runner is busy or offline.
