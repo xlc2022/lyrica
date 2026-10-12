@@ -10,7 +10,8 @@
 # from a file, so that file is written under /tmp, the run's own tmpfs, and
 # is gone when the run ends.
 tool=${0##*/}
-PATH=${PATH#/run/lyrica/bin:}
+# Out of PATH wherever a shell's profile left it, so the real client runs, not this again.
+PATH=$(printf %s ":$PATH:" | sed -e ':a' -e 's#:/run/lyrica/bin/*:#:#' -e 'ta' -e 's#^:##' -e 's#:$##')
 export PATH
 unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN GH_HOST
 export XDG_CONFIG_HOME=/tmp/lyrica-forge
