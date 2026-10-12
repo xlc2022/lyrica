@@ -540,7 +540,9 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
     code shown if asked, and approves; Finish waits for xAI to confirm.
   A sign-in under way is held in `lyricad`'s memory for 10 minutes, one per
   user, and belongs to the user who started it. Neither the address nor
-  any token is logged.
+  any token is logged. A provider's HTTP refusal reaches the interface as
+  one fixed line with its status (`planError`), never the provider's own
+  text, which may echo what it was sent.
 - **Calls.** In the runtime a plan is Pi's `openai` or `xai` provider
   (Responses API) under the endpoint's ID, offering only its listed models
   and signing in only with the plan. The runtime's credential store
@@ -548,7 +550,8 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   refresh back, one refresh at a time per plan across the process. A
   refresh the provider refuses (400 or 401) signs the plan out:
   `signedOut`, which the router skips ("is signed out") until **Sign in
-  again**; a refresh that fails any other way changes nothing.
+  again**; a refresh that fails any other way changes nothing. Either
+  reaches the thread as `planError`'s fixed line.
 - **Models** come from Pi's catalogue for that provider (`planCatalog`,
   given to core with `setPlanCatalog`), not `/v1/models`, with their
   context windows, vision and thinking.

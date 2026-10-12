@@ -285,7 +285,7 @@ A thread's address may carry what the panel beside it shows:
   [briefs/web-bootstrap.md](briefs/web-bootstrap.md)): while
   `GET /api/state` says `setup`, this page stands where the unlock page
   would. One card, steps as sections with eyebrows: Code and passphrase
-  (the code from the journal or `lyrica admin setup-code`, the passphrase
+  (the code from `lyrica admin setup-code`, the passphrase
   twice, **Start unlocked** when `State.credentials` allows it, else the
   reason), her name, Administrator (login, password, name, pronouns);
   **Create** posts `/api/setup` and the page continues signed in as that

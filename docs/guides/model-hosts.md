@@ -160,8 +160,8 @@ the host's key to a short-lived code, so neither side ever trusts an
 address.
 
 1. On the dashboard choose **Pair with Lyrica**. A code like
-   `7KQ2-M9XD-4RTB-W1HZ` appears there and in `docker compose logs
-   host-api`. It works once, for 10 minutes, and 5 wrong tries void it.
+   `7KQ2-M9XD-4RTB-W1HZ` appears there; it is never logged. It works once,
+   for 10 minutes, and 5 wrong tries void it.
 2. In Lyrica, open Models, Hosts and endpoints, **Add model host**. Give
    the host a name, its addresses one per line in the order to try them
    (LAN address first, tailnet name second, say) and the pairing code.
@@ -317,8 +317,7 @@ second pairing. Then:
   use the GPU for something else. Resume loads the pinned models again.
   Pause survives a restart. Lyrica falls back to the next model meanwhile.
 - **Logs:** `docker compose logs host-api` in `host/`. They hold event
-  names, ids and counts, and the pairing code while it is valid; never a
-  prompt. The model servers log nothing at all.
+  names, ids and counts; never a pairing code or a prompt. The model servers log nothing at all.
 - **Upgrade:** `git pull && host/install.sh` in the checkout. It rebuilds
   the images and restarts the stack; `.env` keeps the settings, and the
   `data` volume keeps the host's key, so pairing survives.

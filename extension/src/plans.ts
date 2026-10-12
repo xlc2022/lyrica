@@ -32,6 +32,17 @@ export function planProvider(ep: Endpoint & { api: PlanKind }, modelIds: string[
 /** OpenAI or xAI refused the refresh token: the sign-in is over, not just unreachable. */
 const refused = (e: unknown) => /token request failed \((400|401)\)|token refresh failed \(HTTP (400|401)\)/.test(e instanceof Error ? e.message : String(e));
 
+/**
+ * A provider's error as she and the interface see it: an HTTP refusal is one
+ * fixed line with its status, since the provider's own text may echo what it
+ * was sent; anything else keeps its first line.
+ */
+export function planError(e: unknown, what: string): Error {
+  const m = e instanceof Error ? e.message : String(e);
+  const status = /\((\d{3})\)|HTTP (\d{3})/.exec(m);
+  return new Error(status ? `${what} was refused (HTTP ${status[1] ?? status[2]})` : m.split("\n")[0]!.slice(0, 200));
+}
+
 /** One refresh at a time per plan, across every runtime in this process. */
 const chains = new Map<string, Promise<unknown>>();
 function serially<T>(key: string, task: () => Promise<T>): Promise<T> {
@@ -75,7 +86,7 @@ export class PlanCredentials implements CredentialStore {
         next = await fn(current);
       } catch (e) {
         if (refused(e)) this.models.setPlanCredential(this.userId, id, null);
-        throw e;
+        throw planError(e, "The plan's sign-in refresh");
       }
       if (next && next !== current) {
         if (next.type !== "oauth") throw new Error("a plan signs in with its provider, not an API key");
@@ -132,7 +143,7 @@ export async function startPlanSignIn(kind: PlanKind, installationId: string): P
     .catch((e: unknown) => {
       // Pi's ChatGPT listener holds 127.0.0.1:1455 for one sign-in at a time on this server.
       if (/Port \d+ is in use/.test(e instanceof Error ? e.message : "")) throw new Error("Another sign-in is under way on this server. Try again in a few minutes.");
-      throw e;
+      throw planError(e, `The ${kind === "chatgpt" ? "ChatGPT" : "Grok"} sign-in`);
     });
   login.catch(() => {});
   const first = await Promise.race([show, login.then(() => { throw new Error("the sign-in gave no address to open"); })]);

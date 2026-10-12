@@ -38,6 +38,47 @@ export interface ExecutionTarget {
   folders(): string[];
   /** Runs argv, no shell, under the target's own network rules (the sandbox has it; web_fetch uses it). */
   run?(argv: string[], o?: { signal?: AbortSignal; timeoutMs?: number }): Promise<{ code: number | null; stdout: Buffer; stderr: Buffer }>;
+  /** The credentials its runs hold (the sandbox's tokens), so they can be hidden in output and kept out of calls that leave. */
+  secrets?(): string[];
+}
+
+export const SECRET_HIDDEN = "[credential hidden]";
+
+/** Whether `text` holds any of `secrets`. */
+export const holdsSecret = (text: string, secrets: readonly string[]): boolean => secrets.some((s) => text.includes(s));
+
+/** `content` with each of `secrets` replaced. Bytes are kept as they are otherwise. */
+export function maskSecrets(content: Buffer, secrets: readonly string[]): Buffer {
+  if (!secrets.length) return content;
+  let s = content.toString("latin1");
+  let changed = false;
+  for (const secret of secrets) {
+    const raw = Buffer.from(secret).toString("latin1");
+    if (s.includes(raw)) { s = s.split(raw).join(SECRET_HIDDEN); changed = true; }
+  }
+  return changed ? Buffer.from(s, "latin1") : content;
+}
+
+/**
+ * Passes output on with each of `secrets` replaced, holding back the last
+ * few bytes of each chunk so a secret split across two chunks is caught too.
+ */
+export function secretMasker(secrets: readonly string[], onData: (data: Buffer) => void): { push(data: Buffer): void; end(): void } {
+  const keep = Math.max(0, ...secrets.map((s) => Buffer.byteLength(s) - 1));
+  if (!secrets.length) return { push: onData, end: () => {} };
+  let held: Buffer = Buffer.alloc(0);
+  return {
+    push(data) {
+      const all = maskSecrets(Buffer.concat([held, data]), secrets);
+      const cut = Math.max(0, all.length - keep);
+      held = all.subarray(cut);
+      if (cut) onData(all.subarray(0, cut));
+    },
+    end() {
+      if (held.length) onData(maskSecrets(held, secrets));
+      held = Buffer.alloc(0);
+    },
+  };
 }
 
 /** Image type from the first bytes of a file, for the types Pi's read tool shows as images. */

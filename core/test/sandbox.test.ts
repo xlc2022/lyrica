@@ -78,9 +78,12 @@ describe.skipIf(!runnable)("the sandbox", () => {
     const env = gitEnv([{ name: "li/home", account: { kind: "forgejo", host: "forge.lan", account: "li", token: "forge-token" } }]);
     const git = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], env });
     const r = await sh("command -v gh tea; git init -q home && git -C home remote add origin https://forge.lan/li/home.git && cd home && "
-      + "{ tea 2>/dev/null; cat /tmp/lyrica-forge/tea/config.yml; }; cd .. && rm -rf home", git);
+      + "{ tea 2>/dev/null; grep -q \"token: 'forge-token'\" /tmp/lyrica-forge/tea/config.yml && echo HAS-TOKEN; cat /tmp/lyrica-forge/tea/config.yml; }; cd .. && rm -rf home", git);
     expect(r.out).toContain("/run/lyrica/bin/gh\n/run/lyrica/bin/tea\n");
-    expect(r.out).toContain("token: 'forge-token'");
+    expect(r.out).toContain("HAS-TOKEN");
+    // What she sees never shows it: not in the file she prints, not in her environment.
+    expect(r.out).toContain("token: '[credential hidden]'");
+    expect((await sh("env; echo \"$LYRICA_GIT_TOKEN_0\"", git)).out).not.toContain("forge-token");
     expect((await sh("ls /tmp/lyrica-forge 2>&1 || true", git)).out).toContain("No such file");
     expect((await sh("command -v gh || echo NONE")).out).not.toContain("/run/lyrica");
   });

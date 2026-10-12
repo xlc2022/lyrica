@@ -35,6 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           fetch-depth: 0
       - id: diff
         env:
@@ -69,6 +70,8 @@ jobs:
     runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -104,6 +107,8 @@ jobs:
     runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -163,6 +168,8 @@ jobs:
     runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - run: mkdir -p "$RUNNER_TEMP/models"
       # Build the images first: Docker 29 hands build steps the loopback
       # resolver below as is, and they can't reach it. (GitHub's runners have

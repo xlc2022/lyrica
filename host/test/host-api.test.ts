@@ -217,14 +217,14 @@ describe("dashboard", () => {
     expect((await call({ port: tls, path: "/dashboard/me", headers: { host: "test-host.tail1234.ts.net.evil.example" } })).status).toBe(403);
   });
 
-  it("logs no pairing secrets other than the code itself, and no passwords", async () => {
+  it("logs no pairing secrets, not even the code, and no passwords", async () => {
     const lines: string[] = [];
     const { tls, local: lp } = await host({ log: (event: string, fields?: object) => lines.push(JSON.stringify({ event, ...fields })) });
     await local(lp, "/dashboard/password", { body: { password: "marker-password-123" } });
     const me: Identity = lyrica();
     await pair(tls, me, await code(lp));
     const log = lines.join("\n");
-    expect(log).toContain("pairing code");
+    expect(log).toContain("pairing code made");
     expect(log).not.toContain("marker-password-123");
     expect(log).not.toContain("proof");
   });

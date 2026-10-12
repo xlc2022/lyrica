@@ -237,6 +237,7 @@ export interface EndpointInfo {
   kind: "cloud" | "local";
   /** A plain OpenAI-compatible server, a paired model host (always local), or a ChatGPT or Grok plan (always cloud, never shared). */
   api: "openai-compatible" | "host" | "chatgpt" | "grok";
+  /** Query values named like a credential show as •••; sent back unchanged in a PATCH, they keep the stored value. */
   baseUrl: string;
   /** A host's addresses, tried in order. */
   addresses?: string[];
@@ -670,7 +671,7 @@ export interface GitRepository { name: string; account: string }
 /** GET /api/u/:userId/mcp-servers → McpServerInfo[]. The token is never sent back. */
 export interface McpServerInfo {
   name: string;
-  /** Its streamable HTTP address. */
+  /** Its streamable HTTP address. Query values named like a credential show as •••, as in EndpointInfo.baseUrl. */
   url: string;
   /** host or host:port, from the URL. */
   host: string;

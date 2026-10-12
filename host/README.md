@@ -344,8 +344,7 @@ revoked. A revoked server must pair again.
   only by host-api's user. The state is paired clients, the password hash,
   pause, GPU settings, model placements and serving settings, pins,
   measured VRAM and usage counts. Prompts are never stored, and host-api's
-  log has no text: only event names, IDs and counts, plus the pairing code
-  while it's valid.
+  log has no text: only event names, IDs and counts, never the pairing code.
 - Images are pinned by digest. `host-api` is built from this checkout by
   `install.sh`, and CI builds the stack on pull requests that touch `host/`.
 - `test/stack/network.sh` checks the network layout on a running stack.
