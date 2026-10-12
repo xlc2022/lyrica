@@ -2,7 +2,7 @@
 // In progress then Finished, read again every 2 s while anything runs; the Download text model page; and Accounts,
 // the hub tokens for gated repositories. A host's downloads need its management, so a shared host's need an
 // administrator, and only those hosts are listed. Its pure parts are in src/downloads.ts.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { del, get, patch, post, put, u, type GroupInfo, type GroupSuggestion, type HostStatus, type Hub, type HubTokenInfo, type ModelsPage } from "./api.ts";
 import { downloadWords, fileChoices, fileLink, HUB_WORD, isRunning, repoName, size, type HostDownload, type HubFiles } from "./downloads.ts";
 import { canEdit, Frame, hostOf, type MCtx } from "./ModelsFrame.tsx";
@@ -182,8 +182,8 @@ function Accounts({ ctx }: { ctx: MCtx }) {
               <li key={hub} className="acct" data-hub={hub}>
                 <form className="acct-form" onSubmit={(e) => { e.preventDefault(); if (token.trim()) void save(); }}>
                   <b>{HUB_WORD[hub]}</b>
-                  <label className="field"><span>Access token (read-only is enough)</span>
-                    <input type="password" className="mono" autoComplete="off" autoCapitalize="none" spellCheck={false} autoFocus value={token} onChange={(e) => setToken(e.target.value)} />
+                  <label className="field"><span>Access token</span>
+                    <input type="password" className="mono" title="A read-only token is enough." autoComplete="off" autoCapitalize="none" spellCheck={false} autoFocus value={token} onChange={(e) => setToken(e.target.value)} />
                   </label>
                   {ctx.user.admin && (
                     <div className="seg" role="group" aria-label="Who can use it">
@@ -258,10 +258,14 @@ export function useLookup(userId: string, hostId: string | undefined, source: Hu
 
 /** The Repository field and Look up, for Hugging Face and ModelScope. */
 export function RepoField({ look, placeholder }: { look: ReturnType<typeof useLookup>; placeholder: string }) {
+  const id = useId();
   return (
-    <form className="lookup" onSubmit={(e) => { e.preventDefault(); look.lookUp(); }}>
-      <input className="mono" aria-label="Repository" autoCapitalize="none" spellCheck={false} placeholder={placeholder} value={look.repo} onChange={(e) => look.type(e.target.value)} />
-      <button disabled={look.busy || !look.repo.trim()}>Look up</button>
+    <form className="field repo" onSubmit={(e) => { e.preventDefault(); look.lookUp(); }}>
+      <label htmlFor={id}>Repository</label>
+      <div className="lookup">
+        <input id={id} className="mono" autoCapitalize="none" spellCheck={false} placeholder={placeholder} value={look.repo} onChange={(e) => look.type(e.target.value)} />
+        <button disabled={look.busy || !look.repo.trim()}>Look up</button>
+      </div>
     </form>
   );
 }

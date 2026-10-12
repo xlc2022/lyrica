@@ -2222,7 +2222,7 @@ test("Downloads: the queue shows progress with Cancel and how each ended, Accoun
   const hf = page.locator("li.acct[data-hub=huggingface]");
   await expect(hf).toContainText("No token");
   await hf.getByRole("button", { name: "Add a Hugging Face token" }).click();
-  const field = hf.getByLabel("Access token (read-only is enough)");
+  const field = hf.getByLabel("Access token");
   await expect(field).toHaveAttribute("type", "password");
   await field.fill("hf_madeUpToken1234abcd");
   await expect(hf.getByRole("group", { name: "Who can use it" })).toBeVisible();

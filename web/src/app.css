@@ -1193,6 +1193,7 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 .dl-form .seg { justify-self: start; flex-wrap: wrap; }
 .dl-form .seg button { padding: 0 12px; }
 .lookup { display: flex; flex-wrap: wrap; gap: 8px; }
+.field.repo > label { color: var(--muted); font-size: 13px; }
 .lookup input { flex: 1 1 240px; }
 .note.gated { grid-template-columns: minmax(0, 1fr); }
 .choices { display: grid; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); }
