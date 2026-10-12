@@ -37,8 +37,10 @@ back each other up.
 
 ## The machine
 
-- Linux. Debian or Ubuntu are what the script is written for; other
-  distributions should work.
+- Linux. `host/install.sh` is written and documented for Debian or
+  Ubuntu only. On NixOS it would need `virtualisation.docker` and, for
+  NVIDIA, `hardware.nvidia-container-toolkit.enable` in the system
+  configuration; nobody has run it there yet.
 - The GPU driver: NVIDIA's, or `amdgpu` (with ROCm kernel support,
   `/dev/kfd`, for the ROCm backend).
 - Docker with the compose plugin, using its **iptables** firewall backend
