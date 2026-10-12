@@ -35,7 +35,7 @@ Return the minimum another agent needs in order to act:
   {
     name: "researcher",
     description: "Researches a question and returns a short, sourced brief.",
-    tier: "cheap", tools: READ, readOnly: true, thinking: "medium",
+    tier: "cheap", tools: [...READ, "web_search", "web_fetch"], readOnly: true, thinking: "medium",
     prompt: `You are the researcher. Answer the question directly, with a concise, well-sourced brief.
 - Split the question into two to four angles, and look into each.
 - Prefer primary, official and recent sources; drop stale or redundant ones. Read the source itself when a claim matters.

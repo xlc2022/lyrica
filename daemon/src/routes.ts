@@ -2,6 +2,7 @@ import {
   AuthError, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, firstLine, GIT_KINDS, sentenceCiting, splitId,
   type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
+  searxngAddress, searxngStatus, setSearxngAddress,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
@@ -1297,6 +1298,17 @@ export function apiRoutes(d: Lyricad): Route[] {
       d.keyring.self().prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('sleep.time', ?)").run(time);
       return { time };
     }),
+    route("GET", `${u}/admin/web-search`, async (r): Promise<Api.WebSearch> => {
+      d.adminFor(r);
+      const searxng = searxngAddress(d.keyring.self());
+      return { searxng, ...await searxngStatus(searxng) };
+    }),
+    route("PUT", `${u}/admin/web-search`, async (r): Promise<Api.WebSearch> => {
+      d.adminFor(r);
+      const { searxng } = await r.json<Pick<Api.WebSearch, "searxng">>();
+      const saved = setSearxngAddress(d.keyring.self(), typeof searxng === "string" ? searxng : null);
+      return { searxng: saved, ...await searxngStatus(saved) };
+    }),
     route("GET", `${u}/admin/proposals`, (r): Api.PersonaProposal[] => {
       d.adminFor(r);
       const files = s().persona.files();
@@ -1811,7 +1823,8 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     localOnly: ctx.localOnly,
     internet: tw.internet, services: tw.services, hosts: tw.hosts,
     network: workspace.network({ userId: user.id, pool, threadId }),
-    grants: applies.grants, machines: applies.machines, repositories: applies.repositories, mode: applies.mode, webSearch: applies.webSearch, images: applies.images, unlogged: isUnlogged, parent: tw.parent,
+    grants: applies.grants, machines: applies.machines, repositories: applies.repositories, mode: applies.mode, webSearch: applies.webSearch,
+    searchProvider: !!searxngAddress(d.keyring.self()), images: applies.images, unlogged: isUnlogged, parent: tw.parent,
     speech: speechState(models, ctx),
     fallback: models.threadFallback(user.id, threadId), fallbackOn: ctx.fallback !== false,
     allowed: models.allowed(ctx).map(({ endpoint }) => endpointInfo(d, user.id, endpoint.id)),

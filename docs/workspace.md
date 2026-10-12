@@ -450,6 +450,25 @@ How it is enforced:
   self-test refuses network, machine calls fail too. Model calls come from
   `lyricad`, so local-only and the switches are independent.
 
+## Web
+
+The **Web search** switch gives her two tools (`extension/src/web.ts`,
+`core/src/web.ts`):
+- `web_search` asks the server's one SearXNG, set by an administrator in
+  Administration → Web search, from `lyricad`. It is offered only while an
+  address is set, in every thread, private and local-only included.
+  SearXNG hides who is asking from the search engines it uses, but forwards
+  the query text to them, so a private thread's query leaves her network as
+  an anonymous query. Setting one up: [guides/searxng.md](guides/searxng.md).
+- `web_fetch` runs `curl` in the thread's sandbox, the URL one argument,
+  so the internet switch and allowed hosts above decide what it can reach:
+  a private thread with internet off reads only its allowed hosts. It
+  follows up to 5 redirects, gives up after 20 seconds or 2 MB, and reads
+  only http and https. `lyricad` turns HTML into text with html-to-text
+  (headings, paragraphs, list items, links with their URL; no scripts,
+  styles or navigation), passes text and JSON through, refuses other types,
+  and cuts the result to `maxChars`, saying so. Nothing is written to disk.
+
 ## Git accounts and repositories
 
 She works on code the way Claude's project threads do: a project lists

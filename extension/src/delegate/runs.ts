@@ -9,6 +9,7 @@ import {
 import type { ThreadContext } from "../index.ts";
 import { syncEntries, toStoredEntry } from "../record.ts";
 import { openThreadSession } from "../session.ts";
+import { createWebExtension } from "../web.ts";
 import { createWorkspaceExtension, type ApprovalRequest } from "../workspace.ts";
 import { rolesFor } from "./roles.ts";
 import { createDelegateExtension, createSubagentExtension } from "./tool.ts";
@@ -51,6 +52,8 @@ export interface DelegationOptions {
   approve?: (request: SubagentApproval, signal: AbortSignal) => Promise<boolean>;
   /** Her name for this deployment, for the subagents' preamble and the ask_parent label. Lyrica without it. */
   name?: () => string;
+  /** The server's SearXNG address, for a subagent's web_search. */
+  searxng?: () => string | null;
 }
 
 /** A subagent's tool call waiting for approval: which subagent, and what exactly. */
@@ -895,6 +898,8 @@ export class Delegation {
         // no repositories, so a narrowed or read-only subagent, or a writer in a worktree, can't change them.
         const { setMode: _own, cloneRepositories: _fetched, addRepository: _asks, ...tools } = workspace.forThread({ ...p, threadId: child.id, reposOf: parent.threadId, reposReadOnly: noMachines });
         extensions.push(createWorkspaceExtension({ ...tools, approve: (r) => this.approve(sub!, r) }));
+        // Its role says whether it searches; its Web search switch is its parent's or off.
+        extensions.push(createWebExtension({ searxng: () => this.o.searxng?.(), target: () => tools.target() }));
       }
       const nested = this.depth(ctx) < this.limits.depth;
       if (nested) extensions.push(createDelegateExtension(ctx, this, run.budget));

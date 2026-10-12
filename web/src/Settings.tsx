@@ -168,7 +168,7 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
               {MODE_ORDER.map((m) => <option key={m} value={m} title={MODES[m].description}>{MODES[m].label}</option>)}
             </select>
           </label>
-          <Switch label="Web search" checked={settings.webSearch} onChange={(v) => change({ webSearch: v })} />
+          <Switch label="Web search" hint={settings.searchProvider ? undefined : "Search needs a SearXNG address in Administration"} checked={settings.webSearch} onChange={(v) => change({ webSearch: v })} />
           <Switch label="Images" checked={settings.images} onChange={(v) => change({ images: v })} />
           <Switch label="Do not log thread in memory" hint="She can still read her memory here. Subagents inherit this."
             checked={settings.unlogged} onChange={(v) => change({ unlogged: v })} />

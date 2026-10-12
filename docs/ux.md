@@ -121,7 +121,8 @@ Rules:
   Updates, Update, Roll back, Running, Updating, Draining, Building, Testing,
   Probation, Set up Lyrica, Persona, Tailnet, Connect, Disconnect, Leave,
   Stay, Auth key, Hostname, Control server, Skip, Remove,
-  Use a host outside your network?, Add anyway, Save anyway, Keep, Look up.
+  Use a host outside your network?, Add anyway, Save anyway, Keep, Look up,
+  Web search, SearXNG address, Reachable.
 - Numbers get units beside the field (GB, %, tokens), and a maximum shown
   where one exists ("of 128k").
 
@@ -205,6 +206,7 @@ Rules:
 | Setting her up (no `self.db` yet) | the **Set up Lyrica** page in the unlock page's place: one h1, steps as sections with eyebrows (Code and passphrase, Lyrica, Administrator, Tailnet, Models, Done); the current step's button the one primary, a done step's secondary; Skip as a link on the optional steps; the code, addresses and names in mono; no captions. Each step's button applies at once, as the Add machine page's do |
 | Her name | **Name** at the top of Administration's **Persona** section (the Persona changes section, renamed), one Save with its one sentence; shown wherever the interface says Lyrica |
 | The tailnet | the **Tailnet** section of Administration: a facts line in mono (tailnet, address, MagicDNS name, control server), one state (Connected green, Disconnected amber, Not installed red, Not joined the word alone); **Connect** primary and **Disconnect** secondary; Leave and Connect to another tailnet behind ⋯; Disconnect and Leave each confirmed by a **dialog** with its one sentence (**Disconnect** / **Stay connected**, **Leave** / **Stay**); joining happens in the **drawer** (Auth key, Hostname, Advanced → Control server) |
+| A web search provider | the **Web search** section of Administration: one field, **SearXNG address** (a URL, in mono), one **Save**, and a status line beneath as a dot and a word (Reachable green, Unreachable amber with what failed as its tooltip; nothing when unset). Without an address, the "+" menu's and the thread drawer's **Web search** switch stays usable (it gives `web_fetch`) with the tooltip "Search needs a SearXNG address in Administration" |
 | Web access over the tailnet, or straight to the machine | the **Tailnet** and **Direct** modes of Web access, next to Off, Built-in Caddy and External proxy; their state lines show the name and the certificate, or the addresses and the fingerprint in mono, as the other modes do |
 | A project's usage | a fact in the project chat's facts line ("312k tokens"; on a phone, the first line of the Threads popover); the breakdown in Models → Recent calls, filtered to the project |
 

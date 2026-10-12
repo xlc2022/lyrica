@@ -36,6 +36,8 @@ export interface ExecutionTarget {
   ops(): ToolOps;
   /** Host folders, or `<ssh name>:<path>`, for pages about them. */
   folders(): string[];
+  /** Runs argv, no shell, under the target's own network rules (the sandbox has it; web_fetch uses it). */
+  run?(argv: string[], o?: { signal?: AbortSignal; timeoutMs?: number }): Promise<{ code: number | null; stdout: Buffer; stderr: Buffer }>;
 }
 
 /** Image type from the first bytes of a file, for the types Pi's read tool shows as images. */
