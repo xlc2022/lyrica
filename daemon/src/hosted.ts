@@ -5,7 +5,7 @@ import {
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  appendUserMessage, ContextMeter, createDelegateExtension, createLyricaExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, OPENING, openThreadSession, piModelFor, syncEntries,
+  appendUserMessage, ContextMeter, createDelegateExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, OPENING, openThreadSession, piModelFor, syncEntries,
   GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
@@ -135,6 +135,11 @@ export class ThreadHost {
     const t = this.threads.get(`${userId}/${pool}/${threadId}`);
     t?.reload();
     t?.publish({ type: "settings" });
+  }
+
+  /** Something every thread of the user reads changed (an MCP server): each open session reopens at its next turn, and open views fetch settings again. */
+  reloadUser(userId: string): void {
+    for (const t of this.threads.values()) if (t.userId === userId) { t.reload(); t.publish({ type: "settings" }); }
   }
 
   /** A project's thread changed state: the project chat's open views update its card. Creates no record. */
@@ -719,8 +724,11 @@ export class HostedThread {
     if (!p) return false;
     if (p.request.tool === "propose_plan" && allow && !GO_AHEAD.includes(mode!)) throw new Error("say which mode to go ahead in: ask, acceptEdits or auto");
     if (allow && allowInThread) {
-      if (!p.request.suspect) throw new Error("only a suspect command can be allowed in this thread");
-      this.o.workspace.settings(this.userId).allowInThread(p.request.subagent?.threadId ?? this.threadId, p.request.machine!, suspectKey(p.request.tool, p.request.args));
+      // Stored for the thread the call runs in: a subagent's own, never its parent's.
+      const where = p.request.subagent?.threadId ?? this.threadId;
+      if (p.request.server && p.request.serverTool) this.o.workspace.settings(this.userId).allowToolInThread(where, p.request.server, p.request.serverTool);
+      else if (!p.request.suspect) throw new Error("only a suspect command or an MCP tool can be allowed in this thread");
+      else this.o.workspace.settings(this.userId).allowInThread(where, p.request.machine!, suspectKey(p.request.tool, p.request.args));
     }
     p.done(allow, "answered", allow ? mode : undefined);
     return true;
@@ -768,6 +776,8 @@ export class HostedThread {
           }),
           // web_search and web_fetch, behind the Web search switch; a fetch runs in the thread's sandbox.
           createWebExtension({ searxng: () => this.o.searxng?.(), target: () => tools.target() }),
+          // Pi's MCP client and tool_search, only while the thread has a server: a change of grants reopens the session.
+          ...(tools.settings().mcpServers.length ? [createMcpServersExtension(tools)] : []),
           ...(canDelegate ? [createDelegateExtension(ctx, delegation)] : []),
           // Child threads and compacting. Never a subagent's: a subagent works for its run, not on streams of its own.
           ...(!thread.subagent ? [createThreadsExtension(ctx, this.o.threads, meter)] : []),
@@ -995,6 +1005,7 @@ function conversationLine(entry: unknown): string {
 
 /** A call on a machine: its name and folder, and for a suspect command the warning. */
 function onMachine(r: ApprovalRequest): Partial<PermissionRequest> {
+  if (r.server) return { server: r.server, ...(r.serverTool ? { serverTool: r.serverTool } : {}) };
   if (!r.machine) return {};
   return { machine: r.machine, ...(r.cwd ? { cwd: r.cwd } : {}), ...(r.warning ? { suspect: true as const, warning: r.warning } : {}) };
 }

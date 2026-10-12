@@ -647,6 +647,68 @@ test("Git accounts show their state, and a thread's Repositories adds from what 
   await noHorizontalScroll(page);
 });
 
+test("MCP servers: one is checked before it's saved, granted in a thread's drawer, and a call that writes asks on a card", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const url = `http://127.0.0.1:${Number(new URL(baseURL!).port) + 30}/mcp`;
+  const shot = async (name: string) => {
+    if (!process.env.SCREENSHOTS) return;
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.screenshot({ path: `${process.env.SCREENSHOTS}/${name}-${page.viewportSize()!.width}-${colorScheme}.png` });
+    }
+    await page.emulateMedia({ colorScheme: null });
+  };
+  await page.goto(`/#/u/${userId}/settings/mcp`);
+  const section = page.getByRole("region", { name: "MCP servers", exact: true });
+  await expect(section).toContainText("None yet.");
+  await section.getByRole("button", { name: "Add server" }).click();
+  const adding = page.getByRole("complementary", { name: "Add server" });
+  await adding.getByLabel("Name").fill("house");
+  await adding.getByLabel("URL").fill("http://127.0.0.1:9/mcp");
+  await adding.getByRole("button", { name: "Add server" }).click();
+  // Nothing answers there, so nothing is saved.
+  await expect(adding.getByRole("alert")).toContainText("didn't answer");
+  await adding.getByLabel("URL").fill(url);
+  await adding.getByRole("button", { name: "Add server" }).click();
+  const row = section.locator(".machine-row", { hasText: "house" });
+  await expect(row).toContainText(`${new URL(url).host} · general · 2 tools`);
+  await expect(row).toContainText("Online");
+  await noHorizontalScroll(page);
+  await shot("mcp-settings");
+  await section.getByRole("button", { name: /^house/ }).click();
+  const drawer = page.getByRole("complementary", { name: "house" });
+  await expect(drawer.getByLabel("URL")).toHaveValue(url);
+  await expect(drawer.getByLabel("Token")).toHaveCount(0);
+  await shot("mcp-drawer");
+  await drawer.getByRole("button", { name: "Close" }).click();
+
+  await newThread(page, "General");
+  await send(page, "Hello");
+  await expect(page.getByText("You said: Hello")).toBeVisible();
+  const settings = await openSettings(page);
+  const servers = settings.getByRole("group", { name: "MCP servers" });
+  await servers.getByRole("button", { name: "Add server" }).click();
+  const pick = page.getByRole("dialog", { name: "Add server" });
+  await expect(pick.getByRole("button", { name: /house/ })).toBeVisible();
+  await expect(pick.getByRole("link", { name: "MCP servers ›" })).toBeVisible();
+  await noHorizontalScroll(page);
+  await shot("mcp-thread");
+  await pick.getByRole("button", { name: /house/ }).click();
+  await expect(servers.locator(".folder", { hasText: "house" })).toBeVisible();
+  await expect(page.locator(".tfacts")).toContainText("house");
+  await settings.getByRole("button", { name: "Close" }).click();
+
+  await send(page, "mcp: turn_on");
+  const card = page.getByRole("group", { name: "Allow house's turn_on?" });
+  await expect(card).toContainText("light.kitchen");
+  await noHorizontalScroll(page);
+  await shot("mcp-approval");
+  await card.getByRole("button", { name: "Allow in this thread" }).click();
+  const marker = page.locator(".marker", { hasText: "turn_on" });
+  await expect(marker).toContainText("house");
+  await expect(marker).toContainText("done");
+});
+
 test("an administrator sees how Lyrica is reached", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}/admin/web`);

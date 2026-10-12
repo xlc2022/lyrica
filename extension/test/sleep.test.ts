@@ -195,7 +195,7 @@ describe("a night's sleep", () => {
     const g = s.view("general");
     const p = s.view("private");
     const general = s.talk(g, "I run a homelab.", "{user} runs a homelab");
-    const secret = s.talk(p, "I'm seeing a therapist.", "{user} sees a therapist");
+    const secret = s.talk(p, "I'm seeing Dr. Okafor.", "{user} sees Dr. Okafor");
     const openSpy = vi.spyOn(s.memory, "openThreadView");
 
     s.script({ consolidate: [call("write_page", { slug: "health", title: "Health", summary: "private", text: `Therapy [${secret.note}], and the homelab helps [general/${general.note}].` })] });
@@ -207,7 +207,7 @@ describe("a night's sleep", () => {
     expect(s.cloud.requests).toHaveLength(0);
 
     openSpy.mockClear();
-    s.script({ consolidate: [(c) => { expect(said(c)).not.toContain("therapist"); return call("recall", { query: "therapist" }); }, (c) => { expect(said(c).split("therapist").length).toBe(2); return { text: "Done." }; }] });
+    s.script({ consolidate: [(c) => { expect(said(c)).not.toContain("Okafor"); return call("recall", { query: "Okafor" }); }, (c) => { expect(said(c).split("Okafor").length).toBe(2); return { text: "Done." }; }] });
     await s.sleep.run(s.li.id, "general", "manual");
     expect(openSpy.mock.calls.map((c) => c[1])).toEqual(["general"]);
     // General sleep ran on the cloud profile's model.

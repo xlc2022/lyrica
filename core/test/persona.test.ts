@@ -13,7 +13,7 @@ describe("persona", () => {
 
     const persona = store.read();
     expect(persona.core.map((f) => f.path)).toEqual(["SOUL.md", "STYLE.md", "REGISTER.md"]);
-    expect(persona.topics.map((t) => t.id)).toEqual(["literature", "music", "language", "narrative", "organization", "memory"]);
+    expect(persona.topics.map((t) => t.id)).toEqual(["engineering", "leadership", "literature", "music", "language", "narrative", "organization", "memory"]);
     expect(persona.topics.every((t) => t.text.length > 0 && t.triggers.length > 0)).toBe(true);
     expect(store.revisions("SOUL.md")).toHaveLength(1);
   });

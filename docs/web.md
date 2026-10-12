@@ -73,8 +73,8 @@ A thread's address may carry what the panel beside it shows:
 - **Thread:** a header with the title; under it the pool word, the model
   badge (cloud or local, model and endpoint; it opens the model picker), the
   thread's group as a link that changes it, the folders as words with the
-  paths in their tooltip, and the granted machines' and repositories' names
-  in mono; at the right a Settings button. Below it the conversation and the composer.
+  paths in their tooltip, and the granted machines', repositories' and MCP
+  servers' names in mono; at the right a Settings button. Below it the conversation and the composer.
   After the group, **Context** and the percent (`src/ContextMeter.tsx`)
   open a popover of the parts, the reserve and what's free, when measured,
   and the last turn's speed. It reads `ThreadSettings.context` and then each
@@ -131,14 +131,14 @@ A thread's address may carry what the panel beside it shows:
   threads** switches (`watchThreads`; the tooltip says what a look does), **New
   threads** (Model, Thinking and Fallback the project's threads start with;
   "This chat's model", "This chat's fallback" follow the project chat), **This chat** (Model, Mode,
-  Group, then **Folders**, **Machines** and **Repositories**, the drawer's
-  own three controls,
+  Group, then **Folders**, **Machines**, **Repositories** and **MCP
+  servers**, the drawer's own controls,
   then a **Thread settings** link that opens the project chat with its
   drawer showing, `…/t/<pool>/<thread>/settings`, for network, local-only
   and the other task models), and one Save, which patches the thread
   (`goal`, `paused`, `watchThreads` when it changed, `threadsModel`,
   `threadsThinking`, `threadsFallback`, `group`) and, when they changed, its
-  settings (`grants`, `machines`, `repositories` among them); `lyricad`'s
+  settings (`grants`, `machines`, `repositories`, `mcpServers` among them); `lyricad`'s
   reason shows when it refuses. Every thread the project starts gets these
   folders, machines and repositories or fewer. A folder, machine or
   repository taken off here leaves the
@@ -158,7 +158,10 @@ A thread's address may carry what the panel beside it shows:
   repository) opens a search, "Search, or paste a URL", of what each Git
   account of the thread's pool can see, grouped by account, a pasted URL
   under each account on its host, with a **Git accounts** link at its
-  foot; a change applies at once), the mode, the
+  foot; a change applies at once), **MCP servers** (each name in mono, its host muted, with
+  an ✕; **+ Add server** opens a search of the pool's other servers, "No
+  general MCP server yet" when there's none, with an **MCP servers** link at
+  its foot; a change applies at once), the mode, the
   Web search and Images switches, "Do not log", rename, hide, and forget. `lyricad` validates every
   change and its reason is shown.
 - **Subagents live inline**, not in the sidebar: see the `delegate` card
@@ -338,6 +341,16 @@ A thread's address may carry what the panel beside it shows:
   same drawer with a Token field; Add account checks the token against the
   host (`POST …/git-accounts/probe`, then `POST …/git-accounts`), and a
   private account off network asks first. The token is never sent back.
+  **MCP servers** (`src/Mcp.tsx`), after Git accounts: a row per server,
+  its name, a facts line in mono (host, pool, tool count) and one state
+  (Online, Token rejected, Unreachable with how long, Off network). A row
+  opens the drawer (Name, URL, Pool, with the server's description under
+  it), with Replace token, Use anyway and Remove behind ⋯; Remove says it
+  leaves every project and thread at once (**Keep** / **Remove**). **Add
+  server** opens the same drawer with an optional Token field and checks
+  the server first (`POST …/mcp-servers/probe`, then `POST
+  …/mcp-servers`); a private server off network asks first (**Add
+  anyway**, or **Save anyway** for a changed URL).
 - **Administration**, for administrators: Status (the server's network
   self-test, sleep time, start unlocked), Users with the administrator flag,
   **Change password…** (the new password and the administrator's own, in
@@ -451,6 +464,9 @@ A thread's address may carry what the panel beside it shows:
   path or Proxmox action and VM in mono; a suspect command (`suspect`,
   `warning`) adds its warning sentence above the command and a third,
   secondary **Allow in this thread**, which answers with `allowInThread`.
+  An MCP call (`server`, `serverTool`) leads with the server's name and
+  the tool in mono, shows the arguments as JSON, and has Allow, **Allow in
+  this thread** and Deny. Its tool marker names the server, then the tool.
   A tool marker for a call on a machine names the machine first. A
   subagent's request shows in its parent's thread (in its card, when that
   is open) and on its own page, naming the subagent, and stays past the
