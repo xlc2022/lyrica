@@ -117,8 +117,10 @@ service.
   which names exist.
 - Every POST, PUT, PATCH and DELETE needs an `Origin` whose host matches the
   `Host` header; user routes also need the cookie. There are no CORS headers.
-- Every response carries `Content-Security-Policy: default-src 'self'`,
-  `frame-ancestors 'none'`, `X-Frame-Options: DENY` and `nosniff`.
+- Every response carries `Content-Security-Policy: default-src 'self'`
+  with inline styles allowed (the emoji picker styles its shadow root;
+  scripts stay `'self'`), `frame-ancestors 'none'`, `X-Frame-Options: DENY`
+  and `nosniff`.
 
 ## Threads
 

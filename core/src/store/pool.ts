@@ -328,13 +328,13 @@ export class PoolReader {
     return new Set((this.db.prepare("SELECT pi_id FROM entries WHERE thread = ?").all(threadId) as { pi_id: string }[]).map((r) => r.pi_id));
   }
 
-  /** The newest entry of the thread with one of the roles, or of any role. */
   /** The ID an entry goes by: its own, or the original's for a copy. */
   entryId(threadId: string, n: number): string | undefined {
     const row = this.db.prepare("SELECT coalesce(orig, 'e:' || thread || '#' || n) AS id FROM entries WHERE thread = ? AND n = ?").get(threadId, n) as { id: string } | undefined;
     return row?.id;
   }
 
+  /** The newest entry of the thread with one of the roles, or of any role. */
   lastEntry(threadId: string, roles?: string[]): StoredEntry | undefined {
     const filter = roles ? `AND role IN (${roles.map(() => "?").join(",")})` : "";
     const row = this.db.prepare(`SELECT * FROM entries WHERE thread = ? ${filter} ORDER BY n DESC LIMIT 1`)
