@@ -3,14 +3,14 @@
 # See docs/daemon.md ("Deployment").
 [Unit]
 Description=Lyrica (lyricad)
-After=network-online.target lyrica-caddy.service
-Wants=network-online.target lyrica-caddy.service
 # Three failed starts in two minutes is a crash loop: lyrica-rollback.service
 # goes back to the previous release if this one is on probation, and does
 # nothing otherwise.
 StartLimitBurst=3
 StartLimitIntervalSec=120
 OnFailure=lyrica-rollback.service
+After=network-online.target lyrica-caddy.service lyrica-tailscaled.service
+Wants=network-online.target lyrica-caddy.service lyrica-tailscaled.service
 
 [Service]
 Type=simple

@@ -10,16 +10,37 @@ type is in `daemon/src/api.ts`, with its route beside it.
 `lyrica serve [--runtime <dir>] [--port <port>]` starts it. It listens on
 `127.0.0.1` only (default port 7340) and on a Unix socket,
 `<runtime>/lyricad.sock`, mode `0600`. The socket serves the same API to local
-clients; they still log in.
+clients; they still log in. A second loopback port (7342) is the one only her
+tailscaled's `tailscale serve` targets (Web access, Tailnet); a request on it
+came through her tailnet address.
 
-- It starts **locked**. Until `self.db` is unlocked, only `GET /api/state`
-  (locked and the users; lyricad's `version` from `package.json` and
+- **Setting up.** Without `<runtime>/self.db` it starts anyway, setting up:
+  `GET /api/state` says `{ locked: true, setup: true, name, users: [] }` and
+  only `POST /api/setup` answers besides (and the web UI's files); everything
+  else is `503`. At start it makes a one-time code, eight characters in two
+  groups from 32 symbols (digits and capitals without 0, O, 1 and I; 40
+  bits), logs it once with where to open the page, and writes it to
+  `<runtime>/setup-code` (`0600`). `lyrica admin setup-code` prints it with
+  the Direct addresses and the certificate's SHA-256 fingerprint; on both
+  systems the `lyrica` wrapper runs it as her user, so it works as root.
+  `POST /api/setup` (`SetupRequest`) checks the code (wrong: `403`, counted
+  on the unlock limiter), runs `bootstrap()` from `core/src/bootstrap.ts`
+  (`self.db`, the persona seed, her name, the first administrator; if
+  anything fails, `self.db` and `users/` are removed so the next attempt
+  starts clean), saves the passphrase when asked (refused up front if saving
+  credentials isn't available), unlocks, deletes the code file and logs the
+  administrator in (`LoginResponse`). A new start while still setting up
+  makes a new code. `lyrica admin init` asks the same questions at a terminal
+  and calls the same `bootstrap()`; once it has run, the setup page answers
+  `409` and lyricad wants a restart (it is then locked, as usual).
+- Otherwise it starts **locked**. Until `self.db` is unlocked, only `GET /api/state`
+  (locked, her `name` and the users; lyricad's `version` from `package.json` and
   `build` from `LYRICA_BUILD` or the git commit join it once unlocked, so
   the unlock page gives away no commit) and `POST /api/unlock` answer (and the web UI's static files, so the unlock
   page loads); everything else is `503`.
 - Run by hand in a terminal, it asks for the passphrase at a hidden prompt.
 - With a saved passphrase (below), it starts unlocked.
-- When unlocked it builds `Workspace` with its own port as `excludePorts`, and
+- When unlocked it builds `Workspace` with its own two ports as `excludePorts`, and
   runs `selfTest()`. If network is refused, the reason is logged and shown to
   administrators (`GET …/admin/status`).
 - On SIGTERM it stops every subagent run, sleep and turn, disposes sessions,
@@ -71,6 +92,12 @@ service.
   The response lists who stays unlocked because another session holds them.
   `Me.warning` points out saved credentials with stay-unlocked off: the key
   then comes back at every start.
+- **An administrator sets a password** with `PUT …/admin/users/:targetId/password`.
+  The user's data key comes from its recovery copy in `self.db` and goes
+  under the new password, so their data stays; `Me.warning` tells them who
+  set it and when, until they change it in Settings → Password. A user
+  created before recovery copies has none until they next log in (409
+  with the reason).
 - **Lock** (`POST /api/u/:userId/lock`) at once removes the user from every
   session, stops their subagent runs and sleep (which record how they ended), drops
   their key, then stops their threads and unmounts their home. Event
@@ -483,6 +510,51 @@ IDs), status and time. Failures log the error's class and first line. Sleep
 logs the pool, the status or skip reason and the time taken. Message, memory
 and file text never reach the log.
 
+## Her name
+
+Her name is one setting per deployment, `self.name` in `self.db` `settings`
+(default Lyrica), set on the setup page or by `lyrica admin init`, and by
+administrators with `GET`/`PUT …/admin/name` (`{ name }`, 1 to 40
+characters on one line, trimmed). `PersonaStore.read()` puts it in
+REGISTER.md's `Name:` line (the stored file is unchanged); the subagent
+preamble and the `ask_parent` label ("Ask <name>") take it, and so does her
+model-host identity when it is first made. A copy in `<runtime>/name`
+(`0600`) lets `GET /api/state` say it while locked. Nothing already written is
+rewritten.
+
+## The tailnet
+
+She is a device of her own on the tailnet: `lyrica-tailscaled.service` runs
+`tailscaled` in userspace networking as the `lyrica` user, with its state in
+`/var/lib/lyrica-tailscale` and its socket at
+`/run/lyrica-tailscale/tailscaled.sock`. `daemon/src/tailnet.ts` drives it
+with the `tailscale` CLI (`--socket` hers on every call), run by `lyricad`
+directly, never in a sandbox and never as a model tool. Every command comes
+from one table: `status --json --peers=false`, `login --auth-key=file:…
+[--login-server=…]`, `up`, `down`, `logout`, `set --hostname=…`, `serve --bg
+--https=443 http://127.0.0.1:<serve port>`, `serve reset`. Never funnel, SSH,
+routes, exit nodes or `--reset`. Administrators only; one change at a time.
+
+- `GET …/admin/tailnet` → `Tailnet`, read from her tailscaled each time:
+  `connected`, `disconnected`, `notJoined`, or `notInstalled` (no binary, or
+  her tailscaled isn't running; `reason` says which), with her tailnet,
+  address, DNS name, hostname and version.
+- `PUT …/admin/tailnet` (`TailnetJoin`) joins with an auth key: it is
+  written to a `0600` file in the runtime, passed as `--auth-key=file:`, and
+  deleted when `login` returns, whatever the outcome; it is never in
+  arguments, logs, the database or a response, and CLI errors have any
+  `tskey-…` hidden. `set --hostname` follows only when a hostname is given
+  and differs, so preferences already set survive a second join. Already on
+  a tailnet: `409` unless `leave`, which logs out first.
+- `POST …/tailnet/disconnect` (`down`), `POST …/tailnet/connect` (`up`),
+  `DELETE …/tailnet` (`logout`, after turning the Tailnet web mode off: to
+  Direct if its listener is still open, else off).
+- Disconnect, leave and a join that leaves are `409` when they come through
+  her tailnet address (the serve port), since they would cut that request
+  off; over the LAN or on the machine they work.
+- Her outbound traffic to tailnet peers still goes through the host's
+  network; the host's own Tailscale, if any, is never touched.
+
 ## Web access
 
 How Lyrica is reached from other machines, set by an administrator
@@ -493,7 +565,30 @@ Secret credentials are never sent back by the API (only whether they're set)
 and never logged; a Caddy error that quotes one has it replaced with
 `[hidden]`. Changes run one at a time.
 
-- **Off** (the start): only `127.0.0.1` and the Unix socket.
+- **Off**: only `127.0.0.1` and the Unix socket.
+- **Direct**, the mode she starts in: `lyricad` itself serves HTTPS on port
+  7340 on every LAN and Tailscale address of this machine, with one
+  certificate it makes naming them all (P-256, ten years), whose fingerprint
+  and PEM the panel shows. Anyone may connect, and the client's own address
+  is its address (no `X-Forwarded-For`). HTTPS on the Tailscale addresses too,
+  since the login cookie is `Secure`. Its settings are written to
+  `web-external.json` at the first start without `self.db` when that file
+  doesn't exist, so a host that already had web access keeps it; with no
+  `web.access` in `self.db`, that file is the setting. At each start it
+  listens on the addresses the machine has then; when they changed, a new
+  certificate names them and its fingerprint is logged. It stays on until an
+  administrator turns it off or another mode replaces it.
+- **Tailnet**: `tailscale serve --bg --https=443` on her tailscaled proxies
+  `https://<her DNS name>` to the serve port. Turning it on needs her to be
+  connected, MagicDNS on and her name among the tailnet's certificate
+  domains (each named when missing); it then fetches
+  `https://<dns name>/api/state` from this machine. If that answers, the
+  previous listener closes; if this machine can't check it (it need not be on
+  her tailnet), the mode is saved anyway and Direct, if on, stays on beside
+  it, so nobody is locked out; turning Tailnet on again once it answers closes
+  Direct. The status fetches the name again. Off, or any other mode, runs
+  `serve reset`. tailscaled keeps the serve configuration, so the unlock page
+  is there after a restart.
 - **Built-in Caddy.** The administrator picks the name, the Tailscale and/or
   LAN addresses to serve on (detected from the host's interfaces), the DNS
   provider and its credentials, an optional ACME email, and Let's Encrypt
@@ -531,16 +626,20 @@ and never logged; a Caddy error that quotes one has it replaced with
   for the proxy to pin. It is made again only when the address changes, so a
   new name keeps the pin. `/snippet` is the proxy's Caddyfile site, with a
   reminder to get its certificate by DNS-01.
-- The extra listener's settings (address, port, proxies, the proxy's own
-  port) and its TLS key are kept in `<runtime>/web-external.json`, mode
-  `0600`, not in `self.db`: `lyricad` opens the listener at start, before
-  unlock, and there it answers only state, unlock and the web UI's files,
-  like every other listener. A new listener opens before the old one closes;
-  if it can't, the old one stays.
+- The extra listener's settings (Direct's addresses and port, or the
+  external proxy's address, port, proxies and own port) and its TLS key are
+  kept in `<runtime>/web-external.json`, mode `0600`, not in `self.db`:
+  `lyricad` opens the listener at start, before unlock (and before setup),
+  and there it answers only state, unlock (or setup) and the web UI's files,
+  like every other listener. A new listener opens before the old one closes,
+  and the old one gives its open requests five seconds to finish, so the
+  request that asked for the change gets its answer; if the new one can't
+  open, the old one stays.
 - **Sandboxes never reach the front door.** `Workspace` reads it at every
   sandbox start (`frontDoor`): the front port (443, or the external proxy's
-  own port) on this machine's addresses, on every address the name has
-  resolved to, and on the external proxy's addresses; and the extra
+  own port) and Direct's port on this machine's addresses, on every address
+  the name has resolved to (in Tailnet, her DNS name and her Tailscale
+  address), and on the external proxy's addresses; and the external proxy
   listener's port on every address. If the name has never resolved, the
   sandbox gets no network for that run
   ([workspace.md](workspace.md#network-access-from-tools)).
@@ -554,10 +653,13 @@ again installs that checkout's commit as a release, the way an update does
 
 - It installs the packages (bubblewrap, gocryptfs, FUSE, passt, nftables,
   openssl, ImageMagick, and for the updater build-essential, python3, git,
-  openssh-client and jq), checks for Node.js 22.6 or later (the SSH helper runs with type
-  stripping), and creates three system users: `lyrica` runs `lyricad`,
-  `lyrica-caddy` runs Caddy, `lyrica-build` builds releases and runs their
-  smoke tests with no access to her data. The `lyrica-caddy`
+  openssh-client and jq), and the `tailscale` package from Tailscale's apt
+  repository when its binaries are missing (then disabling the host's own
+  `tailscaled.service` the package enables, unless it was enabled before, so
+  a host keeps its own as it was), checks for Node.js 22.6 or later (the SSH
+  helper runs with type stripping), and creates three system users:
+  `lyrica` runs `lyricad`, `lyrica-caddy` runs Caddy, `lyrica-build` builds
+  releases and runs their smoke tests with no access to her data. The `lyrica-caddy`
   group shares Caddy's admin socket (mode `0660`) and TLS log; lyricad's unit
   joins it (`SupplementaryGroups`), and nobody else can use them. An allowed
   path that overlaps `/run/lyrica-caddy` is refused, since sandboxes run with
@@ -587,8 +689,15 @@ again installs that checkout's commit as a release, the way an update does
   when a pin changes.
 - It sets `net.ipv4.ip_nonlocal_bind=1` (in `/etc/sysctl.d`), so Caddy binds
   its addresses even before they're up: Tailscale at boot, a DHCP change.
-- It installs `lyricad.service` and `lyrica-caddy.service` and starts them,
-  or says how to run `lyrica admin init` first.
+- It installs `lyricad.service`, `lyrica-tailscaled.service` and
+  `lyrica-caddy.service` and starts them. Without `self.db` it ends by
+  printing the setup page's addresses, the certificate's fingerprint and the
+  code (`lyrica admin setup-code`).
+- **Her tailscaled's unit** runs `/usr/sbin/tailscaled
+  --tun=userspace-networking` with its own state, cache and runtime
+  directories and `--port=0`, as `lyrica`, hardened fully
+  (`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, no
+  capabilities). lyricad's unit is ordered after it.
 - **lyricad's unit** runs `/opt/lyrica/current/bin/lyrica serve` as
   `lyrica`; a crash loop (3 starts in 2 minutes) starts
   `lyrica-rollback.service` (`OnFailure`), which acts only on probation. It has `StateDirectory`
@@ -681,19 +790,25 @@ refusing Node older than 22.6) and `nixosModules.default`
 locked in `flake.lock`. `nix flake check` builds the package and a NixOS
 system with the module on. Only x86_64-linux.
 
-- **The module** declares what install.sh does: the two users and groups,
+- **The module** declares what install.sh does: the users and groups,
   `/var/lib/lyrica` (`0700`), both units written in Nix and kept in step with
   `daemon/deploy/*.service` (same hardening, `LoadCredentialEncrypted`, the
   same deploy check), `ip_nonlocal_bind`, and `/etc/lyrica/caddy.json`.
-  lyricad waits for `self.db` (`ConditionPathExists`), as install.sh does.
-  `lyrica` on the system path is the same wrapper as install.sh's, so
-  `lyrica admin init` works as root; it runs the profile below.
-  The updater, its units, the `lyrica-build` user and GitHub's host key come
-  from the module too; `lyrica-nixos-start` makes the deploy key.
+  With `tailscale` on (the default) it also declares `lyrica-tailscaled`
+  from `tailscalePackage` (`pkgs.tailscale`). lyricad starts without
+  `self.db`, setting up. `lyrica` on the system path is the same wrapper as
+  install.sh's, so the first-run step is `lyrica admin setup-code` as root:
+  nothing prints the code or the fingerprint at `nixos-rebuild`. The wrapper
+  runs the profile below. The updater, its units, the `lyrica-build` user
+  and GitHub's host key come from the module too; `lyrica-nixos-start`
+  makes the deploy key.
+- **Firewall.** `openFirewall` (default on, unlike most NixOS modules) opens
+  Direct's port, 7340 whatever `port` is: a headless host is set up from another machine through it,
+  as on Debian, and it answers only while setting up or in Direct.
   It refuses to build with `security.allowUserNamespaces` off.
 - **PATH.** lyricad's starts with `/run/wrappers/bin`, so `fusermount3` is
   the setuid wrapper (`programs.fuse`), then gocryptfs, OpenSSL, systemd
-  (`systemd-creds`) and the sandbox tools.
+  (`systemd-creds`), the sandbox tools and, with `tailscale` on, `tailscale`.
 - **Caddy** is nixpkgs' Caddy with the DNS plugins read from
   `daemon/src/web/providers.ts` (`caddy.withPlugins`). Its `hash` in
   `nix/module.nix` changes when that list or nixpkgs' Caddy does; `nix flake
@@ -709,8 +824,8 @@ system with the module on. Only x86_64-linux.
   OpenSSH, curl, jq, ripgrep, Python, bubblewrap, passt, nftables) and
   `LYRICA_SANDBOX_CLOSURE` to the store paths of their closure, Node's and
   the CA bundle's (`closureInfo`). See docs/workspace.md.
-- **Options:** `enable`, `package`, `port` (7340), `caddyPackage`,
-  `sandboxPackages`.
+- **Options:** `enable`, `package`, `port` (7340), `tailscale` (on),
+  `tailscalePackage`, `openFirewall` (on), `caddyPackage`, `sandboxPackages`.
 - **Releases** are generations of the profile `/nix/var/nix/profiles/lyrica`,
   which lyricad runs. An Update builds `git+file:///opt/lyrica/repo.git?rev=<commit>#lyrica`
   as root (Nix's own sandboxed builders do the building, not `lyrica-build`),
@@ -724,7 +839,7 @@ system with the module on. Only x86_64-linux.
   the newest readable snapshot if the package can't read them. An
   unchanged package leaves an Update's choice in place. The unit names
   `cfg.package`, so it stays in the system closure until that first start.
-- **Host check:** `nix/check-host.sh`, as root after `lyrica admin init`:
-  both services run, `NoNewPrivs` is `0`, `fusermount3` is setuid, Caddy's
+- **Host check:** `nix/check-host.sh`, as root after the setup page:
+  lyricad and Caddy run, her tailscaled answers `lyrica` on its socket, `NoNewPrivs` is `0`, `fusermount3` is setuid, Caddy's
   admin socket exists, a sandbox and `pasta` start as `lyrica`, the
   self-test hasn't refused network, lyricad answers on port 7340.

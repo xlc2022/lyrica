@@ -1,8 +1,9 @@
-import { existsSync, readdirSync, writeFileSync } from "node:fs";
+import { X509Certificate } from "node:crypto";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  Keyring, MACHINE_LIMITS, MIN_READER, SCHEMA, parseHost, proxmoxAddress, PersonaStore, PRONOUN_PRESETS, pronounLabel, Users, Workspace,
+  bootstrap, Keyring, MACHINE_LIMITS, MIN_READER, SCHEMA, parseHost, proxmoxAddress, PersonaStore, PRONOUN_PRESETS, pronounLabel, Users, Workspace,
   type MachineLimit, type Pool, type Profile, type Pronouns, type User,
 } from "@lyrica/core";
 import { AgentSessionRuntime, InteractiveMode } from "@earendil-works/pi-coding-agent";
@@ -11,7 +12,8 @@ import { openBench } from "./bench.ts";
 import { modelsAdmin, MODELS_USAGE } from "./models.ts";
 
 const USAGE = `usage:
-  lyrica admin init
+  lyrica admin setup-code         (first run: the setup page's code, addresses and fingerprint)
+  lyrica admin init               (first run from a terminal instead of the setup page)
   lyrica admin user add <login> [--admin]
   lyrica admin user list
   lyrica admin user set-admin <login> on|off
@@ -88,7 +90,6 @@ async function run(argv: string[]): Promise<void> {
  */
 async function serve(home: string, port: number): Promise<void> {
   const daemon = new Lyricad({ home, port });
-  if (!daemon.keyring.selfExists()) throw new Error(`${daemon.keyring.selfPath} does not exist; run "lyrica admin init"`);
   let stopping = false;
   const stop = async () => {
     if (stopping) return;
@@ -102,7 +103,7 @@ async function serve(home: string, port: number): Promise<void> {
   // failure, never a reason to take every user's threads down. Logged like a 500, never with text.
   process.on("unhandledRejection", (err) => console.error(`unhandled rejection: ${(err as Error)?.name ?? typeof err}: ${String((err as Error)?.message ?? "").split("\n")[0]}`));
   await daemon.start();
-  for (let tries = 0; daemon.locked && process.stdin.isTTY && tries < 3; tries++) {
+  for (let tries = 0; daemon.locked && !daemon.settingUp && process.stdin.isTTY && tries < 3; tries++) {
     try {
       await daemon.unlock(await ask("self.db passphrase: ", true));
     } catch (err) {
@@ -119,15 +120,15 @@ async function admin(args: string[], home: string): Promise<void> {
   if (sub === "init") {
     if (keyring.selfExists()) throw new Error(`${keyring.selfPath} already exists`);
     const passphrase = await askNew("New self.db passphrase: ");
+    const name = await ask("Her name [Lyrica]: ") || "Lyrica";
     const first = await ask("First administrator's login name [li]: ") || "li";
     const profile = await askProfile({ displayName: "Li" });
     const password = await askNew(`Password for ${first}: `);
-    await keyring.initSelf(passphrase);
-    new PersonaStore(keyring.self()).importSeed(SEED);
-    await users.createUser(first, password, profile, { admin: true });
-    console.log(`Created ${keyring.selfPath}, imported the persona and added ${first}.`);
+    await bootstrap(keyring, { passphrase, name, seed: SEED, admin: { login: first, password, profile } });
+    console.log(`Created ${keyring.selfPath}, imported the persona and added ${first}. If lyricad is running, restart it.`);
     return;
   }
+  if (sub === "setup-code") return setupCode(home);
   if (sub !== "user" && sub !== "grants" && sub !== "ssh" && sub !== "proxmox" && sub !== "net" && sub !== "models") throw new Error(USAGE);
 
   await keyring.unlockSelf(await ask("self.db passphrase: ", true));
@@ -267,6 +268,30 @@ async function workspaceAdmin(users: Users, keyring: Keyring, kind: "grants" | "
     throw new Error(USAGE);
   }
   keyring.lockUser(target.id);
+}
+
+/** The setup page's code, where to open it, and the Direct certificate's fingerprint to compare. */
+function setupCode(home: string): void {
+  if (existsSync(join(home, "self.db"))) {
+    console.log("Lyrica is set up already.");
+    return;
+  }
+  let code: string;
+  try {
+    code = readFileSync(join(home, "setup-code"), "utf8").trim();
+  } catch {
+    throw new Error("no setup code yet: is lyricad running? (systemctl status lyricad)");
+  }
+  console.log(`Setup code: ${code}`);
+  try {
+    const dir = JSON.parse(readFileSync(join(home, "web-external.json"), "utf8")) as { direct?: boolean; addresses?: string[]; port?: number; tls?: { cert?: string } };
+    if (dir.direct && dir.tls?.cert) {
+      for (const a of dir.addresses ?? []) console.log(`Open:       https://${a}:${dir.port}`);
+      console.log(`Certificate fingerprint (SHA-256), to compare with the browser's warning:\n  ${new X509Certificate(dir.tls.cert).fingerprint256}`);
+      return;
+    }
+  } catch { /* no Direct listener */ }
+  console.log("Open:       http://127.0.0.1:7340 on this machine (no Direct listener: web access was set before)");
 }
 
 async function dev(args: string[]): Promise<void> {

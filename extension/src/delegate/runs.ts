@@ -49,6 +49,8 @@ export interface DelegationOptions {
    * when the subagent is stopped: the answer is then a refusal.
    */
   approve?: (request: SubagentApproval, signal: AbortSignal) => Promise<boolean>;
+  /** Her name for this deployment, for the subagents' preamble and the ask_parent label. Lyrica without it. */
+  name?: () => string;
 }
 
 /** A subagent's tool call waiting for approval: which subagent, and what exactly. */
@@ -693,7 +695,7 @@ export class Delegation {
     try {
       const sub = await this.spawn(run, step, narrowing, worktrees);
       try {
-        const task = step.fork ? `The conversation above is Lyrica's, copied for you. You are her subagent now, with this task:\n\n${step.task}` : step.task;
+        const task = step.fork ? `The conversation above is ${this.o.name?.() ?? "Lyrica"}'s, copied for you. You are her subagent now, with this task:\n\n${step.task}` : step.task;
         reply = await this.ask(sub, { text: withWorktrees(task, worktrees) });
         sub.close("finished");
       } catch (err) {
@@ -895,7 +897,7 @@ export class Delegation {
       const nested = this.depth(ctx) < this.limits.depth;
       if (nested) extensions.push(createDelegateExtension(ctx, this, run.budget));
       const allowed = new Set([...role.tools, "ask_parent", ...(nested ? ["delegate"] : [])]);
-      extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed));
+      extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed, this.o.name?.() ?? "Lyrica"));
       const opened = await openThreadSession({ thread: ctx, models, cwd: this.o.cwd, extensions });
       opened.session.setThinkingLevel(role.thinking);
       // Passes over a model whose machine is away, and records the call. The role keeps its own thinking level.

@@ -50,7 +50,9 @@ export async function smokeTest(dir: string, opts: { port?: number; webDir?: str
   const socket = join(dir, "update.sock");
   const daemon = new Lyricad({
     home: dir, port: opts.port ?? 0, credentials: NONE, webDir: opts.webDir, selfTest: opts.selfTest,
-    argon2: { memoryCost: 1024, timeCost: 1, parallelism: 1 }, web: { caddySocket: join(dir, "no-caddy.sock") },
+    // Spare ports and no live Caddy or tailscaled: the running lyricad keeps its own.
+    argon2: { memoryCost: 1024, timeCost: 1, parallelism: 1 }, web: { caddySocket: join(dir, "no-caddy.sock"), servePort: 0 },
+    tailnet: { socket: join(dir, "no-tailscaled.sock") },
     update: { socket, state: join(dir, "update-state"), requests: join(dir, "updates") }, log: () => {},
   });
   const results: { name: string; ok: boolean; error?: string }[] = [];

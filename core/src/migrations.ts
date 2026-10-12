@@ -136,6 +136,11 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     version: 1, contract: true,
     run(db) {
       db.exec(SELF_SCHEMA + PATHS_SCHEMA + IDENTITY_SCHEMA + ENDPOINT_SCHEMA + REDIRECT_SCHEMA);
+      // users.recovery_wrap: the user's data key under the server's recovery key
+      // (`settings` 'recovery.key'), so an administrator can set a new password
+      // without losing their data; password_set_by/_at: an administrator set it
+      // and the user hasn't changed it since.
+      addColumns(db, [["users", "recovery_wrap", "TEXT"], ["users", "password_set_by", "TEXT"], ["users", "password_set_at", "TEXT"]]);
       moveModels(db, {
         legacy: (pairs) => { for (const p of pairs) db.prepare("INSERT OR IGNORE INTO legacy_refs (endpoint, model, offering) VALUES (?, ?, ?)").run(p.endpoint, p.model, p.offering); },
       });

@@ -1,5 +1,5 @@
 import {
-  AuthError, WrongPassword, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS, projectSlug,
+  AuthError, NoRecoveryCopy, WrongPassword, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS, projectSlug,
   type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type MachineConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
@@ -20,7 +20,7 @@ const THREAD_SORTS: Api.ThreadSort[] = ["date", "activity", "started", "title", 
 const DISPLAY_DEFAULTS_ALL: Api.Display = { ...DISPLAY_DEFAULTS, showPrivate: true, showGeneral: true, showHidden: true };
 const MESSAGE_PAGE = 50;
 
-/** Every API route. Locked, only /api/state and /api/unlock answer (lyricad.ts enforces it). */
+/** Every API route. Locked, only /api/state, /api/unlock and /api/setup answer; setting up, only state and setup (lyricad.ts enforces it). */
 export function apiRoutes(d: Lyricad): Route[] {
   const s = (): Services => d.services!;
   /** The Files panel's operations for the request's thread, each inside the thread's sandbox. */
@@ -42,6 +42,15 @@ export function apiRoutes(d: Lyricad): Route[] {
       const { passphrase } = await r.json<Api.UnlockRequest>();
       await limited(d, [`unlock:${r.ip}`], () => d.unlock(String(passphrase ?? "")), "wrong passphrase");
       return d.state(r.cookie);
+    }),
+    route("POST", "/api/setup", async (r): Promise<Api.LoginResponse> => {
+      const body = await r.json<Api.SetupRequest>();
+      // A wrong code counts on the same limiter as a wrong passphrase.
+      const user = await limited(d, [`unlock:${r.ip}`], () => d.setup(body), "wrong setup code", 403);
+      await d.keyAvailable(user.id);
+      const { id } = d.sessions.login(r.cookie, user.id, () => false);
+      r.res.setHeader("set-cookie", Sessions.setCookie(id));
+      return { user: card(user), replaced: false };
     }),
     route("POST", "/api/login", async (r): Promise<Api.LoginResponse> => {
       const { login, password } = await r.json<Api.LoginRequest>();
@@ -1083,6 +1092,17 @@ export function apiRoutes(d: Lyricad): Route[] {
       s().users.setAdmin(actor, target(d, r), !!admin);
       return card(target(d, r));
     }),
+    route("PUT", `${u}/admin/users/:targetId/password`, async (r) => {
+      const actor = d.adminFor(r);
+      const { password } = await r.json<Api.AdminPassword>();
+      try {
+        await s().users.setPassword(actor, target(d, r), String(password ?? ""));
+      } catch (err) {
+        if (err instanceof NoRecoveryCopy) throw new HttpError(409, err.message);
+        throw err;
+      }
+      return { ok: true };
+    }),
     route("PATCH", `${u}/admin/users/:targetId/profile`, async (r) => {
       const actor = d.adminFor(r);
       s().users.updateProfile(actor, target(d, r), pick(await r.json<Api.ProfileChange>(), ["displayName", "pronouns", "accent", "monogram"]));
@@ -1108,6 +1128,32 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("GET", `${u}/admin/web-access/status`, (r) => { d.adminFor(r); return s().web.status(); }),
     route("GET", `${u}/admin/web-access/snippet`, (r): Api.WebAccessSnippet => { d.adminFor(r); return { caddyfile: s().web.snippet() }; }),
+    route("GET", `${u}/admin/name`, (r): Api.NameSetting => { d.adminFor(r); return { name: d.name() }; }),
+    route("PUT", `${u}/admin/name`, async (r): Promise<Api.NameSetting> => {
+      d.adminFor(r);
+      const { name } = await r.json<Api.NameSetting>();
+      return { name: d.setName(String(name ?? "")) };
+    }),
+    route("GET", `${u}/admin/tailnet`, (r) => { d.adminFor(r); return s().tailnet.status(); }),
+    route("PUT", `${u}/admin/tailnet`, async (r) => {
+      d.adminFor(r);
+      const join = await r.json<Api.TailnetJoin>();
+      if (join.leave) notOverTailnet(r, "Connecting to another tailnet");
+      return s().tailnet.join(join);
+    }),
+    route("POST", `${u}/admin/tailnet/connect`, (r) => { d.adminFor(r); return s().tailnet.connect(); }),
+    route("POST", `${u}/admin/tailnet/disconnect`, (r) => {
+      d.adminFor(r);
+      notOverTailnet(r, "Disconnecting");
+      return s().tailnet.disconnect();
+    }),
+    route("DELETE", `${u}/admin/tailnet`, async (r) => {
+      d.adminFor(r);
+      notOverTailnet(r, "Leaving the tailnet");
+      // Its web mode goes first, to Direct if that's still listening, else off.
+      if (s().web.view().mode === "tailnet") await s().web.set({ mode: d.external.direct() ? "direct" : "off" });
+      return s().tailnet.leave();
+    }),
     route("GET", `${u}/admin/sleep`, (r) => { d.adminFor(r); return { time: d.sleepTime() }; }),
     route("PUT", `${u}/admin/sleep`, async (r) => {
       d.adminFor(r);
@@ -1138,7 +1184,7 @@ export function apiRoutes(d: Lyricad): Route[] {
  * password was wrong. The attempt is taken before the slow key derivation, so
  * parallel guesses get no free tries.
  */
-async function limited<T>(d: Lyricad, keys: string[], attempt: () => Promise<T>, wrong: string): Promise<T> {
+async function limited<T>(d: Lyricad, keys: string[], attempt: () => Promise<T>, wrong: string, status = 401): Promise<T> {
   const tooMany = (ms: number) => {
     const seconds = Math.max(1, Math.ceil(ms / 1000));
     return new HttpError(429, `too many attempts; try again in ${seconds} s`, { "retry-after": String(seconds) });
@@ -1153,10 +1199,15 @@ async function limited<T>(d: Lyricad, keys: string[], attempt: () => Promise<T>,
   } catch (err) {
     if (!(err instanceof AuthError) && !(err instanceof WrongPassword)) throw err;
     d.limiter.fail(keys);
-    throw new HttpError(401, wrong);
+    throw new HttpError(status, wrong);
   } finally {
     d.limiter.end(keys);
   }
+}
+
+/** A change that would cut off the request asking for it, when it came through her own tailnet address. */
+function notOverTailnet(r: Request, what: string): void {
+  if (r.via === "tailnet") throw new HttpError(409, `${what} from her tailnet address would cut this connection; do it over the LAN or on the machine`);
 }
 
 function pick<T extends object, K extends keyof T>(o: T, keys: K[]): Pick<T, K> {
@@ -1258,10 +1309,14 @@ function me(d: Lyricad, user: User): Api.Me {
   const fresh = d.services!.users.get(user.id)!;
   const savedCredentials = d.keyring.hasSavedKey(user.id);
   const stayUnlocked = d.services!.users.stayUnlocked(user.id);
+  const set = d.services!.users.passwordSetBy(user.id);
+  const warnings = [
+    ...(savedCredentials && !stayUnlocked ? ["Your key is saved, so it is unlocked again whenever Lyrica restarts, even though logging out drops it."] : []),
+    ...(set ? [`${d.services!.users.get(set.by)?.profile.displayName ?? "An administrator"} set your password on ${set.at.slice(0, 10)}. Change it in Settings → Password.`] : []),
+  ];
   return {
     user: card(fresh), previousNames: fresh.profile.previousNames, display: display(d, user.id), savedCredentials, stayUnlocked,
-    ...(savedCredentials && !stayUnlocked
-      ? { warning: "Your key is saved, so it is unlocked again whenever Lyrica restarts, even though logging out drops it." } : {}),
+    ...(warnings.length ? { warning: warnings.join(" ") } : {}),
   };
 }
 

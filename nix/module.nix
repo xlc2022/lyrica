@@ -1,12 +1,15 @@
-# services.lyrica: lyricad and its built-in Caddy on NixOS, declaring what
-# daemon/deploy/install.sh does on Debian. The units mirror
-# daemon/deploy/lyricad.service and lyrica-caddy.service; keep them in step.
+# services.lyrica: lyricad, her own tailscaled and the built-in Caddy on NixOS,
+# declaring what daemon/deploy/install.sh does on Debian. The units mirror
+# daemon/deploy/lyricad.service, lyrica-tailscaled.service and
+# lyrica-caddy.service; keep them in step.
 # See docs/daemon.md, "On NixOS".
 { config, lib, pkgs, ... }:
 
 let
   cfg = config.services.lyrica;
   state = "/var/lib/lyrica";
+  # Direct web access's port, whatever `port` is: DIRECT_PORT in daemon/src/web/access.ts.
+  directPort = 7340;
 
   # The DNS plugins, read from the same table install.sh builds from.
   providers = builtins.readFile ../daemon/src/web/providers.ts;
@@ -66,6 +69,35 @@ in {
       description = "Caddy with the DNS plugins lyricad configures.";
     };
 
+    tailscale = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Her own tailscaled (lyrica-tailscaled.service: userspace networking, as
+        the lyrica user, with its own state and socket), so she joins a tailnet
+        as a device of her own from Administration → Tailnet. The host's own
+        services.tailscale, if any, is untouched.
+      '';
+    };
+
+    tailscalePackage = lib.mkOption {
+      type = lib.types.package;
+      default = pkgs.tailscale;
+      defaultText = lib.literalExpression "pkgs.tailscale";
+      description = "The Tailscale package her tailscaled and lyricad's `tailscale` come from.";
+    };
+
+    openFirewall = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Opens Direct's port (7340) in the firewall. On by default, unlike most
+        NixOS modules: a headless host is set up from another machine through
+        it, as on Debian, and it answers only while setting up or in the Direct
+        web access mode.
+      '';
+    };
+
     sandboxPackages = lib.mkOption {
       type = lib.types.listOf lib.types.package;
       default = import ./sandbox-tools.nix pkgs;
@@ -105,13 +137,50 @@ in {
       home = "/var/lib/lyrica-caddy";
     };
 
-    # Exists before the first start, for `lyrica admin init`.
+    # Exists before the first start, for `lyrica admin setup-code` and `lyrica admin init`.
     systemd.tmpfiles.rules = [
       "d ${state} 0700 lyrica lyrica -"
       "d /var/lib/lyrica-update 0755 root root -"
       "d /var/lib/lyrica-snapshots 0700 root root -"
       "d /opt/lyrica 0755 root root -"
     ];
+
+    networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall [ directPort ];
+
+    systemd.services.lyrica-tailscaled = lib.mkIf cfg.tailscale {
+      description = "Tailscale for Lyrica (her own device, userspace networking)";
+      after = [ "network-online.target" ];
+      wants = [ "network-online.target" ];
+      wantedBy = [ "multi-user.target" ];
+      environment.HOME = "/var/lib/lyrica-tailscale";
+      serviceConfig = {
+        Type = "notify";
+        User = "lyrica";
+        Group = "lyrica";
+        # --port=0 picks a free UDP port, so it never fights the host's tailscaled over 41641.
+        ExecStart = "${cfg.tailscalePackage}/bin/tailscaled --tun=userspace-networking --state=/var/lib/lyrica-tailscale/tailscaled.state --socket=/run/lyrica-tailscale/tailscaled.sock --port=0";
+        StateDirectory = "lyrica-tailscale";
+        StateDirectoryMode = "0700";
+        RuntimeDirectory = "lyrica-tailscale";
+        RuntimeDirectoryMode = "0700";
+        CacheDirectory = "lyrica-tailscale";
+        CacheDirectoryMode = "0700";
+        UMask = "0077";
+        NoNewPrivileges = true;
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        PrivateTmp = true;
+        PrivateDevices = true;
+        ProtectKernelTunables = true;
+        ProtectKernelModules = true;
+        ProtectControlGroups = true;
+        RestrictNamespaces = true;
+        LockPersonality = true;
+        CapabilityBoundingSet = "";
+        Restart = "on-failure";
+        RestartSec = 5;
+      };
+    };
 
     # The setuid fusermount3 that gocryptfs uses for her home.
     programs.fuse.enable = lib.mkDefault true;
@@ -214,11 +283,10 @@ in {
 
     systemd.services.lyricad = {
       description = "Lyrica (lyricad)";
-      after = [ "network-online.target" "lyrica-caddy.service" ];
-      wants = [ "network-online.target" "lyrica-caddy.service" ];
+      after = [ "network-online.target" "lyrica-caddy.service" ] ++ lib.optional cfg.tailscale "lyrica-tailscaled.service";
+      wants = [ "network-online.target" "lyrica-caddy.service" ] ++ lib.optional cfg.tailscale "lyrica-tailscaled.service";
       wantedBy = [ "multi-user.target" ];
-      # Waits for `lyrica admin init`, as install.sh does.
-      unitConfig.ConditionPathExists = "${state}/self.db";
+      # Without self.db it starts setting up: `lyrica admin setup-code` prints the code.
       # A crash loop on probation rolls back (lyrica-rollback.service).
       startLimitBurst = 3;
       startLimitIntervalSec = 120;
@@ -228,7 +296,7 @@ in {
         LYRICA_SANDBOX_TOOLS = "${sandboxTools}";
         LYRICA_SANDBOX_CLOSURE = "${sandboxClosure}/store-paths";
         # The setuid wrappers first: fusermount3 must be the setuid one.
-        PATH = lib.mkForce "/run/wrappers/bin:${lib.makeBinPath [ pkgs.gocryptfs pkgs.openssl pkgs.systemd pkgs.coreutils pkgs.bash sandboxTools ]}";
+        PATH = lib.mkForce "/run/wrappers/bin:${lib.makeBinPath ([ pkgs.gocryptfs pkgs.openssl pkgs.systemd pkgs.coreutils pkgs.bash sandboxTools ] ++ lib.optional cfg.tailscale cfg.tailscalePackage)}";
       };
       serviceConfig = {
         Type = "simple";

@@ -3,6 +3,7 @@ import { isIP } from "node:net";
 import type { Db } from "../db.ts";
 import type { Keyring } from "../keyring.ts";
 import { TASK_NAMES, TASKS, THINKING_LEVELS, type CallContext, type ModelRef, type Pool, type Task, type ThinkingLevel } from "../types.ts";
+import { selfName } from "../persona.ts";
 import { Forbidden, type User, type Users } from "../users.ts";
 import { addressesOutside, discoverModels, probeUrl, type DiscoveredModel, type ModelIdentity } from "./http.ts";
 import { hostError, hostFetch, HostRefused, hostOrigin, lyricaIdentity, pair } from "./host.ts";
@@ -911,7 +912,8 @@ export class Models {
     if (shared && !this.users.get(actor.id)?.admin) throw new Forbidden("only an administrator can pair a shared model host");
     // Before pairing, so a taken name doesn't use up the code and leave the host pinned while Lyrica pins nothing.
     if (!existing && this.endpoints(actor.id).some((e) => e.name === input.name && e.shared === shared)) throw new Error(`endpoint ${input.name} already exists`);
-    const paired = await pair(lyricaIdentity(this.self()), addresses, input.code, `Lyrica (${input.name})`);
+    const name = selfName(this.self());
+    const paired = await pair(lyricaIdentity(this.self(), name), addresses, input.code, `${name} (${input.name})`);
     const baseUrl = `${hostOrigin(addresses[0]!)}/v1`;
     const id = existing?.id ?? randomUUID();
     this.place(actor, shared, (db) => {
@@ -944,7 +946,7 @@ export class Models {
     const key = `${ep.id}\u0000${ep.fingerprint}\u0000${(ep.addresses ?? []).join(",")}`;
     let f = this.fetches.get(key);
     if (!f) {
-      f = hostFetch(lyricaIdentity(this.self()), { addresses: ep.addresses ?? [], pin: ep.fingerprint ?? "" }, () => this.reportDown(ep.id), (origin) => this.reached.set(ep.id, origin));
+      f = hostFetch(lyricaIdentity(this.self(), selfName(this.self())), { addresses: ep.addresses ?? [], pin: ep.fingerprint ?? "" }, () => this.reportDown(ep.id), (origin) => this.reached.set(ep.id, origin));
       this.fetches.set(key, f);
     }
     return f;

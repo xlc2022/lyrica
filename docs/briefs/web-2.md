@@ -210,3 +210,8 @@ For each part:
   replaced-by-older image, which `-nt` misses. Next: Notifications, Pin in the remaining places,
   the Models page (carry the Fallback default), the Sleep section; Web:
   bootstrap on Li's go.
+- 2026-10-11, PR 10 (Li's asks): the user menu says Lock and Log out;
+  Administration → Users gets Change password…, backed by a recovery copy
+  of each user's key in `self.db` (DESIGN.md "Users" and "Storage",
+  contracts core/users; Li chose this over a reset that loses data). Nothing
+  for sleep or the pools changes; the privacy boundary note is in DESIGN.
