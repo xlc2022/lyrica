@@ -64,7 +64,7 @@ deployment.
 
 None. The three from reading Models 2 (an unpaired host, pruning gone
 shared models, the reply cap) were settled on 12 October 2026 and are
-recorded in DESIGN.md and docs/ux.md; a Models build implements them.
+recorded in DESIGN.md and docs/ux.md and built in #207.
 
 ## Handoff notes
 
