@@ -907,7 +907,7 @@ export class Delegation {
         // Its role says whether it searches; its Web search switch is its parent's or off.
         extensions.push(createWebExtension({ searxng: () => this.o.searxng?.(), target: () => tools.target() }));
         // Its parent's MCP servers, read live, so one taken from the parent goes from it too; its calls ask in both threads.
-        if (tools.mcpServers().length) {
+        if (tools.settings().mcpServers.length) {
           extensions.push(createMcpServersExtension(tools));
           mcp = true;
         }
@@ -916,6 +916,7 @@ export class Delegation {
       if (nested) extensions.push(createDelegateExtension(ctx, this, run.budget));
       // tool_search loads the MCP tools, which register after its role's tools are set, so the role doesn't turn them off.
       const allowed = new Set([...role.tools, "ask_parent", ...(nested ? ["delegate"] : []), ...(mcp ? ["tool_search"] : [])]);
+      // First: it must run before the MCP extension registers anything, else the role gate turns loaded MCP tools off.
       extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed, this.o.name?.() ?? "Lyrica"));
       const opened = await openThreadSession({ thread: ctx, models, cwd: this.o.cwd, extensions });
       opened.session.setThinkingLevel(role.thinking);

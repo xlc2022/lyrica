@@ -9,7 +9,7 @@ import { mcpTransport, type McpStateKind, type ThreadMcpServer } from "@lyrica/c
 // calls run, ask, or are off.
 
 export interface McpServersHost {
-  /** The thread's servers now: granted, of its pool, on her network if private. Read at every turn. */
+  /** The thread's servers now: granted, of its pool, and a private one only once its host passed the check. Read at every call. */
   mcpServers(): ThreadMcpServer[];
   /** At the start of a turn: checks the private servers' hosts, saying what is held back. */
   checkMcpServers?(): Promise<string[]>;
@@ -45,8 +45,13 @@ export function createMcpServersExtension(host: McpServersHost): ExtensionFactor
         registered.set(name, key);
       }
     };
-    // Registered before Pi's handlers, so its session_start connects these and its prompt section lists them.
-    pi.on("session_start", () => sync());
+    // Registered before Pi's handlers, in the same extension: Pi awaits each
+    // handler in order (ExtensionRunner.emit), so its session_start connects
+    // only what sync registered, after the private hosts are checked.
+    pi.on("session_start", async () => {
+      await host.checkMcpServers?.().catch(() => []);
+      sync();
+    });
     pi.on("before_agent_start", async (event) => {
       const problems = host.checkMcpServers ? await host.checkMcpServers().catch((err: Error) => [err.message]) : [];
       sync();

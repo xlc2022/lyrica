@@ -339,6 +339,9 @@ describe("MCP servers", () => {
     expect(() => settings.setThread("p", "private", { mcpServers: ["docs"] })).toThrow(/general MCP server; a private thread/);
     expect(() => settings.setThread("g", "general", { mcpServers: ["house"] })).toThrow(/private MCP server; a general thread/);
     settings.setThread("p", "private", { mcpServers: ["house"] });
+    // A private server is used only once its host has passed the check in this process.
+    expect(workspace.mcpServersFor({ userId: li.id, pool: "private", threadId: "p" })).toEqual([]);
+    expect(await workspace.checkMcpServers({ userId: li.id, pool: "private", threadId: "p" })).toEqual([]);
     // An older row of the wrong pool still gives nothing.
     expect(workspace.mcpServersFor({ userId: li.id, pool: "general", threadId: "p" })).toEqual([]);
     expect(workspace.mcpServersFor({ userId: li.id, pool: "private", threadId: "p" }).map((m) => m.name)).toEqual(["house"]);

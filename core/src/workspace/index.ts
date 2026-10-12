@@ -193,8 +193,13 @@ export class Workspace {
   private readonly sshTargets = new Map<string, SshTarget>();
   /** Private Git accounts whose host has newly left her network, by `<userId>/<name>`: no token goes out until Li confirms. */
   private readonly gitRefused = new Set<string>();
-  /** Private MCP servers whose host has newly left her network, by `<userId>/<name>`: not used until Li confirms. */
-  private readonly mcpRefused = new Set<string>();
+  /**
+   * Private MCP servers whose host passed the own-network check in this
+   * process, by `<userId>/<name>/<url>`. A private server is used only once
+   * it is here, so after a restart none is registered, connected or sent its
+   * token before its host has been checked again.
+   */
+  private readonly mcpChecked = new Set<string>();
   /** Key pairs for machines being added, by draft id, never saved before the machine is. */
   private readonly drafts = new Map<string, { userId: string; privateKey: string; publicKey: string; expires: number }>();
   /**
@@ -673,14 +678,16 @@ export class Workspace {
 
   /**
    * The MCP servers the thread may use now: granted by it and every
-   * ancestor, of its pool, and not held back because a private one's host
-   * left her network. Its session registers exactly these.
+   * ancestor, of its pool, and, if private, with a host that passed the
+   * own-network check in this process (`checkMcpServers`). Its session
+   * registers exactly these.
    */
   mcpServersFor(t: WorkspaceThread): ThreadMcpServer[] {
     const s = this.settings(t.userId);
     return s.effective(t.threadId).mcpServers.flatMap((name) => {
       const m = s.mcpServer(name);
-      if (!m || m.pool !== t.pool || this.mcpRefused.has(`${t.userId}/${m.name}`)) return [];
+      if (!m || m.pool !== t.pool) return [];
+      if (m.pool === "private" && !this.mcpChecked.has(`${t.userId}/${m.name}/${m.url}`)) return [];
       return [{ name: m.name, url: m.url, token: m.token, description: m.description }];
     });
   }
@@ -700,19 +707,20 @@ export class Workspace {
 
   private async checkMcpHost(userId: string, m: McpServerConfig): Promise<void> {
     const s = this.settings(userId);
-    const key = `${userId}/${m.name}`;
+    const key = `${userId}/${m.name}/${m.url}`;
+    this.mcpChecked.delete(key);
     let outside: boolean;
     try {
       outside = (await resolveHost(parseHost(mcpHost(m.url)).host)).outside;
     } catch {
+      // Not resolved: not checked, so a private server stays unused this turn.
       s.mcpServerState(m.name, "unreachable");
       return;
     }
     if (outside && m.pool === "private" && !m.offNetwork) {
-      this.mcpRefused.add(key);
       throw new Error(`${mcpHost(m.url)} now resolves outside your network, so the MCP server ${m.name} isn't used; confirm it in Settings → MCP servers to use it again.`);
     }
-    this.mcpRefused.delete(key);
+    this.mcpChecked.add(key);
     if (outside !== m.offNetwork) s.setMcpOffNetwork(m.name, outside);
   }
 
@@ -754,7 +762,6 @@ export class Workspace {
     const m = s.updateMcpServer(name, { ...(change.name !== undefined ? { name: change.name } : {}), url, pool, ...(probe ? { description: probe.description, tools: probe.tools } : {}) });
     s.setMcpOffNetwork(m.name, outside);
     if (probe) s.mcpServerState(m.name, "online");
-    this.mcpRefused.delete(`${userId}/${name}`);
     return s.mcpServer(m.name)!;
   }
 
@@ -769,13 +776,12 @@ export class Workspace {
   }
 
   confirmMcpOffNetwork(userId: string, name: string): McpServerConfig {
-    this.mcpRefused.delete(`${userId}/${name}`);
     return this.settings(userId).confirmMcpOffNetwork(name);
   }
 
   removeMcpServer(userId: string, name: string): void {
     this.settings(userId).removeMcpServer(name);
-    this.mcpRefused.delete(`${userId}/${name}`);
+    for (const key of this.mcpChecked) if (key.startsWith(`${userId}/${name}/`)) this.mcpChecked.delete(key);
   }
 
   private ssh(userId: string, name: string): SshTarget {

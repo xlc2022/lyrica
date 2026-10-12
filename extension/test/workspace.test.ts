@@ -8,6 +8,8 @@ import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { createMcpServersExtension, createModelsExtension, createWorkspaceExtension, setToolsOff, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
+import { freshKeyring, profile } from "../../core/test/helpers.ts";
+import { Users, Workspace } from "@lyrica/core";
 
 // Runs the workspace tools in a real Pi session against pi-ai's fake model,
 // with a target that records what it is asked to do.
@@ -519,6 +521,44 @@ describe("MCP servers in a thread", () => {
       expect(results.join("\n")).not.toContain("get_status done");
     } finally {
       await house.close();
+    }
+  });
+
+  it("never connects a private server whose host is outside her network, even with nothing checked yet in this process", async () => {
+    const away = await testMcpServer({ token: "away-token" });
+    const home = await testMcpServer({ token: "home-token" });
+    // 192.0.2.7 is outside her network; this fetch takes it to the away server, so a connection would show.
+    const seen: string[] = [];
+    const real = globalThis.fetch;
+    const awayPort = new URL(away.url).port;
+    globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      seen.push(url);
+      return real(url.replace(`192.0.2.7:${awayPort}`, `127.0.0.1:${awayPort}`), init);
+    }) as typeof fetch;
+    try {
+      const keyring = await freshKeyring();
+      const users = new Users(keyring);
+      const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+      await users.authenticate("li", "pw");
+      // A fresh Workspace, as after a restart: nothing checked.
+      const ws = new Workspace(keyring, users, { excludePorts: [] });
+      const settings = ws.settings(li.id);
+      settings.addMcpServer({ name: "away", url: `http://192.0.2.7:${awayPort}/mcp`, token: "away-token", pool: "private", description: null, tools: 2, offNetwork: false });
+      settings.addMcpServer({ name: "home", url: home.url, token: "home-token", pool: "private", description: null, tools: 2, offNetwork: false });
+      settings.setThread("t", "private", { mcpServers: ["away", "home"] });
+      const host = ws.forThread({ userId: li.id, pool: "private", threadId: "t" });
+      // Time between opening the session and the first prompt, as when a thread opens before Li writes.
+      const idle: ExtensionFactory = (pi) => void pi.on("session_start", () => new Promise<void>((r) => setTimeout(r, 1000)));
+      await run("auto", [], { steps: [[search]], after: [createMcpServersExtension(host), idle] });
+      for (let i = 0; i < 40 && !home.seen.requests; i++) await new Promise((r) => setTimeout(r, 50));
+      expect(home.seen.requests).toBeGreaterThan(0);
+      expect(away.seen.requests).toBe(0);
+      expect(seen.some((u) => u.includes("192.0.2.7"))).toBe(false);
+    } finally {
+      globalThis.fetch = real;
+      await away.close();
+      await home.close();
     }
   });
 

@@ -775,7 +775,7 @@ export class HostedThread {
           // web_search and web_fetch, behind the Web search switch; a fetch runs in the thread's sandbox.
           createWebExtension({ searxng: () => this.o.searxng?.(), target: () => tools.target() }),
           // Pi's MCP client and tool_search, only while the thread has a server: a change of grants reopens the session.
-          ...(tools.mcpServers().length ? [createMcpServersExtension(tools)] : []),
+          ...(tools.settings().mcpServers.length ? [createMcpServersExtension(tools)] : []),
           ...(canDelegate ? [createDelegateExtension(ctx, delegation)] : []),
           // Child threads and compacting. Never a subagent's: a subagent works for its run, not on streams of its own.
           ...(!thread.subagent ? [createThreadsExtension(ctx, this.o.threads, meter)] : []),

@@ -546,8 +546,13 @@ gives her its tools through Pi's own MCP client (DESIGN.md, "MCP servers").
   `core/src/workspace/mcp.ts`) and saves nothing when that fails. A
   general server with a token must use https. A private server's host
   must resolve on her own network, as for a private Git account, with
-  **Off network** and **Use anyway** when it stops doing so. Each use
-  records Online, Token rejected (401 or 403) or Unreachable.
+  **Off network** and **Use anyway** when it stops doing so. A private
+  server is registered, and so connected and sent its token, only once
+  its host has passed that check in this `lyricad` process (after a
+  restart: at session start, before Pi connects anything). The check
+  resolves DNS separately from the connection, so DNS rebinding isn't
+  prevented, as for private Git accounts. Each use records Online, Token
+  rejected (401 or 403) or Unreachable.
 - **A thread's servers** are granted like repositories: the MCP servers
   row in the thread drawer and under This chat on Project settings, so a
   project's threads get the project chat's servers or fewer. A private or
