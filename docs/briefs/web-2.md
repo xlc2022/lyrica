@@ -616,6 +616,32 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   of each user's key in `self.db` (DESIGN.md "Users" and "Storage",
   contracts core/users; the owner chose this over a reset that loses data). Nothing
   for sleep or the pools changes; the privacy boundary note is in DESIGN.
+- 2026-10-12, PR 25 (image models): the Image models tab, To review and
+  the Download image model page in `src/ImageModels.tsx`, their pure parts
+  in `src/images.ts` (tested in `web/test/images.test.ts`); Downloads'
+  header gets **Download image model**. Shared now in `src/ui.tsx`:
+  `Dialog` (ConfirmDialog, Text models' delete and both new dialogs use
+  it), `useSelection` and `useLongPress`, which Files moved onto, and
+  `UsedIn` in `ModelsFrame.tsx`; RowMenu can be opened from outside (a
+  right click or long press on a review row). Judgement calls: Models is a
+  row per recipe name across the hosts, and a name only proposed waits in
+  To review; **Delete** shows only when Lyrica downloaded the main file;
+  the delete dialog works out what goes from the parts' `downloaded` and
+  `usedBy`, and "Deletes nothing." when nothing would; a LoRA goes into a
+  copy named "<name> + <LoRA>" unless the box is cleared; **Change** is
+  offered on a proposal's present parts too; while selecting in To review
+  a plain click or tap adds a row, and Escape clears; Details opens the
+  copy block without its actions; Upscalers' chip shows only when there
+  are any, and an unknown file's role reads "Unknown"; the mockup's
+  captions are left out (ux.md §4). Not built, as the API gives nothing for
+  them: Star on an image model (the library route lists text models only),
+  the New pill, trigger words, deleting a single part, Starter recipes
+  (`…/manage` doesn't pass `/host/v1/starters`) and a deletion's row in
+  the queue. Found while building it: core read the host's `{ recipes }`
+  and `{ parts }` answers as bare lists, so a real host's library failed;
+  fixed apart, in core's `listIn`. The e2e answers for a made-up host's
+  library in the browser (`fakeImages`). Next: Starter recipes once
+  lyricad passes them.
 - 2026-10-12, PR 24 (downloads): the Downloads tab, the Download text model
   page and Accounts in `src/Downloads.tsx`, their wording in
   `src/downloads.ts` (tested in `web/test/downloads.test.ts`); Text

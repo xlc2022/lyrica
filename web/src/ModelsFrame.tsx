@@ -1,5 +1,6 @@
-// The Models area's frame and what its tabs share (src/Models.tsx, src/TextModels.tsx, src/Downloads.tsx): the page with
-// its tabs at the left, the area's context, the words for tasks, profiles and uses, and a speaking model's Settings drawer.
+// The Models area's frame and what its tabs share (src/Models.tsx, src/TextModels.tsx, src/ImageModels.tsx,
+// src/Downloads.tsx): the page with its tabs at the left, the area's context, the words for tasks, profiles and uses,
+// and a speaking model's Settings drawer.
 import { useEffect, useRef, useState } from "react";
 import { get, put, u, type CallInfo, type HostStatus, type ModelsPage, type ModelUse, type OfferingInfo, type OfferingSettings, type Task } from "./api.ts";
 import { href, type ModelsTab } from "./route.ts";
@@ -23,6 +24,7 @@ const TABS: { tab: ModelsTab; label: string }[] = [
   { tab: "overview", label: "Overview" },
   { tab: "tasks", label: "Tasks" },
   { tab: "text", label: "Text models" },
+  { tab: "images", label: "Image models" },
   { tab: "hosts", label: "Hosts and endpoints" },
   { tab: "downloads", label: "Downloads" },
   { tab: "cleanup", label: "Clean up" },
@@ -86,6 +88,12 @@ export function useWords(ctx: MCtx) {
     return `the group ${w.name}`;
   };
   return { thread, use };
+}
+
+/** Where a model is used, as the dialog that deletes it says: "Used in …. Those lists skip it from now on." */
+export function UsedIn({ ctx, usedIn, more = "" }: { ctx: MCtx; usedIn: ModelUse[]; more?: string }) {
+  const words = useWords(ctx);
+  return usedIn.length ? <p>Used in {usedIn.map(words.use).join(", ")}. Those lists skip it from now on{more}.</p> : <p className="muted">None of your profiles use it.</p>;
 }
 
 /* ---- A speaking model's Settings drawer (from an endpoint's models in Hosts and endpoints, and from Text models) ---- */

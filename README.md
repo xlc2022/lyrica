@@ -50,12 +50,13 @@ The repository was rebuilt from scratch starting 2026-10-09.
 - Web search through a SearXNG of your own, and reading pages from the
   thread's sandbox.
 - MCP servers (remote, per thread).
-- Model and speech hosts on GPU machines.
+- Model and speech hosts on GPU machines, and the web's Models area for
+  text and image models, their downloads and hub tokens.
 - Releases with automatic rollback, and numbered database migrations.
 
-Not built yet: `lyrica chat` and `lyrica mem` (clients of `lyricad`), images, and
-calendar and sorting. After that comes living with her for a few weeks while
-keeping the evals and a friction log.
+Not built yet: `lyrica chat` and `lyrica mem` (clients of `lyricad`), images
+in conversation, and calendar and sorting. After that comes living with her
+for a few weeks while keeping the evals and a friction log.
 
 ## Layout
 

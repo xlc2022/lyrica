@@ -245,9 +245,9 @@ A thread's address may carry what the panel beside it shows:
   the sidebar's Models link, whose badge counts Clean up's items
   (`GET …/models/cleanup`, reread every 30 s and on focus; nothing probes
   an endpoint until the area is open). Tabs down the left (a scrolling row
-  on a phone), so far **Overview**, **Tasks**, **Text models**, **Hosts and
-  endpoints**, **Downloads**, **Clean up** and **Recent calls**; Image
-  models comes with its own PR. The area reads `GET …/models/page` while open (30 s,
+  on a phone): **Overview**, **Tasks**, **Text models**, **Image models**,
+  **Hosts and endpoints**, **Downloads**, **Clean up** and **Recent calls**.
+  The area reads `GET …/models/page` while open (30 s,
   focus), which probes each endpoint (3 s each, one seen down in the last
   30 s not asked again). Overview: a banner for a paused host or a stale
   endpoint; tiles Endpoints (n of m up, then a dot and "All reachable" or
@@ -353,6 +353,43 @@ A thread's address may carry what the panel beside it shows:
   included), and Save; a toast after. A speaking model's Settings opens its
   Voice drawer. The header's **Download model**, the tab's one primary,
   opens Download text model.
+  Image models (`src/ImageModels.tsx`, its pure parts in `src/images.ts`)
+  reads each model host's library (`GET …/hosts/:id/images`: recipes, and
+  parts by role) and the plain endpoints' image models from the Models page.
+  The facts line counts models, parts, hosts and the groups holding them,
+  then links "<n> to review" when a host the user manages proposed
+  anything. **Models** | **Parts**, a search (name or file) and the
+  architecture chips filter in the page. Models is a row per recipe name
+  across the hosts, confirmed copies first; a name only proposed or ignored
+  is left out. A row opens to a block per host (template and defaults, a
+  row per part with precision, "downloaded by Lyrica" or "shared folder",
+  the other recipes using it and its size); every change is a recipe action
+  (`POST …/hosts/:id/recipes/:recipeId`, models.md "Image models"):
+  **Change** for a text encoder or VAE (`swap`, or Download another… to the
+  download page), **Remove** for an added part or LoRA, **Use this recipe**
+  (`confirm`), **Download the missing parts** (`download-parts`),
+  **Ignore**, and the two dialogs. **Add a part** adds a VAE or text encoder to a checkpoint
+  (`addPart`) or a LoRA with its strength (`addLora`), by default into a
+  copy named "<name> + <LoRA>" (`copy` first) so the recipe stays as it is.
+  **Delete** (shown when Lyrica downloaded the recipe's main file) works
+  out from the parts' `downloaded` and `usedBy` what goes and what stays,
+  names the lists that skip it from a first `delete-copy` without confirm on
+  its offering (`recipe/<id>`), then sends `delete`; a file the host kept
+  goes to a toast. A recipe copied from another links to it. Parts lists
+  every file of the chosen type (or Unused files) with its host, facts and
+  the recipes using it, each a link to its row or to To review. **To
+  review** (`…/models/images/review`) lists the proposals on hosts the user
+  manages, by host, 50 at a time, with Use, Download parts and a ⋯ (Select,
+  Details, Ignore); it selects as Files does (`useSelection` and
+  `useLongPress` in `src/ui.tsx`, which Files uses too), and the bar sends
+  the action to each selected recipe in turn. **Download image model**
+  (`…/models/images/download`) shares the text page's host field, lookup,
+  token handling and link fields: a Hugging Face repository's files as
+  checkboxes (`POST …/downloads` with `files`), a link, or **Scan now**,
+  which asks the host to read its models folder (`POST …/manage` with
+  `/host/v1/scan`) and shows what it proposed as To review's rows. Its
+  Cancel goes back as the text page's does. There is no Star here: the
+  library route, which reads stars, lists text models only.
   Downloads (`src/Downloads.tsx`, its wording in `src/downloads.ts`) lists
   the downloads of every host the user may manage (`GET
   …/hosts/:id/downloads`; a shared host's need an administrator), newest
@@ -362,7 +399,8 @@ A thread's address may carry what the panel beside it shows:
   bar and **Cancel** (`DELETE …/downloads/:id`); a finished one its ending
   and, once it is a model, its group or **Add to the group “<g>”** (a group
   holding a copy the strong suggestions pair it with); **Clear finished**
-  deletes each finished one. **Download text model**
+  deletes each finished one. The header has **Download text model** and
+  **Download image model**. **Download text model**
   (`…/models/downloads/text`) looks the repository up on the chosen host
   (`GET …/hub/files`; owner/name or the page's link), offers each GGUF file
   (a split one as one choice) or, with no GGUF in it, the whole repository,

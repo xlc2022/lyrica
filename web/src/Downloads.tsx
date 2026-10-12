@@ -1,7 +1,8 @@
 // The Models area's Downloads tab (docs/ux.md §6, "Downloads and hub accounts"): the queue of every host's downloads,
-// In progress then Finished, read again every 2 s while anything runs; the Download text model page; and Accounts,
-// the hub tokens for gated repositories. A host's downloads need its management, so a shared host's need an
-// administrator, and only those hosts are listed. Its pure parts are in src/downloads.ts.
+// In progress then Finished, read again every 2 s while anything runs; the Download text model page (and what Download
+// image model shares with it); and Accounts, the hub tokens for gated repositories. A host's downloads need its
+// management, so a shared host's need an administrator, and only those hosts are listed. Its pure parts are in
+// src/downloads.ts.
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { del, get, patch, post, put, u, type GroupInfo, type GroupSuggestion, type HostStatus, type Hub, type HubTokenInfo, type ModelsPage } from "./api.ts";
 import { downloadWords, fileChoices, fileLink, HUB_WORD, isRunning, repoName, size, type HostDownload, type HubFiles } from "./downloads.ts";
@@ -82,7 +83,10 @@ export function Downloads({ ctx }: { ctx: MCtx }) {
   };
 
   const facts = lists.data && <>{active.length ? <><span className="num">{active.length}</span> running</> : "Nothing running"} · <span className="num">{finished.length}</span> finished</>;
-  const actions = <button type="button" onClick={() => go({ page: "models", userId, tab: "downloads", add: "text" })}>Download text model</button>;
+  const actions = <>
+    <button type="button" onClick={() => go({ page: "models", userId, tab: "downloads", add: "text" })}>Download text model</button>
+    <button type="button" onClick={() => go({ page: "models", userId, tab: "images", add: "image" })}>Download image model</button>
+  </>;
   return (
     <Frame ctx={ctx} tab="downloads" title="Downloads" facts={facts} actions={actions} running={lists.data ? active.length : undefined}>
       <ErrorText error={ctx.models.error || lists.error || error} />

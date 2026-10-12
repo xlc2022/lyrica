@@ -2142,14 +2142,14 @@ test("Text models: a row per model with starred first; a row opens to its copies
  * The e2e has no model host: a made-up one, "box", joins the Models page's answer, and its host-backed calls are
  * answered here. Returns what was posted to start a download.
  */
-async function fakeHost(page: Page, downloads: Record<string, unknown>[]) {
+async function fakeHost(page: Page, downloads: Record<string, unknown>[], models: Record<string, unknown>[] = []) {
   const GB = 2 ** 30;
   const started: unknown[] = [];
   const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   await page.route(/\/api\/u\/[^/]+\/models\/page$/, async (route) => {
     const real = await (await route.fetch()).json() as { endpoints: Record<string, unknown>[]; hosts: unknown[] };
     const local = real.endpoints.find((e) => e.kind === "local")!;
-    real.endpoints.push({ ...local, id: "ep-box", name: "box", api: "host", addresses: ["box.lan:7236"], fingerprint: "SHA256:aaaa", state: "up", shared: false, models: [] });
+    real.endpoints.push({ ...local, id: "ep-box", name: "box", api: "host", addresses: ["box.lan:7236"], fingerprint: "SHA256:aaaa", state: "up", shared: false, models });
     real.hosts.push({ endpointId: "ep-box", status: {
       name: "box", version: "0.9.0", fingerprint: "SHA256:aaaa", state: "running", gpus: [], downloads: { active: downloads.filter((d) => d.state === "downloading").length },
       modelsFolder: { path: "/srv/models", free: 96 * GB },
@@ -2269,6 +2269,160 @@ test("Downloads: the queue shows progress with Cancel and how each ended, Accoun
   await page.getByLabel("Link to the file").fill("http://example.org/m.bin");
   await page.getByRole("button", { name: "Download", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveText("Use an https link to one .gguf or .safetensors file.");
+});
+
+/** The made-up host's image library: one recipe, one proposal missing its VAE, and the parts; what the page asks of it is kept. */
+async function fakeImages(page: Page) {
+  const GB = 2 ** 30;
+  const asked: { path: string; body: unknown }[] = [];
+  const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  const Z = "lyrica/huggingface/Comfy-Org/z_image_turbo/split_files";
+  const zi = "00000000-0000-4000-8000-000000000001", qi = "00000000-0000-4000-8000-000000000002";
+  const part = (file: string, role: string, arch: string, size: number, more: Record<string, unknown> = {}) =>
+    ({ file, size: size * GB, format: "safetensors", role, slot: null, arch, precision: "bf16", downloaded: file.startsWith("lyrica/"), usedBy: [], vram: null, ...more });
+  const parts = [
+    part(`${Z}/diffusion_models/z_image_turbo_bf16.safetensors`, "diffusion", "z-image", 12.3, { usedBy: [zi] }),
+    part(`${Z}/text_encoders/qwen_3_4b.safetensors`, "text_encoder", "z-image", 8, { slot: "qwen3", usedBy: [zi] }),
+    part(`${Z}/vae/ae.safetensors`, "vae", "z-image", 0.3, { usedBy: [zi] }),
+    part("comfy/vae/ae_fp32.safetensors", "vae", "z-image", 0.3, { precision: "fp32" }),
+    part("comfy/loras/pixel-art.safetensors", "lora", "z-image", 0.2),
+    part("comfy/diffusion_models/qwen_image_fp8.safetensors", "diffusion", "qwen-image", 20.4, { precision: "fp8", usedBy: [qi] }),
+  ];
+  const recipes = [
+    { id: zi, name: "Z-Image Turbo", state: "confirmed", ready: true, arch: "z-image", template: "z-image", does: ["create"], loras: [], base: null, starter: null,
+      parts: [{ role: "diffusion", slot: null, file: parts[0]!.file, added: false }, { role: "text_encoder", slot: "qwen3", file: parts[1]!.file, added: false }, { role: "vae", slot: null, file: parts[2]!.file, added: false }],
+      defaults: { steps: 8, cfg: 1, width: 1024, height: 1024 } },
+    { id: qi, name: "Qwen-Image", state: "proposed", ready: false, arch: "qwen-image", template: "qwen-image", does: ["create"], loras: [], base: null, starter: null, defaults: { steps: 30, cfg: 4 },
+      parts: [{ role: "diffusion", slot: null, file: parts[5]!.file, added: false },
+        { role: "vae", slot: null, file: null, added: false, missing: { source: "huggingface", repo: "Comfy-Org/Qwen-Image_ComfyUI", path: "split_files/vae/qwen_image_vae.safetensors", size: 0.25 * GB } }] },
+  ];
+  await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/images$/, (route) => {
+    const byRole: Record<string, unknown[]> = {};
+    for (const p of parts) (byRole[p.role as string] ??= []).push(p);
+    return route.fulfill(json({ recipes, parts: byRole }));
+  });
+  await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/(recipes\/[^/]+|manage)$/, (route) => {
+    const path = new URL(route.request().url()).pathname.replace(/^.*\/ep-box\//, "");
+    const body = route.request().postDataJSON() as { do?: string; name?: string };
+    asked.push({ path, body });
+    return route.fulfill(json(body.do === "copy" ? { ...recipes[0], id: "00000000-0000-4000-8000-000000000003", name: body.name } : body.do === "delete" ? { deleted: [], kept: [] } : { models: 0, parts: 6, proposals: 1 }));
+  });
+  await page.route(/\/api\/u\/[^/]+\/offerings\/off-z\/delete-copy$/, (route) => route.fulfill(json({ usedIn: [] })));
+  return { asked, zi, qi, offering: { id: "off-z", modelId: `recipe/${zi}`, label: `box/recipe/${zi}`, manual: false, status: "listed", recipe: "Z-Image Turbo", image: true } };
+}
+
+test("Image models: a recipe opens to its parts with Change, Add a part and Delete; Parts lists the files; To review selects and ignores; Download image model scans and downloads", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const images = await fakeImages(page);
+  const started = await fakeHost(page, [], [images.offering]);
+  const post = (path: string) => images.asked.filter((a) => a.path === path).map((a) => a.body);
+  await page.goto(`/#/u/${userId}/models/images`);
+  await expect(page.getByRole("heading", { level: 1, name: "Image models" })).toBeVisible();
+  await expect(page.locator(".head .cap")).toHaveText("1 model (recipe) · 6 parts on 1 host · 0 groups · 1 to review");
+  await expect(page.getByRole("navigation", { name: "Models pages" }).getByRole("link", { name: "Image models" })).toHaveAttribute("aria-current", "page");
+
+  // A recipe: its facts, then its copy on the host as a block of parts.
+  const list = page.getByRole("list", { name: "Image models" });
+  await expect(list.getByRole("button", { name: /Z-Image Turbo/ })).toContainText("Z-Image · create · 1 copy · box");
+  await expect(list.getByText("Qwen-Image")).toHaveCount(0);
+  await list.getByRole("button", { name: /Z-Image Turbo/ }).click();
+  const block = page.getByRole("region", { name: "Z-Image Turbo on box" });
+  await expect(block.locator(".copyhead")).toContainText("template z-image · 8 steps · CFG 1 · 1024×1024");
+  await expect(block.locator(".partrow").nth(1)).toContainText("Text encoderQwen3");
+  await expect(block.locator(".partrow").nth(0)).toContainText("BF16 · downloaded by Lyrica");
+  await noHorizontalScroll(page);
+  if (phone(page)) for (const b of [block.getByRole("button", { name: "Change the VAE" }), block.getByRole("button", { name: "Add a part" })]) {
+    expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  }
+
+  // Change: the host's other VAEs for the architecture, or Download another….
+  await block.getByRole("button", { name: "Change the VAE" }).click();
+  const vae = block.getByLabel("Choose the VAE");
+  await expect(vae.locator("option")).toHaveText(["ae.safetensors · BF16", "ae_fp32.safetensors · FP32 · shared folder", "Download another…"]);
+  await vae.selectOption("comfy/vae/ae_fp32.safetensors");
+  await expect.poll(() => post(`recipes/${images.zi}`)).toEqual([{ do: "change", change: { op: "swap", role: "vae", slot: null, file: "comfy/vae/ae_fp32.safetensors" } }]);
+
+  // Add a part: a LoRA goes into a copy named after it, unless the box is unticked.
+  await block.getByRole("button", { name: "Add a part" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add a part to Z-Image Turbo" });
+  await expect(dialog.getByRole("group", { name: "Part" }).getByRole("button")).toHaveText(["LoRA"]);
+  await expect(dialog.getByRole("radio", { name: "comfy/loras/pixel-art.safetensors" })).toBeChecked();
+  await expect(dialog.getByLabel("Save as a new model, keeping Z-Image Turbo as it is")).toBeChecked();
+  await dialog.getByRole("button", { name: "Add" }).click();
+  await expect.poll(() => post("recipes/00000000-0000-4000-8000-000000000003")).toEqual([{ do: "change", change: { op: "addLora", file: "comfy/loras/pixel-art.safetensors", strength: 1 } }]);
+  expect(post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "copy", name: "Z-Image Turbo + pixel art" });
+  // The page opens the new model's row; this made-up host never makes it, so open Z-Image Turbo again.
+  await list.getByRole("button", { name: /Z-Image Turbo/ }).click();
+
+  // Delete: what goes and what it frees, and that no list uses it.
+  await block.getByRole("button", { name: "Delete" }).click();
+  const del = page.getByRole("dialog", { name: "Delete Z-Image Turbo from box?" });
+  await expect(del).toContainText("Deletes z_image_turbo_bf16.safetensors, qwen_3_4b.safetensors, ae.safetensors, which frees 20.6 GB.");
+  await expect(del).toContainText("None of your profiles use it.");
+  await del.getByRole("button", { name: "Delete" }).click();
+  await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "delete" });
+
+  // Parts: a type at a time, each file with what uses it.
+  await page.getByRole("group", { name: "Show" }).getByRole("button", { name: "Parts" }).click();
+  await expect(page.getByRole("group", { name: "Type" }).getByRole("button", { pressed: true })).toHaveText("Diffusion models 2");
+  const parts = page.getByRole("list", { name: "Parts" });
+  await expect(parts.locator("li").first()).toContainText("qwen_image_fp8.safetensorsbox · Qwen-Image · FP8 · 20.4 GB · shared folderUsed by Qwen-Image (to confirm)");
+  await page.getByRole("group", { name: "Type" }).getByRole("button", { name: /^Unused files/ }).click();
+  await expect(parts.locator("li")).toHaveCount(2);
+  await expect(parts.locator("li").first()).toContainText("Not used by any recipe");
+  await page.getByRole("group", { name: "Type" }).getByRole("button", { name: /^VAEs/ }).click();
+  await parts.getByRole("button", { name: "Z-Image Turbo" }).click();
+  await expect(list.getByRole("button", { name: /Z-Image Turbo/ })).toHaveAttribute("aria-expanded", "true");
+
+  // To review: Ctrl-click or Select picks a row; the bar acts on the selection; Escape clears it.
+  await page.getByRole("link", { name: "1 to review" }).click();
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/images/review$`));
+  await expect(page.locator(".head .cap")).toHaveText("Image models · 1 found on your hosts");
+  const row = page.locator("li.rvrow");
+  await expect(row).toContainText("Qwen-Image1 part missing · 0.3 GB");
+  await expect(row).toContainText("Qwen-Image · create · qwen_image_fp8.safetensors with qwen_image_vae.safetensors");
+  await expect(page.getByRole("checkbox")).toHaveCount(0);
+  if (phone(page)) expect((await row.getByRole("button", { name: "Actions for Qwen-Image on box" }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await noHorizontalScroll(page);
+  await row.locator(".meta").click({ modifiers: ["Control"] });
+  const bar = page.getByRole("toolbar", { name: "Selection" });
+  await expect(bar).toContainText("1 selected");
+  await expect(bar.getByRole("button", { name: "Use 0 ready" })).toBeDisabled();
+  await expect(bar.getByRole("button", { name: "Download parts (0.3 GB)" })).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await expect(bar).toHaveCount(0);
+  await row.getByRole("button", { name: "Actions for Qwen-Image on box" }).click();
+  await page.getByRole("menuitem", { name: "Select" }).click();
+  await expect(bar).toContainText("1 selected");
+  await noHorizontalScroll(page);
+  await bar.getByRole("button", { name: "Ignore" }).click();
+  await expect.poll(() => post(`recipes/${images.qi}`)).toEqual([{ do: "ignore" }]);
+  await expect(bar).toHaveCount(0);
+
+  // Download image model: a scan of the models folder shows what it proposes; Hugging Face downloads the files picked.
+  await page.goto(`/#/u/${userId}/models/images`);
+  await page.getByRole("button", { name: "Download model" }).click();
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/images/download$`));
+  await expect(page.getByRole("heading", { level: 1, name: "Download image model" })).toBeVisible();
+  await page.getByRole("group", { name: "Source" }).getByRole("button", { name: "Scan folder" }).click();
+  await page.getByRole("button", { name: "Scan now" }).click();
+  await expect(page.getByRole("list", { name: "Found" }).locator("li.rvrow")).toContainText("Qwen-Image");
+  expect(post("manage")).toEqual([{ method: "POST", path: "/host/v1/scan" }]);
+  await page.getByRole("group", { name: "Source" }).getByRole("button", { name: "Hugging Face" }).click();
+  await page.getByLabel("Repository").fill("Comfy-Org/Qwen-Image_ComfyUI");
+  await page.getByRole("button", { name: "Look up" }).click();
+  const files = page.getByRole("group", { name: "Files to download" });
+  await expect(files.getByRole("checkbox")).toHaveCount(2);
+  await expect(files.getByRole("checkbox").nth(1)).toBeDisabled();
+  await page.getByRole("button", { name: "Download", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("Choose a file.");
+  await files.getByRole("checkbox").first().check();
+  await noHorizontalScroll(page);
+  await page.getByRole("button", { name: "Download", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/downloads$`));
+  expect(started).toEqual([{ source: "huggingface", repo: "Comfy-Org/Qwen-Image_ComfyUI", files: ["m-Q4_K_M.gguf"] }]);
+  // Downloads reads the page again as it opens; let that answer go unanswered.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
 test("Web search: the administrator sets the SearXNG address and sees whether it answers; without one the switch says why", async ({ page, baseURL }) => {
