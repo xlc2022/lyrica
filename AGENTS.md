@@ -53,9 +53,51 @@ Read these, in this order:
 
 ## Workflow
 
-- The design thread owns PRINCIPLES, DESIGN and the contracts. Feature threads
-  work on their own branch from a brief and finish with a pull request into
-  `main`.
+The project runs as threads, each a session of whatever tool or model suits
+the work, with fixed roles:
+
+- **Coordinator** (the project chat): writes a brief in `docs/briefs/` for
+  each piece of work, starts the thread that builds it and routes messages.
+  It brings the owner only what needs the owner.
+- **Feature thread:** builds one brief on its own `feature/*` branch and
+  finishes with one pull request into `main`. Later work in the same area
+  goes to the same thread.
+- **PR review:** reviews every pull request against its brief, this file and
+  the docs, and owns PRINCIPLES, DESIGN, the contracts and docs/ux.md,
+  recording settled decisions in docs PRs.
+- **UI review:** judges every change a user sees against docs/ux.md and the
+  mockups.
+- **Operator docs:** owns the guides in `docs/guides/`.
+
+Review and merge:
+
+1. The building thread sends the pull request and its head commit to PR
+   review, and to UI review too if a user would see the change.
+2. A reviewer sends findings back; the building thread fixes them and sends
+   the new commit; the reviewer checks it. A reviewer says **verified**,
+   naming the commit, only when the PR meets its brief and the docs.
+3. Once every reviewer it needs has verified the head commit and CI is
+   green, the building thread merges it, with no further approval. If
+   merging `main` in later conflicts in files the review touched, it sends
+   the merge commit back to the reviewer first. Stacked pull requests merge
+   with merge commits, each retargeted to `main` first.
+4. After merging, the building thread says so in its own thread and tells
+   the coordinator the number, title and merge commit, what landed and what
+   it may affect; the coordinator tells the affected threads. If it changes
+   anything an operator does by hand (installing, running or configuring
+   the daemon, a model host, CI runners, a setting an operator sets), it
+   also tells Operator docs what changed and where.
+
+Handoffs: nobody waits silently. A thread that needs another thread messages
+it every time, naming the commit and what it needs, and the receiver
+answers in the same turn, even if only to say when. A message sent isn't a
+message read, so check for replies after each long step. No reply in 10
+minutes: ask the coordinator to pass it on. Waiting more than 15 minutes:
+say so in your own thread.
+
+A second review from another model family (such as Codex, run on the test
+machine) happens only when the owner or PR review asks for one.
+
 - A pull request description says what changed and why, what is out of scope,
   any contract change it needs, and which docs it updated (or why none needed
   it).
