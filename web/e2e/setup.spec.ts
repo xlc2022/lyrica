@@ -74,3 +74,29 @@ test("Administration: her name changes from Her name, Tailnet says what's missin
   await page.goto(`/#/u/${userId}/admin/updates`);
   await expect(page.getByRole("region", { name: "Updates" })).toContainText("No updater is installed");
 });
+
+test("Administration: Change passphrase… says when the current one is wrong, then changes it and clears the fields", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Login name").fill("ada");
+  await page.getByLabel("Password").fill("pw");
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page.getByText("Switch user")).toBeAttached();
+  const userId = await page.evaluate(async () => ((await (await fetch("/api/state")).json()) as { users: { id: string }[] }).users[0]!.id);
+  await page.goto(`/#/u/${userId}/admin/unlocked`);
+  const section = page.getByRole("region", { name: "Start unlocked" });
+  await section.getByRole("button", { name: "Change passphrase…" }).click();
+  const change = section.getByRole("button", { name: "Change passphrase", exact: true });
+  await section.getByLabel("Current passphrase").fill("not it");
+  await section.getByLabel("New passphrase", { exact: true }).fill("battery staple");
+  await section.getByLabel("New passphrase again").fill("battery stapler");
+  await expect(change).toBeDisabled();
+  await section.getByLabel("New passphrase again").fill("battery staple");
+  await change.click();
+  await expect(section.getByText("That isn't the current passphrase.")).toBeVisible();
+  await section.getByLabel("Current passphrase").fill("correct horse");
+  await change.click();
+  await expect(section.getByRole("status")).toHaveText("Passphrase changed. Snapshots taken before now still open with the old one.");
+  await section.getByRole("button", { name: "Change passphrase…" }).click();
+  await expect(section.getByLabel("Current passphrase")).toHaveValue("");
+  await expect(section.getByLabel("New passphrase", { exact: true })).toHaveValue("");
+});

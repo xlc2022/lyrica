@@ -1466,9 +1466,12 @@ async function apiGet<T>(page: Page, path: string): Promise<T> {
 test("opening and closing home tools creates no thread", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}`);
-  const threads = () => apiGet<{ id: string; pool: string }[]>(page, `/api/u/${userId}/threads`);
-  const before = await threads();
+  const threads = async () => (await apiGet<{ id: string; createdAt: string }[]>(page, `/api/u/${userId}/threads`)).map((t) => t.id).sort();
+  // The shared lyricad may still be finishing an earlier test's threads: start from a list that has settled.
   const box = page.locator(".home-box");
+  await expect(box).toBeVisible();
+  let before = await threads();
+  await expect.poll(async () => { const now = await threads(); const same = JSON.stringify(now) === JSON.stringify(before); before = now; return same; }, { intervals: [500] }).toBe(true);
   await box.getByRole("button", { name: "Attach or switch tools" }).click();
   await expect(box.getByRole("checkbox", { name: "Images", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
@@ -2858,4 +2861,15 @@ test("Administration has Her name after Status and saves the name throughout the
   await save.click();
   await expect(name).toHaveValue("Lyrica");
   await expect(page).toHaveTitle("Lyrica");
+});
+
+test("Custom… pronouns opens the five fields, starting from the current words", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}/settings/profile`);
+  const section = page.getByRole("region", { name: "Profile" });
+  await section.getByLabel("Pronouns").selectOption("custom");
+  await expect(section.getByLabel("herself")).toBeVisible();
+  await expect(section.getByLabel("herself")).not.toHaveValue("");
+  await section.getByLabel("Pronouns").selectOption("they/them");
+  await expect(section.getByLabel("herself")).toHaveCount(0);
 });

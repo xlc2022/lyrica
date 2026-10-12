@@ -555,7 +555,10 @@ A thread's address may carry what the panel beside it shows:
   the row; the user's data stays, they are logged out and told at their
   next visit) and their allowed folders, Sleep (**Sleep time**, `type="time"`, one Save;
   `GET`/`PUT …/admin/sleep`), Start unlocked (saving the `self.db`
-  passphrase), **Tailnet**, Web access, **Web search** (`src/WebSearch.tsx`:
+  passphrase, and **Change passphrase…**: Current passphrase, New passphrase and
+  New passphrase again stacked in place, hiding Passphrase and Save meanwhile, `POST …/admin/passphrase/change`; a 403 says "That
+  isn't the current passphrase.", a 429 "Too many tries. Try again in <n> min."
+  with the button disabled; the fields clear after a success or Cancel), **Tailnet**, Web access, **Web search** (`src/WebSearch.tsx`:
   **SearXNG address** in mono, without its password (a basic-auth password
   is kept when the user@host is unchanged), one Save, and Reachable or Unreachable as a
   dot and a word, what failed as its tooltip; `GET`/`PUT …/admin/web-search`),
@@ -576,7 +579,7 @@ A thread's address may carry what the panel beside it shows:
   line beneath (Draining with the count of busy threads and the user's own
   linked, Building, Testing, Probation, Failed with the error), the last
   rollback as a sentence, and the kept releases as rows (commit in mono,
-  date, Running) with **Roll back** in the row's ⋯, asked in a dialog that
+  date, the first line of its update note when it has one, Running) with **Roll back** in the row's ⋯, asked in a dialog that
   names the commit and says when messages since the snapshot are lost.
   While an update drains, the page polls every 5 s; sending a message that
   gets `409 {updating:true}` keeps the text in the box and says Updating.

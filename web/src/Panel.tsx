@@ -2,7 +2,7 @@
 // its sections listed at the left. The old control panel's cards moved here.
 import { useState } from "react";
 import {
-  del, get, patch, post, put, saveName, u,
+  del, get, HttpError, patch, post, put, saveName, u,
   type AdminStatus, type AllowedPaths, type Me, type ModeDefault, type NetworkDefaults, type PersonaProposal,
   type Pool, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type Theme, type UserCard,
   type NameSetting,
@@ -98,11 +98,14 @@ export function Section({ title, children }: { title: string; children: React.Re
 }
 
 export function PronounFields({ value, onChange }: { value: Pronouns; onChange: (p: Pronouns) => void }) {
-  const preset = Object.entries(PRESETS).find(([, p]) => JSON.stringify(p) === JSON.stringify(value))?.[0] ?? "custom";
+  const matched = Object.entries(PRESETS).find(([, p]) => JSON.stringify(p) === JSON.stringify(value))?.[0];
+  // Custom… is a choice of its own: picking it keeps the current words and opens them for editing, even while they still match a preset.
+  const [chosen, setChosen] = useState(!matched);
+  const preset = chosen || !matched ? "custom" : matched;
   return (
     <>
       <label className="field"><span>Pronouns</span>
-        <select value={preset} onChange={(e) => { const p = PRESETS[e.target.value]; if (p) onChange(p); }}>
+        <select value={preset} onChange={(e) => { const p = PRESETS[e.target.value]; setChosen(!p); if (p) onChange(p); }}>
           {Object.keys(PRESETS).map((k) => <option key={k}>{k}</option>)}
           <option value="custom">Custom…</option>
         </select>
@@ -322,6 +325,7 @@ function UnlockedSection({ ctx }: { ctx: ShellContext }) {
   const status = useLoad(() => get<AdminStatus>(u(userId, "admin", "status")), [userId]);
   const [run, busy, error] = useAction();
   const [passphrase, setPassphrase] = useState("");
+  const [changing, setChanging] = useState(false);
   const s = status.data;
   return (
     <Section title="Start unlocked">
@@ -330,13 +334,82 @@ function UnlockedSection({ ctx }: { ctx: ShellContext }) {
       {s?.savedPassphrase ? (
         <div className="row"><span>The passphrase is saved, so {her()} starts unlocked.</span>
           <button type="button" className="danger" disabled={busy} onClick={() => run(async () => status.set(await put<AdminStatus>(u(userId, "admin", "passphrase"), { save: false })))}>Forget it</button></div>
-      ) : s && (
+      ) : s && !changing && (
         <form className="inline" onSubmit={(e) => { e.preventDefault(); void run(async () => { status.set(await put<AdminStatus>(u(userId, "admin", "passphrase"), { save: true, passphrase })); setPassphrase(""); }); }}>
           <label className="field grow"><span>Passphrase</span><input type="password" autoComplete="off" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} /></label>
           <button className="primary" disabled={busy || !passphrase || !s.credentials.available}>Save</button>
         </form>
       )}
+      {s && <PassphraseChanger userId={userId} open={changing} setOpen={setChanging} onChanged={status.set} />}
     </Section>
+  );
+}
+
+/** Minutes left from a rate-limit refusal ("… try again in <n> s"), at least 1. */
+export function retryMinutes(message: string): number {
+  const seconds = Number(/(\d+)\s*s\b/.exec(message)?.[1] ?? 60);
+  return Math.max(1, Math.ceil(seconds / 60));
+}
+
+/** Change passphrase… under Start unlocked (docs/ux.md, "Changing the server passphrase"): three fields in place, no dialog; nothing is kept after a success or Cancel. */
+function PassphraseChanger({ userId, open, setOpen, onChanged }: { userId: string; open: boolean; setOpen: (open: boolean) => void; onChanged: (s: AdminStatus) => void }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [again, setAgain] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<{ wrong?: true; minutes?: number; text?: string }>({});
+  const [done, setDone] = useState<"" | "changed" | "removed">("");
+  const clear = () => { setCurrent(""); setNext(""); setAgain(""); };
+  const submit = async () => {
+    setBusy(true); setProblem({});
+    try {
+      const result = await post<AdminStatus & { note?: string }>(u(userId, "admin", "passphrase", "change"), { current, next });
+      clear(); setOpen(false);
+      setDone(result.note ? "removed" : "changed");
+      onChanged(result);
+    } catch (e) {
+      const err = e as Error;
+      if (err instanceof HttpError && err.status === 403) setProblem({ wrong: true });
+      else if (err instanceof HttpError && err.status === 429) {
+        const minutes = retryMinutes(err.message);
+        setProblem({ minutes });
+        window.setTimeout(() => setProblem((p) => (p.minutes ? {} : p)), minutes * 60_000);
+      } else setProblem({ text: err.message });
+    } finally { setBusy(false); }
+  };
+  const status = done && (
+    <p className="muted small" role="status">{done === "removed"
+      ? "Passphrase changed. It couldn't be saved for Start unlocked, so the saved copy was removed: save it again. Snapshots taken before now still open with the old one."
+      : "Passphrase changed. Snapshots taken before now still open with the old one."}</p>
+  );
+  if (!open) {
+    return (
+      <>
+        <div className="row"><button type="button" className="sm" onClick={() => { setOpen(true); setDone(""); setProblem({}); }}>Change passphrase…</button></div>
+        {status}
+      </>
+    );
+  }
+  const ready = !!next && next === again && next !== current && !!current;
+  return (
+    <form className="stack" onSubmit={(e) => { e.preventDefault(); if (ready && !problem.minutes) void submit(); }}>
+      <label className="field"><span>Current passphrase</span>
+        <input type="password" autoComplete="current-password" autoFocus value={current} onChange={(e) => setCurrent(e.target.value)} />
+      </label>
+      <label className="field"><span>New passphrase</span>
+        <input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
+      </label>
+      <label className="field"><span>New passphrase again</span>
+        <input type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} />
+      </label>
+      <div className="row">
+        <button type="submit" className="primary sm" disabled={busy || !ready || !!problem.minutes}>Change passphrase</button>
+        <button type="button" className="sm" onClick={() => { clear(); setProblem({}); setOpen(false); }}>Cancel</button>
+      </div>
+      {problem.wrong && <p className="error" role="alert">That isn't the current passphrase.</p>}
+      {problem.minutes && <p className="error" role="alert">Too many tries. Try again in <span className="num">{problem.minutes}</span> min.</p>}
+      <ErrorText error={problem.text ?? ""} />
+    </form>
   );
 }
 

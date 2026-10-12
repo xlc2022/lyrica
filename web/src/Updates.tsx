@@ -63,6 +63,7 @@ export function UpdatesSection({ ctx }: { ctx: ShellContext }) {
             <li key={r.commit} className="row between release-row">
               <span className="mono">{short(r.commit)}</span>
               <span className="muted">{day(r.builtAt)}{r.tag ? ` · ${r.tag}` : ""}</span>
+              {r.summary && <span className="release-summary" title={r.summary}>{r.summary}</span>}
               <span className="state-word">{r.running ? <><span className="dot up" aria-hidden="true" />Running</> : r.previous ? "Previous" : ""}</span>
               {!r.running && <RowDots disabled={busy || running || !r.rollback.possible} title={r.rollback.possible ? undefined : `Can't be read by this release's databases${r.rollback.oldest ? `; the oldest that can is ${short(r.rollback.oldest)}` : ""}`} onRollback={() => setRollback(r)} />}
             </li>

@@ -102,6 +102,8 @@ describe("Administration's updates API", () => {
       minReader: { ...one, pool: 3 },
       snapshots: [{ dir: "x", at: "2026-10-09T14:02:00Z", commit: "bbbbbbb", minReader: one }],
     }));
+    mkdirSync(join(state, "notes"));
+    writeFileSync(join(state, "notes", "ccccccc.txt"), `\n${"Releases and rollback ".repeat(6)}\n\nMerged PRs…`);
     writeFileSync(join(state, "state.json"), JSON.stringify({
       state: "idle", since: "2026-10-09T14:12:00Z", note: { tag: "update/2026-10-12", commit: "ddddddd", message: "Releases and rollback" },
     }));
@@ -113,6 +115,8 @@ describe("Administration's updates API", () => {
       ["bbbbbbb", false, true, { possible: true, restores: "2026-10-09T14:02:00Z" }],
       ["aaaaaaa", false, false, { possible: true, restores: "2026-10-09T14:02:00Z" }],
     ]);
+
+    expect(got.releases.map((r) => r.summary)).toEqual(["Releases and rollback ".repeat(6).trim(), undefined, undefined]);
 
     expect((await ada.post(u, { tag: "main" })).status).toBe(400);
     expect((await ada.post(u, { tag: "update/2026-10-12" })).status).toBe(200);
