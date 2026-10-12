@@ -1,9 +1,9 @@
-import { existsSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { fakeHost } from "../../core/test/fake-host.ts";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
 import type { CleanupItem, EndpointInfo, HostStatus, HubTokenInfo, ModelsPage, LoginResponse, Me, ModelsNotice, OfferingInfo, Profiles, MemoryDetail, MemoryHit, MemoryOverview, MemoryTag, State, ThreadSettings, ThreadSummary } from "../src/api.ts";
-import { browser, daemon, enc, localModel, login, runtime, systemdStart } from "./helpers.ts";
+import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 describe("lyricad, locked", () => {
   it("answers only the state and unlock endpoints until self.db is unlocked", async () => {
@@ -32,7 +32,6 @@ describe("lyricad, locked", () => {
     expect((await ada.put<Me>(`/api/u/${rt.ada.id}/me/credentials`, { save: true })).body.savedCredentials).toBe(true);
     await first.stop();
 
-    systemdStart(rt);
     const second = await daemon(rt);
     expect(second.d.locked).toBe(false);
     expect(second.d.keyring.hasUserKey(rt.ada.id)).toBe(true);
@@ -43,6 +42,31 @@ describe("lyricad, locked", () => {
     expect(existsSync(`${rt.sealed}/user-${rt.ada.id}`)).toBe(false);
     expect(existsSync(`${rt.sealed}/self`)).toBe(true);
   });
+  it.each(["missing", "bad", "empty"])("starts locked with a %s saved passphrase", async (kind) => {
+    const rt = await runtime();
+    if (kind !== "missing") {
+      mkdirSync(rt.sealed, { recursive: true });
+      writeFileSync(`${rt.sealed}/self`, "sealed");
+      if (kind === "empty") rt.secrets.set("lyrica_self", Buffer.alloc(0));
+    }
+    const started = await daemon(rt);
+    expect(started.d.locked).toBe(true);
+    expect(started.d.keyring.hasUserKey(rt.ada.id)).toBe(false);
+    if (kind !== "missing") expect(started.logs.join("\n")).toContain("credential self: decrypt failed:");
+  });
+
+  it("keeps a user locked when their saved key cannot be unsealed", async () => {
+    const rt = await runtime();
+    mkdirSync(rt.sealed, { recursive: true });
+    writeFileSync(`${rt.sealed}/self`, "sealed");
+    writeFileSync(`${rt.sealed}/user-${rt.ada.id}`, "sealed");
+    rt.secrets.set("lyrica_self", Buffer.from("passphrase"));
+    const started = await daemon(rt);
+    expect(started.d.locked).toBe(false);
+    expect(started.d.keyring.hasUserKey(rt.ada.id)).toBe(false);
+    expect(started.logs.join("\n")).toContain(`credential user-${rt.ada.id}: decrypt failed:`);
+  });
+
 });
 
 describe("logging in", () => {

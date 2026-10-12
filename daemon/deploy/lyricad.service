@@ -25,10 +25,7 @@ StateDirectoryMode=0700
 UMask=0077
 # The release `current` points at (docs/daemon.md, "Updates").
 ExecStart=/opt/lyrica/current/bin/lyrica serve --port 7340
-# Saved credentials (self.db passphrase, users' keys), sealed by lyricad with
-# `systemd-creds encrypt --user`. systemd unseals them at start into
-# $CREDENTIALS_DIRECTORY as lyrica_<name>, readable only by this service.
-LoadCredentialEncrypted=lyrica:/var/lib/lyrica/credentials
+# lyricad unseals saved credentials itself into memory with systemd-creds decrypt --user.
 KillSignal=SIGTERM
 TimeoutStopSec=30
 Restart=on-failure

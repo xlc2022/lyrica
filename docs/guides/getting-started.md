@@ -446,23 +446,11 @@ Two things to look at once she is unlocked:
 Under Administration, Start unlocked (administrators only; the user menu at
 the foot of the sidebar opens Administration), enter the passphrase and
 **Save**: it is sealed with `systemd-creds` into
-`/var/lib/lyrica/credentials/`; the unit unseals it at each start, so she
-comes up unlocked after a reboot. The button is disabled, with the reason,
+`/var/lib/lyrica/credentials/`; lyricad unseals it into memory at each start with
+`systemd-creds decrypt --user`, so she comes up unlocked after a reboot.
+If the saved file cannot be decrypted, she starts locked; unlock by hand. The button is disabled, with the reason,
 on a system where `systemd-creds` isn't available. Forget it there to go
 back to unlocking by hand.
-
-> **On NixOS, don't use Start unlocked yet.** The saved passphrase is
-> sealed in a way the unit can't unseal, so lyricad fails at every start
-> and restarts in a loop. If that has happened, move the sealed file out
-> of the credentials folder, restart, and unlock by hand on the unlock
-> page:
->
-> ```sh
-> sudo mv /var/lib/lyrica/credentials/self /var/lib/lyrica/self.credential.broken
-> sudo systemctl restart lyricad
-> ```
->
-> This warning goes once the fix is merged.
 
 Each user can likewise save their own data key under Settings, Unlock and
 lock, so

@@ -49,7 +49,8 @@ unlockSelf(passphrase: string): Promise<void>            // self.db only
 unlockUser(userId: string, password: string): Promise<void>
 saveUserKey(userId) / forgetSavedKey(userId) / hasSavedKey(userId)   // "save credentials"
 saveSelfPassphrase(p) / forgetSelfPassphrase() / hasSavedPassphrase()
-unlockSaved(): Promise<void>                              // at start: the saved passphrase and keys
+unlockSaved(): Promise<boolean>                           // at start: the saved passphrase
+loadSavedKey(userId): Promise<boolean>                    // at start: each saved user key
 closeSelf(): void                                         // locks self.db again
 // core/src/bootstrap.ts:
 bootstrap(keyring, { passphrase, name?, seed, admin: { login, password, profile } }): Promise<User>
@@ -71,7 +72,10 @@ lockUser(userId: string): void
   re-encrypted for a password change.
 - Keys live only in daemon memory, or in systemd credentials when saved:
   sealed with `systemd-creds encrypt --user` (systemd 256 or later), the
-  secret on stdin, loaded by the unit with `LoadCredentialEncrypted=`.
+  secret on stdin. At start lyricad runs
+  `systemd-creds decrypt --user --name=lyrica_<name> <file> -`, reading plaintext only from stdout into
+  memory. Missing, failed or empty credentials stay locked; logs contain
+  only the credential name/id and error class, never stderr or secrets.
 
 ## core/users
 

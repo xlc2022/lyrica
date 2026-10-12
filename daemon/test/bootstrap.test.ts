@@ -81,16 +81,16 @@ switch (cmd) {
 }
 
 /** A lyricad with no self.db: it starts setting up. */
-async function fresh(opts: Partial<LyricadOptions> & { home?: string } = {}) {
+async function fresh(opts: Partial<LyricadOptions> & { home?: string; secrets?: Map<string, Buffer> } = {}) {
   const home = opts.home ?? tmp("lyricad-setup-");
   const sealed = join(home, "credentials");
-  const loaded = join(home, "loaded-credentials");
+  const secrets = opts.secrets ?? new Map<string, Buffer>();
   const logs: string[] = [];
   const ts = fakeTailscale();
   const directPort = await freePort();
   const d = new Lyricad({
     home, port: 0, argon2: ARGON2, selfTest: false, webDir: join(home, "no-web"),
-    credentials: new SystemdCredentials(sealed, loaded, async (_id, secret, out) => writeFileSync(out, secret)),
+    credentials: new SystemdCredentials(sealed, async (id, secret, out) => { secrets.set(id, Buffer.from(secret)); writeFileSync(out, "sealed"); }, async (id) => Buffer.from(secrets.get(id) ?? []), (line) => logs.push(line)),
     web: { addresses: () => [{ address: "127.0.0.1", kind: "lan", interface: "eth0" }], directPort, caddySocket: join(home, "no-caddy.sock"), certWaitMs: 300 },
     tailnet: { binary: ts.bin, socket: join(home, "tailscaled.sock") },
     rateLimit: { free: 1, baseMs: 60_000, maxMs: 600_000 },
@@ -101,7 +101,7 @@ async function fresh(opts: Partial<LyricadOptions> & { home?: string } = {}) {
   const stop = async () => { if (!stopped) { stopped = true; await d.stop(); } };
   cleanup.push(stop);
   const code = existsSync(join(home, "setup-code")) ? readFileSync(join(home, "setup-code"), "utf8").trim() : "";
-  return { d, home, logs, ts, directPort, code, base: `http://127.0.0.1:${d.port}`, stop };
+  return { d, home, secrets, logs, ts, directPort, code, base: `http://127.0.0.1:${d.port}`, stop };
 }
 
 const ADMIN = { login: "ada", password: "pw", displayName: "Ada", pronouns: PRONOUN_PRESETS.she };
@@ -165,12 +165,7 @@ describe("setting up", () => {
     const first = await fresh();
     expect((await browser(first.base).post("/api/setup", { code: first.code, passphrase: "passphrase", saveCredentials: true, admin: ADMIN })).status).toBe(200);
     await first.stop();
-    // systemd hands the saved credential over at start.
-    const loaded = join(first.home, "loaded-credentials");
-    const { mkdirSync, cpSync } = await import("node:fs");
-    mkdirSync(loaded, { recursive: true });
-    for (const f of readdirSync(join(first.home, "credentials"))) cpSync(join(first.home, "credentials", f), join(loaded, `lyrica_${f}`));
-    const again = await fresh({ home: first.home });
+    const again = await fresh({ home: first.home, secrets: first.secrets });
     expect(again.d.locked).toBe(false);
   });
 
