@@ -1,15 +1,15 @@
 # Brief: subscription logins
 
-**Thread:** Subscription logins (Opus). Asked by Li on 2026-10-12 ("Lyrica
+**Thread:** Subscription logins (Opus). Asked by the owner on 2026-10-12 ("Lyrica
 should be able to support Codex and Anthropic logins in addition to API
-keys", so her subscriptions can be used). Li approved the ChatGPT plan and
+keys", so their subscriptions can be used). The owner approved the ChatGPT plan and
 added Grok the same day; built in #169. How it works is in docs/models.md,
 "Subscription plans"; this brief keeps the reasons and what's left.
 
 ## Why
 
-Li pays for a ChatGPT plan. Letting Lyrica's general threads answer from
-that plan, instead of paying per token on top, is something she notices
+The owner pays for a ChatGPT plan. Letting Lyrica's general threads answer from
+that plan, instead of paying per token on top, is something the owner notices
 in every cloud conversation (principle 1). Pi already ships the sign-in
 and the provider, so this is wiring, not a client of our own (principle 3).
 
@@ -51,8 +51,8 @@ and the provider, so this is wiring, not a client of our own (principle 3).
   OpenAI-compatible endpoint (`https://api.anthropic.com/v1/`) already
   works as a plain cloud endpoint. The one permitted way to use a Claude
   plan is the unmodified `claude` program signed in through Anthropic's
-  own flow; using it as a tool in her sandbox is a separate design (Li
-  asked for it on 2026-10-12, after this build).
+  own flow; using it as a tool in her sandbox is a separate design (the
+  owner asked for it on 2026-10-12, after this build).
 - **Grok plan: allowed.** xAI announced SuperGrok and X Premium sign-in in
   third-party agents itself (x.ai/news/grok-opencode,
   x.ai/news/grok-kilocode). Pi's `xai` provider has it as a device code

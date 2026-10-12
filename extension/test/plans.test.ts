@@ -7,7 +7,7 @@ const TOKEN_URLS = { chatgpt: "https://auth.openai.com/api/accounts/oauth/token"
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; vi.restoreAllMocks(); });
 
-/** Li with a ChatGPT plan whose sign-in has `expires`, and its first model in her cloud profile. */
+/** The user with a ChatGPT plan whose sign-in has `expires`, and its first model in their cloud profile. */
 async function setup(expires = Date.now() + 3_600_000, kind: "chatgpt" | "grok" = "chatgpt") {
   const m = await withModels();
   m.models.setPlanCatalog(planCatalog);
