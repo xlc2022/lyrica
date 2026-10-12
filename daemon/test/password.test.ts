@@ -31,5 +31,10 @@ describe("an administrator sets a password", () => {
     expect((await sam.post(`${su}/me/password`, { oldPassword: "fresh-pw", newPassword: "mine-again" })).status).toBe(200);
     expect((await sam.get<Me>(`${su}/me`)).body.warning).toBeUndefined();
     expect((await login(base, "sam", "mine-again")).cookie).toBeDefined();
+    // Guessing the administrator's password from an open session counts on the limiter.
+    const tries: number[] = [];
+    for (let i = 0; i < 4; i++) tries.push((await li.put(`${lu}/admin/users/${rt.sam.id}/password`, { password: "guess-pw", yourPassword: `wrong-${i}` })).status);
+    expect(tries[0]).toBe(401);
+    expect(tries.at(-1)).toBe(429);
   });
 });

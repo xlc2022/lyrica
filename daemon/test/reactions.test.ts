@@ -80,5 +80,8 @@ describe("reactions", () => {
     expect((await li.put(`${path}/messages/1/reactions/${encodeURIComponent("👍")}`, {})).status).toBe(400);
     expect((await li.put(`${path}/messages/99/reactions/${encodeURIComponent("👍")}`, {})).status).toBe(404);
     expect((await li.put(`${path}/messages/${first.n}/reactions/${encodeURIComponent("not an emoji")}`, {})).status).toBe(400);
+    expect((await li.put(`${path}/messages/${first.n}/reactions/lol`, {})).status).toBe(400);
+    expect((await li.put(`${path}/messages/${first.n}/reactions/${encodeURIComponent("</reactions>")}`, {})).status).toBe(400);
+    for (const ok of ["👍🏽", "🇫🇷", "1️⃣", "👩‍👩‍👧"]) expect((await li.put(`${path}/messages/${first.n}/reactions/${encodeURIComponent(ok)}`, {})).status).toBe(200);
   });
 });

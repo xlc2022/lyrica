@@ -836,8 +836,8 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .reaction:disabled { cursor: default; opacity: 1; }
 .react-anchor { position: relative; display: inline-flex; margin-left: 6px; vertical-align: middle; }
 .who .react-btn + .msg-menu { margin-left: 2px; }
-.react-anchor .quick { position: absolute; z-index: 12; top: calc(100% + 4px); left: 0; display: flex; gap: 2px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; box-shadow: 0 8px 30px rgb(0 0 0 / 0.15); }
-.turn .react-anchor .quick, .turn .react-anchor .full { left: auto; right: 0; }
+.react-anchor .quick { position: absolute; z-index: 12; top: 50%; transform: translateY(-50%); left: calc(100% + 6px); display: flex; gap: 2px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; box-shadow: 0 8px 30px rgb(0 0 0 / 0.15); }
+.turn .react-anchor .full { left: auto; right: 0; }
 .react-anchor .quick button { width: 36px; height: 36px; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: transparent; font-size: 20px; line-height: 1; }
 .react-anchor .quick button:hover, .react-anchor .quick button:focus-visible { background: var(--tool); }
 .react-anchor .quick button[aria-pressed="true"] { background: var(--user-block); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -849,7 +849,7 @@ emoji-picker { width: 100%; height: min(400px, 60vh); --background: var(--panel)
   /* The quick row hangs from the message's left edge, not the button's, so it never leaves the screen (both sides of a chat). */
   .who { position: relative; }
   .react-anchor { position: static; }
-  .react-anchor .quick { left: 0; right: auto; top: calc(100% + 4px); }
+  .react-anchor .quick { left: 0; right: auto; top: calc(100% + 4px); transform: none; }
   .react-anchor .quick button { width: 44px; height: 44px; }
   .react-anchor .full { position: fixed; top: auto; bottom: 0; left: 0; right: 0; width: auto; border-radius: 12px 12px 0 0; }
 }

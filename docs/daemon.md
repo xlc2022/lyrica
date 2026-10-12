@@ -213,9 +213,14 @@ Each active thread is one Pi session from `openThreadSession`, with
   thread). Messages carry `reactions`, each emoji with `you` and `her`. Hers
   come from her `react` tool, which writes to the pool directly; either way
   the thread's stream gets a `reactions` event with the message's new set.
-  The user's reactions since her last turn go into her next turn's message
-  as a `<reactions>` block ("Li reacted 🎉 to your message [e:…]"); the
-  user's stored message is untouched.
+  An emoji is one pictograph, flag or keycap with its joiners, variation
+  selectors and skin tones (`isEmoji` in `core/src/store/pool.ts`, shared by
+  the route and her tool). The user's reactions since her last turn go into
+  her next turn's message as a `<reactions>` block ("Li reacted 🎉 to your
+  message [e:…]") while the thread stays open; a reaction made after the
+  hosted thread is dropped for idleness isn't told. The user's stored
+  message is untouched. In a branched thread her tool takes the copy's id
+  or the original's, since the copy keeps `n`.
 - **Rewinding** (`POST …/messages/:n/rewind`, `RewindRequest`): `delete`
   removes message `n` and everything after it; `regenerate` removes her
   reply's turn from its user message and sends that message again;

@@ -567,7 +567,7 @@ function UsersSection({ ctx }: { ctx: ShellContext }) {
               <Switch label="Administrator" checked={x.admin}
                 onChange={(admin) => run(async () => { await put(u(userId, "admin", "users", x.id, "admin"), { admin }); users.reload(); })} />
             </div>
-            <PasswordSetter userId={userId} target={x} />
+            {x.id !== userId && <PasswordSetter userId={userId} target={x} />}
             <AllowedPathsEditor userId={userId} target={x.id} />
           </li>
         ))}

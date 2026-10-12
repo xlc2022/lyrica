@@ -38,9 +38,11 @@ export function createReactExtension(thread: ThreadContext, host: ReactHost): Ex
       async execute(_id, params, _signal, _update, toolCtx) {
         let n: number;
         if (params.message) {
+          // A branched thread's copies keep n and carry the original's id, so either names the message.
           const m = ENTRY.exec(params.message.trim());
-          if (!m || m[1] !== thread.threadId) return fail(`${params.message} isn't a message of this conversation.`);
+          if (!m) return fail(`${params.message} isn't a message of this conversation.`);
           n = Number(m[2]);
+          if (m[1] !== thread.threadId && store.entryId(thread.threadId, n) !== m[0]) return fail(`${params.message} isn't a message of this conversation.`);
         } else {
           // The message that led here is in Pi's session but may not be stored yet.
           syncEntries(toolCtx.sessionManager, store, thread.threadId);

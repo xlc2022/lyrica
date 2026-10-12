@@ -81,6 +81,9 @@ export interface StoredEntry {
 /** One emoji on a message and who put it there: user IDs, or "lyrica". */
 export interface Reaction { emoji: string; by: string[] }
 export const LYRICA_REACTS = "lyrica";
+/** One emoji: pictographs, flags or keycaps, joined with ZWJ, variation selectors and skin tones; up to 32 code units. */
+const EMOJI = /^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[#*0-9]\uFE0F?\u20E3)(?:[\u200D\uFE0F]|\p{Emoji_Modifier}|\p{Extended_Pictographic}|\p{Regional_Indicator}|[#*0-9]\uFE0F?\u20E3)*$/u;
+export const isEmoji = (s: string): boolean => s.length > 0 && s.length <= 32 && EMOJI.test(s);
 
 /** A pinned entry, with where it is. */
 export interface PinnedEntry extends StoredEntry {
@@ -326,6 +329,12 @@ export class PoolReader {
   }
 
   /** The newest entry of the thread with one of the roles, or of any role. */
+  /** The ID an entry goes by: its own, or the original's for a copy. */
+  entryId(threadId: string, n: number): string | undefined {
+    const row = this.db.prepare("SELECT coalesce(orig, 'e:' || thread || '#' || n) AS id FROM entries WHERE thread = ? AND n = ?").get(threadId, n) as { id: string } | undefined;
+    return row?.id;
+  }
+
   lastEntry(threadId: string, roles?: string[]): StoredEntry | undefined {
     const filter = roles ? `AND role IN (${roles.map(() => "?").join(",")})` : "";
     const row = this.db.prepare(`SELECT * FROM entries WHERE thread = ? ${filter} ORDER BY n DESC LIMIT 1`)
@@ -814,7 +823,7 @@ export class PoolStore extends PoolReader {
    */
   react(threadId: string, n: number, emoji: string, by: string, on: boolean): Reaction[] {
     this.mustThread(threadId);
-    if (!emoji || emoji.length > 32 || /\s/.test(emoji)) throw new Error("not an emoji");
+    if (!isEmoji(emoji)) throw new Error("not an emoji");
     const row = this.db.prepare("SELECT reactions FROM entries WHERE thread = ? AND n = ?").get(threadId, n) as { reactions: string | null } | undefined;
     if (!row) throw new Error(`no entry ${n} in ${threadId}`);
     const current = parseReactions(row.reactions);

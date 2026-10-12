@@ -10,7 +10,7 @@ import {
 import { Gate } from "./App.tsx";
 import { her, setHer } from "./name.ts";
 import { PronounFields, PRESETS } from "./Panel.tsx";
-import { TailnetState } from "./Tailnet.tsx";
+import { tailnetReason, TailnetState } from "./Tailnet.tsx";
 import { ErrorText, Switch } from "./ui.tsx";
 
 /** Like useAction, keeping the error itself, so its status can say what happened in the page's words. */
@@ -32,10 +32,8 @@ function explain(e: Error, step: StepKey): string {
   const status = e instanceof HttpError ? e.status : 0;
   if (step === "admin" && status === 403) return "The code doesn't match. It is in the journal: journalctl -u lyricad.";
   if (step === "admin" && status === 429) return "Too many wrong codes. Wait a minute, then try again.";
-  if (step === "tailnet" && /not installed|no tailscale/i.test(e.message)) return "Tailscale isn't installed on this machine. Run install.sh again.";
-  if (step === "tailnet" && /tailscaled isn't running|not running/i.test(e.message)) return "Her tailscaled isn't running: systemctl status lyrica-tailscaled.";
   if (step === "tailnet" && status === 409 && /cut this connection/.test(e.message)) return "This page is reached over the tailnet, so joining another one would cut it off. Open her LAN address and do it there.";
-  if (step === "tailnet" && /certificate/i.test(e.message)) return "HTTPS certificates are off in this tailnet. Turn them on under DNS in the admin console, then turn Web access on.";
+  if (step === "tailnet") return tailnetReason(e.message);
   return e.message;
 }
 
@@ -143,7 +141,7 @@ function TailnetStep({ userId, current, name, onNext }: { userId: string; curren
       )}
       {tn && <TailnetState tn={tn} />}
       {connected && <Switch label="Web access" checked={web} disabled={!current} onChange={setWeb} hint={`HTTPS at https://${tn.dnsName ?? join.hostname} through Tailscale, for every device on the tailnet.`} />}
-      <ErrorText error={loadError || (notInstalled ? explain(new Error(tn.reason ?? "not installed"), "tailnet") : "") || (current && error ? explain(error, "tailnet") : "")} />
+      <ErrorText error={loadError || (current && error ? explain(error, "tailnet") : "")} />
       {current && (
         <div className="row">
           {connected

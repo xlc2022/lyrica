@@ -1,5 +1,5 @@
 import {
-  AuthError, NoRecoveryCopy, WrongPassword, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS, projectSlug,
+  AuthError, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, firstLine, sentenceCiting, splitId,
   type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type MachineConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
 } from "@lyrica/core";
@@ -1189,11 +1189,12 @@ export function apiRoutes(d: Lyricad): Route[] {
       const actor = d.adminFor(r);
       const { password, yourPassword } = await r.json<Api.AdminPassword>();
       const t = target(d, r);
+      // An open session isn't enough: the administrator's own password is checked, and guesses count on the limiter.
+      const keys = [`login:${actor.login.toLowerCase()}`, `ip:${r.ip}`];
       try {
-        await s().users.setPassword(actor, String(yourPassword ?? ""), t, String(password ?? ""));
+        await limited(d, keys, () => s().users.setPassword(actor, String(yourPassword ?? ""), t, String(password ?? "")), "that isn't your password");
       } catch (err) {
         if (err instanceof NoRecoveryCopy) throw new HttpError(409, err.message);
-        if (err instanceof AuthError) throw new HttpError(401, "that isn't your password");
         throw err;
       }
       // The old password's sessions end: the user logs in again with the new one.
@@ -1882,7 +1883,7 @@ function react(d: Lyricad, user: User, r: Request, on: boolean): Api.Reactions {
   const pool = poolOf(r);
   const n = entryN(r);
   const emoji = String(r.params.emoji ?? "");
-  if (!emoji || emoji.length > 32 || /\s/.test(emoji)) throw new HttpError(400, "not an emoji");
+  if (!isEmoji(emoji)) throw new HttpError(400, "not an emoji");
   return owner(d, user, (o) => {
     const thread = threadOf(o, r);
     if (thread.subagent) throw new HttpError(409, "a subagent's thread has no reactions");

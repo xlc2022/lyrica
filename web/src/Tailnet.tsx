@@ -11,7 +11,15 @@ const CUT = "This page is reached over the tailnet, so disconnecting would cut i
 
 /** The 409 for a change asked over her own tailnet address, in the page's words; anything else as lyricad said it. */
 export function tailnetError(e: Error): string {
-  return e instanceof HttpError && e.status === 409 && /cut this connection/.test(e.message) ? CUT : e.message;
+  return e instanceof HttpError && e.status === 409 && /cut this connection/.test(e.message) ? CUT : tailnetReason(e.message);
+}
+
+/** The server's reason in the page's words (docs/ux.md §4: what happened and what to do). */
+export function tailnetReason(reason: string): string {
+  if (/isn't installed|not installed|no tailscale/i.test(reason)) return "Tailscale isn't installed on this machine. Run install.sh again.";
+  if (/isn't running|not running/i.test(reason)) return "Her tailscaled isn't running: systemctl status lyrica-tailscaled.";
+  if (/certificate/i.test(reason)) return "HTTPS certificates are off in this tailnet. Turn them on under DNS in the admin console, then turn Web access on.";
+  return reason;
 }
 
 /** One state: a dot and a word (docs/ux.md §2), with the reason as the word's tooltip where there is one. */
@@ -20,7 +28,8 @@ export function TailnetState({ tn }: { tn: Tailnet }) {
     : tn.state === "notInstalled" ? ["down", "Not installed"] : ["", "Not joined"];
   return (
     <div className="stack tailnet-state">
-      <span className="state-word" title={tn.reason}>{word[0] && <span className={`dot ${word[0]}`} aria-hidden="true" />}{word[1]}</span>
+      <span className="state-word">{word[0] && <span className={`dot ${word[0]}`} aria-hidden="true" />}{word[1]}</span>
+      {tn.state !== "connected" && tn.reason && <span className="muted small">{tailnetReason(tn.reason)}</span>}
       {tn.state === "connected" && <TailnetFacts tn={tn} />}
     </div>
   );
@@ -54,7 +63,6 @@ export function TailnetSection({ ctx }: { ctx: ShellContext }) {
           {tn.state === "notJoined" && <button type="button" className="primary" disabled={busy} onClick={() => setDrawer("join")}>Connect</button>}
           {tn.state === "disconnected" && <button type="button" className="primary" disabled={busy} onClick={() => void act(() => post<Tailnet>(`${path}/connect`, {}))}>Connect</button>}
           {tn.state === "connected" && <button type="button" disabled={busy} onClick={() => setDialog("disconnect")}>Disconnect</button>}
-          {tn.state === "notInstalled" && <span className="muted small">{tn.reason}</span>}
         </div>
       )}
       {drawer && (

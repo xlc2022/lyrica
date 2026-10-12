@@ -84,13 +84,13 @@ function WebAccessForm({ path, access, onSaved }: { path: string; access: WebAcc
 
       {mode === "direct" && (
         <dl className="facts" aria-label="Direct">
-          <dt>Addresses</dt><dd className="mono">{access.direct ? access.direct.addresses.map((a) => <div key={a}>https://{a.includes(":") ? `[${a}]` : a}:{access.direct!.port}</div>) : "This machine has no LAN or Tailscale address."}</dd>
+          <dt>Addresses</dt><dd>{access.direct ? access.direct.addresses.map((a) => <div key={a} className="mono">https://{a.includes(":") ? `[${a}]` : a}:{access.direct!.port}</div>) : <span className="muted">This machine has no LAN or Tailscale address.</span>}</dd>
           {access.direct && <><dt>Fingerprint</dt><dd className="mono small">{access.direct.fingerprint}</dd></>}
         </dl>
       )}
       {mode === "tailnet" && (
         <dl className="facts" aria-label="Tailnet">
-          <dt>Name</dt><dd className="mono">{access.tailnet ? `https://${access.tailnet.dnsName}` : "Not on a tailnet yet: join one under Tailnet first."}</dd>
+          <dt>Name</dt><dd>{access.tailnet ? <span className="mono">https://{access.tailnet.dnsName}</span> : <span className="muted">Not on a tailnet yet: join one under Tailnet first.</span>}</dd>
           {access.tailnet && <><dt>Certificate</dt><dd>{access.tailnet.certificates ? "From Tailscale" : "Not issued yet"}</dd></>}
         </dl>
       )}
@@ -215,7 +215,7 @@ function Status({ status, error, onRefresh, staging }: { status?: WebAccessStatu
           {status.direct && (
             <>
               <dt>Direct</dt>
-              <dd className="mono">{status.direct.listening.length ? status.direct.listening.map((a) => <div key={a}>https://{a.includes(":") ? `[${a}]` : a}:{status.direct!.port}</div>) : "Not listening"}</dd>
+              <dd>{status.direct.listening.length ? status.direct.listening.map((a) => <div key={a} className="mono">https://{a.includes(":") ? `[${a}]` : a}:{status.direct!.port}</div>) : <span className="muted">Not listening</span>}</dd>
               <dt>Fingerprint</dt><dd className="mono small">{status.direct.fingerprint}</dd>
             </>
           )}
