@@ -20,6 +20,7 @@ const PATHS = {
   expand: "M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7",
   check: "M5 12l5 5L20 7",
   pin: "M12 17v4M8 3h8l-1 7 3 3H6l3-3-1-7z",
+  star: "M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.8L12 16.9l-5.25 2.7 1-5.8L3.5 9.7l5.9-.9z",
   up: "M12 19V5M5 12l7-7 7 7",
   "arrow-down": "M12 5v14M5 12l7 7 7-7",
   stop: "M7 7h10v10H7z",

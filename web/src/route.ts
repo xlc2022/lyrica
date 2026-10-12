@@ -22,7 +22,7 @@ export type Route =
   | { page: "settings"; userId: string; section?: string }
   | { page: "admin"; userId: string; section?: string };
 
-export const MODELS_TABS = ["overview", "tasks", "hosts", "cleanup", "calls"] as const;
+export const MODELS_TABS = ["overview", "tasks", "text", "hosts", "cleanup", "calls"] as const;
 export type ModelsTab = (typeof MODELS_TABS)[number];
 
 /** What the panel can show: a thread (with its drawer), a thread's files, a project's settings, or a memory. */

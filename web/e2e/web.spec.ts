@@ -1872,6 +1872,94 @@ test("Tasks: the table shows each profile's models; a cell's drawer adds, reorde
   await expect(page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "Model profiles" })).toHaveCount(0);
 });
 
+test("Text models: a row per model with starred first; a row opens to its copies, and a copy's Settings saves Temperature as yours", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/text-models-${name}-${page.viewportSize()!.width}.png`, fullPage: true }); };
+  const inView = () => page.evaluate(() => {
+    const body = document.querySelector<HTMLElement>(".page-body")!;
+    const past = [...document.querySelectorAll<HTMLElement>(".ldetail *, .drawer *")].filter((el) => el.offsetParent && el.getBoundingClientRect().right > innerWidth + 1);
+    return { wide: body.scrollWidth > body.clientWidth + 1, past: past.map((el) => `${el.tagName}.${el.className}`) };
+  });
+  await page.goto(`/#/u/${userId}/models/text`);
+  await expect(page.getByRole("heading", { level: 1, name: "Text models" })).toBeVisible();
+  const facts = page.locator(".head .cap");
+  await expect(facts).toHaveText(/^\d+ models · \d+ copies on 4 endpoints · \d+ groups? · 0 starred$/);
+  const rows = page.locator("li.lrow");
+  const row = (name: string) => rows.filter({ has: page.getByRole("button", { name: new RegExp(`^(Un)?[Ss]tar ${name}$`) }) });
+  const local = row("local-model");
+  await expect(local.locator(".meta")).toHaveText("local · 1 copy · gpu");
+  await noHorizontalScroll(page);
+  expect(await inView()).toEqual({ wide: false, past: [] });
+
+  // A star puts the model first; Starred shows only it.
+  await local.getByRole("button", { name: "Star local-model" }).click();
+  await expect(facts).toContainText("· 1 starred");
+  await expect(rows.first().getByRole("button", { name: "Unstar local-model" })).toHaveAttribute("aria-pressed", "true");
+  if (phone(page)) {
+    for (const target of [rows.first().getByRole("button", { name: "Unstar local-model" }), rows.first().locator(".lrow-main"), page.getByRole("button", { name: "Starred", exact: true })]) {
+      expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    }
+  }
+  await page.getByRole("button", { name: "Starred", exact: true }).click();
+  await expect(rows).toHaveCount(1);
+  await page.getByRole("button", { name: "Starred", exact: true }).click();
+  await page.getByLabel("Search models").fill("no such model");
+  await expect(page.getByText("No models match.")).toBeVisible();
+  await page.getByLabel("Search models").fill("");
+  await shot("list");
+
+  // The row opens in place to its copy, with Settings in the copy's line.
+  await local.locator(".lrow-main").click();
+  await expect(local.locator(".lrow-main")).toHaveAttribute("aria-expanded", "true");
+  const detail = local.locator(".ldetail");
+  await expect(detail.locator("tr[data-offering]")).toHaveCount(1);
+  await expect(detail.locator("code.raw")).toHaveText("local-model");
+  await expect(detail.locator(".copy-name")).toContainText("gpu local");
+  await noHorizontalScroll(page);
+  expect(await inView()).toEqual({ wide: false, past: [] });
+  await shot("detail");
+
+  // Settings: Sampling only on a plain endpoint, with its Context window; Temperature saved is yours.
+  const settings = detail.getByRole("button", { name: "Settings for local-model on gpu" });
+  await settings.click();
+  const drawer = page.getByRole("complementary", { name: "Settings for local-model" });
+  await expect(drawer.getByRole("group", { name: "Settings" })).toHaveCount(0);
+  await expect(drawer.getByLabel("Context window")).toBeVisible();
+  const temperature = drawer.getByLabel("Temperature", { exact: true });
+  await temperature.fill("0.4");
+  const put = () => page.waitForResponse((r) => r.request().method() === "PUT" && r.url().endsWith("/settings"));
+  let saved = put();
+  await drawer.getByRole("button", { name: "Save", exact: true }).click();
+  expect((await saved).ok()).toBe(true);
+  await expect(drawer).toHaveCount(0);
+  await expect(page.locator(".toast")).toContainText("Saved.");
+  await settings.click();
+  await expect(temperature).toHaveValue("0.4");
+  await expect(drawer.locator(".srow").filter({ has: page.getByLabel("Temperature", { exact: true }) })).toContainText("yours");
+  await noHorizontalScroll(page);
+  expect(await inView()).toEqual({ wide: false, past: [] });
+  await shot("settings");
+  // Reset takes it back to the endpoint's defaults.
+  await drawer.getByRole("button", { name: "Reset" }).click();
+  await expect(temperature).toHaveValue("");
+  saved = put();
+  await drawer.getByRole("button", { name: "Save", exact: true }).click();
+  expect((await saved).ok()).toBe(true);
+  await expect(drawer).toHaveCount(0);
+
+  // A speaking model's Settings is its voice drawer.
+  const kokoro = row("kokoro");
+  await kokoro.locator(".lrow-main").click();
+  await kokoro.locator(".ldetail").getByRole("button", { name: "Settings for kokoro on speech" }).click();
+  const voice = page.getByRole("complementary", { name: "kokoro settings" });
+  await expect(voice).toBeVisible();
+  await voice.getByRole("button", { name: "Close" }).click();
+  await expect(voice).toHaveCount(0);
+
+  await local.getByRole("button", { name: "Unstar local-model" }).click();
+  await expect(facts).toContainText("· 0 starred");
+});
+
 test("Web search: the administrator sets the SearXNG address and sees whether it answers; without one the switch says why", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const shot = async (name: string) => {
