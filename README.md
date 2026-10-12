@@ -12,7 +12,8 @@ cloud model is outside our control.
 ## Running her
 
 - [docs/guides/getting-started.md](docs/guides/getting-started.md) installs
-  her on a new server (Debian, Ubuntu or NixOS), takes her through the first run,
+  her on a new server (NixOS through the flake, or Debian or Ubuntu), takes
+  her through the first run,
   and covers updates, rollback and backups.
 - [docs/guides/model-hosts.md](docs/guides/model-hosts.md) sets up a GPU
   machine for her models.

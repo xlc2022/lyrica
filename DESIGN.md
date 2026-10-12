@@ -1440,10 +1440,11 @@ Details in [docs/sleep.md](docs/sleep.md).
   can't use them; a subagent or child thread can't turn back on what its
   parent turned off, even later. Local-only and the pool are not switches here: they
   stay in the thread's settings, where changing them is deliberate.
-- **Deployment:** `lyricad` runs as a systemd service, in practice inside an
-  LXC container or VM on Li's Proxmox. No Docker. The host needs bubblewrap,
+- **Deployment:** `lyricad` runs as a systemd service, in practice on a
+  NixOS VM on Li's Proxmox (her expected home, Li 2026-10-12), or on Debian
+  or Ubuntu in an LXC container or VM. No Docker. The host needs bubblewrap,
   gocryptfs, pasta, FUSE and unprivileged user namespaces. In an LXC container, that
-  means turning on the nesting and FUSE features. One install script sets up
+  means turning on the nesting and FUSE features. On Debian or Ubuntu, one install script sets up
   the service users, `lyricad`'s unit, the built-in Caddy, and **her own
   tailscaled** (`lyrica-tailscaled.service`: the `tailscale` package's
   daemon in userspace-networking mode, as the `lyrica` user, with its own

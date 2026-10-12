@@ -756,7 +756,8 @@ and never logged; a Caddy error that quotes one has it replaced with
 `daemon/deploy/install.sh`, run as root on Debian or Ubuntu from a clean git
 checkout outside `/opt/lyrica`, installs or upgrades everything. Running it
 again installs that checkout's commit as a release, the way an update does
-("Updates" below). On NixOS, the flake's module does the same ("On NixOS" below).
+("Updates" below). On NixOS, her expected home, the flake's module does the
+same ("On NixOS" below).
 
 - It installs the packages (bubblewrap, gocryptfs, FUSE, passt, nftables,
   openssl, ImageMagick, and for the updater build-essential, python3, git,
