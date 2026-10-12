@@ -23,7 +23,8 @@ export interface Rewinder {
   startThread?(n: number): void;
 }
 
-export function MessageMenu({ n, role, rewinder, onEdit }: { n: number; role: "user" | "assistant"; rewinder: Rewinder; onEdit?: () => void }) {
+/** `onRemember`: Remember this, a note from the message's first line (docs/ux.md §6). */
+export function MessageMenu({ n, role, rewinder, onEdit, onRemember }: { n: number; role: "user" | "assistant"; rewinder: Rewinder; onEdit?: () => void; onRemember?: () => void }) {
   const [open, setOpen] = useState(false);
   const [models, setModels] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
@@ -43,6 +44,7 @@ export function MessageMenu({ n, role, rewinder, onEdit }: { n: number; role: "u
           {rewinder.pinned.has(n)
             ? <button type="button" role="menuitem" onClick={act(() => rewinder.pin(n, false))}>Unpin</button>
             : <button type="button" role="menuitem" onClick={act(() => rewinder.pin(n, true))}>Pin</button>}
+          {onRemember && <button type="button" role="menuitem" onClick={act(onRemember)}>Remember this</button>}
           <button type="button" role="menuitem" onClick={act(() => rewinder.branch(n))}>Branch from here</button>
           {rewinder.startThread && <button type="button" role="menuitem" disabled={busy} onClick={act(() => rewinder.startThread!(n))}>Start a thread</button>}
           {role === "assistant" && <button type="button" role="menuitem" disabled={busy} onClick={act(() => regenerate())}>Regenerate</button>}

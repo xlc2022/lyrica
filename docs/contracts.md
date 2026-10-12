@@ -945,21 +945,23 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       `paused`, `busy`, `unpaired`, `identity_changed`, …) is `502` with the
       host's plain message.
   - users and admin;
-  - memory browser. **Planned (Memory browser,**
-    [briefs/memory-browser.md](briefs/memory-browser.md)**):**
-    `MemoryDetail.links: Record<id, { title: string; snippet: string }>`
-    for every memory the text and the lineage cite; `MemoryDetail.usedIn`
-    becomes `{ id, sentence }[]` (replacing `string[]`; the web is its
-    only client), the citing sentence of each memory that cites this one.
-    Titles, snippets and sentences come only from pools the display
-    filters show: a hidden pool's memory keeps its id and gets no title,
-    snippet or sentence, and reads as "Private is hidden"; a general ID's
-    reader never receives private words. `GET …/memory/search` without `q` lists one layer
-    when `kinds` names exactly one (newest first, `limit` and `before`
-    paging) and takes `about=` to filter notes by a tag;
-    `GET …/memory/about` → the pool's distinct `about` words with counts.
-    Differences between revisions are computed in the browser from the
-    revisions already returned; nothing new is stored;
+  - memory browser ([briefs/memory-browser.md](briefs/memory-browser.md)):
+    `GET …/memory` → `MemoryOverview` (pages and notes counted over the
+    pools the display shows, and when she last slept); `GET …/memory/about`
+    → `MemoryTag[]`, the pool's distinct `about` words with counts;
+    `GET …/memory/search` without `q` lists one layer when `kinds` names
+    exactly one (newest first, `limit` and `before` paging by `updatedAt`),
+    takes `about=` to filter notes by a tag, and its hits carry `title`,
+    `about` and `updatedAt`. `MemoryDetail.links: Record<ref, MemoryLink>`
+    gives every memory and thread the text and the lineage cite its kind,
+    pool, title, a snippet of its first words and its date; `usedIn` is
+    `MemoryUse[]` (`{ id, sentence? }`), the sentence of each memory that
+    cites this one. Titles, snippets and sentences come only from pools the
+    display shows: a hidden pool's ref keeps its id and gets no link, and a
+    general memory's detail never carries a private ref's title, snippet or
+    sentence (a private citer is listed by id with no sentence), whatever
+    the display. Differences between revisions are computed in the browser
+    from the revisions already returned; nothing new is stored;
   - speech: `POST …/threads/:pool/:threadId/transcribe` and `POST
     /api/u/:userId/transcribe?pool=` (an `audio/wav` body, `?language=`) →
     `Transcription { text, seconds, model }`; `GET

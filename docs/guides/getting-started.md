@@ -250,6 +250,15 @@ lock, so
 their home workspace mounts at start and sleep can run for them without a
 login.
 
+An administrator can set any user's password with **Change password…** on
+that user's row under Administration, Users. The user's data stays, and
+they are told who set it until they change it under Settings, Password.
+This works because `self.db` keeps a recovery copy of each user's key, so
+whoever holds the passphrase can open every user's data. A user created
+before that copy existed gets it at their next login, or when their saved
+key loads at start; until then, Change password… says they need to log in
+once first.
+
 ## Reach her from other machines
 
 By default nothing but `127.0.0.1` can reach her. An administrator sets up
@@ -469,8 +478,9 @@ the SSH ones, and `ssh remove <name>` takes one away.
   Sleep) for every user whose key is available.
 - **Where the data is:** everything is under `/var/lib/lyrica`. `self.db`
   and each `users/<id>/` directory are encrypted at rest; a copy made while
-  the service is stopped is a backup, and useless without the passphrase
-  and the users' passwords.
+  the service is stopped is a backup, and useless without the passphrase.
+  With it, every user's data opens through the recovery copies, so keep the
+  passphrase as carefully as the backup.
 - **Upgrading:** in the checkout, as root:
 
   ```sh

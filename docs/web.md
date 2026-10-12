@@ -152,6 +152,7 @@ A thread's address may carry what the panel beside it shows:
   under Chat. Opening a subagent's thread by link shows the same thing as
   its card: a link to its parent, its transcript and a message box, never
   the composer or settings.
+<<<<<<< HEAD
 - **Memory:** search filtered by pool, layer and User introduced; a memory
   with its lineage as links, edit (each edit a revision), history with
   restore, archive and delete; forgetting selected results as a topic; and
@@ -172,6 +173,26 @@ A thread's address may carry what the panel beside it shows:
   (Add to Private 2, Decline 2), and none when they share none. Twenty rows at a time, with
   Show more. The welcome page shows the first four decisions in a card
   with All N.
+=======
+- **Memory** (`src/Memory.tsx`, `src/memory.ts`; [memory.md](memory.md), The
+  memory browser): a notebook. The browse pane lists one layer (Pages, Notes,
+  WAKE, Journal) newest first, filtered by pool and User introduced, with
+  tags for notes; a search replaces the list. The memory at the right shows
+  its citations as titles with a hover preview (`linkCitations` turns each
+  citation into a link whose word comes from `MemoryDetail.links`; the raw ID
+  is never shown), Came from and Used in with the citing sentence, History as
+  word differences (`wordDiff`, computed in the browser) with Restore, and
+  Edit in place with a `[[` popover of pages and people (a page shows as
+  `[[Title]]` and saves as `[p:<slug>]`). Archive, Delete, Forget… on a
+  selection, and Add a memory. `…/memory/<pool>/<id>` is a memory on the
+  page; `…/t/<pool>/<thread>/panel/memory/<pool>/<id>` is the same memory in
+  the panel beside a conversation, where recall markers and citations open
+  it; the panel is named Memory, and a memory followed from it adds its title
+  to the breadcrumbs. The lineage names the memory being read as itself, never
+  as gone. Mention tokens show as current names; the editor shows them as
+  `[[Name]]` or `[[Name:obj]]` and saves them back as tokens. Nothing of a
+  memory's text is kept in the browser's storage.
+>>>>>>> origin/main
 - **Settings** (`src/Panel.tsx`): a page with its sections listed at the
   left (a scrolling row on a phone): Notifications, Profile (name, pronouns, accent colour,
   monogram), Appearance (theme), Unlock and lock (saved credentials, stay
@@ -294,7 +315,11 @@ A thread's address may carry what the panel beside it shows:
   a turn may have ended between fetching the messages and opening the stream,
   such as a child thread opened as its first turn ends.
 - **Each message has a menu** (a bordered ⋯ icon button by the sender's
-  name; `src/Rewind.tsx`): Pin or Unpin; Branch from here; on her replies Regenerate and
+  name; `src/Rewind.tsx`): Pin or Unpin; Remember this (a labelled field
+  under the message, prefilled with its first line, whose Remember button
+  writes a user-introduced note in the thread's pool citing the message;
+  `RememberBox` in `src/Messages.tsx`);
+  Branch from here; on her replies Regenerate and
   Regenerate with… (the models the thread may use); on the user's messages
   Edit, which turns the message into a box (Save, Cancel) whose text is sent
   in its place; Delete on the messages of the last turn, and Delete from

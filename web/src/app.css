@@ -430,27 +430,91 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .dlg-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .check { display: inline-flex; gap: 8px; align-items: center; min-height: calc(var(--tap) - 8px); cursor: pointer; }
 
-/* ---- Memory ---- */
-.memory-panes { display: grid; grid-template-columns: minmax(280px, 380px) minmax(0, 1fr); min-height: 0; flex: 1; }
-.memory-search { border-right: 1px solid var(--line); overflow-y: auto; padding: 14px 16px; display: grid; gap: 10px; align-content: start; min-width: 0; }
-.filters-row { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; align-items: center; }
-.hits { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-.hits li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: start; padding: 8px; border-radius: 10px; }
-.hits li[aria-current="true"] { background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
-.hits input { margin-top: 4px; }
-.hits a { color: var(--fg); text-decoration: none; display: grid; gap: 2px; min-width: 0; }
-.hit-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); margin: 0; }
-.snippet { overflow-wrap: anywhere; font-size: 14px; }
-.memory-detail { overflow-y: auto; padding: 18px var(--gutter); min-width: 0; }
-.memory-item { display: grid; gap: 12px; max-width: 72ch; }
-.memory-item h2 { font-size: 15px; overflow-wrap: anywhere; }
-.memory-item h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 4px; }
-.summary { margin: 0; color: var(--muted); }
-.lineage ul, .history ol { margin: 0; padding-left: 18px; overflow-wrap: anywhere; }
-.history details { padding: 4px 0; }
-.history summary { cursor: pointer; min-height: calc(var(--tap) - 8px); }
-.back { display: none; }
+/* ---- Memory, the notebook (docs/ux.md §6): a browse pane with the layer segment and the list, the memory beside it. ---- */
+.mem { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); }
+.mem-pane { border-right: 1px solid var(--line); overflow-y: auto; padding: 12px 14px; display: grid; gap: 10px; align-content: start; min-width: 0; background: var(--panel); position: relative; }
+.mem-pane input[type="search"] { width: 100%; min-height: 34px; }
+.mem-pane .seg { justify-self: start; }
+.mem-pane .seg button { padding: 0 10px; }
+.mem-filters { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 13px; }
+.mem-filters select { min-height: 30px; font-size: 13px; padding: 2px 8px; }
+.mem-filters .check { min-height: 30px; }
+.mem-list { display: grid; gap: 1px; margin: 0 -6px; }
+.mem-list a { display: grid; gap: 2px; padding: 7px 8px; border-radius: 8px; color: var(--fg); min-height: var(--tap); align-content: center; }
+.mem-list a:hover { background: var(--tool); text-decoration: none; }
+.mem-list a[aria-current="true"] { background: var(--tool); box-shadow: inset 0 0 0 1px var(--line); }
+.mem-list a.sel, .mem-list a.sel:hover { background: color-mix(in oklab, var(--accent) 16%, var(--panel)); }
+.mem-list .t { font-weight: 500; display: flex; gap: 8px; align-items: center; min-width: 0; }
+.mem-list .t span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mem-list .t .when { margin-left: auto; font-size: 12px; color: var(--muted); flex: none; }
+.mem-list .s { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mem-list .s .kind { margin-right: 6px; }
+.mem-list .empty { padding: 18px 8px; }
+.mem-list .more-row { padding: 8px; display: flex; justify-content: center; }
+.kind { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.kind.general { color: var(--muted); } .kind.private { color: var(--private); }
+.tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.tags .tag { min-height: 24px; padding: 0 8px; font: 12px var(--mono); border-radius: 999px; color: var(--muted); }
+.tags .tag .num { font-size: 11px; opacity: 0.8; }
+.tags .tag[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+.selbar { position: sticky; bottom: -12px; margin: 0 -14px -12px; display: flex; align-items: center; gap: 6px; padding: 8px 14px; border-top: 1px solid var(--line); background: var(--panel); font-size: 13px; }
+.selbar > span { margin-right: auto; }
+.mem-read { overflow-y: auto; padding: 18px var(--gutter) 48px; min-width: 0; display: grid; gap: 10px; align-content: start; }
+.mem-read .empty { padding: 18px 0; }
+.mem-read .crumbs { max-width: 72ch; }
+.mem-item { display: grid; gap: 14px; max-width: 72ch; }
+.mem-item h2 { font-size: 22px; font-weight: 600; overflow-wrap: anywhere; }
+.mem-item .tfacts .folder { display: inline-flex; gap: 4px; }
+.mem-item .tfacts .folder .ic { width: 14px; height: 14px; }
+.mem-item .summary { color: var(--fg); font-size: 15px; }
+.mem-item .prose { font-size: 15px; line-height: 1.65; }
+.mem-item h3 { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.mem-item section { display: grid; gap: 8px; }
+.mem-back { display: none; }
+/* A page or thread citation reads as its title; a note's as a dated source mark. Both preview on hover or focus. */
+.wl { color: var(--accent); position: relative; }
+.cite { position: relative; display: inline-block; font: 12px var(--mono); color: var(--accent); vertical-align: 1px; padding: 0 3px; margin-left: 1px; border-radius: 4px; background: color-mix(in oklab, var(--accent) 10%, transparent); }
+.cite:hover, .wl:hover { text-decoration: none; }
+.preview { display: none; position: absolute; left: 0; top: calc(100% + 6px); z-index: 6; width: min(360px, 80vw); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.12); padding: 10px 12px; font: 13px/1.5 var(--ui); color: var(--fg); text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.preview .meta { display: block; margin-bottom: 4px; color: var(--muted); }
+.wl:hover .preview, .wl:focus-within .preview, .cite:hover .preview, .cite:focus-within .preview { display: block; }
+/* Came from and Used in: a card per memory. */
+.links { display: grid; gap: 6px; }
+.links .lk { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: baseline; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--fg); min-height: var(--tap); }
+.links a.lk:hover { text-decoration: none; border-color: var(--accent); }
+.links .lk .eyebrow { margin-right: 6px; }
+.links .lk > span:first-child { overflow-wrap: anywhere; }
+.links .lk .q { grid-column: 1 / -1; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.links .lk .q mark { background: color-mix(in oklab, var(--accent) 18%, transparent); color: inherit; border-radius: 3px; padding: 0 2px; }
+.links .lk .when { font-size: 12px; color: var(--muted); }
+.links .lk.plain { color: var(--muted); }
+/* History: a row per version; an older one opens to its word differences against the current text. */
+.hist { display: grid; gap: 4px; }
+.hist details { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.hist summary { list-style: none; cursor: pointer; display: flex; gap: 10px; align-items: center; padding: 8px 12px; min-height: var(--tap); font-size: 13px; }
+.hist summary::-webkit-details-marker { display: none; }
+.hist summary .when, .hist summary .n { font-size: 12px; color: var(--muted); }
+.hist summary .by { color: var(--muted); }
+.hist summary .n { margin-left: auto; }
+.hist .wdiff { border-top: 1px solid var(--line); padding: 10px 12px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.hist .wdiff del { color: var(--danger); text-decoration: line-through; text-decoration-thickness: 1px; background: color-mix(in oklab, var(--danger) 10%, transparent); border-radius: 3px; }
+.hist .wdiff ins { color: var(--ok); text-decoration: none; background: color-mix(in oklab, var(--ok) 12%, transparent); border-radius: 3px; }
+.hist .actions { padding: 0 12px 10px; }
+/* Editing in place: the textarea with its [[ popover, Edit | Preview as a segment. */
+.mem-edit .seg { justify-self: start; }
+.mem-edit textarea { width: 100%; border: 1px solid var(--edge); border-radius: 10px; padding: 10px 12px; font: 15px/1.6 var(--ui); background: var(--bg); color: var(--fg); resize: vertical; }
+.mem-edit .ac { position: relative; }
+.mem-edit .ac .popover { position: absolute; left: 12px; top: calc(100% - 4px); z-index: 8; width: min(340px, calc(100% - 24px)); max-height: 40vh; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px; box-shadow: 0 8px 30px rgb(0 0 0 / 0.18); display: grid; gap: 1px; }
+.mem-edit .ac .popover .eyebrow { padding: 4px 10px 2px; }
+.mem-edit .ac .popover .item { display: grid; gap: 1px; justify-items: start; text-align: left; border: 0; background: transparent; border-radius: 8px; padding: 6px 10px; min-height: 32px; width: 100%; white-space: normal; }
+.mem-edit .ac .popover .item:hover, .mem-edit .ac .popover .item[aria-selected="true"] { background: var(--tool); }
+.mem-edit .ac .popover .item .meta { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.mem-edit .preview-pane { min-height: 120px; }
 .add-memory { max-width: 60ch; }
+/* Remembering a message: a one-line box under it, prefilled with its first line. */
+.remember-box { display: grid; gap: 6px; max-width: 72ch; }
+.remember-box label { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: baseline; }
+.remember-box textarea { width: 100%; border: 1px solid var(--edge); border-radius: 10px; padding: 8px 10px; font: 14px/1.5 var(--ui); background: var(--bg); color: var(--fg); resize: vertical; }
 
 /* ---- Narrow screens: the sidebar and drawer become overlays, the section list a row ---- */
 @media (max-width: 760px) {
@@ -480,11 +544,12 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   .subnav { position: static; display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px var(--gutter); gap: 2px; scrollbar-width: none; mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
   .subnav a:last-child { margin-right: 24px; }
   .subnav a { white-space: nowrap; }
-  .memory-panes { grid-template-columns: minmax(0, 1fr); }
-  .memory[data-detail="true"] .memory-search { display: none; }
-  .memory[data-detail="false"] .memory-detail { display: none; }
-  .memory-search { border-right: 0; }
-  .back { display: inline-flex; align-items: center; min-height: var(--tap); }
+  .mem { grid-template-columns: minmax(0, 1fr); }
+  .mem[data-reading="true"] .mem-pane, .mem[data-reading="false"] .mem-read { display: none; }
+  .mem-pane { border-right: 0; }
+  .mem-back { display: inline-flex; align-items: center; gap: 6px; justify-self: start; min-height: var(--tap); padding: 0 10px; border: 1px solid var(--edge); border-radius: 8px; color: var(--fg); background: var(--panel); }
+  .mem-back .ic { width: 14px; height: 14px; }
+  .mem-read { padding: 14px var(--gutter) 40px; }
   .uploads progress { width: 80px; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -500,9 +565,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   button.icon-btn, button.icon.sm { width: 44px; height: 44px; min-height: 44px; }
   .head-actions button.sm { min-height: 44px; min-width: 44px; }
   .chips button { min-width: 44px; }
-  .hits input, .check input, .showing input { width: 22px; height: 22px; }
-  .hits li { grid-template-columns: 44px minmax(0, 1fr); }
-  .hits li > input { justify-self: center; }
+  .check input, .showing input { width: 22px; height: 22px; }
 }
 .sub-message { display: grid; gap: 8px; margin-top: 8px; }
 .sub-message textarea, .sub-message select { font: inherit; }
