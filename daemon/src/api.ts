@@ -1559,3 +1559,56 @@ export type SleepEvent =
   | { type: "finished"; pool: Pool; runId: string; status: SleepRunInfo["status"]; skipReason?: SkipReason }
   /** Manual mode: the fresh thread opened after the run. */
   | { type: "thread"; pool: Pool; threadId: string };
+
+// --- Updates (docs/daemon.md "Updates"). The updater runs as root, outside lyricad. ---
+
+/**
+ * `<runtime>/update.sock`, for root's updater only (mode 0600, no login):
+ * GET /health → Health, POST /drain → Drain, POST /undrain → Ok.
+ * Names and IDs only, never text.
+ */
+export interface Health {
+  commit: string;
+  locked: boolean;
+  checks: { name: string; ok: boolean; error?: string }[];
+}
+/** Work a drain waits for: a turn (or a message waiting for a model), a subagent run, a sleep run. */
+export interface BusyItem { kind: "turn" | "subagent" | "sleep"; userId: string; pool?: Pool; threadId?: string }
+/** POST /drain: new turns are refused (409 `{ updating: true }`) until /undrain or a restart. Empty `busy` means idle. */
+export interface Drain { busy: BusyItem[] }
+
+export type UpdaterState = "idle" | "fetching" | "building" | "testing" | "draining" | "switching" | "probation" | "failed";
+/** An update note: an annotated `update/*` tag on a commit on main. */
+export interface UpdateNote { tag: string; commit: string; message: string }
+export interface KeptRelease {
+  commit: string;
+  builtAt: string;
+  tag?: string;
+  running: boolean;
+  previous: boolean;
+  /**
+   * Whether it can be rolled back to. `restores`: going back restores the
+   * snapshot taken then, and messages since are lost. `oldest`: when it
+   * can't, the oldest kept release that can.
+   */
+  rollback: { possible: boolean; restores?: string; oldest?: string };
+}
+/** The last rollback, automatic (a failed probation) or asked for. */
+export interface RollbackInfo { from: string; to: string; automatic: boolean; check?: string; at: string; restoredFrom?: string }
+/**
+ * GET /api/u/:userId/admin/updates → Updates. Administrators only.
+ * `available` is false where no updater is installed (a development run).
+ */
+export interface Updates {
+  available: boolean;
+  running: { version: string; build: string };
+  note: UpdateNote | null;
+  state: { state: UpdaterState; since: string; tag?: string; commit?: string; busy?: BusyItem[]; error?: string };
+  releases: KeptRelease[];
+  lastRollback: RollbackInfo | null;
+}
+/** POST …/admin/updates → Updates: installs the tag's commit, once it is on main. */
+export interface UpdateRequest { tag: string }
+/** POST …/admin/updates/rollback → Updates: goes back to a kept release. */
+export interface RollbackRequest { commit: string }
+/** POST …/admin/updates/check → Updates: fetches, so the newest update note shows. */

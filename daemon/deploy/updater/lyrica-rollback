@@ -1,0 +1,93 @@
+#!/bin/bash
+# lyrica-rollback [<commit>] [--yes] [--auto [--check <name>]]
+# Goes back to the previous release (or a named kept one) and starts lyricad.
+# Works with lyricad dead. The pre-update snapshot is restored only when the
+# release can't read the databases (their oldest reader is above its schema);
+# at a terminal it asks first, saying from when data is set aside. A release
+# that can't read them and has no snapshot it could is refused, naming the
+# oldest release it can go back to.
+# --auto: from lyrica-rollback.service (lyricad's OnFailure) or a failed
+# probation check; acts only while a release is on probation.
+# --yes: asked already (Administration's dialog). See docs/daemon.md, "Updates".
+set -euo pipefail
+. "${LYRICA_UPDATER_LIB:-/usr/local/lib/lyrica-update}/common.sh"
+
+TARGET= YES=false AUTO=false CHECK=
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --yes) YES=true; shift ;;
+    --auto) AUTO=true; shift ;;
+    --check) CHECK=$2; shift 2 ;;
+    -*) die "usage: lyrica-rollback [<commit>] [--yes] [--auto [--check <name>]]" ;;
+    *) TARGET=$1; shift ;;
+  esac
+done
+[ "$(id -u)" = 0 ] || [ -n "${LYRICA_TEST:-}" ] || die "run this as root (sudo lyrica-rollback)"
+mkdir -p "$UPDATE"
+exec 8>"$UPDATE/rollback.lock"
+flock 8
+
+PROBATION="$UPDATE/probation.json"
+if $AUTO; then
+  [ -f "$PROBATION" ] || { say "no release is on probation: nothing to roll back"; exit 0; }
+  TARGET=$(jq -r '.from' "$PROBATION")
+  CHECK=${CHECK:-crash loop}
+fi
+FROM=$(current_commit)
+TARGET=${TARGET:-$(previous_commit)}
+[ -n "$TARGET" ] || die "no previous release to go back to"
+case "$TARGET" in *[!0-9a-f]*) die "name a release by its commit" ;; esac
+# A short commit names the kept release it starts.
+TARGET=$(releases_json | jq -r --arg t "$TARGET" '[(.releases // [])[].commit | select(startswith($t))] | if length == 1 then .[0] else empty end')
+[ -n "$TARGET" ] || die "no single kept release starts with that commit; kept: $(releases_json | jq -r '[(.releases // [])[].commit[:12]] | join(", ")')"
+[ "$TARGET" != "$FROM" ] || die "$TARGET is already running"
+
+INFO=$(release_info "$TARGET")
+NEEDED=$(releases_json | jq -c '.minReader // {}')
+RESTORE=
+if ! reads "$INFO" "$NEEDED"; then
+  # The newest snapshot this release could read.
+  RESTORE=$(releases_json | jq -r --argjson r "$INFO" '
+    [(.snapshots // [])[] | select(.kind == "snapshot") | select([("self","user","pool") as $k | ($r.schema[$k] // 0) >= (.minReader[$k] // 0)] | all)]
+    | sort_by(.at) | last | .dir // empty')
+  if [ -z "$RESTORE" ]; then
+    OLDEST=$(releases_json | jq -r '
+      .minReader as $n | (.snapshots // []) as $s
+      | [(.releases // [])[] | . as $r
+         | select(([("self","user","pool") as $k | ($r.schema[$k] // 0) >= ($n[$k] // 0)] | all)
+                  or any($s[]; .kind == "snapshot" and ([("self","user","pool") as $k | ($r.schema[$k] // 0) >= (.minReader[$k] // 0)] | all)))]
+      | sort_by(.builtAt) | first | .commit[:12] // "none"')
+    die "${TARGET:0:12} can't read the databases and no kept snapshot is old enough; the oldest release it can go back to is $OLDEST"
+  fi
+  SINCE=$(jq -r '.at' "$RESTORE/meta.json")
+  if ! $YES && ! $AUTO; then
+    [ -t 0 ] || die "going back to ${TARGET:0:12} restores the snapshot from $SINCE; run it at a terminal or with --yes"
+    read -r -p "Going back to ${TARGET:0:12} restores the snapshot from $SINCE: what was written since is set aside. Go on? [y/N] " answer
+    case "$answer" in y|Y|yes) ;; *) die "nothing changed" ;; esac
+  fi
+fi
+
+# An asked-for rollback outside probation waits for turns to finish, like an update.
+if ! $AUTO && [ ! -f "$PROBATION" ]; then
+  set_state draining "" "$TARGET"
+  drain || { set_state idle; die "lyricad stayed busy; nothing changed"; }
+fi
+say "rolling back from ${FROM:0:12} to ${TARGET:0:12}${CHECK:+ after a failed check: $CHECK}"
+$SYSTEMCTL stop lyricad || true
+$SYSTEMCTL reset-failed lyricad 2>/dev/null || true
+RESTORED_FROM=
+if [ -n "$RESTORE" ]; then
+  "${LYRICA_UPDATER_BIN:-/usr/local/sbin}/lyrica-restore" "$RESTORE" >/dev/null
+  RESTORED_FROM=$SINCE
+fi
+switch_to "$TARGET"
+rm -f "$PROBATION"
+$SYSTEMCTL start lyricad || say "lyricad didn't start; see journalctl -u lyricad"
+
+AT=$(now)
+write_json "$UPDATE/state.json" --arg f "$FROM" --arg t "$TARGET" --argjson a "$AUTO" --arg c "$CHECK" --arg at "$AT" --arg r "$RESTORED_FROM" '
+  .lastRollback = ({from: $f, to: $t, automatic: $a, at: $at}
+    + (if $c != "" then {check: $c} else {} end) + (if $r != "" then {restoredFrom: $r} else {} end))
+  | .state = (if $a then "failed" else "idle" end) | .since = $at | del(.busy, .tag, .commit)
+  | if $a then .error = "probation failed: \($c)" | .commit = $f else del(.error) end'
+say "running ${TARGET:0:12}${RESTORED_FROM:+, databases from $RESTORED_FROM}"

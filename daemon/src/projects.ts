@@ -5,36 +5,6 @@ import type { ModelRef, Pool, ThinkingLevel, Users } from "@lyrica/core";
 // threads start with) and which suggested threads were started. All in the
 // user's user.db, as IDs and switches only, never in the pool.
 
-const SCHEMA = `
--- Threads the user pinned to the top of the thread list.
-CREATE TABLE IF NOT EXISTS pinned_threads (
-  pool      TEXT NOT NULL,
-  thread    TEXT NOT NULL,
-  pinned_at TEXT NOT NULL,
-  PRIMARY KEY (pool, thread)
-);
--- A project's settings: paused, the model (JSON ModelRef or list), thinking and Fallback (null: the project chat's) its new threads start with, and whether she watches its threads.
-CREATE TABLE IF NOT EXISTS project_settings (
-  pool     TEXT NOT NULL,
-  thread   TEXT NOT NULL,
-  paused   INTEGER NOT NULL DEFAULT 0,
-  model    TEXT,
-  thinking TEXT,
-  watch    INTEGER NOT NULL DEFAULT 1,
-  fallback INTEGER,
-  PRIMARY KEY (pool, thread)
-);
--- A suggested thread the user started: the suggest call (its tool call ID), which of its threads, and the thread made.
-CREATE TABLE IF NOT EXISTS started_suggestions (
-  pool   TEXT NOT NULL,
-  thread TEXT NOT NULL,
-  call   TEXT NOT NULL,
-  idx    INTEGER NOT NULL,
-  child  TEXT NOT NULL,
-  PRIMARY KEY (pool, thread, call, idx)
-);
-`;
-
 export interface ProjectSettings {
   paused: boolean;
   /** The chat model new threads of the project start with; none: the project chat's. */
@@ -113,12 +83,6 @@ export class Projects {
   private db<T>(userId: string, fn: (db: ReturnType<Users["openUserDb"]>) => T): T {
     const db = this.users.openUserDb(userId);
     try {
-      db.exec(SCHEMA);
-      // Added after the table was: an older user.db gains the column, on.
-      const columns = (db.prepare("PRAGMA table_info(project_settings)").all() as { name: string }[]).map((c) => c.name);
-      if (!columns.includes("watch")) db.exec("ALTER TABLE project_settings ADD COLUMN watch INTEGER NOT NULL DEFAULT 1");
-      // Null: the project chat's Fallback.
-      if (!columns.includes("fallback")) db.exec("ALTER TABLE project_settings ADD COLUMN fallback INTEGER");
       return fn(db);
     } finally {
       db.close();

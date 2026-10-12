@@ -1,0 +1,10 @@
+# lyricad's OnFailure: a crash loop (StartLimitBurst in lyricad.service)
+# rolls back, but only while a release is on probation; otherwise it does
+# nothing. The console's way back is `sudo lyrica-rollback`. Installed by
+# daemon/deploy/install.sh only. See docs/daemon.md, "Updates".
+[Unit]
+Description=Roll Lyrica back if the release on probation crash-loops
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lyrica-rollback --auto

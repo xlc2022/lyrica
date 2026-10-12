@@ -13,28 +13,6 @@ import type { ProjectSettings } from "./projects.ts";
 // (the project chat's entry they hang off), a resolved time, whether they
 // wait on the user, and whether they are queued.
 
-const SCHEMA = `
--- A child thread Lyrica started: whether a turn was running (a restart leaves it idle and tells the parent),
--- and its updates to the parent not yet seen.
-CREATE TABLE IF NOT EXISTS child_threads (
-  pool       TEXT NOT NULL,
-  thread     TEXT NOT NULL,
-  parent     TEXT NOT NULL,
-  working    INTEGER NOT NULL DEFAULT 0,
-  unseen     INTEGER NOT NULL DEFAULT 0,
-  started_at TEXT NOT NULL,
-  PRIMARY KEY (pool, thread)
-);
-`;
-
-/** Columns added for projects: anchor (an entry number of the parent), resolved_at, needs_you, queued. */
-const UPGRADES = [
-  ["anchor", "ALTER TABLE child_threads ADD COLUMN anchor INTEGER"],
-  ["resolved_at", "ALTER TABLE child_threads ADD COLUMN resolved_at TEXT"],
-  ["needs_you", "ALTER TABLE child_threads ADD COLUMN needs_you INTEGER NOT NULL DEFAULT 0"],
-  ["queued", "ALTER TABLE child_threads ADD COLUMN queued INTEGER NOT NULL DEFAULT 0"],
-] as const;
-
 /** A project's thread idle this long is resolved by the nightly tick. */
 export const AUTO_RESOLVE_DAYS = 7;
 
@@ -447,8 +425,6 @@ export class ChildThreads implements ThreadsHost {
   private db<T>(userId: string, fn: (db: ReturnType<Users["openUserDb"]>) => T): T {
     const db = this.o.users.openUserDb(userId);
     try {
-      db.exec(SCHEMA);
-      for (const [column, sql] of UPGRADES) if (!db.prepare("SELECT 1 FROM pragma_table_info('child_threads') WHERE name = ?").get(column)) db.exec(sql);
       return fn(db);
     } finally {
       db.close();

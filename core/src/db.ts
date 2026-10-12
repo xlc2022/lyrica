@@ -29,29 +29,6 @@ export function openEncrypted(path: string, key: DbKey, opts: { readonly?: boole
   }
 }
 
-/**
- * Columns added to self.db since its first release, applied when it opens if
- * missing (expand only; DESIGN.md, Updates and self-editing). users.recovery_wrap:
- * the user's data key under the server's recovery key (`settings` 'recovery.key'),
- * so an administrator can set them a new password without losing their data;
- * users.password_set_by/_at: an administrator set the password and the user hasn't
- * changed it since.
- */
-export const SELF_UPGRADES: readonly { table: string; column: string; sql: string }[] = [
-  { table: "users", column: "recovery_wrap", sql: "ALTER TABLE users ADD COLUMN recovery_wrap TEXT" },
-  { table: "users", column: "password_set_by", sql: "ALTER TABLE users ADD COLUMN password_set_by TEXT" },
-  { table: "users", column: "password_set_at", sql: "ALTER TABLE users ADD COLUMN password_set_at TEXT" },
-];
-
-/** Runs a schema, then adds the columns later releases introduced. */
-export function applySchema(db: Db, schema: string, upgrades: typeof SELF_UPGRADES): void {
-  db.exec(schema);
-  for (const u of upgrades) {
-    const has = (db.pragma(`table_info(${u.table})`) as { name: string }[]).some((c) => c.name === u.column);
-    if (!has) db.exec(u.sql);
-  }
-}
-
 /** self.db: shared by all users. */
 export const SELF_SCHEMA = `
 -- Who can log in. The wrapped key lives here because it is needed before user.db
@@ -96,21 +73,6 @@ CREATE TABLE IF NOT EXISTS user_links (
   PRIMARY KEY (a, b),
   CHECK (a < b)
 );
--- A thread one user sent to another (Share with), held here until the recipient adds it to a
--- pool or declines: each user's pools open only with their own key, and self.db is the one place
--- both can reach. entries: the conversation as it was sent, as JSON; nothing of the sender's memory.
--- Accepting or declining deletes the row.
-CREATE TABLE IF NOT EXISTS thread_shares (
-  id         TEXT PRIMARY KEY,
-  from_user  TEXT NOT NULL,
-  to_user    TEXT NOT NULL,
-  title      TEXT,
-  pool       TEXT NOT NULL,
-  unlogged   INTEGER NOT NULL,
-  local_only INTEGER NOT NULL,
-  entries    TEXT NOT NULL,
-  created_at TEXT NOT NULL
-);
 -- Global settings by key, such as the sleep time.
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
@@ -125,5 +87,24 @@ export const USER_SCHEMA = `
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+`;
+
+/** Self schema step 2 (core/migrations): the Share with transit table, added after the first release's baseline. */
+export const THREAD_SHARES_SCHEMA = `
+-- A thread one user sent to another (Share with), held here until the recipient adds it to a
+-- pool or declines: each user's pools open only with their own key, and self.db is the one place
+-- both can reach. entries: the conversation as it was sent, as JSON; nothing of the sender's memory.
+-- Accepting or declining deletes the row.
+CREATE TABLE IF NOT EXISTS thread_shares (
+  id         TEXT PRIMARY KEY,
+  from_user  TEXT NOT NULL,
+  to_user    TEXT NOT NULL,
+  title      TEXT,
+  pool       TEXT NOT NULL,
+  unlogged   INTEGER NOT NULL,
+  local_only INTEGER NOT NULL,
+  entries    TEXT NOT NULL,
+  created_at TEXT NOT NULL
 );
 `;

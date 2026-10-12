@@ -1,0 +1,18 @@
+# The updater: one run per request, as root, outside lyricad. Started by
+# lyrica-update.path when lyricad writes a request (Administration → Updates),
+# or by hand: systemctl start lyrica-update. daemon/deploy/install.sh installs
+# it; an update never replaces it. See docs/daemon.md, "Updates".
+[Unit]
+Description=Lyrica's updater (build, smoke test, drain, snapshot, switch, probation)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lyrica-update --request
+# Probation waits for the first unlock when no passphrase is saved.
+TimeoutStartSec=infinity
+# Builds stay out of the way of her turns.
+Nice=10
+IOSchedulingClass=idle
+PrivateTmp=yes

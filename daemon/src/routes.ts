@@ -9,7 +9,8 @@ import { HttpError, route, type Request, type Route } from "./http.ts";
 import { DEFAULT_BUDGETS, OPENING, pinnedBlock, pinnedOf, reserveFor } from "@lyrica/extension";
 import type { ProjectThreadInfo } from "./children.ts";
 import { Busy } from "./hosted.ts";
-import { card, type Lyricad, type Services } from "./lyricad.ts";
+import { BUILD, card, type Lyricad, type Services } from "./lyricad.ts";
+import { readUpdates, writeRequest } from "./updates.ts";
 import { toMessages } from "./messages.ts";
 import { messageText, readAloud, readClip, speechState, storedSource, transcribeClip, titlesIn, type SpeechSource } from "./speech.ts";
 import { notifications } from "./notifications.ts";
@@ -684,6 +685,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("POST", `${t}/messages`, async (r) => {
       const user = d.userFor(r);
+      d.refuseWhileDraining();
       const { text, confirm } = await r.json<Api.SendRequest>();
       const thread = owner(d, user, (o) => threadOf(o, r));
       if (thread.subagent) return toSubagent(d, user, poolOf(r), thread, String(text ?? ""));
@@ -728,6 +730,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         return { project: thread.id, task: said };
       });
       if (s().children.stopped(user.id, pool, project)) throw new HttpError(409, "this project is paused or hidden; resume it to start threads");
+      d.refuseWhileDraining();
       const name = (typeof title === "string" && title.trim()) || task.trim().split("\n")[0]!.slice(0, 80);
       let id: string;
       try { id = await s().children.startFrom(user.id, pool, project, n, { title: name, task }); } catch (err) { throw new HttpError(409, (err as Error).message); }
@@ -742,6 +745,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const callId = r.params.callId!;
       const project = owner(d, user, (o) => threadOf(o, r));
       if (!project.project) throw new HttpError(400, "suggestions are a project chat's");
+      d.refuseWhileDraining();
       const entries = owner(d, user, (o) => o[pool].entryPage(project.id, { limit: 100_000 }).entries);
       const list = suggestionsIn(entries.map((e) => e.data), callId);
       if (!list) throw new HttpError(404, "no such suggestion");
@@ -1005,6 +1009,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("POST", `${u}/sleep/:pool/items/:itemId/chat`, async (r) => {
       const user = d.userFor(r);
+      d.refuseWhileDraining();
       const pool = poolOf(r);
       const thread = owner(d, user, (o) => {
         const item = o[pool].getItem(r.params.itemId!);
@@ -1104,6 +1109,24 @@ export function apiRoutes(d: Lyricad): Route[] {
 
     // --- Administrators ---
     route("GET", `${u}/admin/status`, (r) => { d.adminFor(r); return adminStatus(d); }),
+    route("GET", `${u}/admin/updates`, (r) => { d.adminFor(r); return updates(d); }),
+    route("POST", `${u}/admin/updates`, async (r) => {
+      d.adminFor(r);
+      const { tag } = await r.json<Api.UpdateRequest>();
+      writeRequest(d.updatePaths, { action: "update", tag: String(tag ?? "") });
+      return updates(d);
+    }),
+    route("POST", `${u}/admin/updates/rollback`, async (r) => {
+      d.adminFor(r);
+      const { commit } = await r.json<Api.RollbackRequest>();
+      writeRequest(d.updatePaths, { action: "rollback", commit: String(commit ?? "") });
+      return updates(d);
+    }),
+    route("POST", `${u}/admin/updates/check`, (r) => {
+      d.adminFor(r);
+      writeRequest(d.updatePaths, { action: "check" });
+      return updates(d);
+    }),
     route("PUT", `${u}/admin/passphrase`, async (r) => {
       d.adminFor(r);
       const { save, passphrase } = await r.json<Api.PassphraseChange>();
@@ -1455,6 +1478,10 @@ function machineInfo(m: MachineConfig): Api.MachineInfo {
   };
 }
 
+function updates(d: Lyricad): Api.Updates {
+  return readUpdates(d.updatePaths, { version: BUILD.version ?? "0", build: BUILD.build ?? "dev" });
+}
+
 function adminStatus(d: Lyricad): Api.AdminStatus {
   const refused = d.services!.workspace.networkRefused;
   const why = d.keyring.credentials?.unavailable();
@@ -1470,6 +1497,7 @@ function adminStatus(d: Lyricad): Api.AdminStatus {
  * thread once the run ends. Whatever stops it at once is a plain error.
  */
 async function startSleep(d: Lyricad, user: User, pool: Pool, confirmed: boolean): Promise<Api.SleepStarted> {
+  d.refuseWhileDraining();
   const { sleep } = d.services!;
   const manual = sleep.mode(user.id) === "manual";
   if (manual && !confirmed) return { confirm: `Sleep now? She'll consolidate, dream and wake for your ${pool} memory, and then a fresh thread opens.` };
@@ -1850,6 +1878,7 @@ async function rewind(d: Lyricad, user: User, r: Request, req: Api.RewindRequest
     models.setThreadModel(user.id, pool, thread.id, "chat", m.groupId !== undefined ? { groupId: String(m.groupId) } : { offeringId: String(m.offeringId) });
   }
   if (req.preview) return removal(d, user, pool, thread.id, from).then(({ changes: _, ...plan }) => plan);
+  if (then !== undefined) d.refuseWhileDraining();
   const skip = new Set(Array.isArray(req.skip) ? req.skip.map(String) : []);
   let result: Api.RewindResponse = { removed: 0, subagents: 0, pins: 0, files: 0, branches: 0 };
   try {

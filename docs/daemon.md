@@ -689,25 +689,41 @@ and never logged; a Caddy error that quotes one has it replaced with
 
 ## Deployment
 
-`daemon/deploy/install.sh`, run as root on Debian or Ubuntu from a checkout,
-installs or upgrades everything. Running it again upgrades in place. On NixOS, the flake's
-module does the same ("On NixOS" below).
+`daemon/deploy/install.sh`, run as root on Debian or Ubuntu from a clean git
+checkout outside `/opt/lyrica`, installs or upgrades everything. Running it
+again installs that checkout's commit as a release, the way an update does
+("Updates" below). On NixOS, the flake's module does the same ("On NixOS" below).
 
 - It installs the packages (bubblewrap, gocryptfs, FUSE, passt, nftables,
-  openssl), and the `tailscale` package from Tailscale's apt repository when
-  its binaries are missing (then disabling the host's own `tailscaled.service`
-  the package enables, unless it was enabled before, so a host keeps its own
-  as it was), checks for Node.js 22.6 or later (the SSH helper runs with type
-  stripping), and creates two system users: `lyrica` runs `lyricad`,
-  `lyrica-caddy` runs Caddy. The `lyrica-caddy`
+  openssl, ImageMagick, and for the updater build-essential, python3, git,
+  openssh-client and jq), and the `tailscale` package from Tailscale's apt
+  repository when its binaries are missing (then disabling the host's own
+  `tailscaled.service` the package enables, unless it was enabled before, so
+  a host keeps its own as it was), checks for Node.js 22.6 or later (the SSH
+  helper runs with type stripping), and creates three system users:
+  `lyrica` runs `lyricad`, `lyrica-caddy` runs Caddy, `lyrica-build` builds
+  releases and runs their smoke tests with no access to her data. The `lyrica-caddy`
   group shares Caddy's admin socket (mode `0660`) and TLS log; lyricad's unit
   joins it (`SupplementaryGroups`), and nobody else can use them. An allowed
   path that overlaps `/run/lyrica-caddy` is refused, since sandboxes run with
   lyricad's groups.
-- It copies the code to `/opt/lyrica` and runs `npm ci --omit=dev`.
+- It builds the checkout's commit into `/opt/lyrica/releases/<commit>` as
+  `lyrica-build` (`npm ci`, the web build, `npm prune --omit=dev`), writes
+  its `RELEASE.json` (commit, version, schema, min_reader), makes it
+  read-only and owned by root, and points `/opt/lyrica/current` at it, with
+  a drain, a stop and a snapshot first when lyricad was running another
+  release. A flat install from before releases moves to
+  `/opt/lyrica/before-releases`, kept for the operator to delete.
+- It installs the updater (`/usr/local/sbin/lyrica-update`,
+  `lyrica-snapshot`, `lyrica-restore`, `lyrica-rollback`, and
+  `/usr/local/lib/lyrica-update/common.sh`), its units, a deploy key
+  (`/etc/lyrica/deploy-key`; it prints the `.pub` to add to the repository
+  as a read-only deploy key), GitHub's pinned host key
+  (`/etc/lyrica/known_hosts`) and the bare repository `/opt/lyrica/repo.git`.
 - It puts `lyrica` in `/usr/local/bin`: the CLI, run as the `lyrica` user
   (through `runuser` from root, `sudo` from anyone else) with
   `LYRICA_HOME=/var/lib/lyrica`, so `lyrica admin …` works from any shell.
+  It runs `/opt/lyrica/current`.
 - It builds Caddy (`/usr/local/bin/lyrica-caddy`) with `xcaddy`, from pinned
   versions, in a clean environment (`env -i`, `GOENV=off`, `GOPROXY` and
   `GOSUMDB` set): Go from `proxy.golang.org`, checked against the sha256 in
@@ -725,7 +741,9 @@ module does the same ("On NixOS" below).
   directories and `--port=0`, as `lyrica`, hardened fully
   (`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, no
   capabilities). lyricad's unit is ordered after it.
-- **lyricad's unit** runs `lyrica serve` as `lyrica`, with `StateDirectory`
+- **lyricad's unit** runs `/opt/lyrica/current/bin/lyrica serve` as
+  `lyrica`; a crash loop (3 starts in 2 minutes) starts
+  `lyrica-rollback.service` (`OnFailure`), which acts only on probation. It has `StateDirectory`
   for the runtime and the credentials directory, and `LoadCredentialEncrypted`
   for saved credentials. Hardening: `NoNewPrivileges` breaks the setuid
   `fusermount3`, so homes never mount, and so does every option that makes
@@ -745,6 +763,67 @@ module does the same ("On NixOS" below).
   admin socket and `lyricad` can apply the setup again. Its saved config,
   which holds the DNS token, stays in its own state directory (`0700`).
 
+### Updates
+
+Releases, the updater and rollback ([DESIGN.md](../DESIGN.md#updates-and-self-editing)).
+The updater is bash run as root, outside lyricad, and logs commits, tags,
+check names and counts, never text.
+
+- **Kept state.** `/var/lib/lyrica-update` (root's, readable): `state.json`
+  (the updater's state, busy work while draining, the newest update note,
+  `lastRollback`), `releases.json` (kept releases, `current`, `previous`,
+  the snapshots, and the highest `min_reader` any release has written),
+  `notes/<commit>.txt`. Snapshots are in `/var/lib/lyrica-snapshots`
+  (root's, `0700`). Neither is ever granted to a thread.
+- **lyricad's side.** `<home>/update.sock` (`0600`): `GET /health`
+  (`{ commit, locked, checks }`: databases, workspace self-test, models,
+  web), `POST /drain` (refuses new turns and answers what still works) and
+  `POST /undrain`. While draining, new sends, sleep starts, sleep-item
+  chats and suggestion starts are `409` with `{ updating: true }`;
+  scheduled sleep and watcher looks wait; work a running turn starts (a
+  child thread, a subagent) finishes, since the drain waits for it.
+  Administration's requests go to `<home>/updates/request.json`, which
+  `lyrica-update.path` picks up.
+- **`lyrica version --json`** prints the commit, version, schema and
+  min_reader; **`lyrica smoke-test <empty dir>`** starts a scratch lyricad
+  there (random passphrase, a test admin, no saved credentials), unlocks,
+  logs in, reads the health checks over its socket and fetches the web UI,
+  printing `ok` or `FAIL` per check.
+- **`lyrica-update`** (`--tag update/<name>`, `--check`, or `--request`
+  from the path unit), one at a time: fetch `main` and `update/*` tags with
+  the deploy key; the tag must be annotated and on `main`; build as
+  `lyrica-build`; smoke test; drain (10 minutes, then undrain and give up);
+  stop; `lyrica-snapshot` (pinned when the release raises `min_reader`);
+  switch `current` and `previous`; start; probation.
+- **Probation** lasts until 10 minutes after lyricad is unlocked with every
+  check ok, starting over when it locks or restarts. A failed check, or the
+  socket gone for 5 minutes, runs `lyrica-rollback --auto` and records
+  `lastRollback` (state `failed`); a crash loop does the same through
+  `OnFailure`. Passing prunes releases (the last 5, plus current and
+  previous) and snapshots.
+- **`lyrica-snapshot`** (lyricad stopped) copies `self.db`, the users'
+  databases, the pools and the top-level settings files, each database
+  with its `-wal` (root holds no key to checkpoint it, so the log travels
+  with it), checks room first, and verifies every copy's size and sha256
+  into `meta.json`. It keeps the last 3; one taken before a contract, and
+  every set-aside folder, stays until a later contract passes probation and
+  it is 30 days old.
+- **`lyrica-restore <snapshot>`** checks every file against `meta.json`,
+  moves what it replaces (with `-wal` and `-shm`) into
+  `<time>-set-aside/`, copies the snapshot in, removes stale logs, and
+  sets the recorded `min_reader` back to the snapshot's.
+- **`sudo lyrica-rollback [commit] [--yes]`** goes back to the previous
+  release, or a kept one. When that release can't read the databases it
+  restores the newest snapshot it can read (asking first at a terminal),
+  or refuses and names the oldest release it could go back to. Outside
+  probation it drains first.
+- **Units:** `lyrica-update.service` (oneshot, `Nice=10`, idle I/O),
+  `lyrica-update.path`, `lyrica-rollback.service` (`--auto`).
+- **The operator's part:** add the deploy key to the repository; keep a
+  scheduled Proxmox backup of the container, which the updater can't
+  snapshot; delete `/opt/lyrica/before-releases` once the first release
+  runs.
+
 ### On NixOS
 
 `flake.nix` gives `packages.x86_64-linux.lyrica` (`nix/package.nix`: lyricad,
@@ -754,7 +833,7 @@ refusing Node older than 22.6) and `nixosModules.default`
 locked in `flake.lock`. `nix flake check` builds the package and a NixOS
 system with the module on. Only x86_64-linux.
 
-- **The module** declares what install.sh does: the two users and groups,
+- **The module** declares what install.sh does: the users and groups,
   `/var/lib/lyrica` (`0700`), both units written in Nix and kept in step with
   `daemon/deploy/*.service` (same hardening, `LoadCredentialEncrypted`, the
   same deploy check), `ip_nonlocal_bind`, and `/etc/lyrica/caddy.json`.
@@ -762,7 +841,10 @@ system with the module on. Only x86_64-linux.
   from `tailscalePackage` (`pkgs.tailscale`). lyricad starts without
   `self.db`, setting up. `lyrica` on the system path is the same wrapper as
   install.sh's, so the first-run step is `lyrica admin setup-code` as root:
-  nothing prints the code or the fingerprint at `nixos-rebuild`.
+  nothing prints the code or the fingerprint at `nixos-rebuild`. The wrapper
+  runs the profile below. The updater, its units, the `lyrica-build` user
+  and GitHub's host key come from the module too; `lyrica-nixos-start`
+  makes the deploy key.
 - **Firewall.** `openFirewall` (default on, unlike most NixOS modules) opens
   Direct's port, 7340 whatever `port` is: a headless host is set up from another machine through it,
   as on Debian, and it answers only while setting up or in Direct.
@@ -777,8 +859,8 @@ system with the module on. Only x86_64-linux.
   integrity hashes (`importNpmLock`), so a lockfile change needs nothing here.
 - **Rebuilds.** The package reads only the code it ships (no docs, evals,
   tests or `nix/`), and the commit reaches lyricad as `LYRICA_BUILD` from
-  the module, so a commit that changes none of that code reuses the built
-  package.
+  `/var/lib/lyrica-update/build.env`, so a commit that changes none of that
+  code reuses the built package.
 - **Sandboxes.** NixOS has no `/usr` to share. The module sets
   `LYRICA_SANDBOX_TOOLS` to one directory of `sandboxPackages`
   (`nix/sandbox-tools.nix`: a shell, the usual command-line tools, git,
@@ -787,10 +869,19 @@ system with the module on. Only x86_64-linux.
   the CA bundle's (`closureInfo`). See docs/workspace.md.
 - **Options:** `enable`, `package`, `port` (7340), `tailscale` (on),
   `tailscalePackage`, `openFirewall` (on), `caddyPackage`, `sandboxPackages`.
-- **Updates.** `nixos-rebuild switch` with a newer flake restarts lyricad on
-  the new package with no snapshot first, as re-running install.sh does
-  today; the releases build adds the snapshot, the Update button through a
-  Lyrica-only Nix profile, and rollback (docs/briefs/releases.md item 7).
+- **Releases** are generations of the profile `/nix/var/nix/profiles/lyrica`,
+  which lyricad runs. An Update builds `git+file:///opt/lyrica/repo.git?rev=<commit>#lyrica`
+  as root (Nix's own sandboxed builders do the building, not `lyrica-build`),
+  with the host's nixpkgs in place of the repository's (`--override-input`,
+  so Node is the one in the sandbox closure, as with `nixos-rebuild`; the
+  updater turns on flakes for that call), keeps its `RELEASE.json` in
+  `/var/lib/lyrica-update/releases/<commit>/` and switches the profile;
+  rollback switches it back. Before each start, `lyrica-nixos-start` (as
+  root) checks the module's package: when `nixos-rebuild switch` changed
+  it, it snapshots the databases and points the profile at it, restoring
+  the newest readable snapshot if the package can't read them. An
+  unchanged package leaves an Update's choice in place. The unit names
+  `cfg.package`, so it stays in the system closure until that first start.
 - **Host check:** `nix/check-host.sh`, as root after the setup page:
   lyricad and Caddy run, her tailscaled answers `lyrica` on its socket, `NoNewPrivs` is `0`, `fusermount3` is setuid, Caddy's
   admin socket exists, a sandbox and `pasta` start as `lyrica`, the

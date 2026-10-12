@@ -1,0 +1,60 @@
+#!/bin/bash
+# lyrica-nixos-start <module package> <its commit>
+# NixOS only: lyricad's ExecStartPre, as root. lyricad runs from the profile
+# /nix/var/nix/profiles/lyrica, which an Update or a rollback switches. When
+# the module's package changes (nixos-rebuild switch with a newer or older
+# flake), the profile follows it, after a snapshot if the commit beside the
+# databases differs. A database the package can't read (SchemaTooNew) gets
+# the newest snapshot it can; nothing else restores. See docs/daemon.md, "On NixOS".
+set -euo pipefail
+. "${LYRICA_UPDATER_LIB:-/usr/local/lib/lyrica-update}/common.sh"
+
+[ $# = 2 ] || die "usage: lyrica-nixos-start <module package> <its commit>"
+PKG=$1
+mkdir -p "$UPDATE"
+exec 9>"$UPDATE/update.lock"
+# An Update holds the lock through its switch and start: it chose the profile already.
+flock -n 9 || { say "an update is running; starting what it chose"; exit 0; }
+
+# The updater's deploy key and repository, as install.sh makes them on Debian.
+KEY=${LYRICA_DEPLOY_KEY:-/etc/lyrica/deploy-key}
+if [ ! -f "$KEY" ]; then
+  mkdir -p -m 0755 "$(dirname "$KEY")"
+  ssh-keygen -q -t ed25519 -N "" -C "lyrica-update@$(hostname)" -f "$KEY"
+  say "add $KEY.pub to the repository as a read-only deploy key"
+fi
+if [ ! -d "$PREFIX/repo.git" ]; then
+  git init -q --bare "$PREFIX/repo.git"
+  git --git-dir="$PREFIX/repo.git" remote add origin "${LYRICA_REPO:-git@github.com:xlc2022/lyrica.git}"
+fi
+
+[ "$(cat "$UPDATE/module-package" 2>/dev/null || true)" != "$PKG" ] || [ ! -e "$PROFILE" ] || exit 0
+
+INFO=$("$PKG/bin/lyrica" version --json)
+# The flake's short commit; a dirty tree's build is named by its store hash.
+COMMIT=$2
+case "$COMMIT" in *[!0-9a-f]*|"") COMMIT=$(basename "$PKG" | cut -c1-12) ;; esac
+mkdir -p "$UPDATE/releases/$COMMIT"
+jq --arg c "$COMMIT" --arg at "$(now)" --arg p "$PKG" '{commit: $c, builtAt: $at, version, schema, minReader, path: $p}' <<<"$INFO" \
+  >"$UPDATE/releases/$COMMIT/RELEASE.json"
+add_release "$COMMIT" "$UPDATE/releases/$COMMIT"
+if [ "$(current_commit)" != "$COMMIT" ] && [ -f "$STATE/self.db" ]; then
+  say "the module's package changed to ${COMMIT:0:12}: snapshot first"
+  "${LYRICA_UPDATER_BIN:-/usr/local/sbin}/lyrica-snapshot" --commit "$(current_commit || true)" >/dev/null
+fi
+NEEDED=$(releases_json | jq -c '.minReader // {}')
+REL=$(release_info "$COMMIT")
+if [ -f "$STATE/self.db" ] && ! reads "$REL" "$NEEDED"; then
+  SNAP=$(releases_json | jq -r --argjson r "$REL" '
+    [(.snapshots // [])[] | select(.kind == "snapshot") | select([("self","user","pool") as $k | ($r.schema[$k] // 0) >= (.minReader[$k] // 0)] | all)]
+    | sort_by(.at) | last | .dir // empty')
+  if [ -n "$SNAP" ]; then
+    say "${COMMIT:0:12} can't read the databases: restoring the snapshot from $(jq -r .at "$SNAP/meta.json")"
+    "${LYRICA_UPDATER_BIN:-/usr/local/sbin}/lyrica-restore" "$SNAP" >/dev/null
+  else
+    say "${COMMIT:0:12} can't read the databases and no snapshot is old enough; lyricad will refuse them (SchemaTooNew)"
+  fi
+fi
+switch_to "$COMMIT"
+raise_min_reader "$REL"
+echo "$PKG" >"$UPDATE/module-package"

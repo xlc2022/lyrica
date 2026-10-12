@@ -1488,7 +1488,7 @@ from Monika's runbooks.
   user; **smoke test** it on a spare port with a scratch home and a test
   user, never real data; **drain**: stop taking new turns and wait until no
   turn, sleep run, subagent or child thread is working (new messages get
-  "Updating", and scheduled sleep and child-thread starts wait), giving up after 10 minutes with nothing changed, so a restart
+  "Updating", scheduled sleep waits, and what a running turn starts, such as a child thread, finishes first), giving up after 10 minutes with nothing changed, so a restart
   never cuts a turn in half; **snapshot** her databases and settings (copies
   of encrypted files; homes are left to the operator's backup), keeping the
   last 3; switch `current`; start; **probation**.
