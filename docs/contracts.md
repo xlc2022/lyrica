@@ -761,6 +761,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 - **Workspace extension** (`createWorkspaceExtension(tools: ThreadTools)`):
   - `ExecutionTarget.run?(argv, { signal?, timeoutMs? })` runs argv with no
     shell under the target's own rules; the sandbox has it.
+  - `ExecutionTarget.secrets?()` is the sandbox's tokens and placeholders
+    (core/src/workspace/ops.ts): `bash` output (`secretMasker`), `read` and
+    `web_fetch` pages (`maskSecrets`) show `SECRET_HIDDEN` for each, and the
+    `tool_call` gate refuses a `web_search`, `web_fetch` or MCP call whose
+    input holds one (`holdsSecret`).
   - `ThreadTools` is `{ target(machine?), settings(), network(),
     claudeCode?(), machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?),
     mcpServers?(), toolAllowedInThread?(server, tool), approve?, setMode?,
@@ -1189,6 +1194,8 @@ interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
   cwd(): Promise<string>;
   ops(): { read; write; edit; bash };     // Pi's tool operations
   folders(): string[];                    // host folders, or "<ssh name>:<root>"
+  run?(argv, { signal?, timeoutMs? });    // the sandbox's
+  secrets?(): string[];                   // the sandbox's tokens and placeholders, hidden in output
 }
 new SshTarget(cfg, { transport: SshTransport, address?, connected? })  // the host key must be cfg.hostKey
 interface SshTransport { connect(to: SshEndpoint, verify(fingerprint): boolean): Promise<SshSession> }

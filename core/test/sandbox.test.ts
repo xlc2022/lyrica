@@ -79,7 +79,7 @@ describe.skipIf(!runnable)("the sandbox", () => {
     const git = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [],
       credentials: { forge: [{ name: "ada/home", account: { kind: "forgejo", host: "forge.lan", account: "ada", token: "forge-token" } }] } });
     const r = await sh("command -v gh tea; git init -q home && git -C home remote add origin https://forge.lan/ada/home.git && cd home && "
-      + "{ s=$(date +%s%N); timeout 20 tea >/tmp/tea.out 2>&1; echo \"TEA=$? $(( ($(date +%s%N) - s) / 1000000 ))ms\"; head -c 400 /tmp/tea.out; grep -q \"token: 'lyrica_\" /tmp/lyrica-forge/tea/config.yml && echo HAS-PLACEHOLDER; cat /tmp/lyrica-forge/tea/config.yml; }; cd .. && rm -rf home", git);
+      + "{ s=$(date +%s%N); timeout 10 sh -x /run/lyrica/bin/tea >/tmp/tea.out 2>&1; echo \"TEA=$? $(( ($(date +%s%N) - s) / 1000000 ))ms\"; tail -c 1500 /tmp/tea.out; grep -q \"token: 'lyrica_\" /tmp/lyrica-forge/tea/config.yml && echo HAS-PLACEHOLDER; cat /tmp/lyrica-forge/tea/config.yml; }; cd .. && rm -rf home", git);
     expect(r.out).toContain("/run/lyrica/bin/gh\n/run/lyrica/bin/tea\n");
     // tea answers at once, through the relay or not at all, never waiting on the network.
     expect(r.out).toMatch(/TEA=\d+ \d{1,4}ms\n/);
