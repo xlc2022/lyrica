@@ -418,12 +418,11 @@ mockup doesn't draw (its only Copy is the message-level one). Design:
 
 - A fenced block gets a header strip inside the block's top edge: the
   language name on the left as a cap in mono when the fence names one
-  (nothing when it doesn't), and a **Copy** text button on the right in the
-  message actions' look (12 px, muted, no border until hover), always
-  visible, 44 px touch target on coarse pointers. Copying puts the block's
-  text on the clipboard and swaps the label to **Copied** for 2 s, no
-  toast (the message-level Copy keeps its toast; two toasts for one
-  gesture would read as a bug). `aria-label` "Copy code" and "Copied".
+  (nothing when it doesn't), and **Copy** on the right as a small
+  secondary button (ux.md §3: nothing pressable is plain grey text),
+  always visible, 44 px touch target on coarse pointers. Copying puts the
+  block's text on the clipboard and swaps the label to **Copied** for
+  2 s, no toast. `aria-label` "Copy code" and "Copied". (Built in PR 19.)
 - The block itself: 12 px/1.5 mono, the tool background, 8 px radius,
   `white-space: pre`, horizontal scroll inside the block only; the header
   strip stays put while the code scrolls.

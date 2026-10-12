@@ -15,8 +15,12 @@ const tokens = (n: number) => Math.round(n).toLocaleString("en-US");
 /** A speed: one decimal below 10, so a slow model doesn't read as 0 or 1. */
 const rate = (n: number) => (n < 10 ? n.toFixed(1) : tokens(n));
 
-/** The newer of two readings: the live one from the stream, and the one the settings were loaded with. */
-export function newerContext(a?: ContextInfo, b?: ContextInfo): ContextInfo | undefined {
+/**
+ * The newer of two readings: the live one from the stream, and the one the settings were loaded with. None
+ * after a rewind or reset (`null`), until a turn measures again.
+ */
+export function newerContext(a?: ContextInfo | null, b?: ContextInfo): ContextInfo | undefined {
+  if (a === null) return undefined;
   if (!a || !b) return a ?? b;
   return Date.parse(a.measuredAt) >= Date.parse(b.measuredAt) ? a : b;
 }
