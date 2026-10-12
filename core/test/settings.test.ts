@@ -14,8 +14,8 @@ async function setup() {
 }
 
 describe("how a model answers", () => {
-  it("caps a reply at the smaller of 32,768 tokens and a quarter of the context, or 32,768 when the context isn't known", () => {
-    expect([replyCap(262_144), replyCap(32_768), replyCap(undefined)]).toEqual([32_768, 8192, 32_768]);
+  it("caps a reply at the smaller of 32,768 tokens and a quarter of the context, taking 32,768 as the context when it isn't known", () => {
+    expect([replyCap(262_144), replyCap(32_768), replyCap(undefined)]).toEqual([32_768, 8192, 8192]);
   });
 
   it("layers a user's own values over the shared ones, for that user only, with each value's source", async () => {
