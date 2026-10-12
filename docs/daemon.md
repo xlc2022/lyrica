@@ -222,6 +222,19 @@ Each active thread is one Pi session from `openThreadSession`, with
   browser. Empty text clears it, more than 64 KiB is `413`, and a sent
   message (`POST …/messages`) clears it; a refused send keeps it. The text
   is never logged.
+- **Search** (`GET …/search?q=&pool=&limit=&before=`, `daemon/src/search.ts`)
+  finds the user's messages and her replies holding every word of `q`
+  (at least 2 characters), each as a word or a word's start, from the
+  search index recall keeps (`PoolStore.searchMessages`), through the
+  owner view. It covers what the thread list shows: the pools the saved
+  display turns on, hidden threads only with `showHidden`, web threads but
+  no subagent's; `pool` only narrows. Unlogged entries aren't indexed, so
+  they are never found. Each hit carries its thread, title, message
+  number, `who` (`you`, or `agent` for hers, including what she sent from
+  another thread and her wake-up notes), the time, and the sentence that
+  matched (at most 160 characters, cut around the match, without
+  citations or Markdown marks) with the matches' offsets in it. 50 a
+  page, newest first; `before` (a hit's `at`) pages. Nothing is logged.
 - **Reactions** (`PUT` and `DELETE …/messages/:n/reactions/:emoji`, the
   emoji URL-encoded) put the user's reaction on one of their messages or her
   replies, or take it off, and answer the message's reactions (`400` for any

@@ -4,7 +4,7 @@ import { render, toStored, type UserId } from "../mentions.ts";
 import type { Profile } from "../profile.ts";
 import type { Interface, Pool } from "../types.ts";
 import { WATCHING } from "../threads.ts";
-import { citationsIn, ftsQuery, indexText, kindOf, queryWords, snippet, stripCitations, type Kind } from "./refs.ts";
+import { citationsIn, ftsQuery, indexText, kindOf, queryWords, searchWords, snippet, stripCitations, type Kind } from "./refs.ts";
 
 /** Who made a change. Thread views write as `lyrica` or `sleep`; the owner view as `user:<id>`. */
 export type Author = "lyrica" | "sleep" | `user:${string}`;
@@ -143,6 +143,15 @@ export interface Hit {
   origin?: Origin;
   author?: string;
   supersededBy?: string;
+}
+
+/** A message `searchMessages` found, where it is now, with its stored text (never logged). */
+export interface MessageHit {
+  thread: string;
+  n: number;
+  role: "user" | "assistant";
+  text: string;
+  createdAt: string;
 }
 
 export interface SearchOptions {
@@ -610,6 +619,43 @@ export class PoolReader {
       if (!ours && hits.length >= limit) break;
     }
     return ours ? hits.sort((a, b) => b.score - a.score).slice(0, limit) : hits;
+  }
+
+  /**
+   * The user's messages and her replies holding every word of `query` (each
+   * as a word or the start of one), newest first, from the search index:
+   * at most `limit`, written before `before`, in `threads` when given. Only
+   * logged entries are indexed, so nothing written unlogged is found. An
+   * entry a rewind removed while a branch still holds its copy is found at
+   * the copy, as `entryWindow` reads it.
+   */
+  searchMessages(query: string, opts: { limit: number; before?: string; threads?: string[] }): MessageHit[] {
+    const words = searchWords(query);
+    if (!words.length) return [];
+    const ids = (this.db.prepare("SELECT id FROM search WHERE search MATCH ? AND kind = 'entry'")
+      .all(words.map((w) => `"${w}"*`).join(" ")) as { id: string }[]).map((r) => r.id);
+    if (!ids.length) return [];
+    const at = { thread: "substr(i.value, 3, instr(i.value, '#') - 3)", n: "CAST(substr(i.value, instr(i.value, '#') + 1) AS INTEGER)" };
+    const where = `e.role IN ('user', 'assistant') AND e.unlogged = 0 ${opts.before ? "AND e.created_at < @before" : ""}
+      ${opts.threads ? "AND e.thread IN (SELECT value FROM json_each(@threads))" : ""}`;
+    const filters = { ...(opts.before ? { before: opts.before } : {}), ...(opts.threads ? { threads: JSON.stringify(opts.threads) } : {}) };
+    const list = JSON.stringify(ids);
+    const cols = "e.thread, e.n, e.role, e.text, e.created_at";
+    type Row = { thread: string; n: number; role: "user" | "assistant"; text: string; created_at: string };
+    const rows = this.db.prepare(`SELECT ${cols} FROM json_each(@ids) i JOIN entries e ON e.thread = ${at.thread} AND e.n = ${at.n}
+      WHERE ${where} ORDER BY e.created_at DESC, e.thread, e.n DESC LIMIT @limit`).all({ ...filters, ids: list, limit: opts.limit }) as Row[];
+    // Rewound away from its thread, but a branch still holds a copy: found there (rare, so one lookup each).
+    const gone = this.db.prepare(`SELECT i.value AS id FROM json_each(@ids) i WHERE NOT EXISTS (SELECT 1 FROM entries e WHERE e.thread = ${at.thread} AND e.n = ${at.n})`)
+      .all({ ids: list }) as { id: string }[];
+    if (gone.length) {
+      const copy = this.db.prepare(`SELECT ${cols} FROM entries e WHERE e.orig = @id AND ${where} ORDER BY e.rowid LIMIT 1`);
+      for (const { id } of gone) {
+        const row = copy.get({ ...filters, id }) as Row | undefined;
+        if (row) rows.push(row);
+      }
+      rows.sort((a, b) => b.created_at.localeCompare(a.created_at) || a.thread.localeCompare(b.thread) || b.n - a.n);
+    }
+    return rows.slice(0, opts.limit).map((r) => ({ thread: r.thread, n: r.n, role: r.role, text: r.text, createdAt: r.created_at }));
   }
 
   /** Which of `ids` belong to the project made of `threads`: its page, its threads' entries, and memories citing them. */

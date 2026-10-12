@@ -562,6 +562,56 @@ test("after a reply the header's Context shows the percent, and its popover list
   await expect(popover).toHaveCount(0);
 });
 
+test("Search finds messages by a rare word, marks it, and a hit opens its thread at that message", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  const word = `quillwort${Date.now() % 100_000}`;
+  await send(page, `The ${word} key is under the blue pot.`);
+  await expect(page.getByText(`You said: The ${word} key`)).toBeVisible();
+  await send(page, `And the ${word} gate code is 4417.`);
+  await expect(page.getByText(`You said: And the ${word} gate`)).toBeVisible();
+  // Somewhere else, so the hit has a thread to open.
+  await newThread(page, "General");
+
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  const side = page.getByRole("complementary", { name: "Threads" });
+  await side.getByText("Search", { exact: true }).click();
+  const box = side.getByRole("searchbox", { name: "Search titles and messages" });
+  await expect(box).toHaveAttribute("placeholder", "Search titles and messages");
+  await box.fill(word);
+  // Her two replies and the user's two messages, newest first: three, then "1 more in this thread".
+  const hits = side.locator(".hit");
+  await expect(hits).toHaveCount(3);
+  await expect(hits.first().locator("mark")).toHaveText(word);
+  await expect(hits.first().locator(".when")).toHaveCSS("font-family", /Plex Mono|monospace/);
+  await side.getByRole("button", { name: "1 more in this thread" }).click();
+  await expect(hits).toHaveCount(4);
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/search-${page.viewportSize()!.width}.png` });
+
+  // Escape clears the query, and the list is back; a word nobody wrote matches nothing.
+  await box.press("Escape");
+  await expect(box).toHaveValue("");
+  await expect(hits).toHaveCount(0);
+  await box.fill(`${word}x nowhere`);
+  await expect(side.getByText("Nothing matches.")).toBeVisible();
+  await box.fill(word);
+  await side.getByRole("button", { name: "1 more in this thread" }).click();
+
+  // The user's first message opens its thread there, the message briefly marked.
+  const first = hits.filter({ has: page.locator(".by", { hasText: /^you$/ }) }).filter({ hasText: "under the blue pot" });
+  await expect(first).toHaveCount(1);
+  await first.click();
+  const landed = page.locator(".msg.user.flash");
+  await expect(landed).toContainText(`The ${word} key is under the blue pot.`);
+  await expect(landed).toBeInViewport();
+  await expect(page.getByLabel("Message", { exact: true })).toBeVisible();
+
+  // The Sort menu's Hidden says what it leaves out.
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await expect(side.locator(".showing label").filter({ hasText: "Hidden" })).toHaveAttribute("title", "Hidden threads are left out of the list and of search.");
+});
+
 test("a memory can be added, edited and restored", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   // A thread mention in a memory shows as a link to that thread.

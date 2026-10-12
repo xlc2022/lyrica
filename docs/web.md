@@ -28,13 +28,24 @@ A thread's address may carry what the panel beside it shows:
   come with `GET /api/state` once unlocked) with the date and time under it, then a greeting by the hour and a
   message box that starts a thread in General or Private with its first
   message.
-- **Sidebar:** New thread (General or Private), Search (filters the list by
-  title), **Notifications** with the count of decisions waiting (read with
+- **Sidebar:** New thread (General or Private), Search (`src/Search.tsx`,
+  "Search titles and messages": the list filters by title as it is typed;
+  from 2 characters, 300 ms after the last key, `GET …/search` turns it
+  into a group per thread in the order of their newest hit, the thread's
+  row then up to three hits, each who wrote it and its time in mono with
+  the sentence and its matches marked, and "<n> more in this thread" to
+  open the rest in place; after the groups, the threads whose title alone
+  matched; **Show more** under a full page of 50; "Nothing matches." when
+  nothing does; Escape clears it. A hit opens its thread at that message,
+  loading older messages as needed, and marks it a moment, as the Pinned
+  popover does; only the thread and the message number wait in session
+  storage for a thread not yet open), **Notifications** with the count of decisions waiting (read with
   the thread list, every 30 seconds and on focus), Memory, the Sort menu, the thread list, and the user. The **Sort
   menu** ("Sort: By date ▾") has the sorts By date (sections Today, Yesterday,
   Previous 7 days, Previous 30 days, Older), Last activity, Start date, Title and My groups (one
   section per group with its count, then Not in a group, and a New group
-  form), then the General, Private and Hidden checkboxes, then All threads,
+  form), then the General, Private and Hidden checkboxes (Hidden's tooltip:
+  "Hidden threads are left out of the list and of search."), then All threads,
   Only projects or No projects. The sort, the checkboxes and the projects
   choice are saved per user (`Display`). Pinned threads come first under a
   **Pinned** eyebrow, whatever the sort. A thread unread for this user

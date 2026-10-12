@@ -1,6 +1,6 @@
 // The signed-in layout: the sidebar, and the page the route points at.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { get, patch, post, u, type Display, type DisplayChange, type LogoutResponse, type Me, type Pool, type State, type ThreadGroup, type ThreadSort, type ThreadSummary, type UserCard } from "./api.ts";
+import { get, patch, post, threadPath, u, type Display, type DisplayChange, type LogoutResponse, type Me, type Pool, type SearchHit, type State, type ThreadGroup, type ThreadSort, type ThreadSummary, type UserCard } from "./api.ts";
 import { href, go, panelRoute, parse, type Panel, type Route } from "./route.ts";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
@@ -13,6 +13,8 @@ import { SleepPage, useSleepOverview, type SleepState } from "./Sleep.tsx";
 import { ModelsArea, useCleanupCount } from "./Models.tsx";
 import { ThreadMenu, useThreadMenu } from "./ThreadMenu.tsx";
 import { ProjectPage, stateWord } from "./Project.tsx";
+import { SearchGroups, searchable, useMessageSearch } from "./Search.tsx";
+import { ask, JUMP_EVENT, JUMP_KEY, keep, type JumpRequest } from "./links.ts";
 import { ErrorText, hidden, menuArrows, shortTime, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
 
 export interface ShellContext {
@@ -370,9 +372,21 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
   });
   const current = route.page === "thread" ? `${route.pool}/${route.threadId}` : "";
   const sort = me.display.sort;
-  // Search filters titles, child threads included, as they are typed.
+  // Search filters titles, child threads included, as they are typed; from 2 characters lyricad's
+  // message hits follow 300 ms later, and the list becomes their groups.
   const q = query.trim().toLowerCase();
-  const matches = (t: ThreadSummary): boolean => !q || (t.title ?? "New thread").toLowerCase().includes(q) || t.children.some(matches);
+  const titleMatches = (t: ThreadSummary) => (t.title ?? "New thread").toLowerCase().includes(q);
+  const matches = (t: ThreadSummary): boolean => !q || titleMatches(t) || t.children.some(matches);
+  const search = useMessageSearch(user.id, q, me.display);
+  const hits = q ? search.results : undefined;
+  // A hit opens its thread at the message: the open thread scrolls there, any other takes it when it opens.
+  const openHit = (h: SearchHit) => {
+    const req: JumpRequest = { base: threadPath(user.id, h.pool, h.threadId), n: h.n };
+    const here = route.page === "thread" && route.pool === h.pool && route.threadId === h.threadId;
+    if (!(here && ask(JUMP_EVENT, req))) keep(JUMP_KEY, req);
+    onClose();
+  };
+  const [moreRun, , moreError] = useAction();
   // Pinned threads sit at the top, whatever the sort; the projects filter is the Sort menu's third part.
   const projects = me.display.projects;
   const shown = useMemo(() => {
@@ -381,6 +395,10 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
     const rest = sections(visible.filter((t) => !t.pinned), sort, ctx.groups, now);
     return pinned.length ? [{ label: "Pinned", threads: pinned }, ...rest] : rest;
   }, [threads, sort, projects, ctx.groups, now, q]); // eslint-disable-line react-hooks/exhaustive-deps
+  // With the hits here: the threads whose own title matches, for the rows after the hits' groups.
+  const flat = (t: ThreadSummary): ThreadSummary[] => [t, ...t.children.flatMap(flat)];
+  const titled = hits ? shown.flatMap((s) => s.threads).flatMap(flat).filter(titleMatches) : [];
+  const nothing = !!q && threads.length > 0 && (hits ? !hits.hits.length && !titled.length : !searchable(q) && !shown.length);
   const sortLabel = SORTS.find((s) => s.sort === sort)?.label ?? "By date";
   const listMenu = useListMenu();
 
@@ -394,7 +412,10 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
         <NewThread onCreate={create} />
         <details>
           <summary><Icon name="search" />Search</summary>
-          <div><input type="search" aria-label="Search threads" placeholder="Titles" value={query} onChange={(e) => setQuery(e.target.value)} /></div>
+          <div>
+            <input type="search" aria-label="Search titles and messages" placeholder="Search titles and messages" value={query} onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape" && query) { e.preventDefault(); setQuery(""); } }} />
+          </div>
         </details>
         <a href={href({ page: "settings", userId: user.id, section: "notifications" })} aria-current={route.page === "settings" && route.section === "notifications" ? "page" : undefined}>
           <Icon name="bell" />Notifications{ctx.waiting > 0 && <span className="count" aria-label={`${ctx.waiting} waiting`}>{ctx.waiting}</span>}
@@ -421,7 +442,7 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
             <hr className="menu-sep" />
             <label><input type="checkbox" checked={me.display.showGeneral} onChange={(e) => setDisplay({ showGeneral: e.target.checked })} /> General</label>
             <label><input type="checkbox" checked={me.display.showPrivate} onChange={(e) => setDisplay({ showPrivate: e.target.checked })} /> Private</label>
-            <label><input type="checkbox" checked={me.display.showHidden} onChange={(e) => setDisplay({ showHidden: e.target.checked })} /> Hidden</label>
+            <label title="Hidden threads are left out of the list and of search."><input type="checkbox" checked={me.display.showHidden} onChange={(e) => setDisplay({ showHidden: e.target.checked })} /> Hidden</label>
             <hr className="menu-sep" />
             <div className="rg" role="radiogroup" aria-label="Projects">
               {PROJECT_FILTERS.map((f) => (
@@ -431,9 +452,12 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
           </div>
         </details>
       </div>
-      <ErrorText error={actionError || error} />
+      <ErrorText error={actionError || error || search.error || moreError} />
       <ul className="threads" aria-label="Threads" {...listMenu.handlers}>
-        {shown.map((s) => (
+        {hits ? (
+          <SearchGroups hits={hits.hits} titled={titled} threads={threads} userId={user.id} current={current} menu={menu.handlers} onOpen={openHit}
+            more={hits.more ? () => void moreRun(search.more) : undefined} />
+        ) : shown.map((s) => (
           <li key={s.label} className="group-rows">
             {(shown.length > 1 || sort === "groups" || s.label === "Pinned") && <span className="eyebrow">{s.label}{s.count !== undefined && <span className="num">{s.count}</span>}</span>}
             <ul className="threads-in">
@@ -442,6 +466,7 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
           </li>
         ))}
         {!threads.length && !error && <li className="muted empty">No threads yet.</li>}
+        {nothing && <li className="muted empty">Nothing matches.</li>}
       </ul>
       {menu.at && (
         <ThreadMenu at={menu.at} userId={user.id} route={route} groups={ctx.groups} onGroups={ctx.refreshGroups} onChange={ctx.refreshThreads} onClose={menu.close} />
@@ -560,7 +585,7 @@ function NewThread({ onCreate }: { onCreate: (pool: Pool) => void }) {
   );
 }
 
-type MenuHandlers = ReturnType<ReturnType<typeof useThreadMenu>["handlers"]>;
+export type MenuHandlers = ReturnType<ReturnType<typeof useThreadMenu>["handlers"]>;
 
 function ThreadRow({ t, userId, current, menu }: { t: ThreadSummary; userId: string; current: string; menu: (t: ThreadSummary) => MenuHandlers }) {
   const key = `${t.pool}/${t.id}`;
@@ -594,7 +619,7 @@ function ThreadRow({ t, userId, current, menu }: { t: ThreadSummary; userId: str
   );
 }
 
-function ThreadLink({ t, userId, on, menu, child }: { t: ThreadSummary; userId: string; on: boolean; menu: (t: ThreadSummary) => MenuHandlers; child?: boolean }) {
+export function ThreadLink({ t, userId, on, menu, child }: { t: ThreadSummary; userId: string; on: boolean; menu: (t: ThreadSummary) => MenuHandlers; child?: boolean }) {
   // A project's thread: its state as a word, then its unseen updates. Otherwise at most two badges,
   // most pressing first (ux.md §5): waiting on her, then new updates, then hidden.
   const inProject = t.state !== undefined;

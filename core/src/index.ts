@@ -14,7 +14,7 @@ export * from "./threads.ts";
 export * from "./store/pool.ts";
 export * from "./store/memory.ts";
 export * from "./store/sleep-prompt.ts";
-export { citationsIn, firstLine, kindOf, sentenceCiting, splitId, type Kind } from "./store/refs.ts";
+export { citationsIn, firstLine, kindOf, searchWords, sentenceCiting, splitId, stripCitations, type Kind } from "./store/refs.ts";
 export * from "./models/index.ts";
 export * from "./delegation.ts";
 export * from "./workspace/index.ts";

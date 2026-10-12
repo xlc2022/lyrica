@@ -41,8 +41,9 @@ The repository was rebuilt from scratch starting 2026-10-09.
 - Encrypted general and private memory pools, with notes, memory tools,
   automatic recall and a memory browser.
 - `lyricad`, which hosts every conversation, and a web UI for threads,
-  projects, files, machines, voice, notifications, reactions and settings,
-  with a setup page, her name, the tailnet and updates in Administration.
+  projects, files, machines, voice, notifications, reactions, message
+  search and settings, with a setup page, her name, the tailnet and updates
+  in Administration.
 - Sleep, which writes notes, pages, WAKE and the journal.
 - Delegation and child threads, modes, remote machines over SSH or
   Proxmox, and Git accounts with project repositories.
