@@ -29,7 +29,14 @@ export function syncEntries(source: EntrySource, store: PoolStore, threadId: str
 export function recordEntries(session: AgentSession, store: PoolStore, threadId: string): () => void {
   return session.subscribe((event) => {
     if (event.type === "message_end" && event.message.role === "user") {
-      queueMicrotask(() => syncEntries(session.sessionManager, store, threadId));
+      queueMicrotask(() => {
+        // A failure here (a locked store, a database error) must not take lyricad down: the turn's own sync retries.
+        try {
+          syncEntries(session.sessionManager, store, threadId);
+        } catch (err) {
+          console.error(`recording a sent message failed (${(err as Error)?.name ?? "Error"}); it is recorded at the turn's end`);
+        }
+      });
     }
     if (event.type === "turn_end" || event.type === "agent_end" || event.type === "compaction_end") syncEntries(session.sessionManager, store, threadId);
   });

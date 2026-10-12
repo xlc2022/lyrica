@@ -90,6 +90,31 @@ describe("in a Pi session", () => {
     }
   });
 
+  it("survives a failed early record and records the user entry at turn end", async () => {
+    const thread = (await withMemory()).thread().context;
+    const store = thread.view.own;
+    const append = store.appendEntry.bind(store);
+    let failed = 0;
+    // The first write, the early one right after send, fails as a locked store would.
+    store.appendEntry = ((...args: Parameters<typeof append>) => {
+      if (failed++ === 0) throw new Error("store locked");
+      return append(...args);
+    }) as typeof store.appendEntry;
+    const errors: string[] = [];
+    const log = console.error;
+    console.error = (line: string) => { errors.push(String(line)); };
+    const { session: s } = await session(thread, [() => fauxAssistantMessage("Done.")]);
+    try {
+      await s.prompt("keep this anyway");
+    } finally {
+      console.error = log;
+      s.dispose();
+    }
+    expect(errors.some((e) => e.includes("recording a sent message failed (Error)"))).toBe(true);
+    expect(errors.join("\n")).not.toContain("keep this anyway");
+    expect(store.loadEntries(thread.threadId).filter((e) => (e as { message?: { role: string } }).message?.role === "user")).toHaveLength(1);
+  });
+
   it("keeps the system prompt identical across turns and sends the time as a message", async () => {
     const { session: s, seen } = await session((await withMemory()).thread().context);
     try {
