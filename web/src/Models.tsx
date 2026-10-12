@@ -62,7 +62,7 @@ const TABS: { tab: ModelsTab; label: string }[] = [
 
 const TASK_WORD: Record<Task, string> = {
   chat: "Chat", "subagent.cheap": "Cheap subagents", "subagent.strong": "Strong subagents", compaction: "Compaction",
-  title: "Titles", embedding: "Embeddings", "sleep.consolidate": "Sleep: consolidate", "sleep.dream": "Sleep: dream", "sleep.wake": "Sleep: wake",
+  title: "Titles", watching: "Watching threads", embedding: "Embeddings", "sleep.consolidate": "Sleep: consolidate", "sleep.dream": "Sleep: dream", "sleep.wake": "Sleep: wake",
   "image.create": "Images", "image.edit": "Image edits", "speech.transcribe": "Dictation", "speech.speak": "Read aloud",
 };
 const PROFILE_WORD = { cloud: "Cloud", local: "Local", custom: "Custom" } as const;
