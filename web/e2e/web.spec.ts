@@ -1760,6 +1760,8 @@ test("hovering New project opens its flyout beside the item, and it flips at the
   test.skip(phone(page), "flyouts are for devices that can hover");
   await enter(page, baseURL!);
   const list = page.locator(".threads");
+  // Earlier tests may fill the list: scroll to its end so the strip under the last row is in view.
+  await list.evaluate((el) => { el.scrollTop = el.scrollHeight; });
   const box = (await list.boundingBox())!;
   await list.click({ button: "right", position: { x: 40, y: box.height - 6 } });
   const menu = page.getByRole("menu", { name: "Thread list menu" });
@@ -1810,6 +1812,8 @@ test("tapping New project on a phone replaces the menu in place with its choices
   await enter(page, baseURL!);
   await page.getByRole("button", { name: "Show threads" }).click();
   const list = page.locator(".threads");
+  // Earlier tests may fill the list: scroll to its end so the strip under the last row is in view.
+  await list.evaluate((el) => { el.scrollTop = el.scrollHeight; });
   const box = (await list.boundingBox())!;
   await list.click({ button: "right", position: { x: box.width / 2, y: box.height - 6 } });
   await page.getByRole("menu", { name: "Thread list menu" }).getByRole("menuitem", { name: "New project" }).click();
@@ -1830,6 +1834,9 @@ test("New project in the sidebar creates a pinned project and opens it", async (
   await expect(side.getByRole("group", { name: "New thread in" })).toHaveCount(0);
   const choice = side.getByRole("group", { name: "New project in" });
   await expect(choice).toBeVisible();
+  // The row stays in place above its choice, so the choice reads as its own.
+  await expect(side.getByRole("button", { name: "New project" })).toHaveAttribute("aria-expanded", "true");
+  await expect(side.getByRole("button", { name: "New thread" })).toHaveAttribute("aria-expanded", "false");
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/sidebar-new-${page.viewportSize()!.width}.png` });
   await choice.getByRole("button", { name: "General" }).click();
   // A new project is created pinned and opened at once, same as the list menu's item does.

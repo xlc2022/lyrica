@@ -81,8 +81,9 @@ Rules:
 - Submenus: an item with a submenu ends in ›.
 - On devices that can hover (`@media (hover: hover)`, not screen width),
   hovering or clicking the item opens the submenu as a flyout beside it.
-- The flyout's top lines up with the item and shifts up to stay on screen. It
-  opens to the right, or to the left when there's no room on the right.
+- The flyout's first row sits level with the item, and the flyout shifts up
+  to stay on screen. It opens to the right, or to the left when there's no
+  room on the right.
 - → opens the flyout, and ← or Escape closes one level. Items in it keep their
   letter shortcuts.
 - Without hover, tapping the item replaces the menu in place with a ‹ Back
@@ -242,7 +243,7 @@ Rules:
 | A thread or message Lyrica mentions | a **link** in her text: the thread's current title, opening the thread; no state dot (the sidebar row and the pending bar carry the state) and no pool colour; "a forgotten thread" in plain text when it's gone. Never the raw ID |
 | A serving change she proposes (her `models` tool) | the permission **card** worded as its question: "Serve **Qwen3.8-27B** with `1,010,000` tokens of context? It reloads, and its KV cache grows to `17` GB.", the numbers in mono, and "Qwen documents `4`." after it when the stretch is above the card's. **Allow** primary, **Deny** |
 | A child thread | nested under its parent in the **sidebar**, with its state and unseen count as badges; its updates as a **card** in the parent's conversation that links to it |
-| A project | a thread row in the **sidebar** with the project icon in the pool dot's place, its threads nested under it (each keeps its pool dot) and resolved ones folded under one **Resolved** disclosure row with the count in mono; an amber dot on the row when a thread waits on the user. **New project** under New thread at the top of the sidebar, with the same inline General / Private / ✕ choice, and in the thread list's own menu (right-click or long press anywhere that is not a row: an eyebrow, a gap, the strip under the last row), **Make project** in a top-level thread's menu; a new project starts pinned, at the top with the other pinned threads |
+| A project | a thread row in the **sidebar** with the project icon in the pool dot's place, its threads nested under it (each keeps its pool dot) and resolved ones folded under one **Resolved** disclosure row with the count in mono; an amber dot on the row when a thread waits on the user. **New project** under New thread at the top of the sidebar; each row keeps its place and opens the same General / Private / ✕ choice under its row, and in the thread list's own menu (right-click or long press anywhere that is not a row: an eyebrow, a gap, the strip under the last row), **Make project** in a top-level thread's menu; a new project starts pinned, at the top with the other pinned threads |
 | A project's threads at a glance | **Threads** with its count in the project chat's facts line, a popover grouped Waiting on you, Working, Queued, Idle, Resolved, in the sidebar's words and order; full width on a phone |
 | A thread of a project, in the project chat | one **card** under the message that started it, updated in place (no card per update): title, state as a dot and word (Working blue; Waiting on you and Waiting for approval amber; Resolved green; Idle the word alone), what it waits on beneath, the last update's first line, up to three file names in mono then "+n" (once the back end lists them); Open, Stop, Pin or Unpin, Resolve or Reopen behind ⋯. Waiting on you counts as waiting for an answer, so the pending bar covers it |
 | Threads she proposes | a **Suggested threads** card, like the plan card: a small secondary **Start** per row, one primary **Start all** at its foot; no Dismiss |

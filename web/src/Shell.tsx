@@ -622,14 +622,19 @@ function NewButtons({ onCreate, onCreateProject }: { onCreate: (pool: Pool) => v
   );
 }
 
+/** A row that stays put, with its General / Private / ✕ choice under it while open, so the choice reads as this row's. */
 function NewRow({ shown, onShow, icon, label, onCreate }: { shown: boolean; onShow: (on: boolean) => void; icon: "plus" | "project"; label: string; onCreate: (pool: Pool) => void }) {
-  if (!shown) return <button type="button" aria-expanded="false" onClick={() => onShow(true)}><Icon name={icon} />{label}</button>;
   return (
-    <div className="new-choice" role="group" aria-label={`${label} in`}>
-      <button type="button" className="primary sm" autoFocus onClick={() => { onShow(false); onCreate("general"); }}>General</button>
-      <button type="button" className="private sm" onClick={() => { onShow(false); onCreate("private"); }}>Private</button>
-      <button type="button" className="icon sm" aria-label="Cancel" onClick={() => onShow(false)}><Icon name="close" /></button>
-    </div>
+    <>
+      <button type="button" aria-expanded={shown} onClick={() => onShow(!shown)}><Icon name={icon} />{label}</button>
+      {shown && (
+        <div className="new-choice" role="group" aria-label={`${label} in`}>
+          <button type="button" className="primary sm" autoFocus onClick={() => { onShow(false); onCreate("general"); }}>General</button>
+          <button type="button" className="private sm" onClick={() => { onShow(false); onCreate("private"); }}>Private</button>
+          <button type="button" className="icon sm" aria-label="Cancel" onClick={() => onShow(false)}><Icon name="close" /></button>
+        </div>
+      )}
+    </>
   );
 }
 
