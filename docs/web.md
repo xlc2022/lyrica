@@ -152,28 +152,6 @@ A thread's address may carry what the panel beside it shows:
   under Chat. Opening a subagent's thread by link shows the same thing as
   its card: a link to its parent, its transcript and a message box, never
   the composer or settings.
-<<<<<<< HEAD
-- **Memory:** search filtered by pool, layer and User introduced; a memory
-  with its lineage as links, edit (each edit a revision), history with
-  restore, archive and delete; forgetting selected results as a topic; and
-  adding a note or page, linked or free. Mention tokens show as current names;
-  the editor shows them as `[[Name]]` or `[[Name:obj]]` and saves them back as
-  tokens. A thread mention (`[t:<id>]`, `[e:<id>#<n>]`) in a memory's text or
-  history shows as a link with the thread's current title, as in her
-  messages.
-- **Notifications** (`src/Notifications.tsx`; docs/ux.md §6 "Anything
-  waiting for the user"): the first section of Settings, one list from
-  `GET …/notifications`. Chips filter by type (All with the count, Needs a
-  decision, then the types that exist now); Sort offers Newest, Oldest, By
-  type and By pool (the last two group the rows under eyebrows); Where
-  narrows to a pool. Each row has its kind, pool and time, Open thread or
-  Open where the item leads, and its actions as buttons (an action that
-  answers with a thread goes there). Checkboxes select rows for the bulk
-  bar: a button for each action every selected row shares, with the count
-  (Add to Private 2, Decline 2), and none when they share none. Twenty rows at a time, with
-  Show more. The welcome page shows the first four decisions in a card
-  with All N.
-=======
 - **Memory** (`src/Memory.tsx`, `src/memory.ts`; [memory.md](memory.md), The
   memory browser): a notebook. The browse pane lists one layer (Pages, Notes,
   WAKE, Journal) newest first, filtered by pool and User introduced, with
@@ -192,7 +170,18 @@ A thread's address may carry what the panel beside it shows:
   as gone. Mention tokens show as current names; the editor shows them as
   `[[Name]]` or `[[Name:obj]]` and saves them back as tokens. Nothing of a
   memory's text is kept in the browser's storage.
->>>>>>> origin/main
+- **Notifications** (`src/Notifications.tsx`; docs/ux.md §6 "Anything
+  waiting for the user"): the first section of Settings, one list from
+  `GET …/notifications`. Chips filter by type (All with the count, Needs a
+  decision, then the types that exist now); Sort offers Newest, Oldest, By
+  type and By pool (the last two group the rows under eyebrows); Where
+  narrows to a pool. Each row has its kind, pool and time, Open thread or
+  Open where the item leads, and its actions as buttons (an action that
+  answers with a thread goes there). Checkboxes select rows for the bulk
+  bar: a button for each action every selected row shares, with the count
+  (Add to Private 2, Decline 2), and none when they share none. Twenty rows at a time, with
+  Show more. The welcome page shows the first four decisions in a card
+  with All N.
 - **Settings** (`src/Panel.tsx`): a page with its sections listed at the
   left (a scrolling row on a phone): Notifications, Profile (name, pronouns, accent colour,
   monogram), Appearance (theme), Unlock and lock (saved credentials, stay
