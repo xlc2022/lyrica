@@ -48,6 +48,12 @@ describe("a ChatGPT plan", () => {
     expect(s.models.endpoint(bo.id, s.plan.id)).toBeUndefined();
   });
 
+  it("refuses a name an endpoint can't have, before a sign-in is started for it", async () => {
+    const s = await setup();
+    expect(() => s.models.checkEndpointName("My ChatGPT")).toThrow(/lowercase letters/);
+    expect(() => s.models.checkEndpointName("chatgpt-2")).not.toThrow();
+  });
+
   it("has no URL or key to edit, and merges only with another plan", async () => {
     const s = await setup();
     expect(() => s.models.editEndpoint(s.ada, s.plan.id, { baseUrl: "https://example.com/v1" })).toThrow(/signs in with ChatGPT/);

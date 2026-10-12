@@ -610,6 +610,8 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
     state and exchanges the code.
   - **Grok:** xAI's device code: the person opens xAI's page, enters the
     code shown if asked, and approves; Finish waits for xAI to confirm.
+  A new plan's name is checked (lowercase letters, digits and `-`) before the
+  sign-in starts, so a bad name never costs a sign-in.
   A sign-in under way is held in `lyricad`'s memory for 10 minutes, one per
   user, and belongs to the user who started it. When it ends (finished,
   cancelled, started again or timed out) the listener on port 1455 is
