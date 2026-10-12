@@ -428,8 +428,8 @@ async function listening(port: number, server: ReturnType<typeof spawn>, log: ()
 // the tests run as root; CI has them all.
 const sshd = "/usr/sbin/sshd";
 const has = (cmd: string) => { try { execFileSync("sh", ["-c", `command -v ${cmd}`]); return true; } catch { return false; } };
-const helperRunnable = existsSync(sshd) && process.getuid?.() !== 0 && has("bwrap") && has("pasta") && has("nft");
-if (process.env.LYRICA_SANDBOX_TESTS === "require" && !helperRunnable) throw new Error("ssh tests required but sshd, bwrap, pasta or nft is missing");
+const helperRunnable = existsSync(sshd) && process.getuid?.() !== 0 && has("bwrap") && has("pasta") && has("nft") && existsSync("/dev/net/tun");
+if (process.env.LYRICA_SANDBOX_TESTS === "require" && !helperRunnable) throw new Error("ssh tests required but sshd, bwrap, pasta, nft or /dev/net/tun is missing");
 describe.skipIf(!helperRunnable)("an ssh target", () => {
   it("reads, writes, edits and runs commands remotely, with the confirmed host key", async () => {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), "lyrica-sshd-")));
