@@ -116,7 +116,7 @@ Rules:
   Updates, Update, Roll back, Running, Updating, Draining, Building, Testing,
   Probation, Set up Lyrica, Persona, Tailnet, Connect, Disconnect, Leave,
   Stay, Auth key, Hostname, Control server, Skip, Start a chat, Remove,
-  Use a host outside your network?, Add anyway, Save anyway, Keep.
+  Use a host outside your network?, Add anyway, Save anyway, Keep, Look up.
 - Numbers get units beside the field (GB, %, tokens), and a maximum shown
   where one exists ("of 128k").
 
