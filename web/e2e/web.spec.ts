@@ -194,6 +194,38 @@ test("a pinned message shows in the header's Pinned popover, and unpinning remov
   await expect(page.locator(".msg.user .who").getByText("pinned", { exact: true })).toHaveCount(0);
 });
 
+test("a reaction from the quick row shows as a chip, the full picker opens, and pressing the chip takes it off", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "I got the job!");
+  await expect(page.getByText("You said: I got the job!")).toBeVisible();
+
+  // Her reply: the quick row, tada.
+  await page.getByRole("button", { name: "React", exact: true }).nth(1).click();
+  await page.getByRole("button", { name: "React with tada" }).click();
+  const chip = page.locator(".turn .reaction");
+  await expect(chip).toHaveText(/🎉\s*1/);
+  await expect(chip).toHaveAttribute("aria-pressed", "true");
+  await expect(chip).toHaveAttribute("title", "You reacted with 🎉");
+  // Stored: still there after a reload.
+  await page.reload();
+  await expect(page.locator(".turn .reaction")).toHaveText(/🎉\s*1/);
+
+  // The full picker, from More emoji, with its search box.
+  await page.getByRole("button", { name: "React", exact: true }).first().click();
+  await page.getByRole("button", { name: "More emoji" }).click();
+  const picker = page.locator("emoji-picker");
+  await expect(picker).toBeVisible();
+  await expect(picker.locator("input[type=search]")).toBeVisible({ timeout: 15_000 });
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/reactions-${page.viewportSize()!.width}.png` });
+  await page.keyboard.press("Escape");
+  await expect(picker).toHaveCount(0);
+
+  await page.locator(".turn .reaction").click();
+  await expect(page.locator(".turn .reaction")).toHaveCount(0);
+});
+
 test("removing turns that did things asks first, with what goes", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");

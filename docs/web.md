@@ -337,6 +337,14 @@ A thread's address may carry what the panel beside it shows:
   event drops the removed messages from every open view. A new branch opens,
   under "Branched from" its parent, and its settings can be changed within
   its parent's.
+- **Reactions** (`src/Reactions.tsx`): a React button (a face with a plus)
+  beside each message's ⋯ opens a quick row (🙏 👍 ❤️ 🎉 👀 🚀, tooltips
+  "React with tada") whose last button, More emoji, opens the full picker
+  with search and categories (`emoji-picker-element`, loaded only then; its
+  data is served with the UI, never from a CDN, and kept by the browser).
+  Reactions show as chips under the message, each emoji with its count; the
+  user's own are outlined in the accent and pressing one takes it off. Hers
+  arrive by the `reactions` event, as do the user's from another tab.
 - **Pinned messages** carry a "pinned" badge after the sender's name. The
   header's "N pinned ▾" badge (the number in mono) opens a popover listing
   them by sender and first line; choosing one scrolls to it and outlines it

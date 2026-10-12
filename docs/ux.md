@@ -107,6 +107,7 @@ Rules:
   Start a thread, Suggested threads, Start all, Resolve, Reopen, Resolved,
   Memory, Pages, Notes, WAKE, Journal, User introduced, Add a memory, Came
   from, Used in, History, Restore, Archive, Preview, Edit, Remember this,
+  React, React with, More emoji, Reactions,
   Waiting on you, Goal, Instructions, Paused, All threads, Only projects,
   No projects, Machines, Add machine, Mode limit, Replace key, Use anyway,
   Allow in this thread, Online, Unreachable, Key changed, Off network,
@@ -158,6 +159,7 @@ Rules:
 | What a memory came from, and what uses it | **Came from** and **Used in**: a card per memory with its title (or first words), its date in mono, and the citing sentence beneath |
 | A memory's versions | **History**: a row per version with its time in mono and its author (Lyrica, sleep, or yours), the current one open; a version opens to the word differences against the current text (removed words struck through in the danger colour, added words in the ok colour) and a **Restore** button |
 | A note's tags | its `about` words as **tag** chips under the facts line, in mono; the Notes layer lists the pool's tags above its list, and a tapped tag filters it |
+| Reacting to a message | **React** (an icon button beside the message's ⋯) opens a **quick row** of six favourites, each with the tooltip "React with <name>", ending in **More emoji**, which opens the full **picker** (search, categories). Reactions are **chips** under the message, the emoji and its count in mono; the user's own chip is outlined in the accent and pressing it takes the reaction off; the tooltip says who ("You and Lyrica reacted with 🎉"). Lyrica's reactions look the same |
 | Remembering a message | **Remember this** in the message's ⋯ menu: a field under the message labelled **Remember this as a note** with the pool word in eyebrow style, prefilled with the message's first line, **Remember** primary and Cancel; afterwards one line, Remembered as a note, linking to it |
 | Forgetting several memories | Ctrl- or Cmd-click and Shift-click select list rows; a bar at the foot of the pane names the count, with **Clear** and **Forget…**, confirmed by a dialog |
 | Editing a memory | in place where the text was: an **Edit** \| **Preview** segment, the textarea, **Save** as the one primary and Cancel; typing `[[` opens a popover of pages and people (a page is saved as its ID, a person as their name token). Notes cite by ID in the editor, since they have no title. No draft is kept in the browser |

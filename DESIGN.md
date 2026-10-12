@@ -380,6 +380,17 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - Pins live with the thread, in its pool. A branch keeps the pins in the
     turns it copies. Removing turns that hold a pin says so in the
     confirmation.
+- **Reactions.** An emoji on a message, the way chat apps have them. The
+  user reacts to any message, their own or hers, from a quick row of
+  favourites or the full picker; Lyrica reacts with her `react` tool, by
+  default to the message she is answering. Both show as one set of chips
+  under the message, counting the two of them, in every open tab at once.
+  She hears of the user's reactions in her next turn, in a `<reactions>`
+  block of the turn message, never as a mark in the stored message. A
+  reaction lives with its message in the pool (a branch keeps it; a share
+  doesn't carry it, since it names who reacted); sleep ignores it. Li asked
+  for it as in Claude's interface (2026-10-12), and chose that Lyrica
+  reacts too.
 - **Orphans are cleaned up.**
   - Lyrica's own leftovers go automatically: subagent runs and threads,
     images and other outputs in the thread's folder, uploads attached only to

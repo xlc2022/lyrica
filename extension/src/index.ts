@@ -83,12 +83,13 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
       options.sections = { ...(tools ? { tools } : {}), ...options.sections, ...sections };
 
       // The user's reactions since her last turn, then her status line, from the last turn's measurement, and the line telling her to prepare or compact.
-      let full = [turn, reactionLines(opts.reactions?.() ?? [], thread.threadId, opts.profile().displayName)].filter(Boolean).join("\n\n");
+      const told = [turn, reactionLines(opts.reactions?.() ?? [], thread.threadId, opts.profile().displayName)].filter(Boolean).join("\n\n");
+      let full = told;
       if (opts.meter) {
         const defs = pi.getAllTools().filter((t) => pi.getActiveTools().includes(t.name)).map((t) => ({ name: t.name, description: t.description, parameters: t.parameters }));
         opts.meter.setPrompt(report, tools.length + JSON.stringify(defs).length);
         const lines = contextLines(opts.meter);
-        if (lines) full = [turn, `<context>\n${lines}\n</context>`].filter(Boolean).join("\n\n");
+        if (lines) full = [told, `<context>\n${lines}\n</context>`].filter(Boolean).join("\n\n");
       }
 
       if (opts.debugPrompt) showDebug(ctx, topics, report, `${event.systemPrompt}\n\n--- this turn ---\n${full}`);

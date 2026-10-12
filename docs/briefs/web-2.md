@@ -215,6 +215,12 @@ For each part:
   of each user's key in `self.db` (DESIGN.md "Users" and "Storage",
   contracts core/users; Li chose this over a reset that loses data). Nothing
   for sleep or the pools changes; the privacy boundary note is in DESIGN.
+- 2026-10-12, PR 12 (the rest of the queue in one PR, Li's ask): the
+  password follow-up (the administrator's own password, the user logged
+  out); reactions on messages, hers too (DESIGN.md "Reactions",
+  docs/daemon.md, docs/web.md, ux row "Reacting to a message"; pool schema
+  step 2 adds `entries.reactions`); the setup page, her name and the Tailnet
+  section (web-bootstrap.md); the Updates section (web-updates.md).
 - 2026-10-12, PR 11 (Notifications and Share with): `thread_shares` in
   `self.db` holds a sent copy until the recipient adds or declines it;
   `GET …/notifications` lists what waits (docs/daemon.md "Share with and

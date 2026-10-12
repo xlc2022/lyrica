@@ -204,6 +204,16 @@ Each active thread is one Pi session from `openThreadSession`, with
   subagent's thread). `GET …/pins` lists the thread's pins, oldest first,
   and whether they're over the pinned budget (`shortened`). Messages carry
   `pinned`.
+- **Reactions** (`PUT` and `DELETE …/messages/:n/reactions/:emoji`, the
+  emoji URL-encoded) put the user's reaction on one of their messages or her
+  replies, or take it off, and answer the message's reactions (`400` for any
+  other entry or a string that isn't an emoji, `409` in a subagent's
+  thread). Messages carry `reactions`, each emoji with `you` and `her`. Hers
+  come from her `react` tool, which writes to the pool directly; either way
+  the thread's stream gets a `reactions` event with the message's new set.
+  The user's reactions since her last turn go into her next turn's message
+  as a `<reactions>` block ("Li reacted 🎉 to your message [e:…]"); the
+  user's stored message is untouched.
 - **Rewinding** (`POST …/messages/:n/rewind`, `RewindRequest`): `delete`
   removes message `n` and everything after it; `regenerate` removes her
   reply's turn from its user message and sends that message again;
