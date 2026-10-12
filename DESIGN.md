@@ -1109,9 +1109,24 @@ Project settings and Recent calls by project. The briefs are
   so it survives a restart. The user sees **Wake-up** and the next time in the
   thread's facts line, with Remove on each, and the time on a project
   thread's card.
-- **Not in projects:** routines (recurring schedules), moving an existing
-  thread into a project, and sharing a project (Share with copies one
-  thread).
+- **Routines** (2026-10-12). A routine is a recurring wake-up, for
+  project work and for life routines alike, set up by the user through her
+  (`threads routine`). It belongs to one thread and has a schedule: daily,
+  weekdays or weekly at a time, yearly on a date, or every N hours (at
+  least 1). Each time it fires a turn there, marked as a routine, with the
+  note she wrote when it was set. She may open a new thread when the
+  routine calls for it; the Sleep rule that her items never open a thread
+  is about unasked dream content and doesn't apply to a routine the user
+  asked for. It has the wake-ups' guards: it waits while its project is
+  paused, counts against the at-once limit, is skipped while its last run
+  is still working, and a locked user's missed runs fire once at unlock,
+  saying how many were due. A thread's wake-ups and routines fire at most
+  24 times a day together. Stored in the thread's pool, so privacy follows
+  the pool. The user sees **Routine** and the next time in the thread's
+  facts line, and every routine in **Settings → Routines**, with **Pause**
+  and **Remove**. One-shot reminders stay wake-ups; a calendar is Later.
+- **Not in projects:** moving an existing thread into a project, and
+  sharing a project (Share with copies one thread).
 
 ## Machines
 
