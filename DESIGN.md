@@ -1191,9 +1191,10 @@ Decided 2026-10-12 (docs/briefs/mcp.md).
   inherit it, narrower or the same. Removing one from a project takes it
   from running threads at once.
 - **Pools.** Private and local-only threads use only servers marked
-  Private; general threads only General ones. Li decides what is private:
-  a server of hers on a VPS can be (Li, 2026-10-12), so there is no
-  network check.
+  Private; general threads only General ones. A private server is on her
+  own network (LAN, this machine or the tailnet), checked like a private
+  Git account's host, with **Off network** and the "Use a host outside
+  your network?" dialog when it isn't.
 - **Approval.** A call to a tool its server marks read-only runs freely,
   and only those run in Plan mode. Every other call leaves the server, so
   it always asks, whatever the mode, with **Allow in this thread** for that

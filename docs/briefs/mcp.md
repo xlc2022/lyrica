@@ -19,7 +19,10 @@ integration becomes "add a server" instead of a tool we write and keep
    tool-search extensions to the resource loader, see Pi's `docs/sdk.md`,
    "Codemode and MCP"). Register each granted server per session with
    `pi.registerMcpServer(name, { url, headers, exposure: "deferred",
-   description })`, never through `mcp.json` on disk. Turn Pi's
+   description })`, never through `mcp.json` on disk: the build turns
+   off Pi's global and project `mcp.json` loading, so a stray
+   `~/.pi` file can't add a server outside the encrypted database or the
+   grants. Turn Pi's
    `mcp.log` and temporary result files off or point them at the
    thread's encrypted workspace: no tool text in plaintext on disk.
 2. **Remote servers only.** Streamable HTTP. A `command` (stdio) server
@@ -28,24 +31,28 @@ integration becomes "add a server" instead of a tool we write and keep
    an `mcp_servers` table (name, url, pool, token sealed like a Git
    token, state, checked_at) and `thread_workspaces.mcp_servers` (JSON
    names, default `[]`). If another PR takes step 3 first, use the next.
-4. **Settings → MCP servers** (after Git accounts) and the **MCP servers**
+4. **Pools.** A private server's host must resolve on her own network
+   (`resolveHost`, as for a private Git account), or be confirmed with
+   the "Use a host outside your network?" dialog and shown Off network.
+5. **Settings → MCP servers** (after Git accounts) and the **MCP servers**
    row in the thread drawer and under This chat (docs/ux.md §6), copied
    from Git accounts and Repositories. A server is checked before it's
    saved: an MCP `initialize` and `tools/list`, which must answer.
-5. **Grants:** a thread's servers are its own plus its project's, only of
+6. **Grants:** a thread's servers are its own plus its project's, only of
    its pool; a subagent's are its parent's or fewer (Delegation 2 owns
    inheritance); removing one from a project takes it from running threads
    at once, as `narrowRunning` does for repositories.
-6. **The gate** (`extension/src/workspace.ts`): a call to an MCP tool whose
+7. **The gate** (`extension/src/workspace.ts`): a call to an MCP tool whose
    server marks it `readOnlyHint` runs in any mode and is the only kind in
    Plan mode; any other call is treated as leaving the server and always
    asks with the permission card (server name first in its title), with
    **Allow in this thread** for that tool. `tool_search` is model-facing
    and counted; the MCP tools it loads are not (principle 8).
-7. **Tests** (what Li would notice): a private thread never gets a general
+8. **Tests** (what Li would notice): a private thread never gets a general
    server; a granted server's read-only tool runs in Plan mode and a
    writing one asks in Auto; removing a server from a project takes it from
-   a running thread; the step 3 migration from every released schema.
+   a running thread; a server in a global `mcp.json` is not registered;
+   the step 3 migration from every released schema.
 
 ## Out of scope
 
