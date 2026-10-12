@@ -193,6 +193,7 @@ export function delegationPart(content: unknown, details: unknown): Extract<Mess
 
 /** The `Told [t:<id>]: "<line>"` lines of a look (watch.ts): the threads it told, and what. */
 export function toldLines(text: string): Told[] {
+  // One line per tell: `JSON.stringify` escapes any newline in the told text, so `.*` reaches the closing quote.
   return [...text.matchAll(/^Told \[t:([^\]\s]+)\]: (".*")$/gm)].flatMap((m) => {
     try { return [{ threadId: m[1]!, text: JSON.parse(m[2]!) as string }]; } catch { return []; }
   });

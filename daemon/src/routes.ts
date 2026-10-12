@@ -1849,6 +1849,8 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
   const overrides = { ...current.overrides };
   for (const [task, ref] of Object.entries(change.models ?? {})) {
     if (!(THREAD_TASKS as readonly string[]).includes(task)) throw new Error(`a thread can't choose a model for ${task}`);
+    // Only a project chat makes looks (watch.ts), so only it has a Watching model to choose.
+    if (task === "watching" && !thread.project) throw new Error("only a project chat chooses a model for watching");
     if (ref) overrides[task as Api.ThreadTask] = Array.isArray(ref) ? toRefs(ref) : [toRef(ref)];
     else delete overrides[task as Api.ThreadTask];
   }

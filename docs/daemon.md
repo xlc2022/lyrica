@@ -286,7 +286,9 @@ Each active thread is one Pi session from `openThreadSession`, with
   or that it stopped with an error or waits for an approval), and the
   `Told` lines of the last three looks. It asks for JSON only,
   `{"tell":[{"thread","text"}],"raise"}`. Each `tell` (at most 3; open
-  threads of the project, never the project chat) goes through
+  threads of the project, never the project chat, and never a thread the
+  look was about unless it is waiting for an approval or its update asked
+  for the person (`details.status: "waiting"`), checked in code) goes through
   `ChildThreads.tellFromProject`, the project chat's `threads message`
   path, marked `[From t:<project chat>]`. The look is then kept in the
   project chat: with no `raise`, as a delivered entry (`storeLook`, the
@@ -295,7 +297,12 @@ Each active thread is one Pi session from `openThreadSession`, with
   threads]`. Either way the text is `In [t:<id>]: <what happened>.` lines,
   a blank line, then `Told [t:<id>]: "<line>"` lines (or `Told no
   thread.`) and, after a raise, `Raised: "<line>"`; the digest's quotes
-  are never stored. An answer that isn't that JSON, or no model answering,
+  are never stored. Every look counts toward the run of 3 without the
+  user; past it, the user's messages and updates bring no look, and a
+  failure or a wait brings one that sends no `tell` (its prompt says so)
+  but may raise. A look with no `raise` that answers while the user's
+  turn runs in the project chat is kept after that turn ends, so the
+  delivery doesn't start a turn. An answer that isn't that JSON, or no model answering,
   does nothing and is logged by error name only. Turn errors and
   permission requests reach the watcher through `HostOptions.onEvent`. `projectSettings.pageId` is the
   project page's memory ID, for the memory browser. Pausing or hiding stops its working threads; a

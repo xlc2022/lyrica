@@ -336,9 +336,11 @@ child's messages sees its updates.
   is local-only (or private) too, since the call quotes the user. A look
   waits for a running turn in the chat to end. Nothing is sent while the
   project is paused, hidden, locked or the setting is off. After 3 looks
-  from the user's messages and updates with no message from the user
-  anywhere in the project, those wait for one, so threads can't keep each
-  other going; failures and waits still bring a look and don't count.
+  of any kind with no message from the user anywhere in the project, the
+  user's messages and updates wait for one, so threads can't keep each
+  other going; a failure or a wait still brings a look, which tells no
+  thread but may raise. A look never tells a thread it was about unless
+  that thread asked something.
   Pending looks and the once-a-turn flags live in memory only.
 
 **Forgetting** a parent forgets its child threads too when asked (the

@@ -500,7 +500,8 @@ class Models {                                              // new Models(keyrin
   profile starts it following `subagent.cheap`, and a stored profile with
   no entry for it reads as following `subagent.cheap` too (unless that
   itself follows another task). It is a thread task (`THREAD_TASKS` in
-  daemon/src/api.ts), so the project chat can choose its own.
+  daemon/src/api.ts) for project chats only: the project chat can choose
+  its own, and `PATCH …/settings` choosing it for any other thread is 400.
 - **Speech.** `speech.transcribe` and `speech.speak` have lists of their
   own (neither follows chat) and take models with the `transcribe` or
   `speak` capability, reported by a host or set by hand. `transcribe` and

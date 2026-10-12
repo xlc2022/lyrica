@@ -190,7 +190,9 @@ itself follow another, so it is one level deep. A profile's first entry
 brings the defaults: titles, compaction and watching follow cheap
 subagents, and the sleep phases follow strong subagents. Watching came
 later, so a profile stored without an entry for it reads as following
-cheap subagents too, unless cheap subagents themselves follow another task. The compaction entry is stored but
+cheap subagents too, unless cheap subagents themselves follow another task. Only a project chat
+has a `watching` list of its own, since only it makes looks: setting one on
+any other thread is refused. The compaction entry is stored but
 unused, since compaction uses the thread's chat model. A task with no list follows chat,
 except embeddings, the image tasks and the speech tasks.
 

@@ -141,7 +141,8 @@ A thread's address may carry what the panel beside it shows:
   Instructions kept on the project page (2,000 characters, counted under
   the box), and a link to that page in the memory browser. Files and
   images come with the Files panel.
-- **Thread settings drawer:** a model per task (each option says cloud or local first), local-only, the internet and
+- **Thread settings drawer:** a model per task (each option says cloud or local first; **Watching threads**, under
+  Titles, only in a project chat), local-only, the internet and
   Local services (localhost) switches (each following the user's default until
   changed), allowed hosts, folders from the allowed paths (read-only or
   read-write), **Machines** (the sandbox, always, then each granted machine

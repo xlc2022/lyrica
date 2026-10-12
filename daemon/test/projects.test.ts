@@ -106,6 +106,9 @@ describe("projects", () => {
     expect((await li.get<ThreadSettings>(`${threadPath(dns)}/settings`)).body.models["speech.transcribe"].source).not.toBe("thread");
     expect((await li.patch<ThreadSettings>(`${threadPath(dns)}/settings`, { fallback: null })).body).toMatchObject({ fallback: null, fallbackOn: true });
     expect((await li.patch(`${threadPath(dns)}/settings`, { fallback: "off" })).status).toBe(400);
+    // Only a project chat makes looks, so only it chooses a Watching threads model.
+    expect((await li.patch(`${threadPath(dns)}/settings`, { models: { watching: { offeringId: stt } } })).status).toBe(400);
+    expect((await li.patch<ThreadSettings>(`${path}/settings`, { models: { watching: { offeringId: stt } } })).body.models.watching).toMatchObject({ source: "thread" });
     // Cleared, new threads follow the project chat's again.
     expect((await li.patch<ThreadSummary>(path, { threadsFallback: null })).body.projectSettings?.threadsFallback).toBeUndefined();
     // The defaults: new threads, and sleep's phases.
@@ -202,19 +205,63 @@ describe("projects", () => {
     expect(await looks()).toHaveLength(1);
     expect(chatTurns()).toBe(turnsBefore);
 
+    // A line for the thread the look was about isn't sent: it knows, and it asked nothing.
+    script("dns").push({ text: "Will do." });
+    script("watching").push({ text: JSON.stringify({ tell: [{ thread: dns, text: "back to you, DNS" }] }) });
+    await li.post(`${threadPath(dns!)}/messages`, { text: "and the DHCP range" });
+    const [, back] = await until(looks, (l) => l.length === 2);
+    expect(back!.from).toEqual({ kind: "watching", told: [] });
+    expect(back!.parts).toEqual([{ type: "text", text: `In [t:${dns}]: the person wrote there.\n\nTold no thread.` }]);
+    expect(JSON.stringify(await messages(threadPath(dns!)))).not.toContain("back to you, DNS");
+
     // A local-only thread's words never reach a project chat that may use a cloud model.
     expect((await li.patch(`${threadPath(dns!)}/settings`, { localOnly: true })).status).toBe(200);
     script("dns").push({ text: "Kept local." });
     await li.post(`${threadPath(dns!)}/messages`, { text: "the router password is in the safe" });
     await new Promise((r) => setTimeout(r, 600));
-    expect(asked()).toHaveLength(2);
+    expect(asked()).toHaveLength(3);
     expect((await li.patch(`${threadPath(dns!)}/settings`, { localOnly: false })).status).toBe(200);
     // Switched off: no look.
     expect((await li.patch(path, { watchThreads: false })).body).toMatchObject({ projectSettings: { watchThreads: false } });
     script("dns").push({ text: "Done." });
     await li.post(`${threadPath(dns!)}/messages`, { text: "thanks" });
     await new Promise((r) => setTimeout(r, 600));
-    expect(asked()).toHaveLength(2);
+    expect(asked()).toHaveLength(3);
+  });
+
+  it("keep a quiet look that answers during a turn Li started for after that turn, starting no other", async () => {
+    const { li, path, script, requests, say, threadPath, messages, stream } = await setup({ threads: { concurrency: 5 }, watchMs: 100 });
+    const asked = () => requests.filter((c) => who(c) === "watching");
+    const chatTurns = () => requests.filter((c) => who(c) === "chat" && !!c.tools?.length).length;
+    script("chat").push(start(["DNS", "dns: move DNS to the router"]), { text: "Started." });
+    script("dns").push({ text: "DNS moved." });
+    const dns = ends((await say("move DNS")).events).find((e) => e.result.startsWith("Started"))!.threads![0]!.id;
+    await until(() => messages(threadPath(dns)), (m) => m.some((x) => x.role === "assistant"));
+    // The look's call waits until Li has started a turn in the project chat, and that turn waits for the look's answer.
+    let answer!: () => void;
+    const answered = new Promise<void>((r) => (answer = r));
+    let reply!: () => void;
+    const replied = new Promise<void>((r) => (reply = r));
+    script("watching").push(async () => { await answered; return { text: '{"tell":[]}' }; });
+    script("chat").push(async () => { await replied; return { text: "Here's where it stands." }; });
+    script("dns").push({ text: "Using 10.0.0.53." });
+    await li.post(`${threadPath(dns)}/messages`, { text: "use 10.0.0.53" });
+    await until(async () => asked().length, (n) => n === 1);
+    const turnsBefore = chatTurns();
+    const from = stream.events.length;
+    expect((await li.post(`${path}/messages`, { text: "how is it going?" })).status).toBe(200);
+    await until(async () => chatTurns(), (n) => n === turnsBefore + 1);
+    answer();
+    await new Promise((r) => setTimeout(r, 300));
+    expect((await messages(path)).filter((m) => m.from?.kind === "watching")).toHaveLength(0);
+    reply();
+    await stream.until((e) => e.type === "turn_end", from);
+    // Kept after the turn, as a delivery, and no turn of its own.
+    const all = await until(() => messages(path), (m) => m.some((x) => x.from?.kind === "watching"));
+    const at = all.findIndex((m) => m.from?.kind === "watching");
+    expect(all.findIndex((m) => m.role === "assistant" && JSON.stringify(m).includes("where it stands"))).toBeLessThan(at);
+    await new Promise((r) => setTimeout(r, 600));
+    expect(chatTurns()).toBe(turnsBefore + 1);
   });
 
   it("raise something with the person: one turn of the project chat, with the short look and the line raised", async () => {
@@ -239,45 +286,60 @@ describe("projects", () => {
     expect(JSON.stringify(look)).not.toContain("tonight");
   });
 
-  it("look on a failure and on a waiting approval, even after a run of 3 looks", async () => {
+  it("look on a failure and on a waiting approval past a run of 3 looks, telling no thread but raising", async () => {
     const { li, path, script, requests, say, threadPath, messages } = await setup({ threads: { concurrency: 5 }, watchMs: 100, permissionMs: 10_000 });
     const looks = async () => (await messages(path)).filter((m) => m.from?.kind === "watching");
     const asked = () => requests.filter((c) => who(c) === "watching");
-    script("chat").push(start(["DNS", "dns: move DNS to the router"]), { text: "Started." });
+    const chatTurns = () => requests.filter((c) => who(c) === "chat" && !!c.tools?.length).length;
+    script("chat").push(start(["DNS", "dns: move DNS to the router"], ["Backups", "backups: copy the backups"]), { text: "Started." });
     script("dns").push({ text: "DNS moved." });
-    const dns = ends((await say("move DNS")).events).find((e) => e.result.startsWith("Started"))!.threads![0]!.id;
+    script("backups").push({ text: "Copying." });
+    const { events } = await say("move DNS and copy the backups");
+    const ids = ends(events).flatMap((e) => e.threads ?? []).map((t) => t.id);
+    const titles = await Promise.all(ids.map(async (id) => [(await li.get<ThreadSummary>(threadPath(id))).body.title, id] as const));
+    const [dns, backups] = ["DNS", "Backups"].map((t) => titles.find(([title]) => title === t)![1]) as [string, string];
     await until(() => messages(threadPath(dns)), (m) => m.some((x) => x.role === "assistant"));
-    await li.patch(`${threadPath(dns)}/settings`, { mode: "acceptEdits" });
-    // The look and the thread keep each other going: each look tells DNS, and DNS posts an update.
-    const ask = { text: JSON.stringify({ tell: [{ thread: dns, text: "anything new?" }] }) };
-    for (let i = 0; i < 5; i++) script("watching").push(ask);
+    await until(() => messages(threadPath(backups)), (m) => m.some((x) => x.role === "assistant"));
+    await li.patch(`${threadPath(backups)}/settings`, { mode: "acceptEdits" });
+    const turnsBefore = chatTurns();
+    // The two threads keep each other going: each look tells the other one, which posts an update.
+    const tell = (to: string, text = "anything new?") => ({ text: JSON.stringify({ tell: [{ thread: to, text }] }) });
+    script("watching").push(tell(backups), tell(dns), tell(backups));
     const later = async (): Promise<Reply> => { await new Promise((r) => setTimeout(r, 200)); return tool({ action: "message", to: "parent", text: "Still fine." }); };
-    script("dns").push({ text: "Noted." }, later, { text: "Posted." }, later, { text: "Posted." });
-    // The third tell fails; the fourth waits for an approval, and the fifth joins that running turn, which answers it with an update.
-    script("dns").push({ status: 400 }, { tools: [{ name: "bash", args: { command: "true" } }] }, later, { text: "Posted." });
-    const stream = li.events(`${threadPath(dns)}/events`);
+    script("dns").push({ text: "Noted." }, later, { text: "Posted." });
+    // Told a third time, past the run: its update brings no look, its approval brings one, and after a no it fails.
+    script("backups").push(later, { text: "Posted." }, tool({ action: "message", to: "parent", text: "One more thing." }), { tools: [{ name: "bash", args: { command: "true" } }] }, { status: 400 });
+    script("watching").push(tell(backups, "approve it"), { text: JSON.stringify({ tell: [{ thread: dns, text: "Backups failed" }], raise: "Backups stopped with an error after you said no." }) });
+    script("chat").push({ text: "Li, Backups stopped." });
+    const stream = li.events(`${threadPath(backups)}/events`);
     await stream.ready;
     await li.post(`${threadPath(dns)}/messages`, { text: "check again" });
-    // Three looks from the person's message and two updates; the failure brings a fourth past the run of 3.
-    await until(async () => asked().length, (n) => n === 4, 15000);
-    expect(JSON.stringify(asked()[3]!.messages)).toContain("It stopped with an error.");
+    // Three looks: Li's message, then each thread's update.
+    await until(async () => asked().length, (n) => n === 3, 15000);
     await stream.until((e) => e.type === "permission");
-    await until(async () => asked().length, (n) => n === 5, 15000);
-    expect(JSON.stringify(asked()[4]!.messages)).toContain("It is waiting for an approval.");
+    await until(async () => asked().length, (n) => n === 4, 15000);
+    expect(JSON.stringify(asked()[3]!.messages)).toContain("It is waiting for an approval.");
+    expect(JSON.stringify(asked()[3]!.messages)).toContain("this look tells no thread");
+    await until(looks, (l) => l.length === 4);
     const request = stream.events.find((e) => e.event.type === "permission")!.event as { requestId: string };
-    await li.post(`${threadPath(dns)}/permissions/${request.requestId}`, { allow: false });
+    await li.post(`${threadPath(backups)}/permissions/${request.requestId}`, { allow: false });
+    await until(async () => asked().length, (n) => n === 5, 15000);
+    expect(JSON.stringify(asked()[4]!.messages)).toContain("It stopped with an error.");
     const all = await until(looks, (l) => l.length === 5);
-    expect(all.map((l) => (l.parts[0] as { text: string }).text.split("\n")[0])).toEqual([
-      `In [t:${dns}]: the person wrote there.`, `In [t:${dns}]: it posted an update.`, `In [t:${dns}]: it posted an update.`,
-      `In [t:${dns}]: it stopped with an error.`, `In [t:${dns}]: it is waiting for an approval.`,
+    expect(all.map((l) => (l.parts[0] as { text: string }).text)).toEqual([
+      `In [t:${dns}]: the person wrote there.\n\nTold [t:${backups}]: "anything new?"`,
+      `In [t:${backups}]: it posted an update.\n\nTold [t:${dns}]: "anything new?"`,
+      `In [t:${dns}]: it posted an update.\n\nTold [t:${backups}]: "anything new?"`,
+      `In [t:${backups}]: it is waiting for an approval.\n\nTold no thread.`,
+      `In [t:${backups}]: it stopped with an error.\n\nTold no thread.\nRaised: "Backups stopped with an error after you said no."`,
     ]);
-    // The last look's line reached DNS, whose update comes past the run of 3: no look for it.
-    await until(() => messages(path), (m) => m.filter((x) => x.role === "notice").length >= 3);
+    // The raise is one turn of the project chat; neither line past the run was sent.
+    await until(() => messages(path), (m) => m.some((x) => x.role === "assistant" && JSON.stringify(x).includes("Backups stopped.")));
     await new Promise((r) => setTimeout(r, 600));
+    expect(chatTurns()).toBe(turnsBefore + 1);
     expect(asked()).toHaveLength(5);
-    // That line went into the turn that was waiting, not a turn of its own.
-    const waited = stream.events.findIndex((e) => e.event.type === "permission");
-    expect(stream.events.slice(waited).filter((e) => e.event.type === "turn_start")).toHaveLength(0);
+    expect(JSON.stringify(await messages(threadPath(dns)))).not.toContain("Backups failed");
+    expect(JSON.stringify(await messages(threadPath(backups)))).not.toContain("approve it");
     stream.close();
   });
 

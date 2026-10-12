@@ -988,18 +988,20 @@ web part and sleep's project page are not yet. The briefs are
   sees her name, the project's goal and instructions, its threads' lines,
   what was said, and what the last three looks told threads, and answers
   which threads to tell (at most 3, open ones of this project, one or two
-  lines each) and, rarely, one line to raise with Li. Each line goes to its
+  lines each, never a thread it was about unless that thread asked
+  something, which `lyricad` checks) and, rarely, one line to raise with Li. Each line goes to its
   thread as a message from the project chat. The look is kept in the
   project chat as a short entry, without a turn: which threads it was about
   and why, and who was told what, never the quoted words. Only a raise
   starts a project-chat turn, on the chat's own model, with that entry and
   the raised line. A thread that isn't logged is left out, and so is a
   local-only thread unless the project chat is local-only too, since the
-  call quotes Li's words. Looks from Li's messages and updates stop after 3
-  in a row until Li writes in the project again, so threads can't keep
-  each other going; failures and approvals aren't held back by that and
-  don't count, and each counts once a turn. With the setting off, nothing
-  is looked at.
+  call quotes Li's words. Every look counts toward a run of 3 in a row
+  without Li; past it, Li's messages and updates bring no look until Li
+  writes in the project again, and a failure or an approval still brings
+  one, which tells no thread but may raise, so threads can't keep each
+  other going. Each failure or approval counts once a turn. With the
+  setting off, nothing is looked at.
 - **Context set once.** Every thread of a project starts with the same
   project context, assembled each turn in its own budget:
   - **Goal**: one line Li writes.

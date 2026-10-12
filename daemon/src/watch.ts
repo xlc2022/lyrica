@@ -35,7 +35,10 @@ export interface WatchOptions {
   delayMs?: number;
 }
 
-/** Looks in a row, with no word from the person anywhere in the project, before watching waits for one. */
+/**
+ * Looks in a row, whatever brought them, with no word from the person anywhere in the project. Past it, the
+ * person's messages and updates bring no look, and a failure or a wait brings one that may only raise.
+ */
 export const WATCH_RUN = 3;
 /** Threads one look may tell. */
 export const WATCH_TELLS = 3;
@@ -92,12 +95,12 @@ export class Watcher {
     if (this.logged(userId, pool, threadId)) this.add(userId, pool, project, threadId, "update");
   }
 
-  /** A project's thread's turn ended with an error. Once a turn; not held back by the run of looks. */
+  /** A project's thread's turn ended with an error. Once a turn; past the run of looks, a look that may only raise. */
   failed(userId: string, pool: Pool, project: string, threadId: string): void {
     this.once(userId, pool, project, threadId, "failed");
   }
 
-  /** A project's thread started waiting for a permission answer. Once a turn; not held back by the run of looks. */
+  /** A project's thread started waiting for a permission answer. Once a turn; past the run of looks, a look that may only raise. */
   waiting(userId: string, pool: Pool, project: string, threadId: string): void {
     this.once(userId, pool, project, threadId, "waiting");
   }
@@ -158,12 +161,14 @@ export class Watcher {
       return;
     }
     this.pending.delete(k);
+    // Past the run only a failure or a wait gets here; such a look tells no thread, so threads can't keep it going.
+    const raiseOnly = (this.run.get(k) ?? 0) >= WATCH_RUN;
     let built: ReturnType<Watcher["build"]>;
     try {
-      built = this.build(userId, pool, project, new Map([...p.threads].filter(([id]) => this.mayQuote(userId, pool, project, id))));
+      built = this.build(userId, pool, project, new Map([...p.threads].filter(([id]) => this.mayQuote(userId, pool, project, id))), raiseOnly);
     } catch { return; /* locked */ }
     if (!built) return;
-    if ([...p.threads.values()].some((w) => w.has("said") || w.has("update"))) this.run.set(k, (this.run.get(k) ?? 0) + 1);
+    this.run.set(k, (this.run.get(k) ?? 0) + 1);
     let answer: { tell: Tell[]; raise?: string } | undefined;
     try {
       answer = parseAnswer(await this.ask(userId, pool, project, built.prompt));
@@ -174,9 +179,11 @@ export class Watcher {
     const told: Tell[] = [];
     try {
       const { open } = this.o.threads(userId, pool, project);
-      for (const t of answer.tell) {
+      for (const t of raiseOnly ? [] : answer.tell) {
         if (told.length >= WATCH_TELLS) break;
         if (t.thread === project || !open.includes(t.thread) || told.some((x) => x.thread === t.thread)) continue;
+        // Never back to a thread the look was about, unless it asked something: it knows what happened there.
+        if (p.threads.has(t.thread) && !built.asked.has(t.thread)) continue;
         try {
           await this.o.tell(userId, pool, project, t.thread, t.text);
           told.push(t);
@@ -190,18 +197,27 @@ export class Watcher {
     try {
       // A raise is her turn, on the chat's own model; otherwise the look is only kept, as a delivery is.
       if (answer.raise) await this.o.host().get(userId, pool, project).send(text, { watching: true });
-      else this.o.store(userId, pool, project, `${WATCHING_MARK}${text}`, { status: "watching" });
+      else {
+        // A turn the person started during the call: a delivery to a busy chat would start another, so the look waits for it to end.
+        while (this.o.host().busy(userId, pool, project)) await this.o.host().get(userId, pool, project).settled();
+        this.o.store(userId, pool, project, `${WATCHING_MARK}${text}`, { status: "watching" });
+      }
     } catch (err) { this.o.log(`a look couldn't be kept in the project chat: ${(err as Error).name}`); }
   }
 
-  /** The prompt, with the quotes, and the short summary kept in the project chat, without them. Undefined when nothing is left to say. */
-  private build(userId: string, pool: Pool, project: string, threads: Map<string, Set<What>>): { prompt: string; summary: string } | undefined {
+  /**
+   * The prompt, with the quotes; the short summary kept in the project chat, without them; and the threads that asked
+   * something (waiting for an approval, or their update was a question for the person). Undefined when nothing is left to say.
+   */
+  private build(userId: string, pool: Pool, project: string, threads: Map<string, Set<What>>, raiseOnly: boolean):
+    { prompt: string; summary: string; asked: Set<string> } | undefined {
     const view = this.o.memory.openThreadView(userId, pool);
     try {
       const own = view.own;
-      const updates = threads.size ? recentUpdates(own.entryPage(project, { limit: 100 }).entries.map((e) => e.data)) : new Map<string, string>();
+      const updates = threads.size ? recentUpdates(own.entryPage(project, { limit: 100 }).entries.map((e) => e.data)) : new Map<string, Update>();
       const quoted: string[] = [];
       const summary: string[] = [];
+      const asked = new Set<string>();
       for (const [id, what] of threads) {
         const t = own.getThread(id);
         if (!t || t.unlogged) continue;
@@ -215,11 +231,12 @@ export class Watcher {
         }
         if (what.has("update")) {
           const u = updates.get(id);
-          lines.push(u ? `- It posted an update: ${quote(u)}` : "- It posted an update.");
+          lines.push(u ? `- It posted ${u.status === "waiting" ? "a question for the person" : "an update"}: ${quote(u.text)}` : "- It posted an update.");
           kinds.push("update");
+          if (u?.status === "waiting") asked.add(id);
         }
         if (what.has("failed")) { lines.push("- It stopped with an error."); kinds.push("failed"); }
-        if (what.has("waiting")) { lines.push("- It is waiting for an approval."); kinds.push("waiting"); }
+        if (what.has("waiting")) { lines.push("- It is waiting for an approval."); kinds.push("waiting"); asked.add(id); }
         if (!lines.length) continue;
         quoted.push([`In [t:${id}]${t.title ? ` ${JSON.stringify(t.title)}` : ""}:`, ...lines].join("\n"));
         summary.push(`In [t:${id}]: ${kinds.map((w) => WHAT[w]).join("; ")}.`);
@@ -237,8 +254,9 @@ export class Watcher {
         lines && `Its threads:\n${lines}`,
         `What happened:\n${quoted.join("\n\n")}`,
         before.length && `What the last looks told threads:\n${before.join("\n")}`,
+        raiseOnly && "The threads have gone on without the person for a while, so this look tells no thread: reply with an empty tell, and raise only what the person must know now.",
       ].filter(Boolean).join("\n\n");
-      return { prompt, summary: summary.join("\n") };
+      return { prompt, summary: summary.join("\n"), asked };
     } finally {
       view.close();
     }
@@ -304,15 +322,18 @@ function lastTold(entries: unknown[]): string[] {
   return looks.flatMap((t) => toldLines(t).map((x) => `- [t:${x.threadId}]: ${JSON.stringify(x.text)}`));
 }
 
+/** A thread's update to the project chat; `waiting` when it asked for the person. */
+interface Update { text: string; status: "update" | "waiting" }
+
 /** Each thread's newest update or question posted to the project chat. */
-function recentUpdates(entries: unknown[]): Map<string, string> {
-  const out = new Map<string, string>();
+function recentUpdates(entries: unknown[]): Map<string, Update> {
+  const out = new Map<string, Update>();
   for (const e of entries as Raw[]) {
     if (e.type !== "custom_message" || e.customType !== DELEGATE_MESSAGE) continue;
     const threads = Array.isArray(e.details?.threads) ? e.details.threads : [];
     const status = e.details?.status;
     if ((status === "update" || status === "waiting") && threads.length === 1 && typeof threads[0] === "string") {
-      out.set(threads[0], textOf(e.content).replace(/^[^\n]*\n/, ""));
+      out.set(threads[0], { text: textOf(e.content).replace(/^[^\n]*\n/, ""), status });
     }
   }
   return out;
