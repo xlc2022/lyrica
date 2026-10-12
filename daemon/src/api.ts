@@ -237,8 +237,8 @@ export interface EndpointInfo {
   /** A label that can change. */
   name: string;
   kind: "cloud" | "local";
-  /** A plain OpenAI-compatible server, or a paired model host (always local). */
-  api: "openai-compatible" | "host";
+  /** A plain OpenAI-compatible server, a paired model host (always local), or a ChatGPT or Grok plan (always cloud, never shared). */
+  api: "openai-compatible" | "host" | "chatgpt" | "grok";
   baseUrl: string;
   /** A host's addresses, tried in order. */
   addresses?: string[];
@@ -252,6 +252,8 @@ export interface EndpointInfo {
   /** Unreachable for 14 days. Fallbacks skip it. */
   stale: boolean;
   downSince?: string;
+  /** A plan whose sign-in lapsed: Sign in again. Fallbacks skip it. */
+  signedOut?: boolean;
   models: OfferingInfo[];
 }
 
@@ -265,6 +267,19 @@ export interface EndpointChange { name?: string; baseUrl?: string; apiKey?: stri
 /** POST /api/u/:userId/endpoints/:endpointId/models → OfferingInfo. Adds a model by hand. */
 export interface ModelInput extends Capabilities { modelId: string }
 /** GET /api/u/:userId/endpoints/:endpointId/probe → Probe */
+/**
+ * POST /api/u/:userId/plans/sign-in → PlanSignInStarted. Starts a plan's sign-in for a new plan
+ * (`plan` and `name`) or one that is signed out (`endpointId`). One at a time per user, for 10 minutes.
+ * `url` is the provider's page to open; Grok's `code` is the code that page asks for.
+ */
+export interface PlanSignInStart { plan?: "chatgpt" | "grok"; name?: string; endpointId?: string }
+export interface PlanSignInStarted { id: string; url: string; code?: string }
+/**
+ * POST /api/u/:userId/plans/sign-in/:signInId → EndpointInfo, once the provider confirms. ChatGPT's
+ * `redirectUrl` is the address the browser was sent to after approving
+ * (http://127.0.0.1:1455/auth/callback?…); Grok needs none. DELETE cancels it → Ok.
+ */
+export interface PlanSignInFinish { redirectUrl?: string }
 export interface Probe { state: "up" | "down"; warning?: string }
 /** POST /api/u/:userId/endpoints/:endpointId/reset-ids → EndpointInfo. Fresh IDs, with redirects from the old ones. */
 /** POST /api/u/:userId/endpoints/:endpointId/merge → EndpointInfo (the one merged into). */

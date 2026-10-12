@@ -487,7 +487,8 @@ never sent with a chat request.
 
 `modelRuntimeFor(models, ctx)` builds a Pi `ModelRuntime` with exactly the
 endpoints `ctx` may use, each a Pi provider (named by the endpoint's ID) of
-API `openai-completions` holding its offerings.
+API `openai-completions` holding its offerings; a plan is Pi's OpenAI or
+xAI provider instead (below).
 
 - Pi's built-in providers are removed. `auth.json`, `models.json` and
   environment keys are never read. API keys are set as runtime keys, so they
@@ -507,6 +508,56 @@ API `openai-completions` holding its offerings.
   most 20,000). A caller's own compaction settings win.
 
 `openThreadSession` hosts one thread with that runtime and its chat model.
+
+## Subscription plans
+
+A user can add a **ChatGPT plan** or a **Grok plan** (SuperGrok or X
+Premium) instead of an API key, so general threads answer from their plan's
+included usage. Both providers permit it. Claude and Gemini plans aren't
+offered: Anthropic and Google don't permit other apps to use their
+sign-in, so those stay on API keys (docs/briefs/subscription-logins.md).
+Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
+`core/src/models/`.
+
+- **An endpoint of `api: "chatgpt"` or `"grok"`** (`isPlan`): always cloud,
+  always the user's own (no shared plans), base URL from `PLAN_URLS`
+  (`https://api.openai.com/v1`, `https://api.x.ai/v1`). Its sign-in (Pi's
+  credential: `access`, `refresh`, `expires`, and for ChatGPT `clientId`
+  and `scopes`) is kept as JSON in the endpoint's `api_key` column in their
+  `user.db`, read only through `planCredential`; `Endpoint.apiKey` is never
+  set for a plan, and it has no URL or key to edit. It merges only with a
+  plan of the same kind. No schema change: after a rollback, an older release
+  sends the stored JSON (refresh token included) as its bearer key to the
+  provider that issued it, whose refusal marks the endpoint down.
+- **Signing in** (`startPlanSignIn`, `POST …/plans/sign-in`), with Pi's own
+  flows and the agent name "Lyrica":
+  - **ChatGPT:** Sign in with ChatGPT, with this installation's ID
+    (`installationId`, in `self.db`). Pi listens on `127.0.0.1:1455` for
+    OpenAI's redirect, which only a browser on the server reaches, so the
+    person pastes the address their browser was sent to; Pi checks its
+    state and exchanges the code.
+  - **Grok:** xAI's device code: the person opens xAI's page, enters the
+    code shown if asked, and approves; Finish waits for xAI to confirm.
+  A sign-in under way is held in `lyricad`'s memory for 10 minutes, one per
+  user, and belongs to the user who started it. Neither the address nor
+  any token is logged.
+- **Calls.** In the runtime a plan is Pi's `openai` or `xai` provider
+  (Responses API) under the endpoint's ID, offering only its listed models
+  and signing in only with the plan. The runtime's credential store
+  (`PlanCredentials`) reads the sign-in from `user.db` and writes Pi's
+  refresh back, one refresh at a time per plan across the process. A
+  refresh the provider refuses (400 or 401) signs the plan out:
+  `signedOut`, which the router skips ("is signed out") until **Sign in
+  again**; a refresh that fails any other way changes nothing.
+- **Models** come from Pi's catalogue for that provider (`planCatalog`,
+  given to core with `setPlanCatalog`), not `/v1/models`, with their
+  context windows, vision and thinking.
+- A plan is up while signed in; nothing is probed. When its usage limit is
+  reached (`isPlanLimit`), the turn ends with the provider's message and
+  the router skips the plan for an hour (`reportPlanLimit`), so the next
+  turn falls back to the next model in the list.
+- Removing a plan deletes its sign-in; Lyrica stays connected in the
+  provider's account settings until it is disconnected there.
 
 ## Local servers
 

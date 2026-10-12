@@ -316,8 +316,9 @@ interface Endpoint {
   id: string;                               // permanent (UUID); the name is a label
   name: string;
   kind: "cloud" | "local";                  // declared by whoever adds it, never inferred
-  api: "openai-compatible" | "host";        // a paired model host; always local
-  baseUrl: string; apiKey?: string;         // a host: its first address's /v1, and no key
+  api: "openai-compatible" | "host" | "chatgpt" | "grok";  // a paired model host: always local; a plan: always cloud, never shared
+  baseUrl: string; apiKey?: string;         // a host: its first address's /v1, and no key; a plan: PLAN_URLS[api], and no key
+  signedOut?: boolean;                      // a plan whose refresh OpenAI refused; the router skips it
   shared: boolean;
   addresses?: string[]; fingerprint?: string;   // a host's addresses, in order, and its pinned key
   unencrypted: boolean;                     // local, plain HTTP, outside this machine and the tailnet
@@ -466,6 +467,13 @@ class Models {                                              // new Models(keyrin
   declared, `pairHost` makes a host local, `editEndpoint` can't change it,
   and `replace` and `merge` refuse to cross kinds. `probe` only warns when a
   local endpoint resolves outside loopback, private or tailnet ranges.
+- **Subscription plans** (ChatGPT, Grok). `addPlan(actor, { name, plan, credential })` (personal only),
+  `planCredential(userId, id)`, `setPlanCredential(userId, id, credential |
+  null)` (null signs it out), `setPlanCatalog(list)` (discovery, from Pi's
+  catalogue; set by `lyricad`), `reportPlanLimit(id)` (skipped for an
+  hour) and `installationId()` (self.db). The
+  sign-in is kept in the plan's `api_key` column as JSON and never leaves
+  core except into Pi's credential store (`PlanCredentials`, extension).
 - **What never crosses.** API keys stay in core (`EndpointInfo.hasApiKey`).
   Hub tokens leave core only as `X-Hub-Token` to a host, never in a response,
   log or call record. Call records hold model metadata, never prompt text.
@@ -999,8 +1007,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       `POST endpoints/:id/discover`, `…/reset-ids`, `…/merge` (→ `EndpointInfo`),
       `…/models` (→ `OfferingInfo`); `GET …/probe`. Types: `EndpointInfo` (`api`,
       `addresses`, `fingerprint`, `hasApiKey`, `unencrypted`, `stale`,
-      `downSince`, `models: OfferingInfo[]`), `OfferingInfo` (with `label`),
+      `downSince`, `signedOut`, `models: OfferingInfo[]`), `OfferingInfo` (with `label`),
       `EndpointInput`, `EndpointChange`, `ModelInput`, `Probe`, `MergeInput`.
+    - **Plans:** `POST plans/sign-in` (`PlanSignInStart`: `plan` and `name`,
+      or `endpointId` to sign in again → `PlanSignInStarted` `{ id, url,
+      code? }`); `POST plans/sign-in/:id` (`PlanSignInFinish` `{ redirectUrl? }`,
+      ChatGPT's only → `EndpointInfo`); `DELETE plans/sign-in/:id`.
     - **Hosts:** `POST hosts` (pair, then discover); `POST hosts/:id/pair`
       (again, same addresses); `PUT …/addresses`; `GET …/status`; `POST
       …/pause|resume|restart`; `GET …/dashboard` (→ `{ url }`); `POST …/manage`;

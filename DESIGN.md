@@ -273,6 +273,14 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     want treated as new. It leaves redirects from the old IDs, so nothing
     breaks. The same mechanism **merges** two endpoints that turned out to be
     the same server.
+- **Subscription plans** (docs/models.md, "Subscription plans").
+  A user can add a **ChatGPT plan** or a **Grok plan** by signing in with
+  the provider instead of giving an API key, so general threads answer
+  from that plan. It is always cloud and always their own, never shared.
+  Its sign-in is kept in their `user.db` and refreshed by Pi; when the
+  plan's limit runs out the next turn falls back. Claude and Gemini plans
+  aren't offered: Anthropic and Google don't permit other apps to use
+  their sign-in, so they stay on API keys.
 - **Tasks.** Different tasks use different models: chat, cheap and strong
   subagents, titles, embeddings, each sleep phase, creating and editing
   images, and speech (dictation and Read aloud). Compaction always uses the thread's chat model (Pi has no
