@@ -168,6 +168,8 @@ export interface Offering extends Capabilities {
   recipe?: string;
   /** "Not this model": kept out of the entry its name would put it in. */
   separate?: boolean;
+  /** A host's chat template writes `<think>` itself, so a reply can start mid-thought. */
+  opensThinking?: boolean;
 }
 
 /** Offerings from different endpoints declared the same model, in preferred order. */
@@ -391,7 +393,7 @@ const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
-  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; separate?: boolean; servedContext?: number } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; separate?: boolean; servedContext?: number; opensThinking?: boolean } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
   // A host's serving settings decide its context window, over one set by hand and one discovered.
   const served = (JSON.parse(r.found) as { servedContext?: number }).servedContext;
   if (served) caps.contextWindow = served;
@@ -407,6 +409,7 @@ const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
     ...(caps.size ? { size: caps.size } : {}),
     ...(caps.recipe ? { recipe: caps.recipe } : {}),
     ...(caps.separate ? { separate: true } : {}),
+    ...(caps.opensThinking ? { opensThinking: true } : {}),
   };
 };
 const toGroup = (r: GroupRow, shared: boolean): Group => ({ id: r.id, name: r.name, shared, members: JSON.parse(r.members) });
@@ -1189,7 +1192,7 @@ export class Models {
   private async hostModels(ep: Endpoint): Promise<DiscoveredModel[]> {
     const list = listIn<{
       id: string; kind?: string; sha256?: string | null; contextLength?: number | null; size?: number; downloaded?: boolean; identity?: ModelIdentity | null;
-      capabilities?: { tools?: boolean; vision?: boolean; embedding?: boolean; reasoning?: string[] | null; transcribe?: boolean; speak?: { voices?: unknown } | null };
+      capabilities?: { tools?: boolean; vision?: boolean; embedding?: boolean; reasoning?: string[] | null; opensThinking?: boolean; transcribe?: boolean; speak?: { voices?: unknown } | null };
     }>(await this.hostCall(ep, "GET", "/host/v1/models"), "models");
     if (!list) throw new Error(`${ep.name} didn't return a model list`);
     // Image models are recipes: only confirmed ones become offerings, so a proposal never resolves.
@@ -1210,6 +1213,7 @@ export class Models {
         ...(m.capabilities?.transcribe || m.kind === "transcribe" ? { transcribe: true } : {}),
         ...(m.capabilities?.speak ? { speak: { voices: hostVoices(m.capabilities.speak.voices) } } : {}),
         ...(levels.length ? { reasoning: reasoning.length ? reasoning : ["medium"] as "medium"[] } : {}),
+        ...(m.capabilities?.opensThinking ? { opensThinking: true } : {}),
         ...(m.sha256 ? { digest: m.sha256 } : {}),
         ...(m.identity ? { identity: m.identity } : {}),
         ...(m.downloaded !== undefined ? { downloaded: !!m.downloaded } : {}),

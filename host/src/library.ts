@@ -19,6 +19,8 @@ export interface Capabilities {
   vision: boolean;
   embedding: boolean;
   reasoning: string[] | null;
+  /** The chat template writes `<think>` itself, so a reply can start mid-thought with only `</think>`. */
+  opensThinking?: boolean;
   /** Dictation: speech to text on /v1/audio/transcriptions. */
   transcribe?: boolean;
   /** Text to speech on /v1/audio/speech, with the voices it has. */
@@ -61,10 +63,11 @@ function str(v: GgufValue | undefined): string | null {
   return typeof v === "string" && v ? v : null;
 }
 
-export function templateCapabilities(template: string | null): Pick<Capabilities, "tools" | "reasoning"> {
+export function templateCapabilities(template: string | null): Pick<Capabilities, "tools" | "reasoning" | "opensThinking"> {
   return {
+    ...(template?.includes("<think>") ? { opensThinking: true } : {}),
     tools: !!template && /\btools\b/.test(template),
-    // Only `enable_thinking` can be driven. A template that opens <think> on its own always thinks: no switch.
+    // Only `enable_thinking` can be driven. A template that opens <think> without it always thinks: no switch.
     reasoning: template && /\benable_thinking\b/.test(template) ? ["off", "on"] : null,
   };
 }

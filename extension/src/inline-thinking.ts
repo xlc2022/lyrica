@@ -1,4 +1,4 @@
-import { clampThinkingLevel, createAssistantMessageEventStream, type AssistantMessageEventStream, type AssistantMessage, type AssistantMessageEvent, type Model, type SimpleStreamOptions, type TranscriptContext } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, type AssistantMessageEventStream, type AssistantMessage, type AssistantMessageEvent, type Model, type SimpleStreamOptions, type TranscriptContext } from "@earendil-works/pi-ai";
 import { streamSimple } from "@earendil-works/pi-ai/api/openai-completions";
 
 const OPEN = "<think>", CLOSE = "</think>";
@@ -14,11 +14,11 @@ function partialTagLength(text: string, tags: string[]): number {
 
 /**
  * Principle 1: keep inline reasoning out of the reply, in both Pi events and storage.
- * Hold leading text for a template-opened thought only when this call requests
- * thinking after Pi clamps the level; otherwise plain text streams immediately.
+ * `midThought`: the chat template opens `<think>` itself for this call, so the reply
+ * may start inside a thought with only `</think>`; leading text is held until a tag.
+ * Otherwise plain text streams immediately.
  */
-export function streamWithInlineThinking(model: Model<"openai-completions">, context: TranscriptContext, options?: SimpleStreamOptions): AssistantMessageEventStream {
-  const reasoning = options?.reasoning ? clampThinkingLevel(model, options.reasoning) : undefined;
+export function streamWithInlineThinking(model: Model<"openai-completions">, context: TranscriptContext, options: SimpleStreamOptions | undefined, midThought: boolean): AssistantMessageEventStream {
   const source = streamSimple(model, context, options);
   const out = createAssistantMessageEventStream();
   void (async () => {
@@ -27,7 +27,7 @@ export function streamWithInlineThinking(model: Model<"openai-completions">, con
     let partial!: AssistantMessage;
     let dedicated = false, thinking = false, trim = false, transformed = false;
     let pending = "";
-    let undecided = reasoning !== undefined && reasoning !== "off";
+    let undecided = midThought;
     let held: AssistantMessageEvent[] = [];
     let active: number | undefined;
     let changed = false;
@@ -102,7 +102,14 @@ export function streamWithInlineThinking(model: Model<"openai-completions">, con
         out.push({ ...event, partial });
         continue;
       }
-      if (event.type === "thinking_start") dedicated = true;
+      if (event.type === "thinking_start" && !dedicated) {
+        // The server splits reasoning itself: release anything held and stop parsing.
+        dedicated = true;
+        undecided = false;
+        for (const e of held) forward(e);
+        held = [];
+        pending = "";
+      }
       if (event.type === "text_start" && !dedicated) {
         held = [event];
         transformed = false;

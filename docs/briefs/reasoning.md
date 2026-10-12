@@ -92,12 +92,13 @@ reasoning is replayed into later context.
   was checked: stream and thinking-switch contracts remain current.
   `docs/web.md` needs no change because the marker did not change.
 - **Done:** item 3. `templateCapabilities` in `host/src/library.ts` offers
-  the on/off switch only when the chat template reads `enable_thinking`
-  (Qwen 3, the model the host runs now). A template that opens `<think>` itself,
-  like DeepSeek R1's, always thinks and gets no switch; vLLM's `deepseek_r1`
-  parser (#225) and llama-server split its reasoning. Tested in
-  `host/test/routing.test.ts`.
-- **Next:** none. A model that thinks by default without a server-side parser
-  and without a switch would still show its thinking; add a flag for it only
-  when such a model is served.
+  the on/off switch only when the chat template reads `enable_thinking`, and
+  reports `opensThinking` when the template writes `<think>` itself. Core
+  carries it on the offering; `startsMidThought` in `extension/src/models.ts`
+  holds the reply's start only for such a model that always thinks or has its
+  switch on, so other models stream live even with thinking requested.
+  Tested in `host/test/routing.test.ts`, `core/test/hosts.test.ts` and
+  `extension/test/inline-thinking.test.ts`.
+- **Next:** none. A plain OpenAI-compatible endpoint (LM Studio) reports no
+  template, so it relies on the server splitting `reasoning_content`.
 - **Open:** none.

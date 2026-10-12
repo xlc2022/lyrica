@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { normalizeContext, type AssistantMessageEvent } from "@earendil-works/pi-ai";
 import { streamSimple } from "@earendil-works/pi-ai/api/openai-completions";
 import { withModels } from "../../core/test/helpers.ts";
-import { modelRuntimeFor } from "../src/models.ts";
+import { streamWithInlineThinking } from "../src/inline-thinking.ts";
+import { modelRuntimeFor, startsMidThought } from "../src/models.ts";
 
 async function setup(reasoning = false) {
   const s = await withModels();
@@ -68,12 +69,46 @@ describe("inline thinking in the Pi runtime", () => {
     expect(result.events.filter((e) => e.type.endsWith("_start") || e.type.endsWith("_end")).map((e) => e.type)).toEqual(["thinking_start", "thinking_end", "text_start", "text_end"]);
   });
 
-  it("recognises a template's missing opening tag when thinking is requested", async () => {
+  it("streams a plain reply live with thinking on when the template doesn't open the tag", async () => {
     const s = await setup(true);
+    s.local.reply({ text: "Ada sails.", slowMs: 200 });
+    const stream = s.runtime.streamSimple(s.model, context, { reasoning: "low" });
+    let firstText: string | undefined;
+    for await (const event of stream) {
+      if (event.type === "text_delta" && firstText === undefined) {
+        const block = event.partial.content[event.contentIndex]!;
+        firstText = block.type === "text" ? block.text : undefined;
+      }
+    }
+    expect(firstText).toBe("Ada");
+  });
+
+  it("holds for a mid-thought start only where the template opens the tag", () => {
+    const o = { opensThinking: true } as never;
+    expect(startsMidThought(o, undefined)).toBe(true);
+    expect(startsMidThought({ opensThinking: true, reasoning: ["medium"] } as never, "off")).toBe(false);
+    expect(startsMidThought({ opensThinking: true, reasoning: ["medium"] } as never, "medium")).toBe(true);
+    expect(startsMidThought({ reasoning: ["medium"] } as never, "high")).toBe(false);
+  });
+
+  it("puts an R1-style reply with only </think> in the Thought marker, with no thinking requested", async () => {
+    const s = await setup();
     s.local.reply({ deltas: ["Consider", " the tide.</th", "ink>\n Ada sails."].map((content) => ({ content })) });
-    const result = await collect(s.runtime.streamSimple(s.model, context, { reasoning: "low" }));
+    const result = await collect(streamWithInlineThinking(s.model as never, normalizeContext(context), { apiKey: "none" }, true));
     expect(result.message.content).toEqual([{ type: "thinking", thinking: "Consider the tide." }, { type: "text", text: "Ada sails." }]);
     expect(parts(result.events)).toEqual([{ type: "thinking_delta", index: 0, delta: "Consider the tide." }, { type: "text_delta", index: 1, delta: "Ada sails." }]);
+  });
+
+  it("releases held text when the server's own reasoning starts late", async () => {
+    const s = await setup();
+    s.local.reply({ deltas: [{ content: "\n" }, { reasoning_content: "Consider the tide." }, { content: "Ada sails." }] });
+    const result = await collect(streamWithInlineThinking(s.model as never, normalizeContext(context), { apiKey: "none" }, true));
+    expect(result.message.content.filter((b) => b.type === "thinking")).toMatchObject([{ thinking: "Consider the tide." }]);
+    expect(result.message.content.filter((b) => b.type === "text").map((b) => b.type === "text" && b.text).join("")).toBe("\nAda sails.");
+    for (const [index, block] of result.message.content.entries()) {
+      const deltas = parts(result.events).filter((e) => e.index === index).map((e) => e.delta).join("");
+      expect(deltas).toBe(block.type === "text" ? block.text : block.type === "thinking" ? block.thinking : "");
+    }
   });
 
   it("flushes an unfinished tag as text and preserves text before explicit thinking", async () => {

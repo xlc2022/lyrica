@@ -26,6 +26,11 @@ function piModel(ep: Endpoint, m: Offering): ProviderModelConfig {
   };
 }
 
+/** A reply can start inside a thought when the template opens `<think>` itself: always, or when its switch is on. */
+export function startsMidThought(o: Offering | undefined, level: string | undefined): boolean {
+  return !!o?.opensThinking && (!o.reasoning?.length || (!!level && level !== "off"));
+}
+
 /**
  * A Pi ModelRuntime holding exactly the endpoints this context may use, and
  * nothing else: none of Pi's built-in providers, no auth.json, no models.json,
@@ -77,7 +82,8 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
     runtime.registerProvider(endpoint.id, {
       name: `${endpoint.name} (${endpoint.kind})`, baseUrl: endpoint.baseUrl, api: "openai-completions",
       models: list.map((m) => piModel(endpoint, m)),
-      streamSimple: (model, context, options) => streamWithInlineThinking(model as Model<"openai-completions">, context, options),
+      streamSimple: (model, context, options) =>
+        streamWithInlineThinking(model as Model<"openai-completions">, context, options, startsMidThought(list.find((m) => m.modelId === model.id), options?.reasoning)),
     });
     // A runtime key is used literally; a key in the provider config would be read as `$ENV` or `!command`.
     await runtime.setRuntimeApiKey(endpoint.id, endpoint.apiKey ?? "none");
