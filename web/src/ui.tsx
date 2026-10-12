@@ -117,10 +117,10 @@ function markdown(files: FileLinks | undefined, large: (path: string) => void): 
 }
 const PLAIN = markdown(undefined, () => {});
 
-/** Markdown with raw HTML skipped; with `files`, the thread's paths are links and its images show. */
-export function Prose({ text, files }: { text: string; files?: FileLinks }) {
+/** Markdown with raw HTML skipped; with `files`, the thread's paths are links and its images show. `a` draws the links instead (a memory's titled citations). */
+export function Prose({ text, files, a }: { text: string; files?: FileLinks; a?: Components["a"] }) {
   const [large, setLarge] = useState<string>();
-  const components = useMemo(() => (files ? markdown(files, setLarge) : PLAIN), [files]);
+  const components = useMemo(() => ({ ...(files ? markdown(files, setLarge) : PLAIN), ...(a ? { a } : {}) }), [files, a]);
   const plugins = useMemo(() => (files ? [rehypePaths(files)] : []), [files]);
   return (
     <>
