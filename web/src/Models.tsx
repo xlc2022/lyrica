@@ -969,8 +969,7 @@ function EndpointDrawer({ ctx, ep, signIn, onClose }: { ctx: MCtx; ep?: Endpoint
             </label>
           )}
           {plan && (!ep || signIn) && <PlanSignIn key={plan} ctx={ctx} plan={plan} name={name.trim()} ep={ep} onDone={onClose} />}
-          {openrouter && <OpenRouterSignIn ctx={ctx} name={name.trim()} shared={shared} onDone={onClose} />}
-          {openrouter && ctx.user.admin && <Switch label="Shared" hint="Every user on this server can use it" checked={shared} onChange={setShared} />}
+          {openrouter && <OpenRouterSignIn ctx={ctx} name={name.trim()} shared={shared} onShared={setShared} onDone={onClose} />}
           {!plan && !openrouter && <>
           <label className="field"><span>Base URL</span><input className="mono" inputMode="url" autoCapitalize="none" placeholder="http://192.168.1.50:1234/v1" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} /></label>
           {(ep?.kind ?? kind) === "local" && plainHttp(baseUrl) && <p className="warn-text" role="note">Plain HTTP: the API key and every message cross the network unencrypted.</p>}
@@ -1036,7 +1035,7 @@ function PlanSignIn({ ctx, plan, name, ep, onDone }: { ctx: MCtx; plan: PlanKind
 }
 
 /** OpenRouter's sign-in for a new endpoint: its page opens in a new tab and shows a Code to paste here; Finish saves the endpoint. */
-function OpenRouterSignIn({ ctx, name, shared, onDone }: { ctx: MCtx; name: string; shared: boolean; onDone: () => void }) {
+function OpenRouterSignIn({ ctx, name, shared, onShared, onDone }: { ctx: MCtx; name: string; shared: boolean; onShared: (v: boolean) => void; onDone: () => void }) {
   const userId = ctx.user.id;
   const [started, setStarted] = useState<PlanSignInStarted>();
   const [code, setCode] = useState("");
@@ -1045,10 +1044,15 @@ function OpenRouterSignIn({ ctx, name, shared, onDone }: { ctx: MCtx; name: stri
   useEffect(() => () => { if (live.current) void del(u(userId, "openrouter", "sign-in", live.current)).catch(() => {}); }, [userId]);
   const start = () => run(async () => {
     const tab = open("about:blank", "_blank");
-    const s = await post<PlanSignInStarted>(u(userId, "openrouter", "sign-in"), { name, ...(shared ? { shared } : {}) });
-    live.current = s.id;
-    setStarted(s);
-    if (tab) { tab.opener = null; tab.location.href = s.url; } else open(s.url, "_blank", "noopener");
+    try {
+      const s = await post<PlanSignInStarted>(u(userId, "openrouter", "sign-in"), { name, ...(shared ? { shared } : {}) });
+      live.current = s.id;
+      setStarted(s);
+      if (tab) { tab.opener = null; tab.location.href = s.url; } else open(s.url, "_blank", "noopener");
+    } catch (e) {
+      tab?.close();
+      throw e;
+    }
   });
   const finish = () => run(async () => {
     const id = started!.id;
@@ -1064,6 +1068,7 @@ function OpenRouterSignIn({ ctx, name, shared, onDone }: { ctx: MCtx; name: stri
     onDone();
   });
   return <>
+    {ctx.user.admin && <Switch label="Shared" hint="Every user on this server can use it" checked={shared} disabled={!!started} onChange={onShared} />}
     <button type="button" className={started ? undefined : "primary"} disabled={busy || !name} onClick={() => void start()}>Sign in with OpenRouter</button>
     {started && <>
       <label className="field"><span>Code</span><input className="mono" autoCapitalize="none" autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} /></label>
