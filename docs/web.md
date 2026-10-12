@@ -201,6 +201,47 @@ A thread's address may carry what the panel beside it shows:
   the Sort menu is left out: its items, runs and **Sleep now** choice, with the
   same "<Pool> is hidden. Turn on <Pool> in the Sort menu to see it." line as
   Memory, and the sidebar badge counts only the pools shown.
+- **Models** (`src/Models.tsx`; [models.md](models.md); docs/ux.md §6
+  "Models, hosts, downloads, clean-up"): `#/u/<user>/models[/<tab>]`, from
+  the sidebar's Models link, whose badge counts Clean up's items
+  (`GET …/models/cleanup`, reread every 30 s and on focus; nothing probes
+  an endpoint until the area is open). Tabs down the left (a scrolling row
+  on a phone), so far **Overview**, **Hosts and endpoints**, **Clean up**
+  and **Recent calls**; Tasks, Text models, Image models and Downloads come
+  with their own PRs. The area reads `GET …/models/page` while open (30 s,
+  focus), which probes each endpoint (3 s each, one seen down in the last
+  30 s not asked again). Overview: a banner for a paused host or a stale
+  endpoint; tiles Endpoints (n of m up), Backend (the first `chat` model of
+  the general profile and of Local, following Same as; links to Model
+  profiles until Tasks exists) and Clean up; then the hosts and endpoints
+  summary (a host with its combined VRAM bar, Pause or Resume, Dashboard;
+  a plain endpoint with its model count) and the first five calls. Hosts
+  and endpoints: **Add endpoint** (a drawer: Name, Kind, Base URL, API key,
+  Shared for administrators; a plain-HTTP warning for a local URL off
+  loopback and the tailnet) and **Add model host** (the one primary; a page
+  at `…/models/hosts/add-host`: Name, Addresses, Pairing code, Shared,
+  **Pair**, then the fingerprint in mono). A host card: name, kind, state
+  (Online, Paused, Pausing, Restarting, Unreachable with the duration),
+  Pause or Resume (administrators on a shared host; disabled with "Nothing
+  is loaded"), Dashboard (`GET …/dashboard`, a new tab), "N models"
+  opening its model list (a speaking model's **Settings** there), the facts
+  line (shared or only you, paired, ID and addresses in mono, **Edit** for
+  the addresses, `PUT …/addresses`), per GPU its card, used/total in mono,
+  a bar of pinned, loaded-on-demand and vLLM-share segments, the loaded
+  models and the queue when nonzero. A plain endpoint row: name, kind,
+  unencrypted and stale pills, URL, shared or only you, ID, state, "N
+  models", **Edit** (the same drawer; API key "leave blank to keep",
+  Remove key). Each row's ⋯: Read its models, Add a model by hand, Pair
+  again… (hosts), Reset IDs…, Merge into… (same kind and sharing), Remove,
+  the last three confirmed by a dialog. Clean up: a row per item with a
+  stale, gone or empty pill, "Unreachable for N days." / "Missing for N
+  days." / "No members left.", where it is used or "Nothing uses it.",
+  **Replace with <model · endpoint>** when the server suggests one and
+  **Remove**; the notice lines as a dashed note with Dismiss; the mockup's
+  two foot sentences. Recent calls: Time (mono), Thread (a link; private
+  kind mark; "a forgotten thread" when gone), Task, Answered by ("model ·
+  endpoint"), Note (the fallback or note, warn text); hidden pools left
+  out; the table stacks on a phone.
 - **Notifications** (`src/Notifications.tsx`; docs/ux.md §6 "Anything
   waiting for the user"): the first section of Settings, one list from
   `GET …/notifications`. Chips filter by type (All with the count, Needs a
@@ -236,8 +277,9 @@ A thread's address may carry what the panel beside it shows:
   unlocked after logout, and `lyricad`'s warning when the two contradict),
   Password, Your personas (linking a separate persona needs both passwords),
   Persona suggestions (edit, send on to the administrators, or drop),
-  Endpoints with probe status, Model profiles (with the **Sleep** mode select
-  and the **Sleep fallback** switch above the profiles), Network (New threads: the default
+  Model profiles (with the **Sleep** mode select
+  and the **Sleep fallback** switch above the profiles; endpoints moved to
+  the Models area, and `…/settings/endpoints` goes there), Network (New threads: the default
   mode and Fallback; then network defaults per pool), and **Machines**
   (`src/Machines.tsx`, docs/ux.md section 6): a row per machine with its
   name, a facts line in mono (address, pool, "SSH · key" or "Proxmox API ·
@@ -511,7 +553,8 @@ A thread's address may carry what the panel beside it shows:
   under Speech in Settings, Appearance. The Model profiles
   section has Read aloud rows in every profile and a Dictation row in Local
   only, and a speaking model
-  in the Endpoints list has a Settings link opening its drawer: a voice per
+  in an endpoint's model list (Models → Hosts and endpoints, "N models") has
+  a Settings link opening its drawer: a voice per
   language (English, Mandarin) and the speed (a number, of 4, clamped when
   the field is left), each with its source word (shared or yours) and a
   Reset link.

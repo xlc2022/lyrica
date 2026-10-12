@@ -820,7 +820,9 @@ test("a speaking model's Settings drawer sets its voice and clamps its speed; on
   await expect(local.getByLabel("Dictation").locator("option")).toHaveText(["Not set", "whisper"]);
   await expect(local.getByLabel("Read aloud").locator("option")).toHaveText(["Not set", "kokoro"]);
 
-  await page.goto(`/#/u/${encodeURIComponent(userId)}/settings/endpoints`);
+  // The speech endpoint's models, under Models → Hosts and endpoints.
+  await page.goto(`/#/u/${encodeURIComponent(userId)}/models/hosts`);
+  await page.locator("li.ep-row").filter({ hasText: /^speech/ }).getByRole("button", { name: /models$/ }).click();
   await page.getByRole("button", { name: "kokoro settings" }).first().click();
   const drawer = page.getByRole("complementary", { name: "kokoro settings" });
   await drawer.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
@@ -1383,4 +1385,86 @@ test("no horizontal scrolling and big enough tap targets on a phone", async ({ p
     await page.waitForLoadState("networkidle");
     await noHorizontalScroll(page);
   }
+});
+
+test("Models: the sidebar link opens Overview, Hosts and endpoints lists the endpoints and Edit renames one, Recent calls names the chat call, Clean up is empty, and Settings → Endpoints lands on the hosts tab", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/models-${name}-${page.viewportSize()!.width}.png`, fullPage: true }); };
+  // A chat call for Recent calls.
+  await newThread(page, "General");
+  await send(page, "Which model answers");
+  await expect(page.getByText("You said: Which model answers")).toBeVisible();
+  const calls = await page.evaluate(async (path) => (await fetch(path)).json(), `/api/u/${userId}/models/calls`) as { task: string; label: string; endpointName: string }[];
+  const chat = calls.find((c) => c.task === "chat")!;
+  expect(chat).toBeTruthy();
+  const answered = `${chat.label.replace(/^(?:shared\.)?[^/]+\//, "")} · ${chat.endpointName}`;
+
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await page.locator('a[data-nav="models"]').click();
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models$`));
+  await expect(page.getByRole("heading", { level: 1, name: "Models" })).toBeVisible();
+  await expect(page.locator(".head .cap")).toHaveText("2 local and 2 cloud endpoints · 2 text models");
+  await expect(page.locator('[data-tile="endpoints"]')).toContainText(/4\s*of 4 up/);
+  await expect(page.locator('[data-tile="endpoints"]')).toContainText("All reachable");
+  await expect(page.locator('[data-tile="backend"]')).toContainText("cloud-model");
+  await expect(page.locator('[data-tile="backend"]')).toContainText("local-model");
+  await expect(page.locator('[data-tile="cleanup"]')).toContainText("Nothing to clean up");
+  const summary = page.getByRole("region", { name: "Hosts and endpoints" });
+  for (const name of ["gpu", "router", "speech", "openai"]) await expect(summary.locator("li.hostrow").filter({ hasText: new RegExp(`^${name}`) })).toBeVisible();
+  const recent = page.getByRole("region", { name: "Recent calls" });
+  await expect(recent.locator("tr[data-task=chat]").first()).toContainText(answered);
+  await noHorizontalScroll(page);
+  await shot("overview");
+
+  // Recent calls: the chat call, its thread a link.
+  await recent.getByRole("link", { name: "All calls" }).click();
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/calls$`));
+  await expect(page.getByRole("heading", { level: 1, name: "Recent calls" })).toBeVisible();
+  const row = page.locator("tr[data-task=chat]").first();
+  await expect(row).toContainText(answered);
+  await expect(row.getByRole("link")).toBeVisible();
+  await noHorizontalScroll(page);
+  await shot("calls");
+
+  // Hosts and endpoints: each endpoint is up; Edit renames one, and back.
+  await page.getByRole("navigation", { name: "Models pages" }).getByRole("link", { name: "Hosts and endpoints" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Hosts and endpoints" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add model host" })).toBeInViewport();
+  for (const name of ["gpu", "router", "speech", "openai"]) await expect(page.locator("li.ep-row").filter({ hasText: new RegExp(`^${name}`) })).toContainText("Up");
+  await noHorizontalScroll(page);
+  await shot("hosts");
+  const rename = async (from: string, to: string) => {
+    await page.locator("li.ep-row").filter({ hasText: new RegExp(`^${from} `) }).getByRole("button", { name: "Edit" }).click();
+    const drawer = page.getByRole("complementary", { name: `Edit ${from}` });
+    await drawer.getByLabel("Name").fill(to);
+    await drawer.getByRole("button", { name: "Save" }).click();
+    await expect(drawer).toHaveCount(0);
+    await expect(page.locator("li.ep-row .name").filter({ hasText: new RegExp(`^${to} local$`) })).toBeVisible();
+  };
+  await rename("gpu", "gpu-box");
+  await rename("gpu-box", "gpu");
+
+  // Add endpoint: the plain-HTTP warning for a local endpoint off this machine.
+  await page.getByRole("button", { name: "Add endpoint" }).click();
+  const add = page.getByRole("complementary", { name: "Add endpoint" });
+  await add.getByLabel("Base URL").fill("http://192.168.1.50:1234/v1");
+  await expect(add.getByRole("note")).toContainText("Plain HTTP");
+  await shot("add-endpoint");
+  await add.getByLabel("Base URL").fill("http://127.0.0.1:1234/v1");
+  await expect(add.getByRole("note")).toHaveCount(0);
+  if (phone(page)) await noHorizontalScroll(page);
+  await add.getByRole("button", { name: "Close" }).click();
+
+  // Clean up: nothing to do.
+  await page.getByRole("navigation", { name: "Models pages" }).getByRole("link", { name: /^Clean up/ }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Clean up" })).toBeVisible();
+  await expect(page.getByText("Nothing to clean up.")).toBeVisible();
+  await noHorizontalScroll(page);
+  await shot("cleanup");
+
+  // The old Settings → Endpoints address lands on the hosts tab.
+  await page.goto(`/#/u/${userId}/settings/endpoints`);
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/hosts$`));
+  await expect(page.getByRole("heading", { level: 1, name: "Hosts and endpoints" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Settings sections" })).toHaveCount(0);
 });

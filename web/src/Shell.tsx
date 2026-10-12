@@ -10,6 +10,7 @@ import { AdminPage, SettingsPage } from "./Panel.tsx";
 import { FilesPage } from "./Files.tsx";
 import { NotificationsCard, useWaiting } from "./Notifications.tsx";
 import { SleepPage, useSleepOverview, type SleepState } from "./Sleep.tsx";
+import { ModelsArea, useCleanupCount } from "./Models.tsx";
 import { ThreadMenu, useThreadMenu } from "./ThreadMenu.tsx";
 import { ProjectPage, stateWord } from "./Project.tsx";
 import { ErrorText, hidden, menuArrows, shortTime, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
@@ -30,6 +31,10 @@ export interface ShellContext {
   refreshNotifications: () => void;
   /** The Sleep overview, loaded once for the sidebar's count of new items; the Sleep page refreshes it from its events. */
   sleep: SleepState;
+  /** How many items Clean up lists (the sidebar's Models count), and a reload after one is acted on. */
+  cleanup: { count: number; reload: () => void };
+  /** The thread list, for naming threads elsewhere (Recent calls, Clean up). */
+  threads: ThreadSummary[];
   openSide: () => void;
   /** Reload GET /api/state: after her name changes. */
   refreshState: () => void;
@@ -54,19 +59,20 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
   useEffect(() => setSideOpen(false), [route]);
   const notes = useWaiting(user.id);
   const sleep = useSleepOverview(user.id, me.data?.display);
+  const cleanup = useCleanupCount(user.id);
   // Refresh the list and the count now and then, so other threads' titles and activity show, and what waits.
   useEffect(() => {
-    const tick = () => { if (document.visibilityState === "visible") { threads.reload(); notes.reload(); sleep.reload(); } };
+    const tick = () => { if (document.visibilityState === "visible") { threads.reload(); notes.reload(); sleep.reload(); cleanup.reload(); } };
     const t = setInterval(tick, 30_000);
     addEventListener("focus", tick);
     return () => { clearInterval(t); removeEventListener("focus", tick); };
-  }, [threads.reload, notes.reload, sleep.reload]);
+  }, [threads.reload, notes.reload, sleep.reload, cleanup.reload]);
   useLook(me.data);
 
   if (!me.data) return <div className="loading">{me.error ? <ErrorText error={me.error} /> : "Loading…"}</div>;
   const ctx: ShellContext = {
     user: me.data.user, me: me.data, setMe: me.set, build, refreshThreads: threads.reload,
-    groups: groups.data ?? [], refreshGroups: groups.reload, waiting: notes.waiting, refreshNotifications: notes.reload, sleep, openSide: () => setSideOpen(true),
+    groups: groups.data ?? [], refreshGroups: groups.reload, waiting: notes.waiting, refreshNotifications: notes.reload, sleep, cleanup, threads: threads.data ?? [], openSide: () => setSideOpen(true),
     refreshState,
   };
 
@@ -88,6 +94,8 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
       <Memory ctx={ctx} pool={r.pool} id={r.id} />
     ) : r.page === "sleep" ? (
       <SleepPage ctx={ctx} />
+    ) : r.page === "models" ? (
+      <ModelsArea ctx={ctx} tab={r.tab} add={r.add} />
     ) : r.page === "settings" ? (
       <SettingsPage ctx={ctx} section={r.section} />
     ) : r.page === "admin" ? (
@@ -395,6 +403,9 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
         <a href={href({ page: "sleep", userId: user.id })} aria-current={route.page === "sleep" ? "page" : undefined} data-nav="sleep">
           <Icon name="moon" />Sleep{ctx.sleep.fresh > 0 ? <span className="count" aria-label={`${ctx.sleep.fresh} new`}>{ctx.sleep.fresh}</span>
             : ctx.sleep.running && <span className="busy" title="Sleeping"><span className="sr-only">Sleeping</span></span>}
+        </a>
+        <a href={href({ page: "models", userId: user.id })} aria-current={route.page === "models" ? "page" : undefined} data-nav="models">
+          <Icon name="models" />Models{ctx.cleanup.count > 0 && <span className="count" aria-label={`${ctx.cleanup.count} to clean up`}>{ctx.cleanup.count}</span>}
         </a>
       </nav>
       <div className="thread-tools">

@@ -121,7 +121,7 @@ function offNetworkSentence(name: string, question: string): string {
 }
 
 /** The row's ⋯: rare actions, Remove last and in danger text. */
-function RowMenu({ label, items }: { label: string; items: { label: string; danger?: boolean; onPick: () => void }[] }) {
+export function RowMenu({ label, items }: { label: string; items: { label: string; danger?: boolean; onPick: () => void }[] }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
