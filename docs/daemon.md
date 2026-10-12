@@ -230,7 +230,10 @@ Each active thread is one Pi session from `openThreadSession`, with
     shows the same marker.
 - `GET /api/u/:userId/thread-defaults?pool=general|private` returns the
   settings a new thread starts with, including the default mode, without
-  creating a thread. The home composer applies its changes after creation.
+  creating a thread. It shares the creation defaults with `POST /threads`,
+  authenticates the addressed user like the other user routes, and returns
+  only settings, never thread or memory text. The home composer applies its
+  changes after creation.
 - Changing a thread's settings reopens its session after the current turn,
   and its open views get `settings`. Workspace settings (mode and switches
   included) are read on every tool call, so they apply at once.

@@ -1,5 +1,8 @@
 import { Workspace } from "@lyrica/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { apiRoutes } from "../src/routes.ts";
+import { match, statusOf, type Request } from "../src/http.ts";
+import { Lyricad } from "../src/lyricad.ts";
 import type { GitAccountInfo, Me, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, login, runtime, systemdStart } from "./helpers.ts";
 
@@ -22,25 +25,47 @@ function homes() {
 }
 
 describe("lyricad and the home workspace", () => {
-  it("reads new-thread defaults for both pools without creating threads", async () => {
+  it("reads authenticated new-thread defaults for both pools without creating threads (principles 1 and 2)", async () => {
     const rt = await runtime();
-    homes();
-    const { base, d } = await daemon(rt);
-    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
-    const ada = await login(base, "ada", "pw");
-    const u = `/api/u/${rt.ada.id}`;
-    d.services!.workspace.settings(rt.ada.id).setDefaultMode("ask");
-    const before = (await ada.get(`${u}/threads`)).body;
-    for (const pool of ["general", "private"] as const) {
-      const defaults = await ada.get<ThreadSettings>(`${u}/thread-defaults?pool=${pool}`);
-      expect(defaults.status).toBe(200);
-      expect(defaults.body).toMatchObject({ mode: "ask", webSearch: true, images: true });
-      expect((await ada.get(`${u}/threads`)).body).toEqual(before);
-      const thread = (await ada.post<ThreadSummary>(`${u}/threads`, { pool })).body;
-      const settings = (await ada.get<ThreadSettings>(`${u}/threads/${pool}/${thread.id}/settings`)).body;
-      expect(defaults.body).toEqual(settings);
-      await ada.del(`${u}/threads/${pool}/${thread.id}`);
-    }
+    const d = new Lyricad({ home: rt.home, port: 0, selfTest: false, log: () => {}, argon2: { memoryCost: 1024, timeCost: 1, parallelism: 1 } });
+    await d.unlock("passphrase");
+    await d.services!.users.authenticate("ada", "pw");
+    const cookie = d.sessions.login(undefined, rt.ada.id, () => false).id;
+    const routes = apiRoutes(d);
+    // Exercise real handlers, sessions and encrypted stores without a listening socket.
+    const call = async <T,>(method: string, path: string, body: unknown = {}, session: string | undefined = cookie) => {
+      const url = new URL(path, "http://localhost");
+      const found = match(routes, method, url.pathname);
+      if (!found || found === "method") throw new Error("test route not found");
+      const request = { params: found.params, query: url.searchParams, cookie: session, json: async () => body } as Request;
+      try { return { status: 200, body: await found.route.handler(request) as T }; }
+      catch (err) { return { status: statusOf(err), body: undefined as T }; }
+    };
+    try {
+      const u = `/api/u/${rt.ada.id}`;
+      expect((await call("GET", `${u}/thread-defaults`, {}, "")).status).toBe(401);
+      expect((await call("GET", `/api/u/${rt.sam.id}/thread-defaults`)).status).toBe(401);
+      const workspace = d.services!.workspace.settings(rt.ada.id);
+      workspace.setDefaultMode("ask");
+      workspace.setDefaultNetwork("general", { internet: true });
+      workspace.setDefaultNetwork("private", { internet: false });
+      const before = (await call("GET", `${u}/threads`)).body;
+      const recent = vi.spyOn(d.services!.models, "recentCalls");
+      for (const pool of ["general", "private"] as const) {
+        recent.mockClear();
+        const defaults = await call<ThreadSettings>("GET", `${u}/thread-defaults?pool=${pool}`);
+        expect(defaults.status).toBe(200);
+        expect(recent).not.toHaveBeenCalled();
+        for (const key of ["messages", "memory", "answered", "context"]) expect(defaults.body).not.toHaveProperty(key);
+        expect(defaults.body).toMatchObject({ mode: "ask", webSearch: true, images: true });
+        expect((await call("GET", `${u}/threads`)).body).toEqual(before);
+        const thread = (await call<ThreadSummary>("POST", `${u}/threads`, { pool })).body;
+        const settings = (await call<ThreadSettings>("GET", `${u}/threads/${pool}/${encodeURIComponent(thread.id)}/settings`)).body;
+        expect(defaults.body).toEqual(settings);
+        await call("DELETE", `${u}/threads/${pool}/${encodeURIComponent(thread.id)}`);
+      }
+      expect((await call("GET", `${u}/threads`)).body).toEqual(before);
+    } finally { await d.stop(); }
   });
 
   it("mounts a home at sign-in and unmounts it on Lock", async () => {

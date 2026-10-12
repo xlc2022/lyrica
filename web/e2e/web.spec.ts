@@ -1314,7 +1314,7 @@ test("home attachments and tool switches stay local until send and follow the se
   const menu = box.getByRole("menu", { name: "Attach and tools" });
   const images = menu.getByRole("checkbox", { name: "Images", exact: true });
   await expect(images).toBeChecked();
-  await menu.locator("label.switch").filter({ hasText: /^Images$/ }).click();
+  await images.uncheck();
   await expect(images).not.toBeChecked();
   await box.locator('input[type="file"]').setInputFiles({ name: "general.txt", mimeType: "text/plain", buffer: Buffer.from("A made-up general attachment") });
   await expect(box.getByLabel("Message", { exact: true })).toHaveValue(/general.txt/);
