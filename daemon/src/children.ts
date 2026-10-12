@@ -47,6 +47,12 @@ export class ChildThreads implements ThreadsHost {
   private readonly starting = new Map<string, Set<{ pool?: Pool; thread?: string }>>();
   /** Queued starts' tasks, held in memory only: a restart tells the project chat instead. */
   private readonly queue = new Map<string, { task: string; parent: string }>();
+  /**
+   * Children working on a task from their parent, by `user/pool/thread`:
+   * whether they have messaged the parent since. In memory only: a restart
+   * tells the parent anyway (`recover`).
+   */
+  private readonly tasked = new Map<string, { reported: boolean }>();
 
   constructor(private readonly o: ChildOptions) {
     this.limits = { ...DEFAULT_THREADS_LIMITS, ...o.limits };
@@ -112,8 +118,10 @@ export class ChildThreads implements ThreadsHost {
       return { id: child.id, link, queued: true };
     }
     try {
+      this.task(userId, parent.pool, child.id);
       await this.o.host().get(userId, parent.pool, child.id).send(req.task, { fromParent: parent.threadId });
     } catch (err) {
+      this.tasked.delete(`${userId}/${parent.pool}/${child.id}`);
       // It never started: nothing is left of it.
       await this.o.host().forget(userId, parent.pool, child.id);
       this.forget(userId, parent.pool, [child.id]);
@@ -139,7 +147,7 @@ export class ChildThreads implements ThreadsHost {
 
   /** A look's line to a thread (watch.ts): sent as the project chat's `threads message` sends it, marked as from the project chat. */
   tellFromProject(userId: string, pool: Pool, project: string, to: string, text: string): Promise<void> {
-    return this.asProjectChat(userId, pool, project, (ctx) => this.message(ctx, to, text));
+    return this.asProjectChat(userId, pool, project, (ctx) => this.message(ctx, to, text, {}, false));
   }
 
   private async asProjectChat<T>(userId: string, pool: Pool, project: string, fn: (ctx: ThreadContext) => Promise<T>): Promise<T> {
@@ -160,11 +168,14 @@ export class ChildThreads implements ThreadsHost {
     this.o.host().delivered(userId, pool, project, content, d);
   }
 
-  async message(from: ThreadContext, to: string, text: string, opts: { needsYou?: boolean } = {}): Promise<void> {
+  /** `task`: a parent's message is work its child reports back on; a look's line isn't. */
+  async message(from: ThreadContext, to: string, text: string, opts: { needsYou?: boolean } = {}, task = true): Promise<void> {
     const userId = from.user.id;
     if (to === "parent") {
       const row = this.row(userId, from.pool, from.threadId);
       if (!row || !from.view.own.getThread(row.parent)) throw new Error("this thread's parent is gone");
+      const t = this.tasked.get(`${userId}/${from.pool}/${from.threadId}`);
+      if (t) t.reported = true;
       const needsYou = !!opts.needsYou && !!from.view.own.getThread(row.parent)?.project;
       this.db(userId, (db) => db.prepare("UPDATE child_threads SET unseen = unseen + 1, needs_you = CASE WHEN ? THEN 1 ELSE needs_you END WHERE pool = ? AND thread = ?")
         .run(needsYou ? 1 : 0, from.pool, from.threadId));
@@ -184,7 +195,51 @@ export class ChildThreads implements ThreadsHost {
     // An idle child starts a turn, so the limit holds here too; a working one takes it into its running turn.
     if (!this.o.host().busy(userId, from.pool, to)) this.mayStartTurn(userId);
     if (target.resolved_at) this.setResolved(userId, from.pool, to, false);
+    if (task && !sibling) this.task(userId, from.pool, to);
     await this.o.host().get(userId, from.pool, to).send(text, sibling ? { fromThread: from.threadId } : { fromParent: from.threadId });
+  }
+
+  /** The thread works on a task from its parent, and owes it a report. */
+  private task(userId: string, pool: Pool, thread: string): void {
+    this.tasked.set(`${userId}/${pool}/${thread}`, { reported: false });
+  }
+
+  /**
+   * A child's turn ended and it is idle. On a task from its parent, the
+   * parent is told when it ended with an error, or without a message to the
+   * parent since the task began, as an update is delivered. A stopped turn
+   * tells nobody: whoever stopped it knows.
+   */
+  ended(userId: string, pool: Pool, thread: string, how: "done" | "error" | "stopped"): void {
+    const key = `${userId}/${pool}/${thread}`;
+    const t = this.tasked.get(key);
+    if (!t) return;
+    this.tasked.delete(key);
+    if (how === "stopped" || (how === "done" && t.reported)) return;
+    let row: Row | undefined;
+    try { row = this.row(userId, pool, thread); } catch { return; /* locked */ }
+    if (!row) return;
+    this.deliver(userId, pool, row.parent, how === "error"
+      ? `Child thread [t:${thread}] stopped with an error, and is idle. Read it with threads read, or message it to go on.`
+      : `Child thread [t:${thread}] finished without a report, and is idle. Read it with threads read, or message it.`, thread);
+  }
+
+  /** Stops a child's running turn, as Pause does: from its parent, or from the project chat. */
+  async stop(from: ThreadContext, id: string): Promise<boolean> {
+    const userId = from.user.id;
+    const row = this.row(userId, from.pool, id);
+    if (!row || row.parent !== from.threadId) throw new Error(`[t:${id}] isn't a child thread of this one`);
+    this.tasked.delete(`${userId}/${from.pool}/${id}`);
+    const host = this.o.host();
+    if (!host.busy(userId, from.pool, id)) return false;
+    await host.get(userId, from.pool, id).stop();
+    this.turn(userId, from.pool, id, false);
+    return true;
+  }
+
+  /** Whether `from` may read `id` with threads read: what its threads list shows. */
+  readable(from: ThreadContext, id: string): boolean {
+    return this.list(from).some((c) => c.id === id);
   }
 
   list(parent: ThreadContext): ChildInfo[] {
@@ -361,8 +416,10 @@ export class ChildThreads implements ThreadsHost {
     this.queue.delete(key);
     this.db(userId, (db) => db.prepare("UPDATE child_threads SET queued = 0 WHERE pool = ? AND thread = ?").run(next!.pool, next!.thread));
     try {
+      this.task(userId, next.pool, next.thread);
       await this.o.host().get(userId, next.pool, next.thread).send(q.task, { fromParent: q.parent });
     } catch {
+      this.tasked.delete(key);
       this.deliver(userId, next.pool, next.parent, `Queued thread [t:${next.thread}] couldn't start, and is idle. Message it to go on.`, next.thread);
     }
   }
@@ -383,6 +440,7 @@ export class ChildThreads implements ThreadsHost {
 
   /** Drops the records of forgotten threads, and of the children they kept, which are threads of their own now. */
   forget(userId: string, pool: Pool, threads: string[]): void {
+    for (const t of threads) this.tasked.delete(`${userId}/${pool}/${t}`);
     this.db(userId, (db) => db.prepare("DELETE FROM child_threads WHERE pool = @pool AND (thread IN (SELECT value FROM json_each(@t)) OR parent IN (SELECT value FROM json_each(@t)))")
       .run({ pool, t: JSON.stringify(threads) }));
   }

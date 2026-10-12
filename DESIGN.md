@@ -345,7 +345,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - It and its parent message each other: it posts short updates at
     milestones (a badge on it in the sidebar, a card in the parent), and the
     parent or the user can message it at any time. Its approvals appear in
-    the child thread, and in Notifications.
+    the child thread, and in Notifications. The parent is told when it
+    stops with an error or finishes a task without an update, and can read
+    its latest messages and stop its turn.
   - It keeps going in the background and stays until it is forgotten.
     Forgetting a parent asks whether to forget its child threads too, ticked
     by default.
@@ -973,7 +975,10 @@ Project settings and Recent calls by project. The briefs are
   the at-once limit. Such a message follows the same rule as a child's
   update to its parent: local-only covers a thread's own model calls, so a
   local-only thread's message can reach a thread that uses cloud models,
-  within the one pool.
+  within the one pool. A thread can also read another's latest messages
+  (logged threads only), and the project chat can stop a thread's turn.
+  When a thread working on a task stops with an error or finishes without
+  posting an update, the project chat is told, as for any child thread.
 - **States:** Working; **Waiting on you** (an approval, an update that asks
   Li something, or a failed turn); Queued (started past the at-once limit,
   which stays 2 per user; it waits its turn instead of being refused); Idle;

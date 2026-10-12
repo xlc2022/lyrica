@@ -428,6 +428,8 @@ export class Lyricad implements Drainable {
     };
     /** Threads whose turn's last word so far is an error, by `user/pool/thread`: a retry that answers clears it. */
     const erred = new Set<string>();
+    /** Threads whose last turn was stopped, by `user/pool/thread`. */
+    const aborted = new Set<string>();
     const children = new ChildThreads({
       users, memory, models, workspace, delegation, host: () => host, limits: this.opts.threads,
       paused: stopped,
@@ -440,16 +442,19 @@ export class Lyricad implements Drainable {
       threads: children, onTurn: (u, p, t, working) => {
         children.turn(u, p, t, working);
         const k = `${u}/${p}/${t}`;
-        if (working) { erred.delete(k); return watcher.turnStarted(u, p, t); }
+        if (working) { erred.delete(k); aborted.delete(k); return watcher.turnStarted(u, p, t); }
         watcher.turnEnded(u, p, t);
-        if (!erred.delete(k)) return;
+        const failed = erred.delete(k);
+        children.ended(u, p, t, failed ? "error" : aborted.delete(k) ? "stopped" : "done");
+        if (!failed) return;
         const project = projectOf(u, p, t);
         if (project) watcher.failed(u, p, project, t);
       },
       onEvent: (u, p, t, e) => {
         const k = `${u}/${p}/${t}`;
         if (e.type === "error" && host.busy(u, p, t)) erred.add(k);
-        else if (e.type === "message_start" || e.type === "turn_start") erred.delete(k);
+        else if (e.type === "message_start" || e.type === "turn_start") { erred.delete(k); aborted.delete(k); }
+        else if (e.type === "turn_end" && e.aborted) aborted.add(k);
         else if (e.type === "permission") {
           const project = projectOf(u, p, t);
           if (project) watcher.waiting(u, p, project, t);
