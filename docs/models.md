@@ -541,7 +541,7 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   A sign-in under way is held in `lyricad`'s memory for 10 minutes, one per
   user, and belongs to the user who started it. Neither the address nor
   any token is logged. A provider's HTTP refusal reaches the interface as
-  one fixed line with its status (`planError`), never the provider's own
+  one fixed line naming the provider and its status (`planError`), never the provider's own
   text, which may echo what it was sent.
 - **Calls.** In the runtime a plan is Pi's `openai` or `xai` provider
   (Responses API) under the endpoint's ID, offering only its listed models

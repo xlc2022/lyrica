@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PLAN_URLS } from "@lyrica/core";
 import { profile, withModels } from "../../core/test/helpers.ts";
-import { modelRuntimeFor, planCatalog } from "../src/index.ts";
+import { modelRuntimeFor, planCatalog, planError } from "../src/index.ts";
 
 const TOKEN_URLS = { chatgpt: "https://auth.openai.com/api/accounts/oauth/token", grok: "https://auth.x.ai/oauth2/token" };
 const realFetch = globalThis.fetch;
@@ -108,5 +108,14 @@ describe("a ChatGPT plan", () => {
     tokenEndpoint(400, "grok");
     await expect(runtime.getAuth(s.plan.id)).rejects.toThrow();
     expect(s.models.endpoint(s.li.id, s.plan.id)?.signedOut).toBe(true);
+  });
+});
+
+describe("a provider's refusal", () => {
+  it("is one fixed line naming the provider, never the provider's own text", () => {
+    const e = new Error('token request failed (400): {"error":"invalid_grant","echo":"FAKE-refresh-value"}');
+    expect(planError(e, "chatgpt", "sign-in").message).toBe("ChatGPT refused the sign-in (HTTP 400).");
+    expect(planError(new Error("token refresh failed (HTTP 401)"), "grok", "sign-in refresh").message).toBe("Grok refused the sign-in refresh (HTTP 401).");
+    expect(planError(new Error("state mismatch\nmore"), "chatgpt", "sign-in").message).toBe("state mismatch");
   });
 });
