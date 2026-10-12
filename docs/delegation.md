@@ -299,6 +299,21 @@ every step. **Depth 1:** the store refuses a child of a child; a child can
 delegate. The user talks in a child like any thread, and the parent isn't
 told. Its approvals work as in any thread.
 
+**Wake-ups** (`daemon/src/wakeups.ts`). `later({ minutes, note })` wakes
+the thread she is in, any thread with the tool: the note becomes its next
+turn, marked `[Wake-up, set <time>]`, or joins a running turn as a steer.
+`later({ cancel: true })` drops its pending ones. Limits
+(`WAKEUP_LIMITS`): 1 minute to 7 days ahead, clamped; 3 pending; 12 fired
+in a day, so a chain she forgets stops by itself. The note is stored in
+the thread's pool (step 4, `wakeups`), so it is encrypted and survives a
+restart; due times are held in memory while the user is unlocked, and
+lyricad's 20-second tick fires them, not while an update drains. A child
+past the at-once limit, a queued thread and a paused or hidden project's
+thread wait; a resolved project thread reopens. A locked user's wake-ups
+fire at the first tick after unlock, marked with when they were due. The
+views get times and IDs only, never the note; the user removes one from
+the facts line.
+
 **Told when a child ends.** A child working on a task from its parent (a
 `start`, a queued start that began, or a parent's `message`; not a look's
 line) owes it a report. When its turn ends and it is idle, the parent gets

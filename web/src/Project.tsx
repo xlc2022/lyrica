@@ -14,7 +14,7 @@ import { Repositories } from "./Git.tsx";
 import { McpServers } from "./Mcp.tsx";
 import { Folders, Machines, TaskSelect } from "./Settings.tsx";
 import { Main, PageHead, type ShellContext } from "./Shell.tsx";
-import { ErrorText, Prose, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { ErrorText, Prose, Switch, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
 
 /** A project thread's state, in the sidebar's words. */
 export function stateWord(t: Pick<ThreadSummary, "state" | "needsYou">): string {
@@ -94,7 +94,7 @@ export function ThreadsFact({ userId, overview, phone }: { userId: string; overv
 
 /**
  * One of the project's threads, under the message that started it: its title as written,
- * its state as a dot and a word, what it waits on, the last update's first line, and Open,
+ * its state as a dot and a word (and when it next wakes), what it waits on, the last update's first line, and Open,
  * Stop, Resolve or Reopen behind ⋯. A thread waiting on the user counts as waiting for an answer.
  */
 export function ThreadCard({ t, userId, env }: { t: ThreadSummary; userId: string; env: ProjectEnv }) {
@@ -115,6 +115,7 @@ export function ThreadCard({ t, userId, env }: { t: ThreadSummary; userId: strin
         {state !== "idle" && state !== "queued" && <span className="status" data-state={state} aria-hidden="true" />}
         <a className="tcard-title" href={open_}>{t.title || "New thread"}</a>
         <span className="tstate" data-state={state}>{stateWord(t)}</span>
+        {t.wakeAt && <span className="twake">wakes <span className="num">{wakeTime(t.wakeAt)}</span></span>}
         <span className="msg-menu" ref={ref}>
           <button type="button" className="icon-btn" aria-label={`Actions for ${t.title || "the thread"}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}><Icon name="more" /></button>
           {open && (

@@ -1,5 +1,5 @@
 import {
-  AuthError, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS, projectSlug,
+  AuthError, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, firstLine, GIT_KINDS, mcpHost, sentenceCiting, splitId,
   type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress,
@@ -22,6 +22,8 @@ const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, show
 const THREAD_SORTS: Api.ThreadSort[] = ["date", "activity", "started", "title", "groups"];
 const DISPLAY_DEFAULTS_ALL: Api.Display = { ...DISPLAY_DEFAULTS, showPrivate: true, showGeneral: true, showHidden: true };
 const MESSAGE_PAGE = 50;
+/** The composer's unsent text, in bytes. */
+const DRAFT_LIMIT = 64 * 1024;
 
 /** Every API route. Locked, only /api/state, /api/unlock and /api/setup answer; setting up, only state and setup (lyricad.ts enforces it). */
 export function apiRoutes(d: Lyricad): Route[] {
@@ -710,6 +712,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         s().models.forgetThread(user.id, pool, id);
       }
       s().children.forget(user.id, pool, doomed);
+      s().wakeups.forget(user.id, pool, doomed);
       s().prefs.forget(user.id, pool, doomed);
       s().projects.forget(user.id, pool, doomed);
       // A kept child is a thread of its own now: its next turn opens with its own tools and workspace.
@@ -724,6 +727,19 @@ export function apiRoutes(d: Lyricad): Route[] {
         runs: s().delegation.store.runs(user.id, ref.pool, { parent: thread.id }).map(({ pool: _p, parent: _t, pick: _k, narrowing: _n, ...run }) => run),
         usage: s().delegation.usage(ref),
       };
+    }),
+    route("GET", `${t}/draft`, (r): Api.DraftInfo => owner(d, d.userFor(r), (o) => o[poolOf(r)].draft(threadOf(o, r).id) ?? { text: "" })),
+    route("PUT", `${t}/draft`, async (r): Promise<Api.DraftInfo> => {
+      const user = d.userFor(r);
+      const { text } = await r.json<Api.DraftChange>();
+      if (typeof text !== "string") throw new HttpError(400, "a draft is text");
+      if (Buffer.byteLength(text) > DRAFT_LIMIT) throw new HttpError(413, `a draft has at most ${DRAFT_LIMIT / 1024} KiB`);
+      return owner(d, user, (o) => {
+        const pool = o[poolOf(r)];
+        const thread = threadOf(o, r);
+        pool.setDraft(thread.id, text);
+        return pool.draft(thread.id) ?? { text: "" };
+      });
     }),
     route("GET", `${t}/settings`, (r) => {
       const user = d.userFor(r);
@@ -761,14 +777,16 @@ export function apiRoutes(d: Lyricad): Route[] {
       d.refuseWhileDraining();
       const { text, confirm } = await r.json<Api.SendRequest>();
       const thread = owner(d, user, (o) => threadOf(o, r));
-      if (thread.subagent) return toSubagent(d, user, poolOf(r), thread, String(text ?? ""));
-      if (String(text ?? "").trim() === "/sleep") return { queued: false, sleep: await startSleep(d, user, poolOf(r), confirm === true) };
+      // What was sent is no longer a draft; a refused send keeps it.
+      const sent = (x: Api.SendResponse) => { owner(d, user, (o) => o[poolOf(r)].setDraft(thread.id, "")); return x; };
+      if (thread.subagent) return sent(await toSubagent(d, user, poolOf(r), thread, String(text ?? "")));
+      if (String(text ?? "").trim() === "/sleep") return sent({ queued: false, sleep: await startSleep(d, user, poolOf(r), confirm === true) });
       const project = owner(d, user, (o) => o[poolOf(r)].projectOf(thread.id));
       if (project && project !== thread.id && s().children.stopped(user.id, poolOf(r), project)) throw new HttpError(409, "this project is paused or hidden; resume it to write in its threads");
-      const sent = await s().host.get(user.id, poolOf(r), thread.id).send(unmarked(String(text ?? "")));
+      const result = await s().host.get(user.id, poolOf(r), thread.id).send(unmarked(String(text ?? "")));
       // The user wrote: the thread no longer waits on them, and a resolved one reopens.
       if (thread.child) s().children.userWrote(user.id, poolOf(r), thread.id);
-      return sent;
+      return sent(result);
     }),
     route("POST", `${t}/messages/:n/branch`, async (r) => {
       const user = d.userFor(r);
@@ -785,6 +803,13 @@ export function apiRoutes(d: Lyricad): Route[] {
       // A branch in a project is a thread of the project, anchored where its source hangs (or, of the project chat, where it branched).
       if (branch.child && branch.parent) s().children.adopt(user.id, pool, branch.id, branch.parent, branch.parent === r.params.threadId ? entryN(r) : s().children.anchorOf(user.id, pool, r.params.threadId!));
       return owner(d, user, (o) => summary(d, user, pool, o[pool], branch, []));
+    }),
+    route("DELETE", `${t}/wakeups/:id`, (r) => {
+      const user = d.userFor(r);
+      const pool = poolOf(r);
+      const thread = owner(d, user, (o) => threadOf(o, r));
+      if (!s().wakeups.remove(user.id, pool, thread.id, Number(r.params.id))) throw new HttpError(404, "no such wake-up");
+      return s().wakeups.list(user.id, pool, thread.id);
     }),
     route("PUT", `${t}/pin`, (r) => pinThread(d, d.userFor(r), r, true)),
     route("DELETE", `${t}/pin`, (r) => pinThread(d, d.userFor(r), r, false)),
@@ -1753,8 +1778,11 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
       ...(settings.fallback !== undefined ? { threadsFallback: settings.fallback } : {}),
     } } : {}),
     ...(mine ? { state: mine.state, ...(mine.anchor !== undefined ? { anchor: mine.anchor } : {}), ...(mine.needsYou ? { needsYou: true as const } : {}) } : {}),
+    ...wakeAt(d.services!.wakeups.list(user.id, pool, th.id)),
   };
 }
+
+const wakeAt = (list: Api.WakeupInfo[]) => (list[0] ? { wakeAt: list[0].dueAt } : {});
 
 /** Per request: the user's pins and each project's threads, read once. */
 function lookups(d: Lyricad, user: User) {
@@ -1882,6 +1910,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     speech: speechState(models, ctx),
     fallback: models.threadFallback(user.id, threadId), fallbackOn: ctx.fallback !== false,
     allowed: models.allowed(ctx).map(({ endpoint }) => endpointInfo(d, user.id, endpoint.id)),
+    wakeups: d.services!.wakeups.list(user.id, pool, threadId),
   };
 }
 
@@ -2017,6 +2046,7 @@ function react(d: Lyricad, user: User, r: Request, on: boolean): Api.Reactions {
 function unmarked(text: string): string {
   if (FROM_PARENT.test(text)) throw new HttpError(400, "a message can't start with a [From t:…] line");
   if (WATCHING.test(text)) throw new HttpError(400, "a message can't start with a [Watching threads] line");
+  if (WAKEUP.test(text)) throw new HttpError(400, "a message can't start with a [Wake-up, …] line");
   return text;
 }
 

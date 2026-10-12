@@ -103,6 +103,13 @@ export const shortTime = (iso: string) => {
   return d.toLocaleDateString([], { day: "numeric", month: "short" });
 };
 
+/** A wake-up's time in local HH:MM, with the date before it when it isn't today (docs/ux.md §6). */
+export function wakeTime(iso: string): string {
+  const d = new Date(iso);
+  const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return d.toDateString() === new Date().toDateString() ? hm : `${d.toLocaleDateString([], { day: "numeric", month: "short" })} ${hm}`;
+}
+
 /**
  * Links open in a new tab, except Lyrica's own (a mentioned thread, a file of the thread). A remote image is never
  * loaded, only linked by its alt text; one from the thread's folder shows in the message and opens large (docs/ux.md §6).

@@ -250,8 +250,10 @@ describe("deletion", () => {
     ], { author: "lyrica", thread: a.thread });
     const sub = own.createThread({ interface: "cli", parent: a.thread, subagent: true });
     const copy = own.exportThread(a.thread, "web");
+    own.setDraft(a.thread, "unsent words");
     own.forgetThread(a.thread, "lyrica");
     expect(own.getThread(a.thread)).toBeUndefined();
+    expect(own.draft(a.thread)).toBeUndefined();
     expect(own.getThread(sub.id)).toBeUndefined();
     expect(own.getThread(copy.id)).toBeDefined();
     expect(own.get(only!)).toBeUndefined();

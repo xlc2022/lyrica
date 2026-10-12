@@ -1,0 +1,17 @@
+# NVIDIA through CDI devices instead of Docker's nvidia runtime: install.sh
+# adds this after compose.nvidia.yaml when Docker has no nvidia runtime but
+# the container toolkit has written a CDI spec (NixOS, host/README.md "On
+# NixOS"). Every GPU, with the driver's libraries and nvidia-smi.
+x-cdi: &cdi
+  devices: [nvidia.com/gpu=all]
+  deploy:
+    resources:
+      reservations:
+        devices: !reset []
+
+services:
+  host-api: *cdi
+  llamacpp: *cdi
+  vllm: *cdi
+  comfyui: *cdi
+  speech: *cdi

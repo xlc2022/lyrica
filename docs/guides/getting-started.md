@@ -53,35 +53,33 @@ server on your network, or on a paired model host.
 
 ## Before you start
 
-### The machine
+### What the machine needs
 
-On NixOS: x86-64 with flakes on, in practice a VM. Saving the passphrase
-needs systemd 256 or later, which NixOS has had since 24.11 (the flake
-builds against 26.05). The package brings its own Node, so nothing else is
-needed before "On NixOS" under Install.
+These are estimates. None was measured on a real host.
 
-On Debian or Ubuntu:
+| | Minimum | Suggested |
+|---|---|---|
+| **Lyrica alone**, models elsewhere (cloud, or another model host) | 2 vCPU, 4 GB RAM, 32 GB disk | 4 vCPU, 8 GB RAM, 64 GB disk |
+| **Lyrica and the model host on one machine** | 8 cores, 32 GB RAM, 1 TB NVMe, one 24 GB NVIDIA card | 16 cores, 64 GB RAM, 2 TB NVMe, 48 GB of NVIDIA VRAM |
 
-- amd64 or arm64. The install script refuses any other system.
-- **systemd 256 or later** if you want her to start unlocked. Saving the
-  `self.db` passphrase uses `systemd-creds encrypt --user`, which older
-  systemd doesn't have. Debian 13 and Ubuntu 25.04 have it; Debian 12 and
-  Ubuntu 24.04 don't. Without it everything else works, and you type the
-  passphrase on the unlock page after each start.
-- **Node.js 22.6 or later**, installed before the script runs (it checks
-  and stops otherwise). The SSH helper that machines use runs with
-  Node's type stripping, which arrived in 22.6; an older 22 fails every
-  machine call. NodeSource's packages are one way:
-
-  ```sh
-  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-  apt-get install -y nodejs
-  ```
-
-- `git`, to clone the repository.
-- Internet access during the install: npm, `proxy.golang.org` for the
-  Caddy build, and `pkgs.tailscale.com` when Tailscale isn't installed yet.
-  Updates later fetch from GitHub over SSH with a deploy key.
+- **Lyrica alone.** Measured on the repository's build: `npm ci` peaks near
+  0.5 GB of memory, the web build near 0.3 GB, and a built release takes
+  about 280 MB (`/opt/lyrica/releases` keeps up to five, so about 1.4 GB).
+  The Caddy build (Go, `xcaddy`) is the heaviest step and, inferred,
+  needs 1 to 2 GB of memory and a few hundred MB of disk while it runs. On
+  NixOS the Nix store holds the system, the package and the sandbox tools
+  (inferred: 15 to 20 GB with a few generations). Her databases, snapshots
+  and users' files grow on top of that.
+- **One machine for both.** From the model host's sizing: the minimum
+  runs Qwen3.8-27B (Q4_K_M) at 128k context with a q8_0 KV cache, not 1M.
+  The suggested card memory runs 1M at a q4_0 KV cache with speech
+  alongside. The disk holds models, Docker images and builds. NVIDIA is
+  recommended; AMD works through ROCm on the chips listed there or through
+  Vulkan; Intel and Apple GPUs are not supported. See
+  [model-hosts.md](model-hosts.md) and [host/README.md](../../host/README.md).
+- **CPU architecture.** NixOS: x86-64 only (the flake builds for
+  `x86_64-linux`). Debian and Ubuntu: amd64 or arm64; the install script
+  refuses anything else.
 
 ### In a Proxmox LXC container (Debian or Ubuntu)
 
@@ -111,34 +109,95 @@ The full checklist, with the commands that prove each piece works, is in
 The repository is a flake, and its NixOS module sets up what the install
 script does on Debian: the users, `/var/lib/lyrica`, the units with the
 same hardening, her own `tailscaled`, and Caddy with the DNS plugins.
-x86-64 only. The reference is [docs/daemon.md](../daemon.md#on-nixos).
+Saving the passphrase needs systemd 256 or later; NixOS 26.05, which the
+flake builds against, has 260. The package brings its own Node. The
+reference is [docs/daemon.md](../daemon.md#on-nixos).
 
-1. In your system flake, add the repository as an input and the module to
-   your configuration, then turn the service on:
+**From nothing.** The steps follow the
+[NixOS manual's installation chapter](https://nixos.org/manual/nixos/stable/#sec-installation);
+read it for anything not covered here.
 
-   ```nix
-   inputs.lyrica.url = "github:xlc2022/lyrica";
-   # among the configuration's modules:
-   inputs.lyrica.nixosModules.default
-   # in the configuration:
-   services.lyrica.enable = true;
+1. **The machine.** On bare metal, nothing to do. In a Proxmox VM: machine
+   type `q35`, BIOS `OVMF (UEFI)` with an EFI disk, CPU type `host`, a
+   VirtIO SCSI disk and the sizes from "What the machine needs".
+2. **Boot the installer.** Download the NixOS 26.05 minimal ISO (x86-64)
+   from [nixos.org/download](https://nixos.org/download/), boot it, and
+   become root with `sudo -i`. The disk is `/dev/sda` below (check with
+   `lsblk`; a VirtIO Block or NVMe disk has another name).
+3. **Partition, format and mount** (the manual's UEFI example, without swap):
+
+   ```sh
+   parted /dev/sda -- mklabel gpt
+   parted /dev/sda -- mkpart root ext4 512MB 100%
+   parted /dev/sda -- mkpart ESP fat32 1MB 512MB
+   parted /dev/sda -- set 2 esp on
+   mkfs.ext4 -L nixos /dev/sda1
+   mkfs.fat -F 32 -n boot /dev/sda2
+   mount /dev/disk/by-label/nixos /mnt
+   mkdir -p /mnt/boot
+   mount -o umask=077 /dev/disk/by-label/boot /mnt/boot
+   nixos-generate-config --root /mnt
    ```
 
-   The options are `port` (7340), `tailscale` (on: her own `tailscaled`,
-   from `tailscalePackage`), `openFirewall` (on: opens port 7340 for
-   Direct, whatever `port` is, so the machine can be set up from another
-   one), `caddyPackage`, and `sandboxPackages`, the tools her commands see
-   (NixOS has no `/usr` to share, so the module builds one directory from
-   that list, which includes git, gh, tea and Node 22 by default; add to
-   it to give her more). The module refuses to build
-   while `security.allowUserNamespaces` is off.
-2. `nixos-rebuild switch`. The package builds lyricad, the CLI and the web
-   UI, and `lyricad` starts setting up, as on Debian. Nothing prints the
-   setup code at the rebuild: `lyrica admin setup-code`, as root, prints
+4. **Edit `/mnt/etc/nixos/configuration.nix`.** Add, inside the braces,
+   a user, SSH and flakes (keep the generated boot loader and
+   `system.stateVersion`):
+
+   ```nix
+   networking.hostName = "lyrica";
+   users.users.li = { isNormalUser = true; extraGroups = [ "wheel" ]; };
+   services.openssh.enable = true;
+   services.qemuGuest.enable = true; # Proxmox VM only
+   nix.settings.experimental-features = [ "nix-command" "flakes" ];
+   ```
+
+5. **Install and reboot.** `nixos-install` asks for the root password. Then
+   `nixos-enter --root /mnt -c 'passwd li'` sets your user's, and `reboot`
+   (remove the ISO). Log in over SSH as that user.
+6. **Turn `/etc/nixos` into a flake.** Create `/etc/nixos/flake.nix` (as
+   root, `sudo -e`), using the `networking.hostName` from step 4 as the
+   configuration's name:
+
+   ```nix
+   {
+     inputs.lyrica.url = "github:xlc2022/lyrica";
+     # One nixpkgs, Lyrica's own: the module's Caddy hash is for it.
+     inputs.nixpkgs.follows = "lyrica/nixpkgs";
+
+     outputs = { nixpkgs, lyrica, ... }: {
+       nixosConfigurations.lyrica = nixpkgs.lib.nixosSystem {
+         system = "x86_64-linux";
+         modules = [
+           ./configuration.nix
+           ./hardware-configuration.nix
+           lyrica.nixosModules.default
+           { services.lyrica.enable = true; }
+         ];
+       };
+     };
+   }
+   ```
+
+   Leaving `nixpkgs` unfollowed also builds, but then the system's
+   nixpkgs can differ from the one the module's Caddy hash and CI use
+   (inferred; only the followed form was evaluated).
+   The options of `services.lyrica` are `port` (7340), `tailscale` (on: her
+   own `tailscaled`, from `tailscalePackage`), `openFirewall` (on: opens
+   port 7340 for Direct, whatever `port` is, so the machine can be set up
+   from another one), `caddyPackage`, and `sandboxPackages`, the tools her
+   commands see (NixOS has no `/usr` to share, so the module builds one
+   directory from that list, which includes git, gh, tea and Node 22 by
+   default; add to it to give her more). The module refuses to build
+   while `security.allowUserNamespaces` is off; it is on by default.
+   To run the model host on the same machine, add its module as well:
+   [model-hosts.md](model-hosts.md).
+7. `sudo nixos-rebuild switch --flake /etc/nixos#lyrica`. The package
+   builds lyricad, the CLI and the web UI, and `lyricad` starts setting
+   up, as on Debian. Nothing prints the setup code at the rebuild: `lyrica admin setup-code`, as root, prints
    it with the addresses and the fingerprint.
-3. The first run below is the same. `lyrica` is on the system path and
+8. The first run below is the same. `lyrica` is on the system path and
    runs as her user with her state folder, as on Debian.
-4. Instead of "Check the deploy", run `nix/check-host.sh` from a checkout
+9. Instead of "Check the deploy", run `nix/check-host.sh` from a checkout
    of the repository, as root, after the first run. It checks `lyricad`
    and Caddy, that her `tailscaled` answers on its socket, `NoNewPrivs`,
    the setuid `fusermount3`, Caddy's socket, `lyrica-update.path`, a
@@ -150,8 +209,8 @@ runs from the profile `/nix/var/nix/profiles/lyrica`, and its first start
 makes `/etc/lyrica/deploy-key`: add its `.pub` as in "Add the deploy key"
 below. Keep a scheduled Proxmox backup of the VM, for the reason given
 there. Upgrading is
-`nix flake update lyrica` and `nixos-rebuild switch`, which restarts
-`lyricad` (which logs everyone out). Before that start, when the package
+`nix flake update lyrica` in `/etc/nixos` and `nixos-rebuild switch`,
+which restarts `lyricad` (which logs everyone out). Before that start, when the package
 changed, her databases are snapshotted and the profile moves to it; if the
 new package can't read them, the newest snapshot it can read is restored.
 The package is rebuilt only when the code it ships changed; a commit that
@@ -161,13 +220,54 @@ header shows the commit that is running, as on Debian.
 
 ### On Debian or Ubuntu
 
-As root, from a git checkout of the repository outside `/opt/lyrica`:
+**From nothing.**
 
-```sh
-git clone https://github.com/xlc2022/lyrica /root/lyrica
-cd /root/lyrica
-daemon/deploy/install.sh
-```
+1. **Pick a release.** Debian 13 "trixie" (systemd 257) or Ubuntu Server
+   26.04 LTS (inferred: systemd 256 or later; not checked). Saving the
+   `self.db` passphrase needs systemd 256 or later
+   (`systemd-creds encrypt --user`). Debian 12 and Ubuntu 24.04 work
+   too, but she can't start unlocked: you type the passphrase on the unlock
+   page after each start, and everything else is the same. Ubuntu 25.04 is
+   end of life.
+2. **The machine.** In a Proxmox LXC container, do the features in the
+   section above first, then continue at step 4. In a Proxmox VM: machine
+   type `q35`, BIOS default or `OVMF (UEFI)` with an EFI disk, CPU type
+   `host`, a VirtIO SCSI disk and the sizes from "What the machine needs".
+3. **Install the OS** from the Debian netinst or the Ubuntu Server ISO. At
+   the software choice, pick only "SSH server" (Debian, plus "standard
+   system utilities") or "Install OpenSSH server" (Ubuntu); no desktop.
+   Reboot, log in over SSH, and become root (`su -` on Debian, `sudo -i`
+   on Ubuntu).
+4. **Update and add what the script expects to find.** The script checks
+   for root, a git checkout and Node, and installs the rest itself. You
+   need `git` to clone, and `curl` and `ca-certificates` for NodeSource:
+
+   ```sh
+   apt-get update && apt-get upgrade -y
+   apt-get install -y git curl ca-certificates
+   ```
+
+5. **Node.js 22.6 or later**, installed before the script runs (it checks
+   and stops otherwise). The SSH helper that machines use runs with
+   Node's type stripping, which arrived in 22.6; an older 22 fails every
+   machine call. NodeSource's packages are one way:
+
+   ```sh
+   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+   apt-get install -y nodejs
+   node --version   # v22.6 or later
+   ```
+
+6. **Internet access** during the install: npm, `proxy.golang.org` for the
+   Caddy build, and `pkgs.tailscale.com` when Tailscale isn't installed
+   yet. Updates later fetch from GitHub over SSH with a deploy key.
+7. As root, from a git checkout of the repository outside `/opt/lyrica`:
+
+   ```sh
+   git clone https://github.com/xlc2022/lyrica /root/lyrica
+   cd /root/lyrica
+   daemon/deploy/install.sh
+   ```
 
 A release is exactly one commit, so the script refuses a checkout with
 uncommitted changes. It builds the web UI itself.

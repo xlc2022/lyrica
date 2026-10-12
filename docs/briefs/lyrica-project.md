@@ -57,7 +57,9 @@ written here.
    stops with an error, or finishes a task without an update, is reported
    to the project chat whatever the setting; she reads its latest
    messages with `threads read` and stops a thread that went wrong with
-   `threads stop` (docs/delegation.md, "Child threads").
+   `threads stop` (docs/delegation.md, "Child threads"). To wait on CI or
+   a review without blocking a turn she sets a wake-up, `threads later`
+   with minutes and a note, and checks then.
 
 ## Project instructions (paste as is)
 

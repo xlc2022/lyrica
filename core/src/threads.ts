@@ -10,6 +10,18 @@ export const FROM_PARENT = /^\[From t:([^\]\s]+)\]\n\n/;
 export const WATCHING_MARK = "[Watching threads]\n\n";
 export const WATCHING = /^\[Watching threads\]\n\n/;
 /**
+ * What a wake-up's note starts with (daemon/src/wakeups.ts): when it was set
+ * and, if it fires late (the user was locked), when it was due. Times are
+ * UTC, to the minute. Only lyricad writes it.
+ */
+export const wakeupMark = (setAt: string, dueAt?: string) => `[Wake-up, set ${minute(setAt)}${dueAt ? `, due ${minute(dueAt)}` : ""}]\n\n`;
+export const WAKEUP = /^\[Wake-up, set ([0-9T:-]+Z)(?:, due ([0-9T:-]+Z))?\]\n\n/;
+const minute = (iso: string) => `${iso.slice(0, 16)}Z`;
+
+/** A thread's wake-ups: pending at once, fired in a day, and how far ahead, in minutes. */
+export const WAKEUP_LIMITS = { pending: 3, perDay: 12, maxMinutes: 7 * 24 * 60 };
+
+/**
  * A look as memory shows it: which threads it pointed at, never what it
  * quoted, so sleep and recall take the person's words from where they were said.
  */
@@ -70,6 +82,10 @@ export const PROJECT_THREAD_GUIDELINES = [
   "When the work is delivered, resolve this thread (threads resolve).",
   "You may message another thread of this project (threads message with its id) when its work affects yours, and read its latest messages (threads read).",
 ];
+
+/** Her guidance on wake-ups, in every thread with the threads tool. */
+export const WAKEUP_GUIDELINE = "To come back to something later without waiting in this turn (CI to finish, a review to land), set a wake-up: threads later with minutes and a note to yourself. "
+  + "At that time the note starts a turn here, marked [Wake-up, set …]. One wakes only this thread; at most 3 wait at once and 12 fire a day.";
 
 /** How she mentions a thread, in every thread: by ID, which the person sees as its current title. */
 export const MENTION_GUIDELINE = "Mention a thread as [t:<id>] and a message as [e:<id>#<n>]: the person sees the thread's current title, linked, so don't write the title beside it. A person may name a thread by its title; use its ID when you mention it.";

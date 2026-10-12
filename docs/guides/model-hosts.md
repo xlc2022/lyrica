@@ -37,10 +37,9 @@ back each other up.
 
 ## The machine
 
-- Linux. `host/install.sh` is written and documented for Debian or
-  Ubuntu only. On NixOS it would need `virtualisation.docker` and, for
-  NVIDIA, `hardware.nvidia-container-toolkit.enable` in the system
-  configuration; nobody has run it there yet.
+- Linux: Debian or Ubuntu, or NixOS with the flake's `model-host` module
+  first ([host/README.md](../../host/README.md), "On NixOS"). Nobody has run
+  it on NixOS yet.
 - The GPU driver: NVIDIA's, or `amdgpu` (with ROCm kernel support,
   `/dev/kfd`, for the ROCm backend).
 - Docker with the compose plugin, using its **iptables** firewall backend
@@ -90,6 +89,16 @@ been tried on hardware.
 
 ```sh
 git clone https://github.com/xlc2022/lyrica && cd lyrica
+host/install.sh
+```
+
+On NixOS, add the `model-host` module and `nixos-rebuild switch` first
+([host/README.md](../../host/README.md), "On NixOS"), then clone into its
+`checkout` folder. `/srv` belongs to root, so make the folder yours first:
+
+```sh
+sudo mkdir -p /srv/lyrica-host && sudo chown "$USER" /srv/lyrica-host
+git clone https://github.com/xlc2022/lyrica /srv/lyrica-host && cd /srv/lyrica-host
 host/install.sh
 ```
 

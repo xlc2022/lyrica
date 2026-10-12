@@ -3,7 +3,7 @@ import { DELEGATION_SCHEMA } from "./delegation.ts";
 import { IDENTITY_SCHEMA } from "./models/host.ts";
 import { addNotice, ENDPOINT_SCHEMA, migrate as moveModels, MODEL_CHOICE_SCHEMA, REDIRECT_SCHEMA, upgradeCalls } from "./models/schema.ts";
 import { PREFS_SCHEMA } from "./prefs.ts";
-import { POOL_SCHEMA, POOL_UPGRADES } from "./store/schema.ts";
+import { POOL_SCHEMA, POOL_UPGRADES, WAKEUPS_SCHEMA } from "./store/schema.ts";
 import { CHANGES_SCHEMA } from "./workspace/changes.ts";
 import { MACHINES_SCHEMA, upgradeWorkspace, WORKSPACE_SCHEMA } from "./workspace/settings.ts";
 
@@ -225,6 +225,20 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Reactions on messages (DESIGN.md, Threads): the emoji and who reacted, as JSON; null means none.
     version: 2,
     run(db) { db.exec("ALTER TABLE entries ADD COLUMN reactions TEXT"); },
+  }, {
+    // The user's unsent composer text, one per thread: kept here, encrypted, never in the browser. Expands only.
+    version: 3,
+    run(db) {
+      db.exec(`CREATE TABLE drafts (
+        thread     TEXT PRIMARY KEY REFERENCES threads (id) ON DELETE CASCADE,
+        text       TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`);
+    },
+  }, {
+    // Wake-ups (DESIGN.md, Projects): a thread's note to itself for later. Adds a table only.
+    version: 4,
+    run(db) { db.exec(WAKEUPS_SCHEMA); },
   }],
 };
 

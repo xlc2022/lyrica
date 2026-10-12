@@ -443,6 +443,40 @@ test("an uploaded file's path goes into the message", async ({ page, baseURL }) 
   await expect(page.locator(".msg.user").getByText(path)).toBeVisible();
 });
 
+test("the composer's draft survives a reload, goes once sent, and stays with its thread", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  const box = page.getByLabel("Message", { exact: true });
+  const draftCall = (method: string) => page.waitForResponse((r) => r.url().endsWith("/draft") && r.request().method() === method);
+  const saved = draftCall("PUT");
+  await box.fill("Half a thought");
+  await saved;
+  let loaded = draftCall("GET");
+  await page.reload();
+  await loaded;
+  await expect(box).toHaveValue("Half a thought");
+
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("You said: Half a thought")).toBeVisible();
+  loaded = draftCall("GET");
+  await page.reload();
+  await loaded;
+  await expect(page.locator(".msg.user").getByText("Half a thought")).toBeVisible();
+  await expect(box).toHaveValue("");
+
+  // Another thread's box starts empty, and the first thread's text isn't written into it.
+  await box.fill("Only for the first thread");
+  await draftCall("PUT");
+  loaded = draftCall("GET");
+  await newThread(page, "General");
+  await loaded;
+  await expect(box).toHaveValue("");
+  loaded = draftCall("GET");
+  await page.reload();
+  await loaded;
+  await expect(box).toHaveValue("");
+});
+
 test("a memory can be added, edited and restored", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   // A thread mention in a memory shows as a link to that thread.

@@ -78,6 +78,9 @@ export interface StoredEntry {
   createdAt: string;
 }
 
+/** A thread's note to itself, for `dueAt` (DESIGN.md, Projects). */
+export interface Wakeup { id: number; thread: string; dueAt: string; note: string; setAt: string }
+
 /** One emoji on a message and who put it there: user IDs, or "lyrica". */
 export interface Reaction { emoji: string; by: string[] }
 export const LYRICA_REACTS = "lyrica";
@@ -334,12 +337,30 @@ export class PoolReader {
     return row?.id;
   }
 
+  /** The user's unsent composer text for a thread, if any. */
+  draft(threadId: string): { text: string; updatedAt: string } | undefined {
+    const row = this.db.prepare("SELECT text, updated_at FROM drafts WHERE thread = ?").get(threadId) as { text: string; updated_at: string } | undefined;
+    return row && { text: row.text, updatedAt: row.updated_at };
+  }
+
   /** The newest entry of the thread with one of the roles, or of any role. */
   lastEntry(threadId: string, roles?: string[]): StoredEntry | undefined {
     const filter = roles ? `AND role IN (${roles.map(() => "?").join(",")})` : "";
     const row = this.db.prepare(`SELECT * FROM entries WHERE thread = ? ${filter} ORDER BY n DESC LIMIT 1`)
       .get(threadId, ...(roles ?? [])) as EntryRow | undefined;
     return row && toEntry(row);
+  }
+
+  /** A thread's wake-ups not yet fired, soonest first; or every thread's. */
+  wakeups(threadId?: string): Wakeup[] {
+    const rows = this.db.prepare(`SELECT * FROM wakeups WHERE fired_at IS NULL ${threadId ? "AND thread = ?" : ""} ORDER BY due_at, id`)
+      .all(...(threadId ? [threadId] : [])) as { id: number; thread: string; due_at: string; note: string; set_at: string }[];
+    return rows.map((r) => ({ id: r.id, thread: r.thread, dueAt: r.due_at, note: r.note, setAt: r.set_at }));
+  }
+
+  /** When a thread's wake-ups fired since `since`, oldest first. */
+  wakeupsFired(threadId: string, since: string): string[] {
+    return (this.db.prepare("SELECT fired_at FROM wakeups WHERE thread = ? AND fired_at >= ? ORDER BY fired_at").all(threadId, since) as { fired_at: string }[]).map((r) => r.fired_at);
   }
 
   /** A thread's latest `limit` messages as another thread reads them: logged ones with text, no tool results; oldest first. */
@@ -351,7 +372,7 @@ export class PoolReader {
 
   /** When the user last spoke in this pool, in any thread. */
   lastUserMessage(): Date | undefined {
-    const row = this.db.prepare("SELECT max(created_at) AS at FROM entries WHERE role = 'user' AND unlogged = 0 AND text != '' AND text NOT LIKE '[Watching threads]%'").get() as { at: string | null };
+    const row = this.db.prepare("SELECT max(created_at) AS at FROM entries WHERE role = 'user' AND unlogged = 0 AND text != '' AND text NOT LIKE '[Watching threads]%' AND text NOT LIKE '[Wake-up, set %'").get() as { at: string | null };
     return row.at ? new Date(row.at) : undefined;
   }
 
@@ -846,6 +867,13 @@ export class PoolStore extends PoolReader {
     return next;
   }
 
+  /** Keeps the user's unsent composer text for a thread; empty text deletes it. Forgetting the thread takes it too. */
+  setDraft(threadId: string, text: string): void {
+    this.mustThread(threadId);
+    if (!text) this.db.prepare("DELETE FROM drafts WHERE thread = ?").run(threadId);
+    else this.db.prepare("INSERT INTO drafts (thread, text, updated_at) VALUES (?, ?, ?) ON CONFLICT (thread) DO UPDATE SET text = excluded.text, updated_at = excluded.updated_at").run(threadId, text, now());
+  }
+
   /** Pinned entries, oldest first: one thread's, or every thread's in this pool. */
   pins(threadId?: string): PinnedEntry[] {
     const rows = this.db.prepare(`SELECT * FROM entries WHERE pinned = 1 ${threadId === undefined ? "" : "AND thread = ?"} ORDER BY created_at, n`)
@@ -905,6 +933,26 @@ export class PoolStore extends PoolReader {
    * have (a kept child thread is no longer a child). A project forgotten with
    * `children` also takes its page and the notes that came only from it.
    */
+  /** A wake-up for the thread at `dueAt`, with its note. Returns its ID. */
+  addWakeup(threadId: string, dueAt: string, note: string, at = now()): number {
+    this.mustThread(threadId);
+    return Number(this.db.prepare("INSERT INTO wakeups (thread, due_at, note, set_at) VALUES (?, ?, ?, ?)").run(threadId, dueAt, note, at).lastInsertRowid);
+  }
+
+  /** A wake-up fired: kept a day for the daily cap, without its note. Older fired ones go. */
+  fireWakeup(id: number, at = now()): void {
+    this.tx(() => {
+      this.db.prepare("UPDATE wakeups SET fired_at = ?, note = '' WHERE id = ?").run(at, id);
+      this.db.prepare("DELETE FROM wakeups WHERE fired_at < ?").run(new Date(Date.parse(at) - 86_400_000).toISOString());
+    });
+  }
+
+  /** Removes a thread's pending wake-ups: one, or all. Returns how many. */
+  removeWakeups(threadId: string, id?: number): number {
+    return this.db.prepare(`DELETE FROM wakeups WHERE thread = ? AND fired_at IS NULL ${id !== undefined ? "AND id = ?" : ""}`)
+      .run(threadId, ...(id !== undefined ? [id] : [])).changes;
+  }
+
   forgetThread(threadId: string, author: Author, opts: { children?: boolean } = {}): void {
     this.checkAuthor(author);
     const thread = this.mustThread(threadId);
@@ -922,6 +970,7 @@ export class PoolStore extends PoolReader {
       }
       this.db.prepare("DELETE FROM search WHERE kind = 'entry' AND id LIKE ?").run(`e:${threadId}#%`);
       this.db.prepare("DELETE FROM entries WHERE thread = ?").run(threadId);
+      this.db.prepare("DELETE FROM wakeups WHERE thread = ?").run(threadId);
       this.db.prepare("DELETE FROM threads WHERE id = ?").run(threadId);
       this.optimize();
     });

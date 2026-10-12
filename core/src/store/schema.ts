@@ -138,3 +138,16 @@ export const POOL_UPGRADES = [
   { check: "SELECT 1 FROM pragma_table_info('threads') WHERE name = 'goal'", sql: "ALTER TABLE threads ADD COLUMN goal TEXT" },
   { check: "SELECT 1 FROM pragma_table_info('pages') WHERE name = 'instructions'", sql: "ALTER TABLE pages ADD COLUMN instructions TEXT" },
 ];
+
+/** Wake-ups (DESIGN.md, Projects): a thread's note to itself for later. Fired ones stay a day, for the daily cap. */
+export const WAKEUPS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS wakeups (
+  id       INTEGER PRIMARY KEY,
+  thread   TEXT NOT NULL,
+  due_at   TEXT NOT NULL,
+  note     TEXT NOT NULL,
+  set_at   TEXT NOT NULL,
+  fired_at TEXT
+);
+CREATE INDEX IF NOT EXISTS wakeups_thread ON wakeups (thread, fired_at);
+`;

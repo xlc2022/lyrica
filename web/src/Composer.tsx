@@ -2,9 +2,10 @@
 // keyboards), files attach from the "+" menu, by drag or paste. The box holds
 // the text and Send (Stop while she works and the box is empty); under it, a
 // quiet row with "+", the mic (dictation goes in at the caret) and the
-// thread's mode (Shift+Tab cycles).
+// thread's mode (Shift+Tab cycles). The unsent text is kept on lyricad, one
+// draft per thread, never in the browser.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { upload, type ThreadSettings, type ThreadSettingsChange } from "./api.ts";
+import { draft as loadDraft, saveDraft, upload, type ThreadSettings, type ThreadSettingsChange } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { ATTACH_EVENT, ATTACH_KEY, take, type AttachRequest } from "./links.ts";
@@ -32,6 +33,68 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
   const nextId = useRef(0);
 
   useEffect(() => { if (restored) setDraft((d) => (d ? `${restored}\n\n${d}` : restored)); }, [restored]);
+
+  // The draft on lyricad: loaded once per thread, filling the box only if nothing is in it yet; saved a
+  // second after typing stops, on blur and on leaving. `known` is the text lyricad holds for `base` (unknown
+  // until loaded), so the same text is never saved twice; a pending save carries its own base, so one
+  // thread's text never lands in another.
+  const known = useRef<{ base: string; text?: string }>({ base });
+  const pending = useRef<{ base: string; text: string; timer: number } | undefined>(undefined);
+  const saving = useRef<Promise<unknown>>(Promise.resolve());
+  const typed = useRef(false);
+  const [loaded, setLoaded] = useState(false);
+  const report = useRef(onError);
+  report.current = onError;
+
+  const write = useCallback((b: string, text: string, keepalive = false) => {
+    const k = known.current;
+    const ours = k.base === b;
+    if (ours && k.text === text) return;
+    const before = ours ? k.text : undefined;
+    if (ours) k.text = text;
+    const failed = (e: Error) => {
+      if (known.current.base === b && known.current.text === text) known.current.text = before;
+      report.current(e.message);
+    };
+    // Leaving the page can't wait for an earlier save; otherwise saves go in order.
+    if (keepalive) void saveDraft(b, text, true).catch(failed);
+    else saving.current = saving.current.then(() => saveDraft(b, text)).catch(failed);
+  }, []);
+  const cancel = () => {
+    if (pending.current) clearTimeout(pending.current.timer);
+    pending.current = undefined;
+  };
+  const flush = useCallback((keepalive = false) => {
+    const p = pending.current;
+    if (!p) return;
+    clearTimeout(p.timer);
+    pending.current = undefined;
+    write(p.base, p.text, keepalive);
+  }, [write]);
+
+  useEffect(() => {
+    let live = true;
+    known.current = { base };
+    typed.current = false;
+    setLoaded(false);
+    loadDraft(base).then((d) => {
+      if (!live) return;
+      known.current = { base, text: d.text };
+      if (d.text) setDraft((cur) => (typed.current || cur ? cur : d.text));
+      setLoaded(true);
+    }, () => { if (live) setLoaded(true); });
+    const leave = () => flush(true);
+    addEventListener("pagehide", leave);
+    return () => { live = false; removeEventListener("pagehide", leave); flush(); };
+  }, [base, flush]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    const k = known.current.text;
+    if (k === undefined ? !draft : draft === k) { cancel(); return; }
+    cancel();
+    pending.current = { base, text: draft, timer: window.setTimeout(() => flush(), 1000) };
+  }, [draft, loaded, base, flush]);
 
   // Attach from the Files panel: its paths go in on their own lines, as an upload's does. Chosen on the
   // Files page on a phone, they wait in session storage for this thread's box.
@@ -94,8 +157,17 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
     const text = draft.trim();
     if (!text || uploads.some((x) => !x.error)) return;
     stopReading();
+    // A send clears lyricad's draft, so nothing pending goes; a refused one keeps it, and the text comes back.
+    cancel();
+    const k = known.current;
+    const before = k.text;
+    k.text = "";
     setDraft("");
-    if (!(await onSend(text))) setDraft(text);
+    await saving.current; // an earlier save lands before the send clears it
+    if (!(await onSend(text))) {
+      if (k.text === "") k.text = before;
+      setDraft(text);
+    }
   };
 
   return (
@@ -129,7 +201,8 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
             aria-label="Message"
             placeholder={mic.state === "recording" ? "Listening…" : busy ? "Add a follow-up" : `Message ${her()}`}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => { typed.current = true; setDraft(e.target.value); }}
+            onBlur={() => flush()}
             onPaste={(e) => { if (e.clipboardData.files.length) { e.preventDefault(); attach(e.clipboardData.files); } }}
             onKeyDown={(e) => {
               if (e.key === "Tab" && e.shiftKey && settings) { e.preventDefault(); onSettings({ mode: nextMode(settings.mode) }); return; }

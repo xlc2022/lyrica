@@ -229,6 +229,20 @@ describe("projects", () => {
     expect(asked()).toHaveLength(3);
   });
 
+  it("make no look for a wake-up's turn in a project's thread: the person didn't write", async () => {
+    const { d, script, requests, say, threadPath, messages } = await setup({ threads: { concurrency: 5 }, watchMs: 100 });
+    script("chat").push(start(["DNS", "dns: move DNS to the router"]), { text: "Started." });
+    script("dns").push(tool({ action: "later", minutes: 5, note: "Check the leases." }), { text: "Later." });
+    const { events } = await say("move DNS");
+    const dns = ends(events).flatMap((e) => e.threads ?? [])[0]!.id;
+    await until(() => messages(threadPath(dns)), (m) => m.some((x) => x.role === "assistant" && x.parts.some((p) => p.type === "text" && p.text === "Later.")));
+    script("dns").push({ text: "Leases look fine." });
+    d.services!.wakeups.tick(new Date(Date.now() + 10 * 60_000));
+    await until(() => messages(threadPath(dns)), (m) => m.some((x) => x.from?.kind === "wakeup") && m.at(-1)!.role === "assistant");
+    await new Promise((r) => setTimeout(r, 400));
+    expect(requests.filter((c) => who(c) === "watching")).toHaveLength(0);
+  });
+
   it("keep a quiet look that answers during a turn Li started for after that turn, starting no other", async () => {
     const { li, path, script, requests, say, threadPath, messages, stream } = await setup({ threads: { concurrency: 5 }, watchMs: 100 });
     const asked = () => requests.filter((c) => who(c) === "watching");

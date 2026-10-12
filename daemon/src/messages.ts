@@ -1,4 +1,4 @@
-import { FROM_PARENT, LYRICA_REACTS, WATCHING, type Reaction as StoredReaction } from "@lyrica/core";
+import { FROM_PARENT, LYRICA_REACTS, WAKEUP, WATCHING, type Reaction as StoredReaction } from "@lyrica/core";
 import { DELEGATE_MESSAGE, OPENING, USER_MESSAGE } from "@lyrica/extension";
 import type { Message, MessagePart, Pool, Reaction, ThreadRef, Told } from "./api.ts";
 
@@ -140,6 +140,12 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
       if (marked) {
         const from = marked[1] === opts.parent ? { kind: "parent" as const, threadId: marked[1]! } : { kind: "thread" as const, threadId: marked[1]! };
         out.push({ ...base, role: "user", from, parts: [{ type: "text", text: textOf(m.content).slice(marked[0].length) }] });
+        continue;
+      }
+      // A wake-up's note to herself; lyricad refuses the mark on anything a user sends.
+      const wakeup = WAKEUP.exec(textOf(m.content));
+      if (wakeup) {
+        out.push({ ...base, role: "user", from: { kind: "wakeup", setAt: wakeup[1]!, ...(wakeup[2] ? { dueAt: wakeup[2] } : {}) }, parts: [{ type: "text", text: textOf(m.content).slice(wakeup[0].length) }] });
         continue;
       }
       // lyricad refuses the mark on anything a user sends.

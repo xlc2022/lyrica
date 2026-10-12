@@ -5,6 +5,7 @@ import {
 import type { Delegation, ThreadContext, ThreadsHost } from "@lyrica/extension";
 import type { ThreadHost } from "./hosted.ts";
 import type { ProjectSettings } from "./projects.ts";
+import type { Wakeups } from "./wakeups.ts";
 
 // Child threads Lyrica starts. Each is hosted like any thread; this keeps one
 // row per child in user.db (no conversation text): whether it was working,
@@ -38,6 +39,8 @@ export interface ChildOptions {
   project?: (userId: string, pool: Pool, project: string) => ProjectSettings;
   /** A project's thread posted to the project chat. */
   updated?: (userId: string, pool: Pool, project: string, thread: string) => void;
+  /** Wake-ups, which her `threads later` sets. */
+  wakeups?: () => Wakeups;
 }
 
 export class ChildThreads implements ThreadsHost {
@@ -246,9 +249,39 @@ export class ChildThreads implements ThreadsHost {
     return true;
   }
 
-  /** Whether `from` may read `id` with threads read: what its threads list shows. */
-  readable(from: ThreadContext, id: string): boolean {
-    return this.list(from).some((c) => c.id === id);
+  /** Her `threads later`: a wake-up for the thread she's in. */
+  later(from: ThreadContext, minutes: number, note: string): { dueAt: string } {
+    if (!this.o.wakeups) throw new Error("wake-ups aren't available here");
+    return this.o.wakeups().set(from, minutes, note);
+  }
+
+  /** Her `threads later` with `cancel`. */
+  cancelLater(from: ThreadContext): number {
+    if (!this.o.wakeups) throw new Error("wake-ups aren't available here");
+    return this.o.wakeups().cancel(from);
+  }
+
+  /**
+   * Whether a wake-up may start a turn in the thread now. A child waits for
+   * a slot under the at-once limit, unless its turn is running; a queued
+   * thread waits for its start, and a paused or hidden project's thread for
+   * the project to resume.
+   */
+  mayWake(userId: string, pool: Pool, thread: string): boolean {
+    const row = this.row(userId, pool, thread);
+    if (!row) return true;
+    if (row.queued || this.o.paused?.(userId, pool, row.parent)) return false;
+    return this.o.host().busy(userId, pool, thread) || this.workingCount(userId) < this.limits.concurrency;
+  }
+
+  /** A wake-up fired in the thread: a resolved project thread reopens, as a message reopens it. */
+  woke(userId: string, pool: Pool, thread: string): void {
+    if (this.row(userId, pool, thread)?.resolved_at) this.setResolved(userId, pool, thread, false);
+  }
+
+  /** The thread's parent, if it is a child thread. */
+  parentOf(userId: string, pool: Pool, thread: string): string | undefined {
+    try { return this.row(userId, pool, thread)?.parent; } catch { return undefined; /* locked */ }
   }
 
   list(parent: ThreadContext): ChildInfo[] {

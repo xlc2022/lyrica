@@ -11,7 +11,7 @@ import type { ShellContext } from "./Shell.tsx";
 import type { useThread } from "./stream.ts";
 import { SuggestedCard, ThreadCard, type ProjectEnv } from "./Project.tsx";
 import { EditBox, MessageMenu, type Rewinder } from "./Rewind.tsx";
-import { ErrorText, Prose, useAction } from "./ui.tsx";
+import { ErrorText, Prose, useAction, wakeTime } from "./ui.tsx";
 import { Lightbox, PathText, useFileLinks, type FileLinks } from "./paths.tsx";
 import { foldLooks, raisedIn, toldIn, type Told } from "./looks.ts";
 import { her } from "./name.ts";
@@ -123,6 +123,7 @@ function StoredMessage({ m, env, you, cards, told, folded }: { m: Message; env: 
   const after = cards?.map((t) => <ThreadCard key={t.id} t={t} userId={env.userId} env={env.project!} />);
   if (m.role === "user") {
     if (m.from?.kind === "parent" || m.from?.kind === "thread") return <><FromThread text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} from={m.from} env={env} n={m.n} />{after}</>;
+    if (m.from?.kind === "wakeup") return <><WakeupMarker text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} setAt={m.from.setAt} dueAt={m.from.dueAt} env={env} n={m.n} />{after}</>;
     if (m.from?.kind === "watching") return <><LookMarker text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} told={told ?? []} env={env} n={m.n} />{after}</>;
     const hers = m.from?.kind === "lyrica";
     const who = hers ? her() : m.from?.kind === "user" ? (m.from.name || you) : you;
@@ -145,6 +146,8 @@ function StoredMessage({ m, env, you, cards, told, folded }: { m: Message; env: 
 const WATCHING_MARK = "[Watching threads]\n\n";
 /** The line lyricad puts on what a parent or a sibling thread sent, as a live item carries it (core/src/threads.ts). */
 const FROM_PARENT = /^\[From t:([^\]\s]+)\]\n\n/;
+/** The line lyricad puts on her note when a wake-up fires, as a live item carries it (core/src/threads.ts, WAKEUP). */
+const WAKEUP = /^\[Wake-up, set ([0-9T:-]+Z)(?:, due ([0-9T:-]+Z))?\]\n\n/;
 
 /**
  * A look at the project's threads (docs/ux.md §6: one-line markers for her inner workings): "Checked the other threads",
@@ -184,6 +187,8 @@ function LiveMessage({ item, env, you, streaming }: { item: LiveItem; env: Env; 
     if (item.text.startsWith(WATCHING_MARK)) { const text = item.text.slice(WATCHING_MARK.length); return <LookMarker text={text} told={toldIn(text, env.pool)} env={env} />; }
     const parent = FROM_PARENT.exec(item.text);
     if (parent) return <FromThread text={item.text.slice(parent[0].length)} from={{ kind: "thread", threadId: parent[1]! }} env={env} />;
+    const wake = WAKEUP.exec(item.text);
+    if (wake) return <WakeupMarker text={item.text.slice(wake[0].length)} setAt={wake[1]!} dueAt={wake[2]} env={env} />;
     return <UserMessage text={item.text} you={you} env={env} />;
   }
   // A look kept without a turn: the same marker, until its stored copy replaces this one.
@@ -416,6 +421,30 @@ function FromThread({ text, from, env, n }: { text: string; from: { kind: "paren
           </div>
           <div ref={body} className="body prose" data-clamped={more ? undefined : ""}><HerProse text={text} env={env} elsewhere /></div>
           {long && <button type="button" className="link show-more" onClick={() => setMore(!more)}>{more ? "Show less" : "Show more"}</button>}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Her note to herself, when its wake-up fires (docs/ux.md §6): one line, Woke up with when it was set
+ * (and when it was due, if it fired late), opening to the note as a tinted block, as Message received does.
+ */
+function WakeupMarker({ text, setAt, dueAt, env, n }: { text: string; setAt: string; dueAt?: string; env: Env; n?: number }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="msg user from-thread" data-type="wakeup" id={n !== undefined ? `m-${n}` : undefined}>
+      <button type="button" className="from-head" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span>Woke up · set <span className="num">{wakeTime(setAt)}</span>{dueAt && <> · due <span className="num">{wakeTime(dueAt)}</span></>}</span><Icon name="down" />
+      </button>
+      {open && (
+        <>
+          <div className="who">
+            {her()}
+            {env.rewinder && n !== undefined && <MessageMenu n={n} role="user" rewinder={env.rewinder} />}
+          </div>
+          <div className="body prose"><HerProse text={text} env={env} /></div>
         </>
       )}
     </div>
