@@ -56,7 +56,8 @@ A thread's address may carry what the panel beside it shows:
   `GET …/people`, linked personas marked; picking one confirms in a dialog
   that says the copy is as it is now, that later messages and memories
   don't go, and that the thread is private when it is; `POST …/share`;
-  not on a project chat or a subagent's thread), Move to group (M: the groups, Not in a group, New group… N),
+  not on a project chat or a subagent's thread; a private thread's
+  notification offers Add to Private only), Move to group (M: the groups, Not in a group, New group… N),
   **Pin** or **Unpin** (P, top-level threads), **Make project…** (K, a
   top-level thread; confirms in a dialog, since there is no way back),
   **Resolve** or **Reopen** (E, a project's thread), Hide or Unhide (H), and
@@ -167,8 +168,9 @@ A thread's address may carry what the panel beside it shows:
   narrows to a pool. Each row has its kind, pool and time, Open thread or
   Open where the item leads, and its actions as buttons (an action that
   answers with a thread goes there). Checkboxes select rows for the bulk
-  bar: Act on selected when every selected row's first action is the same,
-  and Dismiss (Dismiss or Decline per row). Twenty rows at a time, with
+  bar: when every selected row takes the same actions, each of them with
+  the count (Add to General 2, Decline 2); otherwise Dismiss alone,
+  disabled while a selected row has no Dismiss or Decline. Twenty rows at a time, with
   Show more. The welcome page shows the first four decisions in a card
   with All N.
 - **Settings** (`src/Panel.tsx`): a page with its sections listed at the

@@ -43,6 +43,12 @@ function useAct(ctx: ShellContext, reload: () => void) {
   return [act, busy, error] as const;
 }
 
+/** A detail that opens with a number ("3 entries, …") shows the number in mono (docs/ux.md §2). */
+function numFirst(text: string) {
+  const m = /^(\d[\d,.]*)(\s.*)$/s.exec(text);
+  return m ? <><span className="num">{m[1]}</span>{m[2]}</> : text;
+}
+
 function Where({ n, userId }: { n: Notification; userId: string }) {
   if (n.thread) return <a className="sm btn" href={href({ page: "thread", userId, pool: n.thread.pool, threadId: n.thread.id })}>Open thread</a>;
   if (n.section) {
@@ -62,8 +68,8 @@ function Row({ n, ctx, picked, onPick, act, busy }: {
       <span className="ico" aria-hidden="true">{t.glyph}</span>
       <div className="main-col">
         <span className="name">{n.title}</span>
-        {n.detail && <span className="meta">{n.detail}</span>}
-        <span className="nkind">{t.label} · <span className={`kind${n.scope === "private" ? " private" : ""}`}>{n.scope}</span> · <span className="when">{shortTime(n.at)}</span></span>
+        {n.detail && <span className="meta">{numFirst(n.detail)}</span>}
+        <span className="nkind">{t.label} · <span className={`k${n.scope === "private" ? " private" : ""}`}>{n.scope}</span> · <span className="when">{shortTime(n.at)}</span></span>
       </div>
       <div className="actions">
         <Where n={n} userId={ctx.user.id} />
@@ -102,10 +108,11 @@ export function NotificationsSection({ ctx }: { ctx: ShellContext }) {
   const items = page.data?.items ?? [];
   const total = page.data?.total ?? 0;
   const sel = useMemo(() => items.filter((n) => picked.has(n.id)), [items, picked]);
-  // Bulk: the first action, when every selected row has the same one; Dismiss and Decline count as one.
-  const first = sel[0]?.actions[0]?.label;
-  const same = !!first && sel.every((n) => n.actions[0]?.label === first);
-  const dismissable = sel.length > 0 && sel.every((n) => n.actions.some((a) => a.label === "Dismiss" || a.label === "Decline"));
+  // Bulk: when every selected row takes the same actions, each of them with the count; otherwise only Dismiss, for rows that have one.
+  const labels = (n: Notification) => n.actions.map((a) => a.label).join("\n");
+  const same = sel.length > 0 && sel.every((n) => labels(n) === labels(sel[0]!));
+  const dismissOf = (n: Notification) => n.actions.find((a) => a.label === "Dismiss" || a.label === "Decline");
+  const dismissable = sel.length > 0 && sel.every((n) => dismissOf(n));
   const bulk = (pick: (n: Notification) => NotificationAction | undefined) => act(sel.map(pick).filter((a): a is NotificationAction => !!a)).then(() => setPicked(new Set()));
   const chips: [typeof type, string][] = [["all", `All ${page.data ? total : ""}`.trim()], ["decision", "Needs a decision"], ...(page.data?.types ?? []).map((t): [NotificationType, string] => [t, TYPES[t].label])];
   const groups = sort === "type" || sort === "scope"
@@ -125,15 +132,19 @@ export function NotificationsSection({ ctx }: { ctx: ShellContext }) {
           <option value="all">Everywhere</option><option value="general">General</option><option value="private">Private</option>
         </select></label>
         <span className="spacer" />
-        {page.data && <span className="cap">{total === 1 ? "1 item" : `${total} items`}{total > items.length ? `, ${items.length} shown` : ""}</span>}
+        {page.data && <span className="cap"><span className="num">{total}</span> {total === 1 ? "item" : "items"}{total > items.length ? <>, <span className="num">{items.length}</span> shown</> : ""}</span>}
       </div>
       <div className="bulk" role="toolbar" aria-label="Selected">
         <label className="check"><input type="checkbox" checked={items.length > 0 && items.every((n) => picked.has(n.id))} onChange={(e) => setPicked(e.target.checked ? new Set(items.map((n) => n.id)) : new Set())} /> Select all{total > items.length ? ` ${items.length} shown` : ""}</label>
         <span className="meta">{sel.length ? `${sel.length} selected` : ""}</span>
         <span className="spacer" />
-        <button type="button" className="sm primary" disabled={busy || !same || first === "Dismiss" || first === "Decline"} title={sel.length && !same ? "Works when the selected items take the same action" : undefined}
-          onClick={() => bulk((n) => n.actions[0])}>{same && first !== "Dismiss" && first !== "Decline" ? `${first} ${sel.length}` : "Act on selected"}</button>
-        <button type="button" className="sm" disabled={busy || !dismissable} onClick={() => bulk((n) => n.actions.find((a) => a.label === "Dismiss" || a.label === "Decline"))}>Dismiss{sel.length ? ` ${sel.length}` : ""}</button>
+        {same
+          ? sel[0]!.actions.map((a, i) => (
+            <button key={a.label} type="button" className={`sm${i === 0 && !a.danger ? " primary" : ""}${a.danger ? " danger" : ""}`} disabled={busy}
+              onClick={() => bulk((n) => n.actions.find((x) => x.label === a.label))}>{a.label} <span className="num">{sel.length}</span></button>
+          ))
+          : <button type="button" className="sm" disabled={busy || !dismissable} title={sel.length && !dismissable ? "Something selected can't be dismissed" : undefined}
+            onClick={() => bulk(dismissOf)}>Dismiss{sel.length ? <> <span className="num">{sel.length}</span></> : ""}</button>}
       </div>
       <ErrorText error={page.error || error} />
       {page.data && !items.length && <p className="empty">Nothing waiting.{type !== "all" || scope !== "all" ? " Try a wider filter." : ""}</p>}

@@ -107,7 +107,7 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onCl
     return (
       <ConfirmDialog title={`Send a copy to ${recipient.displayName}?`} confirm="Send a copy" onCancel={() => setRecipient(undefined)}
         onConfirm={() => act(() => post(`${base}/share`, { to: recipient.id }))}
-        sentence={`${recipient.displayName} gets “${name}” as it is now, and can add it to their General or Private threads or decline. Your later messages aren't shared, and none of your memories go with it.${t.pool === "private" ? " This is a private thread." : ""}`} />
+        sentence={`${recipient.displayName} gets “${name}” as it is now, to add to their General or Private threads or decline; your later messages and none of your memories go with it${t.pool === "private" ? ", and this thread is private." : "."}`} />
     );
   }
   if (sub === "project") {

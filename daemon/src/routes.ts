@@ -484,7 +484,11 @@ export function apiRoutes(d: Lyricad): Route[] {
         const thread = threadOf(o, r);
         if (thread.project) throw new HttpError(400, "a project isn't shared; share one of its threads");
         if (thread.subagent) throw new HttpError(400, "a subagent's thread isn't shared on its own");
-        s().shares.send({ from: user.id, to: recipient.id, ...(thread.title ? { title: thread.title } : {}), unlogged: thread.unlogged, entries: o[pool].exportEntries(thread.id) });
+        // The conversation alone (PoolStore.exportEntries), with the pool rules it came with.
+        s().shares.send({
+          from: user.id, to: recipient.id, ...(thread.title ? { title: thread.title } : {}), pool, unlogged: thread.unlogged,
+          localOnly: s().models.callContext(user.id, pool, thread.id).localOnly, entries: o[pool].exportEntries(thread.id),
+        });
       });
       return { ok: true };
     }),
@@ -493,9 +497,11 @@ export function apiRoutes(d: Lyricad): Route[] {
       const pool = checkPool((await r.json<Api.AcceptShare>()).pool);
       const share = s().shares.get(r.params.shareId!, user.id);
       if (!share) throw new HttpError(404, "that share is no longer waiting");
+      if (share.pool === "private" && pool !== "private") throw new HttpError(409, "a private thread is added only to Private");
       return owner(d, user, (o) => {
         const thread = o[pool].createThread({ interface: "web", ...(share.title ? { title: share.title } : {}), unlogged: share.unlogged });
         o[pool].importEntries(thread.id, share.entries);
+        if (share.localOnly && pool === "general") s().models.setLocalOnly(user.id, pool, thread.id, true);
         s().workspace.settings(user.id).startThread(thread.id, pool);
         s().shares.remove(share.id, user.id);
         return summary(d, user, pool, o[pool], thread, []);
@@ -508,7 +514,8 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("GET", `${u}/notifications`, (r): Api.NotificationPage => {
       const q = r.query;
       const num = (k: string) => (q.get(k) === null ? undefined : Number(q.get(k)));
-      return notifications(d, d.userFor(r), { type: q.get("type") ?? undefined, scope: q.get("scope") ?? undefined, sort: q.get("sort") ?? undefined, offset: num("offset"), limit: num("limit") });
+      const user = d.userFor(r);
+      return notifications(d, user, display(d, user.id), { type: q.get("type") ?? undefined, scope: q.get("scope") ?? undefined, sort: q.get("sort") ?? undefined, offset: num("offset"), limit: num("limit") });
     }),
     route("POST", `${t}/seen`, (r) => {
       const user = d.userFor(r);

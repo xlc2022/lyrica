@@ -700,9 +700,9 @@ export interface ForgetThread { children?: boolean }
 
 /** GET /api/u/:userId/people → Person[]: the other users on this server, to share with. */
 export interface Person { id: string; displayName: string; /** A linked persona of this user. */ linked: boolean }
-/** POST /api/u/:userId/threads/:pool/:threadId/share (ShareRequest) → Ok. Not a project chat or a subagent's thread. */
+/** POST /api/u/:userId/threads/:pool/:threadId/share (ShareRequest) → Ok. Not a project chat or a subagent's thread. The copy is the conversation alone: her context, memory tools and citations stay behind, and so do the thread's files. */
 export interface ShareRequest { to: string }
-/** POST /api/u/:userId/shares/:shareId/accept (AcceptShare) → ThreadSummary: the new thread in that pool. */
+/** POST /api/u/:userId/shares/:shareId/accept (AcceptShare) → ThreadSummary: the new thread in that pool. A private thread is added only to Private (409 otherwise); a local-only thread's copy is local-only. */
 export interface AcceptShare { pool: Pool }
 /** DELETE /api/u/:userId/shares/:shareId → Ok: declined; nothing of it stays. */
 
@@ -735,6 +735,7 @@ export type NotificationSort = "newest" | "oldest" | "type" | "scope";
 /**
  * GET /api/u/:userId/notifications?type=&scope=&sort=newest&offset=0&limit=50 → NotificationPage.
  * `total` is the number matching the filters, `waiting` the decisions over everything (the sidebar's count), `types` which types exist now.
+ * A pool the display has off, or a hidden thread while Show hidden is off, contributes nothing, not even to `waiting`.
  */
 export interface NotificationPage { items: Notification[]; total: number; waiting: number; types: NotificationType[] }
 /** POST /api/u/:userId/threads/:pool/:threadId/seen → Ok: a child thread's updates are seen without opening it. */

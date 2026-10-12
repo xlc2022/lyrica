@@ -105,7 +105,9 @@ CREATE TABLE IF NOT EXISTS thread_shares (
   from_user  TEXT NOT NULL,
   to_user    TEXT NOT NULL,
   title      TEXT,
+  pool       TEXT NOT NULL,
   unlogged   INTEGER NOT NULL,
+  local_only INTEGER NOT NULL,
   entries    TEXT NOT NULL,
   created_at TEXT NOT NULL
 );

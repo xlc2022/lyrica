@@ -42,8 +42,10 @@ describe("Share with", () => {
     expect(page.waiting).toBe(1);
     expect(page.types).toEqual(["share"]);
     const n = page.items[0]!;
-    expect(n).toMatchObject({ type: "share", title: "Li shared “Garden plans” with you", decision: true, scope: "general" });
-    expect(n.actions.map((a) => a.label)).toEqual(["Add to General", "Add to Private", "Decline"]);
+    // A private thread goes to Private only.
+    expect(n).toMatchObject({ type: "share", title: "Li shared “Garden plans” with you", decision: true, scope: "private" });
+    expect(n.actions.map((a) => a.label)).toEqual(["Add to Private", "Decline"]);
+    expect((await sam.post(`${su}/shares/${n.id.slice("share:".length)}/accept`, { pool: "general" })).status).toBe(409);
     expect((await li.get<NotificationPage>(`${lu}/notifications`)).body.total).toBe(0);
     // Only the recipient can act on it.
     const shareId = n.id.slice("share:".length);
@@ -75,6 +77,77 @@ describe("Share with", () => {
     expect((await sam.get<{ hits?: unknown[] } | unknown[]>(`${su}/memory/search?q=tomatoes`)).status).toBe(200);
     const lis = (await li.get<{ messages: unknown[] }>(`${lu}/threads/private/${enc(t.id)}/messages`)).body.messages;
     expect(lis).toHaveLength(3);
+  });
+
+  it("sends the conversation alone: none of her memory, its IDs or her thinking, and a local-only thread stays off the cloud", async () => {
+    const rt = await runtime();
+    const { d, base } = await daemon(rt);
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const li = await login(base, "li", "pw");
+    const sam = await login(base, "sam", "pw2");
+    const lu = `/api/u/${rt.li.id}`;
+    const su = `/api/u/${rt.sam.id}`;
+    const t = (await li.post<ThreadSummary>(`${lu}/threads`, { pool: "general", title: "Bees" })).body;
+    expect((await li.patch(`${lu}/threads/general/${enc(t.id)}/settings`, { localOnly: true })).status).toBe(200);
+    // What a turn leaves in the thread: her context, a memory tool's call and result, a reply with citations and thinking, a shell call.
+    const o = d.services!.memory.openOwnerView(rt.li.id);
+    try {
+      const add = (role: string, data: unknown, text: string) => o.general.appendEntry(t.id, { piId: `${role}-${Math.random()}`, role, data, text });
+      add("custom", { type: "custom", customType: "lyrica-context", data: { recall: "SECRETNOTE the hive is by the apple tree [n:hive1]" } }, "");
+      add("user", { type: "message", message: { role: "user", content: [{ type: "text", text: "Where is the hive?" }] } }, "Where is the hive?");
+      add("assistant", { type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "c1", name: "recall", arguments: { query: "hive" } }] } }, "");
+      add("toolResult", { type: "message", message: { role: "toolResult", toolCallId: "c1", toolName: "recall", content: [{ type: "text", text: "SECRETNOTE [n:hive1]" }] } }, "");
+      add("assistant", { type: "message", message: { role: "assistant", content: [
+        { type: "thinking", thinking: "PRIVATETHOUGHT about n:hive1" },
+        { type: "text", text: "By the apple tree [n:hive1, general/p:garden], as you wrote [e:t1#3]." },
+        { type: "toolCall", id: "c2", name: "bash", arguments: { command: "date" } },
+      ] } }, "By the apple tree [n:hive1, general/p:garden], as you wrote [e:t1#3].\nbash({\"command\":\"date\"})");
+      add("toolResult", { type: "message", message: { role: "toolResult", toolCallId: "c2", toolName: "bash", content: [{ type: "text", text: "Sun Oct 12" }] } }, "bash: Sun Oct 12");
+    } finally {
+      o.close();
+    }
+    expect((await li.post(`${lu}/threads/general/${enc(t.id)}/share`, { to: rt.sam.id })).status).toBe(200);
+    const n = (await sam.get<NotificationPage>(`${su}/notifications`)).body.items[0]!;
+    expect(n.detail).toMatch(/^3 entries/);
+    const add = n.actions.find((a) => a.label === "Add to General")!;
+    const copy = (await sam.call<ThreadSummary>(add.method, add.path, add.body)).body;
+    // Sam's copy: the question, the reply without its citations, the shell call and its result. Nothing of memory.
+    const stored = d.services!.memory.openOwnerView(rt.sam.id);
+    try {
+      const entries = stored.general.loadEntries(copy.id);
+      const everything = JSON.stringify(entries);
+      expect(everything).not.toContain("SECRETNOTE");
+      expect(everything).not.toContain("PRIVATETHOUGHT");
+      expect(everything).not.toContain("n:hive1");
+      expect(everything).not.toContain("p:garden");
+      expect(everything).not.toContain("e:t1#3");
+      expect(everything).not.toContain("recall");
+      expect(everything).toContain("By the apple tree, as you wrote.");
+      expect(everything).toContain("Sun Oct 12");
+      expect(entries).toHaveLength(3);
+    } finally {
+      stored.close();
+    }
+    // Kept off the cloud, as the original was.
+    expect(d.services!.models.callContext(rt.sam.id, "general", copy.id).localOnly).toBe(true);
+  });
+
+  it("shows nothing from a pool the display has off", async () => {
+    const rt = await runtime();
+    const { d, base } = await daemon(rt);
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const li = await login(base, "li", "pw");
+    const sam = await login(base, "sam", "pw2");
+    const lu = `/api/u/${rt.li.id}`;
+    const su = `/api/u/${rt.sam.id}`;
+    const t = (await li.post<ThreadSummary>(`${lu}/threads`, { pool: "private", title: "Quiet" })).body;
+    say(d, rt.li.id, "private", t.id, "user", "between us");
+    expect((await li.post(`${lu}/threads/private/${enc(t.id)}/share`, { to: rt.sam.id })).status).toBe(200);
+    expect((await sam.get<NotificationPage>(`${su}/notifications`)).body).toMatchObject({ total: 1, waiting: 1 });
+    expect((await sam.patch(`${su}/me/display`, { showPrivate: false })).status).toBe(200);
+    expect((await sam.get<NotificationPage>(`${su}/notifications`)).body).toMatchObject({ total: 0, waiting: 0, types: [] });
+    expect((await sam.patch(`${su}/me/display`, { showPrivate: true })).status).toBe(200);
+    expect((await sam.get<NotificationPage>(`${su}/notifications`)).body.waiting).toBe(1);
   });
 
   it("filters, sorts and pages the notifications", async () => {

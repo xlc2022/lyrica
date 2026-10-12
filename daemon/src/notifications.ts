@@ -11,9 +11,14 @@ const TYPE_ORDER: Api.NotificationType[] = ["permission", "share", "update", "ap
 
 export interface NotificationQuery { type?: string; scope?: string; sort?: string; offset?: number; limit?: number }
 
-/** Everything waiting for the user, filtered, sorted and paged. */
-export function notifications(d: Lyricad, user: User, q: NotificationQuery): Api.NotificationPage {
-  const all = collect(d, user);
+/**
+ * Everything waiting for the user, filtered, sorted and paged. `show` is the
+ * user's display: a pool switched off, or a hidden thread while Show hidden is
+ * off, contributes nothing, not even to the count (DESIGN.md: nothing on
+ * screen says hidden content exists).
+ */
+export function notifications(d: Lyricad, user: User, show: Api.Display, q: NotificationQuery): Api.NotificationPage {
+  const all = collect(d, user, show);
   const waiting = all.filter((n) => n.decision).length;
   const types = TYPE_ORDER.filter((t) => all.some((n) => n.type === t));
   let items = all;
@@ -30,30 +35,37 @@ export function notifications(d: Lyricad, user: User, q: NotificationQuery): Api
   return { items: items.slice(offset, offset + limit), total: items.length, waiting, types };
 }
 
-function collect(d: Lyricad, user: User): Api.Notification[] {
+function collect(d: Lyricad, user: User, show: Api.Display): Api.Notification[] {
   const s = d.services!;
   const u = `/api/u/${encodeURIComponent(user.id)}`;
   const t = (pool: Pool, id: string) => `${u}/threads/${pool}/${encodeURIComponent(id)}`;
   const out: Api.Notification[] = [];
+  const shownPool = (pool: Pool) => (pool === "general" ? show.showGeneral : show.showPrivate);
+  const pools = POOLS.filter(shownPool);
   const o = s.memory.openOwnerView(user.id);
   try {
     const titleOf = (store: PoolStore, id: string) => store.getThread(id)?.title || "A new thread";
-    // Threads shared with the user: add to a pool, or decline.
+    /** A thread the display shows: its pool is on, and it isn't hidden while Show hidden is off. */
+    const shownThread = (pool: Pool, id: string) => { const th = o[pool].getThread(id); return shownPool(pool) && !!th && (show.showHidden || !th.hidden); };
+    // Threads shared with the user: add to a pool, or decline. A private thread goes to Private only.
     for (const sh of s.shares.forUser(user.id)) {
+      if (!shownPool(sh.pool)) continue;
       const from = s.users.get(sh.from)?.profile.displayName ?? "Someone";
+      const accept = (pool: Pool): Api.NotificationAction => ({ label: pool === "general" ? "Add to General" : "Add to Private", method: "POST", path: `${u}/shares/${sh.id}/accept`, body: { pool }, opens: true });
       out.push({
         id: `share:${sh.id}`, type: "share", title: `${from} shared “${sh.title ?? "a thread"}” with you`,
-        detail: `${sh.entryCount} ${sh.entryCount === 1 ? "entry" : "entries"}, as it was when sent. Add it to your threads, or decline.`,
-        scope: "general", decision: true, at: sh.createdAt,
+        detail: `${sh.entryCount} ${sh.entryCount === 1 ? "entry" : "entries"}, as it was when sent.`,
+        scope: sh.pool, decision: true, at: sh.createdAt,
         actions: [
-          { label: "Add to General", method: "POST", path: `${u}/shares/${sh.id}/accept`, body: { pool: "general" }, opens: true },
-          { label: "Add to Private", method: "POST", path: `${u}/shares/${sh.id}/accept`, body: { pool: "private" }, opens: true },
+          ...(sh.pool === "private" ? [] : [accept("general")]),
+          accept("private"),
           { label: "Decline", method: "DELETE", path: `${u}/shares/${sh.id}`, danger: true },
         ],
       });
     }
     // A thread waiting for an approval.
     for (const { pool, threadId, request } of s.host.pending(user.id)) {
+      if (!shownThread(pool, threadId)) continue;
       const title = titleOf(o[pool], threadId);
       const path = `${t(pool, threadId)}/permissions/${encodeURIComponent(request.requestId)}`;
       out.push({
@@ -67,7 +79,7 @@ function collect(d: Lyricad, user: User): Api.Notification[] {
     // A child thread posted an update, or waits on the user.
     for (const c of s.children.updates(user.id)) {
       const th = o[c.pool].getThread(c.thread);
-      if (!th) continue;
+      if (!th || !shownThread(c.pool, c.thread)) continue;
       const title = th.title || "A child thread";
       const last = o[c.pool].lastEntry(c.thread);
       out.push({
@@ -78,8 +90,8 @@ function collect(d: Lyricad, user: User): Api.Notification[] {
         actions: c.needsYou ? [] : [{ label: "Dismiss", method: "POST", path: `${t(c.pool, c.thread)}/seen` }],
       });
     }
-    // Her items from the night.
-    for (const pool of POOLS) {
+    // Her items from the night, in the pools the display shows.
+    for (const pool of pools) {
       for (const i of o[pool].listItems()) {
         if (i.thread) continue;
         const path = `${u}/sleep/${pool}/items/${encodeURIComponent(i.id)}`;

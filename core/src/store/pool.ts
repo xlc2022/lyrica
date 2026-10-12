@@ -4,7 +4,7 @@ import { render, toStored, type UserId } from "../mentions.ts";
 import type { Profile } from "../profile.ts";
 import type { Interface, Pool } from "../types.ts";
 import { WATCHING } from "../threads.ts";
-import { citationsIn, ftsQuery, indexText, kindOf, queryWords, snippet, type Kind } from "./refs.ts";
+import { citationsIn, ftsQuery, indexText, kindOf, queryWords, snippet, stripCitations, type Kind } from "./refs.ts";
 
 /** Who made a change. Thread views write as `lyrica` or `sleep`; the owner view as `user:<id>`. */
 export type Author = "lyrica" | "sleep" | `user:${string}`;
@@ -38,6 +38,36 @@ export interface NewEntry {
 
 /** An entry as a share carries it between pools. */
 export interface ExportedEntry extends NewEntry { createdAt: string }
+
+/** Memory tools, sleep's included: what they read or wrote belongs to the pool, and a copy that leaves it carries none of it. */
+export const MEMORY_TOOLS: ReadonlySet<string> = new Set(["remember", "recall", "read_memory", "write_page", "write_journal", "write_wake", "raise", "propose_persona"]);
+
+interface Part { type: string; text?: string; name?: string; toolName?: string }
+
+/**
+ * A Pi entry as the conversation alone, for a share (DESIGN.md, "Share
+ * with": none of the sender's memory goes): user messages, her text and her
+ * other tools' calls and results. Her per-turn context, memory tool calls
+ * and results, and thinking are left out, and citations are stripped from
+ * her text. `undefined` when nothing of the entry travels.
+ */
+export function conversationOnly(data: unknown): unknown {
+  const entry = data as { type?: string; message?: { role?: string; content?: unknown; toolName?: string } };
+  if (entry?.type !== "message" || !entry.message) return undefined;
+  const m = entry.message;
+  if (m.role === "toolResult") return MEMORY_TOOLS.has(m.toolName ?? "") ? undefined : data;
+  if (m.role !== "user" && m.role !== "assistant") return undefined;
+  if (typeof m.content === "string") return m.role === "assistant" ? { ...entry, message: { ...m, content: stripCitations(m.content) } } : data;
+  if (!Array.isArray(m.content)) return undefined;
+  const parts = (m.content as Part[]).flatMap((p) => {
+    if (p.type === "thinking" || p.type === "redacted_thinking") return [];
+    if (p.type === "toolCall" && MEMORY_TOOLS.has(p.name ?? "")) return [];
+    if (p.type === "text" && m.role === "assistant" && typeof p.text === "string") return [{ ...p, text: stripCitations(p.text) }];
+    return [p];
+  });
+  if (!parts.length) return undefined;
+  return { ...entry, message: { ...m, content: parts } };
+}
 
 export interface StoredEntry {
   /** `e:<thread>#<n>`, or the original entry's ID for an exported copy. */
@@ -655,7 +685,10 @@ export class PoolStore extends PoolReader {
     this.mustThread(threadId);
     return (this.db.prepare("SELECT pi_id, role, data, text, created_at FROM entries WHERE thread = ? ORDER BY n").all(threadId) as
       { pi_id: string; role: string; data: string; text: string; created_at: string }[])
-      .map((r) => ({ piId: r.pi_id, role: r.role, data: JSON.parse(r.data), text: r.text, createdAt: r.created_at }));
+      .flatMap((r) => {
+        const data = conversationOnly(JSON.parse(r.data));
+        return data ? [{ piId: r.pi_id, role: r.role, data, text: stripCitations(r.text), createdAt: r.created_at }] : [];
+      });
   }
 
   /**
