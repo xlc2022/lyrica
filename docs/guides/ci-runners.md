@@ -18,7 +18,10 @@ set up with the script on 2026-10-11, and every pull request and push to
   pinned wheels are x86 only, so an ARM runner could run only the `check`
   job and would need a label of its own.
 - About 4 cores, 8 GB of memory and 150 GB of disk: the ROCm image build
-  needs over 30 GB.
+  needs about 45 GB free. Ubuntu's installer gives the root volume only
+  part of the disk, so give it the rest before running the script:
+  `sudo lvextend -r -l +100%FREE /dev/ubuntu-vg/ubuntu-lv`. `df -h /`
+  should then show nearly the whole disk.
 - A **unique hostname**: it becomes the runner's name on GitHub. A clone of
   a prepared VM must get a new hostname before the script runs.
 - Internet access. The script's firewall keeps it from reaching anything
@@ -75,6 +78,10 @@ runner keeps its registration, and the firewall is applied again.
 - **A queued job** means every runner is busy or offline. One runner runs
   one job at a time; a newer push to a pull request cancels its older
   runs, and every commit on `main` gets a full run.
+- **Out of disk:** the host image jobs check for room first (45 GB free
+  for ROCm, 40 for ComfyUI's CUDA build, 30 for speech), clear Docker's
+  cache if short, and fail naming the free space if that isn't enough.
+  Grow the VM's disk, then the volume as above.
 - **Logs:** `journalctl -u 'actions.runner.*'` on the VM, and the job's own
   log on GitHub.
 - **Locked out of the VM** by the firewall (it should never block SSH from
