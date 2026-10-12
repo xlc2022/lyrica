@@ -133,5 +133,6 @@ sandbox, unavailable in this sandbox. Provider tests use in-memory fakes.
 
 **Next/open:** a real ComfyUI run and the separate Web UI (ImagePart rendering
 and portrait controls). Hosts' fast/quality retain the same image.create list
-and recipe defaults; no tier metadata was added. Portrait approval expires at
+and recipe defaults; DESIGN now tags each recipe fast, quality or both
+(decided 2026-10-12), still to build, with a home for the tag in docs/ux.md. Portrait approval expires at
 server-local midnight.
