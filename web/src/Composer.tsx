@@ -4,15 +4,32 @@
 // quiet row with "+", the mic (dictation goes in at the caret) and the
 // thread's mode (Shift+Tab cycles). The unsent text is kept on lyricad, one
 // draft per thread, never in the browser.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { draft as loadDraft, saveDraft, upload, type ThreadSettings, type ThreadSettingsChange } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
-import { ATTACH_EVENT, ATTACH_KEY, take, type AttachRequest } from "./links.ts";
+import { ATTACH_EVENT, ATTACH_KEY, EDIT_IMAGE_EVENT, take, type AttachRequest, type EditImageRequest } from "./links.ts";
 import { ModePicker, nextMode, ToolsMenu, type GrantedMachine } from "./Modes.tsx";
 import { MicButton, stopReading, useDictation } from "./Voice.tsx";
 
 interface Upload { id: number; name: string; progress: number; error?: string }
+
+export function ComposerRow({ settings, onSettings, onAttach, onTools, mic, children }: {
+  settings?: ThreadSettings; onSettings: (change: ThreadSettingsChange) => void;
+  onAttach: (files: Iterable<File>) => void; onTools?: () => void;
+  mic: ComponentProps<typeof MicButton>; children?: ReactNode;
+}) {
+  const picker = useRef<HTMLInputElement>(null);
+  return (
+    <div className="composer-row">
+      <ToolsMenu settings={settings} onAttach={() => picker.current?.click()} onChange={onSettings} onOpen={onTools} />
+      <input ref={picker} type="file" multiple hidden onChange={(e) => { onAttach(e.target.files ?? []); e.target.value = ""; }} />
+      <MicButton {...mic} />
+      <span className="spacer" />
+      {children}
+    </div>
+  );
+}
 
 export function Composer({ base, busy, restored, onSend, onStop, settings, machines, onSettings, onError }: {
   base: string; busy: boolean; onSend: (text: string) => Promise<boolean>; onStop: () => void;
@@ -29,7 +46,6 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [dragging, setDragging] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
-  const picker = useRef<HTMLInputElement>(null);
   const nextId = useRef(0);
 
   useEffect(() => { if (restored) setDraft((d) => (d ? `${restored}\n\n${d}` : restored)); }, [restored]);
@@ -115,6 +131,20 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
     if (kept) addPaths(kept.paths);
     return () => removeEventListener(ATTACH_EVENT, on);
   }, [base, addPaths]);
+
+  useEffect(() => {
+    const on = (e: Event) => {
+      const { detail } = e as CustomEvent<EditImageRequest>;
+      if (detail.base !== base) return;
+      detail.handled = true;
+      typed.current = true;
+      setDraft((d) => d.trim() ? `${d.replace(/\s+$/, "")}\nEdit ${detail.path}: ` : `Edit ${detail.path}: `);
+      onSettings({ images: true });
+      area.current?.focus();
+    };
+    addEventListener(EDIT_IMAGE_EVENT, on);
+    return () => removeEventListener(EDIT_IMAGE_EVENT, on);
+  }, [base, onSettings]);
 
   // Dictated text goes in at the caret, with a space on each side where it meets other text.
   const insert = useCallback((text: string) => {
@@ -218,13 +248,10 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
             ? <button type="button" className="icon send" aria-label="Stop" title="Stop" onClick={onStop}><Icon name="stop" /></button>
             : <button type="submit" className="icon send" aria-label="Send" title={busy ? "Send when she finishes" : "Send"} disabled={!draft.trim()}><Icon name="up" /></button>}
         </div>
-        <div className="composer-row">
-          <ToolsMenu settings={settings} onAttach={() => picker.current?.click()} onChange={onSettings} />
-          <input ref={picker} type="file" multiple hidden onChange={(e) => { attach(e.target.files ?? []); e.target.value = ""; }} />
-          <MicButton state={mic.state} seconds={mic.seconds} speech={settings?.speech} onStart={() => void mic.start()} onStop={() => void mic.stop()} />
-          <span className="spacer" />
+        <ComposerRow settings={settings} onSettings={onSettings} onAttach={attach}
+          mic={{ state: mic.state, seconds: mic.seconds, speech: settings?.speech, onStart: () => void mic.start(), onStop: () => void mic.stop() }}>
           {settings && <ModePicker mode={settings.mode} machines={machines} onChange={(mode) => onSettings({ mode })} />}
-        </div>
+        </ComposerRow>
       </div>
     </form>
   );

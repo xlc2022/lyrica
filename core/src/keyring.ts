@@ -153,6 +153,33 @@ export class Keyring {
 
   hasSavedPassphrase(): boolean { return this.credentials?.saved("self") ?? false; }
 
+  /**
+   * Rekeys self.db from `current` to `next`. A wrong current is WrongPassword and changes nothing; an empty next is refused. SQLCipher's rekey takes the new key on the open connection, which the daemon's services hold, so it isn't closed and reopened; a read-only open proves the file opens with `next`. A saved passphrase is re-saved. Neither passphrase is ever logged.
+   */
+  async changeSelfPassphrase(current: string, next: string): Promise<{ savedCopyRemoved?: true }> {
+    if (!next) throw new Error("passphrase must not be empty");
+    try {
+      openEncrypted(this.selfPath, { passphrase: current }, { readonly: true }).close();
+    } catch {
+      throw new WrongPassword();
+    }
+    this.self().pragma(`rekey = '${next.replaceAll("'", "''")}'`);
+    try {
+      openEncrypted(this.selfPath, { passphrase: next }, { readonly: true }).close();
+    } catch {
+      throw new Error("self.db didn't reopen with the new passphrase");
+    }
+    if (!this.hasSavedPassphrase()) return {};
+    // self.db already has the new key: a failed re-save mustn't undo that, and a stale copy must not stay.
+    try {
+      await this.store().save("self", Buffer.from(next));
+      return {};
+    } catch {
+      await this.forgetSelfPassphrase().catch(() => {});
+      return { savedCopyRemoved: true };
+    }
+  }
+
   /** Unlocks self.db with the saved passphrase, if there is one. Returns whether it did. */
   async unlockSaved(): Promise<boolean> {
     const saved = await this.credentials?.load("self");

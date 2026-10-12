@@ -1,6 +1,6 @@
 // Talking to lyricad. The types all come from daemon/src/api.ts.
 import { her } from "./name.ts";
-import type { DraftChange, DraftInfo, Pool } from "@lyrica/daemon/api";
+import type { DraftChange, DraftInfo, NameSetting, Pool } from "@lyrica/daemon/api";
 
 export type * from "@lyrica/daemon/api";
 export { THREAD_TASKS } from "@lyrica/daemon/api";
@@ -74,6 +74,8 @@ export const del = <T>(path: string, body?: unknown) => request<T>("DELETE", pat
 const enc = encodeURIComponent;
 /** `/api/u/:userId` plus the rest, each segment encoded. */
 export const u = (userId: string, ...rest: string[]) => ["/api/u", userId, ...rest].map((s, i) => (i ? enc(s) : s)).join("/");
+/** Changes her deployment name, for administrators. */
+export const saveName = (userId: string, name: string) => put<NameSetting>(u(userId, "admin", "name"), { name });
 export const threadPath = (userId: string, pool: Pool, threadId: string, ...rest: string[]) => u(userId, "threads", pool, threadId, ...rest);
 
 /** The composer's unsent text for a thread (`base` is its `…/threads/:pool/:threadId`), kept on lyricad. */

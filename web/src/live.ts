@@ -86,8 +86,10 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     case "tool_start":
       return withParts(s, (parts) => [...parts, { type: "tool", toolCallId: e.toolCallId, name: e.name, args: e.args }]);
     case "tool_end":
-      return withParts(s, (parts) => parts.map((p) =>
-        p.type === "tool" && p.toolCallId === e.toolCallId ? { ...p, result: e.result, isError: e.isError, ...(e.threads && { threads: e.threads }) } : p));
+      return withParts(s, (parts) => parts.flatMap((p) =>
+        p.type === "tool" && p.toolCallId === e.toolCallId
+          ? [{ ...p, result: e.result, isError: e.isError, ...(e.threads && { threads: e.threads }) }, ...(e.image ? [e.image] : [])]
+          : [p]));
     case "recall":
     case "remember":
       return withParts(s, (parts) => [...parts, { type: e.type, ids: e.ids }]);

@@ -45,9 +45,9 @@ looks, the drawer and the dialog (docs/ux.md §1.4).
    Lyrica" and its sentence, the author label on her messages, "Lyrica is
    thinking…", the dialog sentences, Web access's legend. One helper, not
    thirty literals.
-3. **Administration → Persona** (today's "Persona changes"): **Name** with
-   its Save above the list of changes; the Save's one sentence: "Memories
-   and threads written so far keep the name <old>."
+3. **Administration → Her name**, after Status: **Name** with
+   one Save; its tooltip says "Memories and threads written so far keep
+   the old name."
 4. **Administration → Tailnet** (`#/u/<user>/admin/tailnet`, between Start
    unlocked and Web access): a facts line in mono (tailnet, address, DNS
    name, control server when not Tailscale, version; all hers, her own
@@ -86,7 +86,7 @@ The daemon (Bootstrap); a per-user nickname; the getting-started guide
 
 - The ux.md checklist (§10) in the PR, with screenshots at 1280 and 390 of
   the setup page at each step, Administration → Tailnet in each state,
-  and Administration → Persona.
+  and Administration → Her name.
 - Browser tests: the setup page appears without `self.db` and the home
   appears signed in after Create; the header and the unlock page show the
   set name; Leave asks before it acts; Web access's Tailnet mode shows its

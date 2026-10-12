@@ -53,6 +53,40 @@ function PoolName({ pool }: { pool: Pool }) {
   return <span className={`kind ${pool}`}>{pool === "private" && <PoolLock />}{poolWord(pool)}</span>;
 }
 
+export function SleepCard({ ctx }: { ctx: ShellContext }) {
+  const userId = ctx.user.id;
+  const o = ctx.sleep.overview;
+  const items = (o?.items ?? []).filter((i) => i.new && !hidden(ctx.me.display, i.pool));
+  const last = o?.runs.find((r) => !hidden(ctx.me.display, r.pool));
+  const users: UserMap = { [userId]: { displayName: ctx.user.displayName, pronouns: ctx.user.pronouns } };
+  const [run, busy, error] = useAction();
+  const chat = (i: SleepItemInfo) => run(async () => {
+    const t = await post<ThreadSummary>(u(userId, "sleep", i.pool, "items", i.id, "chat"));
+    ctx.sleep.reload(); ctx.refreshThreads();
+    go({ page: "thread", userId, pool: t.pool, threadId: t.id });
+  });
+  const dismiss = (i: SleepItemInfo) => run(async () => {
+    await del(u(userId, "sleep", i.pool, "items", i.id));
+    if (o) ctx.sleep.set({ ...o, items: o.items.filter((x) => x !== i) });
+    ctx.sleep.reload();
+  });
+  return (
+    <section className="card" aria-labelledby="h-home-sleep">
+      <div className="section-head"><h2 id="h-home-sleep">Last night</h2><a href={href({ page: "sleep", userId })}>Sleep</a></div>
+      <ErrorText error={ctx.sleep.error || error} />
+      {o && (items.length ? <ul className="list sleep-items">{items.map((i) => (
+        <li key={`${i.pool}/${i.id}`} className="sleep-item">
+          <div className="main-col"><span className="text">{i.pool === "private" && <span className="private" title="Private"><Icon name="lock" /><span className="sr-only">Private: </span></span>}{plain(i.text, users)}</span></div>
+          <div className="actions">
+            <button type="button" className="sm" disabled={busy} onClick={() => void chat(i)}>Start a chat</button>
+            <button type="button" className="sm" disabled={busy} onClick={() => void dismiss(i)}>Dismiss</button>
+          </div>
+        </li>
+      ))}</ul> : <p className="empty">Nothing she wants to raise.{last && <> She slept at <span className="num" title={last.finishedAt ?? last.startedAt}>{clock(last.finishedAt ?? last.startedAt)}</span>.</>}</p>)}
+    </section>
+  );
+}
+
 /** The run's one line: why it was skipped, what phase it's in, or what it wrote. */
 function runLine(run: SleepRunInfo, d?: SleepRunDetail): ReactNode {
   if (run.status === "skipped") return run.skipReason ? SKIPPED[run.skipReason] : "Skipped";

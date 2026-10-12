@@ -85,12 +85,12 @@ export function NotificationsCard({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const page = useLoad(() => get<NotificationPage>(`${u(userId, "notifications")}?type=decision&limit=4`), [userId]);
   const [act, busy, error] = useAct(ctx, page.reload);
-  if (!page.data || !page.data.total) return null;
   return (
     <section className="card" aria-labelledby="h-notifications">
-      <div className="section-head"><h2 id="h-notifications">Notifications</h2><a href={href({ page: "settings", userId, section: "notifications" })}>All {page.data.waiting}</a></div>
-      <ErrorText error={error} />
-      <ul className="list">{page.data.items.map((n) => <Row key={n.id} n={n} ctx={ctx} act={act} busy={busy} />)}</ul>
+      <div className="section-head"><h2 id="h-notifications">Notifications</h2>{page.data && <a href={href({ page: "settings", userId, section: "notifications" })}>All {page.data.waiting}</a>}</div>
+      <ErrorText error={page.error || error} />
+      {page.data && (page.data.items.length ? <ul className="list">{page.data.items.map((n) => <Row key={n.id} n={n} ctx={ctx} act={act} busy={busy} />)}</ul>
+        : <p className="empty">Nothing waiting.</p>)}
     </section>
   );
 }

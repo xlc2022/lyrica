@@ -23,12 +23,8 @@ A thread's address may carry what the panel beside it shows:
   user who isn't linked signs the browser's users out first, and a short
   notice says so without naming them. Logging out says when the user stays
   unlocked because another browser still holds them.
-- **Home:** the header reads "Lyrica 0.1.0 · b110619" (the version from
-  `package.json`, the build from `LYRICA_BUILD` or the git commit; both
-  come with `GET /api/state` once unlocked) with the date and time under it, then a greeting by the hour and a
-  message box that starts a thread in General or Private with its first
-  message.
-- **Sidebar:** New thread (General or Private), Search (`src/Search.tsx`,
+- **Sidebar:** the app's name links home, marks it as current
+  there, and closes the phone drawer when pressed. New thread (General or Private), Search (`src/Search.tsx`,
   "Search titles and messages": the list filters by title as it is typed;
   from 2 characters, 300 ms after the last key, `GET …/search` turns it
   into a group per thread in the order of their newest hit, the thread's
@@ -169,8 +165,8 @@ A thread's address may carry what the panel beside it shows:
   where the server makes none.
   The image tool also supplies `ImagePart` path/model/tier metadata on
   messages and `tool_end.image`, and an owner-only `…/file?path=` route.
-  Dedicated rendering of that part and portrait-management controls are not
-  implemented here yet; the existing Files panel can display saved results.
+  Messages render that part inline as described below. Settings manages
+  portraits separately from the Files panel.
 - **Project settings page** (`…/p/<pool>/<project>/general` or `/memory`),
   sections at the left. **General**: Goal, the Paused and **Watching
   threads** switches (`watchThreads`; the tooltip says what a look does), **New
@@ -260,11 +256,11 @@ A thread's address may carry what the panel beside it shows:
   `src/ModelsFrame.tsx`; [models.md](models.md); docs/ux.md §6
   "Models, hosts, downloads, clean-up"): `#/u/<user>/models[/<tab>]`, from
   the sidebar's Models link, whose badge counts Clean up's items
-  (`GET …/models/cleanup`, reread every 30 s and on focus; nothing probes
-  an endpoint until the area is open). Tabs down the left (a scrolling row
+  (`GET …/models/cleanup`, reread every 30 s and on focus; endpoints are probed
+  while Models or Home is open). Tabs down the left (a scrolling row
   on a phone): **Overview**, **Tasks**, **Text models**, **Image models**,
   **Hosts and endpoints**, **Downloads**, **Clean up** and **Recent calls**.
-  The area reads `GET …/models/page` while open (30 s,
+  Models and Home read `GET …/models/page` while open (30 s,
   focus), which probes each endpoint (3 s each, one seen down in the last
   30 s not asked again). Overview: a banner for a paused host or a stale
   endpoint; tiles Endpoints (n of m up, then a dot and "All reachable" or
@@ -384,9 +380,14 @@ A thread's address may carry what the panel beside it shows:
   architecture chips filter in the page. Models is a row per recipe name
   across the hosts, confirmed copies first; a name only proposed or ignored
   is left out. A row opens to a block per host (template and defaults, a
+  segmented **Use for** (**Fast** | **Quality** | **Both**, default Both),
   row per part with precision, "downloaded by Lyrica" or "shared folder",
   the other recipes using it and its size); every change is a recipe action
   (`POST …/hosts/:id/recipes/:recipeId`, models.md "Image models"):
+  **Use for** saves at once (`change { op: "useFor", useFor }`), disabled
+  while saving or when the user cannot manage the host. The row's facts say
+  "fast", "quality" or "fast and quality", combining the copies' tiers. This follows principles 1 and 8 and ux §3's segmented
+  control, §4's names and §6's recipe block; no caption or new widget.
   **Change** for a text encoder or VAE (`swap`, or Download another… to the
   download page), **Remove** for an added part or LoRA, **Use this recipe**
   (`confirm`), **Download the missing parts** (`download-parts`),
@@ -532,8 +533,24 @@ A thread's address may carry what the panel beside it shows:
   **Pause** or **Resume** (`PATCH …/threads/:pool/:threadId/routines/:id`
   with `paused`) and the bordered Remove icon (`DELETE` at the same path).
   Listings contain no notes. Empty: "No routines."
+- **Portrait photos** (`src/PortraitPhotos.tsx`, `…/settings/portraits`),
+  last in Settings: a card with the photo count pill and a grid of square
+  thumbnails (132 px minimum, 12 px gap), the filename in mono underneath,
+  and the existing row menu for Download and Delete…. The existing confirm
+  dialog asks "Delete <name>?". Add photos is secondary and opens a multiple
+  PNG/JPEG/WebP picker; each file over 20 MB is refused with its filename in
+  the error line, while the remaining files are uploaded. Empty: "No photos yet."
+  The select Sending them to a cloud image model has Ask once a day (default),
+  Never and Always; it saves immediately. Its explanation is a tooltip.
+  Listing, raw uploads and deletion use `…/photos-of-me`; thumbnails and
+  downloads use the authenticated `…/photos-of-me/:name`; the setting uses
+  `GET|PUT …/photo-cloud`. This follows the Images brief and principles 1
+  and 2; controls reuse §3's secondary button and menu, §4's short labels
+  and tooltips, and §6's confirmation dialog. No drawer or extra captions.
 - **Administration**, for administrators: Status (the server's network
-  self-test, sleep time, start unlocked), Users with the administrator flag,
+  self-test, sleep time, start unlocked), **Her name** (Name, 1–40 characters
+  on one line, one Save disabled when invalid or unchanged; `PUT …/admin/name`,
+  then her displayed name updates and the page re-reads `/api/state`), Users with the administrator flag,
   **Change password…** (the new password and the administrator's own, in
   the row; the user's data stays, they are logged out and told at their
   next visit) and their allowed folders, Sleep (**Sleep time**, `type="time"`, one Save;
@@ -542,10 +559,7 @@ A thread's address may carry what the panel beside it shows:
   **SearXNG address** in mono, without its password (a basic-auth password
   is kept when the user@host is unchanged), one Save, and Reachable or Unreachable as a
   dot and a word, what failed as its tooltip; `GET`/`PUT …/admin/web-search`),
-  **Updates**, and **Persona**: her
-  **Name** at the top (one field, Save, and the sentence that memories and
-  threads written so far keep the old name; `PUT …/admin/name`, then the
-  page re-reads `/api/state`), then the persona changes that users sent on
+  **Updates**, and **Persona**: the persona changes that users sent on
   (who sent them, whether they edited them, and a confirmation when the file
   changed since). Her name (`src/name.ts`, `her()`) is what every label,
   placeholder and sentence says where this doc says Lyrica, and the tab's
@@ -588,6 +602,28 @@ A thread's address may carry what the panel beside it shows:
   Applying waits as long as `lyricad` needs (a new hostname can take about 90 s)
   and shows the time so far.
 
+## Home
+
+The header shows her name, version and build, with the date and time beneath.
+A greeting by the hour precedes the message box. Its shared composer row has
+the **+** menu (Attach a file, Web search, Internet for commands and Images),
+the mic, and **General / Private**; no Mode or Thinking controls. On home the
+menu opens downward, since the box sits near the top. The menu reads
+new-thread defaults from `GET …/thread-defaults?pool=general|private`; switch
+changes and attached File objects stay in component memory per pool. Only Send
+creates the thread, then PATCHes its changed settings, uploads its files and
+sends the first message with their paths. Dictation uses `POST …/transcribe?pool=`
+without creating a thread. Leaving home discards the unsent text and files.
+
+The content is one column in a centred block at most 960 px wide.
+Beneath the box the cards sit side by side (auto-fit, each at least 240 px) and
+stack when they don't fit. Each card has a plain h2 with its link on the right:
+**Last night** with Sleep and shows new visible-pool items with Start a chat
+and Dismiss, private locks, or "Nothing she wants to raise." and the latest run's
+time in mono. **Notifications** has All <n> and "Nothing waiting." when
+empty. **Backend** has Models and lists each pool's first chat model, host,
+local/cloud chip and profile, then each model host's state as a dot and word.
+
 ## Chat
 
 - Her messages are prose, rendered with `react-markdown`. Raw HTML is
@@ -605,6 +641,18 @@ A thread's address may carry what the panel beside it shows:
   **Copy failed** where the browser refuses, for 2 s; inline code, tool
   results, the permission card, the Files viewer and the Machines page's
   setup block have none.
+- An image part, stored or delivered on `tool_end`, shows each path as a
+  thumbnail up to 320 px tall with an 8 px radius and the filename as its
+  accessible name. The facts line reads "Made with <model>" and, when given,
+  "· fast" or "· quality". Its ⋯ holds Download, Copy path, Show in Files
+  and Edit…. Edit… fills the composer with "Edit <path>: " and enables
+  Images. Full images use the thread's authenticated `…/file?path=` route;
+  thumbnails use the existing thumbnail route and fall back to that file.
+  The shared Lightbox has a filename header, Download and Copy path behind
+  ⋯, and Close. Image tool markers read Making an image with its tier,
+  Editing an image or Upscaling an image, with the running dot; expanding
+  a failed marker shows the result's reason. The API currently sends no
+  image step progress, so there is no step count or progress bar.
 - A thread she mentions (`[t:<id>]`, `[e:<id>#<n>]`) shows as its current
   title, linked to the thread in the same tab; "a forgotten thread" once it's
   gone. Titles are fetched per thread and kept for 30 seconds, so a rename
@@ -642,6 +690,11 @@ A thread's address may carry what the panel beside it shows:
   `notice` message, shows as a card headed by what it is, linking to the
   subagent.
 - Permission requests appear inline with Allow and Deny and the time left.
+  A portrait request (`tool: "image"`) instead asks "Send your portrait
+  photos to <model> (cloud) for this image? A yes lasts until the end of the
+  day." The resolved model label comes from `args.model`; Send today is
+  primary, Not today secondary, and there is no thread-wide Allow. Answers
+  use the existing permission route with `{ allow }`, including for subagents.
   Her `models` tool's proposal is worded as its question ("Serve
   Qwen3.8-27B with 1,010,000 tokens of context? It reloads, and its KV cache
   grows to 17 GB."), the numbers in mono.
@@ -803,6 +856,8 @@ A thread's address may carry what the panel beside it shows:
   opens (only into an empty box), saved a second after typing stops, on blur
   and on leaving, and cleared by a send; nothing is kept in the browser. A
   draft over 64 KiB shows "The draft is too long to keep." in the error line.
+  The + menu's Images switch has the tooltip "Lets the agent make and edit
+  images in this thread."
 - **Dictation** (`src/Voice.tsx`, DESIGN.md "Voice"): the mic in the row
   under the box records 16 kHz mono PCM through an AudioWorklet
   (`public/dictation-worklet.js`). While it records the icon is accent and
@@ -892,7 +947,8 @@ turns animations off.
 - `web/test/` has unit tests for the stream reducer (`live.test.ts`), memory
   links and word diffs, mentions, which paths become links, which code
   blocks get Copy and what it copies (`codeblock.test.ts`), a checklist's
-  count and current step (`checklist.test.ts`), routine facts and paused
+  count and current step (`checklist.test.ts`), the welcome cards' empty states,
+  hidden sleep pools and backend profiles (`cards.test.ts`), routine facts and paused
   schedules (`routines.test.ts`), the recorder's context
   fallback and clip limit (`voice.test.ts`), and a text model group's warn
   lines (`library.test.ts`).

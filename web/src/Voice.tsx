@@ -29,7 +29,7 @@ function micProblem(e: unknown): string {
  * `onError` as plain sentences. Starting stops anything being read aloud.
  */
 export function useDictation({ base, onText, onError }: {
-  base: string; onText: (text: string) => void; onError: (message: string) => void;
+  base: string | (() => Promise<string>); onText: (text: string) => void; onError: (message: string) => void;
 }) {
   const [state, setState] = useState<MicState>("idle");
   const [seconds, setSeconds] = useState(0);
@@ -66,7 +66,9 @@ export function useDictation({ base, onText, onError }: {
     const abort = new AbortController();
     transcribing.current = abort;
     try {
-      const res = await fetch(`${base}/transcribe`, { method: "POST", credentials: "same-origin", body: new Blob([wav(samples)], { type: "audio/wav" }), signal: abort.signal });
+      const path = typeof base === "string" ? base : await base();
+      const [pathname, query] = path.split("?");
+      const res = await fetch(`${pathname}/transcribe${query ? `?${query}` : ""}`, { method: "POST", credentials: "same-origin", body: new Blob([wav(samples)], { type: "audio/wav" }), signal: abort.signal });
       if (!res.ok) throw await errorFrom(res);
       const out = (await res.json()) as Transcription;
       if (!abort.signal.aborted) {

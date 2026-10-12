@@ -52,6 +52,25 @@ describe("image calls through the router (principles 1 and 2)", () => {
     expect(s.spare.server.images).toHaveLength(1);
     expect(s.heard).toEqual([]);
   });
+  it.each(["fast", "quality"] as const)("%s skips the other tier and falls back down the same list", async (tier) => {
+    const s = await setup();
+    s.workstation.server.useFor = tier === "fast" ? "quality" : "fast";
+    s.spare.server.useFor = tier;
+    await s.models.discover(s.ada, s.workstation.ep.id);
+    await s.models.discover(s.ada, s.spare.ep.id);
+    const last = await s.host("last", tier);
+    s.models.setProfile(s.ada.id, "local", "image.create", [s.workstation.ref, s.spare.ref, last.ref]);
+    const ctx = s.ctx({ localOnly: true });
+    const request = { action: "create" as const, prompt: "A garden", tier };
+    const first = await s.models.image(ctx, request);
+    expect(first.resolution.ref).toEqual(s.spare.ref);
+    expect(first.resolution.skipped).toContainEqual({ label: s.models.label(s.ada.id, s.workstation.ref.offeringId), reason: `it is for ${s.workstation.server.useFor} images` });
+    s.spare.server.imagesOff("model_unavailable");
+    expect((await s.models.image(ctx, request)).resolution.ref).toEqual(last.ref);
+    expect(s.workstation.server.images).toEqual([]);
+    expect(last.server.images).toHaveLength(1);
+    expect(s.heard).toEqual([]);
+  });
   it("removes PNG text and EXIF metadata from provider output", () => {
     const chunk = (tag: string) => { const b = Buffer.alloc(18); b.writeUInt32BE(6); b.write(tag, 4); b.write("secret", 8); return b; };
     const dirty = Buffer.concat([png.subarray(0, 33), chunk("tEXt"), chunk("iTXt"), chunk("zTXt"), chunk("eXIf"), png.subarray(33)]);
