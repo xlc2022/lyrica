@@ -75,6 +75,11 @@ A thread's address may carry what the panel beside it shows:
   thread's group as a link that changes it, the folders as words with the
   paths in their tooltip, and the granted machines', repositories' and MCP
   servers' names in mono; at the right a Settings button. Below it the conversation and the composer.
+  After the group, **Context** and the percent (`src/ContextMeter.tsx`)
+  open a popover of the parts, the reserve and what's free, when measured,
+  and the last turn's speed. It reads `ThreadSettings.context` and then each
+  `context` stream event, so it follows every turn without a reload; a
+  rewind drops the live reading until the settings reload.
 - **Project chat** (`src/Project.tsx`): the facts line adds **Threads** with
   the count, opening a popover of the project's threads grouped Waiting on
   you, Working, Queued, Idle and Resolved (each a link, with its unseen
