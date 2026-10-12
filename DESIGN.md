@@ -47,7 +47,8 @@ individual: her persona is the only thing users share.
   read an unlocked user's data. Shared endpoints run on accounts and model
   hosts the administrator controls, which may log prompts. A user who needs
   privacy from the operator should use only their own endpoints, or not use
-  this server.- Accounts stay minimal: local users, Argon2id password hashes and a web login
+  this server.
+- Accounts stay minimal: local users, Argon2id password hashes and a web login
   cookie. No identity providers or roles beyond administrator.
 - **Names and pronouns.** Each user has a login name, a display name and
   pronouns. Users can change their display name and pronouns at any time in
@@ -521,7 +522,7 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     Pi's automatic compaction stays on at the window's edge as the safety
     net.
   - Recent calls and the text library show measured speed; nothing acts on
-    it automatically yet.
+    it automatically.
 - **Reasoning level.** For models that support it, the message box has a
   thinking control (Off, Low, Medium, High, showing only the levels the
   current model offers), as in Claude and ChatGPT.
@@ -936,8 +937,9 @@ local-only threads use local speech models only.
 A **project** is one place for a stream of related work, as in Claude's
 Projects: a running conversation, the **project chat**, where Li drops tasks,
 updates and questions as they come, and **threads** that Lyrica starts for
-the work and keeps track of. Agreed 2026-10-10. The back end is built; the
-web part and sleep's project page are not yet. The briefs are
+the work and keeps track of. Agreed 2026-10-10. The back end and sleep's
+project page are built, and so is the web part except Files and images on
+Project settings and Recent calls by project. The briefs are
 `docs/briefs/projects.md`, `projects-web.md` and `projects-sleep.md`.
 
 - **A project is a top-level thread marked as a project**, and its threads
@@ -1055,7 +1057,7 @@ web part and sleep's project page are not yet. The briefs are
     **Hide** stops it too. **Delete** forgets the project chat, its threads,
     its page, the notes that came only from it, and its folder.
   - **Waiting on you** is a type in Notifications.
-- **Not in projects, for now:** schedules (routines), moving an existing
+- **Not in projects:** schedules (routines), moving an existing
   thread into a project, and sharing a project (Share with copies one
   thread).
 
@@ -1201,8 +1203,8 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   keeps only over HTTPS or on localhost). The passphrase and the first
   password cross the network only under TLS; a device on the LAN or the
   tailnet can't claim her without the code. `lyrica admin init` does the
-  same from a terminal; both call one function. Nothing of a user's exists
-  yet, so the code and TLS are the whole fence (principle 2).
+  same from a terminal; both call one function. At setup no user data exists,
+  so the code and TLS are the whole fence (principle 2).
 - Memory never goes into a git repository. Backups are encrypted.
 - What this protects against: a stolen disk, a leaked backup, or someone
   reading the files while a user is locked.
@@ -1235,7 +1237,7 @@ Details in [docs/memory.md](docs/memory.md).
   edit keeps the previous text as a revision.
 - **Review and editing:** users can search, edit, restore and delete any of
   their memories (notes, pages, WAKE, journal) in a memory browser in the web
-  UI, or with `lyrica mem` at the terminal.
+  UI.
   - Every edit is a revision.
   - Name tokens survive edits.
   - Sleep treats user edits as authoritative and asks rather than overwriting
@@ -1500,10 +1502,13 @@ Details in [docs/sleep.md](docs/sleep.md).
   | Subcommand | What it does |
   |---|---|
   | `lyrica serve` | Starts `lyricad`. This is what the systemd unit runs. |
-  | `lyrica chat` | The terminal interface: a thin client of the running `lyricad` over a local Unix socket. Its threads are stored encrypted like any other interface's. |
   | `lyrica admin …` | Set up, manage users and administrators, change passwords and profiles. |
-  | `lyrica mem …` | Search, show, add, edit and delete memories. Edits are typed at the prompt, never through a temporary file. |
   | `lyrica dev` | The developer bench. See below. |
+  | `lyrica version` | The build, and each database's schema version and oldest reader. |
+  | `lyrica smoke-test` | The updater's check of a release, with test data only. |
+
+  `lyrica chat` (a terminal client) and `lyrica mem` (memory editing at the
+  prompt) are reserved names and not built.
 
   Passwords and passphrases are only ever typed at a hidden prompt, never
   passed as arguments or environment variables.
