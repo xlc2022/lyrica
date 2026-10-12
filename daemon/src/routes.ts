@@ -532,6 +532,10 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
 
     // --- Workspace defaults, allowed paths, SSH ---
+    route("GET", `${u}/thread-defaults`, (r) => {
+      const user = d.userFor(r);
+      return threadSettings(d, user, checkPool(r.query.get("pool") ?? "general"), "");
+    }),
     route("GET", `${u}/network`, (r) => networkDefaults(d, d.userFor(r).id)),
     route("PATCH", `${u}/network/:pool`, async (r) => {
       const user = d.userFor(r);
@@ -752,7 +756,7 @@ export function apiRoutes(d: Lyricad): Route[] {
           interface: "web", title: input.title?.trim() || undefined,
           ...(input.project ? { project: true, ...(typeof input.goal === "string" && input.goal.trim() ? { goal: input.goal } : {}) } : {}),
         });
-        s().workspace.settings(user.id).startThread(thread.id, pool);
+        s().workspace.settings(user.id).setThread(thread.id, pool, newThreadDefaults(d, user));
         // A new project starts pinned.
         if (thread.project) s().projects.pin(user.id, pool, thread.id, true);
         return summary(d, user, pool, o[pool], thread, []);
@@ -2046,12 +2050,18 @@ function contextOf(d: Lyricad, user: User, pool: Pool, threadId: string, answere
   } };
 }
 
+/** The overrides applied at web thread creation and in the read-only preview.
+ * Everything else follows the same pool/model/workspace defaults in threadSettings. */
+function newThreadDefaults(d: Lyricad, user: User) {
+  return { mode: d.services!.workspace.settings(user.id).defaultMode() };
+}
+
 function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): Api.ThreadSettings {
   const { models, workspace } = d.services!;
   const ctx = models.callContext(user.id, pool, threadId);
   const tw = workspace.settings(user.id).thread(threadId);
   // The mode, switches, folders and machines her tools follow: a parent's later narrowing included.
-  const applies = workspace.settings(user.id).effective(threadId);
+  const applies = { ...workspace.settings(user.id).effective(threadId), ...(threadId ? {} : newThreadDefaults(d, user)) };
   const isUnlogged = owner(d, user, (o) => o[pool].getThread(threadId)?.unlogged ?? false);
   let thinkingLevels: Api.ThinkingLevel[] = ["off"];
   const taskModel = (task: Api.ThreadTask): Api.TaskModel => {
@@ -2070,12 +2080,12 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
       return { ...list, ...(label ? { label } : {}), source: override?.length ? "thread" : "none", problem: (err as Error).message };
     }
   };
-  const answered = models.recentCalls(user.id, { threadId, limit: 1, speech: false })[0];
+  const answered = threadId ? models.recentCalls(user.id, { threadId, limit: 1, speech: false })[0] : undefined;
   return {
     models: Object.fromEntries(THREAD_TASKS.map((task) => [task, taskModel(task)])) as Api.ThreadSettings["models"],
     profile: profileFor(ctx), profileChoice: models.threadProfile(user.id, threadId), thinking: ctx.thinking ?? "off", thinkingLevels,
     ...(answered ? { answered } : {}),
-    ...(contextOf(d, user, pool, threadId, answered) ?? {}),
+    ...(threadId ? contextOf(d, user, pool, threadId, answered) ?? {} : {}),
     localOnly: ctx.localOnly,
     internet: tw.internet, services: tw.services, hosts: tw.hosts,
     network: workspace.network({ userId: user.id, pool, threadId }),

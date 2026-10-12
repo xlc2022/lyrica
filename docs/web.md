@@ -23,12 +23,8 @@ A thread's address may carry what the panel beside it shows:
   user who isn't linked signs the browser's users out first, and a short
   notice says so without naming them. Logging out says when the user stays
   unlocked because another browser still holds them.
-- **Home:** the header reads "Lyrica 0.1.0 · b110619" (the version from
-  `package.json`, the build from `LYRICA_BUILD` or the git commit; both
-  come with `GET /api/state` once unlocked) with the date and time under it, then a greeting by the hour and a
-  message box that starts a thread in General or Private with its first
-  message.
-- **Sidebar:** New thread (General or Private), Search (`src/Search.tsx`,
+- **Sidebar:** the app's name links home, marks it as current
+  there, and closes the phone drawer when pressed. New thread (General or Private), Search (`src/Search.tsx`,
   "Search titles and messages": the list filters by title as it is typed;
   from 2 characters, 300 ms after the last key, `GET …/search` turns it
   into a group per thread in the order of their newest hit, the thread's
@@ -260,11 +256,11 @@ A thread's address may carry what the panel beside it shows:
   `src/ModelsFrame.tsx`; [models.md](models.md); docs/ux.md §6
   "Models, hosts, downloads, clean-up"): `#/u/<user>/models[/<tab>]`, from
   the sidebar's Models link, whose badge counts Clean up's items
-  (`GET …/models/cleanup`, reread every 30 s and on focus; nothing probes
-  an endpoint until the area is open). Tabs down the left (a scrolling row
+  (`GET …/models/cleanup`, reread every 30 s and on focus; endpoints are probed
+  while Models or Home is open). Tabs down the left (a scrolling row
   on a phone): **Overview**, **Tasks**, **Text models**, **Image models**,
   **Hosts and endpoints**, **Downloads**, **Clean up** and **Recent calls**.
-  The area reads `GET …/models/page` while open (30 s,
+  Models and Home read `GET …/models/page` while open (30 s,
   focus), which probes each endpoint (3 s each, one seen down in the last
   30 s not asked again). Overview: a banner for a paused host or a stale
   endpoint; tiles Endpoints (n of m up, then a dot and "All reachable" or
@@ -552,7 +548,9 @@ A thread's address may carry what the panel beside it shows:
   and 2; controls reuse §3's secondary button and menu, §4's short labels
   and tooltips, and §6's confirmation dialog. No drawer or extra captions.
 - **Administration**, for administrators: Status (the server's network
-  self-test, sleep time, start unlocked), Users with the administrator flag,
+  self-test, sleep time, start unlocked), **Her name** (Name, 1–40 characters
+  on one line, one Save disabled when invalid or unchanged; `PUT …/admin/name`,
+  then her displayed name updates and the page re-reads `/api/state`), Users with the administrator flag,
   **Change password…** (the new password and the administrator's own, in
   the row; the user's data stays, they are logged out and told at their
   next visit) and their allowed folders, Sleep (**Sleep time**, `type="time"`, one Save;
@@ -561,10 +559,7 @@ A thread's address may carry what the panel beside it shows:
   **SearXNG address** in mono, without its password (a basic-auth password
   is kept when the user@host is unchanged), one Save, and Reachable or Unreachable as a
   dot and a word, what failed as its tooltip; `GET`/`PUT …/admin/web-search`),
-  **Updates**, and **Persona**: her
-  **Name** at the top (one field, Save, and the sentence that memories and
-  threads written so far keep the old name; `PUT …/admin/name`, then the
-  page re-reads `/api/state`), then the persona changes that users sent on
+  **Updates**, and **Persona**: the persona changes that users sent on
   (who sent them, whether they edited them, and a confirmation when the file
   changed since). Her name (`src/name.ts`, `her()`) is what every label,
   placeholder and sentence says where this doc says Lyrica, and the tab's
@@ -606,6 +601,28 @@ A thread's address may carry what the panel beside it shows:
 
   Applying waits as long as `lyricad` needs (a new hostname can take about 90 s)
   and shows the time so far.
+
+## Home
+
+The header shows her name, version and build, with the date and time beneath.
+A greeting by the hour precedes the message box. Its shared composer row has
+the **+** menu (Attach a file, Web search, Internet for commands and Images),
+the mic, and **General / Private**; no Mode or Thinking controls. On home the
+menu opens downward, since the box sits near the top. The menu reads
+new-thread defaults from `GET …/thread-defaults?pool=general|private`; switch
+changes and attached File objects stay in component memory per pool. Only Send
+creates the thread, then PATCHes its changed settings, uploads its files and
+sends the first message with their paths. Dictation uses `POST …/transcribe?pool=`
+without creating a thread. Leaving home discards the unsent text and files.
+
+The content is one column in a centred block at most 960 px wide.
+Beneath the box the cards sit side by side (auto-fit, each at least 240 px) and
+stack when they don't fit. Each card has a plain h2 with its link on the right:
+**Last night** with Sleep and shows new visible-pool items with Start a chat
+and Dismiss, private locks, or "Nothing she wants to raise." and the latest run's
+time in mono. **Notifications** has All <n> and "Nothing waiting." when
+empty. **Backend** has Models and lists each pool's first chat model, host,
+local/cloud chip and profile, then each model host's state as a dot and word.
 
 ## Chat
 
@@ -926,7 +943,8 @@ turns animations off.
 - `web/test/` has unit tests for the stream reducer (`live.test.ts`), memory
   links and word diffs, mentions, which paths become links, which code
   blocks get Copy and what it copies (`codeblock.test.ts`), a checklist's
-  count and current step (`checklist.test.ts`), routine facts and paused
+  count and current step (`checklist.test.ts`), the welcome cards' empty states,
+  hidden sleep pools and backend profiles (`cards.test.ts`), routine facts and paused
   schedules (`routines.test.ts`), the recorder's context
   fallback and clip limit (`voice.test.ts`), and a text model group's warn
   lines (`library.test.ts`).

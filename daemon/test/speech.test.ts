@@ -106,8 +106,11 @@ describe("dictation", () => {
       expect(r.status).toBe(200);
       expect(r.body).toEqual({ text: "hello from the fake", seconds: 3, model: "speech/whisper-large-v3-turbo" });
       expect(s.speech.heard.at(-1)).toMatchObject({ url: "/v1/audio/transcriptions", language: "zh", bytes: 96_044 });
+      const threads = (await s.ada.get(`${s.u}/threads`)).body;
       const welcome = await s.ada.post<Transcription>(`${s.u}/transcribe?pool=private`, wav(1), { "content-type": "audio/wav" });
+      expect(welcome.status).toBe(200);
       expect(welcome.body.text).toBe("hello from the fake");
+      expect((await s.ada.get(`${s.u}/threads`)).body).toEqual(threads);
       expect(readdirSync(tmp)).toEqual([]);
     } finally {
       if (saved === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = saved;

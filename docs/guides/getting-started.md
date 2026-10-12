@@ -813,7 +813,7 @@ the SSH ones, and `ssh remove <name>` takes one away.
   sleep, unmounts home workspaces and drops keys. With no saved passphrase,
   she comes back locked; browser sessions don't survive a restart, so
   everyone logs in again.
-- **Her name** is under Administration, Persona, Name. Memories and threads
+- **Her name** is under Administration, Her name, Name. Memories and threads
   written so far keep the old one.
 - **Sleep** runs at `sleep.time` (04:00 local by default; Administration,
   Sleep) for every user whose key is available, unless they set Sleep to

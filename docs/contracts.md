@@ -1573,3 +1573,9 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
 - **Show general**, **Show private** and **Show hidden threads** are per-user
   display filters.
 - The sidebar has a Sleep section.
+
+The home composer reads `GET /api/u/:userId/thread-defaults?pool=general|private`
+for `ThreadSettings` without creating a thread. On Send it creates the thread,
+PATCHes changed settings, uploads attached files, then sends the first message.
+The read-only defaults route uses the same defaults as thread creation and
+requires the addressed user's session; it returns no thread or memory text.

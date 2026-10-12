@@ -129,7 +129,7 @@ textarea { resize: vertical; }
 .app { height: 100%; display: grid; grid-template-columns: 248px minmax(0, 1fr); position: relative; overflow: hidden; }
 .side { background: var(--side); border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; padding: 12px 10px 10px; min-height: 0; overflow: hidden; }
 .side-top { display: flex; align-items: center; justify-content: space-between; padding: 2px 8px; min-height: 30px; }
-.brand { font-size: 20px; font-weight: 600; }
+.brand { font-size: 20px; font-weight: 600; color: inherit; min-height: var(--tap); display: flex; align-items: center; }
 .side-close { display: none; }
 .side-nav { display: grid; gap: 1px; }
 .side-nav a, .side-nav > button, .side-nav summary { display: flex; align-items: center; gap: 10px; color: var(--fg); padding: 7px 8px; border-radius: 8px; min-height: var(--tap); width: 100%; border: 0; background: none; text-align: left; font-weight: 400; justify-content: flex-start; }
@@ -292,8 +292,19 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
 /* ---- Welcome ---- */
 .welcome { padding: 24px var(--gutter) 40px; display: grid; gap: 18px; max-width: 76ch; width: 100%; justify-self: center; align-content: start; }
 .welcome h1 { font-size: 22px; }
+.scroll > .welcome { max-width: 960px; margin-inline: auto; }
+
 .home-box { display: grid; gap: 2px; }
 .home-box .composer-row { gap: 8px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--gutter); align-items: start; min-width: 0; }
+.cards .facts { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.cards .facts dd + dt { margin-top: 8px; }
+.cards .sleep-item .actions { justify-content: start; }
+.cards .list > li.sleep-item { grid-template-columns: minmax(0, 1fr); }
+.cards .nrow.nopick { grid-template-columns: 20px minmax(0, 1fr); }
+.cards .nrow .actions { grid-column: 2; justify-content: start; }
+.backend-host { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.backend-host > span:first-child { overflow-wrap: anywhere; min-width: 0; }
 
 /* ---- Conversation ---- */
 .scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 20px var(--gutter); display: grid; align-content: start; grid-template-columns: minmax(0, 1fr); gap: 14px; overscroll-behavior: contain; }
@@ -404,6 +415,7 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
 .tools-menu, .mode-picker, .go-ahead { position: relative; }
 .menu.up { top: auto; bottom: calc(100% + 4px); right: auto; min-width: min(300px, calc(100vw - 2 * var(--gutter))); max-width: calc(100vw - 2 * var(--gutter)); }
 .menu.up.end { left: auto; right: 0; }
+.home-box .menu.up { top: calc(100% + 4px); bottom: auto; }
 .tools-menu .menu .switch { padding: 0 10px; font-size: 14px; }
 /* A mode in a menu: check, name with its line, number key at the right edge. */
 .menu button.mode-item { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; padding-block: 6px; font-size: 14px; white-space: normal; }
@@ -919,7 +931,7 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .ngroup + .ngroup { margin-top: 12px; }
 .ngroup .eyebrow { padding: 0 0 6px; }
 .more-row { padding: 10px 0 0; }
-.welcome .card { margin-top: 24px; text-align: left; }
+.welcome .card { text-align: left; align-content: start; }
 @media (max-width: 760px) {
   .nrow { grid-template-columns: auto 18px minmax(0, 1fr); }
   .nrow.nopick { grid-template-columns: 18px minmax(0, 1fr); }

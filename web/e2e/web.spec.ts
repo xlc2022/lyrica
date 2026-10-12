@@ -1002,7 +1002,7 @@ test("Machines lists none, and Add machine reaches a machine before anything is 
   await expect(page.getByRole("button", { name: "Copy" })).toBeVisible();
   await expect(page.getByText("/etc/ssh/authorized_keys")).toBeVisible();
   await page.getByRole("button", { name: "Test" }).click();
-  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.getByRole("alert").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Confirm" })).toHaveCount(0);
   await noHorizontalScroll(page);
   await page.getByRole("link", { name: "Machines", exact: true }).first().click();
@@ -1024,7 +1024,7 @@ test("Git accounts lists none, and Add account checks the token with the host be
   await drawer.getByLabel("Kind").selectOption("gitea");
   await expect(drawer.getByLabel("Pool")).toBeEnabled();
   await expect(drawer.getByRole("button", { name: "Add account" })).toBeDisabled();
-  await drawer.getByLabel("Name").fill("forge");
+  await drawer.getByLabel("Name", { exact: true }).fill("forge");
   await drawer.getByLabel("Host").fill("127.0.0.1:9");
   await drawer.getByLabel("Account", { exact: true }).fill("lyrica");
   await drawer.getByLabel("Token").fill("not-a-real-token");
@@ -1090,7 +1090,7 @@ test("MCP servers: one is checked before it's saved, granted in a thread's drawe
   await expect(section).toContainText("None yet.");
   await section.getByRole("button", { name: "Add server" }).click();
   const adding = page.getByRole("complementary", { name: "Add server" });
-  await adding.getByLabel("Name").fill("house");
+  await adding.getByLabel("Name", { exact: true }).fill("house");
   await adding.getByLabel("URL").fill("http://127.0.0.1:9/mcp");
   await adding.getByRole("button", { name: "Add server" }).click();
   // Nothing answers there, so nothing is saved.
@@ -1454,6 +1454,69 @@ test("the header names the version and build, and the home box starts a thread",
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.locator(".msg.user").getByText("From the home box")).toBeVisible();
   await expect(page.getByText("You said: From the home box")).toBeVisible();
+});
+
+// The app's own fetch, so the request carries the signed-in session as the page's requests do.
+async function apiGet<T>(page: Page, path: string): Promise<T> {
+  const r = await page.evaluate(async (p) => { const res = await fetch(p, { credentials: "same-origin" }); return { ok: res.ok, status: res.status, body: await res.json() }; }, path);
+  expect(r.status).toBe(200);
+  return r.body as T;
+}
+
+test("opening and closing home tools creates no thread", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}`);
+  const threads = () => apiGet<{ id: string; pool: string }[]>(page, `/api/u/${userId}/threads`);
+  const before = await threads();
+  const box = page.locator(".home-box");
+  await box.getByRole("button", { name: "Attach or switch tools" }).click();
+  await expect(box.getByRole("checkbox", { name: "Images", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(box.getByRole("menu", { name: "Attach and tools" })).toHaveCount(0);
+  expect(await threads()).toEqual(before);
+});
+
+test("home attachments and tool switches stay local until send and follow the selected pool", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}`);
+  const threads = () => apiGet<{ id: string; pool: string }[]>(page, `/api/u/${userId}/threads`);
+  const before = await threads();
+  const uploads: string[] = [];
+  page.on("request", (r) => { if (r.method() === "POST" && r.url().includes("/uploads?")) uploads.push(r.url()); });
+  const box = page.locator(".home-box");
+  await expect(box.getByRole("button", { name: "Dictate", exact: true })).toBeVisible();
+  await box.getByRole("button", { name: "Attach or switch tools" }).click();
+  const menu = box.getByRole("menu", { name: "Attach and tools" });
+  const images = menu.getByRole("checkbox", { name: "Images", exact: true });
+  await expect(images).toBeChecked();
+  await images.uncheck();
+  await expect(images).not.toBeChecked();
+  await box.locator('input[type="file"]').setInputFiles({ name: "general.txt", mimeType: "text/plain", buffer: Buffer.from("A made-up general attachment") });
+  await expect(box.getByLabel("Message", { exact: true })).toHaveValue(/general.txt/);
+  await page.keyboard.press("Escape");
+  await box.getByRole("button", { name: "Private", exact: true }).click();
+  await expect(box.getByLabel("Message", { exact: true })).toHaveValue("");
+  await box.locator('input[type="file"]').setInputFiles({ name: "private.txt", mimeType: "text/plain", buffer: Buffer.from("A made-up private attachment") });
+  await expect(box.getByLabel("Message", { exact: true })).toHaveValue(/private.txt/);
+  await box.getByRole("button", { name: "General", exact: true }).click();
+  await expect(box.getByLabel("Message", { exact: true })).toHaveValue(/general.txt/);
+  await expect(box.getByLabel("Message", { exact: true })).not.toHaveValue(/private.txt/);
+  await box.getByRole("button", { name: "Attach or switch tools" }).click();
+  await expect(box.getByRole("checkbox", { name: "Images", exact: true })).not.toBeChecked();
+  await page.keyboard.press("Escape");
+  expect(await threads()).toEqual(before);
+  expect(uploads).toEqual([]);
+  await expect(box.getByRole("menu", { name: "Mode", exact: true })).toHaveCount(0);
+  await noHorizontalScroll(page);
+  await box.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.locator(".msg.user")).toContainText("general.txt");
+  await expect(page.locator(".msg.user")).not.toContainText("private.txt");
+  const made = (await threads()).find((t) => !before.some((b) => b.id === t.id));
+  expect(made?.pool).toBe("general");
+  expect(await apiGet(page, `/api/u/${userId}/threads/general/${encodeURIComponent(made!.id)}/settings`)).toMatchObject({ images: false });
+  expect(uploads).toHaveLength(1);
+  expect(uploads[0]).toContain("/threads/general/");
+  expect(uploads[0]).toContain("name=general.txt");
 });
 
 test("the thread menu renames, marks unread, groups, hides and deletes; the Sort menu sorts by group", async ({ page, baseURL }) => {
@@ -2166,7 +2229,7 @@ test("Models: the sidebar link opens Overview, Hosts and endpoints lists the end
   const rename = async (from: string, to: string) => {
     await page.locator("li.ep-row").filter({ hasText: new RegExp(`^${from} `) }).getByRole("button", { name: "Edit" }).click();
     const drawer = page.getByRole("complementary", { name: `Edit ${from}` });
-    await drawer.getByLabel("Name").fill(to);
+    await drawer.getByLabel("Name", { exact: true }).fill(to);
     await drawer.getByRole("button", { name: "Save" }).click();
     await expect(drawer).toHaveCount(0);
     await expect(page.locator("li.ep-row .name").filter({ hasText: new RegExp(`^${to} local$`) })).toBeVisible();
@@ -2510,10 +2573,10 @@ test("Downloads: the queue shows progress with Cancel and how each ended, Accoun
   await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/text$`));
   await page.getByRole("button", { name: "Download model" }).click();
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText("Look up the repository first.");
+  await expect(page.getByRole("alert").filter({ hasText: "Look up the repository first." })).toHaveText("Look up the repository first.");
   await page.getByLabel("Repository").fill("not a repository");
   await page.getByRole("button", { name: "Look up" }).click();
-  await expect(page.getByRole("alert")).toHaveText("That isn't a repository. Use owner/name, or paste the page's link.");
+  await expect(page.getByRole("alert").filter({ hasText: "That isn't a repository. Use owner/name, or paste the page's link." })).toHaveText("That isn't a repository. Use owner/name, or paste the page's link.");
   await page.getByLabel("Repository").fill("https://huggingface.co/a/m-GGUF/tree/main");
   await page.getByRole("button", { name: "Look up" }).click();
   const files = page.getByRole("radiogroup", { name: "File to download" });
@@ -2521,7 +2584,7 @@ test("Downloads: the queue shows progress with Cancel and how each ended, Accoun
   await expect(files.locator(".choice").nth(1)).toContainText("already on this host");
   await expect(files.getByRole("radio").nth(1)).toBeDisabled();
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText("Choose a file.");
+  await expect(page.getByRole("alert").filter({ hasText: "Choose a file." })).toHaveText("Choose a file.");
   await files.getByRole("radio").first().check();
   await noHorizontalScroll(page);
   await shot("text");
@@ -2533,7 +2596,7 @@ test("Downloads: the queue shows progress with Cancel and how each ended, Accoun
   await page.getByRole("group", { name: "Source" }).getByRole("button", { name: "Link" }).click();
   await page.getByLabel("Link to the file").fill("http://example.org/m.bin");
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText("Use an https link to one .gguf or .safetensors file.");
+  await expect(page.getByRole("alert").filter({ hasText: "Use an https link to one .gguf or .safetensors file." })).toHaveText("Use an https link to one .gguf or .safetensors file.");
 });
 
 /** The made-up host's image library: one recipe, one proposal missing its VAE, and the parts; what the page asks of it is kept. */
@@ -2696,7 +2759,7 @@ test("Image models: a recipe opens to its parts with Change, Add a part and Dele
   await expect(files.getByRole("checkbox")).toHaveCount(2);
   await expect(files.getByRole("checkbox").nth(1)).toBeDisabled();
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText("Choose a file.");
+  await expect(page.getByRole("alert").filter({ hasText: "Choose a file." })).toHaveText("Choose a file.");
   await files.getByRole("checkbox").first().check();
   await noHorizontalScroll(page);
   await page.getByRole("button", { name: "Download", exact: true }).click();
@@ -2744,4 +2807,55 @@ test("Web search: the administrator sets the SearXNG address and sees whether it
   await web.hover();
   await shot("web-search-switch-unset");
   await page.keyboard.press("Escape");
+});
+
+test("the sidebar brand links home and closes the phone drawer", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}/admin/status`);
+  await expect(page.getByRole("heading", { name: "Status", exact: true })).toBeVisible();
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  const brand = page.locator("a.brand");
+  await expect(brand).toHaveAttribute("href", `#/u/${userId}`);
+  await expect(brand).not.toHaveAttribute("aria-current", "page");
+  await brand.click();
+  await expect(brand).toHaveAttribute("aria-current", "page");
+  if (phone(page)) {
+    await expect(page.locator(".app")).toHaveAttribute("data-side-open", "false");
+    await page.getByRole("button", { name: "Show threads" }).click();
+    await brand.click();
+    await expect(page.locator(".app")).toHaveAttribute("data-side-open", "false");
+  }
+  await noHorizontalScroll(page);
+});
+
+test("Administration has Her name after Status and saves the name throughout the app", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}/admin/name`);
+  const nav = page.getByRole("navigation", { name: "Administration sections" });
+  await expect(nav.getByRole("link").nth(0)).toHaveText("Status");
+  await expect(nav.getByRole("link").nth(1)).toHaveText("Her name");
+  const name = page.getByLabel("Name", { exact: true });
+  const save = page.getByRole("button", { name: "Save", exact: true });
+  await expect(name).toHaveValue("Lyrica");
+  await expect(name).toHaveAttribute("maxlength", "40");
+  await expect(save).toBeDisabled();
+  await name.fill("   ");
+  await expect(save).toBeDisabled();
+  await expect(page.getByRole("alert").filter({ hasText: "Her name is 1 to 40 characters." })).toHaveText("Her name is 1 to 40 characters.");
+  await name.fill("Ly\u2028rica");
+  await expect(save).toBeDisabled();
+  await expect(page.getByRole("alert").filter({ hasText: "Her name is one line of text." })).toHaveText("Her name is one line of text.");
+  await name.fill("  Lyrica  ");
+  await expect(save).toBeDisabled();
+  await name.fill("Moonlight");
+  await save.click();
+  await expect(name).toHaveValue("Moonlight");
+  await expect(page.locator("a.brand")).toHaveText("Moonlight");
+  await expect(page).toHaveTitle("Moonlight");
+  await expect(save).toBeDisabled();
+  await noHorizontalScroll(page);
+  await name.fill("Lyrica");
+  await save.click();
+  await expect(name).toHaveValue("Lyrica");
+  await expect(page).toHaveTitle("Lyrica");
 });

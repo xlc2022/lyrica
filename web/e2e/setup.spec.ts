@@ -51,7 +51,7 @@ test("the setup page takes the code, her name and the first administrator, skips
   await expect(page).toHaveTitle("Aria");
 });
 
-test("Administration: her name changes from Persona, Tailnet says what's missing, and Updates says there is no updater", async ({ page }) => {
+test("Administration: her name changes from Her name, Tailnet says what's missing, and Updates says there is no updater", async ({ page }) => {
   // A new browser: she is unlocked, so it goes straight to Log in.
   await page.goto("/");
   await page.getByLabel("Login name").fill("ada");
@@ -59,12 +59,15 @@ test("Administration: her name changes from Persona, Tailnet says what's missing
   await page.getByRole("button", { name: "Log in" }).click();
   await expect(page.getByText("Switch user")).toBeAttached();
   const userId = await page.evaluate(async () => ((await (await fetch("/api/state")).json()) as { users: { id: string }[] }).users[0]!.id);
-  await page.goto(`/#/u/${userId}/admin/persona`);
-  const name = page.getByRole("region", { name: "Persona" }).getByLabel("Name");
+  await page.goto(`/#/u/${userId}/admin/name`);
+  const section = page.getByRole("region", { name: "Her name" });
+  const name = section.getByLabel("Name", { exact: true });
   await expect(name).toHaveValue("Aria");
   await name.fill("Lyra");
-  await expect(page.getByText("Memories and threads written so far keep the name Aria.")).toBeVisible();
-  await page.getByRole("button", { name: "Save" }).click();
+  await section.locator(".wl").click();
+  await expect(section.getByRole("tooltip")).toHaveText("Memories and threads written so far keep the old name.");
+  await expect(section.getByRole("tooltip")).toBeVisible();
+  await section.getByRole("button", { name: "Save" }).click();
   await expect(page.locator(".brand")).toHaveText("Lyra");
   await page.goto(`/#/u/${userId}/admin/tailnet`);
   await expect(page.getByRole("region", { name: "Tailnet" })).toContainText("Not installed");
