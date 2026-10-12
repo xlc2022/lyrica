@@ -111,7 +111,7 @@ export function ToolsMenu({ settings, onAttach, onChange }: {
         <div className="sep" role="separator" />
         <Switch label="Web search" hint={settings.searchProvider ? undefined : "Search needs a SearXNG address in Administration"} checked={settings.webSearch} onChange={(webSearch) => onChange({ webSearch })} />
         <Switch label="Internet for commands" checked={settings.network.internet} onChange={(internet) => onChange({ internet })} />
-        <Switch label="Images" checked={settings.images} onChange={(images) => onChange({ images })} />
+        <Switch label="Images" hint="Lets the agent make and edit images in this thread." checked={settings.images} onChange={(images) => onChange({ images })} />
       </>
     );
   }

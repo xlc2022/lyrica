@@ -889,6 +889,12 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .inline-img { display: block; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--tool); overflow: hidden; max-width: min(100%, 420px); cursor: zoom-in; }
 .inline-img:hover { border-color: var(--muted); }
 .inline-img img { display: block; max-width: 100%; max-height: 320px; object-fit: contain; }
+.message-images { display: grid; gap: 12px; }
+.message-image { width: fit-content; max-width: min(100%, 420px); }
+.message-image .inline-img { min-width: var(--tap); }
+.image-facts { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.image-facts .cap { overflow-wrap: anywhere; min-width: 0; }
+.image-facts .row-menu { margin-left: auto; flex: none; }
 .prose p:has(> .inline-img:only-child) { margin: 8px 0; }
 .field-fact { padding: 7px 0; }
 

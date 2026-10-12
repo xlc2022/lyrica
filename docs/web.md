@@ -592,6 +592,18 @@ A thread's address may carry what the panel beside it shows:
   **Copy failed** where the browser refuses, for 2 s; inline code, tool
   results, the permission card, the Files viewer and the Machines page's
   setup block have none.
+- An image part, stored or delivered on `tool_end`, shows each path as a
+  thumbnail up to 320 px tall with an 8 px radius and the filename as its
+  accessible name. The facts line reads "Made with <model>" and, when given,
+  "· fast" or "· quality". Its ⋯ holds Download, Copy path, Show in Files
+  and Edit…. Edit… fills the composer with "Edit <path>: " and enables
+  Images. Full images use the thread's authenticated `…/file?path=` route;
+  thumbnails use the existing thumbnail route and fall back to that file.
+  The shared Lightbox has a filename header, Download and Copy path behind
+  ⋯, and Close. Image tool markers read Making an image with its tier,
+  Editing an image or Upscaling an image, with the running dot; expanding
+  a failed marker shows the result's reason. The API currently sends no
+  image step progress, so there is no step count or progress bar.
 - A thread she mentions (`[t:<id>]`, `[e:<id>#<n>]`) shows as its current
   title, linked to the thread in the same tab; "a forgotten thread" once it's
   gone. Titles are fetched per thread and kept for 30 seconds, so a rename
@@ -781,6 +793,8 @@ A thread's address may carry what the panel beside it shows:
   opens (only into an empty box), saved a second after typing stops, on blur
   and on leaving, and cleared by a send; nothing is kept in the browser. A
   draft over 64 KiB shows "The draft is too long to keep." in the error line.
+  The + menu's Images switch has the tooltip "Lets the agent make and edit
+  images in this thread."
 - **Dictation** (`src/Voice.tsx`, DESIGN.md "Voice"): the mic in the row
   under the box records 16 kHz mono PCM through an AudioWorklet
   (`public/dictation-worklet.js`). While it records the icon is accent and

@@ -141,6 +141,66 @@ test("unlock, log in, start a thread, and see a streamed reply that survives a r
   await noHorizontalScroll(page);
 });
 
+test("an image tool result shows inline, opens large, and starts an edit with Images enabled", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "An imaginary garden");
+  await expect(page.getByText("You said: An imaginary garden")).toBeVisible();
+  const threadId = threadIdOf(page.url());
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}`;
+  const path = "/workspace/images/garden.png";
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=", "base64");
+  await page.route(`**${base}/messages`, (route) => route.fulfill({ json: {
+    messages: [{ id: `e:${threadId}#1`, n: 1, role: "assistant", createdAt: "2026-10-12T12:00:00Z", parts: [
+      { type: "tool", toolCallId: "garden", name: "image", args: { action: "create", tier: "fast", prompt: "A garden" }, result: path, isError: false },
+      { type: "image", paths: [path], model: "box/Z-Image", tier: "fast" },
+      { type: "tool", toolCallId: "edit", name: "image", args: { action: "edit", image: path, instruction: "Add a pond" }, result: "The image host is offline.", isError: true },
+      { type: "tool", toolCallId: "upscale", name: "image", args: { action: "upscale", image: path }, result: path, isError: false },
+    ] }], hasMore: false,
+  } }));
+  await page.route(`**${base}/files/thumb?*`, (route) => route.fulfill({ status: 404 }));
+  await page.route(`**${base}/file?*`, (route) => route.fulfill({ contentType: "image/png", body: png }));
+  await page.evaluate(async (base) => {
+    const r = await fetch(`${base}/settings`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ images: false }) });
+    if (!r.ok) throw new Error(`Settings: ${r.status}`);
+  }, base);
+  await page.reload();
+  const image = page.getByRole("button", { name: "garden.png", exact: true });
+  await expect(image).toBeVisible();
+  await expect(image.getByRole("img", { name: "garden.png" })).toHaveAttribute("src", `${base}/file?path=${encodeURIComponent(path)}`);
+  await expect(page.getByText("Made with box/Z-Image · fast", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Making an image · fast" })).toBeVisible();
+  await page.getByRole("button", { name: "Editing an image" }).click();
+  await expect(page.locator(".tool-error")).toHaveText("The image host is offline.");
+  await expect(page.getByRole("button", { name: "Upscaling an image" })).toBeVisible();
+  await image.click();
+  const lightbox = page.getByRole("dialog", { name: "garden.png" });
+  await expect(lightbox).toBeVisible();
+  await expect(lightbox.locator(".fname")).toHaveText("garden.png");
+  await expect(lightbox.getByRole("img")).toHaveAttribute("src", `${base}/file?path=${encodeURIComponent(path)}`);
+  await lightbox.getByRole("button", { name: "Image actions", exact: true }).click();
+  await expect(lightbox.getByRole("menuitem", { name: "Download", exact: true })).toBeVisible();
+  await expect(lightbox.getByRole("menuitem", { name: "Copy path" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(lightbox).toBeVisible();
+  await expect(lightbox.getByRole("menu")).toBeHidden();
+  await lightbox.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(lightbox).toBeHidden();
+  await page.getByRole("button", { name: "Attach or switch tools" }).click();
+  const tools = page.getByRole("menu", { name: "Attach and tools" });
+  await expect(tools.getByRole("checkbox", { name: "Images", exact: true })).not.toBeChecked();
+  await expect(tools.locator("label", { hasText: "Images" })).toHaveAttribute("title", "Lets the agent make and edit images in this thread.");
+  await page.getByRole("button", { name: "Attach or switch tools" }).click();
+  await page.getByRole("button", { name: "Image actions for garden.png" }).click();
+  await expect(page.getByRole("menuitem", { name: "Show in Files" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Edit…", exact: true }).click();
+  await expect(page.getByLabel("Message", { exact: true })).toHaveValue(`Edit ${path}: `);
+  await expect(page.getByLabel("Message", { exact: true })).toBeFocused();
+  await page.getByRole("button", { name: "Attach or switch tools" }).click();
+  await expect(tools.getByRole("checkbox", { name: "Images", exact: true })).toBeChecked();
+  await noHorizontalScroll(page);
+});
+
 test("a message's menu regenerates, edits, deletes with Undo, and branches", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");

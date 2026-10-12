@@ -1,12 +1,14 @@
 // The conversation: stored messages, then what's streaming now.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { get, post, threadPath, u, type GoAhead, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
+import { get, post, threadPath, u, type GoAhead, type ImagePart, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
 import type { LiveItem } from "./live.ts";
 import { useMentionText, useThreadMentions } from "./mentions.ts";
 import { GoAheadMenu } from "./Modes.tsx";
 import { Icon } from "./icons.tsx";
-import { href, idHref } from "./route.ts";
+import { go, href, idHref } from "./route.ts";
+import { RowMenu } from "./Machines.tsx";
+import { ask, EDIT_IMAGE_EVENT, type EditImageRequest } from "./links.ts";
 import type { ShellContext } from "./Shell.tsx";
 import type { useThread } from "./stream.ts";
 import { SuggestedCard, ThreadCard, type ProjectEnv } from "./Project.tsx";
@@ -14,7 +16,7 @@ import { ChecklistButton, StepLine } from "./Checklist.tsx";
 import { findThread } from "./Thread.tsx";
 import { EditBox, MessageMenu, type Rewinder } from "./Rewind.tsx";
 import { ErrorText, fullTime, Prose, useAction, wakeTime } from "./ui.tsx";
-import { Lightbox, PathText, useFileLinks, type FileLinks } from "./paths.tsx";
+import { basename, InlineImage, Lightbox, PathText, useFileLinks, type FileLinks } from "./paths.tsx";
 import { foldLooks, raisedIn, toldIn, type Told } from "./looks.ts";
 import { her } from "./name.ts";
 import { ReactButton, ReactionChips } from "./Reactions.tsx";
@@ -295,7 +297,7 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions }: { par
     // After a look, the threads she told are in the look's marker; the messages would show twice.
     if (folded && p.type === "tool" && p.name === "threads" && !p.isError && (p.args as { action?: string } | null)?.action === "message") return;
     flush(i, false);
-    out.push(<Marker key={i} part={p} env={env} />);
+    out.push(p.type === "image" ? <MessageImages key={i} part={p} env={env} /> : <Marker key={i} part={p} env={env} />);
   });
   flush(parts.length, true);
   if (streaming && parts.at(-1)?.type !== "text") out.push(<span key="caret" className="caret-blink alone" aria-hidden="true" />);
@@ -327,7 +329,31 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions }: { par
   );
 }
 
-function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" }>; env: Env }) {
+/** Principle 1: made images stay in the conversation, with their facts and rare actions (ux §3 and §6). */
+function MessageImages({ part, env }: { part: ImagePart; env: Env }) {
+  const links = useFileLinks(env.userId, env.pool, env.threadId);
+  const files: FileLinks = { ...links, url: (path) => `${env.base}/file?path=${encodeURIComponent(path)}` };
+  return (
+    <div className="message-images">
+      {part.paths.map((path) => (
+        <div key={path} className="message-image">
+          <InlineImage src={path} alt={basename(path)} label={basename(path)} files={files} large={(p) => env.large(p, files)} />
+          <div className="image-facts">
+            <span className="cap">Made with {part.model}{part.tier && <> · {part.tier}</>}</span>
+            <RowMenu label={`Image actions for ${basename(path)}`} items={[
+              { label: "Download", onPick: () => { const a = document.createElement("a"); a.href = files.url(path); a.download = basename(path); a.click(); } },
+              { label: "Copy path", onPick: () => { void navigator.clipboard.writeText(path).catch((e: Error) => env.onError(e.message)); } },
+              { label: "Show in Files", onPick: () => go({ page: "files", userId: env.userId, pool: env.pool, threadId: env.threadId, path }) },
+              { label: "Edit…", onPick: () => { ask<EditImageRequest>(EDIT_IMAGE_EVENT, { base: env.base, path }); } },
+            ]} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "image" }>; env: Env }) {
   const [localOpen, setLocalOpen] = useState(false);
   const open = part.type === "tool" ? env.openTools.has(part.toolCallId) : localOpen;
   const toggle = () => (part.type === "tool" ? env.toggleTool(part.toolCallId) : setLocalOpen(!localOpen));
@@ -361,6 +387,11 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" }>; e
       const mcp = mcpOf(part.name);
       const place = mcp?.server ?? machineOf(part.args);
       label = <>{place && <b className="place">{place}</b>}<b className="tool-name">{mcp?.tool ?? part.name}</b> <code>{summarizeArgs(part.args)}</code> <span className="state" data-state={state}>{state}</span></>;
+      if (part.name === "image") {
+        const args = (part.args ?? {}) as { action?: string; tier?: string };
+        const making = args.action === "edit" ? "Editing an image" : args.action === "upscale" ? "Upscaling an image" : "Making an image";
+        label = <><span>{making}{args.action === "create" && args.tier && <> · {args.tier}</>}</span><span className="status" data-state={state} aria-label={state} /></>;
+      }
       body = (
         <>
           <pre>{JSON.stringify(part.args, null, 2)}</pre>
