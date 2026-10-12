@@ -1,6 +1,6 @@
-import { FROM_PARENT, WATCHING } from "@lyrica/core";
+import { FROM_PARENT, LYRICA_REACTS, WATCHING, type Reaction as StoredReaction } from "@lyrica/core";
 import { DELEGATE_MESSAGE, OPENING, USER_MESSAGE } from "@lyrica/extension";
-import type { Message, MessagePart, Pool, ThreadRef } from "./api.ts";
+import type { Message, MessagePart, Pool, Reaction, ThreadRef } from "./api.ts";
 
 // Stored Pi entries as the web UI shows them, and the memory markers that both
 // stored messages and the live stream carry.
@@ -84,11 +84,19 @@ export interface SubagentThread { userName(userId: string): string }
  * calls; recall joins the reply it fed. In a subagent's thread, each "user"
  * message says whether Lyrica or a user sent it.
  */
-export function toMessages(threadId: string, pool: Pool, entries: { n: number; data: unknown; createdAt: string; pinned?: boolean }[], runThreads?: RunThreads, subagent?: SubagentThread, opts: { parent?: string } = {}): Message[] {
+/** Stored reactions as the API shows them to the user whose thread it is. */
+export function toReactions(raw: StoredReaction[] | undefined, userId: string): Reaction[] | undefined {
+  const out = (raw ?? []).map((r) => ({ emoji: r.emoji, you: r.by.includes(userId), her: r.by.includes(LYRICA_REACTS) })).filter((r) => r.you || r.her);
+  return out.length ? out : undefined;
+}
+
+/** `opts.userId`: whose view it is, so reactions show as `you` and `her`; without it they are left out. */
+export function toMessages(threadId: string, pool: Pool, entries: { n: number; data: unknown; createdAt: string; pinned?: boolean; reactions?: StoredReaction[] }[], runThreads?: RunThreads, subagent?: SubagentThread, opts: { parent?: string; userId?: string } = {}): Message[] {
   const out: Message[] = [];
   const calls = new Map<string, { part: Extract<MessagePart, { type: "tool" }>; owner: Message }>();
   let pendingRecall: string[] = [];
-  for (const { n, data, createdAt, pinned } of entries) {
+  for (const { n, data, createdAt, pinned, reactions: stored } of entries) {
+    const reactions = opts.userId ? toReactions(stored, opts.userId) : undefined;
     const e = data as PiEntry;
     if (e.type === "custom_message" && e.customType === "lyrica-turn") {
       pendingRecall = turnRecall(e.content);
@@ -117,7 +125,7 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
     }
     const m = e.type === "message" ? e.message : undefined;
     if (!m) continue;
-    const base = { id: `e:${threadId}#${n}`, n, createdAt, ...(pinned ? { pinned: true } : {}) };
+    const base = { id: `e:${threadId}#${n}`, n, createdAt, ...(pinned ? { pinned: true } : {}), ...(reactions?.length ? { reactions } : {}) };
     if (m.role === "user") {
       if (textOf(m.content) === OPENING) continue; // a thread started from a sleep item: she speaks first
       // Only a child thread has a parent's messages, or in a project a sibling's; lyricad refuses the mark on anything else.

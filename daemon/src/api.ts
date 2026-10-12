@@ -64,6 +64,8 @@ export interface State {
   setup?: boolean;
   /** Her name for this deployment (default Lyrica), in every state. */
   name: string;
+  /** Setting up: whether this machine can save the passphrase (Start unlocked), and why not. */
+  credentials?: { available: boolean; reason?: string };
   /** Users logged in on this browser session. Empty while locked. */
   users: UserCard[];
   /** lyricad's version (package.json) and build (the git commit it was built from, or "dev"). Shown in the header; absent while locked. */
@@ -767,7 +769,7 @@ export interface AcceptShare { pool: Pool }
 // her items from the night, and, for administrators, persona changes to approve.
 // Not yet in it: downloads, clean-up items, image models to review, host problems.
 
-export type NotificationType = "share" | "permission" | "update" | "sleep" | "suggestion" | "approval";
+export type NotificationType = "share" | "permission" | "update" | "sleep" | "suggestion" | "approval" | "rollback";
 /** An action on an item: a request the UI sends as it is. `opens`: the answer is a ThreadSummary to go to. */
 export interface NotificationAction { label: string; method: "POST" | "DELETE"; path: string; body?: unknown; danger?: boolean; opens?: boolean }
 export interface Notification {
@@ -782,7 +784,7 @@ export interface Notification {
   decision: boolean;
   /** Where it leads, if anywhere: a thread, or a section of Settings or Administration. */
   thread?: { pool: Pool; id: string };
-  section?: "settings/suggestions" | "admin/persona";
+  section?: "settings/suggestions" | "admin/persona" | "admin/updates";
   actions: NotificationAction[];
   at: string;
 }
@@ -979,7 +981,19 @@ export interface Message {
   error?: string;
   /** The user pinned it: it stays in her context word for word. */
   pinned?: boolean;
+  /** Emoji on the message, in the order they first came, by the user (`you`), Lyrica (`her`) or both. */
+  reactions?: Reaction[];
 }
+
+/** One emoji on a message and who put it there. Both can react with the same emoji; it is then one chip counting two. */
+export interface Reaction { emoji: string; you: boolean; her: boolean }
+/**
+ * PUT /api/u/:userId/threads/:pool/:threadId/messages/:n/reactions/:emoji → Reactions puts the user's reaction on
+ * message n, DELETE takes it off; `emoji` is URL-encoded. Any message, including her own; not in a subagent's thread.
+ * She is told of it in her next turn, and she reacts herself with her `react` tool; every tab with the thread open
+ * sees a `reactions` event.
+ */
+export interface Reactions { reactions: Reaction[] }
 
 /**
  * GET /api/u/:userId/threads/:pool/:threadId/messages?before=<n>&limit=<k> → MessagePage
@@ -1167,6 +1181,8 @@ export type ThreadEvent =
    */
   | { type: "offline"; task: Task; tried: { label: string; reason: string }[] }
   | { type: "title"; title: string }
+  /** Message n's reactions changed: hers, or the user's from another tab. */
+  | { type: "reactions"; n: number; reactions: Reaction[] }
   /** The thread's settings changed (an approved plan switched its mode, say): fetch them again. */
   | { type: "settings" }
   /** In a project chat: one of its threads changed state; fetch it (`GET threads/:pool/:id`) to update its card in place. */
@@ -1407,8 +1423,8 @@ export interface PassphraseChange { save: boolean; passphrase?: string }
 /** POST /api/u/:userId/admin/users → UserCard */
 export interface NewUser { login: string; password: string; displayName: string; pronouns: Pronouns; admin: boolean }
 /** PUT /api/u/:userId/admin/users/:targetId/admin → UserCard. The last administrator can't be demoted. */
-/** PUT /api/u/:userId/admin/users/:targetId/password (AdminPassword) → Ok. The user's data stays (DESIGN.md, "Users"); `Me.warning` tells them until they change it. 409 for a user with no recovery copy yet. */
-export interface AdminPassword { password: string }
+/** PUT /api/u/:userId/admin/users/:targetId/password (AdminPassword) → Ok. The user's data stays (DESIGN.md, "Users"); they are logged out everywhere, and `Me.warning` tells them until they change it. 401 when `yourPassword` is wrong; 409 for a user with no recovery copy yet. */
+export interface AdminPassword { password: string; /** The administrator's own password, asked again. */ yourPassword: string }
 export interface AdminFlag { admin: boolean }
 /** PATCH /api/u/:userId/admin/users/:targetId/profile → UserCard */
 

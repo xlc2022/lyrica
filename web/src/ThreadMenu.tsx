@@ -5,6 +5,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { del, get, patch, post, put, threadPath, u, type Person, type ThreadGroup, type ThreadSummary } from "./api.ts";
 import { go, type Route } from "./route.ts";
+import { her } from "./name.ts";
 import { ConfirmDialog, ErrorText, menuArrows } from "./ui.tsx";
 
 export interface MenuAt { x: number; y: number; thread: ThreadSummary }
@@ -113,13 +114,13 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onCl
   if (sub === "project") {
     return (
       <ConfirmDialog title="Make this a project?" confirm="Make project" onCancel={onClose} onConfirm={() => change({ project: true })}
-        sentence="This thread becomes the project chat, and threads Lyrica starts from it become the project's threads. There is no way back." />
+        sentence={`This thread becomes the project chat, and threads ${her()} starts from it become the project's threads. There is no way back.`} />
     );
   }
   if (sub === "delete") {
     return (
       <ConfirmDialog title="Delete this thread?" danger confirm="Delete" onCancel={onClose} onConfirm={forget}
-        sentence="Its messages are deleted, and so is what Lyrica learned only from it. This can't be undone."
+        sentence={`Its messages are deleted, and so is what ${her()} learned only from it. This can't be undone.`}
         {...(children > 0 ? { option: `Also delete its ${children === 1 ? "child thread" : `${children} child threads`}` } : {})} />
     );
   }

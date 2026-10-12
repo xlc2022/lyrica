@@ -120,7 +120,7 @@ describe("setting up", () => {
     expect(logs.join("\n")).toContain(`with the code ${code}`);
 
     const b = browser(base);
-    expect((await b.get<State>("/api/state")).body).toEqual({ locked: true, setup: true, name: "Lyrica", users: [] });
+    expect((await b.get<State>("/api/state")).body).toEqual({ locked: true, setup: true, name: "Lyrica", users: [], credentials: { available: true } });
     expect((await b.post("/api/unlock", { passphrase: "x" })).status).toBe(503);
     expect((await b.post("/api/login", { login: "li", password: "pw" })).status).toBe(503);
     expect((await b.get("/api/u/x/me")).status).toBe(503);

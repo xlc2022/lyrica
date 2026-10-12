@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { get, patch, post, u, type Display, type DisplayChange, type LogoutResponse, type Me, type Pool, type State, type ThreadGroup, type ThreadSort, type ThreadSummary, type UserCard } from "./api.ts";
 import { href, go, panelRoute, parse, type Panel, type Route } from "./route.ts";
 import { Icon } from "./icons.tsx";
+import { her } from "./name.ts";
 import { Thread, findThread } from "./Thread.tsx";
 import { Memory, memoryTitle } from "./Memory.tsx";
 import { AdminPage, SettingsPage } from "./Panel.tsx";
@@ -27,12 +28,15 @@ export interface ShellContext {
   waiting: number;
   refreshNotifications: () => void;
   openSide: () => void;
+  /** Reload GET /api/state: after her name changes. */
+  refreshState: () => void;
 }
 
-export function Shell({ user, users, route, build, onAuthChange }: {
+export function Shell({ user, users, route, build, onAuthChange, refreshState }: {
   user: UserCard; users: UserCard[]; route: Route; build: Pick<State, "version" | "build">;
   /** After logout or Lock, with a line to show, if any. */
   onAuthChange: (notice?: string) => void;
+  refreshState: () => void;
 }) {
   const me = useLoad(() => get<Me>(u(user.id, "me")), [user.id]);
   const threads = useLoad(() => get<ThreadSummary[]>(u(user.id, "threads")), [user.id]);
@@ -59,6 +63,7 @@ export function Shell({ user, users, route, build, onAuthChange }: {
   const ctx: ShellContext = {
     user: me.data.user, me: me.data, setMe: me.set, build, refreshThreads: threads.reload,
     groups: groups.data ?? [], refreshGroups: groups.reload, waiting: notes.waiting, refreshNotifications: notes.reload, openSide: () => setSideOpen(true),
+    refreshState,
   };
 
   const panel = wide && route.page === "thread" ? route.panel : undefined;
@@ -363,7 +368,7 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
   return (
     <aside className="side" aria-label="Threads">
       <div className="side-top">
-        <span className="brand">Lyrica</span>
+        <span className="brand">{her()}</span>
         <button type="button" className="icon sm side-close" aria-label="Hide threads" onClick={onClose}><Icon name="close" /></button>
       </div>
       <nav className="side-nav" aria-label="Pages">
@@ -657,7 +662,7 @@ function Welcome({ ctx }: { ctx: ShellContext }) {
   const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return (
     <main className="main">
-      <PageHead ctx={ctx} title={<>Lyrica <span className="ver">{ctx.build.version} · {ctx.build.build}</span></>} facts={<>{date} · <span className="num">{time}</span></>} />
+      <PageHead ctx={ctx} title={<>{her()} <span className="ver">{ctx.build.version} · {ctx.build.build}</span></>} facts={<>{date} · <span className="num">{time}</span></>} />
       <div className="scroll">
         <div className="welcome">
           <h1>{greeting(now.getHours())}, {ctx.user.displayName}.</h1>

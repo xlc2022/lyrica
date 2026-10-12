@@ -7,6 +7,7 @@ import {
   type AllowedPaths, type GitRepository, type Grant, type MachineInfo, type MessagePart, type ModelRef, type PermissionMode, type Pool, type ProjectOverview, type ThinkingLevel, type ThreadChange, type ThreadSettings, type ThreadSummary,
 } from "./api.ts";
 import { Icon } from "./icons.tsx";
+import { her } from "./name.ts";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { href } from "./route.ts";
 import { Repositories } from "./Git.tsx";
@@ -67,7 +68,7 @@ export function ThreadsFact({ userId, overview, phone }: { userId: string; overv
       {open && (
         <div className="picker threads-pop" role="dialog" aria-label="The project's threads">
           {phone && <p className="small tokens"><span className="num">{tokenCount(overview.tokens)}</span> tokens</p>}
-          {!threads.length && <p className="muted small">No threads yet. Ask Lyrica for some, or pick Start a thread in a message's menu.</p>}
+          {!threads.length && <p className="muted small">No threads yet. Ask {her()} for some, or pick Start a thread in a message's menu.</p>}
           {GROUPS.map((g) => {
             const mine = threads.filter(g.of);
             if (!mine.length) return null;
@@ -249,7 +250,7 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
     }
     setSaved(true);
   });
-  const newThreadsHint = "Threads Lyrica starts from this chat. Each one can be changed after it starts.";
+  const newThreadsHint = `Threads ${her()} starts from this chat. Each one can be changed after it starts.`;
   return (
     <form className="card project-form" aria-labelledby="h-general" onSubmit={(e) => { e.preventDefault(); void save(); }}>
       <h2 id="h-general">General</h2>
@@ -259,7 +260,7 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
       </label>
       <div className="row switches">
         <Switch label="Paused" hint="Running threads stop and queued ones wait." checked={paused} onChange={setPaused} />
-        <Switch label="Watching threads" hint="After you write in a thread or one posts an update, Lyrica checks whether the other threads are affected and tells them." checked={watch} onChange={setWatch} />
+        <Switch label="Watching threads" hint={`After you write in a thread or one posts an update, ${her()} checks whether the other threads are affected and tells them.`} checked={watch} onChange={setWatch} />
       </div>
 
       <h3 title={newThreadsHint}>New threads</h3>
@@ -352,10 +353,10 @@ function MemorySection({ base, summary, pool, userId, onSummary }: { base: strin
       <h2 id="h-memory">Memory</h2>
       <label className="field">
         <span>Instructions</span>
-        <textarea rows={6} maxLength={2000} value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="How Lyrica should work in this project. Every thread of it reads this." />
+        <textarea rows={6} maxLength={2000} value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder={`How ${her()} should work in this project. Every thread of it reads this.`} />
         <small className="muted num">{instructions.length} / 2000</small>
       </label>
-      <p className="small"><a href={href({ page: "memory", userId, pool, id: summary.projectSettings!.pageId })}>Project page</a> <span className="muted">· what Lyrica knows about the project, rewritten while she sleeps</span></p>
+      <p className="small"><a href={href({ page: "memory", userId, pool, id: summary.projectSettings!.pageId })}>Project page</a> <span className="muted">· what {her()} knows about the project, rewritten while she sleeps</span></p>
       <div className="row">
         <button type="submit" className="primary" disabled={busy}>Save</button>
         {saved && <span className="muted" role="status">Saved.</span>}

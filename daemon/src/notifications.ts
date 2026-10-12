@@ -3,11 +3,14 @@
 // here; acting on an item changes its source, and the item goes.
 import type { Pool, PoolStore, User } from "@lyrica/core";
 import type * as Api from "./api.ts";
-import type { Lyricad } from "./lyricad.ts";
+import { BUILD, type Lyricad } from "./lyricad.ts";
+import { readUpdates } from "./updates.ts";
 
 const POOLS: Pool[] = ["general", "private"];
 const DETAIL = 160;
-const TYPE_ORDER: Api.NotificationType[] = ["permission", "share", "update", "approval", "suggestion", "sleep"];
+const TYPE_ORDER: Api.NotificationType[] = ["permission", "share", "update", "approval", "suggestion", "sleep", "rollback"];
+/** A failed probation is told for this long; Administration → Updates keeps it after. */
+const ROLLBACK_DAYS = 7;
 
 export interface NotificationQuery { type?: string; scope?: string; sort?: string; offset?: number; limit?: number }
 
@@ -110,6 +113,17 @@ function collect(d: Lyricad, user: User, show: Api.Display): Api.Notification[] 
         scope: "general", decision: true, section: "settings/suggestions", at: dr.createdAt,
         actions: [{ label: "Drop", method: "DELETE", path: `${u}/proposals/${dr.id}`, danger: true }],
       });
+    }
+    // An update that failed its probation and was rolled back (administrators, for a week).
+    if (user.admin) {
+      const rb = readUpdates(d.updatePaths, { version: BUILD.version ?? "0", build: BUILD.build ?? "dev" }).lastRollback;
+      if (rb?.automatic && Date.now() - new Date(rb.at).getTime() < ROLLBACK_DAYS * 864e5) {
+        out.push({
+          id: `rollback:${rb.at}`, type: "rollback", title: `Update ${rb.from.slice(0, 7)} rolled back${rb.check ? `: ${rb.check} failed` : ""}`,
+          detail: `Running ${rb.to.slice(0, 7)} again${rb.restoredFrom ? ", with the snapshot from before it restored" : ""}.`,
+          scope: "general", decision: false, section: "admin/updates", at: rb.at, actions: [],
+        });
+      }
     }
     // Persona changes sent on by users, for administrators to approve.
     if (user.admin) {

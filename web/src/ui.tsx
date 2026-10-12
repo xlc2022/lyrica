@@ -139,8 +139,9 @@ export function Prose({ text, files, onLarge, a }: { text: string; files?: FileL
  * A dialog confirms an action with a consequence: the sentence and two buttons (docs/ux.md §6).
  * `option` adds one checkbox, ticked by default; `onConfirm` gets its state.
  */
-export function ConfirmDialog({ title, sentence, confirm, cancel = "Cancel", danger, option, onConfirm, onCancel }: {
-  title: string; sentence: string; confirm: string; cancel?: string; danger?: boolean; option?: string; onConfirm: (option: boolean) => void; onCancel: () => void;
+export function ConfirmDialog({ title, commit, sentence, confirm, cancel, danger, option, onConfirm, onCancel }: {
+  title: string; /** A commit in mono after the title (Roll back). */ commit?: string; sentence: string; confirm: string; /** The cancel button's word; default Cancel. */ cancel?: string;
+  danger?: boolean; option?: string; onConfirm: (option: boolean) => void; onCancel: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [ticked, setTicked] = useState(true);
@@ -153,11 +154,11 @@ export function ConfirmDialog({ title, sentence, confirm, cancel = "Cancel", dan
     <dialog ref={ref} aria-labelledby="confirm-title" onCancel={(e) => { e.preventDefault(); onCancel(); }} onClick={(e) => { if (e.target === ref.current) onCancel(); }}
       onKeyDown={(e) => { if (e.key === "Escape") e.stopPropagation(); }}>
       <form method="dialog" className="dlg" onSubmit={(e) => { e.preventDefault(); onConfirm(!!option && ticked); }}>
-        <h2 id="confirm-title">{title}</h2>
+        <h2 id="confirm-title">{title}{commit && <> <span className="mono dlg-commit">{commit}</span></>}</h2>
         <p>{sentence}</p>
         {option && <label className="check"><input type="checkbox" checked={ticked} onChange={(e) => setTicked(e.target.checked)} />{" "}{option}</label>}
         <div className="dlg-actions">
-          <button type="button" onClick={onCancel}>{cancel}</button>
+          <button type="button" onClick={onCancel}>{cancel ?? "Cancel"}</button>
           <button type="submit" className={danger ? "danger primary" : "primary"} autoFocus>{confirm}</button>
         </div>
       </form>

@@ -19,8 +19,8 @@ cloud model is outside our control.
 - [docs/guides/ci-runners.md](docs/guides/ci-runners.md) sets up a machine
   that runs the checks.
 
-She isn't deployed yet. The web UI has no setup page, so the first run uses
-`lyrica admin init` on the server.
+She isn't deployed yet. The first run is the web setup page, with
+`lyrica admin init` on the server as the other way.
 
 ## Contributing
 
@@ -38,15 +38,15 @@ The repository was rebuilt from scratch starting 2026-10-09.
 - Encrypted general and private memory pools, with notes, memory tools,
   automatic recall and a memory browser.
 - `lyricad`, which hosts every conversation, and a web UI for threads,
-  projects, files, machines, voice, notifications and settings.
+  projects, files, machines, voice, notifications, reactions and settings,
+  with a setup page, her name, the tailnet and updates in Administration.
 - Sleep, which writes notes, pages, WAKE and the journal.
 - Delegation and child threads, modes, remote machines over SSH or
   Proxmox, and Git accounts with project repositories.
 - Model and speech hosts on GPU machines.
 - Releases with automatic rollback, and numbered database migrations.
 
-Not built yet: `lyrica chat` and `lyrica mem` (clients of `lyricad`), the web
-setup and Updates pages, images, and
+Not built yet: `lyrica chat` and `lyrica mem` (clients of `lyricad`), images, and
 calendar and sorting. After that comes living with her for a few weeks while
 keeping the evals and a friction log.
 

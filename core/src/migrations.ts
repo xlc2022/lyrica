@@ -199,6 +199,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
       db.exec(POOL_SCHEMA);
       for (const u of POOL_UPGRADES) if (!db.prepare(u.check).get()) db.exec(u.sql);
     },
+  }, {
+    // Reactions on messages (DESIGN.md, Threads): the emoji and who reacted, as JSON; null means none.
+    version: 2,
+    run(db) { db.exec("ALTER TABLE entries ADD COLUMN reactions TEXT"); },
   }],
 };
 

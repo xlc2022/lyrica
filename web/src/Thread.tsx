@@ -1,6 +1,6 @@
 // One thread: header with its badges, the conversation, and the composer.
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { del, get, patch, post, put, threadPath, u, type MachineInfo, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary } from "./api.ts";
+import { del, get, patch, post, put, threadPath, u, HttpError, type MachineInfo, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { hasConsequences, jumpTo, PinnedBadge, RemovalConfirm, useUndo, type Rewinder } from "./Rewind.tsx";
 import { SHOW_EVENT, SHOW_KEY, take, type ShowRequest } from "./links.ts";
@@ -111,7 +111,8 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
       if (!r.queued) t.dispatch({ type: "sent", text });
       return true;
     } catch (e) {
-      setSendError((e as Error).message);
+      // While an update drains, the message stays in the box and the line says Updating.
+      setSendError((e as HttpError).updating ? "Updating" : (e as Error).message);
       return false;
     }
   }, [base, t.dispatch]);
@@ -148,6 +149,12 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
     pin: (n, on) => {
       setSendError("");
       (on ? put(`${base}/messages/${n}/pin`, {}) : del(`${base}/messages/${n}/pin`)).then(pins.reload, (e: Error) => setSendError(e.message));
+    },
+    // The thread's event stream brings the new reactions to this tab as to any other.
+    react: (n, emoji, on) => {
+      setSendError("");
+      const path = `${base}/messages/${n}/reactions/${encodeURIComponent(emoji)}`;
+      (on ? put(path, {}) : del(path)).catch((e: Error) => setSendError(e.message));
     },
     branch: (n) => {
       setSendError("");

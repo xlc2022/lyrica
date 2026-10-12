@@ -5,9 +5,13 @@ import {
   del, get, patch, post, put, u,
   type AdminStatus, type AllowedPaths, type EndpointInfo, type Me, type ModeDefault, type NetworkDefaults, type PersonaProposal,
   type OfferingInfo, type OfferingSettings, type Pool, type Probe, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type Task, type Theme, type UserCard,
+  type NameSetting,
 } from "./api.ts";
 import { GitAccountsSection } from "./Git.tsx";
 import { MachinesSection } from "./Machines.tsx";
+import { her } from "./name.ts";
+import { TailnetSection } from "./Tailnet.tsx";
+import { UpdatesSection } from "./Updates.tsx";
 import { NotificationsSection } from "./Notifications.tsx";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { href } from "./route.ts";
@@ -15,7 +19,7 @@ import { PageHead, type ShellContext } from "./Shell.tsx";
 import { WebAccessSection } from "./WebAccess.tsx";
 import { Confirm, ErrorText, Switch, useAction, useLoad } from "./ui.tsx";
 
-const PRESETS: Record<string, Pronouns> = {
+export const PRESETS: Record<string, Pronouns> = {
   "she/her": { subj: "she", obj: "her", poss: "her", possPro: "hers", refl: "herself" },
   "he/him": { subj: "he", obj: "him", poss: "his", possPro: "his", refl: "himself" },
   "they/them": { subj: "they", obj: "them", poss: "their", possPro: "theirs", refl: "themself" },
@@ -57,8 +61,10 @@ const ADMIN: SectionDef[] = [
   { key: "users", label: "Users", body: (ctx) => <UsersSection ctx={ctx} /> },
   { key: "sleep", label: "Sleep", body: (ctx) => <SleepSection ctx={ctx} /> },
   { key: "unlocked", label: "Start unlocked", body: (ctx) => <UnlockedSection ctx={ctx} /> },
+  { key: "tailnet", label: "Tailnet", body: (ctx) => <TailnetSection ctx={ctx} /> },
   { key: "web", label: "Web access", body: (ctx) => <Section title="Web access"><WebAccessSection userId={ctx.user.id} /></Section> },
-  { key: "persona", label: "Persona changes", body: (ctx) => <ProposalsSection ctx={ctx} /> },
+  { key: "updates", label: "Updates", body: (ctx) => <UpdatesSection ctx={ctx} /> },
+  { key: "persona", label: "Persona", body: (ctx) => <ProposalsSection ctx={ctx} /> },
 ];
 
 /** The user's own settings: a page with its sections listed at the left (docs/ux.md §6). */
@@ -95,7 +101,7 @@ export function Section({ title, children }: { title: string; children: React.Re
   return <section className="card" aria-labelledby={id}><h2 id={id}>{title}</h2>{children}</section>;
 }
 
-function PronounFields({ value, onChange }: { value: Pronouns; onChange: (p: Pronouns) => void }) {
+export function PronounFields({ value, onChange }: { value: Pronouns; onChange: (p: Pronouns) => void }) {
   const preset = Object.entries(PRESETS).find(([, p]) => JSON.stringify(p) === JSON.stringify(value))?.[0] ?? "custom";
   return (
     <>
@@ -184,7 +190,7 @@ function UnlockSection({ ctx }: { ctx: ShellContext }) {
   const path = u(me.user.id, "me");
   return (
     <Section title="Unlock and lock">
-      <Switch label="Unlock me when Lyrica starts" checked={me.savedCredentials}
+      <Switch label={`Unlock me when ${her()} starts`} checked={me.savedCredentials}
         hint="Saves your key with the server's credentials, sealed to its TPM where there is one, so sleep can run after a restart."
         onChange={(save) => run(async () => ctx.setMe(await put<Me>(`${path}/credentials`, { save })))} />
       <Switch label="Stay unlocked after logout" checked={me.stayUnlocked}
@@ -243,7 +249,7 @@ function EndpointsSection({ ctx }: { ctx: ShellContext }) {
         <div className="row wrap">
           <label className="field"><span>Name</span><input value={form.name} placeholder="Blackwell host" onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
           <label className="field narrow"><span>Kind</span>
-            <select value={form.kind} title="Local means on your own network: the LAN or your tailnet. Lyrica warns if a local endpoint looks public." onChange={(e) => setForm({ ...form, kind: e.target.value as "cloud" | "local" })}>
+            <select value={form.kind} title={`Local means on your own network: the LAN or your tailnet. ${her()} warns if a local endpoint looks public.`} onChange={(e) => setForm({ ...form, kind: e.target.value as "cloud" | "local" })}>
               <option value="local">Local</option><option value="cloud">Cloud</option>
             </select>
           </label>
@@ -438,7 +444,7 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
             <fieldset key={pool} className="group">
               <legend>{pool === "general" ? "General threads" : "Private threads"}</legend>
               <Switch label="Internet" checked={n.internet} onChange={(internet) => change(pool, { internet })} />
-              <Switch label="Local services (localhost)" hint="Programs running on Lyrica's own server, such as a database. Never Lyrica's own page." checked={n.services} onChange={(services) => change(pool, { services })} />
+              <Switch label="Local services (localhost)" hint={`Programs running on ${her()}'s own server, such as a database. Never ${her()}'s own page.`} checked={n.services} onChange={(services) => change(pool, { services })} />
               <div className="field"><span>Allowed hosts</span>
                 <ul className="chips">{n.hosts.map((h) => <li key={h}>{h}<button type="button" className="quiet" aria-label={`Remove ${h}`} onClick={() => change(pool, { hosts: n.hosts.filter((x) => x !== h) })}>✕</button></li>)}</ul>
                 <form className="inline" onSubmit={(e) => { e.preventDefault(); void change(pool, { hosts: [...n.hosts, host[pool].trim()] }).then((ok) => ok && setHost({ ...host, [pool]: "" })); }}>
@@ -505,7 +511,7 @@ function UnlockedSection({ ctx }: { ctx: ShellContext }) {
       <ErrorText error={status.error || error} />
       {s && !s.credentials.available && <p className="meta muted">This server can't save credentials{s.credentials.reason ? `: ${s.credentials.reason}` : "."}</p>}
       {s?.savedPassphrase ? (
-        <div className="row"><span>The passphrase is saved, so Lyrica starts unlocked.</span>
+        <div className="row"><span>The passphrase is saved, so {her()} starts unlocked.</span>
           <button type="button" className="danger" disabled={busy} onClick={() => run(async () => status.set(await put<AdminStatus>(u(userId, "admin", "passphrase"), { save: false })))}>Forget it</button></div>
       ) : s && (
         <form className="inline" onSubmit={(e) => { e.preventDefault(); void run(async () => { status.set(await put<AdminStatus>(u(userId, "admin", "passphrase"), { save: true, passphrase })); setPassphrase(""); }); }}>
@@ -517,27 +523,31 @@ function UnlockedSection({ ctx }: { ctx: ShellContext }) {
   );
 }
 
-/** Change password… on a user's row (docs/ux.md §6, editing in place): one field and one button; the user's data stays. */
+/** Change password… on a user's row (docs/ux.md §6, editing in place): the new password, the administrator's own, one button; the user's data stays. */
 function PasswordSetter({ userId, target }: { userId: string; target: UserCard }) {
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
+  const [own, setOwn] = useState("");
   const [done, setDone] = useState(false);
   const [run, busy, error] = useAction();
   if (!open) {
     return (
       <div className="row">
         <button type="button" className="sm" onClick={() => { setOpen(true); setDone(false); }}>Change password…</button>
-        {done && <span className="muted small" role="status">Password changed. {target.displayName} is told at their next visit.</span>}
+        {done && <span className="muted small" role="status">Password changed. {target.displayName} is logged out and told at their next visit.</span>}
       </div>
     );
   }
   return (
-    <form className="row" onSubmit={(e) => { e.preventDefault(); void run(async () => { await put(u(userId, "admin", "users", target.id, "password"), { password }); setPassword(""); setOpen(false); setDone(true); }); }}>
+    <form className="row" onSubmit={(e) => { e.preventDefault(); void run(async () => { await put(u(userId, "admin", "users", target.id, "password"), { password, yourPassword: own }); setPassword(""); setOwn(""); setOpen(false); setDone(true); }); }}>
       <label className="field"><span>New password for {target.displayName}</span>
         <input type="password" autoComplete="new-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} />
       </label>
-      <button type="submit" className="primary sm" disabled={busy || !password}>Change password</button>
-      <button type="button" className="sm" onClick={() => { setOpen(false); setPassword(""); }}>Cancel</button>
+      <label className="field"><span>Your password</span>
+        <input type="password" autoComplete="current-password" value={own} onChange={(e) => setOwn(e.target.value)} />
+      </label>
+      <button type="submit" className="primary sm" disabled={busy || !password || !own}>Change password</button>
+      <button type="button" className="sm" onClick={() => { setOpen(false); setPassword(""); setOwn(""); }}>Cancel</button>
       <ErrorText error={error} />
     </form>
   );
@@ -559,7 +569,7 @@ function UsersSection({ ctx }: { ctx: ShellContext }) {
               <Switch label="Administrator" checked={x.admin}
                 onChange={(admin) => run(async () => { await put(u(userId, "admin", "users", x.id, "admin"), { admin }); users.reload(); })} />
             </div>
-            <PasswordSetter userId={userId} target={x} />
+            {x.id !== userId && <PasswordSetter userId={userId} target={x} />}
             <AllowedPathsEditor userId={userId} target={x.id} />
           </li>
         ))}
@@ -608,6 +618,26 @@ function AllowedPathsEditor({ userId, target }: { userId: string; target: string
   );
 }
 
+/** Her name (docs/ux.md §6 "Her name"): one field and one Save, with its one sentence, above the persona changes. */
+function NameForm({ ctx }: { ctx: ShellContext }) {
+  const userId = ctx.user.id;
+  const current = useLoad(() => get<NameSetting>(u(userId, "admin", "name")), [userId]);
+  const [name, setName] = useState<string>();
+  const [run, busy, error] = useAction();
+  const value = name ?? current.data?.name ?? "";
+  const changed = !!current.data && value.trim() !== current.data.name && value.trim() !== "";
+  return (
+    <form className="stack sub-card" onSubmit={(e) => { e.preventDefault(); void run(async () => { current.set(await put<NameSetting>(u(userId, "admin", "name"), { name: value.trim() })); setName(undefined); ctx.refreshState(); }); }}>
+      <ErrorText error={current.error || error} />
+      <div className="inline">
+        <label className="field grow"><span>Name</span><input value={value} maxLength={40} onChange={(e) => setName(e.target.value)} /></label>
+        <button className="primary" disabled={busy || !changed}>Save</button>
+      </div>
+      {changed && current.data && <p className="muted small">Memories and threads written so far keep the name {current.data.name}.</p>}
+    </form>
+  );
+}
+
 function ProposalsSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const proposals = useLoad(() => get<PersonaProposal[]>(u(userId, "admin", "proposals")), [userId]);
@@ -617,7 +647,9 @@ function ProposalsSection({ ctx }: { ctx: ShellContext }) {
     run(async () => { await post(u(userId, "admin", "proposals", String(id)), { approve, ...(overwrite && { overwrite }) }); proposals.reload(); });
   const who = (sentBy: string) => users.data?.find((x) => `user:${x.id}` === sentBy)?.displayName ?? sentBy;
   return (
-    <Section title="Changes to Lyrica's persona">
+    <Section title="Persona">
+      <NameForm ctx={ctx} />
+      <h3>Changes to her persona</h3>
       <ErrorText error={proposals.error || error} />
       {proposals.data && !proposals.data.length && <p className="muted">No suggestions waiting.</p>}
       <ul className="list">
@@ -699,7 +731,7 @@ function DraftsSection({ ctx }: { ctx: ShellContext }) {
   const drafts = useLoad(() => get<ProposalDraft[]>(u(userId, "proposals")), [userId]);
   const [run, , error] = useAction();
   return (
-    <Section title="Your suggestions for Lyrica's persona">
+    <Section title={`Your suggestions for ${her()}'s persona`}>
       <ErrorText error={drafts.error || error} />
       {drafts.data && !drafts.data.length && <p className="muted">No suggestions.</p>}
       <ul className="list">

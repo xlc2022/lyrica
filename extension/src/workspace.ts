@@ -88,7 +88,7 @@ const ASKS: Record<PermissionMode, string[]> = {
 };
 
 /** The only tools Plan mode leaves on: the ones that read, read-only delegation, her child threads (where compacting her own context is too), and propose_plan. */
-export const PLAN_TOOLS: ReadonlySet<string> = new Set(["read", "recall", "read_memory", "web_search", "web_fetch", "delegate", "ask_parent", "threads", "propose_plan", "proxmox"]);
+export const PLAN_TOOLS: ReadonlySet<string> = new Set(["read", "recall", "read_memory", "web_search", "web_fetch", "delegate", "ask_parent", "threads", "react", "propose_plan", "proxmox"]);
 
 /** The tools each switch turns off. */
 export const SWITCHED_TOOLS = { webSearch: ["web_search", "web_fetch"], images: ["image"] } as const;
