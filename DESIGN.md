@@ -549,6 +549,27 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     chat-template override. They are saved on the host with the model's
     placement (administrators for shared hosts) and apply at its next load,
     with **Reload now** when it's idle.
+  - **Stretch**, for text models on a host: YaRN with a factor and the
+    original context, which raises the context length's limit from the
+    trained length to that length times the factor, and gives llama.cpp
+    and vLLM the flags their publisher documents. It is off unless set,
+    since static YaRN costs a little on short prompts, and refused on a
+    model whose trained length the host couldn't read. A factor above the
+    publisher's needs **Save anyway**. The host counts KV cache for the
+    layers that hold one, so a hybrid model (Qwen3.5 and later) is placed
+    by its real need.
+  - **Recommended settings** come from the model's card. The host's fetch
+    service reads the repository's `config.json` and `README.md` on
+    Hugging Face or ModelScope (saved nowhere), takes the native length and
+    the YaRN recipe, follows `base_model` one hop for a quantization, and
+    keeps the result with the model, filled at download or by **Look up**
+    in the library. Recommended values show as placeholders. The lookup
+    carries a repository name and revision, never thread text.
+  - Lyrica has a `models` tool in general threads: `lookup` returns a
+    model's recommended settings and the host's fit estimate; `propose`
+    asks the copy's administrator or owner on a card, and applies on Allow.
+    Private and local-only threads have no `models` tool. See
+    [docs/briefs/context-stretch.md](docs/briefs/context-stretch.md).
   - The context length is the window Lyrica plans for, used by compaction
     and when a group skips a member too small for the conversation. For
     other endpoints it is discovered where the endpoint reports it, or set
