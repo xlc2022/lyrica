@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { draft as loadDraft, saveDraft, upload, type ThreadSettings, type ThreadSettingsChange } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
-import { ATTACH_EVENT, ATTACH_KEY, take, type AttachRequest } from "./links.ts";
+import { ATTACH_EVENT, ATTACH_KEY, EDIT_IMAGE_EVENT, take, type AttachRequest, type EditImageRequest } from "./links.ts";
 import { ModePicker, nextMode, ToolsMenu, type GrantedMachine } from "./Modes.tsx";
 import { MicButton, stopReading, useDictation } from "./Voice.tsx";
 
@@ -115,6 +115,20 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
     if (kept) addPaths(kept.paths);
     return () => removeEventListener(ATTACH_EVENT, on);
   }, [base, addPaths]);
+
+  useEffect(() => {
+    const on = (e: Event) => {
+      const { detail } = e as CustomEvent<EditImageRequest>;
+      if (detail.base !== base) return;
+      detail.handled = true;
+      typed.current = true;
+      setDraft((d) => d.trim() ? `${d.replace(/\s+$/, "")}\nEdit ${detail.path}: ` : `Edit ${detail.path}: `);
+      onSettings({ images: true });
+      area.current?.focus();
+    };
+    addEventListener(EDIT_IMAGE_EVENT, on);
+    return () => removeEventListener(EDIT_IMAGE_EVENT, on);
+  }, [base, onSettings]);
 
   // Dictated text goes in at the caret, with a space on each side where it meets other text.
   const insert = useCallback((text: string) => {

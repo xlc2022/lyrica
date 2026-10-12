@@ -92,7 +92,7 @@ describe("image tool: portrait photos (principle 2)", () => {
     createImageExtension({ ...s.options, threadId: "web/b" })({ registerTool: (t: ToolDefinition) => { second = t; } } as unknown as ExtensionAPI);
     await second.execute("second", edit, undefined, undefined, noUI);
     expect(s.asked).toHaveLength(2);
-    expect(s.asked[1]).toMatchObject({ tool: "image", input: { question: "Send photos of you to openai?", provider: "openai" } });
+    expect(s.asked[1]).toMatchObject({ tool: "image", input: { question: "Send photos of you to openai?", provider: "openai", model: "openai/gpt-image-1" } });
     s.tomorrow(); await s.run(edit);
     expect(s.asked).toHaveLength(3); expect(s.heard).toHaveLength(4);
   });

@@ -25,16 +25,25 @@ is 404; a missing login is 401.
   it returns `{ path: "/photos-of-me/<file>" }`. `DELETE …/photos-of-me/:name`
   deletes one regular file, returning `{ ok: true }`; names with traversal
   and symlinks are 404. Portraits are outside thread folders and sandbox grants.
+  `GET …/photos-of-me/:name` serves one sniffed PNG/JPEG/WebP for thumbnails
+  and downloads, with the same no-store, nosniff and sandbox CSP as thread
+  images; traversal, symlinks and non-images are 404.
 - `GET /api/u/:userId/photo-cloud` returns `{ policy }`; `PUT` accepts
   `{ policy: "never" | "ask" | "always" }`, returns the saved setting, and
   clears the user's daily approval. Other values are 400. Default is `ask`;
   the `image` tool enforces consent before each actual cloud attempt, including
   fallbacks, with approval lasting until server-local midnight.
+  The portrait permission request's `args` carries `question`, the endpoint
+  name as `provider`, and the resolved model label as `model` for the web card.
 
 `daemon/test/image-routes.test.ts` exercises the actual handlers, sessions and
 encrypted databases without sockets. The image tool returns Pi image content;
 messages and `tool_end.image` carry paths/model/tier rather than image bytes.
-Dedicated portrait controls and image-part rendering are separate Web UI work.
+The web UI renders image parts and manages portraits in Settings → Portrait photos.
+`POST …/hosts/:endpointId/recipes/:recipeId` accepts
+`{ do: "change", change: { op: "useFor", useFor: "fast" | "quality" | "both" } }`.
+It saves on the host and refreshes discovered offerings; the tag is in the
+host's `recipes.json`, with absent reading as both, not a new database column.
 
 ## Starting and unlocking
 

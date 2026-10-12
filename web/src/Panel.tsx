@@ -12,6 +12,7 @@ import { ClaudeCodeSection } from "./ClaudeCode.tsx";
 import { GitAccountsSection } from "./Git.tsx";
 import { McpServersSection } from "./Mcp.tsx";
 import { MachinesSection } from "./Machines.tsx";
+import { PortraitPhotosSection } from "./PortraitPhotos.tsx";
 import { her } from "./name.ts";
 import { SleepModeField, SleepTimeSection } from "./Sleep.tsx";
 import { TailnetSection } from "./Tailnet.tsx";
@@ -47,6 +48,7 @@ const SETTINGS: SectionDef[] = [
   { key: "mcp", label: "MCP servers", body: (ctx) => <McpServersSection ctx={ctx} /> },
   { key: "claude-code", label: "Claude Code", body: (ctx) => <ClaudeCodeSection ctx={ctx} /> },
   { key: "routines", label: "Routines", body: (ctx) => <RoutinesSection ctx={ctx} /> },
+  { key: "portraits", label: "Portrait photos", body: (ctx) => <PortraitPhotosSection key={ctx.user.id} userId={ctx.user.id} /> },
 ];
 const ADMIN: SectionDef[] = [
   { key: "status", label: "Status", body: (ctx) => <StatusSection ctx={ctx} /> },

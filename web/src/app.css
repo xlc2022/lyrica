@@ -889,6 +889,12 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .inline-img { display: block; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--tool); overflow: hidden; max-width: min(100%, 420px); cursor: zoom-in; }
 .inline-img:hover { border-color: var(--muted); }
 .inline-img img { display: block; max-width: 100%; max-height: 320px; object-fit: contain; }
+.message-images { display: grid; gap: 12px; }
+.message-image { width: fit-content; max-width: min(100%, 420px); }
+.message-image .inline-img { min-width: var(--tap); }
+.image-facts { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.image-facts .cap { overflow-wrap: anywhere; min-width: 0; }
+.image-facts .row-menu { margin-left: auto; flex: none; }
 .prose p:has(> .inline-img:only-child) { margin: 8px 0; }
 .field-fact { padding: 7px 0; }
 
@@ -1022,6 +1028,12 @@ a.tile:hover { text-decoration: none; border-color: var(--accent); }
 .pill { display: inline-flex; align-items: center; font-size: 12px; font-weight: 400; border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; white-space: nowrap; line-height: 1.5; }
 .pill.warn { color: var(--warn); border-color: color-mix(in oklab, var(--warn) 45%, var(--line)); }
 .pill.bad { color: var(--danger); border-color: color-mix(in oklab, var(--danger) 45%, var(--line)); }
+/* Portrait photos (web-2 Images brief): square thumbnails and each photo's existing row menu. */
+.portrait-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px; min-width: 0; }
+.portrait-photo { min-width: 0; }
+.portrait-photo > img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
+.portrait-cap { display: flex; align-items: center; gap: 8px; margin-top: 4px; min-width: 0; }
+.portrait-cap > .cap { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .note { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: start; border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; }
 .note .plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .list > li.hostrow { grid-template-columns: 12px minmax(0, 1.2fr) minmax(120px, 1fr) auto; gap: 6px 12px; align-items: center; min-height: 48px; }
@@ -1217,6 +1229,8 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 .img-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
 .img-filters input[type="search"] { flex: 1 1 220px; max-width: 420px; }
 .copyblock { border: 1px solid var(--line); border-radius: 10px; display: grid; min-width: 0; background: var(--panel); overflow: hidden; }
+.copyblock > .field { padding: 8px 12px; }
+.copyblock > .field .seg { justify-self: start; }
 .copyhead { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; padding: 8px 12px; background: var(--tool); }
 .copyhead b { font-weight: 600; }
 .copyhead .cap { margin-right: auto; overflow-wrap: anywhere; }
@@ -1251,7 +1265,7 @@ dialog.add-part { width: min(560px, calc(100vw - 32px)); }
   .list[data-selecting] .rvrow > .actions { display: none; }
 }
 @media (pointer: coarse) {
-  .copyblock button.sm, .rvrow button.sm, .review-bar button.sm, .add-part .seg button, .img-filters .seg button, .partrow select { min-height: 44px; }
+  .copyblock .seg button, .copyblock button.sm, .rvrow button.sm, .review-bar button.sm, .add-part .seg button, .img-filters .seg button, .partrow select { min-height: 44px; }
   /* A link inside a line keeps the line's height; its target reaches past it. */
   .prow .cap button.link { display: inline-flex; min-height: 44px; align-items: center; margin-block: -14px; vertical-align: middle; }
 }

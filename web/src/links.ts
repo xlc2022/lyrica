@@ -8,6 +8,10 @@ export interface AttachRequest { base: string; paths: string[]; handled?: boolea
 export const ATTACH_EVENT = "lyrica:attach";
 export const ATTACH_KEY = "lyrica.attach";
 
+/** An inline image asks the composer to start an edit; only a path is passed. */
+export interface EditImageRequest { base: string; path: string; handled?: boolean }
+export const EDIT_IMAGE_EVENT = "lyrica:edit-image";
+
 export interface ShowRequest { base: string; path: string; handled?: boolean; found?: boolean }
 export const SHOW_EVENT = "lyrica:show";
 export const SHOW_KEY = "lyrica.show";

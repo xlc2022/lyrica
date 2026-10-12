@@ -54,7 +54,7 @@ async function allowPortrait(o: ImageTools, r: Resolution, id: string, ctx: Exte
   let question = pending.get(s);
   if (!question) {
     const text = `Send photos of you to ${r.endpoint.name}?`;
-    const request: ApprovalRequest = { toolCallId: id, tool: "image", input: { question: text, provider: r.endpoint.name }, warning: text };
+    const request: ApprovalRequest = { toolCallId: id, tool: "image", input: { question: text, provider: r.endpoint.name, model: r.label }, warning: text };
     question = (async () => {
       const allowed = o.approve ? await o.approve(request) : ctx.hasUI ? await ctx.ui.confirm(text, "An approval lasts until the end of today.") : false;
       signal?.throwIfAborted();

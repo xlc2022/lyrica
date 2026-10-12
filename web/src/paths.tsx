@@ -6,6 +6,8 @@ import { Icon } from "./icons.tsx";
 import type { Element, Root, Text } from "hast";
 import { threadPath, type Pool } from "./api.ts";
 import { href } from "./route.ts";
+import { RowMenu } from "./Machines.tsx";
+import { ErrorText } from "./ui.tsx";
 
 export const WORKDIR = "/workspace";
 /** A path as the panel shows it: the thread folder by name, its files without the prefix, a grant's as they are. */
@@ -81,9 +83,9 @@ function split(value: string, files: FileLinks): (Element | Text)[] | undefined 
 }
 
 /** An image from the thread's folder, shown in the message by its thumbnail and opened large on a click; any other image stays a link. */
-export function InlineImage({ src, alt, files, large }: { src: string; alt: string; files: FileLinks; large: (path: string) => void }) {
+export function InlineImage({ src, alt, label, files, large }: { src: string; alt: string; label?: string; files: FileLinks; large: (path: string) => void }) {
   return (
-    <button type="button" className="inline-img" onClick={() => large(src)} aria-label={`${alt || basename(src)}, open large`}>
+    <button type="button" className="inline-img" onClick={() => large(src)} aria-label={label ?? `${alt || basename(src)}, open large`}>
       <Thumb path={src} alt={alt || basename(src)} files={files} />
     </button>
   );
@@ -98,18 +100,27 @@ export function Thumb({ path, alt, files }: { path: string; alt: string; files: 
 export const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1);
 
 /** An image shown large over the page; the Files panel's Images tab and a message's inline images share it. */
-export function Lightbox({ path, url, onClose, onMenu }: { path: string; url: string; onClose: () => void; onMenu?: (e: React.MouseEvent) => void }) {
+export function Lightbox({ path, url, onClose, onMenu, bare }: { path: string; url: string; onClose: () => void; bare?: boolean; onMenu?: (e: React.MouseEvent) => void }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const [menu, setMenu] = useState(false);
+  const [error, setError] = useState("");
   useEffect(() => { const el = ref.current; if (el && !el.open) el.showModal(); return () => el?.close(); }, []);
   const name = basename(path);
   return (
-    <dialog ref={ref} className="lightbox" aria-label={name} onCancel={(e) => { e.preventDefault(); onClose(); }} onClick={(e) => { if (e.target === ref.current) onClose(); }}>
+    <dialog ref={ref} className="lightbox" aria-label={name} onCancel={(e) => { e.preventDefault(); onClose(); }}
+      onKeyDown={(e) => { if (e.key === "Escape" && menu) { e.preventDefault(); e.stopPropagation(); setMenu(false); } }}
+      onClick={(e) => { if (e.target === ref.current) onClose(); }}>
       <div className="fhead">
-        <span className="fname mono">{shown(path)}</span>
-        {onMenu && <button type="button" className="icon sm" aria-label="Image actions" aria-haspopup="menu" onClick={onMenu}><Icon name="more" /></button>}
+        <span className="fname mono">{bare ? name : shown(path)}</span>
+        {onMenu ? <button type="button" className="icon sm" aria-label="Image actions" aria-haspopup="menu" onClick={onMenu}><Icon name="more" /></button>
+          : <RowMenu label="Image actions" open={menu} onOpen={setMenu} items={[
+            { label: "Download", onPick: () => { const a = document.createElement("a"); a.href = url; a.download = name; a.click(); } },
+            { label: "Copy path", onPick: () => { void navigator.clipboard.writeText(path).catch((e: Error) => setError(e.message)); } },
+          ]} />}
         <button type="button" className="icon sm" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
       </div>
       <div className="lb-img"><img src={url} alt={name} /></div>
+      <ErrorText error={error} />
     </dialog>
   );
 }

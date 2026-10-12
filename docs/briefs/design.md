@@ -51,11 +51,11 @@ deployment.
 
 | Thread | State | What's left |
 |---|---|---|
-| Web UI 2 | partly: #80, #100, #107, #112, #115, #122, #125, #127, #130, #133, #137, #144, #150; the Models page (text and image models, Downloads, Tasks, Recent calls) and the Sleep page since | Pin in the remaining places, the speech drawer, portrait photos, Starter recipes (docs/briefs/web-2.md) |
+| Web UI 2 | partly: #80, #100, #107, #112, #115, #122, #125, #127, #130, #133, #137, #144, #150; the Models page (text and image models, Downloads, Tasks, Recent calls) and the Sleep page since; images and portrait photos in #236 | Pin in the remaining places, the speech drawer, Starter recipes (docs/briefs/web-2.md) |
 | Context and pace | partly: API in #46, pins counted in #48, the context meter in #182 | the speed columns in Recent calls |
 | Projects (web) | partly: #80, #100, #110, #150 | Files and images on the Project settings page, Recent calls by project (docs/briefs/projects-web.md) |
 | Context stretching | built in #157; the Serving rows are in the Text models tab | A real-host check (docs/briefs/context-stretch.md) |
-| Images | built in #219; image models tab and downloads in the web UI | Real ComfyUI run and the separate Web UI (docs/briefs/images.md) |
+| Images | built in #219; image models tab and downloads in the web UI; images in messages, portrait photos and the recipe's fast/quality tag in #236 | Real ComfyUI run (docs/briefs/images.md) |
 | MCP servers | built | docs/briefs/mcp.md |
 | Subscription logins | ChatGPT and Grok plans built in #169 | docs/briefs/subscription-logins.md |
 | Claude Code | built | docs/briefs/claude-code.md |

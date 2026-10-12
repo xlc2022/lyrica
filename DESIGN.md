@@ -806,13 +806,16 @@ it's off.
   - Each recipe is tagged **fast**, **quality** or both (2026-10-12). A
     tier takes the first model in the task's ordered list whose tag
     matches, and falls back down the same list; a cloud model serves both,
-    asking its service for low or high quality.
+    asking its service for low or high quality. **Use for** in each host's
+    recipe block on Image models saves the tag at once. It is an optional
+    `useFor` field in the host's `recipes.json`; absent means both.
   - Results go to `images/` in the thread's encrypted folder, with prompt
     metadata removed, and return to her as image content. Messages and
     `tool_end` carry image paths, model and create tier; the prompts stay in
     encrypted tool calls. The authenticated file API serves the thread's
-    folder only. Dedicated image-part rendering and portrait controls belong
-    to the separate Web UI work.
+    folder only. The web shows inline thumbnails, model and tier facts,
+    a lightbox and image actions; Settings → Portrait photos manages references
+    and their cloud setting, with Send today and Not today on the permission card.
   - Exact layouts and diagrams are HTML or SVG rendered to PNG by the
     sandbox's headless Chromium with internet off, not image-model calls.
 - **Local images** run on **ComfyUI**, inside the model host on a GPU machine.

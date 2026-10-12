@@ -169,8 +169,8 @@ A thread's address may carry what the panel beside it shows:
   where the server makes none.
   The image tool also supplies `ImagePart` path/model/tier metadata on
   messages and `tool_end.image`, and an owner-only `…/file?path=` route.
-  Dedicated rendering of that part and portrait-management controls are not
-  implemented here yet; the existing Files panel can display saved results.
+  Messages render that part inline as described below. Settings manages
+  portraits separately from the Files panel.
 - **Project settings page** (`…/p/<pool>/<project>/general` or `/memory`),
   sections at the left. **General**: Goal, the Paused and **Watching
   threads** switches (`watchThreads`; the tooltip says what a look does), **New
@@ -384,9 +384,14 @@ A thread's address may carry what the panel beside it shows:
   architecture chips filter in the page. Models is a row per recipe name
   across the hosts, confirmed copies first; a name only proposed or ignored
   is left out. A row opens to a block per host (template and defaults, a
+  segmented **Use for** (**Fast** | **Quality** | **Both**, default Both),
   row per part with precision, "downloaded by Lyrica" or "shared folder",
   the other recipes using it and its size); every change is a recipe action
   (`POST …/hosts/:id/recipes/:recipeId`, models.md "Image models"):
+  **Use for** saves at once (`change { op: "useFor", useFor }`), disabled
+  while saving or when the user cannot manage the host. The row's facts say
+  "fast", "quality" or "fast and quality", combining the copies' tiers. This follows principles 1 and 8 and ux §3's segmented
+  control, §4's names and §6's recipe block; no caption or new widget.
   **Change** for a text encoder or VAE (`swap`, or Download another… to the
   download page), **Remove** for an added part or LoRA, **Use this recipe**
   (`confirm`), **Download the missing parts** (`download-parts`),
@@ -532,6 +537,20 @@ A thread's address may carry what the panel beside it shows:
   **Pause** or **Resume** (`PATCH …/threads/:pool/:threadId/routines/:id`
   with `paused`) and the bordered Remove icon (`DELETE` at the same path).
   Listings contain no notes. Empty: "No routines."
+- **Portrait photos** (`src/PortraitPhotos.tsx`, `…/settings/portraits`),
+  last in Settings: a card with the photo count pill and a grid of square
+  thumbnails (132 px minimum, 12 px gap), the filename in mono underneath,
+  and the existing row menu for Download and Delete…. The existing confirm
+  dialog asks "Delete <name>?". Add photos is secondary and opens a multiple
+  PNG/JPEG/WebP picker; each file over 20 MB is refused with its filename in
+  the error line, while the remaining files are uploaded. Empty: "No photos yet."
+  The select Sending them to a cloud image model has Ask once a day (default),
+  Never and Always; it saves immediately. Its explanation is a tooltip.
+  Listing, raw uploads and deletion use `…/photos-of-me`; thumbnails and
+  downloads use the authenticated `…/photos-of-me/:name`; the setting uses
+  `GET|PUT …/photo-cloud`. This follows the Images brief and principles 1
+  and 2; controls reuse §3's secondary button and menu, §4's short labels
+  and tooltips, and §6's confirmation dialog. No drawer or extra captions.
 - **Administration**, for administrators: Status (the server's network
   self-test, sleep time, start unlocked), Users with the administrator flag,
   **Change password…** (the new password and the administrator's own, in
@@ -605,6 +624,18 @@ A thread's address may carry what the panel beside it shows:
   **Copy failed** where the browser refuses, for 2 s; inline code, tool
   results, the permission card, the Files viewer and the Machines page's
   setup block have none.
+- An image part, stored or delivered on `tool_end`, shows each path as a
+  thumbnail up to 320 px tall with an 8 px radius and the filename as its
+  accessible name. The facts line reads "Made with <model>" and, when given,
+  "· fast" or "· quality". Its ⋯ holds Download, Copy path, Show in Files
+  and Edit…. Edit… fills the composer with "Edit <path>: " and enables
+  Images. Full images use the thread's authenticated `…/file?path=` route;
+  thumbnails use the existing thumbnail route and fall back to that file.
+  The shared Lightbox has a filename header, Download and Copy path behind
+  ⋯, and Close. Image tool markers read Making an image with its tier,
+  Editing an image or Upscaling an image, with the running dot; expanding
+  a failed marker shows the result's reason. The API currently sends no
+  image step progress, so there is no step count or progress bar.
 - A thread she mentions (`[t:<id>]`, `[e:<id>#<n>]`) shows as its current
   title, linked to the thread in the same tab; "a forgotten thread" once it's
   gone. Titles are fetched per thread and kept for 30 seconds, so a rename
@@ -642,6 +673,11 @@ A thread's address may carry what the panel beside it shows:
   `notice` message, shows as a card headed by what it is, linking to the
   subagent.
 - Permission requests appear inline with Allow and Deny and the time left.
+  A portrait request (`tool: "image"`) instead asks "Send your portrait
+  photos to <model> (cloud) for this image? A yes lasts until the end of the
+  day." The resolved model label comes from `args.model`; Send today is
+  primary, Not today secondary, and there is no thread-wide Allow. Answers
+  use the existing permission route with `{ allow }`, including for subagents.
   Her `models` tool's proposal is worded as its question ("Serve
   Qwen3.8-27B with 1,010,000 tokens of context? It reloads, and its KV cache
   grows to 17 GB."), the numbers in mono.
@@ -799,6 +835,8 @@ A thread's address may carry what the panel beside it shows:
   opens (only into an empty box), saved a second after typing stops, on blur
   and on leaving, and cleared by a send; nothing is kept in the browser. A
   draft over 64 KiB shows "The draft is too long to keep." in the error line.
+  The + menu's Images switch has the tooltip "Lets the agent make and edit
+  images in this thread."
 - **Dictation** (`src/Voice.tsx`, DESIGN.md "Voice"): the mic in the row
   under the box records 16 kHz mono PCM through an AudioWorklet
   (`public/dictation-worklet.js`). While it records the icon is accent and
