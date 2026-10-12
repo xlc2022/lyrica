@@ -56,7 +56,8 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
       if (known.current.base === b && known.current.text === text) known.current.text = before;
       report.current(e.message);
     };
-    // Leaving the page can't wait for an earlier save; otherwise saves go in order.
+    // Leaving the page can't wait for an earlier save; otherwise saves go in order. Browsers cap a keepalive
+    // body at 64 KB, so a draft near the limit may not save on leaving; the blur and timed saves still have it.
     if (keepalive) void saveDraft(b, text, true).catch(failed);
     else saving.current = saving.current.then(() => saveDraft(b, text)).catch(failed);
   }, []);

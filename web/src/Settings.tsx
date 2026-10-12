@@ -109,12 +109,16 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
   const paths = useLoad(() => get<AllowedPaths>(u(userId, "paths")), [userId]);
   const [title, setTitle] = useState(summary.title ?? "");
   const ref = useRef<HTMLElement>(null);
+  // Focus moves in once, when the drawer opens: the thread re-renders on every streamed event, and
+  // re-focusing then would pull focus out of a dialog opened from the drawer.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     ref.current?.focus();
-    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const key = (e: KeyboardEvent) => e.key === "Escape" && closeRef.current();
     addEventListener("keydown", key);
     return () => removeEventListener("keydown", key);
-  }, [onClose]);
+  }, []);
 
   return (
     <aside id={id} ref={ref} tabIndex={-1} className="drawer" aria-label="Thread settings">
