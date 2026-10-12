@@ -61,10 +61,11 @@ function str(v: GgufValue | undefined): string | null {
   return typeof v === "string" && v ? v : null;
 }
 
-function templateCapabilities(template: string | null): Pick<Capabilities, "tools" | "reasoning"> {
+export function templateCapabilities(template: string | null): Pick<Capabilities, "tools" | "reasoning"> {
   return {
     tools: !!template && /\btools\b/.test(template),
-    reasoning: template && /enable_thinking|<think>/.test(template) ? ["off", "on"] : null,
+    // Only `enable_thinking` can be driven. A template that opens <think> on its own always thinks: no switch.
+    reasoning: template && /\benable_thinking\b/.test(template) ? ["off", "on"] : null,
   };
 }
 

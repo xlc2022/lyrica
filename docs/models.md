@@ -92,8 +92,9 @@ administrator pairs or manages them; a personal host lives in its user's
   `/host/v1/status` and counts only `running` as up.
 - **Discovery** reads `/host/v1/models`: context length, tools, vision,
   embeddings, the file's checksum (`digest`, for strong group suggestions)
-  and thinking. A thinking switch in the chat template is one level, sent as
-  `chat_template_kwargs.enable_thinking`; a host model that reports levels
+  and thinking. A chat template with an `enable_thinking` switch has one level, sent as
+  `chat_template_kwargs.enable_thinking`; a template that always thinks (it opens
+  `<think>` itself, like DeepSeek R1's) gets no switch; a host model that reports levels
   gets `reasoning_effort` like any OpenAI-compatible endpoint.
 - `hostStatus` returns the host's status (GPUs, placements, loaded and
   pinned models, VRAM, queue) to anyone who can use it; `hostControl`

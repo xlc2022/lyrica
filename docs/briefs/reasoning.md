@@ -91,8 +91,13 @@ reasoning is replayed into later context.
   inline tags reach the Thought marker live and stored. `docs/contracts.md`
   was checked: stream and thinking-switch contracts remain current.
   `docs/web.md` needs no change because the marker did not change.
-- **Next:** item 3. Thinking-switch detection lives in
-  `host/src/library.ts` (`templateCapabilities`), waiting for the host PR
-  touching that file to merge. Templates that always open `<think>` themselves,
-  such as DeepSeek R1, take no switch.
-- **Open:** which models the host serves.
+- **Done:** item 3. `templateCapabilities` in `host/src/library.ts` offers
+  the on/off switch only when the chat template reads `enable_thinking`
+  (Qwen 3, the model the host runs now). A template that opens `<think>` itself,
+  like DeepSeek R1's, always thinks and gets no switch; vLLM's `deepseek_r1`
+  parser (#225) and llama-server split its reasoning. Tested in
+  `host/test/routing.test.ts`.
+- **Next:** none. A model that thinks by default without a server-side parser
+  and without a switch would still show its thinking; add a flag for it only
+  when such a model is served.
+- **Open:** none.
