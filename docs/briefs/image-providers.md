@@ -32,6 +32,9 @@ sizes, count) and how fast and quality map onto its options.
   with the built-in `image_generation` tool, using the plan's token and
   limits. Fast and quality map to low and high quality. A test call on
   2026-10-12 returned a PNG; the model is unreported (probably gpt-image-2).
+  Allowed because it is the plan's own endpoint and built-in tool, used by
+  the plan's owner on the plan's own limits, as with chat in
+  docs/briefs/subscription-logins.md.
   If the tool takes no mask, the plan serves create and maskless edits only,
   and a masked edit falls down the task's list.
 - **OpenAI-compatible with a key:** today's adapter, no longer limited to
@@ -42,7 +45,9 @@ sizes, count) and how fast and quality map onto its options.
   stops, the image marker shows the failure with its code, and under it
   three small text links, not buttons: **Edit message** (the triggering
   message back in the composer), **Resend**, and **Try <next model>** (the
-  next model in the task's list that is a different endpoint). **Try**
+  next model on a different endpoint in the list the router would use for
+  this thread, with the cloud, private-thread and portrait rules already
+  applied). **Try**
   shows only when such a model exists, and **Edit message** only while that
   message is still the thread's last user message; otherwise the link is
   left out, never disabled. docs/ux.md records this row of links beside
@@ -52,6 +57,15 @@ sizes, count) and how fast and quality map onto its options.
 **B. Use for on cloud models.** A cloud image model can be tagged fast,
 quality or both (default both), like a host recipe, so a cheap model can be
 fast-only. The router's tier rule applies to cloud as it does to recipes.
+
+**Storage.** The tag (`useFor`) and the image generation and editing flags
+live in the offering's `hand` JSON (`offerings.hand` in
+core/src/models/schema.ts, self.db for shared endpoints and user.db for the
+user's own), beside the capabilities already set by hand, so no schema step
+is needed. If the build finds it needs one after all, it is expand-only with
+a migration test from every released schema, and since command rules and
+spend share add user.db steps in parallel, whichever merges later renumbers
+its step after merging main.
 
 **C. Telling endpoints apart** (decided by the user, 2026-10-12):
 1. A plan's row keeps its **ChatGPT plan** (or **Grok plan**) pill; every
@@ -96,6 +110,7 @@ scroll, and the row's actions stay where they are.
   private or local-only thread never reaches it (test with a fake plan).
 - A keyed endpoint serves a non-`gpt-image` model marked as making images.
 - A cloud model tagged fast-only is skipped for quality and used for fast.
+- In a private or local-only thread, Try never offers a cloud model.
 - A refusal stops with the three links, and Try <next model> makes the
   image on that model.
 - Hosts and endpoints shows the pills and facts lines in C and D; every

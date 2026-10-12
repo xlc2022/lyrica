@@ -893,13 +893,6 @@ it's off.
   with an API key. They're used only where cloud is allowed. Host recipes
   retain their defaults for both fast and quality; OpenAI maps the tiers to
   low and high quality.
-  Decided 2026-10-12, not yet built (docs/briefs/image-providers.md): the
-  table is chosen by the endpoint's kind; a ChatGPT plan makes images
-  through its own Responses endpoint's built-in image tool, on the plan's
-  limits; the keyed OpenAI adapter takes any model marked as making images;
-  cloud image models carry the fast/quality tag like recipes; cloud endpoint
-  rows show Text, Vision and Image pills and an API key or plan pill, an
-  exception to docs/ux.md §5.
 - **Portrait photos.** Each user can keep reference photos of themselves in
   `photos-of-me/` in their encrypted home, outside sandbox grants, for edits
   and for putting them in new scenes. The authenticated API lists, uploads
