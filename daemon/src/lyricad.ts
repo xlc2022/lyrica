@@ -7,7 +7,7 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  bootstrap, DEFAULT_NAME, isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, PRONOUN_PRESETS, selfName, setSelfName,
+  bootstrap, DEFAULT_NAME, HostRefused, isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, PRONOUN_PRESETS, selfName, setSelfName,
   SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace,
   type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
 } from "@lyrica/core";
@@ -18,6 +18,9 @@ import { Watcher } from "./watch.ts";
 import type { BusyItem, Health, SetupRequest, State, UserCard } from "./api.ts";
 import { RateLimiter, Sessions } from "./auth.ts";
 import { ThreadHost } from "./hosted.ts";
+
+/** Model host refusals the web UI acts on, so their code goes with the message. */
+const HOST_CODES = ["need_repo", "above_recommended"];
 import {
   checkOrigin, fromLoopback, HttpError, makeRequest, match, plainAddress, sendJson, serveStatic, statusOf, Updating,
   type Request, type Route, type TrustForwarded,
@@ -724,7 +727,9 @@ export class Lyricad implements Drainable {
       // Offline says which models were tried, so the interface can show it the same way for chat, images and speech.
       const offline = err instanceof Offline ? { code: err.code, task: err.task, tried: err.tried } : {};
       const updating = err instanceof Updating ? { updating: true } : {};
-      if (!res.headersSent) sendJson(res, status, { error: message, ...offline, ...updating }, err instanceof HttpError ? err.headers : {});
+      // A model host's refusal keeps its code: need_repo opens the Repository field, above_recommended asks Save anyway.
+      const refused = err instanceof HostRefused && HOST_CODES.includes(err.code) ? { code: err.code } : {};
+      if (!res.headersSent) sendJson(res, status, { error: message, ...refused, ...offline, ...updating }, err instanceof HttpError ? err.headers : {});
       else res.end();
     }
   }

@@ -283,9 +283,14 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("GET", `${u}/offerings/:offeringId/serving`, async (r): Promise<Api.ServingSettings> => s().models.servingSettings(d.userFor(r).id, r.params.offeringId!)),
     route("PUT", `${u}/offerings/:offeringId/serving`, async (r) => {
-      const b = await r.json<{ settings?: unknown } | null>();
+      const b = await r.json<{ settings?: unknown; anyway?: unknown } | null>();
       if (!b || typeof b.settings !== "object" || !b.settings || Array.isArray(b.settings)) throw new HttpError(400, "send { settings }");
-      return s().models.setServingSettings(d.userFor(r), r.params.offeringId!, b.settings as Record<string, unknown>);
+      return s().models.setServingSettings(d.userFor(r), r.params.offeringId!, b.settings as Record<string, unknown>, { anyway: b.anyway === true });
+    }),
+    route("POST", `${u}/offerings/:offeringId/lookup`, async (r): Promise<Api.ServingSettings> => {
+      const b = await r.json<{ repo?: unknown } | null>();
+      if (b?.repo !== undefined && (typeof b.repo !== "string" || !b.repo.trim() || b.repo.length > 300)) throw new HttpError(400, "repo is owner/name");
+      return s().models.lookupRecommended(d.userFor(r), r.params.offeringId!, b?.repo as string | undefined);
     }),
     route("POST", `${u}/offerings/:offeringId/reload`, async (r) => s().models.reloadModel(d.userFor(r), r.params.offeringId!)),
     route("GET", `${u}/hosts/:endpointId/dashboard`, (r) => ({ url: s().models.hostDashboard(d.userFor(r).id, r.params.endpointId!) })),

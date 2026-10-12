@@ -369,9 +369,31 @@ export type RecipeAction = { do: "confirm" | "ignore" | "download-parts" | "dele
 /** POST /api/u/:userId/hosts/:endpointId/manage → the host's answer. Loading, pinning, GPU settings, placements, scan, usage only. */
 export interface HostManage { method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; path: string; body?: unknown }
 /** GET /api/u/:userId/hosts/:endpointId/dashboard → { url } */
-/** A host model's placement and serving settings, as host/API.md defines them. */
-export interface ServingSettings { model: string; settings: Record<string, unknown>; contextLength: number }
-/** GET /api/u/:userId/offerings/:offeringId/serving → ServingSettings. PUT { settings } → the host's model entry; a placement that can't work is refused with the host's reason. */
+/**
+ * A host model's placement and serving settings, as host/API.md defines them:
+ * `settings.stretch` is { type: "yarn", factor, originalContext } when set;
+ * `maxContextLength` is the trained length times the stretch (Context
+ * length's "of N"); `recommended` is what the model's card says, or null.
+ */
+export interface ServingSettings {
+  model: string;
+  settings: Record<string, unknown>;
+  contextLength: number;
+  maxContextLength: number | null;
+  /** Original context's placeholder; null when the host couldn't read it, and then nothing can be stretched. */
+  trainedContextLength: number | null;
+  kvBytes: number | null;
+  recommended: { native: number | null; stretched?: number; factor?: number; originalContext?: number; source: { hub: Hub; repo: string; revision: string; at: string } } | null;
+  stretchUntested: boolean;
+}
+/**
+ * GET /api/u/:userId/offerings/:offeringId/serving → ServingSettings. PUT { settings, anyway? } → the host's model entry; a placement that
+ * can't work is refused with the host's reason, and a stretch above the card's with code "above_recommended" unless anyway is true (Save anyway).
+ */
+/**
+ * POST /api/u/:userId/offerings/:offeringId/lookup { repo? } → ServingSettings with `recommended` read from the model's card. Code "need_repo":
+ * the host doesn't know the repository, so name it (owner/name, modelscope:owner/name or a link). Administrator (shared host) or owner.
+ */
 /** POST /api/u/:userId/offerings/:offeringId/reload → the host's answer: applies saved settings now. A shared host needs an administrator. */
 /** GET /api/u/:userId/models/page → ModelsPage: what the Models page shows, endpoints with live status. An endpoint seen down in the last 30 s isn't asked again, and each gets 3 s. */
 export interface ModelsPage {

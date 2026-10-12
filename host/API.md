@@ -236,10 +236,20 @@ Each model has a placement and serving settings, kept in the host's data
 volume. They apply at its next load, or at once with Reload.
 
 - `GET /host/v1/models/settings?model=<id>` answers
-  `{ "model": "<id>", "settings": { ... }, "contextLength": 32768 }`. A model
-  never set has `{ "placement": { "mode": "auto" } }`.
-- `PUT /host/v1/models/settings` `{ "model": "<id>", "settings": { ... } }`
-  saves them, whole, and answers with the model's entry. A placement that
+  `{ "model": "<id>", "settings": { ... }, "contextLength": 32768,
+  "maxContextLength": 262144, "trainedContextLength": 262144,
+  "kvBytes": 4294967296, "recommended": { ... } | null,
+  "stretchUntested": false }`: the context served, its maximum (the trained
+  length times the stretch), the trained length (null when the host couldn't
+  read it), the KV cache at the served context by the host's estimate, what
+  the model's card recommends, and whether a stretch on this server is
+  untested: true for any vLLM model until the pinned image carries the fix
+  for vllm#58870 (vLLM 0.30 misreads the original context on Qwen3.5-style
+  M-RoPE). A model never set has `{ "placement": { "mode": "auto" } }`.
+- `PUT /host/v1/models/settings` `{ "model": "<id>", "settings": { ... },
+  "anyway": true }` saves them, whole, and answers with the model's entry. A
+  stretch above the factor the card documents is refused
+  (`above_recommended`, "Qwen documents 4.") unless `anyway` is true. A placement that
   can't work is refused (`invalid`, or `too_big` when it's about memory)
   with the reason, such as "GPU 2 doesn't allow vLLM.", "This model needs
   about 41.2 GB on GPU 0, which has 23.5 GB to give." or "A context of
@@ -267,8 +277,20 @@ volume. They apply at its next load, or at once with Reload.
     memory less what it keeps free). For vLLM, `"parallel": "tensor"` (matching GPUs, two, four
     or eight) or `"pipeline"`; by default tensor where the GPUs match, else
     pipeline.
-- `contextLength`: 512 up to what the model was trained for; 32768 by
-  default.
+- `contextLength`: 512 up to what the model was trained for, times its
+  stretch; 32768 by default. Over it: "This model was trained for 262144
+  tokens; with a stretch of 4 it serves 1048576 at most."
+- `stretch`: `{ "type": "yarn", "factor": 4, "originalContext": 262144 }`,
+  off unless set. The factor is 1 to 8 (whole for llama.cpp); the original
+  context defaults to the trained length. Chat models only, and only one
+  whose trained length the host read. llama.cpp gets `rope-scaling = yarn`,
+  `rope-scale` and `yarn-orig-ctx`; vLLM gets `--hf-overrides` with the
+  model's own `rope_parameters` (or `rope_scaling`) and the YaRN fields
+  merged in, and `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1` for that server only.
+- The fit check counts KV cache for the layers that hold one: `layer_types`
+  entries for attention (not linear attention), else one in every
+  `full_attention_interval`, else every layer; a GGUF's
+  `full_attention_interval` the same way.
 - llama.cpp only: `kvCacheType` (`f16`, `q8_0`, `q4_0`), `flashAttention`
   (`auto`, `on`, `off`), `gpuLayers` (0 to 999), `parallel` (requests
   served at once, 1 to 64). A `q8_0` or `q4_0` KV cache needs
@@ -284,6 +306,31 @@ volume. They apply at its next load, or at once with Reload.
   tokens), `chatTemplate` (a Jinja template, at most 64 kB, used instead of
   the model's own).
 - A setting for the other server, or one not listed, is `invalid`.
+
+### Recommended settings
+
+What a model's card recommends for its context, kept with the model:
+`{ "native": 262144, "stretched": 1010000, "factor": 4,
+"originalContext": 262144, "source": { "hub": "huggingface", "repo":
+"Qwen/Qwen3.8-27B", "revision": "<sha>", "at": "<ISO time>" } }`; a card
+with no recipe has `native` only. It is filled when a download from a hub
+finishes, and on `POST /host/v1/models/lookup`
+`{ "model": "<id>", "repo": "owner/name" }`, which answers like `GET
+/host/v1/models/settings`. Without `repo`, the host reads the repository the
+model was downloaded from, or the one its GGUF names
+(`general.source.huggingface.repository`, `general.base_model.0.repo_url`);
+with neither it answers `need_repo`. `repo` may be `modelscope:owner/name`
+or a link. A hub token in `x-hub-token` is used only when `x-hub` names the
+hub the lookup reads. The dashboard has **Look up** on each chat model,
+asking for the repository on `need_repo`, and shows each model's KV cache
+and stretch.
+
+The fetch service reads the repository's `config.json` and `README.md`
+(`POST /read`: at most 1 MB, returned as text, never written; `.md` is still
+never downloadable). It takes `max_position_embeddings`, the first YaRN
+block in the card and its first `-c N … --yarn-orig-ctx M` line, and, when
+a quantization's card has no recipe, its `base_model`'s card one hop on.
+Only the repository's name and revision leave the host.
 
 ### GPUs
 

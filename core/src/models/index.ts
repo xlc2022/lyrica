@@ -185,6 +185,30 @@ export interface LibraryEntry {
 }
 
 /** Host management paths passed through (host/API.md). */
+/** A host model's serving settings as the host reports them (host/API.md). */
+export interface ServingEntry {
+  model: string;
+  settings: Record<string, unknown>;
+  contextLength: number;
+  /** The trained length times the stretch; null when the host couldn't read the trained length. */
+  maxContextLength: number | null;
+  trainedContextLength: number | null;
+  /** The KV cache at the served context, by the host's estimate. */
+  kvBytes: number | null;
+  recommended: Recommended | null;
+  /** vLLM's stretch is untested (vllm#58870). */
+  stretchUntested: boolean;
+}
+
+/** What a model's card recommends for its context (DESIGN, "Model settings"). */
+export interface Recommended {
+  native: number | null;
+  stretched?: number;
+  factor?: number;
+  originalContext?: number;
+  source: { hub: "huggingface" | "modelscope"; repo: string; revision: string; at: string };
+}
+
 const MANAGE = [/^\/host\/v1\/models\/(load|unload|pin|reload)$/, /^\/host\/v1\/gpus\/\d+$/, /^\/host\/v1\/scan$/, /^\/host\/v1\/usage$/];
 
 export interface CleanupItem {
@@ -776,24 +800,59 @@ export class Models {
 
   /**
    * A host model's placement and serving settings (host/API.md), with the
-   * context length it is served with. Anyone who can use the host may read them.
+   * context length it is served with, its maximum, the KV cache at that
+   * context, and what the model's card recommends. Anyone who can use the
+   * host may read them.
    */
-  async servingSettings(userId: string, offeringId: string): Promise<{ model: string; settings: Record<string, unknown>; contextLength: number }> {
+  async servingSettings(userId: string, offeringId: string): Promise<ServingEntry> {
     const { endpoint, offering } = this.hostOffering(userId, offeringId);
-    return this.hostCall(endpoint, "GET", `/host/v1/models/settings?${new URLSearchParams({ model: offering.modelId })}`) as Promise<{ model: string; settings: Record<string, unknown>; contextLength: number }>;
+    return this.hostCall(endpoint, "GET", `/host/v1/models/settings?${new URLSearchParams({ model: offering.modelId })}`) as Promise<ServingEntry>;
   }
 
   /**
    * Saves a host model's settings, whole; the host refuses a placement that
-   * can't work, with the reason. The served context becomes the offering's
+   * can't work, with the reason, and a stretch above the one the card
+   * documents unless `anyway`. The served context becomes the offering's
    * context window at once. A shared host needs an administrator.
    */
-  async setServingSettings(actor: User, offeringId: string, settings: Record<string, unknown>): Promise<unknown> {
+  async setServingSettings(actor: User, offeringId: string, settings: Record<string, unknown>, opts: { anyway?: boolean } = {}): Promise<unknown> {
     const { endpoint, offering } = this.hostOffering(actor.id, offeringId);
     this.manageable(actor, endpoint.id);
-    const entry = await this.hostCall(endpoint, "PUT", "/host/v1/models/settings", { model: offering.modelId, settings });
+    const entry = await this.hostCall(endpoint, "PUT", "/host/v1/models/settings", { model: offering.modelId, settings, ...(opts.anyway ? { anyway: true } : {}) });
     await this.discover(actor, endpoint.id).catch(() => {});
     return entry;
+  }
+
+  /**
+   * Looks up a host model's recommended settings on its card, through the
+   * host's fetch service: from the repository it was downloaded from, the
+   * one its GGUF names, or `repo` (owner/name, modelscope:owner/name or a
+   * link). Only the repository's name leaves the host, with the user's hub
+   * token for that hub. A shared host needs an administrator.
+   */
+  async lookupRecommended(actor: User, offeringId: string, repo?: string): Promise<ServingEntry> {
+    const { endpoint, offering } = this.hostOffering(actor.id, offeringId);
+    this.manageable(actor, endpoint.id);
+    const hub: Hub = repo && /^(modelscope:|https?:\/\/(www\.)?modelscope\.cn\/)/.test(repo.trim()) ? "modelscope" : "huggingface";
+    // The token says which hub it is for, so the host never sends it to the other.
+    const token = this.hubHeader(actor.id, hub);
+    return this.hostCall(endpoint, "POST", "/host/v1/models/lookup", { model: offering.modelId, ...(repo ? { repo } : {}) },
+      token ? { ...token, "x-hub": hub } : undefined, 60_000) as Promise<ServingEntry>;
+  }
+
+  /**
+   * The host text models a thread's `models` tool may name: on hosts the
+   * user can manage, and none at all for a private or local-only thread,
+   * since a lookup is an outside call.
+   */
+  hostCopies(actor: User, ctx: CallContext): { offering: string; name: string; host: string }[] {
+    if (isRestricted(ctx)) return [];
+    const admin = !!this.users.get(actor.id)?.admin;
+    return this.allowed(ctx)
+      .filter(({ endpoint }) => endpoint.api === "host" && (!endpoint.shared || admin))
+      .flatMap(({ endpoint, offerings }) => offerings
+        .filter((o) => o.status === "listed" && !o.recipe && !o.embedding && !o.transcribe && !o.speak && !o.image)
+        .map((o) => ({ offering: o.id, name: o.identity?.basename ?? o.modelId.split("/").pop()!.replace(/\.gguf$/, ""), host: endpoint.name })));
   }
 
   /** Applies a host model's saved settings now (Reload now). A shared host needs an administrator. */

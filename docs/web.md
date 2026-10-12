@@ -374,6 +374,9 @@ A thread's address may carry what the panel beside it shows:
   `notice` message, shows as a card headed by what it is, linking to the
   subagent.
 - Permission requests appear inline with Allow and Deny and the time left.
+  Her `models` tool's proposal is worded as its question ("Serve
+  Qwen3.8-27B with 1,010,000 tokens of context? It reloads, and its KV cache
+  grows to 17 GB."), the numbers in mono.
   A call on a machine (`machine` on the request) leads with the machine's
   name in mono, says the folder the command runs in, and shows the command,
   path or Proxmox action and VM in mono; a suspect command (`suspect`,

@@ -4,6 +4,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { HostError, invalid, onlyFields, readJson, sendJson } from "./http.ts";
 import type { Logger } from "./log.ts";
+import type { TextModel } from "./library.ts";
+import { parseRecipe, parseRepo, repoOf, type HubName, type Recommended } from "./recommended.ts";
 import type { Runtime } from "./runtime.ts";
 
 export interface RecordEntry {
@@ -64,6 +66,12 @@ export class Downloads {
     if (finished.length) {
       for (const d of finished) this.done.add(d.id);
       this.runtime.scan();
+      // A model just downloaded gets its card's recommendations, from the repository it came from.
+      for (const m of this.runtime.models) {
+        if (m.kind !== "chat" || this.runtime.state.get().recommended[m.id]) continue;
+        const r = this.downloadedFrom(m);
+        if (r) void this.lookup(m, r.hub, r.repo, r.revision).catch(() => this.log("lookup failed", {}));
+      }
     }
     if (this.active && !this.watching) {
       this.watching = setInterval(() => void this.refresh().catch(() => {}), 3000);
@@ -111,6 +119,60 @@ export class Downloads {
     return { deleted, unloaded };
   }
 
+  /** The repository a downloaded model came from, by the download record. */
+  private downloadedFrom(m: TextModel): { hub: HubName; repo: string; revision: string | undefined } | null {
+    const entry = this.runtime.record.get(m.id) ?? [...this.runtime.record.values()].find((r) => r.path.startsWith(`${m.id}/`));
+    if (!entry?.repo || (entry.source !== "huggingface" && entry.source !== "modelscope")) return null;
+    return { hub: entry.source, repo: entry.repo, revision: entry.revision ?? undefined };
+  }
+
+  /** One small file through fetch, or null when the repository hasn't it. */
+  private async read(hub: HubName, repo: string, revision: string | undefined, path: string, token?: string) {
+    try {
+      return (await this.call("/read", { body: { source: hub, repo, revision, path, token } })) as { revision: string; card: { baseModel: string[] } | null; text: string };
+    } catch (e) {
+      if (e instanceof HostError && e.status === 404) return null;
+      throw e;
+    }
+  }
+
+  /**
+   * Reads a repository's config.json and README.md for the model's
+   * recommended context, following `base_model` one hop when the card says
+   * nothing (a quantization's card), and keeps the result with the model.
+   * Only a repository name and revision leave the host.
+   */
+  async lookup(m: TextModel, hub: HubName, repo: string, revision?: string, token?: string): Promise<Recommended> {
+    const at = new Date().toISOString();
+    const one = async (r: string, rev?: string) => {
+      const [config, readme] = await Promise.all([this.read(hub, r, rev, "config.json", token), this.read(hub, r, rev, "README.md", token)]);
+      let json: unknown = null;
+      try {
+        json = config ? JSON.parse(config.text) : null;
+      } catch {}
+      const listed = config ?? readme;
+      if (!listed) throw new HostError(404, "not_found", `${repo} has no config.json or README.md to read.`);
+      return { recipe: parseRecipe(json, readme?.text ?? null, m.server), revision: listed.revision, base: listed.card?.baseModel[0] };
+    };
+    const found = await one(repo, revision);
+    let recipe = found.recipe;
+    let source = { repo, revision: found.revision };
+    const base = !recipe?.factor && found.base ? parseRepo(found.base) : null;
+    if (base) {
+      const b = await one(base.repo).catch(() => null);
+      if (b?.recipe?.factor) {
+        recipe = { ...b.recipe, native: recipe?.native ?? b.recipe.native };
+        source = { repo: base.repo, revision: b.revision };
+      }
+    }
+    const recommended: Recommended = { ...recipe, native: recipe?.native ?? m.contextLength, source: { hub, ...source, at } };
+    this.runtime.state.update((s) => {
+      s.recommended[m.id] = recommended;
+    });
+    this.log("looked up", { factor: recommended.factor ?? null });
+    return recommended;
+  }
+
   private token(req: IncomingMessage): string | undefined {
     const t = req.headers["x-hub-token"];
     return typeof t === "string" && t ? t : undefined;
@@ -122,6 +184,21 @@ export class Downloads {
       const source = url.searchParams.get("source");
       if (source !== "huggingface" && source !== "modelscope") throw invalid("source must be huggingface or modelscope.");
       sendJson(res, 200, await this.list(source, url.searchParams.get("repo"), url.searchParams.get("revision") ?? undefined, this.token(req)));
+      return true;
+    }
+    if (path === "/host/v1/models/lookup" && method === "POST") {
+      const body = await readJson(req);
+      onlyFields(body, ["model", "repo"]);
+      const m = this.runtime.find(body.model);
+      if (m.kind !== "chat") throw invalid("Only chat models have a recommended context.");
+      if (body.repo !== undefined && (typeof body.repo !== "string" || !parseRepo(body.repo))) throw invalid("repo is owner/name, modelscope:owner/name, or a link to the repository.");
+      const named = typeof body.repo === "string" ? parseRepo(body.repo) : null;
+      const from = named ? { ...named, revision: undefined } : this.downloadedFrom(m) ?? (repoOf(m) ? { ...repoOf(m)!, revision: undefined } : null);
+      if (!from) throw new HostError(400, "need_repo", "The host doesn't know which repository this model came from. Name it.");
+      // A token goes only to the hub it is for, which the caller names.
+      const token = req.headers["x-hub"] === from.hub ? this.token(req) : undefined;
+      await this.lookup(m, from.hub, from.repo, from.revision, token);
+      sendJson(res, 200, this.runtime.servingEntry(m));
       return true;
     }
     if (path === "/host/v1/downloads" && method === "POST") {
