@@ -9,7 +9,7 @@ on:
   push:
     branches: [main]
     paths: ["host/comfyui/**", "host/speech/**", "host/compose.nvidia.yaml", "host/compose.amd.yaml", "host/recipes/**"]
-# The jobs run on Li's own runner (docs/ci.md), so their token can only read.
+# The jobs run on the operator's own runner (docs/ci.md), so their token can only read.
 permissions:
   contents: read
 # One runner: a newer push to a PR replaces its older runs; main tests every commit.

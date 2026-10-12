@@ -62,6 +62,10 @@ back each other up.
   sudo mkdir -p /srv/models && sudo chown "$USER" /srv/models
   ```
 
+  On NixOS the module creates it instead: `services.lyrica-host.modelsDir`,
+  `/srv/models` by default, with its `lyrica/` subfolder. Give the script
+  the same folder.
+
   It can be one another program already uses, such as LM Studio's; the
   stack mounts it read-only and writes only into `lyrica/`.
 - A **private LAN address** (10/8, 172.16/12, 192.168/16, or a tailnet
