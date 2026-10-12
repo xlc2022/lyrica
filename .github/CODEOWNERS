@@ -7,8 +7,11 @@
 /core/src/models/         @xlc2022
 /core/src/workspace/      @xlc2022
 /core/src/store/memory.ts @xlc2022
+/core/src/store/pool.ts   @xlc2022
 /daemon/src/auth.ts       @xlc2022
 /daemon/src/updates.ts    @xlc2022
+/daemon/src/web/        @xlc2022
 /daemon/deploy/           @xlc2022
+/host/                    @xlc2022
 /nix/                     @xlc2022
 /.github/                 @xlc2022

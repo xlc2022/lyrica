@@ -471,7 +471,9 @@ export class Scheduler {
       } catch (e) {
         this.saveSettings(model, previous.settings);
         // A failed restoration must not hide the replacement's load error.
-        await this.load(model, previous.option, previous.settings).catch(() => {});
+        await this.load(model, previous.option, previous.settings).catch((r) =>
+          this.o.log("restore failed", { model: model.id, error: r instanceof Error ? r.name : "error", message: r instanceof Error ? r.message : "" }),
+        );
         throw e;
       }
     } finally {

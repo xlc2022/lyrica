@@ -107,7 +107,10 @@ the `houtini-lm` MCP server (Claude stays in charge and gets text back) or the
 with `-p` from the thread's own worktree, its diff reviewed before commit).
 Before giving it any work, the thread that wants the work done asks the owner
 in its own thread. If the owner doesn't answer within 5 minutes, or the model
-isn't reachable, the work goes to Codex, then to Claude.
+isn't reachable, the work goes to Codex, then to Claude. A `codex exec` run
+in the background waits forever for input unless its input is closed: start
+it with `</dev/null`, and a minute later check that it is writing its session
+log under `~/.codex/sessions`.
 
 - A pull request description says what changed and why, what is out of scope,
   any contract change it needs, and which docs it updated (or why none needed

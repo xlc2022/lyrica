@@ -772,7 +772,8 @@ her account is general.
 - **`.github/CODEOWNERS`** names the owner for the boundary code: keys and users
   (each user's key and its recovery wrap), database migrations, the model
   router, the workspace (sandbox and grants), `openThreadView`,
-  authentication, deployment, the updater and CI. GitHub then asks for
+  authentication, web access, the pool's storage, the model host,
+  deployment, the updater and CI. GitHub then asks for
   the owner's review on a pull request that touches them; it isn't required for
   merging, since Claude's approvals come from the same account. PR review
   asks the owner before approving such a pull request of hers.
