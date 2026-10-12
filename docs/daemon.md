@@ -228,6 +228,9 @@ Each active thread is one Pi session from `openThreadSession`, with
   - Pi's automatic compaction at the window's edge stays on as the safety net,
     with Pi's own summary, which keeps the goal, progress and next steps. It
     shows the same marker.
+- `GET /api/u/:userId/thread-defaults?pool=general|private` returns the
+  settings a new thread starts with, including the default mode, without
+  creating a thread. The home composer applies its changes after creation.
 - Changing a thread's settings reopens its session after the current turn,
   and its open views get `settings`. Workspace settings (mode and switches
   included) are read on every tool call, so they apply at once.
@@ -581,7 +584,7 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
   body (16 kHz mono, at most 10 minutes, 413 beyond, 415 for another type)
   answers `Transcription { text, seconds, model }`. `POST
   /api/u/:userId/transcribe?pool=` does the same on the welcome page, with
-  the user's defaults for a new thread. The clip is held in memory only.
+  the user's defaults for a new thread and without creating one. The clip is held in memory only.
 - `GET …/threads/:pool/:threadId/messages/:n/speech` reads one of her
   messages aloud. lyricad reads it from the store (the client sends a
   number, never text), reads each thread she mentions as its current title

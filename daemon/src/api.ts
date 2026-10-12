@@ -956,7 +956,8 @@ export interface ThreadSettings {
   allowed: EndpointInfo[];
 }
 
-/** GET /api/u/:userId/threads/:pool/:threadId/settings → ThreadSettings */
+/** GET /api/u/:userId/thread-defaults?pool=general|private → ThreadSettings (read-only, no thread created).
+ * GET /api/u/:userId/threads/:pool/:threadId/settings → ThreadSettings */
 /**
  * PATCH /api/u/:userId/threads/:pool/:threadId/settings → ThreadSettings.
  * Refused as a whole, with the reason, if the router or the workspace would

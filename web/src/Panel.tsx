@@ -445,7 +445,7 @@ function NameForm({ ctx }: { ctx: ShellContext }) {
     <form className="stack" onSubmit={(e) => { e.preventDefault(); if (busy || invalid || !changed) return; void run(async () => { const saved = await saveName(userId, checkName(value)); current.set(saved); setHer(saved.name); setName(undefined); ctx.refreshState(); }); }}>
       <ErrorText error={current.error || error || (name !== undefined ? invalid : "")} />
       <div className="inline">
-        <label className="field grow"><span>Name</span><input value={value} maxLength={40} onChange={(e) => setName(e.target.value)} /></label>
+        <label className="field grow"><span className="wl" tabIndex={0} aria-describedby="name-consequence" onClick={(e) => { e.preventDefault(); e.currentTarget.focus(); }}>Name<span className="preview" role="tooltip" id="name-consequence">Memories and threads written so far keep the old name.</span></span><input aria-label="Name" aria-describedby="name-consequence" value={value} maxLength={40} onChange={(e) => setName(e.target.value)} /></label>
         <button className="primary" disabled={busy || !!invalid || !changed} title="Memories and threads written so far keep the old name.">Save</button>
       </div>
     </form>

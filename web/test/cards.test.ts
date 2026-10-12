@@ -36,7 +36,7 @@ describe("welcome cards", () => {
     const startedAt = "2026-10-12T04:00:00Z";
     const overview = { items: [], runs: [{ pool: "general", status: "complete", startedAt }] } as unknown as SleepOverview;
     const html = renderToStaticMarkup(createElement(SleepCard, { ctx: { ...ctx, sleep: { ...ctx.sleep, overview } } }));
-    expect(html).toContain('href="#/u/user/sleep">Last night</a>');
+    expect(html).toContain('href="#/u/user/sleep">Sleep</a>');
     expect(html).toContain('She slept at <span class="num"');
     expect(html).toContain(new Date(startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
   });
@@ -68,7 +68,7 @@ describe("welcome cards", () => {
     } as unknown as ModelsPage;
     vi.mocked(useLoad).mockReturnValueOnce(loaded(page)).mockReturnValueOnce(loaded([{ id: "group", members: ["cloud"] }]));
     const html = renderToStaticMarkup(createElement(BackendCard, { ctx }));
-    expect(html).toContain('href="#/u/user/models">Backend</a>');
+    expect(html).toContain('href="#/u/user/models">Models</a>');
     expect(html).toContain('class="facts"');
     expect(html).toContain('class="badge kind cloud">cloud</span> cloud-model · Cloud host · Custom');
     expect(html).toContain('class="badge kind local">local</span> local-model · Local host · Local');

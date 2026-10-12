@@ -525,6 +525,11 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
 
     // --- Workspace defaults, allowed paths, SSH ---
+    route("GET", `${u}/thread-defaults`, (r) => {
+      const user = d.userFor(r);
+      const defaults = threadSettings(d, user, checkPool(r.query.get("pool") ?? "general"), "");
+      return { ...defaults, mode: s().workspace.settings(user.id).defaultMode() };
+    }),
     route("GET", `${u}/network`, (r) => networkDefaults(d, d.userFor(r).id)),
     route("PATCH", `${u}/network/:pool`, async (r) => {
       const user = d.userFor(r);

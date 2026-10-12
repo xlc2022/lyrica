@@ -225,7 +225,7 @@ export function BackendCard({ ctx }: { ctx: ShellContext }) {
   };
   return (
     <section className="card" aria-labelledby="h-home-backend">
-      <div className="section-head"><h2 id="h-home-backend"><a href={href({ page: "models", userId })}>Backend</a></h2></div>
+      <div className="section-head"><h2 id="h-home-backend">Backend</h2><a href={href({ page: "models", userId })}>Models</a></div>
       <ErrorText error={models.error || groups.error} />
       {p && <dl className="facts">
         <dt>General threads</dt><dd>{line(general, p.profiles.default)}</dd>

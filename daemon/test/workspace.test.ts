@@ -22,6 +22,27 @@ function homes() {
 }
 
 describe("lyricad and the home workspace", () => {
+  it("reads new-thread defaults for both pools without creating threads", async () => {
+    const rt = await runtime();
+    homes();
+    const { base, d } = await daemon(rt);
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const ada = await login(base, "ada", "pw");
+    const u = `/api/u/${rt.ada.id}`;
+    d.services!.workspace.settings(rt.ada.id).setDefaultMode("ask");
+    const before = (await ada.get(`${u}/threads`)).body;
+    for (const pool of ["general", "private"] as const) {
+      const defaults = await ada.get<ThreadSettings>(`${u}/thread-defaults?pool=${pool}`);
+      expect(defaults.status).toBe(200);
+      expect(defaults.body).toMatchObject({ mode: "ask", webSearch: true, images: true });
+      expect((await ada.get(`${u}/threads`)).body).toEqual(before);
+      const thread = (await ada.post<ThreadSummary>(`${u}/threads`, { pool })).body;
+      const settings = (await ada.get<ThreadSettings>(`${u}/threads/${pool}/${thread.id}/settings`)).body;
+      expect(defaults.body).toEqual(settings);
+      await ada.del(`${u}/threads/${pool}/${thread.id}`);
+    }
+  });
+
   it("mounts a home at sign-in and unmounts it on Lock", async () => {
     const rt = await runtime();
     const h = homes();

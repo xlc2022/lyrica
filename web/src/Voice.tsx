@@ -67,7 +67,8 @@ export function useDictation({ base, onText, onError }: {
     transcribing.current = abort;
     try {
       const path = typeof base === "string" ? base : await base();
-      const res = await fetch(`${path}/transcribe`, { method: "POST", credentials: "same-origin", body: new Blob([wav(samples)], { type: "audio/wav" }), signal: abort.signal });
+      const [pathname, query] = path.split("?");
+      const res = await fetch(`${pathname}/transcribe${query ? `?${query}` : ""}`, { method: "POST", credentials: "same-origin", body: new Blob([wav(samples)], { type: "audio/wav" }), signal: abort.signal });
       if (!res.ok) throw await errorFrom(res);
       const out = (await res.json()) as Transcription;
       if (!abort.signal.aborted) {

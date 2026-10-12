@@ -72,7 +72,7 @@ export function SleepCard({ ctx }: { ctx: ShellContext }) {
   });
   return (
     <section className="card" aria-labelledby="h-home-sleep">
-      <div className="section-head"><h2 id="h-home-sleep"><a href={href({ page: "sleep", userId })}>Last night</a></h2></div>
+      <div className="section-head"><h2 id="h-home-sleep">Last night</h2><a href={href({ page: "sleep", userId })}>Sleep</a></div>
       <ErrorText error={ctx.sleep.error || error} />
       {o && (items.length ? <ul className="list sleep-items">{items.map((i) => (
         <li key={`${i.pool}/${i.id}`} className="sleep-item">
