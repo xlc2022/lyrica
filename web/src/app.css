@@ -1255,3 +1255,15 @@ dialog.add-part { width: min(560px, calc(100vw - 32px)); }
   /* A link inside a line keeps the line's height; its target reaches past it. */
   .prow .cap button.link { display: inline-flex; min-height: 44px; align-items: center; margin-block: -14px; vertical-align: middle; }
 }
+
+/* Routines reuse the wake-up popover and row controls (docs/ux.md section 6). */
+.routine-facts { display: grid; gap: 4px; min-width: 0; flex: 1; overflow-wrap: anywhere; font-size: 13px; }
+.routine-item { align-items: center; padding: 8px 4px; }
+.routine-pop { width: 320px; max-width: calc(100vw - 32px); }
+@media (max-width: 760px) {
+  .routine-pop { width: auto; }
+}
+@media (pointer: coarse) {
+  .routine-item button.sm { min-height: 44px; }
+}
+.msg[data-type="routine"] .from-head { color: var(--accent); }

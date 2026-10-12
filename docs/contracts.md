@@ -619,6 +619,20 @@ One model-facing tool: `delegate({ action?, ... })`.
   firing. Missed runs otherwise fire once with their due count. Wake-ups
   at the cap wait. In-memory last-run destinations do not resume after a
   restart.
+- **Routine web routes**: `GET /api/u/:userId/routines` lists that signed-in
+  user's routines across both own pools, grouped in the UI by thread.
+  `GET /api/u/:userId/threads/:pool/:threadId/routines` lists one thread;
+  `PATCH …/routines/:id` with `{ paused: boolean }` pauses or resumes;
+  `DELETE …/routines/:id` removes it. Both mutations return the thread's
+  remaining list. `RoutineInfo` carries `id`, `pool`, `threadId`,
+  `threadTitle`, `schedule` (the `describe()` text), `nextAt`, `paused`,
+  never notes. Each route uses session/key checks and only the requested
+  user's own thread view; an absent thread or a routine from another
+  thread is 404; non-boolean `paused` is 400. `ThreadSettings.routines`
+  carries the same metadata; web mutations publish the existing `settings`
+  event to refresh open thread views. Stored routine messages have
+  `from: { kind: "routine", schedule }` and their note as the text part,
+  with the daemon's mark removed; live messages carry the mark until stored.
 - **Child threads** (`createThreadsExtension(thread, host?: ThreadsHost, meter?)`,
   never in a subagent's thread): one model-facing tool, `threads({ action,
   ... })`: `start` (`title`, `task`, optional narrower `folders`,

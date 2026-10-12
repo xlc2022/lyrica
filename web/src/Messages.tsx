@@ -1,3 +1,4 @@
+import { ScheduleText } from "./Routines.tsx";
 // The conversation: stored messages, then what's streaming now.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -127,7 +128,8 @@ function StoredMessage({ m, env, you, cards, told, folded }: { m: Message; env: 
   const after = cards?.map((t) => <ThreadCard key={t.id} t={t} userId={env.userId} env={env.project!} />);
   if (m.role === "user") {
     if (m.from?.kind === "parent" || m.from?.kind === "thread") return <><FromThread text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} from={m.from} env={env} n={m.n} />{after}</>;
-    if (m.from?.kind === "wakeup") return <><WakeupMarker text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} setAt={m.from.setAt} dueAt={m.from.dueAt} env={env} n={m.n} />{after}</>;
+    if (m.from?.kind === "routine") return <><ScheduledMarker text={m.parts.map(p => p.type === "text" ? p.text : "").join("")} schedule={m.from.schedule} env={env} n={m.n} />{after}</>;
+    if (m.from?.kind === "wakeup") return <><ScheduledMarker text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} setAt={m.from.setAt} dueAt={m.from.dueAt} env={env} n={m.n} />{after}</>;
     if (m.from?.kind === "watching") return <><LookMarker text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} told={told ?? []} env={env} n={m.n} />{after}</>;
     const hers = m.from?.kind === "lyrica";
     const who = hers ? her() : m.from?.kind === "user" ? (m.from.name || you) : you;
@@ -191,8 +193,10 @@ function LiveMessage({ item, env, you, streaming }: { item: LiveItem; env: Env; 
     if (item.text.startsWith(WATCHING_MARK)) { const text = item.text.slice(WATCHING_MARK.length); return <LookMarker text={text} told={toldIn(text, env.pool)} env={env} />; }
     const parent = FROM_PARENT.exec(item.text);
     if (parent) return <FromThread text={item.text.slice(parent[0].length)} from={{ kind: "thread", threadId: parent[1]! }} env={env} />;
+    const routine = /^\[Routine, ([^\]\n]+)\]\n\n/.exec(item.text);
+    if (routine) return <ScheduledMarker text={item.text.slice(routine[0].length)} schedule={routine[1]!} env={env} />;
     const wake = WAKEUP.exec(item.text);
-    if (wake) return <WakeupMarker text={item.text.slice(wake[0].length)} setAt={wake[1]!} dueAt={wake[2]} env={env} />;
+    if (wake) return <ScheduledMarker text={item.text.slice(wake[0].length)} setAt={wake[1]!} dueAt={wake[2]} env={env} />;
     return <UserMessage text={item.text} you={you} env={env} />;
   }
   // A look kept without a turn: the same marker, until its stored copy replaces this one.
@@ -458,15 +462,15 @@ function FromThread({ text, from, env, n }: { text: string; from: { kind: "paren
 }
 
 /**
- * Her note to herself, when its wake-up fires (docs/ux.md §6): one line, Woke up with when it was set
+ * Her scheduled note (docs/ux.md §6): Routine ran with its schedule, or Woke up with when it was set
  * (and when it was due, if it fired late), opening to the note as a tinted block, as Message received does.
  */
-function WakeupMarker({ text, setAt, dueAt, env, n }: { text: string; setAt: string; dueAt?: string; env: Env; n?: number }) {
+export function ScheduledMarker({ text, setAt, dueAt, schedule, env, n }: { text: string; setAt?: string; dueAt?: string; schedule?: string; env: Env; n?: number }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="msg user from-thread" data-type="wakeup" id={n !== undefined ? `m-${n}` : undefined}>
+    <div className="msg user from-thread" data-type={schedule ? "routine" : "wakeup"} id={n !== undefined ? `m-${n}` : undefined}>
       <button type="button" className="from-head" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span>Woke up · set <span className="num">{wakeTime(setAt)}</span>{dueAt && <> · due <span className="num">{wakeTime(dueAt)}</span></>}</span><Icon name="down" />
+        <span>{schedule ? <>Routine ran · <ScheduleText text={schedule} /></> : <>Woke up · set <span className="num">{wakeTime(setAt!)}</span>{dueAt && <> · due <span className="num">{wakeTime(dueAt)}</span></>}</>}</span><Icon name="down" />
       </button>
       {open && (
         <>

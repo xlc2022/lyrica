@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { WAKEUP_LIMITS, type Pool, type PoolStore } from "@lyrica/core";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
-import type { CallInfo, EndpointInfo, MessagePage, ThreadSummary } from "../src/api.ts";
+import type { CallInfo, EndpointInfo, MessagePage, RoutineInfo, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 const HOUR = 3_600_000;
@@ -66,6 +66,7 @@ describe("routine storage and firing", () => {
     s.tick(1); s.tick(1);
     await s.fired();
     expect(JSON.stringify(s.requests[0]!.messages)).toContain("[Routine, Every 1 hour]\\n\\nInspect the build queue.");
+    expect((await s.messages()).find(m => m.from?.kind === "routine")).toMatchObject({ from: { kind: "routine", schedule: "Every 1 hour" }, parts: [{ type: "text", text: "Inspect the build queue." }] });
     expect(s.own(o => o.routines())[0]).toMatchObject({ lastAt: at(1).toISOString(), nextAt: at(2).toISOString() });
     expect(s.own(o => o.wakeups())).toEqual([]);
     expect(readFileSync(join(s.d.services!.users.userDir(s.rt.ada.id), "general.db")).includes(Buffer.from("Inspect the build queue."))).toBe(false);
@@ -184,7 +185,7 @@ describe("routine storage and firing", () => {
     expect(cloudCalls).toBe(0);
     expect((await s.ada.get<CallInfo[]>(`${s.u}/models/calls`)).body.filter(c => c.task === "chat").map(c => [c.pool, c.kind])).toEqual([["private", "local"]]);
     const messages = await s.messages(target.id);
-    expect(messages[0]!.parts).toEqual([{ type: "text", text: "[Routine, Every 1 hour]\n\nInspect the build queue." }]);
+    expect(messages[0]!.parts).toEqual([{ type: "text", text: "Inspect the build queue." }]);
   });
 
   it("forgetting the source removes its routines", async () => {
@@ -341,5 +342,52 @@ describe("routine storage and guards", () => {
     expect(s.models.callContext(s.user.id, "private", target)).toMatchObject({ pool: "private", localOnly: true });
     expect(s.workspace.settings(s.user.id).effective(target)).toMatchObject({ mode: "plan", internet: false });
     expect(s.logs).toEqual([]);
+  });
+});
+
+
+describe("routine HTTP routes", () => {
+  it("lists own threads across pools without notes, and confines pause/resume/remove to the named thread", async () => {
+    const s = await setup("private");
+    const id = s.add();
+    const general = s.d.services!.memory.openThreadView(s.rt.ada.id, "general");
+    let other: string;
+    try {
+      other = general.own.createThread({ interface: "web", title: "Morning" }).id;
+      general.own.addRoutine(other, { kind: "daily", time: "08:00" }, "A different synthetic note.");
+    } finally { general.close(); }
+    const all = (await s.ada.get<RoutineInfo[]>(`${s.u}/routines`)).body;
+    expect(all).toHaveLength(2);
+    expect(all.find(r => r.pool === "private")).toEqual({ id, pool: "private", threadId: s.thread.id, threadTitle: "Checks", schedule: "Every 1 hour", nextAt: at(1).toISOString(), paused: false });
+    expect(JSON.stringify(all)).not.toMatch(/note|Inspect the build queue|different synthetic/);
+    expect((await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body.routines).toEqual([all.find(r => r.pool === "private")]);
+    const path = `${s.path}/routines/${id}`;
+    expect((await s.ada.patch<RoutineInfo[]>(path, { paused: true })).body[0]!.paused).toBe(true);
+    expect((await s.ada.patch<RoutineInfo[]>(path, { paused: false })).body[0]!.paused).toBe(false);
+    expect((await s.ada.patch(path, { paused: "yes" })).status).toBe(400);
+    const otherThread = s.own(o => o.createThread({ interface: "web", title: "Other" }).id);
+    const wrong = `${s.u}/threads/private/${enc(otherThread)}/routines/${id}`;
+    expect((await s.ada.patch(wrong, { paused: true })).status).toBe(404);
+    expect((await s.ada.del(wrong)).status).toBe(404);
+    expect((await s.ada.del<RoutineInfo[]>(path)).body).toEqual([]);
+    expect((await s.ada.del(path)).status).toBe(404);
+    expect((await s.ada.get<RoutineInfo[]>(`${s.u}/routines`)).body).toHaveLength(1);
+  });
+
+  it("never exposes or changes another user's private routines, even while that user is unlocked", async () => {
+    const s = await setup("private");
+    const id = s.add();
+    const sam = await login(s.base, "sam", "pw2");
+    expect((await sam.get<RoutineInfo[]>(`/api/u/${s.rt.sam.id}/routines`)).body).toEqual([]);
+    expect((await sam.get(`${s.u}/routines`)).status).toBe(401);
+    expect((await sam.get(`${s.path}/routines`)).status).toBe(401);
+    expect((await sam.patch(`${s.path}/routines/${id}`, { paused: true })).status).toBe(401);
+    expect((await sam.del(`${s.path}/routines/${id}`)).status).toBe(401);
+    const foreign = `/api/u/${s.rt.sam.id}/threads/private/${enc(s.thread.id)}/routines`;
+    expect((await sam.get(foreign)).status).toBe(404);
+    expect((await sam.patch(`${foreign}/${id}`, { paused: true })).status).toBe(404);
+    expect((await sam.del(`${foreign}/${id}`)).status).toBe(404);
+    expect(s.own(o => o.routines())[0]!.paused).toBe(false);
+    expect((await browser(s.base).get(`${s.u}/routines`)).status).toBe(401);
   });
 });

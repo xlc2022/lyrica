@@ -337,7 +337,12 @@ Each active thread is one Pi session from `openThreadSession`, with
   last run or the daily cap skips the run and advances `next_at`; missed
   runs otherwise fire once, saying how many were due. Lock stops firing;
   schedules survive restart. Only the daemon can send the routine mark; a
-  user message or edit carrying it is rejected with HTTP 400.
+  user message or edit carrying it is rejected with HTTP 400. The web API
+  lists only the signed-in user's routine metadata across their own pools,
+  and pauses, resumes or removes a routine in its own thread; routes and
+  response fields are in [contracts.md](contracts.md#delegate). Listings
+  never carry notes. Stored messages expose the mark as `from.kind: "routine"`
+  with the schedule and the note as its text part.
 - **Projects** ([delegation.md](delegation.md#child-threads), DESIGN.md
   "Projects"). `POST threads` with `project` and an optional `goal` makes a
   project, and `PATCH` with `project: true` makes one of a top-level thread
