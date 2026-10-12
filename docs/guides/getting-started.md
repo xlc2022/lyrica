@@ -458,13 +458,15 @@ the old one. Run `install.sh` once before saving the passphrase: the
 old unit has systemd unseal the file itself, which can fail and stop
 lyricad from starting.
 
-To change the passphrase later, stop lyricad (`sudo systemctl stop lyricad`)
-and run `sudo lyrica admin passphrase`: it asks for the current one, then
-the new one twice, and refuses while lyricad runs. Start lyricad again and
-unlock with the new one. A saved Start unlocked passphrase is re-saved
-with the new one; if that fails, the saved copy is removed, so check Start
-unlocked under Administration and save it again if it says the passphrase
-isn't saved. Old update snapshots of `self.db` keep opening with the old
+To change the passphrase later, use **Change passphrase…** under
+Administration, Start unlocked: the current passphrase, then the new one
+twice. She keeps running, and from then on only the new one unlocks her.
+A saved Start unlocked passphrase is re-saved with the new one; if that
+fails, the saved copy is removed and the page says so: save it again.
+With lyricad stopped (`sudo systemctl stop lyricad`), `sudo lyrica admin
+passphrase` does the same at hidden prompts and refuses while lyricad
+runs; then start lyricad, unlock with the new one, and check Start
+unlocked: save the passphrase again if it isn't saved. Old update snapshots of `self.db` keep opening with the old
 passphrase.
 
 Each user can likewise save their own data key under Settings, Unlock and
