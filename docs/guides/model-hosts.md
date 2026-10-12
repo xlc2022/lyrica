@@ -9,14 +9,14 @@ references are [host/README.md](../../host/README.md) (what the stack is),
 and on Lyrica's side [docs/models.md](../models.md) ("Model hosts").
 
 **What has and hasn't been exercised.** CI installs the stack with
-`install.sh --no-gpu` on Ubuntu 24.04 on every pull request and checks its
-network layout on the running containers; the CUDA and ROCm images build
-only when the files that go into them change. Nothing has run on a GPU, with a real model, or against a real hub
-(the model host brief's handoff says so, and no later thread has reported
-otherwise). The voice and dictation choices below come from a benchmark
-Li ran on a Windows machine with an RTX 3090, outside this stack. Expect
-the first real install to turn something up; the checklist at the end is
-for that.
+`install.sh --no-gpu` on pull requests that touch `host/`, and checks its
+network layout on the running containers. The CUDA and ROCm images build
+only when the files that go into them change. Nothing has run on a GPU,
+with a real model, or against a real hub (the model host brief's handoff
+says so, and no later thread has reported otherwise). The voice and
+dictation choices below come from a benchmark Li ran on a Windows machine
+with an RTX 3090, outside this stack. Expect the first real install to turn
+something up; the checklist at the end is for that.
 
 ## What a host is to Lyrica
 
@@ -73,15 +73,16 @@ back each other up.
 
 ### AMD GPUs
 
-ROCm runs everything, but only on the GPUs its images are built for
-(gfx908, gfx90a, gfx942, gfx1030, gfx1100 to 1102, gfx1150 and 1151,
-gfx1200 and 1201). For any other AMD GPU, such as Vega or a Radeon 780M,
-the script picks **Vulkan**, which serves llama.cpp (GGUF) models only: no
-vLLM, no images, and voices on the CPU. `--amd-backend` chooses yourself;
-`--hsa-override 11.0.0` runs a 780M on ROCm as a gfx1100, which AMD doesn't
-support and which works on some machines and not others. An integrated GPU
-beside a discrete one is left out until you include it on the dashboard.
-None of the AMD paths has been tried on hardware.
+ROCm runs everything, but only on the GPUs its images are built for. For
+any other AMD GPU, such as Vega or a Radeon 780M, the script picks
+**Vulkan**, which serves llama.cpp (GGUF) models only: no vLLM, no images,
+and voices on the CPU. `--amd-backend` chooses yourself; `--hsa-override
+11.0.0` runs a 780M on ROCm as a gfx1100, which AMD doesn't support and
+which works on some machines and not others. An integrated GPU beside a
+discrete one is left out until you include it on the dashboard. The
+supported GPUs and the memory an integrated GPU can use are in
+[host/README.md](../../host/README.md#amd-gpus). None of the AMD paths has
+been tried on hardware.
 
 ## Install
 
@@ -153,10 +154,9 @@ address.
 2. In Lyrica, pair with the code, giving the host a name and its addresses
    in the order to try them (LAN address first, tailnet name second, say).
 
-The web UI has no control for step 2 yet: the Models page that carries
-**Add model host** is being built (the Web UI 2 brief). Until it lands, call
-the API from the Lyrica machine. Log in first; the password is read from a
-hidden prompt, never put on a command line:
+The web UI has no control for step 2, so call the API from the Lyrica
+machine. Log in first; the password is read from a hidden prompt, never put
+on a command line:
 
 ```sh
 read -rs -p 'Password: ' PASSWORD; echo
@@ -202,9 +202,8 @@ Three ways a model gets into the library:
   every file is checked against the hub's checksum. A gated repository's
   token is used for that download and never kept.
 - **Ask from Lyrica**, through the same download API (`…/hosts/<endpoint
-  id>/downloads`) or, once the Models page exists, its library. Hub tokens
-  can be saved in Lyrica (a user's own, or a shared one an administrator
-  adds) and are sent to the host per request.
+  id>/downloads`). Hub tokens can be saved in Lyrica (a user's own, or a
+  shared one an administrator adds) and are sent to the host per request.
 
 ### The voice and dictation starters
 
@@ -248,30 +247,32 @@ on the CPU alone it takes about 1.3 s for a 5-second sentence.
 
 ### Placements and settings
 
-Each model has a placement: Auto (one GPU with room, else split over the
-GPUs that allow its server) or chosen GPUs. Its context length (32k by
-default), KV-cache type, parallel requests and, for vLLM, its share of the
-GPU's memory are set on the dashboard or from Lyrica's Serving settings
-once it has a Models page. A placement that can't work is refused when
-saved, with the reason. Each GPU says which servers it may run and how much
-memory to keep free. Idle models are unloaded least-recently-used when
-another needs room; pinned models never are.
+Each model has a placement (Auto, or chosen GPUs) and serving settings
+such as its context length, KV-cache type and, for vLLM, its share of the
+GPU's memory. Set them in the model's **Settings** on the dashboard, or
+from Lyrica with `PUT /api/u/<user id>/offerings/<offering id>/serving`.
+A placement that can't work is refused when saved, with the reason. Each
+GPU says which servers it may run and how much memory to keep free. What
+each setting means, and how models are placed and unloaded, is in
+[host/README.md](../../host/README.md#models-and-gpus) and
+[host/API.md](../../host/API.md#placement-and-serving-settings).
 
 A chat model can serve more context than it was trained for with a YaRN
 stretch, set in the model's settings on the dashboard together with the
 context to serve, for example
 `"contextLength": 1010000, "stretch": { "type": "yarn", "factor": 4 }`.
-The stretch raises the most it may serve (the trained length times the
-factor, measured from `originalContext`, which defaults to the trained
-length); `contextLength` still picks what it serves, 32k unless set. The
-editor's hint shows what
-the model's card recommends; **Look up** on the model reads the card (it
-asks for the repository when the host doesn't know it). A factor above the
-card's asks "<publisher> documents N. Save anyway?". Each model row shows
-"stretched ×N" and the size of its KV cache, which grows with the context
-length, so a stretched model may need a lower context or more memory. The
-host reports a stretch on any vLLM model as untested (vllm#58870) until its
-image carries the fix; llama.cpp is the safer choice for it. Details are in
+You can also ask Lyrica to do it: her `models` tool asks you on a card
+before it changes anything. The stretch raises the most the model may serve
+(the trained length times the factor; `originalContext`, the length YaRN
+scales from, defaults to the trained length); `contextLength` still picks
+what it serves, 32k unless set. The editor's hint shows what the model's
+card recommends; **Look up** on the model reads the card (it asks for the
+repository when the host doesn't know it). A factor above the card's asks
+"<publisher> documents N. Save anyway?". Each model row shows "stretched
+×N" and the size of its KV cache, which grows with the context length, so a
+stretched model may need a lower context or more memory. The host reports a
+stretch on any vLLM model as untested (vllm#58870) until its image carries
+the fix; llama.cpp is the safer choice for it. Details are in
 [host/API.md](../../host/API.md#recommended-settings).
 
 On a host with one large GPU: pin Whisper (vLLM memory share about 0.1 on

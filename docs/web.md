@@ -204,8 +204,8 @@ A thread's address may carry what the panel beside it shows:
 - **Notifications** (`src/Notifications.tsx`; docs/ux.md §6 "Anything
   waiting for the user"): the first section of Settings, one list from
   `GET …/notifications`. Chips filter by type (All with the count, Needs a
-  decision, then the types that exist now); Sort offers Newest, Oldest, By
-  type and By pool (the last two group the rows under eyebrows); Where
+  decision, then the types that exist now); Sort offers Newest first,
+  Oldest first, By type and By pool (the last two group the rows under eyebrows); Where
   narrows to a pool. Each row has its kind, pool and time, Open thread or
   Open where the item leads, and its actions as buttons (an action that
   answers with a thread goes there). Checkboxes select rows for the bulk
@@ -313,7 +313,7 @@ A thread's address may carry what the panel beside it shows:
   - the hostname (Caddy and proxy modes), with a hint that its DNS record points at the Tailscale address;
   - for the built-in Caddy: the Tailscale and LAN addresses to serve on, the
     DNS provider with its credential fields and its token-scoping hint, an
-    an email for certificate warnings, and, under Advanced, testing with
+    email for certificate warnings, and, under Advanced, testing with
     untrusted certificates (the status warns while it is on);
   - for a proxy: the address and ports to listen on, the proxy addresses,
     the certificate to pin, and a Caddyfile snippet;
@@ -382,8 +382,6 @@ A thread's address may carry what the panel beside it shows:
   the models tried in its tooltip; the message shows as waiting, not as
   sent, until a turn starts.
 - A stored compaction shows as a one-line notice, **Compacted · 41k → 6k**.
-  The context meter, the stream's `context` events and a marker that expands
-  to the summary are the Web UI 2 thread's.
 - A message sent during a turn waits as a follow-up and shows as waiting.
   Stop aborts the turn; `lyricad` drops the waiting follow-ups, so their text
   goes back into the composer.
@@ -449,7 +447,7 @@ A thread's address may carry what the panel beside it shows:
   message (`POST …/messages/:n/thread`). What a parent sent its child, or
   a project's thread sent a sibling (`from.kind` "parent" or "thread"), is
   one line, "Message received from <thread title>" with a chevron, until
-  tapped (Li, 2026-10-11: said elsewhere, it would clutter the chat); open,
+  tapped (the text is shown once, not repeated in the chat); open,
   it is a tinted block headed "Lyrica · from <title>" with the message menu
   (Branch, Delete; not Edit), and one taller than twelve lines shows
   **Show more**. Forgetting a thread with child threads asks
@@ -551,11 +549,13 @@ turns animations off.
 
 - `npm run typecheck` covers `web/` (`tsc -p web`), and `npm run build` builds
   it.
-- `web/test/live.test.ts` tests the stream reducer; `web/test/voice.test.ts`
-  the recorder's context fallback and the clip's limit.
+- `web/test/` has unit tests for the stream reducer (`live.test.ts`), memory
+  links and word diffs, mentions, which paths become links, and the
+  recorder's context fallback and clip limit (`voice.test.ts`).
 - `npm run e2e -w @lyrica/web` runs Playwright (after a build). The upload
-  test needs `gocryptfs`, as `lyricad` does. Each viewport
-  (390×844 with touch, 1280×800) gets its own real `lyricad` from
+  test needs `gocryptfs`, as `lyricad` does. Each project in
+  `playwright.config.ts` (phone 390×844 with touch, desktop 1280×800, and a
+  desktop one for first-run setup) gets its own real `lyricad` from
   `web/e2e/serve.ts`, on a temporary runtime with a fake model server, which
   also serves a fake speech endpoint (whisper and kokoro, under `/speech/v1`,
   and `/speech/down` to make it fail). Chromium runs with a fake microphone.

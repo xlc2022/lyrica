@@ -62,8 +62,9 @@ administrator pairs or manages them; a personal host lives in its user's
   and checked before anything is sent; on one TLS 1.3 connection that
   presents Lyrica's certificate, the host's fingerprint is read, the proof
   of the code bound to both fingerprints is sent, and the host's proof is
-  checked. Only then is its key pinned. Plain reasons for no code, a wrong
-  code, a host that can't prove it knows the code, or no address reachable.
+  checked. Only then is its key pinned. A failure gives a plain reason: no
+  code, a wrong code, a host that can't prove it knows the code, or no
+  address reachable.
   `pairHost(…, { endpointId })` pairs a host again after its key changed,
   keeping every ID.
 - **Addresses** (`setHostAddresses`) can change at any time; trust and IDs
@@ -281,7 +282,7 @@ tokens per second and prompt tokens per second (`speeds`; left out when a
 time is under 50 ms). `speedsByOffering` gives each copy's median speeds over
 the user's last twenty measured calls; the text library shows them on each
 copy (`speed`). Counts and times only, so a "Do not log" thread records them
-too. Nothing acts on speed yet.
+too. Nothing acts on speed.
 
 ## Thinking
 
@@ -483,7 +484,7 @@ never sent with a chat request.
 endpoints `ctx` may use, each a Pi provider (named by the endpoint's ID) of
 API `openai-completions` holding its offerings.
 
-- Pi's 42 built-in providers are removed. `auth.json`, `models.json` and
+- Pi's built-in providers are removed. `auth.json`, `models.json` and
   environment keys are never read. API keys are set as runtime keys, so they
   are never read as `$ENV` or `!command`.
 - Before returning, it checks every provider against the allowed endpoints,

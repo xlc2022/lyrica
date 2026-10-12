@@ -22,6 +22,8 @@ Keys, users and the persona store. No Pi dependency.
 - **`users.ts`** (`Users`): `createUser` (the first must be an administrator),
   `authenticate` (also unlocks the key; Argon2 runs for unknown logins too),
   `changePassword` (rewraps the same key, so data isn't re-encrypted),
+  `setPassword` (an administrator sets another user's password, using the
+  recovery copy of that user's key in `self.db`),
   `setAdmin` (administrators only; the last administrator can't be demoted),
   `updateProfile` (the user or an administrator), `listUsers`, and
   `openUserDb`.
@@ -83,10 +85,10 @@ Keys, users and the persona store. No Pi dependency.
 On disk, under `LYRICA_HOME`:
 
 ```text
-self.db                 users (login, admin, profile, wrapped key), persona_revisions, workspace_paths,
-                        shared endpoints
+self.db                 users (login, admin, profile, wrapped key, recovery copy), persona_revisions, workspace_paths,
+                        user_links, shared endpoints
 users/<id>/user.db      settings (incl. network defaults), endpoints, model profiles and thread models,
-                        thread workspaces, SSH targets
+                        thread workspaces, machines (SSH and Proxmox), Git accounts
 users/<id>/general.db   general pool: threads, entries, notes, pages, WAKE, journal, index
 users/<id>/private.db   private pool, same tables
 users/<id>/home.crypt/  the encrypted home workspace (gocryptfs)

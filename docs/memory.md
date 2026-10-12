@@ -59,8 +59,8 @@ users.
 - **Threads are stored in the database too.** The daemon runs Pi sessions with
   an in-memory session manager (`SessionManager.inMemory(cwd, opts, entries)`
   in Pi 1.1). It loads entries from the database and writes new ones back.
-  Every interface, including `lyrica chat`, goes through `lyricad`, so no
-  thread is ever written as a plaintext file.
+  Every interface goes through `lyricad`, so no thread is ever written as a
+  plaintext file.
 - **Full-text search lives inside the encrypted database** (FTS5). There is no
   plaintext index.
 - **Unlocking.** The `lyricad` passphrase unlocks `self.db`. As a service,
@@ -171,8 +171,8 @@ The cheapest mechanism comes first:
 1. **Always in context** for the thread's pool: persona, WAKE, and a **page
    index** with each page's title and one-line summary. The index tells her
    what she knows about, which is what lets her think "I have notes on that"
-   without being prompted. If the index outgrows its budget (about 3k tokens),
-   it shows recently updated pages and pages that match the conversation.
+   without being prompted. The index lists pages newest first and is cut at
+   its budget (3,000 characters), so the oldest pages drop off first.
    Also always in context: the **page about the user**, `p:about-user` (who
    they are, what they like and can't stand), so a preference doesn't depend
    on the next message sharing its words. A private thread loads the private
@@ -185,14 +185,15 @@ The cheapest mechanism comes first:
    Also always in context: the thread's **pinned messages**, word for word,
    oldest first (`pins(threadId)`, a `pinned` section of about 2,000
    tokens). They're read from the store, not from what Pi keeps, so
-   compaction can't summarise them away; the context meter counts them as its `pinned` part. Over budget, the oldest are cut to
-   their first line, and if that isn't enough the oldest are left out. Pins live on the entry (`pinned`), in the thread's pool:
-   a branch copies them, removing the entry removes the pin and the rewind
-   counts it, and sleep's material lists which new entries were pinned, as
-   a sign they matter.
+   compaction can't summarise them away; the context meter counts them as its
+   `pinned` part. Over budget, the oldest are cut to their first line, and if
+   that isn't enough the oldest are left out. Pins live on the entry
+   (`pinned`), in the thread's pool: a branch copies them, removing the
+   entry removes the pin and the rewind counts it, and sleep's material lists
+   which new entries were pinned, as a sign they matter.
 2. **Automatic recall on every user turn.** Search notes, pages and past
-   threads in the pool using Li's message, and inject the top few hits as
-   short snippets with their IDs (about 1.5k tokens).
+   threads in the pool using Li's message, and inject up to five hits as
+   short snippets with their IDs (at most 4,000 characters).
 3. **Deliberate lookup** through tools. `recall(query)` searches.
    `read_memory(id)` opens a page, a note, or a window of a past thread around an
    entry.
@@ -205,9 +206,7 @@ entries written unlogged, copied entries (exports and forks, `copyEntries`),
 the per-turn context message, and
 calls to the memory tools themselves, so recall never finds its own echoes.
 Automatic recall leaves out superseded notes and the current thread.
-Embeddings (hybrid search) get added if the
-continuity evals show lexical search missing paraphrases. The embedding model
-follows the same local/cloud rules as every other model call.
+There are no embeddings.
 
 ## Writing
 
@@ -437,11 +436,8 @@ Files panel.
   general and private pools, read and write. An owner view never goes into a
   conversation or a model's context. Those use thread views only.
 
-`lyrica mem search|show|add|edit|delete` covers the same from a terminal.
-It is a client of `lyricad`, so it arrives with the daemon.
-`edit` reads the new text at the terminal prompt, never through a temporary
-file, so decrypted text doesn't touch disk. Users can also ask Lyrica to
-correct a memory in conversation.
+Users can also ask Lyrica to correct a memory in conversation. There is no
+terminal client for memory.
 
 ## In code
 
