@@ -6,7 +6,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   del, get, patch, post, put, u,
   type CallInfo, type CleanupItem, type EndpointChange, type EndpointInfo, type GroupInfo, type HostStatus, type ModelsNotice, type ModelsPage,
-  type ModelUse, type OfferingInfo, type OfferingSettings, type Task,
+  type ModelUse, type OfferingInfo, type OfferingSettings, type PlanSignInStarted, type Task,
 } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { duration, RowMenu } from "./Machines.tsx";
@@ -99,6 +99,7 @@ function stateOf(ep: Endpoint, host?: Host): { dot: string; word: string; since?
     if (s === "restarting") return { dot: "info", word: "Restarting" };
     return { dot: "away", word: s === "pausing" ? "Pausing" : "Paused" };
   }
+  if (ep.signedOut) return { dot: "down", word: "Signed out" };
   if (ep.state === "up") return { dot: "up", word: ep.api === "host" ? "Online" : "Up" };
   return { dot: "down", word: "Unreachable", since };
 }
@@ -354,8 +355,9 @@ function Hosts({ ctx }: { ctx: MCtx }) {
   const hosts = eps.filter((e) => e.api === "host"), plain = eps.filter((e) => e.api !== "host");
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Endpoint>();
+  const [signIn, setSignIn] = useState(false);
   const [voice, setVoice] = useState<OfferingInfo>();
-  const close = useCallback(() => { setAdding(false); setEditing(undefined); }, []);
+  const close = useCallback(() => { setAdding(false); setEditing(undefined); setSignIn(false); }, []);
   const closeVoice = useCallback(() => setVoice(undefined), []);
   const facts = p && <>{plural(hosts.length, "paired host", "paired hosts")} · {plural(plain.length, "plain endpoint", "plain endpoints")}</>;
   const actions = <>
@@ -379,14 +381,14 @@ function Hosts({ ctx }: { ctx: MCtx }) {
           <div className="section-head"><h2 id="h-plain-endpoints">Plain endpoints</h2></div>
           {plain.length ? (
             <ul className="list">
-              {plain.map((ep) => <EndpointRow key={ep.id} ctx={ctx} ep={ep} others={eps} onEdit={() => setEditing(ep)} onVoice={setVoice} />)}
+              {plain.map((ep) => <EndpointRow key={ep.id} ctx={ctx} ep={ep} others={eps} onEdit={(again) => { setEditing(ep); setSignIn(!!again); }} onVoice={setVoice} />)}
             </ul>
           ) : <p className="empty">No endpoints yet.</p>}
         </section>
       )}
       {(adding || editing) && (
         <>
-          <EndpointDrawer key={editing?.id ?? "new"} ctx={ctx} ep={editing} onClose={close} />
+          <EndpointDrawer key={editing?.id ?? "new"} ctx={ctx} ep={editing} signIn={signIn} onClose={close} />
           <div className="scrim drawer-scrim" aria-hidden="true" onClick={close} />
         </>
       )}
@@ -413,7 +415,11 @@ function ModelList({ ep, onVoice }: { ep: EndpointInfo; onVoice: (m: OfferingInf
 }
 
 /** The ⋯ menu's actions on any endpoint, and the fields and dialogs they open. */
-function useEndpointActions(ctx: MCtx, ep: Endpoint, others: Endpoint[]) {
+const PLAN_NAMES = { chatgpt: "ChatGPT", grok: "Grok" } as const;
+type PlanKind = keyof typeof PLAN_NAMES;
+const planOf = (api: string): PlanKind | undefined => api === "chatgpt" || api === "grok" ? api : undefined;
+
+function useEndpointActions(ctx: MCtx, ep: Endpoint, others: Endpoint[], onSignIn?: () => void) {
   const userId = ctx.user.id;
   const path = u(userId, "endpoints", ep.id);
   const [run, busy, error] = useAction();
@@ -424,6 +430,7 @@ function useEndpointActions(ctx: MCtx, ep: Endpoint, others: Endpoint[]) {
   // Merging folds an endpoint into another of the same kind and place.
   const targets = others.filter((o) => o.id !== ep.id && o.kind === ep.kind && o.shared === ep.shared && o.api === ep.api);
   const items = [
+    ...(planOf(ep.api) && onSignIn ? [{ label: "Sign in again", onPick: onSignIn }] : []),
     { label: "Read its models", onPick: () => void run(async () => { await post(`${path}/discover`); done(); }) },
     { label: "Add a model by hand", onPick: () => setModel("") },
     { label: "Reset IDs…", onPick: () => setAsking("reset") },
@@ -462,6 +469,7 @@ function useEndpointActions(ctx: MCtx, ep: Endpoint, others: Endpoint[]) {
     {asking === "remove" && (
       <ConfirmDialog title={`Remove ${ep.name}?`} sentence={ep.api === "host"
         ? "Its models leave every list that names them. The host keeps listing this server until you revoke it there."
+        : planOf(ep.api) ? `Its models leave every list that names them. Lyrica stays connected in your ${PLAN_NAMES[planOf(ep.api)!]} account until you disconnect it there.`
         : "Its models leave every list that names them, so threads that used them fall back to the next model."}
         confirm="Remove" danger onCancel={() => setAsking(undefined)}
         onConfirm={() => { setAsking(undefined); void run(async () => { await del(path); done(); }); }} />
@@ -543,21 +551,21 @@ function GpuBlock({ g }: { g: Gpu }) {
 }
 
 /** A plain OpenAI-compatible endpoint: its URL and ID, its state, its models, Edit and ⋯. */
-function EndpointRow({ ctx, ep, others, onEdit, onVoice }: { ctx: MCtx; ep: Endpoint; others: Endpoint[]; onEdit: () => void; onVoice: (m: OfferingInfo) => void }) {
+function EndpointRow({ ctx, ep, others, onEdit, onVoice }: { ctx: MCtx; ep: Endpoint; others: Endpoint[]; onEdit: (signIn?: boolean) => void; onVoice: (m: OfferingInfo) => void }) {
   const [open, setOpen] = useState(false);
-  const actions = useEndpointActions(ctx, ep, others);
+  const actions = useEndpointActions(ctx, ep, others, () => onEdit(true));
   const editable = canEdit(ctx, ep);
   return (
     <li className="ep-row" data-endpoint={ep.id}>
       <div className="main-col">
-        <span className="name">{ep.name} <Kind kind={ep.kind} />{ep.unencrypted && <span className="pill warn">unencrypted</span>}{ep.stale && <span className="pill bad">stale</span>}</span>
+        <span className="name">{ep.name} <Kind kind={ep.kind} />{planOf(ep.api) && <span className="pill">{PLAN_NAMES[planOf(ep.api)!]} plan</span>}{ep.unencrypted && <span className="pill warn">unencrypted</span>}{ep.stale && <span className="pill bad">stale</span>}</span>
         <span className="meta muted"><code className="url">{ep.baseUrl}</code> · {ep.shared ? "shared" : "only you"} · ID <span className="mono">{ep.id}</span></span>
         {ep.warning && <span className="warn-text">{ep.warning}</span>}
       </div>
       <div className="actions">
         <StateWord ep={ep} />
         <button type="button" className="link sm" aria-expanded={open} onClick={() => setOpen(!open)}>{plural(ep.models.length, "model", "models")}</button>
-        {editable && <button type="button" className="sm" onClick={onEdit}>Edit</button>}
+        {editable && <button type="button" className="sm" onClick={() => onEdit()}>Edit</button>}
         {editable && <RowMenu label={`Actions for ${ep.name}`} items={actions.items} />}
       </div>
       {actions.forms}
@@ -577,8 +585,9 @@ function plainHttp(url: string): boolean {
 }
 
 /** Add endpoint, or Edit one: in the drawer, with one Save at its foot. */
-function EndpointDrawer({ ctx, ep, onClose }: { ctx: MCtx; ep?: EndpointInfo; onClose: () => void }) {
+function EndpointDrawer({ ctx, ep, signIn, onClose }: { ctx: MCtx; ep?: EndpointInfo; signIn?: boolean; onClose: () => void }) {
   const userId = ctx.user.id;
+  const [type, setType] = useState<"openai-compatible" | PlanKind>(ep ? planOf(ep.api) ?? "openai-compatible" : "openai-compatible");
   const [name, setName] = useState(ep?.name ?? "");
   const [kind, setKind] = useState<"local" | "cloud">(ep?.kind ?? "local");
   const [baseUrl, setBaseUrl] = useState(ep?.baseUrl ?? "");
@@ -598,7 +607,9 @@ function EndpointDrawer({ ctx, ep, onClose }: { ctx: MCtx; ep?: EndpointInfo; on
     ...(baseUrl.trim() !== ep.baseUrl ? { baseUrl: baseUrl.trim() } : {}),
     ...(removeKey ? { apiKey: null } : apiKey ? { apiKey } : {}),
   } : {};
-  const ready = ep ? Object.keys(change).length > 0 && !!name.trim() && !!baseUrl.trim() : !!name.trim() && !!baseUrl.trim();
+  const plan = type === "openai-compatible" ? undefined : type;
+  const ready = plan ? !!ep && !!name.trim() && name.trim() !== ep.name
+    : ep ? Object.keys(change).length > 0 && !!name.trim() && !!baseUrl.trim() : !!name.trim() && !!baseUrl.trim();
   const save = () => run(async () => {
     if (ep) await patch(u(userId, "endpoints", ep.id), change);
     else await post(u(userId, "endpoints"), { name: name.trim(), kind, baseUrl: baseUrl.trim(), ...(apiKey ? { apiKey } : {}), ...(shared ? { shared } : {}) });
@@ -614,14 +625,23 @@ function EndpointDrawer({ ctx, ep, onClose }: { ctx: MCtx; ep?: EndpointInfo; on
       </div>
       <form className="drawer-body" onSubmit={(e) => { e.preventDefault(); if (ready) void save(); }}>
         <fieldset className="group" disabled={busy}>
-          <label className="field"><span>Name</span><input value={name} onChange={(e) => setName(e.target.value)} /></label>
           {!ep && (
+            <label className="field"><span>Type</span>
+              <select value={type} onChange={(e) => setType(e.target.value as "openai-compatible" | PlanKind)}>
+                <option value="openai-compatible">OpenAI-compatible</option><option value="chatgpt">ChatGPT plan</option><option value="grok">Grok plan</option>
+              </select>
+            </label>
+          )}
+          <label className="field"><span>Name</span><input value={name} onChange={(e) => setName(e.target.value)} /></label>
+          {plan && (!ep || signIn) && <PlanSignIn key={plan} ctx={ctx} plan={plan} name={name.trim()} ep={ep} onDone={onClose} />}
+          {!plan && !ep && (
             <label className="field"><span>Kind</span>
               <select value={kind} title="Local means on your own network: this machine, the LAN or the tailnet." onChange={(e) => setKind(e.target.value as "local" | "cloud")}>
                 <option value="local">Local</option><option value="cloud">Cloud</option>
               </select>
             </label>
           )}
+          {!plan && <>
           <label className="field"><span>Base URL</span><input className="mono" inputMode="url" autoCapitalize="none" placeholder="http://192.168.1.50:1234/v1" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} /></label>
           {(ep?.kind ?? kind) === "local" && plainHttp(baseUrl) && <p className="warn-text" role="note">Plain HTTP: the API key and every message cross the network unencrypted.</p>}
           <label className="field"><span>API key</span>
@@ -629,12 +649,60 @@ function EndpointDrawer({ ctx, ep, onClose }: { ctx: MCtx; ep?: EndpointInfo; on
           </label>
           {ep?.hasApiKey && <label className="check"><input type="checkbox" checked={removeKey} onChange={(e) => setRemoveKey(e.target.checked)} /> Remove key</label>}
           {!ep && ctx.user.admin && <Switch label="Shared" hint="Every user on this server can use it" checked={shared} onChange={setShared} />}
+          </>}
         </fieldset>
         <ErrorText error={error} />
-        <div className="row drawer-foot"><button type="submit" className="primary" disabled={busy || !ready}>Save</button></div>
+        {!(plan && !ep) && <div className="row drawer-foot"><button type="submit" className="primary" disabled={busy || !ready}>Save</button></div>}
       </form>
     </aside>
   );
+}
+
+/**
+ * A plan's sign-in, for a new plan (`name`) or one signed out (`ep`), opening the provider's page in a
+ * new tab. ChatGPT: after approving, the browser lands on an address on this server's loopback it
+ * can't open, which the person pastes back as Redirect URL. Grok: the page asks for the Code shown
+ * here. Finish saves the plan once the provider confirms. Leaving cancels the sign-in.
+ */
+function PlanSignIn({ ctx, plan, name, ep, onDone }: { ctx: MCtx; plan: PlanKind; name: string; ep?: EndpointInfo; onDone: () => void }) {
+  const userId = ctx.user.id;
+  const [started, setStarted] = useState<PlanSignInStarted>();
+  const [redirect, setRedirect] = useState("");
+  const [run, busy, error] = useAction();
+  const live = useRef<string | undefined>(undefined);
+  useEffect(() => () => { if (live.current) void del(u(userId, "plans", "sign-in", live.current)).catch(() => {}); }, [userId]);
+  const start = () => run(async () => {
+    const tab = open("about:blank", "_blank");
+    const s = await post<PlanSignInStarted>(u(userId, "plans", "sign-in"), ep ? { endpointId: ep.id } : { plan, name });
+    live.current = s.id;
+    setStarted(s);
+    if (tab) { tab.opener = null; tab.location.href = s.url; } else open(s.url, "_blank", "noopener");
+  });
+  const finish = () => run(async () => {
+    const id = started!.id;
+    live.current = undefined;
+    try {
+      await post(u(userId, "plans", "sign-in", id), plan === "chatgpt" ? { redirectUrl: redirect.trim() } : {});
+    } catch (e) {
+      setStarted(undefined);
+      setRedirect("");
+      throw e;
+    }
+    ctx.models.reload();
+    onDone();
+  });
+  return <>
+    <button type="button" className={started ? undefined : "primary"} disabled={busy || (!ep && !name)} onClick={() => void start()}>Sign in with {PLAN_NAMES[plan]}</button>
+    {started?.code && <p className="field"><span>Code</span><code className="mono">{started.code}</code></p>}
+    {started && plan === "grok" && <div className="row drawer-foot"><button type="button" className="primary" disabled={busy} onClick={() => void finish()}>Finish</button></div>}
+    {started && plan === "chatgpt" && <>
+      <label className="field"><span>Redirect URL</span>
+        <input className="mono" inputMode="url" autoCapitalize="none" autoComplete="off" title="The address your browser was sent to after you approved, starting http://127.0.0.1:1455/auth/callback" placeholder="http://127.0.0.1:1455/auth/callback?…" value={redirect} onChange={(e) => setRedirect(e.target.value)} />
+      </label>
+      <div className="row drawer-foot"><button type="button" className="primary" disabled={busy || !redirect.trim()} onClick={() => void finish()}>Finish</button></div>
+    </>}
+    <ErrorText error={error} />
+  </>;
 }
 
 /** Add model host: name, addresses and the code its dashboard shows; then the fingerprint it paired with. */

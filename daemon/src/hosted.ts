@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
-  CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isUnreachable, NoModel, Offline, suspectKey, WATCHING, WATCHING_MARK,
+  CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, NoModel, Offline, suspectKey, WATCHING, WATCHING_MARK,
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
@@ -828,7 +828,10 @@ export class HostedThread {
           if (u) this.emit({ type: "usage", input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite, total: u.totalTokens });
           if (m.stopReason === "error" && m.errorMessage) {
             // A machine that is off or away: the next turn falls back past it, and when none is left the views say so.
-            const offline = isUnreachable(m.errorMessage) && this.opened ? this.wentAway(this.opened.session.model?.provider ?? "") : undefined;
+            const provider = this.opened?.session.model?.provider ?? "";
+            // A plan out of usage: this turn ends with OpenAI's words, and the next falls back past it.
+            if (isPlanLimit(m.errorMessage) && isPlan(this.o.models.endpoint(this.userId, provider)?.api)) this.o.models.reportPlanLimit(provider);
+            const offline = isUnreachable(m.errorMessage) && this.opened ? this.wentAway(provider) : undefined;
             if (offline) this.emit({ type: "offline", task: offline.task, tried: offline.tried });
             else this.emit({ type: "error", message: plainError(m.errorMessage) });
           }

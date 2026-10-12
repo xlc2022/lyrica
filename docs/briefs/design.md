@@ -57,7 +57,7 @@ deployment.
 | Context stretching | building; design in #151, #152 | docs/briefs/context-stretch.md |
 | Images | not started | docs/briefs/images.md |
 | MCP servers | design approved 2026-10-12; builds after web search | docs/briefs/mcp.md |
-| Subscription logins | design proposed 2026-10-12; waits for Li's go, builds after MCP | docs/briefs/subscription-logins.md |
+| Subscription logins | ChatGPT and Grok plans built in #169; the `claude` program as a tool is next | docs/briefs/subscription-logins.md |
 
 ## Open questions for Li
 

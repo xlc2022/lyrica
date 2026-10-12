@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
 import {
-  AuthError, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS, projectSlug,
+  AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, firstLine, GIT_KINDS, sentenceCiting, splitId,
   type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress,
@@ -8,7 +9,7 @@ import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
 import { Sessions } from "./auth.ts";
 import { HttpError, route, type Request, type Route } from "./http.ts";
-import { DEFAULT_BUDGETS, OPENING, pinnedBlock, pinnedOf, reserveFor } from "@lyrica/extension";
+import { DEFAULT_BUDGETS, OPENING, pinnedBlock, pinnedOf, reserveFor, startPlanSignIn, type PlanSignIn } from "@lyrica/extension";
 import type { ProjectThreadInfo } from "./children.ts";
 import { Busy } from "./hosted.ts";
 import { BUILD, card, type Lyricad, type Services } from "./lyricad.ts";
@@ -166,6 +167,48 @@ export function apiRoutes(d: Lyricad): Route[] {
       const ep = s().models.addEndpoint(user, { name: input.name, kind: input.kind, baseUrl: input.baseUrl, apiKey: input.apiKey }, { shared: !!input.shared });
       await s().models.discover(user, ep.id).catch(() => {}); // a server that's down now can be discovered later
       return endpointInfo(d, user.id, ep.id);
+    }),
+    // --- Plans: ChatGPT (sign in, then the address the browser was sent to) and Grok (a device code) ---
+    route("POST", `${u}/plans/sign-in`, async (r) => {
+      const user = d.userFor(r);
+      const input = await r.json<Api.PlanSignInStart>();
+      const endpointId = input.endpointId === undefined ? undefined : String(input.endpointId);
+      const name = input.name === undefined ? undefined : String(input.name).trim();
+      const plan = endpointId ? s().models.endpoint(user.id, endpointId)?.api : input.plan;
+      if (!isPlan(plan)) throw new HttpError(endpointId ? 404 : 400, endpointId ? "no such plan" : "a plan is ChatGPT or Grok");
+      if (!endpointId) {
+        if (!name) throw new HttpError(400, "a plan needs a name");
+        if (s().models.findEndpoint(user.id, name)) throw new HttpError(400, `endpoint ${name} already exists`);
+      }
+      for (const [id, p] of signIns) if (p.userId === user.id) dropSignIn(id);
+      const signIn = await startPlanSignIn(plan, s().models.installationId());
+      const id = randomUUID();
+      signIns.set(id, { userId: user.id, plan, signIn, ...(name ? { name } : {}), ...(endpointId ? { endpointId } : {}), timer: setTimeout(() => dropSignIn(id), SIGN_IN_MS).unref() });
+      return { id, url: signIn.url, ...(signIn.code ? { code: signIn.code } : {}) } satisfies Api.PlanSignInStarted;
+    }),
+    route("POST", `${u}/plans/sign-in/:signInId`, async (r) => {
+      const user = d.userFor(r);
+      const p = signIns.get(r.params.signInId!);
+      if (!p || p.userId !== user.id) throw new HttpError(404, "this sign-in has ended; start again");
+      const { redirectUrl } = await r.json<Api.PlanSignInFinish>();
+      let credential;
+      try {
+        credential = await p.signIn.finish(redirectUrl === undefined ? undefined : String(redirectUrl));
+      } finally {
+        dropSignIn(r.params.signInId!);
+      }
+      if (p.endpointId) {
+        s().models.setPlanCredential(user.id, p.endpointId, credential);
+        return endpointInfo(d, user.id, p.endpointId);
+      }
+      const ep = s().models.addPlan(user, { name: p.name!, plan: p.plan, credential });
+      await s().models.discover(user, ep.id);
+      return endpointInfo(d, user.id, ep.id);
+    }),
+    route("DELETE", `${u}/plans/sign-in/:signInId`, (r) => {
+      const p = signIns.get(r.params.signInId!);
+      if (p && p.userId === d.userFor(r).id) dropSignIn(r.params.signInId!);
+      return { ok: true };
     }),
     route("DELETE", `${u}/endpoints/:endpointId`, (r) => {
       s().models.removeEndpoint(d.userFor(r), r.params.endpointId!);
@@ -1471,13 +1514,24 @@ function links(d: Lyricad, user: User): Api.UserCard[] {
   return d.services!.users.linked(user.id).map((id) => d.services!.users.get(id)).filter((u): u is User => !!u).map(card);
 }
 
+/** Sign-ins under way, by ID: each belongs to the user who started it and lasts SIGN_IN_MS. Held in memory only. */
+const SIGN_IN_MS = 10 * 60_000;
+const signIns = new Map<string, { userId: string; plan: PlanKind; signIn: PlanSignIn; name?: string; endpointId?: string; timer: NodeJS.Timeout }>();
+function dropSignIn(id: string): void {
+  const p = signIns.get(id);
+  if (!p) return;
+  clearTimeout(p.timer);
+  p.signIn.cancel();
+  signIns.delete(id);
+}
+
 function endpointInfo(d: Lyricad, userId: string, id: string): Api.EndpointInfo {
   const ep = d.services!.models.endpoint(userId, id);
   if (!ep) throw new HttpError(404, `no endpoint ${id}`);
   return {
     id: ep.id, name: ep.name, kind: ep.kind, api: ep.api, baseUrl: ep.baseUrl, hasApiKey: !!ep.apiKey, shared: ep.shared,
     ...(ep.addresses ? { addresses: ep.addresses } : {}), ...(ep.fingerprint ? { fingerprint: ep.fingerprint } : {}),
-    unencrypted: ep.unencrypted, stale: ep.stale, ...(ep.downSince ? { downSince: ep.downSince } : {}),
+    unencrypted: ep.unencrypted, stale: ep.stale, ...(ep.downSince ? { downSince: ep.downSince } : {}), ...(ep.signedOut ? { signedOut: true } : {}),
     models: d.services!.models.offerings(userId, ep.id).map((o) => toOfferingInfo(ep, o)),
   };
 }
