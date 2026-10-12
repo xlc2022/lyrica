@@ -273,6 +273,14 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     want treated as new. It leaves redirects from the old IDs, so nothing
     breaks. The same mechanism **merges** two endpoints that turned out to be
     the same server.
+- **Subscription logins** (planned, docs/briefs/subscription-logins.md).
+  A user can add a **ChatGPT plan** endpoint by signing in with ChatGPT
+  instead of giving an API key, so general threads answer from that plan.
+  It is always cloud and always their own, never shared. Its credential is
+  kept in their `user.db` and refreshed by Pi; when the plan's limit runs
+  out the next model answers. A Claude plan isn't offered: Anthropic
+  doesn't permit other apps to use Claude.ai sign-in, so Claude stays on
+  an API key.
 - **Tasks.** Different tasks use different models: chat, cheap and strong
   subagents, titles, embeddings, each sleep phase, creating and editing
   images, and speech (dictation and Read aloud). Compaction always uses the thread's chat model (Pi has no
