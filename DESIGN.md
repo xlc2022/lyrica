@@ -1743,7 +1743,8 @@ from Monika's runbooks.
   release before still opens them.
 - **Update notes.** Every update installs an update note, never a bare
   commit: an annotated tag (`update/<date>`) on a `main` commit whose
-  message lists the merged PRs since the running version, what each
+  message opens with a one-line summary (at most 80 characters, shown beside
+  the release in Administration → Updates), then lists the merged PRs since the running version, what each
   changes, any schema change and what a rollback would lose, and what to
   check afterwards. She writes it, or the Claude thread that built the
   change. It lives on GitHub, so no rollback or lost thread can take it; the

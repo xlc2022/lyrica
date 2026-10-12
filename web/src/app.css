@@ -977,7 +977,10 @@ emoji-picker { width: 100%; height: min(400px, 60vh); --background: var(--panel)
 pre.note { white-space: pre-wrap; max-height: 40vh; overflow: auto; }
 .releases .release-row { align-items: center; gap: 12px; }
 .releases .release-row > .mono { min-width: 7ch; }
+.releases .release-row > .release-summary { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .releases .release-row > .state-word { margin-left: auto; }
+@media (max-width: 760px) { .releases .release-row > .release-summary { flex-basis: 100%; order: 1; } }
+@media (pointer: coarse) { .releases .release-row > .release-summary { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; } }
 .state-line .plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .dlg-commit { font-weight: 400; font-size: 15px; color: var(--muted); }
 /* Sleep (docs/sleep.md "Sleep in the UI"): her items, then the runs as disclosures, then Sleep now. */
