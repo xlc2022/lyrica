@@ -153,7 +153,7 @@ export function neverFits(model: TextModel, s: ModelSettings, o: Option, gpus: G
   }
   for (const i of o.gpus) {
     const g = gpus.find((x) => x.index === i)!;
-    const has = room(g, settings(i));
+    const has = room(g, settings(i)) - Math.max(0, g.used);
     if (o.need[i]! <= has) continue;
     const { kv } = sizes(model, s);
     const withoutKv = o.need[i]! - (kv * o.need[i]!) / Object.values(o.need).reduce((a, b) => a + b, 0);

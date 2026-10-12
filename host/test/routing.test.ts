@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { LlamaCpp, Vllm } from "../src/backends.ts";
 import { ggufBytes } from "../src/gguf.ts";
-import { scanTextModels } from "../src/library.ts";
+import { familyParsers, scanTextModels } from "../src/library.ts";
 import { stdoutLog, type Logger } from "../src/log.ts";
 import { Runtime } from "../src/runtime.ts";
 import { Scheduler } from "../src/scheduler.ts";
@@ -119,6 +119,13 @@ describe("routing /v1 to the model servers", () => {
 
     const plain = await call({ port: s.tls, path: "/v1/chat/completions", identity: s.me, pinned, body: { model: id, messages: [{ role: "user", content: MARKER }] } });
     expect(plain.body.choices[0].message.content).toBe(`echo: ${MARKER}`);
+
+    s.router.status.set(id, "unloaded");
+    const missing = await call({ port: s.tls, path: "/v1/chat/completions", identity: s.me, pinned, body: { model: id, stream: true, messages: [{ role: "user", content: "retry" }] } });
+    expect(missing.status).toBe(503);
+    expect(missing.body.error.code).toBe("model_unavailable");
+    expect(s.host.runtime!.scheduler.placement(id)).toBeNull();
+    await s.host.runtime!.scheduler.loadNow(scanTextModels(modelsFolder()).find((m) => m.id === id)!);
 
     // llama.cpp got a preset for the model on GPU 0.
     expect(readFileSync(join(s.serving, "llamacpp.ini"), "utf8")).toContain(`[${id}]\nmodel = /models/${id}\ndevice = CUDA0\nsplit-mode = none\nc = 32768\nn-gpu-layers = 999\nflash-attn = auto`);
@@ -291,4 +298,54 @@ describe("the compose files", () => {
       expect(services.length, vendor).toBeGreaterThanOrEqual(vendor === "vulkan" ? 1 : 2);
     }
   });
+});
+
+it("refuses a llama.cpp child that died during loading", async () => {
+  const router = await fakeLlamaRouter("unloaded");
+  open.push({ close: () => new Promise<void>((r) => router.server.close(() => r())) });
+  const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
+  const backend = new LlamaCpp({ url: router.url, serving, models: "/models", device: () => "CUDA0", loadTimeoutMs: 1000 });
+  const model = scanTextModels(modelsFolder())[0]!;
+  await expect(backend.load(model, { gpus: [0], split: null, parallel: null, share: null, need: {} }, { placement: { mode: "auto" } })).rejects.toMatchObject({ code: "model_unavailable" });
+});
+
+it("selects family parsers without advertising unknown tool formats", () => {
+  expect(familyParsers("Qwen3_5ForConditionalGeneration")).toEqual({ toolCallParser: "hermes", reasoningParser: "qwen3" });
+  expect(familyParsers("qwen2")).toEqual({ toolCallParser: "hermes" });
+  expect(familyParsers("Unknown")).toEqual({});
+});
+
+it("uses DeepSeek reasoning only for R1 models", () => {
+  expect(familyParsers("deepseek_v3")).toEqual({ toolCallParser: "deepseek_v3" });
+  expect(familyParsers("deepseek_r1")).toEqual({ toolCallParser: "deepseek_v3", reasoningParser: "deepseek_r1" });
+  expect(familyParsers("deepseek_v3", "DeepSeek-R1-Distill")).toEqual({ toolCallParser: "deepseek_v3", reasoningParser: "deepseek_r1" });
+});
+
+it("uses the Llama tool parser only for Llama 3.x families", () => {
+  for (const family of ["llama3", "llama-3", "llama3.1", "Llama_3_2ForCausalLM"]) {
+    expect(familyParsers(family)).toEqual({ toolCallParser: "llama3_json" });
+  }
+  for (const family of ["llama", "llama2", "llama-2"]) expect(familyParsers(family)).toEqual({});
+  // Llama 3's config.json says only "llama": the model's name decides.
+  expect(familyParsers("llama", "Meta-Llama-3.1-8B-Instruct")).toEqual({ toolCallParser: "llama3_json" });
+  expect(familyParsers("llama", "Llama-2-7b-chat-hf")).toEqual({});
+});
+
+it("reads vLLM parsers and tool support from config families", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lyrica-families-"));
+  for (const [name, config] of Object.entries({ qwen25: { model_type: "qwen2", architectures: ["Qwen2ForCausalLM"] }, qwen3: { architectures: ["Qwen3ForCausalLM"] }, llama2: { model_type: "llama2", architectures: ["LlamaForCausalLM"] }, llama: { model_type: "llama", architectures: ["LlamaForCausalLM"] }, "DeepSeek-R1": { model_type: "deepseek_v3", architectures: ["DeepseekV3ForCausalLM"] }, unknown: { model_type: "unknown", architectures: ["UnknownForCausalLM"] } })) {
+    mkdirSync(join(dir, name));
+    writeFileSync(join(dir, name, "config.json"), JSON.stringify(config));
+    writeFileSync(join(dir, name, "model.safetensors"), Buffer.alloc(16));
+    writeFileSync(join(dir, name, "chat_template.jinja"), "{% if tools %}tools{% endif %}");
+  }
+  const models = scanTextModels(dir);
+  expect(models.find((m) => m.id === "qwen25")).toMatchObject({ toolCallParser: "hermes", capabilities: { tools: true } });
+  expect(models.find((m) => m.id === "qwen25")!.reasoningParser).toBeUndefined();
+  expect(models.find((m) => m.id === "qwen3")).toMatchObject({ toolCallParser: "hermes", reasoningParser: "qwen3", capabilities: { tools: true } });
+  for (const id of ["unknown", "llama2", "llama"]) {
+    expect(models.find((m) => m.id === id)!.capabilities.tools).toBe(false);
+    expect(models.find((m) => m.id === id)!.toolCallParser).toBeUndefined();
+  }
+  expect(models.find((m) => m.id === "DeepSeek-R1")!.reasoningParser).toBe("deepseek_r1");
 });

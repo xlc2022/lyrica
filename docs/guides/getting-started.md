@@ -556,7 +556,9 @@ POST /api/u/<user-id>/endpoints/<endpoint-id>/models
 { "modelId": "gpt-image-1", "image": true, "edit": true }
 ```
 
-Then put models in the lists, under Models, Tasks, or from a terminal:
+Then put models in the lists, under Models, Tasks, or from a terminal
+(use `custom` instead of `cloud` for a user whose general threads use the
+Custom profile):
 
 ```sh
 lyrica admin models profile set cloud image.create openai-images/gpt-image-1 --user ada

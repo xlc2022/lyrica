@@ -2,6 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { HostError } from "../src/http.ts";
 import { Scheduler, type Priority } from "../src/scheduler.ts";
 import { StateFile } from "../src/state.ts";
 import { FakeBackend, FakeGpus, GIB, textModel } from "./fakes.ts";
@@ -39,6 +40,68 @@ function hold(s: Scheduler, model: ReturnType<typeof textModel>, priority: Prior
 }
 
 describe("the GPU queue", () => {
+  it("keeps the serving instance when reload cannot fit", async () => {
+    const { scheduler, llamacpp } = setup();
+    await scheduler.start([]);
+    const m = textModel("m", 10, { contextLength: 1048576 });
+    await scheduler.pin(m, true);
+    scheduler.saveSettings(m, { placement: { mode: "auto" }, contextLength: 1048576 });
+    await expect(scheduler.reload(m)).rejects.toMatchObject({ code: "too_big" });
+    expect(scheduler.placement(m.id)?.state).toBe("loaded");
+    expect(llamacpp.calls).toEqual(["load m@0"]);
+    await scheduler.run(m, "chat", async () => {});
+  });
+
+  it("restores previous settings when the replacement load fails", async () => {
+    const { scheduler, llamacpp, state, dir } = setup();
+    await scheduler.start([]);
+    const m = textModel("m", 4, { contextLength: 32768 });
+    await scheduler.loadNow(m);
+    scheduler.saveSettings(m, { placement: { mode: "auto" }, contextLength: 16384 });
+    const load = llamacpp.load.bind(llamacpp);
+    const contexts: (number | undefined)[] = [];
+    let first = true;
+    llamacpp.load = async (model, at, settings?: { contextLength?: number }) => {
+      contexts.push(settings?.contextLength);
+      if (first) {
+        first = false;
+        throw new HostError(503, "model_unavailable", "load failed");
+      }
+      await load(model, at);
+    };
+    await expect(scheduler.reload(m)).rejects.toMatchObject({ code: "model_unavailable" });
+    expect(contexts).toEqual([16384, undefined]);
+    expect(scheduler.placement(m.id)?.state).toBe("loaded");
+    expect(scheduler.settings(m)).toEqual({ placement: { mode: "auto" } });
+    expect(new StateFile(dir).get().models[m.id]).toEqual(state.get().models[m.id]);
+    await scheduler.unloadNow(m.id);
+    await scheduler.loadNow(m);
+    expect(contexts).toEqual([16384, undefined, undefined]);
+  });
+
+  it("reports the replacement error when restoring also fails", async () => {
+    const { scheduler, llamacpp } = setup();
+    await scheduler.start([]);
+    const m = textModel("m", 4);
+    await scheduler.loadNow(m);
+    scheduler.saveSettings(m, { placement: { mode: "auto" }, contextLength: 16384 });
+    const original = new HostError(503, "model_unavailable", "replacement failed");
+    let attempts = 0;
+    llamacpp.load = async () => {
+      throw ++attempts === 1 ? original : new Error("restore failed");
+    };
+    await expect(scheduler.reload(m)).rejects.toBe(original);
+    expect(attempts).toBe(2);
+    expect(scheduler.settings(m)).toEqual({ placement: { mode: "auto" } });
+  });
+
+  it("validates against other programs, subtracting the host's loaded models", async () => {
+    const { scheduler } = setup();
+    await scheduler.start([]);
+    await scheduler.loadNow(textModel("m", 10));
+    expect((await scheduler.validationGpus("llamacpp"))[0]!.used).toBe(GIB);
+  });
+
   it("serves chat, then images, then background work", async () => {
     const { scheduler } = setup([24]);
     await scheduler.start([]);
@@ -78,7 +141,7 @@ describe("the GPU queue", () => {
     await scheduler.pin(textModel("pinned", 10), true);
     const err = await scheduler.run(textModel("huge", 15), "chat", async () => {}).catch((e) => e);
     expect(err.code).toBe("too_big");
-    expect(err.message).toMatch(/needs about 16\.8 GB on GPU 0; it has 24\.0 GB, of which 11\.5 GB is pinned and 1\.0 GB is used by other programs/);
+    expect(err.message).toMatch(/needs about 16\.8 GB on GPU 0; it has 24\.0 GB, of which 11\.5 GB is pinned and 1\.0 GB is used by other programs and 0\.5 GB is kept free/);
   });
 
   it("says what the GPU is busy with when the wait runs out", async () => {

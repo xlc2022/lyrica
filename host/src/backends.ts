@@ -150,9 +150,10 @@ export class LlamaCpp implements Backend {
       let failed = false;
       await poll(async () => {
         const s = await this.status(model.id);
-        if (s?.failed) failed = true;
+        if (!s || s.failed || s.value === "unloaded") failed = true;
         return s?.value === "loaded" || failed;
       }, this.o.loadTimeoutMs, "llama.cpp");
+      if ((await this.status(model.id))?.value !== "loaded") failed = true;
       if (failed) throw new HostError(503, "model_unavailable", "llama.cpp couldn't load this model.");
     } catch (e) {
       // Leave nothing half-loaded behind.
@@ -226,6 +227,8 @@ export class Vllm implements Backend {
     for (const { model: m, at, settings: s, port, attempt } of placed.values()) {
       servers[m.id] = {
         model: `${this.o.models}/${m.id}`, name: m.id, attempt, port, gpus: at.gpus, embedding: m.kind === "embedding",
+        toolCallParser: m.kind === "chat" ? m.toolCallParser ?? null : null,
+        reasoningParser: m.kind === "chat" ? m.reasoningParser ?? null : null,
         tensorParallel: at.parallel === "tensor" ? at.gpus.length : 1,
         pipelineParallel: at.parallel === "pipeline" ? at.gpus.length : 1,
         memoryShare: at.share, maxModelLen: contextOf(m, s),
