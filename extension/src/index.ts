@@ -19,6 +19,7 @@ export * from "./record.ts";
 export * from "./routing.ts";
 export * from "./sleep.ts";
 export * from "./threads.ts";
+export * from "./web.ts";
 export * from "./workspace.ts";
 
 export interface ThreadContext {

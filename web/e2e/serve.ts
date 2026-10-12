@@ -8,7 +8,7 @@
 // proposes threads with those titles (then says "Suggested."), "plan: <plan>"
 // calls propose_plan with that plan (then says "On it."), a look at a project's
 // threads (the `watching` call) tells the first thread it wasn't about "Heads up:
-// the plan changed.", anything else gets a few streamed sentences that echo it. /local/v1 serves "local-model"
+// the plan changed.", /searxng is a SearXNG answering JSON, anything else gets a few streamed sentences that echo it. /local/v1 serves "local-model"
 // and /cloud/v1 "cloud-model". /speech/v1 is a speech server: "whisper"
 // transcribes any clip as "hello from the fake" and "kokoro" speaks a second
 // of PCM; POST /speech/down and /speech/up make the whole server fail (503)
@@ -63,6 +63,11 @@ function fakeModel() {
           return res.end();
         }
         res.writeHead(404); return res.end();
+      }
+      // A SearXNG at /searxng, answering JSON.
+      if (req.url?.startsWith("/searxng/search?")) {
+        res.writeHead(200, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ results: [{ title: "SearXNG", url: "https://docs.searxng.org", content: "A metasearch engine." }] }));
       }
       const [, kind, rest] = /^\/(local|cloud)\/v1(\/.*)$/.exec(req.url ?? "") ?? [];
       if (req.method === "GET" && rest === "/models") {

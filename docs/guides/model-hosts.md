@@ -9,14 +9,14 @@ references are [host/README.md](../../host/README.md) (what the stack is),
 and on Lyrica's side [docs/models.md](../models.md) ("Model hosts").
 
 **What has and hasn't been exercised.** CI installs the stack with
-`install.sh --no-gpu` on Ubuntu 24.04 on every pull request and checks its
-network layout on the running containers; the CUDA and ROCm images build
-only when the files that go into them change. Nothing has run on a GPU, with a real model, or against a real hub
-(the model host brief's handoff says so, and no later thread has reported
-otherwise). The voice and dictation choices below come from a benchmark
-Li ran on a Windows machine with an RTX 3090, outside this stack. Expect
-the first real install to turn something up; the checklist at the end is
-for that.
+`install.sh --no-gpu` on pull requests that touch `host/`, and checks its
+network layout on the running containers. The CUDA and ROCm images build
+only when the files that go into them change. Nothing has run on a GPU,
+with a real model, or against a real hub (the model host brief's handoff
+says so, and no later thread has reported otherwise). The voice and
+dictation choices below come from a benchmark Li ran on a Windows machine
+with an RTX 3090, outside this stack. Expect the first real install to turn
+something up; the checklist at the end is for that.
 
 ## What a host is to Lyrica
 
@@ -37,8 +37,10 @@ back each other up.
 
 ## The machine
 
-- Linux. Debian or Ubuntu are what the script is written for; other
-  distributions should work.
+- Linux. `host/install.sh` is written and documented for Debian or
+  Ubuntu only. On NixOS it would need `virtualisation.docker` and, for
+  NVIDIA, `hardware.nvidia-container-toolkit.enable` in the system
+  configuration; nobody has run it there yet.
 - The GPU driver: NVIDIA's, or `amdgpu` (with ROCm kernel support,
   `/dev/kfd`, for the ROCm backend).
 - Docker with the compose plugin, using its **iptables** firewall backend
@@ -73,15 +75,16 @@ back each other up.
 
 ### AMD GPUs
 
-ROCm runs everything, but only on the GPUs its images are built for
-(gfx908, gfx90a, gfx942, gfx1030, gfx1100 to 1102, gfx1150 and 1151,
-gfx1200 and 1201). For any other AMD GPU, such as Vega or a Radeon 780M,
-the script picks **Vulkan**, which serves llama.cpp (GGUF) models only: no
-vLLM, no images, and voices on the CPU. `--amd-backend` chooses yourself;
-`--hsa-override 11.0.0` runs a 780M on ROCm as a gfx1100, which AMD doesn't
-support and which works on some machines and not others. An integrated GPU
-beside a discrete one is left out until you include it on the dashboard.
-None of the AMD paths has been tried on hardware.
+ROCm runs everything, but only on the GPUs its images are built for. For
+any other AMD GPU, such as Vega or a Radeon 780M, the script picks
+**Vulkan**, which serves llama.cpp (GGUF) models only: no vLLM, no images,
+and voices on the CPU. `--amd-backend` chooses yourself; `--hsa-override
+11.0.0` runs a 780M on ROCm as a gfx1100, which AMD doesn't support and
+which works on some machines and not others. An integrated GPU beside a
+discrete one is left out until you include it on the dashboard. The
+supported GPUs and the memory an integrated GPU can use are in
+[host/README.md](../../host/README.md#amd-gpus). None of the AMD paths has
+been tried on hardware.
 
 ## Install
 
@@ -150,43 +153,23 @@ address.
 1. On the dashboard choose **Pair with Lyrica**. A code like
    `7KQ2-M9XD-4RTB-W1HZ` appears there and in `docker compose logs
    host-api`. It works once, for 10 minutes, and 5 wrong tries void it.
-2. In Lyrica, pair with the code, giving the host a name and its addresses
-   in the order to try them (LAN address first, tailnet name second, say).
+2. In Lyrica, open Models, Hosts and endpoints, **Add model host**. Give
+   the host a name, its addresses one per line in the order to try them
+   (LAN address first, tailnet name second, say) and the pairing code.
+   Turn on **Shared** for a host every user may use (administrators only);
+   leave it off for one of your own. Then **Pair**.
+3. Lyrica shows the host's fingerprint: compare it with the one the install
+   printed. The host's dashboard now lists this Lyrica server, and Lyrica
+   has read its model library. A plain reason comes back for no active
+   code, a wrong code, or no address reachable.
 
-The web UI has no control for step 2 yet: the Models page that carries
-**Add model host** is being built (the Web UI 2 brief). Until it lands, call
-the API from the Lyrica machine. Log in first; the password is read from a
-hidden prompt, never put on a command line:
-
-```sh
-read -rs -p 'Password: ' PASSWORD; echo
-ESCAPED=${PASSWORD//\\/\\\\}; ESCAPED=${ESCAPED//\"/\\\"}
-printf '{"login":"li","password":"%s"}' "$ESCAPED" |
-  curl -sS -c jar -H 'Origin: http://127.0.0.1:7340' -H 'content-type: application/json' \
-    --data @- http://127.0.0.1:7340/api/login
-unset PASSWORD ESCAPED
-```
-
-The answer carries your user id. Then, with `shared: true` for a host every
-user may use (you must be an administrator), or without it for one of your
-own:
-
-```sh
-curl -sS -b jar -H 'Origin: http://127.0.0.1:7340' -H 'content-type: application/json' \
-  -d '{"name":"blackwell","addresses":["192.168.1.20","blackwell.tail1234.ts.net"],"code":"7KQ2-M9XD-4RTB-W1HZ","shared":true}' \
-  http://127.0.0.1:7340/api/u/<user id>/hosts
-rm jar
-```
-
-The response is the new endpoint, with the host's `fingerprint`: compare it
-with the one the install printed. The host's dashboard now lists this
-Lyrica server, and Lyrica has read its model library. A plain reason comes
-back for no active code, a wrong code, or no address reachable.
+The same is `POST /api/u/<user id>/hosts` with `name`, `addresses`, `code`
+and `shared` ([docs/contracts.md](../contracts.md)).
 
 If the host's key ever changes (a rebuilt `data` volume), Lyrica refuses it
-with "This host's identity changed. Pair it again." Make a new code and
-`POST …/hosts/<endpoint id>/pair` with it; every id stays. New addresses go
-to `PUT …/hosts/<endpoint id>/addresses`.
+with "This host's identity changed. Pair it again." Make a new code on the
+dashboard and choose **Pair again…** in the host's ⋯ menu; every id stays.
+New addresses go in with **Edit** on the host card's facts line.
 
 ## Put models on it
 
@@ -202,9 +185,8 @@ Three ways a model gets into the library:
   every file is checked against the hub's checksum. A gated repository's
   token is used for that download and never kept.
 - **Ask from Lyrica**, through the same download API (`…/hosts/<endpoint
-  id>/downloads`) or, once the Models page exists, its library. Hub tokens
-  can be saved in Lyrica (a user's own, or a shared one an administrator
-  adds) and are sent to the host per request.
+  id>/downloads`). Hub tokens can be saved in Lyrica (a user's own, or a
+  shared one an administrator adds) and are sent to the host per request.
 
 ### The voice and dictation starters
 
@@ -248,30 +230,32 @@ on the CPU alone it takes about 1.3 s for a 5-second sentence.
 
 ### Placements and settings
 
-Each model has a placement: Auto (one GPU with room, else split over the
-GPUs that allow its server) or chosen GPUs. Its context length (32k by
-default), KV-cache type, parallel requests and, for vLLM, its share of the
-GPU's memory are set on the dashboard or from Lyrica's Serving settings
-once it has a Models page. A placement that can't work is refused when
-saved, with the reason. Each GPU says which servers it may run and how much
-memory to keep free. Idle models are unloaded least-recently-used when
-another needs room; pinned models never are.
+Each model has a placement (Auto, or chosen GPUs) and serving settings
+such as its context length, KV-cache type and, for vLLM, its share of the
+GPU's memory. Set them in the model's **Settings** on the dashboard, or
+from Lyrica with `PUT /api/u/<user id>/offerings/<offering id>/serving`.
+A placement that can't work is refused when saved, with the reason. Each
+GPU says which servers it may run and how much memory to keep free. What
+each setting means, and how models are placed and unloaded, is in
+[host/README.md](../../host/README.md#models-and-gpus) and
+[host/API.md](../../host/API.md#placement-and-serving-settings).
 
 A chat model can serve more context than it was trained for with a YaRN
 stretch, set in the model's settings on the dashboard together with the
 context to serve, for example
 `"contextLength": 1010000, "stretch": { "type": "yarn", "factor": 4 }`.
-The stretch raises the most it may serve (the trained length times the
-factor, measured from `originalContext`, which defaults to the trained
-length); `contextLength` still picks what it serves, 32k unless set. The
-editor's hint shows what
-the model's card recommends; **Look up** on the model reads the card (it
-asks for the repository when the host doesn't know it). A factor above the
-card's asks "<publisher> documents N. Save anyway?". Each model row shows
-"stretched ×N" and the size of its KV cache, which grows with the context
-length, so a stretched model may need a lower context or more memory. The
-host reports a stretch on any vLLM model as untested (vllm#58870) until its
-image carries the fix; llama.cpp is the safer choice for it. Details are in
+You can also ask Lyrica to do it: her `models` tool asks you on a card
+before it changes anything. The stretch raises the most the model may serve
+(the trained length times the factor; `originalContext`, the length YaRN
+scales from, defaults to the trained length); `contextLength` still picks
+what it serves, 32k unless set. The editor's hint shows what the model's
+card recommends; **Look up** on the model reads the card (it asks for the
+repository when the host doesn't know it). A factor above the card's asks
+"<publisher> documents N. Save anyway?". Each model row shows "stretched
+×N" and the size of its KV cache, which grows with the context length, so a
+stretched model may need a lower context or more memory. The host reports a
+stretch on any vLLM model as untested (vllm#58870) until its image carries
+the fix; llama.cpp is the safer choice for it. Details are in
 [host/API.md](../../host/API.md#recommended-settings).
 
 On a host with one large GPU: pin Whisper (vLLM memory share about 0.1 on
@@ -294,9 +278,9 @@ lyrica admin models profile show --user li
 A model id is its path under the models folder, as the dashboard and
 `GET /host/v1/models` show it. Private and local-only threads use the local
 profile, so a host is how private threads get a model at all. Each user
-picks their own voice and speed per language under the speech model's
-**Settings** link in Settings, Endpoints; without one, the model's first
-voice for the language is used.
+picks their own voice and speed per language with the speech model's
+**Settings**, in its host's "N models" list under Models, Hosts and
+endpoints; without one, the model's first voice for the language is used.
 
 ## More than one host
 
@@ -353,7 +337,7 @@ workstation"). Note what goes wrong against each.
 1. `host/install.sh` ends with the dashboard address and the fingerprint,
    and its own egress check passed. Then `host/test/stack/network.sh`.
 2. Set the dashboard password and open the dashboard from another machine.
-3. Pair from Lyrica with the API call above; the fingerprints match; the
+3. Pair from Lyrica with Add model host; the fingerprints match; the
    dashboard lists the server.
 4. A GGUF in the models folder: Scan, put it in the local chat list, chat
    with it from a private thread. Check the context length, that it

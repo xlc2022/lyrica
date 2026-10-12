@@ -7,7 +7,7 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  bootstrap, DEFAULT_NAME, HostRefused, isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, PRONOUN_PRESETS, selfName, setSelfName,
+  bootstrap, DEFAULT_NAME, HostRefused, isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, PRONOUN_PRESETS, searxngAddress, selfName, setSelfName,
   SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace,
   type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
 } from "@lyrica/core";
@@ -409,7 +409,7 @@ export class Lyricad implements Drainable {
     mkdirSync(cwd, { recursive: true, mode: 0o700 });
     // A subagent's approvals are asked in its thread and its parent's, through the host built next.
     let host!: ThreadHost;
-    const delegation = new Delegation({ users, memory, models, workspace, cwd, limits: this.opts.delegation, approve: (r, signal) => host.approveSubagent(r, signal), name: () => selfName(keyring.self()) });
+    const delegation = new Delegation({ users, memory, models, workspace, cwd, limits: this.opts.delegation, approve: (r, signal) => host.approveSubagent(r, signal), name: () => selfName(keyring.self()), searxng: () => searxngAddress(keyring.self()) });
     const projects = new Projects(users);
     // A hidden project stops as a paused one does.
     const stopped = (u: string, p: Pool, project: string) => projects.paused(u, p, project) || hiddenThread(memory, u, p, project);
@@ -437,7 +437,7 @@ export class Lyricad implements Drainable {
       updated: (u, p, project, thread) => watcher.updated(u, p, project, thread),
     });
     host = new ThreadHost({
-      users, memory, models, workspace, persona, delegation, cwd, log: this.log,
+      users, memory, models, workspace, persona, delegation, cwd, log: this.log, searxng: () => searxngAddress(keyring.self()),
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000, offlineRetryMs: this.opts.offlineRetryMs,
       threads: children, onTurn: (u, p, t, working) => {
         children.turn(u, p, t, working);

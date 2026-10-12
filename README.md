@@ -12,12 +12,15 @@ cloud model is outside our control.
 ## Running her
 
 - [docs/guides/getting-started.md](docs/guides/getting-started.md) installs
-  her on a new server (Debian, Ubuntu or NixOS), takes her through the first run,
+  her on a new server (NixOS through the flake, or Debian or Ubuntu), takes
+  her through the first run,
   and covers updates, rollback and backups.
 - [docs/guides/model-hosts.md](docs/guides/model-hosts.md) sets up a GPU
   machine for her models.
 - [docs/guides/ci-runners.md](docs/guides/ci-runners.md) sets up a machine
   that runs the checks.
+- [docs/guides/searxng.md](docs/guides/searxng.md) sets up the SearXNG her
+  web search uses.
 
 She isn't deployed yet. The first run is the web setup page, with
 `lyrica admin init` on the server as the other way.
@@ -43,6 +46,8 @@ The repository was rebuilt from scratch starting 2026-10-09.
 - Sleep, which writes notes, pages, WAKE and the journal.
 - Delegation and child threads, modes, remote machines over SSH or
   Proxmox, and Git accounts with project repositories.
+- Web search through a SearXNG of your own, and reading pages from the
+  thread's sandbox.
 - Model and speech hosts on GPU machines.
 - Releases with automatic rollback, and numbered database migrations.
 

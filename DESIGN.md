@@ -1435,14 +1435,21 @@ Details in [docs/sleep.md](docs/sleep.md).
   message box turns tools on or off for this thread, without opening its
   settings: **Web search** (`web_search` and `web_fetch`), **Internet for
   commands** (the sandbox's internet switch) and **Images** (the `image`
-  tool). A switch that's off removes the tools from the session, so she
+  tool). Search goes to one SearXNG an administrator sets for the server
+  (Administration → Web search), in every thread, private and local-only
+  included; without one, the switch gives `web_fetch` alone, which runs in
+  the thread's sandbox under its network switches. SearXNG hides who is
+  asking from the search engines it uses, but forwards the query text to
+  them, so a private thread's query leaves her network as an anonymous
+  query. A switch that's off removes the tools from the session, so she
   can't use them; a subagent or child thread can't turn back on what its
   parent turned off, even later. Local-only and the pool are not switches here: they
   stay in the thread's settings, where changing them is deliberate.
-- **Deployment:** `lyricad` runs as a systemd service, in practice inside an
-  LXC container or VM on Li's Proxmox. No Docker. The host needs bubblewrap,
+- **Deployment:** `lyricad` runs as a systemd service, in practice on a
+  NixOS VM on Li's Proxmox (her expected home, Li 2026-10-12), or on Debian
+  or Ubuntu in an LXC container or VM. No Docker. The host needs bubblewrap,
   gocryptfs, pasta, FUSE and unprivileged user namespaces. In an LXC container, that
-  means turning on the nesting and FUSE features. One install script sets up
+  means turning on the nesting and FUSE features. On Debian or Ubuntu, one install script sets up
   the service users, `lyricad`'s unit, the built-in Caddy, and **her own
   tailscaled** (`lyrica-tailscaled.service`: the `tailscale` package's
   daemon in userspace-networking mode, as the `lyrica` user, with its own
@@ -1728,7 +1735,7 @@ from Monika's runbooks.
   forge's own rules; the client (`tea`) follows the account's kind. Claude's project threads
   are the part that is tied to GitHub.
 - **The outer net is the operator's:** a scheduled Proxmox backup of the
-  container. The updater can't snapshot the container it runs in.
+  VM or container. The updater can't snapshot the machine it runs in.
 - **Not covered:** her persona, which has its own revisions; model hosts,
   which keep `host/install.sh` until this has proved itself.
 

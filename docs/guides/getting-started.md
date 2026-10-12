@@ -1,30 +1,36 @@
 # Getting started: Lyrica on a new machine
 
 How to bootstrap `lyricad`, the one process that is Lyrica, on a fresh
-Debian or Ubuntu system, and what to do on the first day. This guide follows
-`daemon/deploy/install.sh` and the systemd units next to it; the
-reference for each piece is [docs/daemon.md](../daemon.md) ("Deployment")
+machine, and what to do on the first day. Her expected home is NixOS,
+through the repository's flake and its `services.lyrica` module; Debian or
+Ubuntu, through `daemon/deploy/install.sh` and the systemd units next to
+it, is the other way. The reference for each piece is
+[docs/daemon.md](../daemon.md) ("Deployment" and "On NixOS")
 and [docs/workspace.md](../workspace.md) ("Host requirements"). Model hosts
 (the GPU machines that run her models) have their own guide,
 [model-hosts.md](model-hosts.md), and the machines that run the project's
-checks have [ci-runners.md](ci-runners.md).
+checks have [ci-runners.md](ci-runners.md). Her web search uses a SearXNG
+you host: [searxng.md](searxng.md).
 
-**What has and hasn't been exercised.** `install.sh` is run in no automated
-check, and as of this writing it has never been run on a fresh Debian host.
-The systemd unit and its hardening have not been checked on Li's LXC
-container either (the daemon brief's handoff says so). Everything below is
-read from the script and the units, so expect to hit something the first
-time; the checklist at the end is for that first run. The checks CI does run
-on every pull request (typecheck, tests, the sandbox tests as an unprivileged
-user, the web build and the browser tests) run on Ubuntu 24.04, not on
-Debian.
+**What has and hasn't been exercised.** Neither way has run on a real
+host yet. CI builds the NixOS module and runs the sandbox tests with its
+tools (`nix flake check`), but `nix/check-host.sh` has never run on a real
+NixOS machine. No automated check runs `install.sh`, and it has never been
+run on a fresh Debian host, nor its unit and hardening on an LXC container
+(the daemon brief's handoff says so). Everything below is read from the
+script and the units, so expect to hit something the first time; the
+checklist at the end is for that first run. The checks CI does run on every
+pull request (typecheck, tests, the sandbox tests as an unprivileged user,
+the web build and the browser tests) run on Ubuntu 24.04, not on Debian.
 
 ## What you end up with
 
-One machine, in practice an LXC container or a VM on Li's Proxmox, running:
+One machine, in practice a NixOS VM on Li's Proxmox (or a Debian or
+Ubuntu VM or LXC container), running:
 
 - `lyricad` as the `lyrica` system user, from the release that
-  `/opt/lyrica/current` points at, with its state
+  `/opt/lyrica/current` points at (on NixOS, the profile
+  `/nix/var/nix/profiles/lyrica`), with its state
   in `/var/lib/lyrica` (`self.db`, each user's encrypted databases and home
   workspace, saved credentials). It listens on `127.0.0.1:7340` and on a
   Unix socket. A fresh install also serves HTTPS itself on port 7340 of
@@ -49,9 +55,14 @@ server on your network, or on a paired model host.
 
 ### The machine
 
-- Debian or Ubuntu, amd64 or arm64. The install script refuses anything
-  else. NixOS on x86-64 is the other way in, through the flake: see "On
-  NixOS" under Install.
+On NixOS: x86-64 with flakes on, in practice a VM. Saving the passphrase
+needs systemd 256 or later, which NixOS has had since 24.11 (the flake
+builds against 26.05). The package brings its own Node, so nothing else is
+needed before "On NixOS" under Install.
+
+On Debian or Ubuntu:
+
+- amd64 or arm64. The install script refuses any other system.
 - **systemd 256 or later** if you want her to start unlocked. Saving the
   `self.db` passphrase uses `systemd-creds encrypt --user`, which older
   systemd doesn't have. Debian 13 and Ubuntu 25.04 have it; Debian 12 and
@@ -72,7 +83,7 @@ server on your network, or on a paired model host.
   Caddy build, and `pkgs.tailscale.com` when Tailscale isn't installed yet.
   Updates later fetch from GitHub over SSH with a deploy key.
 
-### In a Proxmox LXC container
+### In a Proxmox LXC container (Debian or Ubuntu)
 
 Her tools run commands in a bubblewrap sandbox and mount each user's home
 workspace with gocryptfs, so the container needs unprivileged user
@@ -95,71 +106,12 @@ The full checklist, with the commands that prove each piece works, is in
 
 ## Install
 
-As root, from a git checkout of the repository outside `/opt/lyrica`:
-
-```sh
-git clone https://github.com/xlc2022/lyrica /root/lyrica
-cd /root/lyrica
-daemon/deploy/install.sh
-```
-
-A release is exactly one commit, so the script refuses a checkout with
-uncommitted changes. It builds the web UI itself.
-
-What `install.sh` does, in order:
-
-1. Installs the packages her sandboxes need: bubblewrap, gocryptfs, FUSE,
-   passt, nftables, ImageMagick (the Files panel's thumbnails are made in
-   the sandbox), openssl, curl, unzip and rsync for itself, and
-   build-essential, python3, git, openssh-client and jq for building
-   releases and fetching updates, and `gh` and `tea` for threads with
-   repositories (`tea` only where it is packaged; without it, Gitea and
-   Forgejo accounts work through git alone). When
-   Tailscale's binaries are missing it adds Tailscale's apt repository and
-   installs `tailscale`; the package turns on the host's own `tailscaled`,
-   and the script turns it off again unless it was on before.
-2. Creates the `lyrica`, `lyrica-caddy` and `lyrica-build` system users.
-   `lyricad` gets the `lyrica-caddy` group from its unit, so it alone can
-   reach Caddy's admin socket. `lyrica-build` builds releases with no
-   access to her data.
-3. Builds the checkout's commit, as `lyrica-build`, into
-   `/opt/lyrica/releases/<commit>`, makes it root-owned and read-only, and
-   points `/opt/lyrica/current` at it (`previous` at the one before). When
-   `lyricad` was running another release, it lets turns finish, stops her
-   and snapshots her databases first. `/var/lib/lyrica` is created for the
-   `lyrica` user, mode 0700.
-4. Installs the updater, its units, the bare repository
-   `/opt/lyrica/repo.git`, GitHub's pinned host key in
-   `/etc/lyrica/known_hosts`, and a deploy key in `/etc/lyrica/deploy-key`,
-   whose public half it prints at the end.
-5. Builds Caddy with `xcaddy` from pinned versions of Go, xcaddy, Caddy and
-   every DNS plugin in `daemon/src/web/providers.ts`, in a clean
-   environment. This takes a few minutes the first time. Running the script
-   again rebuilds only when a pin changed.
-6. Sets `net.ipv4.ip_nonlocal_bind=1`, so Caddy can bind a Tailscale address
-   before Tailscale is up.
-7. Installs, enables and starts `lyrica-caddy.service`,
-   `lyrica-tailscaled.service` and `lyricad.service`, and enables
-   `lyrica-update.path`. On an upgrade it restarts `lyricad`. On a fresh install `lyricad` starts setting up, and
-   the script ends by printing a one-time setup code, the addresses to open
-   and the certificate's fingerprint (see "First run").
-
-Running it again later installs the checkout's commit as a new release
-(see "Upgrading").
-
-**Add the deploy key.** Updates fetch from GitHub with that key. Add the
-printed line (also in `/etc/lyrica/deploy-key.pub`) to the repository on
-GitHub under Settings, Deploy keys, without write access.
-
-**Keep a scheduled Proxmox backup of the container.** The updater
-snapshots her databases, but it can't snapshot the container it runs in.
-
 ### On NixOS
 
 The repository is a flake, and its NixOS module sets up what the install
-script does on Debian: both users, `/var/lib/lyrica`, the units with the
-same hardening, her own `tailscaled`, and Caddy with the DNS plugins. x86-64 only. The reference
-is [docs/daemon.md](../daemon.md#on-nixos). Instead of the steps above:
+script does on Debian: the users, `/var/lib/lyrica`, the units with the
+same hardening, her own `tailscaled`, and Caddy with the DNS plugins.
+x86-64 only. The reference is [docs/daemon.md](../daemon.md#on-nixos).
 
 1. In your system flake, add the repository as an input and the module to
    your configuration, then turn the service on:
@@ -189,13 +141,15 @@ is [docs/daemon.md](../daemon.md#on-nixos). Instead of the steps above:
 4. Instead of "Check the deploy", run `nix/check-host.sh` from a checkout
    of the repository, as root, after the first run. It checks `lyricad`
    and Caddy, that her `tailscaled` answers on its socket, `NoNewPrivs`,
-   the setuid `fusermount3`, Caddy's socket, a sandbox and `pasta` as the
-   `lyrica` user, the network self-test and the port, one line each, and
+   the setuid `fusermount3`, Caddy's socket, `lyrica-update.path`, a
+   sandbox and `pasta` as the `lyrica` user, the network self-test and the port, one line each, and
    ends with "All checks passed." or stops at the first failure.
 
 Everything from "Save the passphrase" on applies unchanged. `lyricad`
 runs from the profile `/nix/var/nix/profiles/lyrica`, and its first start
-makes `/etc/lyrica/deploy-key`: add its `.pub` as above. Upgrading is
+makes `/etc/lyrica/deploy-key`: add its `.pub` as in "Add the deploy key"
+below. Keep a scheduled Proxmox backup of the VM, for the reason given
+there. Upgrading is
 `nix flake update lyrica` and `nixos-rebuild switch`, which restarts
 `lyricad` (which logs everyone out). Before that start, when the package
 changed, her databases are snapshotted and the profile moves to it; if the
@@ -204,6 +158,69 @@ The package is rebuilt only when the code it ships changed; a commit that
 touched only docs or tests reuses the built one, and the restart is quick.
 Updates and rollback from "Upgrading" work on NixOS too. The home page
 header shows the commit that is running, as on Debian.
+
+### On Debian or Ubuntu
+
+As root, from a git checkout of the repository outside `/opt/lyrica`:
+
+```sh
+git clone https://github.com/xlc2022/lyrica /root/lyrica
+cd /root/lyrica
+daemon/deploy/install.sh
+```
+
+A release is exactly one commit, so the script refuses a checkout with
+uncommitted changes. It builds the web UI itself.
+
+What `install.sh` does, in order:
+
+1. Installs the packages her sandboxes need: bubblewrap, gocryptfs, FUSE,
+   passt, nftables, ImageMagick (the Files panel's thumbnails are made in
+   the sandbox), openssl, curl, unzip and rsync for itself, and
+   build-essential, python3, git, openssh-client and jq for building
+   releases and fetching updates, and `gh` and `tea` for threads with
+   repositories (`tea` only where it is packaged; without it, Gitea and
+   Forgejo accounts work through git alone). When
+   Tailscale's binaries are missing it adds Tailscale's apt repository and
+   installs `tailscale`; the package turns on the host's own `tailscaled`,
+   and the script turns it off again unless it was on before.
+2. Creates the `lyrica`, `lyrica-caddy` and `lyrica-build` system users.
+   `lyricad` gets the `lyrica-caddy` group from its unit, so it alone can
+   reach Caddy's admin socket. `lyrica-build` builds releases with no
+   access to her data.
+3. Installs the updater, its units, the bare repository
+   `/opt/lyrica/repo.git`, GitHub's pinned host key in
+   `/etc/lyrica/known_hosts`, and (the first time) a deploy key in
+   `/etc/lyrica/deploy-key`, whose public half it prints at the end.
+4. Builds the checkout's commit, as `lyrica-build`, into
+   `/opt/lyrica/releases/<commit>`, makes it root-owned and read-only, and
+   points `/opt/lyrica/current` at it (`previous` at the one before). When
+   `lyricad` was running another release, it lets turns finish, stops her
+   and snapshots her databases first. `/var/lib/lyrica` is created for the
+   `lyrica` user, mode 0700. It also installs the `lyrica` command in
+   `/usr/local/bin`.
+5. Builds Caddy with `xcaddy` from pinned versions of Go, xcaddy, Caddy and
+   every DNS plugin in `daemon/src/web/providers.ts`, in a clean
+   environment. This takes a few minutes the first time. Running the script
+   again rebuilds only when a pin changed.
+6. Sets `net.ipv4.ip_nonlocal_bind=1`, so Caddy can bind a Tailscale address
+   before Tailscale is up.
+7. Installs, enables and starts `lyrica-caddy.service`,
+   `lyrica-tailscaled.service` and `lyricad.service`, and enables and
+   starts `lyrica-update.path`. On an upgrade it restarts `lyricad`. On a
+   fresh install `lyricad` starts setting up, and the script ends by printing
+   a one-time setup code, the addresses to open and the certificate's
+   fingerprint (see "First run").
+
+Running it again later installs the checkout's commit as a new release
+(see "Upgrading").
+
+**Add the deploy key.** Updates fetch from GitHub with that key. Add the
+printed line (also in `/etc/lyrica/deploy-key.pub`) to the repository on
+GitHub under Settings, Deploy keys, without write access.
+
+**Keep a scheduled Proxmox backup of the container.** The updater
+snapshots her databases, but it can't snapshot the container it runs in.
 
 ## First run
 
@@ -225,7 +242,7 @@ Certificate fingerprint (SHA-256), to compare with the browser's warning:
   <fingerprint>
 ```
 
-`lyrica` (in `/usr/local/bin`) runs the CLI as the `lyrica` user with her
+`lyrica` (in `/usr/local/bin`, or on the system path on NixOS) runs the CLI as the `lyrica` user with her
 state folder, from root or any sudoer, so the files it makes are hers; every
 `lyrica admin …` command in this guide works the same way from any shell.
 Each restart while she is still setting up makes a new code.
@@ -244,7 +261,7 @@ fingerprint matches the one printed. The page is **Set up Lyrica**:
 3. **Administrator:** the first administrator's login, password, display
    name and pronouns. **Create** makes `self.db`, imports the persona seed
    from `persona/`, unlocks her and signs you in. A wrong code says so; too
-   many wrong codes make you wait a minute.
+   many wrong codes make you wait, longer each time.
 4. **Tailnet** (or Skip): an auth key and hostname to put her on your
    tailnet, then whether to serve the web UI there too.
 5. **Models** (or Skip): one shared endpoint, whose first chat model
@@ -254,9 +271,11 @@ fingerprint matches the one printed. The page is **Set up Lyrica**:
 
 `journalctl -u lyricad -f` shows her starting. No restart is needed.
 
-The other way is a terminal: `lyrica admin init` asks the same questions at
-hidden prompts (no code needed; passwords and passphrases are never passed
-as arguments), then `systemctl restart lyricad`, and she starts locked.
+The other way is a terminal: `lyrica admin init` asks for the passphrase,
+her name and the first administrator (no code needed; passwords and
+passphrases are read at hidden prompts, never passed as arguments), then
+`systemctl restart lyricad`, and she starts locked. It does not set up the
+tailnet or models: do those under Administration and Settings.
 
 ### Unlock her
 
@@ -338,7 +357,7 @@ Caddy:
    last error.
 
 A change never locks you out: the old setup keeps serving until the new one
-has a working certificate. The other mode, **External proxy**, is for a
+has a working certificate. The other mode, **A proxy elsewhere**, is for a
 Caddy or other proxy elsewhere on your network; the page gives it a
 Caddyfile snippet and a certificate to pin. Details are in
 [docs/daemon.md](../daemon.md#web-access).
@@ -360,8 +379,8 @@ sleep, dictation, read aloud and so on) to ordered lists of models; the
 first model that answers is used, and private and local-only threads use
 the local profile only. See [docs/models.md](../models.md).
 
-- **A cloud or OpenAI-compatible endpoint:** Settings, Endpoints, Add
-  an endpoint (a name, cloud or local, the base URL, the API key). Shared
+- **A cloud or OpenAI-compatible endpoint:** Models, Hosts and endpoints,
+  **Add endpoint** (Name, Kind local or cloud, Base URL, API key). Shared
   endpoints, which every user can use, need an administrator. The same from
   a terminal:
 
@@ -401,6 +420,16 @@ on and local services off, private threads with both off. Change
 them under Settings, Network (below its "New threads" group, which holds
 the default mode and Fallback), or with `lyrica admin net`. Each
 thread can narrow or widen its own from the thread settings drawer.
+
+## Give her web search
+
+Her `web_search` asks one SearXNG that you host yourself; Lyrica never
+installs or runs it. Host one and give its address under Administration,
+**Web search**, which says **Reachable** once a test search works:
+[searxng.md](searxng.md). Every thread with the Web search switch on can
+then search, private ones included (the engines see the query, never who
+asked). `web_fetch` reads a page with `curl` inside the thread's sandbox,
+so its network switches decide what it reaches.
 
 ## Give her repositories
 
@@ -555,10 +584,9 @@ the SSH ones, and `ssh remove <name>` takes one away.
 ## Day to day
 
 - **Logs:** `journalctl -u lyricad`, `journalctl -u lyrica-caddy` and
-  `journalctl -u lyrica-tailscaled`. One
-  line per request with the route pattern and status; never message or
-  memory text. Caddy's TLS errors go to `/run/lyrica-caddy/tls.log` instead
-  of the journal, since a DNS plugin can quote its token in one.
+  `journalctl -u lyrica-tailscaled`. Each request logs one line with the
+  route pattern and status; never message or memory text. Caddy's TLS
+  errors go to `/run/lyrica-caddy/tls.log` instead of the journal, since a DNS plugin can quote its token in one.
 - **Restart:** `systemctl restart lyricad`. On stop she ends every turn and
   sleep, unmounts home workspaces and drops keys. With no saved passphrase,
   she comes back locked; browser sessions don't survive a restart, so
@@ -604,7 +632,8 @@ the SSH ones, and `ssh remove <name>` takes one away.
   release can't read her databases, it restores the newest snapshot it can
   read, asking first (`--yes` skips the question), or refuses and names the
   oldest release it could go back to.
-- **Upgrading from a checkout:** as root:
+- **Upgrading from a checkout** (Debian or Ubuntu; on NixOS it is the
+  flake update in "On NixOS"): as root:
 
   ```sh
   cd /root/lyrica && git pull
@@ -633,6 +662,11 @@ the SSH ones, and `ssh remove <name>` takes one away.
 
 Run these in order the first time and note where each stops. Each one is
 something the code expects but nobody has confirmed on real hardware.
+
+On NixOS, items 1 and 2 are `nixos-rebuild switch` building the module and
+`nix/check-host.sh` passing after the first run (it covers items 4 and 5
+too), and item 3's code comes from `lyrica admin setup-code`. The rest
+apply as written.
 
 1. The LXC features and tun device from "In a Proxmox LXC container", then
    the proofs in [docs/workspace.md](../workspace.md#host-requirements):
@@ -664,6 +698,8 @@ something the code expects but nobody has confirmed on real hardware.
     `lyrica-rollback` do the same from a terminal.
 11. Add a Git account and give a thread a repository: it is cloned into
     `/workspace/repos`, and with internet on `gh pr list` works there.
+12. Set the SearXNG address under Administration, Web search: it says
+    Reachable, and `web_search` answers in a thread.
 
 Report what fails, with the journal lines, in the Operator docs thread; the
 guide gets corrected from the real run.

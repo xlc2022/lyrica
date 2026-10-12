@@ -18,6 +18,7 @@ import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { href } from "./route.ts";
 import { PageHead, type ShellContext } from "./Shell.tsx";
 import { WebAccessSection } from "./WebAccess.tsx";
+import { WebSearchSection } from "./WebSearch.tsx";
 import { Confirm, ErrorText, Switch, useAction, useLoad } from "./ui.tsx";
 
 export const PRESETS: Record<string, Pronouns> = {
@@ -63,6 +64,7 @@ const ADMIN: SectionDef[] = [
   { key: "unlocked", label: "Start unlocked", body: (ctx) => <UnlockedSection ctx={ctx} /> },
   { key: "tailnet", label: "Tailnet", body: (ctx) => <TailnetSection ctx={ctx} /> },
   { key: "web", label: "Web access", body: (ctx) => <Section title="Web access"><WebAccessSection userId={ctx.user.id} /></Section> },
+  { key: "search", label: "Web search", body: (ctx) => <WebSearchSection ctx={ctx} /> },
   { key: "updates", label: "Updates", body: (ctx) => <UpdatesSection ctx={ctx} /> },
   { key: "persona", label: "Persona", body: (ctx) => <ProposalsSection ctx={ctx} /> },
 ];

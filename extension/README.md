@@ -37,8 +37,16 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
   message.
 - **`tools.ts`** registers `remember`, `recall` and `read_memory`, each with a
   snippet and guidelines. In an unlogged thread `remember` is taken out of the
-  active tools.
+  active tools (through `gate.ts`, which several reasons share to turn tools
+  off). Subagents and sleep get only `recall` and `read_memory` from here
+  (sleep registers its own `remember` and writing tools).
 - **`record.ts`** stores Pi's entries in the thread (`recordEntries`).
+- **`context.ts`**, **`react.ts`**, **`threads.ts`**: how full her context
+  is and her model's pace, with the lines that tell her to compact, the user's reactions told to her in the turn message, and
+  the `threads` tool (child threads, and compacting with her own summary).
+- **`sleep.ts`** (`Sleep`) runs consolidate, dream and wake as Pi sessions
+  with the memory and persona tools. See [docs/sleep.md](../docs/sleep.md).
+- **`primer.ts`** is her self-primer, routed like a persona topic.
 - The factory throws unless `thread.view` came from `openThreadView` for the
   thread's pool.
 - With `debugPrompt: true`, each turn shows the routed topics, section sizes,
@@ -46,7 +54,9 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
   print mode).
 
 - **`workspace.ts`**: `createWorkspaceExtension(tools)` registers `read`,
-  `write`, `edit` and `bash`, routed to the thread's execution target (see
+  `write`, `edit` and `bash` (and `proxmox`, `add_repository` and
+  `propose_plan` where the thread has them), routed to the thread's
+  execution target (see
   [docs/workspace.md](../docs/workspace.md)). It enforces the thread's
   permission mode in `tool_call`, sends `!` commands to the same target, and
   adds a short `workspace` prompt section. `LyricaOptions.folders()` carries
@@ -62,7 +72,8 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
   `createDelegateExtension(thread, delegation)` registers `delegate` for a
   thread. See [docs/delegation.md](../docs/delegation.md).
 
-No commands yet.
+The one command is `/sleep`, registered when the host passes `sleep` (the
+bench does).
 
 ## Running it: `bin/lyrica`
 
@@ -70,6 +81,7 @@ In a checkout it's `bin/lyrica`. On a machine set up with install.sh it's
 `lyrica`, which runs as the `lyrica` user with her state folder.
 
 ```sh
+bin/lyrica admin setup-code            # first run: the setup page's code, addresses and fingerprint
 bin/lyrica admin init                  # self.db passphrase, first administrator (suggests Li)
 bin/lyrica admin user add <login> [--admin]
 bin/lyrica admin user list | set-admin <login> on|off | passwd <login> | profile <login>
@@ -77,15 +89,19 @@ bin/lyrica dev --init <dir>            # development runtime with test administr
 bin/lyrica dev --runtime <dir> --user <login> [--private | --local-only] [--debug-prompt]
 bin/lyrica admin grants add|remove --user <login> --pool general|private <path>
 bin/lyrica admin grants list --user <login>
-bin/lyrica admin ssh add --user <login> <name> <account>@<host>[:<port>] [--root <path>]
-bin/lyrica admin ssh list|remove --user <login> [<name>]
+bin/lyrica admin ssh add --user <login> <name> <account>@<host>[:<port>] [--root <path>] [--pool general|private] [--limit ask|acceptEdits|auto]
+bin/lyrica admin ssh list|remove --user <login> [<name>]    # every machine, Proxmox ones too
+bin/lyrica admin proxmox add --user <login> <name> https://<host>[:<port>] [--pool general|private] [--limit ask|acceptEdits|auto]
 bin/lyrica admin net show --user <login>
 bin/lyrica admin net set --user <login> --pool general|private internet|services on|off
 bin/lyrica admin net hosts add|remove --user <login> --pool general|private <host>
 bin/lyrica admin models endpoints add <name> cloud|local <base-url> [--shared | --user <login>]
 bin/lyrica admin models endpoints list|remove|probe [<name>] [--shared | --user <login>]
 bin/lyrica admin models endpoints model <name> <model-id> [--context <tokens>] [--tools] [--shared | --user <login>]
-bin/lyrica admin models profile show|set … --user <login>
+bin/lyrica admin models profile show|set|default … --user <login>
+bin/lyrica serve [--port <port>]       # lyricad (default 7340)
+bin/lyrica version [--json]
+bin/lyrica smoke-test <empty dir> [--port <port>]
 ```
 
 - Admin commands use `--runtime <dir>`, else `LYRICA_HOME`, else `./runtime`.
@@ -104,4 +120,4 @@ bin/lyrica admin models profile show|set … --user <login>
   - It loads Lyrica's routed tools and `delegate`, mounts the user's home
     workspace and grants every folder the user may grant in that pool,
     read-write.
-- `serve`, `chat` and `mem` are stubs that name the thread that builds them.
+- `chat` and `mem` print that they aren't built yet.
