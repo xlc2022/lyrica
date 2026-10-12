@@ -501,14 +501,14 @@ export class Models {
 
   // --- Subscription plans ---
 
+  /** Throws when a name can't name an endpoint, so a sign-in isn't started for one that would be refused after it. */
+  checkEndpointName(name: string): void { checkName(name); }
+
   /**
    * Adds a ChatGPT or Grok plan from a finished sign-in: always cloud,
    * always the user's own (a plan belongs to one person), calling its
    * PLAN_URLS entry. Its sign-in is kept in the user's user.db, in the api_key column.
    */
-  /** Throws when a name can't name an endpoint, so a sign-in isn't started for one that would be refused after it. */
-  checkEndpointName(name: string): void { checkName(name); }
-
   addPlan(actor: User, input: { name: string; plan: PlanKind; credential: PlanCredential }): Endpoint {
     checkName(input.name);
     if (!isPlan(input.plan)) throw new Error("a plan is ChatGPT or Grok");
