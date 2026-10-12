@@ -1,8 +1,10 @@
 // The signed-in layout: the sidebar, and the page the route points at.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { get, patch, post, threadPath, u, type Display, type DisplayChange, type LogoutResponse, type Me, type Pool, type SearchHit, type State, type ThreadGroup, type ThreadSort, type ThreadSummary, type UserCard } from "./api.ts";
+import { get, patch, post, upload, threadPath, u, type Display, type DisplayChange, type LogoutResponse, type Me, type Pool, type SearchHit, type State, type ThreadGroup, type ThreadSort, type ThreadSummary, type ThreadSettings, type ThreadSettingsChange, type UserCard } from "./api.ts";
 import { href, go, panelRoute, parse, type Panel, type Route } from "./route.ts";
 import { Icon } from "./icons.tsx";
+import { ComposerRow } from "./Composer.tsx";
+import { useDictation, stopReading } from "./Voice.tsx";
 import { her } from "./name.ts";
 import { Thread, findThread } from "./Thread.tsx";
 import { Memory, memoryTitle } from "./Memory.tsx";
@@ -742,10 +744,58 @@ function HomeBox({ ctx }: { ctx: ShellContext }) {
   const [draft, setDraft] = useState("");
   const [run, busy, error] = useAction();
   const userId = ctx.user.id;
+  const [settings, setSettings] = useState<ThreadSettings>();
+  const [problem, setProblem] = useState("");
+  const [uploading, setUploading] = useState(0);
+  const area = useRef<HTMLTextAreaElement>(null);
+  const threads = useRef<Partial<Record<Pool, Promise<ThreadSummary>>>>({});
+  const texts = useRef<Record<Pool, string>>({ general: "", private: "" });
+  const selected = useRef(pool);
+  selected.current = pool;
+  const ensure = (p: Pool) => {
+    if (!threads.current[p]) {
+      threads.current[p] = post<ThreadSummary>(u(userId, "threads"), { pool: p }).then((t) => { ctx.refreshThreads(); return t; }, (e) => { delete threads.current[p]; throw e; });
+    }
+    return threads.current[p]!;
+  };
+  const prepare = async () => {
+    const p = pool;
+    const t = await ensure(p);
+    const value = await get<ThreadSettings>(`${threadPath(userId, p, t.id)}/settings`);
+    if (selected.current === p) setSettings(value);
+    return t;
+  };
+  const change = (c: ThreadSettingsChange) => void run(async () => {
+    const p = pool;
+    const t = await ensure(p);
+    const value = await patch<ThreadSettings>(`${threadPath(userId, p, t.id)}/settings`, c);
+    if (selected.current === p) setSettings(value);
+  });
+  const attach = (files: Iterable<File>) => {
+    const p = pool;
+    for (const file of files) {
+      setUploading((n) => n + 1);
+      void ensure(p).then((t) => upload(`${threadPath(userId, p, t.id)}/uploads?name=${encodeURIComponent(file.name)}`, file, () => {})).then(({ path }) => {
+        const text = texts.current[p];
+        texts.current[p] = (text && !text.endsWith("\n") ? `${text}\n` : text) + path + "\n";
+        if (selected.current === p) setDraft(texts.current[p]);
+      }, (e: Error) => setProblem(e.message)).finally(() => setUploading((n) => n - 1));
+    }
+  };
+  const mic = useDictation({ base: async () => { const t = await ensure(pool); return threadPath(userId, pool, t.id); }, onText: (text) => {
+    const el = area.current;
+    const at = el?.selectionStart ?? draft.length;
+    const end = el?.selectionEnd ?? at;
+    const before = draft.slice(0, at), after = draft.slice(end);
+    const value = before + (before && !/\s$/.test(before) ? " " : "") + text + (after && !/^\s/.test(after) ? " " : "") + after;
+    texts.current[pool] = value;
+    setDraft(value);
+  }, onError: setProblem });
   const start = () => run(async () => {
     const text = draft.trim();
-    if (!text) return;
-    const t = await post<ThreadSummary>(u(userId, "threads"), { pool });
+    if (!text || uploading || mic.state !== "idle") return;
+    stopReading();
+    const t = await ensure(pool);
     await post(u(userId, "threads", pool, t.id, "messages"), { text });
     ctx.refreshThreads();
     go({ page: "thread", userId, pool, threadId: t.id });
@@ -754,16 +804,23 @@ function HomeBox({ ctx }: { ctx: ShellContext }) {
   return (
     <form className="home-box" data-has-text={!!draft.trim()} onSubmit={(e) => { e.preventDefault(); void start(); }}>
       <div className="composer-box">
-        <textarea rows={1} aria-label="Message" placeholder="Start a new thread…" value={draft} disabled={busy} onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !touch) { e.preventDefault(); void start(); } }} />
-        <button type="submit" className="icon send" aria-label="Send" title="Send" disabled={busy || !draft.trim()}><Icon name="up" /></button>
+        <textarea ref={area} rows={1} aria-label="Message" placeholder={mic.state === "recording" ? "Listening…" : "Start a new thread…"} value={draft} disabled={busy} onChange={(e) => { texts.current[pool] = e.target.value; setDraft(e.target.value); }}
+          onKeyDown={(e) => {
+            if (mic.state === "recording" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void mic.stop(); return; }
+            if (mic.state !== "idle" && e.key === "Escape") { e.preventDefault(); mic.discard(); return; }
+            if (e.key === "Enter" && !e.shiftKey && !touch && !e.nativeEvent.isComposing) { e.preventDefault(); void start(); }
+          }} />
+        <button type="submit" className="icon send" aria-label="Send" title="Send" disabled={busy || !!uploading || mic.state !== "idle" || !draft.trim()}><Icon name="up" /></button>
       </div>
-      <div className="composer-row">
+      <ComposerRow settings={settings} onSettings={change} onAttach={attach} onTools={() => void run(prepare)}
+        mic={{ state: mic.state, seconds: mic.seconds, speech: settings?.speech, onStart: () => void run(async () => { await prepare(); await mic.start(); }), onStop: () => void mic.stop() }}>
         <div className="seg" role="group" aria-label="Pool">
-          <button type="button" aria-pressed={pool === "general"} onClick={() => setPool("general")}>General</button>
-          <button type="button" className="private" aria-pressed={pool === "private"} onClick={() => setPool("private")}>Private</button>
+          {(["general", "private"] as const).map((p) => <button key={p} type="button" className={p === "private" ? "private" : undefined} disabled={busy || mic.state !== "idle"} aria-pressed={pool === p}
+            onClick={() => { mic.discard(); setPool(p); setDraft(texts.current[p]); setSettings(undefined); }}>{p === "general" ? "General" : "Private"}</button>)}
         </div>
-      </div>
+      </ComposerRow>
+      {uploading > 0 && <progress aria-label="Uploads" />}
+      <ErrorText error={problem} />
       <ErrorText error={error} />
     </form>
   );

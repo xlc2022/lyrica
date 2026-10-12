@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ModelsPage, NotificationPage, SleepOverview } from "../src/api.ts";
 import type { ShellContext } from "../src/Shell.tsx";
+import { ComposerRow } from "../src/Composer.tsx";
 import { NotificationsCard } from "../src/Notifications.tsx";
 import { SleepCard } from "../src/Sleep.tsx";
 import { BackendCard } from "../src/Models.tsx";
@@ -74,4 +75,18 @@ describe("welcome cards", () => {
     expect(html).toContain('class="dot away"');
     expect(html).toContain("Paused");
   });
+});
+
+it("the shared home row has tools and dictation without Mode or Thinking", () => {
+  const html = renderToStaticMarkup(createElement(ComposerRow, {
+    onSettings: vi.fn(), onAttach: vi.fn(),
+    mic: { state: "idle", seconds: 0, onStart: vi.fn(), onStop: vi.fn() },
+    children: createElement("div", { className: "seg" }, "General / Private"),
+  }));
+  expect(html).toContain('aria-label="Attach or switch tools"');
+  expect(html).toContain('type="file"');
+  expect(html).toContain('aria-label="Dictate"');
+  expect(html).toContain("General / Private");
+  expect(html).not.toContain("mode-picker");
+  expect(html).not.toContain("Thinking");
 });

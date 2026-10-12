@@ -1288,6 +1288,35 @@ test("the header names the version and build, and the home box starts a thread",
   await expect(page.getByText("You said: From the home box")).toBeVisible();
 });
 
+test("home attachments and tool switches follow the selected pool into its thread", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}`);
+  const box = page.locator(".home-box");
+  await expect(box.getByRole("button", { name: "Dictate", exact: true })).toBeVisible();
+  await box.getByRole("button", { name: "Attach or switch tools" }).click();
+  const menu = box.getByRole("menu", { name: "Attach and tools" });
+  await expect(menu.getByLabel("Images", { exact: true })).toBeVisible();
+  await menu.getByLabel("Images", { exact: true }).uncheck();
+  await expect(menu.getByLabel("Images", { exact: true })).not.toBeChecked();
+  await box.locator('input[type="file"]').setInputFiles({ name: "general.txt", mimeType: "text/plain", buffer: Buffer.from("A made-up general attachment") });
+  await expect(box.getByLabel("Message", { exact: true })).toHaveValue(/general.txt/);
+  await page.keyboard.press("Escape");
+  await box.getByRole("button", { name: "Private", exact: true }).click();
+  await expect(box.getByLabel("Message", { exact: true })).toHaveValue("");
+  await box.locator('input[type="file"]').setInputFiles({ name: "private.txt", mimeType: "text/plain", buffer: Buffer.from("A made-up private attachment") });
+  await expect(box.getByLabel("Message", { exact: true })).toHaveValue(/private.txt/);
+  await box.getByRole("button", { name: "General", exact: true }).click();
+  await expect(box.getByLabel("Message", { exact: true })).toHaveValue(/general.txt/);
+  await expect(box.getByLabel("Message", { exact: true })).not.toHaveValue(/private.txt/);
+  await expect(box.getByRole("menu", { name: "Mode", exact: true })).toHaveCount(0);
+  await noHorizontalScroll(page);
+  await box.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.locator(".msg.user")).toContainText("general.txt");
+  await expect(page.locator(".msg.user")).not.toContainText("private.txt");
+  const settings = await page.request.get(`/api/u/${userId}/threads/general/${page.url().split("/").at(-1)}/settings`);
+  expect((await settings.json()).images).toBe(false);
+});
+
 test("the thread menu renames, marks unread, groups, hides and deletes; the Sort menu sorts by group", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await newThread(page, "General");

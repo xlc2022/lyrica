@@ -100,8 +100,8 @@ export function GoAheadMenu({ disabled, onPick }: { disabled?: boolean; onPick: 
 }
 
 /** The "+": attach a file, and the switches that turn tools on or off for this thread. */
-export function ToolsMenu({ settings, onAttach, onChange }: {
-  settings?: ThreadSettings; onAttach: () => void; onChange: (c: ThreadSettingsChange) => void;
+export function ToolsMenu({ settings, onAttach, onChange, onOpen }: {
+  settings?: ThreadSettings; onAttach: () => void; onChange: (c: ThreadSettingsChange) => void; onOpen?: () => void;
 }) {
   const { open, setOpen, anchor } = useMenu();
   let switches: ReactNode = null;
@@ -117,7 +117,7 @@ export function ToolsMenu({ settings, onAttach, onChange }: {
   }
   return (
     <div className="tools-menu" ref={anchor}>
-      <button type="button" className="icon" aria-label="Attach or switch tools" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button type="button" className="icon" aria-label="Attach or switch tools" aria-haspopup="menu" aria-expanded={open} onClick={() => { if (!open) onOpen?.(); setOpen(!open); }}>
         <Icon name="plus" />
       </button>
       {open && (

@@ -23,20 +23,7 @@ A thread's address may carry what the panel beside it shows:
   user who isn't linked signs the browser's users out first, and a short
   notice says so without naming them. Logging out says when the user stays
   unlocked because another browser still holds them.
-- **Home:** the header reads "Lyrica 0.1.0 · b110619" (the version from
-  `package.json`, the build from `LYRICA_BUILD` or the git commit; both
-  come with `GET /api/state` once unlocked) with the date and time under it, then a greeting by the hour and a
-  message box that starts a thread in General or Private with its first
-  message. Beneath it, a responsive grid holds **Last night**, **Notifications**
-  and **Backend**. Last night links to Sleep and shows new items from visible
-  pools with the same Start a chat and Dismiss actions, a lock for private
-  items, or "Nothing she wants to raise." with the latest
-  run's time in mono when available. Notifications keeps its card when empty
-  ("Nothing waiting.") and its All link. Backend links to Models and lists
-  each pool's first chat model, host, local/cloud chip and profile, then each
-  model host's state as a dot and word. It uses the existing Models page and
-  groups reads; the grid becomes one column on a phone.
-- **Sidebar:** her name links to the user's welcome page, marks it as current
+- **Sidebar:** the app's name links home, marks it as current
   there, and closes the phone drawer when pressed. New thread (General or Private), Search (`src/Search.tsx`,
   "Search titles and messages": the list filters by title as it is typed;
   from 2 characters, 300 ms after the last key, `GET …/search` turns it
@@ -582,6 +569,22 @@ A thread's address may carry what the panel beside it shows:
 
   Applying waits as long as `lyricad` needs (a new hostname can take about 90 s)
   and shows the time so far.
+
+## Home
+
+The header shows her name, version and build, with the date and time beneath.
+A greeting by the hour precedes the message box. Its shared composer row has
+the **+** menu (Attach a file, Web search, Internet for commands and Images),
+the mic, and **General / Private**; no Mode or Thinking controls. Files upload
+to a thread in the selected pool, and their paths go into its first message.
+The menu and mic also prepare that thread using the existing thread endpoints.
+
+Beneath it, three cards form a grid, one column on a phone:
+**Last night** links to Sleep and shows new visible-pool items with Start a chat
+and Dismiss, private locks, or "Nothing she wants to raise." and the latest run's
+time in mono. **Notifications** keeps its All link and "Nothing waiting." when
+empty. **Backend** links to Models and lists each pool's first chat model, host,
+local/cloud chip and profile, then each model host's state as a dot and word.
 
 ## Chat
 
