@@ -454,7 +454,8 @@ hand. The button is disabled, with the reason, on a system where
 by hand. On Debian or Ubuntu, an install from before lyricad unsealed it
 itself gets the new `lyricad.service` at its next `install.sh` run (an
 Update doesn't change the unit). Run it before saving the passphrase: the
-old unit has systemd unseal the file, can't, and fails to start.
+old unit has systemd unseal the file itself, which can fail and stop
+lyricad from starting.
 
 Each user can likewise save their own data key under Settings, Unlock and
 lock, so

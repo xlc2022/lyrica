@@ -372,7 +372,7 @@ second pairing. Then:
   the images and restarts the stack; `.env` keeps the settings, and the
   `data` volume keeps the host's key, so pairing survives. A host
   installed before the image server got its `/triton` scratch space needs
-  this once, or every image job fails with an `ImportError`.
+  this once, or image jobs fail with an `ImportError` (seen on NVIDIA).
 - **Restarting host-api alone** (a re-run of `install.sh` that leaves
   llama.cpp running) loses track of the models llama.cpp still holds:
   their memory counts as other programs', so a model may be refused as too
