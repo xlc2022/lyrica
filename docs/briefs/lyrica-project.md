@@ -24,8 +24,9 @@ written here.
    General → Goal: "Improve Lyrica's own code from what we notice in use,
    through review."; under This chat, **Repositories** → **+** →
    `xlc2022/lyrica` from her GitHub account, then **Thread settings**: turn
-   the internet on (or allow `github.com`, `api.github.com` and
-   `registry.npmjs.org`). Her account goes in **Settings → Git accounts**
+   the internet on, which reading CI logs needs (allowing only
+   `github.com`, `api.github.com` and `registry.npmjs.org` works for
+   everything else). Her account goes in **Settings → Git accounts**
    first: kind GitHub, her login, and her fine-grained token with
    Contents and Pull requests read and write and Actions read, so she
    can read why her CI failed (docs/workspace.md, "Her own code").
