@@ -253,8 +253,8 @@ describe("projects", () => {
     for (let i = 0; i < 5; i++) script("watching").push(ask);
     const later = async (): Promise<Reply> => { await new Promise((r) => setTimeout(r, 200)); return tool({ action: "message", to: "parent", text: "Still fine." }); };
     script("dns").push({ text: "Noted." }, later, { text: "Posted." }, later, { text: "Posted." });
-    // The third tell fails; the fourth waits for an approval.
-    script("dns").push({ status: 400 }, { tools: [{ name: "bash", args: { command: "true" } }] }, { text: "Done." }, later, { text: "Posted." });
+    // The third tell fails; the fourth waits for an approval, and the fifth joins that running turn, which answers it with an update.
+    script("dns").push({ status: 400 }, { tools: [{ name: "bash", args: { command: "true" } }] }, later, { text: "Posted." });
     const stream = li.events(`${threadPath(dns)}/events`);
     await stream.ready;
     await li.post(`${threadPath(dns)}/messages`, { text: "check again" });
@@ -275,6 +275,9 @@ describe("projects", () => {
     await until(() => messages(path), (m) => m.filter((x) => x.role === "notice").length >= 3);
     await new Promise((r) => setTimeout(r, 600));
     expect(asked()).toHaveLength(5);
+    // That line went into the turn that was waiting, not a turn of its own.
+    const waited = stream.events.findIndex((e) => e.event.type === "permission");
+    expect(stream.events.slice(waited).filter((e) => e.event.type === "turn_start")).toHaveLength(0);
     stream.close();
   });
 
