@@ -180,8 +180,9 @@ fills the recipe's template in `workflows/` (one per architecture).
 1. On the dashboard, choose **Pair with Lyrica**. A code like
    `7KQ2-M9XD-4RTB-W1HZ` appears there and in the log
    (`docker compose logs host-api`). It works once, for 10 minutes.
-2. In Lyrica, on the Models page, choose **Add model host**. Give it the
-   host's addresses (`192.168.1.20`, or its tailnet name) and the code.
+2. In Lyrica, on the Models page under **Hosts and endpoints**, choose
+   **Add model host**. Give it a name, the host's addresses
+   (`192.168.1.20`, or its tailnet name) and the code.
 
 Paired Lyrica servers are listed on the dashboard, where they can be
 revoked. A revoked server must pair again.
