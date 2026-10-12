@@ -22,6 +22,8 @@ const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, show
 const THREAD_SORTS: Api.ThreadSort[] = ["date", "activity", "started", "title", "groups"];
 const DISPLAY_DEFAULTS_ALL: Api.Display = { ...DISPLAY_DEFAULTS, showPrivate: true, showGeneral: true, showHidden: true };
 const MESSAGE_PAGE = 50;
+/** The composer's unsent text, in bytes. */
+const DRAFT_LIMIT = 64 * 1024;
 
 /** Every API route. Locked, only /api/state, /api/unlock and /api/setup answer; setting up, only state and setup (lyricad.ts enforces it). */
 export function apiRoutes(d: Lyricad): Route[] {
@@ -691,6 +693,19 @@ export function apiRoutes(d: Lyricad): Route[] {
         usage: s().delegation.usage(ref),
       };
     }),
+    route("GET", `${t}/draft`, (r): Api.DraftInfo => owner(d, d.userFor(r), (o) => o[poolOf(r)].draft(threadOf(o, r).id) ?? { text: "" })),
+    route("PUT", `${t}/draft`, async (r): Promise<Api.DraftInfo> => {
+      const user = d.userFor(r);
+      const { text } = await r.json<Api.DraftChange>();
+      if (typeof text !== "string") throw new HttpError(400, "a draft is text");
+      if (Buffer.byteLength(text) > DRAFT_LIMIT) throw new HttpError(413, `a draft has at most ${DRAFT_LIMIT / 1024} KiB`);
+      return owner(d, user, (o) => {
+        const pool = o[poolOf(r)];
+        const thread = threadOf(o, r);
+        pool.setDraft(thread.id, text);
+        return pool.draft(thread.id) ?? { text: "" };
+      });
+    }),
     route("GET", `${t}/settings`, (r) => {
       const user = d.userFor(r);
       owner(d, user, (o) => threadOf(o, r));
@@ -727,14 +742,16 @@ export function apiRoutes(d: Lyricad): Route[] {
       d.refuseWhileDraining();
       const { text, confirm } = await r.json<Api.SendRequest>();
       const thread = owner(d, user, (o) => threadOf(o, r));
-      if (thread.subagent) return toSubagent(d, user, poolOf(r), thread, String(text ?? ""));
-      if (String(text ?? "").trim() === "/sleep") return { queued: false, sleep: await startSleep(d, user, poolOf(r), confirm === true) };
+      // What was sent is no longer a draft; a refused send keeps it.
+      const sent = (x: Api.SendResponse) => { owner(d, user, (o) => o[poolOf(r)].setDraft(thread.id, "")); return x; };
+      if (thread.subagent) return sent(await toSubagent(d, user, poolOf(r), thread, String(text ?? "")));
+      if (String(text ?? "").trim() === "/sleep") return sent({ queued: false, sleep: await startSleep(d, user, poolOf(r), confirm === true) });
       const project = owner(d, user, (o) => o[poolOf(r)].projectOf(thread.id));
       if (project && project !== thread.id && s().children.stopped(user.id, poolOf(r), project)) throw new HttpError(409, "this project is paused or hidden; resume it to write in its threads");
-      const sent = await s().host.get(user.id, poolOf(r), thread.id).send(unmarked(String(text ?? "")));
+      const result = await s().host.get(user.id, poolOf(r), thread.id).send(unmarked(String(text ?? "")));
       // The user wrote: the thread no longer waits on them, and a resolved one reopens.
       if (thread.child) s().children.userWrote(user.id, poolOf(r), thread.id);
-      return sent;
+      return sent(result);
     }),
     route("POST", `${t}/messages/:n/branch`, async (r) => {
       const user = d.userFor(r);

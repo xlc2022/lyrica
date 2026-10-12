@@ -1,6 +1,6 @@
 // Talking to lyricad. The types all come from daemon/src/api.ts.
 import { her } from "./name.ts";
-import type { Pool } from "@lyrica/daemon/api";
+import type { DraftChange, DraftInfo, Pool } from "@lyrica/daemon/api";
 
 export type * from "@lyrica/daemon/api";
 export { THREAD_TASKS } from "@lyrica/daemon/api";
@@ -72,6 +72,14 @@ const enc = encodeURIComponent;
 /** `/api/u/:userId` plus the rest, each segment encoded. */
 export const u = (userId: string, ...rest: string[]) => ["/api/u", userId, ...rest].map((s, i) => (i ? enc(s) : s)).join("/");
 export const threadPath = (userId: string, pool: Pool, threadId: string, ...rest: string[]) => u(userId, "threads", pool, threadId, ...rest);
+
+/** The composer's unsent text for a thread (`base` is its `…/threads/:pool/:threadId`), kept on lyricad. */
+export const draft = (base: string) => get<DraftInfo>(`${base}/draft`);
+/** Keeps it; "" clears it. `keepalive` lets the save outlive the page. Too long a draft says so, not "file". */
+export const saveDraft = (base: string, text: string, keepalive = false) =>
+  request<DraftInfo>("PUT", `${base}/draft`, { text } satisfies DraftChange, { keepalive }).catch((e: unknown) => {
+    throw e instanceof HttpError && e.status === 413 ? new HttpError(413, "The draft is too long to keep.") : e;
+  });
 
 /** Uploads report progress, which fetch can't, so they use XMLHttpRequest. */
 export function upload(url: string, file: File, onProgress: (fraction: number) => void): Promise<{ path: string }> {
