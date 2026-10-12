@@ -464,9 +464,9 @@ twice. She keeps running, and from then on only the new one unlocks her.
 A saved Start unlocked passphrase is re-saved with the new one; if that
 fails, the saved copy is removed and the page says so: save it again.
 With lyricad stopped (`sudo systemctl stop lyricad`), `sudo lyrica admin
-passphrase` does the same at hidden prompts and refuses while lyricad
-runs; then start lyricad, unlock with the new one, and check Start
-unlocked: save the passphrase again if it isn't saved. Old update snapshots of `self.db` keep opening with the old
+passphrase` does the same at hidden prompts, and says so if the saved
+copy was removed; it refuses while lyricad runs. Then start lyricad
+again. Old update snapshots of `self.db` keep opening with the old
 passphrase.
 
 Each user can likewise save their own data key under Settings, Unlock and
