@@ -13,6 +13,7 @@ import {
 } from "@lyrica/core";
 import { Delegation, Sleep, type Limits, type SleepLimits } from "@lyrica/extension";
 import { ChildThreads } from "./children.ts";
+import { Wakeups } from "./wakeups.ts";
 import { Projects } from "./projects.ts";
 import { Watcher } from "./watch.ts";
 import type { BusyItem, Health, SetupRequest, State, UserCard } from "./api.ts";
@@ -95,6 +96,7 @@ export interface LyricadOptions {
 
 /** What exists once self.db is unlocked. */
 export interface Services {
+  wakeups: Wakeups;
   users: Users;
   memory: Memory;
   models: Models;
@@ -435,7 +437,9 @@ export class Lyricad implements Drainable {
       paused: stopped,
       project: (u, p, project) => projects.settings(u, p, project),
       updated: (u, p, project, thread) => watcher.updated(u, p, project, thread),
+      wakeups: (): Wakeups => wakeups,
     });
+    const wakeups: Wakeups = new Wakeups({ memory, host: () => host, children, log: this.log });
     host = new ThreadHost({
       users, memory, models, workspace, persona, delegation, cwd, log: this.log, searxng: () => searxngAddress(keyring.self()),
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000, offlineRetryMs: this.opts.offlineRetryMs,
@@ -467,7 +471,7 @@ export class Lyricad implements Drainable {
     const prefs = new ThreadPrefs((id) => users.openUserDb(id));
     host.draining = this.drainingNow;
     const shares = new ThreadShares(keyring.self());
-    this.services = { users, memory, models, workspace, persona, proposals, delegation, children, projects, watcher, sleep, host, web, tailnet: this.tailnet, prefs, shares };
+    this.services = { wakeups, users, memory, models, workspace, persona, proposals, delegation, children, projects, watcher, sleep, host, web, tailnet: this.tailnet, prefs, shares };
     this.rememberName(selfName(keyring.self()));
     await web.resume();
     for (const u of users.all()) {
@@ -488,6 +492,12 @@ export class Lyricad implements Drainable {
       this.mounted.add(userId);
     } catch (err) {
       this.log(`the home workspace didn't mount: ${(err as Error).message.split("\n")[0]}`);
+    }
+    // Wake-ups wait in the pools; their times are held while the user is unlocked, and late ones fire at the next tick.
+    try {
+      this.services!.wakeups.load(userId);
+    } catch (err) {
+      this.log(`loading wake-ups failed: ${(err as Error).name}`);
     }
     // Child threads a restart left working are idle now, and their parents are told.
     try {
@@ -518,6 +528,7 @@ export class Lyricad implements Drainable {
     await s.delegation.stopAll(userId);
     await s.children.lock(userId);
     s.watcher.close(userId);
+    s.wakeups.drop(userId);
     await s.sleep.stop(userId);
     this.keyring.lockUser(userId);
     await s.host.close(userId);
@@ -534,6 +545,7 @@ export class Lyricad implements Drainable {
   private tick(): void {
     if (!this.services) return;
     const now = new Date();
+    if (!this.draining) this.services.wakeups.tick(now);
     const pad = (n: number) => String(n).padStart(2, "0");
     if (`${pad(now.getHours())}:${pad(now.getMinutes())}` !== this.sleepTime() || this.sleptOn === now.toDateString()) return;
     this.sleptOn = now.toDateString();

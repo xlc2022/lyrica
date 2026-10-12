@@ -1,5 +1,5 @@
 import {
-  AuthError, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS, projectSlug,
+  AuthError, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, firstLine, GIT_KINDS, sentenceCiting, splitId,
   type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress,
@@ -678,6 +678,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         s().models.forgetThread(user.id, pool, id);
       }
       s().children.forget(user.id, pool, doomed);
+      s().wakeups.forget(user.id, pool, doomed);
       s().prefs.forget(user.id, pool, doomed);
       s().projects.forget(user.id, pool, doomed);
       // A kept child is a thread of its own now: its next turn opens with its own tools and workspace.
@@ -768,6 +769,13 @@ export function apiRoutes(d: Lyricad): Route[] {
       // A branch in a project is a thread of the project, anchored where its source hangs (or, of the project chat, where it branched).
       if (branch.child && branch.parent) s().children.adopt(user.id, pool, branch.id, branch.parent, branch.parent === r.params.threadId ? entryN(r) : s().children.anchorOf(user.id, pool, r.params.threadId!));
       return owner(d, user, (o) => summary(d, user, pool, o[pool], branch, []));
+    }),
+    route("DELETE", `${t}/wakeups/:id`, (r) => {
+      const user = d.userFor(r);
+      const pool = poolOf(r);
+      const thread = owner(d, user, (o) => threadOf(o, r));
+      if (!s().wakeups.remove(user.id, pool, thread.id, Number(r.params.id))) throw new HttpError(404, "no such wake-up");
+      return s().wakeups.list(user.id, pool, thread.id);
     }),
     route("PUT", `${t}/pin`, (r) => pinThread(d, d.userFor(r), r, true)),
     route("DELETE", `${t}/pin`, (r) => pinThread(d, d.userFor(r), r, false)),
@@ -1716,8 +1724,11 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
       ...(settings.fallback !== undefined ? { threadsFallback: settings.fallback } : {}),
     } } : {}),
     ...(mine ? { state: mine.state, ...(mine.anchor !== undefined ? { anchor: mine.anchor } : {}), ...(mine.needsYou ? { needsYou: true as const } : {}) } : {}),
+    ...wakeAt(d.services!.wakeups.list(user.id, pool, th.id)),
   };
 }
+
+const wakeAt = (list: Api.WakeupInfo[]) => (list[0] ? { wakeAt: list[0].dueAt } : {});
 
 /** Per request: the user's pins and each project's threads, read once. */
 function lookups(d: Lyricad, user: User) {
@@ -1845,6 +1856,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     speech: speechState(models, ctx),
     fallback: models.threadFallback(user.id, threadId), fallbackOn: ctx.fallback !== false,
     allowed: models.allowed(ctx).map(({ endpoint }) => endpointInfo(d, user.id, endpoint.id)),
+    wakeups: d.services!.wakeups.list(user.id, pool, threadId),
   };
 }
 
@@ -1980,6 +1992,7 @@ function react(d: Lyricad, user: User, r: Request, on: boolean): Api.Reactions {
 function unmarked(text: string): string {
   if (FROM_PARENT.test(text)) throw new HttpError(400, "a message can't start with a [From t:…] line");
   if (WATCHING.test(text)) throw new HttpError(400, "a message can't start with a [Watching threads] line");
+  if (WAKEUP.test(text)) throw new HttpError(400, "a message can't start with a [Wake-up, …] line");
   return text;
 }
 

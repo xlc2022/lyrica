@@ -579,7 +579,18 @@ One model-facing tool: `delegate({ action?, ... })`.
   from a child), `list` (`ChildInfo` with `ChildStatus`), `read` (`id`,
   `last`: the latest messages of a listed, logged thread (`PoolReader.latestEntries`), `READ_DEFAULT`
   10, `READ_MAX` 30, formatted by `formatEntry`) and `stop` (`id`: a
-  parent's child, `ThreadsHost.stop`). Its results
+  parent's child, `ThreadsHost.stop`). `later` (`minutes`, clamped to 1 to
+  `WAKEUP_LIMITS.maxMinutes`, and `note`; or `cancel: true`) sets a
+  wake-up for the calling thread through `ThreadsHost.later` /
+  `cancelLater`: pool step 4's `wakeups` table (thread, due, note, set and
+  fired times; a fired one keeps no note and goes after a day),
+  `PoolStore.addWakeup`, `fireWakeup`, `removeWakeups`, `PoolReader.wakeups`
+  and `wakeupsFired`. It fires as `HostedThread.send(note, { wakeup:
+  wakeupMark(setAt, dueAt?) })`, marked `[Wake-up, set …Z(, due …Z)]`
+  (`WAKEUP`), which only `lyricad` writes; `Message.from.kind` is
+  `wakeup`. `ThreadSettings.wakeups`, `ThreadSummary.wakeAt`, the
+  `wakeups` thread event and `DELETE …/threads/:pool/:id/wakeups/:id`
+  carry times and IDs, never the note. Its results
   and guidance mention threads as `[t:<id>]`. A child thread is
   `createThread({ parent, child: true })`, hosted like any thread, with the
   parent's pool, models (`models.inheritContext`) and workspace
