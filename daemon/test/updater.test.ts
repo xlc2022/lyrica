@@ -265,32 +265,37 @@ describe("lyrica-snapshot and lyrica-restore", () => {
   });
 });
 
+/** lyrica-nixos-start in a world: a fake profile, nix-env and ssh-keygen, and module packages. */
+async function nixosWorld() {
+  const w = await world();
+  writeFileSync(join(w.fake, "lyricad"), "inactive\n");
+  const profile = join(w.root, "profile");
+  // nix-env -p <profile> --set <path>: the profile is a symlink to the package.
+  writeFileSync(join(w.fake, "nix-env"), `#!/bin/bash\n[ "$3" = --set ] && ln -sfn "$4" "$2"\nexit 0\n`);
+  // ssh-keygen ... -f <key>: a stand-in key pair.
+  writeFileSync(join(w.fake, "ssh-keygen"), `#!/bin/bash\nf="\${@: -1}"; echo key >"$f"; echo pub >"$f.pub"\n`);
+  for (const f of ["nix-env", "ssh-keygen"]) chmodSync(join(w.fake, f), 0o755);
+  const pkg = (name: string, schema: Schema, minReader: Schema) => {
+    const dir = join(w.root, "store", name);
+    mkdirSync(join(dir, "bin"), { recursive: true });
+    writeFileSync(join(dir, "bin", "lyrica"), `#!/bin/bash\necho '${JSON.stringify({ version: "0.1.0", build: "dev", schema, minReader })}'\n`);
+    chmodSync(join(dir, "bin", "lyrica"), 0o755);
+    return dir;
+  };
+  const start = (p: string, commit: string) => new Promise<{ code: number; err: string }>((resolve) => {
+    execFile(join(UPDATER, "lyrica-nixos-start"), [p, commit], {
+      env: { ...process.env, PATH: `${w.fake}:${process.env.PATH}`, LYRICA_USER: userInfo().username, LYRICA_UPDATER_LIB: UPDATER, LYRICA_UPDATER_BIN: UPDATER,
+        LYRICA_PREFIX: w.prefix, LYRICA_STATE: w.state, LYRICA_UPDATE_DIR: w.update, LYRICA_SNAPSHOTS: w.snapshots, LYRICA_SYSTEMCTL: join(w.fake, "systemctl"),
+        LYRICA_NIX: "1", LYRICA_PROFILE: profile, LYRICA_DEPLOY_KEY: join(w.root, "deploy-key") },
+      timeout: 60_000,
+    }, (err, _out, errOut) => resolve({ code: err ? 1 : 0, err: errOut }));
+  });
+  return { w, profile, pkg, start };
+}
+
 describe("lyrica-nixos-start", () => {
   it("follows a changed module package into the profile after a snapshot, leaves an Update's choice alone, and restores a snapshot for a package that can't read the databases", async () => {
-    const w = await world();
-    writeFileSync(join(w.fake, "lyricad"), "inactive\n");
-    const profile = join(w.root, "profile");
-    // nix-env -p <profile> --set <path>: the profile is a symlink to the package.
-    writeFileSync(join(w.fake, "nix-env"), `#!/bin/bash\n[ "$3" = --set ] && ln -sfn "$4" "$2"\nexit 0\n`);
-    // ssh-keygen ... -f <key>: a stand-in key pair.
-    writeFileSync(join(w.fake, "ssh-keygen"), `#!/bin/bash\nf="\${@: -1}"; echo key >"$f"; echo pub >"$f.pub"\n`);
-    for (const f of ["nix-env", "ssh-keygen"]) chmodSync(join(w.fake, f), 0o755);
-    const pkg = (name: string, schema: Schema, minReader: Schema) => {
-      const dir = join(w.root, "store", name);
-      mkdirSync(join(dir, "bin"), { recursive: true });
-      writeFileSync(join(dir, "bin", "lyrica"), `#!/bin/bash\necho '${JSON.stringify({ version: "0.1.0", build: "dev", schema, minReader })}'\n`);
-      chmodSync(join(dir, "bin", "lyrica"), 0o755);
-      return dir;
-    };
-    const start = (p: string, commit: string) => new Promise<{ code: number; err: string }>((resolve) => {
-      execFile(join(UPDATER, "lyrica-nixos-start"), [p, commit], {
-        env: { ...process.env, PATH: `${w.fake}:${process.env.PATH}`, LYRICA_USER: userInfo().username, LYRICA_UPDATER_LIB: UPDATER, LYRICA_UPDATER_BIN: UPDATER,
-          LYRICA_PREFIX: w.prefix, LYRICA_STATE: w.state, LYRICA_UPDATE_DIR: w.update, LYRICA_SNAPSHOTS: w.snapshots, LYRICA_SYSTEMCTL: join(w.fake, "systemctl"),
-          LYRICA_NIX: "1", LYRICA_PROFILE: profile, LYRICA_DEPLOY_KEY: join(w.root, "deploy-key") },
-        timeout: 60_000,
-      }, (err, _out, errOut) => resolve({ code: err ? 1 : 0, err: errOut }));
-    });
-
+    const { w, profile, pkg, start } = await nixosWorld();
     const a = pkg("a", S(1, 1, 1), S(1, 1, 1));
     expect((await start(a, "aaaaaaa")).code).toBe(0);
     expect(readlinkSync(profile)).toBe(a);
@@ -318,5 +323,25 @@ describe("lyrica-nixos-start", () => {
     expect(readFileSync(join(w.state, "self.db"), "utf8")).toBe("self v0");
     expect(readlinkSync(profile)).toBe(a);
     expect(w.json("releases.json").minReader).toEqual(S(1, 1, 1));
+  });
+
+  it("keeps a newer release an Update installed when a rebuild brings an older commit of its history, and follows a newer one", async () => {
+    const { w, profile, pkg, start } = await nixosWorld();
+    const c1 = w.release("one", S(1, 1, 1), S(1, 1, 1)), c2 = w.release("two", S(1, 1, 1), S(1, 1, 1));
+    const one = pkg("one", S(1, 1, 1), S(1, 1, 1)), two = pkg("two", S(1, 1, 1), S(1, 1, 1));
+    expect((await start(two, c2.slice(0, 7))).code).toBe(0);
+    expect(readlinkSync(profile)).toBe(two);
+    // repo.git has neither commit yet: the script fetches before deciding.
+    const r = await start(one, c1.slice(0, 7));
+    expect(r.code).toBe(0);
+    expect(r.err).toContain(`is older than the running release (${c2.slice(0, 7)})`);
+    expect(readlinkSync(profile)).toBe(two);
+    expect(w.json("releases.json").current).toBe(c2.slice(0, 7));
+    // Recorded, so the next start doesn't ask again; a newer package is followed as before.
+    expect((await start(one, c1.slice(0, 7))).err).toBe("");
+    const c3 = w.release("three", S(1, 1, 1), S(1, 1, 1));
+    const three = pkg("three", S(1, 1, 1), S(1, 1, 1));
+    expect((await start(three, c3.slice(0, 7))).code).toBe(0);
+    expect(readlinkSync(profile)).toBe(three);
   });
 });

@@ -2,9 +2,11 @@
 # lyrica-nixos-start <module package> <its commit>
 # NixOS only: lyricad's ExecStartPre, as root. lyricad runs from the profile
 # /nix/var/nix/profiles/lyrica, which an Update or a rollback switches. When
-# the module's package changes (nixos-rebuild switch with a newer or older
-# flake), the profile follows it, after a snapshot if the commit beside the
-# databases differs. A database the package can't read (SchemaTooNew) gets
+# the module's package changes (nixos-rebuild switch with another flake),
+# the profile follows it, after a snapshot if the commit beside the databases
+# differs, unless it is an older commit of the running release's history:
+# a rebuild never moves her back (an Update leaves the flake's lock behind);
+# going back is Roll back. A database the package can't read (SchemaTooNew) gets
 # the newest snapshot it can; nothing else restores. See docs/daemon.md, "On NixOS".
 set -euo pipefail
 . "${LYRICA_UPDATER_LIB:-/usr/local/lib/lyrica-update}/common.sh"
@@ -30,10 +32,28 @@ fi
 
 [ "$(cat "$UPDATE/module-package" 2>/dev/null || true)" != "$PKG" ] || [ ! -e "$PROFILE" ] || exit 0
 
-INFO=$("$PKG/bin/lyrica" version --json)
 # The flake's short commit; a dirty tree's build is named by its store hash.
 COMMIT=$2
 case "$COMMIT" in *[!0-9a-f]*|"") COMMIT=$(basename "$PKG" | cut -c1-12) ;; esac
+
+# Whether $1 is a strict ancestor of $2 in repo.git; false when either is unknown.
+older() {
+  local repo=(git --git-dir="$PREFIX/repo.git")
+  [ "$1" != "$2" ] || return 1
+  "${repo[@]}" cat-file -e "$1^{commit}" 2>/dev/null && "${repo[@]}" cat-file -e "$2^{commit}" 2>/dev/null \
+    || GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes -o UserKnownHostsFile=${LYRICA_KNOWN_HOSTS:-/etc/lyrica/known_hosts}" \
+      timeout 30 "${repo[@]}" fetch -q origin 2>/dev/null || true
+  [ "$("${repo[@]}" rev-parse -q --verify "$1^{commit}" 2>/dev/null)" != "$("${repo[@]}" rev-parse -q --verify "$2^{commit}" 2>/dev/null)" ] \
+    && "${repo[@]}" merge-base --is-ancestor "$1" "$2" 2>/dev/null
+}
+RUNNING=$(current_commit || true)
+if [ -n "$RUNNING" ] && [ -e "$PROFILE" ] && [ "$COMMIT" = "$2" ] && older "$COMMIT" "$RUNNING"; then
+  say "the module's package (${COMMIT:0:12}) is older than the running release (${RUNNING:0:12}); keeping ${RUNNING:0:12}. Run \`nix flake update lyrica\` to bring the system flake up to date, or use Roll back to go back"
+  echo "$PKG" >"$UPDATE/module-package"
+  exit 0
+fi
+
+INFO=$("$PKG/bin/lyrica" version --json)
 mkdir -p "$UPDATE/releases/$COMMIT"
 jq --arg c "$COMMIT" --arg at "$(now)" --arg p "$PKG" '{commit: $c, builtAt: $at, version, schema, minReader, path: $p}' <<<"$INFO" \
   >"$UPDATE/releases/$COMMIT/RELEASE.json"
