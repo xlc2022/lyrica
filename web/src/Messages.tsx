@@ -1,5 +1,6 @@
 // The conversation: stored messages, then what's streaming now.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { get, post, threadPath, type GoAhead, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
 import type { LiveItem } from "./live.ts";
 import { useMentionText, useThreadMentions } from "./mentions.ts";
@@ -11,7 +12,7 @@ import type { useThread } from "./stream.ts";
 import { SuggestedCard, ThreadCard, type ProjectEnv } from "./Project.tsx";
 import { EditBox, MessageMenu, type Rewinder } from "./Rewind.tsx";
 import { ErrorText, Prose, useAction } from "./ui.tsx";
-import { PathText, useFileLinks } from "./paths.tsx";
+import { Lightbox, PathText, useFileLinks, type FileLinks } from "./paths.tsx";
 import { ReadAloudButton } from "./Voice.tsx";
 
 interface Props {
@@ -45,10 +46,13 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   // Subagents whose work is shown in their delegate card here: their approvals show there too.
   const [shown, setShown] = useState<ReadonlySet<string>>(new Set());
   const show = (id: string, on: boolean) => setShown((o) => { const n = new Set(o); if (on) n.add(id); else n.delete(id); return n; });
+  // The image open large, held here: the message it was opened from may be replaced by its stored copy meanwhile.
+  const [large, setLarge] = useState<{ path: string; url: string }>();
+  const openLarge = useCallback((path: string, files: FileLinks) => setLarge({ path, url: files.url(path) }), []);
   const env: Env = {
     userId: ctx.user.id, you: ctx.user.displayName, pool, base, threadId, subagent, openTools, toggleTool,
     permissions: live.permissions, ticks: live.subagents, show, rewinder, parentTitle, speech, onError: onError ?? (() => {}), project,
-    lastHers: messages.findLast((m) => m.role === "assistant")?.n,
+    lastHers: messages.findLast((m) => m.role === "assistant")?.n, large: openLarge,
   };
   // A project's threads whose anchor message is gone sit under the last message instead.
   const anchored = project ? project.overview.threads.filter((t) => t.anchor !== undefined && shownMessagesHave(messages, hideFrom, t.anchor)) : [];
@@ -82,6 +86,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
           <div className="body">{q}</div>
         </div>
       ))}
+      {large && createPortal(<Lightbox path={large.path} url={large.url} onClose={() => setLarge(undefined)} />, document.body)}
     </>
   );
 }
@@ -107,6 +112,8 @@ interface Env {
   speech?: Speech;
   onError: (message: string) => void;
   project?: ProjectEnv;
+  /** Opens an image from a message large, over the conversation. */
+  large: (path: string, files: FileLinks) => void;
 }
 
 /** What a look at the project's threads led to: the threads she messaged in the turn after it, with what she sent each. */
@@ -201,7 +208,7 @@ function LiveMessage({ item, env, you, streaming }: { item: LiveItem; env: Env; 
 }
 
 /** A message in the person's place; `hers` when Lyrica wrote it (a subagent's task), so the threads she mentions show by title. Its paths are links. */
-function UserMessage({ text, you, n, rewinder, env, hers }: { text: string; you: string; n?: number; rewinder?: Rewinder; env: Pick<Env, "userId" | "pool" | "threadId">; hers?: boolean }) {
+function UserMessage({ text, you, n, rewinder, env, hers }: { text: string; you: string; n?: number; rewinder?: Rewinder; env: Pick<Env, "userId" | "pool" | "threadId" | "large">; hers?: boolean }) {
   const [editing, setEditing] = useState(false);
   const files = useFileLinks(env.userId, env.pool, env.threadId);
   const menu = rewinder && n !== undefined;
@@ -469,9 +476,11 @@ function Notice({ text, status, threads, env }: { text: string; status?: string;
  * Her text, with each thread she mentions shown by its current title, this thread's paths as links and its images
  * shown. `elsewhere`: the text was written in another thread, whose /workspace is not this one's, so paths stay text.
  */
-function HerProse({ text, env, elsewhere }: { text: string; env: Pick<Env, "userId" | "pool" | "threadId">; elsewhere?: boolean }) {
+function HerProse({ text, env, elsewhere }: { text: string; env: Pick<Env, "userId" | "pool" | "threadId" | "large">; elsewhere?: boolean }) {
   const files = useFileLinks(env.userId, env.pool, env.threadId);
-  return <Prose text={useThreadMentions(text, env.userId, env.pool)} files={elsewhere ? undefined : files} />;
+  const { large } = env;
+  const onLarge = useCallback((path: string) => large(path, files), [large, files]);
+  return <Prose text={useThreadMentions(text, env.userId, env.pool)} files={elsewhere ? undefined : files} onLarge={onLarge} />;
 }
 
 /**

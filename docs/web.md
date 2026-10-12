@@ -234,7 +234,8 @@ A thread's address may carry what the panel beside it shows:
   as written). An image she writes from the thread folder shows in the
   message by its thumbnail (`…/files/thumb`, or the image itself where the
   server makes none) and opens large, from `…/files/content`, in the
-  Images tab's dialog (an SVG stays a link, since `…/files/content` serves it as text, never as a page); a remote image is never loaded and shows as a link with its
+  Images tab's dialog; the conversation holds which image is open, so the
+  stored copy replacing a live message doesn't close it (an SVG stays a link, since `…/files/content` serves it as text, never as a page); a remote image is never loaded and shows as a link with its
   alt text.
 - A thread she mentions (`[t:<id>]`, `[e:<id>#<n>]`) shows as its current
   title, linked to the thread in the same tab; "a forgotten thread" once it's
