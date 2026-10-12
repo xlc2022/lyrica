@@ -177,6 +177,27 @@ A thread's address may carry what the panel beside it shows:
   as gone. Mention tokens show as current names; the editor shows them as
   `[[Name]]` or `[[Name:obj]]` and saves them back as tokens. Nothing of a
   memory's text is kept in the browser's storage.
+- **Sleep** (`src/Sleep.tsx`; [sleep.md](sleep.md) "Sleep in the UI";
+  docs/ux.md §6 "What she did at night"): `#/u/<user>/sleep`, from the
+  sidebar's Sleep link, whose badge counts her new items (`GET …/sleep`,
+  reread every 30 s, on focus and after each action; while the page is open
+  `GET …/sleep/events` reloads it as a run starts, changes phase or ends,
+  and a `thread` event opens the thread a manual run leaves). Items first,
+  newest first, with **Start a chat** (`POST …/items/<id>/chat`, then the
+  new thread) and **Dismiss** (`DELETE`). Then the runs: **Last night** is
+  the newest run of each pool, read at once for its summary line; **Earlier**
+  groups the rest by day and reads a run when its row opens
+  (`GET …/runs/<id>`). A row shows Notes, Pages with their word diff, Questions,
+  Thoughts, the Dream and the WAKE, each linking to the Memory page at that
+  memory (`…/memory/<pool>/<id>`; a `t:` or `e:` source links to its thread);
+  a skipped run is one line and does not open. **Sleep now** ▾ picks the
+  pool (`POST …/sleep/<pool>`); a `confirm` answer becomes a dialog whose
+  **Sleep now** resends with `confirm: true`; a 409 is shown as a toast in
+  `lyricad`'s words. Text arrives in stored form and is shown with the users of
+  the runs already read; an unknown mention reads "someone". The foot names
+  the schedule and links **change** to Settings → Model profiles, where the
+  **Sleep** select (Nightly at the server's time, or Only when I ask) sits
+  above Sleep fallback and saves at once (`PUT …/sleep/mode`).
 - **Notifications** (`src/Notifications.tsx`; docs/ux.md §6 "Anything
   waiting for the user"): the first section of Settings, one list from
   `GET …/notifications`. Chips filter by type (All with the count, Needs a
@@ -212,8 +233,8 @@ A thread's address may carry what the panel beside it shows:
   unlocked after logout, and `lyricad`'s warning when the two contradict),
   Password, Your personas (linking a separate persona needs both passwords),
   Persona suggestions (edit, send on to the administrators, or drop),
-  Endpoints with probe status, Model profiles (with the **Sleep fallback**
-  switch above the profiles), Network (New threads: the default
+  Endpoints with probe status, Model profiles (with the **Sleep** mode select
+  and the **Sleep fallback** switch above the profiles), Network (New threads: the default
   mode and Fallback; then network defaults per pool), and **Machines**
   (`src/Machines.tsx`, docs/ux.md section 6): a row per machine with its
   name, a facts line in mono (address, pool, "SSH · key" or "Proxmox API ·
@@ -252,7 +273,8 @@ A thread's address may carry what the panel beside it shows:
   self-test, sleep time, start unlocked), Users with the administrator flag,
   **Change password…** (the new password and the administrator's own, in
   the row; the user's data stays, they are logged out and told at their
-  next visit) and their allowed folders, Sleep, Start unlocked (saving the `self.db`
+  next visit) and their allowed folders, Sleep (**Sleep time**, `type="time"`, one Save;
+  `GET`/`PUT …/admin/sleep`), Start unlocked (saving the `self.db`
   passphrase), **Tailnet**, Web access, **Updates**, and **Persona**: her
   **Name** at the top (one field, Save, and the sentence that memories and
   threads written so far keep the old name; `PUT …/admin/name`, then the
