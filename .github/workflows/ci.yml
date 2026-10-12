@@ -12,7 +12,35 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 jobs:
+  # A change only to docs/ or the top-level Markdown files (AGENTS.md,
+  # DESIGN.md and the like) runs no job below: nothing builds, tests or
+  # ships them. persona/ is her seed and counts as code. Skipped jobs count
+  # as passed for required checks. When the diff can't be read, all run.
+  changes:
+    runs-on: lyrica-ci
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # A pull request's checkout is its merge into the base: the first parent is the base.
+          if [ "$EVENT" = pull_request ]; then base=HEAD^1; else base=$BEFORE; fi
+          if files=$(git diff --name-only "$base" HEAD 2>/dev/null) && [ -n "$files" ]; then
+            if printf '%s\n' "$files" | grep -qvE '^docs/|^[^/]+\.md$'; then code=true; else code=false; fi
+          else
+            code=true
+          fi
+          printf '%s\n' "$files" | head -50
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
   check:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +74,8 @@ jobs:
   # build, and the sandbox tests pass with the module's sandbox tools as /usr
   # and only their closure in /nix/store.
   nix:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4
@@ -103,6 +133,8 @@ jobs:
           nix store gc
   # The model host's Compose stack, without a GPU: install, then check the networks.
   host-stack:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4

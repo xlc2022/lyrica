@@ -2,7 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { fakeHost } from "../../core/test/fake-host.ts";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { CleanupItem, EndpointInfo, HostStatus, HubTokenInfo, ModelsPage, LoginResponse, Me, ModelsNotice, OfferingInfo, Profiles, MemoryDetail, MemoryHit, State, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { CleanupItem, EndpointInfo, HostStatus, HubTokenInfo, ModelsPage, LoginResponse, Me, ModelsNotice, OfferingInfo, Profiles, MemoryDetail, MemoryHit, MemoryOverview, MemoryTag, State, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime, systemdStart } from "./helpers.ts";
 
 describe("lyricad, locked", () => {
@@ -296,6 +296,47 @@ describe("the memory browser", () => {
     expect((await li.get<MemoryDetail>(url)).body.item.text).toBe(`[[u:${rt.li.id}]] grows tomatoes`);
     expect((await li.del(url)).status).toBe(200);
     expect((await li.get(url)).status).toBe(404);
+  });
+  it("links by title with the citing sentence, lists a layer with its tags, and keeps private words out of a general detail", async () => {
+    const rt = await runtime();
+    const { base } = await daemon(rt);
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const li = await login(base, "li", "pw");
+    const m = `/api/u/${rt.li.id}/memory`;
+    const note = (await li.post<MemoryDetail>(`${m}/general/notes`, { text: "{user} grows tomatoes.", about: ["garden", "food"] })).body.item;
+    const other = (await li.post<MemoryDetail>(`${m}/general/notes`, { text: "The shed leaks.", about: ["garden"] })).body.item;
+    await li.post<MemoryDetail>(`${m}/general/pages`, { slug: "garden", title: "The garden", summary: "Four beds.", text: `Four beds in all. {user} grows tomatoes in the north bed [n:${note.id.slice(2)}]. Nothing else yet.` });
+    const secret = (await li.post<MemoryDetail>(`${m}/private/notes`, { text: `The tomatoes are a cover story [general/${note.id}].` })).body.item;
+
+    // The general note's detail: the page's title and sentence, the private citer as an ID alone.
+    const detail = (await li.get<MemoryDetail>(`${m}/general/${enc(note.id)}`)).body;
+    expect(detail.usedIn).toEqual([
+      { id: "p:garden", sentence: `[[u:${rt.li.id}]] grows tomatoes in the north bed [n:${note.id.slice(2)}].` },
+      { id: `private/${secret.id}` },
+    ]);
+    expect(detail.links["p:garden"]).toMatchObject({ kind: "page", pool: "general", title: "The garden", snippet: "Four beds in all. [[u:" + rt.li.id + "]] grows tomatoes in the north bed. Nothing else yet." });
+    expect(JSON.stringify(detail)).not.toContain("cover story");
+    expect(Object.keys(detail.links)).toEqual(["p:garden"]);
+
+    // The private note's detail links the general note while General is shown, and drops it when hidden.
+    const priv = `${m}/private/${enc(secret.id)}`;
+    expect((await li.get<MemoryDetail>(priv)).body.links[`general/${note.id}`]).toMatchObject({ kind: "note", pool: "general", snippet: `[[u:${rt.li.id}]] grows tomatoes.` });
+    await li.patch(`/api/u/${rt.li.id}/me/display`, { showGeneral: false });
+    const hiddenGeneral = (await li.get<MemoryDetail>(priv)).body;
+    expect(hiddenGeneral.cameFrom).toEqual([`general/${note.id}`]);
+    expect(hiddenGeneral.links).toEqual({});
+    await li.patch(`/api/u/${rt.li.id}/me/display`, { showGeneral: true });
+
+    // The Notes layer, newest first and paged; a tag narrows it; the tags themselves with counts; the overview.
+    const notes = (await li.get<MemoryHit[]>(`${m}/search?kinds=note&pool=general&limit=1`)).body;
+    expect(notes.map((h) => h.id)).toEqual([other.id]);
+    expect(notes[0]).toMatchObject({ kind: "note", snippet: "The shed leaks.", about: ["garden"], origin: "user" });
+    const older = (await li.get<MemoryHit[]>(`${m}/search?kinds=note&pool=general&limit=1&before=${enc(notes[0]!.updatedAt!)}`)).body;
+    expect(older.map((h) => h.id)).toEqual([note.id]);
+    expect((await li.get<MemoryHit[]>(`${m}/search?kinds=note&about=food`)).body.map((h) => h.id)).toEqual([note.id]);
+    expect((await li.get<MemoryHit[]>(`${m}/search?kinds=page`)).body.map((h) => [h.id, h.title])).toEqual([["p:garden", "The garden"]]);
+    expect((await li.get<MemoryTag[]>(`${m}/about`)).body).toEqual([{ about: "garden", count: 2 }, { about: "food", count: 1 }]);
+    expect((await li.get<MemoryOverview>(m)).body).toEqual({ pages: 1, notes: 3 });
   });
 });
 

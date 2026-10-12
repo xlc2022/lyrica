@@ -88,3 +88,22 @@ export function snippet(text: string, words: string[], width = 240): string {
   const end = Math.min(flat.length, start + width);
   return `${start > 0 ? "…" : ""}${flat.slice(start, end).trim()}${end < flat.length ? "…" : ""}`;
 }
+
+/**
+ * The sentence of `text` that cites `id` (as stored: bare, or `general/…`
+ * from private), for "Came from" and "Used in". A citation group that
+ * follows a sentence's full stop belongs to that sentence.
+ */
+export function sentenceCiting(text: string, id: string): string | undefined {
+  const flat = text.replace(/\s+/g, " ").trim();
+  const sentences = flat.match(/[^.!?]+(?:[.!?]+(?:\s*\[[^[\]]+\])*)?|[.!?]+(?:\s*\[[^[\]]+\])*/g) ?? [flat];
+  const want = id.trim();
+  const cites = (s: string) => [...s.matchAll(/(?<!\[)\[([^[\]]+)\](?!\])/g)].flatMap((m) => m[1]!.split(/[,;]\s*/).map((x) => x.trim()));
+  return sentences.find((s) => cites(s).includes(want))?.trim();
+}
+
+/** The first line of a memory's text without its citations, for a preview. */
+export function firstLine(text: string, width = 200): string {
+  const line = text.replace(/\s*(?<!\[)\[(?:(?:general|private)\/)?(?:[etnpj]:[^\s,;[\]]+|wake)(?:[,;]\s*(?:(?:general|private)\/)?(?:[etnpj]:[^\s,;[\]]+|wake))*\](?!\])/g, "").replace(/\s+([.,;:!?])/g, "$1").replace(/\s+/g, " ").trim();
+  return line.length > width ? `${line.slice(0, width - 1).trimEnd()}…` : line;
+}

@@ -34,6 +34,6 @@ choice of 2026-10-11).
   builds, the CLI and native modules load, and the non-network sandbox
   tests pass with the NixOS tools (the network ones need `/dev/net/tun`,
   which the cloud sessions lack; CI runs them).
-- **Next:** Li runs `nix/check-host.sh` on a real NixOS host (docs/daemon.md "On NixOS"). The releases
-  build adds the profile path.
+- **Next:** Li runs `nix/check-host.sh` on a real NixOS host (docs/daemon.md "On NixOS"). It
+  checks the releases profile and `lyrica-update.path` too.
 - **Open:** none.

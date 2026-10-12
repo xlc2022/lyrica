@@ -1,5 +1,6 @@
 import {
   AuthError, NoRecoveryCopy, WrongPassword, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS, projectSlug,
+  citationsIn, firstLine, sentenceCiting, splitId,
   type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type MachineConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
@@ -987,6 +988,29 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
 
     // --- Memory browser, through the owner view ---
+    route("GET", `${u}/memory`, (r) => {
+      const user = d.userFor(r);
+      const show = display(d, user.id);
+      return owner(d, user, (o): Api.MemoryOverview => {
+        let pages = 0, notes = 0, slept: string | undefined;
+        for (const pool of shownPools(show)) {
+          const c = o[pool].counts();
+          pages += c.pages; notes += c.notes;
+          const last = o[pool].listSleepRuns(10).find((run) => run.finishedAt && run.status !== "skipped")?.finishedAt;
+          if (last && (!slept || last > slept)) slept = last;
+        }
+        return { pages, notes, ...(slept ? { slept } : {}) };
+      });
+    }),
+    route("GET", `${u}/memory/about`, (r) => {
+      const user = d.userFor(r);
+      const pools = (r.query.get("pool") ? [checkPool(r.query.get("pool"))] : shownPools(display(d, user.id)));
+      return owner(d, user, (o): Api.MemoryTag[] => {
+        const counts = new Map<string, number>();
+        for (const pool of pools) for (const t of o[pool].aboutWords()) counts.set(t.about, (counts.get(t.about) ?? 0) + t.count);
+        return [...counts].map(([about, count]) => ({ about, count })).sort((a, b) => b.count - a.count || a.about.localeCompare(b.about));
+      });
+    }),
     route("GET", `${u}/memory/search`, (r) => {
       const user = d.userFor(r);
       const q = r.query.get("q")?.trim() ?? "";
@@ -994,18 +1018,29 @@ export function apiRoutes(d: Lyricad): Route[] {
       const pools = (r.query.get("pool") ? [checkPool(r.query.get("pool"))] : (["general", "private"] as const))
         .filter((p) => (p === "general" ? show.showGeneral : show.showPrivate));
       const kinds = r.query.get("kinds")?.split(",").filter(Boolean) as Hit["kind"][] | undefined;
-      const origin = r.query.get("origin") ?? undefined;
+      const origin = (r.query.get("origin") ?? undefined) as Api.Origin | undefined;
+      const about = r.query.get("about")?.trim() || undefined;
+      const before = r.query.get("before") || undefined;
       const limit = Math.min(100, Number(r.query.get("limit") ?? 30) || 30);
-      return owner(d, user, (o) => pools.flatMap((pool): Api.MemoryHit[] => {
-        const store = o[pool];
-        const hits: Hit[] = q
-          ? store.search(q, { kinds, limit: limit * 2, includeArchived: true })
-          : store.userIntroduced().map((id) => store.get(id)).filter((x): x is Item => !!x).map((i) => ({
-            id: i.id, kind: i.kind, snippet: (i.title ? `${i.title}: ` : "") + i.text.slice(0, 200), score: 0, origin: i.origin, author: i.author,
-          }));
-        return hits.filter((h) => !origin || h.origin === origin)
-          .map((h) => ({ pool, id: h.id, kind: h.kind, snippet: h.snippet, score: h.score, ...(h.origin ? { origin: h.origin } : {}), ...(h.supersededBy ? { supersededBy: h.supersededBy } : {}) }));
-      }).sort((a, b) => b.score - a.score).slice(0, limit));
+      const layer = !q && kinds?.length === 1 && ["note", "page", "wake", "journal"].includes(kinds[0]!) ? kinds[0] as "note" | "page" | "wake" | "journal" : undefined;
+      const toHit = (pool: Pool, h: Hit, item: Item | undefined): Api.MemoryHit => ({
+        pool, id: h.id, kind: h.kind, snippet: h.snippet, score: h.score,
+        ...(h.origin ? { origin: h.origin } : {}), ...(h.supersededBy ? { supersededBy: h.supersededBy } : {}),
+        ...(item?.title ? { title: item.title } : {}), ...(item?.about?.length ? { about: item.about } : {}), ...(item ? { updatedAt: item.updatedAt } : {}),
+      });
+      const listed = (pool: Pool, i: Item): Api.MemoryHit => toHit(pool, { id: i.id, kind: i.kind, snippet: firstLine(i.text), score: 0, origin: i.origin, author: i.author, supersededBy: i.supersededBy }, i);
+      return owner(d, user, (o) => {
+        const hits = pools.flatMap((pool): Api.MemoryHit[] => {
+          const store = o[pool];
+          if (layer) return store.listMemories(layer, { limit, before, about, origin }).map((i) => listed(pool, i));
+          if (!q) return store.userIntroduced().map((id) => store.get(id)).filter((x): x is Item => !!x).filter((i) => !about || i.about?.includes(about)).map((i) => listed(pool, i));
+          return store.search(q, { kinds, limit: limit * 2, includeArchived: true })
+            .filter((h) => !origin || h.origin === origin)
+            .map((h) => { const item = h.kind === "entry" || h.kind === "thread" ? undefined : store.get(h.id); return about && !item?.about?.includes(about) ? undefined : toHit(pool, h, item); })
+            .filter((h): h is Api.MemoryHit => !!h);
+        });
+        return (q ? hits.sort((a, b) => b.score - a.score) : hits.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))).slice(0, limit);
+      });
     }),
     route("POST", `${u}/memory/:pool/notes`, async (r) => {
       const user = d.userFor(r);
@@ -1033,7 +1068,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       owner(d, user, (o) => o[poolOf(r)].deleteMany(ids.map(String), author(user)));
       return { ok: true };
     }),
-    route("GET", `${u}/memory/:pool/:id`, (r) => owner(d, d.userFor(r), (o) => memoryDetail(d, o, poolOf(r), r.params.id!))),
+    route("GET", `${u}/memory/:pool/:id`, (r) => { const user = d.userFor(r); return owner(d, user, (o) => memoryDetail(d, o, poolOf(r), r.params.id!, display(d, user.id))); }),
     route("PATCH", `${u}/memory/:pool/:id`, async (r) => {
       const user = d.userFor(r);
       const change = pick(await r.json<Api.MemoryEdit>(), ["text", "title", "summary", "folders", "about"]);
@@ -1903,17 +1938,61 @@ function gather(d: Lyricad, user: User, pool: Pool, thread: string, from: number
   });
 }
 
-function memoryDetail(d: Lyricad, o: OwnerView, pool: Pool, id: string): Api.MemoryDetail {
+/** The pools the display filters show. */
+function shownPools(show: Api.Display): Pool[] {
+  return (["general", "private"] as const).filter((p) => (p === "general" ? show.showGeneral : show.showPrivate));
+}
+
+/**
+ * A memory with its lineage. `links` carries a title and first line for every
+ * memory or thread the text, `cameFrom` and `usedIn` point at, from the pools
+ * `show` shows; a general memory's detail never carries a private one's words,
+ * so a private citer keeps its ID and gets no sentence.
+ */
+function memoryDetail(d: Lyricad, o: OwnerView, pool: Pool, id: string, show: Api.Display = DISPLAY_DEFAULTS_ALL): Api.MemoryDetail {
   const store: PoolStore = o[pool];
   const item = store.get(id, { raw: true });
   if (!item) throw new HttpError(404, `no such memory: ${id}`);
-  const usedIn = [...store.usedIn(id), ...(pool === "general" ? o.private.usedIn(`general/${id}`).map((x) => `private/${x}`) : [])];
+  const own: Api.MemoryUse[] = store.usedIn(id).map((src) => {
+    const citer = store.get(src, { raw: true });
+    const sentence = citer && sentenceCiting(citer.text, id);
+    return { id: src, ...(sentence ? { sentence } : {}) };
+  });
+  const other: Api.MemoryUse[] = pool === "general" ? o.private.usedIn(`general/${id}`).map((x) => ({ id: `private/${x}` })) : [];
+  const cameFrom = store.cameFrom(id);
+  const links: Record<string, Api.MemoryLink> = {};
+  for (const ref of new Set([...citationsIn(item.text, pool), ...cameFrom, ...own.map((x) => x.id)])) {
+    const link = linkFor(o, pool, ref, show);
+    if (link) links[ref] = link;
+  }
   const users: Api.UserMap = Object.fromEntries(d.services!.users.all().map((u) => [u.id, { displayName: u.profile.displayName, pronouns: u.profile.pronouns }]));
   return {
     item: { pool, ...item, kind: item.kind },
-    cameFrom: store.cameFrom(id),
-    usedIn,
+    cameFrom,
+    usedIn: [...own, ...other],
+    links,
     revisions: store.revisions(id).map((r) => ({ id: r.id, body: r.body, author: r.author, createdAt: r.createdAt })),
     users,
   };
+}
+
+/** What an ID in `pool`'s memory points at, when its pool is shown. A general reader never gets a private link. */
+function linkFor(o: OwnerView, pool: Pool, ref: string, show: Api.Display): Api.MemoryLink | undefined {
+  const split = splitId(ref);
+  if (!split) return undefined;
+  const p = split.pool ?? pool;
+  if (p === "private" && pool === "general") return undefined;
+  if (!shownPools(show).includes(p)) return undefined;
+  const store = o[p];
+  const bare = split.id;
+  const thread = /^[te]:([^#]+)/.exec(bare)?.[1];
+  if (thread) {
+    const t = store.getThread(thread);
+    if (!t) return undefined;
+    const entry = bare.startsWith("e:") ? store.entryWindow(bare, 0)[0] : undefined;
+    return { kind: entry ? "entry" : "thread", pool: p, title: t.title ?? "", snippet: entry ? firstLine(entry.text) : "", updatedAt: entry?.createdAt ?? t.createdAt };
+  }
+  const it = store.get(bare, { raw: true });
+  if (!it) return undefined;
+  return { kind: it.kind, pool: p, ...(it.title !== undefined ? { title: it.title } : {}), snippet: firstLine(it.text), updatedAt: it.updatedAt, ...(it.origin ? { origin: it.origin } : {}) };
 }
