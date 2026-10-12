@@ -556,7 +556,7 @@ A thread's address may carry what the panel beside it shows:
   next visit) and their allowed folders, Sleep (**Sleep time**, `type="time"`, one Save;
   `GET`/`PUT …/admin/sleep`), Start unlocked (saving the `self.db`
   passphrase, and **Change passphrase…**: Current passphrase, New passphrase and
-  New passphrase again in place, `POST …/admin/passphrase/change`; a 403 says "That
+  New passphrase again stacked in place, hiding Passphrase and Save meanwhile, `POST …/admin/passphrase/change`; a 403 says "That
   isn't the current passphrase.", a 429 "Too many tries. Try again in <n> min."
   with the button disabled; the fields clear after a success or Cancel), **Tailnet**, Web access, **Web search** (`src/WebSearch.tsx`:
   **SearXNG address** in mono, without its password (a basic-auth password

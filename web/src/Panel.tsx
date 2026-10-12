@@ -322,6 +322,7 @@ function UnlockedSection({ ctx }: { ctx: ShellContext }) {
   const status = useLoad(() => get<AdminStatus>(u(userId, "admin", "status")), [userId]);
   const [run, busy, error] = useAction();
   const [passphrase, setPassphrase] = useState("");
+  const [changing, setChanging] = useState(false);
   const s = status.data;
   return (
     <Section title="Start unlocked">
@@ -330,13 +331,13 @@ function UnlockedSection({ ctx }: { ctx: ShellContext }) {
       {s?.savedPassphrase ? (
         <div className="row"><span>The passphrase is saved, so {her()} starts unlocked.</span>
           <button type="button" className="danger" disabled={busy} onClick={() => run(async () => status.set(await put<AdminStatus>(u(userId, "admin", "passphrase"), { save: false })))}>Forget it</button></div>
-      ) : s && (
+      ) : s && !changing && (
         <form className="inline" onSubmit={(e) => { e.preventDefault(); void run(async () => { status.set(await put<AdminStatus>(u(userId, "admin", "passphrase"), { save: true, passphrase })); setPassphrase(""); }); }}>
           <label className="field grow"><span>Passphrase</span><input type="password" autoComplete="off" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} /></label>
           <button className="primary" disabled={busy || !passphrase || !s.credentials.available}>Save</button>
         </form>
       )}
-      {s && <PassphraseChanger userId={userId} onChanged={status.set} />}
+      {s && <PassphraseChanger userId={userId} open={changing} setOpen={setChanging} onChanged={status.set} />}
     </Section>
   );
 }
@@ -348,8 +349,7 @@ export function retryMinutes(message: string): number {
 }
 
 /** Change passphrase… under Start unlocked (docs/ux.md, "Changing the server passphrase"): three fields in place, no dialog; nothing is kept after a success or Cancel. */
-function PassphraseChanger({ userId, onChanged }: { userId: string; onChanged: (s: AdminStatus) => void }) {
-  const [open, setOpen] = useState(false);
+function PassphraseChanger({ userId, open, setOpen, onChanged }: { userId: string; open: boolean; setOpen: (open: boolean) => void; onChanged: (s: AdminStatus) => void }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [again, setAgain] = useState("");
@@ -389,7 +389,7 @@ function PassphraseChanger({ userId, onChanged }: { userId: string; onChanged: (
   }
   const ready = !!next && next === again && next !== current && !!current;
   return (
-    <form className="row" onSubmit={(e) => { e.preventDefault(); if (ready && !problem.minutes) void submit(); }}>
+    <form className="stack" onSubmit={(e) => { e.preventDefault(); if (ready && !problem.minutes) void submit(); }}>
       <label className="field"><span>Current passphrase</span>
         <input type="password" autoComplete="current-password" autoFocus value={current} onChange={(e) => setCurrent(e.target.value)} />
       </label>
@@ -399,10 +399,12 @@ function PassphraseChanger({ userId, onChanged }: { userId: string; onChanged: (
       <label className="field"><span>New passphrase again</span>
         <input type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} />
       </label>
-      <button type="submit" className="primary sm" disabled={busy || !ready || !!problem.minutes}>Change passphrase</button>
-      <button type="button" className="sm" onClick={() => { clear(); setProblem({}); setOpen(false); }}>Cancel</button>
+      <div className="row">
+        <button type="submit" className="primary sm" disabled={busy || !ready || !!problem.minutes}>Change passphrase</button>
+        <button type="button" className="sm" onClick={() => { clear(); setProblem({}); setOpen(false); }}>Cancel</button>
+      </div>
       {problem.wrong && <p className="error" role="alert">That isn't the current passphrase.</p>}
-      {problem.minutes && <p className="error" role="alert">Too many tries. Try again in <span className="mono">{problem.minutes}</span> min.</p>}
+      {problem.minutes && <p className="error" role="alert">Too many tries. Try again in <span className="num">{problem.minutes}</span> min.</p>}
       <ErrorText error={problem.text ?? ""} />
     </form>
   );
