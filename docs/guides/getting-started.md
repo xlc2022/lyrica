@@ -227,7 +227,11 @@ changed, her databases are snapshotted and the profile moves to it; if the
 new package can't read them, the newest snapshot it can read is restored.
 The package is rebuilt only when the code it ships changed; a commit that
 touched only docs or tests reuses the built one, and the restart is quick.
-Updates and rollback from "Upgrading" work on NixOS too. The home page
+Updates and rollback from "Upgrading" work on NixOS too. After an
+Update, run `nix flake update lyrica` before your next `nixos-rebuild`
+for any reason: the system flake's lock still names the older commit.
+lyricad keeps the newer release anyway and logs that the module's package
+is older, but until you update the lock every rebuild says so. The home page
 header shows the commit that is running, as on Debian.
 
 ### On Debian or Ubuntu

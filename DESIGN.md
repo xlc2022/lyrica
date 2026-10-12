@@ -1529,7 +1529,8 @@ Details in [docs/sleep.md](docs/sleep.md).
   and runs the same second tailscaled from `pkgs.tailscale`. Her sandboxes there mount the module's tools as `/usr` and only their
   closure from `/nix/store`, never the whole store. Updates on NixOS use the
   same Update button, through a Lyrica-only Nix profile (Updates and
-  self-editing). Details in [docs/daemon.md](docs/daemon.md), "On NixOS".
+  self-editing). A rebuild never moves her to an older release; going
+  back is Roll back. Details in [docs/daemon.md](docs/daemon.md), "On NixOS".
 - **Reaching the web UI:**
   - `lyricad` serves plain HTTP on `127.0.0.1` behind an HTTPS proxy. The
     browser never gets plain HTTP: login cookies are `Secure`.
