@@ -211,10 +211,11 @@ read it for anything not covered here.
     locked). After the first unlock, run
 
     ```sh
-    journalctl -u lyricad -b | grep 'network is off'
+    journalctl -u lyricad _SYSTEMD_INVOCATION_ID=$(systemctl show -p InvocationID --value lyricad) | grep 'network is off'
     ```
 
-    It must print nothing.
+    It must print nothing. It reads only the current `lyricad` run, so
+    lines from an earlier run in the same boot don't count.
 
 Everything from "Save the passphrase" on applies unchanged. `lyricad`
 runs from the profile `/nix/var/nix/profiles/lyrica`, and its first start
@@ -428,7 +429,7 @@ Two things to look at once she is unlocked:
   After the first unlock,
 
   ```sh
-  journalctl -u lyricad -b | grep 'network is off'
+  journalctl -u lyricad _SYSTEMD_INVOCATION_ID=$(systemctl show -p InvocationID --value lyricad) | grep 'network is off'
   ```
 
   must print nothing.
