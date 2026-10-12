@@ -39,6 +39,8 @@ export interface DiscoveredModel {
   size?: number;
   /** An image model: a confirmed recipe, by its name. */
   recipe?: string;
+  /** A host recipe's create tiers; absent means both. */
+  useFor?: "fast" | "quality" | "both";
   /** The context window a host serves the model with, which wins over one set by hand. */
   servedContext?: number;
 }

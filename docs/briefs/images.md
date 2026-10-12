@@ -8,8 +8,9 @@ and workflow templates). Both are merged.
 **Where things stand (2026-10-12).** Built in #219: image calls and the tool,
 portrait policy (including derived results), encrypted storage and image parts,
 owner-only file/photo APIs, and offline rendering. Chromium/fonts ship in the
-Nix and Debian deployment. Still open: a real ComfyUI run and the separate
-Web UI. Image provider tests use in-memory API fakes.
+Nix and Debian deployment. The Images Web UI and recipe tier tags are built
+(2026-10-12, docs/briefs/web-2.md). Still open: a real ComfyUI run. Image
+provider tests use in-memory API fakes.
 
 **Read first:**
 - AGENTS.md and PRINCIPLES.md;
@@ -131,8 +132,13 @@ FUSE/gocryptfs. Earlier checks passed 12 workspace-gating tests; the context
 suite needs sockets and offline rendering needs Chromium and an encrypted
 sandbox, unavailable in this sandbox. Provider tests use in-memory fakes.
 
-**Next/open:** a real ComfyUI run and the separate Web UI (ImagePart rendering
-and portrait controls). Hosts' fast/quality retain the same image.create list
-and recipe defaults; DESIGN now tags each recipe fast, quality or both
-(decided 2026-10-12), still to build, with a home for the tag in docs/ux.md. Portrait approval expires at
-server-local midnight.
+**2026-10-12 update:** the Images Web UI is built (parts 1 to 3 in
+web-2.md): inline image parts and actions, image markers, portrait controls
+and the daily permission card. Each host recipe's **Use for** saves `fast`,
+`quality` or `both` in `recipes.json`, absent reading as both. Create routing
+filters every attempt by tier; host defaults stay as they are. Cloud models
+serve both. Portrait approval expires at server-local midnight.
+
+**Next/open:** a real ComfyUI run. Image step progress is not supplied by the
+API. Socket-based host tests and Playwright cannot run in the current sandbox
+(`listen EPERM`); router, daemon persistence and recipe storage tests pass.

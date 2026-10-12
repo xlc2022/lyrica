@@ -25,16 +25,25 @@ is 404; a missing login is 401.
   it returns `{ path: "/photos-of-me/<file>" }`. `DELETE …/photos-of-me/:name`
   deletes one regular file, returning `{ ok: true }`; names with traversal
   and symlinks are 404. Portraits are outside thread folders and sandbox grants.
+  `GET …/photos-of-me/:name` serves one sniffed PNG/JPEG/WebP for thumbnails
+  and downloads, with the same no-store, nosniff and sandbox CSP as thread
+  images; traversal, symlinks and non-images are 404.
 - `GET /api/u/:userId/photo-cloud` returns `{ policy }`; `PUT` accepts
   `{ policy: "never" | "ask" | "always" }`, returns the saved setting, and
   clears the user's daily approval. Other values are 400. Default is `ask`;
   the `image` tool enforces consent before each actual cloud attempt, including
   fallbacks, with approval lasting until server-local midnight.
+  The portrait permission request's `args` carries `question`, the endpoint
+  name as `provider`, and the resolved model label as `model` for the web card.
 
 `daemon/test/image-routes.test.ts` exercises the actual handlers, sessions and
 encrypted databases without sockets. The image tool returns Pi image content;
 messages and `tool_end.image` carry paths/model/tier rather than image bytes.
-Dedicated portrait controls and image-part rendering are separate Web UI work.
+The web UI renders image parts and manages portraits in Settings → Portrait photos.
+`POST …/hosts/:endpointId/recipes/:recipeId` accepts
+`{ do: "change", change: { op: "useFor", useFor: "fast" | "quality" | "both" } }`.
+It saves on the host and refreshes discovered offerings; the tag is in the
+host's `recipes.json`, with absent reading as both, not a new database column.
 
 ## Starting and unlocking
 
@@ -74,6 +83,7 @@ came through her tailnet address.
   else is `503`.
 - Run by hand in a terminal, it asks for the passphrase at a hidden prompt.
 - With a saved passphrase (below), it starts unlocked.
+- **Changing the passphrase** (`POST …/admin/passphrase/change` with the current one, administrators; or `lyrica admin passphrase` while lyricad is stopped, which it refuses otherwise) rekeys self.db in place: she keeps running, and from then on only the new passphrase opens her. A wrong current passphrase is refused (`403`) and changes nothing; a saved passphrase is re-saved with the new one; if the re-save fails, the saved copy is removed and the response carries a note to save it again. Old update snapshots of self.db keep the old passphrase, which still opens them.
 - When unlocked it builds `Workspace` with its own two ports as `excludePorts`, and
   runs `selfTest()`. If network is refused, the reason is logged and shown to
   administrators (`GET …/admin/status`).
@@ -230,6 +240,12 @@ Each active thread is one Pi session from `openThreadSession`, with
   - Pi's automatic compaction at the window's edge stays on as the safety net,
     with Pi's own summary, which keeps the goal, progress and next steps. It
     shows the same marker.
+- `GET /api/u/:userId/thread-defaults?pool=general|private` returns the
+  settings a new thread starts with, including the default mode, without
+  creating a thread. It shares the creation defaults with `POST /threads`,
+  authenticates the addressed user like the other user routes, and returns
+  only settings, never thread or memory text. The home composer applies its
+  changes after creation.
 - Changing a thread's settings reopens its session after the current turn,
   and its open views get `settings`. Workspace settings (mode and switches
   included) are read on every tool call, so they apply at once.
@@ -600,7 +616,7 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
   body (16 kHz mono, at most 10 minutes, 413 beyond, 415 for another type)
   answers `Transcription { text, seconds, model }`. `POST
   /api/u/:userId/transcribe?pool=` does the same on the welcome page, with
-  the user's defaults for a new thread. The clip is held in memory only.
+  the user's defaults for a new thread and without creating one. The clip is held in memory only.
 - `GET …/threads/:pool/:threadId/messages/:n/speech` reads one of her
   messages aloud. lyricad reads it from the store (the client sends a
   number, never text), reads each thread she mentions as its current title

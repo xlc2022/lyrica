@@ -122,6 +122,15 @@ function cleanPortrait(bytes: Buffer, type: string): Buffer {
 
 export class PortraitPhotos {
   constructor(private readonly home: () => string) {}
+  /** A single portrait for the owner's thumbnails and downloads. */
+  content(name: string): HomeFile {
+    const parts = partsOf(name); if (parts.length !== 1) throw new HomeFileMissing("file not found");
+    const file = readHomeFile(this.home(), ["photos-of-me", ...parts]);
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      file.stream.destroy(); throw new HomeFileMissing("file not found");
+    }
+    return file;
+  }
   list(): PortraitPhoto[] {
     const home = this.home();
     return inDir(home, ["photos-of-me"], false, dir => readdirSync(`/proc/self/fd/${dir}`).flatMap(name => {

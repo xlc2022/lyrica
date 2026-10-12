@@ -49,6 +49,7 @@ unlockSelf(passphrase: string): Promise<void>            // self.db only
 unlockUser(userId: string, password: string): Promise<void>
 saveUserKey(userId) / forgetSavedKey(userId) / hasSavedKey(userId)   // "save credentials"
 saveSelfPassphrase(p) / forgetSelfPassphrase() / hasSavedPassphrase()
+changeSelfPassphrase(current, next): Promise<void>        // rekeys self.db; wrong current is WrongPassword
 unlockSaved(): Promise<boolean>                           // at start: the saved passphrase
 loadSavedKey(userId): Promise<boolean>                    // at start: each saved user key
 closeSelf(): void                                         // locks self.db again
@@ -76,6 +77,7 @@ lockUser(userId: string): void
   `systemd-creds decrypt --user --name=lyrica_<name> <file> -`, reading plaintext only from stdout into
   memory. Missing, failed or empty credentials stay locked; logs contain
   only the credential name/id and error class, never stderr or secrets.
+- Changing the self.db passphrase (`POST /api/u/:userId/admin/passphrase/change` with `PassphraseRotate { current, next }`, administrators; `lyrica admin passphrase`) rekeys self.db in place and re-saves a saved passphrase (if the re-save fails, the saved copy is removed and the response carries a note to save it again); a wrong `current` is `403`. See [daemon.md](daemon.md).
 
 ## core/users
 
@@ -336,7 +338,7 @@ interface Voice { id; language }                             // language: a prim
 interface Offering extends Capabilities {   // one model on one endpoint, with a permanent id
   id; endpointId; modelId; manual: boolean;
   status: "listed" | "missing" | "gone"; missingSince?;      // gone: missing for GONE_DAYS (30)
-  digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; separate?;   // reported by a host
+  digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; useFor?: "fast" | "quality" | "both"; separate?;   // reported by a host
   opensThinking?;                                            // a host's chat template writes <think> itself
 }
 type ModelRef = { offeringId: string } | { groupId: string };
@@ -352,7 +354,7 @@ interface CallContext {
   thinking?: ThinkingLevel;
   fallback?: boolean;                       // Fallback; false: only a list's first entry answers; absent is on
 }
-interface Need { tools?: boolean; tokens?: number }        // what the call needs from a model
+interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality" }        // what the call needs from a model
 interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: ProfileName;
                        source: "thread" | "profile"; skipped: { label; reason }[]; remaining: number }
 interface Pace { promptTokens; outputTokens; window; ttftMs; genMs; processed }   // counts and times only
@@ -413,6 +415,7 @@ class Models {                                              // new Models(keyrin
   //   | edit { prompt, image: ImageInput, mask?: ImageInput, count?, references?: ImageInput[] }
   //   | upscale { image: ImageInput, scale?, maxSize? }; each has action: "create" | "edit" | "upscale"
   // GeneratedImage { bytes: Uint8Array; type: "image/png"; width; height; seed? }; no prompt metadata
+  // Create passes imageTier to resolution: local recipes skip a useFor tag of only the other tier; cloud models serve both.
   // beforeSend runs on every resolved attempt, including fallbacks, before any image or prompt is sent; a refusal stops the call.
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
@@ -438,6 +441,9 @@ class Models {                                              // new Models(keyrin
   hubFiles(actor, hostId, { source, repo, revision? }) / startDownload(actor, hostId, body) / downloads(actor, hostId) / cancelDownload(actor, hostId, downloadId)
   deleteCopy(actor, offeringId, { confirm? }): Promise<{ usedIn: Use[]; deleted?: string[]; left?: { files; reason } }>
   imageLibrary(userId, hostId): { recipes; parts (by role) } / recipe(actor, hostId, recipeId, action)
+  // Recipes live in the host's recipes.json; optional useFor: "fast" | "quality" | "both", absent reads as both.
+  // recipe action { do: "change", change: { op: "useFor", useFor } } forwards to the host's PATCH and refreshes offerings.
+  // Discovery caches useFor in offerings' existing found JSON; no database schema change.
   // Host management and serving
   manageHost(actor, hostId, method, path, body?)            // only models/load|unload|pin|reload, gpus/<n>, scan, usage
   servingSettings(userId, offeringId) / setServingSettings(actor, offeringId, settings) / reloadModel(actor, offeringId)
@@ -812,6 +818,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     It checks portrait consent in `Models.image.beforeSend` for the actual
     endpoint on each attempt, including fallbacks. Never is a plain refusal; Ask uses
     `Send photos of you to <endpoint>?` through the existing approval flow;
+    its `tool: "image"` request's `input` (HTTP `PermissionRequest.args`)
+    carries `{ question, provider, model }`, where `provider` is the resolved
+    endpoint name and `model` its resolved model label. The web card asks
+    "Send your portrait photos to <model> (cloud) for this image? A yes lasts
+    until the end of the day.", with Send today and Not today, no thread-wide Allow.
     Always and local models allow. Ask's approval is per user through the end
     of that server-local day; a policy change clears it. No viewer means denial.
     Outputs save in the encrypted thread folder and return Pi image content
@@ -977,7 +988,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   allowInThread? }`, and approving a plan without `mode` is `400`. A
   request on a machine carries `machine` and `cwd`, a suspect one `suspect:
   true` and `warning`, an MCP one `server` and `serverTool`;
-  image portrait consent uses `tool: "image"`, `args: { question, provider }`
+  image portrait consent uses `tool: "image"`, `args: { question, provider, model }`
   and `warning` with its question, without a thread-wide Allow option;
   `allowInThread` stores that exact command, or that server's tool, for the
   thread it runs in and is refused on any other request. A plan switching the mode, or a
@@ -1128,7 +1139,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     401. `GET /api/u/:userId/photos-of-me` → `PortraitPhoto[]` (`path`, `size`,
     `type`); `POST` raw PNG/JPEG/WebP, at most 20 MB → `UploadResponse`, with
     metadata removed and an exclusive generated filename; `DELETE …/:name`
-    → `Ok`. `GET`/`PUT /api/u/:userId/photo-cloud` → `PhotoCloudSetting`
+    → `Ok`. `GET …/photos-of-me/:name` serves sniffed PNG/JPEG/WebP bytes
+    from that user's portrait folder only, with `no-store`, `nosniff` and a
+    sandbox CSP; traversal, symlinks, non-images and another user's files
+    are 404, no login is 401. `GET`/`PUT /api/u/:userId/photo-cloud` → `PhotoCloudSetting`
     (`policy: "never" | "ask" | "always"`); PUT validates and clears daily
     approval. All follow session/key checks and mutations require same-origin.
     HTTP `Capabilities` includes `upscale`, as core does.
@@ -1152,7 +1166,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       (again, same addresses); `PUT …/addresses`; `GET …/status`; `POST
       …/pause|resume|restart`; `GET …/dashboard` (→ `{ url }`); `POST …/manage`;
       `GET …/hub/files`; `POST`/`GET …/downloads`, `DELETE …/downloads/:id`;
-      `GET …/images`; `POST …/recipes/:recipeId`. Unpair is `DELETE
+      `GET …/images`; `POST …/recipes/:recipeId` (including
+      `{ do: "change", change: { op: "useFor", useFor: "fast" | "quality" | "both" } }`,
+      saves on the host and refreshes discovery). Unpair is `DELETE
       endpoints/:id`. Types: `HostInput`, `HostRepair`, `HostAddresses`,
       `HostStatus`, `HostManage`, `DownloadInput`, `RecipeAction`.
     - **Offerings:** `PATCH`/`DELETE offerings/:id`; `POST …/replace`; `GET
@@ -1395,6 +1411,7 @@ imageFiles(t): ThreadImages
 photos(userId): PortraitPhotos
 // list(): PortraitPhoto[] { path; size; type }; upload(bytes): path (PNG/JPEG/WebP, 20 MB, metadata removed,
 //   exclusive generated name); remove(name): void. Every access checks the user's key and mounted home.
+// content(name): HomeFile; one PNG/JPEG/WebP in the portrait folder, refusing traversal/symlinks/non-images.
 settings(userId).photoCloudPolicy(): "never" | "ask" | "always" / setPhotoCloudPolicy(policy)
 settings(userId).photoCloudApproved(day): boolean / approvePhotoCloud(day) // encrypted day only; no prompt
 settings(userId).isPortraitImage(hash): boolean / recordPortraitImage(hash) // additive images.portrait.sha256.<hash> settings, no schema step
@@ -1564,3 +1581,9 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
 - **Show general**, **Show private** and **Show hidden threads** are per-user
   display filters.
 - The sidebar has a Sleep section.
+
+The home composer reads `GET /api/u/:userId/thread-defaults?pool=general|private`
+for `ThreadSettings` without creating a thread. On Send it creates the thread,
+PATCHes changed settings, uploads attached files, then sends the first message.
+The read-only defaults route uses the same defaults as thread creation and
+requires the addressed user's session; it returns no thread or memory text.

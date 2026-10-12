@@ -166,6 +166,8 @@ export interface Offering extends Capabilities {
   size?: number;
   /** An image model on a host: a confirmed recipe's name. */
   recipe?: string;
+  /** A host recipe's create tiers; absent means both. */
+  useFor?: "fast" | "quality" | "both";
   /** "Not this model": kept out of the entry its name would put it in. */
   separate?: boolean;
   /** A host's chat template writes `<think>` itself, so a reply can start mid-thought. */
@@ -251,8 +253,8 @@ export interface CleanupItem {
   suggestion?: { offeringId: string; label: string };
 }
 
-/** What a call needs from a model: tools, and room for the conversation. */
-export interface Need { tools?: boolean; tokens?: number }
+/** What a call needs from a model: tools, room for the conversation, or an image create tier. */
+export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality" }
 /** `evenIfDown`: ignore the health cache (stale still counts). `except`: endpoints to treat as down. */
 export interface ResolveOptions { evenIfDown?: boolean; except?: ReadonlySet<string> }
 
@@ -393,7 +395,7 @@ const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
-  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; separate?: boolean; servedContext?: number; opensThinking?: boolean } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; opensThinking?: boolean } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
   // A host's serving settings decide its context window, over one set by hand and one discovered.
   const served = (JSON.parse(r.found) as { servedContext?: number }).servedContext;
   if (served) caps.contextWindow = served;
@@ -407,7 +409,7 @@ const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
     ...(caps.identity ? { identity: caps.identity } : {}),
     ...(caps.downloaded !== undefined ? { downloaded: caps.downloaded } : {}),
     ...(caps.size ? { size: caps.size } : {}),
-    ...(caps.recipe ? { recipe: caps.recipe } : {}),
+    ...(caps.recipe ? { recipe: caps.recipe, useFor: caps.useFor ?? "both" } : {}),
     ...(caps.separate ? { separate: true } : {}),
     ...(caps.opensThinking ? { opensThinking: true } : {}),
   };
@@ -860,7 +862,7 @@ export class Models {
   /**
    * Changes a host's image library: confirm or ignore a proposal, download
    * its missing parts, change it (swap a part within its role and slot, add
-   * or remove a LoRA, defaults, rename), copy it, or delete it, which keeps
+   * or remove a LoRA, defaults, rename, create tiers), copy it, or delete it, which keeps
    * every part another recipe uses. A shared host needs an administrator.
    * Confirmed recipes become image offerings at once.
    */
@@ -1196,9 +1198,9 @@ export class Models {
     }>(await this.hostCall(ep, "GET", "/host/v1/models"), "models");
     if (!list) throw new Error(`${ep.name} didn't return a model list`);
     // Image models are recipes: only confirmed ones become offerings, so a proposal never resolves.
-    const recipes = (listIn<{ id: string; name: string; state: string; does?: string[] }>(await this.hostCall(ep, "GET", "/host/v1/recipes?state=confirmed").catch(() => []), "recipes") ?? [])
+    const recipes = (listIn<{ id: string; name: string; state: string; does?: string[]; useFor?: Offering["useFor"] }>(await this.hostCall(ep, "GET", "/host/v1/recipes?state=confirmed").catch(() => []), "recipes") ?? [])
       .filter((r) => r?.state === "confirmed").map((r) => ({
-        modelId: `recipe/${r.id}`, recipe: r.name, ...(r.does?.includes("create") ? { image: true } : {}), ...(r.does?.includes("edit") ? { edit: true } : {}), ...(r.does?.includes("upscale") ? { upscale: true } : {}),
+        modelId: `recipe/${r.id}`, recipe: r.name, useFor: r.useFor ?? "both", ...(r.does?.includes("create") ? { image: true } : {}), ...(r.does?.includes("edit") ? { edit: true } : {}), ...(r.does?.includes("upscale") ? { upscale: true } : {}),
       } as DiscoveredModel));
     return [...list.filter((m) => typeof m?.id === "string" && m.kind !== "image").map((m) => {
       const levels = (m.capabilities?.reasoning ?? []).filter((l) => l !== "off");
@@ -1892,7 +1894,7 @@ export class Models {
   /** Images stay in memory; the caller stores results and records the call. */
   async image(ctx: CallContext, request: ImageRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void> } = {}): Promise<{ images: GeneratedImage[]; resolution: Resolution }> {
     validateImageRequest(request);
-    return this.callWithFallback(`image.${request.action}`, ctx, {}, async (r) => {
+    return this.callWithFallback(`image.${request.action}`, ctx, request.action === "create" ? { imageTier: request.tier } : {}, async (r) => {
       opts.signal?.throwIfAborted();
       await opts.beforeSend?.(r);
       opts.signal?.throwIfAborted();
@@ -2094,6 +2096,8 @@ export class Models {
   private unfit(task: Task, o: Offering, ep: Endpoint, need: Need): string | undefined {
     if (o.status === "gone") return `it has been missing from ${ep.name} for ${GONE_DAYS} days`;
     if (task === "image.create" && !o.image) return "it doesn't make images";
+    if (task === "image.create" && need.imageTier && ep.kind === "local" && o.recipe
+      && o.useFor && o.useFor !== "both" && o.useFor !== need.imageTier) return `it is for ${o.useFor} images`;
     if (task === "image.upscale" && !o.upscale) return "it doesn't upscale images";
     if (task === "image.edit" && !o.edit) return "it doesn't edit images";
     if (task === "speech.transcribe" && !o.transcribe) return "it doesn't transcribe speech";

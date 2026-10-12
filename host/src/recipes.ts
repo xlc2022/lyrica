@@ -30,6 +30,8 @@ export interface Recipe {
   arch: string;
   template: string;
   does: Action[];
+  /** Create tiers; older recipes serve both. */
+  useFor?: "fast" | "quality" | "both";
   parts: RecipePart[];
   loras: { file: string; strength: number }[];
   defaults: Record<string, string | number>;
@@ -94,6 +96,7 @@ export class RecipeBook {
   constructor(dataDir: string, templates: Map<string, Template>, starters: Starter[]) {
     this.path = join(dataDir, "recipes.json");
     this.recipes = existsSync(this.path) ? JSON.parse(readFileSync(this.path, "utf8")) : [];
+    for (const r of this.recipes) if (r.useFor !== "fast" && r.useFor !== "quality") r.useFor = "both";
     this.templates = templates;
     this.starters = starters;
   }
@@ -132,7 +135,7 @@ export class RecipeBook {
   }
 
   describe(r: Recipe, files: Set<string>) {
-    return { ...r, ready: this.ready(r, files) };
+    return { ...r, useFor: r.useFor ?? "both", ready: this.ready(r, files) };
   }
 
   /** The template for a main part: an edit model gets the edit template when its architecture has one. */
@@ -175,7 +178,7 @@ export class RecipeBook {
         }
       }
       this.recipes.push({
-        id: randomUUID(), name: prettyName(main.file), state: "proposed", arch: t.arch, template: t.name, does: t.does,
+        id: randomUUID(), name: prettyName(main.file), state: "proposed", arch: t.arch, template: t.name, does: t.does, useFor: "both",
         parts: recipeParts, loras: [], defaults: { ...(starter?.defaults ?? {}) }, base: null, starter: null,
       });
       used.add(main.file);
@@ -228,6 +231,10 @@ export class RecipeBook {
     };
     const slot = (body.slot ?? null) as string | null;
     switch (body.op) {
+      case "useFor":
+        if (!["fast", "quality", "both"].includes(body.useFor as string)) throw invalid("useFor must be fast, quality or both.");
+        r.useFor = body.useFor as Recipe["useFor"];
+        break;
       case "swap": {
         const current = r.parts.find((p) => p.role === body.role && p.slot === slot);
         if (!current) throw invalid("The recipe has no part with that role and slot.");
@@ -333,7 +340,7 @@ export class RecipeBook {
       return { role: p.role, slot: p.slot ?? null, file: file ?? starterPath(p), added: false };
     });
     const recipe: Recipe = {
-      id: randomUUID(), name: starter.name, state: "confirmed", arch: t.arch, template: t.name, does: t.does,
+      id: randomUUID(), name: starter.name, state: "confirmed", arch: t.arch, template: t.name, does: t.does, useFor: "both",
       parts, loras: [...starter.loras], defaults: { ...starter.defaults }, base: null, starter: starter.id,
     };
     this.recipes.push(recipe);

@@ -458,6 +458,15 @@ the old one. Run `install.sh` once before saving the passphrase: the
 old unit has systemd unseal the file itself, which can fail and stop
 lyricad from starting.
 
+To change the passphrase later, stop lyricad (`sudo systemctl stop lyricad`)
+and run `sudo lyrica admin passphrase`: it asks for the current one, then
+the new one twice, and refuses while lyricad runs. Start lyricad again and
+unlock with the new one. A saved Start unlocked passphrase is re-saved
+with the new one; if that fails, the saved copy is removed, so check Start
+unlocked under Administration and save it again if it says the passphrase
+isn't saved. Old update snapshots of `self.db` keep opening with the old
+passphrase.
+
 Each user can likewise save their own data key under Settings, Unlock and
 lock, so
 their home workspace mounts at start and sleep can run for them without a
@@ -548,7 +557,9 @@ Her `image` tool creates and edits pictures through OpenAI or through
 confirmed recipes on a paired model host, and upscales through host recipes
 only. It uses the `image.create`, `image.edit` and `image.upscale` task
 lists; private and local-only threads always use the local profile's. Each
-list is an ordered fallback, so put the faster host's recipes first. Hosts
+list is an ordered fallback. In **Models → Image models**, open a recipe
+and set **Use for** to **Fast**, **Quality** or **Both** (default) per host.
+Create takes the first matching recipe and falls back down the same list. Hosts
 keep their recipe defaults for both fast and quality; OpenAI uses low or
 high quality. Results are saved in the encrypted thread folder, with no
 prompt metadata.
@@ -575,8 +586,9 @@ lyrica admin models profile set cloud image.edit openai-images/gpt-image-1 --use
 lyrica admin models profile set local image.upscale '<host>/<recipe>' --user ada
 ```
 
-Portrait photos and their cloud setting are set through the API for now:
-[daemon.md](../daemon.md#images-and-portrait-photos).
+Add reference photos and choose their cloud setting in **Settings → Portrait
+photos**. Ask once a day is the default; **Send today** allows them through
+server-local midnight, and **Not today** declines the request.
 
 Diagrams with exact layouts render offline with the headless Chromium and
 fonts already in her sandbox (`install.sh` installs them; on NixOS they are
@@ -803,7 +815,7 @@ the SSH ones, and `ssh remove <name>` takes one away.
   sleep, unmounts home workspaces and drops keys. With no saved passphrase,
   she comes back locked; browser sessions don't survive a restart, so
   everyone logs in again.
-- **Her name** is under Administration, Persona, Name. Memories and threads
+- **Her name** is under Administration, Her name, Name. Memories and threads
   written so far keep the old one.
 - **Sleep** runs at `sleep.time` (04:00 local by default; Administration,
   Sleep) for every user whose key is available, unless they set Sleep to
@@ -877,8 +889,8 @@ the SSH ones, and `ssh remove <name>` takes one away.
   `/usr/local/bin/chromium-headless-shell` gets headless Chromium and IBM
   Plex for her screenshots on this run; on NixOS the next rebuild brings
   them. An existing install gets Claude Code on its next `install.sh` run,
-  and NixOS on the next rebuild. The home page header
-  ("Lyrica 0.1.0 · <build>") shows the git commit that is running.
+  and NixOS on the next rebuild. The home page header (her name, then
+  "0.1.0 · <build>") shows the git commit that is running.
 
 ## Checklist for the first install on your machine
 
