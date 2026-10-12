@@ -550,8 +550,15 @@ against the host before it is saved, in one pool. A GitHub account is
 general only; a private account must be on a host on your own network,
 unless you confirm adding it anyway.
 Make each token fine-grained, for the repositories she works on, with no
-admin rights: every command in a thread that has the repository can read
-it.
+admin rights. The token stays in `lyricad` and never enters her sandbox,
+but every command in a thread that has the repository can use it on that
+host.
+
+A Forgejo or Gitea needs a publicly trusted certificate, such as one
+from Let's Encrypt or from `tailscale cert` (Tailscale Serve uses it).
+One whose certificate comes from your own authority can't be added yet:
+`lyricad` checks the account against the host and trusts only Node's own
+list of authorities.
 
 A project's **Repositories** row (Project settings, under This chat) and
 the thread drawer list which repositories a thread has. Each thread clones
