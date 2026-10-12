@@ -29,7 +29,11 @@ written here.
    everything else). Her account goes in **Settings → Git accounts**
    first: kind GitHub, her login, and her fine-grained token with
    Contents and Pull requests read and write and Actions read, so she
-   can read why her CI failed (docs/workspace.md, "Her own code").
+   can read why her CI failed (docs/workspace.md, "Her own code"). For
+   looking things up, set a SearXNG in Administration → Web search
+   (docs/guides/searxng.md) and leave each thread's Web search switch on:
+   `web_search`, and `web_fetch` for reading a page, which needs the
+   thread's internet or the page's host allowed.
 2. Paste the **Project instructions** below into Project settings →
    Memory → Instructions (the count shows it is under 2,000; only Li can
    change them).

@@ -1600,3 +1600,43 @@ test("Tasks: the table shows each profile's models; a cell's drawer adds, reorde
   await expect(page.getByRole("checkbox", { name: "Sleep fallback" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "Model profiles" })).toHaveCount(0);
 });
+
+test("Web search: the administrator sets the SearXNG address and sees whether it answers; without one the switch says why", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const shot = async (name: string) => {
+    if (!process.env.SCREENSHOTS) return;
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.screenshot({ path: `${process.env.SCREENSHOTS}/${name}-${page.viewportSize()!.width}-${colorScheme}.png` });
+    }
+    await page.emulateMedia({ colorScheme: null });
+  };
+  const fake = `http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}`;
+  await page.goto(`/#/u/${userId}/admin/search`);
+  const section = page.getByRole("region", { name: "Web search" });
+  const address = section.getByLabel("SearXNG address");
+  await address.fill(`${fake}/searxng`);
+  await section.getByRole("button", { name: "Save" }).click();
+  await expect(section.locator(".state-word")).toHaveText("Reachable");
+  await noHorizontalScroll(page);
+  await shot("web-search-reachable");
+  await address.fill(`${fake}/nothing-here`);
+  await section.getByRole("button", { name: "Save" }).click();
+  await expect(section.locator(".state-word")).toHaveText("Unreachable");
+  await expect(section.locator(".state-word")).toHaveAttribute("title", /answered 404/);
+  await shot("web-search-unreachable");
+  await address.fill("");
+  await section.getByRole("button", { name: "Save" }).click();
+  await expect(section.locator(".state-word")).toHaveCount(0);
+
+  await newThread(page, "General");
+  await send(page, "hello there");
+  await page.getByRole("button", { name: "Attach or switch tools" }).click();
+  const menu = page.getByRole("menu", { name: "Attach and tools" });
+  const web = menu.locator("label.switch", { hasText: "Web search" });
+  await expect(web).toHaveAttribute("title", "Search needs a SearXNG address in Administration");
+  await expect(menu.getByLabel("Web search")).toBeEnabled();
+  await web.hover();
+  await shot("web-search-switch-unset");
+  await page.keyboard.press("Escape");
+});

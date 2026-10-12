@@ -5,7 +5,7 @@ import {
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  appendUserMessage, ContextMeter, createDelegateExtension, createLyricaExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWorkspaceExtension, DELEGATE_MESSAGE, OPENING, openThreadSession, piModelFor, syncEntries,
+  appendUserMessage, ContextMeter, createDelegateExtension, createLyricaExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, OPENING, openThreadSession, piModelFor, syncEntries,
   GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
@@ -28,6 +28,8 @@ export interface HostOptions {
   permissionMs: number;
   /** For failures that aren't the user's: never message text. */
   log: (line: string) => void;
+  /** The server's SearXNG address, for web_search; without one there is no web_search. */
+  searxng?: () => string | null;
   /** Child threads: every hosted thread gets the `threads` tool. */
   threads?: ThreadsHost;
   /** How often a thread whose message waits for a model asks the machines again. Default HEALTH_MS. */
@@ -762,6 +764,8 @@ export class HostedThread {
             proposePlan: (r) => this.proposePlan(r),
             setMode: (mode) => { tools.setMode(mode); this.emit({ type: "settings" }); },
           }),
+          // web_search and web_fetch, behind the Web search switch; a fetch runs in the thread's sandbox.
+          createWebExtension({ searxng: () => this.o.searxng?.(), target: () => tools.target() }),
           ...(canDelegate ? [createDelegateExtension(ctx, delegation)] : []),
           // Child threads and compacting. Never a subagent's: a subagent works for its run, not on streams of its own.
           ...(!thread.subagent ? [createThreadsExtension(ctx, this.o.threads, meter)] : []),

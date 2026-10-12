@@ -42,7 +42,7 @@ working implementation (`config/extensions/stateful-memory/memory-sleep.js`).
 | Phase order | WAKE, FACTS, dream | **Change** to consolidate, dream, wake. WAKE is written last so it can carry what consolidation found and the questions it raised. |
 | Dreams in conversation | only via recall | **Keep, and add items.** Dreams come up naturally through recall when a conversation touches them ("I dreamt about something like this last night"). What she'd like to raise becomes an item in the Sleep section, and the user can start a chat from it. She never opens a thread with it. |
 | Persona proposals | in the journal, reviewed out of band | **Change.** A proposal from a pool's dream is a draft in that user's own `user.db` (`PersonaProposals.propose`): the user can edit, drop or send it on, and only what they send reaches the administrators, who approve or reject it. A proposal from an administrator's own dream is sent at once. It also appears as an item in the Sleep section. |
-| Fallback to other providers | yes | **Change.** A failed call is retried twice on the same model. Never across the local/cloud line. |
+| Fallback to other providers | yes | **Change.** A phase starts on the first model in its list that answers, never across the local/cloud line. A failed call is retried twice on that model. |
 | Tools during sleep | everything | **Narrow** to memory tools only: no shell or web. |
 | Scope | one user | **Add** users and pools. Each pool sleeps separately. Private sleep reads general memory but writes only to the private pool. |
 
@@ -109,9 +109,10 @@ Sleep never mixes general and private memory:
 - **Private sleep** reads general memory as background and writes only to its
   own private database. It runs only on a custom endpoint.
 
-The control panel sets a sleep model for each pool, and optionally a model per
-phase (for example, a cheaper model for consolidation and a stronger one for
-dreaming). A private pool's model picker lists only custom-endpoint models.
+The control panel sets a model list for each phase (for example, a cheaper
+model for consolidation and a stronger one for dreaming) in each model
+profile. Private sleep always uses the local profile, so its pickers list only
+local models.
 
 **Citations across pools.** A private page may cite general notes, but a general
 page can never cite private ones. If a general note is deleted, the private
@@ -139,9 +140,8 @@ cheap request (such as listing models).
   and the remaining phases run next time.
 - **Manual `/sleep` with the endpoint down:** an immediate, plain error.
 
-Cloud and general sleep never fall back to a different model. Retries stay
-within the pool's configured models. With **Sleep fallback** off
-(`sleep.fallback`, Settings → Model profiles), each phase uses its list's
+Sleep never falls back outside the phase's own model list. With **Sleep
+fallback** off (`sleep.fallback`, Settings → Model profiles), each phase uses its list's
 first model only: when that one is away, the pool is skipped as above.
 
 ## Sleep in the UI

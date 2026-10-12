@@ -15,8 +15,9 @@ minutes on a private repository are billed past the plan's allowance.
 - The jobs install their own packages with sudo, so the VM is theirs to
   change. needrestart only lists services (it once restarted the runner
   mid-job), and apt waits up to 10 minutes for a busy dpkg lock; setup.sh,
-  the check job and the nix job all set this. It holds nothing else: never the lyricad machine (Li's memory) or
-  the model host (the host-stack job installs its own model host stack).
+  the check job and the nix job all set this. The VM holds nothing else: never
+  the lyricad machine (Li's memory) or the model host (the host-stack job
+  installs its own stack).
 - The nix job installs Nix once (pinned installer, kept between runs), runs
   `nix flake check` and the sandbox tests with the NixOS sandbox tools and
   closure (docs/daemon.md "On NixOS"). Nix stays installed on the VM. If

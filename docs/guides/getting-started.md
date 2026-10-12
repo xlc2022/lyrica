@@ -7,17 +7,17 @@ reference for each piece is [docs/daemon.md](../daemon.md) ("Deployment")
 and [docs/workspace.md](../workspace.md) ("Host requirements"). Model hosts
 (the GPU machines that run her models) have their own guide,
 [model-hosts.md](model-hosts.md), and the machines that run the project's
-checks have [ci-runners.md](ci-runners.md).
+checks have [ci-runners.md](ci-runners.md). Her web search uses a SearXNG
+you host: [searxng.md](searxng.md).
 
-**What has and hasn't been exercised.** `install.sh` is run in no automated
-check, and as of this writing it has never been run on a fresh Debian host.
-The systemd unit and its hardening have not been checked on Li's LXC
-container either (the daemon brief's handoff says so). Everything below is
-read from the script and the units, so expect to hit something the first
-time; the checklist at the end is for that first run. The checks CI does run
-on every pull request (typecheck, tests, the sandbox tests as an unprivileged
-user, the web build and the browser tests) run on Ubuntu 24.04, not on
-Debian.
+**What has and hasn't been exercised.** No automated check runs
+`install.sh`, and it has never been run on a fresh Debian host. The systemd
+unit and its hardening have not been checked on Li's LXC container either
+(the daemon brief's handoff says so). Everything below is read from the
+script and the units, so expect to hit something the first time; the
+checklist at the end is for that first run. The checks CI does run on every
+pull request (typecheck, tests, the sandbox tests as an unprivileged user,
+the web build and the browser tests) run on Ubuntu 24.04, not on Debian.
 
 ## What you end up with
 
@@ -122,16 +122,17 @@ What `install.sh` does, in order:
    `lyricad` gets the `lyrica-caddy` group from its unit, so it alone can
    reach Caddy's admin socket. `lyrica-build` builds releases with no
    access to her data.
-3. Builds the checkout's commit, as `lyrica-build`, into
+3. Installs the updater, its units, the bare repository
+   `/opt/lyrica/repo.git`, GitHub's pinned host key in
+   `/etc/lyrica/known_hosts`, and (the first time) a deploy key in
+   `/etc/lyrica/deploy-key`, whose public half it prints at the end.
+4. Builds the checkout's commit, as `lyrica-build`, into
    `/opt/lyrica/releases/<commit>`, makes it root-owned and read-only, and
    points `/opt/lyrica/current` at it (`previous` at the one before). When
    `lyricad` was running another release, it lets turns finish, stops her
    and snapshots her databases first. `/var/lib/lyrica` is created for the
-   `lyrica` user, mode 0700.
-4. Installs the updater, its units, the bare repository
-   `/opt/lyrica/repo.git`, GitHub's pinned host key in
-   `/etc/lyrica/known_hosts`, and a deploy key in `/etc/lyrica/deploy-key`,
-   whose public half it prints at the end.
+   `lyrica` user, mode 0700. It also installs the `lyrica` command in
+   `/usr/local/bin`.
 5. Builds Caddy with `xcaddy` from pinned versions of Go, xcaddy, Caddy and
    every DNS plugin in `daemon/src/web/providers.ts`, in a clean
    environment. This takes a few minutes the first time. Running the script
@@ -139,10 +140,11 @@ What `install.sh` does, in order:
 6. Sets `net.ipv4.ip_nonlocal_bind=1`, so Caddy can bind a Tailscale address
    before Tailscale is up.
 7. Installs, enables and starts `lyrica-caddy.service`,
-   `lyrica-tailscaled.service` and `lyricad.service`, and enables
-   `lyrica-update.path`. On an upgrade it restarts `lyricad`. On a fresh install `lyricad` starts setting up, and
-   the script ends by printing a one-time setup code, the addresses to open
-   and the certificate's fingerprint (see "First run").
+   `lyrica-tailscaled.service` and `lyricad.service`, and enables and
+   starts `lyrica-update.path`. On an upgrade it restarts `lyricad`. On a
+   fresh install `lyricad` starts setting up, and the script ends by printing
+   a one-time setup code, the addresses to open and the certificate's
+   fingerprint (see "First run").
 
 Running it again later installs the checkout's commit as a new release
 (see "Upgrading").
@@ -157,9 +159,9 @@ snapshots her databases, but it can't snapshot the container it runs in.
 ### On NixOS
 
 The repository is a flake, and its NixOS module sets up what the install
-script does on Debian: both users, `/var/lib/lyrica`, the units with the
-same hardening, her own `tailscaled`, and Caddy with the DNS plugins. x86-64 only. The reference
-is [docs/daemon.md](../daemon.md#on-nixos). Instead of the steps above:
+script does on Debian: the users, `/var/lib/lyrica`, the units with the
+same hardening, her own `tailscaled`, and Caddy with the DNS plugins.
+x86-64 only. The reference is [docs/daemon.md](../daemon.md#on-nixos). Instead of the steps above:
 
 1. In your system flake, add the repository as an input and the module to
    your configuration, then turn the service on:
@@ -189,8 +191,8 @@ is [docs/daemon.md](../daemon.md#on-nixos). Instead of the steps above:
 4. Instead of "Check the deploy", run `nix/check-host.sh` from a checkout
    of the repository, as root, after the first run. It checks `lyricad`
    and Caddy, that her `tailscaled` answers on its socket, `NoNewPrivs`,
-   the setuid `fusermount3`, Caddy's socket, a sandbox and `pasta` as the
-   `lyrica` user, the network self-test and the port, one line each, and
+   the setuid `fusermount3`, Caddy's socket, `lyrica-update.path`, a
+   sandbox and `pasta` as the `lyrica` user, the network self-test and the port, one line each, and
    ends with "All checks passed." or stops at the first failure.
 
 Everything from "Save the passphrase" on applies unchanged. `lyricad`
@@ -244,7 +246,7 @@ fingerprint matches the one printed. The page is **Set up Lyrica**:
 3. **Administrator:** the first administrator's login, password, display
    name and pronouns. **Create** makes `self.db`, imports the persona seed
    from `persona/`, unlocks her and signs you in. A wrong code says so; too
-   many wrong codes make you wait a minute.
+   many wrong codes make you wait, longer each time.
 4. **Tailnet** (or Skip): an auth key and hostname to put her on your
    tailnet, then whether to serve the web UI there too.
 5. **Models** (or Skip): one shared endpoint, whose first chat model
@@ -254,9 +256,11 @@ fingerprint matches the one printed. The page is **Set up Lyrica**:
 
 `journalctl -u lyricad -f` shows her starting. No restart is needed.
 
-The other way is a terminal: `lyrica admin init` asks the same questions at
-hidden prompts (no code needed; passwords and passphrases are never passed
-as arguments), then `systemctl restart lyricad`, and she starts locked.
+The other way is a terminal: `lyrica admin init` asks for the passphrase,
+her name and the first administrator (no code needed; passwords and
+passphrases are read at hidden prompts, never passed as arguments), then
+`systemctl restart lyricad`, and she starts locked. It does not set up the
+tailnet or models: do those under Administration and Settings.
 
 ### Unlock her
 
@@ -338,7 +342,7 @@ Caddy:
    last error.
 
 A change never locks you out: the old setup keeps serving until the new one
-has a working certificate. The other mode, **External proxy**, is for a
+has a working certificate. The other mode, **A proxy elsewhere**, is for a
 Caddy or other proxy elsewhere on your network; the page gives it a
 Caddyfile snippet and a certificate to pin. Details are in
 [docs/daemon.md](../daemon.md#web-access).
@@ -360,8 +364,8 @@ sleep, dictation, read aloud and so on) to ordered lists of models; the
 first model that answers is used, and private and local-only threads use
 the local profile only. See [docs/models.md](../models.md).
 
-- **A cloud or OpenAI-compatible endpoint:** Settings, Endpoints, Add
-  an endpoint (a name, cloud or local, the base URL, the API key). Shared
+- **A cloud or OpenAI-compatible endpoint:** Models, Hosts and endpoints,
+  **Add endpoint** (Name, Kind local or cloud, Base URL, API key). Shared
   endpoints, which every user can use, need an administrator. The same from
   a terminal:
 
@@ -401,6 +405,16 @@ on and local services off, private threads with both off. Change
 them under Settings, Network (below its "New threads" group, which holds
 the default mode and Fallback), or with `lyrica admin net`. Each
 thread can narrow or widen its own from the thread settings drawer.
+
+## Give her web search
+
+Her `web_search` asks one SearXNG that you host yourself; Lyrica never
+installs or runs it. Host one and give its address under Administration,
+**Web search**, which says **Reachable** once a test search works:
+[searxng.md](searxng.md). Every thread with the Web search switch on can
+then search, private ones included (the engines see the query, never who
+asked). `web_fetch` reads a page with `curl` inside the thread's sandbox,
+so its network switches decide what it reaches.
 
 ## Give her repositories
 
@@ -555,10 +569,9 @@ the SSH ones, and `ssh remove <name>` takes one away.
 ## Day to day
 
 - **Logs:** `journalctl -u lyricad`, `journalctl -u lyrica-caddy` and
-  `journalctl -u lyrica-tailscaled`. One
-  line per request with the route pattern and status; never message or
-  memory text. Caddy's TLS errors go to `/run/lyrica-caddy/tls.log` instead
-  of the journal, since a DNS plugin can quote its token in one.
+  `journalctl -u lyrica-tailscaled`. Each request logs one line with the
+  route pattern and status; never message or memory text. Caddy's TLS
+  errors go to `/run/lyrica-caddy/tls.log` instead of the journal, since a DNS plugin can quote its token in one.
 - **Restart:** `systemctl restart lyricad`. On stop she ends every turn and
   sleep, unmounts home workspaces and drops keys. With no saved passphrase,
   she comes back locked; browser sessions don't survive a restart, so
@@ -664,6 +677,8 @@ something the code expects but nobody has confirmed on real hardware.
     `lyrica-rollback` do the same from a terminal.
 11. Add a Git account and give a thread a repository: it is cloned into
     `/workspace/repos`, and with internet on `gh pr list` works there.
+12. Set the SearXNG address under Administration, Web search: it says
+    Reachable, and `web_search` answers in a thread.
 
 Report what fails, with the journal lines, in the Operator docs thread; the
 guide gets corrected from the real run.

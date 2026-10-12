@@ -28,10 +28,13 @@ on `/v1`, where OpenAI clients read `error.message`.
 | HTTP | `code` | When |
 |---|---|---|
 | 400 | `invalid` | A malformed request, unknown field or bad value. |
+| 400 | `need_repo` | A lookup for a model whose repository the host doesn't know. |
+| 400 | `too_big` | Saved settings with a placement that can't fit even on empty GPUs. |
 | 401 | `unpaired` | The client certificate isn't pinned, or was revoked. |
 | 403 | `refused` | Not allowed: a pickle file, a delete outside the download record, a dashboard-only action. |
 | 404 | `not_found` | No such model, recipe, download or file. |
 | 409 | `in_use` | The model or file is in use by a running request, or a link is already downloading. |
+| 409 | `above_recommended` | A stretch above the factor the model's card documents, saved without `anyway`. |
 | 413 | `too_big` | The model can't fit on any GPU it may use, even with everything idle unloaded. |
 | 503 | `paused` | The host is paused. Lyrica uses her fallbacks. |
 | 503 | `busy` | It could fit, but not within the wait limit, because the GPU is busy. The message names what with: "The GPU is busy with a chat model." |
@@ -43,9 +46,9 @@ on `/v1`, where OpenAI clients read `error.message`.
 ## Priority
 
 A request may send `X-Lyrica-Priority: chat`, `image` or `background`.
-Each GPU has one queue, served in that order, then oldest first. Defaults:
-`chat` for `/v1`, `image` for `/host/v1/images/*`. Lyrica sends `background`
-for sleep and cheap subagents.
+Each GPU has one queue, served in that order, then oldest first. `/v1`
+defaults to `chat`. `/host/v1/images/*` always runs at `image`; the header
+is ignored there. Lyrica sends `background` for sleep and cheap subagents.
 
 A queued request waits at most 120 seconds (`chat`), 300 (`image`) or 900
 (`background`) for room, then fails with `busy`.
@@ -70,7 +73,8 @@ the model server cuts short is cut short too.
   (the audio), `model`, and optionally `language` (`en`, `zh`; without it
   the model detects the language), `response_format` (`json` or `text`)
   and `temperature`. Up to 64 MB. The form is passed to vLLM unchanged;
-  host-api reads only `model` from it. Answers `{ "text": "..." }`.
+  host-api reads `model`, checks that `file` is there, and for usage reads a
+  WAV file's header. Answers `{ "text": "..." }`.
 - `POST /v1/audio/speech`: her voice, on a `speak` model.
   `{ "model", "input", "voice", "speed"?, "response_format"? }`: `input` is
   1 to 4096 characters, `voice` one of the model's voices (an unknown one is
@@ -179,6 +183,8 @@ seconds of audio.
     "capabilities": { "tools": true, "vision": false, "embedding": false, "reasoning": ["off", "on"] },
     "contextLength": 32768,
     "maxContextLength": 40960,
+    "kvBytes": 4294967296,
+    "stretch": null,
     "state": "unloaded",
     "gpus": null,
     "placement": { "mode": "auto" },
@@ -208,8 +214,12 @@ seconds of audio.
     or `tokenizer.json`, and `voices/*.bin`, one raw float32 array per
     voice: Kokoro's ONNX export. Its `contextLength` is `null`.
   - `contextLength` is the context it is served with (its setting, else
-    32768, never more than `maxContextLength`, what it was trained for).
-    Lyrica plans her context by it.
+    32768, never more than the trained length times the stretch).
+    `maxContextLength` is the trained length alone, `null` when the host
+    couldn't read it. `kvBytes` is the KV cache at the served context, by
+    the host's estimate (`null` for voices, and where it can't tell), and
+    `stretch` is the YaRN factor, or `null`. Lyrica plans her context by
+    `contextLength`.
   - `state`: `unloaded`, `loading` or `loaded`; `gpus` lists where it is
     loaded.
   - `vram`: bytes measured on each GPU, per placement it has been loaded
@@ -218,6 +228,7 @@ seconds of audio.
 - `POST /host/v1/scan`: reads the models folder again (text models and image
   parts). Returns `{ "models": 12, "parts": 30, "proposals": 2 }`. The host
   also scans at start and after each download.
+- Each of the four calls below answers with the model's entry.
 - `POST /host/v1/models/load` `{ "model": "<id>" }`: loads it where its
   placement says, and waits until it is loaded. Errors: `too_big`, `busy`,
   `paused`, `refused` (a vLLM model that would need `trust_remote_code`).
@@ -281,8 +292,9 @@ volume. They apply at its next load, or at once with Reload.
   stretch; 32768 by default. Over it: "This model was trained for 262144
   tokens; with a stretch of 4 it serves 1048576 at most."
 - `stretch`: `{ "type": "yarn", "factor": 4, "originalContext": 262144 }`,
-  off unless set. The factor is 1 to 8 (whole for llama.cpp); the original
-  context defaults to the trained length. Chat models only, and only one
+  off unless set. The factor is 1 to 8 (whole for llama.cpp; 1 is no
+  stretch and is not saved); the original context defaults to the trained
+  length. Chat models only, and only one
   whose trained length the host read. llama.cpp gets `rope-scaling = yarn`,
   `rope-scale` and `yarn-orig-ctx`; vLLM gets `--hf-overrides` with the
   model's own `rope_parameters` (or `rope_scaling`) and the YaRN fields
