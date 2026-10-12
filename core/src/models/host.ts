@@ -149,6 +149,16 @@ function quiet<D extends Dispatcher>(d: D): D {
   return d;
 }
 
+/**
+ * A host's list answer: host/API.md's `{ "<key>": [...] }` (`models`, `recipes`, `parts`, …). A bare list
+ * is read too, since the download calls pass the downloader's answer on as it is. Anything else is undefined.
+ */
+export function listIn<T>(answer: unknown, key: string): T[] | undefined {
+  if (Array.isArray(answer)) return answer as T[];
+  const list = (answer as Record<string, unknown> | null | undefined)?.[key];
+  return Array.isArray(list) ? (list as T[]) : undefined;
+}
+
 /** The host error a call failed with, when it is one of the host's own (host/API.md "Errors"). */
 export async function hostError(res: Response): Promise<{ code: string; message: string } | undefined> {
   if (res.ok) return undefined;

@@ -76,15 +76,16 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
       }
       if (!clientFp || !pinned.has(clientFp)) return json(res, 401, { error: { code: "unpaired", message: "This Lyrica server isn't paired with this host." } });
       if (req.method === "GET" && url.pathname === "/v1/models") return json(res, 200, { object: "list", data: models.map((m) => ({ id: m.id, object: "model", created: 0, owned_by: "lyrica-host" })) });
+      // Lists come wrapped, as the real host sends them (host/src/runtime.ts, images.ts).
       if (req.method === "GET" && url.pathname === "/host/v1/models") {
-        return json(res, 200, models.map((m) => ({
+        return json(res, 200, { models: models.map((m) => ({
           id: m.id, kind: m.kind ?? "chat", server: "llamacpp", format: "gguf", size: 1, sha256: m.sha256 ?? null, downloaded: m.downloaded ?? false, identity: m.identity ?? null,
           capabilities: {
             tools: m.tools ?? false, vision: false, embedding: m.kind === "embedding", reasoning: m.reasoning ?? null,
             ...(m.kind === "transcribe" ? { transcribe: true } : {}), ...(m.kind === "speak" ? { speak: { voices: m.voices ?? [] } } : {}),
           },
           contextLength: m.contextLength ?? null, state: "unloaded", gpu: null, pinned: false, vram: null,
-        })));
+        })) });
       }
       const status = () => ({ name: opts.name ?? "fake-host", version: "0.1.0", fingerprint: identity.fingerprint, state: paused ? "paused" : "running", gpus: [], downloads: { active: 0 }, modelsFolder: { path: "/srv/models", free: 1 } });
       if (req.method === "GET" && url.pathname === "/host/v1/status") return json(res, 200, status());
@@ -114,9 +115,9 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
       if (req.method === "GET" && url.pathname === "/host/v1/downloads") return json(res, 200, downloads);
       if (req.method === "GET" && url.pathname === "/host/v1/recipes") {
         const state = url.searchParams.get("state");
-        return json(res, 200, recipes.filter((r) => !state || r.state === state));
+        return json(res, 200, { recipes: recipes.filter((r) => !state || r.state === state) });
       }
-      if (req.method === "GET" && url.pathname === "/host/v1/parts") return json(res, 200, parts.map((p) => ({ ...p, usedBy: recipes.filter((r) => r.parts.some((x) => x.file === p.file)).map((r) => r.id) })));
+      if (req.method === "GET" && url.pathname === "/host/v1/parts") return json(res, 200, { parts: parts.map((p) => ({ ...p, usedBy: recipes.filter((r) => r.parts.some((x) => x.file === p.file)).map((r) => r.id) })) });
       const recipe = /^\/host\/v1\/recipes\/([^/]+)(?:\/(confirm|ignore|download-parts))?$/.exec(url.pathname);
       if (recipe) {
         const r = recipes.find((x) => x.id === recipe[1]);

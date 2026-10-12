@@ -163,8 +163,8 @@ seconds of audio.
 
 ### Models
 
-- `GET /host/v1/models`: the text and speech library, one entry per model
-  file or folder:
+- `GET /host/v1/models`: the text and speech library, `{ "models": [...] }`
+  with one entry per model file or folder:
 
   ```json
   {
@@ -529,7 +529,8 @@ lyricad decides which of these only an administrator may ask for.
 
 ### Parts
 
-`GET /host/v1/parts`: every image model file found in the models folder.
+`GET /host/v1/parts`: every image model file found in the models folder,
+as `{ "parts": [...] }`, each entry like this:
 
 ```json
 { "file": "lyrica/huggingface/Comfy-Org/z_image_turbo/split_files/vae/ae.safetensors",
@@ -593,7 +594,7 @@ lyricad decides which of these only an administrator may ask for.
 Calls:
 
 - `GET /host/v1/recipes?state=proposed`: all recipes, or those in one
-  state.
+  state, as `{ "recipes": [...] }`.
 - `GET /host/v1/recipes/<id>`
 - `GET /host/v1/starters`: the starter recipes shipped with the host, each
   with its parts' files and checksums and which are present.
