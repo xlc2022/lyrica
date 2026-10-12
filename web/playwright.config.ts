@@ -1,7 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Each viewport gets its own lyricad (web/e2e/serve.ts), so both start locked
-// and the two run side by side, one worker each.
+// Each project gets its own lyricad (web/e2e/serve.ts), so phone and desktop
+// both start locked, and the projects run side by side, one worker each. Keep
+// one spec file per project: two files of a project would share its lyricad.
 // Build the UI first: npm run build && npm run e2e -w @lyrica/web
 const servers = [
   { name: "phone", port: 7341, use: { ...devices["iPhone 13"], viewport: { width: 390, height: 844 }, defaultBrowserType: "chromium" as const } },

@@ -29,9 +29,12 @@ minutes on a private repository are billed past the plan's allowance.
 - The host-stack job removes what it installed (the stack and its volumes,
   the egress unit and rules, Docker's daemon.json) when it ends.
 - One runner runs one job at a time. A new push to a pull request
-  cancels its older runs, and every commit on main gets a run. A first
-  `changes` job reads the diff and runs only the jobs it touches; the
-  others show as skipped, which counts as passed:
+  cancels its older runs. Main runs its newest merge only: a main run
+  still waiting for a runner gives way to the next merge, and one already
+  running finishes. A first `changes` job reads the diff (on main, from
+  the last commit whose run passed, so merges that gave way are covered)
+  and runs only the jobs it touches; the others show as skipped, which
+  counts as passed:
   - check: anything but `docs/` and the top-level Markdown files.
     `persona/` is her seed, so it counts.
   - nix: the same, less `evals/` and the tests the flake leaves out of its
@@ -40,8 +43,8 @@ minutes on a private repository are billed past the plan's allowance.
   - host-stack: `host/` only.
 
   A change under `.github/`, or a diff that can't be read, runs all three.
-  The e2e tests run the phone and desktop viewports side by side, each
-  against its own lyricad. A weekly cron job clears Docker images and
+  The e2e tests run the phone, desktop and setup projects side by side,
+  each against its own lyricad. A weekly cron job clears Docker images and
   build cache unused for a week.
 
 ## Where it sits on the network

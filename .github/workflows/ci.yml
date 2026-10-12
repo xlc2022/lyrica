@@ -6,11 +6,12 @@ on:
 # The jobs run on Li's own runner (docs/ci.md), so their token can only read.
 permissions:
   contents: read
-# One runner: a newer push to a PR replaces its older runs; main tests every commit.
-# (A group keeps one pending run, so main's groups are per commit.)
+# A newer push to a PR cancels its older runs. Main runs the newest merge
+# only: a main run still waiting for a runner gives way to the next merge
+# (a group keeps one pending run), and one already running finishes.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   # Each job below runs only when the diff touches what it checks; skipped
   # jobs count as passed for required checks, and when the diff can't be
@@ -23,6 +24,10 @@ jobs:
   # - host-stack: host/, the only directory its images and install read.
   changes:
     runs-on: lyrica-ci
+    # Reads main's last passing run.
+    permissions:
+      contents: read
+      actions: read
     outputs:
       code: ${{ steps.diff.outputs.code }}
       nix: ${{ steps.diff.outputs.nix }}
@@ -34,10 +39,17 @@ jobs:
       - id: diff
         env:
           EVENT: ${{ github.event_name }}
-          BEFORE: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
+          RUNS: ${{ github.api_url }}/repos/${{ github.repository }}/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=1
         run: |
           # A pull request's checkout is its merge into the base: the first parent is the base.
-          if [ "$EVENT" = pull_request ]; then base=HEAD^1; else base=$BEFORE; fi
+          # Main diffs from its last passing run, since merges in between may not have run.
+          if [ "$EVENT" = pull_request ]; then
+            base=HEAD^1
+          else
+            base=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" "$RUNS" | grep -o '"head_sha": *"[0-9a-f]*"' | head -1 | grep -o '[0-9a-f]\{40\}') || true
+            echo "last passing run on main: ${base:-none}"
+          fi
           # outside PATTERN: some changed file is not one PATTERN matches.
           outside() { printf '%s\n' "$files" | grep -qvE "$1"; }
           if files=$(git diff --name-only "$base" HEAD 2>/dev/null) && [ -n "$files" ]; then
