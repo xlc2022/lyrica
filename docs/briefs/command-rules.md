@@ -19,11 +19,15 @@ of at most 64 characters, no control characters. Export `simpleCommands` from
 `core/src/workspace/machines.ts` and harden it: drop every quote and backslash
 inside a word (`g"i"t` is `git`); what follows `find -exec`/`-execdir`/`-ok`
 is a simple command too. `decide(command, rules)` works per simple command,
-so `&&`, `;`, pipes, `$( )`, backticks, subshells, `bash -c` and wrappers
-(`sudo`, `env`, `xargs`) are seen through. **Allow** matches when the rule's
-words are the command's first words; **ask** and **forbid** when the program
-matches and the rule's other words follow in order, flags between allowed
-(`git -C x push` hits forbid `git push`). Most words wins; at equal length
+so `&&`, `;`, pipes, `$( )`, backticks, subshells and `bash -c` are seen
+through. **Allow** matches when the rule's words are the command's first words
+after dropping `VAR=value` assignments. **Ask** and **forbid** match when the
+rule's program appears at any word of a simple command and the rule's other
+words follow it in order, other words between allowed, so no wrapper list is
+needed: `git -C x push`, `timeout 5 git push`, `nice`, `nohup`, `command`,
+`exec`, `time`, `doas`, `sudo` and `FOO=1 git push` all hit forbid `git push`.
+A false hit such as `echo git push` only costs her a refusal, since forbid
+never binds the user. Most words wins; at equal length
 forbid beats ask beats allow. Whole command: any part forbidden → forbid; else
 any asked → ask; else every part allowed → allow; else none (the mode
 decides). **Opaque** parts (a program word with `$`, a backtick or `*?[`;
@@ -31,8 +35,10 @@ decides). **Opaque** parts (a program word with `$`, a backtick or `*?[`;
 with any forbid rule the command asks in every mode, and no rule allows it.
 `alwaysAllowPrefix(command)`, for one non-opaque simple command whose program
 isn't a shell, interpreter (`python*`, `node`, `perl`, `ruby`) or wrapper: the
-program, plus its first argument if a plain subcommand (`^[a-z][a-z0-9:_-]*$`):
-`git push origin main` → `git push`, `ls -la` → `ls`; else none.
+program, plus its first argument if a plain subcommand (`^[a-z][a-z0-9:_-]*$`),
+plus the next plain word when that subcommand is `run`, `exec` or `x` (npm,
+pnpm, yarn, cargo, uv, poetry, bun): `git push origin main` → `git push`,
+`npm run test` → `npm run test`, `ls -la` → `ls`; else none.
 
 **B. Storage.** A user.db step in `core/src/migrations.ts` (next free version)
 adds `project_settings.command_rules TEXT NOT NULL DEFAULT '[]'` (JSON), expand
@@ -81,8 +87,10 @@ tools; allow on machines; regex or glob rules; her proposing rules.
 the project chat and a project thread; a project thread's subagent is refused
 by forbid and skips the prompt on allow; Always allow adds the rule, and the
 next match runs unasked in Ask mode; `ls && git push`, `echo $(git push)`,
-`bash -c 'git push'`, `sudo git push`, `git -C . push` and `g"i"t push` are
-refused under forbid `git push`; `x=git; $x push` and ask rules ask in Auto.
+`bash -c 'git push'`, `sudo git push`, `timeout 5 git push`, `FOO=1 git push`,
+`git -C . push` and `g"i"t push` are
+refused under forbid `git push`; Always allow on `npm run test` adds
+`npm run test`; `x=git; $x push` and ask rules ask in Auto.
 
 ## Handoff notes
 
