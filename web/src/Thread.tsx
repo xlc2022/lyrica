@@ -149,6 +149,12 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
       setSendError("");
       (on ? put(`${base}/messages/${n}/pin`, {}) : del(`${base}/messages/${n}/pin`)).then(pins.reload, (e: Error) => setSendError(e.message));
     },
+    // The thread's event stream brings the new reactions to this tab as to any other.
+    react: (n, emoji, on) => {
+      setSendError("");
+      const path = `${base}/messages/${n}/reactions/${encodeURIComponent(emoji)}`;
+      (on ? put(path, {}) : del(path)).catch((e: Error) => setSendError(e.message));
+    },
     branch: (n) => {
       setSendError("");
       post<ThreadSummary>(`${base}/messages/${n}/branch`).then((b) => { refreshThreads(); go({ page: "thread", userId, pool, threadId: b.id }); },

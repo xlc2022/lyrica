@@ -61,6 +61,8 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
             const e = JSON.parse(m.data) as ThreadEvent;
             // Removed messages go at once; the reload brings what's left.
             if (e.type === "rewound") setMessages((old) => old.filter((x) => x.n < e.from));
+            // A reaction, hers or from another tab, lands on the stored message at once.
+            if (e.type === "reactions") setMessages((old) => old.map((x) => (x.n === e.n ? { ...x, reactions: e.reactions.length ? e.reactions : undefined } : x)));
             dispatch(e);
             if (e.type === "rewound" && e.resend && resending.current !== undefined) dispatch({ type: "sent", text: resending.current });
             if (e.type === "rewound") resending.current = undefined;

@@ -5,12 +5,14 @@ import { contextLines, registerContext, type ContextMeter } from "./context.ts";
 import { setToolsOff } from "./gate.ts";
 import { memorySections } from "./memory.ts";
 import { TopicRouter, type RoutedTopic } from "./routing.ts";
+import { reactionLines, type UserReaction } from "./react.ts";
 import { registerMemoryTools } from "./tools.ts";
 
 export * from "./assemble.ts";
 export * from "./context.ts";
 export * from "./gate.ts";
 export * from "./memory.ts";
+export * from "./react.ts";
 export * from "./record.ts";
 export * from "./routing.ts";
 export * from "./sleep.ts";
@@ -47,6 +49,8 @@ export interface LyricaOptions {
   meter?: ContextMeter;
   /** In a project chat: its threads with their state, one line each, read every turn. */
   projectThreads?: () => string | undefined;
+  /** The user's reactions since her last turn, taken each turn: told to her in the turn message. */
+  reactions?: () => UserReaction[];
 }
 
 /** The Lyrica Pi extension for one thread. */
@@ -78,8 +82,8 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
       options.customPrompt = customPrompt;
       options.sections = { ...(tools ? { tools } : {}), ...options.sections, ...sections };
 
-      // Her status line, from the last turn's measurement, and the line telling her to prepare or compact.
-      let full = turn;
+      // The user's reactions since her last turn, then her status line, from the last turn's measurement, and the line telling her to prepare or compact.
+      let full = [turn, reactionLines(opts.reactions?.() ?? [], thread.threadId, opts.profile().displayName)].filter(Boolean).join("\n\n");
       if (opts.meter) {
         const defs = pi.getAllTools().filter((t) => pi.getActiveTools().includes(t.name)).map((t) => ({ name: t.name, description: t.description, parameters: t.parameters }));
         opts.meter.setPrompt(report, tools.length + JSON.stringify(defs).length);

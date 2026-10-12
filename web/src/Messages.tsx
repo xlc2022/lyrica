@@ -1,7 +1,7 @@
 // The conversation: stored messages, then what's streaming now.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { get, post, threadPath, type GoAhead, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
+import { get, post, threadPath, type GoAhead, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
 import type { LiveItem } from "./live.ts";
 import { useMentionText, useThreadMentions } from "./mentions.ts";
 import { GoAheadMenu } from "./Modes.tsx";
@@ -13,6 +13,7 @@ import { SuggestedCard, ThreadCard, type ProjectEnv } from "./Project.tsx";
 import { EditBox, MessageMenu, type Rewinder } from "./Rewind.tsx";
 import { ErrorText, Prose, useAction } from "./ui.tsx";
 import { Lightbox, PathText, useFileLinks, type FileLinks } from "./paths.tsx";
+import { ReactButton, ReactionChips } from "./Reactions.tsx";
 import { ReadAloudButton } from "./Voice.tsx";
 
 interface Props {
@@ -145,7 +146,7 @@ function StoredMessage({ m, env, you, cards, told, folded }: { m: Message; env: 
     if (m.from?.kind === "watching") return <><LookMarker text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} told={told ?? []} env={env} n={m.n} />{after}</>;
     const hers = m.from?.kind === "lyrica";
     const who = hers ? "Lyrica" : m.from?.kind === "user" ? (m.from.name || you) : you;
-    return <><UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} env={env} hers={hers} />{after}</>;
+    return <><UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} env={env} hers={hers} reactions={m.reactions} />{after}</>;
   }
   if (m.role === "notice") {
     return <>{m.parts.map((p, i) => (p.type === "delegation"
@@ -154,7 +155,7 @@ function StoredMessage({ m, env, you, cards, told, folded }: { m: Message; env: 
   }
   return (
     <>
-      <Parts parts={m.parts} env={env} model={m.model} n={m.n} folded={folded} />
+      <Parts parts={m.parts} env={env} model={m.model} n={m.n} folded={folded} reactions={m.reactions} />
       {m.error && <p className="error turn-error">{m.error}</p>}
       {after}
     </>
@@ -208,22 +209,27 @@ function LiveMessage({ item, env, you, streaming }: { item: LiveItem; env: Env; 
 }
 
 /** A message in the person's place; `hers` when Lyrica wrote it (a subagent's task), so the threads she mentions show by title. Its paths are links. */
-function UserMessage({ text, you, n, rewinder, env, hers }: { text: string; you: string; n?: number; rewinder?: Rewinder; env: Pick<Env, "userId" | "pool" | "threadId" | "large">; hers?: boolean }) {
+function UserMessage({ text, you, n, rewinder, env, hers, reactions }: { text: string; you: string; n?: number; rewinder?: Rewinder; env: Pick<Env, "userId" | "pool" | "threadId" | "large">; hers?: boolean; reactions?: Reaction[] }) {
   const [editing, setEditing] = useState(false);
   const files = useFileLinks(env.userId, env.pool, env.threadId);
   const menu = rewinder && n !== undefined;
   return (
     <div className="msg user" id={n !== undefined ? `m-${n}` : undefined}>
-      <div className="who">{you}{menu && rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}{menu && <MessageMenu n={n} role="user" rewinder={rewinder} onEdit={() => setEditing(true)} />}</div>
+      <div className="who">
+        {you}{menu && rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}
+        {menu && <ReactButton n={n} reactions={reactions} reactor={rewinder} />}
+        {menu && <MessageMenu n={n} role="user" rewinder={rewinder} onEdit={() => setEditing(true)} />}
+      </div>
       {editing && menu
         ? <EditBox text={text} onCancel={() => setEditing(false)} onSend={(t) => { setEditing(false); rewinder.rewind(n, { action: "edit", text: t }, n); }} />
         : hers ? <div className="body prose"><HerProse text={text} env={env} /></div> : <div className="body"><PathText text={text} files={files} /></div>}
+      {n !== undefined && <ReactionChips n={n} reactions={reactions} reactor={rewinder} her="Lyrica" />}
     </div>
   );
 }
 
 /** Her message: prose for text, one-line markers for everything else. */
-function Parts({ parts, env, model, streaming, n, folded }: { parts: MessagePart[]; env: Env; model?: string; streaming?: boolean; n?: number; folded?: boolean }) {
+function Parts({ parts, env, model, streaming, n, folded, reactions }: { parts: MessagePart[]; env: Env; model?: string; streaming?: boolean; n?: number; folded?: boolean; reactions?: Reaction[] }) {
   const out: React.ReactNode[] = [];
   let prose: string[] = [];
   const flush = (key: number, last: boolean) => {
@@ -264,9 +270,11 @@ function Parts({ parts, env, model, streaming, n, folded }: { parts: MessagePart
         {env.rewinder && n === undefined && streaming && env.speech?.readAloudLive && (
           <ReadAloudButton url={`${env.base}/messages/live/speech`} speech={env.speech} onError={env.onError} />
         )}
+        {env.rewinder && n !== undefined && <ReactButton n={n} reactions={reactions} reactor={env.rewinder} />}
         {env.rewinder && n !== undefined && <MessageMenu n={n} role="assistant" rewinder={env.rewinder} />}
       </div>
       {out}
+      {n !== undefined && <ReactionChips n={n} reactions={reactions} reactor={env.rewinder} her={who} />}
     </section>
   );
 }

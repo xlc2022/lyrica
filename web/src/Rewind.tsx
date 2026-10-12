@@ -14,6 +14,8 @@ export interface Rewinder {
   /** The pinned messages' numbers. */
   pinned: ReadonlySet<number>;
   pin(n: number, on: boolean): void;
+  /** Puts the user's reaction `emoji` on message `n`, or takes it off. */
+  react(n: number, emoji: string, on: boolean): void;
   branch(n: number): void;
   /** Removes from message `n` (and sends again, for regenerate and edit). Messages from `hide` on are hidden meanwhile. */
   rewind(n: number, req: RewindRequest, hide: number): void;

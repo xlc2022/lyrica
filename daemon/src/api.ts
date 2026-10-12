@@ -939,7 +939,19 @@ export interface Message {
   error?: string;
   /** The user pinned it: it stays in her context word for word. */
   pinned?: boolean;
+  /** Emoji on the message, in the order they first came, by the user (`you`), Lyrica (`her`) or both. */
+  reactions?: Reaction[];
 }
+
+/** One emoji on a message and who put it there. Both can react with the same emoji; it is then one chip counting two. */
+export interface Reaction { emoji: string; you: boolean; her: boolean }
+/**
+ * PUT /api/u/:userId/threads/:pool/:threadId/messages/:n/reactions/:emoji → Reactions puts the user's reaction on
+ * message n, DELETE takes it off; `emoji` is URL-encoded. Any message, including her own; not in a subagent's thread.
+ * She is told of it in her next turn, and she reacts herself with her `react` tool; every tab with the thread open
+ * sees a `reactions` event.
+ */
+export interface Reactions { reactions: Reaction[] }
 
 /**
  * GET /api/u/:userId/threads/:pool/:threadId/messages?before=<n>&limit=<k> → MessagePage
@@ -1127,6 +1139,8 @@ export type ThreadEvent =
    */
   | { type: "offline"; task: Task; tried: { label: string; reason: string }[] }
   | { type: "title"; title: string }
+  /** Message n's reactions changed: hers, or the user's from another tab. */
+  | { type: "reactions"; n: number; reactions: Reaction[] }
   /** The thread's settings changed (an approved plan switched its mode, say): fetch them again. */
   | { type: "settings" }
   /** In a project chat: one of its threads changed state; fetch it (`GET threads/:pool/:id`) to update its card in place. */
