@@ -293,8 +293,9 @@ and Accounts views, and the API `GET …/hosts/:id/images`, `POST
 `GET|PUT|DELETE …/hub-tokens` (`HubTokenInfo`).
 
 - **Image models** (`models/images`): header facts "<n> models (recipes) ·
-  <p> parts on <h> hosts · <g> groups"; in the header a warn pill link
-  "<n> to review" when proposals exist, and the action **Download model**
+  <p> parts on <h> hosts · <g> groups", and when proposals exist a link
+  in accent text at the end of the facts, "<n> to review" with the count
+  in mono; the header action **Download model**
   (to the Download image model page). A segmented **Models** | **Parts**,
   the search box (label "Search image models", placeholder "Search by
   name or file") and architecture chips (**Any architecture** then one per
@@ -341,18 +342,18 @@ and Accounts views, and the API `GET …/hosts/:id/images`, `POST
     the danger primary **Delete** (`RecipeAction` delete).
   - **To review** (`models/images/review`): facts "Image models (link) ·
     <n> found on your hosts"; search, chips **All <n>** / **Ready** /
-    **Parts missing**, the architecture chips; a toolbar (role toolbar,
-    aria-label Selected) with **Select all** (a checkbox; "Select all <n>
-    shown" when paged), "<n> selected", and the buttons **Use <n> ready**
-    (primary), **Download parts (<GB>)** and **Ignore**, disabled until a
-    choice; rows grouped by host with an eyebrow "<host> · <n>", each a
-    checkbox (aria-label "Select <name>"), the name with the pill "ready"
-    or "<n> parts missing · <GB>", facts "<arch> · <capability> · <main
+    **Parts missing**, the architecture chips; rows grouped by host with
+    an eyebrow "<host> · <n>", each with the name and the pill "ready" or
+    "<n> parts missing · <GB>", facts "<arch> · <capability> · <main
     file> with <other files>", the action **Use** or **Download parts**
-    and a ⋯ menu with **Details** and **Ignore**; 50 a page with **Show
-    <n> more of <m>**. Empty: "Nothing to review." This is the one place
-    with checkboxes: Li's rule against them is for settings lists, and
-    bulk review needs a selection; say so in the PR.
+    and a ⋯ menu with **Select**, **Details** and **Ignore**; 50 a page
+    with **Show <n> more of <m>**. Empty: "Nothing to review." Selection
+    follows docs/ux.md's home for bulk selection, as Memory and Files do:
+    Ctrl- or Cmd-click and Shift-click select rows, Select in a row's ⋯
+    (or its long-press menu on a phone) starts selecting, and a bar at the
+    foot names "<n> selected" with **Select all** ("Select all <n> shown"
+    when paged), **Use <n> ready** (primary), **Download parts (<GB>)**
+    and **Ignore**. No checkboxes.
   - **Download image model** is a page (`models/images/download`, Back to
     where it came from): **Download to** (a select of hosts, "<host> ·
     <GB> free"), a segmented **Starter recipes** | **Hugging Face** |
@@ -365,15 +366,18 @@ and Accounts views, and the API `GET …/hosts/:id/images`, `POST
     The primary **Download**, Cancel.
 - **Downloads** (`models/downloads`, with a count on the subnav link while
   anything runs): header facts "<n> running | Nothing running · <m>
-  finished", actions **Download text model** and **Download image model**.
+  finished", actions **Download text model** and **Download image model**,
+  both secondary (the queue is the page, so it has no primary).
   Section Queue with **Clear finished** (a link) when anything finished;
   eyebrows In progress and Finished; an item: "<label>" bold, "from <source>
   to <host>", a progress bar (role progressbar) with "<phase> · <GB> of
-  <GB>" in `.num` and **Cancel**; finished: "✓ Checksum matches" (ok) or
-  "Unverified: no checksum given" (warn) · <GB> · Ready · "in the group
-  “<g>”" or the link "Add to the group “<g>”"; cancelled: "Cancelled.
-  Nothing was kept."; a deletion: "deleted from <host>", "<GB> freed. Lists
-  that named it skip it." Empty: "No downloads yet. Start one from a
+  <GB>" in `.num` and **Cancel**; finished: a status as a dot and a word
+  (docs/ux.md §5), **Verified** (green dot) or **Unverified** (amber dot)
+  with "no checksum given" muted after it, then <GB> · **Ready** (green
+  dot) · "in the group “<g>”" or the link "Add to the group “<g>”";
+  cancelled: **Cancelled** (grey dot) with "Nothing was kept." muted; a
+  deletion: "deleted from <host>", "<GB> freed. Lists that named it skip
+  it." Empty: "No downloads yet. Start one from a
   library's Download model button, or here." The list is `aria-live`
   polite and polls `GET …/downloads` every 2 s while anything runs.
 - **Download text model** is a page (`models/downloads/text`): **Download
@@ -459,9 +463,9 @@ with radios All threads / Pinned messages / Hidden threads. Design:
   rows: the who in mono small, the snippet with `<mark>`, the time in
   mono; a fourth line "<n> more in this thread" opens the rest in place.
   A hit row opens the thread at that message (the existing jump, the
-  message briefly highlighted). Empty: "Nothing matches." Below the
-  groups, "Hidden threads aren't searched. Turn on Hidden in the Sort
-  menu to include them." only when a hidden pool exists. Escape clears
+  message briefly highlighted). Empty: "Nothing matches." The Sort menu's
+  Hidden entry gets the tooltip "Hidden threads are left out of the list
+  and of search." Escape clears
   the query. The radios from the mockup are not built: pinned messages
   have the header popover, hidden pools follow the Sort menu.
 - Phone: same, in the slide-over sidebar.
