@@ -565,11 +565,11 @@ test("after a reply the header's Context shows the percent, and its popover list
 test("each message shows when it was sent in mono after its name, her reply once it is stored, and on a phone the header line stays on one line", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");
-  // "slowly" keeps her reply streaming long enough to look at it.
-  await send(page, "What time is it, slowly, and take your time over the answer");
+  // "slowly" keeps her reply streaming for about 6 s, long enough to look at it.
+  await send(page, "What time is it, slowly, and take your time over the answer, because there is no hurry today and the roast still needs an hour in the oven before anyone sits down");
   await expect(page.getByText("You said: What time")).toBeVisible();
-  await expect(page.locator(".turn .who").first()).toBeVisible();
-  await expect(page.locator(".turn .who time")).toHaveCount(0);
+  // While her reply streams (its caret blinking), its header line has no time; read in one go, so the turn can't end in between.
+  expect(await page.evaluate(() => document.querySelector(".turn .caret-blink")?.closest(".turn")?.querySelectorAll(".who time").length)).toBe(0);
 
   const mine = page.locator(".msg.user .who");
   const hers = page.locator(".turn .who");
