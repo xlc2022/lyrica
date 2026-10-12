@@ -42,7 +42,11 @@ sizes, count) and how fast and quality map onto its options.
   stops, the image marker shows the failure with its code, and under it
   three small text links, not buttons: **Edit message** (the triggering
   message back in the composer), **Resend**, and **Try <next model>** (the
-  next model in the task's list that is a different endpoint). A new
+  next model in the task's list that is a different endpoint). **Try**
+  shows only when such a model exists, and **Edit message** only while that
+  message is still the thread's last user message; otherwise the link is
+  left out, never disabled. docs/ux.md records this row of links beside
+  the §5 exception. A new
   refusal code from the provider adapters marks it apart from other errors.
 
 **B. Use for on cloud models.** A cloud image model can be tagged fast,
@@ -54,12 +58,14 @@ fast-only. The router's tier rule applies to cloud as it does to recipes.
    cloud endpoint with a key gets an **API key** pill.
 2. A plan's facts line drops the placeholder URL (`PLAN_URLS`) and reads
    "ChatGPT plan · only you", with the signed-in account if the sign-in
-   exposes one. A keyed endpoint keeps its URL and adds "key ••••last4".
+   exposes one. A keyed endpoint keeps its URL and adds "key ••••last4". The key and
+   the account are in mono.
 3. Default names: "ChatGPT" for a ChatGPT plan, "OpenAI" for an endpoint at
    api.openai.com with a key; the user can rename either.
 4. Every place a model is picked (the model picker, Tasks cells, Text models
-   copies, Image models) shows the endpoint's name beside the model, since a
-   plan and a key can offer the same model IDs.
+   copies, Image models) shows the endpoint's name after the model, muted, since a plan and a
+   key can offer the same model IDs; at 390 px the endpoint name truncates
+   first.
 5. No new control for order: the user lists the plan first and the API key
    as the paid fallback in Tasks.
 
@@ -69,8 +75,11 @@ docs/ux.md §5): a cloud endpoint's row shows **Text**, **Vision** and
 when Lyrica can actually call it there). Local endpoints and host cards stay
 as they are. The row's pills are thus its kind pill, API key or plan pill,
 and these; the §5 limit of two does not apply to them. Each model on a cloud
-endpoint gets **Makes images** and **Edits images** switches in its model
-list, replacing the HTTP-only step in the getting-started guide.
+endpoint gets **Image generation** and **Image editing** switches in its
+model list, each with a tooltip saying what it lets her do, replacing the
+HTTP-only step in the getting-started guide. On a phone (390 px) the
+capability pills wrap onto their own line under the name, with no sideways
+scroll, and the row's actions stay where they are.
 
 ## Out of scope
 
@@ -91,6 +100,10 @@ list, replacing the HTTP-only step in the getting-started guide.
   image on that model.
 - Hosts and endpoints shows the pills and facts lines in C and D; every
   picker names the endpoint.
+- Screenshots at 1280 and 390 px of a cloud row with all five pills, and
+  of a refusal with its links.
+- docs/ux.md §4 lists Text, Vision, Image, API key, Image generation, Image
+  editing, Edit message, Resend and Try <model>.
 - docs/ux.md (§5 exception, the Hosts and endpoints row), DESIGN.md "Images",
   docs/contracts.md, docs/models.md and the getting-started guide match.
 - Typecheck, unit tests and e2e green in CI; PR review and UI review verified.
