@@ -158,7 +158,10 @@ shows:
 Above the runs are her **items**, with a badge on the section while any are
 new. Each item has **Start a chat**, which opens a new thread in that pool
 where she begins with it, and **Dismiss**. Everything links into the memory
-browser.
+browser. **Sleep now** at the foot sleeps a pool at once; the per-user mode
+(nightly, or only when asked) is a select in Settings → Model profiles and the
+hour is the administrator's **Sleep time**. How it is laid out is in
+[web.md](web.md) and docs/ux.md.
 
 ## Keys
 
