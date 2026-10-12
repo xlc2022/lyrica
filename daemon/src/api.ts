@@ -64,6 +64,8 @@ export interface State {
   setup?: boolean;
   /** Her name for this deployment (default Lyrica), in every state. */
   name: string;
+  /** Setting up: whether this machine can save the passphrase (Start unlocked), and why not. */
+  credentials?: { available: boolean; reason?: string };
   /** Users logged in on this browser session. Empty while locked. */
   users: UserCard[];
   /** lyricad's version (package.json) and build (the git commit it was built from, or "dev"). Shown in the header; absent while locked. */
@@ -731,7 +733,7 @@ export interface AcceptShare { pool: Pool }
 // her items from the night, and, for administrators, persona changes to approve.
 // Not yet in it: downloads, clean-up items, image models to review, host problems.
 
-export type NotificationType = "share" | "permission" | "update" | "sleep" | "suggestion" | "approval";
+export type NotificationType = "share" | "permission" | "update" | "sleep" | "suggestion" | "approval" | "rollback";
 /** An action on an item: a request the UI sends as it is. `opens`: the answer is a ThreadSummary to go to. */
 export interface NotificationAction { label: string; method: "POST" | "DELETE"; path: string; body?: unknown; danger?: boolean; opens?: boolean }
 export interface Notification {
@@ -746,7 +748,7 @@ export interface Notification {
   decision: boolean;
   /** Where it leads, if anywhere: a thread, or a section of Settings or Administration. */
   thread?: { pool: Pool; id: string };
-  section?: "settings/suggestions" | "admin/persona";
+  section?: "settings/suggestions" | "admin/persona" | "admin/updates";
   actions: NotificationAction[];
   at: string;
 }

@@ -850,3 +850,17 @@ emoji-picker { width: 100%; height: min(400px, 60vh); --background: var(--panel)
   .react-anchor .quick button { width: 44px; height: 44px; }
   .react-anchor .full { position: fixed; top: auto; bottom: 0; left: 0; right: 0; width: auto; border-radius: 12px 12px 0 0; }
 }
+
+/* Set up Lyrica (docs/ux.md §6): the Gate card, wider, with steps as sections. */
+.gate-card.wide { width: min(640px, 100%); }
+.gate-card.wide h1 { margin-bottom: 4px; }
+.setup-steps > * { max-width: none; }
+.setup-steps .state-word.muted { font-size: 13px; }
+/* Administration → Tailnet and Updates. */
+.tailnet-state { gap: 4px; }
+pre.note { white-space: pre-wrap; max-height: 40vh; overflow: auto; }
+.releases .release-row { align-items: center; gap: 12px; }
+.releases .release-row > .mono { min-width: 7ch; }
+.releases .release-row > .state-word { margin-left: auto; }
+.state-line .plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.dlg-commit { font-weight: 400; font-size: 15px; color: var(--muted); }

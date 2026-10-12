@@ -13,6 +13,7 @@ import { SuggestedCard, ThreadCard, type ProjectEnv } from "./Project.tsx";
 import { EditBox, MessageMenu, type Rewinder } from "./Rewind.tsx";
 import { ErrorText, Prose, useAction } from "./ui.tsx";
 import { Lightbox, PathText, useFileLinks, type FileLinks } from "./paths.tsx";
+import { her } from "./name.ts";
 import { ReactButton, ReactionChips } from "./Reactions.tsx";
 import { ReadAloudButton } from "./Voice.tsx";
 
@@ -72,7 +73,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
       {hideFrom === undefined && live.items.map((item, i) => (
         <LiveMessage key={`live-${i}`} item={item} env={env} you={ctx.user.displayName} streaming={live.busy && i === live.items.length - 1} />
       ))}
-      {live.busy && !live.items.some((x) => x.role === "assistant") && <p className="thinking-dots" role="status">Lyrica is thinking…</p>}
+      {live.busy && !live.items.some((x) => x.role === "assistant") && <p className="thinking-dots" role="status">{her()} is thinking…</p>}
       {live.permissions.filter((p) => !p.subagent || !shown.has(p.subagent.threadId) || p.subagent.threadId === threadId)
         .map((p) => <PermissionPrompt key={p.requestId} base={base} p={p} env={env} />)}
       {live.errors.map((e, i) => <p key={i} className="error turn-error" role="alert">{e}</p>)}
@@ -145,7 +146,7 @@ function StoredMessage({ m, env, you, cards, told, folded }: { m: Message; env: 
     if (m.from?.kind === "parent" || m.from?.kind === "thread") return <><FromThread text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} from={m.from} env={env} n={m.n} />{after}</>;
     if (m.from?.kind === "watching") return <><LookMarker text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} told={told ?? []} env={env} n={m.n} />{after}</>;
     const hers = m.from?.kind === "lyrica";
-    const who = hers ? "Lyrica" : m.from?.kind === "user" ? (m.from.name || you) : you;
+    const who = hers ? her() : m.from?.kind === "user" ? (m.from.name || you) : you;
     return <><UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} env={env} hers={hers} reactions={m.reactions} />{after}</>;
   }
   if (m.role === "notice") {
@@ -224,7 +225,7 @@ function UserMessage({ text, you, n, rewinder, env, hers, reactions }: { text: s
       {editing && menu
         ? <EditBox text={text} onCancel={() => setEditing(false)} onSend={(t) => { setEditing(false); rewinder.rewind(n, { action: "edit", text: t }, n); }} />
         : hers ? <div className="body prose"><HerProse text={text} env={env} /></div> : <div className="body"><PathText text={text} files={files} /></div>}
-      {n !== undefined && <ReactionChips n={n} reactions={reactions} reactor={rewinder} her="Lyrica" />}
+      {n !== undefined && <ReactionChips n={n} reactions={reactions} reactor={rewinder} her={her()} />}
       {remembering && n !== undefined && <RememberBox text={text} n={n} env={env} onClose={() => setRemembering(false)} />}
     </div>
   );
@@ -288,7 +289,7 @@ function Parts({ parts, env, model, streaming, n, folded, reactions }: { parts: 
   // A turn with nothing to show (a project chat's thread start, whose card stands under the message) takes no room.
   if (!out.length && !streaming) return null;
   // In a subagent's thread, the replies are the subagent's own work.
-  const who = env.subagent ? "Subagent" : "Lyrica";
+  const who = env.subagent ? "Subagent" : her();
   return (
     <section className="turn" id={n !== undefined ? `m-${n}` : undefined} aria-label={model ? `${who} (${model})` : who}>
       <div className="who">
@@ -422,7 +423,7 @@ function FromThread({ text, from, env, n }: { text: string; from: { kind: "paren
       {open && (
         <>
           <div className="who">
-            Lyrica<span className="muted"> · from <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: from.threadId })}>{name}</a></span>
+            {her()}<span className="muted"> · from <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: from.threadId })}>{name}</a></span>
             {/* Branch and delete, as any message; it isn't hers to edit. */}
             {env.rewinder && n !== undefined && <MessageMenu n={n} role="user" rewinder={env.rewinder} />}
           </div>
@@ -538,7 +539,7 @@ export function MessageBox({ thread, env, onSent }: { thread: ThreadRef; env: Pi
   });
   return (
     <form className="sub-message" onSubmit={(e) => { e.preventDefault(); if (text.trim()) send(); }}>
-      <textarea rows={2} aria-label="Message to the subagent" placeholder="Message the subagent (Lyrica is told)" value={text}
+      <textarea rows={2} aria-label="Message to the subagent" placeholder={`Message the subagent (${her()} is told)`} value={text}
         onChange={(e) => { setText(e.target.value); setSent(false); }} />
       <div className="row">
         <button type="submit" className="primary" disabled={busy || !text.trim()}>Send</button>
@@ -583,7 +584,7 @@ function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest
     const plan = String((p.args as { plan?: unknown } | null)?.plan ?? "");
     const steps = plan.split("\n").filter((l) => /^\s*(\d+[.)]|[-*])\s/.test(l)).length;
     return (
-      <div className="permission plan" role="group" aria-label="Lyrica's plan" data-pending="Plan">
+      <div className="permission plan" role="group" aria-label={`${her()}'s plan`} data-pending="Plan">
         <div className="plan-head"><b>Plan</b>{steps > 1 && <span className="muted">{steps} steps</span>}</div>
         <div className="prose"><HerProse text={plan} env={env} /></div>
         <div className="row">
@@ -597,7 +598,7 @@ function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest
   }
   const sub = p.subagent;
   // A subagent's request shows here and in its parent's thread; the first answer counts.
-  const who = !sub ? <>Lyrica wants</>
+  const who = !sub ? <>{her()} wants</>
     : sub.threadId === env.threadId ? <>This subagent ({sub.role}) wants</>
     : <>Her <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: sub.threadId })}>{sub.role} subagent</a> wants</>;
   return (

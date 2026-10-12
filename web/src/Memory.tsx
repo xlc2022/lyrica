@@ -11,6 +11,7 @@ import {
   type Display, type MemoryDetail, type MemoryHit, type MemoryKind, type MemoryLink, type MemoryOverview, type MemoryRevision, type MemoryTag, type MemoryUse, type Pool, type UserMap,
 } from "./api.ts";
 import { Icon } from "./icons.tsx";
+import { her } from "./name.ts";
 import { CITATION_GROUP, dateWord, firstWords, KIND_WORD, linkCitations, longDate, parseRef, plainCitations, plainWords, poolWord, wordDiff, wordFor, type Word } from "./memory.ts";
 import { fromEditable, readable, toEditable } from "./mentions.ts";
 import { go, href, idHref, parse } from "./route.ts";
@@ -33,7 +34,7 @@ function nameOf(kind: MemoryKind, title: string | undefined, text: string, at: s
   return firstWords(text) || "an empty memory";
 }
 
-const originWord = (origin?: string) => (origin === "user" ? "yours" : origin === "sleep" ? "sleep" : "Lyrica");
+const originWord = (origin?: string) => (origin === "user" ? "yours" : origin === "sleep" ? "sleep" : her());
 
 /** What the browse pane shows: the layer, and a tag that narrows the Notes layer. */
 interface Browsing { layer: Layer; tag?: string }

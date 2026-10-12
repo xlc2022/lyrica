@@ -13,7 +13,7 @@
 // transcribes any clip as "hello from the fake" and "kokoro" speaks a second
 // of PCM; POST /speech/down and /speech/up make the whole server fail (503)
 // or answer again.
-import { mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,7 +23,10 @@ import { Lyricad } from "@lyrica/daemon";
 
 export const PASSPHRASE = "correct horse";
 const ARGON2 = { memoryCost: 1024, timeCost: 1, parallelism: 1 };
-const [port = 7341, modelPort = 7351] = process.argv.slice(2).map(Number);
+const [port = 7341, modelPort = 7351] = process.argv.slice(2, 4).map(Number);
+/** `setup`: no self.db, so lyricad starts setting up; its one-time code is copied to setupCodeFile(port) for setup.spec.ts. */
+const settingUp = process.argv[4] === "setup";
+const setupCodeFile = (port: number) => join(tmpdir(), `lyrica-e2e-setup-code-${port}`);
 
 interface Chat { model: string; messages: { role: string; content?: unknown }[] }
 
@@ -114,22 +117,27 @@ function fakeModel() {
 }
 
 const home = mkdtempSync(join(tmpdir(), "lyrica-e2e-"));
-const keyring = new Keyring(home, ARGON2);
-await keyring.initSelf(PASSPHRASE);
-new PersonaStore(keyring.self()).importSeed(fileURLToPath(new URL("../../persona", import.meta.url)));
-await new Users(keyring).createUser("li", "pw", { displayName: "Li", pronouns: PRONOUN_PRESETS.she }, { admin: true });
-keyring.self().close();
+if (!settingUp) {
+  const keyring = new Keyring(home, ARGON2);
+  await keyring.initSelf(PASSPHRASE);
+  new PersonaStore(keyring.self()).importSeed(fileURLToPath(new URL("../../persona", import.meta.url)));
+  await new Users(keyring).createUser("li", "pw", { displayName: "Li", pronouns: PRONOUN_PRESETS.she }, { admin: true });
+  keyring.self().close();
+}
 
 const model = fakeModel();
 await new Promise<void>((r) => model.listen(modelPort, "127.0.0.1", r));
 const daemon = new Lyricad({
   home, port, argon2: ARGON2, selfTest: false, socket: false, permissionMs: 60_000, watchMs: 1500,
   // Two of these run side by side: her tailnet's loopback port picks a free one, not 7342.
-  web: { servePort: 0 },
+  // Setting up: Direct would listen on this machine's addresses, so it gets none; Tailscale isn't there.
+  web: settingUp ? { servePort: 0, addresses: () => [], directPort: 0 } : { servePort: 0 },
+  ...(settingUp ? { tailnet: { binary: join(home, "no-tailscale"), socket: join(home, "no-tailscaled.sock") } } : {}),
   credentials: new SystemdCredentials(join(home, "credentials")),
   log: () => {},
 });
 await daemon.start();
+if (settingUp) copyFileSync(join(home, "setup-code"), setupCodeFile(port));
 console.log(`lyricad for e2e on http://127.0.0.1:${port}, model on ${modelPort}`);
 
 const stop = async () => { await daemon.stop(); model.close(); rmSync(home, { recursive: true, force: true }); process.exit(0); };

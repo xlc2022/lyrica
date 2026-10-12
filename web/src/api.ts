@@ -6,6 +6,8 @@ export { THREAD_TASKS } from "@lyrica/daemon/api";
 
 /** A refused request, with lyricad's reason in plain words. */
 export class HttpError extends Error {
+  /** 409 while an update drains: the message stays in the box (docs/daemon.md "Updates"). */
+  updating?: boolean;
   constructor(readonly status: number, message: string) { super(message); }
 }
 
@@ -45,7 +47,9 @@ export async function errorFrom(res: Response): Promise<HttpError> {
   if (res.status === 401 || res.status === 503) onAuthLost(res.status);
   const data = safeJson(await res.text().catch(() => ""));
   const reason = data && typeof data === "object" && "error" in data ? sentence(String(data.error)) : "";
-  return new HttpError(res.status, reason || PLAIN[res.status] || `Something went wrong (${res.status}).`);
+  const err = new HttpError(res.status, reason || PLAIN[res.status] || `Something went wrong (${res.status}).`);
+  if (data && typeof data === "object" && "updating" in data && data.updating === true) err.updating = true;
+  return err;
 }
 
 /** lyricad's reasons are lower-case phrases; show them as sentences. */
