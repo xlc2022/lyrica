@@ -137,7 +137,8 @@ export async function startPlanSignIn(kind: PlanKind, installationId: string): P
     },
     prompt: async (p) => {
       if (p.type !== "manual_code") throw new Error("the sign-in asked for something Lyrica doesn't answer");
-      return paste;
+      // Pi waits on this prompt and the callback server; an abort has to settle it, or the listener on 1455 is never closed.
+      return Promise.race([paste, new Promise<never>((_, reject) => { abort.signal.addEventListener("abort", () => reject(new Error("sign-in cancelled")), { once: true }); })]);
     },
   };
   const login = PROVIDERS[kind]().auth.oauth!.login(interaction, { getDeviceId: () => installationId, agentName: "Lyrica" })
