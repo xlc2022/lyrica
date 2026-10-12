@@ -32,6 +32,8 @@ export interface SandboxSpec {
   files?: string[];
   /** Loopback TCP ports forwarded to the host's loopback, whatever the services switch says: an SSH machine on 127.0.0.1. */
   forward?: number[];
+  /** Added to the command's environment: her GitHub token where Workspace.forgeEnv allows it. Never on the command line. */
+  env?: Record<string, string>;
   bwrap?: string;
   pasta?: string;
 }
@@ -243,7 +245,7 @@ export class Sandbox implements ExecutionTarget {
       cmd = ["unshare", "--user", "--map-root-user", "--net", "--", "bash", "-c", HOLD, "bash", rules, String(ready), String(ready + 1), ...cmd];
     }
     const child = spawn(cmd[0]!, cmd.slice(1), {
-      env: env(),
+      env: { ...this.spec.env, ...env() },
       stdio: ["pipe", "pipe", "pipe", ...fds, ...data.map(() => "pipe" as const), ...(networked ? ["pipe", "pipe"] as const : [])],
     });
     child.on("error", () => {}); // reported to the caller's own listener; never an uncaught error

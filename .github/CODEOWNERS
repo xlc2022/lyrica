@@ -1,0 +1,12 @@
+# Boundary code (DESIGN.md, "Updates and self-editing"): GitHub asks Li to
+# review any pull request that touches these paths. It isn't required for
+# merging; PR review asks Li before approving such a pull request of hers.
+/core/src/keyring.ts      @xlc2022
+/core/src/models/         @xlc2022
+/core/src/workspace/      @xlc2022
+/core/src/store/memory.ts @xlc2022
+/daemon/src/auth.ts       @xlc2022
+/daemon/src/updates.ts    @xlc2022
+/daemon/deploy/           @xlc2022
+/nix/                     @xlc2022
+/.github/                 @xlc2022

@@ -1099,6 +1099,12 @@ settings(userId).effective(threadId): ThreadWorkspace  // strictest mode and swi
 //   (read-only where any ancestor's is) and machines every ancestor grants. Sandbox, Files panel, grantsFor and folders() use it.
 //   setThread on a parent writes the narrowing into its descendants' rows; checkInherited no longer refuses a dropped folder.
 allowedPaths.allow(actor, userId, pool, path) / disallow(...) / list(userId)
+  // NEVER_GRANTED (Caddy's runtime, /opt/lyrica, the updater's state and snapshots) and LYRICA_HOME are refused, and rows
+  //   overlapping them are left out of list(); so is a private row overlapping the checkout
+allowedPaths.checkout() / setCheckout(actor, path | null)  // her code's checkout (self.db settings workspace.checkout); never in a private list
+settings(userId).githubToken() / setGithubToken(token | null)  // her GitHub token in user.db, never shown back
+forgeEnv(t): Record<string, string>       // githubEnv(token) (GH_TOKEN and git's credential) for a general thread with the whole
+  // checkout granted that can reach github.com; {} anywhere else. targetFor passes it as the sandbox's env, never argv
 saveUpload(t, name, bytes): Promise<string>  // cleans the name (cleanUploadName), never overwrites
 mountHome(userId) / unmountHome(userId)   // gocryptfs; mount when the user's key becomes available
 selfTest(): Promise<string | undefined>   // lyricad calls this at startup
@@ -1133,6 +1139,9 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   - If `selfTest()` finds that a sandbox could undo its firewall, or can't
     start one, every thread runs with network off and the reason is kept in
     `networkRefused` for the UI.
+- **GitHub API:** `lyricad`'s `/api/u/:userId/github` (`GET`, `PUT` with
+  `{ token }`, `DELETE`) answers `GithubInfo { token: boolean; checkout }`,
+  never the token.
 - **Machines API:** `lyricad`'s `/api/u/:userId/machines` (`GET`; `POST
   …/machines/probe` for the Test step; `POST …/machines` to confirm;
   `PATCH …/machines/:name` for address, root, pool and limit; `POST

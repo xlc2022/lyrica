@@ -288,7 +288,11 @@ takes is `lyrica@pve!agent=<that secret>`.
   to the model badge.
 - The rules, checked when settings change and again before every sandbox run:
   - A listed folder must be a real directory, with no symlinks on its path,
-    and must not overlap Lyrica's runtime directory.
+    and must not overlap Lyrica's runtime directory (which holds the update
+    requests), the releases (`/opt/lyrica`), the updater's state and
+    snapshots (`/var/lib/lyrica-update`, `/var/lib/lyrica-snapshots`) or
+    Caddy's runtime directory. A row that overlaps one of them, whenever it
+    was listed, doesn't count.
   - No folder may be in both lists, or overlap one in the other list.
   - A general thread can't take a folder that overlaps a private one.
   - A private thread may also take general folders, read-only, the same way
@@ -303,8 +307,8 @@ takes is `lyrica@pve!agent=<that secret>`.
   mount units, with credentials in system config). Once mounted, they're
   ordinary paths an administrator can add to a user's grant lists. Lyrica never
   handles share credentials.
-- **Her own code.** Later, when she edits her own code, her repository checkout
-  is simply another grant.
+- **Her own code** is a checkout granted like any folder, to general threads
+  only (see [Her own code](#her-own-code)).
 
 ## The home workspace and uploads
 
@@ -442,6 +446,62 @@ How it is enforced:
   network to its machine alone, whatever the thread's switches say. If the
   self-test refuses network, machine calls fail too. Model calls come from
   `lyricad`, so local-only and the switches are independent.
+
+## Her own code
+
+She changes her own code the way Claude's feature threads do (DESIGN.md,
+"Updates and self-editing"): from a checkout, on `lyrica/*` branches,
+through pull requests that the project's review approves and merges.
+Nothing she does reaches `main` or the server without that review and an
+administrator's Update.
+
+- **The checkout** is a folder owned by `lyrica`, for example
+  `/srv/lyrica-src`, cloned from the repository. An administrator names it
+  with `lyrica admin code set <path>` (`self.db` `settings`
+  `workspace.checkout`; `show` and `clear` too) and adds it to a user's
+  **general** folders. It can't be named while it overlaps a private
+  folder, can't be added to a private list, and a private row that
+  overlaps it doesn't count.
+- **Her GitHub token** is a field in that user's Settings, **GitHub**,
+  stored in their `user.db` like a machine's key and never shown back.
+  Each sandbox run gets it as `GH_TOKEN` and as git's credential for
+  `https://github.com` (through git's `GIT_CONFIG_*` environment, so no
+  file holds it) only when the thread is general, has the whole checkout
+  granted (a folder inside it isn't enough), and can reach GitHub: internet
+  on, or `github.com` (and `api.github.com`, for `gh`) as allowed hosts.
+  Otherwise the run has no token. There is no model-facing tool for
+  GitHub: she uses `git` and `gh` in her sandbox (on NixOS the sandbox's
+  tools include `git`, `gh` and Node 22; on Debian install `gh`, which
+  `install.sh` does).
+- **The repository's settings**, Li's to set, once:
+  1. Her GitHub account as a collaborator with **Write**.
+  2. Under her account, a fine-grained token for this repository only,
+     with **Contents** and **Pull requests** read and write; paste it into
+     Settings → GitHub.
+  3. A branch protection rule (or ruleset) on `main`: pull requests only,
+     the CI jobs from `.github/workflows/ci.yml` required, one approval;
+     "Do not allow bypassing" off, so Li's account, which Claude's threads
+     work through, still merges as administrator.
+  4. A ruleset that lets her account create and update only `lyrica/*`
+     branches and `update/*` tags.
+  5. She pushes to the repository, never a fork, so her pull requests run
+     CI on the `lyrica-ci` runners like Claude's, with no
+     first-time-contributor approval.
+- **`.github/CODEOWNERS`** names Li for the boundary code: keys, the model
+  router, the workspace (sandbox and grants), `openThreadView`,
+  authentication, deployment, the updater and CI. GitHub then asks for
+  Li's review on a pull request that touches them; it isn't required for
+  merging, since Claude's approvals come from the same account. PR review
+  asks Li before approving such a pull request of hers.
+- **Update notes.** Before Li presses Update she writes one: an annotated
+  tag `update/<date>` on the `main` commit to install, its message listing
+  the pull requests merged since the running version (Claude's too), what
+  each changes, any schema change and what a rollback would lose, and what
+  to check afterwards. It describes code, never conversations. After a
+  failed probation, a GitHub issue linked to the tag holds the post-mortem.
+- **Her self-primer** (`extension/src/primer.ts`) comes up when her code
+  does, like a persona topic: where to read first, the branch and review
+  flow, boundary code, update notes and rollbacks.
 
 ## Subagents
 

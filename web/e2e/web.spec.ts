@@ -488,6 +488,27 @@ test("Machines lists none, and Add machine reaches a machine before anything is 
   await expect(page.getByRole("region", { name: "Machines", exact: true })).toContainText("None yet.");
 });
 
+test("GitHub saves her token, never shows it back, and removes it after a dialog", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}/settings/github`);
+  const section = page.getByRole("region", { name: "GitHub", exact: true });
+  await expect(section).toContainText("None");
+  const token = section.getByLabel("Token");
+  await expect(section.getByRole("button", { name: "Save" })).toBeDisabled();
+  await token.fill("github_pat_11AAAAAAA0abcdefghijklmnopqrstuvwxyz");
+  await section.getByRole("button", { name: "Save" }).click();
+  await expect(token).toHaveValue("");
+  await expect(token).toHaveAttribute("placeholder", "Saved");
+  await noHorizontalScroll(page);
+  await page.reload();
+  await expect(section.getByLabel("Token")).toHaveAttribute("placeholder", "Saved");
+  await section.getByRole("button", { name: "Remove" }).click();
+  const dialog = page.getByRole("dialog", { name: "Remove token" });
+  await dialog.getByRole("button", { name: "Remove" }).click();
+  await expect(section.getByRole("button", { name: "Remove" })).toHaveCount(0);
+  await expect(section.getByLabel("Token")).toHaveAttribute("placeholder", "");
+});
+
 test("an administrator sees how Lyrica is reached", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}/admin/web`);

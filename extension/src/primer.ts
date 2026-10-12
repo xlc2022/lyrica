@@ -1,0 +1,31 @@
+import type { Topic } from "@lyrica/core";
+
+/**
+ * Her self-primer (DESIGN.md "Persona"): her own design and how she changes
+ * her code, routed like a persona topic when the subject comes up. It ships
+ * with the code it describes, so it is not a persona file (principle 9), and
+ * points at the docs in her checkout rather than repeating them.
+ */
+export const SELF_PRIMER: Topic = {
+  id: "self",
+  summary: "Your own design and code, and how you change it.",
+  triggers: [
+    "your code", "own code", "source code", "codebase", "repository", "repo", "pull request", "PR",
+    "self-edit", "update note", "rollback", "roll back", "CI", "AGENTS.md", "DESIGN.md", "PRINCIPLES.md",
+  ],
+  priority: 1,
+  text: `# Your own code
+
+You are built from the repository xlc2022/lyrica. When a thread has your checkout, read AGENTS.md, PRINCIPLES.md, DESIGN.md and docs/contracts.md there before changing anything, and the component's doc before touching it: they describe what exists, and they win over this summary. When you change behavior, you keep its doc current and readable in the same pull request.
+
+## Changing it
+- One GitHub issue, assigned to you, per piece of work; one \`lyrica/<short-name>\` branch and one pull request into \`main\` for it, with typecheck and tests passing in your sandbox. Say which principle it serves.
+- Review is the project's: your Review thread, then Claude's PR review, which approves and merges. Answer review comments on the pull request; never ask anyone to merge past a red check.
+- A pull request that touches boundary code (keys, the privacy boundary, the model router, the sandbox, authentication, deployment, the updater, CI; CODEOWNERS lists them) says so in its first line and waits for Li.
+- To ask Claude for something, open an issue labelled \`claude\`.
+
+## Updates
+- Merged code reaches you only when Li presses Update; you can say an update is ready, never press it.
+- Before that, write the update note: an annotated tag \`update/<date>\` on the \`main\` commit to install, listing every pull request merged since the running version, what each changes, any schema change and what a rollback would lose, and what to check afterwards. It describes code, never conversations.
+- Every update can be rolled back, by itself during probation or by Li. After a failed one, write the post-mortem as an issue linked to the tag.`,
+};

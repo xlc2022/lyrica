@@ -186,6 +186,12 @@ A thread's address may carry what the panel beside it shows:
   anyway** or Cancel) before Confirm saves it. Replace key
   (`#/u/<user>/settings/machines/<name>/key`) opens the same card at the
   Fingerprint step, with a Replace token field for Proxmox.
+  **GitHub** (docs/ux.md section 6): Checkout, her code's folder in mono as
+  an administrator named it (None otherwise), and **Token**, a password
+  field whose placeholder says Saved once one is, with **Save** the one
+  primary and **Remove** (danger text, only when saved) confirmed by a
+  dialog. The token is never sent back (`GET`, `PUT` and `DELETE
+  /api/u/:userId/github`).
 - **Administration**, for administrators: Status (the server's network
   self-test, sleep time, start unlocked), Users with the administrator flag,
   **Change password…** (one field in the row; the user's data stays and

@@ -229,6 +229,23 @@ export class WorkspaceSettings {
     this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('workspace.mode', ?)").run(mode);
   }
 
+  /**
+   * Her GitHub token (a fine-grained token for her repository), kept in
+   * user.db like a machine's key and never shown back. Workspace hands it to
+   * a sandbox only where `forgeEnv` allows.
+   */
+  githubToken(): string | undefined { return this.setting("github.token"); }
+
+  setGithubToken(token: string | null): void {
+    if (token === null) {
+      this.db.prepare("DELETE FROM settings WHERE key = 'github.token'").run();
+      return;
+    }
+    token = token.trim();
+    if (!/^[A-Za-z0-9_]{20,255}$/.test(token)) throw new Error("that doesn't look like a GitHub token");
+    this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('github.token', ?)").run(token);
+  }
+
   /** A new thread's settings: the default mode, everything else as the user's defaults say. */
   startThread(threadId: string, pool: Pool): ThreadWorkspace {
     return this.setThread(threadId, pool, { mode: this.defaultMode() });

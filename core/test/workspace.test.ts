@@ -186,6 +186,85 @@ describe("grants", () => {
   });
 });
 
+describe("her own code", () => {
+  const TOKEN = "github_pat_11AAAAAAA0abcdefghijklmnopqrstuvwxyz";
+
+  async function withCheckout() {
+    const s = await setup();
+    const src = join(s.host, "src");
+    mkdirSync(src);
+    s.paths.allow(s.li, s.li.id, "general", src);
+    s.paths.setCheckout(s.li, src);
+    s.settings.setGithubToken(TOKEN);
+    return { ...s, src };
+  }
+
+  it("is refused in a private list, and never granted where releases, snapshots or update requests are", async () => {
+    const { keyring, li, host, paths, src } = await withCheckout();
+    expect(() => paths.allow(li, li.id, "private", src)).toThrow(/checkout/);
+    expect(() => paths.allow(li, li.id, "private", join(src, ".."))).toThrow(/overlaps/);
+    // Named after the fact, a private row that overlaps it stops counting.
+    const other = join(host, "other");
+    mkdirSync(other);
+    paths.allow(li, li.id, "private", other);
+    expect(() => paths.setCheckout(li, other)).toThrow(/private list/);
+    for (const never of ["/opt/lyrica", "/opt/lyrica/releases/abc", "/var/lib/lyrica-snapshots", "/var/lib/lyrica-update", join(keyring.home, "updates")]) {
+      expect(() => paths.allow(li, li.id, "general", never), never).toThrow(/never granted/);
+      expect(() => paths.setCheckout(li, never), never).toThrow(/never granted/);
+    }
+    // A row listed before a folder became never granted is dropped when read, so the check before each run refuses it.
+    keyring.self().prepare("INSERT INTO workspace_paths (user_id, pool, path) VALUES (?, 'private', ?)").run(li.id, src);
+    keyring.self().prepare("INSERT INTO workspace_paths (user_id, pool, path) VALUES (?, 'general', '/opt/lyrica')").run(li.id);
+    expect(paths.list(li.id).private).not.toContain(src);
+    expect(paths.list(li.id).general).not.toContain("/opt/lyrica");
+  });
+
+  it("is an administrator's to name", async () => {
+    const { users, paths, src } = await withCheckout();
+    const sam = await users.createUser("sam", "pw", profile("Sam"), { admin: false });
+    expect(() => paths.setCheckout(sam, src)).toThrow(/only an administrator/);
+    expect(paths.checkout()).toBe(src);
+  });
+
+  it("gets her GitHub token only in a general thread with the checkout that can reach GitHub", async () => {
+    const { li, host, workspace, settings, src } = await withCheckout();
+    const thread = (threadId: string, pool: "general" | "private" = "general") => ({ userId: li.id, pool, threadId });
+
+    settings.setThread("code", "general", { grants: [{ path: src, writable: true }] });
+    expect(workspace.forgeEnv(thread("code"))).toMatchObject({ GH_TOKEN: TOKEN, GIT_CONFIG_KEY_0: "credential.https://github.com.helper" });
+
+    // Without the checkout, or with only a folder inside it.
+    settings.setThread("other", "general", { grants: [{ path: join(host, "shared"), writable: true }] });
+    expect(workspace.forgeEnv(thread("other"))).toEqual({});
+    mkdirSync(join(src, "docs"));
+    settings.setThread("docs", "general", { grants: [{ path: join(src, "docs"), writable: true }] });
+    expect(workspace.forgeEnv(thread("docs"))).toEqual({});
+
+    // A private thread, even one that reads the checkout and has internet.
+    settings.setThread("p", "private", { grants: [{ path: src, writable: false }], internet: true });
+    expect(workspace.forgeEnv(thread("p", "private"))).toEqual({});
+
+    // Internet off: only with github.com allowed.
+    settings.setThread("code", "general", { internet: false });
+    expect(workspace.forgeEnv(thread("code"))).toEqual({});
+    settings.setThread("code", "general", { hosts: ["github.com"] });
+    expect(workspace.forgeEnv(thread("code")).GH_TOKEN).toBe(TOKEN);
+
+    // No token, or the checkout no longer named.
+    settings.setGithubToken(null);
+    expect(workspace.forgeEnv(thread("code"))).toEqual({});
+    settings.setGithubToken(TOKEN);
+    workspace.allowedPaths.setCheckout(li, null);
+    expect(workspace.forgeEnv(thread("code"))).toEqual({});
+  });
+
+  it("keeps the token to a token's shape", async () => {
+    const { settings } = await withCheckout();
+    expect(() => settings.setGithubToken("not a token\nexport X=1")).toThrow(/GitHub token/);
+    expect(settings.githubToken()).toBe(TOKEN);
+  });
+});
+
 describe("modes and switches", () => {
   it("renames stored modes in place and adds the switches, on", async () => {
     const { users, li } = await setup();

@@ -538,6 +538,20 @@ export interface MachineInfo {
    */
   state?: { kind: "online" | "unreachable" | "keyChanged"; since: string };
 }
+/**
+ * Her GitHub token, for her own code. The token is never sent back.
+ * GET /api/u/:userId/github → GithubInfo
+ * PUT /api/u/:userId/github (GithubToken) → GithubInfo
+ * DELETE /api/u/:userId/github → GithubInfo
+ */
+export interface GithubInfo {
+  /** Whether a token is saved. */
+  token: boolean;
+  /** Her code's checkout, if an administrator named one: only a general thread that has it granted gets the token. */
+  checkout: string | null;
+}
+export interface GithubToken { token: string }
+
 /** GET /api/u/:userId/machines → MachineInfo[] */
 /**
  * POST /api/u/:userId/machines/probe → MachineProbe. The Test step of Add

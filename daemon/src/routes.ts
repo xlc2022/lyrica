@@ -471,6 +471,19 @@ export function apiRoutes(d: Lyricad): Route[] {
       return { ok: true };
     }),
 
+    // --- Her GitHub token, for her own code (docs/workspace.md, "Her own code") ---
+    route("GET", `${u}/github`, (r) => github(d, d.userFor(r).id)),
+    route("PUT", `${u}/github`, async (r) => {
+      const userId = d.userFor(r).id;
+      s().workspace.settings(userId).setGithubToken(String((await r.json<Api.GithubToken>()).token ?? ""));
+      return github(d, userId);
+    }),
+    route("DELETE", `${u}/github`, (r) => {
+      const userId = d.userFor(r).id;
+      s().workspace.settings(userId).setGithubToken(null);
+      return github(d, userId);
+    }),
+
     // --- The user's own groups of threads ---
     route("GET", `${u}/thread-groups`, (r): Api.ThreadGroup[] => s().prefs.groups(d.userFor(r).id)),
     route("POST", `${u}/thread-groups`, async (r): Promise<Api.ThreadGroup> => s().prefs.addGroup(d.userFor(r).id, String((await r.json<Api.NewThreadGroup>()).name ?? ""))),
@@ -1404,6 +1417,12 @@ function ids(list: unknown): string[] {
 function networkDefaults(d: Lyricad, userId: string): Api.NetworkDefaults {
   const s = d.services!.workspace.settings(userId);
   return { general: s.defaultNetwork("general"), private: s.defaultNetwork("private") };
+}
+
+/** Whether her GitHub token is saved, never the token, and her checkout. */
+function github(d: Lyricad, userId: string): Api.GithubInfo {
+  const ws = d.services!.workspace;
+  return { token: !!ws.settings(userId).githubToken(), checkout: ws.allowedPaths.checkout() ?? null };
 }
 
 /** A machine as the API shows it: never its key or token. */

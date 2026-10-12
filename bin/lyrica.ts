@@ -21,6 +21,7 @@ const USAGE = `usage:
   lyrica admin user profile <login>
   lyrica admin grants add|remove --user <login> --pool general|private <path>
   lyrica admin grants list --user <login>
+  lyrica admin code show|set <path>|clear      (her code's checkout: general threads only, and her GitHub token goes only where it is granted)
   lyrica admin ssh add --user <login> <name> <account>@<host>[:<port>] [--root <path>] [--pool general|private] [--limit ask|acceptEdits|auto]
   lyrica admin ssh list|remove --user <login> [<name>]            (every machine, Proxmox ones too)
   lyrica admin proxmox add --user <login> <name> https://<host>[:<port>] [--pool general|private] [--limit ask|acceptEdits|auto]
@@ -129,11 +130,12 @@ async function admin(args: string[], home: string): Promise<void> {
     return;
   }
   if (sub === "setup-code") return setupCode(home);
-  if (sub !== "user" && sub !== "grants" && sub !== "ssh" && sub !== "proxmox" && sub !== "net" && sub !== "models") throw new Error(USAGE);
+  if (sub !== "user" && sub !== "grants" && sub !== "code" && sub !== "ssh" && sub !== "proxmox" && sub !== "net" && sub !== "models") throw new Error(USAGE);
 
   await keyring.unlockSelf(await ask("self.db passphrase: ", true));
   if (sub === "grants" || sub === "ssh" || sub === "proxmox" || sub === "net") return workspaceAdmin(users, keyring, sub, args.slice(1));
   if (sub === "models") return modelsAdmin(keyring, users, args.slice(1), ask);
+  if (sub === "code") return codeAdmin(users, keyring, args.slice(1));
   if (action === "list") {
     for (const u of users.all()) {
       console.log(`${u.login}: ${u.profile.displayName} (${pronounLabel(u.profile.pronouns)})${u.admin ? ", administrator" : ""}`);
@@ -156,6 +158,21 @@ async function admin(args: string[], home: string): Promise<void> {
     const change = await askProfile(target.profile);
     const profile = users.updateProfile(actor, target, change);
     console.log(`${login} is now ${profile.displayName} (${pronounLabel(profile.pronouns)}).`);
+  } else {
+    throw new Error(USAGE);
+  }
+}
+
+/** Her code's checkout, named in self.db by an administrator (docs/workspace.md, "Her own code"). */
+async function codeAdmin(users: Users, keyring: Keyring, args: string[]): Promise<void> {
+  const paths = new Workspace(keyring, users, { excludePorts: [] }).allowedPaths;
+  const [action, path, ...extra] = args;
+  if (action === "show" && !path) {
+    console.log(paths.checkout() ?? "(none)");
+  } else if ((action === "set" && path && !extra.length) || (action === "clear" && !path)) {
+    const actor = await signIn(users, "Administrator login: ");
+    paths.setCheckout(actor, action === "set" ? path! : null);
+    console.log(action === "set" ? `Her code's checkout is ${path}. Add it to a user's general folders to grant it.` : "No checkout is named now.");
   } else {
     throw new Error(USAGE);
   }

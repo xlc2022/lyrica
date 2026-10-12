@@ -23,8 +23,10 @@ written here.
    (**Rename…** in its menu). In **Project settings** (the **Project** link in the project chat's header):
    General → Goal: "Improve Lyrica's own code from what we notice in use,
    through review."; then **Thread settings** under This chat: grant her
-   code folder and turn the internet on (or allow `github.com` and
-   `registry.npmjs.org`).
+   code folder (the checkout named with `lyrica admin code set`) and turn
+   the internet on (or allow `github.com`, `api.github.com` and
+   `registry.npmjs.org`). Her GitHub token goes in **Settings → GitHub**
+   first (docs/workspace.md, "Her own code").
 2. Paste the **Project instructions** below into Project settings →
    Memory → Instructions (the count shows it is under 2,000; only Li can
    change them).

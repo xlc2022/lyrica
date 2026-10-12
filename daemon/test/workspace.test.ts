@@ -79,3 +79,23 @@ describe("lyricad's network self-test", () => {
     expect(d.services!.workspace.network(thread(rt.li.id)).internet).toBe(true);
   });
 });
+
+describe("her GitHub token", () => {
+  it("is saved and removed by its user, and never sent back", async () => {
+    const rt = await runtime();
+    homes();
+    const { base } = await daemon(rt);
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const li = await login(base, "li", "pw");
+    const token = "github_pat_11AAAAAAA0abcdefghijklmnopqrstuvwxyz";
+    expect((await li.get(`/api/u/${rt.li.id}/github`)).body).toEqual({ token: false, checkout: null });
+    const saved = await li.put(`/api/u/${rt.li.id}/github`, { token });
+    expect(saved.body).toEqual({ token: true, checkout: null });
+    expect(JSON.stringify((await li.get(`/api/u/${rt.li.id}/github`)).body)).not.toContain(token);
+    expect((await li.put(`/api/u/${rt.li.id}/github`, { token: "not a token" })).status).toBe(400);
+    // Another user can't reach it.
+    const sam = await login(base, "sam", "pw2");
+    expect((await sam.get(`/api/u/${rt.li.id}/github`)).status).toBe(401);
+    expect((await li.del(`/api/u/${rt.li.id}/github`)).body).toEqual({ token: false, checkout: null });
+  });
+});

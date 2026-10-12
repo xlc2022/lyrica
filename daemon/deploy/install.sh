@@ -46,7 +46,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
   bubblewrap gocryptfs fuse3 passt nftables openssl ca-certificates curl unzip rsync imagemagick \
-  build-essential python3 git openssh-client jq >/dev/null
+  build-essential python3 git gh openssh-client jq >/dev/null
 command -v node >/dev/null || die "install Node.js 22.6 or later (for example from NodeSource), then run this again"
 # 22.6 for the SSH helper, which runs with type stripping.
 node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 6) ? 0 : 1)' \

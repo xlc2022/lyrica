@@ -18,7 +18,8 @@ import {
   certFingerprint, ownAddress, ownNode, parseProxmoxAddress, proxmoxAction, proxmoxHttps, proxmoxSetup, thisComputer, tokenId,
   type ProxmoxAction, type ProxmoxCall, type ProxmoxTransport, type Self,
 } from "./proxmox.ts";
-import { checkGrant, stricterMode, WorkspaceSettings, type Grant, type MachineConfig, type MachineKind, type MachineLimit, type Network, type NewMachine, type PermissionMode, type ThreadWorkspace } from "./settings.ts";
+import { parseHost } from "./net.ts";
+import { checkGrant, stricterMode, within, WorkspaceSettings, type Grant, type MachineConfig, type MachineKind, type MachineLimit, type Network, type NewMachine, type PermissionMode, type ThreadWorkspace } from "./settings.ts";
 import { AllowedPaths } from "./paths.ts";
 import { generateSshKey, SshTarget } from "./ssh.ts";
 import { sandboxedTransport, type SshTransport } from "./transport.ts";
@@ -90,6 +91,20 @@ export interface MachineProbe {
 }
 
 const DRAFT_MS = 60 * 60_000;
+
+/**
+ * A GitHub token as a sandbox's environment: `GH_TOKEN` for `gh`, and a git
+ * credential helper for github.com, set through git's environment config so
+ * nothing is written to disk. The helper reads the token from the environment.
+ */
+export function githubEnv(token: string): Record<string, string> {
+  return {
+    GH_TOKEN: token,
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "credential.https://github.com.helper",
+    GIT_CONFIG_VALUE_0: '!f() { test "$1" = get && printf "username=x-access-token\\npassword=%s\\n" "$GH_TOKEN"; }; f',
+  };
+}
 /** account@host or account@host:port, with [v6] in brackets. */
 export function parseMachineAddress(address: string): { username: string; host: string; port: number } {
   const m = /^([^@\s]+)@(\[[0-9a-fA-F:.]+\]|[^:\s@\[\]]+)(?::(\d+))?$/.exec(address.trim());
@@ -335,11 +350,29 @@ export class Workspace {
       workdir: this.threadDir(t),
       grants: s.effective(t.threadId).grants,
       network: this.network(t),
+      env: this.forgeEnv(t),
       ...this.door(),
       check: (g) => checkGrant(s.allowed(), t.pool, g),
       bwrap: this.opts.bwrap,
       pasta: this.opts.pasta,
     });
+  }
+
+  /**
+   * Her GitHub token, as git's credential and `GH_TOKEN`, for the thread's
+   * sandbox: only in a general thread that has her checkout granted, and only
+   * while it can reach GitHub (internet on, or github.com or one of its subdomains an allowed host).
+   * Anywhere else nothing (docs/workspace.md, "Her own code").
+   */
+  forgeEnv(t: WorkspaceThread): Record<string, string> {
+    if (t.pool !== "general") return {};
+    const checkout = this.allowedPaths.checkout();
+    const s = this.settings(t.userId);
+    if (!checkout || !s.effective(t.threadId).grants.some((g) => within(checkout, g.path))) return {};
+    const net = this.network(t);
+    if (!net.internet && !net.hosts.some((h) => /^(.+\.)?github\.com$/.test(parseHost(h).host))) return {};
+    const token = s.githubToken();
+    return token ? githubEnv(token) : {};
   }
 
   private ssh(userId: string, name: string): SshTarget {
