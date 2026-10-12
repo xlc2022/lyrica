@@ -13,7 +13,7 @@ import { DEFAULT_BUDGETS, OPENING, pinnedBlock, pinnedOf, reserveFor, startPlanS
 import type { ProjectThreadInfo } from "./children.ts";
 import { Busy } from "./hosted.ts";
 import { BUILD, card, type Lyricad, type Services } from "./lyricad.ts";
-import { readUpdates, writeRequest } from "./updates.ts";
+import { readUnitsStale, readUpdates, writeRequest } from "./updates.ts";
 import { toMessages, toReactions } from "./messages.ts";
 import { messageText, readAloud, readClip, speechState, storedSource, transcribeClip, titlesIn, type SpeechSource } from "./speech.ts";
 import { notifications } from "./notifications.ts";
@@ -1837,9 +1837,11 @@ function updates(d: Lyricad): Api.Updates {
 }
 
 function adminStatus(d: Lyricad): Api.AdminStatus {
+  const unitsStale = readUnitsStale(d.updatePaths);
   const refused = d.services!.workspace.networkRefused;
   const why = d.keyring.credentials?.unavailable();
   return {
+    ...(unitsStale?.length ? { unitsStale } : {}),
     ...(refused ? { networkRefused: refused } : {}),
     savedPassphrase: d.keyring.hasSavedPassphrase(),
     credentials: why ? { available: false, reason: why } : { available: true },

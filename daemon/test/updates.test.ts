@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { Keyring, SCHEMA } from "@lyrica/core";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { Drain, Health, ThreadSummary, Updates } from "../src/api.ts";
+import type { AdminStatus, Drain, Health, ThreadSummary, Updates } from "../src/api.ts";
 import { smokeTest } from "../src/smoke.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
@@ -103,8 +103,11 @@ describe("Administration's updates API", () => {
       snapshots: [{ dir: "x", at: "2026-10-09T14:02:00Z", commit: "bbbbbbb", minReader: one }],
     }));
     writeFileSync(join(state, "state.json"), JSON.stringify({
+      unitsStale: ["lyricad.service"],
       state: "idle", since: "2026-10-09T14:12:00Z", note: { tag: "update/2026-10-12", commit: "ddddddd", message: "Releases and rollback" },
     }));
+    const statusPath = `/api/u/${rt.ada.id}/admin/status`;
+    expect((await ada.get<AdminStatus>(statusPath)).body.unitsStale).toEqual(["lyricad.service"]);
     const got = (await ada.get<Updates>(u)).body;
     expect(got.available).toBe(true);
     expect(got.note).toEqual({ tag: "update/2026-10-12", commit: "ddddddd", message: "Releases and rollback" });
@@ -123,6 +126,7 @@ describe("Administration's updates API", () => {
     rmSync(request);
     // While an update runs, only a rollback during probation is taken.
     writeFileSync(join(state, "state.json"), JSON.stringify({ state: "building", since: "2026-10-12T00:00:00Z" }));
+    expect((await ada.get<AdminStatus>(statusPath)).body).not.toHaveProperty("unitsStale");
     expect((await ada.post(u, { tag: "update/2026-10-12" })).status).toBe(409);
     expect(existsSync(request)).toBe(false);
     writeFileSync(join(state, "state.json"), JSON.stringify({ state: "probation", since: "2026-10-12T00:00:00Z" }));

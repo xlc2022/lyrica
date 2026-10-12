@@ -31,6 +31,7 @@ interface ReleasesFile {
 
 /** state.json, written by lyrica-update and lyrica-rollback. */
 interface StateFile {
+  unitsStale?: string[];
   state?: UpdaterState;
   since?: string;
   tag?: string;
@@ -43,6 +44,11 @@ interface StateFile {
 
 function readJson<T>(path: string): T | undefined {
   try { return JSON.parse(readFileSync(path, "utf8")) as T; } catch { return undefined; }
+}
+
+/** Installed Debian units that differed at the last update's switch. */
+export function readUnitsStale(paths: UpdatePaths): string[] | undefined {
+  return readJson<StateFile>(join(paths.state, "state.json"))?.unitsStale;
 }
 
 const reads = (release: Schema, needed: Schema) => KINDS.every((k) => (release[k] ?? 0) >= (needed[k] ?? 0));

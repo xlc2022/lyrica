@@ -1264,7 +1264,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   …/updates` with `{ tag }`, `POST …/updates/rollback` with `{ commit }`
   and `POST …/updates/check` write `<runtime>/updates/request.json` for the
   updater's path unit (`409` while an update runs, except a rollback on
-  probation).
+  probation). `GET …/admin/status` (`AdminStatus`) carries optional
+  `unitsStale: string[]` from the updater's `state.json`: Debian units that
+  were missing or differed at the last update switch, shown in Status with
+  the action to run `install.sh`. The updater never rewrites these units;
+  NixOS does no comparison.
 - **Schema versions** (`core/migrations`): each encrypted database records
   its schema version (`PRAGMA user_version`) and the oldest schema that can
   read it (`meta.min_reader`: an expand step leaves it, a contract step

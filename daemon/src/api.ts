@@ -1574,6 +1574,8 @@ export interface NewPage { slug: string; title: string; summary: string; text: s
 
 /** GET /api/u/:userId/admin/status → AdminStatus */
 export interface AdminStatus {
+  /** Installed Debian units that differ from the last update release. */
+  unitsStale?: string[];
   /** Why tools have no network on this host, if the self-test refused it. */
   networkRefused?: string;
   /** Whether the self.db passphrase is saved, so lyricad starts unlocked. */

@@ -547,7 +547,8 @@ A thread's address may carry what the panel beside it shows:
   `GET|PUT …/photo-cloud`. This follows the Images brief and principles 1
   and 2; controls reuse §3's secondary button and menu, §4's short labels
   and tooltips, and §6's confirmation dialog. No drawer or extra captions.
-- **Administration**, for administrators: Status (the server's network
+- **Administration**, for administrators: Status (stale Debian systemd units
+  with the action to run `install.sh`, the server's network
   self-test, sleep time, start unlocked), **Her name** (Name, 1–40 characters
   on one line, one Save disabled when invalid or unchanged; `PUT …/admin/name`,
   then her displayed name updates and the page re-reads `/api/state`), Users with the administrator flag,

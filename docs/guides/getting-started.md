@@ -855,7 +855,11 @@ the SSH ones, and `ssh remove <name>` takes one away.
   rebuild; an Update doesn't add it. The Updates page shows each step;
   the updater's state is in `/var/lib/lyrica-update`. An update installs
   no packages: when a release needs a new one, install it by hand or run
-  `install.sh` from a checkout.
+  `install.sh` from a checkout. On Debian and Ubuntu, Administration → Status
+  reports any installed units that differ from the new release or are missing;
+  run `install.sh` from a current checkout to update them. Updates never
+  rewrite units, since `lyricad.service` defines her confinement. NixOS units
+  are managed by its module instead.
 - **Rollback:** under Updates, **Roll back** in a kept release's ⋯ goes
   back to it. As root, `lyrica-rollback` goes back to the previous
   release, or `lyrica-rollback <commit>` to another kept one. When that

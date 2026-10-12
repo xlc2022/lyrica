@@ -250,6 +250,17 @@ if ! SNAP=$("$SBIN/lyrica-snapshot" --note "$UPDATE/notes/$COMMIT.txt" "${pin[@]
 fi
 FROM=$(current_commit)
 switch_to "$COMMIT"
+if [ -z "$NIX" ]; then
+  # Keep in step with install.sh's unit list. Report only: lyricad.service
+  # defines her confinement, so an update must never rewrite it as root.
+  stale=()
+  for unit in lyricad.service lyrica-caddy.service lyrica-tailscaled.service lyrica-update.service lyrica-update.path lyrica-rollback.service lyrica-probation.service; do
+    cmp -s "${LYRICA_SYSTEMD_DIR:-/etc/systemd/system}/$unit" "$REL_PATH/daemon/deploy/$unit" || stale+=("$unit")
+  done
+  units=$(printf '%s\n' "${stale[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')
+  write_json "$UPDATE/state.json" --argjson units "$units" \
+    'if ($units | length) > 0 then .unitsStale = $units else del(.unitsStale) end'
+fi
 raise_min_reader "$INFO"
 jq -n --arg f "$FROM" --arg t "$COMMIT" --arg tag "$TAG" --arg s "$SNAP" --arg at "$(now)" --argjson c "$CONTRACT" \
   '{from: $f, to: $t, tag: $tag, snapshot: $s, since: $at, contract: $c}' >"$PROBATION_FILE"

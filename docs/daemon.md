@@ -945,7 +945,7 @@ check names and counts, never text.
 
 - **Kept state.** `/var/lib/lyrica-update` (root's, readable): `state.json`
   (the updater's state, busy work while draining, the newest update note,
-  `lastRollback`), `releases.json` (kept releases, `current`, `previous`,
+  `lastRollback`, and `unitsStale` when installed Debian units differ), `releases.json` (kept releases, `current`, `previous`,
   the snapshots, and the highest `min_reader` any release has written),
   `notes/<commit>.txt`. Snapshots are in `/var/lib/lyrica-snapshots`
   (root's, `0700`). Neither is ever granted to a thread.
@@ -969,6 +969,15 @@ check names and counts, never text.
   `lyrica-build`; smoke test; drain (10 minutes, then undrain and give up);
   stop; `lyrica-snapshot` (pinned when the release raises `min_reader`);
   switch `current` and `previous`; start; probation.
+- **Stale units (Debian/Ubuntu).** At the release switch, the updater byte-compares
+  all seven units installed by `install.sh` against the new release's
+  `daemon/deploy/` files. Missing or different units are recorded as
+  `unitsStale` in `state.json`; matching units clear the key. Administration
+  → Status carries this list and asks the operator to run `install.sh` from
+  a current checkout. The updater never rewrites units: `lyricad.service`
+  defines her confinement. Updating, probation and rollback continue as usual.
+  `LYRICA_SYSTEMD_DIR` overrides `/etc/systemd/system` for tests. NixOS does
+  no unit comparison; its module owns the units.
 - **Probation** lasts until 10 minutes after lyricad is unlocked with every
   check ok, starting over when it locks or restarts. A failed check, or the
   socket gone for 5 minutes, runs `lyrica-rollback --auto` and records
