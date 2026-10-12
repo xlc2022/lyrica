@@ -1229,6 +1229,8 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 .img-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
 .img-filters input[type="search"] { flex: 1 1 220px; max-width: 420px; }
 .copyblock { border: 1px solid var(--line); border-radius: 10px; display: grid; min-width: 0; background: var(--panel); overflow: hidden; }
+.copyblock > .field { padding: 8px 12px; }
+.copyblock > .field .seg { justify-self: start; }
 .copyhead { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; padding: 8px 12px; background: var(--tool); }
 .copyhead b { font-weight: 600; }
 .copyhead .cap { margin-right: auto; overflow-wrap: anywhere; }
@@ -1263,7 +1265,7 @@ dialog.add-part { width: min(560px, calc(100vw - 32px)); }
   .list[data-selecting] .rvrow > .actions { display: none; }
 }
 @media (pointer: coarse) {
-  .copyblock button.sm, .rvrow button.sm, .review-bar button.sm, .add-part .seg button, .img-filters .seg button, .partrow select { min-height: 44px; }
+  .copyblock .seg button, .copyblock button.sm, .rvrow button.sm, .review-bar button.sm, .add-part .seg button, .img-filters .seg button, .partrow select { min-height: 44px; }
   /* A link inside a line keeps the line's height; its target reaches past it. */
   .prow .cap button.link { display: inline-flex; min-height: 44px; align-items: center; margin-block: -14px; vertical-align: middle; }
 }

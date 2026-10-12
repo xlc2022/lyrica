@@ -236,9 +236,11 @@ function RecipeRow({ L, row, groups, offeringOf, open, reveal, onToggle }: {
   const ids = row.copies.map((c) => offeringOf(c)?.id).filter(Boolean);
   const group = groups.find((g) => g.members.some((m) => ids.includes(m)));
   const base = row.copies.map((c) => c.recipe.base && nameOf(L, c.hostId, c.recipe.base)).find(Boolean);
+  const tiers = new Set(row.copies.map((c) => c.recipe.useFor ?? "both"));
   const facts = [
     archWord(row.copies[0]!.recipe.arch),
     ...new Set(row.copies.flatMap((c) => c.recipe.does)),
+    tiers.size === 1 && !tiers.has("both") ? [...tiers][0] : "fast and quality",
     group ? <>group of <span className="num">{group.members.length}</span></> : plural(row.copies.length, "copy", "copies"),
     base ? `built on ${base}` : null,
     [...new Set(row.copies.map((c) => c.host))].join(", "),
@@ -322,6 +324,17 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
         <span className="cap">{[`template ${r.template}`, defaultsWords(r.defaults)].filter(Boolean).join(" · ")}</span>
         {actions && <div className="actions">{actions}</div>}
       </div>
+      {!details && (
+        <div className="field">
+          <span>Use for</span>
+          <div className="seg" role="group" aria-label="Use for">
+            {(["fast", "quality", "both"] as const).map((t) => <button key={t} type="button" aria-pressed={(r.useFor ?? "both") === t}
+              disabled={!editable || L.busy} onClick={() => { if (t !== (r.useFor ?? "both")) change({ op: "useFor", useFor: t }); }}>
+              {t === "fast" ? "Fast" : t === "quality" ? "Quality" : "Both"}
+            </button>)}
+          </div>
+        </div>
+      )}
       {proposed && !details && (
         <p className="meta copy-note">{miss.count
           ? `${her()} found the ${roleWord(main?.role ?? "diffusion")} in ${where}. It needs these parts before it can run.`

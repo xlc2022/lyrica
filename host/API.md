@@ -590,6 +590,7 @@ as `{ "parts": [...] }`, each entry like this:
   "arch": "z-image",
   "template": "z-image",
   "does": ["create"],
+  "useFor": "both",
   "parts": [
     { "role": "diffusion", "slot": null, "file": "lyrica/.../z_image_turbo_bf16.safetensors", "added": false },
     { "role": "text_encoder", "slot": "qwen3", "file": "lyrica/.../qwen_3_4b.safetensors", "added": false },
@@ -610,6 +611,9 @@ as `{ "parts": [...] }`, each entry like this:
   won't propose it again).
 - `ready`: every part is present. Only a confirmed, ready recipe runs.
 - `does`: what it can be used for: `create`, `edit`, `upscale`.
+- `useFor`: `fast`, `quality` or `both` (default). An optional field in
+  `recipes.json`; an older recipe without it reads as both. Copies keep the tag.
+  Lyrica's router filters create tiers by this tag; the host keeps recipe defaults.
 - `added`: a VAE or text encoder used instead of the checkpoint's own.
 - `base`: the recipe this one was copied from, if any.
 - `starter`: the starter recipe it came from, if any.
@@ -653,7 +657,9 @@ Calls:
     defaults. Each must be one a request could give (the ranges below;
     `shift` 0 to 20, `guidance` 0 to 30, `sampler` and `scheduler` ComfyUI
     names, `negativePrompt` at most 4096 characters);
-  - `{ "op": "rename", "name": "..." }`.
+  - `{ "op": "rename", "name": "..." }`;
+  - `{ "op": "useFor", "useFor": "fast" }`: `fast`, `quality` or `both`,
+    saved in `recipes.json`.
 
   Answers with the recipe.
 - `DELETE /host/v1/recipes/<id>`: deletes the recipe and the parts it used

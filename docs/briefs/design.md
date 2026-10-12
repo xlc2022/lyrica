@@ -51,11 +51,11 @@ deployment.
 
 | Thread | State | What's left |
 |---|---|---|
-| Web UI 2 | partly: #80, #100, #107, #112, #115, #122, #125, #127, #130, #133, #137, #144, #150 | Models page, Pin in the remaining places, the speech drawer, Images and portrait photos (docs/briefs/web-2.md) |
+| Web UI 2 | partly: #80, #100, #107, #112, #115, #122, #125, #127, #130, #133, #137, #144, #150 | Models page, Pin in the remaining places, the speech drawer (Images and portrait photos built 2026-10-12; docs/briefs/web-2.md) |
 | Context and pace | partly: API in #46, pins counted in #48 | the context meter and the speed columns in Recent calls, with the Models page |
 | Projects (web) | partly: #80, #100, #110, #150 | Files and images on the Project settings page, Recent calls by project (docs/briefs/projects-web.md) |
 | Context stretching | building; design in #151, #152 | docs/briefs/context-stretch.md |
-| Images | built in #219 | Real ComfyUI run and the separate Web UI (docs/briefs/images.md) |
+| Images | back end in #219; Web UI and recipe tier tags built 2026-10-12 | Real ComfyUI run (docs/briefs/images.md) |
 | MCP servers | built | docs/briefs/mcp.md |
 | Subscription logins | ChatGPT and Grok plans built in #169 | docs/briefs/subscription-logins.md |
 | Claude Code | built | docs/briefs/claude-code.md |

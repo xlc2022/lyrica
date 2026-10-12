@@ -377,9 +377,14 @@ A thread's address may carry what the panel beside it shows:
   architecture chips filter in the page. Models is a row per recipe name
   across the hosts, confirmed copies first; a name only proposed or ignored
   is left out. A row opens to a block per host (template and defaults, a
+  segmented **Use for** (**Fast** | **Quality** | **Both**, default Both),
   row per part with precision, "downloaded by Lyrica" or "shared folder",
   the other recipes using it and its size); every change is a recipe action
   (`POST …/hosts/:id/recipes/:recipeId`, models.md "Image models"):
+  **Use for** saves at once (`change { op: "useFor", useFor }`), disabled
+  while saving or when the user cannot manage the host. The row's facts say
+  "fast", "quality" or "fast and quality", combining the copies' tiers. This follows principles 1 and 8 and ux §3's segmented
+  control, §4's names and §6's recipe block; no caption or new widget.
   **Change** for a text encoder or VAE (`swap`, or Download another… to the
   download page), **Remove** for an added part or LoRA, **Use this recipe**
   (`confirm`), **Download the missing parts** (`download-parts`),

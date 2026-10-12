@@ -227,6 +227,8 @@ export interface OfferingInfo extends Capabilities {
   size?: number;
   /** An image model on a host: the confirmed recipe's name. */
   recipe?: string;
+  /** A host recipe's create tiers; absent means both. */
+  useFor?: "fast" | "quality" | "both";
   /** Moved to a library entry of its own (Not this model). */
   separate?: boolean;
 }
@@ -383,7 +385,9 @@ export interface HubTokenInput { token: string; shared?: boolean }
 export type DownloadInput = { source: Hub; repo: string; revision?: string; files: string[] } | { source: "url"; url: string; sha256?: string };
 /** GET /api/u/:userId/hosts/:endpointId/images → { recipes, parts by role }, as the host reports them. */
 /** POST /api/u/:userId/hosts/:endpointId/recipes/:recipeId → the host's answer. Confirmed recipes become image offerings. */
-export type RecipeAction = { do: "confirm" | "ignore" | "download-parts" | "delete" } | { do: "change"; change: Record<string, unknown> } | { do: "copy"; name: string };
+export type RecipeUseFor = "fast" | "quality" | "both";
+/** change { op: "useFor", useFor } saves a recipe's create tiers on the host; absent defaults to both. */
+export type RecipeAction = { do: "confirm" | "ignore" | "download-parts" | "delete" } | { do: "change"; change: Record<string, unknown> & { useFor?: RecipeUseFor } } | { do: "copy"; name: string };
 /** POST /api/u/:userId/hosts/:endpointId/manage → the host's answer. Loading, pinning, GPU settings, placements, scan, usage only. */
 export interface HostManage { method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; path: string; body?: unknown }
 /** GET /api/u/:userId/hosts/:endpointId/dashboard → { url } */

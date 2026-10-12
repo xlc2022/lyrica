@@ -16,6 +16,8 @@ export interface HostPart {
 export interface HostRecipe {
   id: string; name: string; state: "proposed" | "confirmed" | "ignored"; ready: boolean; arch: string; template: string;
   does: ("create" | "edit" | "upscale")[];
+  /** Create tiers; absent on older hosts means both. */
+  useFor?: "fast" | "quality" | "both";
   parts: { role: Role; slot: string | null; file: string | null; added: boolean; missing?: { source: string; repo: string; path: string; sha256?: string; size?: number } }[];
   loras: { file: string; strength: number }[];
   defaults: Record<string, unknown>;

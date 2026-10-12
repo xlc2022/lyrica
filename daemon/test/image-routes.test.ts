@@ -3,6 +3,8 @@ import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Writable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { RecipeBook } from "../../host/src/recipes.ts";
+import { loadTemplates } from "../../host/src/templates.ts";
 import { ensurePhotosDir } from "@lyrica/core";
 import { createImageExtension } from "@lyrica/extension";
 import type { ExtensionAPI, ExtensionToolContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
@@ -50,6 +52,39 @@ async function setup() {
 }
 
 describe("image routes (principles 1 and 2)", () => {
+  it("saves Use for through the daemon recipe route and refreshes the router's offering", async () => {
+    const { rt, d, call } = await setup();
+    try {
+      const models = d.services!.models, actor = d.services!.users.get(rt.ada.id)!;
+      const templates = loadTemplates(new URL("../../host/workflows/", import.meta.url).pathname);
+      const book = new RecipeBook(rt.home, templates, []);
+      book.all().push({ id: "art", name: "Art", state: "confirmed", arch: "z-image", template: "z-image", does: ["create"],
+        parts: [], loras: [], defaults: {}, base: null, starter: null });
+      book.save();
+      const ep = models.addEndpoint(actor, { name: "box", kind: "local", baseUrl: "https://box.example/v1" }, { shared: true });
+      d.keyring.self().prepare("UPDATE endpoints SET api = 'host', addresses = ?, pin = ? WHERE id = ?")
+        .run(JSON.stringify(["box.example"]), "fake-pin", ep.id);
+      // In-memory transport to the real recipe store; no network or image calls.
+      vi.spyOn(models, "fetchFor").mockReturnValue((async (url: string, opts: RequestInit = {}) => {
+        const path = new URL(url).pathname;
+        if (path === "/host/v1/models") return Response.json({ models: [] });
+        if (path === "/host/v1/recipes") return Response.json({ recipes: book.all() });
+        if (path === "/host/v1/recipes/art" && opts.method === "PATCH") {
+          return Response.json(book.patch("art", JSON.parse(String(opts.body)), []));
+        }
+        throw new Error("unexpected host request");
+      }) as typeof fetch);
+      const path = `/api/u/${rt.ada.id}/hosts/${ep.id}/recipes/art`;
+      for (const useFor of ["fast", "quality", "both"]) {
+        const result = await call("POST", path, rt.ada.id, { do: "change", change: { op: "useFor", useFor } });
+        expect(result.status).toBe(200);
+        expect(result.value).toMatchObject({ useFor });
+        expect(new RecipeBook(rt.home, templates, []).get("art").useFor).toBe(useFor);
+        expect(models.offerings(rt.ada.id, ep.id)[0]).toMatchObject({ recipe: "Art", useFor });
+      }
+    } finally { await d.stop(); }
+  });
+
   it("serves sniffed, uncached thread results only to their owner; traversal and symlinks are 404", async () => {
     const { rt, d, homes, dir, thread, call } = await setup();
     try {

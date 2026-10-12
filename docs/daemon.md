@@ -40,6 +40,10 @@ is 404; a missing login is 401.
 encrypted databases without sockets. The image tool returns Pi image content;
 messages and `tool_end.image` carry paths/model/tier rather than image bytes.
 The web UI renders image parts and manages portraits in Settings → Portrait photos.
+`POST …/hosts/:endpointId/recipes/:recipeId` accepts
+`{ do: "change", change: { op: "useFor", useFor: "fast" | "quality" | "both" } }`.
+It saves on the host and refreshes discovered offerings; the tag is in the
+host's `recipes.json`, with absent reading as both, not a new database column.
 
 ## Starting and unlocking
 

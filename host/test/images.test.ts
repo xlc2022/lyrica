@@ -75,6 +75,23 @@ describe("recipes", () => {
     return new RecipeBook(dir, TEMPLATES, STARTERS);
   }
 
+  it("reads an older recipe as both and persists its create tier without changing its parts", () => {
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-book-"));
+    const b = book(dir);
+    b.fromStarter(STARTERS[0]!, () => null);
+    const old = b.all()[0]!;
+    delete old.useFor;
+    b.save();
+    const reopened = book(dir);
+    expect(reopened.get(old.id).useFor).toBe("both");
+    for (const useFor of ["fast", "quality", "both"]) {
+      reopened.patch(old.id, { op: "useFor", useFor }, []);
+      expect(book(dir).get(old.id)).toMatchObject({ useFor, parts: old.parts, defaults: old.defaults });
+    }
+    expect(() => reopened.patch(old.id, { op: "useFor", useFor: "slow" }, [])).toThrow("useFor must be fast, quality or both");
+    expect(book(dir).get(old.id).useFor).toBe("both");
+  });
+
   it("proposes recipes from matching parts, lists missing ones, and leaves files without a template alone", () => {
     const dir = folder({
       [`${Z}/diffusion_models/z.safetensors`]: Z_DIFFUSION, [`${Z}/text_encoders/qwen_3_4b.safetensors`]: QWEN3,
@@ -300,6 +317,19 @@ describe("the image API", () => {
     expect(usage.body.models).toContainEqual(expect.objectContaining({ id: z.id, images: 2 }));
     expect(s.lines.join("\n")).not.toContain(MARKER);
     for (const f of readdirSync(s.dataDir)) expect(readFileSync(join(s.dataDir, f), "utf8")).not.toContain(MARKER);
+  });
+
+  it("saves Use for through the recipe API and keeps it when the book reopens", async () => {
+    const s = await stack();
+    const { body } = await s.api("/host/v1/recipes");
+    const r = body.recipes[0];
+    expect(r.useFor).toBe("both");
+    for (const useFor of ["fast", "quality", "both"]) {
+      const saved = await s.api(`/host/v1/recipes/${r.id}`, { method: "PATCH", body: { op: "useFor", useFor } });
+      expect(saved.status).toBe(200);
+      expect(saved.body.useFor).toBe(useFor);
+      expect(new RecipeBook(s.dataDir, TEMPLATES, STARTERS).get(r.id).useFor).toBe(useFor);
+    }
   });
 
   it("lists parts with the recipes using them", async () => {

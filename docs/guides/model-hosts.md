@@ -332,6 +332,9 @@ endpoints; without one, the model's first voice for the language is used.
 
 Confirmed, ready recipes can go in the `image.create`, `image.edit` and
 `image.upscale` lists, like any other model (see "Use it from Lyrica").
+Set each host recipe's **Use for** in **Models → Image models** to **Fast**,
+**Quality** or **Both** (default). Create skips recipes tagged only for the
+other tier, including on fallback; edits and upscaling use their lists as before.
 Her `image` tool keeps a recipe's defaults unless she gives a size or
 count, and never picks parts or LoRAs itself. Each list is an ordered
 fallback, and private threads only use local models. SeedVR2 recipes

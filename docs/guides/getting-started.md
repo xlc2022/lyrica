@@ -541,7 +541,9 @@ Her `image` tool creates and edits pictures through OpenAI or through
 confirmed recipes on a paired model host, and upscales through host recipes
 only. It uses the `image.create`, `image.edit` and `image.upscale` task
 lists; private and local-only threads always use the local profile's. Each
-list is an ordered fallback, so put the faster host's recipes first. Hosts
+list is an ordered fallback. In **Models → Image models**, open a recipe
+and set **Use for** to **Fast**, **Quality** or **Both** (default) per host.
+Create takes the first matching recipe and falls back down the same list. Hosts
 keep their recipe defaults for both fast and quality; OpenAI uses low or
 high quality. Results are saved in the encrypted thread folder, with no
 prompt metadata.
@@ -568,8 +570,9 @@ lyrica admin models profile set cloud image.edit openai-images/gpt-image-1 --use
 lyrica admin models profile set local image.upscale '<host>/<recipe>' --user ada
 ```
 
-Portrait photos and their cloud setting are set through the API for now:
-[daemon.md](../daemon.md#images-and-portrait-photos).
+Add reference photos and choose their cloud setting in **Settings → Portrait
+photos**. Ask once a day is the default; **Send today** allows them through
+server-local midnight, and **Not today** declines the request.
 
 Diagrams with exact layouts render offline with the headless Chromium and
 fonts already in her sandbox (`install.sh` installs them; on NixOS they are

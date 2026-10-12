@@ -332,7 +332,7 @@ interface Voice { id; language }                             // language: a prim
 interface Offering extends Capabilities {   // one model on one endpoint, with a permanent id
   id; endpointId; modelId; manual: boolean;
   status: "listed" | "missing" | "gone"; missingSince?;      // gone: missing for GONE_DAYS (30)
-  digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; separate?;   // reported by a host
+  digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; useFor?: "fast" | "quality" | "both"; separate?;   // reported by a host
   opensThinking?;                                            // a host's chat template writes <think> itself
 }
 type ModelRef = { offeringId: string } | { groupId: string };
@@ -348,7 +348,7 @@ interface CallContext {
   thinking?: ThinkingLevel;
   fallback?: boolean;                       // Fallback; false: only a list's first entry answers; absent is on
 }
-interface Need { tools?: boolean; tokens?: number }        // what the call needs from a model
+interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality" }        // what the call needs from a model
 interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: ProfileName;
                        source: "thread" | "profile"; skipped: { label; reason }[]; remaining: number }
 interface Pace { promptTokens; outputTokens; window; ttftMs; genMs; processed }   // counts and times only
@@ -409,6 +409,7 @@ class Models {                                              // new Models(keyrin
   //   | edit { prompt, image: ImageInput, mask?: ImageInput, count?, references?: ImageInput[] }
   //   | upscale { image: ImageInput, scale?, maxSize? }; each has action: "create" | "edit" | "upscale"
   // GeneratedImage { bytes: Uint8Array; type: "image/png"; width; height; seed? }; no prompt metadata
+  // Create passes imageTier to resolution: local recipes skip a useFor tag of only the other tier; cloud models serve both.
   // beforeSend runs on every resolved attempt, including fallbacks, before any image or prompt is sent; a refusal stops the call.
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
@@ -434,6 +435,9 @@ class Models {                                              // new Models(keyrin
   hubFiles(actor, hostId, { source, repo, revision? }) / startDownload(actor, hostId, body) / downloads(actor, hostId) / cancelDownload(actor, hostId, downloadId)
   deleteCopy(actor, offeringId, { confirm? }): Promise<{ usedIn: Use[]; deleted?: string[]; left?: { files; reason } }>
   imageLibrary(userId, hostId): { recipes; parts (by role) } / recipe(actor, hostId, recipeId, action)
+  // Recipes live in the host's recipes.json; optional useFor: "fast" | "quality" | "both", absent reads as both.
+  // recipe action { do: "change", change: { op: "useFor", useFor } } forwards to the host's PATCH and refreshes offerings.
+  // Discovery caches useFor in offerings' existing found JSON; no database schema change.
   // Host management and serving
   manageHost(actor, hostId, method, path, body?)            // only models/load|unload|pin|reload, gpus/<n>, scan, usage
   servingSettings(userId, offeringId) / setServingSettings(actor, offeringId, settings) / reloadModel(actor, offeringId)
@@ -915,7 +919,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   allowInThread? }`, and approving a plan without `mode` is `400`. A
   request on a machine carries `machine` and `cwd`, a suspect one `suspect:
   true` and `warning`, an MCP one `server` and `serverTool`;
-  image portrait consent uses `tool: "image"`, `args: { question, provider }`
+  image portrait consent uses `tool: "image"`, `args: { question, provider, model }`
   and `warning` with its question, without a thread-wide Allow option;
   `allowInThread` stores that exact command, or that server's tool, for the
   thread it runs in and is refused on any other request. A plan switching the mode, or a
@@ -1093,7 +1097,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       (again, same addresses); `PUT …/addresses`; `GET …/status`; `POST
       …/pause|resume|restart`; `GET …/dashboard` (→ `{ url }`); `POST …/manage`;
       `GET …/hub/files`; `POST`/`GET …/downloads`, `DELETE …/downloads/:id`;
-      `GET …/images`; `POST …/recipes/:recipeId`. Unpair is `DELETE
+      `GET …/images`; `POST …/recipes/:recipeId` (including
+      `{ do: "change", change: { op: "useFor", useFor: "fast" | "quality" | "both" } }`,
+      saves on the host and refreshes discovery). Unpair is `DELETE
       endpoints/:id`. Types: `HostInput`, `HostRepair`, `HostAddresses`,
       `HostStatus`, `HostManage`, `DownloadInput`, `RecipeAction`.
     - **Offerings:** `PATCH`/`DELETE offerings/:id`; `POST …/replace`; `GET

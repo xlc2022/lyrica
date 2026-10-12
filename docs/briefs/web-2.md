@@ -521,7 +521,7 @@ stands; change the contract only where the UI needs it, in the same PR.
 - **The Images switch** in the composer's "+" menu gains the tooltip "Lets
   the agent make and edit images in this thread."
 - **The recipe's fast/quality tag** (DESIGN.md "Images", decided
-  2026-10-12, not yet built): stored per recipe as `fast`, `quality` or
+  2026-10-12): stored per recipe as `fast`, `quality` or
   both (default both); the router's tier takes the first model in the
   task's list whose tag matches and falls back down the same list; cloud
   models serve both. Its home: the Image models tab, in a recipe's block
@@ -815,3 +815,19 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   Next: Pin in the remaining places, the Models page (carry the Fallback
   default), the Sleep section; Web: bootstrap once the daemon API is pushed;
   the Updates page after releases.
+
+- 2026-10-12, Images (parts 1 to 3): the Images section is built. Inline
+  image parts and lightbox actions, image tool markers, the Images tooltip,
+  Settings → Portrait photos and the daily permission card are present.
+  **Use for** saves Fast, Quality or Both per host recipe and shows the tag
+  in the row's facts. The optional `useFor` field lives in the host's
+  `recipes.json`; absent means both, so no database migration. Create routing
+  skips recipes for the other tier and falls back down the same list; cloud
+  models serve both. Router, route persistence and older JSON tests cover it;
+  the Image models e2e exercises all three choices and reload. The docs for
+  all three parts are current. Open: the API sends no image step progress,
+  so the marker has no step count; real GPU image jobs remain unexercised.
+  Validation: typecheck and the web build pass; 76 core/daemon/web tests and
+  seven host parts/recipe tests pass. Socket-based host tests and Playwright
+  are blocked by the sandbox's `listen EPERM`, including the new host API
+  test and Image models e2e. The daemon persistence test runs without sockets.

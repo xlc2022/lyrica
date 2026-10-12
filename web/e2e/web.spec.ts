@@ -2554,7 +2554,7 @@ async function fakeImages(page: Page) {
     part("comfy/diffusion_models/qwen_image_fp8.safetensors", "diffusion", "qwen-image", 20.4, { precision: "fp8", usedBy: [qi] }),
   ];
   const recipes = [
-    { id: zi, name: "Z-Image Turbo", state: "confirmed", ready: true, arch: "z-image", template: "z-image", does: ["create"], loras: [], base: null, starter: null,
+    { id: zi, name: "Z-Image Turbo", useFor: "both", state: "confirmed", ready: true, arch: "z-image", template: "z-image", does: ["create"], loras: [], base: null, starter: null,
       parts: [{ role: "diffusion", slot: null, file: parts[0]!.file, added: false }, { role: "text_encoder", slot: "qwen3", file: parts[1]!.file, added: false }, { role: "vae", slot: null, file: parts[2]!.file, added: false }],
       defaults: { steps: 8, cfg: 1, width: 1024, height: 1024 } },
     { id: qi, name: "Qwen-Image", state: "proposed", ready: false, arch: "qwen-image", template: "qwen-image", does: ["create"], loras: [], base: null, starter: null, defaults: { steps: 30, cfg: 4 },
@@ -2568,8 +2568,9 @@ async function fakeImages(page: Page) {
   });
   await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/(recipes\/[^/]+|manage)$/, (route) => {
     const path = new URL(route.request().url()).pathname.replace(/^.*\/ep-box\//, "");
-    const body = route.request().postDataJSON() as { do?: string; name?: string };
+    const body = route.request().postDataJSON() as { do?: string; name?: string; change?: { op?: string; useFor?: string } };
     asked.push({ path, body });
+    if (body.do === "change" && body.change?.op === "useFor") recipes.find((r) => path === `recipes/${r.id}`)!.useFor = body.change.useFor;
     return route.fulfill(json(body.do === "copy" ? { ...recipes[0], id: "00000000-0000-4000-8000-000000000003", name: body.name } : body.do === "delete" ? { deleted: [], kept: [] } : { models: 0, parts: 6, proposals: 1 }));
   });
   await page.route(/\/api\/u\/[^/]+\/offerings\/off-z\/delete-copy$/, (route) => route.fulfill(json({ usedIn: [] })));
@@ -2588,7 +2589,7 @@ test("Image models: a recipe opens to its parts with Change, Add a part and Dele
 
   // A recipe: its facts, then its copy on the host as a block of parts.
   const list = page.getByRole("list", { name: "Image models" });
-  await expect(list.getByRole("button", { name: /Z-Image Turbo/ })).toContainText("Z-Image · create · 1 copy · box");
+  await expect(list.getByRole("button", { name: /Z-Image Turbo/ })).toContainText("Z-Image · create · fast and quality · 1 copy · box");
   await expect(list.getByText("Qwen-Image")).toHaveCount(0);
   await list.getByRole("button", { name: /Z-Image Turbo/ }).click();
   const block = page.getByRole("region", { name: "Z-Image Turbo on box" });
@@ -2600,12 +2601,27 @@ test("Image models: a recipe opens to its parts with Change, Add a part and Dele
     expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   }
 
+  // Use for saves at once and the facts line reflects the tag after reload.
+  const useFor = block.getByRole("group", { name: "Use for" });
+  await expect(useFor.getByRole("button", { name: "Both", exact: true })).toHaveAttribute("aria-pressed", "true");
+  for (const [label, tag, facts] of [["Fast", "fast", "fast"], ["Quality", "quality", "quality"], ["Both", "both", "fast and quality"]]) {
+    await useFor.getByRole("button", { name: label!, exact: true }).click();
+    await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "useFor", useFor: tag } });
+    await expect(useFor.getByRole("button", { name: label!, exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(list.locator(".lrow-main .meta")).toContainText(`create · ${facts} ·`);
+  }
+  await page.reload();
+  await list.getByRole("button", { name: /Z-Image Turbo/ }).click();
+  await expect(useFor.getByRole("button", { name: "Both", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await noHorizontalScroll(page);
+  if (phone(page)) expect((await useFor.getByRole("button", { name: "Fast", exact: true }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+
   // Change: the host's other VAEs for the architecture, or Download another….
   await block.getByRole("button", { name: "Change the VAE" }).click();
   const vae = block.getByLabel("Choose the VAE");
   await expect(vae.locator("option")).toHaveText(["ae.safetensors · BF16", "ae_fp32.safetensors · FP32 · shared folder", "Download another…"]);
   await vae.selectOption("comfy/vae/ae_fp32.safetensors");
-  await expect.poll(() => post(`recipes/${images.zi}`)).toEqual([{ do: "change", change: { op: "swap", role: "vae", slot: null, file: "comfy/vae/ae_fp32.safetensors" } }]);
+  await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "swap", role: "vae", slot: null, file: "comfy/vae/ae_fp32.safetensors" } });
 
   // Add a part: a LoRA goes into a copy named after it, unless the box is unticked.
   await block.getByRole("button", { name: "Add a part" }).click();
