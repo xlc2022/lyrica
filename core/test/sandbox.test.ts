@@ -79,9 +79,12 @@ describe.skipIf(!runnable)("the sandbox", () => {
     const env = gitEnv([{ name: "ada/home", account: { kind: "forgejo", host: "forge.lan", account: "ada", token: "forge-token" } }]);
     const git = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], env });
     const r = await sh("command -v gh tea; git init -q home && git -C home remote add origin https://forge.lan/ada/home.git && cd home && "
-      + "{ tea 2>/dev/null; cat /tmp/lyrica-forge/tea/config.yml; }; cd .. && rm -rf home", git);
+      + "{ tea 2>/dev/null; grep -q \"token: 'forge-token'\" /tmp/lyrica-forge/tea/config.yml && echo HAS-TOKEN; cat /tmp/lyrica-forge/tea/config.yml; }; cd .. && rm -rf home", git);
     expect(r.out).toContain("/run/lyrica/bin/gh\n/run/lyrica/bin/tea\n");
-    expect(r.out).toContain("token: 'forge-token'");
+    expect(r.out).toContain("HAS-TOKEN");
+    // What she sees never shows it: not in the file she prints, not in her environment.
+    expect(r.out).toContain("token: '[credential hidden]'");
+    expect((await sh("env; echo \"$LYRICA_GIT_TOKEN_0\"", git)).out).not.toContain("forge-token");
     expect((await sh("ls /tmp/lyrica-forge 2>&1 || true", git)).out).toContain("No such file");
     expect((await sh("command -v gh || echo NONE")).out).not.toContain("/run/lyrica");
   });
@@ -525,7 +528,9 @@ describe.skipIf(!netRunnable || !lan)("a sandbox's network switches", () => {
     const sandbox = new Sandbox({ workdir: p("work"), grants: grants(), network: { ...OFF, internet: true }, self: [], env });
     const fill = (path: string) => `printf 'protocol=https\\nhost=github.com\\npath=${path}\\n\\n' | git credential fill 2>&1`;
     const r = await sh(`printenv GH_TOKEN || echo NONE; ${fill("xlc2022/lyrica.git")}; ${fill("xlc2022/other.git")}`, sandbox);
-    expect(r.out).toContain(`NONE\nprotocol=https\nhost=github.com\npath=xlc2022/lyrica.git\nusername=lyrica-bot\npassword=${token}\n`);
+    expect(r.out).toContain(`NONE\nprotocol=https\nhost=github.com\npath=xlc2022/lyrica.git\nusername=lyrica-bot\npassword=[credential hidden]\n`);
+    // The helper gave git the token; what she sees has it hidden (Sandbox.secrets).
+    expect(r.out).not.toContain(token);
     expect(r.out).toContain("could not read Username for 'https://github.com/xlc2022/other.git'");
     expect((await sh("printenv LYRICA_GIT_TOKEN_0 || echo NONE", box({ internet: true }))).out).toBe("NONE\n");
   });

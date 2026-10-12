@@ -237,6 +237,7 @@ export interface EndpointInfo {
   kind: "cloud" | "local";
   /** A plain OpenAI-compatible server, a paired model host (always local), or a ChatGPT or Grok plan (always cloud, never shared). */
   api: "openai-compatible" | "host" | "chatgpt" | "grok";
+  /** Query values named like a credential show as •••; sent back unchanged in a PATCH, they keep the stored value. */
   baseUrl: string;
   /** A host's addresses, tried in order. */
   addresses?: string[];
@@ -670,7 +671,7 @@ export interface GitRepository { name: string; account: string }
 /** GET /api/u/:userId/mcp-servers → McpServerInfo[]. The token is never sent back. */
 export interface McpServerInfo {
   name: string;
-  /** Its streamable HTTP address. */
+  /** Its streamable HTTP address. Query values named like a credential show as •••, as in EndpointInfo.baseUrl. */
   url: string;
   /** host or host:port, from the URL. */
   host: string;
@@ -1117,6 +1118,36 @@ export interface SendResponse { queued: boolean; sleep?: SleepStarted }
  */
 export interface DraftInfo { text: string; updatedAt?: string }
 export interface DraftChange { text: string }
+
+/**
+ * GET /api/u/:userId/search?q=&pool=&limit=&before= → SearchResults: the user's messages and her
+ * replies holding every word of `q` (2 characters at least), each as a word or a word's start, newest
+ * first, 50 a page (`limit` lowers it; `before`, a hit's `at`, pages). Only the user's own pools, and
+ * only what the thread list shows: a pool the display setting turns off is left out, hidden threads
+ * too unless `showHidden` is on; `pool` narrows to one pool, never widens. Web threads, not subagents'.
+ * Unlogged entries are never indexed, so never found.
+ */
+export interface SearchResults { hits: SearchHit[] }
+export interface SearchHit {
+  threadId: string;
+  pool: Pool;
+  /** The thread's title; none while it has none. */
+  title?: string;
+  /** The message's number in its thread (`Message.n`), to open the thread there. */
+  n: number;
+  /**
+   * `you`, or `agent` for hers (what she sent from another thread and her wake-up notes too).
+   * Another user's display name is reserved for a message another user wrote, which no
+   * indexed thread holds yet.
+   */
+  who: "you" | "agent" | (string & {});
+  /** The sentence that matched, at most 160 characters ("…" where it was cut). */
+  snippet: string;
+  /** Where the query's words are in `snippet`: [start, end) character offsets, in order. */
+  marks: [number, number][];
+  /** When the message was written. */
+  at: string;
+}
 
 /**
  * POST /api/u/:userId/threads/:pool/:threadId/messages/:n/branch → ThreadSummary.

@@ -212,7 +212,7 @@ nothing else. No code path gives a general view a private handle.
 | Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
 | Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `userIntroduced` |
-| Search | `search(query, { kinds, limit })`, returning `{ id, kind, snippet, score }` |
+| Search | `search(query, { kinds, limit })`, returning `{ id, kind, snippet, score }`; `searchMessages(query, { limit, before?, threads? })` → `MessageHit[]` (`thread`, `n`, `role`, `text`, `createdAt`): the user's messages and her replies from the same index, every word of `query` as a word or a word's start (`searchWords`), newest first, before `before`, in `threads`; an entry a rewind removed while a branch keeps its copy is found at the copy |
 | Lineage | `cameFrom`, `usedIn`, `revisions`, `isTombstoned(entryId)`, `editedSince(since)` |
 | Sleep runs | `startSleepRun`, `updateSleepRun`, `recordSleepRun` (a skip), `listSleepRuns`, `getSleepRun`, `watermark`, `sleepMaterial(since, until)`, `sleepChanges(from, to)` |
 | Sleep items | `addItem`, `listItems`, `getItem`, `startItem(id, threadId)`, `dismissItem`, `itemForThread` |
@@ -889,7 +889,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   (`SetupRequest { code, passphrase, saveCredentials?, name?, admin: { login,
   password, displayName, pronouns? } }` → `LoginResponse`) answer, on
   loopback, the Unix socket and the Direct listener; the one-time code is
-  logged at start and in `<runtime>/setup-code` (0600).
+  in `<runtime>/setup-code` (0600), never in the log.
   - **Name.** `State.name` (her deployment name, `self.db` `settings`
     `self.name`, default Lyrica, with a copy in `<runtime>/name` for while
     locked) answers in every state; `GET`/`PUT /api/u/:userId/admin/name`
@@ -983,6 +983,20 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - drafts: `GET …/draft` → `DraftInfo { text, updatedAt? }` (`text` empty
     when none), `PUT …/draft` with `DraftChange { text }` → `DraftInfo`
     (empty clears it, over 64 KiB is `413`); a sent message clears it;
+  - search: `GET /api/u/:userId/search?q=&pool=&limit=&before=` →
+    `SearchResults { hits: SearchHit[] }`, `SearchHit { threadId, pool,
+    title?, n, who, snippet, marks, at }` (`who` is `you` or `agent`;
+    `marks` are `[start, end)` offsets into `snippet`). Read through the
+    owner view with `PoolStore.searchMessages`, so only from the FTS index
+    recall keeps (`search` in each pool): logged entries only, never one
+    written unlogged. Only the user's own pools and what the thread list
+    shows: the server reads the saved `Display` itself, leaves out a pool
+    turned off and hidden threads unless `showHidden`, follows the
+    projects choice (a thread goes with the row it is nested under), and
+    lists web threads, not subagents'; `pool` narrows, never widens. `q` needs 2
+    characters; 50 hits a page, newest first, `before` a hit's `at`. The
+    snippet is the sentence holding most of the words, at most 160
+    characters, without citations; message text is never logged;
   - messages (send, stream; `POST …/messages/:n/branch` → `ThreadSummary`;
     `POST …/messages/:n/rewind` with `RewindRequest` `delete`, `regenerate`
     with an optional `model`, or `edit` with `text`, `409` while a turn runs;
@@ -1315,7 +1329,10 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   `POST …/probe`; `POST`; `PATCH …/:name` for name, url and pool; `POST
   …/:name/token`; `POST …/:name/confirm-off-network`; `DELETE`), each
   server as `McpServerInfo { name, url, host, pool, hasToken, tools,
-  description, offNetwork, state? }`; a body with `command` (stdio) is
+  description, offNetwork, state? }`, with any query value named like a
+  credential (key, token, secret, sig, auth, pass) shown as `•••`, as in
+  `EndpointInfo.baseUrl`; a `PATCH` that sends `•••` back keeps the stored
+  value if the origin is unchanged (`daemon/src/redact.ts`); a body with `command` (stdio) is
   `400`. Thread settings carry `mcpServers` (names). User database step 3
   adds `mcp_servers` and `thread_workspaces.mcp_servers`. In core:
   `settings(userId).mcpServers() / addMcpServer / updateMcpServer /

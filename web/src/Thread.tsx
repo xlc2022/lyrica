@@ -3,7 +3,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { del, get, patch, post, put, threadPath, u, HttpError, type MachineInfo, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type WakeupInfo } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { hasConsequences, jumpTo, PinnedBadge, RemovalConfirm, useUndo, type Rewinder } from "./Rewind.tsx";
-import { SHOW_EVENT, SHOW_KEY, take, type ShowRequest } from "./links.ts";
+import { JUMP_EVENT, JUMP_KEY, SHOW_EVENT, SHOW_KEY, take, type JumpRequest, type ShowRequest } from "./links.ts";
 import { go, href } from "./route.ts";
 import { ThreadsFact, tokenCount, useOverview, type ProjectEnv } from "./Project.tsx";
 import { useThread } from "./stream.ts";
@@ -106,6 +106,37 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
     const kept = take<ShowRequest>(SHOW_KEY, base);
     if (kept && !showFile(kept.path)) setSendError("That file isn't named in the messages shown.");
   }, [messages, base, showFile]);
+
+  // A search hit in the sidebar opens the thread at its message: older pages load until it is here.
+  const [jump, setJump] = useState<{ n: number; atOnce: boolean }>();
+  const loadingTo = useRef<number>(undefined);
+  useEffect(() => {
+    const on = (e: Event) => {
+      const { detail } = e as CustomEvent<JumpRequest>;
+      if (detail.base !== base) return;
+      detail.handled = true;
+      setJump({ n: detail.n, atOnce: false });
+    };
+    addEventListener(JUMP_EVENT, on);
+    return () => removeEventListener(JUMP_EVENT, on);
+  }, [base]);
+  useEffect(() => {
+    if (!t.loaded) return;
+    const kept = take<JumpRequest>(JUMP_KEY, base);
+    if (kept) setJump({ n: kept.n, atOnce: true });
+  }, [t.loaded, base]);
+  const { loaded, hasMore, loadUntil } = t;
+  useEffect(() => {
+    if (!jump || !loaded) return;
+    if (messages.some((m) => m.n === jump.n)) { jumpTo(jump.n, { atOnce: jump.atOnce }); setJump(undefined); return; }
+    if (hasMore && (messages[0]?.n ?? 0) > jump.n) {
+      if (loadingTo.current === jump.n) return;
+      loadingTo.current = jump.n;
+      loadUntil(jump.n).catch((e: Error) => { setSendError(e.message); setJump(undefined); }).finally(() => { loadingTo.current = undefined; });
+      return;
+    }
+    setJump(undefined);
+  }, [jump, messages, loaded, hasMore, loadUntil]);
 
   const send = useCallback(async (text: string) => {
     setSendError("");

@@ -43,6 +43,21 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
     setHasMore(page.hasMore);
   }, [base, messages]);
 
+  /** Loads older pages until message `n` is among the messages (or there are no more), to open the thread there. */
+  const loadUntil = useCallback(async (n: number) => {
+    let first = messages[0]?.n;
+    let more = hasMore;
+    const older: Message[] = [];
+    while (more && first !== undefined && first > n) {
+      const page = await get<MessagePage>(`${base}/messages?before=${first}&limit=200`);
+      older.unshift(...page.messages);
+      more = page.hasMore && page.messages.length > 0;
+      first = page.messages[0]?.n;
+    }
+    setMessages((old) => mergeByN(older, old));
+    setHasMore(more);
+  }, [base, messages, hasMore]);
+
   // The event stream. EventSource reconnects by itself with Last-Event-ID. If
   // it gives up (an HTTP error, say while lyricad restarts), a new one can't
   // send that header, so we reload from stored messages instead. One GET also
@@ -83,7 +98,7 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
     return () => { stopped = true; es?.close(); clearTimeout(retry); };
   }, [base, threadId]);
 
-  return { messages, hasMore, loaded, loadError, loadOlder, live, dispatch, connected, willResend };
+  return { messages, hasMore, loaded, loadError, loadOlder, loadUntil, live, dispatch, connected, willResend };
 }
 
 function mergeByN(a: Message[], b: Message[]): Message[] {

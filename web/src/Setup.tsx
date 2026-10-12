@@ -30,7 +30,7 @@ const ORDER: StepKey[] = ["code", "name", "admin", "tailnet", "models", "done"];
 /** What a wrong answer from lyricad means here, in the page's words (docs/ux.md §4: what happened, why, what to do). */
 function explain(e: Error, step: StepKey): string {
   const status = e instanceof HttpError ? e.status : 0;
-  if (step === "admin" && status === 403) return "The code doesn't match. It is in the journal: journalctl -u lyricad.";
+  if (step === "admin" && status === 403) return "The code doesn't match. Run lyrica admin setup-code on the server to see it.";
   if (step === "admin" && status === 429) return "Too many wrong codes. Wait before trying again: the wait grows with each wrong code, up to 15 minutes.";
   if (step === "tailnet" && status === 409 && /cut this connection/.test(e.message)) return "This page is reached over the tailnet, so joining another one would cut it off. Open her LAN address and do it there.";
   if (step === "tailnet") return tailnetReason(e.message);

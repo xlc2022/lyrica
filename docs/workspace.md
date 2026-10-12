@@ -517,6 +517,12 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   command in such a run can read it, so with internet on a page she reads
   could ask her to send it somewhere; that is why tokens are
   fine-grained, for the repositories she works on, with no admin rights.
+  What she sees has them hidden: `bash` output, `read` and `web_fetch`
+  pages show "[credential hidden]" for any value of a variable named for a
+  token in the run's environment (`Sandbox.secrets`, `secretMasker`;
+  `edit` reads the file as it is), and a `web_search`, `web_fetch` or MCP
+  call whose input holds one is refused. This doesn't stop an encoded
+  copy.
 - **`gh` and `tea`** are wrapped (`core/src/workspace/forge.sh`, mounted at
   `/run/lyrica/bin`, first on the PATH of a run with repositories): each
   takes the token of the account whose repository the current clone's
