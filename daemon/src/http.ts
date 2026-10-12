@@ -1,7 +1,7 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, normalize, sep } from "node:path";
-import { AuthError, CloudModelForbidden, Forbidden, GitAccountProblem, HostRefused, Locked, MigrationFailed, NoModel, Offline, PairingFailed, SchemaTooNew, WrongPassword } from "@lyrica/core";
+import { AuthError, CloudModelForbidden, Forbidden, GitAccountProblem, HostRefused, McpServerProblem, Locked, MigrationFailed, NoModel, Offline, PairingFailed, SchemaTooNew, WrongPassword } from "@lyrica/core";
 import { COOKIE } from "./auth.ts";
 
 /** An error with an HTTP status. Its message is shown to the user. */
@@ -161,7 +161,7 @@ export function statusOf(err: unknown): number {
   // A database this release can't read or migrate: said plainly, and a failed health check for the updater.
   if (err instanceof SchemaTooNew || err instanceof MigrationFailed) return 409;
   // A Git host that refused a token or didn't answer: said as the reason the account wasn't saved.
-  if (err instanceof CloudModelForbidden || err instanceof NoModel || err instanceof PairingFailed || err instanceof GitAccountProblem) return 400;
+  if (err instanceof CloudModelForbidden || err instanceof NoModel || err instanceof PairingFailed || err instanceof GitAccountProblem || err instanceof McpServerProblem) return 400;
   // A model host's refusal keeps its meaning; anything else from it is a bad gateway.
   if (err instanceof HostRefused) return ({ invalid: 400, need_repo: 400, refused: 403, not_found: 404, in_use: 409, above_recommended: 409, too_big: 413, no_space: 507 } as Record<string, number>)[err.code] ?? 502;
   if (err instanceof Error && err.constructor === Error) return 400;

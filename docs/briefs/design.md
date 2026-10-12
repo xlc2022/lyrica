@@ -56,7 +56,7 @@ deployment.
 | Projects (web) | partly: #80, #100, #110, #150 | Files and images on the Project settings page, Recent calls by project (docs/briefs/projects-web.md) |
 | Context stretching | building; design in #151, #152 | docs/briefs/context-stretch.md |
 | Images | not started | docs/briefs/images.md |
-| MCP servers | design approved 2026-10-12; builds after web search | docs/briefs/mcp.md |
+| MCP servers | built | docs/briefs/mcp.md |
 | Subscription logins | ChatGPT and Grok plans built in #169; the `claude` program as a tool is next | docs/briefs/subscription-logins.md |
 
 ## Open questions for Li

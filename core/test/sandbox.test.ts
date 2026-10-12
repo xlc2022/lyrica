@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { connect as connectTcp, createServer, type Server } from "node:net";
 import { lookup } from "node:dns/promises";
 import { networkInterfaces, tmpdir } from "node:os";
@@ -16,9 +16,9 @@ import { freshKeyring, profile } from "./helpers.ts";
 const has = (cmd: string) => { try { execFileSync("sh", ["-c", `command -v ${cmd}`]); return true; } catch { return false; } };
 const root = process.getuid?.() === 0;
 const runnable = !root && has("bwrap");
-const homeRunnable = runnable && has("gocryptfs") && has("fusermount3");
+const homeRunnable = runnable && has("gocryptfs") && has("fusermount3") && existsSync("/dev/fuse");
 if (process.env.LYRICA_SANDBOX_TESTS === "require" && !homeRunnable) {
-  throw new Error(`sandbox tests required but can't run here (${root ? "running as root" : "bwrap, gocryptfs or fusermount3 missing"})`);
+  throw new Error(`sandbox tests required but can't run here (${root ? "running as root" : "bwrap, gocryptfs, fusermount3 or /dev/fuse missing"})`);
 }
 
 // Making a file someone else owns needs root; CI's runner has passwordless sudo.
@@ -322,9 +322,9 @@ describe.skipIf(!runnable)("the Files panel", () => {
 describe.skipIf(!runnable || !nixTools)("the sandbox with the NixOS tools", () => {
   it("sees only the closure's store paths, never the rest of the store", async () => {
     const closure = readFileSync(process.env.LYRICA_SANDBOX_CLOSURE!, "utf8").split("\n").filter(Boolean);
-    const r = await sh("ls /nix/store");
-    expect(r.code).toBe(0);
-    expect(r.out.split("\n").filter(Boolean).sort()).toEqual(closure.map((c) => c.slice("/nix/store/".length)).sort());
+    // Into a file: the listing is longer than the output a command may show.
+    expect((await sh("ls /nix/store > /workspace/store.txt")).code).toBe(0);
+    expect(readFileSync(p("work", "store.txt"), "utf8").split("\n").filter(Boolean).sort()).toEqual(closure.map((c) => c.slice("/nix/store/".length)).sort());
     // The closure file's own store path isn't in the closure.
     const own = process.env.LYRICA_SANDBOX_CLOSURE!.split("/").slice(0, 4).join("/");
     expect((await sh(`ls ${own}`)).code).not.toBe(0);
@@ -338,6 +338,20 @@ describe.skipIf(!runnable || !nixTools)("the sandbox with the NixOS tools", () =
     } finally {
       process.env.LYRICA_SANDBOX_TOOLS = nixTools;
     }
+  });
+});
+
+// Her screenshots (web/e2e/shot.ts) need a headless Chromium in the sandbox's
+// /usr: the NixOS tools' chromium, or the one install.sh links. Skipped where
+// neither is installed.
+const chromium = nixTools ? `${nixTools}/bin/chromium` : ["/usr/local/bin/chromium-headless-shell", "/usr/bin/chromium"].find((f) => existsSync(f));
+describe.skipIf(!runnable || !chromium || !existsSync(chromium))("a browser in the sandbox", () => {
+  it("renders a page to PNG with internet off", async () => {
+    writeFileSync(p("work", "page.html"), "<p style='font: 32px sans-serif'>Hello</p>");
+    const bin = nixTools ? "/usr/bin/chromium" : chromium;
+    const r = await sh(`${bin} --headless --no-sandbox --disable-gpu --window-size=320,200 --screenshot=/workspace/page.png file:///workspace/page.html`);
+    expect(r.code).toBe(0);
+    expect(readFileSync(p("work", "page.png")).subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
   });
 });
 
@@ -444,8 +458,8 @@ describe.skipIf(!homeRunnable)("a thread's clones", () => {
 // The host's own LAN address stands in for a machine on the network: the
 // sandbox has an address of its own, so the host is just another peer to it.
 const lan = Object.values(networkInterfaces()).flat().find((i) => i?.family === "IPv4" && !i.internal)?.address;
-const netRunnable = runnable && has("pasta") && has("nft");
-if (process.env.LYRICA_SANDBOX_TESTS === "require" && (!netRunnable || !lan)) throw new Error("network tests required but pasta, nft or a LAN address is missing");
+const netRunnable = runnable && has("pasta") && has("nft") && existsSync("/dev/net/tun");
+if (process.env.LYRICA_SANDBOX_TESTS === "require" && (!netRunnable || !lan)) throw new Error("network tests required but pasta, nft, /dev/net/tun or a LAN address is missing");
 
 describe.skipIf(!netRunnable || !lan)("a sandbox's network switches", () => {
   const servers: Server[] = [];

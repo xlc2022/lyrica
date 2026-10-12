@@ -48,6 +48,7 @@ The repository was rebuilt from scratch starting 2026-10-09.
   Proxmox, and Git accounts with project repositories.
 - Web search through a SearXNG of your own, and reading pages from the
   thread's sandbox.
+- MCP servers (remote, per thread).
 - Model and speech hosts on GPU machines.
 - Releases with automatic rollback, and numbered database migrations.
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { DelegationEvent, EndpointInfo, MessagePage, PermissionRequest, Subagents, ThreadEvent, ThreadSummary } from "../src/api.ts";
+import { testMcpServer } from "../../core/test/mcp-server.ts";
+import type { DelegationEvent, EndpointInfo, McpServerInfo, MessagePage, PermissionRequest, Subagents, ThreadEvent, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 /**
@@ -190,6 +191,67 @@ describe("talking with subagents in lyricad", () => {
     expect(results).toHaveLength(2);
     expect(results[0]).not.toContain("Not approved");
     expect(results[1]).toContain("Not approved");
+  });
+
+  it("asks for a writer subagent's writing MCP call in both threads, and Allow in this thread holds only in the subagent's", async () => {
+    const house = await testMcpServer();
+    try {
+      const { rt, d, li, parent, sub, path } = await setup();
+      const added = await li.post<McpServerInfo>(`/api/u/${rt.li.id}/mcp-servers`, { name: "house", url: house.url, pool: "general" });
+      expect(added.body).toMatchObject({ name: "house", tools: 2, state: { kind: "online" }, hasToken: false });
+      expect((await li.post<{ error: string }>(`/api/u/${rt.li.id}/mcp-servers`, { name: "local", command: "npx", pool: "general" })).body.error).toMatch(/only remote/);
+      await li.patch(`${path}/settings`, { mode: "auto", mcpServers: ["house"] });
+      parent.reply({ tools: [{ name: "delegate", args: { task: "turn on the lamp twice", role: "worker", background: true } }] }, { text: "A worker is on it." });
+      sub.respond((r) => {
+        const results = r.messages.filter((m) => m.role === "tool").length;
+        if (results === 0) return { tools: [{ name: "tool_search", args: { query: "turn on" } }] };
+        return results < 3 ? { tools: [{ name: "mcp__house__turn_on", args: { entity: "lamp" } }] } : { text: "The lamp is on." };
+      });
+      const stream = li.events(`${path}/events`);
+      await li.post(`${path}/messages`, { text: "lamp please" });
+      await stream.until(is("permission"));
+      const a = permission(stream);
+      expect(a).toMatchObject({ tool: "mcp__house__turn_on", server: "house", serverTool: "turn_on", args: { entity: "lamp" }, subagent: { role: "worker" } });
+      const childPath = `/api/u/${rt.li.id}/threads/general/${enc(a.subagent!.threadId)}`;
+      const child = li.events(`${childPath}/events`);
+      await child.until(is("hello"));
+      expect((child.events[0]!.event as { permissions: PermissionRequest[] }).permissions.map((p) => p.requestId)).toEqual([a.requestId]);
+      // Allowed in this thread: the second call runs without asking, and the parent's thread didn't gain it.
+      expect((await li.post(`${path}/permissions/${a.requestId}`, { allow: true, allowInThread: true })).status).toBe(200);
+      await stream.until((e) => e.type === "notice" && e.status === "finished");
+      child.close();
+      stream.close();
+      expect(house.calls.map((c) => c.tool)).toEqual(["turn_on", "turn_on"]);
+      expect(stream.events.filter((e) => e.event.type === "permission")).toHaveLength(1);
+      const ws = d.services!.workspace.settings(rt.li.id);
+      expect(ws.toolAllowedInThread(a.subagent!.threadId, "house", "turn_on")).toBe(true);
+      expect(ws.toolAllowedInThread(a.subagent!.parentThreadId, "house", "turn_on")).toBe(false);
+    } finally {
+      await house.close();
+    }
+  });
+
+  it("gives a read-only subagent none of its parent's MCP servers", async () => {
+    const house = await testMcpServer();
+    try {
+      const { rt, d, li, parent, sub, path } = await setup();
+      await li.post(`/api/u/${rt.li.id}/mcp-servers`, { name: "house", url: house.url, pool: "general" });
+      await li.patch(`${path}/settings`, { mcpServers: ["house"] });
+      parent.reply({ tools: [{ name: "delegate", args: { task: "look at the lamp", role: "scout" } }] }, { text: "Done." });
+      sub.reply({ text: "Looked." });
+      const stream = li.events(`${path}/events`);
+      await li.post(`${path}/messages`, { text: "look" });
+      await stream.until(is("turn_end"));
+      stream.close();
+      const offered = (sub.requests[0]!.tools ?? []).map((t) => t.function.name);
+      expect(offered.some((t) => t === "tool_search" || t.startsWith("mcp__"))).toBe(false);
+      const scout = started(stream).threadId;
+      expect(d.services!.workspace.settings(rt.li.id).thread(scout).mcpServers).toEqual([]);
+      // The parent itself has tool_search.
+      expect((parent.requests[0]!.tools ?? []).map((t) => t.function.name)).toContain("tool_search");
+    } finally {
+      await house.close();
+    }
   });
 
   it("refuses a subagent's call nobody answers in time", async () => {

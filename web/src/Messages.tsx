@@ -331,9 +331,10 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" }>; e
       break;
     case "tool": {
       const state = part.result === undefined ? "running" : part.isError ? "failed" : "done";
-      // A call on a machine names it first.
-      const place = machineOf(part.args);
-      label = <>{place && <b className="place">{place}</b>}<b className="tool-name">{part.name}</b> <code>{summarizeArgs(part.args)}</code> <span className="state" data-state={state}>{state}</span></>;
+      // A call on a machine names it first, and an MCP call its server.
+      const mcp = mcpOf(part.name);
+      const place = mcp?.server ?? machineOf(part.args);
+      label = <>{place && <b className="place">{place}</b>}<b className="tool-name">{mcp?.tool ?? part.name}</b> <code>{summarizeArgs(part.args)}</code> <span className="state" data-state={state}>{state}</span></>;
       body = (
         <>
           <pre>{JSON.stringify(part.args, null, 2)}</pre>
@@ -574,6 +575,12 @@ function summarizeArgs(args: unknown): string {
   return typeof main === "string" ? main.split("\n")[0]! : JSON.stringify(main ?? "");
 }
 
+/** An MCP tool's server and its own name there, from Pi's `mcp__<server>__<tool>`. */
+export function mcpOf(name: string): { server: string; tool: string } | undefined {
+  const m = /^mcp__(.+?)__(.+)$/.exec(name);
+  return m ? { server: m[1]!, tool: m[2]! } : undefined;
+}
+
 /** The machine a call runs on, when its arguments name one. */
 function machineOf(args: unknown): string | undefined {
   const m = args && typeof args === "object" ? (args as { machine?: unknown }).machine : undefined;
@@ -618,6 +625,23 @@ function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest
   const who = !sub ? <>{her()} wants</>
     : sub.threadId === env.threadId ? <>This subagent ({sub.role}) wants</>
     : <>Her <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: sub.threadId })}>{sub.role} subagent</a> wants</>;
+  if (p.server) {
+    // An MCP call its server doesn't mark read-only: the server first, the tool in mono, its arguments in full.
+    return (
+      <div className="permission" role="group" data-pending="Approval" aria-label={`Allow ${p.server}'s ${p.serverTool ?? p.tool}${sub ? ` for the ${sub.role} subagent` : ""}?`}>
+        <p><b>{p.server}</b> · {who} to use <b className="mono">{p.serverTool ?? p.tool}</b>:</p>
+        <pre>{JSON.stringify(p.args ?? {}, null, 2)}</pre>
+        <div className="row">
+          <button type="button" className="primary" disabled={busy} onClick={() => answer(true)}>Allow</button>
+          <button type="button" disabled={busy} title={`Stop asking about ${p.serverTool ?? p.tool} on ${p.server} for the rest of this thread`}
+            onClick={() => answer(true, undefined, true)}>Allow in this thread</button>
+          <button type="button" disabled={busy} onClick={() => answer(false)}>Deny</button>
+          <span className="muted">{left}</span>
+        </div>
+        <ErrorText error={error} />
+      </div>
+    );
+  }
   return (
     <div className="permission" role="group" data-pending="Approval" aria-label={`Allow ${p.tool}${p.machine ? ` on ${p.machine}` : ""}${sub ? ` for the ${sub.role} subagent` : ""}?`}>
       <p>{p.machine && <><b className="mono">{p.machine}</b> · </>}{who} to use <b>{p.tool}</b>{p.machine && p.cwd ? <> in <span className="mono">{p.cwd}</span></> : null}:</p>

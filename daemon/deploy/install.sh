@@ -55,6 +55,26 @@ command -v node >/dev/null || die "install Node.js 22.6 or later (for example fr
 node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 6) ? 0 : 1)' \
   || die "Node.js $(node -v) is too old: lyricad needs 22.6 or later"
 
+# --- A browser for her screenshots ---
+# Playwright's headless Chromium, at the version this checkout's Playwright
+# expects, with the libraries it needs; her sandbox sees it as
+# /usr/local/bin/chromium-headless-shell (web/e2e/shot.ts). Ubuntu ships
+# Chromium only as a snap, so Debian and Ubuntu both get this one. IBM Plex is
+# the web UI's font.
+apt-get install -y -qq --no-install-recommends fonts-ibm-plex >/dev/null 2>&1 \
+  || say "fonts-ibm-plex isn't packaged here: her screenshots use a fallback font."
+BROWSERS=/usr/local/lib/lyrica-chromium
+PW_VERSION=$(jq -r '.devDependencies["@playwright/test"]' "$SRC/web/package.json")
+if [ "$(cat "$BROWSERS/version" 2>/dev/null)" != "$PW_VERSION" ]; then
+  say "Installing headless Chromium for screenshots..."
+  PLAYWRIGHT_BROWSERS_PATH=$BROWSERS npx -y "playwright@$PW_VERSION" install --with-deps chromium-headless-shell >/dev/null \
+    || die "installing headless Chromium failed"
+  SHELL_BIN=$(find "$BROWSERS" -type f \( -name headless_shell -o -name chrome-headless-shell \) -perm -u+x | sort -V | tail -1)
+  [ -n "$SHELL_BIN" ] || die "headless Chromium installed, but its binary isn't in $BROWSERS"
+  ln -sfn "$SHELL_BIN" /usr/local/bin/chromium-headless-shell
+  printf '%s\n' "$PW_VERSION" >"$BROWSERS/version"
+fi
+
 # --- Tailscale ---
 # Her own tailscaled (lyrica-tailscaled.service, below) runs the package's
 # binaries. Installed from Tailscale's repository only when they're missing; a

@@ -12,6 +12,7 @@ import { registerMemoryTools } from "./tools.ts";
 export * from "./assemble.ts";
 export * from "./context.ts";
 export * from "./gate.ts";
+export * from "./mcp.ts";
 export * from "./memory.ts";
 export * from "./models-tool.ts";
 export * from "./react.ts";

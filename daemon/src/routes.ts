@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import {
   AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, WATCHING, PRONOUN_PRESETS, projectSlug,
-  citationsIn, firstLine, GIT_KINDS, sentenceCiting, splitId,
-  type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
+  citationsIn, firstLine, GIT_KINDS, mcpHost, sentenceCiting, splitId,
+  type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
@@ -555,6 +555,40 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("GET", `${u}/git-accounts/:name/repositories`, async (r): Promise<Api.GitRepository[]> =>
       s().workspace.listRepositories(d.userFor(r).id, r.params.name!, r.query.get("q") ?? "")),
+
+    // --- MCP servers (docs/workspace.md, "MCP servers") ---
+    route("GET", `${u}/mcp-servers`, (r) => s().workspace.settings(d.userFor(r).id).mcpServers().map(mcpServerInfo)),
+    route("POST", `${u}/mcp-servers/probe`, async (r): Promise<Api.McpServerProbe> => {
+      d.userFor(r);
+      const input = mcpInput(await r.json<Api.McpServerInput>());
+      return s().workspace.probeMcpServer(input.url, input.token);
+    }),
+    route("POST", `${u}/mcp-servers`, async (r) => {
+      const userId = d.userFor(r).id;
+      return mcpServerInfo(await s().workspace.addMcpServer(userId, mcpInput(await r.json<Api.McpServerInput>())));
+    }),
+    route("PATCH", `${u}/mcp-servers/:name`, async (r) => {
+      const user = d.userFor(r);
+      const change = pick(await r.json<Api.McpServerChange>(), ["name", "url", "pool", "offNetworkConfirmed"]);
+      if (change.pool !== undefined) checkPool(change.pool);
+      for (const k of ["name", "url"] as const) if (change[k] !== undefined) change[k] = String(change[k]);
+      const m = await s().workspace.updateMcpServer(user.id, r.params.name!, { ...change, offNetworkConfirmed: change.offNetworkConfirmed === true });
+      reloadMcp(d, user.id);
+      return mcpServerInfo(m);
+    }),
+    route("POST", `${u}/mcp-servers/:name/token`, async (r) => {
+      const user = d.userFor(r);
+      const m = await s().workspace.setMcpToken(user.id, r.params.name!, String((await r.json<Api.McpToken>()).token ?? ""));
+      reloadMcp(d, user.id);
+      return mcpServerInfo(m);
+    }),
+    route("POST", `${u}/mcp-servers/:name/confirm-off-network`, (r) => mcpServerInfo(s().workspace.confirmMcpOffNetwork(d.userFor(r).id, r.params.name!))),
+    route("DELETE", `${u}/mcp-servers/:name`, (r) => {
+      const user = d.userFor(r);
+      s().workspace.removeMcpServer(user.id, r.params.name!);
+      reloadMcp(d, user.id);
+      return { ok: true };
+    }),
 
     // --- The user's own groups of threads ---
     route("GET", `${u}/thread-groups`, (r): Api.ThreadGroup[] => s().prefs.groups(d.userFor(r).id)),
@@ -1637,6 +1671,26 @@ function gitAccountInfo(a: GitAccountConfig): Api.GitAccountInfo {
   return { name: a.name, kind: a.kind, host: a.host, account: a.account, pool: a.pool, offNetwork: a.offNetwork, ...(a.state ? { state: a.state } : {}) };
 }
 
+/** An MCP server as the API shows it: never its token. */
+function mcpServerInfo(m: McpServerConfig): Api.McpServerInfo {
+  return {
+    name: m.name, url: m.url, host: mcpHost(m.url), pool: m.pool, hasToken: !!m.token, tools: m.tools, description: m.description, offNetwork: m.offNetwork,
+    ...(m.state ? { state: m.state } : {}),
+  };
+}
+
+/** An MCP server to add or check: remote only, so a `command` (a local, stdio server) is refused. */
+function mcpInput(input: Api.McpServerInput & { command?: unknown }): { name: string; url: string; token?: string; pool: Pool; offNetworkConfirmed: boolean } {
+  if (input?.command !== undefined) throw new HttpError(400, "only remote MCP servers (a URL) can be added; local servers that run a command aren't supported");
+  const token = input.token === undefined ? undefined : String(input.token);
+  return { name: String(input.name ?? ""), url: String(input.url ?? ""), ...(token ? { token } : {}), pool: checkPool(input.pool), offNetworkConfirmed: input.offNetworkConfirmed === true };
+}
+
+/** A server's address or token changed, or it went: every open session of the user's reopens at its next turn with the servers as they are. */
+function reloadMcp(d: Lyricad, userId: string): void {
+  d.services!.host.reloadUser(userId);
+}
+
 function checkGitKind(kind: unknown): Api.GitKind {
   if (!GIT_KINDS.includes(kind as Api.GitKind)) throw new Error("a Git account is GitHub, Forgejo, Gitea or Other");
   return kind as Api.GitKind;
@@ -1905,7 +1959,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     localOnly: ctx.localOnly,
     internet: tw.internet, services: tw.services, hosts: tw.hosts,
     network: workspace.network({ userId: user.id, pool, threadId }),
-    grants: applies.grants, machines: applies.machines, repositories: applies.repositories, mode: applies.mode, webSearch: applies.webSearch,
+    grants: applies.grants, machines: applies.machines, repositories: applies.repositories, mcpServers: applies.mcpServers, mode: applies.mode, webSearch: applies.webSearch,
     searchProvider: !!searxngAddress(d.keyring.self()), images: applies.images, unlogged: isUnlogged, parent: tw.parent,
     speech: speechState(models, ctx),
     fallback: models.threadFallback(user.id, threadId), fallbackOn: ctx.fallback !== false,
@@ -1914,7 +1968,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
   };
 }
 
-const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "mode", "webSearch", "images", "machines", "repositories"] as const;
+const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "mode", "webSearch", "images", "machines", "repositories", "mcpServers"] as const;
 
 /** A thread's subagents and child threads, and theirs, hidden ones included. */
 function descendants(d: Lyricad, user: User, pool: Pool, threadId: string): string[] {

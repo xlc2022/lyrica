@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  checkReadable, Keyring, Memory, migrate, MigrationFailed, MIN_READER, openEncrypted, SCHEMA, schemaOf, SchemaTooNew, STEPS, Users,
+  checkReadable, Keyring, Memory, migrate, MigrationFailed, MIN_READER, openEncrypted, SCHEMA, schemaOf, SchemaTooNew, STEPS, Users, WorkspaceSettings,
   type Db, type DbKind, type MigrationStep,
 } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
@@ -105,6 +105,22 @@ describe("schema versions", () => {
     expect(migrate(db, "user")).toEqual({ from: SCHEMA.user + 1, to: SCHEMA.user + 1 });
     expect(tables(db)).toContain("later");
     db.close();
+  });
+});
+
+describe("user step 3 (MCP servers)", () => {
+  it("gives every thread from each released schema an empty list of servers, and the release before still opens it", () => {
+    for (let v = 1; v < 3; v++) {
+      const db = scratchDb();
+      migrate(db, "user", {}, STEPS.user.filter((s) => s.version <= v));
+      db.prepare("INSERT INTO thread_workspaces (thread_id, grants, mode) VALUES ('web/a', '[]', 'auto')").run();
+      migrate(db, "user");
+      expect(db.prepare("SELECT mcp_servers FROM thread_workspaces WHERE thread_id = 'web/a'").get()).toEqual({ mcp_servers: "[]" });
+      expect(new WorkspaceSettings(db, () => ({ general: [], private: [] })).thread("web/a").mcpServers).toEqual([]);
+      expect(tables(db)).toContain("mcp_servers");
+      expect(() => checkReadable(db, "user", STEPS.user.filter((s) => s.version < 3))).not.toThrow();
+      db.close();
+    }
   });
 });
 

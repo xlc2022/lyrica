@@ -98,7 +98,7 @@ users/<id>/home/        where it is mounted while the user is unlocked
 ## Sandbox tests
 
 `test/sandbox.test.ts` and `bin/test/bench.test.ts` need bubblewrap,
-gocryptfs, FUSE, pasta and nft, and must run as an unprivileged user,
+gocryptfs, FUSE (`/dev/fuse`), pasta and nft (with `/dev/net/tun`), and must run as an unprivileged user,
 because root hides permission bugs. As root they are skipped. CI runs them as
 its normal user, with `LYRICA_SANDBOX_TESTS=require` so they can't be skipped. In a root cloud
 session, create a user and run them as that user from a copy of the checkout:

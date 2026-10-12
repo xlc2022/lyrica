@@ -1204,7 +1204,8 @@ Decided 2026-10-12 (docs/briefs/mcp.md).
   the session; nothing about servers is written to disk outside the
   user's encrypted database.
 - **Remote servers only:** a URL (streamable HTTP) and an optional token,
-  sent as a bearer token and stored like a Git account's. A local (stdio)
+  sent as a bearer token (over https only, for a general server) and
+  stored like a Git account's. A local (stdio)
   server would be a process running for the whole session, which the
   process budget and "nothing runs inside lyricad's process" rule out; she
   has `bash` for local work. OAuth sign-in comes later.

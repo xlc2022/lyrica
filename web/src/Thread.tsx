@@ -219,6 +219,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
             ))}
             {settings.data?.machines.map((m) => <span key={m} className="badge folder" title="Machine">{m}</span>)}
             {settings.data?.repositories.map((r) => <span key={`${r.account}/${r.name}`} className="badge folder" title={`Repository, through ${r.account}`}>{r.name}</span>)}
+            {settings.data?.mcpServers.map((m) => <span key={`mcp:${m}`} className="badge folder" title="MCP server">{m}</span>)}
           </div>
         </div>
         {!s?.subagent && (

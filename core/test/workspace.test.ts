@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ssh2 from "ssh2";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, migrate, Users, Workspace, WorkspaceSettings, type HelperSandbox, type MachineConfig } from "../src/index.ts";
+import { testMcpServer } from "./mcp-server.ts";
+import { keepResult, MCP_RESULT_BYTES, generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, migrate, Users, Workspace, WorkspaceSettings, type HelperSandbox, type MachineConfig } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -311,6 +312,67 @@ describe("Git accounts and repositories", () => {
   });
 });
 
+describe("MCP servers", () => {
+  it("checks a server before saving it, and keeps a private one on her network unless Li confirms", async () => {
+    const { li, workspace, settings } = await setup();
+    const house = await testMcpServer({ token: "ha-token", instructions: "Home Assistant: lights and sensors.\nMore." });
+    try {
+      await expect(workspace.addMcpServer(li.id, { name: "house", url: house.url, token: "wrong", pool: "private" })).rejects.toThrow(/rejected the token/);
+      expect(settings.mcpServer("house")).toBeUndefined();
+      await expect(workspace.addMcpServer(li.id, { name: "away", url: "http://192.0.2.7/mcp", pool: "private" })).rejects.toThrow(/outside your network/);
+      await expect(workspace.addMcpServer(li.id, { name: "plain", url: house.url, token: "ha-token", pool: "general" })).rejects.toThrow(/only over https/);
+      await expect(workspace.addMcpServer(li.id, { name: "local", url: "stdio:npx server", pool: "private" })).rejects.toThrow(/local servers/);
+      const m = await workspace.addMcpServer(li.id, { name: "house", url: house.url, token: "ha-token", pool: "private" });
+      expect(m).toMatchObject({ tools: 2, description: "Home Assistant: lights and sensors.", offNetwork: false, state: { kind: "online" } });
+      // Names that are one server to Pi.
+      settings.addMcpServer({ name: "my-house", url: house.url, token: "", pool: "private", description: null, tools: 0, offNetwork: false });
+      expect(() => settings.addMcpServer({ name: "my_house", url: house.url, token: "", pool: "private", description: null, tools: 0, offNetwork: false })).toThrow(/already exists/);
+    } finally {
+      await house.close();
+    }
+  });
+
+  it("never gives a private thread a general server, and takes one off a project from its running threads at once", async () => {
+    const { li, settings, workspace } = await setup();
+    settings.addMcpServer({ name: "docs", url: "https://mcp.example.com/mcp", token: "t", pool: "general", description: null, tools: 3, offNetwork: true });
+    settings.addMcpServer({ name: "house", url: "http://127.0.0.1:8123/mcp", token: "", pool: "private", description: null, tools: 2, offNetwork: false });
+    expect(() => settings.setThread("p", "private", { mcpServers: ["docs"] })).toThrow(/general MCP server; a private thread/);
+    expect(() => settings.setThread("g", "general", { mcpServers: ["house"] })).toThrow(/private MCP server; a general thread/);
+    settings.setThread("p", "private", { mcpServers: ["house"] });
+    // A private server is used only once its host has passed the check in this process.
+    expect(workspace.mcpServersFor({ userId: li.id, pool: "private", threadId: "p" })).toEqual([]);
+    expect(await workspace.checkMcpServers({ userId: li.id, pool: "private", threadId: "p" })).toEqual([]);
+    // An older row of the wrong pool still gives nothing.
+    expect(workspace.mcpServersFor({ userId: li.id, pool: "general", threadId: "p" })).toEqual([]);
+    expect(workspace.mcpServersFor({ userId: li.id, pool: "private", threadId: "p" }).map((m) => m.name)).toEqual(["house"]);
+
+    settings.addMcpServer({ name: "cal", url: "https://cal.example.com/mcp", token: "", pool: "general", description: null, tools: 1, offNetwork: true });
+    settings.setThread("project", "general", { mcpServers: ["docs", "cal"] });
+    settings.inheritSettings("project", "thread", "general");
+    const running = () => workspace.mcpServersFor({ userId: li.id, pool: "general", threadId: "thread" }).map((m) => m.name);
+    expect(running()).toEqual(["docs", "cal"]);
+    settings.setThread("project", "general", { mcpServers: ["cal"] });
+    expect(running()).toEqual(["cal"]);
+    settings.setThread("project", "general", { mcpServers: ["docs", "cal"] });
+    expect(running()).toEqual(["cal"]);
+    settings.allowToolInThread("thread", "cal", "add_event");
+    settings.updateMcpServer("cal", { name: "calendar" });
+    expect(running()).toEqual(["calendar"]);
+    expect(settings.toolAllowedInThread("thread", "calendar", "add_event")).toBe(true);
+    settings.removeMcpServer("calendar");
+    expect(running()).toEqual([]);
+    expect(settings.toolAllowedInThread("thread", "calendar", "add_event")).toBe(false);
+  });
+
+  it("cuts a long result before Pi sees it and names a binary resource instead of keeping it", () => {
+    const long = keepResult({ content: [{ type: "text", text: "a".repeat(30_000) }] }) as { content: { text: string }[] };
+    expect(Buffer.byteLength(long.content[0]!.text)).toBeLessThanOrEqual(MCP_RESULT_BYTES);
+    expect(long.content[0]!.text).toMatch(/bytes cut/);
+    const blob = keepResult({ content: [{ type: "resource", resource: { uri: "file:///x.pdf", mimeType: "application/pdf", blob: "AAAA" } }] }) as { content: { type: string; text: string }[] };
+    expect(blob.content).toEqual([{ type: "text", text: "[A binary resource, file:///x.pdf, not shown]" }]);
+  });
+});
+
 describe("modes and switches", () => {
   it("renames stored modes in place and adds the switches, on", async () => {
     const { users, li } = await setup();
@@ -428,8 +490,8 @@ async function listening(port: number, server: ReturnType<typeof spawn>, log: ()
 // the tests run as root; CI has them all.
 const sshd = "/usr/sbin/sshd";
 const has = (cmd: string) => { try { execFileSync("sh", ["-c", `command -v ${cmd}`]); return true; } catch { return false; } };
-const helperRunnable = existsSync(sshd) && process.getuid?.() !== 0 && has("bwrap") && has("pasta") && has("nft");
-if (process.env.LYRICA_SANDBOX_TESTS === "require" && !helperRunnable) throw new Error("ssh tests required but sshd, bwrap, pasta or nft is missing");
+const helperRunnable = existsSync(sshd) && process.getuid?.() !== 0 && has("bwrap") && has("pasta") && has("nft") && existsSync("/dev/net/tun");
+if (process.env.LYRICA_SANDBOX_TESTS === "require" && !helperRunnable) throw new Error("ssh tests required but sshd, bwrap, pasta, nft or /dev/net/tun is missing");
 describe.skipIf(!helperRunnable)("an ssh target", () => {
   it("reads, writes, edits and runs commands remotely, with the confirmed host key", async () => {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), "lyrica-sshd-")));
