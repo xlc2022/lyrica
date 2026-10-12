@@ -1,6 +1,6 @@
 # Brief: Reasoning
 
-**Thread:** to be assigned. **Branch:** `feature/reasoning`. **Model:** Opus.
+**Thread:** Reasoning fix build (Codex codes on lunasa, Claude assesses). **Branch:** `feature/reasoning`. **Model:** Opus.
 
 **Read first:** AGENTS.md, docs/models.md (thinking levels), docs/contracts.md
 (the thinking switch), docs/web.md (the Thought marker), PRINCIPLES.md 1 and 3.
