@@ -346,6 +346,26 @@ describe("redirects, tombstones and Clean up", () => {
     // Only the gone model nobody names is removed.
     expect(models.offerings(ada.id, lan.id).map((o) => o.modelId)).toEqual(["qwen3.8-27b"]);
   });
+
+  it("removes a gone shared model 7 days after it went, even while lists name it", async () => {
+    const m = await withShared();
+    const { models, ada, bob, lan, qwen } = m;
+    const self = m.keyring.self();
+    models.setProfile(ada.id, "local", "chat", qwen);
+    models.setProfile(bob.id, "local", "chat", qwen);
+    m.keyring.lockUser(bob.id);
+    // Gone for 6 days: still there, since lists name it.
+    set(self, "UPDATE offerings SET missing_since = ? WHERE id = ?", daysAgo(36), qwen.offeringId);
+    models.prune();
+    expect(models.offerings(ada.id, lan.id).map((o) => o.modelId)).toContain("qwen3.8-27b");
+    // Gone for 7 days: removed, and each user's list drops it, a locked one's at their next unlock.
+    set(self, "UPDATE offerings SET missing_since = ? WHERE id = ?", daysAgo(37), qwen.offeringId);
+    models.prune();
+    expect(models.offerings(ada.id, lan.id).map((o) => o.modelId)).not.toContain("qwen3.8-27b");
+    expect(models.profile(ada.id, "local").chat).toBeUndefined();
+    await m.users.authenticate("bob", "pw");
+    expect(models.profile(bob.id, "local").chat).toBeUndefined();
+  });
 });
 
 describe("the router", () => {

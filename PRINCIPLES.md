@@ -120,7 +120,7 @@ brake.
 | Model-facing tools | 30 or fewer |
 | Slash commands | 6 or fewer |
 | Long-running processes | 1 daemon, plus Pi's TUI when in use |
-| Core extension | about 2,500 lines |
+| Core extension | about 8,000 lines |
 | Docs | README, AGENTS, PRINCIPLES, DESIGN, the contracts, briefs, at most one page per component, and the operator guides in docs/guides/ |
 
 MCP servers' tools are reached through one `tool_search` tool and count
@@ -168,9 +168,11 @@ nothing ever removed them. These rules work against that:
    and what can be deleted.
 4. **Deleting code counts as progress.** Ask a model for a removal pass
    regularly.
-5. **Docs describe what exists or has been agreed.** Work in progress lives in
-   briefs or issues, not in architecture documents that keep growing. No doc
-   should say "staged, not yet validated."
+5. **Docs describe what exists or has been agreed, and never drift.** Every
+   model starts from them, so a change updates every doc it makes stale in
+   the same PR, and drift found anywhere is fixed or reported at once. Work
+   in progress lives in briefs or issues, not in architecture documents that
+   keep growing. No doc should say "staged, not yet validated."
 6. **Tests protect what the user would notice:** context assembly, memory round trips
    and sleep output. Don't add a test for every hypothetical guard.
 7. **Choose what models know best.** Models write almost all of the code and

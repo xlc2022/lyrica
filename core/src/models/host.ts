@@ -182,7 +182,7 @@ const AWAY = new Set(["paused", "busy", "restarting", "unavailable", "unpaired"]
  * restarting or that no longer knows this server is reported `away`; the
  * address that answered is `reached`.
  */
-export function hostFetch(id: Identity, host: { addresses: string[]; pin: string }, away: (reason: string) => void, reached?: (origin: string) => void): typeof fetch {
+export function hostFetch(id: Identity, host: { addresses: string[]; pin: string }, away: (reason: string, code: string) => void, reached?: (origin: string) => void): typeof fetch {
   const dispatcher = pinnedAgent(id, host.pin);
   const origins = host.addresses.map(hostOrigin);
   return (async (input: string | URL | Request, init?: RequestInit) => {
@@ -198,12 +198,12 @@ export function hostFetch(id: Identity, host: { addresses: string[]; pin: string
           const res = (await undiciFetch(new URL(url.pathname + url.search, origin), { ...(init as object), dispatcher })) as unknown as Response;
           reached?.(origin);
           const err = await hostError(res);
-          if (err && AWAY.has(err.code)) away(err.message);
+          if (err && AWAY.has(err.code)) away(err.message, err.code);
           return res;
         } catch (e) {
           if ((e as Error).cause instanceof HostIdentityChanged || e instanceof HostIdentityChanged) {
             const message = new HostIdentityChanged().message;
-            away(message);
+            away(message, "identity_changed");
             return new Response(JSON.stringify({ error: { code: "identity_changed", message } }), { status: 502, headers: { "content-type": "application/json" } });
           }
           // A call that ran out of time or was stopped isn't tried again, here or at another address, with the same dead signal.
@@ -213,7 +213,7 @@ export function hostFetch(id: Identity, host: { addresses: string[]; pin: string
         }
       }
     }
-    away("it can't be reached");
+    away("it can't be reached", "unreachable");
     throw last;
   }) as typeof fetch;
 }

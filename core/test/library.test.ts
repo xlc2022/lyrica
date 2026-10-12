@@ -280,4 +280,16 @@ describe("host management", () => {
       silent.close();
     }
   });
+
+  it("says a host that revoked this server is unpaired, until it is paired again", async () => {
+    const s = await setup();
+    s.big.pinned.clear();
+    expect(await s.models.pageStatus(s.ada.id, s.bigEp.id)).toMatchObject({ state: "down", unpaired: true });
+    // Still unpaired while it counts as down, without asking again.
+    expect(await s.models.pageStatus(s.ada.id, s.bigEp.id)).toEqual({ state: "down", error: "blackwell is down", unpaired: true });
+    await s.models.pairHost(s.ada, { name: "blackwell", addresses: [s.big.address], code: s.big.newCode() }, { endpointId: s.bigEp.id });
+    const again = await s.models.pageStatus(s.ada.id, s.bigEp.id);
+    expect(again).toMatchObject({ state: "up" });
+    expect(again.unpaired).toBeUndefined();
+  });
 });

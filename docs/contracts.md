@@ -376,7 +376,7 @@ class Models {                                              // new Models(keyrin
   // Discovery and health
   discover(actor, endpointId): Promise<Offering[]>          // GET /v1/models; a host's /host/v1/models and confirmed recipes
   probe(userId, endpointId, timeoutMs?): Promise<{ state: "up" | "down"; warning? }>
-  pageStatus(userId, endpointId, budgetMs = 3000): Promise<{ state; warning?; status?; error? }>
+  pageStatus(userId, endpointId, budgetMs = 3000): Promise<{ state; warning?; status?; error?; unpaired? }>
   reportUp(userId, endpointId) / reportDown(endpointId)     // the health cache: HEALTH_MS = 30 s
   sameModel(userId, offeringId): { offeringId }[]           // same base name and kind, other endpoints
   // Redirects and clean-up
@@ -736,7 +736,6 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     the `reactions` event. `LyricaOptions.reactions()` hands the extension
     the user's reactions since her last turn; `reactionLines` puts them in
     the turn message as `<reactions>`;
-  - `calendar` and `sort` (Integrations thread);
   - `image` (`createImageExtension(ImageTools)`), one tool with `create`, `edit`
     and `upscale`. Create takes `prompt`, `tier` (`fast` or `quality`), optional
     `size: { width, height }` or `aspectRatio` (`width:height`), `count` and
@@ -746,7 +745,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `models`, fresh `call()`, `threadId`, `files: ThreadImages`, user `settings()`,
     `enabled()`, optional `approve(ApprovalRequest)` and injectable `now()`.
     It checks portrait consent in `Models.image.beforeSend` for the actual
-    endpoint on each attempt, including fallbacks. Never refuses; Ask uses
+    endpoint on each attempt, including fallbacks. Never is a plain refusal; Ask uses
     `Send photos of you to <endpoint>?` through the existing approval flow;
     Always and local models allow. Ask's approval is per user through the end
     of that server-local day; a policy change clears it. No viewer means denial.
@@ -858,7 +857,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `onPayload` that merges `payloadFields(offeringSettings(…).values, …)` into
   the request: `repeat_penalty` for plain local servers,
   `repetition_penalty` for hosts and cloud; `max_tokens` or
-  `max_completion_tokens` never above the room Pi left. Settings are read at
+  `max_completion_tokens` never above the room Pi left (`replyCap`: the
+  smaller of 32,768 tokens and a quarter of the context window). Settings are read at
   each request, so a change applies without reopening the session.
 - A host model whose only thinking level is a chat-template switch gets Pi's
   `thinkingFormat: "qwen-chat-template"`; any other model with levels gets
@@ -1091,7 +1091,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       `GroupDetail`, `GroupSuggestion`, `Profiles` (all three plus `default` and
       `thinking`), `ProfileEntryChange`, `ProfilesChange`.
     - **Models page, library, tokens:** `GET models/page` (→ `ModelsPage`:
-      endpoints with `pageStatus`, hosts' status, profiles, the last 20 calls,
+      endpoints with `pageStatus`, hosts' status or error (`unpaired` when the
+      host revoked this server), profiles, the last 20 calls,
       the notice, the Clean up count); `GET models/cleanup`; `GET`/`DELETE
       models/notice`; `GET models/calls`; `GET library/text`; `GET hub-tokens`,
       `PUT`/`DELETE hub-tokens/:hub` (`?shared=1`). Types: `ModelsPage`,
@@ -1463,20 +1464,6 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   `NEVER_GRANTED` (`/run/lyrica-caddy`, `/var/lib/lyrica-update`, `/var/lib/lyrica-snapshots`) are refused, because sandboxes run with
   `lyricad`'s groups.
 - See [workspace.md](workspace.md).
-
-## integrations
-
-```ts
-interface CalendarProvider {          // google, icloud, caldav
-  listEvents(range): Event[]; createEvent(e): Event; updateEvent(e): Event; deleteEvent(id): void;
-}
-interface SourceProvider {            // files, notes, downloads, email (IMAP)
-  list(query): Item[]; read(id): Content; move(id, dest): void; tag(id, tags): void;
-}
-```
-
-Credentials are stored in the user's `user.db`. Providers are reached only
-through the `calendar` and `sort` tools.
 
 ## UI rules that cross components
 

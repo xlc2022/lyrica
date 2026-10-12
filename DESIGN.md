@@ -252,7 +252,11 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     which stay encrypted while those users are locked:
     - An endpoint unreachable for 14 days is marked **stale**, and a model
       missing for 30 days is marked **gone**. Fallbacks skip both.
-    - A gone model that nothing refers to is removed after 30 days.
+    - A gone model that nothing refers to is removed after 30 days. A gone
+      **shared** model is removed 7 days after it went, even while lists
+      still name it: its tombstone keeps routing right, and a locked user's
+      lists catch up at their next unlock. An administrator can remove it
+      sooner from Clean up.
     - Everything else goes through a **Clean up** view. It shows where each
       stale endpoint or gone model is still used, and offers **Replace
       with…** (pre-filled with the same model on another endpoint, where
@@ -550,7 +554,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   that last between uses, edited from its row in the library:
   - **Sampling**, for any endpoint: temperature, top-p, top-k, min-p,
     repeat, presence and frequency penalties, maximum reply length, seed and
-    stop strings. They go with every call to that copy; an empty one means
+    stop strings. A reply is capped at the smaller of 32,768 tokens and a
+    quarter of the context window, and a saved maximum above the cap is
+    clamped to it. They go with every call to that copy; an empty one means
     the endpoint's default. An administrator sets them for shared
     endpoints, and each user can override them for themselves, in
     `user.db`. The library shows each value and where it comes from.
@@ -718,6 +724,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     - **Unpairing** works from either side: remove the host in Lyrica, or
       revoke a Lyrica server on the host's dashboard. A host can be paired
       with several Lyrica servers, such as a test instance.
+    - A host that has revoked this server says **Unpaired** on the Models
+      page, not down, with **Pair again…** on its card, since pairing again
+      is the fix.
     - Administrators pair **shared** hosts, in `self.db`, for every user. Any
       user can pair a **personal** host, in their `user.db`, that only they
       can use. Hosts are always local endpoints, with the usual warning if an
@@ -1422,10 +1431,13 @@ Details in [docs/sleep.md](docs/sleep.md).
 
 ## What she does
 
-- **First duties:** maintaining a calendar and sorting data.
-- **Integrations:** Google Calendar, iCloud and CalDAV (which covers Nextcloud)
-  for calendars; files, notes, downloads and email for sorting. Each sits behind
-  a common adapter interface, and they don't all need to be connected at first.
+- **Running work and coding** come first: projects, threads she starts,
+  her own repositories and the owner's machines.
+- **Later: a calendar and sorting data.** Keeping a calendar (Google
+  Calendar, iCloud, CalDAV) and sorting files, notes, downloads and email
+  were her first duties in the original plan. Nothing is built for them,
+  and they wait until real use asks; a service's MCP server may cover one
+  without code of ours (see [MCP servers](#mcp-servers)).
 - **Machines:** working on the owner's other computers over SSH, and on Proxmox
   through its API, one machine at a time as the owner finds her reliable (see
   [Machines](#machines)). The Proxmox node that runs her own VM waits until
@@ -1802,11 +1814,12 @@ from Monika's runbooks.
 
 - **Claude does most of the rebuild.** Lyrica edits herself with other models
   only once she is usable again.
-- **The design thread** (the "Agent harness design principles" session) owns
-  PRINCIPLES, this document and the contracts, and keeps coding to a minimum.
-- **Feature threads** are separate Claude Code sessions tagged `project:lyrica`:
+- **The PR review thread** owns PRINCIPLES, this document, the contracts and
+  docs/ux.md, and keeps coding to a minimum. Roles, review and merging are in
+  [AGENTS.md](AGENTS.md), "Workflow".
+- **Feature threads** are separate sessions, one per area:
   Core, Memory, Workspace, Models, Delegation, Daemon, Web UI, Sleep,
-  Integrations, Model host, Models 2, Images, Delegation 2, Child
+  Model host, Models 2, Images, Delegation 2, Child
   threads, Modes and Projects.
   - Each works from a brief in `docs/briefs/` on its own branch and ends with a
     pull request.
@@ -1929,3 +1942,12 @@ new evidence.
   page over HTTPS on the LAN, and a Tailnet web access mode through
   `tailscale serve` replaces the domain and DNS token for the common case.
   She also gets a name per deployment, so two installs can be told apart.
+- **Core extension budget: about 2,500 → about 8,000 lines (2026-10-12).**
+  The extension had grown to about 4,150 lines (delegation, child threads,
+  sleep, MCP, web search and the models tool) against a budget of about
+  2,500. The owner raised the budget to about 8,000 lines rather than move
+  working code out to fit.
+- **Calendar and sorting: first duties → later (2026-10-12).** The owner's
+  direction is running work and coding now, a companion later, so the
+  calendar and sorting integrations, which had no code, left the contracts
+  and wait until real use asks for them.

@@ -20,7 +20,7 @@ flock -n 9 || { say "an update is running; starting what it chose"; exit 0; }
 KEY=${LYRICA_DEPLOY_KEY:-/etc/lyrica/deploy-key}
 if [ ! -f "$KEY" ]; then
   mkdir -p -m 0755 "$(dirname "$KEY")"
-  ssh-keygen -q -t ed25519 -N "" -C "lyrica-update@$(hostname)" -f "$KEY"
+  ssh-keygen -q -t ed25519 -N "" -C "lyrica-update@$(uname -n)" -f "$KEY"
   say "add $KEY.pub to the repository as a read-only deploy key"
 fi
 if [ ! -d "$PREFIX/repo.git" ]; then

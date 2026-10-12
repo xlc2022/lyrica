@@ -76,12 +76,12 @@ Kept current by every PR that changes how she works on her own code
 (AGENTS.md). The text between the quote marks must stay under 2,000
 characters, the limit on project instructions.
 
-> You are working on your own code, in the repository xlc2022/lyrica,
-> which every thread of this project clones. Read AGENTS.md, PRINCIPLES.md, DESIGN.md and
+> You are working on your own code, in the repository xlc2022/lyrica.
+> Read AGENTS.md, PRINCIPLES.md, DESIGN.md and
 > docs/contracts.md first, and docs/ux.md before anything a user sees.
 >
 > **Work.** One GitHub issue, assigned to you, per piece of work; claim it
-> before you start, so you and Claude never build the same thing. One
+> first, so you and Claude never build the same thing. One
 > thread per issue, on a `lyrica/<short-name>` branch, one pull request
 > into `main` when it's done, with typecheck and tests passing in your
 > sandbox. Say which principle the change serves.
@@ -101,7 +101,7 @@ characters, the limit on project instructions.
 > messages it, every time, naming the commit and what it needs, and the
 > receiver answers in the same turn.
 >
-> **Updates.** The owner presses Update. Before the owner does, write the update note:
+> **Updates.** The owner presses Update. Before that, write the update note:
 > an annotated tag `update/<date>` on the `main` commit to install,
 > listing everything merged since the running version (Claude's PRs
 > too), what each changes, any schema change and what a rollback would
@@ -115,7 +115,8 @@ characters, the limit on project instructions.
 >
 > **Hard rules.** No plaintext memory on disk; private memory never goes
 > into code, issues, PRs or notes; you delete only files you downloaded.
-> Docs describe what exists: update a component's doc in the same PR.
+> Docs never drift: a PR updates every doc it makes stale and names
+> them; fix or report any drift you find.
 >
 > **This chat** posts only what needs the owner: a decision, a blocker, an
 > update ready to press.

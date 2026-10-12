@@ -206,6 +206,16 @@ read it for anything not covered here.
    the setuid `fusermount3`, Caddy's socket, `lyrica-update.path`, a
    sandbox and `pasta` as the `lyrica` user, the network self-test and the port, one line each, and
    ends with "All checks passed." or stops at the first failure.
+10. The self-test runs at unlock, so `check-host.sh` misses it when she
+    hasn't been unlocked yet (after `lyrica admin init` she starts
+    locked). After the first unlock, run
+
+    ```sh
+    journalctl -u lyricad _SYSTEMD_INVOCATION_ID=$(systemctl show -p InvocationID --value lyricad) | grep 'network is off'
+    ```
+
+    It must print nothing. It reads only the current `lyricad` run, so
+    lines from an earlier run in the same boot don't count.
 
 Everything from "Save the passphrase" on applies unchanged. `lyricad`
 runs from the profile `/nix/var/nix/profiles/lyrica`, and its first start
@@ -353,8 +363,10 @@ Certificate fingerprint (SHA-256), to compare with the browser's warning:
 ```
 
 `lyrica` (in `/usr/local/bin`, or on the system path on NixOS) runs the CLI as the `lyrica` user with her
-state folder, from root or any sudoer, so the files it makes are hers; every
-`lyrica admin …` command in this guide works the same way from any shell.
+state folder, from root or any sudoer, so the files it makes are hers. It
+works from any folder: from one she can't enter, such as your home, it runs
+from `/`. Every `lyrica admin …` command in this guide works the same way
+from any shell.
 Each restart while she is still setting up makes a new code.
 
 ### Set her up in the browser
@@ -414,6 +426,13 @@ Two things to look at once she is unlocked:
   journal says "network is off for every thread" with the reason, and
   Administration, Status shows it to administrators. Until it is
   fixed, her commands have no network at all; everything else works.
+  After the first unlock,
+
+  ```sh
+  journalctl -u lyricad _SYSTEMD_INVOCATION_ID=$(systemctl show -p InvocationID --value lyricad) | grep 'network is off'
+  ```
+
+  must print nothing.
 
 ### Save the passphrase
 
@@ -802,8 +821,8 @@ Run these in order the first time and note where each stops. Each one is
 something the code expects but nobody has confirmed on real hardware.
 
 On NixOS, items 1 and 2 are `nixos-rebuild switch` building the module and
-`nix/check-host.sh` passing after the first run (it covers items 4 and 5
-too), and item 3's code comes from `lyrica admin setup-code`. The rest
+`nix/check-host.sh` passing after the first run (it covers item 4, and
+item 5 once she has been unlocked: see step 10 of "On NixOS"), and item 3's code comes from `lyrica admin setup-code`. The rest
 apply as written.
 
 1. The LXC features and tun device from "In a Proxmox LXC container", then

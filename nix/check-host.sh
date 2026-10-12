@@ -27,8 +27,10 @@ out=$(runuser -u lyrica -- "$tools/bin/bwrap" --unshare-all --die-with-parent --
   --ro-bind "$tools" /usr --symlink usr/bin /bin --proc /proc --dev /dev -- /bin/sh -c 'echo sandbox-ok' 2>&1)
 [ "$out" = sandbox-ok ] && ok "a sandbox runs as lyrica" || bad "bwrap as lyrica failed: $out"
 out=$(runuser -u lyrica -- "$tools/bin/pasta" --config-net -- "$tools/bin/true" 2>&1) && ok "pasta runs as lyrica" || bad "pasta as lyrica failed: $out"
-if journalctl -u lyricad -b --no-pager | grep -q "network is off for every thread"; then
-  bad "the self-test failed: journalctl -u lyricad -b | grep 'network is off'"
+# Only the current run: an earlier run in the same boot may have failed before a fix.
+run=$(systemctl show -p InvocationID --value lyricad)
+if journalctl -u lyricad _SYSTEMD_INVOCATION_ID="$run" --no-pager | grep -q "network is off for every thread"; then
+  bad "the self-test failed: journalctl -u lyricad _SYSTEMD_INVOCATION_ID=$run | grep 'network is off'"
 fi
 ok "the self-test hasn't refused network (it runs at unlock)"
 "$tools/bin/curl" -fsS -o /dev/null http://127.0.0.1:7340/ && ok "lyricad answers on 127.0.0.1:7340" || bad "nothing answers on 127.0.0.1:7340"

@@ -12,6 +12,7 @@ import { Icon } from "./icons.tsx";
 import { groupWarnings, type LibraryCopy as Copy } from "./library.ts";
 import { RowMenu } from "./Machines.tsx";
 import { canEdit, Frame, gb, hostOf, Kind, plural, UsedIn, VoiceDrawer, type MCtx } from "./ModelsFrame.tsx";
+import { replyCap } from "../../core/src/models/settings.ts";
 import { go } from "./route.ts";
 import { ConfirmDialog, Dialog, ErrorText, useAction, useDismiss, useLoad } from "./ui.tsx";
 
@@ -456,7 +457,7 @@ const MEMORY_KEYS = ["contextLength", "stretch", "kvCacheType", "gpuLayers", "fl
 const MAX_STRETCH = 8;
 
 /** A label, a control and its unit; `word` is the value's source after the label. */
-function SRow({ label, word, title, unit, children }: { label: string; word?: string; title?: string; unit?: string; children: React.ReactNode }) {
+function SRow({ label, word, title, unit, children }: { label: string; word?: string; title?: string; unit?: React.ReactNode; children: React.ReactNode }) {
   return (
     <label className="srow">
       <span className="lbl"><span title={title}>{label}</span>{word && <span className="cap src">{word}</span>}</span>
@@ -509,7 +510,15 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
   // Sampling: a field shows what was typed, else the value saved in this scope; the placeholder is what it inherits.
   const s = settings.data;
   const savedText = (sc: Scope, k: SKey) => (s && s.sources[k] === (sc === "mine" ? "yours" : "shared") ? textOf(s.values[k]) : "");
-  const shown = (k: SKey) => texts[scope][k] ?? savedText(scope, k);
+  // The longest reply: a quarter of the context in effect (one typed here first), at most 32,768; a value above it shows clamped, as it is sent.
+  const cap = replyCap(ctxText !== undefined ? Number(ctxText) || undefined : s?.contextWindow?.value);
+  const capped = (k: SKey, text: string) => (k === "maxTokens" && text.trim() !== "" && Number(text) > cap ? String(cap) : text);
+  const shown = (k: SKey) => texts[scope][k] ?? capped(k, savedText(scope, k));
+  const clampMax = () => {
+    const t = texts[scope].maxTokens;
+    if (t === undefined || t.trim() === "" || !Number.isFinite(Number(t))) return;
+    setTexts({ ...texts, [scope]: { ...texts[scope], maxTokens: String(Math.min(cap, Math.max(1, Math.round(Number(t))))) } });
+  };
   const changes = (sc: Scope) => SAMPLING.map((r) => r.key).filter((k) => texts[sc][k] !== undefined && texts[sc][k] !== savedText(sc, k));
   const hand = s?.contextWindow?.source === "hand";
   const ctxShown = ctxText ?? (hand ? String(s!.contextWindow!.value) : "");
@@ -592,7 +601,7 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
     setAbove(false);
     for (const sc of ["mine", "shared"] as const) {
       const keys = changes(sc);
-      if (keys.length) await put<OfferingSettings>(u(userId, "offerings", id, "settings"), { scope: sc, values: Object.fromEntries(keys.map((k) => [k, valueOf(k, texts[sc][k]!)])) });
+      if (keys.length) await put<OfferingSettings>(u(userId, "offerings", id, "settings"), { scope: sc, values: Object.fromEntries(keys.map((k) => [k, valueOf(k, capped(k, texts[sc][k]!))])) });
     }
     if (ctxChanged) await patch(u(userId, "offerings", id), { contextWindow: ctxText!.trim() === "" ? null : Number(ctxText) });
     if (servingChanged) {
@@ -621,8 +630,9 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
     <fieldset className="sgroup" disabled={!s || busy}>
       <legend className="eyebrow">Sampling</legend>
       {SAMPLING.map(({ key, label, step, unit }) => (
-        <SRow key={key} label={label} word={word(key)} unit={unit}>
+        <SRow key={key} label={label} word={word(key)} unit={key === "maxTokens" ? <>of <span className="num">{cap.toLocaleString("en-US")}</span> {unit}</> : unit}>
           <input type={key === "stop" ? "text" : "number"} step={step} aria-label={label} disabled={s?.dropped.includes(key)}
+            {...(key === "maxTokens" ? { min: 1, max: cap, onBlur: clampMax } : {})}
             title={key === "stop" ? "Separate them with commas" : undefined}
             placeholder={scope === "mine" && s?.sources[key] === "shared" ? textOf(s.values[key]) : undefined}
             value={shown(key)} onChange={(e) => setTexts({ ...texts, [scope]: { ...texts[scope], [key]: e.target.value } })} />

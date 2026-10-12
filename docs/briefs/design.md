@@ -62,16 +62,9 @@ deployment.
 
 ## Open questions for the owner
 
-From reading the merged Models 2 code against its pull requests:
-
-- A host that revoked Lyrica (`unpaired`) looks like any other down host.
-  Should the Models page say that pairing again is what's needed?
-- Gone shared models are pruned only once every user has unlocked since the
-  migration. A user who never unlocks blocks it for everyone. Prune after a
-  deadline, or only on an administrator's Clean up?
-- The longest reply is capped at the smaller of 8192 tokens and a quarter of
-  the context window, whatever the saved setting says. Keep the cap, or let
-  the setting win?
+None. The three from reading Models 2 (an unpaired host, pruning gone
+shared models, the reply cap) were settled on 12 October 2026 and are
+recorded in DESIGN.md and docs/ux.md and built in #207.
 
 ## Handoff notes
 
