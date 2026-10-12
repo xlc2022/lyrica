@@ -385,7 +385,7 @@ fingerprint matches the one printed. The page is **Set up Lyrica**:
 1. **Code and passphrase:** the setup code, a new `self.db` passphrase
    twice, and **Start unlocked**, which saves the passphrase (see "Save the
    passphrase" below). It is off, with the reason, where saving isn't
-   available. On NixOS, leave it off for now (see the warning there).
+   available.
 2. **Name:** her name, Lyrica by default.
 3. **Administrator:** the first administrator's login, password, display
    name and pronouns. **Create** makes `self.db`, imports the persona seed
