@@ -51,16 +51,16 @@ afterEach(() => { for (const c of closers.splice(0)) c(); });
 async function setup(machine: Partial<FakeMachine> = {}) {
   const keyring = await freshKeyring();
   const users = new Users(keyring);
-  const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
-  await users.authenticate("li", "pw");
+  const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+  await users.authenticate("ada", "pw");
   const fake: FakeMachine = { hostKey: KEY, files: new Map(), commands: [], connects: [], ...machine };
   const workspace = new Workspace(keyring, users, { excludePorts: [], sshTransport: fakeTransport(fake) });
-  const settings = workspace.settings(li.id);
+  const settings = workspace.settings(ada.id);
   const add = (m: Partial<NewMachine> & { name: string }) => settings.addMachine({
     host: "127.0.0.1", port: 22, username: "lyrica", privateKey: generateSshKey("test").privateKey, root: null, pool: "general", offNetwork: false, ...m,
   }, KEY);
-  const thread = (threadId: string, pool: "general" | "private" = "general") => ({ userId: li.id, pool, threadId });
-  return { li, workspace, settings, fake, add, thread };
+  const thread = (threadId: string, pool: "general" | "private" = "general") => ({ userId: ada.id, pool, threadId });
+  return { ada, workspace, settings, fake, add, thread };
 }
 
 describe("machines", () => {
@@ -214,13 +214,13 @@ describe("machines", () => {
 
 describe("suspect commands", () => {
   it("catch the commands on the list however they're written", () => {
-    for (const c of ["rm -rf /", "sudo rm -rf --no-preserve-root /", "rm -rf /*", "rm -rf ~", "rm -rf ~/", "rm -fr $HOME", "rm -r /home/li", "rm -rf /etc/",
-      "cd /tmp && rm -rf /usr", "sudo mkfs.ext4 /dev/sdb1", "dd if=img of=/dev/sda bs=4M", "chmod -R 777 /", "sudo chown -R li /", "userdel li",
+    for (const c of ["rm -rf /", "sudo rm -rf --no-preserve-root /", "rm -rf /*", "rm -rf ~", "rm -rf ~/", "rm -fr $HOME", "rm -r /home/ada", "rm -rf /etc/",
+      "cd /tmp && rm -rf /usr", "sudo mkfs.ext4 /dev/sdb1", "dd if=img of=/dev/sda bs=4M", "chmod -R 777 /", "sudo chown -R ada /", "userdel ada",
       "sudo shutdown -h now", "/sbin/reboot", "sudo systemctl reboot", "poweroff", "qm destroy 101", "echo hi; sudo -n reboot",
-      "sudo -u root rm -rf /", "nice -n 5 rm -rf /", "timeout 5 rm -rf /", "bash -c 'rm -rf /'", "chmod -R 777 /*", "chown -R li //"]) {
+      "sudo -u root rm -rf /", "nice -n 5 rm -rf /", "timeout 5 rm -rf /", "bash -c 'rm -rf /'", "chmod -R 777 /*", "chown -R ada //"]) {
       expect(suspectCommand(c), c).toBeDefined();
     }
-    for (const c of ["rm -rf ./build", "rm -rf /home/li/tmp", "rm -rf ~/cache", "dd if=/dev/zero of=file", "chmod -R 755 /srv/www", "ls /", "qm list",
+    for (const c of ["rm -rf ./build", "rm -rf /home/ada/tmp", "rm -rf ~/cache", "dd if=/dev/zero of=file", "chmod -R 755 /srv/www", "ls /", "qm list",
       "systemctl restart nginx", "echo reboot"]) {
       expect(suspectCommand(c), c).toBeUndefined();
     }
@@ -264,9 +264,9 @@ describe("an older user.db", () => {
   it("turns SSH targets into general machines at Ask, and a thread's target into its machine", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
-    await users.authenticate("li", "pw");
-    const db: Db = users.openUserDb(li.id);
+    const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+    await users.authenticate("ada", "pw");
+    const db: Db = users.openUserDb(ada.id);
     db.exec(`DROP TABLE thread_workspaces; DROP TABLE machines; PRAGMA user_version = 0;
       CREATE TABLE thread_workspaces (thread_id TEXT PRIMARY KEY, grants TEXT NOT NULL, internet INTEGER, services INTEGER, hosts TEXT,
         mode TEXT NOT NULL, target TEXT NOT NULL, parent TEXT, web_search INTEGER NOT NULL DEFAULT 1, images INTEGER NOT NULL DEFAULT 1);

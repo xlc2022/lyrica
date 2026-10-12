@@ -21,28 +21,28 @@ describe("persona", () => {
   it("keeps every change as a revision, and only administrators can change it", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
+    const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
     const mina = await users.createUser("Mina", "pw", profile("Mina"), { admin: false });
     const store = new PersonaStore(keyring.self());
     store.importSeed(SEED);
     const original = store.files().get("STYLE.md")!;
 
     expect(() => store.apply(mina, "STYLE.md", "changed")).toThrow(Forbidden);
-    store.apply(li, "STYLE.md", `${original}\nShe likes footnotes.`);
-    store.apply(li, "STYLE.md", `${original}\nShe likes footnotes.`); // unchanged: no new revision
+    store.apply(ada, "STYLE.md", `${original}\nShe likes footnotes.`);
+    store.apply(ada, "STYLE.md", `${original}\nShe likes footnotes.`); // unchanged: no new revision
 
     expect(store.files().get("STYLE.md")).toContain("footnotes");
     const revs = store.revisions("STYLE.md");
-    expect(revs.map((r) => r.author)).toEqual(["seed", `user:${li.id}`]);
+    expect(revs.map((r) => r.author)).toEqual(["seed", `user:${ada.id}`]);
     expect(revs[0]!.text).toBe(original);
   });
 
   it("rejects a matrix it can't parse", async () => {
     const keyring = await freshKeyring();
-    const li = await new Users(keyring).createUser("li", "pw", profile("Ada"), { admin: true });
+    const ada = await new Users(keyring).createUser("ada", "pw", profile("Ada"), { admin: true });
     const store = new PersonaStore(keyring.self());
     store.importSeed(SEED);
-    expect(() => store.apply(li, MATRIX, "no front matter")).toThrow(/front matter/);
-    expect(() => store.apply(li, "../etc/passwd", "x")).toThrow(/not a persona file/);
+    expect(() => store.apply(ada, MATRIX, "no front matter")).toThrow(/front matter/);
+    expect(() => store.apply(ada, "../etc/passwd", "x")).toThrow(/not a persona file/);
   });
 });

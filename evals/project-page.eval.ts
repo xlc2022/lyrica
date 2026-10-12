@@ -56,12 +56,12 @@ async function converse(thread: ThreadContext, prompt: string, steps: ((context:
 describe("a project's decision carries over to its page", () => {
   it("after a night's sleep, the project's page states a decision noted in one of its threads", async () => {
     const m = await withModels();
-    m.models.setProfile(m.li.id, "cloud", "chat", m.cloudRef);
+    m.models.setProfile(m.ada.id, "cloud", "chat", m.cloudRef);
     const memory = new Memory(m.keyring, m.users);
-    const view = memory.openThreadView(m.li.id, "general");
+    const view = memory.openThreadView(m.ada.id, "general");
     const chat = view.own.createThread({ interface: "web", project: true, title: "Garden app", goal: "Ship the garden app" });
     const { id } = view.own.createThread({ interface: "web", parent: chat.id, child: true });
-    const first: ThreadContext = { user: m.li, pool: "general", interface: "web", threadId: id, view, call: m.models.callContext(m.li.id, "general", id) };
+    const first: ThreadContext = { user: m.ada, pool: "general", interface: "web", threadId: id, view, call: m.models.callContext(m.ada.id, "general", id) };
     await converse(first, "Let's use SQLite, not Postgres.", [
       () => fauxAssistantMessage(fauxToolCall("remember", { notes: [{ text: "{user} decided the garden app uses SQLite, not Postgres" }] }), { stopReason: "toolUse" }),
       () => fauxAssistantMessage("SQLite it is."),
@@ -87,14 +87,14 @@ describe("a project's decision carries over to its page", () => {
       users: m.users, memory, models: m.models, persona: store, proposals: new PersonaProposals(m.keyring.self(), m.users, store), cwd: tmp(),
       hasKey: (u) => m.keyring.hasUserKey(u), limits: { retries: 0 },
     });
-    expect((await sleep.run(m.li.id, "general", "scheduled")).status).toBe("complete");
+    expect((await sleep.run(m.ada.id, "general", "scheduled")).status).toBe("complete");
 
     const next = view.own.createThread({ interface: "web", parent: chat.id, child: true });
     expect(view.own.pageForProject(next.id)?.text).toContain("SQLite, not Postgres");
     // After the night the note is past the watermark: it reaches the next thread through the page.
     expect(view.own.projectNotes(chat.id, view.own.watermark())).toHaveLength(0);
     let seen = "";
-    await converse({ ...first, threadId: next.id, call: m.models.callContext(m.li.id, "general", next.id) }, "Which database are we on?", [
+    await converse({ ...first, threadId: next.id, call: m.models.callContext(m.ada.id, "general", next.id) }, "Which database are we on?", [
       (context) => { seen = context; return fauxAssistantMessage("SQLite."); },
     ]);
     expect(seen).toContain("Decided: SQLite, not Postgres");

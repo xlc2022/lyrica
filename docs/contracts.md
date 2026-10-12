@@ -175,7 +175,7 @@ renderThreadMentions(text, titleOf: (id, pool?) => string | undefined): string  
 - **Search must keep the literal words.** A user's name in a query (current or
   previous) adds that user's token as an *alternative*. It never replaces the
   word.
-  - Example: "Li-ion battery" must still match notes that say "Li-ion".
+  - Example: with a user named Al, "Al-ion battery" must still match notes that say "Al-ion".
   - `queryTokens` returns the name matches found in the query, as names and
     user IDs. The Memory thread builds the full-text query from them, as
     word OR token.

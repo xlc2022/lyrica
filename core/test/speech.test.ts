@@ -14,21 +14,21 @@ const VOICES = [{ id: "af_heart", language: "en" }, { id: "zf_xiaobei", language
  */
 async function setup() {
   const m = await withModels();
-  const { models, li } = m;
+  const { models, ada } = m;
   const add = async (name: string, kind: "cloud" | "local") => {
     const server = await fakeSpeech({ label: name });
-    const ep = models.addEndpoint(li, { name, kind, baseUrl: server.baseUrl });
-    const found = await models.discover(li, ep.id);
-    const stt = models.setCapabilities(li, found.find((o) => o.modelId === "whisper-large-v3-turbo")!.id, { transcribe: true });
-    const tts = models.setCapabilities(li, found.find((o) => o.modelId === "kokoro")!.id, { speak: { voices: VOICES } });
+    const ep = models.addEndpoint(ada, { name, kind, baseUrl: server.baseUrl });
+    const found = await models.discover(ada, ep.id);
+    const stt = models.setCapabilities(ada, found.find((o) => o.modelId === "whisper-large-v3-turbo")!.id, { transcribe: true });
+    const tts = models.setCapabilities(ada, found.find((o) => o.modelId === "kokoro")!.id, { speak: { voices: VOICES } });
     return { server, ep, stt: { offeringId: stt.id }, tts: { offeringId: tts.id } };
   };
   const openai = await add("openai", "cloud");
   const speech = await add("speech", "local");
-  models.setProfile(li.id, "cloud", "speech.transcribe", [openai.stt]);
-  models.setProfile(li.id, "cloud", "speech.speak", [openai.tts]);
-  models.setProfile(li.id, "local", "speech.transcribe", [speech.stt]);
-  models.setProfile(li.id, "local", "speech.speak", [speech.tts]);
+  models.setProfile(ada.id, "cloud", "speech.transcribe", [openai.stt]);
+  models.setProfile(ada.id, "cloud", "speech.speak", [openai.tts]);
+  models.setProfile(ada.id, "local", "speech.transcribe", [speech.stt]);
+  models.setProfile(ada.id, "local", "speech.speak", [speech.tts]);
   return { ...m, openai, speech };
 }
 
@@ -38,8 +38,8 @@ describe("speech and the cloud boundary", () => {
   it("never sends a private or local-only thread's audio or text to a cloud speech model", async () => {
     const s = await setup();
     // A local profile can't hold one, and a thread list naming one is refused.
-    expect(() => s.models.setProfile(s.li.id, "local", "speech.transcribe", [s.openai.stt])).toThrow(CloudModelForbidden);
-    expect(() => s.models.setThreadModel(s.li.id, "private", "web/p", "speech.speak", [s.openai.tts])).toThrow(CloudModelForbidden);
+    expect(() => s.models.setProfile(s.ada.id, "local", "speech.transcribe", [s.openai.stt])).toThrow(CloudModelForbidden);
+    expect(() => s.models.setThreadModel(s.ada.id, "private", "web/p", "speech.speak", [s.openai.tts])).toThrow(CloudModelForbidden);
     // Even a context that names one directly.
     for (const ctx of [s.ctx({ pool: "private", localOnly: true }), s.ctx({ localOnly: true })]) {
       const named: CallContext = { ...ctx, overrides: { "speech.transcribe": [s.openai.stt], "speech.speak": [s.openai.tts] } };
@@ -55,7 +55,7 @@ describe("speech and the cloud boundary", () => {
   it("sends a general thread's voice to a cloud model only when the thread picked it; otherwise the local profile's", async () => {
     const s = await setup();
     // The cloud profile names a cloud Dictation model, but without a pick in the thread the local one hears it.
-    const general = s.models.callContext(s.li.id, "general", "web/g");
+    const general = s.models.callContext(s.ada.id, "general", "web/g");
     expect((await s.models.transcribe(general, wav(2))).resolution.label).toBe("speech/whisper-large-v3-turbo");
     expect(s.models.speechModel("speech.transcribe", general)).toEqual({ label: "speech/whisper-large-v3-turbo", kind: "local" });
     expect(s.openai.server.heard).toEqual([]);
@@ -65,14 +65,14 @@ describe("speech and the cloud boundary", () => {
     expect(s.openai.server.heard).toHaveLength(1);
 
     // Picked in the thread: the cloud model hears it, and a branch keeps the pick.
-    s.models.setThreadModel(s.li.id, "general", "web/g", "speech.transcribe", [s.openai.stt]);
-    const on = await s.models.transcribe(s.models.callContext(s.li.id, "general", "web/g"), wav(2), { language: "zh" });
+    s.models.setThreadModel(s.ada.id, "general", "web/g", "speech.transcribe", [s.openai.stt]);
+    const on = await s.models.transcribe(s.models.callContext(s.ada.id, "general", "web/g"), wav(2), { language: "zh" });
     expect(on).toMatchObject({ text: "hello from the fake", audioSeconds: 2 });
     expect(s.openai.server.heard.at(-1)).toMatchObject({ url: "/v1/audio/transcriptions", model: "whisper-large-v3-turbo", language: "zh", bytes: 64_044 });
-    expect(s.models.inheritContext(s.models.callContext(s.li.id, "general", "web/g"), "web/branch").overrides?.["speech.transcribe"]).toEqual([s.openai.stt]);
+    expect(s.models.inheritContext(s.models.callContext(s.ada.id, "general", "web/g"), "web/branch").overrides?.["speech.transcribe"]).toEqual([s.openai.stt]);
     // Cleared, it's local again.
-    s.models.setThreadModel(s.li.id, "general", "web/g", "speech.transcribe");
-    expect((await s.models.transcribe(s.models.callContext(s.li.id, "general", "web/g"), wav(1))).resolution.endpoint.kind).toBe("local");
+    s.models.setThreadModel(s.ada.id, "general", "web/g", "speech.transcribe");
+    expect((await s.models.transcribe(s.models.callContext(s.ada.id, "general", "web/g"), wav(1))).resolution.endpoint.kind).toBe("local");
     expect(s.openai.server.heard.filter((h) => h.url === "/v1/audio/transcriptions")).toHaveLength(1);
   });
 });
@@ -80,27 +80,27 @@ describe("speech and the cloud boundary", () => {
 describe("speech fallbacks", () => {
   it("falls back to the next model of the same kind when one is down, and records which answered", async () => {
     const s = await setup();
-    const off = s.models.addEndpoint(s.li, { name: "off", kind: "local", baseUrl: await deadUrl() });
-    const dead = { offeringId: s.models.addModel(s.li, off.id, { modelId: "whisper", transcribe: true }).id };
-    s.models.setProfile(s.li.id, "local", "speech.transcribe", [dead, s.speech.stt]);
+    const off = s.models.addEndpoint(s.ada, { name: "off", kind: "local", baseUrl: await deadUrl() });
+    const dead = { offeringId: s.models.addModel(s.ada, off.id, { modelId: "whisper", transcribe: true }).id };
+    s.models.setProfile(s.ada.id, "local", "speech.transcribe", [dead, s.speech.stt]);
     const ctx = s.ctx({ pool: "private", localOnly: true });
     const out = await s.models.transcribe(ctx, wav(1));
     expect(out.resolution.label).toBe("speech/whisper-large-v3-turbo");
-    s.models.recordCall(s.li.id, { pool: "private", threadId: "web/p", task: "speech.transcribe", resolution: out.resolution, audioSeconds: out.audioSeconds! });
-    const [call] = s.models.recentCalls(s.li.id);
+    s.models.recordCall(s.ada.id, { pool: "private", threadId: "web/p", task: "speech.transcribe", resolution: out.resolution, audioSeconds: out.audioSeconds! });
+    const [call] = s.models.recentCalls(s.ada.id);
     expect(call).toMatchObject({ task: "speech.transcribe", label: "speech/whisper-large-v3-turbo", audioSeconds: 1, fallback: "off/whisper was skipped (off is down), so speech/whisper-large-v3-turbo answered" });
     // A call record holds labels, reasons and seconds, never text or audio.
     expect(Object.keys(call!).sort()).toEqual(["at", "audioSeconds", "endpointName", "fallback", "kind", "label", "offeringId", "pool", "task", "threadId"]);
-    expect(JSON.stringify(s.models.recentCalls(s.li.id))).not.toMatch(/hello from the fake/);
+    expect(JSON.stringify(s.models.recentCalls(s.ada.id))).not.toMatch(/hello from the fake/);
   });
 
   it("falls back when a model fails as it is called, and never crosses from cloud to local", async () => {
     const s = await setup();
     const spare = await fakeSpeech({ label: "spare" });
-    const ep = s.models.addEndpoint(s.li, { name: "spare", kind: "cloud", baseUrl: spare.baseUrl });
-    const found = await s.models.discover(s.li, ep.id);
-    const tts = { offeringId: s.models.setCapabilities(s.li, found.find((o) => o.modelId === "kokoro")!.id, { speak: { voices: VOICES } }).id };
-    s.models.setProfile(s.li.id, "cloud", "speech.speak", [s.openai.tts, tts]);
+    const ep = s.models.addEndpoint(s.ada, { name: "spare", kind: "cloud", baseUrl: spare.baseUrl });
+    const found = await s.models.discover(s.ada, ep.id);
+    const tts = { offeringId: s.models.setCapabilities(s.ada, found.find((o) => o.modelId === "kokoro")!.id, { speak: { voices: VOICES } }).id };
+    s.models.setProfile(s.ada.id, "cloud", "speech.speak", [s.openai.tts, tts]);
     s.openai.server.fail(503);
     const general = s.ctx();
     const spoken = await s.models.speak(general, "Hello there.");
@@ -109,7 +109,7 @@ describe("speech fallbacks", () => {
 
     // Every cloud model down: a plain refusal, not the local model and not a crash.
     spare.fail(502);
-    s.models.setProfile(s.li.id, "cloud", "speech.speak", [tts]);
+    s.models.setProfile(s.ada.id, "cloud", "speech.speak", [tts]);
     await expect(s.models.speak(general, "Hello again.")).rejects.toThrow(Offline);
     await expect(s.models.speak(general, "Hello again.")).rejects.toThrow(/^no model for Read aloud can be reached now/);
     expect(s.speech.server.heard).toEqual([]);
@@ -134,8 +134,8 @@ describe("speech fallbacks", () => {
     await expect(s.models.transcribe(ctx, wav(1))).rejects.toThrow(NoModel);
     expect(s.models.speechModel("speech.speak", ctx)).toEqual({ reason: "none", problem: "No Read aloud model is set in the local profile" });
     // A chat model can't be made a speech model.
-    expect(() => s.models.setProfile(s.li.id, "local", "speech.transcribe", [s.localRef])).toThrow(/can't do speech.transcribe/);
-    expect(() => s.models.setProfile(s.li.id, "local", "speech.speak", { same: "chat" })).toThrow(/same kind of model/);
+    expect(() => s.models.setProfile(s.ada.id, "local", "speech.transcribe", [s.localRef])).toThrow(/can't do speech.transcribe/);
+    expect(() => s.models.setProfile(s.ada.id, "local", "speech.speak", { same: "chat" })).toThrow(/same kind of model/);
   });
 });
 
@@ -143,17 +143,17 @@ describe("speaking", () => {
   it("uses the voice for the language and the speed, layered shared then yours, and cancelling stops the upstream call", async () => {
     const s = await setup();
     const slow = await fakeSpeech({ gapMs: 2000 });
-    const ep = s.models.addEndpoint(s.li, { name: "slow", kind: "local", baseUrl: slow.baseUrl });
-    const found = await s.models.discover(s.li, ep.id);
-    const tts = { offeringId: s.models.setCapabilities(s.li, found.find((o) => o.modelId === "kokoro")!.id, { speak: { voices: VOICES } }).id };
-    s.models.setProfile(s.li.id, "local", "speech.speak", [tts]);
+    const ep = s.models.addEndpoint(s.ada, { name: "slow", kind: "local", baseUrl: slow.baseUrl });
+    const found = await s.models.discover(s.ada, ep.id);
+    const tts = { offeringId: s.models.setCapabilities(s.ada, found.find((o) => o.modelId === "kokoro")!.id, { speak: { voices: VOICES } }).id };
+    s.models.setProfile(s.ada.id, "local", "speech.speak", [tts]);
     const ctx = s.ctx({ pool: "private", localOnly: true });
 
     // No setting: the model's first voice for the language.
     await (await s.models.speak(ctx, "你好。", { language: "zh" })).audio.cancel();
     expect(slow.heard.at(-1)).toMatchObject({ input: "你好。", voice: "zf_xiaobei", format: "pcm" });
-    s.models.setOfferingSettings(s.li, tts.offeringId, { voices: { zh: "zm_yunxi" }, speed: 1.25 });
-    expect(s.models.offeringSettings(s.li.id, tts.offeringId)).toMatchObject({ values: { voices: { zh: "zm_yunxi" }, speed: 1.25 }, sources: { voices: "yours", speed: "yours" }, dropped: [] });
+    s.models.setOfferingSettings(s.ada, tts.offeringId, { voices: { zh: "zm_yunxi" }, speed: 1.25 });
+    expect(s.models.offeringSettings(s.ada.id, tts.offeringId)).toMatchObject({ values: { voices: { zh: "zm_yunxi" }, speed: 1.25 }, sources: { voices: "yours", speed: "yours" }, dropped: [] });
     const spoken = await s.models.speak(ctx, "你好。", { language: "zh" });
     expect(slow.heard.at(-1)).toMatchObject({ voice: "zm_yunxi", speed: 1.25 });
     // The first chunk arrives; cancelling ends the upstream call before its second.
@@ -163,8 +163,8 @@ describe("speaking", () => {
     await new Promise((r) => setTimeout(r, 100));
     expect(slow.cut).toBe(2);
 
-    expect(() => s.models.setOfferingSettings(s.li, tts.offeringId, { speed: 9 })).toThrow("speed is a number from 0.25 to 4");
-    expect(() => s.models.setOfferingSettings(s.li, tts.offeringId, { voices: { chinese: "x" } })).toThrow(/language tags/);
+    expect(() => s.models.setOfferingSettings(s.ada, tts.offeringId, { speed: 9 })).toThrow("speed is a number from 0.25 to 4");
+    expect(() => s.models.setOfferingSettings(s.ada, tts.offeringId, { voices: { chinese: "x" } })).toThrow(/language tags/);
   });
 
   it("reads a host's speech models from its discovery, calls them over its pinned connection, and falls back when its speech server is off, leaving chat on the host", async () => {
@@ -174,16 +174,16 @@ describe("speaking", () => {
       { id: "lyrica/huggingface/openai/whisper-large-v3-turbo", kind: "transcribe" },
       { id: "lyrica/huggingface/onnx-community/Kokoro-82M-v1.0-ONNX", kind: "speak", voices: [...VOICES, { id: "bad", language: "Mandarin" }] },
     ] });
-    const ep = await s.models.pairHost(s.li, { name: "3090", addresses: [host.address], code: host.newCode() });
-    const found = await s.models.discover(s.li, ep.id);
+    const ep = await s.models.pairHost(s.ada, { name: "3090", addresses: [host.address], code: host.newCode() });
+    const found = await s.models.discover(s.ada, ep.id);
     const [chat, stt, tts] = ["Qwen3.8", "whisper", "Kokoro"].map((n) => found.find((o) => o.modelId.includes(n))!);
     expect(stt).toMatchObject({ transcribe: true });
     expect(stt!.speak).toBeUndefined();
     expect(tts).toMatchObject({ speak: { voices: VOICES } }); // a malformed voice is left out
     expect(chat!.transcribe).toBeUndefined();
-    s.models.setProfile(s.li.id, "local", "chat", [{ offeringId: chat!.id }]);
-    s.models.setProfile(s.li.id, "local", "speech.transcribe", [{ offeringId: stt!.id }]);
-    s.models.setProfile(s.li.id, "local", "speech.speak", [{ offeringId: tts!.id }, s.speech.tts]);
+    s.models.setProfile(s.ada.id, "local", "chat", [{ offeringId: chat!.id }]);
+    s.models.setProfile(s.ada.id, "local", "speech.transcribe", [{ offeringId: stt!.id }]);
+    s.models.setProfile(s.ada.id, "local", "speech.speak", [{ offeringId: tts!.id }, s.speech.tts]);
     const ctx = s.ctx({ pool: "private", localOnly: true });
 
     expect((await s.models.transcribe(ctx, wav(1))).text).toBe("heard on the host");
@@ -201,8 +201,8 @@ describe("speaking", () => {
     s.models.reportDown(ep.id);
     expect(s.models.speechModel("speech.transcribe", ctx)).toEqual({ reason: "down", problem: "Dictation can't be reached now" });
 
-    const lib = s.models.textLibrary(s.li.id, { capability: "speak" });
+    const lib = s.models.textLibrary(s.ada.id, { capability: "speak" });
     expect(lib.entries.flatMap((e) => e.copies.map((c) => c.label)).sort()).toEqual(["3090/lyrica/huggingface/onnx-community/Kokoro-82M-v1.0-ONNX", "openai/kokoro", "speech/kokoro"]);
-    expect(() => s.models.setCapabilities(s.li, s.speech.tts.offeringId, { speak: { voices: [{ id: "x", language: "Mandarin" }] } })).toThrow(/language is a tag/);
+    expect(() => s.models.setCapabilities(s.ada, s.speech.tts.offeringId, { speak: { voices: [{ id: "x", language: "Mandarin" }] } })).toThrow(/language is a tag/);
   });
 });

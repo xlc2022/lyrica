@@ -83,12 +83,12 @@ async function scenario(opts: { aboutPage: boolean }) {
 /** Thread 1 notes the dislike; a night's sleep writes p:about-user from the note; thread 2 returns what the model saw. */
 async function afterSleep() {
   const m = await withModels();
-  m.models.setProfile(m.li.id, "cloud", "chat", m.cloudRef);
+  m.models.setProfile(m.ada.id, "cloud", "chat", m.cloudRef);
   const memory = new Memory(m.keyring, m.users);
   const thread = (): ThreadContext => {
-    const view = memory.openThreadView(m.li.id, "general");
+    const view = memory.openThreadView(m.ada.id, "general");
     const { id } = view.own.createThread({ interface: "web" });
-    return { user: m.li, pool: "general", interface: "web", threadId: id, view, call: m.models.callContext(m.li.id, "general", id) };
+    return { user: m.ada, pool: "general", interface: "web", threadId: id, view, call: m.models.callContext(m.ada.id, "general", id) };
   };
   const first = thread();
   await converse(first, "Please don't call me sweetie, I can't stand it.", [
@@ -115,7 +115,7 @@ async function afterSleep() {
     users: m.users, memory, models: m.models, persona, proposals: new PersonaProposals(m.keyring.self(), m.users, persona), cwd,
     hasKey: (id) => m.keyring.hasUserKey(id), limits: { retries: 0 },
   });
-  const run = await sleep.run(m.li.id, "general", "scheduled");
+  const run = await sleep.run(m.ada.id, "general", "scheduled");
   let seen = "";
   await converse(thread(), "Can you help me plan dinner for Saturday?", [
     (context) => { seen = context; return fauxAssistantMessage("Of course."); },

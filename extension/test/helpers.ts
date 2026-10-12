@@ -1,12 +1,12 @@
 import { Memory, PRONOUN_PRESETS, Users, type Pool } from "@lyrica/core";
 import { freshKeyring } from "../../core/test/helpers.ts";
 
-/** An unlocked user "li" (she/her) with a Memory over their pools, in a temp dir. */
+/** An unlocked user "ada" (she/her) with a Memory over their pools, in a temp dir. */
 export async function withMemory() {
   const keyring = await freshKeyring();
   const users = new Users(keyring);
-  const user = await users.createUser("li", "pw", { displayName: "Ada", pronouns: PRONOUN_PRESETS.she }, { admin: true });
-  await users.authenticate("li", "pw");
+  const user = await users.createUser("ada", "pw", { displayName: "Ada", pronouns: PRONOUN_PRESETS.she }, { admin: true });
+  await users.authenticate("ada", "pw");
   const memory = new Memory(keyring, users);
   const thread = (pool: Pool = "general", opts: { unlogged?: boolean } = {}) => {
     const view = memory.openThreadView(user.id, pool);

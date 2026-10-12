@@ -14,11 +14,11 @@ const routed = (id: string, text: string): RoutedTopic => ({
   turnsLeft: 3,
 });
 const now = new Date("2026-10-09T12:00:00Z");
-const li: Profile = { displayName: "Ada", pronouns: PRONOUN_PRESETS.they, previousNames: [] };
+const ada: Profile = { displayName: "Ada", pronouns: PRONOUN_PRESETS.they, previousNames: [] };
 
 describe("prompt assembly", () => {
   it("puts stable content in the system prompt and omits empty memory", () => {
-    const a = assemble({ persona, topics: [routed("music", "Music is structured feeling.")], memory: {}, profile: li, now });
+    const a = assemble({ persona, topics: [routed("music", "Music is structured feeling.")], memory: {}, profile: ada, now });
     expect(a.customPrompt).toBe("# Soul\nShe is Lyrica.\n\n# Style\nWarm.");
     expect(Object.keys(a.sections)).toEqual(["topics", "user"]);
     expect(a.sections.topics).toBe('<topic id="music">\nMusic is structured feeling.\n</topic>');
@@ -27,7 +27,7 @@ describe("prompt assembly", () => {
 
   it("keeps per-turn content (recall, time) out of the system prompt", () => {
     const a = assemble({
-      persona, topics: [], profile: li, now,
+      persona, topics: [], profile: ada, now,
       memory: { wake: "WAKE", pageIndex: "pages", recall: "a recall hit", lastTalk: new Date("2026-10-07T12:00:00Z") },
     });
     expect(Object.keys(a.sections)).toEqual(["wake", "pages", "user"]);
@@ -36,7 +36,7 @@ describe("prompt assembly", () => {
   });
 
   it("gives the same system content at a different time", () => {
-    const input = { persona, topics: [], memory: {}, profile: li };
+    const input = { persona, topics: [], memory: {}, profile: ada };
     const a = assemble({ ...input, now });
     const b = assemble({ ...input, now: new Date("2026-10-10T08:00:00Z") });
     expect([b.customPrompt, b.sections]).toEqual([a.customPrompt, a.sections]);
@@ -44,7 +44,7 @@ describe("prompt assembly", () => {
   });
 
   it("tells her who she's talking with, including previous names", () => {
-    const renamed: Profile = { ...li, displayName: "Lin", previousNames: [{ name: "Ada", until: "2026-10-09" }] };
+    const renamed: Profile = { ...ada, displayName: "Lin", previousNames: [{ name: "Ada", until: "2026-10-09" }] };
     const { sections } = assemble({ persona, topics: [], memory: {}, profile: renamed, now });
     expect(sections.user).toContain("You are talking with Lin (pronouns: they/them).");
     expect(sections.user).toContain("previous name: Ada (until 2026-10-09)");
@@ -54,7 +54,7 @@ describe("prompt assembly", () => {
     const long = Array.from({ length: 400 }, (_, i) => `Line ${i} of a long topic.`).join("\n");
     const budgets = { ...DEFAULT_BUDGETS, persona: 20, topics: 1000, wake: 100, recall: 100 };
     const a = assemble(
-      { persona, topics: [routed("a", long), routed("b", long), routed("c", long)], memory: { wake: long, recall: long }, profile: li, now },
+      { persona, topics: [routed("a", long), routed("b", long), routed("c", long)], memory: { wake: long, recall: long }, profile: ada, now },
       budgets,
     );
     const section = (name: string) => a.report.find((s) => s.name === name)!;

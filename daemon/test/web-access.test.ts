@@ -84,9 +84,9 @@ async function setup(addresses: HostAddress[] = [{ address: "127.0.0.1", kind: "
     rateLimit: { free: 1, baseMs: 60_000, maxMs: 600_000 },
   });
   await browser(dm.base).post("/api/unlock", { passphrase: "passphrase" });
-  const li = await login(dm.base, "li", "pw");
-  const url = `/api/u/${rt.li.id}/admin/web-access`;
-  return { rt, ...dm, caddy, ca, httpsPort, li, url };
+  const ada = await login(dm.base, "ada", "pw");
+  const url = `/api/u/${rt.ada.id}/admin/web-access`;
+  return { rt, ...dm, caddy, ca, httpsPort, ada, url };
 }
 
 const builtin = (name = "lyrica.example.net") => ({
@@ -96,9 +96,9 @@ const routes = (cfg: any) => cfg.apps.http.servers.lyrica.routes.map((r: any) =>
 
 describe("web access, built-in Caddy", () => {
   it("writes Caddy's config for the site, DNS provider and upstream, and never gives the token back", async () => {
-    const { rt, d, caddy, ca, httpsPort, li, url, logs } = await setup();
+    const { rt, d, caddy, ca, httpsPort, ada, url, logs } = await setup();
     await caddyServing(httpsPort, ca, ["lyrica.example.net"]);
-    const put = await li.put<WebAccess>(url, builtin());
+    const put = await ada.put<WebAccess>(url, builtin());
     expect(put.status).toBe(200);
     const cfg = caddy.state.config as any;
     expect(cfg.admin.listen).toBe(`unix/${caddy.socket}|0660`);
@@ -114,11 +114,11 @@ describe("web access, built-in Caddy", () => {
 
     // The token never comes back, and saving the same provider again without it keeps it.
     expect(put.body.builtin!.credentials).toEqual({ api_token: { set: true } });
-    expect(JSON.stringify((await li.get(url)).body)).not.toContain(TOKEN);
-    expect((await li.put(url, { ...builtin(), builtin: { ...builtin().builtin, credentials: {} } })).status).toBe(200);
+    expect(JSON.stringify((await ada.get(url)).body)).not.toContain(TOKEN);
+    expect((await ada.put(url, { ...builtin(), builtin: { ...builtin().builtin, credentials: {} } })).status).toBe(200);
     expect(JSON.stringify(caddy.state.config)).toContain(TOKEN);
 
-    const status = (await li.get<WebAccessStatus>(`${url}/status`)).body;
+    const status = (await ada.get<WebAccessStatus>(`${url}/status`)).body;
     expect(status).toMatchObject({ mode: "builtin", caddy: { answers: true, configured: true, applied: true }, certificate: { subject: "lyrica.example.net" } });
     expect(JSON.stringify(status)).not.toContain(TOKEN);
 
@@ -131,52 +131,52 @@ describe("web access, built-in Caddy", () => {
   });
 
   it("keeps the old name served until the new one's certificate verifies, and goes back if none comes", async () => {
-    const { caddy, ca, httpsPort, li, url } = await setup();
+    const { caddy, ca, httpsPort, ada, url } = await setup();
     const tls = await caddyServing(httpsPort, ca, ["old.example.net"]);
-    expect((await li.put(url, builtin("old.example.net"))).status).toBe(200);
+    expect((await ada.put(url, builtin("old.example.net"))).status).toBe(200);
     const settled = caddy.state.config;
 
     // No certificate for the new name (no DNS record yet, a token for the wrong zone): both names were served while
     // waiting, then the old config is back and nothing is saved.
     caddy.state.loads.length = 0;
-    const failed = await li.put<{ error: string }>(url, builtin("new.example.net"));
+    const failed = await ada.put<{ error: string }>(url, builtin("new.example.net"));
     expect(failed.status).toBe(400);
     expect(failed.body.error).toMatch(/no certificate for new\.example\.net came within/);
     expect(routes(caddy.state.loads[0])).toEqual(["new.example.net", "old.example.net"]);
     expect(caddy.state.config).toEqual(settled);
-    expect((await li.get<WebAccess>(url)).body.name).toBe("old.example.net");
+    expect((await ada.get<WebAccess>(url)).body.name).toBe("old.example.net");
 
     // Once it can get one, the switch finishes and the old name goes.
     tls.add("new.example.net");
     caddy.state.loads.length = 0;
-    expect((await li.put(url, builtin("new.example.net"))).status).toBe(200);
+    expect((await ada.put(url, builtin("new.example.net"))).status).toBe(200);
     expect(caddy.state.loads.map(routes)).toEqual([["new.example.net", "old.example.net"], ["new.example.net"]]);
   });
 
   it("keeps the previous config when Caddy refuses the new one", async () => {
-    const { caddy, li, url, logs } = await setup();
-    expect((await li.put<{ error: string }>(url, builtin("not a host"))).body.error).toMatch(/^the hostname is a domain name/);
+    const { caddy, ada, url, logs } = await setup();
+    expect((await ada.put<{ error: string }>(url, builtin("not a host"))).body.error).toMatch(/^the hostname is a domain name/);
     caddy.state.refuse = true;
-    const refused = await li.put<{ error: string }>(url, builtin());
+    const refused = await ada.put<{ error: string }>(url, builtin());
     expect(refused.status).toBe(400);
     expect(refused.body.error).toContain("appears invalid");
     expect(refused.body.error).not.toContain(TOKEN);
-    expect((await li.get<WebAccess>(url)).body.mode).toBe("off");
+    expect((await ada.get<WebAccess>(url)).body.mode).toBe("off");
     expect(logs.join("\n")).not.toContain(TOKEN);
   });
 
   it("says when Caddy runs with no site", async () => {
-    const { ca, httpsPort, caddy, li, url } = await setup();
+    const { ca, httpsPort, caddy, ada, url } = await setup();
     await caddyServing(httpsPort, ca, ["lyrica.example.net"]);
-    await li.put(url, builtin());
+    await ada.put(url, builtin());
     caddy.state.config = { admin: { listen: `unix/${caddy.socket}|0660` } }; // its saved config was set aside at start
-    expect((await li.get<WebAccessStatus>(`${url}/status`)).body.caddy).toEqual({ answers: true, configured: false, applied: false });
+    expect((await ada.get<WebAccessStatus>(`${url}/status`)).body.caddy).toEqual({ answers: true, configured: false, applied: false });
   });
 
   it("is for administrators only", async () => {
     const { base, rt, url } = await setup();
     const sam = await login(base, "sam", "pw2");
-    const samUrl = url.replace(rt.li.id, rt.sam.id);
+    const samUrl = url.replace(rt.ada.id, rt.sam.id);
     for (const p of [samUrl, `${samUrl}/status`, `${samUrl}/snippet`]) expect((await sam.get(p)).status).toBe(403);
     expect((await sam.put(samUrl, builtin())).status).toBe(403);
     expect((await sam.get(url)).status).toBe(401);
@@ -205,9 +205,9 @@ const external = (port: number, proxies: string[], extra: Record<string, unknown
 
 describe.skipIf(!lan)("web access, external proxy", () => {
   it("listens for the listed proxies only, over HTTPS the proxy pins, and believes only their forwarded addresses", async () => {
-    const { rt, d, li, url } = await setup([{ address: lan!, kind: "lan", interface: "eth0" }]);
+    const { rt, d, ada, url } = await setup([{ address: lan!, kind: "lan", interface: "eth0" }]);
     const port = await freePort();
-    const put = await li.put<WebAccess>(url, external(port, ["192.0.2.250"], { proxyPort: 8443 }));
+    const put = await ada.put<WebAccess>(url, external(port, ["192.0.2.250"], { proxyPort: 8443 }));
     expect(put.status).toBe(200);
     const ext = put.body.external!;
     expect(ext).toMatchObject({ address: lan, port, https: true, proxyPort: 8443, fingerprint: expect.stringMatching(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/) });
@@ -221,13 +221,13 @@ describe.skipIf(!lan)("web access, external proxy", () => {
     expect(typeof await call({ https: true, port, path: "/api/state", ca: ext.pem })).toBe("string");
 
     // Listed: HTTPS with the pinned certificate works; plain HTTP on a LAN address doesn't, nor an unpinned client.
-    await li.put(url, external(port, [lan!], { proxyPort: 8443 }));
+    await ada.put(url, external(port, [lan!], { proxyPort: 8443 }));
     expect(await call({ https: true, port, path: "/api/state", ca: ext.pem })).toBe(200);
     expect(await call({ https: false, port, path: "/api/state" })).not.toBe(200);
     expect(typeof await call({ https: true, port, path: "/api/state" })).toBe("string");
 
     // A new name keeps the certificate (it names only the address), so the proxy's pin holds.
-    const renamed = (await li.put<WebAccess>(url, { ...external(port, [lan!]), name: "home.example.net" })).body.external!;
+    const renamed = (await ada.put<WebAccess>(url, { ...external(port, [lan!]), name: "home.example.net" })).body.external!;
     expect(renamed.fingerprint).toBe(ext.fingerprint);
 
     // X-Forwarded-For from the proxy names the client: each forwarded address is limited on its own.
@@ -240,7 +240,7 @@ describe.skipIf(!lan)("web access, external proxy", () => {
     expect(await attempt("203.0.113.1", "nobody-3")).toBe(429);
 
     // The proxy's site, and the front door for sandboxes: its port on the proxy and the name, and the extra port everywhere.
-    const snippet = (await li.get<{ caddyfile: string }>(`${url}/snippet`)).body.caddyfile;
+    const snippet = (await ada.get<{ caddyfile: string }>(`${url}/snippet`)).body.caddyfile;
     expect(snippet).toContain("home.example.net {");
     expect(snippet).toContain(`reverse_proxy https://${lan}:${port}`);
     expect(snippet).toContain("tls_trust_pool file");
@@ -248,7 +248,7 @@ describe.skipIf(!lan)("web access, external proxy", () => {
     expect(d.services!.web.frontDoor()).toEqual({ ports: [443], hosts: ["home.example.net", lan], exclude: [port] });
 
     // Back to off: the extra listener closes and its file goes.
-    expect((await li.put(url, { mode: "off" })).status).toBe(200);
+    expect((await ada.put(url, { mode: "off" })).status).toBe(200);
     expect(typeof await call({ https: true, port, path: "/api/state", ca: ext.pem })).toBe("string");
     expect(readdirSync(rt.home)).not.toContain("web-external.json");
   });
@@ -256,41 +256,41 @@ describe.skipIf(!lan)("web access, external proxy", () => {
   it("opens before unlock, answering only state, unlock and the web UI", async () => {
     const first = await setup([{ address: lan!, kind: "lan", interface: "eth0" }]);
     const port = await freePort();
-    const ext = (await first.li.put<WebAccess>(first.url, external(port, [lan!]))).body.external!;
+    const ext = (await first.ada.put<WebAccess>(first.url, external(port, [lan!]))).body.external!;
     await first.stop();
 
     const again = await daemon(first.rt, { web: { caddySocket: first.caddy.socket, addresses: () => [{ address: lan!, kind: "lan", interface: "eth0" }] } });
     expect(again.d.locked).toBe(true);
     expect(await call({ https: true, port, path: "/api/state", ca: ext.pem })).toBe(200);
-    expect(await call({ https: true, port, path: `/api/u/${first.rt.li.id}/threads`, ca: ext.pem })).toBe(503);
+    expect(await call({ https: true, port, path: `/api/u/${first.rt.ada.id}/threads`, ca: ext.pem })).toBe(503);
   });
 
   it("serves plain HTTP only on a Tailscale interface, whatever the address range", async () => {
-    const { li, url } = await setup([{ address: lan!, kind: "tailscale", interface: "tailscale0" }]);
+    const { ada, url } = await setup([{ address: lan!, kind: "tailscale", interface: "tailscale0" }]);
     const port = await freePort();
-    const put = await li.put<WebAccess>(url, external(port, [lan!]));
+    const put = await ada.put<WebAccess>(url, external(port, [lan!]));
     expect(put.body.external).toMatchObject({ https: false });
     expect(await call({ https: false, port, path: "/api/state" })).toBe(200);
-    expect((await li.get<{ caddyfile: string }>(`${url}/snippet`)).body.caddyfile).toContain(`reverse_proxy ${lan}:${port}`);
+    expect((await ada.get<{ caddyfile: string }>(`${url}/snippet`)).body.caddyfile).toContain(`reverse_proxy ${lan}:${port}`);
   });
 
   it("refuses an address that isn't this machine's, or a taken port, and keeps the previous setup", async () => {
-    const { d, li, url } = await setup([{ address: lan!, kind: "lan", interface: "eth0" }]);
-    expect((await li.put(url, external(7999, ["192.0.2.1"], { address: "192.0.2.99" }))).status).toBe(400);
-    expect((await li.put(url, external(d.port, ["192.0.2.1"]))).status).toBe(400);
+    const { d, ada, url } = await setup([{ address: lan!, kind: "lan", interface: "eth0" }]);
+    expect((await ada.put(url, external(7999, ["192.0.2.1"], { address: "192.0.2.99" }))).status).toBe(400);
+    expect((await ada.put(url, external(d.port, ["192.0.2.1"]))).status).toBe(400);
     const busy = createTcp();
     track(busy);
     await new Promise<void>((r) => busy.listen(0, lan, r));
     const taken = (busy.address() as AddressInfo).port;
-    const r = await li.put<{ error: string }>(url, external(taken, ["192.0.2.1"]));
+    const r = await ada.put<{ error: string }>(url, external(taken, ["192.0.2.1"]));
     expect(r.status).toBe(400);
     expect(r.body.error).toMatch(/couldn't listen/);
-    expect((await li.get<WebAccess>(url)).body.mode).toBe("off");
+    expect((await ada.get<WebAccess>(url)).body.mode).toBe("off");
 
     // Changing the port: if the new one can't open, the old listener keeps working.
     const port = await freePort();
-    const ext = (await li.put<WebAccess>(url, external(port, [lan!]))).body.external!;
-    expect((await li.put(url, external(taken, [lan!]))).status).toBe(400);
+    const ext = (await ada.put<WebAccess>(url, external(port, [lan!]))).body.external!;
+    expect((await ada.put(url, external(taken, [lan!]))).status).toBe(400);
     expect(await call({ https: true, port, path: "/api/state", ca: ext.pem })).toBe(200);
   });
 });

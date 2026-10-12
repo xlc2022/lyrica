@@ -109,7 +109,7 @@ describe("searxngSearch", () => {
       seen = { url, auth: (init.headers as Record<string, string>).authorization };
       return new Response(JSON.stringify({ results: [] }));
     }) as unknown as typeof fetch;
-    await searxngSearch("https://li:s3cret@s.example", "a b", 8, undefined, f);
-    expect(seen).toEqual({ url: "https://s.example/search?q=a%20b&format=json", auth: `Basic ${Buffer.from("li:s3cret").toString("base64")}` });
+    await searxngSearch("https://ada:s3cret@s.example", "a b", 8, undefined, f);
+    expect(seen).toEqual({ url: "https://s.example/search?q=a%20b&format=json", auth: `Basic ${Buffer.from("ada:s3cret").toString("base64")}` });
   });
 });

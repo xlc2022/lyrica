@@ -30,7 +30,7 @@ const words = (n: number) => Array.from({ length: n }, (_, i) => `word${i}`).joi
 /** Ada (administrator) with cloud and local models, a Memory, the seed persona, and Sleep over them. */
 async function setup(limits: Partial<SleepLimits> = {}) {
   const m = await withModels();
-  for (const [p, ref] of [["cloud", m.cloudRef], ["local", m.localRef]] as const) m.models.setProfile(m.li.id, p, "chat", ref);
+  for (const [p, ref] of [["cloud", m.cloudRef], ["local", m.localRef]] as const) m.models.setProfile(m.ada.id, p, "chat", ref);
   const memory = new Memory(m.keyring, m.users);
   const persona = new PersonaStore(m.keyring.self());
   persona.importSeed(SEED);
@@ -58,7 +58,7 @@ async function setup(limits: Partial<SleepLimits> = {}) {
     m.local.respond(respond);
     return seen;
   };
-  const view = (pool: Pool = "general", userId = m.li.id) => memory.openThreadView(userId, pool);
+  const view = (pool: Pool = "general", userId = m.ada.id) => memory.openThreadView(userId, pool);
   /** A conversation in which Ada says something and Lyrica notes it. */
   const talk = (v: PoolView, said: string, note?: string) => {
     const t = v.own.createThread({ interface: "web" });
@@ -85,7 +85,7 @@ describe("a night's sleep", () => {
       wake: [call("write_wake", { text: wake })],
     });
 
-    const run = await s.sleep.run(s.li.id, "general", "manual");
+    const run = await s.sleep.run(s.ada.id, "general", "manual");
     expect(run).toMatchObject({ status: "complete", reason: "manual" });
     expect(Object.keys(run.phases)).toEqual(["consolidate", "dream", "wake"]);
     expect(seen.consolidate.length).toBeGreaterThan(0);
@@ -104,7 +104,7 @@ describe("a night's sleep", () => {
 
     // The next new thread wakes up with WAKE and the time since they last talked.
     const next = v.own.createThread({ interface: "web" });
-    const sections = await memorySections(v, "hello", { threadId: next.id, user: { id: s.li.id, profile: s.li.profile }, folders: [] });
+    const sections = await memorySections(v, "hello", { threadId: next.id, user: { id: s.ada.id, profile: s.ada.profile }, folders: [] });
     expect(sections.wake).toBe(wake);
     expect(sections.lastTalk).toBeInstanceOf(Date);
     expect(v.own.watermark()).toBe(run.until);
@@ -127,7 +127,7 @@ describe("a night's sleep", () => {
         call("write_wake", { text: `The garden is in motion. ${words(420)}` }),
       ],
     });
-    const run = await s.sleep.run(s.li.id, "general", "scheduled");
+    const run = await s.sleep.run(s.ada.id, "general", "scheduled");
     expect(run.status).toBe("complete");
 
     // The wake phase never saw the dream: not in recall, not by reading it, not from the dream's thread.
@@ -142,7 +142,7 @@ describe("a night's sleep", () => {
     expect(before).toMatchObject({ text: "A thought before writing", source: `t:${run.phases.dream!.thread}` });
 
     // No other thread has the item in its context, and recall can't find it.
-    const user = { id: s.li.id, profile: s.li.profile };
+    const user = { id: s.ada.id, profile: s.ada.profile };
     const other = v.own.createThread({ interface: "web" });
     const plain = await memorySections(v, "what about the tomato idea?", { threadId: other.id, user, folders: [] });
     expect(JSON.stringify(plain)).not.toContain("Ask about the moonlit tomato idea");
@@ -163,13 +163,13 @@ describe("a night's sleep", () => {
     const v = s.view();
     const first = s.talk(v, "Please don't call me sweetie.", "{user} can't stand being called sweetie");
     s.script({ consolidate: [call("write_page", { slug: "about-user", title: "About {user}", summary: "who {user} is", text: `{user} can't stand being called sweetie [${first.note}].` })] });
-    expect((await s.sleep.run(s.li.id, "general", "manual")).status).toBe("complete");
+    expect((await s.sleep.run(s.ada.id, "general", "manual")).status).toBe("complete");
     expect(v.own.get("p:about-user")!.text).toBe(`Ada can't stand being called sweetie [${first.note}].`);
 
     // Ada writes her own line on the page; then says something new.
-    const owner = s.memory.openOwnerView(s.li.id);
+    const owner = s.memory.openOwnerView(s.ada.id);
     const mine = "I'm a night owl, and I like it that way.";
-    owner.general.edit("p:about-user", { text: `${mine}\n\n${owner.general.get("p:about-user", { raw: true })!.text}` }, `user:${s.li.id}`);
+    owner.general.edit("p:about-user", { text: `${mine}\n\n${owner.general.get("p:about-user", { raw: true })!.text}` }, `user:${s.ada.id}`);
     owner.close();
     const second = s.talk(v, "I've started getting up at 6.", "{user} gets up at 6 now");
 
@@ -181,7 +181,7 @@ describe("a night's sleep", () => {
         call("write_page", { slug: "about-user", title: "About {user}", summary: "who {user} is", text: `${mine}\n\n{user} can't stand being called sweetie [${first.note}]. {user} gets up at 6 now [${second.note}].` }),
       ],
     });
-    await s.sleep.run(s.li.id, "general", "manual");
+    await s.sleep.run(s.ada.id, "general", "manual");
     expect(results[0]).toContain("has text a user wrote");
     const page = v.own.get("p:about-user")!;
     expect(page.text).toContain(mine);
@@ -199,7 +199,7 @@ describe("a night's sleep", () => {
     const openSpy = vi.spyOn(s.memory, "openThreadView");
 
     s.script({ consolidate: [call("write_page", { slug: "health", title: "Health", summary: "private", text: `Therapy [${secret.note}], and the homelab helps [general/${general.note}].` })] });
-    await s.sleep.run(s.li.id, "private", "manual");
+    await s.sleep.run(s.ada.id, "private", "manual");
     expect(p.own.cameFrom("p:health")).toEqual([`general/${general.note}`, secret.note]);
     expect(g.own.get("p:health")).toBeUndefined();
     expect(g.own.sleepChanges("", new Date().toISOString())).toEqual({ notes: [], pages: [], journal: [] });
@@ -208,7 +208,7 @@ describe("a night's sleep", () => {
 
     openSpy.mockClear();
     s.script({ consolidate: [(c) => { expect(said(c)).not.toContain("Okafor"); return call("recall", { query: "Okafor" }); }, (c) => { expect(said(c).split("Okafor").length).toBe(2); return { text: "Done." }; }] });
-    await s.sleep.run(s.li.id, "general", "manual");
+    await s.sleep.run(s.ada.id, "general", "manual");
     expect(openSpy.mock.calls.map((c) => c[1])).toEqual(["general"]);
     // General sleep ran on the cloud profile's model.
     expect(s.cloud.requests.length).toBeGreaterThan(0);
@@ -220,17 +220,17 @@ describe("a night's sleep", () => {
     const s = await setup();
     const v = s.view();
     s.talk(v, "Hello there.", "{user} said hello");
-    const dead = s.models.addEndpoint(s.li, { name: "dead", kind: "cloud", baseUrl: await deadUrl() });
-    s.models.setProfile(s.li.id, "cloud", "sleep.dream", { offeringId: s.models.addModel(s.li, dead.id, { modelId: "m" }).id });
-    const skipped = await s.sleep.run(s.li.id, "general", "scheduled");
+    const dead = s.models.addEndpoint(s.ada, { name: "dead", kind: "cloud", baseUrl: await deadUrl() });
+    s.models.setProfile(s.ada.id, "cloud", "sleep.dream", { offeringId: s.models.addModel(s.ada, dead.id, { modelId: "m" }).id });
+    const skipped = await s.sleep.run(s.ada.id, "general", "scheduled");
     expect(skipped).toMatchObject({ status: "skipped", skipReason: "endpoint-down", phases: {} });
     expect(v.own.watermark()).toBeUndefined();
-    expect(await s.sleep.check(s.li.id, "general")).toMatchObject({ skip: "endpoint-down" });
+    expect(await s.sleep.check(s.ada.id, "general")).toMatchObject({ skip: "endpoint-down" });
 
     // The endpoint is back, but drops during the dream: consolidate stays done.
-    s.models.setProfile(s.li.id, "cloud", "sleep.dream");
+    s.models.setProfile(s.ada.id, "cloud", "sleep.dream");
     s.script({ dream: [{ status: 500 }] });
-    const partial = await s.sleep.run(s.li.id, "general", "scheduled");
+    const partial = await s.sleep.run(s.ada.id, "general", "scheduled");
     expect(partial.status).toBe("partial");
     expect(partial.phases.consolidate?.done).toBe(true);
     expect(partial.phases.dream?.done).toBe(false);
@@ -238,11 +238,11 @@ describe("a night's sleep", () => {
 
     // Next time it carries on from the dream, as the same run.
     const seen = s.script({ dream: [call("write_journal", { text: "A quiet night." })], wake: [call("write_wake", { text: words(400) })] });
-    const resumed = await s.sleep.run(s.li.id, "general", "scheduled");
+    const resumed = await s.sleep.run(s.ada.id, "general", "scheduled");
     expect(resumed).toMatchObject({ id: partial.id, status: "complete" });
     expect(resumed.phases.consolidate).toEqual(partial.phases.consolidate);
     expect(seen.consolidate).toHaveLength(0);
-    await expect(s.sleep.check(s.li.id, "general")).resolves.toMatchObject({ skip: "no-activity" });
+    await expect(s.sleep.check(s.ada.id, "general")).resolves.toMatchObject({ skip: "no-activity" });
     v.close();
   });
 
@@ -250,17 +250,17 @@ describe("a night's sleep", () => {
     const s = await setup();
     const v = s.view();
     s.talk(v, "Hello there.", "{user} said hello");
-    const dead = s.models.addEndpoint(s.li, { name: "dead", kind: "cloud", baseUrl: await deadUrl() });
-    s.models.setProfile(s.li.id, "cloud", "sleep.dream", [{ offeringId: s.models.addModel(s.li, dead.id, { modelId: "m" }).id }, s.cloudRef]);
-    expect(s.sleep.fallback(s.li.id)).toBe(true);
-    s.sleep.setFallback(s.li.id, false);
-    expect(s.sleep.fallback(s.li.id)).toBe(false);
-    expect(await s.sleep.run(s.li.id, "general", "scheduled")).toMatchObject({ status: "skipped", skipReason: "endpoint-down" });
+    const dead = s.models.addEndpoint(s.ada, { name: "dead", kind: "cloud", baseUrl: await deadUrl() });
+    s.models.setProfile(s.ada.id, "cloud", "sleep.dream", [{ offeringId: s.models.addModel(s.ada, dead.id, { modelId: "m" }).id }, s.cloudRef]);
+    expect(s.sleep.fallback(s.ada.id)).toBe(true);
+    s.sleep.setFallback(s.ada.id, false);
+    expect(s.sleep.fallback(s.ada.id)).toBe(false);
+    expect(await s.sleep.run(s.ada.id, "general", "scheduled")).toMatchObject({ status: "skipped", skipReason: "endpoint-down" });
     expect(v.own.watermark()).toBeUndefined();
     // On, the next model in the list sleeps.
-    s.sleep.setFallback(s.li.id, true);
+    s.sleep.setFallback(s.ada.id, true);
     s.script({});
-    expect((await s.sleep.run(s.li.id, "general", "scheduled")).status).toBe("complete");
+    expect((await s.sleep.run(s.ada.id, "general", "scheduled")).status).toBe("complete");
     v.close();
   });
 
@@ -275,7 +275,7 @@ describe("a night's sleep", () => {
     v.own.appendEntry(later.id, { piId: "f1", role: "user", data: {}, text: "LATER-MARKER" }, future);
     let instruction = "";
     s.script({ consolidate: [(c) => { instruction = said(c); return { text: "Done." }; }] });
-    const run = await s.sleep.run(s.li.id, "general", "manual");
+    const run = await s.sleep.run(s.ada.id, "general", "manual");
     expect(instruction).not.toContain(hidden.id);
     expect(instruction).not.toContain(later.id);
     // The later entry waits for the next sleep.
@@ -308,18 +308,18 @@ describe("a night's sleep", () => {
   it("records no-activity and no-key skips, and logs no text", async () => {
     const s = await setup();
     const v = s.view();
-    expect(await s.sleep.run(s.li.id, "general", "scheduled")).toMatchObject({ status: "skipped", skipReason: "no-activity" });
+    expect(await s.sleep.run(s.ada.id, "general", "scheduled")).toMatchObject({ status: "skipped", skipReason: "no-activity" });
     v.close();
 
-    s.keyring.lockUser(s.li.id);
-    expect(await s.sleep.run(s.li.id, "general", "scheduled")).toMatchObject({ status: "skipped", skipReason: "no-key" });
-    await s.users.authenticate("li", "pw");
+    s.keyring.lockUser(s.ada.id);
+    expect(await s.sleep.run(s.ada.id, "general", "scheduled")).toMatchObject({ status: "skipped", skipReason: "no-key" });
+    await s.users.authenticate("ada", "pw");
     // Recorded once the key is back.
     const marker = "ZEBRA-MARKER-7";
     const again = s.view();
     s.talk(again, `My secret word is ${marker}.`, `{user}'s secret word is ${marker}`);
     s.script({ consolidate: [call("write_page", { slug: "secret", title: marker, summary: marker, text: `${marker} [${again.own.search(marker, { kinds: ["note"] })[0]!.id}]` })] });
-    await s.sleep.run(s.li.id, "general", "manual");
+    await s.sleep.run(s.ada.id, "general", "manual");
     expect(again.own.listSleepRuns().map((r) => [r.status, r.skipReason])).toEqual([["complete", undefined], ["skipped", "no-key"], ["skipped", "no-activity"]]);
     expect(s.logs.length).toBeGreaterThan(0);
     expect(s.logs.join("\n")).not.toContain(marker);
@@ -331,16 +331,16 @@ describe("a night's sleep", () => {
     const v = s.view();
     s.talk(v, "Something.", "{user} said something");
     s.script({ consolidate: [call("recall", { query: "a" }), call("recall", { query: "b" }), call("recall", { query: "c" })] });
-    const limited = await s.sleep.run(s.li.id, "general", "manual");
+    const limited = await s.sleep.run(s.ada.id, "general", "manual");
     expect(limited).toMatchObject({ status: "partial", phases: { consolidate: { done: false } } });
     expect(v.own.watermark()).toBeUndefined();
 
     let release!: () => void;
     const held = new Promise<void>((r) => (release = r));
     s.script({ consolidate: [() => { release(); return call("recall", { query: "x" }); }] });
-    const running = s.sleep.run(s.li.id, "general", "manual");
+    const running = s.sleep.run(s.ada.id, "general", "manual");
     await held;
-    await s.sleep.stop(s.li.id);
+    await s.sleep.stop(s.ada.id);
     expect((await running).status).toBe("partial");
     v.close();
   });
@@ -366,7 +366,7 @@ describe("project pages", () => {
         (c) => { instruction = said(c); return call("write_page", { slug: p.slug, title: "Garden app", summary: "the garden app project", text: `Decided: SQLite, not Postgres [${p.note}].` }); },
       ],
     });
-    expect((await s.sleep.run(s.li.id, "general", "scheduled")).status).toBe("complete");
+    expect((await s.sleep.run(s.ada.id, "general", "scheduled")).status).toBe("complete");
     expect(instruction).toContain(`Page: ${p.slug} (create it)`);
     expect(instruction).toContain(`Notes: [${p.note}]`);
     expect(instruction).toContain("Ship the garden app");
@@ -383,13 +383,13 @@ describe("project pages", () => {
     const v = s.view();
     const p = project(v, "Write the changelog in German.", "{user} wants the garden app's changelog in German");
     const instruct = (text: string) => {
-      const owner = s.memory.openOwnerView(s.li.id);
-      owner.general.setProjectInstructions(p.chat, text, `user:${s.li.id}`);
+      const owner = s.memory.openOwnerView(s.ada.id);
+      owner.general.setProjectInstructions(p.chat, text, `user:${s.ada.id}`);
       owner.close();
     };
     instruct("Always measure in metric.");
     s.script({ consolidate: [call("write_page", { slug: p.slug, title: "Garden app", summary: "the garden app project", text: `Changelog in German [${p.note}].` })] });
-    await s.sleep.run(s.li.id, "general", "scheduled");
+    await s.sleep.run(s.ada.id, "general", "scheduled");
     expect(v.own.get(`p:${p.slug}`)).toMatchObject({ instructions: "Always measure in metric.", text: `Changelog in German [${p.note}].` });
 
     // Ada changes her instructions; the next night sleep rewrites its own part as before.
@@ -402,7 +402,7 @@ describe("project pages", () => {
         (c) => { results.push(said(c)); return { text: "Done." }; },
       ],
     });
-    await s.sleep.run(s.li.id, "general", "scheduled");
+    await s.sleep.run(s.ada.id, "general", "scheduled");
     expect(results[0]).toContain(`Wrote p:${p.slug}`);
     expect(v.own.get(`p:${p.slug}`)).toMatchObject({
       instructions: "Always measure in metric. Prices in euros.",
@@ -427,7 +427,7 @@ describe("project pages", () => {
         (c) => { read.push(said(c)); return { text: "Done." }; },
       ],
     });
-    await s.sleep.run(s.li.id, "general", "scheduled");
+    await s.sleep.run(s.ada.id, "general", "scheduled");
     expect(read[0]).toContain(`watching threads: a look at [t:${p.thread}]`);
     expect(read[0]).not.toContain("The person wrote");
     v.close();
@@ -449,7 +449,7 @@ describe("project pages", () => {
         (c) => { general.push(said(c)); return { text: "Done." }; },
       ],
     });
-    await s.sleep.run(s.li.id, "general", "scheduled");
+    await s.sleep.run(s.ada.id, "general", "scheduled");
     expect(general[0]).not.toContain(secret.chat);
     expect(general[0]).not.toContain(quiet.chat);
     expect(general[1]).toContain("there's no such project here");
@@ -458,7 +458,7 @@ describe("project pages", () => {
     expect(g.own.get(`p:${quiet.slug}`)).toBeUndefined();
 
     s.script({ consolidate: [call("write_page", { slug: secret.slug, title: "Party", summary: "the party", text: `The 12th [${secret.note}].` })] });
-    await s.sleep.run(s.li.id, "private", "scheduled");
+    await s.sleep.run(s.ada.id, "private", "scheduled");
     expect(pv.own.get(`p:${secret.slug}`)!.text).toBe(`The 12th [${secret.note}].`);
     expect(s.cloud.requests.filter((r) => JSON.stringify(r).includes("surprise party"))).toHaveLength(0);
     g.close();
@@ -472,7 +472,7 @@ describe("project pages", () => {
     v.own.setUnlogged(p.chat, true);
     let instruction = "";
     s.script({ consolidate: [(c) => { instruction = said(c); return { text: "Done." }; }] });
-    await s.sleep.run(s.li.id, "general", "scheduled");
+    await s.sleep.run(s.ada.id, "general", "scheduled");
     // The thread itself is still slept, as an ordinary thread.
     expect(instruction).toContain(`t:${p.thread}`);
     expect(instruction).not.toContain(p.chat);

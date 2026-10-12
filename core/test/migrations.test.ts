@@ -87,14 +87,14 @@ describe("schema versions", () => {
   it("refuses a pool database a newer release contracted when a thread opens it", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
-    await users.authenticate("li", "pw");
+    const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+    await users.authenticate("ada", "pw");
     const memory = new Memory(keyring, users);
-    memory.openOwnerView(li.id).close();
-    const pool = openEncrypted(join(users.userDir(li.id), "general.db"), { raw: keyring.subkey(li.id, "pool:general") });
+    memory.openOwnerView(ada.id).close();
+    const pool = openEncrypted(join(users.userDir(ada.id), "general.db"), { raw: keyring.subkey(ada.id, "pool:general") });
     pool.prepare("UPDATE meta SET value = ? WHERE key = 'min_reader'").run(String(SCHEMA.pool + 1));
     pool.close();
-    expect(() => memory.openOwnerView(li.id)).toThrow(SchemaTooNew);
+    expect(() => memory.openOwnerView(ada.id)).toThrow(SchemaTooNew);
   });
 
   it("opens a database a newer release only expanded, as it is", () => {
