@@ -98,6 +98,17 @@ say so in your own thread.
 A second review from another model family (such as Codex, run on the test
 machine) happens only when the owner or PR review asks for one.
 
+**Claude Code threads only: the local model.** This paragraph is specific to
+Claude Code sessions in the owner's Claude project. Other harnesses and models
+(Codex, DeepSeek, Lyrica) ignore it. A local model runs in LM Studio on the
+operator's main machine. On the test machine, Claude Code reaches it through
+the `houtini-lm` MCP server (Claude stays in charge and gets text back) or the
+`claude-local` command (a whole Claude Code session on the local model, run
+with `-p` from the thread's own worktree, its diff reviewed before commit).
+Before giving it any work, the thread that wants the work done asks the owner
+in its own thread. If the owner doesn't answer within 5 minutes, or the model
+isn't reachable, the work goes to Codex, then to Claude.
+
 - A pull request description says what changed and why, what is out of scope,
   any contract change it needs, and which docs it updated (or why none needed
   it).
