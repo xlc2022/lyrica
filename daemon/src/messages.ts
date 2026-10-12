@@ -1,5 +1,5 @@
-import { FROM_PARENT, LYRICA_REACTS, WAKEUP, WATCHING, type Reaction as StoredReaction } from "@lyrica/core";
-import { DELEGATE_MESSAGE, OPENING, USER_MESSAGE } from "@lyrica/extension";
+import { FROM_PARENT, LYRICA_REACTS, ROUTINE, WAKEUP, WATCHING, type Reaction as StoredReaction } from "@lyrica/core";
+import { DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, USER_MESSAGE } from "@lyrica/extension";
 import type { Message, MessagePart, Pool, Reaction, ThreadRef, Told } from "./api.ts";
 
 // Stored Pi entries as the web UI shows them, and the memory markers that both
@@ -109,6 +109,10 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
   for (const { n, data, createdAt, pinned, reactions: stored } of entries) {
     const reactions = opts.userId ? toReactions(stored, opts.userId) : undefined;
     const e = data as PiEntry;
+    if (e.type === "custom_message" && e.customType === TURN_TOOL_NOTICE) {
+      out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "notice", parts: [{ type: "delegation", text: textOf(e.content), status: "limit" }] });
+      continue;
+    }
     if (e.type === "custom_message" && e.customType === "lyrica-turn") {
       pendingRecall = turnRecall(e.content);
       continue;
@@ -151,6 +155,11 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
       if (marked) {
         const from = marked[1] === opts.parent ? { kind: "parent" as const, threadId: marked[1]! } : { kind: "thread" as const, threadId: marked[1]! };
         out.push({ ...base, role: "user", from, parts: [{ type: "text", text: textOf(m.content).slice(marked[0].length) }] });
+        continue;
+      }
+      const routine = ROUTINE.exec(textOf(m.content));
+      if (routine) {
+        out.push({ ...base, role: "user", from: { kind: "routine", schedule: routine[1]! }, parts: [{ type: "text", text: textOf(m.content).slice(routine[0].length) }] });
         continue;
       }
       // A wake-up's note to herself; lyricad refuses the mark on anything a user sends.

@@ -43,7 +43,8 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
 - **`record.ts`** stores Pi's entries in the thread (`recordEntries`).
 - **`context.ts`**, **`react.ts`**, **`threads.ts`**: how full her context
   is and her model's pace, with the lines that tell her to compact, the user's reactions told to her in the turn message, and
-  the `threads` tool (child threads, and compacting with her own summary).
+  the `threads` tool (child threads and project actions, wake-ups, routines,
+  checklists, and compacting with her own summary).
 - **`sleep.ts`** (`Sleep`) runs consolidate, dream and wake as Pi sessions
   with the memory and persona tools. See [docs/sleep.md](../docs/sleep.md).
 - **`primer.ts`** is her self-primer, routed like a persona topic.

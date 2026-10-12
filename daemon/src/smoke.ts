@@ -7,7 +7,7 @@ import type { Health } from "./api.ts";
 import { Lyricad } from "./lyricad.ts";
 
 /** No saved credentials in a scratch home. */
-const NONE: CredentialStore = { unavailable: () => "not in a smoke test", saved: () => false, load: () => undefined, save: async () => {}, remove: async () => {} };
+const NONE: CredentialStore = { unavailable: () => "not in a smoke test", saved: () => false, load: async () => undefined, save: async () => {}, remove: async () => {} };
 
 function call(o: { port?: number; socketPath?: string; method: string; path: string; body?: unknown; cookie?: string }): Promise<{ status: number; body: string; cookie?: string }> {
   return new Promise((resolve, reject) => {

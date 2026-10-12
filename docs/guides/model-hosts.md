@@ -247,12 +247,16 @@ The answer is `202` with the downloads; `GET /host/v1/downloads` follows
 them, and the dashboard shows the same. A sharded or multi-file model
 appears in the library once every file is here.
 
-Then **pin both** (the pin button in the library, or `POST
-/host/v1/models/pin`), so neither waits for a load when someone speaks or
-listens. Whisper takes about 2.2 GB of VRAM and Kokoro about 1 GB on an
-NVIDIA host; on AMD or without CUDA the voice runs on the CPU, where
-Kokoro is quick enough. On an RTX 3090 it starts speaking in about 0.3 s;
-on the CPU alone it takes about 1.3 s for a 5-second sentence.
+Pin both (the pin button in the library, or `POST /host/v1/models/pin`)
+if the GPU has room, so neither waits for a load when someone speaks or
+listens. Together they take about 4.2 GB of VRAM on an NVIDIA host; on AMD
+or without CUDA the voice runs on the CPU, where Kokoro is quick enough.
+Warm, on an RTX 3090, a 24-second reply is spoken in 0.7 s and transcribed
+in 0.25 s; on the CPU alone Kokoro takes about 1.3 s for a 5-second
+sentence. Unpinned, the host swaps models in and out, and the first use
+after a swap takes about 30 s. Dictation uses the local profile unless a
+thread picks its own model, so put Whisper in that profile's
+`speech.transcribe` list.
 
 ### Placements and settings
 
@@ -284,19 +288,24 @@ stretch on any vLLM model as untested (vllm#58870) until its image carries
 the fix; llama.cpp is the safer choice for it. Details are in
 [host/API.md](../../host/API.md#recommended-settings).
 
-On a host with one large GPU: pin Whisper (vLLM memory share about 0.1 on
-a 24 GB card) and Kokoro, and leave the rest for chat models.
+On a host with one large GPU, voice and a big chat model compete for
+memory. On 24 GB, the 27B below at 128k leaves no room for pinned voice:
+either leave voice unpinned and accept the 30-second first use after a
+swap, or pin it and serve the chat model at a shorter context. Whisper on
+vLLM wants a memory share of about 0.1 of a 24 GB card.
 
 Measured on an RTX 3090 (24 GB) with Qwen3.8-27B Q4_K_M on llama.cpp:
 
 | Context | KV cache | Result |
 |---|---|---|
-| 128k | q8_0 | Fits: 22.2 GB, about 41 tokens/s |
+| 128k | q8_0 | Fits: about 22 GB; 41–55 tokens/s out, about 750 tokens/s prompt |
 | 336k (stretch factor 2) | q4_0 | Loads: 23.8 GB |
-| 352k and up | q4_0 | Refused at load, too big |
-| 600k | q4_0 | Doesn't fit: 3.6 GB short; needs 48 GB |
+| 352k | q4_0 | Refused at load, too big |
+| 384k and up | q4_0 | Refused when saved |
+| 600k | q4_0 | Refused when saved: 3.6 GB short; needs 48 GB |
 
 So the 600k stretch needs a 48 GB GPU; on 24 GB, stay at 336k or below.
+A night's sleep ran cleanly on this model at 128k in 7.5 minutes.
 
 ## Use it from Lyrica
 
@@ -361,7 +370,13 @@ second pairing. Then:
   servers log nothing at all.
 - **Upgrade:** `git pull && host/install.sh` in the checkout. It rebuilds
   the images and restarts the stack; `.env` keeps the settings, and the
-  `data` volume keeps the host's key, so pairing survives.
+  `data` volume keeps the host's key, so pairing survives. A host
+  installed before the image server got its `/triton` scratch space needs
+  this once, or image jobs fail with an `ImportError` (seen on NVIDIA).
+- **Restarting host-api alone** (a re-run of `install.sh` that leaves
+  llama.cpp running) loses track of the models llama.cpp still holds:
+  their memory counts as other programs', so a model may be refused as too
+  big. `docker restart lyrica-host-llamacpp-1` clears it.
 - **After a firewall reload** that flushes `INPUT`, `sudo systemctl
   restart lyrica-host-egress`. `host/test/stack/network.sh` checks the network
   layout on the running stack whenever you doubt it.

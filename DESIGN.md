@@ -363,6 +363,12 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - It keeps going in the background and stays until it is forgotten.
     Forgetting a parent asks whether to forget its child threads too, ticked
     by default.
+- **A turn stops after 100 attempted tool calls or 25 consecutive calls to
+  one tool.** The third identical call to a tool is refused with an error
+  asking her to answer or try something different. Invalid arguments are
+  rejected before execution. Each subagent turn counts separately. A
+  stopped turn shows a plain notice with the number of calls; the runtime
+  ends the loop, rather than relying on a prompt instruction.
 - **The user can rewind, retry and branch at any turn,** because weak local
   models often need a few tries:
   - **Regenerate** on any of Lyrica's replies removes it and everything after
@@ -780,8 +786,10 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       images, then background work (sleep, cheap subagents). If a request
       can't fit, it fails with a plain reason, such as "the GPU is busy with a
       chat model", rather than running out of memory.
-    - Each model's VRAM use is measured per GPU on its first load with each
-      placement, and remembered. The
+    - Each model's VRAM use is measured per GPU at load with each
+      placement, keeping the larger saved value. After its first attributable completed request,
+      the host keeps the larger measurement, including buffers grown on first
+      use, so eviction counts the memory they free. The
       control panel shows each GPU's use, what is loaded, and the queue.
 
 ## Images
@@ -1103,11 +1111,12 @@ Project settings and Recent calls by project. The briefs are
   switch, **Checklists**, turns it off for the person who prefers the
   messages alone; then she isn't offered it.
 - **Wake-ups** (2026-10-12). Any thread with the `threads` tool can set
-  a one-shot wake-up for itself, `threads later` with minutes (1 to 7 days)
-  and a note to itself; at that time the note starts a turn there, marked
+  a one-shot wake-up for itself, `threads later` with minutes
+  (1 minute to 7 days) and a note to itself; at that time the note starts a turn there, marked
   as a wake-up (a mark only `lyricad` writes), or joins the running turn.
-  It wakes only the thread that set it. At most 3 wait per thread and 12
-  fire a day, so a forgotten chain stops by itself; it counts against the
+  It wakes only the thread that set it. At most 3 wait per thread; wake-ups
+  and routines together fire at most 24 times per thread in a rolling day;
+  at the cap, wake-ups wait and new wake-ups are refused. It counts against the
   at-once limit, waits while its project is paused, and a locked user's
   fire at unlock, saying when they were due. Stored in the thread's pool,
   so it survives a restart. The user sees **Wake-up** and the next time in the
@@ -1117,18 +1126,20 @@ Project settings and Recent calls by project. The briefs are
   project work and for life routines alike, set up by the user through her
   (`threads routine`). It belongs to one thread and has a schedule: daily,
   weekdays or weekly at a time, yearly on a date, or every N hours (at
-  least 1). Each time it fires a turn there, marked as a routine, with the
-  note she wrote when it was set. She may open a new thread when the
+  least 1, at most 168). Each time it fires a turn there, marked as a routine,
+  with the note she wrote when it was set. She may open a new thread when the
   routine calls for it; the Sleep rule that her items never open a thread
   is about unasked dream content and doesn't apply to a routine the user
-  asked for. It has the wake-ups' guards: it waits while its project is
-  paused, counts against the at-once limit, is skipped while its last run
-  is still working, and a locked user's missed runs fire once at unlock,
-  saying how many were due. A thread's wake-ups and routines fire at most
-  24 times a day together. Stored in the thread's pool, so privacy follows
-  the pool. The user sees **Routine** and the next time in the thread's
-  facts line, and every routine in **Settings → Routines**, with **Pause**
-  and **Remove**. One-shot reminders stay wake-ups; a calendar is Later.
+  asked for. At most 10 routines belong to a thread, including paused ones.
+  Paused routines, queued threads and paused or hidden projects wait;
+  routine turns share the child at-once limit, including in standalone chats.
+  A working last run or the shared cap of 24 fires per thread in a rolling
+  day skips the run and advances the next time. Missed runs otherwise fire
+  once after unlock, saying how many were due. Stored in the thread's pool,
+  so privacy follows the pool. The user sees **Routine** and the next time in the thread's
+  facts line, and every routine in **Settings → Routines**, with **Pause**,
+  **Resume** and **Remove**.
+  One-shot reminders stay wake-ups; a calendar is Later.
 - **Not in projects:** moving an existing thread into a project, and
   sharing a project (Share with copies one thread).
 

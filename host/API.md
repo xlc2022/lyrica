@@ -156,7 +156,13 @@ seconds of audio.
 - A GPU lists every model on it, including one split over several GPUs
   (`gpus` names them all). A model's `kind` is `chat`, `embedding`,
   `image`, `transcribe` or `speak`; `state` is `loading` or `loaded`; `vram` is what it takes on
-  this GPU, measured on its first load with this placement.
+  this GPU, measured at load with this placement (keeping the larger saved value), then increased
+  after its first attributable completed request to include buffers allocated
+  on first use. The host compares GPU usage before and after the request only
+  when no other model serves or loads/unloads during that interval; otherwise
+  it retries on a later request. It keeps the larger measurement for eviction
+  accounting; unmeasured models use their expected size, and vLLM uses its
+  reserved memory share. A load-only API call does not count as a request.
 - `queue` counts the requests waiting for this GPU; a request for a split
   model waits for all of its GPUs.
 - `modelsFolder.path` is the folder on the host machine.

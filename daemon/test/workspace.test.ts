@@ -4,7 +4,7 @@ import { apiRoutes } from "../src/routes.ts";
 import { match, statusOf, type Request } from "../src/http.ts";
 import { Lyricad } from "../src/lyricad.ts";
 import type { GitAccountInfo, Me, ThreadSettings, ThreadSummary } from "../src/api.ts";
-import { browser, daemon, login, runtime, systemdStart } from "./helpers.ts";
+import { browser, daemon, login, runtime } from "./helpers.ts";
 
 afterEach(() => { vi.restoreAllMocks(); });
 
@@ -96,7 +96,6 @@ describe("lyricad and the home workspace", () => {
     await first.stop();
 
     const h = homes();
-    systemdStart(rt);
     const second = await daemon(rt);
     expect(second.d.locked).toBe(false);
     expect(h.mounted()).toEqual([rt.ada.id]);

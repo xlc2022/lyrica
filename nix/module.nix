@@ -326,7 +326,6 @@ in {
         ExecStart = "${profile}/bin/lyrica serve --port ${toString cfg.port}";
         # LYRICA_BUILD for the release the profile holds.
         EnvironmentFile = "-/var/lib/lyrica-update/build.env";
-        LoadCredentialEncrypted = "lyrica:${state}/credentials";
         KillSignal = "SIGTERM";
         TimeoutStopSec = 30;
         Restart = "on-failure";

@@ -768,7 +768,8 @@ her account is general.
 - **`.github/CODEOWNERS`** names the owner for the boundary code: keys and users
   (each user's key and its recovery wrap), database migrations, the model
   router, the workspace (sandbox and grants), `openThreadView`,
-  authentication, deployment, the updater and CI. GitHub then asks for
+  authentication, web access, the pool's storage, the model host,
+  deployment, the updater and CI. GitHub then asks for
   the owner's review on a pull request that touches them; it isn't required for
   merging, since Claude's approvals come from the same account. PR review
   asks the owner before approving such a pull request of hers.
@@ -842,7 +843,8 @@ judgment and make review easy. Each thread has a **mode**:
 - **Accept edits** (`acceptEdits`): asks before `bash`.
 - **Plan** (`plan`): only `read`, `recall`, `read_memory`, `web_search`, read-only MCP tools and `tool_search`,
   `web_fetch`, `proxmox` for reading, `delegate` with read-only roles, a subagent's `ask_parent`,
-  `threads` (her child threads, and compacting her context), `react` and
+  `threads` (child threads and project actions, wake-ups, routines,
+  checklists, and compacting her context), `react` and
   `propose_plan` are active. A child thread of a Plan-mode thread is in
   Plan mode too.
 - **Auto** (`auto`, the default): works freely inside the grants.

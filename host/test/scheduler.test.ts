@@ -2,19 +2,20 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import type { Logger } from "../src/log.ts";
 import { HostError } from "../src/http.ts";
 import { Scheduler, type Priority } from "../src/scheduler.ts";
 import { StateFile } from "../src/state.ts";
 import { FakeBackend, FakeGpus, GIB, textModel } from "./fakes.ts";
 
 type Srv = "llamacpp" | "vllm" | "images";
-function setup(totals = [24], opts: { waitLimits?: Record<Priority, number>; dir?: string; servers?: Srv[]; gpuBackend?: "rocm" | "vulkan"; sharedMemory?: Srv[] } = {}) {
+function setup(totals = [24], opts: { waitLimits?: Record<Priority, number>; dir?: string; servers?: Srv[]; gpuBackend?: "rocm" | "vulkan"; sharedMemory?: Srv[]; log?: Logger } = {}) {
   const dir = opts.dir ?? mkdtempSync(join(tmpdir(), "lyrica-sched-"));
   const gpus = new FakeGpus(totals);
   const llamacpp = new FakeBackend(gpus);
   const vllm = new FakeBackend(gpus);
   const state = new StateFile(dir);
-  const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp, vllm }, state, log: () => {}, waitLimits: opts.waitLimits, servers: opts.servers, gpuBackend: opts.gpuBackend, sharedMemory: opts.sharedMemory });
+  const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp, vllm }, state, log: opts.log ?? (() => {}), waitLimits: opts.waitLimits, servers: opts.servers, gpuBackend: opts.gpuBackend, sharedMemory: opts.sharedMemory });
   return { dir, gpus, llamacpp, vllm, state, scheduler };
 }
 
@@ -80,7 +81,8 @@ describe("the GPU queue", () => {
   });
 
   it("reports the replacement error when restoring also fails", async () => {
-    const { scheduler, llamacpp } = setup();
+    const events: Array<[string, Record<string, unknown> | undefined]> = [];
+    const { scheduler, llamacpp } = setup([24], { log: (event, fields) => void events.push([event, fields]) });
     await scheduler.start([]);
     const m = textModel("m", 4);
     await scheduler.loadNow(m);
@@ -93,6 +95,7 @@ describe("the GPU queue", () => {
     await expect(scheduler.reload(m)).rejects.toBe(original);
     expect(attempts).toBe(2);
     expect(scheduler.settings(m)).toEqual({ placement: { mode: "auto" } });
+    expect(events).toContainEqual(["restore failed", { model: "m", error: "Error", message: "restore failed" }]);
   });
 
   it("validates against other programs, subtracting the host's loaded models", async () => {
@@ -161,6 +164,57 @@ describe("the GPU queue", () => {
     await scheduler.loadNow(textModel("m", 10));
     // Weights, a KV cache for its 8k context, and the server's buffers, measured on GPU 0.
     expect(state.get().vram["m@0"]).toEqual({ 0: Math.round(10 * GIB * 1.05) + GIB / 2 + GIB / 2 });
+  });
+
+  it("remeasures first-use buffers so an idle model can be evicted for images", async () => {
+    const { scheduler, state, gpus, llamacpp } = setup([24]);
+    await scheduler.start([]);
+    const chat = textModel("chat", 17);
+    await scheduler.loadNow(chat);
+    const initial = state.get().vram["chat@0"]![0]!;
+    await scheduler.run(chat, "chat", async () => {
+      gpus.loaded.get("chat")![0] = initial + 1.9 * GIB;
+    });
+    expect(state.get().vram["chat@0"]![0]).toBe(initial + 1.9 * GIB);
+    // 21.7 GB fits with the real 1 GB baseline and 0.5 GB reserve,
+    // but not if the chat server's 1.9 GB growth is treated as another program.
+    const image = textModel("image", 21.2 / 1.1, { kind: "image", contextLength: 0 });
+    await scheduler.run(image, "image", async () => {});
+    expect(llamacpp.calls).toEqual(["load chat@0", "unload chat", "load image@0"]);
+    expect(gpus.on("chat")).toEqual([]);
+    expect(gpus.on("image")).toEqual([0]);
+  });
+
+  it("keeps the larger first-use measurement across reloads without counting growth twice", async () => {
+    const { scheduler, state, gpus } = setup();
+    await scheduler.start([]);
+    const m = textModel("m", 10);
+    await scheduler.loadNow(m);
+    const initial = state.get().vram["m@0"]![0]!;
+    const serve = () => scheduler.run(m, "chat", async () => {
+      gpus.loaded.get("m")![0] = initial + GIB;
+    });
+    await serve();
+    await scheduler.unloadNow("m");
+    await scheduler.loadNow(m);
+    await serve();
+    expect(state.get().vram["m@0"]![0]).toBe(initial + GIB);
+  });
+
+  it("does not attribute another model's request growth to the first model", async () => {
+    const { scheduler, state, gpus } = setup();
+    await scheduler.start([]);
+    const a = textModel("a", 4);
+    const b = textModel("b", 4);
+    await scheduler.loadNow(a);
+    await scheduler.loadNow(b);
+    const initial = state.get().vram["a@0"]![0]!;
+    await scheduler.run(a, "chat", async () => {
+      await scheduler.run(b, "chat", async () => {
+        gpus.loaded.get("b")![0]! += GIB;
+      });
+    });
+    expect(state.get().vram["a@0"]![0]).toBe(initial);
   });
 
   it("measures again after a model's settings change", async () => {

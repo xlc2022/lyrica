@@ -49,7 +49,8 @@ unlockSelf(passphrase: string): Promise<void>            // self.db only
 unlockUser(userId: string, password: string): Promise<void>
 saveUserKey(userId) / forgetSavedKey(userId) / hasSavedKey(userId)   // "save credentials"
 saveSelfPassphrase(p) / forgetSelfPassphrase() / hasSavedPassphrase()
-unlockSaved(): Promise<void>                              // at start: the saved passphrase and keys
+unlockSaved(): Promise<boolean>                           // at start: the saved passphrase
+loadSavedKey(userId): Promise<boolean>                    // at start: each saved user key
 closeSelf(): void                                         // locks self.db again
 // core/src/bootstrap.ts:
 bootstrap(keyring, { passphrase, name?, seed, admin: { login, password, profile } }): Promise<User>
@@ -71,7 +72,10 @@ lockUser(userId: string): void
   re-encrypted for a password change.
 - Keys live only in daemon memory, or in systemd credentials when saved:
   sealed with `systemd-creds encrypt --user` (systemd 256 or later), the
-  secret on stdin, loaded by the unit with `LoadCredentialEncrypted=`.
+  secret on stdin. At start lyricad runs
+  `systemd-creds decrypt --user --name=lyrica_<name> <file> -`, reading plaintext only from stdout into
+  memory. Missing, failed or empty credentials stay locked; logs contain
+  only the credential name/id and error class, never stderr or secrets.
 
 ## core/users
 
@@ -590,6 +594,51 @@ One model-facing tool: `delegate({ action?, ... })`.
   `narrowing` so a subagent can be continued.
 - Subagents aren't listed in the thread list; child threads (forks, copies)
   nest under their parent.
+- **Routine tool** (`threads` in hosted threads): `action: "routine"`
+  with `routineAction: "add" | "list" | "pause" | "resume" | "remove"`.
+  Add takes `schedule`, `note`, optional `newThread` (false by default).
+  `parseSchedule` validates it; `every` gets its `from` at creation.
+  List returns only the calling thread's IDs, schedule descriptions, next
+  times for active routines, paused state and destination choice, without
+  notes. Pause, resume and remove take numeric `routineId`; tool mutations always include the
+  calling thread ID. Add refuses more than 10 routines including paused
+  ones. Errors return plain text with `isError: true`.
+- **Routine storage and firing** (`core/src/routines.ts`,
+  `daemon/src/routines.ts`): `parseSchedule`, `nextRun` and `describe`
+  supply local-time schedule maths. Expand-only pool step 6 adds `routines`
+  (`id`, `thread`, JSON `schedule`, `note`, `new_thread`, `paused`,
+  `next_at`, `last_at`, `created_at`), encrypted with the thread's pool;
+  forgetting its thread deletes it. `PoolReader.routines` includes paused
+  routines; `PoolStore.addRoutine`, `pauseRoutine`, `removeRoutine` and
+  `advanceRoutine` store and advance them. A fire sets `last_at` and adds a
+  note-free fired row to `wakeups`, the shared rolling-day ledger:
+  `wakeupsFired` counts both kinds against `WAKEUP_LIMITS.perDay`
+  (24 per source thread).
+  `Routines.load` / `drop` enable / disable a user's firing at unlock / Lock;
+  the daemon tick calls both schedulers unless an update drains. It sends
+  `HostedThread.send(note, { routine: "[Routine, <describe>]\n\n" })`;
+  ordinary messages cannot carry `ROUTINE`. A fresh thread stays in the
+  same pool and project or thread list, inheriting source workspace and
+  model privacy plus project new-thread choices. Queued threads, paused
+  routines and paused or hidden projects wait. Routine turns share the
+  child at-once budget; a working last run or daily cap advances without
+  firing. Missed runs otherwise fire once with their due count. Wake-ups
+  at the cap wait. Last-run destination tracking is in memory and is cleared on
+  Lock or restart; interrupted turns do not resume after a restart.
+- **Routine web routes**: `GET /api/u/:userId/routines` lists that signed-in
+  user's routines across both own pools, sorted in the UI by pool and thread.
+  `GET /api/u/:userId/threads/:pool/:threadId/routines` lists one thread;
+  `PATCH …/routines/:id` with `{ paused: boolean }` pauses or resumes;
+  `DELETE …/routines/:id` removes it. Both mutations return the thread's
+  remaining list. `RoutineInfo` carries `id`, `pool`, `threadId`,
+  `threadTitle`, `schedule` (the `describe()` text), `nextAt`, `paused`,
+  never notes. Each route uses session/key checks and only the requested
+  user's own thread view; an absent thread or a routine from another
+  thread is 404; non-boolean `paused` is 400. `ThreadSettings.routines`
+  carries the same metadata; web mutations publish the existing `settings`
+  event to refresh open thread views. Stored routine messages have
+  `from: { kind: "routine", schedule }` and their note as the text part,
+  with the daemon's mark removed; live messages carry the mark until stored.
 - **Child threads** (`createThreadsExtension(thread, host?: ThreadsHost, meter?)`,
   never in a subagent's thread): one model-facing tool, `threads({ action,
   ... })`: `start` (`title`, `task`, optional narrower `folders`,
@@ -598,7 +647,7 @@ One model-facing tool: `delegate({ action?, ... })`.
   from a child), `list` (`ChildInfo` with `ChildStatus`), `read` (`id`,
   `last`: the latest messages of a listed, logged thread (`PoolReader.latestEntries`), `READ_DEFAULT`
   10, `READ_MAX` 30, formatted by `formatEntry`) and `stop` (`id`: a
-  parent's child, `ThreadsHost.stop`). `later` (`minutes`, clamped to 1 to
+  parent's child, `ThreadsHost.stop`), and `routine` (above). `later` (`minutes`, clamped to 1 to
   `WAKEUP_LIMITS.maxMinutes`, and `note`; or `cancel: true`) sets a
   wake-up for the calling thread through `ThreadsHost.later` /
   `cancelLater`: pool step 4's `wakeups` table (thread, due, note, set and
@@ -722,6 +771,21 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     time, as the result's `message`. That way it sits in the transcript, not
     in the prefix.
   - Each section has a size budget.
+- **Turn tool limits** (`extension/src/turn-tools.ts`, installed first by
+  `openThreadSession`): one prompt/agent run, including model continuations
+  and nested tool calls, permits at most 100 attempted tool calls. Invalid
+  calls count too. Subagent sessions have independent budgets. The third
+  and later calls to the same tool with identical JSON arguments (object
+  keys sorted recursively; array order preserved) return an error telling
+  the model it already has the result and should answer or try something
+  different. A run of 25 calls to one tool, with any arguments, also stops
+  the turn. Calls beyond either limit in a batch are refused; after the
+  batch's results the loop ends, without another model call. A stored
+  `lyrica-tool-limit` message shows “Turn stopped after 100 tool calls.”
+  or “Turn stopped after 25 calls in a row to <tool>.” (count and tool in mono, under the heading Tool limit) in the thread, live and after reload. Counters reset on the next agent run.
+  Pi validates tool schemas before execution and returns validation errors
+  naming missing fields, including an empty `image` call. These limits
+  serve principles 1 and 2: real runaway turns stop structurally.
 - **Tools** (budget: 30; see principle 8):
   - `read`, `write`, `edit` and `bash` (Workspace thread; see
     [workspace.md](workspace.md));

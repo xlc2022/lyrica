@@ -84,18 +84,20 @@ came through her tailnet address.
 
 "Save credentials" uses systemd credentials. `lyricad` seals a secret with
 `systemd-creds encrypt` (to the TPM where there is one, else the host key),
-reading it on stdin, into `<runtime>/credentials/<name>`. The unit loads that
-directory with `LoadCredentialEncrypted=lyrica:…`, and systemd unseals each file
-at start into `$CREDENTIALS_DIRECTORY/lyrica_<name>`, readable only by the
-service.
+reading it on stdin, into `<runtime>/credentials/<name>`. At start lyricad
+runs `systemd-creds decrypt --user --name=lyrica_<name> <file> -` itself,
+reading plaintext only from the child's stdout pipe into memory. Plaintext
+never goes to disk or `/run`. Missing, failed or empty credentials leave
+self.db locked or that user's key unloaded. Logs contain only the credential
+name/id and error class; stderr is discarded.
 
 - `self`: the `self.db` passphrase. An administrator saves it with
   `PUT …/admin/passphrase` (typing the passphrase, which is checked first).
 - `user-<id>`: a user's data key, saved by that user with
   `PUT …/me/credentials` (`Keyring.saveUserKey`). At start `lyricad` takes
   every saved key and mounts those users' home workspaces, so sleep can run.
-- Turning either off deletes the sealed file. The unsealed copy lasts until
-  the service stops.
+- Turning either off deletes the sealed file. The loaded key remains in
+  memory until locked or the service stops.
 - As a non-root service user it seals with `--user`, which needs systemd 256
   or later. No root step is needed.
 
@@ -269,7 +271,7 @@ Each active thread is one Pi session from `openThreadSession`, with
   under a project chat or only the rest; `pool` only narrows. Unlogged entries aren't indexed, so
   they are never found. Each hit carries its thread, title, message
   number, `who` (`you`, or `agent` for hers, including what she sent from
-  another thread and her wake-up notes), the time, and the sentence that
+  another thread and her wake-up or routine notes), the time, and the sentence that
   matched (at most 160 characters, cut around the match, without
   citations or Markdown marks) with the matches' offsets in it. 50 a
   page, newest first; `before` (a hit's `at`) pages. Nothing is logged.
@@ -326,8 +328,10 @@ Each active thread is one Pi session from `openThreadSession`, with
   children before the key goes.
 - **Wake-ups** (`daemon/src/wakeups.ts`). `threads later` stores a note
   for the thread she's in, in its pool, so it is as encrypted as the thread
-  and survives a restart; a thread has at most 3 waiting and 12 fired a
-  day. At unlock `lyricad` loads the due times (never the notes) into
+  and survives a restart; a thread has at most 3 waiting, and wake-ups
+  and routines share a cap of 24 fires per thread in a rolling day. At the
+  cap, pending wake-ups wait and new ones are refused. At unlock `lyricad`
+  loads the due times (never the notes) into
   memory, and Lock drops them. Its 20-second tick fires what is due: the
   note becomes the thread's next turn, or joins the running one, marked
   `[Wake-up, set …]` and, when more than two minutes late, with when it
@@ -335,6 +339,21 @@ Each active thread is one Pi session from `openThreadSession`, with
   project's thread waits. A user's message can't start with that mark
   (400). `DELETE …/threads/:pool/:threadId/wakeups/:id` removes one, and
   the `wakeups` event and the parent's card follow every change.
+- **Routines** (`daemon/src/routines.ts`). The same tick reads unlocked
+  users' encrypted pool schedules. A due routine sends its note with
+  `[Routine, <describe>]`, or creates a thread in the same project or list,
+  inheriting workspace and model privacy. It waits while paused, queued,
+  its project is paused or hidden, or the at-once budget is full. A working
+  last run or the daily cap skips the run and advances `next_at`; missed
+  runs otherwise fire once, saying how many were due. Lock stops firing;
+  schedules survive restart; last-run tracking is cleared on Lock or restart.
+  Only the daemon can send the routine mark; a
+  user message or edit carrying it is rejected with HTTP 400. The web API
+  lists only the signed-in user's routine metadata across their own pools,
+  and pauses, resumes or removes a routine in its own thread; routes and
+  response fields are in [contracts.md](contracts.md#delegate). Listings
+  never carry notes. Stored messages expose the mark as `from.kind: "routine"`
+  with the schedule and the note as its text part.
 - **Projects** ([delegation.md](delegation.md#child-threads), DESIGN.md
   "Projects"). `POST threads` with `project` and an optional `goal` makes a
   project, and `PATCH` with `project: true` makes one of a top-level thread
@@ -889,8 +908,8 @@ same ("On NixOS" below).
 - **lyricad's unit** runs `/opt/lyrica/current/bin/lyrica serve` as
   `lyrica`; a crash loop (3 starts in 2 minutes) starts
   `lyrica-rollback.service` (`OnFailure`), which acts only on probation. It has `StateDirectory`
-  for the runtime and the credentials directory, and `LoadCredentialEncrypted`
-  for saved credentials. Hardening: `NoNewPrivileges` breaks the setuid
+  for the runtime and the sealed credentials directory; lyricad decrypts
+  saved credentials itself into memory. Hardening: `NoNewPrivileges` breaks the setuid
   `fusermount3`, so homes never mount, and so does every option that makes
   systemd set it for a non-root service, because they install seccomp filters
   (listed in the unit; `ProtectHostname` is one of them). `RestrictNamespaces`
@@ -989,7 +1008,7 @@ system with the module on. Only x86_64-linux.
 
 - **The module** declares what install.sh does: the users and groups,
   `/var/lib/lyrica` (`0700`), both units written in Nix and kept in step with
-  `daemon/deploy/*.service` (same hardening, `LoadCredentialEncrypted`, the
+  `daemon/deploy/*.service` (same hardening, sealed credential directory, the
   same deploy check), `ip_nonlocal_bind`, and `/etc/lyrica/caddy.json`.
   With `tailscale` on (the default) it also declares `lyrica-tailscaled`
   from `tailscalePackage` (`pkgs.tailscale`). lyricad starts without

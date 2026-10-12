@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
-  AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, WATCHING, PRONOUN_PRESETS, projectSlug,
+  describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, firstLine, GIT_KINDS, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress, claudeCodeInstalled,
@@ -921,6 +921,37 @@ export function apiRoutes(d: Lyricad): Route[] {
       // A branch in a project is a thread of the project, anchored where its source hangs (or, of the project chat, where it branched).
       if (branch.child && branch.parent) s().children.adopt(user.id, pool, branch.id, branch.parent, branch.parent === r.params.threadId ? entryN(r) : s().children.anchorOf(user.id, pool, r.params.threadId!));
       return owner(d, user, (o) => summary(d, user, pool, o[pool], branch, []));
+    }),
+    // Principles 1 and 2: explicit metadata projection, confined to this user's own pools.
+    route("GET", `${u}/routines`, (r): Api.RoutineInfo[] => {
+      const user = d.userFor(r);
+      return (["general", "private"] as const).flatMap(pool => routineList(d, user, pool));
+    }),
+    route("GET", `${t}/routines`, (r) => {
+      const user = d.userFor(r);
+      return routineList(d, user, poolOf(r), r.params.threadId!);
+    }),
+    route("PATCH", `${t}/routines/:id`, async (r) => {
+      const user = d.userFor(r), pool = poolOf(r);
+      const { paused } = await r.json<{ paused: boolean }>();
+      if (typeof paused !== "boolean") throw new HttpError(400, "paused is a boolean");
+      const view = s().memory.openThreadView(user.id, pool);
+      try {
+        if (!view.own.getThread(r.params.threadId!)) throw new HttpError(404, "no such thread");
+        if (!view.own.pauseRoutine(r.params.threadId!, Number(r.params.id), paused)) throw new HttpError(404, "no such routine");
+      } finally { view.close(); }
+      s().host.peek(user.id, pool, r.params.threadId!)?.publish({ type: "settings" });
+      return routineList(d, user, pool, r.params.threadId!);
+    }),
+    route("DELETE", `${t}/routines/:id`, (r) => {
+      const user = d.userFor(r), pool = poolOf(r);
+      const view = s().memory.openThreadView(user.id, pool);
+      try {
+        if (!view.own.getThread(r.params.threadId!)) throw new HttpError(404, "no such thread");
+        if (!view.own.removeRoutine(r.params.threadId!, Number(r.params.id))) throw new HttpError(404, "no such routine");
+      } finally { view.close(); }
+      s().host.peek(user.id, pool, r.params.threadId!)?.publish({ type: "settings" });
+      return routineList(d, user, pool, r.params.threadId!);
     }),
     route("DELETE", `${t}/wakeups/:id`, (r) => {
       const user = d.userFor(r);
@@ -2052,6 +2083,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     fallback: models.threadFallback(user.id, threadId), fallbackOn: ctx.fallback !== false,
     allowed: models.allowed(ctx).map(({ endpoint }) => endpointInfo(d, user.id, endpoint.id)),
     wakeups: d.services!.wakeups.list(user.id, pool, threadId),
+    routines: routineList(d, user, pool, threadId),
   };
 }
 
@@ -2190,6 +2222,7 @@ function unmarked(text: string): string {
   if (FROM_PARENT.test(text)) throw new HttpError(400, "a message can't start with a [From t:…] line");
   if (WATCHING.test(text)) throw new HttpError(400, "a message can't start with a [Watching threads] line");
   if (WAKEUP.test(text)) throw new HttpError(400, "a message can't start with a [Wake-up, …] line");
+  if (ROUTINE.test(text)) throw new HttpError(400, "a message can't start with a [Routine, …] line");
   return text;
 }
 
@@ -2347,4 +2380,16 @@ function linkFor(o: OwnerView, pool: Pool, ref: string, show: Api.Display): Api.
   const it = store.get(bare, { raw: true });
   if (!it) return undefined;
   return { kind: it.kind, pool: p, ...(it.title !== undefined ? { title: it.title } : {}), snippet: firstLine(it.text), updatedAt: it.updatedAt, ...(it.origin ? { origin: it.origin } : {}) };
+}
+
+/** No routine notes leave storage through a listing, including the user's private pool. */
+function routineList(d: Lyricad, user: User, pool: Pool, threadId?: string): Api.RoutineInfo[] {
+  const view = d.services!.memory.openThreadView(user.id, pool);
+  try {
+    if (threadId && !view.own.getThread(threadId)) throw new HttpError(404, "no such thread");
+    return view.own.routines(threadId).flatMap(r => {
+      const thread = view.own.getThread(r.thread);
+      return thread ? [{ id: r.id, pool, threadId: thread.id, threadTitle: thread.title ?? "Untitled", schedule: describe(r.schedule), nextAt: r.nextAt, paused: r.paused }] : [];
+    });
+  } finally { view.close(); }
 }

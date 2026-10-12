@@ -110,6 +110,13 @@ A thread's address may carry what the panel beside it shows:
   ✕ (Remove, `DELETE …/wakeups/:id`), never her note. Each `wakeups` stream
   event replaces the list, so one set, removed or fired shows at once; the
   fact goes when none is left.
+  **Routine** (`src/Routines.tsx`, `ThreadSettings.routines`) opens the
+  same style of popover listing schedules, next times in mono, Pause or
+  Resume and Remove, never notes. Its fact shows the earliest active next
+  time, or Paused when all are paused, and disappears when none remain.
+  Web Pause, Resume and Remove reload settings and publish the existing
+  `settings` event to the source thread; finished turns and focus refresh
+  routines too.
 - **Project chat** (`src/Project.tsx`): the facts line adds **Threads** with
   the count, opening a popover of the project's threads grouped Waiting on
   you, Working, Queued, Idle and Resolved (each a link, with its unseen
@@ -515,6 +522,12 @@ A thread's address may carry what the panel beside it shows:
   and **Save token** (`PUT …/claude-code`), or once saved Signed in and
   **Remove** (`DELETE`), confirmed in place; Not installed when the server
   lacks the program. The token is never sent back.
+  **Routines** (`src/Routines.tsx`), after Claude Code: every routine of
+  the user across both pools (`GET …/routines`), sorted by pool and thread, its
+  thread linked, schedule from `describe()`, next time in mono or Paused,
+  **Pause** or **Resume** (`PATCH …/threads/:pool/:threadId/routines/:id`
+  with `paused`) and the bordered Remove icon (`DELETE` at the same path).
+  Listings contain no notes. Empty: "No routines."
 - **Administration**, for administrators: Status (the server's network
   self-test, sleep time, start unlocked), **Her name** (Name, 1–40 characters
   on one line, one Save disabled when invalid or unchanged; `PUT …/admin/name`,
@@ -774,6 +787,11 @@ local/cloud chip and profile, then each model host's state as a dot and word.
   late (the user was locked), the times in mono, and a chevron; tapped, the
   note opens as a tinted block under her name with the message menu, as
   Message received does.
+- A routine's note is the same expandable marker, **Routine ran** with
+  the schedule's `describe()` text. Stored messages carry
+  `from.kind === "routine"`; live messages start `[Routine, <schedule>]`.
+  Opening the marker shows her note as the wake-up's tinted block, with
+  its message menu.
 - Files attach from the "+" menu, by dragging onto the composer, or by
   pasting. Each shows its progress, and its path in the thread goes into the
   draft.
@@ -886,7 +904,8 @@ turns animations off.
   links and word diffs, mentions, which paths become links, which code
   blocks get Copy and what it copies (`codeblock.test.ts`), a checklist's
   count and current step (`checklist.test.ts`), the welcome cards' empty states,
-  hidden sleep pools and backend profiles (`cards.test.ts`), the recorder's context
+  hidden sleep pools and backend profiles (`cards.test.ts`), routine facts and paused
+  schedules (`routines.test.ts`), the recorder's context
   fallback and clip limit (`voice.test.ts`), and a text model group's warn
   lines (`library.test.ts`).
 - `npm run e2e -w @lyrica/web` runs Playwright (after a build). The upload
