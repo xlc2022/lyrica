@@ -197,9 +197,18 @@ Three ways a model gets into the library:
   GGUF, safetensors and ONNX files are taken; pickles and code are refused;
   every file is checked against the hub's checksum. A gated repository's
   token is used for that download and never kept.
-- **Ask from Lyrica**, through the same download API (`…/hosts/<endpoint
-  id>/downloads`). Hub tokens can be saved in Lyrica (a user's own, or a
-  shared one an administrator adds) and are sent to the host per request.
+- **Download from Lyrica**: in Models, Text models, **Download model**
+  opens Download text model. Name a repository on Hugging Face or
+  ModelScope, or paste its link, pick a host and a GGUF file (or the whole
+  repository when it has none), and it starts on that host; a link to one
+  `.gguf` or `.safetensors` file, with an optional SHA-256, works too.
+  Models, **Downloads** shows every host's queue, with Cancel, Clear
+  finished and Add to the group. Its **Accounts** section holds hub
+  tokens: a user's own, or a shared one an administrator adds, sent to the
+  host per request. A token typed for a gated repository is saved for next
+  time unless you untick **Save it for next time**. The page takes a
+  repository's `main` branch; the same download API (`…/hosts/<endpoint
+  id>/downloads`) also takes a revision.
 
 ### The voice and dictation starters
 
