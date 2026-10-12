@@ -381,8 +381,8 @@ Always (`never`, `ask`, `always`), in encrypted `user.db` settings. User schema
 5 adds its default, preserving every previous schema and keeping the oldest
 reader at 1. `setPhotoCloudPolicy` clears any previous daily approval.
 When an input, mask or reference is a portrait, the tool checks the actual
-resolved endpoint before each call, including fallback attempts. Never refuses
-cloud sends; Ask shows `Send photos of you to <endpoint>?` through the existing
+resolved endpoint before each call, including fallback attempts. Never is a
+plain refusal for cloud sends; Ask shows `Send photos of you to <endpoint>?` through the existing
 approval flow, denies without a viewer, and retains a yes for that user until
 server-local midnight. The approved day is encrypted in `user.db`, so it works
 across threads and restarts. Always and local models need no portrait approval.
@@ -396,6 +396,37 @@ metadata. Nothing stores a prompt beside an image. Pi gets the bytes as image
 content so Lyrica can look and try again; messages and `tool_end` carry paths,
 model label and the create tier. The prompt stays only in the encrypted tool
 call. The Images switch and Plan mode disable the tool.
+
+The daemon's `GET …/threads/:pool/:threadId/file?path=/workspace/images/<file>`
+serves only the authenticated user's thread folder, never grants or portraits.
+It sniffs Content-Type, sends `Cache-Control: no-store`, and returns 404 for
+another user's files, traversal and symlinks. `ThreadImages.content(path)`
+anchors every directory and the regular file without following symlinks.
+`Workspace.photos(userId)` lists, uploads and deletes portraits in the mounted
+home; uploads are at most 20 MB, PNG/JPEG/WebP, with metadata stripped and
+exclusive generated names. Management and policy routes are in
+[daemon.md](daemon.md#images-and-portrait-photos).
+
+For exact wireframes and diagrams, write HTML or SVG in the encrypted thread
+folder, turn Internet and Local services off and leave allowed hosts empty,
+then run this through `bash` (replace the input filename for SVG):
+
+```sh
+mkdir -p images
+browser=$(command -v chromium || command -v chromium-headless-shell || command -v chromium-browser)
+"$browser" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \
+  --no-first-run --no-default-browser-check --user-data-dir=/tmp/chromium \
+  --screenshot=/workspace/images/diagram.png --window-size=800,600 \
+  file:///workspace/diagram.html
+```
+
+The outer bubblewrap sandbox provides isolation and no network; Chromium's
+profile is on its temporary tmpfs. NixOS includes Chromium and fonts through
+`nix/sandbox-tools.nix` and the module's read-only closure. Debian/Ubuntu's
+`daemon/deploy/install.sh` installs `chromium-headless-shell` under `/usr`.
+`npx vitest run core/test/image-render.test.ts` renders inside a real encrypted
+home with internet off, using `describe.skipIf` when Chromium or the encrypted
+sandbox prerequisites are missing.
 
 `npx vitest run core/test/image-storage.test.ts extension/test/images.test.ts`
 checks these boundaries without sockets. The real encrypted-home test skips

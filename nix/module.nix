@@ -101,13 +101,14 @@ in {
     sandboxPackages = lib.mkOption {
       type = lib.types.listOf lib.types.package;
       default = import ./sandbox-tools.nix pkgs;
-      defaultText = lib.literalMD "a shell, the usual command-line tools, git, curl, Python, and bubblewrap, passt and nftables";
+      defaultText = lib.literalMD "a shell, the usual command-line tools, git, curl, Python, Chromium and fonts, and bubblewrap, passt and nftables";
       description = ''
         The tools her sandboxes have, mounted as their /usr. Add to it with
         `services.lyrica.sandboxPackages = options.services.lyrica.sandboxPackages.default ++ [ … ];`.
         bubblewrap, passt, nftables, bash, coreutils and util-linux must stay:
         lyricad and its self-test use them. Her sandboxes see only these
         packages' closure in /nix/store, plus Node's and the CA bundle's.
+        Chromium and fonts render HTML/SVG diagrams offline and take screenshots.
       '';
     };
   };

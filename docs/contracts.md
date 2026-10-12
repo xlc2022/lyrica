@@ -1053,6 +1053,17 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     (`removalPlan` and `applyRemoval` in `daemon/src/removal.ts`; uploads
     found with `PoolStore.entriesMentioning`); the `rewound` event carries
     `from` and `resend`, never text);
+  - images: `GET /api/u/:userId/threads/:pool/:threadId/file?path=` serves
+    sniffed regular file bytes from that thread's folder only (relative or
+    `/workspace/` paths), with `no-store`, `nosniff` and a sandbox CSP.
+    Grants, traversal, symlinks and another user's files are 404; no login is
+    401. `GET /api/u/:userId/photos-of-me` → `PortraitPhoto[]` (`path`, `size`,
+    `type`); `POST` raw PNG/JPEG/WebP, at most 20 MB → `UploadResponse`, with
+    metadata removed and an exclusive generated filename; `DELETE …/:name`
+    → `Ok`. `GET`/`PUT /api/u/:userId/photo-cloud` → `PhotoCloudSetting`
+    (`policy: "never" | "ask" | "always"`); PUT validates and clears daily
+    approval. All follow session/key checks and mutations require same-origin.
+    HTTP `Capabilities` includes `upscale`, as core does.
   - modes: `GET`/`PUT /api/u/:userId/mode` (`ModeDefault`), the mode new
     threads start in; `ThreadSettings` and `ThreadSettingsChange` gain
     `webSearch` and `images`, and their mode and switches are the effective
@@ -1300,10 +1311,15 @@ credentialsFor(t): Credentials            // the thread's reachable repositories
   // passes it as the sandbox's env, never argv, and `repos` (reposDir(t)) mounted at /workspace/repos
 saveUpload(t, name, bytes): Promise<string>  // cleans the name (cleanUploadName), never overwrites
 imageFiles(t): ThreadImages
+// ThreadImages.content(path): HomeFile { stream: Readable; size; type }; relative or /workspace/ paths,
+//   the thread's folder only (including the shared project folder); traversal/symlinks/nonfiles → HomeFileMissing.
 // ThreadImages.read(path): Promise<{ input: ImageInput; portrait: boolean }>; ordinary paths via ThreadFiles,
 //   /photos-of-me/<file> from that user's mounted encrypted home, refusing symlinks/traversal; at most 20 MB, PNG/JPEG/WebP.
 // ThreadImages.save(GeneratedImage[]): string[]; exclusive images/<uuid>.png in the encrypted thread folder,
 //   removes PNG metadata, refuses symlinks, returns /workspace/images/<uuid>.png paths.
+photos(userId): PortraitPhotos
+// list(): PortraitPhoto[] { path; size; type }; upload(bytes): path (PNG/JPEG/WebP, 20 MB, metadata removed,
+//   exclusive generated name); remove(name): void. Every access checks the user's key and mounted home.
 settings(userId).photoCloudPolicy(): "never" | "ask" | "always" / setPhotoCloudPolicy(policy)
 settings(userId).photoCloudApproved(day): boolean / approvePhotoCloud(day) // encrypted day only; no prompt
 mountHome(userId) / unmountHome(userId)   // gocryptfs; mount when the user's key becomes available; makes photos-of-me/ outside thread folders

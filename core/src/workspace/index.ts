@@ -1,4 +1,4 @@
-import { ensurePhotosDir, ThreadImages } from "./images.ts";
+import { ensurePhotosDir, PortraitPhotos, ThreadImages } from "./images.ts";
 export * from "./images.ts";
 import { randomBytes } from "node:crypto";
 import { lookup } from "node:dns/promises";
@@ -314,6 +314,8 @@ export class Workspace {
       return ["threads", id];
     }, path => this.files(t).read(path));
   }
+
+  photos(userId: string): PortraitPhotos { return new PortraitPhotos(() => this.imageHome(userId)); }
 
   /**
    * The thread's Files panel: its folder and grants, every operation in a

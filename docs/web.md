@@ -160,6 +160,10 @@ A thread's address may carry what the panel beside it shows:
   change the folders it touched are reloaded. The grid shows each image's
   thumbnail (`…/files/thumb`, docs/daemon.md "Files"), or the image itself
   where the server makes none.
+  The image tool also supplies `ImagePart` path/model/tier metadata on
+  messages and `tool_end.image`, and an owner-only `…/file?path=` route.
+  Dedicated rendering of that part and portrait-management controls are not
+  implemented here yet; the existing Files panel can display saved results.
 - **Project settings page** (`…/p/<pool>/<project>/general` or `/memory`),
   sections at the left. **General**: Goal, the Paused and **Watching
   threads** switches (`watchThreads`; the tooltip says what a look does), **New

@@ -790,13 +790,19 @@ Lyrica can create and edit images, the way ChatGPT does: she writes the image
 prompt herself from the conversation, looks at the result, and tries again if
 it's off.
 
-- **One `image` tool**, with `create` and `edit`.
+- **One `image` tool**, with `create`, `edit` and `upscale`.
   - She picks **fast** or **quality**, never a model.
   - The profiles' `image.create` and `image.edit` tasks decide what those
     mean, so the router's rules apply as for text. Private and local-only
     threads use local image models only.
-  - Results go to the thread's folder in the user's encrypted home and show
-    inline in the chat. The prompts she wrote are part of the encrypted thread.
+  - Results go to `images/` in the thread's encrypted folder, with prompt
+    metadata removed, and return to her as image content. Messages and
+    `tool_end` carry image paths, model and create tier; the prompts stay in
+    encrypted tool calls. The authenticated file API serves the thread's
+    folder only. Dedicated image-part rendering and portrait controls belong
+    to the separate Web UI work.
+  - Exact layouts and diagrams are HTML or SVG rendered to PNG by the
+    sandbox's headless Chromium with internet off, not image-model calls.
 - **Local images** run on **ComfyUI**, inside the model host on a GPU machine.
   ComfyUI supports new open models (Krea 2, Z-Image, Qwen-Image, SDXL, and
   editing models such as Qwen-Image-Edit) as they appear. It is contained,
@@ -821,7 +827,7 @@ it's off.
   recipes, never files, so she never picks parts herself.
   - **Parts are shared.** One T5 encoder or VAE serves several recipes. Each
     part shows its raw file name, size, precision and which recipes use it.
-    The host measures VRAM per part.
+    The host measures VRAM per recipe after its first job.
   - **Identity** follows the text rule. A recipe is its diffusion model plus
     its built-in LoRAs: a lower-precision encoder makes a copy that differs,
     and a built-in LoRA that changes the results (a Lightning LoRA, a style)
@@ -865,22 +871,27 @@ it's off.
   recipe of its DiT (3B or 7B, at FP16, FP8 or GGUF) and its VAE, with
   defaults such as the scale and the largest size. The task
   `image.upscale` has its own list in each profile (7B on the Blackwell,
-  3B on the 3090), and the `image` tool gains `upscale`. Portrait photos
+  3B on the 3090), and the `image` tool offers `upscale`. Portrait photos
   follow the same rule as for edits. Video is out of scope.
-- **Cloud image services** are cloud endpoints like any other: OpenAI's image
-  API first, then others (for example Black Forest Labs, Krea, Google, and
-  aggregators such as fal or Replicate). They're used only where cloud is
-  allowed.
+- **Cloud image services** are cloud endpoints like any other. The provider
+  table currently supports OpenAI's GPT image generation and editing API,
+  with an API key. They're used only where cloud is allowed. Host recipes
+  retain their defaults for both fast and quality; OpenAI maps the tiers to
+  low and high quality.
 - **Portrait photos.** Each user can keep reference photos of themselves in
-  their encrypted home, for edits and for putting them in new scenes. Sending
+  `photos-of-me/` in their encrypted home, outside sandbox grants, for edits
+  and for putting them in new scenes. The authenticated API lists, uploads
+  and deletes these photos and reads or changes the setting. Sending
   these photos to a cloud model is the user's choice, with a setting:
-  - **Never.**
+  - **Never:** a plain refusal for cloud sends.
   - **Ask once a day**, the default. The first time a day that one would go
     to a cloud model, she asks first, the way she asks before a command. A yes
-    lasts until the end of that day.
+    lasts until server-local midnight, for that user across threads and
+    restarts. Denial grants nothing. Changing the policy clears approval.
   - **Always.**
 
-  This rule is enforced by the `image` tool, not by instructions to the model.
+  This rule is enforced by the `image` tool before every resolved provider
+  attempt, including fallbacks; local models always remain allowed.
 - **Later:** a personal LoRA, trained on the user's photos on the GPU machine
   for a closer likeness. It would be stored encrypted in their home, and loaded
   into the GPU machine's memory only for a job. Choosing a LoRA for one image

@@ -18,6 +18,20 @@ dictation choices below come from a benchmark the owner ran on a Windows machine
 with an RTX 3090, outside this stack. Expect the first real install to turn
 something up; the checklist at the end is for that.
 
+## Image calls from conversation
+
+Confirmed, ready recipes can be put in `image.create`, `image.edit` and
+`image.upscale` ordered task lists. The one `image` tool calls those recipes
+through `core/models`, keeps their defaults unless size or count is supplied,
+and never chooses parts or LoRAs itself. Fast and quality use the same host
+list and recipe defaults. A workstation followed by the 3090 is an ordered
+fallback, and private threads keep every attempt local. SeedVR2 recipes handle
+upscaling. Results return as images and are saved without prompt metadata in
+the encrypted thread folder. Portrait consent is checked before any cloud
+fallback. The [getting-started guide](getting-started.md#image-models) covers
+OpenAI setup and offline Chromium diagrams on the lyricad host, separate from
+this GPU stack. Real GPU image jobs still await the first deployment check.
+
 ## What a host is to Lyrica
 
 - An **endpoint** of kind local, with a list of addresses tried in order

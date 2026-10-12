@@ -6,11 +6,12 @@
 and workflow templates). Both are merged.
 
 **Where things stand (2026-10-12).** Host recipes, parts, ComfyUI templates
-and SeedVR2 are built. Step A is committed as `69ec66c`: image calls through
-`core/models`, including upscale, host recipes and OpenAI. Step B adds the
-image tool, portrait policy and storage, and image message metadata. Step C's
-routes and headless-browser deployment remain. Nothing has run on real
-ComfyUI yet; the image tests use in-memory API fakes.
+and SeedVR2 are built. A (`69ec66c`) and B (`06615c9`) are committed; the tool
+text trim is `78c0e21`, and main is merged at `6e2a047`. C is implemented in
+this worktree: owner-only file/photo APIs, offline render test/command and a
+complete docs audit. Chromium/fonts already ship in main's Nix and Debian
+deployment. Supervisor checks and review remain. Nothing has run on real
+ComfyUI yet; image provider tests use in-memory API fakes.
 
 **Read first:**
 - AGENTS.md and PRINCIPLES.md;
@@ -117,36 +118,31 @@ of how she works with the user, from storyboards to edits of the user's own phot
 
 ## Handoff notes
 
-**Done:** A was committed/pushed by the supervisor as `69ec66c`; supervisor
-checks had no new failures. B is complete, uncommitted/unpushed, serving
-principles 1, 2, 4 and 8. One `image` tool handles create/edit/upscale in hosted
-and bench sessions, and subagents whose role permits it. Inputs use workspace
-paths or the tool-only `/photos-of-me/<file>` path. GPT Image 1 maps requested
-sizes/ratios to its nearest supported canvas; host recipe defaults stay intact.
+**Done:** A/B/C implement this backend brief (principles 1, 2, 4 and 8).
+A/B and the text trim are committed above; C remains uncommitted/unpushed.
+One tool creates/edits/upscales through core/models, with actual-attempt portrait
+consent, encrypted results and image parts. User schema 5 is expand-only with
+tests from every released schema. C adds `/threads/:pool/:threadId/file`,
+`/photos-of-me` and `/photo-cloud` under `/api/u/:userId`, safe anchored file
+access, metadata-free portrait uploads and per-user settings. No UI or host API
+changed. Existing deployment already supplies Chromium/fonts; the offline
+command/test reuse it. Docs, operator guides and status tables are audited.
 
-`Workspace.imageFiles` checks the unlocked/mounted encrypted home, refuses
-symlinks, saves metadata-free `images/<uuid>.png`, and returns Pi image content.
-User schema 5 adds the photo-cloud default Ask (expand only, oldest reader 1).
-The tool checks Never/Ask/Always against every actual provider attempt through
-`Models.image.beforeSend`, including local → cloud fallbacks. Daily approval is
-per user, persists encrypted across threads/restarts, expires at server-local
-midnight and clears on a policy change; the clock is injectable. Messages and
-`tool_end.image` carry `ImagePart` path/model/tier metadata, never base64 bytes.
-Component docs/contracts and the own-project handoff are updated. No web UI,
-management routes, host API, deployment or new profile shape changed in B.
+**Checks:** typecheck passes; 35 image/storage/migration/message/route tests
+and 12 existing workspace-gate tests pass. Real encrypted-home and offline
+render tests skip here (no Chromium, gocryptfs or FUSE). The six context tests
+stop at socket `listen EPERM`; a socket-free run of the real hosted Pi session
+confirms both the compaction event and stored marker with the recalibrated
+12,500 window (turn counts 9,469 / 11,790 / 14,098). A broader workspace run
+hung in its socket-dependent portion and was stopped; focused gating passes.
+Deployment shell/Nix syntax and diff whitespace checks pass.
 
-**Checks:** typecheck passes; 31 image/storage/migration/message tests and 12
-existing workspace-gate tests pass (43 total). One real encrypted-home test
-skips here for missing FUSE; CI's `LYRICA_SANDBOX_TESTS=require` requires it.
-Fakes are shared in `core/test/fake-images.ts`; no sockets. Run the full suite
-on the supervisor host. No real ComfyUI has been exercised.
+**Next:** supervisor runs full tests (especially daemon/test/context.test.ts),
+real offline rendering and Nix/deploy checks, commits/pushes C and sends the PR
+for review. Separate Web UI work consumes ImagePart and the portrait APIs.
+Real ComfyUI jobs remain a deployment check, not exercised by these fakes.
 
-**Next:** C only: authenticated owner-checked file serving, photo/policy
-management routes, Chromium deployment and the offline render command/test.
-The shared ImagePart is ready for the separate Web UI thread.
-
-**Open:** current recipes/router have no speed-tier metadata, so host fast and
-quality share the image.create list and defaults. If use needs separation,
-propose exposing a recipe's supported tier as capability metadata and filtering
-the existing ordered list, rather than changing profiles. Portrait consent uses
-server-local midnight because there is no per-user time-zone setting.
+**Open:** hosts' fast/quality still share the image.create list and recipe
+defaults. If needed, propose recipe tier capability metadata filtering the
+existing ordered list, not a new profile shape. Portrait approval expires at
+server-local midnight; no per-user time-zone setting exists.

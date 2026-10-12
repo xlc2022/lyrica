@@ -190,7 +190,7 @@ export interface CredentialsChange { save: boolean }
 
 /** What a model can do: discovered where the endpoint says, else set by hand. */
 export interface Capabilities {
-  contextWindow?: number; tools?: boolean; vision?: boolean; embedding?: boolean; image?: boolean; edit?: boolean;
+  contextWindow?: number; tools?: boolean; vision?: boolean; embedding?: boolean; image?: boolean; edit?: boolean; upscale?: boolean;
   /** The thinking levels it offers, besides off. */
   reasoning?: ("low" | "medium" | "high")[];
   /** Speech to text (Dictation). */
@@ -1885,3 +1885,9 @@ export interface ClaudeCodeStatus { token: boolean; installed: boolean }
 
 /** Saves the token `claude setup-token` printed. */
 export interface ClaudeCodeTokenInput { token: string }
+// --- Image files and portrait photos ---
+/** GET /api/u/:userId/threads/:pool/:threadId/file?path=… → sniffed file bytes, no-store; thread folder only. */
+/** GET /api/u/:userId/photos-of-me → PortraitPhoto[]; POST raw image bytes → UploadResponse; DELETE …/:name → Ok. */
+export interface PortraitPhoto { path: string; size: number; type: string }
+/** GET /api/u/:userId/photo-cloud; PUT { policy } → PhotoCloudSetting. */
+export interface PhotoCloudSetting { policy: "never" | "ask" | "always" }

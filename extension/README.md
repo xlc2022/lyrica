@@ -66,6 +66,9 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
   results through `Workspace.imageFiles` and returns Pi image content. The
   workspace's Images switch and Plan mode gate it. See
   [docs/workspace.md](../docs/workspace.md#images-and-portrait-photos).
+  Exact layouts and diagrams use HTML/SVG and the sandbox's offline Chromium
+  command from that doc. Its image description and guidance stay short:
+  principle 8 charges every context token on every turn.
 - **`models.ts`**: `modelRuntimeFor(models, call)` builds the Pi
   `ModelRuntime` for a thread from the router, and `piModelFor` resolves a
   task to a Pi model. See [docs/models.md](../docs/models.md).

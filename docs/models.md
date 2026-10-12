@@ -344,6 +344,12 @@ other GPT image models receive the requested dimensions. Upscale is host-only. R
 metadata before reaching the caller. Provider errors report status and host
 error codes, never a provider's potentially prompt-bearing error text.
 
+The `image` tool reads workspace paths and `/photos-of-me/<file>`, enforces
+the user's portrait policy before each resolved attempt, and stores results in
+the encrypted thread folder. The daemon's owner-checked file and portrait
+management API is documented in [daemon.md](daemon.md#images-and-portrait-photos);
+endpoint setup is in [the operator guide](guides/getting-started.md#image-models).
+
 ## Speech
 
 Two tasks, **Dictation** (`speech.transcribe`) and **Read aloud**
