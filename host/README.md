@@ -212,8 +212,8 @@ fills the recipe's template in `workflows/` (one per architecture).
 ## Pairing
 
 1. On the dashboard, choose **Pair with Lyrica**. A code like
-   `7KQ2-M9XD-4RTB-W1HZ` appears there and in the log
-   (`docker compose logs host-api`). It works once, for 10 minutes.
+   `7KQ2-M9XD-4RTB-W1HZ` appears there; it is never logged. It works once,
+   for 10 minutes.
 2. In Lyrica, add the host with its addresses (`192.168.1.20`, or its
    tailnet name) and the code. The steps are in the
    [model hosts guide](../docs/guides/model-hosts.md#pair-it-with-lyrica).
@@ -344,8 +344,7 @@ revoked. A revoked server must pair again.
   only by host-api's user. The state is paired clients, the password hash,
   pause, GPU settings, model placements and serving settings, pins,
   measured VRAM and usage counts. Prompts are never stored, and host-api's
-  log has no text: only event names, IDs and counts, plus the pairing code
-  while it's valid.
+  log has no text: only event names, IDs and counts, never the pairing code.
 - Images are pinned by digest. `host-api` is built from this checkout by
   `install.sh`, and CI builds the stack on pull requests that touch `host/`.
 - `test/stack/network.sh` checks the network layout on a running stack.

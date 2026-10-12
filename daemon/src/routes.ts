@@ -19,6 +19,7 @@ import { messageText, readAloud, readClip, speechState, storedSource, transcribe
 import { notifications } from "./notifications.ts";
 import { SEARCH_PAGE, searchMessages } from "./search.ts";
 import { applyRemoval, entriesFrom, removalPlan, uploadsIn, type RemovalContext } from "./removal.ts";
+import { redactUrl, unredactUrl } from "./redact.ts";
 
 const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, showPrivate: true, showHidden: false, sort: "date", projects: "all" };
 const THREAD_SORTS: Api.ThreadSort[] = ["date", "activity", "started", "title", "groups"];
@@ -233,7 +234,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       const user = d.userFor(r);
       const c = await r.json<Api.EndpointChange>();
       s().models.editEndpoint(user, r.params.endpointId!, {
-        ...(c.name !== undefined ? { name: String(c.name) } : {}), ...(c.baseUrl !== undefined ? { baseUrl: String(c.baseUrl) } : {}),
+        ...(c.name !== undefined ? { name: String(c.name) } : {}),
+        ...(c.baseUrl !== undefined ? { baseUrl: unredactUrl(String(c.baseUrl), s().models.endpoint(user.id, r.params.endpointId!)?.baseUrl ?? "") } : {}),
         ...(c.apiKey !== undefined ? { apiKey: c.apiKey === null ? null : String(c.apiKey) } : {}),
       });
       return endpointInfo(d, user.id, r.params.endpointId!);
@@ -586,6 +588,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const change = pick(await r.json<Api.McpServerChange>(), ["name", "url", "pool", "offNetworkConfirmed"]);
       if (change.pool !== undefined) checkPool(change.pool);
       for (const k of ["name", "url"] as const) if (change[k] !== undefined) change[k] = String(change[k]);
+      if (change.url !== undefined) change.url = unredactUrl(change.url, s().workspace.settings(user.id).mcpServer(r.params.name!)?.url ?? "");
       const m = await s().workspace.updateMcpServer(user.id, r.params.name!, { ...change, offNetworkConfirmed: change.offNetworkConfirmed === true });
       reloadMcp(d, user.id);
       return mcpServerInfo(m);
@@ -1614,7 +1617,7 @@ function endpointInfo(d: Lyricad, userId: string, id: string): Api.EndpointInfo 
   const ep = d.services!.models.endpoint(userId, id);
   if (!ep) throw new HttpError(404, `no endpoint ${id}`);
   return {
-    id: ep.id, name: ep.name, kind: ep.kind, api: ep.api, baseUrl: ep.baseUrl, hasApiKey: !!ep.apiKey, shared: ep.shared,
+    id: ep.id, name: ep.name, kind: ep.kind, api: ep.api, baseUrl: redactUrl(ep.baseUrl), hasApiKey: !!ep.apiKey, shared: ep.shared,
     ...(ep.addresses ? { addresses: ep.addresses } : {}), ...(ep.fingerprint ? { fingerprint: ep.fingerprint } : {}),
     unencrypted: ep.unencrypted, stale: ep.stale, ...(ep.downSince ? { downSince: ep.downSince } : {}), ...(ep.signedOut ? { signedOut: true } : {}),
     models: d.services!.models.offerings(userId, ep.id).map((o) => toOfferingInfo(ep, o)),
@@ -1700,7 +1703,7 @@ function gitAccountInfo(a: GitAccountConfig): Api.GitAccountInfo {
 /** An MCP server as the API shows it: never its token. */
 function mcpServerInfo(m: McpServerConfig): Api.McpServerInfo {
   return {
-    name: m.name, url: m.url, host: mcpHost(m.url), pool: m.pool, hasToken: !!m.token, tools: m.tools, description: m.description, offNetwork: m.offNetwork,
+    name: m.name, url: redactUrl(m.url), host: mcpHost(m.url), pool: m.pool, hasToken: !!m.token, tools: m.tools, description: m.description, offNetwork: m.offNetwork,
     ...(m.state ? { state: m.state } : {}),
   };
 }

@@ -237,12 +237,12 @@ export class Lyricad implements Drainable {
     if (this.settingUp) await this.beginSetup();
     await this.directAddresses();
     // While locked it answers only state, unlock and the web UI's files here too, so the proxy can show the unlock page.
-    await this.external.start().catch((err: Error) => this.log(`the extra listener didn't open everywhere: ${err.message}`));
+    await this.external.start().catch((err: Error) => this.log(`the extra listener didn't open everywhere: ${firstLine(err)}`));
     if (this.settingUp) {
       this.log("lyricad is setting up");
       return;
     }
-    if (await this.keyring.unlockSaved().catch((err: Error) => { this.unlockFailed(err); this.log(`the saved passphrase didn't unlock self.db: ${err.message}`); return false; })) {
+    if (await this.keyring.unlockSaved().catch((err: Error) => { this.unlockFailed(err); this.log(`the saved passphrase didn't unlock self.db: ${firstLine(err)}`); return false; })) {
       await this.unlocked();
     } else {
       this.log("lyricad is locked");
@@ -269,7 +269,7 @@ export class Lyricad implements Drainable {
     }
     const dir = this.external.direct();
     const where = [`http://127.0.0.1:${this.port}`, ...(dir?.addresses ?? []).map((a) => `https://${a}:${dir!.port}`)].join(", ");
-    this.log(`Set up Lyrica at ${where} with the code ${this.setupCode}`);
+    this.log(`Set up Lyrica at ${where} with the code in ${this.codePath}`);
   }
 
   /**
@@ -317,7 +317,7 @@ export class Lyricad implements Drainable {
         passphrase, name: req.name ?? DEFAULT_NAME, seed: this.opts.seed ?? DEFAULT_SEED,
         admin: { login: String(a.login ?? ""), password: String(a.password ?? ""), profile: { displayName: String(a.displayName ?? ""), pronouns: a.pronouns ?? PRONOUN_PRESETS.they } },
       });
-      if (req.saveCredentials) await this.keyring.saveSelfPassphrase(passphrase).catch((err: Error) => this.log(`the passphrase wasn't saved: ${err.message}`));
+      if (req.saveCredentials) await this.keyring.saveSelfPassphrase(passphrase).catch((err: Error) => this.log(`the passphrase wasn't saved: ${firstLine(err)}`));
       this.rememberName(selfName(this.keyring.self()));
       this.setupCode = undefined;
       rmSync(this.codePath, { force: true });
@@ -535,7 +535,7 @@ export class Lyricad implements Drainable {
     await s.sleep.stop(userId);
     this.keyring.lockUser(userId);
     await s.host.close(userId);
-    await s.workspace.unmountHome(userId).catch((err: Error) => this.log(`unmounting a home workspace failed: ${err.message}`));
+    await s.workspace.unmountHome(userId).catch((err: Error) => this.log(`unmounting a home workspace failed: ${firstLine(err)}`));
     this.mounted.delete(userId);
   }
 
@@ -783,3 +783,6 @@ function hiddenThread(memory: Memory, userId: string, pool: Pool, threadId: stri
   const view = memory.openThreadView(userId, pool);
   try { return !!view.own.getThread(threadId)?.hidden; } finally { view.close(); }
 }
+
+/** An error's first line, for the journal: an outside tool's full output stays out of it. */
+const firstLine = (err: Error): string => err.message.split("\n")[0]!.slice(0, 300);

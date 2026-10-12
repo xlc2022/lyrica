@@ -889,7 +889,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   (`SetupRequest { code, passphrase, saveCredentials?, name?, admin: { login,
   password, displayName, pronouns? } }` → `LoginResponse`) answer, on
   loopback, the Unix socket and the Direct listener; the one-time code is
-  logged at start and in `<runtime>/setup-code` (0600).
+  in `<runtime>/setup-code` (0600), never in the log.
   - **Name.** `State.name` (her deployment name, `self.db` `settings`
     `self.name`, default Lyrica, with a copy in `<runtime>/name` for while
     locked) answers in every state; `GET`/`PUT /api/u/:userId/admin/name`
@@ -1329,7 +1329,10 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   `POST …/probe`; `POST`; `PATCH …/:name` for name, url and pool; `POST
   …/:name/token`; `POST …/:name/confirm-off-network`; `DELETE`), each
   server as `McpServerInfo { name, url, host, pool, hasToken, tools,
-  description, offNetwork, state? }`; a body with `command` (stdio) is
+  description, offNetwork, state? }`, with any query value named like a
+  credential (key, token, secret, sig, auth, pass) shown as `•••`, as in
+  `EndpointInfo.baseUrl`; a `PATCH` that sends `•••` back keeps the stored
+  value if the origin is unchanged (`daemon/src/redact.ts`); a body with `command` (stdio) is
   `400`. Thread settings carry `mcpServers` (names). User database step 3
   adds `mcp_servers` and `thread_workspaces.mcp_servers`. In core:
   `settings(userId).mcpServers() / addMcpServer / updateMcpServer /

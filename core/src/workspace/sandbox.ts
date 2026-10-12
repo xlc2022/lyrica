@@ -3,7 +3,7 @@ import { closeSync, constants, existsSync, lstatSync, mkdtempSync, openSync, rea
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import type { Readable, Writable } from "node:stream";
-import { capOutput, sniffImage, type ExecutionTarget, type ToolOps } from "./ops.ts";
+import { capOutput, maskSecrets, secretMasker, sniffImage, type ExecutionTarget, type ToolOps } from "./ops.ts";
 import { openClaudeRelay, type ClaudeRelay } from "./claude-relay.ts";
 import { hostAddresses, nftRules, pastaArgs, resolveAddresses, resolveHosts, SANDBOX_GATEWAY } from "./net.ts";
 import { cleanPath, within, type Grant, type Network } from "./settings.ts";
@@ -190,6 +190,12 @@ export class Sandbox implements ExecutionTarget {
 
   folders(): string[] { return this.grants.map((g) => g.path); }
 
+  /** The tokens in its environment (any variable named for a token), longest first. */
+  secrets(): string[] {
+    return Object.entries(this.spec.env ?? {}).filter(([k, v]) => /TOKEN/.test(k) && v.length >= 8).map(([, v]) => v)
+      .sort((a, b) => b.length - a.length);
+  }
+
   /** Refuses paths outside the thread's folder and grants (SandboxDenied). The mounts confine her regardless. */
   allow(path: string, write: boolean): string {
     const p = cleanPath(path);
@@ -366,7 +372,9 @@ export class Sandbox implements ExecutionTarget {
   }
 
   ops(): ToolOps {
-    const readFile = async (p: string) => this.file(["cat", "--", this.allow(p, false)]);
+    const rawRead = async (p: string) => this.file(["cat", "--", this.allow(p, false)]);
+    // read hides the run's tokens; edit reads the file as it is, so writing it back keeps them.
+    const readFile = async (p: string) => maskSecrets(await rawRead(p), this.secrets());
     const writeFile = async (p: string, content: string | Buffer) => {
       await this.file(["sh", "-c", WRITE, "sh", this.allow(p, true)], content);
     };
@@ -381,7 +389,7 @@ export class Sandbox implements ExecutionTarget {
         mkdir: async (dir) => { await this.file(["mkdir", "-p", "--", this.allow(dir, true)]); },
       },
       edit: {
-        readFile,
+        readFile: rawRead,
         writeFile,
         access: async (p) => {
           await this.file(["sh", "-c", 'test -r "$1" && test -w "$1" || { echo "cannot edit $1" >&2; exit 1; }', "sh", this.allow(p, true)]);
@@ -389,10 +397,13 @@ export class Sandbox implements ExecutionTarget {
       },
       bash: {
         exec: async (command, cwd, { onData, signal, timeout }) => {
+          // The run's tokens are hidden before anything reaches her (a token split across chunks too).
           const out = capOutput(onData);
+          const masked = secretMasker(this.secrets(), (d) => out.push(d));
           const r = await this.run(["bash", "-c", command], {
-            cwd: posix.normalize(cwd), onData: (d) => out.push(d), signal, timeoutMs: timeout ? timeout * 1000 : undefined,
+            cwd: posix.normalize(cwd), onData: (d) => masked.push(d), signal, timeoutMs: timeout ? timeout * 1000 : undefined,
           });
+          masked.end();
           out.end();
           return { exitCode: r.code ?? (r.signal ? 128 + (signalNumbers[r.signal] ?? 0) : null) };
         },

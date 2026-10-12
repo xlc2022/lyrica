@@ -4,7 +4,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
 import {
-  mcpNamespace, PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, WORKDIR, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  holdsSecret, mcpNamespace, PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, WORKDIR, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -102,6 +102,9 @@ const ASKS: Record<PermissionMode, string[]> = {
  * propose_plan, and tool_search; of MCP tools, those their server marks read-only.
  */
 export const PLAN_TOOLS: ReadonlySet<string> = new Set(["read", "recall", "read_memory", "web_search", "web_fetch", "delegate", "ask_parent", "threads", "react", "propose_plan", "proxmox", "tool_search"]);
+
+/** Tools whose input leaves Lyrica for someone else: SearXNG's engines, a web page's server. */
+const LEAVES: ReadonlySet<string> = new Set(["web_search", "web_fetch"]);
 
 /** Tools that change things outside but ask on their own card, with the change in words, so the generic approval doesn't ask too. */
 const OWN_CARD: ReadonlySet<string> = new Set(["models"]);
@@ -235,14 +238,19 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
 
     pi.on("session_start", (_event, ctx) => gate(ctx));
 
+    const sandboxSecrets = (): string[] => { try { return tools.target().secrets?.() ?? []; } catch { return []; } };
     pi.on("tool_call", async (event, ctx) => {
       // What the mode or a switch has off is never run, even if it was offered before a change.
       if (off().includes(event.toolName)) {
         return { block: true, reason: `${event.toolName} is off in this thread${tools.settings().mode === "plan" ? " (Plan mode)" : ""}.` };
       }
       const input = event.input as Record<string, unknown>;
-      // An MCP tool: one its server marks read-only runs; any other leaves the server, so it always asks, in every mode.
       const mcp = mcpCall(event.toolName);
+      // A call that reaches someone else (a search, a page, an MCP server) never carries one of the sandbox's credentials.
+      if ((mcp || LEAVES.has(event.toolName)) && holdsSecret(JSON.stringify(input), sandboxSecrets())) {
+        return { block: true, reason: "That would send one of this thread's credentials out of Lyrica. Leave it out." };
+      }
+      // An MCP tool: one its server marks read-only runs; any other leaves the server, so it always asks, in every mode.
       if (mcp) {
         if (!mcp.server) return { block: true, reason: `${event.toolName} isn't a tool of this thread's MCP servers.` };
         if (mcp.readOnly || tools.toolAllowedInThread?.(mcp.server, mcp.tool)) return undefined;
