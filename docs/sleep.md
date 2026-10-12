@@ -141,7 +141,7 @@ cheap request (such as listing models).
 - **Manual `/sleep` with the endpoint down:** an immediate, plain error.
 
 Sleep never falls back outside the phase's own model list. With **Sleep
-fallback** off (`sleep.fallback`, Settings → Model profiles), each phase uses its list's
+fallback** off (`sleep.fallback`, Settings → Sleep), each phase uses its list's
 first model only: when that one is away, the pool is skipped as above.
 
 ## Sleep in the UI
@@ -159,7 +159,7 @@ Above the runs are her **items**, with a badge on the section while any are
 new. Each item has **Start a chat**, which opens a new thread in that pool
 where she begins with it, and **Dismiss**. Everything links into the memory
 browser. **Sleep now** at the foot sleeps a pool at once; the per-user mode
-(nightly, or only when asked) is a select in Settings → Model profiles and the
+(nightly, or only when asked) is a select in Settings → Sleep and the
 hour is the administrator's **Sleep time**. How it is laid out is in
 [web.md](web.md) and docs/ux.md.
 

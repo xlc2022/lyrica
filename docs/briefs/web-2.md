@@ -234,7 +234,7 @@ For each part:
   host was available in e2e, so the host card and Add model host are
   checked by hand on a real host.
 - 2026-10-12, PR 13 (the Sleep section): `src/Sleep.tsx`, the sidebar link
-  with its badge, the Sleep mode select in Settings → Model profiles, the
+  with its badge, the Sleep mode select (then in Settings → Model profiles, now Settings → Sleep), the
   administrator's Sleep section moved into the same file (docs/web.md, ux
   row "What she did at night"). Memory links open the Memory page, not the
   panel: the panel exists only beside a thread. Next: the Models page (carry
