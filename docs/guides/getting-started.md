@@ -68,8 +68,9 @@ These are estimates. None was measured on a real host.
   The Caddy build (Go, `xcaddy`) is the heaviest step and, inferred,
   needs 1 to 2 GB of memory and a few hundred MB of disk while it runs. On
   NixOS the Nix store holds the system, the package and the sandbox tools
-  (inferred: 15 to 20 GB with a few generations). Her databases, snapshots
-  and users' files grow on top of that.
+  (inferred: 15 to 20 GB with a few generations). Headless Chromium and
+  its fonts, for her screenshots, add about 1 GB on either system. Her
+  databases, snapshots and users' files grow on top of that.
 - **One machine for both.** From the model host's sizing: the minimum
   runs Qwen3.8-27B (Q4_K_M) at 128k context with a q8_0 KV cache, not 1M.
   The suggested card memory runs 1M at a q4_0 KV cache with speech
@@ -259,8 +260,9 @@ header shows the commit that is running, as on Debian.
    ```
 
 6. **Internet access** during the install: npm, `proxy.golang.org` for the
-   Caddy build, and `pkgs.tailscale.com` when Tailscale isn't installed
-   yet. Updates later fetch from GitHub over SSH with a deploy key.
+   Caddy build, Playwright's download servers for headless Chromium, and
+   `pkgs.tailscale.com` when Tailscale isn't installed yet. Updates later
+   fetch from GitHub over SSH with a deploy key.
 7. As root, from a git checkout of the repository outside `/opt/lyrica`:
 
    ```sh
@@ -280,9 +282,12 @@ What `install.sh` does, in order:
    build-essential, python3, git, openssh-client and jq for building
    releases and fetching updates, and `gh` and `tea` for threads with
    repositories (`tea` only where it is packaged; without it, Gitea and
-   Forgejo accounts work through git alone). When
-   Tailscale's binaries are missing it adds Tailscale's apt repository and
-   installs `tailscale`; the package turns on the host's own `tailscaled`,
+   Forgejo accounts work through git alone). It installs IBM Plex and
+   Playwright's headless Chromium with the libraries it needs, in
+   `/usr/local/lib/lyrica-chromium`, so her sandboxes can take
+   screenshots. When Tailscale's binaries are missing it adds Tailscale's
+   apt repository and installs `tailscale`; the package turns on the
+   host's own `tailscaled`,
    and the script turns it off again unless it was on before.
 2. Creates the `lyrica`, `lyrica-caddy` and `lyrica-build` system users.
    `lyricad` gets the `lyrica-caddy` group from its unit, so it alone can
@@ -755,7 +760,10 @@ the SSH ones, and `ssh remove <name>` takes one away.
   comes only with a fresh install. An install made before 2026-10-12
   needs `apt-get install gh`, and `apt-get install tea` where it is
   packaged (or this run), for threads with repositories; on NixOS the next
-  rebuild brings them. The home page header
+  rebuild brings them. An install without
+  `/usr/local/bin/chromium-headless-shell` gets headless Chromium and IBM
+  Plex for her screenshots on this run; on NixOS the next rebuild brings
+  them. The home page header
   ("Lyrica 0.1.0 · <build>") shows the git commit that is running.
 
 ## Checklist for the first install on Li's machine
