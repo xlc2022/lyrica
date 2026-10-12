@@ -394,8 +394,8 @@ export class PoolReader {
     switch (kind) {
       case "note":
         rows = this.db.prepare(`SELECT id FROM notes WHERE archived = 0 AND (@before IS NULL OR updated_at < @before)
-          AND (@origin IS NULL OR origin = @origin) AND (@about IS NULL OR (', ' || about || ', ') LIKE ('%, ' || @about || ', %'))
-          ORDER BY updated_at DESC LIMIT @limit`).all({ before, origin: opts.origin ?? null, about: opts.about ?? null, limit }) as { id: string }[];
+          AND (@origin IS NULL OR origin = @origin) AND (@about IS NULL OR (', ' || about || ', ') LIKE ('%, ' || @about || ', %') ESCAPE '\\')
+          ORDER BY updated_at DESC LIMIT @limit`).all({ before, origin: opts.origin ?? null, about: opts.about?.replace(/[\\%_]/g, "\\$&") ?? null, limit }) as { id: string }[];
         break;
       case "page":
         rows = this.db.prepare(`SELECT 'p:' || slug AS id FROM pages WHERE archived = 0 AND (@before IS NULL OR updated_at < @before)
