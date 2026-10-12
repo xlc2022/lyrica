@@ -323,7 +323,11 @@ A thread's address may carry what the panel beside it shows:
   the row; the user's data stays, they are logged out and told at their
   next visit) and their allowed folders, Sleep (**Sleep time**, `type="time"`, one Save;
   `GET`/`PUT …/admin/sleep`), Start unlocked (saving the `self.db`
-  passphrase), **Tailnet**, Web access, **Updates**, and **Persona**: her
+  passphrase), **Tailnet**, Web access, **Web search** (`src/WebSearch.tsx`:
+  **SearXNG address** in mono, without its password (a basic-auth password
+  is kept when the user@host is unchanged), one Save, and Reachable or Unreachable as a
+  dot and a word, what failed as its tooltip; `GET`/`PUT …/admin/web-search`),
+  **Updates**, and **Persona**: her
   **Name** at the top (one field, Save, and the sentence that memories and
   threads written so far keep the old name; `PUT …/admin/name`, then the
   page re-reads `/api/state`), then the persona changes that users sent on
@@ -515,7 +519,9 @@ A thread's address may carry what the panel beside it shows:
   icon, accent once there is text, or Stop as a square while she works and
   the box is empty. Under the box, a row of borderless controls: at the left
   the "+" icon, whose menu attaches a file and, after a separator, has the
-  Web search, Internet for commands and Images switches; then the mic; at the right the
+  Web search, Internet for commands and Images switches (Web search's
+  tooltip says "Search needs a SearXNG address in Administration" while the
+  server has none, `ThreadSettings.searchProvider`); then the mic; at the right the
   mode, a link with a chevron that opens a menu of the four modes (a check on
   the current one, its line, its number key; a mode above a granted
   machine's limit reads "Asks on <machine>" in its line). Shift+Tab in the box cycles

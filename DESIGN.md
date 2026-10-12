@@ -1430,7 +1430,13 @@ Details in [docs/sleep.md](docs/sleep.md).
   message box turns tools on or off for this thread, without opening its
   settings: **Web search** (`web_search` and `web_fetch`), **Internet for
   commands** (the sandbox's internet switch) and **Images** (the `image`
-  tool). A switch that's off removes the tools from the session, so she
+  tool). Search goes to one SearXNG an administrator sets for the server
+  (Administration → Web search), in every thread, private and local-only
+  included; without one, the switch gives `web_fetch` alone, which runs in
+  the thread's sandbox under its network switches. SearXNG hides who is
+  asking from the search engines it uses, but forwards the query text to
+  them, so a private thread's query leaves her network as an anonymous
+  query. A switch that's off removes the tools from the session, so she
   can't use them; a subagent or child thread can't turn back on what its
   parent turned off, even later. Local-only and the pool are not switches here: they
   stay in the thread's settings, where changing them is deliberate.

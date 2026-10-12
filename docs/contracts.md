@@ -693,8 +693,22 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     the turn message as `<reactions>`;
   - `calendar` and `sort` (Integrations thread);
   - `image`, with `create` and `edit` (Images thread);
-  - `web_search` and `web_fetch` (research, carried over from v1 or taken from
-    a Pi package);
+  - `web_search({ query, count? })` and `web_fetch({ url, maxChars? })`
+    (`createWebExtension({ searxng(), target() })`, `core/src/web.ts`), in
+    every hosted thread and in a subagent whose role lists them (the
+    researcher's), behind the Web search switch. `web_search` asks the
+    server's SearXNG (`GET <address>/search?q=…&format=json`, 15 s) for up
+    to `count` results (8 by default, 20 at most) as title, URL and
+    snippet, after its first answer or infobox line; it is offered only
+    while an address is set, read on every turn and call. A
+    `user:password@` in the address goes as basic auth. `web_fetch` runs
+    curl (`fetchArgv`, the URL one argument) through the thread's sandbox
+    target's `run`, so its internet switch and allowed hosts apply; lyricad
+    turns HTML into text (`htmlText`, html-to-text: no scripts, styles or
+    navigation, links with their URL), passes text and JSON through,
+    refuses other types, and cuts to `maxChars` (20,000 by default, 50,000
+    at most), saying so. Both are `openWorldHint` and `readOnlyHint`, so
+    they never ask;
   - `proxmox` (Machines; see [core/workspace](#coreworkspace)) and
     `add_repository` (Repositories; see [core/workspace](#coreworkspace));
   - `models`, with `lookup { offering, repo? }` and `propose { offering,
@@ -717,6 +731,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   active only while no reason has it off, and comes back only if a reason
   took it away.
 - **Workspace extension** (`createWorkspaceExtension(tools: ThreadTools)`):
+  - `ExecutionTarget.run?(argv, { signal?, timeoutMs? })` runs argv with no
+    shell under the target's own rules; the sandbox has it.
   - `ThreadTools` is `{ target(machine?), settings(), network(),
     machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?), approve?, setMode?,
     proposePlan?(PlanRequest), recordChange?(NewChange), fileNotes?() }`.
@@ -866,6 +882,17 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `WebAccessStatus.tailnet`), and `frontDoor` includes the Direct port on
     this machine's addresses and, in Tailnet, 443 on her Tailscale address and
     DNS name. All additive.
+- **Web search** (`core/src/web.ts`): the server's SearXNG address is
+  `self.db` `settings` `web.searxng` (`searxngAddress`,
+  `setSearxngAddress`); `GET`/`PUT /api/u/:userId/admin/web-search` →
+  `WebSearch { searxng: string | null, auth, state: "reachable" |
+  "unreachable" | "unset", reason? }`, administrators only, the state from
+  a test search on each call; `PUT { searxng }` with null or "" clears it.
+  A password in the address (basic auth) is never sent back: `searxng`
+  comes without it and `auth` says one is stored; a `PUT` with the same
+  user@host and no password keeps it, one with a password replaces it.
+  `ThreadSettings.searchProvider` says whether one is set.
+  `HostOptions.searxng` and `DelegationOptions.searxng` give it to sessions.
 - **HTTP/SSE API**, defined in `daemon/src/api.ts` and described in
   [daemon.md](daemon.md). The web UI imports its types from there:
   - auth;

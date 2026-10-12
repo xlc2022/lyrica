@@ -146,7 +146,7 @@ writers each ask for their own calls.
 | Role | Tier | Tools | Writes |
 |---|---|---|---|
 | scout | cheap | read, bash, recall, read_memory | no |
-| researcher | cheap | read, bash, recall, read_memory | no |
+| researcher | cheap | read, bash, recall, read_memory, web_search, web_fetch | no |
 | reviewer | cheap | read, bash, recall, read_memory | no |
 | worker | strong | read, write, edit, bash, recall, read_memory | yes |
 | oracle | strong | read, recall, read_memory | no |
