@@ -3,9 +3,12 @@
 # accounts and repositories"). Mounted as /run/lyrica/bin/gh and .../tea,
 # first on PATH. Each picks the one account whose repository this clone's
 # origin is, from the LYRICA_GIT_* environment, so two accounts on one host
-# never mix; outside such a clone the client runs with no token. tea reads
-# logins only from a file, so that file is written under /tmp, the run's own
-# tmpfs, and is gone when the run ends.
+# never mix; outside such a clone the client runs with no token. The token is
+# the run's placeholder: the client goes through the run's relay in lyricad
+# (LYRICA_GIT_PROXY), trusting the run's authority as well as the system's,
+# and the relay swaps in the real token (relay.ts). tea reads logins only
+# from a file, so that file is written under /tmp, the run's own tmpfs, and
+# is gone when the run ends.
 tool=${0##*/}
 PATH=${PATH#/run/lyrica/bin:}
 export PATH
@@ -28,6 +31,10 @@ while [ -n "$origin" ] && [ "$i" -lt "${LYRICA_GIT_COUNT:-0}" ]; do
   if [ "$repo" = "$origin" ]; then
     eval "token=\$LYRICA_GIT_TOKEN_$i user=\$LYRICA_GIT_USER_$i"
     host=${repo%%/*}
+    if [ -n "$LYRICA_GIT_PROXY" ]; then
+      export HTTPS_PROXY="$LYRICA_GIT_PROXY" https_proxy="$LYRICA_GIT_PROXY" SSL_CERT_DIR="${LYRICA_GIT_CA%/*}"
+      unset NO_PROXY no_proxy
+    fi
     if [ "$tool" = gh ] && [ "$kind" = github ]; then
       if [ "$host" = github.com ]; then export GH_TOKEN="$token"
       else export GH_HOST="$host" GH_ENTERPRISE_TOKEN="$token"; fi

@@ -111,7 +111,7 @@ export interface GitAccountConfig {
   host: string;
   /** The account's name on the host. */
   account: string;
-  /** Lives only in user.db and in memory, and reaches a sandbox only through `Workspace.forgeEnv`. */
+  /** Lives only in user.db and in memory, and reaches only a sandbox run's relay, through `Workspace.credentialsFor`. */
   token: string;
   /** Used only by threads of this pool. A GitHub account is always general. */
   pool: Pool;
@@ -977,3 +977,6 @@ const toMachine = (r: MachineRow): MachineConfig => ({
   pool: r.pool, limit: r.mode_limit, offNetwork: r.off_network === 1, lastUsed: r.last_used,
   state: r.state && r.state_since ? { kind: r.state, since: r.state_since } : null,
 });
+
+/** A repository's HTTPS address on its account's host. */
+export const repositoryUrl = (host: string, name: string): string => `https://${host}/${name}.git`;

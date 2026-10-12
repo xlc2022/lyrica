@@ -22,6 +22,18 @@ export interface HostEntry {
   port?: number;
 }
 
+/** Whether a sandbox on `net` can reach a Git host: internet on, or the host (and its port, if the entry names one) an allowed host. */
+export function reachesHost(net: { internet: boolean; hosts: string[] }, host: string): boolean {
+  if (net.internet) return true;
+  const want = parseHost(host);
+  const port = want.port ?? 443;
+  return net.hosts.some((h) => {
+    try {
+      const e = parseHost(h);
+      return e.host === want.host && (e.port === undefined || e.port === port);
+    } catch { return false; }
+  });
+}
 /** Parses an allowed-host entry: an IP, CIDR range, hostname or URL, each with an optional port. */
 export function parseHost(raw: string): HostEntry {
   let s = raw.trim();

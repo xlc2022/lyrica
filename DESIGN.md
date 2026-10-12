@@ -1240,9 +1240,9 @@ Decided 2026-10-12 (docs/briefs/claude-code.md).
   it's available.
 - **The user's own sign-in.** `claude setup-token` on their own computer;
   the token is kept in `user.db` and never enters a sandbox. A run that may
-  use Claude Code reaches Anthropic through its own relay in `lyricad`,
-  with a capability that dies with the run, so nothing a command reads
-  can carry the token out.
+  use Claude Code reaches Anthropic through the run's relay in `lyricad`
+  (the one its Git credentials use), with a capability that dies with the
+  run, so nothing a command reads can carry the token out.
 - **Off until a thread turns it on**, and never in a private or local-only
   thread, since what it reads goes to Anthropic. Children inherit it,
   narrower or the same.
@@ -1707,16 +1707,19 @@ from Monika's runbooks.
   removed or moved to the other pool), the credential stops at once and
   the clone stays, since it may hold her unpushed work and she deletes
   only what she downloaded. A
-  sandbox run gets a repository's token only when the thread's pool is the
-  account's, the thread has the repository, and the run can reach the host
-  (internet on, or an allowed host); it travels in the environment only, as
-  a git credential bound to that repository's URL, never on a command
-  line or in a file, so two accounts on one host never mix. The forge
-  clients are thin wrappers in the tools image: `gh` picks its token by
-  the current repository's remote, so two GitHub accounts in one thread
-  stay apart; `tea` reads its logins from a config file, so the wrapper
-  writes one from the environment onto the run's tmpfs, gone when the run
-  ends and never in the workspace, the one place a token touches a file.
+  sandbox run may use a repository's token only when the thread's pool is
+  the account's, the thread has the repository, and the run can reach the
+  host (internet on, or an allowed host). The token never enters the
+  sandbox (2026-10-12): the run holds a placeholder, bound as a git
+  credential to that repository's URL, and reaches the host through the
+  run's relay in `lyricad`, which ends TLS with a certificate from an
+  authority made for that run and swaps in the token only on that
+  repository's paths and its host's API. Two accounts on one host never
+  mix, and nothing a command reads can carry a token out. The forge
+  clients are thin wrappers in the tools image: `gh` picks its placeholder
+  by the current repository's remote, so two GitHub accounts in one
+  thread stay apart; `tea` reads its logins from a config file, so the
+  wrapper writes one onto the run's tmpfs, gone when the run ends.
   A repository or account taken away leaves running threads at once, as a
   folder or machine does. Tokens only, no SSH keys; `gh` for GitHub,
   `tea` for Gitea and Forgejo, plain git for Other.

@@ -6,7 +6,7 @@ import { lookup } from "node:dns/promises";
 import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { FilesRefused, gitEnv, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Grant, type Network } from "../src/index.ts";
+import { FilesRefused, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Grant, type Network } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 // Escaping the sandbox is the main failure. These tests must run as an
@@ -75,18 +75,26 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect(r).toEqual({ code: 0, out: "hellosong.txt\n" });
   });
 
-  it("puts the gh and tea wrappers first on a run with repositories, and tea's login only on that run's /tmp", async () => {
-    const env = gitEnv([{ name: "ada/home", account: { kind: "forgejo", host: "forge.lan", account: "ada", token: "forge-token" } }]);
-    const git = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], env });
+  it("puts the gh and tea wrappers first on a run with repositories, and tea's login, with a placeholder, only on that run's /tmp", async () => {
+    const git = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [],
+      credentials: { forge: [{ name: "ada/home", account: { kind: "forgejo", host: "forge.lan", account: "ada", token: "forge-token" } }] } });
     const r = await sh("command -v gh tea; git init -q home && git -C home remote add origin https://forge.lan/ada/home.git && cd home && "
-      + "{ tea 2>/dev/null; grep -q \"token: 'forge-token'\" /tmp/lyrica-forge/tea/config.yml && echo HAS-TOKEN; cat /tmp/lyrica-forge/tea/config.yml; }; cd .. && rm -rf home", git);
+      + "{ tea 2>/dev/null; grep -q \"token: 'lyrica_\" /tmp/lyrica-forge/tea/config.yml && echo HAS-PLACEHOLDER; cat /tmp/lyrica-forge/tea/config.yml; }; cd .. && rm -rf home", git);
     expect(r.out).toContain("/run/lyrica/bin/gh\n/run/lyrica/bin/tea\n");
-    expect(r.out).toContain("HAS-TOKEN");
-    // What she sees never shows it: not in the file she prints, not in her environment.
+    expect(r.out).toContain("HAS-PLACEHOLDER");
+    // What she sees never shows even the placeholder, and the token is nowhere in the run.
     expect(r.out).toContain("token: '[credential hidden]'");
-    expect((await sh("env; echo \"$LYRICA_GIT_TOKEN_0\"", git)).out).not.toContain("forge-token");
+    expect((await sh("env; echo \"$LYRICA_GIT_TOKEN_0\"; cat /run/lyrica/certs/run.pem", git)).out).not.toContain("forge-token");
     expect((await sh("ls /tmp/lyrica-forge 2>&1 || true", git)).out).toContain("No such file");
     expect((await sh("command -v gh || echo NONE")).out).not.toContain("/run/lyrica");
+  });
+
+  it("mounts the thread's own Claude Code folder outside its folder, and only for a run with Claude Code", async () => {
+    mkdirSync(p("claude-own"), { recursive: true });
+    const own = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], claudeDir: p("claude-own") });
+    expect((await sh("echo kept > /run/lyrica/claude/notes && ls -A /workspace | grep -c claude || true", own)).out).toBe("0\n");
+    expect(readFileSync(p("claude-own", "notes"), "utf8")).toBe("kept\n");
+    expect((await sh("ls /run/lyrica/claude 2>&1 || true")).out).toContain("No such file");
   });
 
   it("gives a run with Claude Code the wrapper and its relay, and never the token", async () => {
@@ -95,7 +103,7 @@ describe.skipIf(!runnable)("the sandbox", () => {
     const upstream = createHttpServer((req, res) => { seen.push(String(req.headers.authorization)); req.resume(); res.end("ok"); });
     await new Promise<void>((r) => upstream.listen(0, "127.0.0.1", r));
     try {
-      const claude = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], claude: { token: TOKEN, upstream: `http://127.0.0.1:${(upstream.address() as { port: number }).port}` } });
+      const claude = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], credentials: { forge: [], anthropic: TOKEN, upstreams: { "api.anthropic.com": `http://127.0.0.1:${(upstream.address() as { port: number }).port}` } } });
       const r = await sh('command -v claude; env; curl -s -H "authorization: Bearer $CLAUDE_CODE_OAUTH_TOKEN" "$ANTHROPIC_BASE_URL/v1/messages"', claude);
       expect(r.out).toContain("/run/lyrica/bin/claude\n");
       expect(r.out).toMatch(/ANTHROPIC_BASE_URL=http:\/\/127\.0\.0\.1:\d+/);
@@ -109,7 +117,7 @@ describe.skipIf(!runnable)("the sandbox", () => {
   });
 
   it("closes a run's Claude Code relay when the run is stopped", async () => {
-    const claude = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], claude: { token: "sk-ant-oat01-made-up-for-tests-only", upstream: "http://127.0.0.1:9" } });
+    const claude = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], credentials: { forge: [], anthropic: "sk-ant-oat01-made-up-for-tests-only", upstreams: { "api.anthropic.com": "http://127.0.0.1:9" } } });
     const stop = new AbortController();
     let out = "";
     const done = claude.ops().bash.exec('echo "$ANTHROPIC_BASE_URL"; sleep 30', "/workspace", {
@@ -522,16 +530,30 @@ describe.skipIf(!netRunnable || !lan)("a sandbox's network switches", () => {
   const reach = async (net: Partial<Network>, host: string, port: number, exclude: number[] = []) =>
     (await sh(tcp(host, port), box(net, [], exclude))).out;
 
-  it("hands a repository's token to a networked command through its environment, as git's credential for that repository only", async () => {
+  it("gives git a placeholder for a repository's token, and the run's relay swaps in the token for that repository only", async () => {
     const token = "github_pat_11AAAAAAA0abcdefghijklmnopqrstuvwxyz";
-    const env = gitEnv([{ name: "xlc2022/lyrica", account: { kind: "github", host: "github.com", account: "lyrica-bot", token } }]);
-    const sandbox = new Sandbox({ workdir: p("work"), grants: grants(), network: { ...OFF, internet: true }, self: [], env });
-    const fill = (path: string) => `printf 'protocol=https\\nhost=github.com\\npath=${path}\\n\\n' | git credential fill 2>&1`;
-    const r = await sh(`printenv GH_TOKEN || echo NONE; ${fill("xlc2022/lyrica.git")}; ${fill("xlc2022/other.git")}`, sandbox);
-    expect(r.out).toContain(`NONE\nprotocol=https\nhost=github.com\npath=xlc2022/lyrica.git\nusername=lyrica-bot\npassword=[credential hidden]\n`);
-    // The helper gave git the token; what she sees has it hidden (Sandbox.secrets).
-    expect(r.out).not.toContain(token);
-    expect(r.out).toContain("could not read Username for 'https://github.com/xlc2022/other.git'");
+    const seen: string[] = [];
+    const github = createHttpServer((req, res) => {
+      req.resume();
+      if (!req.headers.authorization) return res.writeHead(401, { "www-authenticate": 'Basic realm="GitHub"' }).end();
+      seen.push(`${req.url} ${req.headers.authorization}`);
+      res.writeHead(404).end();
+    });
+    await new Promise<void>((r) => github.listen(0, "127.0.0.1", r));
+    try {
+      const sandbox = new Sandbox({ workdir: p("work"), grants: grants(), network: { ...OFF, internet: true }, self: [], credentials: {
+        forge: [{ name: "xlc2022/lyrica", account: { kind: "github", host: "github.com", account: "lyrica-bot", token } }],
+        upstreams: { "github.com": `http://127.0.0.1:${(github.address() as { port: number }).port}` },
+      } });
+      const fill = (path: string) => `printf 'protocol=https\\nhost=github.com\\npath=${path}\\n\\n' | git credential fill 2>&1`;
+      const r = await sh(`printenv GH_TOKEN || echo NONE; ${fill("xlc2022/lyrica.git")}; ${fill("xlc2022/other.git")}; git ls-remote https://github.com/xlc2022/lyrica.git 2>&1; env`, sandbox);
+      expect(r.out).toContain("NONE\nprotocol=https\nhost=github.com\npath=xlc2022/lyrica.git\nusername=lyrica-bot\npassword=[credential hidden]\n");
+      expect(r.out).toContain("could not read Username for 'https://github.com/xlc2022/other.git'");
+      expect(r.out).not.toContain(token);
+      expect(seen).toEqual([`/xlc2022/lyrica.git/info/refs?service=git-upload-pack Basic ${Buffer.from(`lyrica-bot:${token}`).toString("base64")}`]);
+    } finally {
+      github.close();
+    }
     expect((await sh("printenv LYRICA_GIT_TOKEN_0 || echo NONE", box({ internet: true }))).out).toBe("NONE\n");
   });
 

@@ -4,9 +4,10 @@ import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { capOutput, maskSecrets, secretMasker, sniffImage, type ExecutionTarget, type ToolOps } from "./ops.ts";
-import { openClaudeRelay, type ClaudeRelay } from "./claude-relay.ts";
-import { hostAddresses, nftRules, pastaArgs, resolveAddresses, resolveHosts, SANDBOX_GATEWAY } from "./net.ts";
-import { cleanPath, within, type Grant, type Network } from "./settings.ts";
+import { randomBytes } from "node:crypto";
+import { openRelay, type Relay } from "./relay.ts";
+import { hostAddresses, nftRules, pastaArgs, reachesHost, resolveAddresses, resolveHosts, SANDBOX_GATEWAY } from "./net.ts";
+import { cleanPath, repositoryUrl, within, type GitAccountConfig, type Grant, type Network } from "./settings.ts";
 
 /** The thread's folder in the home workspace, as she sees it. */
 export const WORKDIR = "/workspace";
@@ -37,17 +38,25 @@ export interface SandboxSpec {
   repos?: string;
   /** Mount `repos` read-only: a read-only subagent's view of its parent's clones. */
   reposReadOnly?: boolean;
-  /** Added to the command's environment: Git tokens where Workspace.forgeEnv allows them. Never on the command line. */
-  env?: Record<string, string>;
   /**
-   * Claude Code for this run (Workspace.claudeCodeFor): the user's token,
-   * which stays in this process. The run gets a relay (claude-relay.ts)
-   * forwarded to its loopback, a capability in place of the token, and the
-   * claude wrapper.
+   * The credentials its runs may use (Workspace.credentialsFor), which stay
+   * in this process. Each run gets a relay (relay.ts) forwarded to its
+   * loopback, a capability that opens it and placeholders in place of the
+   * tokens, and the gh, tea and claude wrappers it needs.
    */
-  claude?: { token: string; upstream?: string };
+  credentials?: Credentials;
+  /** Host path of the thread's own Claude Code folder (Workspace.claudeDir), mounted read-write at /run/lyrica/claude. */
+  claudeDir?: string;
   bwrap?: string;
   pasta?: string;
+}
+
+/** Tokens a sandbox's runs may use: its repositories' accounts', and Claude Code's. */
+export interface Credentials {
+  forge: { name: string; account: Pick<GitAccountConfig, "kind" | "host" | "account" | "token"> }[];
+  anthropic?: string;
+  /** Where the relay sends a host's requests instead of https://host: tests. */
+  upstreams?: Record<string, string>;
 }
 
 // A minimal read-only system. /etc is picked file by file, so host secrets
@@ -70,6 +79,10 @@ const env = () => ({ PATH: tools() ? `${tools()}/bin:${PATH}` : PATH, HOME: WORK
 // The gh and tea wrappers for a run with repositories (forge.sh), first on its PATH.
 const FORGE_BIN = "/run/lyrica/bin";
 const FORGE = readFileSync(new URL("./forge.sh", import.meta.url), "utf8");
+// The run's certificate authority, which git, gh and tea trust for its Git hosts (relay.ts).
+const CERTS = "/run/lyrica/certs";
+// Where a run with Claude Code keeps its settings and transcripts (claude.sh).
+const CLAUDE_DIR = "/run/lyrica/claude";
 // The claude wrapper for a run with Claude Code (claude.sh), in the same folder.
 const CLAUDE = readFileSync(new URL("./claude.sh", import.meta.url), "utf8");
 
@@ -131,6 +144,42 @@ function startPasta(cmd: string[]): Promise<number> {
   }).finally(() => rmSync(dir, { recursive: true, force: true }));
 }
 
+/**
+ * A run's Git credentials as its sandbox's environment, nothing on disk or
+ * on a command line: for each repository, a git credential helper bound to
+ * that repository's URL (git's `GIT_CONFIG_*` environment, with
+ * `useHttpPath` for its host, so another repository on the same host never
+ * gets it), reading the token from the environment; and `LYRICA_GIT_*` for
+ * the `gh` and `tea` wrappers (forge.sh), which pick the one account whose
+ * repository the current clone is. A sandbox run passes placeholders as the
+ * tokens, and `proxy`: git reaches each repository's URL through the run's
+ * relay (relay.ts), trusting its authority, and the wrappers send gh and tea
+ * there too.
+ */
+export function gitEnv(repos: { name: string; account: Pick<GitAccountConfig, "kind" | "host" | "account" | "token"> }[], proxy?: { url: string; ca: string }): Record<string, string> {
+  if (!repos.length) return {};
+  const env: Record<string, string> = { GIT_TERMINAL_PROMPT: "0" };
+  const config: [string, string][] = [];
+  for (const host of new Set(repos.map((r) => r.account.host))) config.push([`credential.https://${host}.useHttpPath`, "true"]);
+  repos.forEach((r, i) => {
+    const url = repositoryUrl(r.account.host, r.name);
+    env[`LYRICA_GIT_REPO_${i}`] = `${r.account.host}/${r.name}`.toLowerCase();
+    env[`LYRICA_GIT_KIND_${i}`] = r.account.kind;
+    env[`LYRICA_GIT_USER_${i}`] = r.account.account;
+    env[`LYRICA_GIT_TOKEN_${i}`] = r.account.token;
+    config.push([`credential.${url}.helper`,
+      `!f() { test "$1" = get && printf "username=%s\\npassword=%s\\n" "$LYRICA_GIT_USER_${i}" "$LYRICA_GIT_TOKEN_${i}"; }; f`]);
+    if (proxy) config.push([`http.${url}.proxy`, proxy.url], [`http.${url}.proxyAuthMethod`, "basic"], [`http.${url}.sslCAInfo`, proxy.ca]);
+  });
+  config.forEach(([k, v], i) => { env[`GIT_CONFIG_KEY_${i}`] = k; env[`GIT_CONFIG_VALUE_${i}`] = v; });
+  env.GIT_CONFIG_COUNT = String(config.length);
+  // gh and tea get no token of their own here: GH_TOKEN is one value, so the
+  // wrappers (forge.sh) pick the account by the clone's origin.
+  env.LYRICA_GIT_COUNT = String(repos.length);
+  if (proxy) Object.assign(env, { LYRICA_GIT_PROXY: proxy.url, LYRICA_GIT_CA: proxy.ca });
+  return env;
+}
+
 export class SandboxDenied extends Error {}
 
 /** A process started in a sandbox, with its three pipes. */
@@ -179,8 +228,11 @@ interface RunOptions {
 export class Sandbox implements ExecutionTarget {
   readonly name = "sandbox";
   private readonly grants: Grant[];
+  /** What its runs hold in place of each repository's token: random, for this sandbox only, and worthless without a run's relay. */
+  private readonly placeholders: string[];
 
   constructor(private readonly spec: SandboxSpec) {
+    this.placeholders = (spec.credentials?.forge ?? []).map(() => `lyrica_${randomBytes(24).toString("base64url")}`);
     // Shallow first, so a read-only grant inside a writable one stays read-only.
     this.grants = spec.grants.map((g) => ({ ...g, path: cleanPath(g.path) }))
       .sort((a, b) => a.path.split("/").length - b.path.split("/").length);
@@ -190,10 +242,11 @@ export class Sandbox implements ExecutionTarget {
 
   folders(): string[] { return this.grants.map((g) => g.path); }
 
-  /** The tokens in its environment (any variable named for a token), longest first. */
+  /** Its tokens and their placeholders, longest first: none is in a run's environment, but a file may hold one. */
   secrets(): string[] {
-    return Object.entries(this.spec.env ?? {}).filter(([k, v]) => /TOKEN/.test(k) && v.length >= 8).map(([, v]) => v)
-      .sort((a, b) => b.length - a.length);
+    const c = this.spec.credentials;
+    return [...c?.forge.map((r) => r.account.token) ?? [], ...c?.anthropic ? [c.anthropic] : [], ...this.placeholders]
+      .filter((v) => v.length >= 8).sort((a, b) => b.length - a.length);
   }
 
   /** Refuses paths outside the thread's folder and grants (SandboxDenied). The mounts confine her regardless. */
@@ -238,7 +291,14 @@ export class Sandbox implements ExecutionTarget {
    */
   async start(argv: string[], cwd?: string): Promise<Sandboxed> {
     let forward = this.spec.forward ?? [];
-    const relay = this.spec.claude ? await openClaudeRelay(this.spec.claude.token, this.spec.claude.upstream) : undefined;
+    const c = this.spec.credentials;
+    const relay = c && (c.forge.length || c.anthropic) ? await openRelay({
+      anthropic: c.anthropic,
+      forge: c.forge.map((r, i) => ({ repo: r.name, kind: r.account.kind, host: r.account.host, token: r.account.token, placeholder: this.placeholders[i]! })),
+      reaches: (host) => reachesHost(this.spec.network, host),
+      internet: this.spec.network.internet,
+      upstreams: c.upstreams,
+    }) : undefined;
     try {
       return await this.launch(argv, cwd, forward, relay);
     } catch (err) {
@@ -247,7 +307,7 @@ export class Sandbox implements ExecutionTarget {
     }
   }
 
-  private async launch(argv: string[], cwd: string | undefined, forward: number[], relay: ClaudeRelay | undefined): Promise<Sandboxed> {
+  private async launch(argv: string[], cwd: string | undefined, forward: number[], relay: Relay | undefined): Promise<Sandboxed> {
     let { internet, services, hosts } = this.spec.network;
     if (relay) forward = [...forward, relay.port];
     // The front door's names must resolve (now or before), or this run gets no network at all: its rules can't be trusted.
@@ -257,14 +317,19 @@ export class Sandbox implements ExecutionTarget {
     const resolved = await resolveHosts(hosts);
     // Files written into the sandbox's /etc. Hostnames are pinned when it starts;
     // with internet off there is no resolver at all, so DNS can't carry data out.
-    const forge = this.spec.env?.LYRICA_GIT_COUNT !== undefined;
-    const claude = !!relay;
-    // The capability and the relay's address, never the token.
-    const claudeEnv = relay ? { CLAUDE_CODE_OAUTH_TOKEN: relay.capability, ANTHROPIC_BASE_URL: `http://127.0.0.1:${relay.port}` } : {};
+    const c = this.spec.credentials;
+    const forge = !!(relay && c?.forge.length);
+    const claude = !!(relay && c?.anthropic);
+    // The relay's address, its capability and placeholders, never a token.
+    const runEnv = {
+      ...forge ? gitEnv(c!.forge.map((r, i) => ({ name: r.name, account: { ...r.account, token: this.placeholders[i]! } })),
+        { url: `http://lyrica:${relay!.capability}@127.0.0.1:${relay!.port}`, ca: `${CERTS}/run.pem` }) : {},
+      ...claude ? { CLAUDE_CODE_OAUTH_TOKEN: relay!.capability, ANTHROPIC_BASE_URL: `http://127.0.0.1:${relay!.port}` } : {},
+    };
     const data: (readonly [string, string, string?])[] = [
       ["/etc/hosts", ["127.0.0.1 localhost", "::1 localhost", ...resolved.pinned].join("\n") + "\n"],
       ["/etc/resolv.conf", internet ? `nameserver ${SANDBOX_GATEWAY}\n` : ""],
-      ...forge ? [[`${FORGE_BIN}/gh`, FORGE, "0555"], [`${FORGE_BIN}/tea`, FORGE, "0555"]] as const : [],
+      ...forge ? [[`${FORGE_BIN}/gh`, FORGE, "0555"], [`${FORGE_BIN}/tea`, FORGE, "0555"], [`${CERTS}/run.pem`, relay!.ca!]] as const : [],
       ...claude ? [[`${FORGE_BIN}/claude`, CLAUDE, "0555"]] as const : [],
     ];
     const fds: number[] = [];
@@ -291,7 +356,7 @@ export class Sandbox implements ExecutionTarget {
       cmd = ["unshare", "--user", "--map-root-user", "--net", "--", "bash", "-c", HOLD, "bash", rules, String(ready), String(ready + 1), ...cmd];
     }
     const child = spawn(cmd[0]!, cmd.slice(1), {
-      env: { ...this.spec.env, ...claudeEnv, ...env(), ...forge || claude ? { PATH: `${FORGE_BIN}:${env().PATH}` } : {} },
+      env: { ...runEnv, ...env(), ...forge || claude ? { PATH: `${FORGE_BIN}:${env().PATH}` } : {} },
       stdio: ["pipe", "pipe", "pipe", ...fds, ...data.map(() => "pipe" as const), ...(networked ? ["pipe", "pipe"] as const : [])],
     });
     child.on("error", () => {}); // reported to the caller's own listener; never an uncaught error
@@ -356,6 +421,7 @@ export class Sandbox implements ExecutionTarget {
     };
     if (this.spec.workdir) mount(cleanPath(this.spec.workdir), true, WORKDIR);
     if (this.spec.workdir && this.spec.repos) mount(cleanPath(this.spec.repos), !this.spec.reposReadOnly, `${WORKDIR}/repos`);
+    if (this.spec.claudeDir) mount(cleanPath(this.spec.claudeDir), true, CLAUDE_DIR);
     for (const g of this.grants) mount(g.path, g.writable, g.path, () => this.spec.check?.(g));
     for (const f of this.spec.files ?? []) args.push("--ro-bind", f, f);
 

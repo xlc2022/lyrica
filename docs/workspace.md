@@ -347,8 +347,9 @@ takes is `lyrica@pve!agent=<that secret>`.
   still has the hash they left: something changed it since, so it is kept.
 - **The nightly sweep** (`daemon/src/sweep.ts`), for each user whose home is
   mounted: change records and snapshots older than 30 days, snapshots no
-  record names, the folders of threads that no longer exist, and subagent
-  worktrees whose run isn't live and that haven't changed in 30 days. Before
+  record names, the folders (and Claude Code folders) of threads that no
+  longer exist, and subagent worktrees whose run isn't live and that
+  haven't changed in 30 days. Before
   a worktree goes, git's record of it (`.git/worktrees/<name>` in its
   repository) goes too, so git no longer counts its branch as checked out:
   only in a folder the user may grant, and only a record that names that
@@ -506,28 +507,47 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   repository leaves the thread, since it may hold unpushed work; it goes
   with the thread's folder when the sweep removes it. Two threads never
   share a working tree.
-- **Credentials** travel in a sandbox run's environment only, never argv
-  or a file in the workspace (`forgeEnv`, `gitEnv` in
-  `core/src/workspace/index.ts`): a git credential helper per repository
-  URL (`useHttpPath`, through git's `GIT_CONFIG_*` environment), so another
-  repository on the same host gets nothing. A run gets a repository's
-  token only when the thread's pool is the account's, the thread has the
-  repository, and the run can reach the host: internet on, or the host as
-  an allowed host (`api.github.com` too, for `gh` on GitHub). Every
-  command in such a run can read it, so with internet on a page she reads
-  could ask her to send it somewhere; that is why tokens are
+- **Credentials** never enter the sandbox. A run with repositories or Claude Code gets
+  its own relay (`openRelay`, `core/src/workspace/relay.ts`): a server in
+  `lyricad` on a random loopback port, forwarded into the run's sandbox
+  like a machine on `127.0.0.1`, that lives as long as the run and logs
+  and keeps nothing. The run's environment holds a random placeholder for
+  each repository's token and a random capability that opens the relay
+  (`gitEnv` in `core/src/workspace/sandbox.ts`), never argv or a file in
+  the workspace. git reaches each repository's URL through the relay as
+  its HTTPS proxy (`http.<url>.proxy` through git's `GIT_CONFIG_*`
+  environment), with a credential helper per repository URL
+  (`useHttpPath`) that gives the placeholder, so another repository on the
+  same host gets nothing. For a Git host the relay ends TLS itself, with a
+  certificate from an authority made in memory for this run
+  (`core/src/workspace/certs.ts`, at `/run/lyrica/certs/run.pem` in the
+  run), and swaps the placeholder for the token only on that repository's
+  Git paths (`/<owner>/<name>.git/…`) and its host's API (`api.github.com`
+  and `uploads.github.com` for GitHub, `/api/` on GitHub Enterprise,
+  `/api/v1/` on Forgejo and Gitea). A placeholder anywhere else is
+  refused, and a request without one goes as it is. The relay goes only
+  to hosts the run's network reaches, and with internet on it also passes
+  through, untouched, gh's downloads (`*.githubusercontent.com`,
+  `codeload.github.com`, `*.blob.core.windows.net`); everything else is
+  refused. A run gets a repository's token only when the thread's pool is
+  the account's, the thread has the repository, and the run can reach the
+  host: internet on, or the host as an allowed host (`api.github.com` too,
+  for `gh` on GitHub) (`Workspace.credentialsFor`). A command that reads
+  the environment learns only values that die with the run; what a token
+  can do on its own host is still up to the token, so tokens stay
   fine-grained, for the repositories she works on, with no admin rights.
-  What she sees has them hidden: `bash` output, `read` and `web_fetch`
-  pages show "[credential hidden]" for any value of a variable named for a
-  token in the run's environment (`Sandbox.secrets`, `secretMasker`;
-  `edit` reads the file as it is), and a `web_search`, `web_fetch` or MCP
-  call whose input holds one is refused. This doesn't stop an encoded
-  copy.
+  What she sees has them hidden too: `bash` output, `read` and `web_fetch`
+  pages show "[credential hidden]" for a run's tokens and placeholders
+  (`Sandbox.secrets`, `secretMasker`; `edit` reads the file as it is), and
+  a `web_search`, `web_fetch` or MCP call whose input holds one is
+  refused.
 - **`gh` and `tea`** are wrapped (`core/src/workspace/forge.sh`, mounted at
   `/run/lyrica/bin`, first on the PATH of a run with repositories): each
-  takes the token of the account whose repository the current clone's
-  `origin` is, so two accounts on one host never mix, and none outside such
-  a clone. `tea` reads logins only from a file, so its wrapper writes one
+  takes the placeholder of the account whose repository the current
+  clone's `origin` is, so two accounts on one host never mix, and none
+  outside such a clone, and goes through the run's relay
+  (`HTTPS_PROXY`), trusting the run's authority (`SSL_CERT_DIR`) as well
+  as the system's. `tea` reads logins only from a file, so its wrapper writes one
   under `/tmp`, the run's own tmpfs, gone when the run ends. There is no
   model-facing tool for a forge beyond `add_repository`. On NixOS the
   sandbox's tools include `git`, `gh`, `tea` and Node 22; on Debian,
@@ -608,21 +628,21 @@ it adds no tool.
   it: a general thread that isn't local-only, itself or any ancestor
   (lyricad's `restricted` option; without it, never), with the switch on,
   a saved token, and a network that reaches `api.anthropic.com`.
-- **The token never enters the sandbox.** Such a run gets its own relay
-  (`openClaudeRelay`, `core/src/workspace/claude-relay.ts`): a server in
-  `lyricad` on a random loopback port, forwarded into the run's sandbox
-  like a machine on `127.0.0.1`, that lives as long as the run. The run's
-  environment has `ANTHROPIC_BASE_URL` pointing at it and, as
-  `CLAUDE_CODE_OAUTH_TOKEN`, a random capability for this run only. The
-  relay refuses any other bearer and any path outside `/v1/`, drops the
-  run's own keys, swaps in the user's token, and passes the request to
-  `https://api.anthropic.com`, logging and keeping nothing. A command that
-  reads the environment learns only a capability that dies with the run.
+- **The token never enters the sandbox.** Such a run gets the run's relay
+  (Credentials, under Git accounts and repositories). Its environment has
+  `ANTHROPIC_BASE_URL` pointing at the relay and, as
+  `CLAUDE_CODE_OAUTH_TOKEN`, the run's capability. The relay refuses any
+  other bearer and any path outside `/v1/`, drops the run's own keys,
+  swaps in the user's token, and passes the request to
+  `https://api.anthropic.com`.
 - **The wrapper** (`core/src/workspace/claude.sh`) is at
   `/run/lyrica/bin/claude`, first on the run's PATH. It runs the real program with `CLAUDE_CONFIG_DIR` at
-  `/workspace/.claude`, in the thread's folder in the encrypted home
-  workspace, so its transcripts stay encrypted and `claude -c` continues
-  the thread's last job. It drops any other Anthropic key, turns off
+  `/run/lyrica/claude`, the thread's own folder for it in the encrypted
+  home workspace (`Workspace.claudeDir`, `claude/<thread>` there; a
+  subagent shares its parent's), outside the folder its children and
+  read-only subagents see, so its transcripts stay encrypted and private
+  to the thread, `claude -c` continues the thread's last job, and the
+  sweep removes it with the thread. It drops any other Anthropic key, turns off
   Claude Code's update checks and telemetry, and skips its permission
   prompts (`--permission-mode bypassPermissions`, as the owner chose): the
   sandbox is the fence, and her `bash` call already went through the
