@@ -556,7 +556,10 @@ A thread's address may carry what the panel beside it shows:
   the row; the user's data stays, they are logged out and told at their
   next visit) and their allowed folders, Sleep (**Sleep time**, `type="time"`, one Save;
   `GET`/`PUT …/admin/sleep`), Start unlocked (saving the `self.db`
-  passphrase), **Tailnet**, Web access, **Web search** (`src/WebSearch.tsx`:
+  passphrase, and **Change passphrase…**: Current passphrase, New passphrase and
+  New passphrase again stacked in place, hiding Passphrase and Save meanwhile, `POST …/admin/passphrase/change`; a 403 says "That
+  isn't the current passphrase.", a 429 "Too many tries. Try again in <n> min."
+  with the button disabled; the fields clear after a success or Cancel), **Tailnet**, Web access, **Web search** (`src/WebSearch.tsx`:
   **SearXNG address** in mono, without its password (a basic-auth password
   is kept when the user@host is unchanged), one Save, and Reachable or Unreachable as a
   dot and a word, what failed as its tooltip; `GET`/`PUT …/admin/web-search`),
