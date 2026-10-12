@@ -29,7 +29,11 @@ minutes on a private repository are billed past the plan's allowance.
 - The host-stack job removes what it installed (the stack and its volumes,
   the egress unit and rules, Docker's daemon.json) when it ends.
 - One runner runs one job at a time. A new push to a pull request
-  cancels its older runs; every commit on main gets a full run. A weekly cron job clears Docker images
+  cancels its older runs; every commit on main gets a full run, except
+  that a change only to `docs/` or the top-level Markdown files runs none
+  of the check, nix and host-stack jobs: a first `changes` job reads the
+  diff and they show as skipped, which counts as passed. `persona/` is her
+  seed, so it always runs them, and so does a diff that can't be read. A weekly cron job clears Docker images
   and build cache unused for a week.
 
 ## Where it sits on the network
