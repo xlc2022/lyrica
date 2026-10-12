@@ -1270,14 +1270,22 @@ export function apiRoutes(d: Lyricad): Route[] {
       const thread = owner(d, user, (o) => {
         const item = o[pool].getItem(r.params.itemId!);
         if (!item || item.dismissed) throw new HttpError(404, "no such item");
-        if (item.thread) throw new HttpError(409, "a chat was already started from this item");
+        if (item.thread) {
+          const existing = o[pool].getThread(item.thread);
+          if (!existing) throw new HttpError(409, "the chat started from this item is gone");
+          return existing;
+        }
         const th = o[pool].createThread({ interface: "web" });
         s().workspace.settings(user.id).startThread(th.id, pool);
         o[pool].startItem(item.id, th.id);
         return th;
       });
       // She speaks first, with the item in her context (and in no other thread's).
-      await s().host.get(user.id, pool, thread.id).send(OPENING);
+      // She has answered when an assistant entry with text is stored (an aborted, empty one doesn't count).
+      const replied = owner(d, user, (o) => !!o[pool].lastEntry(thread.id, ["assistant"])?.text?.trim());
+      if (!replied && !s().host.busy(user.id, pool, thread.id)) {
+        await s().host.get(user.id, pool, thread.id).send(OPENING);
+      }
       return owner(d, user, (o) => summary(d, user, pool, o[pool], o[pool].getThread(thread.id)!, []));
     }),
     route("DELETE", `${u}/sleep/:pool/items/:itemId`, (r) => {
