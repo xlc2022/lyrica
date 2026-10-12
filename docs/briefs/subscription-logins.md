@@ -76,6 +76,10 @@ and the provider, so this is wiring, not a client of our own (principle 3).
   again.
 - `PlanCredentials`: Pi's refresh written back to `user.db`, serialised per
   plan; a refused refresh signs the plan out.
+- OpenRouter sign-in (added 2026-10-12 at the owner's request): not a plan.
+  Its PKCE flow hands back a user-controlled API key, so it ends as a plain
+  cloud endpoint with no refresh. Allowed: OpenRouter issues the key for
+  exactly this. See docs/models.md, "OpenRouter sign-in".
 - A plan's usage limit skips it for an hour, so the next turn falls back;
   the turn that hit it ends with the provider's message.
 - Tests (`extension/test/plans.test.ts`): never in a private or local-only
