@@ -159,8 +159,9 @@ untested until it is.
    host's management API and `manageHost`'s allowed paths.
 7. **One model-facing tool, `models`** (principle 8's budget is thirty;
    with `models` she has about 25, counting Pi's four, the memory three,
-   `delegate` and `ask_parent`, `threads`, `react`, `image`, the sleep
-   five, `propose_plan`, `proxmox`, `add_repository` and the planned
+   `delegate` and `ask_parent`, `threads`, `react`, `image`, `web_search`,
+   `web_fetch`, the sleep five, `propose_plan`, `proxmox`, `add_repository`
+   and the planned
    calendar and sort; the build adds `proxmox`, `add_repository` and
    `models` to docs/contracts.md's Tools list, which misses the first two
    today):
@@ -168,26 +169,32 @@ untested until it is.
    host's fit estimate as numbers; `propose { offering, stretch,
    contextLength }` posts an approval card in the thread ("Serve Qwen3.8-27B
    with 1,010,000 tokens of context? It reloads, and its KV cache grows to
-   17 GB.", Allow primary), which applies through `setServingSettings` and
+   17 GB.", the numbers in mono as every number is, Allow primary), which
+   applies through `setServingSettings` and
    `reloadModel` when the host is idle. Absent in private and local-only
    threads, and for users who aren't the copy's administrator or owner;
    its result in her turn is numbers and the card, never the card's prose.
 8. **The Serving tab** (Web UI 2 builds it with the Models page; docs/ux.md
    rules): two rows after Context length, **Stretch** (a number field with
    its maximum, "of 8", unit ×) and **Original context** (tokens, placeholder
-   the trained length); Context length's maximum becomes the stretched one
-   ("of 1,048,576"). A recommended value shows as the field's placeholder
-   with the one small word **recommended** after its label, and a **Look up**
-   link in the section's eyebrow line fills them (a popover with one field,
-   Repository, when the host has none to go on). One **Reset** per section
-   as the rules say; Save, or Save and reload, at the foot. The tooltip on
-   Stretch: "YaRN. Applies to every request; Qwen suggests it only when
-   long contexts are needed." The Models area mockup gets the two rows (UI
-   review).
+   the trained length); Context length's maximum becomes the stretched one,
+   in the row's existing format ("of 1,048k", as it shows "of 128k" today).
+   A recommended value shows as the field's placeholder with the one small
+   word **recommended** after its label while the field is empty; once a
+   person types, the usual word ("yours") takes its place and the
+   recommendation stays as the placeholder, so the word marks a value's
+   source and never becomes a caption. A **Look up** link in the section's
+   eyebrow line beside Reset fills them (a popover with one field,
+   **Repository**, when the host has none to go on). One **Reset** per
+   section as the rules say; Save, or Save and reload, at the foot. The
+   tooltip on Stretch: "YaRN. Applies to every request, so publishers
+   suggest it only for long contexts." The Models area mockup gets the two
+   rows (UI review).
 9. **Docs**, in the same PR: docs/models.md "Host management", host/API.md,
    docs/contracts.md (`ModelSettings`, `servingSettings`, the `models`
    tool), docs/ux.md
-   §4 names (Stretch, Original context, Look up, recommended) and §6 (Serving
+   §4 names (Stretch, Original context, Look up, Repository, recommended)
+   and §6 (Serving
    tab rows), and the tests: `validate` accepts and caps `stretch`, presets
    and `argv()` carry the flags, a hybrid config.json counts 16 layers, the
    card parser against three fixture cards written for the test (not copied
