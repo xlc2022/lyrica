@@ -36,6 +36,9 @@ interface Loaded {
   ready: boolean;
   active: number;
   lastUsed: number;
+  warmed: boolean;
+  /** Actual load delta, independent of a larger measurement saved from an earlier run. */
+  loadVram?: Record<number, number>;
 }
 
 interface Job {
@@ -90,6 +93,8 @@ export class Scheduler {
   private pumping = false;
   private again = false;
   private changing = 0;
+  /** Invalidates GPU-delta attribution when another request or memory change starts. */
+  private memoryEpoch = 0;
   runState: HostRunState = "running";
   /** What went wrong the last time the host paused, restarted or reset: shown in the status. */
   problems: string[] = [];
@@ -207,6 +212,10 @@ export class Scheduler {
    * turn in the queue.
    */
   async run<T>(model: TextModel, priority: Priority, fn: (url: string) => Promise<T>, gpu?: number, signal?: AbortSignal): Promise<T> {
+    return this.runRequest(model, priority, fn, gpu, signal);
+  }
+
+  private async runRequest<T>(model: TextModel, priority: Priority, fn: (url: string) => Promise<T>, gpu?: number, signal?: AbortSignal, measure = true): Promise<T> {
     if (this.runState === "paused" || this.runState === "pausing") throw paused();
     if (this.runState === "restarting") throw restarting();
     if (model.remoteCode) throw new HostError(403, "refused", "This model needs trust_remote_code, which the host never allows.");
@@ -228,8 +237,32 @@ export class Scheduler {
       this.queue.sort((a, b) => RANK[a.priority] - RANK[b.priority] || a.seq - b.seq);
       this.kick();
     });
+    const epoch = this.memoryEpoch;
+    const exclusive = () => this.changing === 0 && this.memoryEpoch === epoch &&
+      [...this.loaded.values()].every((l) => l === loaded || l.active === 0);
+    const before = measure && !loaded.warmed && loaded.loadVram && model.server !== "vllm" && loaded.option.gpus.length && exclusive()
+      ? await this.o.monitor.read().catch(() => null) : null;
     try {
-      return await fn(this.backend(model).url(model));
+      const result = await fn(this.backend(model).url(model));
+      if (before && exclusive()) {
+        const after = await this.o.monitor.read().catch(() => null);
+        if (after && exclusive() && this.loaded.get(model.id) === loaded &&
+          loaded.option.gpus.every((g) => before.some((x) => x.index === g) && after.some((x) => x.index === g))) {
+          const measured = { ...loaded.vram };
+          for (const g of loaded.option.gpus) {
+            const start = before.find((x) => x.index === g);
+            const end = after.find((x) => x.index === g);
+            if (!start || !end) continue;
+            measured[g] = Math.max(measured[g] ?? 0, (loaded.loadVram![g] ?? 0) + end.used - start.used);
+          }
+          loaded.vram = measured;
+          loaded.warmed = true;
+          this.o.state.update((s) => {
+            s.vram[`${model.id}@${placementKey(loaded.option)}`] = measured;
+          });
+        }
+      }
+      return result;
     } finally {
       loaded.active--;
       loaded.lastUsed = this.now();
@@ -374,6 +407,7 @@ export class Scheduler {
   }
 
   private begin(job: Job, l: Loaded): void {
+    this.memoryEpoch++;
     l.active++;
     l.lastUsed = this.now();
     clearTimeout(job.timer);
@@ -390,8 +424,9 @@ export class Scheduler {
   private async load(model: TextModel, o: Option, settings = this.settings(model)): Promise<void> {
     const before = Object.fromEntries((await this.readGpus()).map((g) => [g.index, g.used]));
     const key = `${model.id}@${placementKey(o)}`;
-    const entry: Loaded = { model, option: o, vram: { ...this.needOf(model, o) }, settings, ready: false, active: 0, lastUsed: this.now() };
+    const entry: Loaded = { model, option: o, vram: { ...this.needOf(model, o) }, settings, ready: false, active: 0, lastUsed: this.now(), warmed: false };
     this.loaded.set(model.id, entry);
+    this.memoryEpoch++;
     this.changing++;
     try {
       await this.backend(model).load(model, o, settings);
@@ -402,12 +437,15 @@ export class Scheduler {
       this.changing--;
     }
     entry.ready = true;
-    // Measured per GPU on the first load with this placement. vLLM's share is what it reserves.
-    if (this.o.state.get().vram[key] === undefined && model.server !== "vllm" && o.gpus.length) {
+    // Measure each load; retain larger observations from first-use buffers. vLLM reserves its share.
+    if (model.server !== "vllm" && o.gpus.length) {
       const after = await this.readGpus();
       const measured: Record<number, number> = {};
       for (const g of o.gpus) measured[g] = (after.find((x) => x.index === g)?.used ?? 0) - (before[g] ?? 0);
       if (Object.values(measured).every((n) => n > 0)) {
+        entry.loadVram = { ...measured };
+        const saved = this.o.state.get().vram[key];
+        for (const g of o.gpus) measured[g] = Math.max(measured[g]!, saved?.[g] ?? 0);
         entry.vram = measured;
         this.o.state.update((s) => {
           s.vram[key] = measured;
@@ -418,6 +456,7 @@ export class Scheduler {
   }
 
   private async unload(l: Loaded): Promise<void> {
+    this.memoryEpoch++;
     this.changing++;
     try {
       await this.backend(l.model).unload(l.model);
@@ -430,7 +469,7 @@ export class Scheduler {
 
   /** Loads a model now (the load API), queued like a chat request. */
   async loadNow(model: TextModel): Promise<void> {
-    await this.run(model, "chat", async () => {});
+    await this.runRequest(model, "chat", async () => {}, undefined, undefined, false);
   }
 
   async unloadNow(id: string): Promise<void> {
