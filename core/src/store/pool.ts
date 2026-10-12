@@ -382,6 +382,51 @@ export class PoolReader {
       .map((r) => this.get(r.id)!);
   }
 
+  /**
+   * One layer, newest change first, for the memory browser's browse pane.
+   * `before` is an `updatedAt` to page from; `about` keeps notes with that
+   * tag and `origin` those of one origin. Archived memories are left out.
+   */
+  listMemories(kind: "note" | "page" | "journal" | "wake", opts: { limit: number; before?: string; about?: string; origin?: Origin }): Item[] {
+    const limit = Math.max(1, opts.limit);
+    const before = opts.before ?? null;
+    let rows: { id: string }[];
+    switch (kind) {
+      case "note":
+        rows = this.db.prepare(`SELECT id FROM notes WHERE archived = 0 AND (@before IS NULL OR updated_at < @before)
+          AND (@origin IS NULL OR origin = @origin) AND (@about IS NULL OR (', ' || about || ', ') LIKE ('%, ' || @about || ', %'))
+          ORDER BY updated_at DESC LIMIT @limit`).all({ before, origin: opts.origin ?? null, about: opts.about ?? null, limit }) as { id: string }[];
+        break;
+      case "page":
+        rows = this.db.prepare(`SELECT 'p:' || slug AS id FROM pages WHERE archived = 0 AND (@before IS NULL OR updated_at < @before)
+          AND (@origin IS NULL OR origin = @origin) ORDER BY updated_at DESC LIMIT @limit`).all({ before, origin: opts.origin ?? null, limit }) as { id: string }[];
+        break;
+      case "journal":
+        rows = opts.origin && opts.origin !== "sleep" ? [] : this.db.prepare("SELECT id FROM journal WHERE (@before IS NULL OR updated_at < @before) ORDER BY updated_at DESC LIMIT @limit")
+          .all({ before, limit }) as { id: string }[];
+        break;
+      case "wake":
+        rows = opts.origin && opts.origin !== "sleep" ? [] : this.db.prepare("SELECT 'wake' AS id FROM wake WHERE (@before IS NULL OR updated_at < @before)").all({ before }) as { id: string }[];
+        break;
+    }
+    return rows.map((r) => this.get(r.id)!).filter(Boolean);
+  }
+
+  /** The tags (`about` words) of the pool's notes, most used first. */
+  aboutWords(): { about: string; count: number }[] {
+    const counts = new Map<string, number>();
+    for (const r of this.db.prepare("SELECT about FROM notes WHERE archived = 0 AND about != ''").all() as { about: string }[]) {
+      for (const a of r.about.split(", ")) if (a) counts.set(a, (counts.get(a) ?? 0) + 1);
+    }
+    return [...counts].map(([about, count]) => ({ about, count })).sort((a, b) => b.count - a.count || a.about.localeCompare(b.about));
+  }
+
+  /** How many pages and notes she uses (archived ones left out). */
+  counts(): { pages: number; notes: number } {
+    const n = (sql: string) => (this.db.prepare(sql).get() as { n: number }).n;
+    return { pages: n("SELECT count(*) AS n FROM pages WHERE archived = 0"), notes: n("SELECT count(*) AS n FROM notes WHERE archived = 0") };
+  }
+
   /** Notes and pages a user added. */
   userIntroduced(): string[] {
     return (this.db.prepare(
