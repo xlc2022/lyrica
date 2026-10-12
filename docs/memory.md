@@ -79,7 +79,7 @@ Tables in a pool database (`core/src/store/schema.ts`, one line of reason
 each): `threads`, `entries`, `notes`, `pages`, `wake`, `journal`,
 `revisions`, `citations`, `tombstones`, `sleep_runs`, `sleep_items`, and the
 FTS5 table `search`. That file is step 1; every later change is a numbered
-pool step in `core/src/migrations.ts` (step 2 adds `entries.reactions`), never
+pool step in `core/src/migrations.ts` (step 2 adds `entries.reactions`, step 3 the `wakeups` table), never
 DDL in the memory module.
 `citations` and `search` are derived from the text. Deleting runs with
 `secure_delete` on and merges the index, so removed text doesn't linger in

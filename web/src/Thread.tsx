@@ -1,6 +1,6 @@
 // One thread: header with its badges, the conversation, and the composer.
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { del, get, patch, post, put, threadPath, u, HttpError, type MachineInfo, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary } from "./api.ts";
+import { del, get, patch, post, put, threadPath, u, HttpError, type MachineInfo, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type WakeupInfo } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { hasConsequences, jumpTo, PinnedBadge, RemovalConfirm, useUndo, type Rewinder } from "./Rewind.tsx";
 import { SHOW_EVENT, SHOW_KEY, take, type ShowRequest } from "./links.ts";
@@ -11,7 +11,7 @@ import { Conversation, MessageBox } from "./Messages.tsx";
 import { Composer } from "./Composer.tsx";
 import { ModelBadge, SettingsDrawer } from "./Settings.tsx";
 import { Crumbs, Main, PanelButtons, type ShellContext } from "./Shell.tsx";
-import { ErrorText, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { ErrorText, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
 import { stopReading } from "./Voice.tsx";
 
 export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer }: {
@@ -67,6 +67,10 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
     get<ThreadSettings>(`${base}/settings`).then((s) => { if (n === latest.current && !inFlight.current) settings.set(s); }, () => {});
   }, [base, settings.set]);
   useEffect(() => { if (t.live.reload || t.live.settings) refreshSettings(); }, [t.live.reload, t.live.settings, refreshSettings]);
+  // Wake-ups set, removed or fired arrive on the stream with the whole list.
+  const setWakeups = useCallback((wakeups: WakeupInfo[]) => { if (settings.data) settings.set({ ...settings.data, wakeups }); }, [settings.data, settings.set]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (t.live.wakeups) setWakeups(t.live.wakeups); }, [t.live.wakeups]);
   // A rewind may take pinned messages with it.
   useEffect(() => { if (t.live.reload) pins.reload(); }, [t.live.reload, pins.reload]);
   useEffect(() => {
@@ -208,6 +212,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
             {s && !s.subagent && !s.child && <GroupPicker ctx={ctx} base={base} summary={s} onChange={(x) => { summary.set(x); refreshThreads(); }} />}
             {s?.project && overview.data && <ThreadsFact userId={userId} overview={overview.data} phone={phone} />}
             {s?.project && overview.data && !phone && <span className="tokens"><span className="num">{tokenCount(overview.data.tokens)}</span> tokens</span>}
+            {!!settings.data?.wakeups?.length && <WakeupsFact base={base} wakeups={settings.data.wakeups} onChange={setWakeups} />}
             {settings.data?.localOnly && pool === "general" && <span className="badge"><span className="k local">local-only</span></span>}
             {settings.data?.grants.map((g) => (
               <span key={g.path} className="badge folder" title={g.path}>{g.path} <span className="muted">{g.writable ? "rw" : "ro"}</span></span>
@@ -302,6 +307,44 @@ function GroupPicker({ ctx, base, summary, onChange }: { ctx: ShellContext; base
             <input aria-label="New group" placeholder="New group" value={name} onChange={(e) => setName(e.target.value)} />
             <button type="submit" className="sm" disabled={busy || !name.trim()}>Add</button>
           </form>
+          <ErrorText error={error} />
+        </div>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Her wake-ups waiting in this thread (docs/ux.md §6): Wake-up and the next time in the facts line,
+ * a popover listing each by its time with Remove. Never her note.
+ */
+function WakeupsFact({ base, wakeups, onChange }: { base: string; wakeups: WakeupInfo[]; onChange: (w: WakeupInfo[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLSpanElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(anchor, open, close);
+  const [run, busy, error] = useAction();
+  const remove = (id: number) => run(async () => {
+    const left = await del<WakeupInfo[]>(`${base}/wakeups/${id}`);
+    onChange(left);
+    if (!left.length) close();
+  });
+  return (
+    <span className="picker-anchor" ref={anchor}>
+      <button type="button" className="link" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}>
+        Wake-up <span className="num">{wakeTime(wakeups[0]!.dueAt)}</span> <span className="caret" aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <div className="picker wake-pop" role="dialog" aria-label="Wake-ups">
+          {wakeups.map((w) => {
+            const at = wakeTime(w.dueAt);
+            return (
+              <div key={w.id} className="wake-item">
+                <span className="num">{at}</span>
+                <button type="button" className="icon sm" aria-label={`Remove wake-up at ${at}`} title="Remove" disabled={busy} onClick={() => void remove(w.id)}><Icon name="close" /></button>
+              </div>
+            );
+          })}
           <ErrorText error={error} />
         </div>
       )}
