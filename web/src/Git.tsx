@@ -41,8 +41,7 @@ function facts(a: GitAccountInfo) {
 }
 
 /** The dialog's sentence for a private account whose host is outside her network, ending in its question. */
-const offNetworkSentence = (name: string, question: string) =>
-  `${name}'s host is outside your network, so a private thread's code would leave it. ${question}`;
+const offNetworkSentence = (name: string) => `${name}'s host is outside your network, so a private thread's code would leave it.`;
 
 export function GitAccountsSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
@@ -198,7 +197,7 @@ function GitDrawer({ userId, account, onSaved, onRemoved, onChanged, onClose }: 
           onConfirm={() => { setRemoving(false); void run(async () => { await del(u(userId, "git-accounts", account.name)); onRemoved(); }); }} />
       )}
       {offNetwork && (
-        <ConfirmDialog title="Outside your network" sentence={offNetworkSentence(name, offNetwork === "use" ? "Use it anyway?" : adding ? "Add it anyway?" : "Save it anyway?")}
+        <ConfirmDialog title="Use a host outside your network?" sentence={offNetworkSentence(name)}
           confirm={offNetwork === "use" ? "Use anyway" : adding ? "Add anyway" : "Save anyway"} onCancel={() => setOffNetwork(undefined)}
           onConfirm={() => {
             const which = offNetwork;
@@ -303,7 +302,7 @@ export function Repositories({ userId, pool, granted, onChange }: { userId: stri
                   <div key={a.name} className="repo-group" role="group" aria-label={a.name}>
                     <div className="eyebrow">{a.name} <span className="muted small">· {a.host}</span></div>
                     {a.kind === "other" && !pasted.length ? <p className="muted small">Paste its URL.</p>
-                      : typeof list === "string" ? <p className="error small">{list}</p>
+                      : typeof list === "string" ? <p className="muted small">{/rejected/i.test(list) ? "Token rejected" : /outside your network/i.test(list) ? "Off network" : "Unreachable"}, see Git accounts.</p>
                       : list === undefined ? <p className="muted small">Asking {a.host}…</p>
                       : !list.length ? <p className="muted small">No repository matches.</p>
                       : list.map((r) => <RepoItem key={r.name} r={r} granted={granted} onAdd={add} />)}

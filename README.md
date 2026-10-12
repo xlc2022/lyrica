@@ -40,8 +40,8 @@ The repository was rebuilt from scratch starting 2026-10-09.
 - `lyricad`, which hosts every conversation, and a web UI for threads,
   projects, files, machines, voice, notifications and settings.
 - Sleep, which writes notes, pages, WAKE and the journal.
-- Delegation and child threads, modes, and remote machines over SSH or
-  Proxmox.
+- Delegation and child threads, modes, remote machines over SSH or
+  Proxmox, and Git accounts with project repositories.
 - Model and speech hosts on GPU machines.
 - Releases with automatic rollback, and numbered database migrations.
 
