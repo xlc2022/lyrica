@@ -13,10 +13,11 @@ in {
 
     checkout = lib.mkOption {
       type = lib.types.str;
-      default = "/opt/lyrica";
+      default = "/srv/lyrica-host";
       description = ''
         The clone of the Lyrica repository host/install.sh runs from. The
         egress unit runs its host/egress.sh with the address in host/.env.
+        Never /opt/lyrica, which is lyricad's own (releases and repo.git).
       '';
     };
 
@@ -43,7 +44,13 @@ in {
   };
 
   config = lib.mkIf cfg.enable {
-    # Docker with its iptables firewall backend, which egress.sh's rules need.
+    assertions = [{
+      assertion = !(lib.hasPrefix "/opt/lyrica/" "${cfg.checkout}/");
+      message = "services.lyrica-host.checkout must not be in /opt/lyrica: lyricad keeps its releases and repo.git there.";
+    }];
+
+    # Docker, whose default iptables firewall backend egress.sh's rules need
+    # (install.sh checks it); the NixOS firewall stays on iptables beside it.
     virtualisation.docker.enable = true;
     networking.nftables.enable = lib.mkDefault false;
 
@@ -59,7 +66,12 @@ in {
     # What install.sh runs besides Docker.
     environment.systemPackages = with pkgs; [ git curl iptables iproute2 kmod gawk ];
 
-    systemd.tmpfiles.rules = [ "d ${cfg.modelsDir} 0755 root root -" ];
+    # lyrica/ too, so install.sh needn't be root to make it; the fetch
+    # container takes it over (10001) on its first run.
+    systemd.tmpfiles.rules = [
+      "d ${cfg.modelsDir} 0755 root root -"
+      "d ${cfg.modelsDir}/lyrica 0755 10001 10001 -"
+    ];
 
     # As host/lyrica-host-egress.service, which install.sh installs on other
     # systems: host-api's rules before Docker starts, after every reboot.

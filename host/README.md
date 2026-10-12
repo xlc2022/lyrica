@@ -47,13 +47,15 @@ lyrica.nixosModules.model-host
 {
   services.lyrica-host.enable = true;
   services.lyrica-host.gpu = "nvidia";      # or "amd", or "none"
-  services.lyrica-host.checkout = "/opt/lyrica"; # where you clone the repo
+  services.lyrica-host.checkout = "/srv/lyrica-host"; # where you clone the repo
   nixpkgs.config.allowUnfree = true;        # NVIDIA's driver is unfree
+  users.users.you.extraGroups = [ "docker" ]; # the user who runs install.sh
 }
 ```
 
-Then `nixos-rebuild switch`, clone the repo to `checkout`, and run
-`host/install.sh` from it as on Debian. With `gpu = "nvidia"`, the driver
+Then `nixos-rebuild switch`, clone the repo to `checkout` (never
+`/opt/lyrica`, which is lyricad's), and run `host/install.sh` from it as on
+Debian. With `gpu = "nvidia"`, the driver
 uses NVIDIA's open kernel modules (Turing or newer; set
 `hardware.nvidia.open = false` for older cards) and Docker reaches the GPUs
 through the container toolkit's CDI devices: `install.sh` sees the CDI spec
