@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { createServer as createHttpServer } from "node:http";
 import { connect as connectTcp, createServer, type Server } from "node:net";
 import { lookup } from "node:dns/promises";
 import { networkInterfaces, tmpdir } from "node:os";
@@ -75,14 +76,47 @@ describe.skipIf(!runnable)("the sandbox", () => {
   });
 
   it("puts the gh and tea wrappers first on a run with repositories, and tea's login only on that run's /tmp", async () => {
-    const env = gitEnv([{ name: "li/home", account: { kind: "forgejo", host: "forge.lan", account: "li", token: "forge-token" } }]);
+    const env = gitEnv([{ name: "ada/home", account: { kind: "forgejo", host: "forge.lan", account: "ada", token: "forge-token" } }]);
     const git = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], env });
-    const r = await sh("command -v gh tea; git init -q home && git -C home remote add origin https://forge.lan/li/home.git && cd home && "
+    const r = await sh("command -v gh tea; git init -q home && git -C home remote add origin https://forge.lan/ada/home.git && cd home && "
       + "{ tea 2>/dev/null; cat /tmp/lyrica-forge/tea/config.yml; }; cd .. && rm -rf home", git);
     expect(r.out).toContain("/run/lyrica/bin/gh\n/run/lyrica/bin/tea\n");
     expect(r.out).toContain("token: 'forge-token'");
     expect((await sh("ls /tmp/lyrica-forge 2>&1 || true", git)).out).toContain("No such file");
     expect((await sh("command -v gh || echo NONE")).out).not.toContain("/run/lyrica");
+  });
+
+  it("gives a run with Claude Code the wrapper and its relay, and never the token", async () => {
+    const TOKEN = "sk-ant-oat01-made-up-for-tests-only";
+    const seen: string[] = [];
+    const upstream = createHttpServer((req, res) => { seen.push(String(req.headers.authorization)); req.resume(); res.end("ok"); });
+    await new Promise<void>((r) => upstream.listen(0, "127.0.0.1", r));
+    try {
+      const claude = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], claude: { token: TOKEN, upstream: `http://127.0.0.1:${(upstream.address() as { port: number }).port}` } });
+      const r = await sh('command -v claude; env; curl -s -H "authorization: Bearer $CLAUDE_CODE_OAUTH_TOKEN" "$ANTHROPIC_BASE_URL/v1/messages"', claude);
+      expect(r.out).toContain("/run/lyrica/bin/claude\n");
+      expect(r.out).toMatch(/ANTHROPIC_BASE_URL=http:\/\/127\.0\.0\.1:\d+/);
+      expect(r.out).not.toContain(TOKEN);
+      expect(r.out.endsWith("ok")).toBe(true);
+      expect(seen).toEqual([`Bearer ${TOKEN}`]);
+    } finally {
+      upstream.close();
+    }
+    expect((await sh("command -v claude || echo NONE")).out).not.toContain("/run/lyrica");
+  });
+
+  it("closes a run's Claude Code relay when the run is stopped", async () => {
+    const claude = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], claude: { token: "sk-ant-oat01-made-up-for-tests-only", upstream: "http://127.0.0.1:9" } });
+    const stop = new AbortController();
+    let out = "";
+    const done = claude.ops().bash.exec('echo "$ANTHROPIC_BASE_URL"; sleep 30', "/workspace", {
+      signal: stop.signal, onData: (d) => { out += d.toString(); if (out.includes("\n")) stop.abort(); },
+    }).catch(() => undefined);
+    await done;
+    const base = out.trim();
+    expect(base).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    await new Promise((r) => setTimeout(r, 200));
+    await expect(fetch(`${base}/v1/messages`, { method: "POST", body: "{}" })).rejects.toThrow();
   });
 
   it("mounts a thread's clones at /workspace/repos, read-only for a read-only subagent", async () => {
@@ -359,33 +393,33 @@ describe.skipIf(!homeRunnable)("the home workspace", () => {
   it("is encrypted on disk and readable only while mounted", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
-    await users.authenticate("li", "pw");
+    const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+    await users.authenticate("ada", "pw");
     const workspace = new Workspace(keyring, users, { excludePorts: [] });
-    const thread = { userId: li.id, pool: "general" as const, threadId: "t1" };
+    const thread = { userId: ada.id, pool: "general" as const, threadId: "t1" };
     try {
-      await workspace.mountHome(li.id);
-      expect(await workspace.saveUpload(thread, "letter.txt", Buffer.from("Dear Li, a secret plan"))).toBe("/workspace/uploads/letter.txt");
+      await workspace.mountHome(ada.id);
+      expect(await workspace.saveUpload(thread, "letter.txt", Buffer.from("Dear Ada, a secret plan"))).toBe("/workspace/uploads/letter.txt");
       const ops = workspace.targetFor(thread).ops();
-      expect((await ops.read.readFile("/workspace/uploads/letter.txt")).toString()).toBe("Dear Li, a secret plan");
+      expect((await ops.read.readFile("/workspace/uploads/letter.txt")).toString()).toBe("Dear Ada, a secret plan");
 
-      const cipher = join(users.userDir(li.id), "home.crypt");
+      const cipher = join(users.userDir(ada.id), "home.crypt");
       const all = execFileSync("sh", ["-c", `find ${cipher} -type f -exec cat {} +; find ${cipher}`]).toString("latin1");
       expect(all).not.toContain("secret plan");
       expect(all).not.toContain("letter");
       expect(all).not.toContain("uploads");
     } finally {
-      await workspace.unmountHome(li.id);
+      await workspace.unmountHome(ada.id);
     }
-    expect(readdirSync(workspace.homeDir(li.id))).toEqual([]);
+    expect(readdirSync(workspace.homeDir(ada.id))).toEqual([]);
     expect(() => workspace.targetFor(thread)).toThrow(/not mounted/);
 
     // Mounting again with the same key brings the files back.
-    await workspace.mountHome(li.id);
+    await workspace.mountHome(ada.id);
     try {
       expect((await workspace.targetFor(thread).ops().read.readFile("/workspace/uploads/letter.txt")).toString()).toContain("secret plan");
     } finally {
-      await workspace.unmountHome(li.id);
+      await workspace.unmountHome(ada.id);
     }
   });
 });
@@ -394,17 +428,17 @@ describe.skipIf(!homeRunnable)("a running child thread's folders", () => {
   it("narrow with its parent's: its Files panel and its next sandbox run lose what the parent lost", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
-    await users.authenticate("li", "pw");
+    const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+    await users.authenticate("ada", "pw");
     const workspace = new Workspace(keyring, users, { excludePorts: [] });
-    for (const d of ["rw", "ro"]) workspace.allowedPaths.allow(li, li.id, "general", p(d));
-    const settings = workspace.settings(li.id);
-    const child = { userId: li.id, pool: "general" as const, threadId: "child" };
+    for (const d of ["rw", "ro"]) workspace.allowedPaths.allow(ada, ada.id, "general", p(d));
+    const settings = workspace.settings(ada.id);
+    const child = { userId: ada.id, pool: "general" as const, threadId: "child" };
     settings.setThread("parent", "general", { grants: [{ path: p("rw"), writable: true }, { path: p("ro"), writable: false }] });
     settings.inheritSettings("parent", "child", "general");
     const file = p("rw", "child-thread.txt");
     writeFileSync(file, "kept\n");
-    await workspace.mountHome(li.id);
+    await workspace.mountHome(ada.id);
     try {
       const roots = () => workspace.files(child).roots().map((r) => `${r.path} ${r.writable ? "rw" : "ro"}`);
       expect(roots()).toEqual(["/workspace rw", `${p("rw")} rw`, `${p("ro")} ro`]);
@@ -425,7 +459,7 @@ describe.skipIf(!homeRunnable)("a running child thread's folders", () => {
       expect((await sh(`cat ${file}`, workspace.targetFor(child) as Sandbox)).out).not.toContain("kept");
       expect(workspace.folders(child)).toEqual([p("ro")]);
     } finally {
-      await workspace.unmountHome(li.id);
+      await workspace.unmountHome(ada.id);
     }
   });
 });
@@ -434,23 +468,23 @@ describe.skipIf(!homeRunnable)("a thread's clones", () => {
   it("are its own: a project's thread works in the project's folder but sees only its own repos/, and they go with its folder", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
-    await users.authenticate("li", "pw");
+    const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+    await users.authenticate("ada", "pw");
     const workspace = new Workspace(keyring, users, { excludePorts: [] });
-    const settings = workspace.settings(li.id);
+    const settings = workspace.settings(ada.id);
     settings.inheritSettings("project", "thread", "general");
-    const project = { userId: li.id, pool: "general" as const, threadId: "project" };
+    const project = { userId: ada.id, pool: "general" as const, threadId: "project" };
     const thread = { ...project, threadId: "thread" };
-    await workspace.mountHome(li.id);
+    await workspace.mountHome(ada.id);
     try {
       await sh("mkdir -p repos/lyrica && echo project > repos/lyrica/who && echo shared > notes.txt", workspace.targetFor(project) as Sandbox);
       const seen = await sh("cat notes.txt; ls repos; mkdir -p repos/lyrica && echo thread > repos/lyrica/who", workspace.targetFor(thread) as Sandbox);
       expect(seen.out).toBe("shared\n");
       expect((await sh("cat repos/lyrica/who", workspace.targetFor(project) as Sandbox)).out).toBe("project\n");
-      expect(workspace.reposDir(thread)).toBe(join(workspace.homeDir(li.id), "threads", "thread", "repos"));
+      expect(workspace.reposDir(thread)).toBe(join(workspace.homeDir(ada.id), "threads", "thread", "repos"));
       expect(readFileSync(join(workspace.reposDir(thread), "lyrica", "who"), "utf8")).toBe("thread\n");
     } finally {
-      await workspace.unmountHome(li.id);
+      await workspace.unmountHome(ada.id);
     }
   });
 });
@@ -568,9 +602,9 @@ describe.skipIf(!netRunnable)("the network self-test", () => {
   it("passes on this host, and refuses network modes when a networked sandbox can't start", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
-    await users.authenticate("li", "pw");
-    const thread = { userId: li.id, pool: "general" as const, threadId: "t1" };
+    const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+    await users.authenticate("ada", "pw");
+    const thread = { userId: ada.id, pool: "general" as const, threadId: "t1" };
 
     const ok = new Workspace(keyring, users, { excludePorts: [] });
     expect(await ok.selfTest()).toBeUndefined();
@@ -586,21 +620,21 @@ describe.skipIf(!homeRunnable || !netRunnable)("a thread's switches", () => {
   it("cut the network in either pool", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
-    await users.authenticate("li", "pw");
+    const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+    await users.authenticate("ada", "pw");
     const workspace = new Workspace(keyring, users, { excludePorts: [] });
-    const thread = (pool: "general" | "private", threadId: string) => ({ userId: li.id, pool, threadId });
-    workspace.settings(li.id).setThread("general-off", "general", { internet: false });
-    workspace.settings(li.id).setThread("private-on", "private", { services: true });
+    const thread = (pool: "general" | "private", threadId: string) => ({ userId: ada.id, pool, threadId });
+    workspace.settings(ada.id).setThread("general-off", "general", { internet: false });
+    workspace.settings(ada.id).setThread("private-on", "private", { services: true });
     const reach = async (t: ReturnType<typeof thread>) => (await sh(`exec 3<>/dev/tcp/127.0.0.1/${port} && cat <&3`, workspace.targetFor(t) as Sandbox)).out;
-    await workspace.mountHome(li.id);
+    await workspace.mountHome(ada.id);
     try {
       expect(await reach(thread("general", "general-default"))).not.toContain("hello from the host");
       expect(await reach(thread("general", "general-off"))).not.toContain("hello from the host");
       expect(await reach(thread("private", "private-default"))).not.toContain("hello from the host");
       expect(await reach(thread("private", "private-on"))).toContain("hello from the host");
     } finally {
-      await workspace.unmountHome(li.id);
+      await workspace.unmountHome(ada.id);
     }
   });
 });

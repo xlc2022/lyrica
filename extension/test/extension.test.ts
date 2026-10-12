@@ -8,7 +8,7 @@ const persona: Persona = {
   core: [{ path: "SOUL.md", text: "She is Lyrica." }],
   topics: [{ id: "music", summary: "", triggers: ["song"], priority: 2, text: "Music is structured feeling." }],
 };
-const profile: Profile = { displayName: "Li", pronouns: PRONOUN_PRESETS.she, previousNames: [] };
+const profile: Profile = { displayName: "Ada", pronouns: PRONOUN_PRESETS.she, previousNames: [] };
 
 /** Loads the extension against a fake Pi API and returns a function that runs one turn. */
 function load(thread: ThreadContext, folders: string[] = [], budgets?: Budgets) {
@@ -39,7 +39,7 @@ describe("extension", () => {
     expect(first.result.systemPrompt).toBeUndefined();
     expect(first.options).toMatchObject({ customPrompt: "She is Lyrica." });
     expect(first.options.sections.topics).toContain('<topic id="music">');
-    expect(first.options.sections.user).toBe("You are talking with Li (pronouns: she/her).");
+    expect(first.options.sections.user).toBe("You are talking with Ada (pronouns: she/her).");
     expect(first.result.message).toMatchObject({ customType: "lyrica-turn", display: false });
     expect(first.result.message.content).toContain("<time>");
 
@@ -63,20 +63,20 @@ describe("extension", () => {
     const past = view.own.createThread({ interface: "web" });
     const entry = view.own.appendEntry(past.id, { piId: "x", role: "user", data: {}, text: "my sourdough starter died" });
     view.own.addNotes([{ text: "{user}'s sourdough starter is called Gerald", source: entry }], { author: "lyrica", thread: past.id });
-    view.own.putWake("Li is baking again.", "sleep");
+    view.own.putWake("Ada is baking again.", "sleep");
     view.own.putPage({ slug: "site", title: "Website", summary: "{user}'s site", text: "Built with Astro.", folders: ["/srv/site"] }, "sleep");
     const owner = m.memory.openOwnerView(m.user.id);
     owner.general.addNotes([{ text: "Rye flour works best for my starter" }], { author: `user:${m.user.id}` });
 
     const { options, result, active } = await load(context, ["/srv/site"])("how is the sourdough starter?");
-    expect(options.sections.wake).toBe("Li is baking again.");
-    expect(options.sections.pages).toBe("- [p:site] Website: Li's site");
+    expect(options.sections.wake).toBe("Ada is baking again.");
+    expect(options.sections.pages).toBe("- [p:site] Website: Ada's site");
     expect(options.sections.folders).toContain("Built with Astro.");
     expect(options.sections.notice).toBeUndefined();
     expect(active).toContain("remember");
     const turn = result.message.content as string;
-    expect(turn).toMatch(/<recall>[\s\S]*Li's sourdough starter is called Gerald/);
-    expect(turn).toMatch(/\(note, added by Li\) Rye flour/);
+    expect(turn).toMatch(/<recall>[\s\S]*Ada's sourdough starter is called Gerald/);
+    expect(turn).toMatch(/\(note, added by Ada\) Rye flour/);
     expect(turn).toContain("You last talked");
     expect(JSON.stringify(options.sections)).not.toContain("Gerald");
     expect(threadId).not.toBe(past.id);
@@ -84,14 +84,14 @@ describe("extension", () => {
   });
 
   describe("the page about the user", () => {
-    const about = (text: string) => ({ slug: "about-user", title: "About Li", summary: "who Li is", text });
+    const about = (text: string) => ({ slug: "about-user", title: "About Ada", summary: "who Ada is", text });
 
     it("is in the prompt when it exists, and absent otherwise", async () => {
       const m = await withMemory();
       expect((await load(m.thread().context)("hi")).options.sections.about).toBeUndefined();
       const owner = m.memory.openOwnerView(m.user.id);
       owner.general.putPage(about("{user} can't stand being called sweetie."), `user:${m.user.id}`);
-      expect((await load(m.thread().context)("hi")).options.sections.about).toBe("Li can't stand being called sweetie.");
+      expect((await load(m.thread().context)("hi")).options.sections.about).toBe("Ada can't stand being called sweetie.");
       owner.general.archive("p:about-user", true, `user:${m.user.id}`);
       expect((await load(m.thread().context)("hi")).options.sections.about).toBeUndefined();
       owner.close();
@@ -103,7 +103,7 @@ describe("extension", () => {
       owner.general.putPage(about("General: {user} likes rye bread."), `user:${m.user.id}`);
       owner.private.putPage(about("Private: {user} is seeing a therapist on Tuesdays."), `user:${m.user.id}`);
       const both = (await load(m.thread("private").context)("hi")).options.sections.about!;
-      expect(both).toBe("Private: Li is seeing a therapist on Tuesdays.\n\nGeneral: Li likes rye bread.");
+      expect(both).toBe("Private: Ada is seeing a therapist on Tuesdays.\n\nGeneral: Ada likes rye bread.");
 
       owner.private.putPage(about(`Private: ${"x".repeat(60)}\nmore`), `user:${m.user.id}`);
       const tight = (await load(m.thread("private").context, [], { ...DEFAULT_BUDGETS, about: 70 })("hi")).options.sections.about!;
@@ -121,7 +121,7 @@ describe("extension", () => {
       expect(options.sections.about).toBeUndefined();
       expect(JSON.stringify(options)).not.toContain("therapist");
       owner.general.putPage(about("General: {user} likes rye bread."), `user:${m.user.id}`);
-      expect((await load(m.thread("general").context)("hi")).options.sections.about).toBe("General: Li likes rye bread.");
+      expect((await load(m.thread("general").context)("hi")).options.sections.about).toBe("General: Ada likes rye bread.");
       owner.close();
     });
   });

@@ -13,7 +13,7 @@ import { withModels } from "../core/test/helpers.ts";
 // Scenario: a decision made in one thread of a project is on the project's
 // page the next morning.
 //
-// Thread 1 of the "Garden app" project: Li says "Let's use SQLite, not
+// Thread 1 of the "Garden app" project: Ada says "Let's use SQLite, not
 // Postgres." She notes it. That night, sleep keeps the project's page.
 // Expected: the page states the decision, citing the note, and a later
 // thread of the project has it in context.
@@ -27,7 +27,7 @@ import { withModels } from "../core/test/helpers.ts";
 // writes.
 
 const persona: Persona = { core: [{ path: "SOUL.md", text: "She is Lyrica." }], topics: [] };
-const profile: Profile = { displayName: "Li", pronouns: PRONOUN_PRESETS.she, previousNames: [] };
+const profile: Profile = { displayName: "Ada", pronouns: PRONOUN_PRESETS.she, previousNames: [] };
 
 const dirs: string[] = [];
 afterAll(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -56,12 +56,12 @@ async function converse(thread: ThreadContext, prompt: string, steps: ((context:
 describe("a project's decision carries over to its page", () => {
   it("after a night's sleep, the project's page states a decision noted in one of its threads", async () => {
     const m = await withModels();
-    m.models.setProfile(m.li.id, "cloud", "chat", m.cloudRef);
+    m.models.setProfile(m.ada.id, "cloud", "chat", m.cloudRef);
     const memory = new Memory(m.keyring, m.users);
-    const view = memory.openThreadView(m.li.id, "general");
+    const view = memory.openThreadView(m.ada.id, "general");
     const chat = view.own.createThread({ interface: "web", project: true, title: "Garden app", goal: "Ship the garden app" });
     const { id } = view.own.createThread({ interface: "web", parent: chat.id, child: true });
-    const first: ThreadContext = { user: m.li, pool: "general", interface: "web", threadId: id, view, call: m.models.callContext(m.li.id, "general", id) };
+    const first: ThreadContext = { user: m.ada, pool: "general", interface: "web", threadId: id, view, call: m.models.callContext(m.ada.id, "general", id) };
     await converse(first, "Let's use SQLite, not Postgres.", [
       () => fauxAssistantMessage(fauxToolCall("remember", { notes: [{ text: "{user} decided the garden app uses SQLite, not Postgres" }] }), { stopReason: "toolUse" }),
       () => fauxAssistantMessage("SQLite it is."),
@@ -87,14 +87,14 @@ describe("a project's decision carries over to its page", () => {
       users: m.users, memory, models: m.models, persona: store, proposals: new PersonaProposals(m.keyring.self(), m.users, store), cwd: tmp(),
       hasKey: (u) => m.keyring.hasUserKey(u), limits: { retries: 0 },
     });
-    expect((await sleep.run(m.li.id, "general", "scheduled")).status).toBe("complete");
+    expect((await sleep.run(m.ada.id, "general", "scheduled")).status).toBe("complete");
 
     const next = view.own.createThread({ interface: "web", parent: chat.id, child: true });
     expect(view.own.pageForProject(next.id)?.text).toContain("SQLite, not Postgres");
     // After the night the note is past the watermark: it reaches the next thread through the page.
     expect(view.own.projectNotes(chat.id, view.own.watermark())).toHaveLength(0);
     let seen = "";
-    await converse({ ...first, threadId: next.id, call: m.models.callContext(m.li.id, "general", next.id) }, "Which database are we on?", [
+    await converse({ ...first, threadId: next.id, call: m.models.callContext(m.ada.id, "general", next.id) }, "Which database are we on?", [
       (context) => { seen = context; return fauxAssistantMessage("SQLite."); },
     ]);
     expect(seen).toContain("Decided: SQLite, not Postgres");

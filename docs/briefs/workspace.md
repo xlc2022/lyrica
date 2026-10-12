@@ -102,7 +102,7 @@ the project. Treat escaping the sandbox as the main failure to test against.
 - `lyrica dev` can read, edit and run commands in a granted folder, and is
   refused outside it.
 - `docs/workspace.md` describes what exists, including a short host checklist
-  for Li's LXC container (nesting, FUSE, the packages).
+  for the owner's LXC container (nesting, FUSE, the packages).
 - Any contract change is listed in the pull request description.
 
 ## Handoff notes

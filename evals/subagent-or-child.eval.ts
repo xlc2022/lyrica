@@ -47,13 +47,13 @@ async function setup(real: boolean) {
   const m = await withModels();
   let ref = m.cloudRef;
   if (real) {
-    const ep = m.models.addEndpoint(m.li, { name: "eval", kind: "cloud", baseUrl: process.env.LYRICA_EVAL_BASE_URL!, apiKey: process.env.LYRICA_EVAL_API_KEY });
-    const offered = await m.models.discover(m.li, ep.id);
+    const ep = m.models.addEndpoint(m.ada, { name: "eval", kind: "cloud", baseUrl: process.env.LYRICA_EVAL_BASE_URL!, apiKey: process.env.LYRICA_EVAL_API_KEY });
+    const offered = await m.models.discover(m.ada, ep.id);
     const want = offered.find((o) => o.modelId === process.env.LYRICA_EVAL_MODEL);
     if (!want) throw new Error(`the endpoint doesn't offer ${process.env.LYRICA_EVAL_MODEL}`);
     ref = { offeringId: want.id };
   }
-  m.models.setProfile(m.li.id, "cloud", "chat", ref);
+  m.models.setProfile(m.ada.id, "cloud", "chat", ref);
   const memory = new Memory(m.keyring, m.users);
   const persona = new PersonaStore(m.keyring.self());
   persona.importSeed(fileURLToPath(new URL("../persona", import.meta.url)));
@@ -63,14 +63,14 @@ async function setup(real: boolean) {
 
   /** Her first tool call for the request, or "none". */
   const pick = async (request: string): Promise<string> => {
-    const view = memory.openThreadView(m.li.id, "general");
+    const view = memory.openThreadView(m.ada.id, "general");
     const { id } = view.own.createThread({ interface: "web" });
-    const call: CallContext = m.models.callContext(m.li.id, "general", id);
-    const thread: ThreadContext = { user: m.li, pool: "general", interface: "web", threadId: id, view, call };
+    const call: CallContext = m.models.callContext(m.ada.id, "general", id);
+    const thread: ThreadContext = { user: m.ada, pool: "general", interface: "web", threadId: id, view, call };
     const { session, dispose } = await openThreadSession({
       thread, models: m.models, cwd,
       extensions: [
-        createLyricaExtension(thread, { persona: () => persona.read(), profile: () => m.users.get(m.li.id)!.profile }),
+        createLyricaExtension(thread, { persona: () => persona.read(), profile: () => m.users.get(m.ada.id)!.profile }),
         createDelegateExtension(thread, delegation),
         createThreadsExtension(thread, host),
       ],

@@ -4,34 +4,34 @@ import { deadUrl, fakeOpenAI } from "./fake-openai.ts";
 import { profile, withModels } from "./helpers.ts";
 
 /**
- * Li with: her own cloud endpoint (openrouter) and local one (gpu), a local
+ * Ada with: her own cloud endpoint (openrouter) and local one (gpu), a local
  * "blackwell" and a local "spare" serving the same model, and a cloud
  * "router2" serving it too. Bob is a second, non-administrator user.
  */
 async function setup() {
   const m = await withModels();
-  const { models, li } = m;
+  const { models, ada } = m;
   const bob = await m.users.createUser("bob", "pw", profile("Bob"), { admin: false });
   await m.users.authenticate("bob", "pw");
   const add = async (name: string, kind: "local" | "cloud", list: Record<string, unknown>[], opts: { shared?: boolean } = {}) => {
     const server = await fakeOpenAI({ label: name, models: list });
-    const ep = models.addEndpoint(li, { name, kind, baseUrl: server.baseUrl }, opts);
-    const found = await models.discover(li, ep.id);
+    const ep = models.addEndpoint(ada, { name, kind, baseUrl: server.baseUrl }, opts);
+    const found = await models.discover(ada, ep.id);
     return { server, ep, ref: { offeringId: found[0]!.id } };
   };
   const blackwell = await add("blackwell", "local", [{ id: "qwen3.8-27b", meta: { n_ctx: 131072 } }]);
   const spare = await add("spare", "local", [{ id: "Qwen3.8-27B-Q4_K_M.gguf", meta: { n_ctx: 8192 } }]);
   const router2 = await add("router2", "cloud", [{ id: "qwen/qwen3.8-27b", context_length: 131072, supported_parameters: ["tools", "reasoning"] }]);
-  const ctx = (c: Partial<CallContext> = {}): CallContext => ({ userId: li.id, pool: "general", localOnly: false, ...c });
+  const ctx = (c: Partial<CallContext> = {}): CallContext => ({ userId: ada.id, pool: "general", localOnly: false, ...c });
   return { ...m, bob, blackwell, spare, router2, ctx };
 }
 
 describe("ordered fallbacks", () => {
   it("uses the next model when the first one's machine is off, and records which answered and why", async () => {
     const s = await setup();
-    const off = s.models.addEndpoint(s.li, { name: "off", kind: "local", baseUrl: await deadUrl() });
-    const gone = { offeringId: s.models.addModel(s.li, off.id, { modelId: "qwen3.8-27b" }).id };
-    s.models.setProfile(s.li.id, "local", "chat", [gone, s.blackwell.ref]);
+    const off = s.models.addEndpoint(s.ada, { name: "off", kind: "local", baseUrl: await deadUrl() });
+    const gone = { offeringId: s.models.addModel(s.ada, off.id, { modelId: "qwen3.8-27b" }).id };
+    s.models.setProfile(s.ada.id, "local", "chat", [gone, s.blackwell.ref]);
     const priv = s.ctx({ pool: "private", localOnly: true });
     // Without a probe, the first is tried; resolveLive probes it first because a fallback exists.
     expect(s.models.resolve("chat", priv).ref).toEqual(gone);
@@ -40,8 +40,8 @@ describe("ordered fallbacks", () => {
     expect(r.skipped).toEqual([{ label: "off/qwen3.8-27b", reason: "off is down" }]);
     // The health cache now skips it without probing.
     expect(s.models.resolve("chat", priv).ref).toEqual(s.blackwell.ref);
-    s.models.recordCall(s.li.id, { pool: "private", threadId: "web/p", task: "chat", resolution: r });
-    const [call] = s.models.recentCalls(s.li.id);
+    s.models.recordCall(s.ada.id, { pool: "private", threadId: "web/p", task: "chat", resolution: r });
+    const [call] = s.models.recentCalls(s.ada.id);
     expect(call).toEqual({
       at: expect.any(String), pool: "private", threadId: "web/p", task: "chat", offeringId: s.blackwell.ref.offeringId,
       label: "blackwell/qwen3.8-27b", endpointName: "blackwell", kind: "local", fallback: "off/qwen3.8-27b was skipped (off is down), so blackwell/qwen3.8-27b answered",
@@ -52,71 +52,71 @@ describe("ordered fallbacks", () => {
 
   it("refuses local and cloud lists that mix kinds; only Custom may, and only Custom falls back across the line", async () => {
     const s = await setup();
-    expect(() => s.models.setProfile(s.li.id, "local", "chat", [s.blackwell.ref, s.router2.ref])).toThrow(CloudModelForbidden);
-    expect(() => s.models.setProfile(s.li.id, "cloud", "chat", [s.router2.ref, s.blackwell.ref])).toThrow(/cloud models only/);
-    s.models.setProfile(s.li.id, "custom", "chat", [s.blackwell.ref, s.router2.ref]);
-    s.models.setProfile(s.li.id, "cloud", "chat", [s.router2.ref]);
+    expect(() => s.models.setProfile(s.ada.id, "local", "chat", [s.blackwell.ref, s.router2.ref])).toThrow(CloudModelForbidden);
+    expect(() => s.models.setProfile(s.ada.id, "cloud", "chat", [s.router2.ref, s.blackwell.ref])).toThrow(/cloud models only/);
+    s.models.setProfile(s.ada.id, "custom", "chat", [s.blackwell.ref, s.router2.ref]);
+    s.models.setProfile(s.ada.id, "cloud", "chat", [s.router2.ref]);
     s.models.reportDown(s.blackwell.ep.id);
     // Custom crosses to cloud when the local model is away, and says so.
     const r = s.models.resolve("chat", s.ctx({ profile: "custom" }));
     expect(r.ref).toEqual(s.router2.ref);
-    s.models.recordCall(s.li.id, { pool: "general", threadId: "web/g", task: "chat", resolution: r });
-    expect(s.models.recentCalls(s.li.id)[0]!.fallback).toMatch(/so router2\/qwen\/qwen3.8-27b answered, a cloud model$/);
+    s.models.recordCall(s.ada.id, { pool: "general", threadId: "web/g", task: "chat", resolution: r });
+    expect(s.models.recentCalls(s.ada.id)[0]!.fallback).toMatch(/so router2\/qwen\/qwen3.8-27b answered, a cloud model$/);
     // A thread's own list outside Custom keeps to one kind.
-    expect(() => s.models.setThreadModel(s.li.id, "general", "web/t", "chat", [s.blackwell.ref, s.router2.ref])).toThrow(/can't mix/);
+    expect(() => s.models.setThreadModel(s.ada.id, "general", "web/t", "chat", [s.blackwell.ref, s.router2.ref])).toThrow(/can't mix/);
     // A group in a one-kind list needs a copy of that kind.
-    const cloudGroup = s.models.addGroup(s.li, { name: "cloud qwen", members: [s.router2.ref.offeringId] });
-    expect(() => s.models.setThreadModel(s.li.id, "general", "web/t", "chat", [s.blackwell.ref, { groupId: cloudGroup.id }])).toThrow(/no local copy/);
+    const cloudGroup = s.models.addGroup(s.ada, { name: "cloud qwen", members: [s.router2.ref.offeringId] });
+    expect(() => s.models.setThreadModel(s.ada.id, "general", "web/t", "chat", [s.blackwell.ref, { groupId: cloudGroup.id }])).toThrow(/no local copy/);
     // A list of groups only: two groups of opposite kinds don't make a one-kind list.
-    const localGroup = s.models.addGroup(s.li, { name: "local qwen", members: [s.blackwell.ref.offeringId] });
-    expect(() => s.models.setThreadModel(s.li.id, "general", "web/t", "chat", [{ groupId: localGroup.id }, { groupId: cloudGroup.id }])).toThrow(/no kind in common/);
-    s.models.setThreadModel(s.li.id, "general", "web/t", "chat", [{ groupId: localGroup.id }]);
-    s.models.setThreadModel(s.li.id, "general", "web/t", "chat", [s.blackwell.ref, s.spare.ref]);
-    expect(s.models.resolveModel("chat", s.models.callContext(s.li.id, "general", "web/t"))).toEqual(s.spare.ref);
+    const localGroup = s.models.addGroup(s.ada, { name: "local qwen", members: [s.blackwell.ref.offeringId] });
+    expect(() => s.models.setThreadModel(s.ada.id, "general", "web/t", "chat", [{ groupId: localGroup.id }, { groupId: cloudGroup.id }])).toThrow(/no kind in common/);
+    s.models.setThreadModel(s.ada.id, "general", "web/t", "chat", [{ groupId: localGroup.id }]);
+    s.models.setThreadModel(s.ada.id, "general", "web/t", "chat", [s.blackwell.ref, s.spare.ref]);
+    expect(s.models.resolveModel("chat", s.models.callContext(s.ada.id, "general", "web/t"))).toEqual(s.spare.ref);
   });
 
   it("lets a task use another task's list, one level deep, and starts new profiles with titles and sleep following subagents", async () => {
     const s = await setup();
-    s.models.setProfile(s.li.id, "local", "subagent.cheap", [s.spare.ref]);
-    expect(s.models.profile(s.li.id, "local")).toMatchObject({
+    s.models.setProfile(s.ada.id, "local", "subagent.cheap", [s.spare.ref]);
+    expect(s.models.profile(s.ada.id, "local")).toMatchObject({
       "subagent.cheap": [s.spare.ref], title: { same: "subagent.cheap" }, compaction: { same: "subagent.cheap" }, "sleep.dream": { same: "subagent.strong" },
     });
     const priv = s.ctx({ pool: "private", localOnly: true });
     expect(s.models.resolveModel("title", priv)).toEqual(s.spare.ref);
     // strong has no list, so sleep follows chat, as before.
-    s.models.setProfile(s.li.id, "local", "chat", [s.blackwell.ref]);
+    s.models.setProfile(s.ada.id, "local", "chat", [s.blackwell.ref]);
     expect(s.models.resolveModel("sleep.dream", priv)).toEqual(s.blackwell.ref);
-    expect(() => s.models.setProfile(s.li.id, "local", "subagent.cheap", { same: "subagent.strong" })).toThrow(/one level deep/);
-    expect(() => s.models.setProfile(s.li.id, "local", "chat", { same: "title" })).toThrow(/one level deep/);
-    expect(() => s.models.setProfile(s.li.id, "local", "embedding", { same: "chat" })).toThrow(/same kind of model/);
-    expect(() => s.models.setProfile(s.li.id, "local", "chat", { same: "chat" })).toThrow(/itself/);
+    expect(() => s.models.setProfile(s.ada.id, "local", "subagent.cheap", { same: "subagent.strong" })).toThrow(/one level deep/);
+    expect(() => s.models.setProfile(s.ada.id, "local", "chat", { same: "title" })).toThrow(/one level deep/);
+    expect(() => s.models.setProfile(s.ada.id, "local", "embedding", { same: "chat" })).toThrow(/same kind of model/);
+    expect(() => s.models.setProfile(s.ada.id, "local", "chat", { same: "chat" })).toThrow(/itself/);
     expect(s.models.resolveModel("watching", priv)).toEqual(s.spare.ref);
   });
 
   it("has a profile made before the Watching task follow cheap subagents for it, until it has a list of its own", async () => {
     const s = await setup();
-    s.models.setProfile(s.li.id, "local", "chat", [s.blackwell.ref]);
-    s.models.setProfile(s.li.id, "local", "subagent.cheap", [s.spare.ref]);
+    s.models.setProfile(s.ada.id, "local", "chat", [s.blackwell.ref]);
+    s.models.setProfile(s.ada.id, "local", "subagent.cheap", [s.spare.ref]);
     // As a profile stored by an older release: no entry for watching.
-    const db = s.users.openUserDb(s.li.id);
+    const db = s.users.openUserDb(s.ada.id);
     db.prepare("DELETE FROM model_profiles WHERE task = 'watching'").run();
     db.close();
     const priv = s.ctx({ pool: "private", localOnly: true });
-    expect(s.models.profile(s.li.id, "local").watching).toEqual({ same: "subagent.cheap" });
+    expect(s.models.profile(s.ada.id, "local").watching).toEqual({ same: "subagent.cheap" });
     expect(s.models.resolveModel("watching", priv)).toEqual(s.spare.ref);
-    s.models.setProfile(s.li.id, "local", "watching", [s.blackwell.ref]);
+    s.models.setProfile(s.ada.id, "local", "watching", [s.blackwell.ref]);
     expect(s.models.resolveModel("watching", priv)).toEqual(s.blackwell.ref);
   });
 
   it("keeps image tasks resolvable, to models that make or edit images, with no chat fallback", async () => {
     const s = await setup();
-    const other = { offeringId: s.models.addModel(s.li, s.blackwell.ep.id, { modelId: "other-model" }).id };
-    s.models.setProfile(s.li.id, "local", "chat", [other]);
+    const other = { offeringId: s.models.addModel(s.ada, s.blackwell.ep.id, { modelId: "other-model" }).id };
+    s.models.setProfile(s.ada.id, "local", "chat", [other]);
     const priv = s.ctx({ pool: "private", localOnly: true });
     expect(() => s.models.resolveModel("image.create", priv)).toThrow(NoModel);
-    const comfy = s.models.addModel(s.li, s.blackwell.ep.id, { modelId: "z-image", image: true });
-    expect(() => s.models.setProfile(s.li.id, "local", "image.create", [s.blackwell.ref])).toThrow(/can't do image.create/);
-    s.models.setProfile(s.li.id, "local", "image.create", [{ offeringId: comfy.id }]);
+    const comfy = s.models.addModel(s.ada, s.blackwell.ep.id, { modelId: "z-image", image: true });
+    expect(() => s.models.setProfile(s.ada.id, "local", "image.create", [s.blackwell.ref])).toThrow(/can't do image.create/);
+    s.models.setProfile(s.ada.id, "local", "image.create", [{ offeringId: comfy.id }]);
     expect(s.models.resolveModel("image.create", priv)).toEqual({ offeringId: comfy.id });
   });
 
@@ -126,8 +126,8 @@ describe("ordered fallbacks", () => {
     db.exec("CREATE TABLE IF NOT EXISTS model_profiles (profile TEXT NOT NULL, task TEXT NOT NULL, entry TEXT NOT NULL, PRIMARY KEY (profile, task))");
     db.prepare("INSERT INTO model_profiles VALUES ('cloud', 'chat', ?)").run(JSON.stringify([s.blackwell.ref]));
     db.close();
-    const lan = s.models.addEndpoint(s.li, { name: "lan", kind: "local", baseUrl: s.blackwell.ep.baseUrl }, { shared: true });
-    const [shared] = await s.models.discover(s.li, lan.id);
+    const lan = s.models.addEndpoint(s.ada, { name: "lan", kind: "local", baseUrl: s.blackwell.ep.baseUrl }, { shared: true });
+    const [shared] = await s.models.discover(s.ada, lan.id);
     const db2 = s.users.openUserDb(s.bob.id);
     db2.prepare("UPDATE model_profiles SET entry = ? WHERE profile = 'cloud'").run(JSON.stringify([{ offeringId: shared!.id }]));
     db2.close();
@@ -145,17 +145,17 @@ describe("ordered fallbacks", () => {
 describe("moving a cloud profile to Custom after a redirect", () => {
   it("follows a replacement made while the user was locked before deciding a model's kind", async () => {
     const s = await setup();
-    const lan = s.models.addEndpoint(s.li, { name: "lan", kind: "local", baseUrl: s.blackwell.ep.baseUrl }, { shared: true });
-    const lan2 = s.models.addEndpoint(s.li, { name: "lan2", kind: "local", baseUrl: s.spare.ep.baseUrl }, { shared: true });
-    const [a] = await s.models.discover(s.li, lan.id);
-    const [b] = await s.models.discover(s.li, lan2.id);
+    const lan = s.models.addEndpoint(s.ada, { name: "lan", kind: "local", baseUrl: s.blackwell.ep.baseUrl }, { shared: true });
+    const lan2 = s.models.addEndpoint(s.ada, { name: "lan2", kind: "local", baseUrl: s.spare.ep.baseUrl }, { shared: true });
+    const [a] = await s.models.discover(s.ada, lan.id);
+    const [b] = await s.models.discover(s.ada, lan2.id);
     const db = s.users.openUserDb(s.bob.id);
     db.exec("CREATE TABLE IF NOT EXISTS model_profiles (profile TEXT NOT NULL, task TEXT NOT NULL, entry TEXT NOT NULL, PRIMARY KEY (profile, task))");
     db.prepare("INSERT OR REPLACE INTO model_profiles (profile, task, entry) VALUES ('cloud', 'chat', ?)").run(JSON.stringify([{ offeringId: a!.id }]));
     db.prepare("DELETE FROM settings WHERE key = 'profiles_v2'").run();
     db.close();
     s.keyring.lockUser(s.bob.id);
-    s.models.replace(s.li, a!.id, b!.id);
+    s.models.replace(s.ada, a!.id, b!.id);
     await s.users.authenticate("bob", "pw");
     const { Models } = await import("../src/index.ts");
     const fresh = new Models(s.keyring, s.users);
@@ -167,41 +167,41 @@ describe("moving a cloud profile to Custom after a redirect", () => {
 describe("the custom profile", () => {
   it("is never used by a private or local-only thread, even as the user's default", async () => {
     const s = await setup();
-    s.models.setDefaultProfile(s.li.id, "custom");
-    s.models.setProfile(s.li.id, "custom", "chat", [s.router2.ref, s.blackwell.ref]);
-    expect(s.models.resolveModel("chat", s.models.callContext(s.li.id, "general", "web/g"))).toEqual(s.router2.ref);
-    for (const call of [s.models.callContext(s.li.id, "private", "web/p"), (s.models.setLocalOnly(s.li.id, "general", "web/lo", true), s.models.callContext(s.li.id, "general", "web/lo"))]) {
+    s.models.setDefaultProfile(s.ada.id, "custom");
+    s.models.setProfile(s.ada.id, "custom", "chat", [s.router2.ref, s.blackwell.ref]);
+    expect(s.models.resolveModel("chat", s.models.callContext(s.ada.id, "general", "web/g"))).toEqual(s.router2.ref);
+    for (const call of [s.models.callContext(s.ada.id, "private", "web/p"), (s.models.setLocalOnly(s.ada.id, "general", "web/lo", true), s.models.callContext(s.ada.id, "general", "web/lo"))]) {
       expect(() => s.models.resolve("chat", call)).toThrow(/no model is set for Main conversation in the local profile/);
       // Even handed a custom profile directly, the context is local.
       expect(() => s.models.resolve("chat", { ...call, profile: "custom" })).toThrow(/local profile/);
     }
-    expect(() => s.models.setThreadProfile(s.li.id, "private", "web/p", "custom")).toThrow(CloudModelForbidden);
+    expect(() => s.models.setThreadProfile(s.ada.id, "private", "web/p", "custom")).toThrow(CloudModelForbidden);
     // A general thread can switch back to cloud.
-    s.models.setProfile(s.li.id, "cloud", "chat", [s.router2.ref]);
-    s.models.setThreadProfile(s.li.id, "general", "web/c", "cloud");
-    expect(s.models.callContext(s.li.id, "general", "web/c").profile).toBe("cloud");
+    s.models.setProfile(s.ada.id, "cloud", "chat", [s.router2.ref]);
+    s.models.setThreadProfile(s.ada.id, "general", "web/c", "cloud");
+    expect(s.models.callContext(s.ada.id, "general", "web/c").profile).toBe("cloud");
   });
 });
 
 describe("model groups", () => {
   it("expands in place, in order, and fails over through its members", async () => {
     const s = await setup();
-    const g = s.models.addGroup(s.li, { name: "Qwen 3.8 27B", members: [s.blackwell.ref.offeringId, s.spare.ref.offeringId, s.localRef.offeringId] });
-    s.models.setProfile(s.li.id, "local", "chat", [{ groupId: g.id }]);
+    const g = s.models.addGroup(s.ada, { name: "Qwen 3.8 27B", members: [s.blackwell.ref.offeringId, s.spare.ref.offeringId, s.localRef.offeringId] });
+    s.models.setProfile(s.ada.id, "local", "chat", [{ groupId: g.id }]);
     const priv = s.ctx({ pool: "private", localOnly: true });
     expect(s.models.resolveModel("chat", priv)).toEqual(s.blackwell.ref);
     s.models.reportDown(s.blackwell.ep.id);
     expect(s.models.resolveModel("chat", priv)).toEqual(s.spare.ref);
     s.models.reportDown(s.spare.ep.id);
     expect(s.models.resolveModel("chat", priv)).toEqual(s.localRef);
-    expect(() => s.models.addGroup(s.li, { name: "x", members: [s.blackwell.ref.offeringId, s.models.addModel(s.li, s.blackwell.ep.id, { modelId: "other" }).id] })).toThrow(/one copy per endpoint/);
+    expect(() => s.models.addGroup(s.ada, { name: "x", members: [s.blackwell.ref.offeringId, s.models.addModel(s.ada, s.blackwell.ep.id, { modelId: "other" }).id] })).toThrow(/one copy per endpoint/);
   });
 
   it("skips a member that can't handle the call", async () => {
     const s = await setup();
-    s.models.setCapabilities(s.li, s.blackwell.ref.offeringId, { tools: false });
-    const g = s.models.addGroup(s.li, { name: "Qwen", members: [s.blackwell.ref.offeringId, s.spare.ref.offeringId, s.localRef.offeringId] });
-    s.models.setProfile(s.li.id, "local", "chat", [{ groupId: g.id }]);
+    s.models.setCapabilities(s.ada, s.blackwell.ref.offeringId, { tools: false });
+    const g = s.models.addGroup(s.ada, { name: "Qwen", members: [s.blackwell.ref.offeringId, s.spare.ref.offeringId, s.localRef.offeringId] });
+    s.models.setProfile(s.ada.id, "local", "chat", [{ groupId: g.id }]);
     const priv = s.ctx({ pool: "private", localOnly: true });
     const r = s.models.resolve("chat", priv, { tools: true, tokens: 20_000 });
     expect(r.ref).toEqual(s.localRef);
@@ -210,8 +210,8 @@ describe("model groups", () => {
 
   it("never gives a private thread a group's cloud member", async () => {
     const s = await setup();
-    const g = s.models.addGroup(s.li, { name: "Qwen anywhere", members: [s.router2.ref.offeringId, s.blackwell.ref.offeringId] });
-    s.models.setProfile(s.li.id, "local", "chat", [{ groupId: g.id }]);
+    const g = s.models.addGroup(s.ada, { name: "Qwen anywhere", members: [s.router2.ref.offeringId, s.blackwell.ref.offeringId] });
+    s.models.setProfile(s.ada.id, "local", "chat", [{ groupId: g.id }]);
     const priv = s.ctx({ pool: "private", localOnly: true });
     expect(s.models.resolveModel("chat", priv)).toEqual(s.blackwell.ref);
     s.models.reportDown(s.blackwell.ep.id);
@@ -219,28 +219,28 @@ describe("model groups", () => {
     // Handed in as an override, the same.
     expect(() => s.models.resolveModel("chat", { ...priv, overrides: { chat: [{ groupId: g.id }] } })).toThrow(NoModel);
     // A group with no local copy can't go in a local list at all.
-    const cloudOnly = s.models.addGroup(s.li, { name: "cloud only", members: [s.router2.ref.offeringId] });
-    expect(() => s.models.setProfile(s.li.id, "local", "chat", [{ groupId: cloudOnly.id }])).toThrow(CloudModelForbidden);
-    expect(() => s.models.setThreadModel(s.li.id, "private", "web/p", "chat", [{ groupId: cloudOnly.id }])).toThrow(CloudModelForbidden);
+    const cloudOnly = s.models.addGroup(s.ada, { name: "cloud only", members: [s.router2.ref.offeringId] });
+    expect(() => s.models.setProfile(s.ada.id, "local", "chat", [{ groupId: cloudOnly.id }])).toThrow(CloudModelForbidden);
+    expect(() => s.models.setThreadModel(s.ada.id, "private", "web/p", "chat", [{ groupId: cloudOnly.id }])).toThrow(CloudModelForbidden);
     // Its detail warns that it mixes kinds.
-    expect(s.models.groupDetail(s.li.id, g.id).warnings).toContain("It mixes local and cloud copies, so as a whole it can only be used in the Custom profile; elsewhere only the copies of the right kind are used.");
+    expect(s.models.groupDetail(s.ada.id, g.id).warnings).toContain("It mixes local and cloud copies, so as a whole it can only be used in the Custom profile; elsewhere only the copies of the right kind are used.");
   });
 
   it("drops a member removed while its user was locked, when they unlock; an empty group is flagged in Clean up", async () => {
     const s = await setup();
-    const lan = s.models.addEndpoint(s.li, { name: "lan", kind: "local", baseUrl: s.blackwell.ep.baseUrl }, { shared: true });
-    const lan2 = s.models.addEndpoint(s.li, { name: "lan2", kind: "local", baseUrl: s.spare.ep.baseUrl }, { shared: true });
-    const [a] = await s.models.discover(s.li, lan.id);
-    const [b] = await s.models.discover(s.li, lan2.id);
+    const lan = s.models.addEndpoint(s.ada, { name: "lan", kind: "local", baseUrl: s.blackwell.ep.baseUrl }, { shared: true });
+    const lan2 = s.models.addEndpoint(s.ada, { name: "lan2", kind: "local", baseUrl: s.spare.ep.baseUrl }, { shared: true });
+    const [a] = await s.models.discover(s.ada, lan.id);
+    const [b] = await s.models.discover(s.ada, lan2.id);
     const mine = s.models.addGroup(s.bob, { name: "Qwen", members: [a!.id, b!.id] });
-    const shared = s.models.addGroup(s.li, { name: "Shared Qwen", members: [a!.id] }, { shared: true });
+    const shared = s.models.addGroup(s.ada, { name: "Shared Qwen", members: [a!.id] }, { shared: true });
     expect(() => s.models.addGroup(s.bob, { name: "nope", members: [a!.id] }, { shared: true })).toThrow(/administrator/);
-    expect(() => s.models.addGroup(s.li, { name: "nope", members: [s.localRef.offeringId] }, { shared: true })).toThrow(/shared models only/);
+    expect(() => s.models.addGroup(s.ada, { name: "nope", members: [s.localRef.offeringId] }, { shared: true })).toThrow(/shared models only/);
     s.keyring.lockUser(s.bob.id);
-    s.models.removeEndpoint(s.li, lan.id);
+    s.models.removeEndpoint(s.ada, lan.id);
     // Shared groups change at once.
-    expect(s.models.group(s.li.id, shared.id)!.members).toEqual([]);
-    expect(s.models.cleanup(s.li.id).map((c) => c.label)).toContain("shared.Shared Qwen");
+    expect(s.models.group(s.ada.id, shared.id)!.members).toEqual([]);
+    expect(s.models.cleanup(s.ada.id).map((c) => c.label)).toContain("shared.Shared Qwen");
     await s.users.authenticate("bob", "pw");
     expect(s.models.group(s.bob.id, mine.id)!.members).toEqual([b!.id]);
     expect(s.models.notice(s.bob.id)).toEqual(["shared.lan/qwen3.8-27b was removed in the group Qwen."]);
@@ -248,17 +248,17 @@ describe("model groups", () => {
 
   it("suggests groups but never makes them, and removing one tidies lists", async () => {
     const s = await setup();
-    const suggested = s.models.groupSuggestions(s.li.id);
+    const suggested = s.models.groupSuggestions(s.ada.id);
     expect(suggested).toContainEqual({ name: "qwen3.8-27b", members: expect.arrayContaining([s.blackwell.ref.offeringId, s.spare.ref.offeringId, s.localRef.offeringId]), strength: "weak" });
     // The cloud copy is never suggested with the local ones.
     expect(suggested.some((x) => x.members.includes(s.router2.ref.offeringId) && x.members.includes(s.blackwell.ref.offeringId))).toBe(false);
-    expect(s.models.groups(s.li.id)).toEqual([]);
-    const g = s.models.addGroup(s.li, { name: "Qwen", members: [s.blackwell.ref.offeringId, s.spare.ref.offeringId, s.localRef.offeringId] });
-    expect(s.models.groupSuggestions(s.li.id).some((x) => x.members.includes(s.blackwell.ref.offeringId))).toBe(false);
-    expect(s.models.groupDetail(s.li.id, g.id).warnings).toContain("Its copies differ in context window.");
-    s.models.setProfile(s.li.id, "local", "chat", [{ groupId: g.id }, s.localRef]);
-    s.models.removeGroup(s.li, g.id);
-    expect(s.models.profile(s.li.id, "local").chat).toEqual([s.localRef]);
+    expect(s.models.groups(s.ada.id)).toEqual([]);
+    const g = s.models.addGroup(s.ada, { name: "Qwen", members: [s.blackwell.ref.offeringId, s.spare.ref.offeringId, s.localRef.offeringId] });
+    expect(s.models.groupSuggestions(s.ada.id).some((x) => x.members.includes(s.blackwell.ref.offeringId))).toBe(false);
+    expect(s.models.groupDetail(s.ada.id, g.id).warnings).toContain("Its copies differ in context window.");
+    s.models.setProfile(s.ada.id, "local", "chat", [{ groupId: g.id }, s.localRef]);
+    s.models.removeGroup(s.ada, g.id);
+    expect(s.models.profile(s.ada.id, "local").chat).toEqual([s.localRef]);
   });
 });
 
@@ -270,26 +270,26 @@ describe("thinking", () => {
     expect(s.models.thinkingFor(think, "high")).toEqual({ level: "high" });
     const plain = s.models.resolve("chat", { ...s.ctx(), overrides: { chat: [s.blackwell.ref] } });
     expect(s.models.thinkingFor(plain, "medium")).toEqual({ level: "off", note: "blackwell/qwen3.8-27b can't think, so it answered without thinking" });
-    s.models.setCapabilities(s.li, s.blackwell.ref.offeringId, { reasoning: ["medium", "high"] });
+    s.models.setCapabilities(s.ada, s.blackwell.ref.offeringId, { reasoning: ["medium", "high"] });
     const some = s.models.resolve("chat", { ...s.ctx(), overrides: { chat: [s.blackwell.ref] } });
     expect(s.models.thinkingFor(some, "low")).toEqual({ level: "medium", note: "blackwell/qwen3.8-27b doesn't think at low, so it thought at medium" });
     // One level on a plain endpoint still says so; a host's on/off switch (one level) is just on.
-    s.models.setCapabilities(s.li, s.blackwell.ref.offeringId, { reasoning: ["medium"] });
+    s.models.setCapabilities(s.ada, s.blackwell.ref.offeringId, { reasoning: ["medium"] });
     const one = s.models.resolve("chat", { ...s.ctx(), overrides: { chat: [s.blackwell.ref] } });
     expect(s.models.thinkingFor(one, "high")).toEqual({ level: "medium", note: "blackwell/qwen3.8-27b doesn't think at high, so it thought at medium" });
     expect(s.models.thinkingFor({ ...one, endpoint: { ...one.endpoint, api: "host" } }, "high")).toEqual({ level: "medium" });
     // Per thread, with a per-user default.
-    s.models.setDefaultThinking(s.li.id, "medium");
-    expect(s.models.callContext(s.li.id, "general", "web/t").thinking).toBe("medium");
-    s.models.setThinking(s.li.id, "web/t", "off");
-    expect(s.models.callContext(s.li.id, "general", "web/t").thinking).toBe("off");
+    s.models.setDefaultThinking(s.ada.id, "medium");
+    expect(s.models.callContext(s.ada.id, "general", "web/t").thinking).toBe("medium");
+    s.models.setThinking(s.ada.id, "web/t", "off");
+    expect(s.models.callContext(s.ada.id, "general", "web/t").thinking).toBe("off");
   });
 });
 
 describe("every model away", () => {
   it("is Offline, not NoModel's unset, and a machine that comes back answers the next call", async () => {
     const s = await setup();
-    s.models.setProfile(s.li.id, "local", "chat", [s.blackwell.ref, s.spare.ref]);
+    s.models.setProfile(s.ada.id, "local", "chat", [s.blackwell.ref, s.spare.ref]);
     const priv = s.ctx({ pool: "private", localOnly: true });
     s.models.reportDown(s.blackwell.ep.id);
     s.models.reportDown(s.spare.ep.id);
@@ -309,7 +309,7 @@ describe("every model away", () => {
 
   it("falls back through a call's models and names every one tried when none answers", async () => {
     const s = await setup();
-    s.models.setProfile(s.li.id, "local", "title", [s.blackwell.ref, s.spare.ref]);
+    s.models.setProfile(s.ada.id, "local", "title", [s.blackwell.ref, s.spare.ref]);
     const priv = s.ctx({ pool: "private", localOnly: true });
     const refused = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:1"), { name: "TypeError" });
     const seen: string[] = [];
@@ -330,9 +330,9 @@ describe("every model away", () => {
 
   it("passes over one model its host couldn't run, keeping the host's other models", async () => {
     const s = await setup();
-    s.models.setProfile(s.li.id, "local", "title", [s.blackwell.ref, s.spare.ref]);
-    const other = { offeringId: s.models.addModel(s.li, s.blackwell.ep.id, { modelId: "other-model" }).id };
-    s.models.setProfile(s.li.id, "local", "chat", [other]);
+    s.models.setProfile(s.ada.id, "local", "title", [s.blackwell.ref, s.spare.ref]);
+    const other = { offeringId: s.models.addModel(s.ada, s.blackwell.ep.id, { modelId: "other-model" }).id };
+    s.models.setProfile(s.ada.id, "local", "chat", [other]);
     const priv = s.ctx({ pool: "private", localOnly: true });
     const seen: string[] = [];
     await s.models.callWithFallback("title", priv, {}, async (r) => {
@@ -360,7 +360,7 @@ describe("every model away", () => {
 describe("Fallback off", () => {
   it("lets only the list's first entry answer: a machine away is Offline, an unfit model a plain NoModel", async () => {
     const s = await setup();
-    s.models.setProfile(s.li.id, "local", "chat", [s.blackwell.ref, s.spare.ref]);
+    s.models.setProfile(s.ada.id, "local", "chat", [s.blackwell.ref, s.spare.ref]);
     const priv = s.ctx({ pool: "private", localOnly: true, fallback: false });
     expect(s.models.resolve("chat", priv).ref).toEqual(s.blackwell.ref);
     s.models.reportDown(s.blackwell.ep.id);
@@ -369,11 +369,11 @@ describe("Fallback off", () => {
     expect((away as Offline).tried.map((t) => t.label)).toEqual(["blackwell/qwen3.8-27b"]);
     // With it on, the same list falls back.
     expect(s.models.resolve("chat", { ...priv, fallback: true }).ref).toEqual(s.spare.ref);
-    s.models.setCapabilities(s.li, s.blackwell.ref.offeringId, { tools: false });
-    s.models.reportUp(s.li.id, s.blackwell.ep.id);
+    s.models.setCapabilities(s.ada, s.blackwell.ref.offeringId, { tools: false });
+    s.models.reportUp(s.ada.id, s.blackwell.ep.id);
     expect(() => s.models.resolve("chat", priv, { tools: true })).toThrow(/can't use tools\), and Fallback is off$/);
     // A call that fails on the first model is never retried on the next.
-    s.models.setCapabilities(s.li, s.blackwell.ref.offeringId, { tools: null });
+    s.models.setCapabilities(s.ada, s.blackwell.ref.offeringId, { tools: null });
     const seen: string[] = [];
     const refused = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:1"), { name: "TypeError" });
     const out = await s.models.callWithFallback("title", priv, {}, async (r) => { seen.push(r.label); throw refused; }).catch((e: unknown) => e);
@@ -383,8 +383,8 @@ describe("Fallback off", () => {
 
   it("keeps a group's copies when the group is the first entry", async () => {
     const s = await setup();
-    const g = s.models.addGroup(s.li, { name: "Qwen", members: [s.blackwell.ref.offeringId, s.spare.ref.offeringId] });
-    s.models.setProfile(s.li.id, "local", "chat", [{ groupId: g.id }, s.localRef]);
+    const g = s.models.addGroup(s.ada, { name: "Qwen", members: [s.blackwell.ref.offeringId, s.spare.ref.offeringId] });
+    s.models.setProfile(s.ada.id, "local", "chat", [{ groupId: g.id }, s.localRef]);
     const priv = s.ctx({ pool: "private", localOnly: true, fallback: false });
     s.models.reportDown(s.blackwell.ep.id);
     expect(s.models.resolve("chat", priv).ref).toEqual(s.spare.ref);
@@ -394,22 +394,22 @@ describe("Fallback off", () => {
 
   it("is on by default, set per thread or as the default, and a child starts with its parent's", async () => {
     const s = await setup();
-    const { models, li } = s;
-    expect(models.defaultFallback(li.id)).toBe(true);
-    expect(models.callContext(li.id, "general", "web/a").fallback).toBe(true);
-    models.setThreadFallback(li.id, "web/a", false);
-    expect([models.threadFallback(li.id, "web/a"), models.callContext(li.id, "general", "web/a").fallback]).toEqual([false, false]);
+    const { models, ada } = s;
+    expect(models.defaultFallback(ada.id)).toBe(true);
+    expect(models.callContext(ada.id, "general", "web/a").fallback).toBe(true);
+    models.setThreadFallback(ada.id, "web/a", false);
+    expect([models.threadFallback(ada.id, "web/a"), models.callContext(ada.id, "general", "web/a").fallback]).toEqual([false, false]);
     // A subagent or branch of it starts with it off, even after the default changes.
-    models.inheritContext(models.callContext(li.id, "general", "web/a"), "web/a.child");
-    expect(models.threadFallback(li.id, "web/a.child")).toBe(false);
-    models.setDefaultFallback(li.id, false);
-    expect(models.callContext(li.id, "general", "web/b").fallback).toBe(false);
-    models.setThreadFallback(li.id, "web/b", true);
-    models.inheritContext(models.callContext(li.id, "general", "web/b"), "web/b.child");
-    models.setDefaultFallback(li.id, true);
-    expect(models.callContext(li.id, "general", "web/b.child").fallback).toBe(true);
-    models.setThreadFallback(li.id, "web/a", null);
-    expect(models.threadFallback(li.id, "web/a")).toBeNull();
-    expect(() => models.setThreadFallback(li.id, "web/a", "no" as unknown as boolean)).toThrow(/true, false or null/);
+    models.inheritContext(models.callContext(ada.id, "general", "web/a"), "web/a.child");
+    expect(models.threadFallback(ada.id, "web/a.child")).toBe(false);
+    models.setDefaultFallback(ada.id, false);
+    expect(models.callContext(ada.id, "general", "web/b").fallback).toBe(false);
+    models.setThreadFallback(ada.id, "web/b", true);
+    models.inheritContext(models.callContext(ada.id, "general", "web/b"), "web/b.child");
+    models.setDefaultFallback(ada.id, true);
+    expect(models.callContext(ada.id, "general", "web/b.child").fallback).toBe(true);
+    models.setThreadFallback(ada.id, "web/a", null);
+    expect(models.threadFallback(ada.id, "web/a")).toBeNull();
+    expect(() => models.setThreadFallback(ada.id, "web/a", "no" as unknown as boolean)).toThrow(/true, false or null/);
   });
 });

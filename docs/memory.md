@@ -2,11 +2,11 @@
 
 **Status: agreed.** The sleep cycle is in [sleep.md](sleep.md).
 
-Li's requirements:
+The requirements:
 
 1. Lyrica saves whatever she wants, without asking.
 2. She retrieves it when it's relevant, without being told to look.
-3. Li can search and edit her memories.
+3. The user can search and edit her memories.
 4. For any memory, you can see where it came from and what it was consolidated
    into.
 
@@ -21,7 +21,7 @@ source of truth.
 |---|---|---|---|
 | **Threads** | Pi session entries: what was actually said | Pi, stored by `lyricad` | none |
 | **Notes** | Small, dated observations: one fact, event, preference or decision each | Lyrica in conversation (`remember`), or sleep when she missed something | Thread entries |
-| **Pages** | Her current understanding of one subject (a project, a person, an area of Li's life, herself) | Sleep | Notes |
+| **Pages** | Her current understanding of one subject (a project, a person, an area of the user's life, herself) | Sleep | Notes |
 | **WAKE** | First-person orientation: what's in motion, what's unresolved, what she wants to bring up | Sleep | Pages and notes |
 | **Journal** | Sleep's reflection and dreams, including persona proposals | Sleep | Anything |
 
@@ -44,7 +44,7 @@ runtime/
     private.db                 same tables, private pool
 ```
 
-Each user (one of Li's personas) has their own databases, endpoint
+Each user (one of the owner's personas) has their own databases, endpoint
 settings and memory pools. Lyrica's persona is the only thing shared between
 users.
 
@@ -112,7 +112,7 @@ id: n:20261009-k3f9   created: 2026-10-09T14:02Z   about: proxmox, backups
 ```
 
 It is stored with a user token (see [Names and pronouns](#names-and-pronouns)).
-Everyone who reads it, Lyrica included, sees it with the current name: "Li
+Everyone who reads it, Lyrica included, sees it with the current name: "Sam
 wants the Proxmox cluster…".
 
 Example page ("Proxmox homelab"):
@@ -132,7 +132,7 @@ memory never needs rewriting when they do.
 
 | Token | Renders as (for she/her) | Renders as (for they/them) |
 |---|---|---|
-| `[[u:ID]]` | Li | Li |
+| `[[u:ID]]` | Sam | Sam |
 | `[[u:ID:obj]]` | her | them |
 | `[[u:ID:poss]]` | her | their |
 | `[[u:ID:poss-pro]]` | hers | theirs |
@@ -163,7 +163,7 @@ Tokens are rendered from the profile, so a rename takes effect everywhere
 immediately. Nothing is rewritten, re-indexed or re-slept.
 
 Search works on the stored text. Before searching, any user name in the query
-(current or previous) is turned into that user's token, so searching for "Li"
+(current or previous) is turned into that user's token, so searching for "Sam"
 finds notes stored as `[[u:7c1e]]`.
 
 ## Retrieval: how she knows to look
@@ -194,7 +194,7 @@ The cheapest mechanism comes first:
    entry removes the pin and the rewind counts it, and sleep's material lists
    which new entries were pinned, as a sign they matter.
 2. **Automatic recall on every user turn.** Search notes, pages and past
-   threads in the pool using Li's message, and inject up to five hits as
+   threads in the pool using the user's message, and inject up to five hits as
    short snippets with their IDs (at most 4,000 characters).
 3. **Deliberate lookup** through tools. `recall(query)` searches.
    `read_memory(id)` opens a page, a note, or a window of a past thread around an
@@ -385,7 +385,7 @@ Users can write their own notes and pages, not only edit hers.
   memory a user adds carries that origin, and the browser can filter on it, in
   either pool. Free-floating user memories live there and nowhere else.
 - **Lyrica knows who wrote it.** When a user memory is recalled, it's labelled
-  "added by Li" (with the current name).
+  "added by Sam" (with the current name).
   - She treats it as authoritative, like a user edit. If newer conversation
     contradicts it, she asks rather than overriding it.
   - Sleep folds user notes into pages, but never deletes or rewrites a user's

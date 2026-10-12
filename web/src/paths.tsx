@@ -12,7 +12,7 @@ export const WORKDIR = "/workspace";
 export const shown = (p: string) => (p === WORKDIR ? "Thread folder" : p.startsWith(`${WORKDIR}/`) ? p.slice(WORKDIR.length + 1) : p);
 
 /**
- * A path under the thread's folder, as written in prose: it starts the word (not inside `/home/li/workspace`,
+ * A path under the thread's folder, as written in prose: it starts the word (not inside `/home/ada/workspace`,
  * `~/workspace` or a URL) and ends before a space, a quote, a bracket or trailing punctuation.
  */
 export const PATH = /(?<![\w.~/:-])\/workspace(?:\/[^\s"'`<>()[\]{}|,;]*[^\s"'`<>()[\]{}|,;:.!?])?(?![\w-])/g;

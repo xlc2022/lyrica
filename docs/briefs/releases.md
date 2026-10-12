@@ -13,7 +13,7 @@ backup rules this borrows.
 
 Any update, Claude's or hers, can be undone without her, and a bad one
 undoes itself (principle 2: one operator, simple boundaries; principle 1:
-Li notices the first update that goes wrong).
+the user notices the first update that goes wrong).
 
 ## In scope
 
@@ -87,7 +87,7 @@ Li notices the first update that goes wrong).
    committing (the pool upgrades don't share one yet); the Administration `updates` API
    that lists state and writes requests into a directory only `lyricad`
    writes, which is refused as a grant.
-7. **NixOS** (Li, 2026-10-11: the same Update button). On a NixOS host
+7. **NixOS** (decided 2026-10-11: the same Update button). On a NixOS host
    `lyrica-update` builds the tagged release with Nix (`nix build
    <repo>?rev=<commit>#lyrica`) into a Lyrica-only profile,
    `/nix/var/nix/profiles/lyrica`, that the module's `lyricad` unit runs
@@ -109,7 +109,7 @@ brief), model hosts, Proxmox snapshots.
 
 ## Tests
 
-What Li would notice: a release that fails its checks is rolled back and
+What the user would notice: a release that fails its checks is rolled back and
 the old one serves again; a rollback across a contract restores the snapshot
 and one across only an expand keeps the data; a drain with a turn running waits
 and gives up cleanly; `SchemaTooNew` is thrown; a migration that fails halfway leaves the
@@ -123,7 +123,7 @@ they can be, as the sandbox tests do.
 
 ## After merging
 
-Tell the standing Operator docs thread (Li's rule, 2026-10-11) by
+Tell the standing Operator docs thread (the owner's rule, 2026-10-11) by
 cross-session message what changed that an operator does by hand: the
 release layout, the deploy key, `sudo lyrica-rollback`, the snapshots
 folder, and the scheduled Proxmox backup of the container the guide should

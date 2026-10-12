@@ -101,7 +101,7 @@ async function fresh(opts: Partial<LyricadOptions> & { home?: string } = {}) {
   return { d, home, logs, ts, directPort, code, base: `http://127.0.0.1:${d.port}`, stop };
 }
 
-const ADMIN = { login: "li", password: "pw", displayName: "Li", pronouns: PRONOUN_PRESETS.she };
+const ADMIN = { login: "ada", password: "pw", displayName: "Ada", pronouns: PRONOUN_PRESETS.she };
 
 /** GET over HTTPS on 127.0.0.1, trusting only the given certificate. */
 function getTls(port: number, path: string, ca: string): Promise<number | string> {
@@ -122,7 +122,7 @@ describe("setting up", () => {
     const b = browser(base);
     expect((await b.get<State>("/api/state")).body).toEqual({ locked: true, setup: true, name: "Lyrica", users: [], credentials: { available: true } });
     expect((await b.post("/api/unlock", { passphrase: "x" })).status).toBe(503);
-    expect((await b.post("/api/login", { login: "li", password: "pw" })).status).toBe(503);
+    expect((await b.post("/api/login", { login: "ada", password: "pw" })).status).toBe(503);
     expect((await b.get("/api/u/x/me")).status).toBe(503);
 
     // A wrong code: refused, no self.db, and counted with wrong passphrases.
@@ -135,10 +135,10 @@ describe("setting up", () => {
     // The code works whatever its case or dashes.
     const done = await b.post<LoginResponse>("/api/setup", { code: code.toLowerCase().replace("-", " "), passphrase: "passphrase", name: "Aria", admin: ADMIN });
     expect(done.status).toBe(200);
-    expect(done.body.user).toMatchObject({ login: "li", displayName: "Li", admin: true });
+    expect(done.body.user).toMatchObject({ login: "ada", displayName: "Ada", admin: true });
     expect(b.cookie).toBeTruthy();
     const state = (await b.get<State>("/api/state")).body;
-    expect(state).toMatchObject({ locked: false, name: "Aria", users: [{ login: "li" }] });
+    expect(state).toMatchObject({ locked: false, name: "Aria", users: [{ login: "ada" }] });
     expect(state.setup).toBeUndefined();
     expect(readdirSync(home)).not.toContain("setup-code");
     expect((await b.get(`/api/u/${done.body.user.id}/me`)).status).toBe(200);
@@ -189,7 +189,7 @@ describe("setting up", () => {
     };
     const cli = tmp("lyrica-init-");
     const k = new Keyring(cli, ARGON2);
-    await bootstrap(k, { passphrase: "passphrase", name: "Aria", seed: SEED, admin: { login: "li", password: "pw", profile: { displayName: "Li", pronouns: PRONOUN_PRESETS.she } } });
+    await bootstrap(k, { passphrase: "passphrase", name: "Aria", seed: SEED, admin: { login: "ada", password: "pw", profile: { displayName: "Ada", pronouns: PRONOUN_PRESETS.she } } });
     k.closeSelf();
     // Then lyricad's first start, as after admin init.
     const started = await fresh({ home: cli });
@@ -206,13 +206,13 @@ describe("her name", () => {
   it("goes in her REGISTER's Name line and nowhere else in the persona, and answers while locked", async () => {
     const f = await fresh();
     const setup = await browser(f.base).post<LoginResponse>("/api/setup", { code: f.code, passphrase: "passphrase", admin: ADMIN });
-    const li = await login(f.base, "li", "pw");
+    const ada = await login(f.base, "ada", "pw");
     const url = `/api/u/${setup.body.user.id}/admin/name`;
-    expect((await li.get(url)).body).toEqual({ name: "Lyrica" });
+    expect((await ada.get(url)).body).toEqual({ name: "Lyrica" });
     const before = f.d.services!.persona.read();
-    expect((await li.put(url, { name: "  Aria " })).body).toEqual({ name: "Aria" });
-    expect((await li.put(url, { name: "" })).status).toBe(400);
-    expect((await li.put(url, { name: "x".repeat(41) })).status).toBe(400);
+    expect((await ada.put(url, { name: "  Aria " })).body).toEqual({ name: "Aria" });
+    expect((await ada.put(url, { name: "" })).status).toBe(400);
+    expect((await ada.put(url, { name: "x".repeat(41) })).status).toBe(400);
     const after = f.d.services!.persona.read();
     const register = (p: typeof after) => p.core.find((c) => c.path === "REGISTER.md")!.text;
     expect(register(after)).toMatch(/^Name: Aria$/m);
@@ -249,9 +249,9 @@ describe("Direct web access", () => {
     });
     expect(res).toBe(200);
 
-    const li = await login(f.base, "li", "pw");
-    const id = f.d.services!.users.find("li")!.id;
-    const view = (await li.get<WebAccess>(`/api/u/${id}/admin/web-access`)).body;
+    const ada = await login(f.base, "ada", "pw");
+    const id = f.d.services!.users.find("ada")!.id;
+    const view = (await ada.get<WebAccess>(`/api/u/${id}/admin/web-access`)).body;
     expect(view.mode).toBe("direct");
     expect(view.direct).toMatchObject({ addresses: ["127.0.0.1"], port: f.directPort, pem: saved.tls.cert, fingerprint: expect.stringMatching(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/) });
     expect(f.d.services!.web.frontDoor()).toEqual({ ports: [443, f.directPort], hosts: [], exclude: [] });
@@ -268,7 +268,7 @@ describe("Direct web access", () => {
 
     // Off closes it and its file goes.
     await browser(again.base).post("/api/unlock", { passphrase: "passphrase" });
-    const li2 = await login(again.base, "li", "pw");
+    const li2 = await login(again.base, "ada", "pw");
     expect((await li2.put(`/api/u/${id}/admin/web-access`, { mode: "off" })).status).toBe(200);
     expect(existsSync(file)).toBe(false);
     expect(typeof await getTls(f.directPort, "/api/state", saved.tls.cert)).toBe("string");
@@ -303,23 +303,23 @@ describe("the tailnet", () => {
   async function joined() {
     const f = await fresh();
     const setup = await browser(f.base).post<LoginResponse>("/api/setup", { code: f.code, passphrase: "passphrase", admin: ADMIN });
-    const li = await login(f.base, "li", "pw");
-    return { ...f, li, url: `/api/u/${setup.body.user.id}/admin/tailnet`, web: `/api/u/${setup.body.user.id}/admin/web-access` };
+    const ada = await login(f.base, "ada", "pw");
+    return { ...f, ada, url: `/api/u/${setup.body.user.id}/admin/tailnet`, web: `/api/u/${setup.body.user.id}/admin/web-access` };
   }
 
   it("joins with a key that is spent from a 0600 file, gone after, and never logged or sent back", async () => {
-    const { li, url, ts, home, logs } = await joined();
-    expect((await li.get<Tailnet>(url)).body).toEqual({ state: "notJoined", version: "1.90.1", hostname: "lyrica-host" });
+    const { ada, url, ts, home, logs } = await joined();
+    expect((await ada.get<Tailnet>(url)).body).toEqual({ state: "notJoined", version: "1.90.1", hostname: "lyrica-host" });
 
     ts.failLogin(true);
-    const failed = await li.put<{ error: string }>(url, { authKey: KEY });
+    const failed = await ada.put<{ error: string }>(url, { authKey: KEY });
     expect(failed.status).toBe(400);
     expect(failed.body.error).not.toContain(KEY);
     expect(failed.body.error).toContain("[hidden]");
     expect(readdirSync(home).filter((n) => n.startsWith("tailnet-key"))).toEqual([]);
 
     ts.failLogin(false);
-    const ok = await li.put<Tailnet>(url, { authKey: KEY });
+    const ok = await ada.put<Tailnet>(url, { authKey: KEY });
     expect(ok.status).toBe(200);
     expect(ok.body).toMatchObject({ state: "connected", tailnet: "example.ts.net", address: "100.101.102.103", dnsName: "lyrica.example.ts.net", hostname: "lyrica-host" });
     expect(readdirSync(home).filter((n) => n.startsWith("tailnet-key"))).toEqual([]);
@@ -335,11 +335,11 @@ describe("the tailnet", () => {
   });
 
   it("is 409 when joined elsewhere unless it leaves first, and sets the hostname only when given", async () => {
-    const { li, url, ts } = await joined();
-    await li.put(url, { authKey: KEY });
-    expect((await li.put(url, { authKey: KEY })).status).toBe(409);
+    const { ada, url, ts } = await joined();
+    await ada.put(url, { authKey: KEY });
+    expect((await ada.put(url, { authKey: KEY })).status).toBe(409);
     const n = ts.calls().length;
-    const again = await li.put<Tailnet>(url, { authKey: KEY, leave: true, hostname: "aria", controlServer: "https://hs.example.net" });
+    const again = await ada.put<Tailnet>(url, { authKey: KEY, leave: true, hostname: "aria", controlServer: "https://hs.example.net" });
     expect(again.status).toBe(200);
     expect(ts.calls().slice(n).map((c) => c.args.slice(2))).toEqual([
       ["status", "--json", "--peers=false"],
@@ -350,28 +350,28 @@ describe("the tailnet", () => {
       ["status", "--json", "--peers=false"],
     ]);
     expect(again.body.hostname).toBe("aria");
-    expect((await li.put(url, { authKey: KEY, leave: true, hostname: "no spaces" })).status).toBe(400);
+    expect((await ada.put(url, { authKey: KEY, leave: true, hostname: "no spaces" })).status).toBe(400);
   });
 
   it("refuses to disconnect, leave or switch over her own tailnet address", async () => {
-    const { d, li, url } = await joined();
-    await li.put(url, { authKey: KEY });
+    const { d, ada, url } = await joined();
+    await ada.put(url, { authKey: KEY });
     // Through `tailscale serve`: its own loopback port, with the browser's cookie.
     const viaTailnet = browser(`http://127.0.0.1:${d.servePort}`);
-    viaTailnet.cookie = li.cookie;
+    viaTailnet.cookie = ada.cookie;
     expect((await viaTailnet.post(`${url}/disconnect`)).status).toBe(409);
     expect((await viaTailnet.del(url)).status).toBe(409);
     expect((await viaTailnet.put(url, { authKey: KEY, leave: true })).status).toBe(409);
     expect((await viaTailnet.get<Tailnet>(url)).body.state).toBe("connected");
     // Over the LAN (or on the machine), they work.
-    expect((await li.post<Tailnet>(`${url}/disconnect`)).body.state).toBe("disconnected");
-    expect((await li.post<Tailnet>(`${url}/connect`)).body.state).toBe("connected");
+    expect((await ada.post<Tailnet>(`${url}/disconnect`)).body.state).toBe("disconnected");
+    expect((await ada.post<Tailnet>(`${url}/connect`)).body.state).toBe("connected");
   });
 
   it("serves the Tailnet web mode through tailscale serve, adds its name to the front door, and leaving turns it off", async () => {
-    const { d, li, url, web, ts } = await joined();
-    await li.put(url, { authKey: KEY });
-    const on = await li.put<WebAccess>(web, { mode: "tailnet" });
+    const { d, ada, url, web, ts } = await joined();
+    await ada.put(url, { authKey: KEY });
+    const on = await ada.put<WebAccess>(web, { mode: "tailnet" });
     expect(on.status).toBe(200);
     expect(on.body.mode).toBe("tailnet");
     expect(on.body.tailnet).toEqual({ dnsName: "lyrica.example.ts.net", certificates: false });
@@ -380,8 +380,8 @@ describe("the tailnet", () => {
     expect(on.body.direct).not.toBeNull();
     expect(d.services!.web.frontDoor()).toEqual({ ports: [443, on.body.direct!.port], hosts: ["lyrica.example.ts.net", "100.101.102.103"], exclude: [] });
 
-    expect((await li.del<Tailnet>(url)).body.state).toBe("notJoined");
-    expect((await li.get<WebAccess>(web)).body.mode).toBe("direct");
+    expect((await ada.del<Tailnet>(url)).body.state).toBe("notJoined");
+    expect((await ada.get<WebAccess>(web)).body.mode).toBe("direct");
     const tail = ts.calls().map((c) => c.args.slice(2).join(" "));
     expect(tail.indexOf("serve reset")).toBeGreaterThan(-1);
     expect(tail.indexOf("serve reset")).toBeLessThan(tail.lastIndexOf("logout"));
@@ -393,21 +393,21 @@ describe("the tailnet", () => {
   });
 
   it("names MagicDNS or HTTPS certificates when the tailnet has them off", async () => {
-    const { li, url, web, ts } = await joined();
-    await li.put(url, { authKey: KEY });
+    const { ada, url, web, ts } = await joined();
+    await ada.put(url, { authKey: KEY });
     const statusFile = join(ts.bin, "..", "status.json");
     const s = JSON.parse(readFileSync(statusFile, "utf8"));
     writeFileSync(statusFile, JSON.stringify({ ...s, CertDomains: null }));
-    const r = await li.put<{ error: string }>(web, { mode: "tailnet" });
+    const r = await ada.put<{ error: string }>(web, { mode: "tailnet" });
     expect(r.status).toBe(400);
     expect(r.body.error).toMatch(/HTTPS certificates are off/);
-    expect((await li.get<WebAccess>(web)).body.mode).toBe("direct");
+    expect((await ada.get<WebAccess>(web)).body.mode).toBe("direct");
   });
 
   it("says when her tailscaled isn't installed", async () => {
     const f = await fresh({ tailnet: { binary: "/nonexistent/tailscale" } });
     const setup = await browser(f.base).post<LoginResponse>("/api/setup", { code: f.code, passphrase: "passphrase", admin: ADMIN });
-    const li = await login(f.base, "li", "pw");
-    expect((await li.get<Tailnet>(`/api/u/${setup.body.user.id}/admin/tailnet`)).body).toEqual({ state: "notInstalled", reason: "the tailscale command isn't installed" });
+    const ada = await login(f.base, "ada", "pw");
+    expect((await ada.get<Tailnet>(`/api/u/${setup.body.user.id}/admin/tailnet`)).body).toEqual({ state: "notInstalled", reason: "the tailscale command isn't installed" });
   });
 });

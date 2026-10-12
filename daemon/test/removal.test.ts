@@ -31,14 +31,14 @@ function localTarget(cwd: string): ExecutionTarget {
 async function setup() {
   const keyring = await freshKeyring();
   const users = new Users(keyring);
-  const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
-  await users.authenticate("li", "pw");
+  const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+  await users.authenticate("ada", "pw");
   const root = mkdtempSync(join(tmpdir(), "lyrica-removal-"));
   const home = join(root, "home");
   const ws = join(root, "ws");
   mkdirSync(home);
   mkdirSync(ws);
-  const changes = new FileChanges(users.openUserDb(li.id), () => home);
+  const changes = new FileChanges(users.openUserDb(ada.id), () => home);
   const target = localTarget(ws);
   /** Runs a write through the recording wrapper, as her write tool would in tool call `call`. */
   const write = (call: string, path: string, text: string) =>

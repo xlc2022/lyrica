@@ -12,7 +12,7 @@ describe("paths named in a message", () => {
     expect(paths("![tray](/workspace/uploads/tray-a.png)")).toEqual(["/workspace/uploads/tray-a.png"]);
   });
   it("leaves another folder's workspace and a URL alone", () => {
-    expect(paths("my code is in /home/li/workspace/app")).toEqual([]);
+    expect(paths("my code is in /home/ada/workspace/app")).toEqual([]);
     expect(paths("~/workspace/notes.md and https://git.example/org/workspace/readme")).toEqual([]);
     expect(paths("/workspaces/app and /workspace-old/x")).toEqual([]);
   });

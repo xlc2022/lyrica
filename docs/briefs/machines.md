@@ -12,7 +12,7 @@ prompts", and `/mnt/project-files/remote/proposal.md` for the reasoning.
 
 ## Goal
 
-Lyrica works on Li's other computers over SSH the way she works in her
+Lyrica works on the user's other computers over SSH the way she works in her
 sandbox, confined by each machine's own account, starting at Ask on every
 machine and loosened one at a time (principle 6, inside principle 2's
 structural boundaries). The SSH targets that exist become machines.
@@ -31,7 +31,7 @@ structural boundaries). The SSH targets that exist become machines.
    accepted with `offNetwork: true`, which the UI shows and warns about.
    The resolved address is checked again on every connection and the flag
    updated; a private machine that has newly gone off network is refused
-   until Li confirms again (`confirmOffNetwork(name)`), so a DNS change
+   until the user confirms again (`confirmOffNetwork(name)`), so a DNS change
    can't bypass the warning. `setMachinePool(name, pool)` removes the
    machine from every thread that grants it, so a machine is never reached
    from both pools; the UI warns before moving Private to General.
@@ -111,7 +111,7 @@ structural boundaries). The SSH targets that exist become machines.
 
 ## After merging
 
-Tell the standing Operator docs thread (Li's rule, 2026-10-11) by
+Tell the standing Operator docs thread (the owner's rule, 2026-10-11) by
 cross-session message what changed that an operator does by hand (setup
 steps, commands, config) and where, in addition to the merge notice to the
 project chat.

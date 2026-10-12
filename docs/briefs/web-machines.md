@@ -13,7 +13,7 @@ under "What the user sees and approves". Send it screenshots before the PR.
 ## Goal
 
 Adding a machine, granting it to a thread and approving what she does
-there are as quiet and familiar as the rest of the interface, and Li sees
+there are as quiet and familiar as the rest of the interface, and the user sees
 the fingerprint before anything is trusted.
 
 ## In scope
@@ -68,7 +68,7 @@ the fingerprint before anything is trusted.
 
 ## After merging
 
-Tell the standing Operator docs thread (Li's rule, 2026-10-11) by
+Tell the standing Operator docs thread (the owner's rule, 2026-10-11) by
 cross-session message what changed that an operator does by hand (setup
 steps, commands, config) and where, in addition to the merge notice to the
 project chat.

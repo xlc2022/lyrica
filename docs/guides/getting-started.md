@@ -25,7 +25,7 @@ the web build and the browser tests) run on Ubuntu 24.04, not on Debian.
 
 ## What you end up with
 
-One machine, in practice a NixOS VM on Li's Proxmox (or a Debian or
+One machine, in practice a NixOS VM on your Proxmox (or a Debian or
 Ubuntu VM or LXC container), running:
 
 - `lyricad` as the `lyrica` system user, from the release that
@@ -146,14 +146,14 @@ read it for anything not covered here.
 
    ```nix
    networking.hostName = "lyrica";
-   users.users.li = { isNormalUser = true; extraGroups = [ "wheel" ]; };
+   users.users.ada = { isNormalUser = true; extraGroups = [ "wheel" ]; };
    services.openssh.enable = true;
    services.qemuGuest.enable = true; # Proxmox VM only
    nix.settings.experimental-features = [ "nix-command" "flakes" ];
    ```
 
 5. **Install and reboot.** `nixos-install` asks for the root password. Then
-   `nixos-enter --root /mnt -c 'passwd li'` sets your user's, and `reboot`
+   `nixos-enter --root /mnt -c 'passwd ada'` sets your user's, and `reboot`
    (remove the ISO). Log in over SSH as that user.
 6. **Turn `/etc/nixos` into a flake.** Create `/etc/nixos/flake.nix` (as
    root, `sudo -e`), using the `networking.hostName` from step 4 as the
@@ -491,8 +491,8 @@ the local profile only. See [docs/models.md](../models.md).
 
   ```sh
   lyrica admin models endpoints add openrouter cloud https://openrouter.ai/api/v1 --shared
-  lyrica admin models profile set cloud chat openrouter/<model-id> --user li
-  lyrica admin models profile show --user li
+  lyrica admin models profile set cloud chat openrouter/<model-id> --user ada
+  lyrica admin models profile show --user ada
   ```
 
 - **A model host** (a GPU machine of your own running the host stack):
@@ -510,8 +510,8 @@ user and per pool (general or private). Without any, she can work only in
 each thread's own folder in the user's encrypted home workspace.
 
 ```sh
-lyrica admin grants add --user li --pool general /srv/shared/notes
-lyrica admin grants list --user li
+lyrica admin grants add --user ada --pool general /srv/shared/notes
+lyrica admin grants list --user ada
 ```
 
 The folder must be a real directory with no symlinks on its path, readable
@@ -568,7 +568,7 @@ machines start at Ask). The reference is
 [docs/workspace.md](../workspace.md#machines).
 
 ```sh
-lyrica admin ssh add --user li office li-lyrica@office.lan --pool general --limit ask
+lyrica admin ssh add --user ada office ada-lyrica@office.lan --pool general --limit ask
 ```
 
 (`--root <path>` limits her reads and writes there.) It runs in three
@@ -667,7 +667,7 @@ this computer's name or MAC address).
 4. On Lyrica's machine:
 
    ```sh
-   lyrica admin proxmox add --user li hypervisor https://pve.lan:8006 --pool general --limit ask
+   lyrica admin proxmox add --user ada hypervisor https://pve.lan:8006 --pool general --limit ask
    ```
 
    It prints the setup above again, shows the certificate's fingerprint
@@ -766,7 +766,7 @@ the SSH ones, and `ssh remove <name>` takes one away.
   them. The home page header
   ("Lyrica 0.1.0 · <build>") shows the git commit that is running.
 
-## Checklist for the first install on Li's machine
+## Checklist for the first install on your machine
 
 Run these in order the first time and note where each stops. Each one is
 something the code expects but nobody has confirmed on real hardware.

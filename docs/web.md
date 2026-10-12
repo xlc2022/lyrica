@@ -175,7 +175,8 @@ A thread's address may carry what the panel beside it shows:
   an ✕; **+ Add server** opens a search of the pool's other servers, "No
   general MCP server yet" when there's none, with an **MCP servers** link at
   its foot; a change applies at once), the mode, the
-  Web search and Images switches, "Do not log", rename, hide, and forget. `lyricad` validates every
+  Web search and Images switches, the Claude Code switch (only where
+  `claudeCodeOffered`, or while on), "Do not log", rename, hide, and forget. `lyricad` validates every
   change and its reason is shown.
 - **Subagents live inline**, not in the sidebar: see the `delegate` card
   under Chat. Opening a subagent's thread by link shows the same thing as
@@ -369,6 +370,10 @@ A thread's address may carry what the panel beside it shows:
   the server first (`POST …/mcp-servers/probe`, then `POST
   …/mcp-servers`); a private server off network asks first (**Add
   anyway**, or **Save anyway** for a changed URL).
+  **Claude Code** (`src/ClaudeCode.tsx`), after MCP servers: a Token field
+  and **Save token** (`PUT …/claude-code`), or once saved Signed in and
+  **Remove** (`DELETE`), confirmed in place; Not installed when the server
+  lacks the program. The token is never sent back.
 - **Administration**, for administrators: Status (the server's network
   self-test, sleep time, start unlocked), Users with the administrator flag,
   **Change password…** (the new password and the administrator's own, in
@@ -687,8 +692,8 @@ turns animations off.
   also serves a fake speech endpoint (whisper and kokoro, under `/speech/v1`,
   and `/speech/down` to make it fail). Chromium runs with a fake microphone.
 - For development, `npx tsx web/e2e/serve.ts 7340 7350` starts the same
-  throwaway `lyricad` (passphrase `correct horse`, login `li` / `pw`), and
+  throwaway `lyricad` (passphrase `correct horse`, login `ada` / `pw`), and
   `npm run dev -w @lyrica/web` serves the UI with `/api` passed to it.
 - `npx tsx web/e2e/shot.ts [page]...` (after a build) saves screenshots of
-  li's pages from that same throwaway `lyricad`, at both widths, light and
+  ada's pages from that same throwaway `lyricad`, at both widths, light and
   dark (docs/workspace.md, "Her own code").

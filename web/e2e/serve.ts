@@ -1,4 +1,4 @@
-// For Playwright: a real lyricad on a temporary runtime, locked, with user li
+// For Playwright: a real lyricad on a temporary runtime, locked, with user ada
 // (password "pw", administrator), plus a fake OpenAI-compatible model server.
 // Usage: tsx web/e2e/serve.ts <lyricad port> <model port>
 //
@@ -145,7 +145,7 @@ if (!settingUp) {
   const keyring = new Keyring(home, ARGON2);
   await keyring.initSelf(PASSPHRASE);
   new PersonaStore(keyring.self()).importSeed(fileURLToPath(new URL("../../persona", import.meta.url)));
-  await new Users(keyring).createUser("li", "pw", { displayName: "Li", pronouns: PRONOUN_PRESETS.she }, { admin: true });
+  await new Users(keyring).createUser("ada", "pw", { displayName: "Ada", pronouns: PRONOUN_PRESETS.she }, { admin: true });
   keyring.self().close();
 }
 

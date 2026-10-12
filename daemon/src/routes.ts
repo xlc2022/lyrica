@@ -3,7 +3,7 @@ import {
   AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, firstLine, GIT_KINDS, mcpHost, sentenceCiting, splitId,
   type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
-  searxngAddress, searxngStatus, searxngView, setSearxngAddress,
+  searxngAddress, searxngStatus, searxngView, setSearxngAddress, claudeCodeInstalled,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
@@ -523,6 +523,19 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("DELETE", `${u}/machines/:name`, (r) => {
       s().workspace.removeMachine(d.userFor(r).id, r.params.name!);
       return { ok: true };
+    }),
+
+    // --- Claude Code on the user's Claude plan (docs/workspace.md, "Claude Code") ---
+    route("GET", `${u}/claude-code`, (r): Api.ClaudeCodeStatus => ({ token: !!s().workspace.settings(d.userFor(r).id).claudeCodeToken(), installed: claudeCodeInstalled() })),
+    route("PUT", `${u}/claude-code`, async (r): Promise<Api.ClaudeCodeStatus> => {
+      const user = d.userFor(r);
+      const { token } = await r.json<Api.ClaudeCodeTokenInput>();
+      s().workspace.settings(user.id).setClaudeCodeToken(String(token ?? ""));
+      return { token: true, installed: claudeCodeInstalled() };
+    }),
+    route("DELETE", `${u}/claude-code`, (r): Api.ClaudeCodeStatus => {
+      s().workspace.settings(d.userFor(r).id).setClaudeCodeToken(null);
+      return { token: false, installed: claudeCodeInstalled() };
     }),
 
     // --- Git accounts (docs/workspace.md, "Git accounts and repositories") ---
@@ -1974,6 +1987,8 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     network: workspace.network({ userId: user.id, pool, threadId }),
     grants: applies.grants, machines: applies.machines, repositories: applies.repositories, mcpServers: applies.mcpServers, mode: applies.mode, webSearch: applies.webSearch,
     searchProvider: !!searxngAddress(d.keyring.self()), images: applies.images, unlogged: isUnlogged, parent: tw.parent,
+    claudeCode: applies.claudeCode,
+    claudeCodeOffered: pool === "general" && !ctx.localOnly && !!workspace.settings(user.id).claudeCodeToken() && claudeCodeInstalled(),
     speech: speechState(models, ctx),
     fallback: models.threadFallback(user.id, threadId), fallbackOn: ctx.fallback !== false,
     allowed: models.allowed(ctx).map(({ endpoint }) => endpointInfo(d, user.id, endpoint.id)),
@@ -1981,7 +1996,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
   };
 }
 
-const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "mode", "webSearch", "images", "machines", "repositories", "mcpServers"] as const;
+const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "mode", "webSearch", "images", "claudeCode", "machines", "repositories", "mcpServers"] as const;
 
 /** A thread's subagents and child threads, and theirs, hidden ones included. */
 function descendants(d: Lyricad, user: User, pool: Pool, threadId: string): string[] {
@@ -2029,7 +2044,9 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
     owner(d, user, (o) => { if (o[pool].getThread(thread.parent!)?.unlogged) throw new Error("this thread's parent isn't logged, so it can't be logged either"); });
   }
 
-  for (const k of ["webSearch", "images"] as const) if (change[k] !== undefined && typeof change[k] !== "boolean") throw new Error(`${k} is true or false`);
+  for (const k of ["webSearch", "images", "claudeCode"] as const) if (change[k] !== undefined && typeof change[k] !== "boolean") throw new Error(`${k} is true or false`);
+  // Claude Code sends what it reads to Anthropic, so a local-only thread can't have it (Workspace.claudeCodeFor checks again at every run).
+  if (localOnly && (change.claudeCode ?? (pool === "general" && ws.thread(thread.id).claudeCode))) throw new CloudModelForbidden("Claude Code sends what it reads to Anthropic, so a local-only thread can't use it");
   if (change.fallback !== undefined && change.fallback !== null && typeof change.fallback !== "boolean") throw new Error("fallback is true, false or null");
   // The workspace checks grants, hosts, mode, switches, machines and the parent's limits, and writes only if all pass.
   const wsChange = pick(change, [...WORKSPACE_KEYS]);

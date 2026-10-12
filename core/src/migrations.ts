@@ -214,6 +214,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
       db.exec(MCP_SERVERS_SCHEMA);
       addColumns(db, [["thread_workspaces", "mcp_servers", "TEXT NOT NULL DEFAULT '[]'"]]);
     },
+  }, {
+    // Each thread's Claude Code switch (docs/workspace.md, "Claude Code"), off for every thread. Adds only.
+    version: 4,
+    run(db) { addColumns(db, [["thread_workspaces", "claude_code", "INTEGER NOT NULL DEFAULT 0"]]); },
   }],
   pool: [{
     version: 1, contract: true,

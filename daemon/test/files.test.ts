@@ -54,45 +54,45 @@ async function setup() {
   const rt = await runtime();
   const dm = await daemon(rt);
   await browser(dm.base).post("/api/unlock", { passphrase: "passphrase" });
-  const li = await login(dm.base, "li", "pw");
-  const thread = (await li.post<ThreadSummary>(`/api/u/${rt.li.id}/threads`, { pool: "general", title: "seeds" })).body;
-  const path = `/api/u/${rt.li.id}/threads/general/${enc(thread.id)}/files`;
-  return { rt, ...dm, li, thread, path };
+  const ada = await login(dm.base, "ada", "pw");
+  const thread = (await ada.post<ThreadSummary>(`/api/u/${rt.ada.id}/threads`, { pool: "general", title: "seeds" })).body;
+  const path = `/api/u/${rt.ada.id}/threads/general/${enc(thread.id)}/files`;
+  return { rt, ...dm, ada, thread, path };
 }
 
 describe("the Files panel's routes", () => {
   it("lists a folder with the roots, searches, and lists images", async () => {
-    const { li, path } = await setup();
+    const { ada, path } = await setup();
     const { calls } = fakeFiles();
-    const list = await li.get<FileListing>(path);
+    const list = await ada.get<FileListing>(path);
     expect(list.status).toBe(200);
     expect(list.body.roots.map((r) => r.path)).toEqual(["/workspace", "/srv/docs"]);
     expect(list.body.dir).toBe("/workspace");
     expect(list.body.entries.map((e) => e.name)).toEqual(["notes", "a.txt"]);
-    expect((await li.get<FileListing>(`${path}?dir=${enc("/srv/docs")}`)).body.dir).toBe("/srv/docs");
+    expect((await ada.get<FileListing>(`${path}?dir=${enc("/srv/docs")}`)).body.dir).toBe("/srv/docs");
     expect(calls).toEqual([["list", "/workspace"], ["list", "/srv/docs"]]);
-    expect((await li.get<{ entries: { path: string }[] }>(`${path}/search?root=${enc("/workspace")}&q=plan`)).body.entries[0]!.path).toBe("/workspace/plan.txt");
-    expect((await li.get<{ source: string }[]>(`${path}/images`)).body[0]!.source).toBe("uploaded");
+    expect((await ada.get<{ entries: { path: string }[] }>(`${path}/search?root=${enc("/workspace")}&q=plan`)).body.entries[0]!.path).toBe("/workspace/plan.txt");
+    expect((await ada.get<{ source: string }[]>(`${path}/images`)).body[0]!.source).toBe("uploaded");
   });
 
   it("refuses a path outside the thread's folders and a change in a read-only grant with 403, and a failed change with 400", async () => {
-    const { li, path } = await setup();
+    const { ada, path } = await setup();
     fakeFiles();
-    expect((await li.get(`${path}?dir=${enc("/etc")}`)).status).toBe(403);
-    const up = await li.call<UploadResponse>("POST", `${path}/upload?dir=${enc("/srv/docs")}&name=x.txt`, Buffer.from("x"), { "content-type": "application/octet-stream" });
+    expect((await ada.get(`${path}?dir=${enc("/etc")}`)).status).toBe(403);
+    const up = await ada.call<UploadResponse>("POST", `${path}/upload?dir=${enc("/srv/docs")}&name=x.txt`, Buffer.from("x"), { "content-type": "application/octet-stream" });
     expect(up.status).toBe(403);
-    expect((await li.post(`${path}/rename`, { from: "/workspace/a", to: "/workspace/taken" })).status).toBe(400);
-    expect((await li.post(`${path}/delete`, { paths: "not a list" })).status).toBe(400);
+    expect((await ada.post(`${path}/rename`, { from: "/workspace/a", to: "/workspace/taken" })).status).toBe(400);
+    expect((await ada.post(`${path}/delete`, { paths: "not a list" })).status).toBe(400);
   });
 
   it("uploads into a folder, makes folders, renames and deletes", async () => {
-    const { li, path } = await setup();
+    const { ada, path } = await setup();
     const { calls } = fakeFiles();
-    const up = await li.call<UploadResponse>("POST", `${path}/upload?dir=${enc("/workspace/notes")}&name=plan.md`, Buffer.from("# plan"), { "content-type": "application/octet-stream" });
+    const up = await ada.call<UploadResponse>("POST", `${path}/upload?dir=${enc("/workspace/notes")}&name=plan.md`, Buffer.from("# plan"), { "content-type": "application/octet-stream" });
     expect(up.body).toEqual({ path: "/workspace/notes/plan.md" });
-    expect((await li.post(`${path}/folder`, { path: "/workspace/out" })).body).toEqual({ ok: true });
-    expect((await li.post(`${path}/rename`, { from: "/workspace/a.txt", to: "/workspace/b.txt" })).body).toEqual({ ok: true });
-    expect((await li.post(`${path}/delete`, { paths: ["/workspace/b.txt", "/workspace/out"] })).body).toEqual({ ok: true });
+    expect((await ada.post(`${path}/folder`, { path: "/workspace/out" })).body).toEqual({ ok: true });
+    expect((await ada.post(`${path}/rename`, { from: "/workspace/a.txt", to: "/workspace/b.txt" })).body).toEqual({ ok: true });
+    expect((await ada.post(`${path}/delete`, { paths: ["/workspace/b.txt", "/workspace/out"] })).body).toEqual({ ok: true });
     expect(calls).toEqual([
       ["upload", "/workspace/notes", "plan.md", "# plan"], ["mkdir", "/workspace/out"],
       ["rename", "/workspace/a.txt", "/workspace/b.txt"], ["remove", ["/workspace/b.txt", "/workspace/out"]],
@@ -100,9 +100,9 @@ describe("the Files panel's routes", () => {
   });
 
   it("serves a file's bytes with its type, inline or as a download, never to be run, and streams a zip", async () => {
-    const { li, base, path } = await setup();
+    const { ada, base, path } = await setup();
     fakeFiles();
-    const get = (p: string) => fetch(base + p, { headers: { cookie: li.cookie! } });
+    const get = (p: string) => fetch(base + p, { headers: { cookie: ada.cookie! } });
     const res = await get(`${path}/content?path=${enc("/workspace/a.txt")}`);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("text/plain; charset=utf-8");
@@ -121,7 +121,7 @@ describe("the Files panel's routes", () => {
     expect((await get(`${path}/content?path=${enc("/workspace/missing")}`)).status).toBe(400);
 
     const zip = await fetch(`${base}${path}/zip`, {
-      method: "POST", headers: { cookie: li.cookie!, origin: base, "content-type": "application/json" }, body: JSON.stringify({ paths: ["/workspace/notes"] }),
+      method: "POST", headers: { cookie: ada.cookie!, origin: base, "content-type": "application/json" }, body: JSON.stringify({ paths: ["/workspace/notes"] }),
     });
     expect(zip.status).toBe(200);
     expect(zip.headers.get("content-type")).toBe("application/zip");

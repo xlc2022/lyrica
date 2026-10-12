@@ -13,7 +13,7 @@ const SEED = fileURLToPath(new URL("../../persona", import.meta.url));
 const cleanup: (() => Promise<void> | void)[] = [];
 afterEach(async () => { for (const c of cleanup.splice(0).reverse()) await c(); });
 
-/** A runtime with self.db ("passphrase"), the persona, and users li (admin, password "pw") and sam ("pw2"). */
+/** A runtime with self.db ("passphrase"), the persona, and users ada (admin, password "pw") and sam ("pw2"). */
 export async function runtime() {
   const home = mkdtempSync(join(tmpdir(), "lyricad-"));
   cleanup.push(() => rmSync(home, { recursive: true, force: true }));
@@ -21,12 +21,12 @@ export async function runtime() {
   await keyring.initSelf("passphrase");
   new PersonaStore(keyring.self()).importSeed(SEED);
   const users = new Users(keyring);
-  const li = await users.createUser("li", "pw", { displayName: "Li", pronouns: PRONOUN_PRESETS.she }, { admin: true });
+  const ada = await users.createUser("ada", "pw", { displayName: "Ada", pronouns: PRONOUN_PRESETS.she }, { admin: true });
   const sam = await users.createUser("sam", "pw2", { displayName: "Sam", pronouns: PRONOUN_PRESETS.they }, { admin: false });
   keyring.self().close();
   const sealed = join(home, "credentials");
   const loaded = join(home, "loaded-credentials");
-  return { home, li, sam, sealed, loaded };
+  return { home, ada, sam, sealed, loaded };
 }
 
 /** "systemd decrypting at start": copies sealed (here, plain) files into the loaded directory as `lyrica_<name>`. */

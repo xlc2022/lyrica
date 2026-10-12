@@ -16,33 +16,33 @@ async function setup() {
 describe("one browser, one person", () => {
   it("logging in as an unlinked user ends the other user's session in that browser", async () => {
     const { rt, base } = await setup();
-    const b = await login(base, "li", "pw");
-    const liCookie = b.cookie;
+    const b = await login(base, "ada", "pw");
+    const adaCookie = b.cookie;
     expect((await b.post<LoginResponse>("/api/login", { login: "sam", password: "pw2" })).body.replaced).toBe(true);
-    expect(b.cookie).not.toBe(liCookie); // a new session
+    expect(b.cookie).not.toBe(adaCookie); // a new session
     expect((await b.get<State>("/api/state")).body.users.map((u) => u.login)).toEqual(["sam"]);
-    expect((await b.get(`/api/u/${rt.li.id}/me`)).status).toBe(401);
+    expect((await b.get(`/api/u/${rt.ada.id}/me`)).status).toBe(401);
     // The old cookie is dead too.
-    b.cookie = liCookie;
-    expect((await b.get(`/api/u/${rt.li.id}/me`)).status).toBe(401);
+    b.cookie = adaCookie;
+    expect((await b.get(`/api/u/${rt.ada.id}/me`)).status).toBe(401);
   });
 
   it("linking needs both passwords, and unlinking separates the two in every browser", async () => {
     const { rt, base } = await setup();
-    const b = await login(base, "li", "pw");
-    const url = `/api/u/${rt.li.id}/links`;
+    const b = await login(base, "ada", "pw");
+    const url = `/api/u/${rt.ada.id}/links`;
     expect((await b.post(url, { password: "pw", login: "sam", otherPassword: "wrong" })).status).toBe(401);
     expect((await b.post(url, { password: "wrong", login: "sam", otherPassword: "pw2" })).status).toBe(401);
     expect((await b.get<UserCard[]>(url)).body).toEqual([]);
     expect((await b.post<UserCard[]>(url, { password: "pw", login: "sam", otherPassword: "pw2" })).body.map((u) => u.login)).toEqual(["sam"]);
 
     await b.post("/api/login", { login: "sam", password: "pw2" });
-    expect((await b.get<State>("/api/state")).body.users.map((u) => u.login).sort()).toEqual(["li", "sam"]);
+    expect((await b.get<State>("/api/state")).body.users.map((u) => u.login).sort()).toEqual(["ada", "sam"]);
     // Sam's side sees the link too.
-    expect((await b.get<UserCard[]>(`/api/u/${rt.sam.id}/links`)).body.map((u) => u.login)).toEqual(["li"]);
+    expect((await b.get<UserCard[]>(`/api/u/${rt.sam.id}/links`)).body.map((u) => u.login)).toEqual(["ada"]);
 
     expect((await b.del<UserCard[]>(`${url}/${rt.sam.id}`)).body).toEqual([]);
-    expect((await b.get<State>("/api/state")).body.users.map((u) => u.login)).toEqual(["li"]);
+    expect((await b.get<State>("/api/state")).body.users.map((u) => u.login)).toEqual(["ada"]);
   });
 });
 
@@ -53,24 +53,24 @@ describe("session IDs", () => {
     const laptop = await login(base, "sam", "pw2");
     const copied = laptop.cookie;
     await laptop.post(`/api/u/${rt.sam.id}/lock`);
-    // Li logs in on that laptop.
-    const li = await laptop.post<LoginResponse>("/api/login", { login: "li", password: "pw" });
-    expect(li.body.replaced).toBe(false);
+    // Ada logs in on that laptop.
+    const ada = await laptop.post<LoginResponse>("/api/login", { login: "ada", password: "pw" });
+    expect(ada.body.replaced).toBe(false);
     expect(laptop.cookie).not.toBe(copied);
     const thief = browser(base);
     thief.cookie = copied;
     expect((await thief.get<State>("/api/state")).body.users).toEqual([]);
-    expect((await thief.get(`/api/u/${rt.li.id}/me`)).status).toBe(401);
+    expect((await thief.get(`/api/u/${rt.ada.id}/me`)).status).toBe(401);
   });
 
   it("change at every login, and a session left empty ends", async () => {
     const { rt, base } = await setup();
-    const b = await login(base, "li", "pw");
+    const b = await login(base, "ada", "pw");
     const first = b.cookie;
-    await b.post("/api/login", { login: "li", password: "pw" });
+    await b.post("/api/login", { login: "ada", password: "pw" });
     expect(b.cookie).not.toBe(first);
     const second = b.cookie;
-    await b.post("/api/logout", { userId: rt.li.id });
+    await b.post("/api/logout", { userId: rt.ada.id });
     const old = browser(base);
     old.cookie = second;
     expect((await old.post("/api/logout", {})).status).toBe(401);
@@ -78,8 +78,8 @@ describe("session IDs", () => {
 
   it("linking by an unknown login says only that something is wrong", async () => {
     const { rt, base } = await setup();
-    const b = await login(base, "li", "pw");
-    const r = await b.post<{ error: string }>(`/api/u/${rt.li.id}/links`, { password: "pw", login: "nobody", otherPassword: "x" });
+    const b = await login(base, "ada", "pw");
+    const r = await b.post<{ error: string }>(`/api/u/${rt.ada.id}/links`, { password: "pw", login: "nobody", otherPassword: "x" });
     expect(r.status).toBe(401);
     expect(r.body.error).toBe("a login or password is wrong");
   });
@@ -88,26 +88,26 @@ describe("session IDs", () => {
 describe("staying unlocked after logout", () => {
   it("is on by default; off, logging out drops the key once no other browser holds the user", async () => {
     const { rt, base, d } = await setup();
-    const one = await login(base, "li", "pw");
-    expect((await one.get<Me>(`/api/u/${rt.li.id}/me`)).body.stayUnlocked).toBe(true);
+    const one = await login(base, "ada", "pw");
+    expect((await one.get<Me>(`/api/u/${rt.ada.id}/me`)).body.stayUnlocked).toBe(true);
     await one.post("/api/logout", {});
-    expect(d.keyring.hasUserKey(rt.li.id)).toBe(true);
+    expect(d.keyring.hasUserKey(rt.ada.id)).toBe(true);
 
-    const a = await login(base, "li", "pw");
-    expect((await a.put<Me>(`/api/u/${rt.li.id}/me/stay-unlocked`, { stayUnlocked: false })).body.stayUnlocked).toBe(false);
-    const b = await login(base, "li", "pw");
-    expect((await a.post<LogoutResponse>("/api/logout", {})).body.stillUnlocked).toEqual([rt.li.id]);
-    expect(d.keyring.hasUserKey(rt.li.id)).toBe(true); // still held in the other browser
-    expect((await b.post<LogoutResponse>("/api/logout", { userId: rt.li.id })).body.stillUnlocked).toEqual([]);
-    expect(d.keyring.hasUserKey(rt.li.id)).toBe(false);
+    const a = await login(base, "ada", "pw");
+    expect((await a.put<Me>(`/api/u/${rt.ada.id}/me/stay-unlocked`, { stayUnlocked: false })).body.stayUnlocked).toBe(false);
+    const b = await login(base, "ada", "pw");
+    expect((await a.post<LogoutResponse>("/api/logout", {})).body.stillUnlocked).toEqual([rt.ada.id]);
+    expect(d.keyring.hasUserKey(rt.ada.id)).toBe(true); // still held in the other browser
+    expect((await b.post<LogoutResponse>("/api/logout", { userId: rt.ada.id })).body.stillUnlocked).toEqual([]);
+    expect(d.keyring.hasUserKey(rt.ada.id)).toBe(false);
   });
 
   it("warns when saved credentials would unlock the user at every start anyway", async () => {
     const { rt, base } = await setup();
-    const b = await login(base, "li", "pw");
-    await b.put(`/api/u/${rt.li.id}/me/stay-unlocked`, { stayUnlocked: false });
-    expect((await b.put<Me>(`/api/u/${rt.li.id}/me/credentials`, { save: true })).body.warning).toMatch(/restarts/);
-    expect((await b.put<Me>(`/api/u/${rt.li.id}/me/stay-unlocked`, { stayUnlocked: true })).body.warning).toBeUndefined();
+    const b = await login(base, "ada", "pw");
+    await b.put(`/api/u/${rt.ada.id}/me/stay-unlocked`, { stayUnlocked: false });
+    expect((await b.put<Me>(`/api/u/${rt.ada.id}/me/credentials`, { save: true })).body.warning).toMatch(/restarts/);
+    expect((await b.put<Me>(`/api/u/${rt.ada.id}/me/stay-unlocked`, { stayUnlocked: true })).body.warning).toBeUndefined();
   });
 });
 
@@ -120,17 +120,17 @@ describe("persona proposals", () => {
 
   it("wait in the originating user's user.db, unseen by administrators, until that user sends them on", async () => {
     const { rt, base, d } = await setup();
-    const li = await login(base, "li", "pw");
+    const ada = await login(base, "ada", "pw");
     const sam = await login(base, "sam", "pw2");
     const proposals = d.services!.proposals;
     const t = threadOf(d, rt.sam.id);
-    const secret = "Sam told her about the surprise party for Li";
+    const secret = "Sam told her about the surprise party for Ada";
     const sams = proposals.propose(t.view, t.threadId, { path: "persona_topics/friends.md", text: secret, reason: "a dream", author: "sleep" });
     expect(sams.sent).toBe(false);
 
     // The administrator can't list or read it.
-    expect((await li.get<PersonaProposal[]>(`/api/u/${rt.li.id}/admin/proposals`)).body).toEqual([]);
-    expect((await li.get(`/api/u/${rt.sam.id}/proposals`)).status).toBe(401);
+    expect((await ada.get<PersonaProposal[]>(`/api/u/${rt.ada.id}/admin/proposals`)).body).toEqual([]);
+    expect((await ada.get(`/api/u/${rt.sam.id}/proposals`)).status).toBe(401);
 
     // Sam edits it, then sends it on: it's marked as sent, and edited, by Sam.
     const drafts = (await sam.get<ProposalDraft[]>(`/api/u/${rt.sam.id}/proposals`)).body;
@@ -139,14 +139,14 @@ describe("persona proposals", () => {
     expect(edited.text).toBe("Friends plan surprises for each other.");
     await sam.post(`/api/u/${rt.sam.id}/proposals/${sams.id}/send`);
     expect((await sam.get<ProposalDraft[]>(`/api/u/${rt.sam.id}/proposals`)).body).toEqual([]);
-    expect((await li.get<PersonaProposal[]>(`/api/u/${rt.li.id}/admin/proposals`)).body).toEqual([
+    expect((await ada.get<PersonaProposal[]>(`/api/u/${rt.ada.id}/admin/proposals`)).body).toEqual([
       expect.objectContaining({ text: "Friends plan surprises for each other.", author: "sleep", sentBy: `user:${rt.sam.id}`, edited: true, stale: false }),
     ]);
 
     // An administrator's own goes straight to review, unedited.
-    const lt = threadOf(d, rt.li.id);
+    const lt = threadOf(d, rt.ada.id);
     expect(proposals.propose(lt.view, lt.threadId, { path: "persona_topics/music.md", text: "x", reason: "y", author: "sleep" }).sent).toBe(true);
-    expect((await li.get<PersonaProposal[]>(`/api/u/${rt.li.id}/admin/proposals`)).body.at(-1)).toMatchObject({ sentBy: `user:${rt.li.id}`, edited: false });
+    expect((await ada.get<PersonaProposal[]>(`/api/u/${rt.ada.id}/admin/proposals`)).body.at(-1)).toMatchObject({ sentBy: `user:${rt.ada.id}`, edited: false });
 
     // Dropping a draft.
     const another = proposals.propose(t.view, t.threadId, { path: "persona_topics/friends.md", text: "z", reason: "w", author: "sleep" });
@@ -168,16 +168,16 @@ describe("persona proposals", () => {
 
   it("aren't approved over newer changes to the file without overwrite", async () => {
     const { rt, base, d } = await setup();
-    const li = await login(base, "li", "pw");
-    const lt = threadOf(d, rt.li.id);
+    const ada = await login(base, "ada", "pw");
+    const lt = threadOf(d, rt.ada.id);
     const { id } = d.services!.proposals.propose(lt.view, lt.threadId, { path: "SOUL.md", text: "a new soul", reason: "growth", author: "sleep" });
-    d.services!.persona.apply(d.services!.users.get(rt.li.id)!, "SOUL.md", "an edit made since");
-    const url = `/api/u/${rt.li.id}/admin/proposals`;
-    expect((await li.get<PersonaProposal[]>(url)).body[0]).toMatchObject({ id, stale: true });
-    const refused = await li.post<{ error: string }>(`${url}/${id}`, { approve: true });
+    d.services!.persona.apply(d.services!.users.get(rt.ada.id)!, "SOUL.md", "an edit made since");
+    const url = `/api/u/${rt.ada.id}/admin/proposals`;
+    expect((await ada.get<PersonaProposal[]>(url)).body[0]).toMatchObject({ id, stale: true });
+    const refused = await ada.post<{ error: string }>(`${url}/${id}`, { approve: true });
     expect(refused.status).toBe(400);
     expect(refused.body.error).toMatch(/changed since/);
-    expect((await li.post(`${url}/${id}`, { approve: true, overwrite: true })).status).toBe(200);
+    expect((await ada.post(`${url}/${id}`, { approve: true, overwrite: true })).status).toBe(200);
     expect(d.services!.persona.files().get("SOUL.md")).toBe("a new soul");
     lt.view.close();
   });

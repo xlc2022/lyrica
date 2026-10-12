@@ -2,7 +2,7 @@
 
 A continuous personal companion built on [Pi](https://github.com/badlogic/pi-mono).
 
-Lyrica runs on one server that Li administers. Li and anyone Li lets in each
+Lyrica runs on one server that the owner administers. The owner and anyone the owner lets in each
 have one or more separate users, and each user's memory is encrypted with
 that user's own key. Encryption protects data at rest: anyone with root
 access while a user is unlocked can read that user's data, an administrator
