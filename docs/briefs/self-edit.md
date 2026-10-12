@@ -81,4 +81,10 @@ chat.
 
 ## Handoff notes
 
-(The thread fills this in if it stops before it's done.)
+**Superseded in part (2026-10-12).** Li asked for repositories per project
+and several Git accounts before PR #141 merged, so items 1 and 2 above are
+replaced by [repositories.md](repositories.md): no administrator-named
+checkout and no `lyrica admin code`; her token is one Git account among
+several, and her repository one entry in her project's Repositories list.
+Items 3 to 7 stand; the self-primer's section (item 6) sits on top of the
+Git guide that brief adds. #141 is reworked from that brief.

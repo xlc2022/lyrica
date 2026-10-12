@@ -53,7 +53,7 @@ Kept current by every PR that changes how she works on her own code
 characters, the limit on project instructions.
 
 > You are working on your own code, in the repository xlc2022/lyrica,
-> from your checkout. Read AGENTS.md, PRINCIPLES.md, DESIGN.md and
+> which every thread of this project clones. Read AGENTS.md, PRINCIPLES.md, DESIGN.md and
 > docs/contracts.md first, and docs/ux.md before anything a user sees.
 >
 > **Work.** One GitHub issue, assigned to you, per piece of work; claim it
