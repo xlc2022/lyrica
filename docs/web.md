@@ -168,9 +168,8 @@ A thread's address may carry what the panel beside it shows:
   narrows to a pool. Each row has its kind, pool and time, Open thread or
   Open where the item leads, and its actions as buttons (an action that
   answers with a thread goes there). Checkboxes select rows for the bulk
-  bar: when every selected row takes the same actions, each of them with
-  the count (Add to General 2, Decline 2); otherwise Dismiss alone,
-  disabled while a selected row has no Dismiss or Decline. Twenty rows at a time, with
+  bar: a button for each action every selected row shares, with the count
+  (Add to Private 2, Decline 2), and none when they share none. Twenty rows at a time, with
   Show more. The welcome page shows the first four decisions in a card
   with All N.
 - **Settings** (`src/Panel.tsx`): a page with its sections listed at the

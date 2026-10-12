@@ -108,12 +108,9 @@ export function NotificationsSection({ ctx }: { ctx: ShellContext }) {
   const items = page.data?.items ?? [];
   const total = page.data?.total ?? 0;
   const sel = useMemo(() => items.filter((n) => picked.has(n.id)), [items, picked]);
-  // Bulk: when every selected row takes the same actions, each of them with the count; otherwise only Dismiss, for rows that have one.
-  const labels = (n: Notification) => n.actions.map((a) => a.label).join("\n");
-  const same = sel.length > 0 && sel.every((n) => labels(n) === labels(sel[0]!));
-  const dismissOf = (n: Notification) => n.actions.find((a) => a.label === "Dismiss" || a.label === "Decline");
-  const dismissable = sel.length > 0 && sel.every((n) => dismissOf(n));
-  const bulk = (pick: (n: Notification) => NotificationAction | undefined) => act(sel.map(pick).filter((a): a is NotificationAction => !!a)).then(() => setPicked(new Set()));
+  // Bulk: the actions every selected row has, each with the count; none when they share none.
+  const shared = sel.length ? sel[0]!.actions.filter((a) => sel.every((n) => n.actions.some((x) => x.label === a.label))) : [];
+  const bulk = (label: string) => act(sel.map((n) => n.actions.find((x) => x.label === label)).filter((a): a is NotificationAction => !!a)).then(() => setPicked(new Set()));
   const chips: [typeof type, string][] = [["all", `All ${page.data ? total : ""}`.trim()], ["decision", "Needs a decision"], ...(page.data?.types ?? []).map((t): [NotificationType, string] => [t, TYPES[t].label])];
   const groups = sort === "type" || sort === "scope"
     ? [...new Map(items.map((n) => [sort === "type" ? TYPES[n.type].label : n.scope, items.filter((x) => (sort === "type" ? TYPES[x.type].label : x.scope) === (sort === "type" ? TYPES[n.type].label : n.scope))])).entries()]
@@ -138,13 +135,10 @@ export function NotificationsSection({ ctx }: { ctx: ShellContext }) {
         <label className="check"><input type="checkbox" checked={items.length > 0 && items.every((n) => picked.has(n.id))} onChange={(e) => setPicked(e.target.checked ? new Set(items.map((n) => n.id)) : new Set())} /> Select all{total > items.length ? ` ${items.length} shown` : ""}</label>
         <span className="meta">{sel.length ? `${sel.length} selected` : ""}</span>
         <span className="spacer" />
-        {same
-          ? sel[0]!.actions.map((a, i) => (
-            <button key={a.label} type="button" className={`sm${i === 0 && !a.danger ? " primary" : ""}${a.danger ? " danger" : ""}`} disabled={busy}
-              onClick={() => bulk((n) => n.actions.find((x) => x.label === a.label))}>{a.label} <span className="num">{sel.length}</span></button>
-          ))
-          : <button type="button" className="sm" disabled={busy || !dismissable} title={sel.length && !dismissable ? "Something selected can't be dismissed" : undefined}
-            onClick={() => bulk(dismissOf)}>Dismiss{sel.length ? <> <span className="num">{sel.length}</span></> : ""}</button>}
+        {shared.map((a, i) => (
+          <button key={a.label} type="button" className={`sm${i === 0 && !a.danger ? " primary" : ""}${a.danger ? " danger" : ""}`} disabled={busy}
+            onClick={() => bulk(a.label)}>{a.label} <span className="num">{sel.length}</span></button>
+        ))}
       </div>
       <ErrorText error={page.error || error} />
       {page.data && !items.length && <p className="empty">Nothing waiting.{type !== "all" || scope !== "all" ? " Try a wider filter." : ""}</p>}
