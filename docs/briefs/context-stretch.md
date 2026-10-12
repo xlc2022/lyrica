@@ -95,10 +95,10 @@ untested until it is.
    she can run the lookup and propose a serving change, which an
    administrator (shared host) or the owner (personal host) approves on a
    card, like `add_repository`. A lookup is an outside call, so a private
-   or local-only thread has no lookup: the tool answers that the host's
-   library has it, and nothing leaves. The lookup carries the repository
-   name and revision, never thread text, and the gated-repository token
-   travels as it does for downloads.
+   or local-only thread has no `models` tool at all: structural, not a
+   rule she is told. The lookup carries the repository name and revision,
+   never thread text, and the gated-repository token travels as it does
+   for downloads.
 
 ## In scope
 
@@ -109,7 +109,12 @@ untested until it is.
    trained length. `contextOf` caps at `trained × factor` instead of
    `trained`; the refusal sentence becomes "This model was trained for
    262144 tokens; with a stretch of 4 it serves 1048576 at most." A
-   `stretch` on an embedding, transcribe or speech model is refused.
+   `stretch` on an embedding, transcribe or speech model is refused, and so
+   is one on a model whose trained length the host couldn't read (a GGUF
+   without `context_length`): there is nothing to stretch from. A factor
+   above the card's recommended one is saved only through **Save anyway**
+   on the tab, or an approval card that names it ("Qwen documents 4."),
+   since the publisher never tested it.
 2. **The servers get the flags.** llama.cpp's preset:
    `rope-scaling = yarn`, `rope-scale = <factor>`,
    `yarn-orig-ctx = <originalContext>`. vLLM's `vllm.json` gets
@@ -152,7 +157,13 @@ untested until it is.
    it; `lookupRecommended(offeringId, repo?)` triggers a Look up
    (administrator for a shared host, owner for a personal one) through the
    host's management API and `manageHost`'s allowed paths.
-7. **One model-facing tool, `models`** (within principle 8's thirty):
+7. **One model-facing tool, `models`** (principle 8's budget is thirty;
+   with `models` she has about 25, counting Pi's four, the memory three,
+   `delegate` and `ask_parent`, `threads`, `react`, `image`, the sleep
+   five, `propose_plan`, `proxmox`, `add_repository` and the planned
+   calendar and sort; the build adds `proxmox`, `add_repository` and
+   `models` to docs/contracts.md's Tools list, which misses the first two
+   today):
    `lookup { offering, repo? }` returns the recommended settings and the
    host's fit estimate as numbers; `propose { offering, stretch,
    contextLength }` posts an approval card in the thread ("Serve Qwen3.8-27B
@@ -175,13 +186,18 @@ untested until it is.
    review).
 9. **Docs**, in the same PR: docs/models.md "Host management", host/API.md,
    docs/contracts.md (`ModelSettings`, `servingSettings`, the `models`
-   tool), DESIGN.md's Serving bullet (via PR review's docs PR), docs/ux.md
+   tool), docs/ux.md
    §4 names (Stretch, Original context, Look up, recommended) and §6 (Serving
    tab rows), and the tests: `validate` accepts and caps `stretch`, presets
    and `argv()` carry the flags, a hybrid config.json counts 16 layers, the
    card parser against three fixture cards written for the test (not copied
    from real data: fixtures that quote the recipe's shape), `/read` refuses
    a 2 MB file and a `.py`.
+
+DESIGN.md's Serving bullet (the `stretch` setting, the recommended
+settings and the `models` tool) and the contracts entries are the design
+thread's: this proposal thread opens their docs PR, as #143 did, and the
+build starts after it is approved.
 
 ## Out of scope
 
