@@ -53,6 +53,12 @@ export class ChildThreads implements ThreadsHost {
    * tells the parent anyway (`recover`).
    */
   private readonly tasked = new Map<string, { reported: boolean }>();
+  /**
+   * Children whose parent was told they ended badly, until they report or
+   * the person writes in them: a second bad end tells nobody, so a child that
+   * fails every time can't keep its parent taking turns.
+   */
+  private readonly noticed = new Set<string>();
 
   constructor(private readonly o: ChildOptions) {
     this.limits = { ...DEFAULT_THREADS_LIMITS, ...o.limits };
@@ -176,6 +182,7 @@ export class ChildThreads implements ThreadsHost {
       if (!row || !from.view.own.getThread(row.parent)) throw new Error("this thread's parent is gone");
       const t = this.tasked.get(`${userId}/${from.pool}/${from.threadId}`);
       if (t) t.reported = true;
+      this.noticed.delete(`${userId}/${from.pool}/${from.threadId}`);
       const needsYou = !!opts.needsYou && !!from.view.own.getThread(row.parent)?.project;
       this.db(userId, (db) => db.prepare("UPDATE child_threads SET unseen = unseen + 1, needs_you = CASE WHEN ? THEN 1 ELSE needs_you END WHERE pool = ? AND thread = ?")
         .run(needsYou ? 1 : 0, from.pool, from.threadId));
@@ -207,7 +214,8 @@ export class ChildThreads implements ThreadsHost {
   /**
    * A child's turn ended and it is idle. On a task from its parent, the
    * parent is told when it ended with an error, or without a message to the
-   * parent since the task began, as an update is delivered. A stopped turn
+   * parent since the task began, as an update is delivered: once, until the
+   * child reports or the person writes in it (`noticed`). A stopped turn
    * tells nobody: whoever stopped it knows.
    */
   ended(userId: string, pool: Pool, thread: string, how: "done" | "error" | "stopped"): void {
@@ -215,10 +223,11 @@ export class ChildThreads implements ThreadsHost {
     const t = this.tasked.get(key);
     if (!t) return;
     this.tasked.delete(key);
-    if (how === "stopped" || (how === "done" && t.reported)) return;
+    if (how === "stopped" || (how === "done" && t.reported) || this.noticed.has(key)) return;
     let row: Row | undefined;
     try { row = this.row(userId, pool, thread); } catch { return; /* locked */ }
     if (!row) return;
+    this.noticed.add(key);
     this.deliver(userId, pool, row.parent, how === "error"
       ? `Child thread [t:${thread}] stopped with an error, and is idle. Read it with threads read, or message it to go on.`
       : `Child thread [t:${thread}] finished without a report, and is idle. Read it with threads read, or message it.`, thread);
@@ -303,6 +312,7 @@ export class ChildThreads implements ThreadsHost {
 
   /** The user wrote in the thread: it no longer waits on them, and a resolved thread reopens. */
   userWrote(userId: string, pool: Pool, thread: string): void {
+    this.noticed.delete(`${userId}/${pool}/${thread}`);
     const row = this.row(userId, pool, thread);
     if (!row || (!row.needs_you && !row.resolved_at)) return;
     this.db(userId, (db) => db.prepare("UPDATE child_threads SET needs_you = 0, resolved_at = NULL WHERE pool = ? AND thread = ?").run(pool, thread));
@@ -440,7 +450,7 @@ export class ChildThreads implements ThreadsHost {
 
   /** Drops the records of forgotten threads, and of the children they kept, which are threads of their own now. */
   forget(userId: string, pool: Pool, threads: string[]): void {
-    for (const t of threads) this.tasked.delete(`${userId}/${pool}/${t}`);
+    for (const t of threads) { this.tasked.delete(`${userId}/${pool}/${t}`); this.noticed.delete(`${userId}/${pool}/${t}`); }
     this.db(userId, (db) => db.prepare("DELETE FROM child_threads WHERE pool = @pool AND (thread IN (SELECT value FROM json_each(@t)) OR parent IN (SELECT value FROM json_each(@t)))")
       .run({ pool, t: JSON.stringify(threads) }));
   }

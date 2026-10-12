@@ -441,6 +441,22 @@ describe("a child's end, reading and stopping", () => {
     expect(got.join("\n")).not.toContain("finished without a report");
   });
 
+  it("the parent hears of a child that fails every time only once, until it reports", async () => {
+    const { parent, child, say, path, messages } = await setup();
+    parent.push(start("Garden", "Plan the beds."), { text: "Started." });
+    child.push({ status: 400 });
+    const id = toolEnd(await say("plan the garden in its own thread"))!.threads![0]!.id;
+    const failed = (n: string[]) => n.filter((t) => t.includes(`[t:${id}] stopped with an error`)).length;
+    await until(() => notices(() => messages(path)), (n) => failed(n) === 1);
+
+    parent.push(call({ action: "message", id, text: "Try again." }), { text: "Asked it again." });
+    child.push({ status: 400 });
+    await say("ask it to try again");
+    await until(() => messages(`${path.replace(/[^/]+$/, "")}${enc(id)}`), (m) => m.filter((x) => x.role === "assistant" && x.error).length === 2);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(failed(await notices(() => messages(path)))).toBe(1);
+  });
+
   it("the parent reads a child's latest messages, but not another thread's", async () => {
     const { li, u, parent, child, say, path, messages } = await setup();
     parent.push(start("Garden", "Plan the beds."), { text: "Started." });

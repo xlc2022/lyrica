@@ -342,6 +342,13 @@ export class PoolReader {
     return row && toEntry(row);
   }
 
+  /** A thread's latest `limit` messages as another thread reads them: logged ones with text, no tool results; oldest first. */
+  latestEntries(threadId: string, limit: number): StoredEntry[] {
+    const rows = this.db.prepare("SELECT * FROM entries WHERE thread = ? AND unlogged = 0 AND role != 'toolResult' AND trim(text) != '' ORDER BY n DESC LIMIT ?")
+      .all(threadId, limit) as EntryRow[];
+    return rows.reverse().map(toEntry);
+  }
+
   /** When the user last spoke in this pool, in any thread. */
   lastUserMessage(): Date | undefined {
     const row = this.db.prepare("SELECT max(created_at) AS at FROM entries WHERE role = 'user' AND unlogged = 0 AND text != '' AND text NOT LIKE '[Watching threads]%'").get() as { at: string | null };

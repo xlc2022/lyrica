@@ -297,8 +297,11 @@ told. Its approvals work as in any thread.
 line) owes it a report. When its turn ends and it is idle, the parent gets
 a note, delivered like an update: "stopped with an error" if the turn
 ended with an error, or "finished without a report" if the child sent no
-`message to: "parent"` since the task. A stopped turn tells nobody, nor
-does a turn the user started in the child. Which children owe a report is
+`message to: "parent"` since the task. The parent hears this once: after
+a note, the child's next bad end tells nobody until it messages the parent
+or the user writes in it, so a child that fails every time can't keep its
+parent taking turns. A stopped turn tells nobody, nor does a turn the user
+started in the child. Which children owe a report is
 held in memory; a restart tells the parent anyway.
 
 **Limits:** `start`s per message to the parent (`perRequest`, default 3,

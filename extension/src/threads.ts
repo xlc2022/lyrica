@@ -158,9 +158,8 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           if (!rows.some((r) => r.id === id)) throw new Error(`[t:${id}] isn't ${inProject ? "another thread of this project" : "a child thread of this one"}`);
           if (store.getThread(id)?.unlogged) throw new Error(`[t:${id}] isn't logged, so it can't be read from here`);
           const last = Math.min(READ_MAX, Math.max(1, Math.round(p.last ?? READ_DEFAULT)));
-          const end = store.lastEntry(id)?.id;
           // Read as from another thread, so entries written unlogged are left out; so are tool results and empty tool calls.
-          const entries = !end ? [] : store.entryWindow(end, last * 4).filter((e) => e.role !== "toolResult" && e.text.trim()).slice(-last);
+          const entries = store.latestEntries(id, last);
           return text(entries.length ? entries.map(formatEntry).join("\n\n") : `[t:${id}] has no messages to read.`, { threads: [id] });
         }
         if (p.action === "stop") {

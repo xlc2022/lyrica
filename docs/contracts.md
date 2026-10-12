@@ -576,7 +576,7 @@ One model-facing tool: `delegate({ action?, ... })`.
   `readOnly`, `internet`), `message` (to a child, by ID or current title
   (`pickThread`; a title two threads share is refused), or `to: "parent"`
   from a child), `list` (`ChildInfo` with `ChildStatus`), `read` (`id`,
-  `last`: the latest messages of a listed, logged thread, `READ_DEFAULT`
+  `last`: the latest messages of a listed, logged thread (`PoolReader.latestEntries`), `READ_DEFAULT`
   10, `READ_MAX` 30, formatted by `formatEntry`) and `stop` (`id`: a
   parent's child, `ThreadsHost.stop`). Its results
   and guidance mention threads as `[t:<id>]`. A child thread is
