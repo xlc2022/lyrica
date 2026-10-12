@@ -114,10 +114,13 @@ export function useUndo() {
   return { pending, later, undo };
 }
 
-/** Scrolls to a message and marks where it landed, for a moment. */
-export function jumpTo(n: number) {
+/**
+ * Scrolls to a message and marks where it landed, for a moment. `atOnce` in a thread just
+ * opened, so its first updates don't find it still on the way and pull it back down.
+ */
+export function jumpTo(n: number, opts: { atOnce?: boolean } = {}) {
   const el = document.getElementById(`m-${n}`);
-  el?.scrollIntoView({ block: "center", behavior: "smooth" });
+  el?.scrollIntoView({ block: "center", behavior: opts.atOnce ? "instant" : "smooth" });
   el?.classList.remove("flash");
   void el?.offsetWidth;
   el?.classList.add("flash");

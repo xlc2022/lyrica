@@ -79,6 +79,17 @@ export function ftsQuery(query: string, profiles: Map<UserId, Profile>): string 
   return terms.length ? terms.join(" OR ") : undefined;
 }
 
+/**
+ * The words of a search in the sidebar, lower case. A word keeps its
+ * combining marks, so the index's tokenizer splits it as it split the text.
+ * One-letter words are left out when longer ones are there ("don't" is "don").
+ */
+export function searchWords(query: string): string[] {
+  const words = [...new Set(query.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}\p{M}]*/gu) ?? [])];
+  const long = words.filter((w) => [...w].length > 1);
+  return (long.length ? long : words).slice(0, 16);
+}
+
 /** The literal words of a query, for picking a snippet. */
 export function queryWords(query: string): string[] {
   return (query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter((w) => !STOP.has(w));

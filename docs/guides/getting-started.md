@@ -187,8 +187,10 @@ read it for anything not covered here.
    port 7340 for Direct, whatever `port` is, so the machine can be set up
    from another one), `caddyPackage`, and `sandboxPackages`, the tools her
    commands see (NixOS has no `/usr` to share, so the module builds one
-   directory from that list, which includes git, gh, tea and Node 22 by
-   default; add to it to give her more). The module refuses to build
+   directory from that list, which includes git, gh, tea, Node 22 and
+   Claude Code by default; add to it to give her more). Claude Code is
+   unfree, but the module allows that one package alone, so your system
+   configuration needs no `allowUnfree` line. The module refuses to build
    while `security.allowUserNamespaces` is off; it is on by default.
    To run the model host on the same machine, add its module as well:
    [model-hosts.md](model-hosts.md).
@@ -285,9 +287,12 @@ What `install.sh` does, in order:
    Forgejo accounts work through git alone). It installs IBM Plex and
    Playwright's headless Chromium with the libraries it needs, in
    `/usr/local/lib/lyrica-chromium`, so her sandboxes can take
-   screenshots. When Tailscale's binaries are missing it adds Tailscale's
-   apt repository and installs `tailscale`; the package turns on the
-   host's own `tailscaled`,
+   screenshots. It installs Anthropic's Claude Code
+   (`@anthropic-ai/claude-code`, at the version the script pins) with npm
+   into `/usr/local`; if that fails it only prints a warning. When
+   Tailscale's binaries are missing it adds Tailscale's apt repository
+   and installs `tailscale`; the package turns on the host's own
+   `tailscaled`,
    and the script turns it off again unless it was on before.
 2. Creates the `lyrica`, `lyrica-caddy` and `lyrica-build` system users.
    `lyricad` gets the `lyrica-caddy` group from its unit, so it alone can
@@ -559,6 +564,23 @@ collaborator, its token as a Git account, rules for `main` and her
 `lyrica/*` branches, CODEOWNERS) is in
 [docs/workspace.md](../workspace.md#her-own-code).
 
+## Give her Claude Code
+
+She can hand a coding task to Claude Code, Anthropic's own program, and it
+runs on your own Claude plan. It isn't a model for her chat: her
+conversation and memory never go through it.
+
+1. On any computer where you're signed in to Claude, run
+   `claude setup-token` and copy the token it prints.
+2. Paste it under Settings, **Claude Code**, and save. It stays in
+   `lyricad`, is never shown back, and never enters her sandbox.
+3. In a thread's drawer, turn on **Claude Code**. It is off by default, and
+   appears only once a token is saved and Claude Code is installed. It works
+   only in a general thread that isn't local-only.
+
+Claude Code sends what it reads to Anthropic. Details are in
+[docs/workspace.md](../workspace.md#claude-code).
+
 ## Give her another computer
 
 A **machine** is one of your other computers that she works on over SSH,
@@ -763,7 +785,8 @@ the SSH ones, and `ssh remove <name>` takes one away.
   rebuild brings them. An install without
   `/usr/local/bin/chromium-headless-shell` gets headless Chromium and IBM
   Plex for her screenshots on this run; on NixOS the next rebuild brings
-  them. The home page header
+  them. An existing install gets Claude Code on its next `install.sh` run,
+  and NixOS on the next rebuild. The home page header
   ("Lyrica 0.1.0 · <build>") shows the git commit that is running.
 
 ## Checklist for the first install on your machine
@@ -808,6 +831,8 @@ apply as written.
     `/workspace/repos`, and with internet on `gh pr list` works there.
 12. Set the SearXNG address under Administration, Web search: it says
     Reachable, and `web_search` answers in a thread.
+13. Save a token under Settings, Claude Code, turn the switch on in a test
+    thread, and ask her to use it.
 
 Report what fails, with the journal lines, in the Operator docs thread; the
 guide gets corrected from the real run.

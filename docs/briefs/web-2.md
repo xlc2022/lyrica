@@ -462,9 +462,10 @@ with radios All threads / Pinned messages / Hidden threads. Design:
   today. With a query of 2+ characters: titles match at once (as now) and
   after 300 ms the server's hits arrive; the list becomes result groups,
   one per thread in hit order: the thread row as the sidebar draws it
-  (pool mark, title, time), then under it up to three hits as one-line
-  rows: the who in mono small, the snippet with `<mark>`, the time in
-  mono; a fourth line "<n> more in this thread" opens the rest in place.
+  (pool mark, title, time), then under it up to three hits of up to two
+  lines: the who in mono small, the snippet with `<mark>`, the time in
+  mono as a message shows it (HH:MM today, "11 Oct 14:32" otherwise);
+  a fourth line "<n> more in this thread" opens the rest in place.
   A hit row opens the thread at that message (the existing jump, the
   message briefly highlighted). Empty: "Nothing matches." The Sort menu's
   Hidden entry gets the tooltip "Hidden threads are left out of the list
@@ -615,6 +616,16 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   of each user's key in `self.db` (DESIGN.md "Users" and "Storage",
   contracts core/users; the owner chose this over a reset that loses data). Nothing
   for sleep or the pools changes; the privacy boundary note is in DESIGN.
+- 2026-10-12, PR 20 (message search): `GET …/search` (`daemon/src/search.ts`)
+  reads the FTS index recall keeps, through the owner view
+  (`PoolStore.searchMessages`; no schema change), over what the thread list
+  shows; `src/Search.tsx` turns the sidebar's list into result groups, and a
+  hit opens its thread at the message (`loadUntil` in `stream.ts`, the
+  request kept as Show in thread keeps its own). Every word must match, as a
+  word or a word's start, over what the list shows, the Sort menu's
+  projects choice included. Not built: the mockup's radios. Hits are up to
+  two lines, their time as a message shows it (UI review). **Show more**
+  under a full page of 50 is an addition the brief didn't name.
 - 2026-10-12, PR 18 (context meter): `src/ContextMeter.tsx`, the facts
   line's **Context <n>% ▾** after Group with its popover of parts, Reserve
   and Free, Measured and Last turn; `live.ts` keeps the streamed reading
