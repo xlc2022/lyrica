@@ -252,7 +252,11 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     which stay encrypted while those users are locked:
     - An endpoint unreachable for 14 days is marked **stale**, and a model
       missing for 30 days is marked **gone**. Fallbacks skip both.
-    - A gone model that nothing refers to is removed after 30 days.
+    - A gone model that nothing refers to is removed after 30 days. A gone
+      **shared** model is removed 7 days after it went, even while lists
+      still name it: its tombstone keeps routing right, and a locked user's
+      lists catch up at their next unlock. An administrator can remove it
+      sooner from Clean up.
     - Everything else goes through a **Clean up** view. It shows where each
       stale endpoint or gone model is still used, and offers **Replace
       with…** (pre-filled with the same model on another endpoint, where
@@ -550,7 +554,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   that last between uses, edited from its row in the library:
   - **Sampling**, for any endpoint: temperature, top-p, top-k, min-p,
     repeat, presence and frequency penalties, maximum reply length, seed and
-    stop strings. They go with every call to that copy; an empty one means
+    stop strings. A reply is capped at the smaller of 32,768 tokens and a
+    quarter of the context window, and a saved maximum above the cap is
+    clamped to it. They go with every call to that copy; an empty one means
     the endpoint's default. An administrator sets them for shared
     endpoints, and each user can override them for themselves, in
     `user.db`. The library shows each value and where it comes from.
@@ -718,6 +724,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     - **Unpairing** works from either side: remove the host in Lyrica, or
       revoke a Lyrica server on the host's dashboard. A host can be paired
       with several Lyrica servers, such as a test instance.
+    - A host that has revoked this server says **Unpaired** on the Models
+      page, not down, with **Pair again…** on its card, since pairing again
+      is the fix.
     - Administrators pair **shared** hosts, in `self.db`, for every user. Any
       user can pair a **personal** host, in their `user.db`, that only they
       can use. Hosts are always local endpoints, with the usual warning if an
