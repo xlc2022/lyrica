@@ -41,7 +41,7 @@ test("the setup page takes the code, her name and the first administrator, skips
   await tailnet.getByRole("button", { name: "Skip" }).click();
   await page.getByRole("form", { name: "Models" }).getByRole("button", { name: "Skip" }).click();
   const done = page.getByRole("region", { name: "Done" });
-  await expect(done).toContainText("Administratorli");
+  await expect(done).toContainText("Administratorada");
   await done.getByRole("button", { name: "Start a chat" }).click();
   await expect(page.getByText("Switch user")).toBeAttached();
   // Her name is on the page, and stays after a reload.
