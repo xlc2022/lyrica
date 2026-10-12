@@ -21,7 +21,7 @@ import { SEARCH_PAGE, searchMessages } from "./search.ts";
 import { applyRemoval, entriesFrom, removalPlan, uploadsIn, type RemovalContext } from "./removal.ts";
 import { redactUrl, unredactUrl } from "./redact.ts";
 
-const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, showPrivate: true, showHidden: false, sort: "date", projects: "all" };
+const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, showPrivate: true, showHidden: false, sort: "date", projects: "all", checklists: true };
 const THREAD_SORTS: Api.ThreadSort[] = ["date", "activity", "started", "title", "groups"];
 const DISPLAY_DEFAULTS_ALL: Api.Display = { ...DISPLAY_DEFAULTS, showPrivate: true, showGeneral: true, showHidden: true };
 const MESSAGE_PAGE = 50;
@@ -102,16 +102,20 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("PATCH", `${u}/me/display`, async (r) => {
       const user = d.userFor(r);
       const change = await r.json<Api.DisplayChange>();
-      const next = { ...display(d, user.id), ...pick(change, ["theme", "showGeneral", "showPrivate", "showHidden", "sort", "projects"]) };
+      const next = { ...display(d, user.id), ...pick(change, ["theme", "showGeneral", "showPrivate", "showHidden", "sort", "projects", "checklists"]) };
       if (!["device", "light", "dark"].includes(next.theme)) throw new Error("the theme is device, light or dark");
       if (!THREAD_SORTS.includes(next.sort)) throw new Error(`the sort is one of ${THREAD_SORTS.join(", ")}`);
       if (!["all", "only", "none"].includes(next.projects)) throw new Error("projects is all, only or none");
+      if (typeof next.checklists !== "boolean") throw new Error("checklists is true or false");
+      const before = display(d, user.id).checklists;
       const db = s().users.openUserDb(user.id);
       try {
         db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('display', ?)").run(JSON.stringify(next));
       } finally {
         db.close();
       }
+      // Her sessions offer `threads steps` by this switch: each reopens at its next turn.
+      if (next.checklists !== before) s().host.reloadUser(user.id);
       return me(d, user);
     }),
     route("POST", `${u}/me/password`, async (r) => {
@@ -1862,17 +1866,21 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
     } } : {}),
     ...(mine ? { state: mine.state, ...(mine.anchor !== undefined ? { anchor: mine.anchor } : {}), ...(mine.needsYou ? { needsYou: true as const } : {}) } : {}),
     ...wakeAt(d.services!.wakeups.list(user.id, pool, th.id)),
+    ...(look.checklists() ? stepsOf(store.steps(th.id)) : {}),
   };
 }
 
 const wakeAt = (list: Api.WakeupInfo[]) => (list[0] ? { wakeAt: list[0].dueAt } : {});
+const stepsOf = (steps: Api.ThreadStep[]) => (steps.length ? { steps } : {});
 
 /** Per request: the user's pins and each project's threads, read once. */
 function lookups(d: Lyricad, user: User) {
   let pinned: Set<string> | undefined;
+  let checklists: boolean | undefined;
   const projects = new Map<string, ProjectThreadInfo[] | undefined>();
   return {
     pinned: () => (pinned ??= d.services!.projects.pinned(user.id)),
+    checklists: () => (checklists ??= display(d, user.id).checklists),
     project: (pool: Pool, parent: string, store: PoolStore) => {
       const key = `${pool}/${parent}`;
       if (!projects.has(key)) projects.set(key, store.getThread(parent)?.project ? d.services!.children.projectThreads(user.id, pool, parent) : undefined);

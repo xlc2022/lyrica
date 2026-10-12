@@ -287,6 +287,17 @@ Each active thread is one Pi session from `openThreadSession`, with
   `onTurn` keeps its record. Its summary has `child`, `status` and `unseen`
   (updates not yet seen; reading its messages sees them). Lock stops working
   children before the key goes.
+- **Wake-ups** (`daemon/src/wakeups.ts`). `threads later` stores a note
+  for the thread she's in, in its pool, so it is as encrypted as the thread
+  and survives a restart; a thread has at most 3 waiting and 12 fired a
+  day. At unlock `lyricad` loads the due times (never the notes) into
+  memory, and Lock drops them. Its 20-second tick fires what is due: the
+  note becomes the thread's next turn, or joins the running one, marked
+  `[Wake-up, set …]` and, when more than two minutes late, with when it
+  was due. A child past the at-once limit, a queued thread or a paused
+  project's thread waits. A user's message can't start with that mark
+  (400). `DELETE …/threads/:pool/:threadId/wakeups/:id` removes one, and
+  the `wakeups` event and the parent's card follow every change.
 - **Projects** ([delegation.md](delegation.md#child-threads), DESIGN.md
   "Projects"). `POST threads` with `project` and an optional `goal` makes a
   project, and `PATCH` with `project: true` makes one of a top-level thread

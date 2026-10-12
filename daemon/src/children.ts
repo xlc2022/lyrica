@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import {
-  DEFAULT_THREADS_LIMITS, type ChildInfo, type Memory, type Models, type Pool, type StartRequest, type ThreadsLimits, type ThreadState, type Users, type Workspace,
+  DEFAULT_THREADS_LIMITS, type ChildInfo, type Memory, type Models, type Pool, type StartRequest, type ThreadsLimits, type ThreadState, type ThreadStep, type Users, type Workspace,
 } from "@lyrica/core";
 import type { Delegation, ThreadContext, ThreadsHost } from "@lyrica/extension";
 import type { ThreadHost } from "./hosted.ts";
@@ -261,6 +261,30 @@ export class ChildThreads implements ThreadsHost {
     return this.o.wakeups().cancel(from);
   }
 
+  /** Her `threads steps` changed this thread's checklist: its open views and its parent's card hear of it. */
+  stepsChanged(from: ThreadContext): void {
+    const host = this.o.host();
+    host.peek(from.user.id, from.pool, from.threadId)?.publish({ type: "steps", steps: from.view.own.steps(from.threadId) });
+    const parent = this.parentOf(from.user.id, from.pool, from.threadId);
+    if (parent) host.changed(from.user.id, from.pool, parent, from.threadId);
+  }
+
+  /** Whether the user keeps the Checklists display switch on (the default); off, her threads aren't offered `threads steps`. */
+  checklistsOn(from: ThreadContext): boolean {
+    return this.checklists(from.user.id);
+  }
+
+  /** The user's Checklists switch; off, no list or summary carries steps. */
+  private checklists(userId: string): boolean {
+    const db = this.o.users.openUserDb(userId);
+    try {
+      const row = db.prepare("SELECT value FROM settings WHERE key = 'display'").get() as { value: string } | undefined;
+      return !row || (JSON.parse(row.value) as { checklists?: boolean }).checklists !== false;
+    } finally {
+      db.close();
+    }
+  }
+
   /**
    * Whether a wake-up may start a turn in the thread now. A child waits for
    * a slot under the at-once limit, unless its turn is running; a queued
@@ -299,13 +323,14 @@ export class ChildThreads implements ThreadsHost {
   /** A project's threads, oldest first, with their state, anchor and unseen updates. */
   projectThreads(userId: string, pool: Pool, project: string): ProjectThreadInfo[] {
     const view = this.o.memory.openThreadView(userId, pool);
+    const on = this.checklists(userId);
     try {
       return this.rows(userId).filter((r) => r.pool === pool && r.parent === project && view.own.getThread(r.thread)).map((r) => {
         const t = view.own.getThread(r.thread)!;
         const status = this.o.host().status(userId, pool, r.thread);
         return {
           id: r.thread, ...(t.title ? { title: t.title } : {}), status, state: stateOf(r, status), ...(r.needs_you ? { needsYou: true } : {}),
-          updatedAt: view.own.lastEntry(r.thread)?.createdAt ?? t.createdAt, unseen: r.unseen,
+          updatedAt: view.own.lastEntry(r.thread)?.createdAt ?? t.createdAt, unseen: r.unseen, ...(on ? stepsOf(view.own.steps(r.thread)) : {}),
           ...(r.anchor !== null ? { anchor: r.anchor } : {}), ...(r.resolved_at ? { resolvedAt: r.resolved_at } : {}),
         };
       });
@@ -402,12 +427,13 @@ export class ChildThreads implements ThreadsHost {
   /** A thread's children, with what the sidebar shows: status and unseen updates. */
   children(userId: string, pool: Pool, parent: string): (ChildInfo & { unseen: number })[] {
     const view = this.o.memory.openThreadView(userId, pool);
+    const on = this.checklists(userId);
     try {
       return this.rows(userId).filter((r) => r.pool === pool && r.parent === parent && view.own.getThread(r.thread)).map((r) => {
         const t = view.own.getThread(r.thread)!;
         return {
           id: r.thread, ...(t.title ? { title: t.title } : {}), status: this.o.host().status(userId, pool, r.thread),
-          updatedAt: view.own.lastEntry(r.thread)?.createdAt ?? t.createdAt, unseen: r.unseen,
+          updatedAt: view.own.lastEntry(r.thread)?.createdAt ?? t.createdAt, unseen: r.unseen, ...(on ? stepsOf(view.own.steps(r.thread)) : {}),
         };
       });
     } finally {
@@ -557,3 +583,5 @@ function stateOf(r: Row, status: ChildInfo["status"]): ThreadState {
   if (status === "waiting" || r.needs_you) return "waiting";
   return status;
 }
+
+const stepsOf = (steps: ThreadStep[]) => (steps.length ? { steps } : {});

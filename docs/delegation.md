@@ -314,6 +314,20 @@ fire at the first tick after unlock, marked with when they were due. The
 views get times and IDs only, never the note; the user removes one from
 the facts line.
 
+**Checklist** (`threads steps`). Any thread with the tool keeps a
+checklist of its own work: `steps({ steps })` replaces the whole list,
+each step a few words with its state (`todo`, `doing`, `done`), at most
+12 steps (`STEPS_LIMITS`), each cut to 80 characters; an empty list clears
+it. Her guidance says to keep one on work of several steps that runs a
+while and to leave every step at its real end state. It is stored in the
+thread's pool (step 5, `thread_steps`), so it is encrypted; open views get
+a `steps` event, the thread's summary carries it, the project chat's card
+updates, and a parent's `list` shows where each thread stands ("1 of 3
+steps done, now: …"). The person's **Checklists** display switch
+(`Display.checklists`, on by default) turns it off: her sessions reopen
+without the action's description and guidance, a call is refused, and
+summaries carry no steps.
+
 **Told when a child ends.** A child working on a task from its parent (a
 `start`, a queued start that began, or a parent's `message`; not a look's
 line) owes it a report. When its turn ends and it is idle, the parent gets

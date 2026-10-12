@@ -5,6 +5,15 @@ import { browser, daemon, login, runtime, systemdStart } from "./helpers.ts";
 
 afterEach(() => { vi.restoreAllMocks(); });
 
+// github.com resolves without the network: a real lookup on a busy runner can
+// miss the workspace's 5 s limit. Other names still go to the resolver.
+vi.mock("node:dns/promises", async (real) => {
+  const dns = await real<typeof import("node:dns/promises")>();
+  const lookup = ((host: string, opts?: object) =>
+    host === "github.com" ? Promise.resolve([{ address: "140.82.112.3", family: 4 }]) : dns.lookup(host, opts as never)) as typeof dns.lookup;
+  return { ...dns, lookup, default: { ...dns, lookup } };
+});
+
 /** Records home mounts instead of running gocryptfs. */
 function homes() {
   const mounts = vi.spyOn(Workspace.prototype, "mountHome").mockResolvedValue("");

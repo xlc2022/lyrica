@@ -320,7 +320,7 @@ interface Endpoint {
   kind: "cloud" | "local";                  // declared by whoever adds it, never inferred
   api: "openai-compatible" | "host" | "chatgpt" | "grok";  // a paired model host: always local; a plan: always cloud, never shared
   baseUrl: string; apiKey?: string;         // a host: its first address's /v1, and no key; a plan: PLAN_URLS[api], and no key
-  signedOut?: boolean;                      // a plan whose refresh OpenAI refused; the router skips it
+  signedOut?: boolean;                      // a plan whose refresh its provider (OpenAI or xAI) refused; the router skips it
   shared: boolean;
   addresses?: string[]; fingerprint?: string;   // a host's addresses, in order, and its pinned key
   unencrypted: boolean;                     // local, plain HTTP, outside this machine and the tailnet
@@ -600,7 +600,16 @@ One model-facing tool: `delegate({ action?, ... })`.
   (`WAKEUP`), which only `lyricad` writes; `Message.from.kind` is
   `wakeup`. `ThreadSettings.wakeups`, `ThreadSummary.wakeAt`, the
   `wakeups` thread event and `DELETE …/threads/:pool/:id/wakeups/:id`
-  carry times and IDs, never the note. Its results
+  carry times and IDs, never the note. A user's message that starts with
+  the mark is refused (400). `steps` (`steps: ThreadStep[]`,
+  `{ text, state: "todo" | "doing" | "done" }`, through `cleanSteps` and
+  `STEPS_LIMITS`) replaces the calling thread's checklist in pool step 5's
+  `thread_steps` (`PoolReader.steps`, `PoolStore.setSteps`) and calls
+  `ThreadsHost.stepsChanged`, which publishes the `steps` thread event and
+  tells the parent's card; `ThreadSummary.steps` and `ChildInfo.steps`
+  carry it. It is offered only while `ThreadsHost.checklistsOn` is true
+  (`Display.checklists`, default on; changing it reloads the user's
+  sessions). Its results
   and guidance mention threads as `[t:<id>]`. A child thread is
   `createThread({ parent, child: true })`, hosted like any thread, with the
   parent's pool, models (`models.inheritContext`) and workspace
@@ -1020,8 +1029,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       `EndpointInput`, `EndpointChange`, `ModelInput`, `Probe`, `MergeInput`.
     - **Plans:** `POST plans/sign-in` (`PlanSignInStart`: `plan` and `name`,
       or `endpointId` to sign in again → `PlanSignInStarted` `{ id, url,
-      code? }`); `POST plans/sign-in/:id` (`PlanSignInFinish` `{ redirectUrl? }`,
-      ChatGPT's only → `EndpointInfo`); `DELETE plans/sign-in/:id`.
+      code? }`); `POST plans/sign-in/:id` (`PlanSignInFinish` `{ redirectUrl? }`:
+      ChatGPT's sends the address it was sent back to, Grok's no body →
+      `EndpointInfo`); `DELETE plans/sign-in/:id`.
     - **Hosts:** `POST hosts` (pair, then discover); `POST hosts/:id/pair`
       (again, same addresses); `PUT …/addresses`; `GET …/status`; `POST
       …/pause|resume|restart`; `GET …/dashboard` (→ `{ url }`); `POST …/manage`;
@@ -1326,8 +1336,8 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   Git guide is a prompt section (`extension/src/git.md`) added to every
   turn of a thread with repositories.
 - **MCP servers API:** `lyricad`'s `/api/u/:userId/mcp-servers` (`GET`;
-  `POST …/probe`; `POST`; `PATCH …/:name` for name, url and pool; `POST
-  …/:name/token`; `POST …/:name/confirm-off-network`; `DELETE`), each
+  `POST …/probe`; `POST`; `PATCH …/:name` for name, url, pool and
+  `offNetworkConfirmed`; `POST …/:name/token`; `POST …/:name/confirm-off-network`; `DELETE`), each
   server as `McpServerInfo { name, url, host, pool, hasToken, tools,
   description, offNetwork, state? }`, with any query value named like a
   credential (key, token, secret, sig, auth, pass) shown as `•••`, as in
