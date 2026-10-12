@@ -1,6 +1,6 @@
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, chmodSync } from "node:fs";
 import { request as httpsRequest } from "node:https";
-import { createServer as createTcp, type AddressInfo } from "node:net";
+import { createServer as createTcp } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,12 +17,15 @@ const KEY = "tskey-auth-kQ4yS9cNTRL-7d1e5b0a9c2f4e6b8a1d3c5e7f9b0a2c";
 const cleanup: (() => unknown)[] = [];
 afterEach(async () => { for (const c of cleanup.splice(0).reverse()) await c(); });
 
-const freePort = async () => {
-  const s = createTcp();
-  await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
-  const { port } = s.address() as AddressInfo;
-  await new Promise((r) => s.close(r));
-  return port;
+// A free port below Linux's ephemeral range (32768 and up), so a server another
+// test opens on port 0 can't take it before lyricad binds it.
+const freePort = async (): Promise<number> => {
+  for (;;) {
+    const port = 20_000 + Math.floor(Math.random() * 12_000);
+    const s = createTcp();
+    const free = await new Promise<boolean>((r) => { s.once("error", () => r(false)); s.listen(port, "127.0.0.1", () => r(true)); });
+    if (free) { await new Promise((r) => s.close(r)); return port; }
+  }
 };
 
 const tmp = (prefix: string) => {

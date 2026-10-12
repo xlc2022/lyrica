@@ -5,7 +5,7 @@ name: Host images
 # against Hugging Face here too, since that needs the internet.
 on:
   pull_request:
-    paths: ["host/comfyui/**", "host/speech/**", "host/compose.nvidia.yaml", "host/compose.amd.yaml", "host/recipes/**", ".github/workflows/host-images.yml"]
+    paths: ["host/comfyui/**", "host/speech/**", "host/compose.nvidia.yaml", "host/compose.amd.yaml", "host/recipes/**", ".github/workflows/host-images.yml", ".github/runner/make-room.sh"]
   push:
     branches: [main]
     paths: ["host/comfyui/**", "host/speech/**", "host/compose.nvidia.yaml", "host/compose.amd.yaml", "host/recipes/**"]
@@ -27,10 +27,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # The ROCm base image is about 12 GB compressed and over 30 GB unpacked.
-      # Free the runner's disk, and use Docker's classic overlay2 store, which
-      # drops each compressed layer once it is unpacked (the containerd store
-      # keeps both). Only on GitHub's runners: Li's runner has the disk, and
-      # keeps its Docker cache between builds.
+      # On GitHub's runners: free the disk, and use Docker's classic overlay2
+      # store, which drops each compressed layer once it is unpacked (the
+      # containerd store keeps both).
       - name: Make room
         if: runner.environment == 'github-hosted'
         run: |
@@ -44,15 +43,33 @@ jobs:
           sudo systemctl start docker
           docker info --format '{{.Driver}}'
           df -h /
+      # On Li's runners, which keep Docker's cache between jobs: the ROCm
+      # build needs about 70 GB free, the CUDA one 40.
+      - name: Make room
+        if: runner.environment == 'self-hosted'
+        run: .github/runner/make-room.sh ${{ matrix.vendor == 'amd' && 70 || 40 }}
       - name: Build
         run: |
           base=$(sed -n 's/^ *BASE: //p' host/compose.${{ matrix.vendor }}.yaml)
+          echo "BASE=$base" >>"$GITHUB_ENV"
           echo "base: $base"
           docker buildx build -f host/comfyui/Dockerfile --build-arg "BASE=$base" --output type=cacheonly .
+      # The build's cache would hold most of that disk until the weekly prune,
+      # starving the other jobs on this runner.
+      - name: Clear the build cache
+        if: always() && runner.environment == 'self-hosted'
+        run: |
+          docker system df
+          docker builder prune -af >/dev/null
+          if [ -n "$BASE" ]; then docker image rm "$BASE" >/dev/null 2>&1 || true; fi
+          df -h /var/lib/docker
   speech:
     runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4
+      - name: Make room
+        if: runner.environment == 'self-hosted'
+        run: .github/runner/make-room.sh 30
       - name: Build the CUDA image
         run: docker buildx build -f host/speech/Dockerfile --build-arg FLAVOUR=cuda --output type=cacheonly .
   starters:
