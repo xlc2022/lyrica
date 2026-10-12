@@ -12,16 +12,16 @@ import { FileChanges, type NewChange } from "./changes.ts";
 import { cleanUploadName, ThreadFiles } from "./files.ts";
 import { isMounted, mountGocryptfs, unmountGocryptfs } from "./home.ts";
 import type { ExecutionTarget } from "./ops.ts";
-import { Sandbox, WORKDIR } from "./sandbox.ts";
+import { Sandbox, WORKDIR, type Credentials } from "./sandbox.ts";
 import { authorizedKeysLine, machineSetup } from "./machines.ts";
 import {
   certFingerprint, ownAddress, ownNode, parseProxmoxAddress, proxmoxAction, proxmoxHttps, proxmoxSetup, thisComputer, tokenId,
   type ProxmoxAction, type ProxmoxCall, type ProxmoxTransport, type Self,
 } from "./proxmox.ts";
-import { parseHost } from "./net.ts";
+import { parseHost, reachesHost } from "./net.ts";
 import { mcpHost, mcpUrl, probeMcp, type McpProbe, type McpStateKind } from "./mcp.ts";
 import {
-  checkGrant, gitHost, type McpServerConfig, repositoryDir, repositoryName, stricterMode, WorkspaceSettings, type GitAccountConfig, type GitAccountState, type GitKind, type Grant,
+  checkGrant, gitHost, type McpServerConfig, repositoryDir, repositoryName, repositoryUrl, stricterMode, WorkspaceSettings, type GitAccountConfig, type GitAccountState, type GitKind, type Grant,
   type MachineConfig, type MachineKind, type MachineLimit, type Network, type NewMachine, type PermissionMode, type ThreadRepository, type ThreadWorkspace,
 } from "./settings.ts";
 import { AllowedPaths } from "./paths.ts";
@@ -37,7 +37,7 @@ export * from "./net.ts";
 export * from "./paths.ts";
 export * from "./ops.ts";
 export * from "./proxmox.ts";
-export * from "./claude-relay.ts";
+export * from "./relay.ts";
 export * from "./sandbox.ts";
 export * from "./settings.ts";
 export * from "./ssh.ts";
@@ -85,8 +85,8 @@ export interface WorkspaceOptions {
    * restricted, so Claude Code is never given by mistake.
    */
   restricted?: (userId: string, pool: Pool, threadId: string) => boolean;
-  /** Where Claude Code's relay sends requests. Default: Anthropic's API; tests use their own. */
-  anthropic?: string;
+  /** Where a run's relay sends a host's requests instead of https://host: tests. */
+  upstreams?: Record<string, string>;
 }
 
 /** Where Claude Code sends what it reads: a run gets Claude Code only if its network reaches this. */
@@ -131,51 +131,6 @@ export interface MachineProbe {
 
 const DRAFT_MS = 60 * 60_000;
 
-/** A repository's HTTPS address on its account's host. */
-export const repositoryUrl = (host: string, name: string): string => `https://${host}/${name}.git`;
-
-/**
- * Git accounts' tokens as a sandbox's environment, nothing on disk or on a
- * command line: for each repository, a git credential helper bound to that
- * repository's URL (git's `GIT_CONFIG_*` environment, with `useHttpPath` for
- * its host, so another repository on the same host never gets it), reading
- * the token from the environment; and `LYRICA_GIT_*` for the `gh` and `tea`
- * wrappers (forge.sh), which pick the one account whose repository the
- * current clone is.
- */
-export function gitEnv(repos: { name: string; account: Pick<GitAccountConfig, "kind" | "host" | "account" | "token"> }[]): Record<string, string> {
-  if (!repos.length) return {};
-  const env: Record<string, string> = { GIT_TERMINAL_PROMPT: "0" };
-  const config: [string, string][] = [];
-  for (const host of new Set(repos.map((r) => r.account.host))) config.push([`credential.https://${host}.useHttpPath`, "true"]);
-  repos.forEach((r, i) => {
-    env[`LYRICA_GIT_REPO_${i}`] = `${r.account.host}/${r.name}`.toLowerCase();
-    env[`LYRICA_GIT_KIND_${i}`] = r.account.kind;
-    env[`LYRICA_GIT_USER_${i}`] = r.account.account;
-    env[`LYRICA_GIT_TOKEN_${i}`] = r.account.token;
-    config.push([`credential.${repositoryUrl(r.account.host, r.name)}.helper`,
-      `!f() { test "$1" = get && printf "username=%s\\npassword=%s\\n" "$LYRICA_GIT_USER_${i}" "$LYRICA_GIT_TOKEN_${i}"; }; f`]);
-  });
-  config.forEach(([k, v], i) => { env[`GIT_CONFIG_KEY_${i}`] = k; env[`GIT_CONFIG_VALUE_${i}`] = v; });
-  env.GIT_CONFIG_COUNT = String(config.length);
-  // gh and tea get no token of their own here: GH_TOKEN is one value, so the
-  // wrappers (forge.sh) pick the account by the clone's origin.
-  env.LYRICA_GIT_COUNT = String(repos.length);
-  return env;
-}
-
-/** Whether a sandbox on `net` can reach a Git host: internet on, or the host (and its port, if the entry names one) an allowed host. */
-export function reachesHost(net: Network, host: string): boolean {
-  if (net.internet) return true;
-  const want = parseHost(host);
-  const port = want.port ?? 443;
-  return net.hosts.some((h) => {
-    try {
-      const e = parseHost(h);
-      return e.host === want.host && (e.port === undefined || e.port === port);
-    } catch { return false; }
-  });
-}
 /** account@host or account@host:port, with [v6] in brackets. */
 export function parseMachineAddress(address: string): { username: string; host: string; port: number } {
   const m = /^([^@\s]+)@(\[[0-9a-fA-F:.]+\]|[^:\s@\[\]]+)(?::(\d+))?$/.exec(address.trim());
@@ -450,6 +405,22 @@ export class Workspace {
     return dir;
   }
 
+  /**
+   * Where the thread's Claude Code keeps its settings and transcripts on the
+   * host: in the home workspace, under claude/ and never in a thread's
+   * folder, so its children and read-only subagents, which see that folder,
+   * never see them. Each thread has its own (a subagent that may use Claude
+   * Code shares its parent's, as it does its clones); the sweep removes it
+   * with the thread.
+   */
+  claudeDir(t: WorkspaceThread): string {
+    const home = this.homeDir(t.userId);
+    if (!isMounted(home)) throw new Locked("the home workspace is not mounted");
+    const dir = join(home, "claude", encodeURIComponent(t.reposOf ?? t.threadId));
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    return dir;
+  }
+
   /** The thread's repositories now: granted by it and every ancestor, of an account of its pool. */
   repositoriesFor(t: WorkspaceThread): ThreadGitRepository[] {
     const s = this.settings(t.userId);
@@ -472,31 +443,20 @@ export class Workspace {
       if (m.kind === "proxmox") throw new Error(`${machine} is a Proxmox machine: use the proxmox tool`);
       return this.ssh(t.userId, machine);
     }
+    const credentials = this.credentialsFor(t);
     return new Sandbox({
       workdir: this.threadDir(t),
       grants: s.effective(t.threadId).grants,
       network: this.network(t),
       repos: this.reposDir(t),
       reposReadOnly: t.reposReadOnly,
-      env: this.forgeEnv(t),
-      ...this.claudeFor(t),
+      credentials,
+      ...credentials.anthropic ? { claudeDir: this.claudeDir(t) } : {},
       ...this.door(),
       check: (g) => checkGrant(s.allowed(), t.pool, g),
       bwrap: this.opts.bwrap,
       pasta: this.opts.pasta,
     });
-  }
-
-  /**
-   * The tokens of the thread's repositories, as its sandbox's environment
-   * (`gitEnv`): only for a repository the thread has, of an account of its
-   * pool, whose host its network reaches; a private account whose host has
-   * left her network gives nothing until the user confirms. Anywhere else nothing.
-   */
-  forgeEnv(t: WorkspaceThread): Record<string, string> {
-    const s = this.settings(t.userId);
-    const repos = this.repositoriesFor(t).filter((r) => r.reachable);
-    return gitEnv(repos.map((r) => ({ name: r.name, account: s.gitAccount(r.account)! })));
   }
 
   /**
@@ -516,13 +476,21 @@ export class Workspace {
   }
 
   /**
-   * Claude Code for the thread's sandbox runs where `claudeCodeFor` allows
-   * it: the token for the run's relay, which keeps it in this process
-   * (claude-relay.ts). Anywhere else nothing.
+   * The credentials the thread's sandbox runs may use, for their relay
+   * (relay.ts), which keeps them in this process: the token of each
+   * repository the thread has, of an account of its pool, whose host its
+   * network reaches (a private account whose host has left her network
+   * gives nothing until the user confirms), and Claude Code's where
+   * `claudeCodeFor` allows it. Anywhere else none.
    */
-  claudeFor(t: WorkspaceThread): { claude?: { token: string; upstream?: string } } {
-    if (!this.claudeCodeFor(t)) return {};
-    return { claude: { token: this.settings(t.userId).claudeCodeToken()!, ...(this.opts.anthropic ? { upstream: this.opts.anthropic } : {}) } };
+  credentialsFor(t: WorkspaceThread): Credentials {
+    const s = this.settings(t.userId);
+    const forge = this.repositoriesFor(t).filter((r) => r.reachable).map((r) => ({ name: r.name, account: s.gitAccount(r.account)! }));
+    return {
+      forge,
+      ...this.claudeCodeFor(t) ? { anthropic: s.claudeCodeToken()! } : {},
+      ...this.opts.upstreams ? { upstreams: this.opts.upstreams } : {},
+    };
   }
 
   /**

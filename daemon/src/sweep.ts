@@ -41,6 +41,15 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
     try { for (const repo of readdirSync(runDir)) forgetWorktree(join(runDir, repo), allowed); } catch { /* not a folder */ }
   };
   const live = new Set((["general", "private"] as const).flatMap((pool) => s.delegation.store.liveRuns(userId, pool)));
+  // Claude Code's folders (Workspace.claudeDir) go with their thread too.
+  const claudeDir = join(home, "claude");
+  for (const name of existsSync(claudeDir) ? readdirSync(claudeDir) : []) {
+    let id: string;
+    try { id = decodeURIComponent(name); } catch { continue; }
+    if (exists(id) || statSync(join(claudeDir, name)).mtimeMs >= now.getTime() - 60_000) continue;
+    rmSync(join(claudeDir, name), { recursive: true, force: true });
+    counts.folders++;
+  }
   for (const name of readdirSync(threadsDir)) {
     const dir = join(threadsDir, name);
     let id: string;

@@ -60,17 +60,24 @@ export function maskSecrets(content: Buffer, secrets: readonly string[]): Buffer
 }
 
 /**
- * Passes output on with each of `secrets` replaced, holding back the last
- * few bytes of each chunk so a secret split across two chunks is caught too.
+ * Passes output on with each of `secrets` replaced, holding back the end of
+ * a chunk only while it could be the start of one, so a secret split across
+ * two chunks is caught too and other output isn't delayed.
  */
 export function secretMasker(secrets: readonly string[], onData: (data: Buffer) => void): { push(data: Buffer): void; end(): void } {
-  const keep = Math.max(0, ...secrets.map((s) => Buffer.byteLength(s) - 1));
   if (!secrets.length) return { push: onData, end: () => {} };
+  const raw = secrets.map((s) => Buffer.from(s).toString("latin1"));
+  const longest = Math.max(...raw.map((s) => s.length - 1));
+  /** How many bytes at the end of `s` begin a secret. */
+  const pending = (s: string) => {
+    for (let k = Math.min(longest, s.length); k > 0; k--) if (raw.some((r) => r.startsWith(s.slice(-k)))) return k;
+    return 0;
+  };
   let held: Buffer = Buffer.alloc(0);
   return {
     push(data) {
       const all = maskSecrets(Buffer.concat([held, data]), secrets);
-      const cut = Math.max(0, all.length - keep);
+      const cut = all.length - pending(all.toString("latin1"));
       held = all.subarray(cut);
       if (cut) onData(all.subarray(0, cut));
     },

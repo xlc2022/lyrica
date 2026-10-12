@@ -26,6 +26,8 @@ jobs:
         vendor: [nvidia, amd]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       # The ROCm base image is about 12 GB compressed and over 30 GB unpacked.
       # On GitHub's runners: free the disk, and use Docker's classic overlay2
       # store, which drops each compressed layer once it is unpacked (the
@@ -67,6 +69,8 @@ jobs:
     runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Make room
         if: runner.environment == 'self-hosted'
         run: .github/runner/make-room.sh 30
@@ -76,6 +80,8 @@ jobs:
     runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22

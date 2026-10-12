@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createServer, type IncomingHttpHeaders } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, describe, expect, it } from "vitest";
-import { openClaudeRelay, Users, Workspace, type Pool } from "../src/index.ts";
+import { openRelay, Users, Workspace, type Pool } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 // Claude Code on the user's Claude plan (docs/workspace.md, "Claude Code"):
@@ -33,39 +33,39 @@ describe("Claude Code's token", () => {
     expect(settings.thread("code").claudeCode).toBe(false);
     settings.setThread("code", "general", { claudeCode: true });
     // No token saved yet.
-    expect(workspace.claudeFor(thread("code")).claude).toBeUndefined();
+    expect(workspace.credentialsFor(thread("code")).anthropic).toBeUndefined();
     expect(() => settings.setClaudeCodeToken("not a token")).toThrow(/claude setup-token/);
     settings.setClaudeCodeToken(TOKEN);
-    expect(workspace.claudeFor(thread("code")).claude?.token).toBe(TOKEN);
+    expect(workspace.credentialsFor(thread("code")).anthropic).toBe(TOKEN);
     expect(workspace.forThread(thread("code")).claudeCode()).toBe(true);
 
     // The switch off, another thread, or no way to api.anthropic.com: nothing.
-    expect(workspace.claudeFor(thread("other")).claude).toBeUndefined();
+    expect(workspace.credentialsFor(thread("other")).anthropic).toBeUndefined();
     settings.setThread("code", "general", { internet: false });
-    expect(workspace.claudeFor(thread("code")).claude).toBeUndefined();
+    expect(workspace.credentialsFor(thread("code")).anthropic).toBeUndefined();
     settings.setThread("code", "general", { hosts: ["api.anthropic.com"] });
-    expect(workspace.claudeFor(thread("code")).claude?.token).toBe(TOKEN);
+    expect(workspace.credentialsFor(thread("code")).anthropic).toBe(TOKEN);
 
     // Local-only, itself or through a parent.
     localOnly.add("code");
-    expect(workspace.claudeFor(thread("code")).claude).toBeUndefined();
+    expect(workspace.credentialsFor(thread("code")).anthropic).toBeUndefined();
     localOnly.delete("code");
     settings.inheritSettings("code", "child", "general");
-    expect(workspace.claudeFor(thread("child")).claude?.token).toBe(TOKEN);
+    expect(workspace.credentialsFor(thread("child")).anthropic).toBe(TOKEN);
     localOnly.add("code");
-    expect(workspace.claudeFor(thread("child")).claude).toBeUndefined();
+    expect(workspace.credentialsFor(thread("child")).anthropic).toBeUndefined();
     localOnly.delete("code");
 
     // A child is never wider than its parent, and the parent turning it off takes it at once.
     settings.setThread("code", "general", { claudeCode: false });
-    expect(workspace.claudeFor(thread("child")).claude).toBeUndefined();
+    expect(workspace.credentialsFor(thread("child")).anthropic).toBeUndefined();
     expect(() => settings.setThread("child", "general", { claudeCode: true })).toThrow(/parent thread has Claude Code off/);
 
     // Never in a private thread; and Remove takes it from every run.
     expect(() => settings.setThread("p", "private", { claudeCode: true })).toThrow(/private thread can't use Claude Code/);
     settings.setThread("code", "general", { claudeCode: true });
     settings.setClaudeCodeToken(null);
-    expect(workspace.claudeFor(thread("code")).claude).toBeUndefined();
+    expect(workspace.credentialsFor(thread("code")).anthropic).toBeUndefined();
   });
 
   it("is never given when the workspace isn't told which threads are local-only", async () => {
@@ -76,7 +76,7 @@ describe("Claude Code's token", () => {
     const workspace = new Workspace(keyring, users, { excludePorts: [] });
     workspace.settings(ada.id).setClaudeCodeToken(TOKEN);
     workspace.settings(ada.id).setThread("code", "general", { claudeCode: true });
-    expect(workspace.claudeFor({ userId: ada.id, pool: "general", threadId: "code" }).claude).toBeUndefined();
+    expect(workspace.credentialsFor({ userId: ada.id, pool: "general", threadId: "code" }).anthropic).toBeUndefined();
   });
 });
 
@@ -93,11 +93,11 @@ describe("the claude wrapper", () => {
     encoding: "utf8", env: { PATH: path, CLAUDE_CODE_OAUTH_TOKEN: "capability", ANTHROPIC_BASE_URL: "http://127.0.0.1:4100", ANTHROPIC_API_KEY: "sk-other" },
   });
 
-  it("runs the real program past itself, with its notes in the thread's folder and no prompts of its own", () => {
+  it("runs the real program past itself, with its notes in the thread's own folder for them and no prompts of its own", () => {
     const out = run(`/run/lyrica/bin:${real}`);
     expect(out).toContain("args=--permission-mode bypassPermissions -p fix the tests");
     // The run's capability and relay, never another key that would bill elsewhere.
-    expect(out).toContain("config=/workspace/.claude sandbox=1 key=none token=capability base=http://127.0.0.1:4100");
+    expect(out).toContain("config=/run/lyrica/claude sandbox=1 key=none token=capability base=http://127.0.0.1:4100");
   });
 
   it("says so when Claude Code isn't installed", () => {
@@ -117,7 +117,7 @@ describe("the relay", () => {
     });
     await new Promise<void>((r) => upstream.listen(0, "127.0.0.1", r));
     try {
-      const relay = await openClaudeRelay(TOKEN, `http://127.0.0.1:${(upstream.address() as AddressInfo).port}`);
+      const relay = await openRelay({ anthropic: TOKEN, reaches: () => true, internet: true, upstreams: { "api.anthropic.com": `http://127.0.0.1:${(upstream.address() as AddressInfo).port}` } });
       const base = `http://127.0.0.1:${relay.port}`;
       const send = (path: string, bearer: string) => fetch(`${base}${path}`, { method: "POST", headers: { authorization: `Bearer ${bearer}`, "x-api-key": "sk-other", "anthropic-beta": "oauth-2025-04-20" }, body: "{}" });
       expect((await send("/v1/messages", "made-up")).status).toBe(401);

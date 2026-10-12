@@ -6,11 +6,15 @@ import { maskSecrets, Sandbox, SECRET_HIDDEN, secretMasker } from "../src/index.
 describe("hiding a sandbox run's credentials", () => {
   const token = "github_pat_FAKE_0123456789abcdef";
 
-  it("takes every variable named for a token, longest first, and nothing else", () => {
-    const box = new Sandbox({ grants: [], network: { internet: false, services: false, hosts: [] }, env: {
-      LYRICA_GIT_TOKEN_0: token, LYRICA_GIT_TOKEN_1: "short", CLAUDE_CODE_OAUTH_TOKEN: `${token}-longer`, LYRICA_GIT_USER_0: "someone-long-enough",
+  it("takes its tokens and their placeholders, longest first, and nothing else", () => {
+    const account = (t: string) => ({ kind: "github" as const, host: "github.com", account: "someone-long-enough", token: t });
+    const box = new Sandbox({ grants: [], network: { internet: false, services: false, hosts: [] }, credentials: {
+      forge: [{ name: "a/b", account: account(token) }, { name: "a/c", account: account("short") }], anthropic: `${token}-longer`,
     } });
-    expect(box.secrets()).toEqual([`${token}-longer`, token]);
+    const secrets = box.secrets();
+    expect(secrets.filter((s) => !s.startsWith("lyrica_"))).toEqual([`${token}-longer`, token]);
+    expect(secrets.filter((s) => s.startsWith("lyrica_"))).toHaveLength(2);
+    expect(secrets).not.toContain("someone-long-enough");
   });
 
   it("replaces them in a file, keeping every other byte", () => {
@@ -24,6 +28,14 @@ describe("hiding a sandbox run's credentials", () => {
     for (const piece of ["export T=", token.slice(0, 7), token.slice(7, 20), `${token.slice(20)}\nok\n`]) m.push(Buffer.from(piece));
     m.end();
     expect(Buffer.concat(seen).toString()).toBe(`export T=${SECRET_HIDDEN}\nok\n`);
+  });
+
+  it("holds back only what could begin a token, so other output isn't delayed", () => {
+    const seen: string[] = [];
+    const m = secretMasker([token], (d) => seen.push(d.toString()));
+    m.push(Buffer.from("http://127.0.0.1:4100\n"));
+    m.push(Buffer.from("next gith"));
+    expect(seen).toEqual(["http://127.0.0.1:4100\n", "next "]);
   });
 
   it("passes output through as is when the run holds none", () => {

@@ -770,6 +770,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 - **Workspace extension** (`createWorkspaceExtension(tools: ThreadTools)`):
   - `ExecutionTarget.run?(argv, { signal?, timeoutMs? })` runs argv with no
     shell under the target's own rules; the sandbox has it.
+  - `ExecutionTarget.secrets?()` is the sandbox's tokens and placeholders
+    (core/src/workspace/ops.ts): `bash` output (`secretMasker`), `read` and
+    `web_fetch` pages (`maskSecrets`) show `SECRET_HIDDEN` for each, and the
+    `tool_call` gate refuses a `web_search`, `web_fetch` or MCP call whose
+    input holds one (`holdsSecret`).
   - `ThreadTools` is `{ target(machine?), settings(), network(),
     claudeCode?(), machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?),
     mcpServers?(), toolAllowedInThread?(server, tool), approve?, setMode?,
@@ -880,8 +885,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   settings change, sends the thread a `{ type: "settings" }` event.
 - **Sweep** (`Lyricad.sweep`, nightly, before sleep): `sweepUser(services,
   userId)` for each user whose home workspace is mounted clears snapshots
-  and change records older than 30 days (`SWEEP_AGE_MS`), the folders of
-  threads that no longer exist (younger than 60 s are left), and the
+  and change records older than 30 days (`SWEEP_AGE_MS`), the folders and
+  Claude Code folders (`claude/<thread>`) of threads that no longer exist
+  (younger than 60 s are left), and the
   worktrees of subagent runs that aren't live (`DelegationStore.liveRuns`)
   and haven't changed in 30 days. `forgetWorktree(path, allowed)` removes a
   worktree's git record only when it is in a folder the user may grant,
@@ -1198,6 +1204,8 @@ interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
   cwd(): Promise<string>;
   ops(): { read; write; edit; bash };     // Pi's tool operations
   folders(): string[];                    // host folders, or "<ssh name>:<root>"
+  run?(argv, { signal?, timeoutMs? });    // the sandbox's
+  secrets?(): string[];                   // the sandbox's tokens and placeholders, hidden in output
 }
 new SshTarget(cfg, { transport: SshTransport, address?, connected? })  // the host key must be cfg.hostKey
 interface SshTransport { connect(to: SshEndpoint, verify(fingerprint): boolean): Promise<SshSession> }
@@ -1230,7 +1238,7 @@ grantsFor(t): Grant[]                     // { path, writable }
 folders(t): string[]                      // grants, and "<machine>:<root>" for its machines with a root
 network(t): Network
 inheritSettings(parent, childThreadId, narrower?)  // subagents and child threads: same or stricter (folders, network, mode, webSearch, images, claudeCode), never wider
-claudeCodeFor(t): boolean / claudeFor(t)  // Claude Code for a run: general, not local-only along its chain (WorkspaceOptions.restricted; without it never), switch on, token saved, reaches api.anthropic.com; the token goes to SandboxSpec.claude, never the env
+claudeCodeFor(t): boolean                 // Claude Code for a run: general, not local-only along its chain (WorkspaceOptions.restricted; without it never), switch on, token saved, reaches api.anthropic.com
 settings(userId).detach(threadId)          // a kept child, once its parent is forgotten: no longer narrowed by it
 // A project's threads, like any child thread, work in their project chat's folder (folderThread)
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, machines
@@ -1256,7 +1264,7 @@ settings(userId).effective(threadId): ThreadWorkspace  // strictest mode and swi
 allowedPaths.allow(actor, userId, pool, path) / disallow(...) / list(userId)
   // NEVER_GRANTED (Caddy's runtime, /opt/lyrica, the updater's state and snapshots) and LYRICA_HOME are refused, and rows
   //   overlapping them are left out of list()
-forgeEnv(t): Record<string, string>       // gitEnv of the thread's reachable repositories (Git accounts below); targetFor
+credentialsFor(t): Credentials            // the thread's reachable repositories' tokens and Claude Code's, for SandboxSpec.credentials, never the env (Git accounts below); targetFor
   // passes it as the sandbox's env, never argv, and `repos` (reposDir(t)) mounted at /workspace/repos
 saveUpload(t, name, bytes): Promise<string>  // cleans the name (cleanUploadName), never overwrites
 mountHome(userId) / unmountHome(userId)   // gocryptfs; mount when the user's key becomes available
@@ -1320,14 +1328,21 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   a subagent's under its parent's, mounted read-only for one with
   `reposReadOnly`) and returns the problems, never removing
   one (a clone goes with the thread); `addRepository(t, r)` is the
-  `add_repository` tool's change. `forgeEnv(t)` (`gitEnv`) is the
-  environment for a sandbox run: one credential helper per repository URL
-  (`useHttpPath`) and `LYRICA_GIT_*` for the `gh` and `tea` wrappers
+  `add_repository` tool's change. `credentialsFor(t).forge` holds the
+  tokens; it is empty when the thread is of the other pool, has no
+  repository, or can't reach the host (`reachesHost`). A sandbox with
+  `SandboxSpec.credentials` opens a relay per run (`openRelay`,
+  `core/src/workspace/relay.ts`), a loopback port forwarded into the run
+  that closes when the run ends, and gives the run `gitEnv` with a
+  placeholder per token: one credential helper and proxy per repository
+  URL (`useHttpPath`, `http.<url>.proxy` with the run's capability,
+  `http.<url>.sslCAInfo` at `/run/lyrica/certs/run.pem`) and
+  `LYRICA_GIT_*` for the `gh` and `tea` wrappers
   (`core/src/workspace/forge.sh`, mounted first on the run's PATH), which
-  pick the account by the clone's origin; empty when the thread is of the
-  other pool, has no repository, or can't reach the host (`reachesHost`).
-  Never argv; never a file, except the `tea` config the wrapper writes on
-  the run's tmpfs. The thread row's `repositories` column and the
+  pick the account by the clone's origin. The relay swaps a placeholder
+  only on its repository's Git paths and its host's API, and refuses it
+  elsewhere. Never argv; never a file, except the `tea` config the wrapper
+  writes on the run's tmpfs, with the placeholder. The thread row's `repositories` column and the
   `git_accounts` table are user step 2 in `core/src/migrations.ts`. API:
   `/api/u/:userId/git-accounts` (`GET`; `POST …/probe`; `POST`; `PATCH
   …/:name`; `POST …/:name/token`; `POST …/:name/confirm-off-network`;
@@ -1362,12 +1377,13 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   while it is on, is `400`. User database step 4 adds
   `thread_workspaces.claude_code`; the token is `claude_code.token` in
   `settings` (`settings(userId).claudeCodeToken() /
-  setClaudeCodeToken(token | null)`). A run with `SandboxSpec.claude`
-  gets `openClaudeRelay(token)` (`core/src/workspace/claude-relay.ts`):
-  a loopback port forwarded into the run, `ANTHROPIC_BASE_URL` and a
-  per-run capability as `CLAUDE_CODE_OAUTH_TOKEN` in its environment, and
+  setClaudeCodeToken(token | null)`). A run with
+  `SandboxSpec.credentials.anthropic` gets the run's relay as
+  `ANTHROPIC_BASE_URL` and its capability as `CLAUDE_CODE_OAUTH_TOKEN`,
   the `claude` wrapper (`core/src/workspace/claude.sh`) at
-  `/run/lyrica/bin/claude`; the relay closes when the run ends.
+  `/run/lyrica/bin/claude`, and `SandboxSpec.claudeDir`
+  (`Workspace.claudeDir(t)`, `claude/<thread>` in the home workspace)
+  mounted at `/run/lyrica/claude` for its settings and transcripts.
   `claudeCodeInstalled()` says whether the program is among the sandbox's
   tools.
 - **Machines API:** `lyricad`'s `/api/u/:userId/machines` (`GET`; `POST

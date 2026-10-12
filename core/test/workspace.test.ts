@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import ssh2 from "ssh2";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { testMcpServer } from "./mcp-server.ts";
-import { keepResult, MCP_RESULT_BYTES, generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, migrate, Users, Workspace, WorkspaceSettings, type HelperSandbox, type MachineConfig } from "../src/index.ts";
+import { gitEnv, keepResult, MCP_RESULT_BYTES, generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, migrate, Users, Workspace, WorkspaceSettings, type HelperSandbox, type MachineConfig } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -242,12 +242,14 @@ describe("Git accounts and repositories", () => {
 
   it("gives a repository's token only to a sandbox of its pool, in a thread that has it, that can reach its host, and each account only its own", async () => {
     const { workspace, settings, thread } = await withAccounts();
+    // What each run's relay holds, as gitEnv shows it with the real tokens (a run gets placeholders).
+    const forgeEnv = (t: ReturnType<typeof thread>) => gitEnv(workspace.credentialsFor(t).forge);
     expect(() => settings.setThread("p", "private", { repositories: [{ name: "xlc2022/lyrica", account: "ada" }] })).toThrow(/general Git account; a private thread/);
     expect(() => settings.setThread("g", "general", { repositories: [{ name: "ada/notes", account: "forge" }] })).toThrow(/private Git account; a general thread/);
     expect(() => settings.setThread("g", "general", { repositories: [{ name: "../x", account: "ada" }] })).toThrow(/owner\/name/);
 
     settings.setThread("code", "general", { repositories: [{ name: "xlc2022/lyrica", account: "ada" }, { name: "lyrica-bot/scratch.git", account: "bot" }] });
-    const env = workspace.forgeEnv(thread("code"));
+    const env = forgeEnv(thread("code"));
     const helpers = Object.entries(env).filter(([k]) => k.startsWith("GIT_CONFIG_KEY_")).map(([k, v]) => [v, env[k.replace("KEY", "VALUE")]]);
     expect(helpers.map(([k]) => k)).toEqual([
       "credential.https://github.com.useHttpPath", "credential.https://github.com/xlc2022/lyrica.git.helper", "credential.https://github.com/lyrica-bot/scratch.git.helper",
@@ -262,18 +264,18 @@ describe("Git accounts and repositories", () => {
     expect(workspace.repositoriesFor(thread("code")).map((r) => r.path)).toEqual(["/workspace/repos/lyrica", "/workspace/repos/scratch"]);
 
     // Without the repository, or without a way to its host.
-    expect(workspace.forgeEnv(thread("other"))).toEqual({});
+    expect(forgeEnv(thread("other"))).toEqual({});
     settings.setThread("code", "general", { internet: false });
-    expect(workspace.forgeEnv(thread("code"))).toEqual({});
+    expect(forgeEnv(thread("code"))).toEqual({});
     settings.setThread("code", "general", { hosts: ["github.com"] });
-    expect(workspace.forgeEnv(thread("code")).LYRICA_GIT_TOKEN_0).toBe("ada-token");
+    expect(forgeEnv(thread("code")).LYRICA_GIT_TOKEN_0).toBe("ada-token");
 
     // A private thread: only with the host allowed, and only its private account's token, for tea.
     settings.setThread("p", "private", { repositories: [{ name: "ada/notes", account: "forge" }] });
-    expect(workspace.forgeEnv(thread("p", "private"))).toEqual({});
+    expect(forgeEnv(thread("p", "private"))).toEqual({});
     settings.setThread("p", "private", { hosts: ["127.0.0.1:3000"] });
-    expect(workspace.forgeEnv(thread("p", "private"))).toMatchObject({ LYRICA_GIT_COUNT: "1", LYRICA_GIT_TOKEN_0: "forge-token", LYRICA_GIT_REPO_0: "127.0.0.1:3000/ada/notes", LYRICA_GIT_KIND_0: "forgejo" });
-    expect(JSON.stringify(workspace.forgeEnv(thread("p", "private")))).not.toContain("ada-token");
+    expect(forgeEnv(thread("p", "private"))).toMatchObject({ LYRICA_GIT_COUNT: "1", LYRICA_GIT_TOKEN_0: "forge-token", LYRICA_GIT_REPO_0: "127.0.0.1:3000/ada/notes", LYRICA_GIT_KIND_0: "forgejo" });
+    expect(JSON.stringify(forgeEnv(thread("p", "private")))).not.toContain("ada-token");
   });
 
   it("takes a removed account's repositories, or one taken off a project, from its running threads at once", async () => {
