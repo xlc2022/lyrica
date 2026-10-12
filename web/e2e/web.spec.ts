@@ -1694,7 +1694,7 @@ test("Models: the sidebar link opens Overview, Hosts and endpoints lists the end
   await expect(page.locator('[data-tile="endpoints"]')).toContainText(/[34]\s*of 4 up/);
   await expect(page.locator('[data-tile="backend"]')).toContainText("cloud-model");
   await expect(page.locator('[data-tile="backend"]')).toContainText("local-model");
-  await expect(page.locator('[data-tile="cleanup"] .big')).toHaveAttribute("title", "Nothing to clean up");
+  await expect(page.locator('[data-tile="cleanup"]')).toHaveAttribute("title", "Nothing to clean up");
   const summary = page.getByRole("region", { name: "Hosts and endpoints" });
   for (const name of ["gpu", "router", "speech", "openai"]) await expect(summary.locator("li.hostrow").filter({ hasText: new RegExp(`^${name}`) })).toBeVisible();
   const recent = page.getByRole("region", { name: "Recent calls" });

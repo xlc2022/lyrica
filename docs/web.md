@@ -243,12 +243,12 @@ A thread's address may carry what the panel beside it shows:
   endpoint; tiles Endpoints (n of m up, then a dot and "All reachable" or
   the first one down, "+N" for more), Backend (the first `chat` model of
   the general profile and of Local, following Same as, each with its pool
-  and profile beneath; links to Tasks) and Clean up (the count, with "To
-  decide" or "Nothing to clean up" as its tooltip); then the hosts and
-  endpoints summary (a host with its combined VRAM bar, Pause or Resume, Dashboard;
-  a plain endpoint with its model count) and the first five calls. Hosts
-  and endpoints: **Add endpoint** (a drawer: Name, Kind, Base URL, API key,
-  Shared for administrators; a plain-HTTP warning for a local URL off
+  and profile beneath; links to Tasks) and Clean up (the count, the tile's
+  tooltip "To decide" or "Nothing to clean up"); then the hosts and
+  endpoints summary (a host with its combined VRAM bar, Pause or Resume,
+  Dashboard; a plain endpoint with its model count) and the first five
+  calls. Hosts and endpoints: **Add endpoint** (a drawer: Name, Kind, Base
+  URL, API key, Shared for administrators; a plain-HTTP warning for a local URL off
   loopback and the tailnet. Kind also offers ChatGPT plan, with **Sign in with
   ChatGPT**, which opens OpenAI's page in a new tab, then **Redirect URL**
   and **Finish** in place of the URL and key; and Grok plan, with **Sign in with Grok**, which opens
@@ -298,8 +298,9 @@ A thread's address may carry what the panel beside it shows:
   Move down and Remove (in Custom, "Falls back to cloud from here" where the
   kind changes), and **Add…**, a picker with a search box, group chips and
   only models the task can use; each change is a `PUT
-  …/profiles/<profile>/<task>` at once, a refusal shown as an error line. Settings → Sleep holds the Sleep mode select and
-  Sleep fallback; `…/settings/profiles` goes to the Tasks tab.
+  …/profiles/<profile>/<task>` at once, a refusal shown as an error line.
+  Settings → Sleep holds the Sleep mode select and Sleep fallback;
+  `…/settings/profiles` goes to the Tasks tab.
 - **Notifications** (`src/Notifications.tsx`; docs/ux.md §6 "Anything
   waiting for the user"): the first section of Settings, one list from
   `GET …/notifications`. Chips filter by type (All with the count, Needs a

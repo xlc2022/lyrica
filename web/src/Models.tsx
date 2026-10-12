@@ -273,9 +273,9 @@ function Tiles({ ctx, p }: { ctx: MCtx; p: ModelsPage }) {
         <span className="line" title="Private threads">{line(local)}</span>
         <span className="cap">private threads · Local</span>
       </a>
-      <a className="tile" href={href({ page: "models", userId, tab: "cleanup" })} data-tile="cleanup">
+      <a className="tile" href={href({ page: "models", userId, tab: "cleanup" })} data-tile="cleanup" title={cleanup ? "To decide" : "Nothing to clean up"}>
         <span className="cap">Clean up</span>
-        <span className="big num" title={cleanup ? "To decide" : "Nothing to clean up"}>{cleanup}<small>{cleanup === 1 ? "item" : "items"}</small></span>
+        <span className="big num">{cleanup}<small>{cleanup === 1 ? "item" : "items"}</small></span>
       </a>
     </div>
   );
