@@ -179,7 +179,7 @@ Three ways a model gets into the library:
   every file is checked against the hub's checksum. A gated repository's
   token is used for that download and never kept.
 - **Ask from Lyrica**, through the same download API (`…/hosts/<endpoint
-  id>/downloads`) or, once the Models page exists, its library. Hub tokens
+  id>/downloads`) or, once the Models page has one, its library. Hub tokens
   can be saved in Lyrica (a user's own, or a shared one an administrator
   adds) and are sent to the host per request.
 
@@ -229,7 +229,7 @@ Each model has a placement: Auto (one GPU with room, else split over the
 GPUs that allow its server) or chosen GPUs. Its context length (32k by
 default), KV-cache type, parallel requests and, for vLLM, its share of the
 GPU's memory are set on the dashboard or from Lyrica's Serving settings
-once it has a Models page. A placement that can't work is refused when
+once its Models page has them. A placement that can't work is refused when
 saved, with the reason. Each GPU says which servers it may run and how much
 memory to keep free. Idle models are unloaded least-recently-used when
 another needs room; pinned models never are.
