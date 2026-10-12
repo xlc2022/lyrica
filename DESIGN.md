@@ -1818,7 +1818,7 @@ from Monika's runbooks.
   PRINCIPLES, this document and the contracts, and keeps coding to a minimum.
 - **Feature threads** are separate Claude Code sessions tagged `project:lyrica`:
   Core, Memory, Workspace, Models, Delegation, Daemon, Web UI, Sleep,
-  Integrations, Model host, Models 2, Images, Delegation 2, Child
+  Model host, Models 2, Images, Delegation 2, Child
   threads, Modes and Projects.
   - Each works from a brief in `docs/briefs/` on its own branch and ends with a
     pull request.
