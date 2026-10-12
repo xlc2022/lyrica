@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { Writable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensurePhotosDir } from "@lyrica/core";
+import { createImageExtension } from "@lyrica/extension";
+import type { ExtensionAPI, ExtensionToolContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { png } from "../../core/test/fake-images.ts";
 import { apiRoutes } from "../src/routes.ts";
 import { match, statusOf, type Request } from "../src/http.ts";
@@ -83,14 +85,53 @@ describe("image routes (principles 1 and 2)", () => {
       expect((await call("POST", base, rt.sam.id, png)).status).toBe(404);
       expect((await call("POST", base, rt.ada.id, Buffer.alloc(16))).status).toBe(400);
       const name = path.split("/").at(-1)!;
+      const photo = await call("GET", `${base}/${name}`);
+      expect(photo.bytes).toEqual(png);
+      expect(photo.headers).toMatchObject({ "content-type": "image/png", "cache-control": "no-store", "x-content-type-options": "nosniff",
+        "content-security-policy": "default-src 'none'; sandbox" });
+      expect((await call("GET", `${base}/${name}`, null)).status).toBe(401);
+      expect((await call("GET", `${base}/${name}`, rt.sam.id)).status).toBe(404);
+      expect((await call("GET", `${base.replace(rt.ada.id, rt.sam.id)}/${name}`, rt.sam.id)).status).toBe(404);
+      expect((await call("GET", `${base}/..%2F${name}`)).status).toBe(404);
+      writeFileSync(join(homes.get(rt.ada.id)!, "photos-of-me", "other.txt"), "synthetic non-image");
+      expect((await call("GET", `${base}/other.txt`)).status).toBe(404);
       symlinkSync(join(homes.get(rt.ada.id)!, "photos-of-me", name), join(homes.get(rt.ada.id)!, "photos-of-me", "link.png"));
       expect((await call("GET", base)).value).toHaveLength(1);
+      expect((await call("GET", `${base}/link.png`)).status).toBe(404);
       expect((await call("DELETE", `${base}/link.png`)).status).toBe(404);
       expect((await call("DELETE", `${base}/..%2F${name}`)).status).toBe(404);
       expect((await call("DELETE", `${base}/${name}`, rt.sam.id)).status).toBe(404);
       expect((await call("DELETE", `${base}/${name}`)).status).toBe(200);
       expect((await call("GET", base)).value).toEqual([]);
     } finally { await d.stop(); }
+  });
+
+  it("Never prevents portrait bytes reaching a cloud image call, while ordinary images still work (principle 2)", async () => {
+    const { rt, d, thread, call } = await setup();
+    const send = vi.fn(async () => Response.json({ data: [{ b64_json: png.toString("base64") }] }));
+    vi.stubGlobal("fetch", send);
+    try {
+      const services = d.services!, models = services.models;
+      const user = services.users.get(rt.ada.id)!;
+      const ep = models.addEndpoint(user, { name: "cloud-images", kind: "cloud", baseUrl: "https://images.example/v1", apiKey: "fake-key" });
+      const ref = { offeringId: models.addModel(user, ep.id, { modelId: "gpt-image-1", image: true, edit: true }).id };
+      for (const task of ["image.create", "image.edit"] as const) models.setProfile(user.id, "cloud", task, [ref]);
+      const { path } = (await call("POST", `/api/u/${user.id}/photos-of-me`, user.id, png)).value as { path: string };
+      await call("PUT", `/api/u/${user.id}/photo-cloud`, user.id, { policy: "never" });
+      let tool!: ToolDefinition;
+      const approve = vi.fn(async () => true);
+      createImageExtension({ models, threadId: thread.id,
+        call: () => ({ userId: user.id, pool: "general", localOnly: false }),
+        files: services.workspace.imageFiles({ userId: user.id, pool: "private", threadId: thread.id }),
+        settings: () => services.workspace.settings(user.id), enabled: () => true, approve,
+      })({ registerTool: (t: ToolDefinition) => { tool = t; } } as unknown as ExtensionAPI);
+      const run = (args: unknown) => tool.execute("portrait", args, undefined, undefined, { hasUI: false } as ExtensionToolContext);
+      await expect(run({ action: "create", prompt: "A garden", tier: "quality", references: [path] })).rejects.toThrow(/aren't allowed/);
+      await expect(run({ action: "edit", instruction: "Add flowers", image: path })).rejects.toThrow(/aren't allowed/);
+      expect(send).not.toHaveBeenCalled(); expect(approve).not.toHaveBeenCalled();
+      await run({ action: "create", prompt: "A garden", tier: "fast" });
+      expect(send).toHaveBeenCalledOnce();
+    } finally { vi.unstubAllGlobals(); await d.stop(); }
   });
 
   it("reads and changes only this user's photo cloud setting, validating all values", async () => {

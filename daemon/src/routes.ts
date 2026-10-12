@@ -65,6 +65,13 @@ export function apiRoutes(d: Lyricad): Route[] {
       return undefined;
     }),
     route("GET", `${u}/photos-of-me`, (r): Api.PortraitPhoto[] => imageFile(() => s().workspace.photos(imageUser(r).id).list())),
+    route("GET", `${u}/photos-of-me/:name`, (r) => {
+      const file = imageFile(() => s().workspace.photos(imageUser(r).id).content(r.params.name!));
+      r.res.writeHead(200, { "content-type": file.type, "content-length": String(file.size), "cache-control": "no-store",
+        "content-security-policy": "default-src 'none'; sandbox", "x-content-type-options": "nosniff" });
+      file.stream.on("error", () => r.res.destroy()); file.stream.pipe(r.res);
+      return undefined;
+    }),
     route("POST", `${u}/photos-of-me`, async (r): Promise<Api.UploadResponse> => {
       const user = imageUser(r);
       const bytes = await r.bytes(MAX_IMAGE_BYTES);

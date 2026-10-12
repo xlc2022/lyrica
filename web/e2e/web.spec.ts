@@ -141,6 +141,114 @@ test("unlock, log in, start a thread, and see a streamed reply that survives a r
   await noHorizontalScroll(page);
 });
 
+test("Portrait photos uploads, downloads, confirms deletion, and saves the cloud setting across reloads", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const base = `/api/u/${userId}/photos-of-me`;
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aS1sAAAAASUVORK5CYII=", "base64");
+  // Mounted homes need FUSE. Fake only portrait storage; the cloud setting uses real encrypted user.db.
+  let photos: { path: string; size: number; type: string }[] = [];
+  let uploads = 0;
+  await page.route(`**${base}`, async (route) => {
+    if (route.request().method() === "POST") {
+      expect(route.request().postDataBuffer()).toEqual(png);
+      const path = `/photos-of-me/synthetic-${++uploads}.png`;
+      photos.push({ path, size: png.length, type: "image/png" });
+      await route.fulfill({ json: { path } });
+    } else await route.fulfill({ json: photos });
+  });
+  await page.route(`**${base}/*`, async (route) => {
+    const path = `/photos-of-me/${new URL(route.request().url()).pathname.split("/").at(-1)!}`;
+    if (route.request().method() === "DELETE") {
+      photos = photos.filter((p) => p.path !== path);
+      await route.fulfill({ json: { ok: true } });
+    } else await route.fulfill({ contentType: "image/png", body: png });
+  });
+  // Set the starting policy through the real API; the page loads and changes it itself.
+  await page.evaluate((id) => fetch(`/api/u/${id}/photo-cloud`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ policy: "ask" }) }), userId);
+  await page.goto(`/#/u/${userId}/settings/portraits`);
+  const nav = page.getByRole("navigation", { name: "Settings sections" });
+  await expect(nav.getByRole("link").last()).toHaveText("Portrait photos");
+  await expect(page.getByText("No photos yet.", { exact: true })).toBeVisible();
+  const policy = page.getByLabel("Sending them to a cloud image model");
+  await expect(policy).toHaveValue("ask");
+  await expect(policy).toHaveAttribute("title", "The first time a day one would go to a cloud model, she asks first. A yes lasts until the end of that day.");
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Add photos", exact: true }).click();
+  const picker = await chooser;
+  expect(picker.isMultiple()).toBe(true);
+  await picker.setFiles([
+    { name: "too-large.png", mimeType: "image/png", buffer: Buffer.alloc(20 * 1024 * 1024 + 1) },
+    { name: "tiny.png", mimeType: "image/png", buffer: png },
+    { name: "second.png", mimeType: "image/png", buffer: png },
+  ]);
+  await expect(page.getByRole("alert")).toHaveText("too-large.png: Each photo must be at most 20 MB.");
+  await expect(page.locator(".pill")).toHaveText("2 photos");
+  expect(uploads).toBe(2);
+  const image = page.getByRole("img", { name: "synthetic-1.png", exact: true });
+  await expect(image).toBeVisible();
+  await expect.poll(() => image.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBe(1);
+  await noHorizontalScroll(page);
+  await page.getByRole("button", { name: "Actions for synthetic-1.png", exact: true }).click();
+  const downloading = page.waitForEvent("download");
+  await page.getByRole("menuitem", { name: "Download", exact: true }).click();
+  expect((await downloading).suggestedFilename()).toBe("synthetic-1.png");
+  await page.getByRole("button", { name: "Actions for synthetic-1.png", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Delete…", exact: true }).click();
+  let dialog = page.getByRole("dialog", { name: "Delete synthetic-1.png?" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(image).toBeVisible();
+  for (const name of ["synthetic-1.png", "synthetic-2.png"]) {
+    await page.getByRole("button", { name: `Actions for ${name}`, exact: true }).click();
+    await page.getByRole("menuitem", { name: "Delete…", exact: true }).click();
+    dialog = page.getByRole("dialog", { name: `Delete ${name}?` });
+    await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(page.getByRole("img", { name, exact: true })).toHaveCount(0);
+  }
+  await expect(page.getByText("No photos yet.", { exact: true })).toBeVisible();
+  for (const value of ["never", "always", "ask"]) {
+    const saved = page.waitForResponse((r) => r.request().method() === "PUT" && r.url().endsWith("/photo-cloud"));
+    await policy.selectOption(value);
+    expect((await saved).ok()).toBe(true);
+    await page.reload();
+    await expect(policy).toHaveValue(value);
+  }
+  await noHorizontalScroll(page);
+});
+
+test("the portrait permission card names the resolved model and offers only daily consent", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "An imaginary portrait");
+  await expect(page.getByText("You said: An imaginary portrait")).toBeVisible();
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadIdOf(page.url()))}`;
+  let pending = true;
+  const answers: unknown[] = [];
+  await page.route(`**${base}/events`, (route) => route.fulfill({ contentType: "text/event-stream", body: `event: hello\ndata: ${JSON.stringify({
+    type: "hello", busy: false, queued: [], permissions: pending ? [{ requestId: "portrait-ask", toolCallId: "image-call", tool: "image",
+      args: { question: "Send photos of you to cloud-images?", provider: "cloud-images", model: "cloud-images/gpt-image-1" },
+      expiresAt: new Date(Date.now() + 60_000).toISOString() }] : [],
+  })}\n\n` }));
+  await page.route(`**${base}/permissions/portrait-ask`, (route) => {
+    answers.push(route.request().postDataJSON()); pending = false;
+    return route.fulfill({ json: { ok: true } });
+  });
+  for (const label of ["Send today", "Not today"]) {
+    pending = true;
+    await page.reload();
+    const card = page.getByRole("group", { name: "Send portrait photos?" });
+    await expect(card).toContainText("Send your portrait photos to cloud-images/gpt-image-1 (cloud) for this image? A yes lasts until the end of the day.");
+    await expect(card.getByRole("button")).toHaveCount(2);
+    await expect(card.getByRole("button", { name: "Send today", exact: true })).toHaveClass("primary");
+    await expect(card.getByRole("button", { name: "Allow in this thread" })).toHaveCount(0);
+    await noHorizontalScroll(page);
+    const answered = page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith("/permissions/portrait-ask"));
+    await card.getByRole("button", { name: label, exact: true }).click();
+    await answered;
+  }
+  expect(answers).toEqual([{ allow: true }, { allow: false }]);
+});
+
 test("an image tool result shows inline, opens large, and starts an edit with Images enabled", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await newThread(page, "General");

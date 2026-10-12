@@ -394,6 +394,8 @@ plain refusal for cloud sends; Ask shows `Send photos of you to <endpoint>?` thr
 approval flow, denies without a viewer, and retains a yes for that user until
 server-local midnight. The approved day is encrypted in `user.db`, so it works
 across threads and restarts. Always and local models need no portrait approval.
+The request includes the resolved model label as `input.model`, so the web
+permission card names the model and offers Send today and Not today.
 The clock is injectable for tests; a policy or local-only change while approval
 is pending is checked again before sending.
 
@@ -414,6 +416,8 @@ anchors every directory and the regular file without following symlinks.
 home; uploads are at most 20 MB, PNG/JPEG/WebP, with metadata stripped and
 exclusive generated names. Management and policy routes are in
 [daemon.md](daemon.md#images-and-portrait-photos).
+Its `content(name)` serves one sniffed PNG/JPEG/WebP to the owner's UI and
+refuses traversal, symlinks and non-images.
 
 For exact wireframes and diagrams, write HTML or SVG in the encrypted thread
 folder, turn Internet and Local services off and leave allowed hosts empty,

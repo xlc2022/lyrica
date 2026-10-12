@@ -1028,6 +1028,12 @@ a.tile:hover { text-decoration: none; border-color: var(--accent); }
 .pill { display: inline-flex; align-items: center; font-size: 12px; font-weight: 400; border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; white-space: nowrap; line-height: 1.5; }
 .pill.warn { color: var(--warn); border-color: color-mix(in oklab, var(--warn) 45%, var(--line)); }
 .pill.bad { color: var(--danger); border-color: color-mix(in oklab, var(--danger) 45%, var(--line)); }
+/* Portrait photos (web-2 Images brief): square thumbnails and each photo's existing row menu. */
+.portrait-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px; min-width: 0; }
+.portrait-photo { min-width: 0; }
+.portrait-photo > img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
+.portrait-cap { display: flex; align-items: center; gap: 8px; margin-top: 4px; min-width: 0; }
+.portrait-cap > .cap { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .note { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: start; border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; }
 .note .plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .list > li.hostrow { grid-template-columns: 12px minmax(0, 1.2fr) minmax(120px, 1fr) auto; gap: 6px 12px; align-items: center; min-height: 48px; }

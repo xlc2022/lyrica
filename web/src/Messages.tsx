@@ -663,6 +663,7 @@ function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest
   const [run, busy, error] = useAction();
   const answer = (allow: boolean, mode?: GoAhead, allowInThread?: boolean) => run(() => post(`${base}/permissions/${encodeURIComponent(p.requestId)}`, { allow, mode, allowInThread }));
   const left = useCountdown(p.expiresAt);
+  if (p.tool === "image") return <PortraitPrompt p={p} answer={answer} busy={busy} left={left} error={error} />;
   if (p.tool === "propose_plan" && !p.subagent) {
     // Her plan, from Plan mode: going ahead switches the thread to the mode picked.
     const plan = String((p.args as { plan?: unknown } | null)?.plan ?? "");
@@ -712,6 +713,23 @@ function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest
         <button type="button" className="primary" disabled={busy} onClick={() => answer(true)}>Allow</button>
         <button type="button" disabled={busy} onClick={() => answer(false)}>Deny</button>
         {p.suspect && <button type="button" disabled={busy} onClick={() => answer(true, undefined, true)}>Allow in this thread</button>}
+        <span className="muted">{left}</span>
+      </div>
+      <ErrorText error={error} />
+    </div>
+  );
+}
+
+/** Daily portrait consent, including a subagent's request: no thread-wide Allow. */
+export function PortraitPrompt({ p, answer, busy, left, error }: { p: PermissionRequest; answer: (allow: boolean) => void; busy: boolean; left: string; error: string }) {
+  const a = (p.args ?? {}) as { model?: string; provider?: string };
+  const question = `Send your portrait photos to ${a.model ?? a.provider ?? "the image model"} (cloud) for this image? A yes lasts until the end of the day.`;
+  return (
+    <div className="permission" role="group" data-pending="Approval" aria-label="Send portrait photos?">
+      <p>{question}</p>
+      <div className="row">
+        <button type="button" className="primary" disabled={busy} onClick={() => answer(true)}>Send today</button>
+        <button type="button" disabled={busy} onClick={() => answer(false)}>Not today</button>
         <span className="muted">{left}</span>
       </div>
       <ErrorText error={error} />

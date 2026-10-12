@@ -162,8 +162,8 @@ A thread's address may carry what the panel beside it shows:
   where the server makes none.
   The image tool also supplies `ImagePart` path/model/tier metadata on
   messages and `tool_end.image`, and an owner-only `…/file?path=` route.
-  Dedicated rendering of that part and portrait-management controls are not
-  implemented here yet; the existing Files panel can display saved results.
+  Messages render that part inline as described below. Settings manages
+  portraits separately from the Files panel.
 - **Project settings page** (`…/p/<pool>/<project>/general` or `/memory`),
   sections at the left. **General**: Goal, the Paused and **Watching
   threads** switches (`watchThreads`; the tooltip says what a look does), **New
@@ -519,6 +519,20 @@ A thread's address may carry what the panel beside it shows:
   and **Save token** (`PUT …/claude-code`), or once saved Signed in and
   **Remove** (`DELETE`), confirmed in place; Not installed when the server
   lacks the program. The token is never sent back.
+- **Portrait photos** (`src/PortraitPhotos.tsx`, `…/settings/portraits`),
+  last in Settings: a card with the photo count pill and a grid of square
+  thumbnails (132 px minimum, 12 px gap), the filename in mono underneath,
+  and the existing row menu for Download and Delete…. The existing confirm
+  dialog asks "Delete <name>?". Add photos is secondary and opens a multiple
+  PNG/JPEG/WebP picker; each file over 20 MB is refused with its filename in
+  the error line, while the remaining files are uploaded. Empty: "No photos yet."
+  The select Sending them to a cloud image model has Ask once a day (default),
+  Never and Always; it saves immediately. Its explanation is a tooltip.
+  Listing, raw uploads and deletion use `…/photos-of-me`; thumbnails and
+  downloads use the authenticated `…/photos-of-me/:name`; the setting uses
+  `GET|PUT …/photo-cloud`. This follows the Images brief and principles 1
+  and 2; controls reuse §3's secondary button and menu, §4's short labels
+  and tooltips, and §6's confirmation dialog. No drawer or extra captions.
 - **Administration**, for administrators: Status (the server's network
   self-test, sleep time, start unlocked), Users with the administrator flag,
   **Change password…** (the new password and the administrator's own, in
@@ -641,6 +655,11 @@ A thread's address may carry what the panel beside it shows:
   `notice` message, shows as a card headed by what it is, linking to the
   subagent.
 - Permission requests appear inline with Allow and Deny and the time left.
+  A portrait request (`tool: "image"`) instead asks "Send your portrait
+  photos to <model> (cloud) for this image? A yes lasts until the end of the
+  day." The resolved model label comes from `args.model`; Send today is
+  primary, Not today secondary, and there is no thread-wide Allow. Answers
+  use the existing permission route with `{ allow }`, including for subagents.
   Her `models` tool's proposal is worded as its question ("Serve
   Qwen3.8-27B with 1,010,000 tokens of context? It reloads, and its KV cache
   grows to 17 GB."), the numbers in mono.

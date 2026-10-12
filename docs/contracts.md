@@ -748,6 +748,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     It checks portrait consent in `Models.image.beforeSend` for the actual
     endpoint on each attempt, including fallbacks. Never is a plain refusal; Ask uses
     `Send photos of you to <endpoint>?` through the existing approval flow;
+    its `tool: "image"` request's `input` (HTTP `PermissionRequest.args`)
+    carries `{ question, provider, model }`, where `provider` is the resolved
+    endpoint name and `model` its resolved model label. The web card asks
+    "Send your portrait photos to <model> (cloud) for this image? A yes lasts
+    until the end of the day.", with Send today and Not today, no thread-wide Allow.
     Always and local models allow. Ask's approval is per user through the end
     of that server-local day; a policy change clears it. No viewer means denial.
     Outputs save in the encrypted thread folder and return Pi image content
@@ -1061,7 +1066,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     401. `GET /api/u/:userId/photos-of-me` → `PortraitPhoto[]` (`path`, `size`,
     `type`); `POST` raw PNG/JPEG/WebP, at most 20 MB → `UploadResponse`, with
     metadata removed and an exclusive generated filename; `DELETE …/:name`
-    → `Ok`. `GET`/`PUT /api/u/:userId/photo-cloud` → `PhotoCloudSetting`
+    → `Ok`. `GET …/photos-of-me/:name` serves sniffed PNG/JPEG/WebP bytes
+    from that user's portrait folder only, with `no-store`, `nosniff` and a
+    sandbox CSP; traversal, symlinks, non-images and another user's files
+    are 404, no login is 401. `GET`/`PUT /api/u/:userId/photo-cloud` → `PhotoCloudSetting`
     (`policy: "never" | "ask" | "always"`); PUT validates and clears daily
     approval. All follow session/key checks and mutations require same-origin.
     HTTP `Capabilities` includes `upscale`, as core does.
@@ -1323,6 +1331,7 @@ imageFiles(t): ThreadImages
 photos(userId): PortraitPhotos
 // list(): PortraitPhoto[] { path; size; type }; upload(bytes): path (PNG/JPEG/WebP, 20 MB, metadata removed,
 //   exclusive generated name); remove(name): void. Every access checks the user's key and mounted home.
+// content(name): HomeFile; one PNG/JPEG/WebP in the portrait folder, refusing traversal/symlinks/non-images.
 settings(userId).photoCloudPolicy(): "never" | "ask" | "always" / setPhotoCloudPolicy(policy)
 settings(userId).photoCloudApproved(day): boolean / approvePhotoCloud(day) // encrypted day only; no prompt
 settings(userId).isPortraitImage(hash): boolean / recordPortraitImage(hash) // additive images.portrait.sha256.<hash> settings, no schema step

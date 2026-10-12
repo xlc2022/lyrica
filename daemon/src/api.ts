@@ -1376,6 +1376,7 @@ export interface PermissionRequest {
   requestId: string;
   toolCallId: string;
   /** "propose_plan" is a plan to approve, with `args` `{ plan }`: the plan card. */
+  /** "image" asks for daily portrait consent; args carry { question, provider, model } with the resolved model label. */
   tool: string;
   args: unknown;
   /** When it is denied if nobody answers (ISO time). */
@@ -1887,7 +1888,7 @@ export interface ClaudeCodeStatus { token: boolean; installed: boolean }
 export interface ClaudeCodeTokenInput { token: string }
 // --- Image files and portrait photos ---
 /** GET /api/u/:userId/threads/:pool/:threadId/file?path=… → sniffed file bytes, no-store; thread folder only. */
-/** GET /api/u/:userId/photos-of-me → PortraitPhoto[]; POST raw image bytes → UploadResponse; DELETE …/:name → Ok. */
+/** GET /api/u/:userId/photos-of-me → PortraitPhoto[]; POST raw image bytes → UploadResponse; GET …/:name → sniffed portrait bytes, no-store; DELETE …/:name → Ok. */
 export interface PortraitPhoto { path: string; size: number; type: string }
 /** GET /api/u/:userId/photo-cloud; PUT { policy } → PhotoCloudSetting. */
 export interface PhotoCloudSetting { policy: "never" | "ask" | "always" }
