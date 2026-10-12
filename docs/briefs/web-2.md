@@ -623,7 +623,9 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   reply has none until it is stored, markers keep their lines, no day
   dividers. The name and model are the one flex item that shrinks (ellipsis,
   the model in its `title`), so the time and the actions stay on the line
-  at 390 px. The fake model server gets `/long/v1`, one model with a long
+  at 390 px. After UI review, the name, model and time share `.who-head`
+  (no flex gap between them) and each dot is a `Sep` with even air; the
+  date follows the reader's locale order, as wake-ups do. The fake model server gets `/long/v1`, one model with a long
   id, for the narrow shots; `/local/v1` and `/cloud/v1` are unchanged. The
   e2e test checks today's and another day's time with `page.clock`, not a
   long model, so no endpoint is added to the shared lyricad.

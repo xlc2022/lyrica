@@ -209,8 +209,10 @@ function UserMessage({ text, you, n, at, rewinder, env, hers, reactions }: { tex
   return (
     <div className="msg user" id={n !== undefined ? `m-${n}` : undefined}>
       <div className="who sent">
-        <span className="who-name" title={you}>{you}</span>
-        {at && <SentAt at={at} />}
+        <span className="who-head">
+          <span className="who-name" title={you}>{you}</span>
+          {at && <SentAt at={at} />}
+        </span>
         {menu && rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}
         {menu && <ReactButton n={n} reactions={reactions} reactor={rewinder} />}
         {menu && <MessageMenu n={n} role="user" rewinder={rewinder} onEdit={() => setEditing(true)} onRemember={() => setRemembering(true)} />}
@@ -257,7 +259,12 @@ function RememberBox({ text, n, env, onClose }: { text: string; n: number; env: 
  */
 function SentAt({ at }: { at: string }) {
   if (Number.isNaN(Date.parse(at))) return null;
-  return <span className="muted"> · <time className="num" dateTime={at} title={fullTime(at)}>{wakeTime(at)}</time></span>;
+  return <span className="muted sent-at"><Sep /><time className="num" dateTime={at} title={fullTime(at)}>{wakeTime(at)}</time></span>;
+}
+
+/** The dot between the parts of a message's header line, with the same air on both sides. */
+function Sep() {
+  return <span className="sep"> · </span>;
 }
 
 /** Her message: prose for text, one-line markers for everything else. */
@@ -295,8 +302,10 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions }: { par
   return (
     <section className="turn" id={n !== undefined ? `m-${n}` : undefined} aria-label={model ? `${who} (${model})` : who}>
       <div className="who sent">
-        <span className="who-name" title={model ?? who}>{who}{model && <span className="muted"> · {model}</span>}</span>
-        {at && <SentAt at={at} />}
+        <span className="who-head">
+          <span className="who-name" title={model ?? who}>{who}{model && <span className="muted"><Sep />{model}</span>}</span>
+          {at && <SentAt at={at} />}
+        </span>
         {env.rewinder && n !== undefined && env.rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}
         {env.rewinder && n !== undefined && (
           <ReadAloudButton url={`${env.base}/messages/${n}/speech`} also={n === env.lastHers ? `${env.base}/messages/live/speech` : undefined} speech={env.speech} onError={env.onError} />
