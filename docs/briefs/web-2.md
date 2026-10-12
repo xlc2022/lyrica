@@ -215,6 +215,13 @@ For each part:
   of each user's key in `self.db` (DESIGN.md "Users" and "Storage",
   contracts core/users; Li chose this over a reset that loses data). Nothing
   for sleep or the pools changes; the privacy boundary note is in DESIGN.
+- 2026-10-12, PR 15 (Tasks): the Tasks tab in `src/Models.tsx` (kept
+  there to avoid a circular import with `Frame`), Settings → Model profiles
+  removed and Settings → Sleep added for the mode select and Sleep
+  fallback; `settings/profiles` redirects to `models/tasks`. The e2e Tasks
+  test adds a manual `cloud-mini` model on `router` through the API and
+  runs last, so the Models test's model count holds. Next: Text models
+  with the copy Settings drawer and Serving rows, Image models, Downloads.
 - 2026-10-12, PR 14 (Models area, part one): `src/Models.tsx` with the
   area's shell and tabs Overview, Hosts and endpoints, Clean up, Recent
   calls; Settings → Endpoints removed (its address lands on the hosts tab;
@@ -227,7 +234,7 @@ For each part:
   host was available in e2e, so the host card and Add model host are
   checked by hand on a real host.
 - 2026-10-12, PR 13 (the Sleep section): `src/Sleep.tsx`, the sidebar link
-  with its badge, the Sleep mode select in Settings → Model profiles, the
+  with its badge, the Sleep mode select (then in Settings → Model profiles, now Settings → Sleep), the
   administrator's Sleep section moved into the same file (docs/web.md, ux
   row "What she did at night"). Memory links open the Memory page, not the
   panel: the panel exists only beside a thread. Next: the Models page (carry

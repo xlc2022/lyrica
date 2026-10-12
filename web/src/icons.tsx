@@ -21,6 +21,7 @@ const PATHS = {
   check: "M5 12l5 5L20 7",
   pin: "M12 17v4M8 3h8l-1 7 3 3H6l3-3-1-7z",
   up: "M12 19V5M5 12l7-7 7 7",
+  "arrow-down": "M12 5v14M5 12l7 7 7-7",
   stop: "M7 7h10v10H7z",
   mic: "M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3",
   speaker: "M4 9v6h4l5 4V5L8 9H4zM16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12",

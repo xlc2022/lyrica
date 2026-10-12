@@ -22,7 +22,7 @@ export type Route =
   | { page: "settings"; userId: string; section?: string }
   | { page: "admin"; userId: string; section?: string };
 
-export const MODELS_TABS = ["overview", "hosts", "cleanup", "calls"] as const;
+export const MODELS_TABS = ["overview", "tasks", "hosts", "cleanup", "calls"] as const;
 export type ModelsTab = (typeof MODELS_TABS)[number];
 
 /** What the panel can show: a thread (with its drawer), a thread's files, a project's settings, or a memory. */
@@ -61,8 +61,9 @@ export function parse(hash: string): Route {
     const tab = MODELS_TABS.find((t) => t === a);
     return { page: "models", userId, ...(tab && tab !== "overview" ? { tab } : {}), ...(tab === "hosts" && b === "add-host" ? { add: "host" as const } : {}) };
   }
-  // Settings → Endpoints moved to Models → Hosts and endpoints.
+  // Settings → Endpoints moved to Models → Hosts and endpoints, and Settings → Model profiles to Models → Tasks.
   if (section === "settings" && a === "endpoints") return { page: "models", userId, tab: "hosts" };
+  if (section === "settings" && a === "profiles") return { page: "models", userId, tab: "tasks" };
   // A section may have pages of its own under it (settings/machines/new): the rest of the path rides along.
   const rest = [a, b, ...more].filter((x): x is string => x !== undefined).join("/");
   if (section === "settings") return { page: "settings", userId, ...(rest ? { section: rest } : {}) };
@@ -104,7 +105,7 @@ export function idHref(userId: string, pool: Pool, id: string): string {
 
 export const go = (r: Route) => { location.hash = href(r); };
 
-/** The route at the current address; an address that moved is replaced by its new one (settings/endpoints). */
+/** The route at the current address; an address that moved is replaced by its new one (settings/endpoints, settings/profiles). */
 function current(): Route {
   const r = parse(location.hash);
   if (r.page === "models" && !location.hash.includes("/models")) history.replaceState(null, "", href(r));

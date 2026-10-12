@@ -1,4 +1,4 @@
-// The Models area (docs/ux.md §6, "Models, hosts, downloads, clean-up"): Overview, Hosts and endpoints
+// The Models area (docs/ux.md §6, "Models, hosts, downloads, clean-up"): Overview, Tasks, Hosts and endpoints
 // (with the Add model host page), Clean up and Recent calls, with its sections listed at the left.
 // The shell polls GET …/models/cleanup for the sidebar's count; GET …/models/page, which probes every
 // endpoint, is read only while the area is open, and the Hosts tab's changes reload it.
@@ -6,7 +6,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   del, get, patch, post, put, u,
   type CallInfo, type CleanupItem, type EndpointChange, type EndpointInfo, type GroupInfo, type HostStatus, type ModelsNotice, type ModelsPage,
-  type ModelUse, type OfferingInfo, type OfferingSettings, type Task,
+  type ModelRef, type ModelUse, type OfferingInfo, type OfferingSettings, type ProfileEntry, type ProfileEntryChange, type Profiles, type Task,
 } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { duration, RowMenu } from "./Machines.tsx";
@@ -55,6 +55,7 @@ type Gpu = HostStatus["gpus"][number];
 
 const TABS: { tab: ModelsTab; label: string }[] = [
   { tab: "overview", label: "Overview" },
+  { tab: "tasks", label: "Tasks" },
   { tab: "hosts", label: "Hosts and endpoints" },
   { tab: "cleanup", label: "Clean up" },
   { tab: "calls", label: "Recent calls" },
@@ -127,6 +128,7 @@ export function ModelsArea({ ctx: shell, tab = "overview", add }: { ctx: ShellCo
   const first = useRef(true);
   useEffect(() => { if (first.current) first.current = false; else reload(); }, [tab, reload]);
   if (tab === "hosts" && add === "host") return <AddHost ctx={ctx} />;
+  if (tab === "tasks") return <Tasks ctx={ctx} />;
   if (tab === "hosts") return <Hosts ctx={ctx} />;
   if (tab === "cleanup") return <Cleanup ctx={ctx} />;
   if (tab === "calls") return <Calls ctx={ctx} />;
@@ -263,7 +265,7 @@ function Tiles({ ctx, p }: { ctx: MCtx; p: ModelsPage }) {
         <span className="big num">{up.length}<small>of {p.endpoints.length} up</small></span>
         <span className="cap">{downLine}</span>
       </a>
-      <a className="tile" href={href({ page: "settings", userId, section: "profiles" })} data-tile="backend">
+      <a className="tile" href={href({ page: "models", userId, tab: "tasks" })} data-tile="backend">
         <span className="cap">Backend</span>
         <span className="line" title="General threads">{line(general)}</span>
         <span className="cap">general threads · {PROFILE_WORD[p.profiles.default]}</span>
@@ -343,6 +345,338 @@ function HostRow({ ctx, ep, host }: { ctx: MCtx; ep: Endpoint; host?: Host }) {
         <DashboardButton ctx={ctx} ep={ep} />
       </div>
     </li>
+  );
+}
+
+/* ---- Tasks ---- */
+
+type ProfileName = "cloud" | "local" | "custom";
+type ProfileMap = Partial<Record<Task, ProfileEntry>>;
+
+/** The table's rows, under their eyebrows, each with a one-line hint. */
+const TASK_ROWS: { group: string; tasks: { task: Task; hint: string }[] }[] = [
+  { group: "Conversation", tasks: [
+    { task: "chat", hint: "The main conversation" },
+    { task: "subagent.cheap", hint: "Searching, reading, checking" },
+    { task: "subagent.strong", hint: "Writing, judgment, code" },
+    { task: "compaction", hint: "Summarising long threads" },
+    { task: "title", hint: "Naming new threads" },
+    { task: "watching", hint: "A project chat's look at its threads" },
+  ] },
+  { group: "Memory", tasks: [{ task: "embedding", hint: "Recall and search" }] },
+  { group: "Sleep", tasks: [
+    { task: "sleep.consolidate", hint: "The day into memory" },
+    { task: "sleep.dream", hint: "Her own time" },
+    { task: "sleep.wake", hint: "Writing WAKE" },
+  ] },
+  { group: "Images", tasks: [{ task: "image.create", hint: "New images" }, { task: "image.edit", hint: "Changing an image" }] },
+  { group: "Speech", tasks: [{ task: "speech.transcribe", hint: "Speech to text" }, { task: "speech.speak", hint: "Text to speech" }] },
+];
+const TASK_ORDER = TASK_ROWS.flatMap((g) => g.tasks.map((t) => t.task));
+
+/** What a task needs (core/models): Same as stays within one, and pickers offer only models that have it. */
+const capability = (t: Task) => (t === "embedding" ? "embedding" : t === "image.create" ? "image" : t === "image.edit" ? "edit"
+  : t === "speech.transcribe" ? "transcribe" : t === "speech.speak" ? "speak" : "text");
+const suits = (task: Task, m: OfferingInfo) => {
+  if (m.status === "gone") return false;
+  switch (capability(task)) {
+    case "embedding": return !!m.embedding;
+    case "image": return !!m.image;
+    case "edit": return !!m.edit;
+    case "transcribe": return !!m.transcribe;
+    case "speak": return !!m.speak?.voices.length;
+    default: return !m.embedding && !m.image && !m.edit && !m.transcribe && !m.speak;
+  }
+};
+
+/** A task's entry as lyricad reads it: a text task with none follows Chat. */
+function entryOf(prof: ProfileMap, task: Task): ProfileEntry | undefined {
+  return prof[task] ?? (task !== "chat" && capability(task) === "text" ? { same: "chat" } : undefined);
+}
+/** The list that decides a task, after Same as. */
+function listOf(prof: ProfileMap, task: Task, depth = 0): ModelRef[] {
+  const e = entryOf(prof, task);
+  if (Array.isArray(e)) return e;
+  return e && depth < 2 ? listOf(prof, e.same, depth + 1) : [];
+}
+
+type Copy = { m: OfferingInfo; ep: Endpoint };
+function copies(p: ModelsPage): Map<string, Copy> {
+  const out = new Map<string, Copy>();
+  for (const ep of p.endpoints) for (const m of ep.models) out.set(m.id, { m, ep });
+  return out;
+}
+const answers = (p: ModelsPage, c: Copy) => c.ep.state === "up" && !c.ep.stale && c.m.status !== "gone" && !paused(hostOf(p, c.ep.id));
+
+/** A list entry's models: an offering, or a group's members, each marked when the profile skips its kind. */
+function membersOf(ref: ModelRef, all: Map<string, Copy>, groups: GroupInfo[], profile: ProfileName): (Copy & { off: boolean })[] {
+  const ids = "offeringId" in ref ? [ref.offeringId] : groups.find((g) => g.id === ref.groupId)?.members ?? [];
+  return ids.flatMap((id) => { const c = all.get(id); return c ? [{ ...c, off: profile !== "custom" && c.ep.kind !== profile }] : []; });
+}
+const refUp = (p: ModelsPage, ms: (Copy & { off: boolean })[]) => ms.some((c) => !c.off && answers(p, c));
+const refKind = (ms: (Copy & { off: boolean })[]) => (ms.find((c) => !c.off) ?? ms[0])?.ep.kind;
+const refKey = (r: ModelRef) => ("offeringId" in r ? r.offeringId : `g:${r.groupId}`);
+
+function RefLabel({ refx, all, groups }: { refx: ModelRef; all: Map<string, Copy>; groups: GroupInfo[] }) {
+  if ("groupId" in refx) return <>{groups.find((g) => g.id === refx.groupId)?.name ?? "A group"}</>;
+  const c = all.get(refx.offeringId);
+  return c ? <>{c.m.modelId} <span className="muted">· {c.ep.name}</span></> : <>A model that no longer exists</>;
+}
+
+/** "A", "A and B", "A, B and C". */
+const andList = (words: string[]) => (words.length > 1 ? `${words.slice(0, -1).join(", ")} and ${words.at(-1)}` : words[0] ?? "");
+/** Context windows as "128k". */
+const contextWord = (n: number) => (n >= 1024 ? `${Math.round(n / 1024)}k` : String(n));
+
+function Tasks({ ctx }: { ctx: MCtx }) {
+  const userId = ctx.user.id;
+  const p = ctx.models.page;
+  const groups = useLoad(() => get<GroupInfo[]>(u(userId, "groups")), [userId]);
+  const [showOther, setShowOther] = useState(false);
+  const [editing, setEditing] = useState<{ profile: ProfileName; task: Task }>();
+  const [run, busy, error] = useAction();
+  const close = useCallback(() => setEditing(undefined), []);
+  const general = p?.profiles.default ?? "cloud";
+  const other = general === "custom" ? "cloud" : "custom";
+  const G = PROFILE_WORD[general], O = PROFILE_WORD[other];
+  const actions = p && <button type="button" className="sm" onClick={() => setShowOther(!showOther)}>{showOther ? `Hide ${O}` : `Show ${O} too`}</button>;
+  const useOther = () => run(async () => {
+    const profiles = await patch<Profiles>(u(userId, "profiles"), { default: other });
+    const cur = ctx.models.page;
+    if (cur) ctx.models.set({ ...cur, profiles });
+    setEditing(undefined);
+  });
+  const all = p ? copies(p) : new Map<string, Copy>();
+  const gs = groups.data ?? [];
+  const cell = (profile: ProfileName, task: Task, col: string) => {
+    if (task === "speech.transcribe" && profile !== "local") return <td />;
+    const prof = p!.profiles[profile];
+    const entry = entryOf(prof, task);
+    const list = listOf(prof, task);
+    const first = list[0];
+    const ups = list.map((r) => refUp(p!, membersOf(r, all, gs, profile)));
+    const dot = !first ? "down" : ups[0] ? "up" : ups.some(Boolean) ? "away" : "down";
+    const kind = first && profile === "custom" ? refKind(membersOf(first, all, gs, profile)) : undefined;
+    const on = editing?.profile === profile && editing.task === task;
+    return (
+      <td>
+        <button type="button" className={`cell${profile === other ? " other" : ""}`} data-cell={`${profile}:${task}`} data-col={col} aria-pressed={on}
+          onClick={() => setEditing(on ? undefined : { profile, task })}>
+          <span className="m"><span className={`dot ${dot}`} aria-hidden="true" /><span>{first ? <RefLabel refx={first} all={all} groups={gs} /> : "No model"}</span>{kind && <Kind kind={kind} />}</span>
+          <span className="sub">
+            {entry && !Array.isArray(entry) ? `= ${TASK_WORD[entry.same]}`
+              : list.length > 1 ? <>+<span className="num">{list.length - 1}</span> {list.length > 2 ? "fallbacks" : "fallback"}</>
+              : list.length === 1 ? <span className="warn-text">no fallback</span> : null}
+          </span>
+        </button>
+      </td>
+    );
+  };
+  const cols = showOther ? 4 : 3;
+  return (
+    <Frame ctx={ctx} tab="tasks" title="Tasks" actions={actions}>
+      <ErrorText error={ctx.models.error || groups.error || error} />
+      {p && (
+        <div className="tablewrap tasks">
+          <table className="ttable">
+            <thead>
+              <tr>
+                <th>Task</th>
+                <th><b>Private threads</b>Local profile · local models only</th>
+                <th>
+                  <b>General threads</b>{G} profile · {general === "custom" ? "local and cloud, falls back across" : "cloud models only"}
+                  <div className="actions"><button type="button" className="sm" disabled={busy} onClick={() => void useOther()}>Use {O} instead</button></div>
+                </th>
+                {showOther && <th><b>{O} profile</b>Not the default. A general thread can switch to it.</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {TASK_ROWS.map((g) => (
+                <Fragment key={g.group}>
+                  <tr className="tgroup"><td colSpan={cols}><span className="eyebrow">{g.group}</span></td></tr>
+                  {g.tasks.map(({ task, hint }) => (
+                    <tr key={task} data-task={task}>
+                      <td className="task"><b>{TASK_WORD[task]}</b><div>{hint}</div></td>
+                      {cell("local", task, "Private threads")}
+                      {cell(general, task, "General threads")}
+                      {showOther && cell(other, task, `${O} profile`)}
+                    </tr>
+                  ))}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {editing && p && (
+        <>
+          <TaskDrawer key={`${editing.profile}:${editing.task}`} ctx={ctx} p={p} all={all} groups={gs} profile={editing.profile} task={editing.task} onClose={close} />
+          <div className="scrim drawer-scrim" aria-hidden="true" onClick={close} />
+        </>
+      )}
+    </Frame>
+  );
+}
+
+/** Edit a task: its own list or Same as another task, saved at once; Add… opens the picker inside the drawer. */
+function TaskDrawer({ ctx, p, all, groups, profile, task, onClose }: {
+  ctx: MCtx; p: ModelsPage; all: Map<string, Copy>; groups: GroupInfo[]; profile: ProfileName; task: Task; onClose: () => void;
+}) {
+  const userId = ctx.user.id;
+  const [run, busy, error] = useAction();
+  const [picking, setPicking] = useState(false);
+  const [q, setQ] = useState("");
+  const [target, setTarget] = useState<Task>();
+  const ref = useRef<HTMLElement>(null);
+  const pickingRef = useRef(picking);
+  pickingRef.current = picking;
+  useEffect(() => {
+    ref.current?.focus();
+    // Escape closes the picker first, then the drawer.
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") { if (pickingRef.current) setPicking(false); else onClose(); } };
+    addEventListener("keydown", key);
+    return () => removeEventListener("keydown", key);
+  }, [onClose]);
+  const prof = p.profiles[profile];
+  const entry = entryOf(prof, task);
+  const own = !entry || Array.isArray(entry);
+  const list = Array.isArray(entry) ? entry : [];
+  const name = TASK_WORD[task];
+  const followers = TASK_ORDER.filter((t) => { const e = prof[t]; return !!e && !Array.isArray(e) && e.same === task; });
+  // Same as: a task of the same kind that doesn't itself follow another. Chat can't follow a task that follows Chat.
+  const options = TASK_ORDER.filter((t) => t !== task && capability(t) === capability(task) && (
+    (!own && entry.same === t) || (prof[t] ? Array.isArray(prof[t]) : task !== "chat" && capability(t) === "text")));
+  const sel = !own ? entry.same : target && options.includes(target) ? target : options[0];
+  const save = (change: ProfileEntryChange) => run(async () => {
+    const profiles = await put<Profiles>(u(userId, "profiles", profile, task), change);
+    const cur = ctx.models.page;
+    if (cur) ctx.models.set({ ...cur, profiles });
+  });
+  const saveList = (next: ModelRef[]) => save({ models: next });
+  const move = (i: number, by: number) => { const next = [...list]; [next[i], next[i + by]] = [next[i + by]!, next[i]!]; void saveList(next); };
+  const add = (r: ModelRef) => { setPicking(false); setQ(""); void saveList([...list, r]); };
+  const cap = `${PROFILE_WORD[profile]} profile · ${profile === "local" ? "private and local-only threads" : profile === p.profiles.default ? "general threads by default" : "general threads that choose it"}`;
+  let prevKind: string | undefined;
+  return (
+    <aside ref={ref} tabIndex={-1} className="drawer task-drawer" aria-label={`Edit ${name}`}>
+      <div className="drawer-head">
+        <div className="drawer-title"><h2>{name}</h2><span className="cap">{cap}</span></div>
+        <button type="button" className="icon sm" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
+      </div>
+      <div className="drawer-body">
+        {options.length > 0 && (
+          <div className="follow-block">
+            <div className="follow" role="radiogroup" aria-label={`Models for ${name}`}>
+              <label><input type="radio" name="follow" checked={own} disabled={busy} onChange={() => void saveList(listOf(prof, task))} /> Its own list</label>
+              <label><input type="radio" name="follow" checked={!own} disabled={busy || followers.length > 0} onChange={() => sel && void save({ same: sel })} /> Same as</label>
+              <select aria-label="Task to share with" value={sel} disabled={own || busy}
+                onChange={(e) => { const t = e.target.value as Task; setTarget(t); if (!own) void save({ same: t }); }}>
+                {options.map((t) => <option key={t} value={t}>{TASK_WORD[t]}</option>)}
+              </select>
+            </div>
+            {followers.length > 0 && <p className="cap">{andList(followers.map((t) => TASK_WORD[t]))} {followers.length > 1 ? "use" : "uses"} this list.</p>}
+          </div>
+        )}
+        <ErrorText error={error} />
+        {own && (
+          <>
+            {list.length > 0 && (
+              <ol className="olist" aria-label={`${name} list`}>
+                {list.map((r, i) => {
+                  const ms = membersOf(r, all, groups, profile);
+                  const kind = refKind(ms);
+                  const cross = profile === "custom" && prevKind && kind && kind !== prevKind;
+                  prevKind = kind ?? prevKind;
+                  const group = "groupId" in r ? groups.find((g) => g.id === r.groupId) : undefined;
+                  return (
+                    <Fragment key={refKey(r)}>
+                      {cross && <li className="crossline">Falls back to {kind} from here</li>}
+                      <li className="oentry" data-ref={refKey(r)}>
+                        <span className="onum num">{i + 1}</span>
+                        <div className="obody">
+                          <div className="oname">
+                            {!group && <span className={`dot ${refUp(p, ms) ? "up" : "away"}`} aria-hidden="true" />}
+                            {profile === "custom" && kind && <Kind kind={kind} />}
+                            {group ? <><b>{group.name}</b><span className="cap">group of <span className="num">{ms.length}</span></span></> : <span><RefLabel refx={r} all={all} groups={groups} /></span>}
+                          </div>
+                          {group && (
+                            <div className="members">
+                              {ms.map((c) => (
+                                <span key={c.m.id} className={c.off ? "off" : undefined}>
+                                  <span className={`dot${c.off ? "" : answers(p, c) ? " up" : " away"}`} aria-hidden="true" /> {c.m.modelId} · {c.ep.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="octl">
+                          <button type="button" className="icon sm" aria-label="Move up" disabled={busy || i === 0} onClick={() => move(i, -1)}><Icon name="up" /></button>
+                          <button type="button" className="icon sm" aria-label="Move down" disabled={busy || i === list.length - 1} onClick={() => move(i, 1)}><Icon name="arrow-down" /></button>
+                          <button type="button" className="icon sm" aria-label="Remove" disabled={busy || list.length === 1} onClick={() => void saveList(list.filter((_, j) => j !== i))}><Icon name="close" /></button>
+                        </div>
+                      </li>
+                    </Fragment>
+                  );
+                })}
+              </ol>
+            )}
+            {picking
+              ? <Picker p={p} groups={groups} profile={profile} task={task} list={list} q={q} setQ={setQ} busy={busy} onAdd={add} onCancel={() => { setPicking(false); setQ(""); }} />
+              : <div className="actions"><button type="button" disabled={busy} onClick={() => setPicking(true)}>Add…</button></div>}
+          </>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+/** Add…: suitable models of the profile's kinds, by endpoint, with a search; groups with a suitable member as chips. */
+function Picker({ p, groups, profile, task, list, q, setQ, busy, onAdd, onCancel }: {
+  p: ModelsPage; groups: GroupInfo[]; profile: ProfileName; task: Task; list: ModelRef[]; q: string; setQ: (q: string) => void;
+  busy: boolean; onAdd: (r: ModelRef) => void; onCancel: () => void;
+}) {
+  const kindOk = (k: "local" | "cloud") => profile === "custom" || k === profile;
+  const taken = new Set(list.map(refKey));
+  const needle = q.trim().toLowerCase();
+  const eps = p.endpoints.filter((ep) => kindOk(ep.kind)).map((ep) => ({
+    ep,
+    models: ep.models.filter((m) => suits(task, m) && !taken.has(m.id) && (!needle || `${m.modelId} ${ep.name}`.toLowerCase().includes(needle))),
+  })).filter((x) => x.models.length);
+  const all = copies(p);
+  const gs = groups.filter((g) => !taken.has(`g:${g.id}`) && g.members.some((id) => { const c = all.get(id); return !!c && kindOk(c.ep.kind) && suits(task, c.m); }));
+  const count = eps.reduce((n, x) => n + x.models.length, 0);
+  return (
+    <section className="pick" aria-label={`Add to ${TASK_WORD[task]}`}>
+      <div className="section-head"><h3>Add to {TASK_WORD[task]}</h3><button type="button" className="sm" onClick={onCancel}>Cancel</button></div>
+      {gs.length > 0 && (
+        <div className="pick-groups">
+          {gs.map((g) => <button key={g.id} type="button" className="chip" disabled={busy} onClick={() => onAdd({ groupId: g.id })}>+ Group: {g.name}</button>)}
+        </div>
+      )}
+      <input type="search" aria-label="Search models" autoFocus placeholder={`Search ${count} models`} value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="list picklist">
+        {eps.length ? eps.map(({ ep, models }) => (
+          <Fragment key={ep.id}>
+            <div className="group-head eyebrow">{ep.name} · {ep.kind}</div>
+            {models.map((m) => (
+              <div key={m.id} className="pick-row" data-offering={m.id}>
+                <div className="main-col">
+                  <span className="name">{m.modelId}</span>
+                  <span className="meta muted">
+                    {[
+                      m.contextWindow ? <><span className="num">{contextWord(m.contextWindow)}</span> context</> : null,
+                      m.tools ? "tools" : null, m.vision ? "vision" : null, m.reasoning?.length ? "thinking" : null,
+                      m.speak?.voices.length ? <><span className="num">{m.speak.voices.length}</span> {m.speak.voices.length === 1 ? "voice" : "voices"}</> : null,
+                    ].filter(Boolean).map((x, i) => <Fragment key={i}>{i > 0 && " · "}{x}</Fragment>)}
+                  </span>
+                </div>
+                <button type="button" className="sm" disabled={busy} onClick={() => onAdd({ offeringId: m.id })}>Add</button>
+              </div>
+            ))}
+          </Fragment>
+        )) : <p className="empty">No models match.</p>}
+      </div>
+    </section>
   );
 }
 
