@@ -469,7 +469,9 @@ shared host needs an administrator. Serving settings go only through
 and apply them now. The host
 refuses a placement that can't work after accounting for other programs
 and kept-free VRAM, with its reason. A refused reload keeps the serving
-instance; a failed replacement load restores its previous settings. The context a host
+instance; a failed replacement load reverts the saved settings and attempts
+to restore the previous instance, reporting the original load error even
+if restoration fails. The context a host
 serves a model with is the offering's context window, over one set by hand
 or discovered; compaction and group fitting plan by it.
 

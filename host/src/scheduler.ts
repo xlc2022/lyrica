@@ -469,11 +469,9 @@ export class Scheduler {
         for (const l of plan.evict) await this.unload(l);
         await this.load(model, plan.option);
       } catch (e) {
-        await this.load(model, previous.option, previous.settings);
-        // The restored measurement belongs to the old settings, not the saved ones.
-        this.o.state.update((st) => {
-          delete st.vram[`${model.id}@${placementKey(previous.option)}`];
-        });
+        this.saveSettings(model, previous.settings);
+        // A failed restoration must not hide the replacement's load error.
+        await this.load(model, previous.option, previous.settings).catch(() => {});
         throw e;
       }
     } finally {

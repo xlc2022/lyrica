@@ -315,9 +315,25 @@ it("selects family parsers without advertising unknown tool formats", () => {
   expect(familyParsers("Unknown")).toEqual({});
 });
 
+it("uses DeepSeek reasoning only for R1 models", () => {
+  expect(familyParsers("deepseek_v3")).toEqual({ toolCallParser: "deepseek_v3" });
+  expect(familyParsers("deepseek_r1")).toEqual({ toolCallParser: "deepseek_v3", reasoningParser: "deepseek_r1" });
+  expect(familyParsers("deepseek_v3", "DeepSeek-R1-Distill")).toEqual({ toolCallParser: "deepseek_v3", reasoningParser: "deepseek_r1" });
+});
+
+it("uses the Llama tool parser only for Llama 3.x families", () => {
+  for (const family of ["llama3", "llama-3", "llama3.1", "Llama_3_2ForCausalLM"]) {
+    expect(familyParsers(family)).toEqual({ toolCallParser: "llama3_json" });
+  }
+  for (const family of ["llama", "llama2", "llama-2"]) expect(familyParsers(family)).toEqual({});
+  // Llama 3's config.json says only "llama": the model's name decides.
+  expect(familyParsers("llama", "Meta-Llama-3.1-8B-Instruct")).toEqual({ toolCallParser: "llama3_json" });
+  expect(familyParsers("llama", "Llama-2-7b-chat-hf")).toEqual({});
+});
+
 it("reads vLLM parsers and tool support from config families", () => {
   const dir = mkdtempSync(join(tmpdir(), "lyrica-families-"));
-  for (const [name, config] of Object.entries({ qwen25: { model_type: "qwen2", architectures: ["Qwen2ForCausalLM"] }, qwen3: { architectures: ["Qwen3ForCausalLM"] }, unknown: { model_type: "unknown", architectures: ["UnknownForCausalLM"] } })) {
+  for (const [name, config] of Object.entries({ qwen25: { model_type: "qwen2", architectures: ["Qwen2ForCausalLM"] }, qwen3: { architectures: ["Qwen3ForCausalLM"] }, llama2: { model_type: "llama2", architectures: ["LlamaForCausalLM"] }, llama: { model_type: "llama", architectures: ["LlamaForCausalLM"] }, "DeepSeek-R1": { model_type: "deepseek_v3", architectures: ["DeepseekV3ForCausalLM"] }, unknown: { model_type: "unknown", architectures: ["UnknownForCausalLM"] } })) {
     mkdirSync(join(dir, name));
     writeFileSync(join(dir, name, "config.json"), JSON.stringify(config));
     writeFileSync(join(dir, name, "model.safetensors"), Buffer.alloc(16));
@@ -327,5 +343,9 @@ it("reads vLLM parsers and tool support from config families", () => {
   expect(models.find((m) => m.id === "qwen25")).toMatchObject({ toolCallParser: "hermes", capabilities: { tools: true } });
   expect(models.find((m) => m.id === "qwen25")!.reasoningParser).toBeUndefined();
   expect(models.find((m) => m.id === "qwen3")).toMatchObject({ toolCallParser: "hermes", reasoningParser: "qwen3", capabilities: { tools: true } });
-  expect(models.find((m) => m.id === "unknown")!.capabilities.tools).toBe(false);
+  for (const id of ["unknown", "llama2", "llama"]) {
+    expect(models.find((m) => m.id === id)!.capabilities.tools).toBe(false);
+    expect(models.find((m) => m.id === id)!.toolCallParser).toBeUndefined();
+  }
+  expect(models.find((m) => m.id === "DeepSeek-R1")!.reasoningParser).toBe("deepseek_r1");
 });

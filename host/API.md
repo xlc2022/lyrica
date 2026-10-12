@@ -237,8 +237,9 @@ seconds of audio.
 - `POST /host/v1/models/reload` `{ "model": "<id>" }`: applies its saved
   settings now, by unloading and loading it again; `in_use` while busy.
   A refused placement leaves the previous instance serving. If the new load
-  fails after unloading, the host restores the previous settings and reports
-  the load error. Nothing happens to a model that isn't loaded.
+  fails after unloading, the host reverts the saved settings and attempts to
+  reload the previous instance. It reports the original load error even if
+  restoration fails. Nothing happens to a model that isn't loaded.
 - `POST /host/v1/models/pin` `{ "model": "<id>", "pinned": true }`: a pinned
   model is loaded now, where its placement says, and kept loaded; it is
   never unloaded to make room. Pins survive a restart.
@@ -258,8 +259,10 @@ and the router says the model is not loaded, the host returns a 503
 
 For vLLM chat, the host selects parsers from `config.json` family metadata:
 Qwen2.5 uses `hermes` for tools; Qwen3.x uses `hermes` and `qwen3` for
-reasoning. Llama uses `llama3_json`, Mistral/Mixtral uses `mistral`, and
-DeepSeek uses `deepseek_v3` and `deepseek_r1`. Tool parsers enable automatic
+reasoning. Llama 3.x families use `llama3_json`; Llama 2 and plain `llama`
+receive no tool parser. Mistral/Mixtral uses `mistral`. DeepSeek uses
+`deepseek_v3` for tools, with `deepseek_r1` for reasoning only when the
+model name or family contains `r1`. Tool parsers enable automatic
 tool choice. Unknown families receive no tool flags and report `tools: false`;
 embeddings and dictation receive neither parser.
 

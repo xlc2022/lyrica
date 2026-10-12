@@ -53,7 +53,7 @@ describe("the GPU queue", () => {
   });
 
   it("restores previous settings when the replacement load fails", async () => {
-    const { scheduler, llamacpp } = setup();
+    const { scheduler, llamacpp, state, dir } = setup();
     await scheduler.start([]);
     const m = textModel("m", 4, { contextLength: 32768 });
     await scheduler.loadNow(m);
@@ -72,7 +72,27 @@ describe("the GPU queue", () => {
     await expect(scheduler.reload(m)).rejects.toMatchObject({ code: "model_unavailable" });
     expect(contexts).toEqual([16384, undefined]);
     expect(scheduler.placement(m.id)?.state).toBe("loaded");
-    expect(scheduler.settings(m).contextLength).toBe(16384);
+    expect(scheduler.settings(m)).toEqual({ placement: { mode: "auto" } });
+    expect(new StateFile(dir).get().models[m.id]).toEqual(state.get().models[m.id]);
+    await scheduler.unloadNow(m.id);
+    await scheduler.loadNow(m);
+    expect(contexts).toEqual([16384, undefined, undefined]);
+  });
+
+  it("reports the replacement error when restoring also fails", async () => {
+    const { scheduler, llamacpp } = setup();
+    await scheduler.start([]);
+    const m = textModel("m", 4);
+    await scheduler.loadNow(m);
+    scheduler.saveSettings(m, { placement: { mode: "auto" }, contextLength: 16384 });
+    const original = new HostError(503, "model_unavailable", "replacement failed");
+    let attempts = 0;
+    llamacpp.load = async () => {
+      throw ++attempts === 1 ? original : new Error("restore failed");
+    };
+    await expect(scheduler.reload(m)).rejects.toBe(original);
+    expect(attempts).toBe(2);
+    expect(scheduler.settings(m)).toEqual({ placement: { mode: "auto" } });
   });
 
   it("validates against other programs, subtracting the host's loaded models", async () => {

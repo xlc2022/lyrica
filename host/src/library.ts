@@ -69,13 +69,14 @@ function templateCapabilities(template: string | null): Pick<Capabilities, "tool
 }
 
 /** Parsers for families whose tool format the host can serve. */
-export function familyParsers(family: string): { toolCallParser?: string; reasoningParser?: string } {
+export function familyParsers(family: string, name = ""): { toolCallParser?: string; reasoningParser?: string } {
   const f = family.toLowerCase().replace(/[_ .-]/g, "");
   if (f.startsWith("qwen3")) return { toolCallParser: "hermes", reasoningParser: "qwen3" };
   if (f.startsWith("qwen2")) return { toolCallParser: "hermes" };
-  if (f.startsWith("llama")) return { toolCallParser: "llama3_json" };
+  // Llama 3's config says only "llama", like Llama 2's: the name tells them apart.
+  if (f.startsWith("llama") && /llama[\s._-]*3/i.test(`${family} ${name}`)) return { toolCallParser: "llama3_json" };
   if (f.startsWith("mistral") || f.startsWith("mixtral")) return { toolCallParser: "mistral" };
-  if (f.startsWith("deepseek")) return { toolCallParser: "deepseek_v3", reasoningParser: "deepseek_r1" };
+  if (f.startsWith("deepseek")) return { toolCallParser: "deepseek_v3", ...(/r1/i.test(`${family} ${name}`) ? { reasoningParser: "deepseek_r1" } : {}) };
   return {};
 }
 
@@ -103,7 +104,7 @@ function ggufModel(root: string, path: string, siblings: string[]): TextModel | 
     id: relative(root, path).split("\\").join("/"),
     kind: embedding ? "embedding" : "chat",
     server: "llamacpp",
-    ...familyParsers(arch),
+    ...familyParsers(arch, str(meta["general.name"]) ?? basename(path)),
     format: "gguf",
     size,
     identity: {
@@ -182,7 +183,7 @@ function vllmModel(root: string, dir: string, files: string[]): TextModel | null
   const embedding = files.includes("modules.json");
   if (config.architectures.some((a: unknown) => TRANSCRIBE.includes(a as string))) return transcribeModel(root, dir, config, size);
   const text = config.text_config ?? config;
-  const parsers = familyParsers(text.model_type ?? config.model_type ?? config.architectures[0] ?? "");
+  const parsers = familyParsers(text.model_type ?? config.model_type ?? config.architectures[0] ?? "", basename(dir));
   const caps = templateCapabilities(embedding ? null : template);
   return {
     id: relative(root, dir).split("\\").join("/"),
