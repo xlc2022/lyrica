@@ -57,9 +57,13 @@ export interface UserCard {
   admin: boolean;
 }
 
-/** GET /api/state. Answers while locked. */
+/** GET /api/state. Answers while locked and while setting up. */
 export interface State {
   locked: boolean;
+  /** Setting up: there is no self.db yet, and only this and POST /api/setup answer. `locked` is true too. */
+  setup?: boolean;
+  /** Her name for this deployment (default Lyrica), in every state. */
+  name: string;
   /** Users logged in on this browser session. Empty while locked. */
   users: UserCard[];
   /** lyricad's version (package.json) and build (the git commit it was built from, or "dev"). Shown in the header; absent while locked. */
@@ -69,6 +73,21 @@ export interface State {
 
 /** POST /api/unlock → State. Only while locked. */
 export interface UnlockRequest { passphrase: string }
+
+/**
+ * POST /api/setup → LoginResponse. Only while setting up: creates self.db, the persona, her name and the
+ * first administrator, unlocks, and logs that administrator in. `code` is the one-time setup code
+ * (`lyrica admin setup-code`); a wrong one is 403 and counts like a wrong passphrase. `saveCredentials`
+ * saves the passphrase so lyricad starts unlocked ("Start unlocked").
+ */
+export interface SetupRequest {
+  code: string;
+  passphrase: string;
+  saveCredentials?: boolean;
+  /** Her name, default Lyrica. */
+  name?: string;
+  admin: { login: string; password: string; displayName: string; pronouns?: Pronouns };
+}
 
 /**
  * POST /api/login → LoginResponse. Adds the user to this browser session (creating it if needed).
@@ -1319,8 +1338,11 @@ export interface PathChange { pool: Pool; path: string }
 
 // --- Web access (administrators) ---
 
-/** "off": reachable only on this machine. "builtin": the built-in Caddy. "external": a proxy elsewhere. */
-export type WebMode = "off" | "builtin" | "external";
+/**
+ * "off": reachable only on this machine. "direct": lyricad's own HTTPS on this machine's addresses (the mode
+ * she starts in). "tailnet": her tailscaled's `tailscale serve`. "builtin": the built-in Caddy. "external": a proxy elsewhere.
+ */
+export type WebMode = "off" | "direct" | "tailnet" | "builtin" | "external";
 
 /** One of this machine's addresses that can serve Lyrica. */
 export interface HostAddress { address: string; kind: "tailscale" | "lan"; interface: string }
@@ -1360,6 +1382,10 @@ export interface WebAccess {
     fingerprint?: string;
     pem?: string;
   } | null;
+  /** Direct: lyricad's own HTTPS on these addresses and port, with a certificate naming them. */
+  direct: { addresses: string[]; port: number; fingerprint: string; pem: string } | null;
+  /** Tailnet: her name on the tailnet, and whether its HTTPS certificate came. */
+  tailnet: { dnsName: string; certificates: boolean } | null;
   /** This machine's Tailscale and LAN addresses. */
   addresses: HostAddress[];
   providers: DnsProvider[];
@@ -1393,10 +1419,47 @@ export interface WebAccessStatus {
   /** Caddy's newest TLS error since the last change, credentials hidden. */
   lastAcmeError?: { at: string; message: string };
   external?: { listening: boolean; address: string; port: number };
+  /** Direct: the addresses it listens on now. */
+  direct?: { listening: string[]; port: number; fingerprint: string };
+  /** Tailnet: her name, and whether it answers over HTTPS now (checked from this machine), else why not. */
+  tailnet?: { dnsName: string; answers: boolean; error?: string };
 }
 
 /** GET /api/u/:userId/admin/web-access/snippet → WebAccessSnippet: the external proxy's site, as a Caddyfile. */
 export interface WebAccessSnippet { caddyfile: string }
+
+/** GET /api/u/:userId/admin/name → NameSetting; PUT the same → NameSetting. Her name, 1 to 40 characters. Administrators. */
+export interface NameSetting { name: string }
+
+// --- The tailnet (administrators): her own tailscaled ---
+
+/**
+ * GET /api/u/:userId/admin/tailnet → Tailnet, read from her tailscaled each time.
+ * "notInstalled": no tailscale binary, or her tailscaled isn't running (`reason` says which).
+ */
+export interface Tailnet {
+  state: "connected" | "disconnected" | "notJoined" | "notInstalled";
+  /** The tailnet's name, e.g. example.ts.net. */
+  tailnet?: string;
+  /** Her own Tailscale address. */
+  address?: string;
+  /** Her MagicDNS name, e.g. lyrica.example.ts.net. */
+  dnsName?: string;
+  hostname?: string;
+  /** A Headscale server. Not filled yet: `tailscale status --json` doesn't carry it. */
+  controlServer?: string;
+  version?: string;
+  reason?: string;
+}
+
+/**
+ * PUT /api/u/:userId/admin/tailnet → Tailnet. Joins with an auth key, which is spent and never stored.
+ * `hostname` is set only when given. Joined to another tailnet: 409 unless `leave`, which logs out first.
+ * POST …/tailnet/disconnect and …/tailnet/connect → Tailnet; DELETE …/tailnet → Tailnet (leaves, turning
+ * the Tailnet web mode off first). Disconnect, leave and a join that leaves are 409 when asked over her own
+ * tailnet address: they would cut the request off.
+ */
+export interface TailnetJoin { authKey: string; hostname?: string; controlServer?: string; leave?: boolean }
 
 /** GET /api/u/:userId/admin/sleep → SleepTime; PUT the same → SleepTime */
 export interface SleepTime { time: string }

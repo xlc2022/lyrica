@@ -221,4 +221,26 @@ bootstrap and Releases the merge commit.
 
 ## Handoff notes
 
-(The thread fills this in if it stops before it's done.)
+Built on `feature/bootstrap-ri74ui` (2026-10-12).
+
+- **Operator's first run.** Debian/Ubuntu: `install.sh` ends by printing
+  the setup addresses, the certificate's fingerprint and the code; again any
+  time with `lyrica admin setup-code` as root. NixOS: after `nixos-rebuild
+  switch`, `lyrica admin setup-code` as root is the first-run step (nothing
+  prints at rebuild). Then `https://<lan address>:7340`, compare the
+  fingerprint in the browser's warning, enter the code. `lyrica admin init`
+  still works from a terminal instead.
+- **Changed from the brief.** Direct serves HTTPS on Tailscale addresses
+  too: the login cookie is `__Host-`/`Secure`, which browsers drop over
+  plain HTTP on a 100.x address. The Tailnet mode's fetch check can't always
+  run from this machine (it need not be on her tailnet), so MagicDNS and the
+  certificate domains are checked from `tailscale status` as hard
+  conditions, the fetch decides `certificates`, and Direct stays on beside
+  Tailnet until a later switch confirms the name answers. `controlServer`
+  isn't read back: `status --json` doesn't carry it.
+- **Verify at first deployment:** her tailscaled starts as `lyrica` under
+  the unit's hardening (`Type=notify`, `ProtectSystem=strict`, its own
+  state, cache and runtime directories); `serve` on 443 works without a
+  capability; a bare `tailscale up` after `set --hostname` doesn't ask for
+  every flag; a host already on a tailnet shows two devices; install.sh's
+  Tailscale repository lines on Debian 12 and Ubuntu 24.04.

@@ -3,8 +3,8 @@
 # See docs/daemon.md ("Deployment").
 [Unit]
 Description=Lyrica (lyricad)
-After=network-online.target lyrica-caddy.service
-Wants=network-online.target lyrica-caddy.service
+After=network-online.target lyrica-caddy.service lyrica-tailscaled.service
+Wants=network-online.target lyrica-caddy.service lyrica-tailscaled.service
 
 [Service]
 Type=simple

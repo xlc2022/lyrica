@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Checks a NixOS host running services.lyrica (docs/daemon.md, "On NixOS"). Run as root
-# after `lyrica admin init` and `systemctl start lyricad`. Prints one line per
+# after the setup page (or `lyrica admin init`). Prints one line per
 # check and "All checks passed." at the end, or stops at the first failure.
 set -uo pipefail
 ok() { printf 'ok    %s\n' "$1"; }
@@ -9,6 +9,12 @@ bad() { printf 'FAIL  %s\n' "$1" >&2; exit 1; }
 [ "$(id -u)" = 0 ] || bad "run as root"
 systemctl is-active --quiet lyrica-caddy && ok "lyrica-caddy is running" || bad "lyrica-caddy isn't running: journalctl -u lyrica-caddy"
 systemctl is-active --quiet lyricad && ok "lyricad is running" || bad "lyricad isn't running: journalctl -u lyricad"
+if systemctl cat lyrica-tailscaled >/dev/null 2>&1; then
+  ts=$(systemctl show -p Environment --value lyricad | tr ' ' '\n' | sed -n 's/^PATH=//p' | tr ':' '\n' | while read -r d; do [ -x "$d/tailscale" ] && echo "$d/tailscale" && break; done)
+  [ -n "$ts" ] || bad "tailscale isn't on lyricad's PATH"
+  runuser -u lyrica -- "$ts" --socket /run/lyrica-tailscale/tailscaled.sock status --json --peers=false >/dev/null 2>&1 \
+    && ok "her tailscaled answers lyrica on its socket" || bad "her tailscaled doesn't answer: journalctl -u lyrica-tailscaled"
+fi
 pid=$(systemctl show -p MainPID --value lyricad)
 grep -q '^NoNewPrivs:[[:space:]]*0' "/proc/$pid/status" && ok "lyricad has NoNewPrivs 0" || bad "lyricad has NoNewPrivs set: homes and sandboxes won't work"
 [ -u /run/wrappers/bin/fusermount3 ] && ok "fusermount3 is setuid" || bad "/run/wrappers/bin/fusermount3 isn't setuid"
