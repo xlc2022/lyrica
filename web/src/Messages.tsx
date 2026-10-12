@@ -11,7 +11,7 @@ import type { ShellContext } from "./Shell.tsx";
 import type { useThread } from "./stream.ts";
 import { SuggestedCard, ThreadCard, type ProjectEnv } from "./Project.tsx";
 import { EditBox, MessageMenu, type Rewinder } from "./Rewind.tsx";
-import { ErrorText, Prose, useAction, wakeTime } from "./ui.tsx";
+import { ErrorText, fullTime, Prose, useAction, wakeTime } from "./ui.tsx";
 import { Lightbox, PathText, useFileLinks, type FileLinks } from "./paths.tsx";
 import { foldLooks, raisedIn, toldIn, type Told } from "./looks.ts";
 import { her } from "./name.ts";
@@ -127,7 +127,7 @@ function StoredMessage({ m, env, you, cards, told, folded }: { m: Message; env: 
     if (m.from?.kind === "watching") return <><LookMarker text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} told={told ?? []} env={env} n={m.n} />{after}</>;
     const hers = m.from?.kind === "lyrica";
     const who = hers ? her() : m.from?.kind === "user" ? (m.from.name || you) : you;
-    return <><UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} rewinder={env.rewinder} env={env} hers={hers} reactions={m.reactions} />{after}</>;
+    return <><UserMessage text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} you={who} n={m.n} at={m.createdAt} rewinder={env.rewinder} env={env} hers={hers} reactions={m.reactions} />{after}</>;
   }
   if (m.role === "notice") {
     return <>{m.parts.map((p, i) => (p.type === "delegation"
@@ -136,7 +136,7 @@ function StoredMessage({ m, env, you, cards, told, folded }: { m: Message; env: 
   }
   return (
     <>
-      <Parts parts={m.parts} env={env} model={m.model} n={m.n} folded={folded} reactions={m.reactions} />
+      <Parts parts={m.parts} env={env} model={m.model} n={m.n} at={m.createdAt} folded={folded} reactions={m.reactions} />
       {m.error && <p className="error turn-error">{m.error}</p>}
       {after}
     </>
@@ -201,15 +201,19 @@ function LiveMessage({ item, env, you, streaming }: { item: LiveItem; env: Env; 
 }
 
 /** A message in the person's place; `hers` when Lyrica wrote it (a subagent's task), so the threads she mentions show by title. Its paths are links. */
-function UserMessage({ text, you, n, rewinder, env, hers, reactions }: { text: string; you: string; n?: number; rewinder?: Rewinder; env: Pick<Env, "userId" | "pool" | "threadId" | "large">; hers?: boolean; reactions?: Reaction[] }) {
+function UserMessage({ text, you, n, at, rewinder, env, hers, reactions }: { text: string; you: string; n?: number; at?: string; rewinder?: Rewinder; env: Pick<Env, "userId" | "pool" | "threadId" | "large">; hers?: boolean; reactions?: Reaction[] }) {
   const [editing, setEditing] = useState(false);
   const [remembering, setRemembering] = useState(false);
   const files = useFileLinks(env.userId, env.pool, env.threadId);
   const menu = rewinder && n !== undefined;
   return (
     <div className="msg user" id={n !== undefined ? `m-${n}` : undefined}>
-      <div className="who">
-        {you}{menu && rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}
+      <div className="who sent">
+        <span className="who-head">
+          <span className="who-name" title={you}>{you}</span>
+          {at && <SentAt at={at} />}
+        </span>
+        {menu && rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}
         {menu && <ReactButton n={n} reactions={reactions} reactor={rewinder} />}
         {menu && <MessageMenu n={n} role="user" rewinder={rewinder} onEdit={() => setEditing(true)} onRemember={() => setRemembering(true)} />}
       </div>
@@ -249,8 +253,22 @@ function RememberBox({ text, n, env, onClose }: { text: string; n: number; env: 
   );
 }
 
+/**
+ * When a message was sent (docs/ux.md §6): muted and mono after the name (and the model), its full date and time as the
+ * tooltip. Only a stored message has a time, so a reply that is still streaming shows none.
+ */
+function SentAt({ at }: { at: string }) {
+  if (Number.isNaN(Date.parse(at))) return null;
+  return <span className="muted sent-at"><Sep /><time className="num" dateTime={at} title={fullTime(at)}>{wakeTime(at)}</time></span>;
+}
+
+/** The dot between the parts of a message's header line, with the same air on both sides. */
+function Sep() {
+  return <span className="sep"> · </span>;
+}
+
 /** Her message: prose for text, one-line markers for everything else. */
-function Parts({ parts, env, model, streaming, n, folded, reactions }: { parts: MessagePart[]; env: Env; model?: string; streaming?: boolean; n?: number; folded?: boolean; reactions?: Reaction[] }) {
+function Parts({ parts, env, model, streaming, n, at, folded, reactions }: { parts: MessagePart[]; env: Env; model?: string; streaming?: boolean; n?: number; at?: string; folded?: boolean; reactions?: Reaction[] }) {
   const [remembering, setRemembering] = useState(false);
   const out: React.ReactNode[] = [];
   let prose: string[] = [];
@@ -283,8 +301,11 @@ function Parts({ parts, env, model, streaming, n, folded, reactions }: { parts: 
   const who = env.subagent ? "Subagent" : her();
   return (
     <section className="turn" id={n !== undefined ? `m-${n}` : undefined} aria-label={model ? `${who} (${model})` : who}>
-      <div className="who">
-        {who}{model && <span className="muted"> · {model}</span>}
+      <div className="who sent">
+        <span className="who-head">
+          <span className="who-name" title={model ?? who}>{who}{model && <span className="muted"><Sep />{model}</span>}</span>
+          {at && <SentAt at={at} />}
+        </span>
         {env.rewinder && n !== undefined && env.rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}
         {env.rewinder && n !== undefined && (
           <ReadAloudButton url={`${env.base}/messages/${n}/speech`} also={n === env.lastHers ? `${env.base}/messages/live/speech` : undefined} speech={env.speech} onError={env.onError} />

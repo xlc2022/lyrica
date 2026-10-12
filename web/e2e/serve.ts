@@ -11,7 +11,7 @@
 // fence mid-line, where it is not a fence), a look at a project's
 // threads (the `watching` call) tells the first thread it wasn't about "Heads up:
 // the plan changed.", /searxng is a SearXNG answering JSON, anything else gets a few streamed sentences that echo it. /local/v1 serves "local-model"
-// and /cloud/v1 "cloud-model". /speech/v1 is a speech server: "whisper"
+// and /cloud/v1 "cloud-model"; /long/v1 serves one model with a long id, for a header line that has to shrink. /speech/v1 is a speech server: "whisper"
 // transcribes any clip as "hello from the fake" and "kokoro" speaks a second
 // of PCM; POST /speech/down and /speech/up make the whole server fail (503)
 // or answer again. An MCP server ("house", get_status and turn_on) listens on
@@ -26,6 +26,8 @@ import { Lyricad } from "@lyrica/daemon";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
 
 export const PASSPHRASE = "correct horse";
+/** The one model /long/v1 serves. */
+const LONG_MODEL = "a-very-long-model-name-70b-instruct-q4_k_m-20261012";
 const ARGON2 = { memoryCost: 1024, timeCost: 1, parallelism: 1 };
 const [port = 7341, modelPort = 7351] = process.argv.slice(2, 4).map(Number);
 /** `setup`: no self.db, so lyricad starts setting up; its one-time code is copied to setupCodeFile(port) for setup.spec.ts. */
@@ -73,10 +75,10 @@ function fakeModel() {
         res.writeHead(200, { "content-type": "application/json" });
         return res.end(JSON.stringify({ results: [{ title: "SearXNG", url: "https://docs.searxng.org", content: "A metasearch engine." }] }));
       }
-      const [, kind, rest] = /^\/(local|cloud)\/v1(\/.*)$/.exec(req.url ?? "") ?? [];
+      const [, kind, rest] = /^\/(local|cloud|long)\/v1(\/.*)$/.exec(req.url ?? "") ?? [];
       if (req.method === "GET" && rest === "/models") {
         res.writeHead(200, { "content-type": "application/json" });
-        return res.end(JSON.stringify({ object: "list", data: [{ id: `${kind}-model`, object: "model" }] }));
+        return res.end(JSON.stringify({ object: "list", data: [{ id: kind === "long" ? LONG_MODEL : `${kind}-model`, object: "model" }] }));
       }
       if (req.method !== "POST" || rest !== "/chat/completions") { res.writeHead(404); return res.end(); }
       const chat = JSON.parse(body) as Chat;
