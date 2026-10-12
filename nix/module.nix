@@ -184,6 +184,8 @@ in {
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
       environment = {
+        # Updates build on the host's nixpkgs: the same Node as the sandbox closure's.
+        LYRICA_NIXPKGS = "${pkgs.path}";
         LYRICA_SANDBOX_TOOLS = "${sandboxTools}";
         LYRICA_SANDBOX_CLOSURE = "${sandboxClosure}/store-paths";
         LYRICA_SMOKE_PATH = "/run/wrappers/bin:${lib.makeBinPath [ pkgs.gocryptfs pkgs.openssl pkgs.coreutils pkgs.bash sandboxTools ]}";

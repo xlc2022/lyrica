@@ -713,13 +713,16 @@ system with the module on. Only x86_64-linux.
   `sandboxPackages`.
 - **Releases** are generations of the profile `/nix/var/nix/profiles/lyrica`,
   which lyricad runs. An Update builds `git+file:///opt/lyrica/repo.git?rev=<commit>#lyrica`
-  (root's nix needs flakes), keeps its `RELEASE.json` in
+  with the host's nixpkgs in place of the repository's (`--override-input`,
+  so Node is the one in the sandbox closure, as with `nixos-rebuild`; the
+  updater turns on flakes for that call), keeps its `RELEASE.json` in
   `/var/lib/lyrica-update/releases/<commit>/` and switches the profile;
   rollback switches it back. Before each start, `lyrica-nixos-start` (as
   root) checks the module's package: when `nixos-rebuild switch` changed
   it, it snapshots the databases and points the profile at it, restoring
   the newest readable snapshot if the package can't read them. An
-  unchanged package leaves an Update's choice in place.
+  unchanged package leaves an Update's choice in place. The unit names
+  `cfg.package`, so it stays in the system closure until that first start.
 - **Host check:** `nix/check-host.sh`, as root after `lyrica admin init`:
   both services run, `NoNewPrivs` is `0`, `fusermount3` is setuid, Caddy's
   admin socket exists, a sandbox and `pasta` start as `lyrica`, the

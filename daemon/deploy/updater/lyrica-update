@@ -112,7 +112,9 @@ build_debian() {
 }
 build_nix() {
   local out
-  out=$(nix build --no-link --print-out-paths "git+file://$REPO?rev=$COMMIT#lyrica") || return 1
+  # On the host's nixpkgs (the module's LYRICA_NIXPKGS), so Node is the one in the sandbox closure.
+  local nixpkgs=(); [ -n "${LYRICA_NIXPKGS:-}" ] && nixpkgs=(--override-input nixpkgs "path:$LYRICA_NIXPKGS")
+  out=$(nix --extra-experimental-features "nix-command flakes" build --no-link --print-out-paths "${nixpkgs[@]}" "git+file://$REPO?rev=$COMMIT#lyrica") || return 1
   # The package records no commit (so an unchanged one isn't rebuilt): RELEASE.json goes beside it.
   local info="$UPDATE/releases/$COMMIT"
   mkdir -p "$info"
