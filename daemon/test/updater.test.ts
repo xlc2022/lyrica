@@ -26,7 +26,7 @@ async function world() {
   const prefix = d("opt"), state = d("state"), update = d("update"), snapshots = d("snapshots"), fake = d("fake"), origin = join(root, "origin.git");
 
   // systemctl: lyricad's state in a file, every call logged.
-  writeFileSync(join(fake, "systemctl"), `#!/bin/bash
+  writeFileSync(join(fake, "systemctl"), `#!/usr/bin/env bash
 echo "$*" >>"${fake}/calls"
 case "$1" in
   is-active) cat "${fake}/lyricad" 2>/dev/null || echo inactive ;;
@@ -36,8 +36,8 @@ case "$1" in
 esac
 `);
   // The build: RELEASE.json's version comes from \`node bin/lyrica version --json\`; here, schema.json in the commit.
-  writeFileSync(join(fake, "node"), `#!/bin/bash\njq -c '{version: "0.1.0", build: "x", schema: .schema, minReader: .minReader}' schema.json\n`);
-  writeFileSync(join(fake, "build"), "#!/bin/bash\ntouch \"$1/built\"\n");
+  writeFileSync(join(fake, "node"), `#!/usr/bin/env bash\njq -c '{version: "0.1.0", build: "x", schema: .schema, minReader: .minReader}' schema.json\n`);
+  writeFileSync(join(fake, "build"), "#!/usr/bin/env bash\ntouch \"$1/built\"\n");
   for (const f of ["systemctl", "node", "build"]) chmodSync(join(fake, f), 0o755);
   writeFileSync(join(fake, "lyricad"), "active\n");
 
@@ -332,14 +332,14 @@ async function nixosWorld() {
   writeFileSync(join(w.fake, "lyricad"), "inactive\n");
   const profile = join(w.root, "profile");
   // nix-env -p <profile> --set <path>: the profile is a symlink to the package.
-  writeFileSync(join(w.fake, "nix-env"), `#!/bin/bash\n[ "$3" = --set ] && ln -sfn "$4" "$2"\nexit 0\n`);
+  writeFileSync(join(w.fake, "nix-env"), `#!/usr/bin/env bash\n[ "$3" = --set ] && ln -sfn "$4" "$2"\nexit 0\n`);
   // ssh-keygen ... -f <key>: a stand-in key pair.
-  writeFileSync(join(w.fake, "ssh-keygen"), `#!/bin/bash\nf="\${@: -1}"; echo key >"$f"; echo pub >"$f.pub"\n`);
+  writeFileSync(join(w.fake, "ssh-keygen"), `#!/usr/bin/env bash\nf="\${@: -1}"; echo key >"$f"; echo pub >"$f.pub"\n`);
   for (const f of ["nix-env", "ssh-keygen"]) chmodSync(join(w.fake, f), 0o755);
   const pkg = (name: string, schema: Schema, minReader: Schema) => {
     const dir = join(w.root, "store", name);
     mkdirSync(join(dir, "bin"), { recursive: true });
-    writeFileSync(join(dir, "bin", "lyrica"), `#!/bin/bash\necho '${JSON.stringify({ version: "0.1.0", build: "dev", schema, minReader })}'\n`);
+    writeFileSync(join(dir, "bin", "lyrica"), `#!/usr/bin/env bash\necho '${JSON.stringify({ version: "0.1.0", build: "dev", schema, minReader })}'\n`);
     chmodSync(join(dir, "bin", "lyrica"), 0o755);
     return dir;
   };

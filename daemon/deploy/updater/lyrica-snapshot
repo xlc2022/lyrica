@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # lyrica-snapshot [--note <file>] [--commit <commit>] [--pin]
 # Copies her databases and settings (encrypted as they are; never the users'
 # homes) into /var/lib/lyrica-snapshots/<time>-<commit>/, with the commit,

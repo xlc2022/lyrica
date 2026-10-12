@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # lyrica-restore <snapshot folder>
 # Puts a snapshot's databases and settings back, with lyricad stopped. First
 # it checks the snapshot against its checksums, then moves every file it

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # lyrica-rollback [<commit>] [--yes] [--auto [--check <name>]]
 # Goes back to the previous release (or a named kept one) and starts lyricad.
 # Works with lyricad dead. The pre-update snapshot is restored only when the
