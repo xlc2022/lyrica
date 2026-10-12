@@ -16,8 +16,8 @@ no hand-edited config:
 - **Built-in Caddy**, which `lyricad` configures;
 - **External proxy**, elsewhere on the network.
 
-Either way, the browser gets HTTPS on Li's name, and sandboxes can't reach the
-front door. This serves principle 1 (Li sets it up once, from a page) and
+Either way, the browser gets HTTPS on the owner's name, and sandboxes can't reach the
+front door. This serves principle 1 (the owner sets it up once, from a page) and
 principle 2 (one simple boundary).
 
 ## In scope

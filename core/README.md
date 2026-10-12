@@ -48,8 +48,8 @@ Keys, users and the persona store. No Pi dependency.
   - `queryTokens(query, profiles)` returns the users' names (current or
     previous) found in a search query, as `{ name, userId }`. It doesn't
     change the query: the caller searches for the word OR the token, so
-    "Li-ion" still matches. A current name wins over someone else's previous
-    name.
+    "Al-ion" still matches (for a user named Al). A current name wins over
+    someone else's previous name.
 - **`persona.ts`** (`PersonaStore`): `importSeed` copies `persona/` into
   `self.db` on first run. Every version of every file is a row in
   `persona_revisions`; the latest per path is current. `apply` (administrators

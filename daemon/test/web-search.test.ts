@@ -26,49 +26,49 @@ async function setup() {
   const rt = await runtime();
   const { base, logs } = await daemon(rt);
   await browser(base).post("/api/unlock", { passphrase: "passphrase" });
-  const li = await login(base, "li", "pw");
-  return { rt, base, logs, li, url: `/api/u/${rt.li.id}/admin/web-search` };
+  const ada = await login(base, "ada", "pw");
+  return { rt, base, logs, ada, url: `/api/u/${rt.ada.id}/admin/web-search` };
 }
 
 describe("web search", () => {
   it("saves the address, says whether SearXNG answers, and is for administrators only", async () => {
-    const { rt, base, li, url } = await setup();
-    expect((await li.get<WebSearch>(url)).body).toEqual({ searxng: null, auth: false, state: "unset" });
+    const { rt, base, ada, url } = await setup();
+    expect((await ada.get<WebSearch>(url)).body).toEqual({ searxng: null, auth: false, state: "unset" });
 
     const good = `http://${await searxng()}`;
-    expect((await li.put<WebSearch>(url, { searxng: `${good}/` })).body).toEqual({ searxng: good, auth: false, state: "reachable" });
-    const bad = (await li.put<WebSearch>(url, { searxng: `http://${await searxng({ json: false })}` })).body;
+    expect((await ada.put<WebSearch>(url, { searxng: `${good}/` })).body).toEqual({ searxng: good, auth: false, state: "reachable" });
+    const bad = (await ada.put<WebSearch>(url, { searxng: `http://${await searxng({ json: false })}` })).body;
     expect(bad).toMatchObject({ state: "unreachable" });
     expect(bad.reason).toContain("json format");
-    expect((await li.put(url, { searxng: "ftp://x" })).status).toBe(400);
+    expect((await ada.put(url, { searxng: "ftp://x" })).status).toBe(400);
 
     const sam = await login(base, "sam", "pw2");
-    const samUrl = url.replace(rt.li.id, rt.sam.id);
+    const samUrl = url.replace(rt.ada.id, rt.sam.id);
     expect((await sam.get(samUrl)).status).toBe(403);
     expect((await sam.put(samUrl, { searxng: good })).status).toBe(403);
     expect((await sam.get(url)).status).toBe(401);
 
     // A thread's settings say whether search has a provider, for the switch's tooltip.
-    const thread = (await li.post<{ id: string }>(`/api/u/${rt.li.id}/threads`, { pool: "general" })).body;
-    const settings = `/api/u/${rt.li.id}/threads/general/${enc(thread.id)}/settings`;
-    expect((await li.get<ThreadSettings>(settings)).body.searchProvider).toBe(true);
-    await li.put(url, { searxng: "" });
-    expect((await li.get<ThreadSettings>(settings)).body.searchProvider).toBe(false);
+    const thread = (await ada.post<{ id: string }>(`/api/u/${rt.ada.id}/threads`, { pool: "general" })).body;
+    const settings = `/api/u/${rt.ada.id}/threads/general/${enc(thread.id)}/settings`;
+    expect((await ada.get<ThreadSettings>(settings)).body.searchProvider).toBe(true);
+    await ada.put(url, { searxng: "" });
+    expect((await ada.get<ThreadSettings>(settings)).body.searchProvider).toBe(false);
   });
 
   it("never sends a basic-auth password back, and keeps it while the user@host stays", async () => {
-    const { li, url, logs } = await setup();
+    const { ada, url, logs } = await setup();
     const host = await searxng({ auth: "lyrica:s3cret-pw" });
     const shown = { searxng: `http://lyrica@${host}`, auth: true, state: "reachable" };
-    expect((await li.put<WebSearch>(url, { searxng: `http://lyrica:s3cret-pw@${host}` })).body).toEqual(shown);
-    expect((await li.get<WebSearch>(url)).body).toEqual(shown);
+    expect((await ada.put<WebSearch>(url, { searxng: `http://lyrica:s3cret-pw@${host}` })).body).toEqual(shown);
+    expect((await ada.get<WebSearch>(url)).body).toEqual(shown);
     // Saving what was shown keeps the password.
-    expect((await li.put<WebSearch>(url, { searxng: shown.searxng })).body).toEqual(shown);
+    expect((await ada.put<WebSearch>(url, { searxng: shown.searxng })).body).toEqual(shown);
     // A new password replaces it.
-    expect((await li.put<WebSearch>(url, { searxng: `http://lyrica:wrong@${host}` })).body).toMatchObject({ auth: true, state: "unreachable" });
+    expect((await ada.put<WebSearch>(url, { searxng: `http://lyrica:wrong@${host}` })).body).toMatchObject({ auth: true, state: "unreachable" });
     // Another user doesn't take it.
-    expect((await li.put<WebSearch>(url, { searxng: `http://other@${host}` })).body).toMatchObject({ searxng: `http://other@${host}`, auth: false });
-    expect((await li.put<WebSearch>(url, { searxng: "" })).body).toEqual({ searxng: null, auth: false, state: "unset" });
+    expect((await ada.put<WebSearch>(url, { searxng: `http://other@${host}` })).body).toMatchObject({ searxng: `http://other@${host}`, auth: false });
+    expect((await ada.put<WebSearch>(url, { searxng: "" })).body).toEqual({ searxng: null, auth: false, state: "unset" });
     expect(logs.join("\n")).not.toContain("s3cret-pw");
   });
 });

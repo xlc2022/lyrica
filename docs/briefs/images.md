@@ -20,7 +20,7 @@ Lyrica creates and edits images in conversation, as ChatGPT does. She writes
 the prompt herself, looks at the result and tries again. Images stay as
 private as the thread they belong to, and photos of the user go to a cloud
 model only by the user's choice. This serves principle 1: images become part
-of how she works with Li, from storyboards to edits of Li's own photos.
+of how she works with the user, from storyboards to edits of the user's own photos.
 
 ## In scope
 

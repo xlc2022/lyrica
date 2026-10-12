@@ -1,6 +1,6 @@
-# Boundary code (DESIGN.md, "Updates and self-editing"): GitHub asks Li to
+# Boundary code (DESIGN.md, "Updates and self-editing"): GitHub asks the operator to
 # review any pull request that touches these paths. It isn't required for
-# merging; PR review asks Li before approving such a pull request of hers.
+# merging; PR review asks the operator before approving such a pull request of hers.
 /core/src/keyring.ts      @xlc2022
 /core/src/users.ts        @xlc2022
 /core/src/migrations.ts   @xlc2022

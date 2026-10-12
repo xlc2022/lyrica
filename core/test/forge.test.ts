@@ -31,8 +31,8 @@ const clone = (name: string, url: string) => {
 
 const env = gitEnv([
   { name: "xlc2022/lyrica", account: { kind: "github", host: "github.com", account: "lyrica-bot", token: "bot-token" } },
-  { name: "li/notes", account: { kind: "github", host: "github.com", account: "li", token: "li-token" } },
-  { name: "li/home", account: { kind: "forgejo", host: "forge.lan:3000", account: "li", token: "it's-forge" } },
+  { name: "ada/notes", account: { kind: "github", host: "github.com", account: "ada", token: "ada-token" } },
+  { name: "ada/home", account: { kind: "forgejo", host: "forge.lan:3000", account: "ada", token: "it's-forge" } },
 ]);
 // The wrapper finds itself by the first PATH entry, as in a sandbox.
 const run = (tool: string, cwd: string) => execFileSync("sh", [join(wrappers, tool)], {
@@ -43,17 +43,17 @@ const run = (tool: string, cwd: string) => execFileSync("sh", [join(wrappers, to
 describe("the gh and tea wrappers", () => {
   it("give gh only the token of the account whose repository the clone is", () => {
     expect(run("gh", clone("lyrica", "https://github.com/xlc2022/lyrica.git"))).toContain("gh GH_TOKEN=bot-token GH_HOST= ");
-    expect(run("gh", clone("notes", "https://github.com/Li/Notes"))).toContain("gh GH_TOKEN=li-token GH_HOST= ");
+    expect(run("gh", clone("notes", "https://github.com/Ada/Notes"))).toContain("gh GH_TOKEN=ada-token GH_HOST= ");
     expect(run("gh", clone("other", "https://github.com/xlc2022/other.git"))).toContain("gh GH_TOKEN= GH_HOST= GH_ENTERPRISE_TOKEN=\n");
     expect(run("gh", dir)).toContain("gh GH_TOKEN= GH_HOST= GH_ENTERPRISE_TOKEN=\n");
   });
 
   it("write tea one login, under /tmp, only in its own account's clone", () => {
-    const home = clone("home", "https://forge.lan:3000/li/home.git");
+    const home = clone("home", "https://forge.lan:3000/ada/home.git");
     const out = run("tea", home);
-    expect(out).toContain("url: 'https://forge.lan:3000'\n  token: 'it''s-forge'\n  user: 'li'\n");
+    expect(out).toContain("url: 'https://forge.lan:3000'\n  token: 'it''s-forge'\n  user: 'ada'\n");
     expect(out).toContain("config=/tmp/lyrica-forge\n");
-    expect(out).not.toContain("li-token");
+    expect(out).not.toContain("ada-token");
     expect(run("gh", home)).toContain("gh GH_TOKEN= ");
     expect(run("tea", join(dir, "lyrica"))).not.toContain("token:");
   });

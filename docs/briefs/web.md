@@ -20,7 +20,7 @@ Then read docs/contracts.md ("UI rules that cross components"),
 
 ## Goal
 
-Li can use Lyrica from a browser, on a desktop or a phone:
+A user can use Lyrica from a browser, on a desktop or a phone:
 - unlock `lyricad` and log in;
 - talk in threads with streamed replies;
 - always see, and easily change, which model is running;
@@ -29,7 +29,7 @@ Li can use Lyrica from a browser, on a desktop or a phone:
 - browse and edit memory.
 
 It all uses the look agreed in DESIGN.md. This serves principle 1: the web
-chat is where Li will spend most of her time with Lyrica.
+chat is where the user will spend most of their time with Lyrica.
 
 ## Stack
 

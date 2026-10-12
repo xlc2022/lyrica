@@ -1,6 +1,6 @@
 # CI
 
-The checks in `.github/workflows/` run on Li's own GitHub Actions runner, not
+The checks in `.github/workflows/` run on the owner's own GitHub Actions runner, not
 on GitHub's hosted runners: a self-hosted runner costs nothing, while hosted
 minutes on a private repository are billed past the plan's allowance.
 
@@ -16,7 +16,7 @@ minutes on a private repository are billed past the plan's allowance.
   change. needrestart only lists services (it once restarted the runner
   mid-job), and apt waits up to 10 minutes for a busy dpkg lock; setup.sh,
   the check job and the nix job all set this. The VM holds nothing else: never
-  the lyricad machine (Li's memory) or the model host (the host-stack job
+  the lyricad machine (the owner's memory) or the model host (the host-stack job
   installs its own stack).
 - The nix job installs Nix once (pinned installer, kept between runs), runs
   `nix flake check` and the sandbox tests with the NixOS sandbox tools and
@@ -51,7 +51,7 @@ minutes on a private repository are billed past the plan's allowance.
 ## Where it sits on the network
 
 Every job, and every package a job installs, runs as root on the VM, and the
-machines beside it hold Li's memory and the model host. So the VM reaches the
+machines beside it hold the owner's memory and the model host. So the VM reaches the
 internet and nothing else:
 
 - setup.sh installs `lyrica-ci-firewall`, an nftables table applied at boot

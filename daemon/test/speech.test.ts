@@ -12,38 +12,38 @@ import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 const VOICES = [{ id: "af_heart", language: "en" }, { id: "zf_xiaobei", language: "zh" }];
 
-/** Lyricad unlocked, Li logged in, a local chat model, a local speech endpoint for both speech tasks, and a thread in `pool`. */
+/** Lyricad unlocked, Ada logged in, a local chat model, a local speech endpoint for both speech tasks, and a thread in `pool`. */
 async function setup(pool: "general" | "private" = "private", speechOpts: { gapMs?: number } = {}) {
   const rt = await runtime();
   const dm = await daemon(rt);
   await browser(dm.base).post("/api/unlock", { passphrase: "passphrase" });
-  const li = await login(dm.base, "li", "pw");
+  const ada = await login(dm.base, "ada", "pw");
   const model = await fakeOpenAI({ label: "local", models: [{ id: "qwen3.8-27b" }] });
-  await localModel(li, rt.li.id, model.baseUrl);
+  await localModel(ada, rt.ada.id, model.baseUrl);
   const speech = await fakeSpeech(speechOpts);
-  const u = `/api/u/${rt.li.id}`;
-  const ep = (await li.post<EndpointInfo>(`${u}/endpoints`, { name: "speech", kind: "local", baseUrl: speech.baseUrl })).body;
+  const u = `/api/u/${rt.ada.id}`;
+  const ep = (await ada.post<EndpointInfo>(`${u}/endpoints`, { name: "speech", kind: "local", baseUrl: speech.baseUrl })).body;
   const id = (m: string) => ep.models.find((x) => x.modelId === m)!.id;
   const ok = async (r: Promise<{ status: number; body: unknown }>) => { const x = await r; if (x.status !== 200) throw new Error(JSON.stringify(x.body)); };
-  await ok(li.patch(`${u}/offerings/${id("whisper-large-v3-turbo")}`, { transcribe: true }));
-  await ok(li.patch(`${u}/offerings/${id("kokoro")}`, { speak: { voices: VOICES } }));
+  await ok(ada.patch(`${u}/offerings/${id("whisper-large-v3-turbo")}`, { transcribe: true }));
+  await ok(ada.patch(`${u}/offerings/${id("kokoro")}`, { speak: { voices: VOICES } }));
   for (const p of ["local", "custom"]) {
-    await ok(li.put(`${u}/profiles/${p}/speech.transcribe`, { model: { offeringId: id("whisper-large-v3-turbo") } }));
-    await ok(li.put(`${u}/profiles/${p}/speech.speak`, { model: { offeringId: id("kokoro") } }));
+    await ok(ada.put(`${u}/profiles/${p}/speech.transcribe`, { model: { offeringId: id("whisper-large-v3-turbo") } }));
+    await ok(ada.put(`${u}/profiles/${p}/speech.speak`, { model: { offeringId: id("kokoro") } }));
   }
-  const thread = (await li.post<ThreadSummary>(`${u}/threads`, { pool, title: "speech" })).body;
+  const thread = (await ada.post<ThreadSummary>(`${u}/threads`, { pool, title: "speech" })).body;
   const path = `${u}/threads/${pool}/${enc(thread.id)}`;
-  const stream = li.events(`${path}/events`);
+  const stream = ada.events(`${path}/events`);
   await stream.ready;
   const turn = async (reply: string, text = "say something") => {
     const ends = stream.events.filter((e) => e.event.type === "turn_end").length;
     model.reply({ text: reply });
-    await li.post(`${path}/messages`, { text });
+    await ada.post(`${path}/messages`, { text });
     await stream.until((e) => e.type === "turn_end" && stream.events.filter((x) => x.event.type === "turn_end").length > ends, 0, 20_000);
   };
-  const nOf = async (role: "user" | "assistant") => (await li.get<MessagePage>(`${path}/messages`)).body.messages.filter((m) => m.role === role).at(-1)!.n;
-  const audio = (p: string, signal?: AbortSignal) => fetch(dm.base + p, { headers: { cookie: li.cookie! }, ...(signal ? { signal } : {}) });
-  return { rt, ...dm, li, u, model, speech, ep, id, thread, path, stream, turn, audio, nOf };
+  const nOf = async (role: "user" | "assistant") => (await ada.get<MessagePage>(`${path}/messages`)).body.messages.filter((m) => m.role === role).at(-1)!.n;
+  const audio = (p: string, signal?: AbortSignal) => fetch(dm.base + p, { headers: { cookie: ada.cookie! }, ...(signal ? { signal } : {}) });
+  return { rt, ...dm, ada, u, model, speech, ep, id, thread, path, stream, turn, audio, nOf };
 }
 
 const REPLY = [
@@ -80,9 +80,9 @@ describe("thread mentions read aloud", () => {
   it("read as the thread's current title, and a general message never names a private thread", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
-    await users.authenticate("li", "pw");
-    const o = new Memory(keyring, users).openOwnerView(li.id);
+    const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+    await users.authenticate("ada", "pw");
+    const o = new Memory(keyring, users).openOwnerView(ada.id);
     const g = o.general.createThread({ interface: "web", title: "Garden" });
     const p = o.private.createThread({ interface: "web", title: "Doctor" });
     const said = (text: string) => [{ type: "text" as const, text }];
@@ -102,11 +102,11 @@ describe("dictation", () => {
     const saved = process.env.TMPDIR;
     process.env.TMPDIR = tmp;
     try {
-      const r = await s.li.post<Transcription>(`${s.path}/transcribe?language=zh`, wav(3), { "content-type": "audio/wav" });
+      const r = await s.ada.post<Transcription>(`${s.path}/transcribe?language=zh`, wav(3), { "content-type": "audio/wav" });
       expect(r.status).toBe(200);
       expect(r.body).toEqual({ text: "hello from the fake", seconds: 3, model: "speech/whisper-large-v3-turbo" });
       expect(s.speech.heard.at(-1)).toMatchObject({ url: "/v1/audio/transcriptions", language: "zh", bytes: 96_044 });
-      const welcome = await s.li.post<Transcription>(`${s.u}/transcribe?pool=private`, wav(1), { "content-type": "audio/wav" });
+      const welcome = await s.ada.post<Transcription>(`${s.u}/transcribe?pool=private`, wav(1), { "content-type": "audio/wav" });
       expect(welcome.body.text).toBe("hello from the fake");
       expect(readdirSync(tmp)).toEqual([]);
     } finally {
@@ -114,57 +114,57 @@ describe("dictation", () => {
       rmSync(tmp, { recursive: true, force: true });
     }
 
-    const calls = (await s.li.get<CallInfo[]>(`${s.u}/models/calls`)).body.filter((c) => c.task === "speech.transcribe");
+    const calls = (await s.ada.get<CallInfo[]>(`${s.u}/models/calls`)).body.filter((c) => c.task === "speech.transcribe");
     expect(calls.map((c) => c.audioSeconds).sort()).toEqual([1, 3]); // two calls in the same millisecond may come either way
     expect(JSON.stringify(calls)).not.toMatch(/hello from the fake/);
     expect(s.logs.join("\n")).not.toMatch(/hello from the fake/);
 
     // Not a WAV clip, or too long.
-    expect((await s.li.post(`${s.path}/transcribe`, Buffer.from("plain words"), { "content-type": "audio/wav" })).status).toBe(400);
-    expect((await s.li.post(`${s.path}/transcribe`, Buffer.from("x"), { "content-type": "audio/webm" })).status).toBe(415);
-    expect((await s.li.post(`${s.path}/transcribe`, wav(601), { "content-type": "audio/wav" })).status).toBe(413);
+    expect((await s.ada.post(`${s.path}/transcribe`, Buffer.from("plain words"), { "content-type": "audio/wav" })).status).toBe(400);
+    expect((await s.ada.post(`${s.path}/transcribe`, Buffer.from("x"), { "content-type": "audio/webm" })).status).toBe(415);
+    expect((await s.ada.post(`${s.path}/transcribe`, wav(601), { "content-type": "audio/wav" })).status).toBe(413);
   });
 
   it("sends a thread's voice to a cloud model only when Dictation picks it there", async () => {
     const s = await setup("general");
     const cloud = await fakeSpeech();
-    const ep = (await s.li.post<EndpointInfo>(`${s.u}/endpoints`, { name: "openai", kind: "cloud", baseUrl: cloud.baseUrl, apiKey: "sk" })).body;
+    const ep = (await s.ada.post<EndpointInfo>(`${s.u}/endpoints`, { name: "openai", kind: "cloud", baseUrl: cloud.baseUrl, apiKey: "sk" })).body;
     const stt = ep.models.find((m) => m.modelId === "whisper-large-v3-turbo")!.id;
-    await s.li.patch(`${s.u}/offerings/${stt}`, { transcribe: true });
-    await s.li.put(`${s.u}/profiles/cloud/speech.transcribe`, { model: { offeringId: stt } });
-    await s.li.patch(`${s.u}/profiles`, { default: "cloud" });
+    await s.ada.patch(`${s.u}/offerings/${stt}`, { transcribe: true });
+    await s.ada.put(`${s.u}/profiles/cloud/speech.transcribe`, { model: { offeringId: stt } });
+    await s.ada.patch(`${s.u}/profiles`, { default: "cloud" });
 
     // The cloud profile names it, but without the thread's pick the local profile's model hears the clip.
-    let settings = (await s.li.get<ThreadSettings>(`${s.path}/settings`)).body;
+    let settings = (await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body;
     expect(settings.models["speech.transcribe"]).toMatchObject({ source: "profile", kind: "local" });
     expect(settings.speech.transcribe).toMatchObject({ available: true, kind: "local" });
-    expect((await s.li.post(`${s.path}/transcribe`, wav(1), { "content-type": "audio/wav" })).status).toBe(200);
+    expect((await s.ada.post(`${s.path}/transcribe`, wav(1), { "content-type": "audio/wav" })).status).toBe(200);
     expect(cloud.heard).toEqual([]);
-    expect((await s.li.get<Speech>(`${s.u}/speech?pool=general`)).body).toMatchObject({ transcribe: { available: true, kind: "local" } });
+    expect((await s.ada.get<Speech>(`${s.u}/speech?pool=general`)).body).toMatchObject({ transcribe: { available: true, kind: "local" } });
 
     // Read aloud while agent writes is a user setting, off by default, that ThreadSettings.speech carries.
     expect(settings.speech.readAloudLive).toBe(false);
-    expect((await s.li.patch<Profiles>(`${s.u}/profiles`, { readAloudLive: true })).body.readAloudLive).toBe(true);
-    expect((await s.li.get<ThreadSettings>(`${s.path}/settings`)).body.speech.readAloudLive).toBe(true);
-    expect((await s.li.patch(`${s.u}/profiles`, { readAloudLive: "yes" })).status).toBe(400);
+    expect((await s.ada.patch<Profiles>(`${s.u}/profiles`, { readAloudLive: true })).body.readAloudLive).toBe(true);
+    expect((await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body.speech.readAloudLive).toBe(true);
+    expect((await s.ada.patch(`${s.u}/profiles`, { readAloudLive: "yes" })).status).toBe(400);
     // Picked in the thread's Dictation select: the cloud model hears it.
-    settings = (await s.li.patch<ThreadSettings>(`${s.path}/settings`, { models: { "speech.transcribe": { offeringId: stt } } })).body;
+    settings = (await s.ada.patch<ThreadSettings>(`${s.path}/settings`, { models: { "speech.transcribe": { offeringId: stt } } })).body;
     expect(settings.speech.transcribe).toMatchObject({ available: true, kind: "cloud" });
-    expect((await s.li.post(`${s.path}/transcribe`, wav(1), { "content-type": "audio/wav" })).status).toBe(200);
+    expect((await s.ada.post(`${s.path}/transcribe`, wav(1), { "content-type": "audio/wav" })).status).toBe(200);
     expect(cloud.heard).toHaveLength(1);
 
     // A local-only thread can't keep a cloud pick.
-    expect((await s.li.patch(`${s.path}/settings`, { localOnly: true })).status).toBe(400);
+    expect((await s.ada.patch(`${s.path}/settings`, { localOnly: true })).status).toBe(400);
   });
 
   it("says plainly when every speech model is down, and the daemon carries on", async () => {
     const s = await setup();
     await s.speech.stop();
-    const r = await s.li.post<{ error: string; code: string }>(`${s.path}/transcribe`, wav(1), { "content-type": "audio/wav" });
+    const r = await s.ada.post<{ error: string; code: string }>(`${s.path}/transcribe`, wav(1), { "content-type": "audio/wav" });
     expect(r.status).toBe(502);
     expect(r.body.error).toMatch(/^no model for Dictation can be reached now/);
     expect(r.body).toMatchObject({ code: "offline", task: "speech.transcribe", tried: [{ label: "speech/whisper-large-v3-turbo" }] });
-    const settings = (await s.li.get<ThreadSettings>(`${s.path}/settings`)).body;
+    const settings = (await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body;
     expect(settings.speech.transcribe).toEqual({ available: false, reason: "down", problem: "Dictation can't be reached now" });
     expect(settings.speech.speak).toMatchObject({ available: false, reason: "down" });
     // Read aloud too, as JSON before any audio.
@@ -174,7 +174,7 @@ describe("dictation", () => {
     expect(((await read.json()) as { error: string }).error).toMatch(/^no model for Read aloud can be reached now/);
     // The daemon is fine: chat still works.
     await s.turn("Still here.");
-    const page = (await s.li.get<MessagePage>(`${s.path}/messages`)).body;
+    const page = (await s.ada.get<MessagePage>(`${s.path}/messages`)).body;
     expect(page.messages.at(-1)!.parts).toEqual([{ type: "text", text: "Still here." }]);
   });
 });
@@ -192,12 +192,12 @@ describe("read aloud", () => {
       ["Plan", "af_heart"], ["Here is the plan.", "af_heart"], ["It has two steps.", "af_heart"], ["First, run npm test!", "af_heart"],
       ["然后我们去吃饭。", "zf_xiaobei"], ["好吗？", "zf_xiaobei"],
     ]);
-    const calls = (await s.li.get<CallInfo[]>(`${s.u}/models/calls`)).body.filter((c) => c.task === "speech.speak");
+    const calls = (await s.ada.get<CallInfo[]>(`${s.u}/models/calls`)).body.filter((c) => c.task === "speech.speak");
     expect(calls).toHaveLength(1);
     expect(calls[0]!.audioSeconds).toBe(1.2);
     expect(JSON.stringify(calls)).not.toMatch(/plan|吃饭/);
     // Her context meter still reads the chat call.
-    expect((await s.li.get<ThreadSettings>(`${s.path}/settings`)).body.answered?.task).toBe("chat");
+    expect((await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body.answered?.task).toBe("chat");
 
     // Only her messages, and only ones that exist.
     expect((await s.audio(`${s.path}/messages/${await s.nOf("user")}/speech`)).status).toBe(400);
@@ -228,7 +228,7 @@ describe("read aloud", () => {
     const s = await setup();
     // A reply that streams slowly: the first word, a pause, then the rest.
     s.model.reply({ text: "First part. Second part follows here.", slowMs: 600 });
-    await s.li.post(`${s.path}/messages`, { text: "talk to me" });
+    await s.ada.post(`${s.path}/messages`, { text: "talk to me" });
     await s.stream.until((e) => e.type === "text");
     const res = await s.audio(`${s.path}/messages/live/speech`);
     expect(res.status).toBe(200);

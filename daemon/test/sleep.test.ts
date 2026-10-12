@@ -30,27 +30,27 @@ async function setup() {
   const rt = await runtime();
   const dm = await daemon(rt, { sleep: { retries: 0 } });
   await browser(dm.base).post("/api/unlock", { passphrase: "passphrase" });
-  const li = await login(dm.base, "li", "pw");
+  const ada = await login(dm.base, "ada", "pw");
   const model = await fakeOpenAI({ label: "local", models: [{ id: "qwen3.8-27b" }] });
-  await localModel(li, rt.li.id, model.baseUrl);
-  const u = `/api/u/${rt.li.id}`;
+  await localModel(ada, rt.ada.id, model.baseUrl);
+  const u = `/api/u/${rt.ada.id}`;
   const note = () => {
-    const o = dm.d.services!.memory.openOwnerView(rt.li.id);
+    const o = dm.d.services!.memory.openOwnerView(rt.ada.id);
     try { return o.general.search("pelicans", { kinds: ["note"] })[0]?.id; } finally { o.close(); }
   };
   model.respond((c) => night(c, { note }));
-  /** A conversation where Li mentions the marker and she notes it. */
+  /** A conversation where Ada mentions the marker and she notes it. */
   const talk = async () => {
-    const thread = (await li.post<ThreadSummary>(`${u}/threads`, { pool: "general" })).body;
+    const thread = (await ada.post<ThreadSummary>(`${u}/threads`, { pool: "general" })).body;
     const path = `${u}/threads/general/${enc(thread.id)}`;
-    const stream = li.events(`${path}/events`);
-    await li.post(`${path}/messages`, { text: `I love pelicans, remember ${MARKER}` });
+    const stream = ada.events(`${path}/events`);
+    await ada.post(`${path}/messages`, { text: `I love pelicans, remember ${MARKER}` });
     await stream.until((e: ThreadEvent) => e.type === "turn_end");
     stream.close();
     return path;
   };
-  const sleepEvents = () => sse(`${dm.base}${u}/sleep/events`, { cookie: li.cookie! });
-  return { rt, ...dm, li, model, u, talk, note, sleepEvents };
+  const sleepEvents = () => sse(`${dm.base}${u}/sleep/events`, { cookie: ada.cookie! });
+  return { rt, ...dm, ada, model, u, talk, note, sleepEvents };
 }
 
 const finished = (pool: string) => (e: unknown) => (e as SleepEvent).type === "finished" && (e as SleepEvent).pool === pool;
@@ -60,57 +60,57 @@ describe("sleep in lyricad", () => {
     const s = await setup();
     await s.talk();
     await s.d.sleepNight();
-    const overview = (await s.li.get<SleepOverview>(`${s.u}/sleep`)).body;
+    const overview = (await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body;
     expect(overview).toMatchObject({ mode: "scheduled", time: "04:00" });
     expect(overview.runs.map((r) => [r.pool, r.status, r.skipReason])).toEqual(expect.arrayContaining([
       ["general", "complete", undefined], ["private", "skipped", "no-activity"],
     ]));
     const run = overview.runs.find((r) => r.pool === "general")!;
-    const detail = (await s.li.get<SleepRunDetail>(`${s.u}/sleep/general/runs/${enc(run.id)}`)).body;
-    expect(detail.pages).toEqual([{ id: "p:birds", title: "Birds", after: `[[u:${s.rt.li.id}]] likes pelicans [${s.note()}].` }]);
+    const detail = (await s.ada.get<SleepRunDetail>(`${s.u}/sleep/general/runs/${enc(run.id)}`)).body;
+    expect(detail.pages).toEqual([{ id: "p:birds", title: "Birds", after: `[[u:${s.rt.ada.id}]] likes pelicans [${s.note()}].` }]);
     expect(detail.dream[0]!.text).toContain("pelicans over a harbour");
     expect(detail.wake).toMatch(/^Waking up/);
-    expect(detail.users[s.rt.li.id]!.displayName).toBe("Li");
+    expect(detail.users[s.rt.ada.id]!.displayName).toBe("Ada");
     // The phases are threads of the sleep interface.
-    const sleepThreads = (await s.li.get<ThreadSummary[]>(`${s.u}/threads?interface=sleep&all=1`)).body;
+    const sleepThreads = (await s.ada.get<ThreadSummary[]>(`${s.u}/threads?interface=sleep&all=1`)).body;
     expect(sleepThreads.map((t) => t.title).sort()).toEqual(["Sleep: consolidate", "Sleep: dream", "Sleep: wake"]);
   });
 
   it("in manual mode sleeps only on /sleep, asks first, then opens a fresh thread", async () => {
     const s = await setup();
-    await s.li.put(`${s.u}/sleep/mode`, { mode: "manual" });
+    await s.ada.put(`${s.u}/sleep/mode`, { mode: "manual" });
     const path = await s.talk();
     await s.d.sleepNight();
-    expect((await s.li.get<SleepOverview>(`${s.u}/sleep`)).body.runs).toEqual([]);
+    expect((await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body.runs).toEqual([]);
 
     // Typed in a thread, /sleep asks first.
-    const asked = (await s.li.post<SendResponse>(`${path}/messages`, { text: "/sleep" })).body;
+    const asked = (await s.ada.post<SendResponse>(`${path}/messages`, { text: "/sleep" })).body;
     expect(asked.sleep).toEqual({ confirm: expect.stringContaining("Sleep now?") });
     const events = s.sleepEvents();
     await events.ready;
-    const started = await s.li.post<SleepStarted>(`${s.u}/sleep/general`, { confirm: true });
+    const started = await s.ada.post<SleepStarted>(`${s.u}/sleep/general`, { confirm: true });
     expect(started.body).toEqual({ started: true });
     await events.until((e) => (e as unknown as SleepEvent).type === "thread");
     events.close();
     const types = events.events.map((e) => (e.event as unknown as SleepEvent).type);
     expect(types).toEqual(["started", "phase", "phase", "phase", "phase", "phase", "phase", "finished", "thread"]);
     const fresh = (events.events.at(-1)!.event as unknown as Extract<SleepEvent, { type: "thread" }>).threadId;
-    const list = (await s.li.get<ThreadSummary[]>(`${s.u}/threads`)).body;
+    const list = (await s.ada.get<ThreadSummary[]>(`${s.u}/threads`)).body;
     expect(list.map((t) => t.id)).toContain(fresh);
-    expect((await s.li.get<SleepOverview>(`${s.u}/sleep`)).body.runs.map((r) => [r.status, r.reason])).toEqual([["complete", "manual"]]);
+    expect((await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body.runs.map((r) => [r.status, r.reason])).toEqual([["complete", "manual"]]);
   });
 
   it("answers /sleep with a plain error when it can't run", async () => {
     const s = await setup();
-    const nothing = await s.li.post(`${s.u}/sleep/general`, {});
+    const nothing = await s.ada.post(`${s.u}/sleep/general`, {});
     expect(nothing).toMatchObject({ status: 409, body: { error: "Sleep can't run now: nothing is new since the last sleep." } });
     await s.talk();
-    const dead = (await s.li.post<EndpointInfo>(`${s.u}/endpoints`, { name: "dead", kind: "local", baseUrl: "http://127.0.0.1:9/v1" })).body;
-    const m = (await s.li.post<OfferingInfo>(`${s.u}/endpoints/${dead.id}/models`, { modelId: "m" })).body;
-    await s.li.put(`${s.u}/profiles/custom/sleep.wake`, { model: { offeringId: m.id } });
-    const down = await s.li.post(`${s.u}/sleep/general`, {});
+    const dead = (await s.ada.post<EndpointInfo>(`${s.u}/endpoints`, { name: "dead", kind: "local", baseUrl: "http://127.0.0.1:9/v1" })).body;
+    const m = (await s.ada.post<OfferingInfo>(`${s.u}/endpoints/${dead.id}/models`, { modelId: "m" })).body;
+    await s.ada.put(`${s.u}/profiles/custom/sleep.wake`, { model: { offeringId: m.id } });
+    const down = await s.ada.post(`${s.u}/sleep/general`, {});
     expect(down).toMatchObject({ status: 409, body: { error: "Sleep can't run now: no model for Sleep: wake can be reached now (dead/m: dead is down)." } });
-    expect((await s.li.get<SleepOverview>(`${s.u}/sleep`)).body.runs.map((r) => r.skipReason)).toEqual(["endpoint-down", "no-activity"]);
+    expect((await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body.runs.map((r) => r.skipReason)).toEqual(["endpoint-down", "no-activity"]);
   });
 
   it("starts a chat from an item, where she speaks first, and dismisses others", async () => {
@@ -125,23 +125,23 @@ describe("sleep in lyricad", () => {
       return night(c, { note: s.note });
     });
     await s.d.sleepNight();
-    const items = (await s.li.get<SleepOverview>(`${s.u}/sleep`)).body.items;
+    const items = (await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body.items;
     expect(items.map((i) => [i.text, i.new])).toEqual(expect.arrayContaining([["Ask whether the pelicans came back", true], ["A second thought", true]]));
     const item = items.find((i) => i.text.startsWith("Ask"))!;
     const other = items.find((i) => i.text.startsWith("A second"))!;
 
-    const thread = (await s.li.post<ThreadSummary>(`${s.u}/sleep/general/items/${enc(item.id)}/chat`)).body;
+    const thread = (await s.ada.post<ThreadSummary>(`${s.u}/sleep/general/items/${enc(item.id)}/chat`)).body;
     const path = `${s.u}/threads/general/${enc(thread.id)}`;
-    let page = (await s.li.get<MessagePage>(`${path}/messages`)).body;
+    let page = (await s.ada.get<MessagePage>(`${path}/messages`)).body;
     for (const end = Date.now() + 5000; !page.messages.length && Date.now() < end; await new Promise((r) => setTimeout(r, 20))) {
-      page = (await s.li.get<MessagePage>(`${path}/messages`)).body;
+      page = (await s.ada.get<MessagePage>(`${path}/messages`)).body;
     }
     expect(page.messages.map((m) => m.role)).toEqual(["assistant"]);
     expect(page.messages[0]!.parts).toContainEqual({ type: "text", text: "Did the pelicans come back?" });
-    expect((await s.li.post(`${s.u}/sleep/general/items/${enc(item.id)}/chat`)).status).toBe(409);
+    expect((await s.ada.post(`${s.u}/sleep/general/items/${enc(item.id)}/chat`)).status).toBe(409);
 
-    await s.li.del(`${s.u}/sleep/general/items/${enc(other.id)}`);
-    const after = (await s.li.get<SleepOverview>(`${s.u}/sleep`)).body.items;
+    await s.ada.del(`${s.u}/sleep/general/items/${enc(other.id)}`);
+    const after = (await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body.items;
     expect(after.map((i) => [i.text, i.new, i.thread])).toEqual([["Ask whether the pelicans came back", false, thread.id]]);
   });
 
@@ -155,9 +155,9 @@ describe("sleep in lyricad", () => {
       if ((c.tools ?? []).some((t) => t.function.name === "write_page") && !lastIsTool(c)) { release(); return night(c, { hold: never }); }
       return night(c, { note: s.note });
     });
-    const running = s.d.services!.sleep.run(s.rt.li.id, "general", "manual");
+    const running = s.d.services!.sleep.run(s.rt.ada.id, "general", "manual");
     await reached;
-    await s.li.post(`${s.u}/lock`);
+    await s.ada.post(`${s.u}/lock`);
     expect((await running).status).toBe("partial");
     expect(s.logs.join("\n")).toContain("sleep general: partial");
     expect(s.logs.join("\n")).not.toContain(MARKER);

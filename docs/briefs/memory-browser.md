@@ -15,12 +15,12 @@ The proposal and screenshots are in the project files under
 ## Goal
 
 The memory browser reads like a notebook, the way Obsidian does, so that
-reviewing what Lyrica wrote is a thing Li does by wandering rather than by
+reviewing what Lyrica wrote is a thing the user does by wandering rather than by
 searching (principle 6). Nothing new is stored: links stay citations by ID
 in the text, lineage stays derived from them (principle 5), and the owner
 view stays the only way in.
 
-Li's picks (2026-10-11): no graph; a browse pane by layer; links as titles
+Picks (2026-10-11): no graph; a browse pane by layer; links as titles
 stored as IDs; hover previews; backlinks with the citing sentence; notes'
 `about` as tags; a textarea with `[[` autocomplete and Preview; word diffs
 in history; memory in the panel from a conversation; no note to her about
@@ -73,7 +73,7 @@ edits; "Remember this" on a message.
 
 ## Out of scope
 
-A graph, local or whole-pool (Li, 2026-10-11, after seeing both drawn);
+A graph, local or whole-pool (decided 2026-10-11, after seeing both drawn);
 tags on pages; a live-preview editor (CodeMirror); drafts kept in the
 browser; unlinked-mention search; a plaintext export (the encrypted Export
 belongs to the feature comparison's item 11); telling her about edits
@@ -90,7 +90,7 @@ belongs to the feature comparison's item 11); telling her about edits
   `sessionStorage` or any log.
 - Another user's memory is unreachable by construction; nothing changes.
 
-## Tests (what Li would notice)
+## Tests (what the user would notice)
 
 - A general memory's detail never carries a private title, snippet or
   citing sentence, with the private pool shown or hidden.

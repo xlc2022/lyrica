@@ -16,7 +16,7 @@ the thread menu, the Sort menu and the Notifications page.
 
 ## Goal
 
-Li sees a project the way DESIGN describes it, in the agreed look, on a
+A user sees a project the way DESIGN describes it, in the agreed look, on a
 desktop and at 390 px (principle 1). Every control has its row in ux.md §6.
 
 ## In scope
@@ -25,7 +25,7 @@ desktop and at 390 px (principle 1). Every control has its row in ux.md §6.
    place; its threads nested as child threads are, each with its pool dot,
    state and unseen count; resolved threads under one **Resolved** disclosure
    row with the count in mono; an amber dot on the row when a thread waits
-   on Li. **New project** in the empty thread list's context menu (beside New
+   on the user. **New project** in the empty thread list's context menu (beside New
    group): an empty project chat, like New thread. A new project, by New
    project or Make project, starts pinned (at the top with the other pinned
    threads; Unpin as usual). The Sort menu gains, below a second line, **All
@@ -43,7 +43,7 @@ desktop and at 390 px (principle 1). Every control has its row in ux.md §6.
    green; Idle the word alone, muted), what it waits on beneath, the last
    update's first line, up to three file names in mono then "+n", and Open,
    Stop, Resolve or Reopen behind ⋯. No per-update cards in a project chat.
-   A card waiting on Li carries `data-pending`, so the pending bar reads
+   A card waiting on the user carries `data-pending`, so the pending bar reads
    "Thread waiting for your answer".
 4. **Suggested threads** card, like the plan card: secondary **Start** per
    row, one primary **Start all**, `data-pending` ("Suggestions waiting for

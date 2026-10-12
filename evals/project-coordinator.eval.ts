@@ -31,13 +31,13 @@ async function setup(real: boolean) {
   const m = await withModels();
   let ref = m.cloudRef;
   if (real) {
-    const ep = m.models.addEndpoint(m.li, { name: "eval", kind: "cloud", baseUrl: process.env.LYRICA_EVAL_BASE_URL!, apiKey: process.env.LYRICA_EVAL_API_KEY });
-    const offered = await m.models.discover(m.li, ep.id);
+    const ep = m.models.addEndpoint(m.ada, { name: "eval", kind: "cloud", baseUrl: process.env.LYRICA_EVAL_BASE_URL!, apiKey: process.env.LYRICA_EVAL_API_KEY });
+    const offered = await m.models.discover(m.ada, ep.id);
     const want = offered.find((o) => o.modelId === process.env.LYRICA_EVAL_MODEL);
     if (!want) throw new Error(`the endpoint doesn't offer ${process.env.LYRICA_EVAL_MODEL}`);
     ref = { offeringId: want.id };
   }
-  m.models.setProfile(m.li.id, "cloud", "chat", ref);
+  m.models.setProfile(m.ada.id, "cloud", "chat", ref);
   const memory = new Memory(m.keyring, m.users);
   const persona = new PersonaStore(m.keyring.self());
   persona.importSeed(fileURLToPath(new URL("../persona", import.meta.url)));
@@ -45,7 +45,7 @@ async function setup(real: boolean) {
   dirs.push(cwd);
 
   // One project, with a thread already on DNS.
-  const setupView = memory.openThreadView(m.li.id, "general");
+  const setupView = memory.openThreadView(m.ada.id, "general");
   const project = setupView.own.createThread({ interface: "web", project: true, title: "Homelab", goal: "Move the homelab to the new rack" });
   const dns = setupView.own.createThread({ interface: "web", parent: project.id, child: true, title: "Move DNS to the router" });
   setupView.close();
@@ -60,13 +60,13 @@ async function setup(real: boolean) {
 
   /** What she did in one turn of the project chat: each tool she called. */
   const turn = async (request: string): Promise<Done[]> => {
-    const view = memory.openThreadView(m.li.id, "general");
-    const call: CallContext = m.models.callContext(m.li.id, "general", project.id);
-    const thread: ThreadContext = { user: m.li, pool: "general", interface: "web", threadId: project.id, view, call };
+    const view = memory.openThreadView(m.ada.id, "general");
+    const call: CallContext = m.models.callContext(m.ada.id, "general", project.id);
+    const thread: ThreadContext = { user: m.ada, pool: "general", interface: "web", threadId: project.id, view, call };
     const { session, dispose } = await openThreadSession({
       thread, models: m.models, cwd,
       extensions: [
-        createLyricaExtension(thread, { persona: () => persona.read(), profile: () => m.users.get(m.li.id)!.profile, projectThreads: () => `- [t:${dns.id}] "Move DNS to the router": working` }),
+        createLyricaExtension(thread, { persona: () => persona.read(), profile: () => m.users.get(m.ada.id)!.profile, projectThreads: () => `- [t:${dns.id}] "Move DNS to the router": working` }),
         createThreadsExtension(thread, host),
       ],
     });

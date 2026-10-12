@@ -9,10 +9,10 @@ of earlier choices are listed under [History](#history) so they aren't relitigat
 
 ## Who Lyrica is for
 
-Lyrica is one continuous companion, running on a server Li administers. Each
-person who uses her has one or more **users**. Li keeps several for herself
+Lyrica is one continuous companion, running on a server the owner administers. Each
+person who uses her has one or more **users**. The owner keeps several for themselves
 (for example a public-facing one and a private one), and someone else, such as
-Li's partner, can have their own. Each user has its own password, its own
+the owner's partner, can have their own. Each user has its own password, its own
 encrypted databases, its own endpoint and model settings, and its own memory.
 To Lyrica, each user is a different relationship. She is still one
 individual: her persona is the only thing users share.
@@ -24,7 +24,7 @@ individual: her persona is the only thing users share.
   - edit global settings such as the sleep time and the endpoint list.
 
   They can also **set any user's password** from Administration → Users
-  (2026-10-11, Li's decision): the server keeps a recovery copy of each
+  (decided 2026-10-11): the server keeps a recovery copy of each
   user's key in `self.db`, so nothing is lost. The administrator gives their
   own password again; the user is logged out everywhere and told who set
   it, until they change it themselves. So each user's data is encrypted with
@@ -52,7 +52,7 @@ individual: her persona is the only thing users share.
   cookie. No identity providers or roles beyond administrator.
 - **Names and pronouns.** Each user has a login name, a display name and
   pronouns. Users can change their display name and pronouns at any time in
-  settings, and previous names are kept with dates. The first user is **Li**.
+  settings, and previous names are kept with dates. The first user is the owner.
   Memory refers to users by token rather than by name, so a change never
   requires rewriting memories (see
   [docs/memory.md](docs/memory.md#names-and-pronouns)).
@@ -399,7 +399,7 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   She hears of the user's reactions in her next turn, in a `<reactions>`
   block of the turn message, never as a mark in the stored message. A
   reaction lives with its message in the pool (a branch keeps it; a share
-  doesn't carry it, since it names who reacted); sleep ignores it. Li asked
+  doesn't carry it, since it names who reacted); sleep ignores it. The owner asked
   for it as in Claude's interface (2026-10-12), and chose that Lyrica
   reacts too.
 - **Orphans are cleaned up.**
@@ -594,12 +594,12 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   can also add their own in their `user.db`.
 - **Hardware.**
   - Lyrica runs in a VM with an RTX 3090 (24 GB).
-  - Her larger models run on Li's workstation, on the LAN, with two RTX 6000
-    Pro Blackwell GPUs. It is also Li's gaming machine and dual-boots
+  - Her larger models run on the owner's workstation, on the LAN, with two RTX 6000
+    Pro Blackwell GPUs. It is also the owner's gaming machine and dual-boots
     Windows, so it is **not always available**. The 3090 VM is the
     always-on base.
-  - Both count as **local**: the data stays on Li's network.
-- **"Local" means on Li's own network:** the LAN, or Li's Tailscale tailnet.
+  - Both count as **local**: the data stays on the owner's network.
+- **"Local" means on the owner's own network:** the LAN, or the owner's Tailscale tailnet.
   - A model host, SSH target or allowed host reached over Tailscale
     (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`, or a `*.ts.net` name) counts as
     local, like one on the LAN.
@@ -721,7 +721,7 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     - Administrators pair **shared** hosts, in `self.db`, for every user. Any
       user can pair a **personal** host, in their `user.db`, that only they
       can use. Hosts are always local endpoints, with the usual warning if an
-      address resolves outside Li's network.
+      address resolves outside the owner's network.
   - **Management API.** Each host serves an OpenAI-compatible endpoint plus a
     small, authenticated management API: list, load, unload, status, and
     download models. Lyrica can start, stop and switch models on it.
@@ -886,7 +886,7 @@ it's off.
 
 ## Voice
 
-Li talks to her and hears her answer, in English and Mandarin. Speech is
+The user talks to her and hears her answer, in English and Mandarin. Speech is
 two model tasks, **Dictation** (`speech.transcribe`) and **Read aloud**
 (`speech.speak`), resolved by the router like any other task, so private and
 local-only threads use local speech models only.
@@ -905,7 +905,7 @@ local-only threads use local speech models only.
   confirmed pick is the consent, for that thread
   (and its branches) only; threads she starts from it begin without it.
   Without one, Dictation uses the local profile's
-  model, whatever the thread's profile (`voiceContext`). Li chose this over
+  model, whatever the thread's profile (`voiceContext`). The owner chose this over
   a separate Voice to cloud switch (2026-10-11). Her text read aloud is
   message text and follows the router's rules alone.
 - **Nothing is kept but text.** Audio is never written to disk or logged,
@@ -945,7 +945,7 @@ local-only threads use local speech models only.
 ## Projects
 
 A **project** is one place for a stream of related work, as in Claude's
-Projects: a running conversation, the **project chat**, where Li drops tasks,
+Projects: a running conversation, the **project chat**, where the user drops tasks,
 updates and questions as they come, and **threads** that Lyrica starts for
 the work and keeps track of. Agreed 2026-10-10. The back end and sleep's
 project page are built, and so is the web part except Files and images on
@@ -964,12 +964,12 @@ Project settings and Recent calls by project. The briefs are
   there; only her guidance and context differ. She answers a quick question
   in place, starts a thread for each piece of work (several tasks in one
   message become several threads), sends a follow-up to the thread already
-  on it and says which, and posts only what needs Li. When Li asks her to
-  propose first, she suggests threads instead of starting them. How Li wants
+  on it and says which, and posts only what needs the user. When the user asks her to
+  propose first, she suggests threads instead of starting them. How the user wants
   the project run ("two at a time", "only post when something is done") she
   saves as a project note and follows; it is guidance, not a hard limit.
 - **Threads hang off messages.** Each thread is anchored to the message in
-  the project chat that started it: her reply, or a message Li picks with
+  the project chat that started it: her reply, or a message the user picks with
   **Start a thread**. A branch of the project chat is a thread of the
   project, anchored where it branched. A branch of one of the project's
   threads is also a thread of the project, beside its source rather than
@@ -988,16 +988,16 @@ Project settings and Recent calls by project. The briefs are
   When a thread working on a task stops with an error or finishes without
   posting an update, the project chat is told, as for any child thread.
 - **States:** Working; **Waiting on you** (an approval, an update that asks
-  Li something, or a failed turn); Queued (started past the at-once limit,
+  the user something, or a failed turn); Queued (started past the at-once limit,
   which stays 2 per user; it waits its turn instead of being refused); Idle;
-  **Resolved**. A thread is resolved by Li, by Lyrica when its work is
+  **Resolved**. A thread is resolved by the user, by Lyrica when its work is
   delivered and nothing is owed, or after 7 days with no activity; a message
   in it reopens it.
-- **She watches her threads** (Li, 2026-10-11; a project setting, **Watching
-  threads**, on by default). When Li writes in one of the project's threads,
+- **She watches her threads** (2026-10-11; a project setting, **Watching
+  threads**, on by default). When the user writes in one of the project's threads,
   a thread posts an update, a thread's turn ends with an error, or a thread
   starts waiting for an approval, a **look** follows a little later,
-  batched across threads (Li, 2026-10-12: a look costs one small call, not
+  batched across threads (2026-10-12: a look costs one small call, not
   a turn). It is one call to the **Watching threads** model (a task that
   follows Cheap subagents unless set), through the project chat's own
   model settings, so a private or local-only project's look stays local. It
@@ -1005,23 +1005,23 @@ Project settings and Recent calls by project. The briefs are
   what was said, and what the last three looks told threads, and answers
   which threads to tell (at most 3, open ones of this project, one or two
   lines each, never a thread it was about unless that thread asked
-  something, which `lyricad` checks) and, rarely, one line to raise with Li. Each line goes to its
+  something, which `lyricad` checks) and, rarely, one line to raise with the user. Each line goes to its
   thread as a message from the project chat. The look is kept in the
   project chat as a short entry, without a turn: which threads it was about
   and why, and who was told what, never the quoted words. Only a raise
   starts a project-chat turn, on the chat's own model, with that entry and
   the raised line. A thread that isn't logged is left out, and so is a
   local-only thread unless the project chat is local-only too, since the
-  call quotes Li's words. Every look counts toward a run of 3 in a row
-  without Li; past it, Li's messages and updates bring no look until Li
+  call quotes the user's words. Every look counts toward a run of 3 in a row
+  without the user; past it, the user's messages and updates bring no look until the user
   writes in the project again, and a failure or an approval still brings
   one, which tells no thread but may raise, so threads can't keep each
   other going. Each failure or approval counts once a turn. With the
   setting off, nothing is looked at.
 - **Context set once.** Every thread of a project starts with the same
   project context, assembled each turn in its own budget:
-  - **Goal**: one line Li writes.
-  - **Instructions**: Li's text on the project's page in memory, User
+  - **Goal**: one line the user writes.
+  - **Instructions**: The user's text on the project's page in memory, User
     introduced, so authoritative and never rewritten by sleep.
   - **What she knows**: the rest of the project page, kept by sleep from the
     project's notes and threads, citing them.
@@ -1041,11 +1041,11 @@ Project settings and Recent calls by project. The briefs are
   (decided 2026-10-11; folders in
   [briefs/folder-narrowing.md](docs/briefs/folder-narrowing.md)). Two threads may
   write one file; her guidance is a subfolder per thread for its outputs.
-- **What Li sees:**
+- **What the user sees:**
   - In the sidebar a project is a thread row with a project icon, its
     threads nested under it with their state and unseen count, resolved ones
     folded under one **Resolved** row, and an amber dot on the project when a
-    thread waits on Li. Projects sit in the thread list, sorted and grouped
+    thread waits on the user. Projects sit in the thread list, sorted and grouped
     like any thread, and a project is **pinned** when it is made (New project
     or Make project), so it stays at the top; Unpin works as for any thread.
     **New project** is on the context menu of the thread list's empty space;
@@ -1056,7 +1056,7 @@ Project settings and Recent calls by project. The briefs are
     Its actions stay **Files** and **Settings**.
   - **Thread cards:** one per thread, under the message that started it,
     updated in place: title, state, what it waits on, the first line of its
-    last update, and the files it made. A card waiting on Li is covered by
+    last update, and the files it made. A card waiting on the user is covered by
     the chat's pending bar. **Suggested threads** is a card like the plan
     card, with **Start** per thread and **Start all**.
   - **Project settings** is a page with sections: General (Goal; Threads,
@@ -1070,7 +1070,7 @@ Project settings and Recent calls by project. The briefs are
     **Hide** stops it too. **Delete** forgets the project chat, its threads,
     its page, the notes that came only from it, and its folder.
   - **Waiting on you** is a type in Notifications.
-- **Wake-ups** (Li, 2026-10-12). Any thread with the `threads` tool can set
+- **Wake-ups** (2026-10-12). Any thread with the `threads` tool can set
   a one-shot wake-up for itself, `threads later` with minutes (1 to 7 days)
   and a note to itself; at that time the note starts a turn there, marked
   as a wake-up (a mark only `lyricad` writes), or joins the running turn.
@@ -1078,7 +1078,7 @@ Project settings and Recent calls by project. The briefs are
   fire a day, so a forgotten chain stops by itself; it counts against the
   at-once limit, waits while its project is paused, and a locked user's
   fire at unlock, saying when they were due. Stored in the thread's pool,
-  so it survives a restart. Li sees **Wake-up** and the next time in the
+  so it survives a restart. The user sees **Wake-up** and the next time in the
   thread's facts line, with Remove on each, and the time on a project
   thread's card.
 - **Not in projects:** routines (recurring schedules), moving an existing
@@ -1087,7 +1087,7 @@ Project settings and Recent calls by project. The briefs are
 
 ## Machines
 
-Lyrica works on Li's other computers: a VM, a single-board computer, the
+Lyrica works on the owner's other computers: a VM, a single-board computer, the
 NAS, and Proxmox nodes. Decided 2026-10-11 from
 `/mnt/project-files/remote/proposal.md`, which surveys what other agents do.
 
@@ -1099,13 +1099,13 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   must be enforced on the machine itself).
 - **A machine belongs to one pool.** A general thread uses general machines,
   a private thread private ones; a machine is never in both. A private
-  machine whose address resolves outside Li's LAN, loopback and tailnet is
+  machine whose address resolves outside the owner's LAN, loopback and tailnet is
   allowed through a dialog that states the consequence (what she reads
   and writes there leaves the network, and so can the thread's private
   memory) with Add anyway as its one action, and its row shows **Off
   network** while that holds: the address is checked again on every
   connection, and a private machine that has newly gone off network is
-  refused until Li confirms the dialog again, from **Use anyway** behind the
+  refused until the user confirms the dialog again, from **Use anyway** behind the
   row's ⋯. Changing a machine's pool
   removes it from every thread that grants it, and moving one from Private
   to General gets a dialog saying that what is already on the machine
@@ -1113,7 +1113,7 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   internet switch and allowed hosts cover the sandbox only: a machine's
   network is its own.
 - **A machine has a mode limit**, the loosest mode she may use there: Ask,
-  Accept edits or Auto. New machines start at **Ask**; Li loosens each one
+  Accept edits or Auto. New machines start at **Ask**; the owner loosens each one
   as she proves reliable there. A call's mode is the strictest of the
   thread's effective mode (already the strictest of its ancestors) and the
   machine's limit, read on every call. Plan mode may `read` on a machine and
@@ -1129,13 +1129,13 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   carries `restrict` and `from=` Lyrica's addresses, so a stolen key is
   useless elsewhere, and the machine's setup puts it in a root-owned file
   (`AuthorizedKeysFile /etc/ssh/authorized_keys/%u`), so no command she
-  runs can add a key to stay. Her sudo rights are the exact commands Li
+  runs can add a key to stay. Her sudo rights are the exact commands the owner
   lists; she never has a password.
 - **The host key is confirmed when the machine is added**, never pinned on
   first use: the Add machine page shows the fingerprint Lyrica sees next to
   the command that prints it on the machine, and on the tailnet also checks
   the key Tailscale publishes. A changed key fails every call, with no
-  fallback, until Li re-pairs. Strict key exchange is required.
+  fallback, until the user re-pairs. Strict key exchange is required.
 - **The SSH client runs outside `lyricad`**, in a sandboxed helper per
   connection that holds one machine's key and reaches one address, so a
   hostile server that breaks the SSH library gets one key it could already
@@ -1164,7 +1164,7 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   she or memory sees them. Secrets live on machines, which is why a machine
   that holds them belongs in the Private pool.
 - **Proxmox** is a kind of machine reached over its API, never a root shell.
-  Li makes a privilege-separated token (`pveum user token add lyrica@pve
+  The owner makes a privilege-separated token (`pveum user token add lyrica@pve
   agent -privsep 1`) with a custom role of `VM.Audit` and `VM.PowerMgmt` on
   the VMs or pool she may touch, plus `PVEAuditor` on `/` for reads; never
   the built-in PVEVMUser, whose console and guest-agent file rights amount
@@ -1174,7 +1174,7 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   mode limit like a command; stop and reboot are on the suspect list and ask
   with the warning in every mode until allowed in a thread. The node that
   runs Lyrica's own VM is not added until
-  Li finds her reliable; the Add machine page refuses it where it can tell.
+  the owner finds her reliable; the Add machine page refuses it where it can tell.
 - **The record is the thread.** Each remote call is a thread entry,
   encrypted in its pool; `write` and `edit` changes are recorded with
   snapshots as in the sandbox, so removing the turns undoes them; commands
@@ -1223,7 +1223,7 @@ Decided 2026-10-12 (docs/briefs/mcp.md).
 - **Approval.** A call to a tool its server marks read-only runs freely,
   and only those run in Plan mode. Every other call leaves the server, so
   it always asks, whatever the mode, with **Allow in this thread** for that
-  tool. A server's hints are its own claim: a server Li doesn't trust
+  tool. A server's hints are its own claim: a server the user doesn't trust
   shouldn't be added.
 - **Budget.** MCP tools are deferred, loaded by `tool_search` when she
   needs one, and count as one tool together (principle 8).
@@ -1324,7 +1324,7 @@ Details in [docs/memory.md](docs/memory.md).
   - Name tokens survive edits.
   - Sleep treats user edits as authoritative and asks rather than overwriting
     them.
-  - **The browser reads like a notebook** (Li, 2026-10-11, after Obsidian;
+  - **The browser reads like a notebook** (2026-10-11, after Obsidian;
     [briefs/memory-browser.md](docs/briefs/memory-browser.md)): a browse
     pane by layer (Pages, Notes, WAKE, Journal) with search above it, so
     memory can be read without searching; a page link in a memory's text
@@ -1419,8 +1419,8 @@ Details in [docs/sleep.md](docs/sleep.md).
 - **Integrations:** Google Calendar, iCloud and CalDAV (which covers Nextcloud)
   for calendars; files, notes, downloads and email for sorting. Each sits behind
   a common adapter interface, and they don't all need to be connected at first.
-- **Machines:** working on Li's other computers over SSH, and on Proxmox
-  through its API, one machine at a time as Li finds her reliable (see
+- **Machines:** working on the owner's other computers over SSH, and on Proxmox
+  through its API, one machine at a time as the owner finds her reliable (see
   [Machines](#machines)). The Proxmox node that runs her own VM waits until
   then.
 
@@ -1495,7 +1495,7 @@ Details in [docs/sleep.md](docs/sleep.md).
   parent turned off, even later. Local-only and the pool are not switches here: they
   stay in the thread's settings, where changing them is deliberate.
 - **Deployment:** `lyricad` runs as a systemd service, in practice on a
-  NixOS VM on Li's Proxmox (her expected home, Li 2026-10-12), or on Debian
+  NixOS VM on the owner's Proxmox (her expected home, decided 2026-10-12), or on Debian
   or Ubuntu in an LXC container or VM. No Docker. The host needs bubblewrap,
   gocryptfs, pasta, FUSE and unprivileged user namespaces. In an LXC container, that
   means turning on the nesting and FUSE features. On Debian or Ubuntu, one install script sets up
@@ -1514,7 +1514,7 @@ Details in [docs/sleep.md](docs/sleep.md).
 - **Reaching the web UI:**
   - `lyricad` serves plain HTTP on `127.0.0.1` behind an HTTPS proxy. The
     browser never gets plain HTTP: login cookies are `Secure`.
-  - The name is a subdomain of Li's domain (for example
+  - The name is a subdomain of the owner's domain (for example
     `lyrica.example.net`), whose DNS record points at a Tailscale address. On
     the LAN, local (split) DNS gives the same name a LAN address, so one
     certificate works for both.
@@ -1561,14 +1561,14 @@ Details in [docs/sleep.md](docs/sleep.md).
       tailnet needs MagicDNS and HTTPS certificates on) and proxies to
       the loopback port, as Caddy does. No domain, DNS record or token;
       the front door is 443 on her Tailscale address and that name.
-      Built-in Caddy stays for a name under Li's domain and for the LAN.
-    - **Built-in Caddy**, for a name under Li's own domain. Lyrica's install includes a pinned
+      Built-in Caddy stays for a name under the owner's domain and for the LAN.
+    - **Built-in Caddy**, for a name under the owner's own domain. Lyrica's install includes a pinned
       Caddy, built with the DNS plugins for several common providers, running
       as its own service. `lyricad` writes Caddy's whole configuration through
       Caddy's admin API, on a Unix socket only `lyricad` can use. The panel
       sets the name, which addresses to serve on (Tailscale, LAN), the DNS
       provider and its credentials, and shows the certificate's state.
-    - **External proxy**: a Caddy, or another proxy, elsewhere on Li's
+    - **External proxy**: a Caddy, or another proxy, elsewhere on the owner's
       network. `lyricad` also listens on one Tailscale or LAN address and
       accepts connections only from the proxy addresses listed in the panel.
       Over Tailscale the hop is plain HTTP inside WireGuard. Over the LAN it is
@@ -1720,7 +1720,7 @@ from Monika's runbooks.
   A repository or account taken away leaves running threads at once, as a
   folder or machine does. Tokens only, no SSH keys; `gh` for GitHub,
   `tea` for Gitea and Forgejo, plain git for Other.
-- **Git etiquette** (Li, 2026-10-12). A short Git guide ships with the code
+- **Git etiquette** (2026-10-12). A short Git guide ships with the code
   and is in the prompt of every turn of a thread that has repositories:
   never commit on the default branch, one branch per piece of work named
   for it; small commits with clear messages, never a secret or private
@@ -1739,32 +1739,32 @@ from Monika's runbooks.
 - **Her own GitHub account**, a collaborator with a fine-grained token for
   this repository (contents, pull requests), is one of her Git accounts.
   She pushes branches to the repository itself, never a fork, so her pull
-  requests run the same CI as Claude's on Li's runners (docs/ci.md), with
+  requests run the same CI as Claude's on the owner's runners (docs/ci.md), with
   no first-time-contributor approval. `main` is protected: pull requests
   only, green CI, one approval from someone other than the author; nothing
-  of hers merges without both. Li's own account may bypass the rules as
+  of hers merges without both. The owner's own account may bypass the rules as
   administrator, because Claude's threads work through it and could
   never approve their own PRs.
 - **Review is the project's.** Her PRs go through the same PR review (and
-  UI review) as Claude's, which approves and merges them, so Li doesn't
-  read every change. **Boundary code needs Li** (Li chose a rule over
+  UI review) as Claude's, which approves and merges them, so the owner doesn't
+  read every change. **Boundary code needs the owner** (the owner chose a rule over
   a gate, 2026-10-11): keys, the privacy boundary, the model router, the
   sandbox, authentication, deployment, the updater and CI. `CODEOWNERS`
-  names Li for those paths, so GitHub asks for Li's review on any PR
-  that touches them, and PR review asks Li before approving one of hers.
-  Claude's reviews act through Li's account, so GitHub can't tell the two
+  names the owner for those paths, so GitHub asks for the owner's review on any PR
+  that touches them, and PR review asks the owner before approving one of hers.
+  Claude's reviews act through the owner's account, so GitHub can't tell the two
   approvals apart: this is a rule the reviewers follow, not a gate. She
   may push only `lyrica/*` branches and `update/*` tags.
 - **Working alongside Claude.** One repository, one set of rules
   (AGENTS.md), one review. Work is claimed as a GitHub issue with one
-  assignee, her account or Li, so two never build the same thing; she
+  assignee, her account or the owner, so two never build the same thing; she
   takes what she notices in use (the friction log from PRINCIPLES.md's
   Evaluation, small features, her own tooling), Claude's threads take
   briefs. Her branches are `lyrica/*`, Claude's `feature/*` and `claude/*`. Whoever
   merges second merges `main` in first. She can't reach Claude's threads;
   an issue labelled `claude` is how she asks for something, and a PR
   comment how she answers a review. Design changes go through the design
-  owner as they do now, and Li decides. An update note covers everything
+  owner as they do now, and the owner decides. An update note covers everything
   merged since the running version, Claude's PRs included.
 - **Her own project.** She starts with no memory of how this project
   runs, so the handoff is written down: a project "Lyrica" in her own
@@ -1779,7 +1779,7 @@ from Monika's runbooks.
   her own; the updater needs only git and a read-only key; update notes
   are git tags; CI is Actions-syntax workflows. Moving to Forgejo or
   Gitea means adding a Git account of that kind, re-creating her account
-  and branch protection there, running their Actions runner on Li's VMs
+  and branch protection there, running their Actions runner on the owner's VMs
   with the same label, plus `CODEOWNERS` and the branch limit in that
   forge's own rules; the client (`tea`) follows the account's kind. Claude's project threads
   are the part that is tied to GitHub.
@@ -1836,7 +1836,7 @@ new evidence.
     forgetting receipts.
 - **Plain files in git → encrypted SQLite (2026-10-09).** Readable markdown in
   a repository wasn't private enough.
-- **No accounts → personas as users (2026-10-09).** Li's personas need
+- **No accounts → personas as users (2026-10-09).** The owner's personas need
   separate credentials and fully separate data.
 - **"Spaces" → users with general and private pools (2026-10-09).** This is
   simpler than per-space flags, and private reading general is safe because
@@ -1855,13 +1855,13 @@ new evidence.
     fit it. A feature-complete version of our own is estimated at 1,500 to
     2,500 lines on Pi's SDK.
   - We borrow its role prompts and feature list, not its runtime.
-- **Personas → users who may be different people (2026-10-09).** Li's
+- **Personas → users who may be different people (2026-10-09).** The owner's
   partner may use Lyrica too. Switching without a password is now limited to
   linked users, persona proposals need the originating user's consent before
   an administrator sees them, and staying unlocked after logout is a per-user
   choice.
 - **Model host: native install → containers (2026-10-09).** The Blackwell
-  machine is Li's personal workstation. A Compose stack keeps the GPU stacks
+  machine is the owner's personal workstation. A Compose stack keeps the GPU stacks
   pinned and apart from the rest of the machine, with images per GPU vendor,
   and is easy to add or remove. Windows isn't a model host. `lyricad` stays
   native.
@@ -1878,21 +1878,21 @@ new evidence.
   room for web research, then because Lyrica works like a coding agent (files,
   commands, SSH). The budget still exists so that every tool has to justify
   itself.
-- **Remote machines: "much later" → now (2026-10-11).** Working on Li's
+- **Remote machines: "much later" → now (2026-10-11).** Working on the owner's
   other computers was deferred until she had proven reliable. It comes
   forward as an extension of the SSH targets that already exist, with each
   machine starting at Ask and loosened one at a time, and Proxmox through a
   narrow API token rather than a root shell. The node that runs her own VM
   still waits.
-- **NixOS (2026-10-11).** Li asked to deploy to NixOS, as a flake. The flake
+- **NixOS (2026-10-11).** The owner asked to deploy to NixOS, as a flake. The flake
   packages lyricad and exports a NixOS module that declares what the install
   script does; nixpkgs packaging was left out while Lyrica changes daily.
   NixOS has no `/usr` to share, so sandboxes get the module's tools as
   `/usr` with only their closure in `/nix/store`, because the whole store
-  holds generated system configs. Li chose the same Update button on NixOS
+  holds generated system configs. The owner chose the same Update button on NixOS
   (through a Lyrica-only Nix profile) over updating only with
   `nixos-rebuild`. It is documented in daemon.md, not a page of its own.
-- **Operator guides added to the docs budget (2026-10-11).** Li asked for
+- **Operator guides added to the docs budget (2026-10-11).** The owner asked for
   human-readable documentation on running Lyrica: bootstrapping her on a new
   system, deploying model hosts, adding CI runners. They live in
   `docs/guides/`, one page per task, written from the scripts and the
@@ -1903,18 +1903,18 @@ new evidence.
   PRs change what an operator does by hand, and by a weekly drift check.
 - **Updates: copy over → releases with rollback (2026-10-11).** `install.sh`
   replaced the code in place, so a bad update could only be fixed by hand.
-  Li asked for a way for Lyrica to edit herself without permanently breaking
+  The owner asked for a way for Lyrica to edit herself without permanently breaking
   her installation; every update now keeps the previous release and a
   database snapshot, and rolls back by itself. Her code changes go through
   the same review as Claude's.
 - **First run: a CLI step → the setup page (2026-10-11).** `lyrica admin
   init` at a terminal, then an SSH tunnel, Start unlocked, Web access with
   a domain and a DNS token, and Endpoints stood between installing her and
-  her first word. Li asked for the web UI to do it: `lyricad` now starts
+  her first word. The owner asked for the web UI to do it: `lyricad` now starts
   without `self.db` and serves the setup page, behind a one-time code; the
   tailnet is joined from that page and managed from Administration instead
   of by hand, with a tailscaled of her own so she is a device of her own
-  and the host's membership is never hers to break (Li's question and PR
+  and the host's membership is never hers to break (the owner's question and PR
   review, the same evening), a Direct mode serves a headless host's setup
   page over HTTPS on the LAN, and a Tailnet web access mode through
   `tailscale serve` replaces the domain and DNS token for the common case.

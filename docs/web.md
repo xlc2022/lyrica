@@ -679,8 +679,8 @@ turns animations off.
   also serves a fake speech endpoint (whisper and kokoro, under `/speech/v1`,
   and `/speech/down` to make it fail). Chromium runs with a fake microphone.
 - For development, `npx tsx web/e2e/serve.ts 7340 7350` starts the same
-  throwaway `lyricad` (passphrase `correct horse`, login `li` / `pw`), and
+  throwaway `lyricad` (passphrase `correct horse`, login `ada` / `pw`), and
   `npm run dev -w @lyrica/web` serves the UI with `/api` passed to it.
 - `npx tsx web/e2e/shot.ts [page]...` (after a build) saves screenshots of
-  li's pages from that same throwaway `lyricad`, at both widths, light and
+  ada's pages from that same throwaway `lyricad`, at both widths, light and
   dark (docs/workspace.md, "Her own code").
