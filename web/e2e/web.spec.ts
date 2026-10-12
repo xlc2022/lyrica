@@ -477,6 +477,30 @@ test("the composer's draft survives a reload, goes once sent, and stays with its
   await expect(box).toHaveValue("");
 });
 
+test("after a reply the header's Context shows the percent, and its popover lists the parts", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  const facts = page.locator(".thread-head .tfacts");
+  await expect(facts.getByRole("button", { name: /^Context/ })).toHaveCount(0);
+  await send(page, "How full is it");
+  await expect(page.getByText("You said: How full is it")).toBeVisible();
+  // From the stream's context event, without a reload.
+  const meter = facts.getByRole("button", { name: /^Context \d+%$/ });
+  await expect(meter).toBeVisible();
+  await expect(meter.locator(".num")).toHaveCSS("font-family", /Plex Mono|monospace/);
+  await meter.click();
+  const popover = page.getByRole("dialog", { name: "Context" });
+  for (const name of ["Conversation", "Free"]) {
+    const row = popover.getByRole("listitem").filter({ hasText: new RegExp(`^${name}`) });
+    await expect(row.locator(".num")).toHaveText(/^[\d,]+$/);
+  }
+  await expect(popover.getByText(/^Measured /)).toBeVisible();
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/context-${page.viewportSize()!.width}.png` });
+  await page.keyboard.press("Escape");
+  await expect(popover).toHaveCount(0);
+});
+
 test("a memory can be added, edited and restored", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   // A thread mention in a memory shows as a link to that thread.
