@@ -249,7 +249,7 @@ describe("host management", () => {
     await expect(s.models.manageHost(s.bob, s.bigEp.id, "POST", "/host/v1/models/unload", { model: "x" })).rejects.toThrow(Forbidden);
     // Serving settings go through setServingSettings, which reads the model again.
     await expect(s.models.manageHost(s.ada, s.bigEp.id, "PUT", "/host/v1/models/settings", {})).rejects.toThrow(/isn't host management/);
-    expect(s.models.hostDashboard(s.bob.id, s.bigEp.id)).toBe(`https://${s.big.address}/`);
+    expect(() => s.models.hostDashboard(s.bob, s.bigEp.id)).toThrow(Forbidden);
   });
 
   it("links the dashboard at the address the host last answered on", async () => {
@@ -257,7 +257,7 @@ describe("host management", () => {
     const closed = await new Promise<number>((r) => { const srv = createServer().listen(0, "127.0.0.1", () => { const p = (srv.address() as { port: number }).port; srv.close(() => r(p)); }); });
     s.models.setHostAddresses(s.ada, s.bigEp.id, [`127.0.0.1:${closed}`, s.big.address]);
     await s.models.hostStatus(s.ada.id, s.bigEp.id);
-    expect(s.models.hostDashboard(s.ada.id, s.bigEp.id)).toBe(`https://${s.big.address}/`);
+    expect(s.models.hostDashboard(s.ada, s.bigEp.id)).toBe(`https://${s.big.address}/`);
   });
 
   it("gives the Models page an answer within its budget when a host is off, and doesn't ask again while it's down", async () => {

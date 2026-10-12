@@ -283,7 +283,7 @@ A thread's address may carry what the panel beside it shows:
   Unpaired when the host has revoked this server), Pause or Resume
   (administrators on a shared host; disabled with "Nothing is loaded"),
   or **Pair again…** in their place while Unpaired, opening Pairing code
-  and **Pair** in the card (otherwise Pair again… is in the ⋯), Dashboard (`GET …/dashboard`, a new tab), "N models"
+  and **Pair** in the card (otherwise Pair again… is in the ⋯), Dashboard (`GET …/dashboard`, a new tab; administrators on a shared host), "N models"
   opening its model list (a speaking model's **Settings** there), the facts
   line (shared or only you, paired unless Unpaired, ID and addresses in mono, **Edit** for
   the addresses, `PUT …/addresses`), per GPU its card, used/total in mono,

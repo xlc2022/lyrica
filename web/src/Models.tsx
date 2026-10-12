@@ -338,7 +338,7 @@ function HostRow({ ctx, ep, host }: { ctx: MCtx; ep: Endpoint; host?: Host }) {
       </div>
       <div className="actions">
         {canEdit(ctx, ep) && <PauseButton ctx={ctx} ep={ep} host={host} />}
-        <DashboardButton ctx={ctx} ep={ep} />
+        {canEdit(ctx, ep) && <DashboardButton ctx={ctx} ep={ep} />}
       </div>
     </li>
   );
@@ -835,7 +835,7 @@ function HostCard({ ctx, ep, host, others, onVoice }: { ctx: MCtx; ep: Endpoint;
           {editable && (revoked
             ? <button type="button" className="sm" aria-expanded={code !== undefined} aria-controls={`${id}-pair`} onClick={() => setCode(code === undefined ? "" : undefined)}>Pair again…</button>
             : <PauseButton ctx={ctx} ep={ep} host={host} />)}
-          <DashboardButton ctx={ctx} ep={ep} />
+          {editable && <DashboardButton ctx={ctx} ep={ep} />}
           <button type="button" className="link sm" aria-expanded={open} onClick={() => setOpen(!open)}>{plural(ep.models.length, "model", "models")}</button>
           {editable && <RowMenu label={`Actions for ${ep.name}`} items={revoked ? actions.items : [actions.items[0]!, { label: "Pair again…", onPick: () => setCode("") }, ...actions.items.slice(1)]} />}
         </div>
@@ -1000,7 +1000,8 @@ function PlanSignIn({ ctx, plan, name, ep, onDone }: { ctx: MCtx; plan: PlanKind
   useEffect(() => () => { if (live.current) void del(u(userId, "plans", "sign-in", live.current)).catch(() => {}); }, [userId]);
   const start = () => run(async () => {
     const tab = open("about:blank", "_blank");
-    const s = await post<PlanSignInStarted>(u(userId, "plans", "sign-in"), ep ? { endpointId: ep.id } : { plan, name });
+    let s: PlanSignInStarted;
+    try { s = await post<PlanSignInStarted>(u(userId, "plans", "sign-in"), ep ? { endpointId: ep.id } : { plan, name }); } catch (e) { tab?.close(); throw e; }
     live.current = s.id;
     setStarted(s);
     if (tab) { tab.opener = null; tab.location.href = s.url; } else open(s.url, "_blank", "noopener");
