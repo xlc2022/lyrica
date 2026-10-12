@@ -9,6 +9,7 @@ import {
 import type { ThreadContext } from "../index.ts";
 import { syncEntries, toStoredEntry } from "../record.ts";
 import { openThreadSession } from "../session.ts";
+import { createMcpServersExtension } from "../mcp.ts";
 import { createWebExtension } from "../web.ts";
 import { createWorkspaceExtension, type ApprovalRequest } from "../workspace.ts";
 import { rolesFor } from "./roles.ts";
@@ -884,15 +885,20 @@ export class Delegation {
         note: (text) => this.note(sub!, text),
       };
       const extensions: ExtensionFactory[] = [];
+      let mcp = false;
       if (workspace) {
         const p = { userId: parent.user.id, pool: parent.pool, threadId: parent.threadId };
         let grants = this.grants(run, narrowing);
         if (role.readOnly || narrowing.readOnly) grants = grants.map((g) => ({ ...g, writable: false }));
         if (worktrees.length) grants = worktreeGrants(grants, worktrees);
-        // A machine is reached through bash, which no sandbox mount or network rule narrows: a read-only,
-        // offline or folder-narrowed subagent, or a writer in its own worktree, gets none.
+        // A machine is reached through bash, and an MCP server from lyricad, which no sandbox mount or network rule narrows:
+        // a read-only, offline or folder-narrowed subagent, or a writer in its own worktree, gets none.
         const noMachines = role.readOnly || narrowing.readOnly || narrowing.internet === false || !!narrowing.folders || worktrees.length > 0;
-        workspace.inheritSettings(p, child.id, { grants, ...(narrowing.internet === false ? { internet: false } : {}), ...(noMachines ? { machines: [], repositories: [] } : {}) });
+        // Offline means web_search too: SearXNG is asked from lyricad, not the sandbox.
+        workspace.inheritSettings(p, child.id, {
+          grants, ...(narrowing.internet === false ? { internet: false, webSearch: false } : {}),
+          ...(noMachines ? { machines: [], repositories: [], mcpServers: [] } : {}),
+        });
         // Its settings follow its parent's as they are now (the stricter mode, switches off where theirs are); it can't leave Plan mode itself.
         // It works in its parent's clones, which the parent fetched at its turn's start; read-only when it gets
         // no repositories, so a narrowed or read-only subagent, or a writer in a worktree, can't change them.
@@ -900,10 +906,16 @@ export class Delegation {
         extensions.push(createWorkspaceExtension({ ...tools, approve: (r) => this.approve(sub!, r) }));
         // Its role says whether it searches; its Web search switch is its parent's or off.
         extensions.push(createWebExtension({ searxng: () => this.o.searxng?.(), target: () => tools.target() }));
+        // Its parent's MCP servers, read live, so one taken from the parent goes from it too; its calls ask in both threads.
+        if (tools.mcpServers().length) {
+          extensions.push(createMcpServersExtension(tools));
+          mcp = true;
+        }
       }
       const nested = this.depth(ctx) < this.limits.depth;
       if (nested) extensions.push(createDelegateExtension(ctx, this, run.budget));
-      const allowed = new Set([...role.tools, "ask_parent", ...(nested ? ["delegate"] : [])]);
+      // tool_search loads the MCP tools, which register after its role's tools are set, so the role doesn't turn them off.
+      const allowed = new Set([...role.tools, "ask_parent", ...(nested ? ["delegate"] : []), ...(mcp ? ["tool_search"] : [])]);
       extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed, this.o.name?.() ?? "Lyrica"));
       const opened = await openThreadSession({ thread: ctx, models, cwd: this.o.cwd, extensions });
       opened.session.setThinkingLevel(role.thinking);

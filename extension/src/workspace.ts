@@ -4,7 +4,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
 import {
-  PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, WORKDIR, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  mcpNamespace, PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, WORKDIR, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -29,6 +29,10 @@ export interface ThreadTools {
   addRepository?(r: ThreadRepository): ThreadRepository[];
   /** The Git accounts of the thread's pool, by name. */
   gitAccounts?(): { name: string; kind: string; host: string }[];
+  /** The MCP servers the thread may use now, by name. Without it, none: a call to an MCP tool is refused. */
+  mcpServers?(): { name: string }[];
+  /** Whether Li allowed this MCP tool on this server in this thread. */
+  toolAllowedInThread?(server: string, tool: string): boolean;
   /** One action on one of the thread's Proxmox machines. Without it, there is no proxmox tool. */
   proxmox?(machine: string, action: ProxmoxAction, vm?: string): Promise<string>;
   /**
@@ -59,6 +63,9 @@ export interface ApprovalRequest {
   cwd?: string;
   /** A suspect command: the warning sentence. The answer may allow it in this thread. */
   warning?: string;
+  /** An MCP call: the server's name and the tool's own name on it. The answer may allow that tool in this thread. */
+  server?: string;
+  serverTool?: string;
 }
 
 export interface PlanRequest {
@@ -87,8 +94,12 @@ const ASKS: Record<PermissionMode, string[]> = {
   plan: [],
 };
 
-/** The only tools Plan mode leaves on: the ones that read, read-only delegation, her child threads (where compacting her own context is too), and propose_plan. */
-export const PLAN_TOOLS: ReadonlySet<string> = new Set(["read", "recall", "read_memory", "web_search", "web_fetch", "delegate", "ask_parent", "threads", "react", "propose_plan", "proxmox"]);
+/**
+ * The only tools Plan mode leaves on: the ones that read, read-only
+ * delegation, her child threads (where compacting her own context is too),
+ * propose_plan, and tool_search; of MCP tools, those their server marks read-only.
+ */
+export const PLAN_TOOLS: ReadonlySet<string> = new Set(["read", "recall", "read_memory", "web_search", "web_fetch", "delegate", "ask_parent", "threads", "react", "propose_plan", "proxmox", "tool_search"]);
 
 /** Tools that change things outside but ask on their own card, with the change in words, so the generic approval doesn't ask too. */
 const OWN_CARD: ReadonlySet<string> = new Set(["models"]);
@@ -124,8 +135,16 @@ const shown = (tool: string, input: Record<string, unknown>, machine: string | u
  */
 export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
   return (pi) => {
-    // proxmox is offered only while the thread has a Proxmox machine.
-    const off = () => [...toolsOff(tools.settings(), pi.getAllTools().map((t) => t.name)),
+    /** An MCP tool's server (one of the thread's, or none) and its own name there, and whether the server marks it read-only. */
+    const mcpCall = (name: string) => {
+      if (!name.startsWith("mcp__")) return undefined;
+      const info = pi.getAllTools().find((t) => t.name === name);
+      const ns = info?.namespace?.name ?? "";
+      const server = tools.mcpServers?.().find((s) => mcpNamespace(s.name) === ns)?.name;
+      return { server, tool: name.startsWith(`${ns}__`) ? name.slice(ns.length + 2) : name, readOnly: info?.annotations?.readOnlyHint === true };
+    };
+    // proxmox is offered only while the thread has a Proxmox machine. An MCP tool its server marks read-only stays on in Plan mode.
+    const off = () => [...toolsOff(tools.settings(), pi.getAllTools().filter((t) => !(t.name.startsWith("mcp__") && t.annotations?.readOnlyHint === true)).map((t) => t.name)),
       ...(tools.proxmox && !tools.machines?.().some((m) => m.kind === "proxmox") ? ["proxmox"] : []),
       ...(tools.addRepository && !tools.gitAccounts?.().length ? ["add_repository"] : [])];
     const gate = (ctx: ExtensionContext) => setToolsOff(pi, ctx, "workspace", off());
@@ -220,6 +239,15 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         return { block: true, reason: `${event.toolName} is off in this thread${tools.settings().mode === "plan" ? " (Plan mode)" : ""}.` };
       }
       const input = event.input as Record<string, unknown>;
+      // An MCP tool: one its server marks read-only runs; any other leaves the server, so it always asks, in every mode.
+      const mcp = mcpCall(event.toolName);
+      if (mcp) {
+        if (!mcp.server) return { block: true, reason: `${event.toolName} isn't a tool of this thread's MCP servers.` };
+        if (mcp.readOnly || tools.toolAllowedInThread?.(mcp.server, mcp.tool)) return undefined;
+        const request: ApprovalRequest = { toolCallId: event.toolCallId, tool: event.toolName, input, server: mcp.server, serverTool: mcp.tool };
+        const allowed = tools.approve ? await tools.approve(request) : await approve(ctx, request);
+        return allowed ? undefined : { block: true, reason: "Not approved. Ask what to do instead." };
+      }
       const pve = event.toolName === "proxmox";
       const place = event.toolName in TOOLS ? (input.machine as string | undefined) || "sandbox" : pve ? String(input.machine) : undefined;
       const machine = place && place !== "sandbox" ? tools.machines?.().find((m) => m.name === place && (m.kind === "proxmox") === pve) : undefined;
@@ -299,6 +327,7 @@ async function exists(target: ExecutionTarget, path: string): Promise<boolean> {
 
 async function approve(ctx: ExtensionContext, r: ApprovalRequest): Promise<boolean> {
   if (!ctx.hasUI) return false;
+  if (r.server) return ctx.ui.confirm(`Allow ${r.server}'s ${r.serverTool}?`, JSON.stringify(r.input, null, 2));
   const what = r.tool === "bash" ? String(r.input.command) : r.tool === "proxmox" ? `proxmox ${suspectKey(r.tool, r.input)}` : `${r.tool} ${String(r.input.path)}`;
   return ctx.ui.confirm(r.machine ? `Allow this on ${r.machine}?` : "Allow this?", [r.warning, what].filter(Boolean).join("\n"));
 }

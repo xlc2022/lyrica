@@ -12,7 +12,8 @@
 // and /cloud/v1 "cloud-model". /speech/v1 is a speech server: "whisper"
 // transcribes any clip as "hello from the fake" and "kokoro" speaks a second
 // of PCM; POST /speech/down and /speech/up make the whole server fail (503)
-// or answer again.
+// or answer again. An MCP server ("house", get_status and turn_on) listens on
+// the model port + 20, and "mcp: <tool>" searches for that tool and calls it.
 import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -20,6 +21,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Keyring, PersonaStore, PRONOUN_PRESETS, SystemdCredentials, Users } from "@lyrica/core";
 import { Lyricad } from "@lyrica/daemon";
+import { testMcpServer } from "../../core/test/mcp-server.ts";
 
 export const PASSPHRASE = "correct horse";
 const ARGON2 = { memoryCost: 1024, timeCost: 1, parallelism: 1 };
@@ -90,6 +92,17 @@ function fakeModel() {
       // "start long: <title>" gives the child a task of many lines, for the collapsed message's Show more.
       const task = said.startsWith("start long:") ? Array.from({ length: 30 }, (_, i) => `Step ${i + 1} of the plan for ${child}.`).join("\n\n") : `Work on ${child}.`;
       const suggest = /^suggest: (.+)/.exec(said)?.[1];
+      // "mcp: <tool>": tool_search for it, then the house server's tool, then the usual echo.
+      const mcpTool = /^mcp: (\w+)/.exec(said)?.[1];
+      const sinceUser = chat.messages.length - 1 - chat.messages.map((m) => m.role).lastIndexOf("user");
+      if (mcpTool && sinceUser < 4) {
+        const step = sinceUser ? chat.messages.slice(-sinceUser).filter((m) => m.role === "tool").length : 0;
+        const call = step === 0 ? { name: "tool_search", arguments: JSON.stringify({ query: mcpTool.replace(/_/g, " ") }) } : { name: `mcp__house__${mcpTool}`, arguments: JSON.stringify({ entity: "light.kitchen" }) };
+        send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: call }] });
+        send({}, "tool_calls");
+        res.write(`data: ${JSON.stringify({ ...base, choices: [], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } })}\n\n`);
+        return res.end("data: [DONE]\n\n");
+      }
       // A look at the project's threads: tell the first of its threads that the look wasn't about.
       if (said.includes("watching the threads of one of your projects")) {
         const about = new Set([...said.matchAll(/^In \[t:([^\]\s]+)\]/gm)].map((m) => m[1]));
@@ -135,6 +148,8 @@ if (!settingUp) {
 
 const model = fakeModel();
 await new Promise<void>((r) => model.listen(modelPort, "127.0.0.1", r));
+// An MCP server, "house", on the model port + 20: get_status reads, turn_on doesn't.
+const house = await testMcpServer({ port: modelPort + 20, instructions: "Home Assistant: lights and sensors." });
 const daemon = new Lyricad({
   home, port, argon2: ARGON2, selfTest: false, socket: false, permissionMs: 60_000, watchMs: 1500,
   // Two of these run side by side: her tailnet's loopback port picks a free one, not 7342.
@@ -148,6 +163,6 @@ await daemon.start();
 if (settingUp) copyFileSync(join(home, "setup-code"), setupCodeFile(port));
 console.log(`lyricad for e2e on http://127.0.0.1:${port}, model on ${modelPort}`);
 
-const stop = async () => { await daemon.stop(); model.close(); rmSync(home, { recursive: true, force: true }); process.exit(0); };
+const stop = async () => { await daemon.stop(); model.close(); await house.close(); rmSync(home, { recursive: true, force: true }); process.exit(0); };
 process.on("SIGTERM", () => void stop());
 process.on("SIGINT", () => void stop());

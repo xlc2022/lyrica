@@ -532,6 +532,42 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   for CI, read a failing check's log and never merge on red, the merge
   queue where there is one, delete merged branches. The project's instructions win where they differ.
 
+## MCP servers
+
+A service with an MCP server (Home Assistant, a calendar, a docs site)
+gives her its tools through Pi's own MCP client (DESIGN.md, "MCP servers").
+
+- **A server** is a row in Settings → **MCP servers**, kept in the user's
+  `user.db` (`mcp_servers`, user step 3): a name (letters, digits, `-`
+  and `_`), a URL, an optional token never shown back, a pool, and the
+  description and tool count from its last check. Only remote servers
+  (streamable HTTP): a stdio `command` is refused. Adding one, or replacing
+  its token, runs `initialize` and `tools/list` first (`probeMcp` in
+  `core/src/workspace/mcp.ts`) and saves nothing when that fails. A
+  general server with a token must use https. A private server's host
+  must resolve on her own network, as for a private Git account, with
+  **Off network** and **Use anyway** when it stops doing so. Each use
+  records Online, Token rejected (401 or 403) or Unreachable.
+- **A thread's servers** are granted like repositories: the MCP servers
+  row in the thread drawer and under This chat on Project settings, so a
+  project's threads get the project chat's servers or fewer. A private or
+  local-only thread takes only private servers, a general thread only
+  general ones. A new pool, removing a server, or taking it off a project
+  takes it from running threads at once: the next call to it is refused.
+- **In a session** (`createMcpServersExtension`, `extension/src/mcp.ts`)
+  each granted server is registered with Pi's `registerMcpServer`, exposure
+  `deferred`, so its tools are loaded by `tool_search` when she needs one.
+  Pi's own `mcp.json` files are never read, its `mcp.log` is `/dev/null`,
+  and the transport sends the token as a bearer header itself (no
+  `${VAR}` or `!command` expansion), refuses redirects, drops servers'
+  log notifications, and cuts each result to 16 KB in memory, a binary
+  resource replaced by a line naming it, so nothing reaches disk.
+- **Approval:** a tool its server marks read-only (`readOnlyHint`) runs
+  freely, and only those (with `tool_search`) are on in Plan mode. Every
+  other call asks, whatever the mode, with **Allow in this thread** for
+  that tool. A read-only or narrowed subagent gets no MCP servers; an
+  unnarrowed writer gets its parent's, and its calls ask in both threads.
+
 ## Her own code
 
 She changes her own code the way Claude's feature threads do: the
@@ -623,7 +659,7 @@ judgment and make review easy. Each thread has a **mode**:
 - **Ask** (`ask`): asks before `bash`, `write` and `edit`, since a command
   can change files too.
 - **Accept edits** (`acceptEdits`): asks before `bash`.
-- **Plan** (`plan`): only `read`, `recall`, `read_memory`, `web_search`,
+- **Plan** (`plan`): only `read`, `recall`, `read_memory`, `web_search`, read-only MCP tools and `tool_search`,
   `web_fetch`, `proxmox` for reading, `delegate` with read-only roles, a subagent's `ask_parent`,
   `threads` (her child threads, and compacting her context), `react` and
   `propose_plan` are active. A child thread of a Plan-mode thread is in
@@ -657,7 +693,8 @@ UI asks; with no UI she keeps planning.
 
 Anything irreversible that leaves the server, such as sending a message,
 deleting remote data or spending money, always asks, whatever the mode: a tool
-annotated as reaching outside (`openWorldHint`) and not read-only.
+annotated as reaching outside (`openWorldHint`) and not read-only, and every
+MCP tool its server doesn't mark read-only.
 
 ## Tools
 

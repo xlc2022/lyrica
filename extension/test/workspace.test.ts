@@ -1,12 +1,13 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import { createAgentSession, DefaultResourceLoader, SessionManager, type AgentSession, type ExtensionAPI, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import type { ExecutionTarget, ThreadGitRepository, ThreadMachine, ThreadRepository, ThreadWorkspace, ToolOps } from "@lyrica/core";
+import type { ExecutionTarget, ThreadGitRepository, ThreadMachine, ThreadMcpServer, ThreadRepository, ThreadWorkspace, ToolOps } from "@lyrica/core";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
-import { createModelsExtension, createWorkspaceExtension, setToolsOff, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
+import { createMcpServersExtension, createModelsExtension, createWorkspaceExtension, setToolsOff, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
+import { testMcpServer } from "../../core/test/mcp-server.ts";
 
 // Runs the workspace tools in a real Pi session against pi-ai's fake model,
 // with a target that records what it is asked to do.
@@ -53,6 +54,8 @@ interface Run {
   gitAccounts?: string[];
   /** Repositories add_repository added. */
   added?: ThreadRepository[];
+  /** The thread's MCP servers, read on every call (a test may empty it mid-turn), and the tools allowed in the thread as "<server>/<tool>". */
+  mcp?: { servers: ThreadMcpServer[]; allowed?: string[] };
 }
 
 /** Tools any thread has besides the workspace's: memory, and the switched ones, which do nothing here. */
@@ -85,7 +88,7 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
   ]);
   const settings: ThreadWorkspace = {
     grants: [{ path: "/srv/music", writable: false }], internet: false, services: false, hosts: [], mode, webSearch: true, images: true,
-    machines: (o.machines ?? []).map((m) => m.name), repositories: [], parent: null, ...o.settings,
+    machines: (o.machines ?? []).map((m) => m.name), repositories: [], mcpServers: [], parent: null, ...o.settings,
   };
   const workspace = createWorkspaceExtension({
     target: (machine) => fakeTarget(files, commands, machine), settings: () => settings,
@@ -96,10 +99,12 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
     repositories: () => o.repositories ?? [], cloneRepositories: async () => o.cloneProblems ?? [],
     gitAccounts: () => (o.gitAccounts ?? []).map((name) => ({ name, kind: "github", host: "github.com" })),
     addRepository: (r) => { o.added?.push(r); return [...(o.repositories ?? []), ...(o.added ?? [])]; },
+    ...(o.mcp ? { mcpServers: () => o.mcp!.servers, toolAllowedInThread: (s: string, t: string) => (o.mcp!.allowed ?? []).includes(`${s}/${t}`) } : {}),
   });
+  const mcp = o.mcp ? [createMcpServersExtension({ mcpServers: () => o.mcp!.servers })] : [];
   const loader = new DefaultResourceLoader({
     cwd: dir, agentDir: dir, noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true,
-    extensionFactories: [(pi) => pi.registerProvider(faux.provider), others, ...(o.extensions ?? []), workspace, ...(o.after ?? [])],
+    extensionFactories: [(pi) => pi.registerProvider(faux.provider), others, ...(o.extensions ?? []), workspace, ...mcp, ...(o.after ?? [])],
   });
   await loader.reload();
   ({ session } = await createAgentSession({
@@ -461,5 +466,77 @@ describe("Git in a thread", () => {
     expect(results.join("\n")).toContain("cloned at the start of your next turn");
     const { offered } = await run("auto", [], { added: [] });
     expect(offered[0]).not.toContain("add_repository");
+  });
+});
+
+describe("MCP servers in a thread", () => {
+  const search = fauxToolCall("tool_search", { query: "status turn on" }, { id: "s" });
+  const status = fauxToolCall("mcp__house__get_status", { entity: "lamp" }, { id: "r" });
+  const turnOn = fauxToolCall("mcp__house__turn_on", { entity: "lamp" }, { id: "w" });
+
+  it("runs a granted server's read-only tool in Plan mode and keeps its writing tool off there", async () => {
+    const house = await testMcpServer();
+    try {
+      const asked: string[] = [];
+      const { results, offered } = await run("plan", [], {
+        steps: [[search], [status, turnOn]], mcp: { servers: [{ name: "house", url: house.url, token: "", description: null }] },
+        approve: async (r) => { asked.push(r.tool); return true; },
+      });
+      expect(offered[0]).toContain("tool_search");
+      expect(results.join("\n")).toContain("mcp__house__get_status: get_status done");
+      expect(results.join("\n")).toContain("mcp__house__turn_on is off in this thread (Plan mode).");
+      expect(house.calls.map((c) => c.tool)).toEqual(["get_status"]);
+      expect(asked).toEqual([]);
+    } finally {
+      await house.close();
+    }
+  });
+
+  it("asks before a writing tool in Auto, with the server named, and not again once it is allowed in the thread", async () => {
+    const house = await testMcpServer();
+    try {
+      const asked: ApprovalRequest[] = [];
+      const servers = [{ name: "house", url: house.url, token: "", description: null }];
+      await run("auto", [], { steps: [[search], [status, turnOn]], mcp: { servers }, approve: async (r) => { asked.push(r); return false; } });
+      expect(asked.map((r) => [r.server, r.serverTool, r.input])).toEqual([["house", "turn_on", { entity: "lamp" }]]);
+      expect(house.calls.map((c) => c.tool)).toEqual(["get_status"]);
+      asked.length = 0;
+      await run("auto", [], { steps: [[search], [turnOn]], mcp: { servers, allowed: ["house/turn_on"] }, approve: async (r) => { asked.push(r); return false; } });
+      expect(asked).toEqual([]);
+      expect(house.calls.map((c) => c.tool)).toEqual(["get_status", "turn_on"]);
+    } finally {
+      await house.close();
+    }
+  });
+
+  it("refuses a server's tools at once when it is taken from the thread mid-turn", async () => {
+    const house = await testMcpServer();
+    try {
+      const mcp = { servers: [{ name: "house", url: house.url, token: "", description: null }] };
+      const take: ExtensionFactory = (pi) => void pi.on("tool_result", (e) => { if (e.toolName === "tool_search") mcp.servers = []; });
+      const { results } = await run("auto", [], { steps: [[search], [status]], mcp, after: [take], approve: async () => true });
+      expect(house.calls).toEqual([]);
+      expect(results.join("\n")).not.toContain("get_status done");
+    } finally {
+      await house.close();
+    }
+  });
+
+  it("never registers a server from Pi's own mcp.json files", async () => {
+    const stray = await testMcpServer();
+    const agentDir = mkdtempSync(join(tmpdir(), "lyrica-pi-"));
+    dirs.push(agentDir);
+    const before = process.env.PI_CODING_AGENT_DIR;
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+    try {
+      writeFileSync(join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: { stray: { url: stray.url } } }));
+      const { offered } = await run("auto", [], { steps: [[search]], mcp: { servers: [] } });
+      expect(offered.flat().some((t) => t.startsWith("mcp__stray"))).toBe(false);
+      expect(stray.seen.requests).toBe(0);
+    } finally {
+      if (before === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = before;
+      await stray.close();
+    }
   });
 });

@@ -37,14 +37,14 @@ function gate() {
 }
 
 /** Li with cloud subagent models, a Memory, and a Delegation over them. */
-async function setup(o: { limits?: Partial<Limits>; workspace?: (m: Awaited<ReturnType<typeof withModels>>) => Workspace; approve?: DelegationOptions["approve"] } = {}) {
+async function setup(o: { limits?: Partial<Limits>; workspace?: (m: Awaited<ReturnType<typeof withModels>>) => Workspace; approve?: DelegationOptions["approve"]; searxng?: () => string } = {}) {
   const m = await withModels();
   for (const task of ["chat", "subagent.cheap", "subagent.strong"] as const) m.models.setProfile(m.li.id, "cloud", task, m.cloudRef);
   m.models.setProfile(m.li.id, "local", "chat", m.localRef);
   const memory = new Memory(m.keyring, m.users);
   const cwd = tempDir();
   const workspace = o.workspace?.(m);
-  const options = { users: m.users, memory, models: m.models, cwd, limits: o.limits, workspace, approve: o.approve };
+  const options = { users: m.users, memory, models: m.models, cwd, limits: o.limits, workspace, approve: o.approve, searxng: o.searxng };
   const delegation = new Delegation(options);
   const thread = (pool: Pool = "general", t: { localOnly?: boolean; unlogged?: boolean } = {}): ThreadContext => {
     const view = memory.openThreadView(m.li.id, pool);
@@ -133,6 +133,20 @@ describe("delegate", () => {
     const p = { userId: s.li.id, pool: "general" as const, threadId: parent.threadId };
     expect(() => ws.inheritSettings(p, worker!.thread, { internet: true })).toThrow("no internet");
     expect(() => ws.inheritSettings(p, worker!.thread, { hosts: ["10.0.0.6"] })).toThrow("isn't in the parent thread's hosts");
+  });
+
+  it("gives an offline researcher neither web_search nor web_fetch", async () => {
+    let ws!: Workspace;
+    const s = await setup({ searxng: () => "http://127.0.0.1:9", workspace: (m) => (ws = new Workspace(m.keyring, m.users, { excludePorts: [] })) });
+    s.cloud.respond(() => ({ text: "Nothing found." }));
+    const parent = s.thread();
+    await s.run(parent, { task: "look it up", role: "researcher" });
+    await s.run(parent, { task: "look it up offline", role: "researcher", internet: false });
+    const [online, offline] = s.cloud.requests.filter(isSub).map((r) => (r.tools ?? []).map((t) => t.function.name));
+    expect(online).toEqual(expect.arrayContaining(["web_search", "web_fetch"]));
+    expect(offline!.filter((t) => t.startsWith("web_"))).toEqual([]);
+    const [last] = s.delegation.status(parent);
+    expect(ws.settings(s.li.id).thread(last!.thread).webSearch).toBe(false);
   });
 
   it("runs parallel tasks within the concurrency limit, and counts their tokens", async () => {

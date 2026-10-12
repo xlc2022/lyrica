@@ -724,7 +724,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `raise` and `propose_persona` (Sleep thread; see [sleep.md](sleep.md)).
   - `tool_search`, Pi's, in a thread with a granted MCP server: it loads
     the servers' deferred tools, which don't count against the budget
-    (MCP servers; see [docs/briefs/mcp.md](briefs/mcp.md));
+    (MCP servers; see [workspace.md](workspace.md#mcp-servers));
   - `propose_plan({ plan })`, only in Plan mode and never in a subagent
     (Modes; see [workspace.md](workspace.md));
   - compacting is `threads({ action: "compact", summary })`
@@ -740,7 +740,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `ExecutionTarget.run?(argv, { signal?, timeoutMs? })` runs argv with no
     shell under the target's own rules; the sandbox has it.
   - `ThreadTools` is `{ target(machine?), settings(), network(),
-    machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?), approve?, setMode?,
+    machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?),
+    mcpServers?(), toolAllowedInThread?(server, tool), approve?, setMode?,
     proposePlan?(PlanRequest), recordChange?(NewChange), fileNotes?() }`.
     `settings()` is the thread's effective settings. `fileNotes()` returns
     `{ added, removed }` paths the Files panel changed since her last turn,
@@ -750,13 +751,16 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     suspect `bash` (`suspectCommand`) asks in every mode unless
     `allowedInThread`; the first call on a machine in a turn asks if
     anything earlier ran elsewhere. `ApprovalRequest` is `{ toolCallId,
-    tool, input, machine?, cwd?, warning? }`, and the call runs only if its
+    tool, input, machine?, cwd?, warning?, server?, serverTool? }`, and the call runs only if its
     arguments are still exactly what was approved. With `proxmox`, the
     `proxmox` tool is registered, and offered only while `machines()` has a
-    Proxmox machine.
+    Proxmox machine. An `mcp__<server>__<tool>` call whose server isn't in
+    `mcpServers()` is refused; one its server marks `readOnlyHint` runs,
+    as does one `toolAllowedInThread`; any other asks with `server` and
+    `serverTool`, in every mode. Read-only MCP tools stay on in Plan mode.
   - `toolsOff(settings, registered)`: Plan mode leaves only `PLAN_TOOLS`
     (`read`, `recall`, `read_memory`, `web_search`, `web_fetch`,
-    `delegate`, `ask_parent`, `threads`, `propose_plan`, `proxmox`, whose
+    `delegate`, `ask_parent`, `threads`, `propose_plan`, `tool_search`, `proxmox`, whose
     `tool_call` refuses all but its reading actions); outside Plan
     mode `propose_plan` is off. `SWITCHED_TOOLS`: `webSearch` turns off
     `web_search` and `web_fetch`, `images` turns off `image`. The gate runs
@@ -838,7 +842,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   takes the same path: `PermissionAnswer { allow, mode?: GoAhead,
   allowInThread? }`, and approving a plan without `mode` is `400`. A
   request on a machine carries `machine` and `cwd`, a suspect one `suspect:
-  true` and `warning`; `allowInThread` stores that exact command for the
+  true` and `warning`, an MCP one `server` and `serverTool`;
+  `allowInThread` stores that exact command, or that server's tool, for the
   thread it runs in and is refused on any other request. A plan switching the mode, or a
   settings change, sends the thread a `{ type: "settings" }` event.
 - **Sweep** (`Lyricad.sweep`, nightly, before sleep): `sweepUser(services,
@@ -1275,12 +1280,22 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   carry `repositories`. A sandbox's tools have `git`, `gh` and `tea`. The
   Git guide is a prompt section (`extension/src/git.md`) added to every
   turn of a thread with repositories.
-- **MCP servers API** (planned, docs/briefs/mcp.md): `lyricad`'s
-  `/api/u/:userId/mcp-servers` (`GET`; `POST …/probe`; `POST`; `PATCH
-  …/:name` for name, url and pool; `POST …/:name/token`; `DELETE`); thread
-  settings carry `mcpServers` (names). User database step 3 adds
-  `mcp_servers` and `thread_workspaces.mcp_servers`. Servers are registered
-  per session with Pi's `registerMcpServer`, exposure `deferred`.
+- **MCP servers API:** `lyricad`'s `/api/u/:userId/mcp-servers` (`GET`;
+  `POST …/probe`; `POST`; `PATCH …/:name` for name, url and pool; `POST
+  …/:name/token`; `POST …/:name/confirm-off-network`; `DELETE`), each
+  server as `McpServerInfo { name, url, host, pool, hasToken, tools,
+  description, offNetwork, state? }`; a body with `command` (stdio) is
+  `400`. Thread settings carry `mcpServers` (names). User database step 3
+  adds `mcp_servers` and `thread_workspaces.mcp_servers`. In core:
+  `settings(userId).mcpServers() / addMcpServer / updateMcpServer /
+  setMcpToken / removeMcpServer / mcpServerState / confirmMcpOffNetwork /
+  allowToolInThread`, and `mcpUrl`, `probeMcp`, `mcpTransport`,
+  `keepResult` (`core/src/workspace/mcp.ts`). A session gets
+  `createMcpServersExtension({ mcpServers(), checkMcpServers?(),
+  mcpServerState?() })` (`extension/src/mcp.ts`), which registers each
+  granted server with Pi's `registerMcpServer`, exposure `deferred`, and
+  loads Pi's MCP and `tool_search` extensions with no `mcp.json`, no log
+  and Lyrica's transport.
 - **Machines API:** `lyricad`'s `/api/u/:userId/machines` (`GET`; `POST
   …/machines/probe` for the Test step; `POST …/machines` to confirm;
   `PATCH …/machines/:name` for address, root, pool and limit; `POST

@@ -212,7 +212,7 @@ function GitDrawer({ userId, account, onSaved, onRemoved, onChanged, onClose }: 
 }
 
 /** The drawer's ⋯: rare actions, Remove last and in danger text. */
-function DrawerMenu({ label, items }: { label: string; items: { label: string; danger?: boolean; onPick: () => void }[] }) {
+export function DrawerMenu({ label, items }: { label: string; items: { label: string; danger?: boolean; onPick: () => void }[] }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);

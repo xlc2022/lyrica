@@ -11,6 +11,7 @@ import { her } from "./name.ts";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { href } from "./route.ts";
 import { Repositories } from "./Git.tsx";
+import { McpServers } from "./Mcp.tsx";
 import { Folders, Machines, TaskSelect } from "./Settings.tsx";
 import { Main, PageHead, type ShellContext } from "./Shell.tsx";
 import { ErrorText, Prose, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
@@ -208,7 +209,7 @@ export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContex
   );
 }
 
-/** Goal, Paused and Watching threads; New threads (Model, Thinking, Fallback); This chat (Model, Mode, Group, Folders, Machines, Repositories); one Save. */
+/** Goal, Paused and Watching threads; New threads (Model, Thinking, Fallback); This chat (Model, Mode, Group, Folders, Machines, Repositories, MCP servers); one Save. */
 function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }: {
   ctx: ShellContext; base: string; summary: ThreadSummary; settings: ThreadSettings; onSummary: (s: ThreadSummary) => void; onSettings: (s: ThreadSettings) => void;
 }) {
@@ -226,6 +227,7 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
   const [grants, setGrants] = useState<Grant[]>();
   const [granted, setGranted] = useState<string[]>();
   const [repositories, setRepositories] = useState<GitRepository[]>();
+  const [mcpServers, setMcpServers] = useState<string[]>();
   const paths = useLoad(() => get<AllowedPaths>(u(ctx.user.id, "paths")), [ctx.user.id]);
   const machines = useLoad(() => get<MachineInfo[]>(u(ctx.user.id, "machines")), [ctx.user.id]);
   const [run, busy, error] = useAction();
@@ -241,12 +243,12 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
       ...(group !== (summary.group ?? "") ? { group: group || null } : {}),
     };
     onSummary(await patch<ThreadSummary>(base, change));
-    if (chat !== undefined || mode !== settings.mode || grants || granted || repositories) {
+    if (chat !== undefined || mode !== settings.mode || grants || granted || repositories || mcpServers) {
       onSettings(await patch<ThreadSettings>(`${base}/settings`, {
         ...(chat !== undefined ? { models: { chat } } : {}), ...(mode !== settings.mode ? { mode } : {}),
-        ...(grants ? { grants } : {}), ...(granted ? { machines: granted } : {}), ...(repositories ? { repositories } : {}),
+        ...(grants ? { grants } : {}), ...(granted ? { machines: granted } : {}), ...(repositories ? { repositories } : {}), ...(mcpServers ? { mcpServers } : {}),
       }));
-      setChat(undefined); setGrants(undefined); setGranted(undefined); setRepositories(undefined);
+      setChat(undefined); setGrants(undefined); setGranted(undefined); setRepositories(undefined); setMcpServers(undefined);
     }
     setSaved(true);
   });
@@ -312,7 +314,7 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
         </label>
       </div>
 
-      {/* The drawer's own three controls: every thread the project starts gets these folders, machines and repositories or fewer. */}
+      {/* The drawer's own three controls: every thread the project starts gets these folders, machines, repositories and MCP servers or fewer. */}
       <div className="workspace">
         <div className="field" role="group" aria-labelledby="h-folders">
           <span id="h-folders">Folders</span>
@@ -325,6 +327,10 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
         <div className="field" role="group" aria-labelledby="h-repositories">
           <span id="h-repositories">Repositories</span>
           <Repositories userId={ctx.user.id} pool={summary.pool} granted={repositories ?? settings.repositories} onChange={setRepositories} />
+        </div>
+        <div className="field" role="group" aria-labelledby="h-mcp-servers">
+          <span id="h-mcp-servers">MCP servers</span>
+          <McpServers userId={ctx.user.id} pool={summary.pool} granted={mcpServers ?? settings.mcpServers} onChange={setMcpServers} />
         </div>
         <ErrorText error={paths.error || machines.error} />
       </div>
