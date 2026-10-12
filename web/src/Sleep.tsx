@@ -2,17 +2,17 @@
 // and Dismiss; then each run per pool, Last night and Earlier, opening to its notes, pages with their word
 // differences, questions, dream and WAKE, each linking into the memory browser; Sleep now at the foot.
 // Also the per-user mode (Settings → Model profiles) and the administrator's sleep time.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   del, get, HttpError, post, put, u,
-  type Pool, type SleepEvent, type SleepItemInfo, type SleepMode, type SleepOverview, type SleepRunDetail, type SleepRunInfo, type SleepStarted, type SleepTime, type ThreadSummary, type UserMap,
+  type Display, type Pool, type SleepEvent, type SleepItemInfo, type SleepMode, type SleepOverview, type SleepRunDetail, type SleepRunInfo, type SleepStarted, type SleepTime, type ThreadSummary, type UserMap,
 } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { longDate, plainCitations, poolWord, wordDiff } from "./memory.ts";
 import { readable } from "./mentions.ts";
 import { go, href, idHref } from "./route.ts";
 import { PageHead, PoolLock, type ShellContext } from "./Shell.tsx";
-import { ConfirmDialog, ErrorText, Prose, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { ConfirmDialog, ErrorText, hidden, Prose, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 export interface SleepState {
   overview?: SleepOverview;
@@ -24,12 +24,12 @@ export interface SleepState {
   set: (o: SleepOverview) => void;
 }
 
-/** The overview, loaded once by the shell for the sidebar's count; the Sleep page and its events keep it fresh. */
-export function useSleepOverview(userId: string): SleepState {
+/** The overview, loaded once by the shell for the sidebar's count (only pools the user shows); the Sleep page and its events keep it fresh. */
+export function useSleepOverview(userId: string, display?: Display): SleepState {
   const o = useLoad(() => get<SleepOverview>(u(userId, "sleep")), [userId]);
   return {
     overview: o.data,
-    fresh: o.data?.items.filter((i) => i.new).length ?? 0,
+    fresh: display ? o.data?.items.filter((i) => i.new && !hidden(display, i.pool)).length ?? 0 : 0,
     running: !!o.data?.runs.some((r) => r.status === "running"),
     error: o.error,
     reload: o.reload,
@@ -41,7 +41,7 @@ const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-d
 const SKIPPED: Record<NonNullable<SleepRunInfo["skipReason"]>, string> = { "no-key": "Skipped: no key", "endpoint-down": "Skipped: the endpoint was down", "no-activity": "Skipped: nothing new" };
 const PHASE_WORD = { consolidate: "consolidating", dream: "dreaming", wake: "waking" } as const;
 const KIND_WORD: Record<SleepItemInfo["kind"], string> = { thought: "thought", question: "question", persona: "persona suggestion" };
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const plural = (n: number, one: string, many: string) => <><span className="num">{n}</span> {n === 1 ? one : many}</>;
 
 /** Stored text as it reads: names for mention tokens (someone, where the user isn't known here), no citation groups. */
 const plain = (text: string, users: UserMap) => plainCitations(readable(text, users)).replace(/\[\[u:[^\]]+\]\]/g, "someone");
@@ -54,7 +54,7 @@ function PoolName({ pool }: { pool: Pool }) {
 }
 
 /** The run's one line: why it was skipped, what phase it's in, or what it wrote. */
-function runLine(run: SleepRunInfo, d?: SleepRunDetail): string {
+function runLine(run: SleepRunInfo, d?: SleepRunDetail): ReactNode {
   if (run.status === "skipped") return run.skipReason ? SKIPPED[run.skipReason] : "Skipped";
   if (run.status === "running") {
     const order = ["consolidate", "dream", "wake"] as const;
@@ -66,22 +66,28 @@ function runLine(run: SleepRunInfo, d?: SleepRunDetail): string {
   const created = d.pages.filter((p) => p.before === undefined).length, changed = d.pages.length - created;
   const thoughts = d.items.filter((i) => i.kind === "thought").length, persona = d.items.length - thoughts;
   const written = [d.dream.length > 0 && "dream", d.wake && "WAKE"].filter(Boolean).join(" and ");
-  const parts = [
+  const parts: ReactNode[] = [
     early,
-    d.notes.length > 0 && `${plural(d.notes.length, "note", "notes")} added`,
-    created > 0 && `${plural(created, "page", "pages")} created`,
-    changed > 0 && `${plural(changed, "page", "pages")} changed`,
+    d.notes.length > 0 && <>{plural(d.notes.length, "note", "notes")} added</>,
+    created > 0 && <>{plural(created, "page", "pages")} created</>,
+    changed > 0 && <>{plural(changed, "page", "pages")} changed</>,
     d.questions.length > 0 && plural(d.questions.length, "question", "questions"),
     thoughts > 0 && plural(thoughts, "thought", "thoughts"),
     persona > 0 && plural(persona, "persona suggestion", "persona suggestions"),
     written && `${written} written`,
   ].filter(Boolean);
-  return parts.length > (early ? 1 : 0) ? parts.join(" · ") : early || "Nothing changed";
+  return parts.length > (early ? 1 : 0) ? parts.map((p, k) => <Fragment key={k}>{k > 0 && " · "}{p}</Fragment>) : early || "Nothing changed";
 }
 
 export function SleepPage({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
-  const { overview: o, reload } = ctx.sleep;
+  const { reload } = ctx.sleep;
+  const display = ctx.me.display;
+  // Pools hidden in the Sort menu leave out their items and runs, as on the Memory page.
+  const o = useMemo(() => {
+    const ov = ctx.sleep.overview;
+    return ov && { ...ov, items: ov.items.filter((i) => !hidden(display, i.pool)), runs: ov.runs.filter((r) => !hidden(display, r.pool)) };
+  }, [ctx.sleep.overview, display.showGeneral, display.showPrivate]); // eslint-disable-line react-hooks/exhaustive-deps
   const [run, busy, error] = useAction();
   const [details, setDetails] = useState<Record<string, SleepRunDetail>>({});
 
@@ -154,6 +160,9 @@ export function SleepPage({ ctx }: { ctx: ShellContext }) {
                 ))}
               </ul>
             )}
+            {(["general", "private"] as const).filter((p) => hidden(display, p)).map((p) => (
+              <p key={p} className="muted small">{poolWord(p)} is hidden. Turn on {poolWord(p)} in the Sort menu to see it.</p>
+            ))}
           </section>
           {last.length > 0 && (
             <section aria-labelledby="h-last-night" className="sleep-block">
@@ -259,6 +268,7 @@ function RunDetail({ d, userId, users }: { d: SleepRunDetail; userId: string; us
 function SleepFoot({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const o = ctx.sleep.overview;
+  const pools = (["general", "private"] as const).filter((p) => !hidden(ctx.me.display, p));
   const [open, setOpen] = useState(false);
   const [asking, setAsking] = useState<{ pool: Pool; sentence: string }>();
   const [toast, setToast] = useState("");
@@ -278,11 +288,10 @@ function SleepFoot({ ctx }: { ctx: ShellContext }) {
   return (
     <div className="sleep-foot">
       <div className="msg-menu" ref={ref}>
-        <button type="button" disabled={busy} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>Sleep now <span className="caret" aria-hidden="true">▾</span></button>
+        <button type="button" disabled={busy || !pools.length} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>Sleep now <span className="caret" aria-hidden="true">▾</span></button>
         {open && (
           <div className="menu above" role="menu" aria-label="Sleep now">
-            <button type="button" role="menuitem" onClick={() => void sleep("general")}>General</button>
-            <button type="button" role="menuitem" onClick={() => void sleep("private")}><PoolLock />Private</button>
+            {pools.map((p) => <button key={p} type="button" role="menuitem" onClick={() => void sleep(p)}>{p === "private" && <PoolLock />}{poolWord(p)}</button>)}
           </div>
         )}
       </div>

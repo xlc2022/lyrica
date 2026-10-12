@@ -92,7 +92,7 @@ Rules:
 - **Facts, not reassurance.** "Online", "2 GB free", "Paused since 20:38".
   Not "Everything is fine", not "Loading your models…".
 - **Names in use** (don't invent synonyms): General and Private (pools),
-  Hidden, Last night, Notifications, Backend, Models, Tasks, Text models,
+  Hidden, Notifications, Backend, Models, Tasks, Text models,
   Image models, Hosts and endpoints, Downloads, Clean up, Recent calls,
   Settings, Administration, Files, Images, Thread folder, Attach to message,
   Download, Download as zip, Copy path, Show in thread, Upload…, New folder…, Uploaded,
@@ -103,7 +103,7 @@ Rules:
   Move to group, Change password…, Change password, Sampling, Serving, Placement, Memory,
   Throughput, Template, Pinned, Excluded, Servers, Keep free, Not this
   model, Group, Add…, Reset, Dictation, Dictate, Read aloud, Stop reading,
-  Read aloud while agent writes, Local services (localhost), Fallback, Sleep fallback, Sleep, Sleep now, Start a chat, Last night, Earlier, Thoughts, Dream, Sleep time, Nightly at, Only when I ask, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, Thread settings, New threads, This chat, Threads, Watching threads, Checked the other threads, Message received from, Show more, Show less, Open as a page, Close panel,
+  Read aloud while agent writes, Local services (localhost), Fallback, Sleep fallback, Sleep, Sleep now, Start a chat, Last night, Earlier, Questions, Skipped, Stopped early, Nothing changed, Sleeping…, Thoughts, Dream, Sleep time, Nightly at, Only when I ask, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, Thread settings, New threads, This chat, Threads, Watching threads, Checked the other threads, Message received from, Show more, Show less, Open as a page, Close panel,
   Start a thread, Suggested threads, Start all, Resolve, Reopen, Resolved,
   Memory, Pages, Notes, WAKE, Journal, User introduced, Add a memory, Came
   from, Used in, History, Restore, Archive, Preview, Edit, Remember this,
@@ -115,7 +115,7 @@ Rules:
   Allow in this thread, Online, Unreachable, Key changed, Off network,
   Updates, Update, Roll back, Running, Updating, Draining, Building, Testing,
   Probation, Set up Lyrica, Persona, Tailnet, Connect, Disconnect, Leave,
-  Stay, Auth key, Hostname, Control server, Skip, Start a chat, Remove,
+  Stay, Auth key, Hostname, Control server, Skip, Remove,
   Use a host outside your network?, Add anyway, Save anyway, Keep.
 - Numbers get units beside the field (GB, %, tokens), and a maximum shown
   where one exists ("of 128k").

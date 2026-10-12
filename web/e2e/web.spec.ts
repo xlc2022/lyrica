@@ -1334,6 +1334,21 @@ test("Sleep: the sidebar link opens it empty, the mode is set in Settings, Sleep
   // Items need her to call tools, which the fake model doesn't: Start a chat and Dismiss are covered by daemon tests.
   await expect(page.locator("ul.sleep-items")).toHaveCount(0);
 
+  // Private hidden in the Sort menu: its line shows and Sleep now no longer offers it. Then back on.
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await togglePrivate(page);
+  if (phone(page)) await page.locator(".scrim").first().click({ position: { x: 370, y: 400 } });
+  await expect(page.getByText("Private is hidden.")).toBeVisible();
+  await page.getByRole("button", { name: "Sleep now" }).click();
+  const poolMenu = page.getByRole("menu", { name: "Sleep now" });
+  await expect(poolMenu.getByRole("menuitem", { name: "General" })).toBeVisible();
+  await expect(poolMenu.getByRole("menuitem", { name: "Private" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await togglePrivate(page);
+  if (phone(page)) await page.locator(".scrim").first().click({ position: { x: 370, y: 400 } });
+  await expect(page.getByText("Private is hidden.")).toHaveCount(0);
+
   // Administration → Sleep: the time saves, then Save is off again.
   await page.goto(`/#/u/${userId}/admin/sleep`);
   const time = page.getByLabel("Sleep time");

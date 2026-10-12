@@ -197,7 +197,10 @@ A thread's address may carry what the panel beside it shows:
   the runs already read; an unknown mention reads "someone". The foot names
   the schedule and links **change** to Settings → Model profiles, where the
   **Sleep** select (Nightly at the server's time, or Only when I ask) sits
-  above Sleep fallback and saves at once (`PUT …/sleep/mode`).
+  above Sleep fallback and saves at once (`PUT …/sleep/mode`). A pool hidden in
+  the Sort menu is left out: its items, runs and **Sleep now** choice, with the
+  same "<Pool> is hidden. Turn on <Pool> in the Sort menu to see it." line as
+  Memory, and the sidebar badge counts only the pools shown.
 - **Notifications** (`src/Notifications.tsx`; docs/ux.md §6 "Anything
   waiting for the user"): the first section of Settings, one list from
   `GET …/notifications`. Chips filter by type (All with the count, Needs a

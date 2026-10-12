@@ -53,7 +53,7 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
   // Close the sidebar overlay whenever the page changes.
   useEffect(() => setSideOpen(false), [route]);
   const notes = useWaiting(user.id);
-  const sleep = useSleepOverview(user.id);
+  const sleep = useSleepOverview(user.id, me.data?.display);
   // Refresh the list and the count now and then, so other threads' titles and activity show, and what waits.
   useEffect(() => {
     const tick = () => { if (document.visibilityState === "visible") { threads.reload(); notes.reload(); sleep.reload(); } };
@@ -394,7 +394,7 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
         <a href={href({ page: "memory", userId: user.id })} aria-current={route.page === "memory" ? "page" : undefined}><Icon name="memory" />Memory</a>
         <a href={href({ page: "sleep", userId: user.id })} aria-current={route.page === "sleep" ? "page" : undefined} data-nav="sleep">
           <Icon name="moon" />Sleep{ctx.sleep.fresh > 0 ? <span className="count" aria-label={`${ctx.sleep.fresh} new`}>{ctx.sleep.fresh}</span>
-            : ctx.sleep.running && <span className="busy" title="Sleeping" />}
+            : ctx.sleep.running && <span className="busy" title="Sleeping"><span className="sr-only">Sleeping</span></span>}
         </a>
       </nav>
       <div className="thread-tools">
