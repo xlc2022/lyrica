@@ -609,7 +609,6 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 /* Git accounts (docs/ux.md section 6): rows like a machine's, with no ⋯ (the drawer has it); Add repository's groups by account. */
 .list > li.machine-row.git-row { grid-template-columns: minmax(0, 1fr) auto; }
 .drawer-head .row-menu { margin-left: auto; }
-.pool-word { color: var(--private); }
 .repo-group { display: grid; gap: 2px; }
 .repo-group .eyebrow { padding: 4px 10px 0; }
 .repo-group .eyebrow .muted { text-transform: none; letter-spacing: 0; font-weight: 400; }
@@ -805,3 +804,4 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .inline-img:hover { border-color: var(--muted); }
 .inline-img img { display: block; max-width: 100%; max-height: 320px; object-fit: contain; }
 .prose p:has(> .inline-img:only-child) { margin: 8px 0; }
+.field-fact { padding: 7px 0; }

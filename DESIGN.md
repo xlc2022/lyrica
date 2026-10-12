@@ -1269,7 +1269,7 @@ Details in [docs/sleep.md](docs/sleep.md).
 - She has a **self-primer** on her own design, architecture and goals. It is
   loaded when the topic comes up, not always, and ships with the code it
   describes rather than as a persona file. It points her at the docs in her
-  checkout, and includes the rule that when she edits her own code, she keeps
+  clone, and includes the rule that when she edits her own code, she keeps
   the documentation current and readable.
   She starts fresh, with no v1 memories imported.
 

@@ -498,8 +498,8 @@ test("Git accounts lists none, and Add account checks the token with the host be
   // A GitHub account is general only.
   await expect(drawer.getByLabel("Kind")).toHaveValue("github");
   await expect(drawer.getByLabel("Host")).toHaveValue("github.com");
-  await expect(drawer.getByLabel("Pool")).toBeDisabled();
-  await expect(drawer.getByLabel("Pool")).toHaveAttribute("title", /A GitHub account is general/);
+  await expect(drawer.locator(".field-fact")).toHaveText(/^General/);
+  await expect(drawer.locator(".field-fact")).toHaveAttribute("title", /A GitHub account is general/);
   await drawer.getByLabel("Kind").selectOption("gitea");
   await expect(drawer.getByLabel("Pool")).toBeEnabled();
   await expect(drawer.getByRole("button", { name: "Add account" })).toBeDisabled();
@@ -538,6 +538,7 @@ test("Git accounts show their state, and a thread's Repositories adds from what 
 
   await newThread(page, "General");
   await send(page, "Hello");
+  await expect(page.getByText("You said: Hello")).toBeVisible(); // the reply's end no longer moves the focus
   const settings = await openSettings(page);
   const repos = settings.getByRole("group", { name: "Repositories" });
   await repos.getByRole("button", { name: "Add repository" }).click();

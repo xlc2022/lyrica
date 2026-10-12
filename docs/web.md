@@ -67,8 +67,8 @@ A thread's address may carry what the panel beside it shows:
 - **Thread:** a header with the title; under it the pool word, the model
   badge (cloud or local, model and endpoint; it opens the model picker), the
   thread's group as a link that changes it, the folders as words with the
-  paths in their tooltip, and the granted machines' names in mono; at the
-  right a Settings button. Below it the conversation and the composer.
+  paths in their tooltip, and the granted machines' and repositories' names
+  in mono; at the right a Settings button. Below it the conversation and the composer.
 - **Project chat** (`src/Project.tsx`): the facts line adds **Threads** with
   the count, opening a popover of the project's threads grouped Waiting on
   you, Working, Queued, Idle and Resolved (each a link, with its unseen
@@ -120,15 +120,17 @@ A thread's address may carry what the panel beside it shows:
   threads** switches (`watchThreads`; the tooltip says what a look does), **New
   threads** (Model, Thinking and Fallback the project's threads start with;
   "This chat's model", "This chat's fallback" follow the project chat), **This chat** (Model, Mode,
-  Group, then **Folders** and **Machines**, the drawer's own two controls,
+  Group, then **Folders**, **Machines** and **Repositories**, the drawer's
+  own three controls,
   then a **Thread settings** link that opens the project chat with its
   drawer showing, `…/t/<pool>/<thread>/settings`, for network, local-only
   and the other task models), and one Save, which patches the thread
   (`goal`, `paused`, `watchThreads` when it changed, `threadsModel`,
   `threadsThinking`, `threadsFallback`, `group`) and, when they changed, its
-  settings (`grants`, `machines` among them); `lyricad`'s reason shows when
-  it refuses. Every thread the project starts gets these folders and
-  machines or fewer. A folder or machine taken off here leaves the
+  settings (`grants`, `machines`, `repositories` among them); `lyricad`'s
+  reason shows when it refuses. Every thread the project starts gets these
+  folders, machines and repositories or fewer. A folder, machine or
+  repository taken off here leaves the
   project's running threads at once, and their open views show it gone. **Memory**: the
   Instructions kept on the project page (2,000 characters, counted under
   the box), and a link to that page in the memory browser. Files and
@@ -139,7 +141,12 @@ A thread's address may carry what the panel beside it shows:
   read-write), **Machines** (the sandbox, always, then each granted machine
   in mono with its limit and an ✕ to take it off, a machine that no longer
   exists included; **+** (Add machine) opens a search of the pool's other
-  machines by name or address, Enter picks the first), the mode, the
+  machines by name or address, Enter picks the first), **Repositories**
+  (each `owner/name` in mono with its account muted and an ✕; **+** (Add
+  repository) opens a search, "Search, or paste a URL", of what each Git
+  account of the thread's pool can see, grouped by account, a pasted URL
+  under each account on its host, with a **Git accounts** link at its
+  foot; a change applies at once), the mode, the
   Web search and Images switches, "Do not log", rename, hide, and forget. `lyricad` validates every
   change and its reason is shown.
 - **Subagents live inline**, not in the sidebar: see the `delegate` card
@@ -196,12 +203,16 @@ A thread's address may carry what the panel beside it shows:
   anyway** or Cancel) before Confirm saves it. Replace key
   (`#/u/<user>/settings/machines/<name>/key`) opens the same card at the
   Fingerprint step, with a Replace token field for Proxmox.
-  **GitHub** (docs/ux.md section 6): Checkout, her code's folder in mono as
-  an administrator named it (None otherwise), and **Token**, a password
-  field whose placeholder says Saved once one is, with **Save** the one
-  primary and **Remove** (danger text, only when saved) confirmed by a
-  dialog. The token is never sent back (`GET`, `PUT` and `DELETE
-  /api/u/:userId/github`).
+  **Git accounts** (`src/Git.tsx`): a row per account, its name, a facts
+  line in mono (host, pool, kind, account) and one state (Signed in, Token
+  rejected, Unreachable with how long, Off network). A row opens the drawer
+  (Name, Kind, Host, Account, Pool; a GitHub account's Pool is the fact
+  General, with the reason as its tooltip), with Replace token, Use anyway
+  (a private account Off network) and Remove behind ⋯; Remove names what
+  leaves in its dialog (**Keep** / **Remove**). **Add account** opens the
+  same drawer with a Token field; Add account checks the token against the
+  host (`POST …/git-accounts/probe`, then `POST …/git-accounts`), and a
+  private account off network asks first. The token is never sent back.
 - **Administration**, for administrators: Status (the server's network
   self-test, sleep time, start unlocked), Users with the administrator flag,
   **Change password…** (one field in the row; the user's data stays and

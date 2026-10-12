@@ -57,6 +57,9 @@ const PATH = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 // too, for pasta, nft and bwrap.
 const tools = () => process.env.LYRICA_SANDBOX_TOOLS || undefined;
 const env = () => ({ PATH: tools() ? `${tools()}/bin:${PATH}` : PATH, HOME: WORKDIR, LANG: "C.UTF-8", TERM: "dumb" });
+// The gh and tea wrappers for a run with repositories (forge.sh), first on its PATH.
+const FORGE_BIN = "/run/lyrica/bin";
+const FORGE = readFileSync(new URL("./forge.sh", import.meta.url), "utf8");
 const inStore = (p: string) => /^\/nix\/store\/[0-9a-z]{32}-[^/]+$/.test(p);
 let closure: { file: string; paths: string[] } | undefined;
 function nixSystem(dir: string): string[] {
@@ -219,10 +222,12 @@ export class Sandbox implements ExecutionTarget {
     const resolved = await resolveHosts(hosts);
     // Files written into the sandbox's /etc. Hostnames are pinned when it starts;
     // with internet off there is no resolver at all, so DNS can't carry data out.
-    const data = [
+    const forge = this.spec.env?.LYRICA_GIT_COUNT !== undefined;
+    const data: (readonly [string, string, string?])[] = [
       ["/etc/hosts", ["127.0.0.1 localhost", "::1 localhost", ...resolved.pinned].join("\n") + "\n"],
       ["/etc/resolv.conf", internet ? `nameserver ${SANDBOX_GATEWAY}\n` : ""],
-    ] as const;
+      ...forge ? [[`${FORGE_BIN}/gh`, FORGE, "0555"], [`${FORGE_BIN}/tea`, FORGE, "0555"]] as const : [],
+    ];
     const fds: number[] = [];
     let args: string[];
     try {
@@ -231,7 +236,7 @@ export class Sandbox implements ExecutionTarget {
       for (const fd of fds) closeSync(fd);
       throw err;
     }
-    data.forEach(([dest], i) => args.push("--ro-bind-data", String(3 + fds.length + i), dest));
+    data.forEach(([dest, , perms], i) => args.push(...perms ? ["--perms", perms] : [], "--ro-bind-data", String(3 + fds.length + i), dest));
     // With network on, `unshare` makes the user and network namespaces and
     // bash loads the firewall into them, then waits while pasta attaches by
     // PID, then starts bwrap, which keeps the network. pasta can't start bwrap
@@ -247,7 +252,7 @@ export class Sandbox implements ExecutionTarget {
       cmd = ["unshare", "--user", "--map-root-user", "--net", "--", "bash", "-c", HOLD, "bash", rules, String(ready), String(ready + 1), ...cmd];
     }
     const child = spawn(cmd[0]!, cmd.slice(1), {
-      env: { ...this.spec.env, ...env() },
+      env: { ...this.spec.env, ...env(), ...forge ? { PATH: `${FORGE_BIN}:${env().PATH}` } : {} },
       stdio: ["pipe", "pipe", "pipe", ...fds, ...data.map(() => "pipe" as const), ...(networked ? ["pipe", "pipe"] as const : [])],
     });
     child.on("error", () => {}); // reported to the caller's own listener; never an uncaught error

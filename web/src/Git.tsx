@@ -37,7 +37,7 @@ function StateWord({ a }: { a: GitAccountInfo }) {
 
 /** The facts line under an account's name: host, pool, kind and the account's name on the host. */
 function facts(a: GitAccountInfo) {
-  return <>{a.host} · {a.pool === "private" ? <span className="pool-word">private</span> : "general"} · {KINDS[a.kind]} · {a.account}</>;
+  return <>{a.host} · {a.pool} · {KINDS[a.kind]} · {a.account}</>;
 }
 
 /** The dialog's sentence for a private account whose host is outside her network, ending in its question. */
@@ -170,12 +170,18 @@ function GitDrawer({ userId, account, onSaved, onRemoved, onChanged, onClose }: 
                 onChange={(e) => set("token", e.target.value)} />
             </label>
           )}
-          <label className="field"><span>Pool</span>
-            <select value={form.pool} disabled={github || replacing} title={github ? GITHUB_POOL : form.pool === "private" ? PRIVATE_POOL : undefined}
-              onChange={(e) => set("pool", e.target.value)}>
-              {(Object.keys(POOLS) as Pool[]).map((p) => <option key={p} value={p}>{POOLS[p]}</option>)}
-            </select>
-          </label>
+          {github ? (
+            <div className="field"><span>Pool</span>
+              <span className="field-fact" title={GITHUB_POOL}>General<span className="sr-only">. {GITHUB_POOL}</span></span>
+            </div>
+          ) : (
+            <label className="field"><span>Pool</span>
+              <select value={form.pool} disabled={replacing} aria-describedby="git-pool-why" onChange={(e) => set("pool", e.target.value)}>
+                {(Object.keys(POOLS) as Pool[]).map((p) => <option key={p} value={p}>{POOLS[p]}</option>)}
+              </select>
+              <span id="git-pool-why" className="sr-only">{PRIVATE_POOL}</span>
+            </label>
+          )}
         </fieldset>
         <ErrorText error={error} />
         <div className="row drawer-foot">
@@ -290,13 +296,13 @@ export function Repositories({ userId, pool, granted, onChange }: { userId: stri
             <input type="search" aria-label="Search repositories" placeholder="Search, or paste a URL" autoFocus value={query} onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const first = choices.find((c) => !granted.some((g) => same(g, c))); if (first) add(first); } }} />
             {!accounts.length && all.data && <p className="muted small">No {pool} Git account yet</p>}
-            {pasted.length > 0 ? pasted.map((r) => <RepoItem key={r.account} r={r} granted={granted} onAdd={add} />)
-              : accounts.map((a) => {
-                const list = found[a.name];
+            {/* A pasted URL is listed under each account on its host, so the pick names the account. */}
+            {(pasted.length ? accounts.filter((a) => pasted.some((r) => r.account === a.name)) : accounts).map((a) => {
+                const list = pasted.length ? pasted.filter((r) => r.account === a.name) : found[a.name];
                 return (
                   <div key={a.name} className="repo-group" role="group" aria-label={a.name}>
                     <div className="eyebrow">{a.name} <span className="muted small">· {a.host}</span></div>
-                    {a.kind === "other" ? <p className="muted small">Paste its URL.</p>
+                    {a.kind === "other" && !pasted.length ? <p className="muted small">Paste its URL.</p>
                       : typeof list === "string" ? <p className="error small">{list}</p>
                       : list === undefined ? <p className="muted small">Asking {a.host}…</p>
                       : !list.length ? <p className="muted small">No repository matches.</p>

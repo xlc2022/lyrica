@@ -74,6 +74,17 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect(r).toEqual({ code: 0, out: "hellosong.txt\n" });
   });
 
+  it("puts the gh and tea wrappers first on a run with repositories, and tea's login only on that run's /tmp", async () => {
+    const env = gitEnv([{ name: "li/home", account: { kind: "forgejo", host: "forge.lan", account: "li", token: "forge-token" } }]);
+    const git = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], env });
+    const r = await sh("command -v gh tea; git init -q home && git -C home remote add origin https://forge.lan/li/home.git && cd home && "
+      + "{ tea 2>/dev/null; cat /tmp/lyrica-forge/tea/config.yml; }; cd .. && rm -rf home", git);
+    expect(r.out).toContain("/run/lyrica/bin/gh\n/run/lyrica/bin/tea\n");
+    expect(r.out).toContain("token: 'forge-token'");
+    expect((await sh("ls /tmp/lyrica-forge 2>&1 || true", git)).out).toContain("No such file");
+    expect((await sh("command -v gh || echo NONE")).out).not.toContain("/run/lyrica");
+  });
+
   it("hides lyricad's runtime directory, other users' files and everything else on the host", async () => {
     for (const path of [p("runtime"), p("other-user"), p("outside"), "/home", "/root", "/var", "/etc/shadow"]) {
       const r = await sh(`ls -a ${path}`);
@@ -454,10 +465,10 @@ describe.skipIf(!netRunnable || !lan)("a sandbox's network switches", () => {
     const env = gitEnv([{ name: "xlc2022/lyrica", account: { kind: "github", host: "github.com", account: "lyrica-bot", token } }]);
     const sandbox = new Sandbox({ workdir: p("work"), grants: grants(), network: { ...OFF, internet: true }, self: [], env });
     const fill = (path: string) => `printf 'protocol=https\\nhost=github.com\\npath=${path}\\n\\n' | git credential fill 2>&1`;
-    const r = await sh(`printenv GH_TOKEN; ${fill("xlc2022/lyrica.git")}; ${fill("xlc2022/other.git")}`, sandbox);
-    expect(r.out).toContain(`${token}\nprotocol=https\nhost=github.com\npath=xlc2022/lyrica.git\nusername=lyrica-bot\npassword=${token}\n`);
+    const r = await sh(`printenv GH_TOKEN || echo NONE; ${fill("xlc2022/lyrica.git")}; ${fill("xlc2022/other.git")}`, sandbox);
+    expect(r.out).toContain(`NONE\nprotocol=https\nhost=github.com\npath=xlc2022/lyrica.git\nusername=lyrica-bot\npassword=${token}\n`);
     expect(r.out).toContain("could not read Username for 'https://github.com/xlc2022/other.git'");
-    expect((await sh("printenv GH_TOKEN || echo NONE", box({ internet: true }))).out).toBe("NONE\n");
+    expect((await sh("printenv LYRICA_GIT_TOKEN_0 || echo NONE", box({ internet: true }))).out).toBe("NONE\n");
   });
 
   it("with internet only, reaches the network but not this machine's loopback", async () => {

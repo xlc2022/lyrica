@@ -120,9 +120,9 @@ export const repositoryUrl = (host: string, name: string): string => `https://${
  * command line: for each repository, a git credential helper bound to that
  * repository's URL (git's `GIT_CONFIG_*` environment, with `useHttpPath` for
  * its host, so another repository on the same host never gets it), reading
- * the token from the environment; `GH_TOKEN` (or `GH_ENTERPRISE_TOKEN` and
- * `GH_HOST`) for the first GitHub account's `gh`, and `GITEA_SERVER_URL` and
- * `GITEA_SERVER_TOKEN` for the first Gitea or Forgejo account's `tea`.
+ * the token from the environment; and `LYRICA_GIT_*` for the `gh` and `tea`
+ * wrappers (forge.sh), which pick the one account whose repository the
+ * current clone is.
  */
 export function gitEnv(repos: { name: string; account: Pick<GitAccountConfig, "kind" | "host" | "account" | "token"> }[]): Record<string, string> {
   if (!repos.length) return {};
@@ -130,6 +130,8 @@ export function gitEnv(repos: { name: string; account: Pick<GitAccountConfig, "k
   const config: [string, string][] = [];
   for (const host of new Set(repos.map((r) => r.account.host))) config.push([`credential.https://${host}.useHttpPath`, "true"]);
   repos.forEach((r, i) => {
+    env[`LYRICA_GIT_REPO_${i}`] = `${r.account.host}/${r.name}`.toLowerCase();
+    env[`LYRICA_GIT_KIND_${i}`] = r.account.kind;
     env[`LYRICA_GIT_USER_${i}`] = r.account.account;
     env[`LYRICA_GIT_TOKEN_${i}`] = r.account.token;
     config.push([`credential.${repositoryUrl(r.account.host, r.name)}.helper`,
@@ -137,11 +139,9 @@ export function gitEnv(repos: { name: string; account: Pick<GitAccountConfig, "k
   });
   config.forEach(([k, v], i) => { env[`GIT_CONFIG_KEY_${i}`] = k; env[`GIT_CONFIG_VALUE_${i}`] = v; });
   env.GIT_CONFIG_COUNT = String(config.length);
-  const gh = repos.find((r) => r.account.kind === "github")?.account;
-  if (gh?.host === "github.com") env.GH_TOKEN = gh.token;
-  else if (gh) Object.assign(env, { GH_HOST: gh.host, GH_ENTERPRISE_TOKEN: gh.token });
-  const tea = repos.find((r) => r.account.kind === "gitea" || r.account.kind === "forgejo")?.account;
-  if (tea) Object.assign(env, { GITEA_SERVER_URL: `https://${tea.host}`, GITEA_SERVER_TOKEN: tea.token });
+  // gh and tea get no token of their own here: GH_TOKEN is one value, so the
+  // wrappers (forge.sh) pick the account by the clone's origin.
+  env.LYRICA_GIT_COUNT = String(repos.length);
   return env;
 }
 

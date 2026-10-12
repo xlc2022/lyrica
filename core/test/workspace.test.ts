@@ -253,7 +253,10 @@ describe("Git accounts and repositories", () => {
     ]);
     // Each helper reads its own pair of variables, so two accounts on one host never mix.
     expect(helpers[1]![1]).toContain("$LYRICA_GIT_TOKEN_0");
-    expect(env).toMatchObject({ LYRICA_GIT_USER_0: "li", LYRICA_GIT_TOKEN_0: "li-token", LYRICA_GIT_USER_1: "lyrica-bot", LYRICA_GIT_TOKEN_1: TOKEN, GH_TOKEN: "li-token" });
+    expect(env).toMatchObject({ LYRICA_GIT_USER_0: "li", LYRICA_GIT_TOKEN_0: "li-token", LYRICA_GIT_USER_1: "lyrica-bot", LYRICA_GIT_TOKEN_1: TOKEN, LYRICA_GIT_COUNT: "2",
+      LYRICA_GIT_REPO_0: "github.com/xlc2022/lyrica", LYRICA_GIT_KIND_0: "github", LYRICA_GIT_REPO_1: "github.com/lyrica-bot/scratch" });
+    // GH_TOKEN is one value, so it is never set: the gh wrapper picks by the clone (core/test/forge.test.ts).
+    expect(env.GH_TOKEN).toBeUndefined();
     expect(JSON.stringify(env)).not.toContain("forge-token");
     expect(workspace.repositoriesFor(thread("code")).map((r) => r.path)).toEqual(["/workspace/repos/lyrica", "/workspace/repos/scratch"]);
 
@@ -262,14 +265,14 @@ describe("Git accounts and repositories", () => {
     settings.setThread("code", "general", { internet: false });
     expect(workspace.forgeEnv(thread("code"))).toEqual({});
     settings.setThread("code", "general", { hosts: ["github.com"] });
-    expect(workspace.forgeEnv(thread("code")).GH_TOKEN).toBe("li-token");
+    expect(workspace.forgeEnv(thread("code")).LYRICA_GIT_TOKEN_0).toBe("li-token");
 
     // A private thread: only with the host allowed, and only its private account's token, for tea.
     settings.setThread("p", "private", { repositories: [{ name: "li/notes", account: "forge" }] });
     expect(workspace.forgeEnv(thread("p", "private"))).toEqual({});
     settings.setThread("p", "private", { hosts: ["127.0.0.1:3000"] });
-    expect(workspace.forgeEnv(thread("p", "private"))).toMatchObject({ LYRICA_GIT_TOKEN_0: "forge-token", GITEA_SERVER_URL: "https://127.0.0.1:3000", GITEA_SERVER_TOKEN: "forge-token" });
-    expect(workspace.forgeEnv(thread("p", "private")).GH_TOKEN).toBeUndefined();
+    expect(workspace.forgeEnv(thread("p", "private"))).toMatchObject({ LYRICA_GIT_COUNT: "1", LYRICA_GIT_TOKEN_0: "forge-token", LYRICA_GIT_REPO_0: "127.0.0.1:3000/li/notes", LYRICA_GIT_KIND_0: "forgejo" });
+    expect(JSON.stringify(workspace.forgeEnv(thread("p", "private")))).not.toContain("li-token");
   });
 
   it("takes a removed account's repositories, or one taken off a project, from its running threads at once", async () => {
