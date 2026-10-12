@@ -312,15 +312,18 @@ export function linkProblem(link: string, sha: string): string {
 
 /**
  * Starts a download on a host. A gated repository's token typed here is saved first, since lyricad sends only a saved
- * one, and removed again once the host has it when Save it for next time is off.
+ * one, and removed again once the host has it when Save it for next time is off. A removal that fails never fails a
+ * download that started, so the page still goes to the queue rather than inviting a second start; the token then
+ * shows under Accounts there.
  */
 export async function startDownload(userId: string, hostId: string, body: { source: Hub; repo: string; files: string[] } | { source: "url"; url: string; sha256?: string }, token?: { text: string; keep: boolean }) {
   const hub = body.source === "url" ? undefined : body.source;
-  if (hub && token?.text.trim()) await put(u(userId, "hub-tokens", hub), { token: token.text.trim() });
+  const typed = hub && token?.text.trim() ? { hub, text: token.text.trim(), keep: token.keep } : undefined;
+  if (typed) await put(u(userId, "hub-tokens", typed.hub), { token: typed.text });
   try {
     await post(u(userId, "hosts", hostId, "downloads"), body);
   } finally {
-    if (hub && token?.text.trim() && !token.keep) await del(u(userId, "hub-tokens", hub));
+    if (typed && !typed.keep) await del(u(userId, "hub-tokens", typed.hub)).catch(() => {});
   }
 }
 

@@ -407,9 +407,10 @@ A thread's address may carry what the panel beside it shows:
   names the big files the host refuses with its reason, and starts the
   download (`POST …/downloads`), then shows the queue. lyricad sends a hub
   only a saved token, so one typed for a gated repository is saved first
-  and removed again after the start when Save it for next time is off. The
-  page's Cancel goes back to the Models address it was opened from, else
-  to Downloads. **Accounts** (`GET|PUT|DELETE …/hub-tokens`) shows per hub
+  and removed again after the start when Save it for next time is off; if
+  that removal fails, the download still counts as started and the token
+  stays under Accounts. The page's Cancel goes back to the Models address
+  it was opened from, else to Downloads. **Accounts** (`GET|PUT|DELETE …/hub-tokens`) shows per hub
   the token a download uses, the user's own before a shared one, as its
   last four characters; Remove is there only where the user may remove it
   (a shared token needs an administrator).
