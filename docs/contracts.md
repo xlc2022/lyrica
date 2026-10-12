@@ -767,6 +767,21 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     time, as the result's `message`. That way it sits in the transcript, not
     in the prefix.
   - Each section has a size budget.
+- **Turn tool limits** (`extension/src/turn-tools.ts`, installed first by
+  `openThreadSession`): one prompt/agent run, including model continuations
+  and nested tool calls, permits at most 100 attempted tool calls. Invalid
+  calls count too. Subagent sessions have independent budgets. The third
+  and later calls to the same tool with identical JSON arguments (object
+  keys sorted recursively; array order preserved) return an error telling
+  the model it already has the result and should answer or try something
+  different. A run of 25 calls to one tool, with any arguments, also stops
+  the turn. Calls beyond either limit in a batch are refused; after the
+  batch's results the loop ends, without another model call. A stored
+  `lyrica-tool-limit` message shows “Turn stopped after N tool calls.” in
+  the thread, live and after reload. Counters reset on the next agent run.
+  Pi validates tool schemas before execution and returns validation errors
+  naming missing fields, including an empty `image` call. These limits
+  serve principles 1 and 2: real runaway turns stop structurally.
 - **Tools** (budget: 30; see principle 8):
   - `read`, `write`, `edit` and `bash` (Workspace thread; see
     [workspace.md](workspace.md));
