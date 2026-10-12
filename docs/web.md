@@ -28,7 +28,8 @@ A thread's address may carry what the panel beside it shows:
   come with `GET /api/state` once unlocked) with the date and time under it, then a greeting by the hour and a
   message box that starts a thread in General or Private with its first
   message.
-- **Sidebar:** New thread (General or Private), Search (`src/Search.tsx`,
+- **Sidebar:** her name links to the user's welcome page, marks it as current
+  there, and closes the phone drawer when pressed. New thread (General or Private), Search (`src/Search.tsx`,
   "Search titles and messages": the list filters by title as it is typed;
   from 2 characters, 300 ms after the last key, `GET …/search` turns it
   into a group per thread in the order of their newest hit, the thread's
@@ -520,7 +521,9 @@ A thread's address may carry what the panel beside it shows:
   **Remove** (`DELETE`), confirmed in place; Not installed when the server
   lacks the program. The token is never sent back.
 - **Administration**, for administrators: Status (the server's network
-  self-test, sleep time, start unlocked), Users with the administrator flag,
+  self-test, sleep time, start unlocked), **Her name** (Name, 1–40 characters
+  on one line, one Save disabled when invalid or unchanged; `PUT …/admin/name`,
+  then her displayed name updates and the page re-reads `/api/state`), Users with the administrator flag,
   **Change password…** (the new password and the administrator's own, in
   the row; the user's data stays, they are logged out and told at their
   next visit) and their allowed folders, Sleep (**Sleep time**, `type="time"`, one Save;
@@ -529,10 +532,7 @@ A thread's address may carry what the panel beside it shows:
   **SearXNG address** in mono, without its password (a basic-auth password
   is kept when the user@host is unchanged), one Save, and Reachable or Unreachable as a
   dot and a word, what failed as its tooltip; `GET`/`PUT …/admin/web-search`),
-  **Updates**, and **Persona**: her
-  **Name** at the top (one field, Save, and the sentence that memories and
-  threads written so far keep the old name; `PUT …/admin/name`, then the
-  page re-reads `/api/state`), then the persona changes that users sent on
+  **Updates**, and **Persona**: the persona changes that users sent on
   (who sent them, whether they edited them, and a confirmation when the file
   changed since). Her name (`src/name.ts`, `her()`) is what every label,
   placeholder and sentence says where this doc says Lyrica, and the tab's

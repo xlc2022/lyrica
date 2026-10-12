@@ -129,7 +129,7 @@ textarea { resize: vertical; }
 .app { height: 100%; display: grid; grid-template-columns: 248px minmax(0, 1fr); position: relative; overflow: hidden; }
 .side { background: var(--side); border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; padding: 12px 10px 10px; min-height: 0; overflow: hidden; }
 .side-top { display: flex; align-items: center; justify-content: space-between; padding: 2px 8px; min-height: 30px; }
-.brand { font-size: 20px; font-weight: 600; }
+.brand { font-size: 20px; font-weight: 600; color: inherit; min-height: var(--tap); display: flex; align-items: center; }
 .side-close { display: none; }
 .side-nav { display: grid; gap: 1px; }
 .side-nav a, .side-nav > button, .side-nav summary { display: flex; align-items: center; gap: 10px; color: var(--fg); padding: 7px 8px; border-radius: 8px; min-height: var(--tap); width: 100%; border: 0; background: none; text-align: left; font-weight: 400; justify-content: flex-start; }

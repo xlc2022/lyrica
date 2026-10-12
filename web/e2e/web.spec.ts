@@ -2561,3 +2561,54 @@ test("Web search: the administrator sets the SearXNG address and sees whether it
   await shot("web-search-switch-unset");
   await page.keyboard.press("Escape");
 });
+
+test("the sidebar brand links home and closes the phone drawer", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}/admin/status`);
+  await expect(page.getByRole("heading", { name: "Status", exact: true })).toBeVisible();
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  const brand = page.locator("a.brand");
+  await expect(brand).toHaveAttribute("href", `#/u/${userId}`);
+  await expect(brand).not.toHaveAttribute("aria-current", "page");
+  await brand.click();
+  await expect(brand).toHaveAttribute("aria-current", "page");
+  if (phone(page)) {
+    await expect(page.locator(".app")).toHaveAttribute("data-side-open", "false");
+    await page.getByRole("button", { name: "Show threads" }).click();
+    await brand.click();
+    await expect(page.locator(".app")).toHaveAttribute("data-side-open", "false");
+  }
+  await noHorizontalScroll(page);
+});
+
+test("Administration has Her name after Status and saves the name throughout the app", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}/admin/name`);
+  const nav = page.getByRole("navigation", { name: "Administration sections" });
+  await expect(nav.getByRole("link").nth(0)).toHaveText("Status");
+  await expect(nav.getByRole("link").nth(1)).toHaveText("Her name");
+  const name = page.getByLabel("Name", { exact: true });
+  const save = page.getByRole("button", { name: "Save", exact: true });
+  await expect(name).toHaveValue("Lyrica");
+  await expect(name).toHaveAttribute("maxlength", "40");
+  await expect(save).toBeDisabled();
+  await name.fill("   ");
+  await expect(save).toBeDisabled();
+  await expect(page.getByRole("alert")).toHaveText("Her name is 1 to 40 characters.");
+  await name.fill("Ly\u2028rica");
+  await expect(save).toBeDisabled();
+  await expect(page.getByRole("alert")).toHaveText("Her name is one line of text.");
+  await name.fill("  Lyrica  ");
+  await expect(save).toBeDisabled();
+  await name.fill("Moonlight");
+  await save.click();
+  await expect(name).toHaveValue("Moonlight");
+  await expect(page.locator("a.brand")).toHaveText("Moonlight");
+  await expect(page).toHaveTitle("Moonlight");
+  await expect(save).toBeDisabled();
+  await noHorizontalScroll(page);
+  await name.fill("Lyrica");
+  await save.click();
+  await expect(name).toHaveValue("Lyrica");
+  await expect(page).toHaveTitle("Lyrica");
+});

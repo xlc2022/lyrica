@@ -2,7 +2,7 @@
 // its sections listed at the left. The old control panel's cards moved here.
 import { useState } from "react";
 import {
-  del, get, patch, post, put, u,
+  del, get, patch, post, put, saveName, u,
   type AdminStatus, type AllowedPaths, type Me, type ModeDefault, type NetworkDefaults, type PersonaProposal,
   type Pool, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type Theme, type UserCard,
   type NameSetting,
@@ -11,7 +11,7 @@ import { ClaudeCodeSection } from "./ClaudeCode.tsx";
 import { GitAccountsSection } from "./Git.tsx";
 import { McpServersSection } from "./Mcp.tsx";
 import { MachinesSection } from "./Machines.tsx";
-import { her } from "./name.ts";
+import { checkName, her, setHer } from "./name.ts";
 import { SleepModeField, SleepTimeSection } from "./Sleep.tsx";
 import { TailnetSection } from "./Tailnet.tsx";
 import { UpdatesSection } from "./Updates.tsx";
@@ -48,6 +48,7 @@ const SETTINGS: SectionDef[] = [
 ];
 const ADMIN: SectionDef[] = [
   { key: "status", label: "Status", body: (ctx) => <StatusSection ctx={ctx} /> },
+  { key: "name", label: "Her name", body: (ctx) => <Section title="Her name"><NameForm ctx={ctx} /></Section> },
   { key: "users", label: "Users", body: (ctx) => <UsersSection ctx={ctx} /> },
   { key: "sleep", label: "Sleep", body: (ctx) => <SleepTimeSection ctx={ctx} /> },
   { key: "unlocked", label: "Start unlocked", body: (ctx) => <UnlockedSection ctx={ctx} /> },
@@ -430,22 +431,23 @@ function AllowedPathsEditor({ userId, target }: { userId: string; target: string
   );
 }
 
-/** Her name (docs/ux.md §6 "Her name"): one field and one Save, with its one sentence, above the persona changes. */
+/** Her name (docs/ux.md §6 "Her name"): one field and one Save. */
 function NameForm({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const current = useLoad(() => get<NameSetting>(u(userId, "admin", "name")), [userId]);
   const [name, setName] = useState<string>();
   const [run, busy, error] = useAction();
   const value = name ?? current.data?.name ?? "";
-  const changed = !!current.data && value.trim() !== current.data.name && value.trim() !== "";
+  let invalid = "";
+  try { checkName(value); } catch (e) { invalid = (e as Error).message; }
+  const changed = !!current.data && value.trim() !== current.data.name;
   return (
-    <form className="stack sub-card" onSubmit={(e) => { e.preventDefault(); void run(async () => { current.set(await put<NameSetting>(u(userId, "admin", "name"), { name: value.trim() })); setName(undefined); ctx.refreshState(); }); }}>
-      <ErrorText error={current.error || error} />
+    <form className="stack" onSubmit={(e) => { e.preventDefault(); if (busy || invalid || !changed) return; void run(async () => { const saved = await saveName(userId, checkName(value)); current.set(saved); setHer(saved.name); setName(undefined); ctx.refreshState(); }); }}>
+      <ErrorText error={current.error || error || (name !== undefined ? invalid : "")} />
       <div className="inline">
         <label className="field grow"><span>Name</span><input value={value} maxLength={40} onChange={(e) => setName(e.target.value)} /></label>
-        <button className="primary" disabled={busy || !changed}>Save</button>
+        <button className="primary" disabled={busy || !!invalid || !changed} title="Memories and threads written so far keep the old name.">Save</button>
       </div>
-      {changed && current.data && <p className="muted small">Memories and threads written so far keep the name {current.data.name}.</p>}
     </form>
   );
 }
@@ -460,7 +462,6 @@ function ProposalsSection({ ctx }: { ctx: ShellContext }) {
   const who = (sentBy: string) => users.data?.find((x) => `user:${x.id}` === sentBy)?.displayName ?? sentBy;
   return (
     <Section title="Persona">
-      <NameForm ctx={ctx} />
       <h3>Changes to her persona</h3>
       <ErrorText error={proposals.error || error} />
       {proposals.data && !proposals.data.length && <p className="muted">No suggestions waiting.</p>}

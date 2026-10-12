@@ -411,7 +411,7 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
   return (
     <aside className="side" aria-label="Threads">
       <div className="side-top">
-        <span className="brand">{her()}</span>
+        <a className="brand" href={href({ page: "home", userId: user.id })} aria-current={route.page === "home" ? "page" : undefined} onClick={onClose}>{her()}</a>
         <button type="button" className="icon sm side-close" aria-label="Hide threads" onClick={onClose}><Icon name="close" /></button>
       </div>
       <nav className="side-nav" aria-label="Pages">
