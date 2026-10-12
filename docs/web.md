@@ -29,7 +29,8 @@ A thread's address may carry what the panel beside it shows:
   message box that starts a thread in General or Private with its first
   message.
 - **Sidebar:** New thread (General or Private), Search (filters the list by
-  title), Memory, the Sort menu, the thread list, and the user. The **Sort
+  title), **Notifications** with the count of decisions waiting (read with
+  the thread list, every 30 seconds and on focus), Memory, the Sort menu, the thread list, and the user. The **Sort
   menu** ("Sort: By date ▾") has the sorts By date (sections Today, Yesterday,
   Previous 7 days, Previous 30 days, Older), Last activity, Start date, Title and My groups (one
   section per group with its count, then Not in a group, and a New group
@@ -51,7 +52,12 @@ A thread's address may carry what the panel beside it shows:
   an empty, pinned project chat) and **New group…**.
 - **Thread menu** (`src/ThreadMenu.tsx`): right-click a thread, or hold it
   for half a second on a touch screen. Mark as unread or read (U), Rename…
-  (R, inline), Move to group (M: the groups, Not in a group, New group… N),
+  (R, inline), **Share with** (S: the other users on this server, from
+  `GET …/people`, linked personas marked; picking one confirms in a dialog
+  that says the copy is as it is now, that later messages and memories
+  don't go, and that the thread is private when it is; `POST …/share`;
+  not on a project chat or a subagent's thread; a private thread's
+  notification offers Add to Private only), Move to group (M: the groups, Not in a group, New group… N),
   **Pin** or **Unpin** (P, top-level threads), **Make project…** (K, a
   top-level thread; confirms in a dialog, since there is no way back),
   **Resolve** or **Reopen** (E, a project's thread), Hide or Unhide (H), and
@@ -171,8 +177,20 @@ A thread's address may carry what the panel beside it shows:
   as gone. Mention tokens show as current names; the editor shows them as
   `[[Name]]` or `[[Name:obj]]` and saves them back as tokens. Nothing of a
   memory's text is kept in the browser's storage.
+- **Notifications** (`src/Notifications.tsx`; docs/ux.md §6 "Anything
+  waiting for the user"): the first section of Settings, one list from
+  `GET …/notifications`. Chips filter by type (All with the count, Needs a
+  decision, then the types that exist now); Sort offers Newest, Oldest, By
+  type and By pool (the last two group the rows under eyebrows); Where
+  narrows to a pool. Each row has its kind, pool and time, Open thread or
+  Open where the item leads, and its actions as buttons (an action that
+  answers with a thread goes there). Checkboxes select rows for the bulk
+  bar: a button for each action every selected row shares, with the count
+  (Add to Private 2, Decline 2), and none when they share none. Twenty rows at a time, with
+  Show more. The welcome page shows the first four decisions in a card
+  with All N.
 - **Settings** (`src/Panel.tsx`): a page with its sections listed at the
-  left (a scrolling row on a phone): Profile (name, pronouns, accent colour,
+  left (a scrolling row on a phone): Notifications, Profile (name, pronouns, accent colour,
   monogram), Appearance (theme), Unlock and lock (saved credentials, stay
   unlocked after logout, and `lyricad`'s warning when the two contradict),
   Password, Your personas (linking a separate persona needs both passwords),
@@ -242,7 +260,8 @@ A thread's address may carry what the panel beside it shows:
   as written). An image she writes from the thread folder shows in the
   message by its thumbnail (`…/files/thumb`, or the image itself where the
   server makes none) and opens large, from `…/files/content`, in the
-  Images tab's dialog (an SVG stays a link, since `…/files/content` serves it as text, never as a page); a remote image is never loaded and shows as a link with its
+  Images tab's dialog; the conversation holds which image is open, so the
+  stored copy replacing a live message doesn't close it (an SVG stays a link, since `…/files/content` serves it as text, never as a page); a remote image is never loaded and shows as a link with its
   alt text.
 - A thread she mentions (`[t:<id>]`, `[e:<id>#<n>]`) shows as its current
   title, linked to the thread in the same tab; "a forgotten thread" once it's

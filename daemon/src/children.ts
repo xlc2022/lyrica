@@ -413,6 +413,11 @@ export class ChildThreads implements ThreadsHost {
     return this.rows(userId).find((r) => r.pool === pool && r.thread === thread);
   }
 
+  /** Child threads with updates the user hasn't seen, or waiting on them. */
+  updates(userId: string): { pool: Pool; thread: string; parent: string; unseen: number; needsYou: boolean }[] {
+    return this.rows(userId).filter((r) => r.unseen > 0 || r.needs_you).map((r) => ({ pool: r.pool, thread: r.thread, parent: r.parent, unseen: r.unseen, needsYou: r.needs_you === 1 }));
+  }
+
   private rows(userId: string): Row[] {
     return this.db(userId, (db) => db.prepare("SELECT * FROM child_threads ORDER BY started_at").all()) as Row[];
   }

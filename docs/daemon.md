@@ -273,6 +273,49 @@ Each active thread is one Pi session from `openThreadSession`, with
   their parent's `delegate` cards. Memory search honours the same pool filters; `?all=1` ignores
   them in both.
 
+## Share with and Notifications
+
+`core/src/shares.ts`, `daemon/src/notifications.ts`; DESIGN.md "Where
+things are".
+
+- **Share with.** `POST …/threads/:pool/:threadId/share` with the recipient's
+  user ID (from `GET …/people`, the other users on the server with their
+  names and whether they are a linked persona) copies the conversation into
+  `thread_shares` in `self.db`, the one place both users can reach, since
+  each user's pools open only with their own key. The copy is the
+  conversation alone (`PoolStore.exportEntries`): the user's messages, her
+  text and her other tools' calls and results. Her per-turn context, her
+  memory tools' calls and results and her thinking stay behind, and
+  citations are stripped from her text, so none of the sender's memory or
+  its IDs travels. Files don't travel either: a `/workspace` path in the
+  copy names nothing in the recipient's thread folder. A project chat or a
+  subagent's thread is refused. The share records the pool it came from and
+  whether the thread was local-only. The recipient's
+  `POST …/shares/:shareId/accept` with a pool creates a thread there with
+  the title, imports the entries (indexed in that pool, so she remembers it
+  there), and deletes the share: a private thread is added only to Private
+  (409 otherwise), and a local-only thread's copy in General is local-only
+  too, so text kept off the cloud stays off it. `DELETE …/shares/:shareId`
+  declines and deletes it. The sender's later messages never reach the copy,
+  and the sender can't withdraw a share once sent; it waits until the
+  recipient acts. Only the recipient can accept or decline.
+- **Notifications.** `GET …/notifications?type=&scope=&sort=&offset=&limit=`
+  is one list over what waits for the user, built from where each thing
+  lives: shares, permission requests in hosted threads, child thread updates
+  and threads waiting on them, her items from the night, her persona
+  suggestions, and, for administrators, persona changes to approve. Each
+  item has its type, pool, time, whether it is a decision, where it leads,
+  and its actions as requests the UI sends as they are; `total` counts the
+  filtered items, `waiting` the decisions over everything (the sidebar's
+  count), `types` the types present. `type=decision` keeps decisions; sorts
+  are newest, oldest, type and scope; `limit` goes up to 200. The list
+  follows the display: a pool switched off, or a hidden thread while Show
+  hidden is off, adds nothing, not even to the count, so nothing on screen
+  says hidden content exists.
+  `POST …/threads/:pool/:threadId/seen` marks a child thread's updates seen
+  without opening it. Not in the list yet: downloads, clean-up items, image
+  models to review, host problems.
+
 ## The event stream
 
 `GET …/threads/:pool/:threadId/events` is one SSE stream per thread. It

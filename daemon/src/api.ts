@@ -747,6 +747,54 @@ export interface NewThreadGroup { name: string }
  */
 export interface ForgetThread { children?: boolean }
 
+// --- Share with ---
+// A copy of a thread sent to another user on this server (DESIGN.md, "Where things
+// are"). It waits in self.db until they add it to General or Private, which copies
+// the entries into a new thread of theirs, indexed there, or decline. Nothing of
+// the sender's memory goes with it; the sender's later messages never reach the copy.
+
+/** GET /api/u/:userId/people → Person[]: the other users on this server, to share with. */
+export interface Person { id: string; displayName: string; /** A linked persona of this user. */ linked: boolean }
+/** POST /api/u/:userId/threads/:pool/:threadId/share (ShareRequest) → Ok. Not a project chat or a subagent's thread. The copy is the conversation alone: her context, memory tools and citations stay behind, and so do the thread's files. */
+export interface ShareRequest { to: string }
+/** POST /api/u/:userId/shares/:shareId/accept (AcceptShare) → ThreadSummary: the new thread in that pool. A private thread is added only to Private (409 otherwise); a local-only thread's copy is local-only. */
+export interface AcceptShare { pool: Pool }
+/** DELETE /api/u/:userId/shares/:shareId → Ok: declined; nothing of it stays. */
+
+// --- Notifications ---
+// One list over everything waiting for the user (DESIGN.md, "Where things are"):
+// threads shared with them, approvals a thread waits for, child thread updates,
+// her items from the night, and, for administrators, persona changes to approve.
+// Not yet in it: downloads, clean-up items, image models to review, host problems.
+
+export type NotificationType = "share" | "permission" | "update" | "sleep" | "suggestion" | "approval";
+/** An action on an item: a request the UI sends as it is. `opens`: the answer is a ThreadSummary to go to. */
+export interface NotificationAction { label: string; method: "POST" | "DELETE"; path: string; body?: unknown; danger?: boolean; opens?: boolean }
+export interface Notification {
+  /** Unique across types: `<type>:<id>`. */
+  id: string;
+  type: NotificationType;
+  title: string;
+  detail?: string;
+  /** Where it is: a pool, for now. */
+  scope: Pool;
+  /** The user has to decide something; a plain update isn't counted in the sidebar. */
+  decision: boolean;
+  /** Where it leads, if anywhere: a thread, or a section of Settings or Administration. */
+  thread?: { pool: Pool; id: string };
+  section?: "settings/suggestions" | "admin/persona";
+  actions: NotificationAction[];
+  at: string;
+}
+export type NotificationSort = "newest" | "oldest" | "type" | "scope";
+/**
+ * GET /api/u/:userId/notifications?type=&scope=&sort=newest&offset=0&limit=50 → NotificationPage.
+ * `total` is the number matching the filters, `waiting` the decisions over everything (the sidebar's count), `types` which types exist now.
+ * A pool the display has off, or a hidden thread while Show hidden is off, contributes nothing, not even to `waiting`.
+ */
+export interface NotificationPage { items: Notification[]; total: number; waiting: number; types: NotificationType[] }
+/** POST /api/u/:userId/threads/:pool/:threadId/seen → Ok: a child thread's updates are seen without opening it. */
+
 /** Where a thread's model for one task comes from. */
 export interface TaskModel {
   /** The model that answers now. */

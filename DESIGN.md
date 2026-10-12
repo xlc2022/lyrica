@@ -126,8 +126,12 @@ Each user has two pools of memory.
   - **Share with** sends another user a copy of the thread as it is now.
     They add it to their General or Private threads, or decline. The
     sender's later messages aren't shared, and none of the sender's
-    memories go with it; the copy is the recipient's thread from then on, and
-    Lyrica remembers it in the recipient's pool. Sharing a private thread
+    memories go with it (the copy is the conversation alone: what she read
+    from memory, wrote to it, or thought stays behind, and her citations are
+    stripped); the copy is the recipient's thread from then on, and
+    Lyrica remembers it in the recipient's pool. A private thread can be
+    added only to Private, and a thread kept off the cloud keeps that in its
+    copy, so the hard rules hold across users. Sharing a private thread
     asks first. Only users on the same server appear in the list.
   - **The user's button** opens a menu: Settings, Administration (shown
     only to administrators), Switch user, Lock and Log out.

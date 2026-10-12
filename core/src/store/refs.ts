@@ -26,6 +26,12 @@ export function splitId(id: string): { pool?: Pool; id: string } | undefined {
   return { pool: m[1] as Pool | undefined, id: m[2]! };
 }
 
+/** The text without its citation groups (`[n:…]`, `[general/p:slug, e:t#3]`), for a copy that leaves the pool. */
+export function stripCitations(text: string): string {
+  return text.replace(/ ?(?<!\[)\[([^[\]]+)\](?!\])/g, (whole, inside: string) =>
+    (inside.split(/[,;]\s*/).every((part) => splitId(part)) ? "" : whole));
+}
+
 /**
  * The citations in a text, as stored: bare IDs for the same pool, `general/…`
  * for general memory cited from private. General memory can never cite private.

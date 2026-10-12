@@ -2,49 +2,69 @@
 
 A continuous personal companion built on [Pi](https://github.com/badlogic/pi-mono).
 
-This repository is being rebuilt from scratch. Contributors (human or model)
-start with [AGENTS.md](AGENTS.md). The design lives in
-[PRINCIPLES.md](PRINCIPLES.md) and [DESIGN.md](DESIGN.md). The memory
-design is in [docs/memory.md](docs/memory.md). To run her, start with
-[docs/guides/getting-started.md](docs/guides/getting-started.md); a GPU
-machine for her models is set up in
-[docs/guides/model-hosts.md](docs/guides/model-hosts.md), and a machine
-that runs the checks in [docs/guides/ci-runners.md](docs/guides/ci-runners.md).
+Lyrica runs on one server that Li administers. Li and anyone Li lets in each
+have one or more separate users, and each user's memory is encrypted with
+that user's own key. Encryption protects data at rest: anyone with root
+access while a user is unlocked can read that user's data, an administrator
+who sets a user's password can read that user's data, and anything sent to a
+cloud model is outside our control.
 
-Lyrica runs for one person, Li, on one server. Each of Li's personas is a separate
-user whose memory is encrypted with that user's own key. Encryption protects
-data at rest: anyone with root access while a user is unlocked can read that
-user's data, and anything sent to a cloud model is outside our control.
+## Running her
 
-## Plan
+- [docs/guides/getting-started.md](docs/guides/getting-started.md) installs
+  her on a new server (Debian, Ubuntu or NixOS), takes her through the first run,
+  and covers updates, rollback and backups.
+- [docs/guides/model-hosts.md](docs/guides/model-hosts.md) sets up a GPU
+  machine for her models.
+- [docs/guides/ci-runners.md](docs/guides/ci-runners.md) sets up a machine
+  that runs the checks.
 
-Each milestone leaves her usable:
+She isn't deployed yet. The web UI has no setup page, so the first run uses
+`lyrica admin init` on the server.
 
-1. **She is herself.** Users and keys, persona, topic routing and context
-   assembly, tried out on the developer bench (`lyrica dev`).
-2. **She remembers.** Encrypted general and private pools, notes,
-   `remember`/`recall`/`read_memory`, and automatic recall.
-3. **Web chat.** `lyricad` hosts every conversation. The web UI gets login,
-   threads per pool, streaming replies, visible tool calls, the model badge
-   and the control panel. `lyrica chat` connects to the same daemon.
-4. **She wakes up oriented.** Sleep writes notes, pages, WAKE and the
-   journal. The memory browser and the Sleep sidebar go into the web UI.
-5. **Calendar and sorting.**
-6. **Live with it** for a few weeks, keeping the evals and a friction log.
+## Contributing
 
-Later, when real use calls for them: Matrix, the forum, thread export between
-interfaces, and system administration.
+Contributors (people or models) start with [AGENTS.md](AGENTS.md). The design
+lives in [PRINCIPLES.md](PRINCIPLES.md) and [DESIGN.md](DESIGN.md), the
+interfaces between components in [docs/contracts.md](docs/contracts.md), and
+each component's doc in [docs/](docs/). Work in progress is planned in
+[docs/briefs/](docs/briefs/).
+
+## What exists
+
+The repository was rebuilt from scratch starting 2026-10-09.
+
+- Users and keys, the persona, topic routing and context assembly.
+- Encrypted general and private memory pools, with notes, memory tools,
+  automatic recall and a memory browser.
+- `lyricad`, which hosts every conversation, and a web UI for threads,
+  projects, files, machines, voice, notifications and settings.
+- Sleep, which writes notes, pages, WAKE and the journal.
+- Delegation and child threads, modes, and remote machines over SSH or
+  Proxmox.
+- Model and speech hosts on GPU machines.
+- Releases with automatic rollback, and numbered database migrations.
+
+Not built yet: `lyrica chat` and `lyrica mem` (clients of `lyricad`), the web
+setup and Updates pages, images, and
+calendar and sorting. After that comes living with her for a few weeks while
+keeping the evals and a friction log.
 
 ## Layout
 
 ```text
-core/          keyring, users, mentions, stores, model router
+core/          keyring, users, stores, migrations, model router, workspace
 extension/     the Lyrica Pi extension: persona, context, memory tools, sleep
 daemon/        lyricad: sessions, HTTP/SSE and local-socket API, scheduler
-web/           web chat, control panel, memory browser, sleep sidebar
+daemon/deploy/ install.sh, systemd units, updater and rollback
+web/           the web UI
+host/          model and speech hosts for GPU machines
+nix/           NixOS module, package, sandbox tools and check-host.sh
 persona/       seed, imported into self.db on first run
 evals/         continuity scenarios
-bin/lyrica     one command: serve, chat, admin, mem, dev
+bin/lyrica     one command: serve, admin, dev, version
+docs/          component docs, guides and briefs
 ```
 
-Checks: `npm install`, `npm run typecheck`, `npm test`.
+Checks: `npm install`, `npm run typecheck`, `npm test`, and `npm run evals`
+for the continuity scenarios.

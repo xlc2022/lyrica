@@ -1,12 +1,10 @@
 import type { AgentSession, SessionEntry } from "@earendil-works/pi-coding-agent";
-import type { NewEntry, PoolStore } from "@lyrica/core";
+import { MEMORY_TOOLS, type NewEntry, type PoolStore } from "@lyrica/core";
 
 // Threads live in the pool database, never in Pi session files. Pi saves a
 // message only after its message_end listeners run, so entries are copied over
 // at turn and agent boundaries, by Pi entry ID, which makes copying idempotent.
-
-// Memory tools, sleep's included: what they wrote is indexed where it was written.
-const MEMORY_TOOLS = new Set(["remember", "recall", "read_memory", "write_page", "write_journal", "write_wake", "raise", "propose_persona"]);
+// Memory tools (MEMORY_TOOLS): what they wrote is indexed where it was written.
 
 /** What a thread started from a sleep item is prompted with, so she speaks first. Never shown or indexed. */
 export const OPENING = "(The conversation is starting. Speak first.)";

@@ -97,7 +97,10 @@ Rules:
   Settings, Administration, Files, Images, Thread folder, Attach to message,
   Download, Download as zip, Copy path, Show in thread, Upload…, New folder…, Uploaded,
   Made by Lyrica, Search files, Pinned, Branch, Regenerate,
-  Share with, Move to group, Change password…, Change password, Sampling, Serving, Placement, Memory,
+  Share with, Send a copy, Needs a decision, Shared with you, Add to General,
+  Add to Private, Decline, Dismiss, Select all, Everywhere, By pool, By type,
+  Newest first, Oldest first, Open thread,
+  Move to group, Change password…, Change password, Sampling, Serving, Placement, Memory,
   Throughput, Template, Pinned, Excluded, Servers, Keep free, Not this
   model, Group, Add…, Reset, Dictation, Dictate, Read aloud, Stop reading,
   Read aloud while agent writes, Local services (localhost), Fallback, Sleep fallback, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, Thread settings, New threads, This chat, Threads, Watching threads, Checked the other threads, Message received from, Show more, Show less, Open as a page, Close panel,
@@ -142,7 +145,8 @@ Rules:
 | Actions on a thread (pin, rename, share, move, hide, delete) | the thread's **right-click menu** in the sidebar, letter shortcuts, long press on a phone |
 | Rare actions on a row | the row's **⋯** menu |
 | Sorting and what's shown | the one **Sort** menu above the thread list: the sort choices; below a line, General, Private and Hidden; below another, All threads, Only projects or No projects |
-| Anything waiting for the user | **Notifications**: the sidebar link with its count, the Settings section, and the Notifications card on the welcome page. Never a banner elsewhere, except the chat's pending bar |
+| Sharing a thread | **Share with** in the thread's right-click menu, a submenu of the server's other people (or "No one else on this server."); picking one opens a **dialog**, "Send a copy to <name>?", one sentence, **Send a copy** primary and Cancel |
+| Anything waiting for the user | **Notifications**: the sidebar link with its count, the Settings section, and the Notifications card on the welcome page (the first decisions with their buttons, and **All <n>** to the section). Never a banner elsewhere, except the chat's pending bar. The section: filter chips (All <n>, Needs a decision, then the kinds present, such as Shared with you), **Sort** (Newest first, Oldest first, By type, By pool) and **Where** (Everywhere, General, Private) as selects, the count in mono, **Select all** with a bulk bar of buttons for the actions every selected row shares, each with the count (Add to Private 2, Decline 2); none when they share none, the count only; each row has its title, a fact line with numbers in mono, a facts line of kind, pool as the kind eyebrow and time in mono, Open thread or Open where it leads, and its actions as buttons (Add to General, Add to Private, Decline on a share; Dismiss on anything with no decision) |
 | A user's own settings | **Settings**, sections on the left |
 | Server-wide settings | **Administration**, shown only to administrators |
 | Changing a user's password | **Change password…** on the user's row in Administration › Users; it opens one field in place (New password for <name>) with **Change password** primary and Cancel; afterwards a one-line status in the row, "Password changed. <name> is told at their next visit."; when the server has no recovery copy yet, its sentence shows in the row instead |

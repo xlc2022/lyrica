@@ -134,6 +134,24 @@ interface Profile {
 - `subj` is used only in live prompts (for example, "Li's pronouns are
   they/them"). It is never substituted into stored memory.
 
+## core/shares
+
+```ts
+class ThreadShares {                                          // thread_shares in self.db: a copy in transit between two users
+  send({ from, to, title?, pool, unlogged, localOnly, entries: ExportedEntry[] }): string  // refuses from === to; a private thread is local-only
+  forUser(to): PendingShare[]                                 // { id, from, to, title?, pool, unlogged, localOnly, entryCount, createdAt }, newest first
+  get(id, to): ShareContents | undefined                      // with its entries; the recipient only
+  remove(id, to): boolean                                     // accepted or declined
+}
+```
+
+- `thread_shares` is self schema step 2 (`core/migrations`, expand only;
+  `THREAD_SHARES_SCHEMA` in `core/src/db.ts`).
+- The entries are what `exportEntries` gives: the conversation alone. The
+  recipient's `lyricad` imports them into a thread of the pool they choose; a
+  private share goes only to Private, and a local-only share's copy is
+  local-only (`core/models.setLocalOnly`).
+
 ## core/mentions
 
 ```ts
@@ -181,7 +199,7 @@ nothing else. No code path gives a general view a private handle.
 
 | Area | Methods |
 |---|---|
-| Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title?, project?, goal? })` (a child of a child is refused), `setProject`, `setGoal`, `projectOf`, `projectThreads`, `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared), `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)`, `copyEntries(from, to, { upTo? })` (a thread's entries into another, for forks and branches), `entriesMentioning(needle)` → `{ thread, n }[]` (where an upload is still mentioned) |
+| Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title?, project?, goal? })` (a child of a child is refused), `setProject`, `setGoal`, `projectOf`, `projectThreads`, `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared), `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)`, `copyEntries(from, to, { upTo? })` (a thread's entries into another, for forks and branches), `exportEntries(threadId)` → `ExportedEntry[]` (the conversation alone, for Share with: `conversationOnly` drops her context, memory tool calls and results and thinking, and strips citations; `MEMORY_TOOLS` names the tools), `importEntries(threadId, entries)` (into an empty thread of this pool, as its own, indexed, entries), `entriesMentioning(needle)` → `{ thread, n }[]` (where an upload is still mentioned) |
 | Pins | `pinEntry(threadId, n, pinned)`, `pins(threadId?)` → `PinnedEntry[]` (one thread's, or the pool's), oldest first |
 | Projects | `pageForProject(threadId)`, `projectNotes(threadId, since?)` |
 | Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal` |

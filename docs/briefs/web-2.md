@@ -215,3 +215,12 @@ For each part:
   of each user's key in `self.db` (DESIGN.md "Users" and "Storage",
   contracts core/users; Li chose this over a reset that loses data). Nothing
   for sleep or the pools changes; the privacy boundary note is in DESIGN.
+- 2026-10-12, PR 11 (Notifications and Share with): `thread_shares` in
+  `self.db` holds a sent copy until the recipient adds or declines it;
+  `GET …/notifications` lists what waits (docs/daemon.md "Share with and
+  Notifications"); the sidebar count, the welcome card and Settings →
+  Notifications (docs/web.md). Not in the list yet: downloads, clean-up,
+  image models to review, host problems, which come with the Models page.
+  Next: Pin in the remaining places, the Models page (carry the Fallback
+  default), the Sleep section; Web: bootstrap once the daemon API is pushed;
+  the Updates page after releases.

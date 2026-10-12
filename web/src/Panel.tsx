@@ -8,6 +8,7 @@ import {
 } from "./api.ts";
 import { GitAccountsSection } from "./Git.tsx";
 import { MachinesSection } from "./Machines.tsx";
+import { NotificationsSection } from "./Notifications.tsx";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { href } from "./route.ts";
 import { PageHead, type ShellContext } from "./Shell.tsx";
@@ -38,6 +39,7 @@ const fits = (task: Task, m: OfferingInfo) => (task === "speech.transcribe" ? !!
 type SectionDef = { key: string; label: string; body: (ctx: ShellContext, rest: string) => React.ReactNode };
 
 const SETTINGS: SectionDef[] = [
+  { key: "notifications", label: "Notifications", body: (ctx) => <NotificationsSection ctx={ctx} /> },
   { key: "profile", label: "Profile", body: (ctx) => <ProfileSection ctx={ctx} /> },
   { key: "appearance", label: "Appearance", body: (ctx) => <AppearanceSection ctx={ctx} /> },
   { key: "unlock", label: "Unlock and lock", body: (ctx) => <UnlockSection ctx={ctx} /> },

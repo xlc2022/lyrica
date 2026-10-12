@@ -7,6 +7,7 @@ import { Thread, findThread } from "./Thread.tsx";
 import { Memory, memoryTitle } from "./Memory.tsx";
 import { AdminPage, SettingsPage } from "./Panel.tsx";
 import { FilesPage } from "./Files.tsx";
+import { NotificationsCard, useWaiting } from "./Notifications.tsx";
 import { ThreadMenu, useThreadMenu } from "./ThreadMenu.tsx";
 import { ProjectPage, stateWord } from "./Project.tsx";
 import { ErrorText, hidden, menuArrows, shortTime, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
@@ -22,6 +23,9 @@ export interface ShellContext {
   /** The user's own groups of threads, and a reload after one is made or renamed. */
   groups: ThreadGroup[];
   refreshGroups: () => void;
+  /** How many decisions wait in Notifications (the sidebar's count), and a reload after one is acted on. */
+  waiting: number;
+  refreshNotifications: () => void;
   openSide: () => void;
 }
 
@@ -41,18 +45,20 @@ export function Shell({ user, users, route, build, onAuthChange }: {
 
   // Close the sidebar overlay whenever the page changes.
   useEffect(() => setSideOpen(false), [route]);
-  // Refresh the list now and then, so other threads' titles and activity show.
+  const notes = useWaiting(user.id);
+  // Refresh the list and the count now and then, so other threads' titles and activity show, and what waits.
   useEffect(() => {
-    const t = setInterval(() => document.visibilityState === "visible" && threads.reload(), 30_000);
-    addEventListener("focus", threads.reload);
-    return () => { clearInterval(t); removeEventListener("focus", threads.reload); };
-  }, [threads.reload]);
+    const tick = () => { if (document.visibilityState === "visible") { threads.reload(); notes.reload(); } };
+    const t = setInterval(tick, 30_000);
+    addEventListener("focus", tick);
+    return () => { clearInterval(t); removeEventListener("focus", tick); };
+  }, [threads.reload, notes.reload]);
   useLook(me.data);
 
   if (!me.data) return <div className="loading">{me.error ? <ErrorText error={me.error} /> : "Loading…"}</div>;
   const ctx: ShellContext = {
     user: me.data.user, me: me.data, setMe: me.set, build, refreshThreads: threads.reload,
-    groups: groups.data ?? [], refreshGroups: groups.reload, openSide: () => setSideOpen(true),
+    groups: groups.data ?? [], refreshGroups: groups.reload, waiting: notes.waiting, refreshNotifications: notes.reload, openSide: () => setSideOpen(true),
   };
 
   const panel = wide && route.page === "thread" ? route.panel : undefined;
@@ -366,6 +372,9 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
           <summary><Icon name="search" />Search</summary>
           <div><input type="search" aria-label="Search threads" placeholder="Titles" value={query} onChange={(e) => setQuery(e.target.value)} /></div>
         </details>
+        <a href={href({ page: "settings", userId: user.id, section: "notifications" })} aria-current={route.page === "settings" && route.section === "notifications" ? "page" : undefined}>
+          <Icon name="bell" />Notifications{ctx.waiting > 0 && <span className="count" aria-label={`${ctx.waiting} waiting`}>{ctx.waiting}</span>}
+        </a>
         <a href={href({ page: "memory", userId: user.id })} aria-current={route.page === "memory" ? "page" : undefined}><Icon name="memory" />Memory</a>
       </nav>
       <div className="thread-tools">
@@ -653,6 +662,7 @@ function Welcome({ ctx }: { ctx: ShellContext }) {
         <div className="welcome">
           <h1>{greeting(now.getHours())}, {ctx.user.displayName}.</h1>
           <HomeBox ctx={ctx} />
+          <NotificationsCard ctx={ctx} />
         </div>
       </div>
     </main>
