@@ -960,7 +960,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     target ([workspace.md](workspace.md)). Never use `noTools: "all"`, which
     also removes extension tools.
   - Sessions run in-process, with no `pi` subprocesses.
-  - Entries are recorded with `appendEntry` as each turn ends (`recordEntries`).
+  - `recordEntries` syncs user entries with `appendEntry` into the encrypted
+    thread store in a microtask after Pi’s user `message_end` append, before
+    the model runs. Turn, agent and compaction ends sync remaining entries;
+    stored Pi IDs prevent duplicates.
   - Before each turn `lyricad` awaits `prepare()`; on an
     `auto_retry_start` whose error looks like a connection failure it calls
     `reportDown` and `prepare({ retry: true })`, and a `message_end` error of that

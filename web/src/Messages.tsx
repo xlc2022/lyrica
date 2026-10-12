@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { get, post, threadPath, u, type GoAhead, type ImagePart, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
-import type { LiveItem } from "./live.ts";
+import { storedUserItems, type LiveItem } from "./live.ts";
 import { useMentionText, useThreadMentions } from "./mentions.ts";
 import { GoAheadMenu } from "./Modes.tsx";
 import { ScheduleText } from "./Routines.tsx";
@@ -67,6 +67,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   const loose = project ? project.overview.threads.filter((t) => !anchored.includes(t)) : [];
   const shownMessages = hideFrom === undefined ? messages : messages.filter((m) => m.n < hideFrom);
   const looks = useMemo(() => foldLooks(shownMessages, pool), [shownMessages, pool]);
+  const storedUsers = storedUserItems(live.items, messages);
   return (
     <>
       {hasMore && <button type="button" className="older" disabled={loading} onClick={() => run(loadOlder)}>Show earlier messages</button>}
@@ -76,7 +77,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
         <StoredMessage key={m.id} m={m} env={env} you={ctx.user.displayName} told={looks.told.get(m.id)} folded={looks.folded.has(m.id)}
           cards={project && [...anchored.filter((t) => t.anchor === m.n), ...(i === shownMessages.length - 1 ? loose : [])]} />
       ))}
-      {hideFrom === undefined && live.items.map((item, i) => (
+      {hideFrom === undefined && live.items.map((item, i) => !storedUsers.has(i) && (
         <LiveMessage key={`live-${i}`} item={item} env={env} you={ctx.user.displayName} streaming={live.busy && i === live.items.length - 1} />
       ))}
       {live.busy && !live.items.some((x) => x.role === "assistant") && <p className="thinking-dots" role="status">{her()} is thinking…</p>}

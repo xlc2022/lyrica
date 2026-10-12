@@ -1,9 +1,9 @@
 // What a thread's event stream says is happening now, before it is stored.
 // Pure, so it can be tested without a browser.
-import type { ContextInfo, MessagePart, PermissionRequest, ThreadEvent, ThreadRef, ThreadStep, Told, WakeupInfo } from "./api.ts";
+import type { ContextInfo, Message, MessagePart, PermissionRequest, ThreadEvent, ThreadRef, ThreadStep, Told, WakeupInfo } from "./api.ts";
 
 export type LiveItem =
-  | { role: "user"; text: string }
+  | { role: "user"; text: string; afterN?: number }
   | { role: "assistant"; model?: string; parts: MessagePart[] }
   /** Delivered into the thread, such as a background subagent run's result. */
   | { role: "notice"; text: string; status?: string; threads?: ThreadRef[]; told?: Told[] };
@@ -49,7 +49,7 @@ const STORED: string[] = ["started", "usage", "question", "note", "finished", "s
 export type LiveAction =
   | ThreadEvent
   /** She sent a message that started a turn. */
-  | { type: "sent"; text: string }
+  | { type: "sent"; text: string; afterN?: number }
   /** The stored messages were reloaded, so the live copy can go. */
   | { type: "stored" }
   /** She pressed Stop; lyricad drops the queue, and its text went back to the composer. */
@@ -71,7 +71,7 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     case "rewound":
       return { ...s, items: [], ended: 0, errors: [], reload: s.reload + 1, context: null };
     case "sent":
-      return { ...s, items: [...s.items, { role: "user", text: e.text }] };
+      return { ...s, items: [...s.items, { role: "user", text: e.text, ...(e.afterN !== undefined && { afterN: e.afterN }) }] };
     case "turn_start":
       return { ...s, busy: true, errors: [], offline: undefined };
     case "message_start":
@@ -157,4 +157,17 @@ function withParts(s: Live, fn: (parts: MessagePart[]) => MessagePart[]): Live {
 
 function stripType({ type: _, ...rest }: { type: "permission" } & PermissionRequest): PermissionRequest {
   return rest;
+}
+
+/** Live user copies already present in the stored page, matched once each in send order. */
+export function storedUserItems(items: LiveItem[], messages: Message[]): Set<number> {
+  const hidden = new Set<number>();
+  let matchedN = 0;
+  items.forEach((item, i) => {
+    if (item.role !== "user" || item.afterN === undefined) return;
+    const stored = messages.find((m) => m.n > Math.max(item.afterN!, matchedN) && m.role === "user" && !m.from
+      && m.parts.filter((p) => p.type === "text").map((p) => p.text).join("") === item.text);
+    if (stored) { hidden.add(i); matchedN = stored.n; }
+  });
+  return hidden;
 }

@@ -25,7 +25,7 @@ export interface ThreadSessionOptions {
  * A Pi session for one thread, in process: the thread's stored entries, the
  * given extensions, Pi's built-in tools off, and a model runtime from the
  * router, so the session can only reach the models its CallContext allows.
- * Entries are recorded into the thread as turns end.
+ * User entries are recorded before the model runs; other entries as turns end.
  */
 export interface ThreadSession {
   session: AgentSession;
