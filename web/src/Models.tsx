@@ -1,5 +1,5 @@
-// The Models area (docs/ux.md §6, "Models, hosts, downloads, clean-up"): Overview, Tasks, Hosts and endpoints
-// (with the Add model host page), Clean up and Recent calls, with its sections listed at the left.
+// The Models area (docs/ux.md §6, "Models, hosts, downloads, clean-up"): Overview, Tasks, Text models (TextModels.tsx),
+// Hosts and endpoints (with the Add model host page), Clean up and Recent calls, with its sections listed at the left.
 // The shell polls GET …/models/cleanup for the sidebar's count; GET …/models/page, which probes every
 // endpoint, is read only while the area is open, and the Hosts tab's changes reload it.
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
@@ -13,6 +13,7 @@ import { duration, RowMenu } from "./Machines.tsx";
 import { go, href, type ModelsTab } from "./route.ts";
 import { PageHead, type ShellContext } from "./Shell.tsx";
 import { findThread } from "./Thread.tsx";
+import { TextModels } from "./TextModels.tsx";
 import { ConfirmDialog, ErrorText, hidden, shortTime, Switch, useAction, useLoad } from "./ui.tsx";
 
 export interface ModelsState {
@@ -47,7 +48,7 @@ function useModelsPage(ctx: ShellContext): ModelsState {
 }
 
 /** The shell's context with the Models page's data, for everything inside the area. */
-type MCtx = ShellContext & { models: ModelsState };
+export type MCtx = ShellContext & { models: ModelsState };
 
 type Endpoint = ModelsPage["endpoints"][number];
 type Host = { status: HostStatus } | { error: string };
@@ -56,6 +57,7 @@ type Gpu = HostStatus["gpus"][number];
 const TABS: { tab: ModelsTab; label: string }[] = [
   { tab: "overview", label: "Overview" },
   { tab: "tasks", label: "Tasks" },
+  { tab: "text", label: "Text models" },
   { tab: "hosts", label: "Hosts and endpoints" },
   { tab: "cleanup", label: "Clean up" },
   { tab: "calls", label: "Recent calls" },
@@ -69,7 +71,7 @@ const TASK_WORD: Record<Task, string> = {
 const PROFILE_WORD = { cloud: "Cloud", local: "Local", custom: "Custom" } as const;
 
 const GB = 2 ** 30;
-const gb = (bytes: number) => (bytes / GB).toFixed(1);
+export const gb = (bytes: number) => (bytes / GB).toFixed(1);
 const gbTotal = (bytes: number) => String(Math.round(bytes / GB));
 /** A host model's file name, without its folders and extension. */
 const shortId = (id: string) => (id.split("/").pop() ?? id).replace(/\.(gguf|safetensors)$/i, "");
@@ -79,8 +81,8 @@ function modelAndEndpoint(label: string, endpointName?: string): string {
   if (!m) return endpointName ? `${label} · ${endpointName}` : label;
   return `${m[2]} · ${endpointName ?? m[1]}`;
 }
-const plural = (n: number, one: string, many: string) => <><span className="num">{n}</span> {n === 1 ? one : many}</>;
-const canEdit = (ctx: ShellContext, ep: { shared: boolean }) => !ep.shared || ctx.user.admin;
+export const plural = (n: number, one: string, many: string) => <><span className="num">{n}</span> {n === 1 ? one : many}</>;
+export const canEdit = (ctx: ShellContext, ep: { shared: boolean }) => !ep.shared || ctx.user.admin;
 
 /** A text model: not one that draws, embeds, hears or speaks, and not gone. Counted once per model ID. */
 function textModels(eps: EndpointInfo[]): number {
@@ -114,9 +116,9 @@ function StateWord({ ep, host }: { ep: Endpoint; host?: Host }) {
   );
 }
 
-const Kind = ({ kind }: { kind: "local" | "cloud" }) => <span className={`kind ${kind}`}>{kind}</span>;
+export const Kind = ({ kind }: { kind: "local" | "cloud" }) => <span className={`kind ${kind}`}>{kind}</span>;
 
-const hostOf = (p: ModelsPage, endpointId: string): Host | undefined => p.hosts.find((h) => h.endpointId === endpointId);
+export const hostOf = (p: ModelsPage, endpointId: string): Host | undefined => p.hosts.find((h) => h.endpointId === endpointId);
 const loadedNothing = (h?: Host) => !!h && "status" in h && h.status.gpus.every((g) => !g.models.length);
 const paused = (h?: Host) => !!h && "status" in h && (h.status.state === "paused" || h.status.state === "pausing");
 
@@ -130,6 +132,7 @@ export function ModelsArea({ ctx: shell, tab = "overview", add }: { ctx: ShellCo
   useEffect(() => { if (first.current) first.current = false; else reload(); }, [tab, reload]);
   if (tab === "hosts" && add === "host") return <AddHost ctx={ctx} />;
   if (tab === "tasks") return <Tasks ctx={ctx} />;
+  if (tab === "text") return <TextModels ctx={ctx} />;
   if (tab === "hosts") return <Hosts ctx={ctx} />;
   if (tab === "cleanup") return <Cleanup ctx={ctx} />;
   if (tab === "calls") return <Calls ctx={ctx} />;
@@ -137,7 +140,7 @@ export function ModelsArea({ ctx: shell, tab = "overview", add }: { ctx: ShellCo
 }
 
 /** The page: its header, the tabs at the left, and the tab's content. */
-function Frame({ ctx, tab, title, facts, actions, children }: {
+export function Frame({ ctx, tab, title, facts, actions, children }: {
   ctx: MCtx; tab: ModelsTab; title: string; facts?: React.ReactNode; actions?: React.ReactNode; children: React.ReactNode;
 }) {
   const userId = ctx.user.id;
@@ -1080,7 +1083,8 @@ function AddHost({ ctx }: { ctx: MCtx }) {
 
 /* ---- Clean up ---- */
 
-function useWords(ctx: MCtx) {
+/** Where a model is used, in words: "Local profile (Chat)", a thread's title, a workflow or a group. */
+export function useWords(ctx: MCtx) {
   const thread = (pool: CallInfo["pool"], id: string) => findThread(ctx.threads, pool, id);
   const use = (w: ModelUse): string => {
     if (w.where === "profile") return `${PROFILE_WORD[w.profile]} profile (${TASK_WORD[w.task]})`;

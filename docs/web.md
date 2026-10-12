@@ -235,8 +235,8 @@ A thread's address may carry what the panel beside it shows:
   the sidebar's Models link, whose badge counts Clean up's items
   (`GET …/models/cleanup`, reread every 30 s and on focus; nothing probes
   an endpoint until the area is open). Tabs down the left (a scrolling row
-  on a phone), so far **Overview**, **Tasks**, **Hosts and endpoints**,
-  **Clean up** and **Recent calls**; Text models, Image models and Downloads
+  on a phone), so far **Overview**, **Tasks**, **Text models**, **Hosts and
+  endpoints**, **Clean up** and **Recent calls**; Image models and Downloads
   come with their own PRs. The area reads `GET …/models/page` while open (30 s,
   focus), which probes each endpoint (3 s each, one seen down in the last
   30 s not asked again). Overview: a banner for a paused host or a stale
@@ -301,6 +301,46 @@ A thread's address may carry what the panel beside it shows:
   …/profiles/<profile>/<task>` at once, a refusal shown as an error line.
   Settings → Sleep holds the Sleep mode select and Sleep fallback;
   `…/settings/profiles` goes to the Tasks tab.
+  Text models (`src/TextModels.tsx`, its pure parts in `src/library.ts`)
+  reads the whole library (`GET …/library/text`, 200 a request) and filters
+  in the page, so the facts line ("<n> models · <c> copies on <e> endpoints
+  · <g> groups · <s> starred"), the search (name, raw name or label) and the
+  chips (Any endpoint or one; Local, Cloud, Vision, Starred) see every
+  model; 40 rows at a time with Show more. An info banner names the models
+  whose copies are the same file on several hosts (the strong `GET
+  …/groups/suggestions`), each a link that opens its row. A row: **Star** or
+  **Unstar** (`PUT …/star` on every copy), the name with finetune and gone
+  pills, "<kind> · group of <n> | <n> copies · built on <base> ·
+  <endpoints>", opening in place to a table of its copies, the group's
+  members first in order (Move up, Move down, Remove from the group: `PATCH
+  …/groups/:id`), then the others (**Add to group** when the row's group is
+  the user's to change). A Copy cell: endpoint and kind, status and "same
+  file" pills (the Models page's checksum), the raw name, "downloaded by
+  Lyrica" or "shared folder", tok/s and **Settings**; Context and Vision
+  cells tinted where the copies differ; a ⋯ with **Not this model** (`PUT
+  …/separate`; the new row reads "Separated from <name> · Undo", the name
+  known for the visit, else "Separated") and **Delete from host…** (a dialog
+  from a first `delete-copy` without confirm: what goes and what it frees,
+  unloaded first when loaded, the lists that skip it, a shared host's
+  sentence; a file the host kept goes to a toast). Under the table: the
+  group's warn lines, a note per suggestion with **Group** (a new group, or
+  into the row's), the lineage line, and "Group · shared with every user |
+  only you" with **Rename** and **Ungroup** (confirmed). A copy's
+  **Settings** opens a drawer: **Sampling** (`GET|PUT …/settings`; **Yours**
+  | **Everyone's** for an administrator on a shared endpoint; a row per key
+  with its source word, the shared value as placeholder, a dropped key
+  disabled with "not sent", Reset; on a plain endpoint **Context window**,
+  `PATCH …/offerings/:id`) and, on a model host, **Serving** (`GET|PUT
+  …/serving`, the server read from the raw name: a `.gguf` is llama.cpp,
+  else vLLM): Placement (Auto or Choose GPUs, Split ratio or Parallelism,
+  Memory share, Pinned through the host's pin route, the KV cache estimate),
+  Memory (Context length "of <max>", Stretch, Original context, KV cache,
+  GPU layers, Flash attention; **Look up**, `POST …/lookup`, with a
+  **Repository** popover on `need_repo`), Throughput and Template (a custom
+  file read in the browser). The foot: Cancel, **Save and reload** (`POST
+  …/reload`) when the model is loaded and the serving draft changed, **Save
+  anyway** after `above_recommended`, and Save; a toast after. A speaking
+  model's Settings opens its Voice drawer.
 - **Notifications** (`src/Notifications.tsx`; docs/ux.md §6 "Anything
   waiting for the user"): the first section of Settings, one list from
   `GET …/notifications`. Chips filter by type (All with the count, Needs a
@@ -719,8 +759,9 @@ turns animations off.
   it.
 - `web/test/` has unit tests for the stream reducer (`live.test.ts`), memory
   links and word diffs, mentions, which paths become links, which code
-  blocks get Copy and what it copies (`codeblock.test.ts`), and the
-  recorder's context fallback and clip limit (`voice.test.ts`).
+  blocks get Copy and what it copies (`codeblock.test.ts`), the
+  recorder's context fallback and clip limit (`voice.test.ts`), and a text
+  model group's warn lines (`library.test.ts`).
 - `npm run e2e -w @lyrica/web` runs Playwright (after a build). The upload
   test needs `gocryptfs`, as `lyricad` does. Each project in
   `playwright.config.ts` (phone 390×844 with touch, desktop 1280×800, and a

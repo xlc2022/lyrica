@@ -9,6 +9,8 @@ export { THREAD_TASKS } from "@lyrica/daemon/api";
 export class HttpError extends Error {
   /** 409 while an update drains: the message stays in the box (docs/daemon.md "Updates"). */
   updating?: boolean;
+  /** A model host's refusal the page acts on: need_repo asks for the Repository, above_recommended offers Save anyway. */
+  code?: string;
   constructor(readonly status: number, message: string) { super(message); }
 }
 
@@ -50,6 +52,7 @@ export async function errorFrom(res: Response): Promise<HttpError> {
   const reason = data && typeof data === "object" && "error" in data ? sentence(String(data.error)) : "";
   const err = new HttpError(res.status, reason || (res.status === 503 ? `${her()} is locked.` : PLAIN[res.status]) || `Something went wrong (${res.status}).`);
   if (data && typeof data === "object" && "updating" in data && data.updating === true) err.updating = true;
+  if (data && typeof data === "object" && "code" in data && typeof data.code === "string") err.code = data.code;
   return err;
 }
 

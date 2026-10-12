@@ -616,6 +616,23 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   of each user's key in `self.db` (DESIGN.md "Users" and "Storage",
   contracts core/users; the owner chose this over a reset that loses data). Nothing
   for sleep or the pools changes; the privacy boundary note is in DESIGN.
+- 2026-10-12, PR 22 (text models): the Text models tab,
+  `src/TextModels.tsx`, its pure parts in `src/library.ts` (the group warn
+  lines, tested in `web/test/library.test.ts`); `Frame` and a few helpers
+  are exported from `src/Models.tsx`, an import cycle only functions cross.
+  The tab reads the whole library at once, 200 a request, and filters in
+  the page, since the facts line and the Starred chip need every entry; a
+  star stars or unstars every copy. `HttpError.code` carries the host's
+  `need_repo` and `above_recommended`. Not built, as the API gives nothing
+  for them: the Quantisation column and its warn line, the New pill, Not
+  the same model, a GPU's "doesn't run <server>", GPU layers' "of <n>",
+  Stretch's maximum from the host (8, from host/API.md), the server's name
+  (read from the raw name) and an estimate beyond the KV cache line.
+  "Separated from <name>" knows the name only for the visit. Ungroup asks
+  first (ux.md's consequence rule); Parallel is llama.cpp's only, as
+  host/API.md has it. The e2e Text models test runs after Tasks and leaves
+  nothing starred or set. Left: **Download model** in the header waits
+  for PR D's page; Serving is checked by hand on a real host.
 - 2026-10-12, PR 21 (message times): a stored message's header line
   (`.who.sent` in `src/Messages.tsx`) shows its time after the name, and
   after the model for hers, in mono: `wakeTime`'s HH:MM or "11 Oct 14:32",
