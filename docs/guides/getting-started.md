@@ -1,18 +1,22 @@
 # Getting started: Lyrica on a new machine
 
 How to bootstrap `lyricad`, the one process that is Lyrica, on a fresh
-Debian or Ubuntu system, and what to do on the first day. This guide follows
-`daemon/deploy/install.sh` and the systemd units next to it; the
-reference for each piece is [docs/daemon.md](../daemon.md) ("Deployment")
+machine, and what to do on the first day. Her expected home is NixOS,
+through the repository's flake and its `services.lyrica` module; Debian or
+Ubuntu, through `daemon/deploy/install.sh` and the systemd units next to
+it, is the other way. The reference for each piece is
+[docs/daemon.md](../daemon.md) ("Deployment" and "On NixOS")
 and [docs/workspace.md](../workspace.md) ("Host requirements"). Model hosts
 (the GPU machines that run her models) have their own guide,
 [model-hosts.md](model-hosts.md), and the machines that run the project's
 checks have [ci-runners.md](ci-runners.md). Her web search uses a SearXNG
 you host: [searxng.md](searxng.md).
 
-**What has and hasn't been exercised.** No automated check runs
-`install.sh`, and it has never been run on a fresh Debian host. The systemd
-unit and its hardening have not been checked on Li's LXC container either
+**What has and hasn't been exercised.** Neither way has run on a real
+host yet. CI builds the NixOS module and runs the sandbox tests with its
+tools (`nix flake check`), but `nix/check-host.sh` has never run on a real
+NixOS machine. No automated check runs `install.sh`, and it has never been
+run on a fresh Debian host, nor its unit and hardening on an LXC container
 (the daemon brief's handoff says so). Everything below is read from the
 script and the units, so expect to hit something the first time; the
 checklist at the end is for that first run. The checks CI does run on every
@@ -21,10 +25,12 @@ the web build and the browser tests) run on Ubuntu 24.04, not on Debian.
 
 ## What you end up with
 
-One machine, in practice an LXC container or a VM on Li's Proxmox, running:
+One machine, in practice a NixOS VM on Li's Proxmox (or a Debian or
+Ubuntu VM or LXC container), running:
 
 - `lyricad` as the `lyrica` system user, from the release that
-  `/opt/lyrica/current` points at, with its state
+  `/opt/lyrica/current` points at (on NixOS, the profile
+  `/nix/var/nix/profiles/lyrica`), with its state
   in `/var/lib/lyrica` (`self.db`, each user's encrypted databases and home
   workspace, saved credentials). It listens on `127.0.0.1:7340` and on a
   Unix socket. A fresh install also serves HTTPS itself on port 7340 of
@@ -49,9 +55,14 @@ server on your network, or on a paired model host.
 
 ### The machine
 
-- Debian or Ubuntu, amd64 or arm64. The install script refuses anything
-  else. NixOS on x86-64 is the other way in, through the flake: see "On
-  NixOS" under Install.
+On NixOS: x86-64 with flakes on, in practice a VM. Saving the passphrase
+needs systemd 256 or later, which NixOS has had since 24.11 (the flake
+builds against 26.05). The package brings its own Node, so nothing else is
+needed before "On NixOS" under Install.
+
+On Debian or Ubuntu:
+
+- amd64 or arm64. The install script refuses any other system.
 - **systemd 256 or later** if you want her to start unlocked. Saving the
   `self.db` passphrase uses `systemd-creds encrypt --user`, which older
   systemd doesn't have. Debian 13 and Ubuntu 25.04 have it; Debian 12 and
@@ -72,7 +83,7 @@ server on your network, or on a paired model host.
   Caddy build, and `pkgs.tailscale.com` when Tailscale isn't installed yet.
   Updates later fetch from GitHub over SSH with a deploy key.
 
-### In a Proxmox LXC container
+### In a Proxmox LXC container (Debian or Ubuntu)
 
 Her tools run commands in a bubblewrap sandbox and mount each user's home
 workspace with gocryptfs, so the container needs unprivileged user
@@ -94,6 +105,61 @@ The full checklist, with the commands that prove each piece works, is in
 [docs/workspace.md](../workspace.md#host-requirements).
 
 ## Install
+
+### On NixOS
+
+The repository is a flake, and its NixOS module sets up what the install
+script does on Debian: the users, `/var/lib/lyrica`, the units with the
+same hardening, her own `tailscaled`, and Caddy with the DNS plugins.
+x86-64 only. The reference is [docs/daemon.md](../daemon.md#on-nixos).
+
+1. In your system flake, add the repository as an input and the module to
+   your configuration, then turn the service on:
+
+   ```nix
+   inputs.lyrica.url = "github:xlc2022/lyrica";
+   # among the configuration's modules:
+   inputs.lyrica.nixosModules.default
+   # in the configuration:
+   services.lyrica.enable = true;
+   ```
+
+   The options are `port` (7340), `tailscale` (on: her own `tailscaled`,
+   from `tailscalePackage`), `openFirewall` (on: opens port 7340 for
+   Direct, whatever `port` is, so the machine can be set up from another
+   one), `caddyPackage`, and `sandboxPackages`, the tools her commands see
+   (NixOS has no `/usr` to share, so the module builds one directory from
+   that list, which includes git, gh, tea and Node 22 by default; add to
+   it to give her more). The module refuses to build
+   while `security.allowUserNamespaces` is off.
+2. `nixos-rebuild switch`. The package builds lyricad, the CLI and the web
+   UI, and `lyricad` starts setting up, as on Debian. Nothing prints the
+   setup code at the rebuild: `lyrica admin setup-code`, as root, prints
+   it with the addresses and the fingerprint.
+3. The first run below is the same. `lyrica` is on the system path and
+   runs as her user with her state folder, as on Debian.
+4. Instead of "Check the deploy", run `nix/check-host.sh` from a checkout
+   of the repository, as root, after the first run. It checks `lyricad`
+   and Caddy, that her `tailscaled` answers on its socket, `NoNewPrivs`,
+   the setuid `fusermount3`, Caddy's socket, `lyrica-update.path`, a
+   sandbox and `pasta` as the `lyrica` user, the network self-test and the port, one line each, and
+   ends with "All checks passed." or stops at the first failure.
+
+Everything from "Save the passphrase" on applies unchanged. `lyricad`
+runs from the profile `/nix/var/nix/profiles/lyrica`, and its first start
+makes `/etc/lyrica/deploy-key`: add its `.pub` as in "Add the deploy key"
+below. Keep a scheduled Proxmox backup of the VM, for the reason given
+there. Upgrading is
+`nix flake update lyrica` and `nixos-rebuild switch`, which restarts
+`lyricad` (which logs everyone out). Before that start, when the package
+changed, her databases are snapshotted and the profile moves to it; if the
+new package can't read them, the newest snapshot it can read is restored.
+The package is rebuilt only when the code it ships changed; a commit that
+touched only docs or tests reuses the built one, and the restart is quick.
+Updates and rollback from "Upgrading" work on NixOS too. The home page
+header shows the commit that is running, as on Debian.
+
+### On Debian or Ubuntu
 
 As root, from a git checkout of the repository outside `/opt/lyrica`:
 
@@ -156,57 +222,6 @@ GitHub under Settings, Deploy keys, without write access.
 **Keep a scheduled Proxmox backup of the container.** The updater
 snapshots her databases, but it can't snapshot the container it runs in.
 
-### On NixOS
-
-The repository is a flake, and its NixOS module sets up what the install
-script does on Debian: the users, `/var/lib/lyrica`, the units with the
-same hardening, her own `tailscaled`, and Caddy with the DNS plugins.
-x86-64 only. The reference is [docs/daemon.md](../daemon.md#on-nixos). Instead of the steps above:
-
-1. In your system flake, add the repository as an input and the module to
-   your configuration, then turn the service on:
-
-   ```nix
-   inputs.lyrica.url = "github:xlc2022/lyrica";
-   # among the configuration's modules:
-   inputs.lyrica.nixosModules.default
-   # in the configuration:
-   services.lyrica.enable = true;
-   ```
-
-   The options are `port` (7340), `tailscale` (on: her own `tailscaled`,
-   from `tailscalePackage`), `openFirewall` (on: opens port 7340 for
-   Direct, whatever `port` is, so the machine can be set up from another
-   one), `caddyPackage`, and `sandboxPackages`, the tools her commands see
-   (NixOS has no `/usr` to share, so the module builds one directory from
-   that list, which includes git, gh, tea and Node 22 by default; add to
-   it to give her more). The module refuses to build
-   while `security.allowUserNamespaces` is off.
-2. `nixos-rebuild switch`. The package builds lyricad, the CLI and the web
-   UI, and `lyricad` starts setting up, as on Debian. Nothing prints the
-   setup code at the rebuild: `lyrica admin setup-code`, as root, prints
-   it with the addresses and the fingerprint.
-3. The first run below is the same. `lyrica` is on the system path and
-   runs as her user with her state folder, as on Debian.
-4. Instead of "Check the deploy", run `nix/check-host.sh` from a checkout
-   of the repository, as root, after the first run. It checks `lyricad`
-   and Caddy, that her `tailscaled` answers on its socket, `NoNewPrivs`,
-   the setuid `fusermount3`, Caddy's socket, `lyrica-update.path`, a
-   sandbox and `pasta` as the `lyrica` user, the network self-test and the port, one line each, and
-   ends with "All checks passed." or stops at the first failure.
-
-Everything from "Save the passphrase" on applies unchanged. `lyricad`
-runs from the profile `/nix/var/nix/profiles/lyrica`, and its first start
-makes `/etc/lyrica/deploy-key`: add its `.pub` as above. Upgrading is
-`nix flake update lyrica` and `nixos-rebuild switch`, which restarts
-`lyricad` (which logs everyone out). Before that start, when the package
-changed, her databases are snapshotted and the profile moves to it; if the
-new package can't read them, the newest snapshot it can read is restored.
-The package is rebuilt only when the code it ships changed; a commit that
-touched only docs or tests reuses the built one, and the restart is quick.
-Updates and rollback from "Upgrading" work on NixOS too. The home page
-header shows the commit that is running, as on Debian.
-
 ## First run
 
 ### Note the addresses and the fingerprint
@@ -227,7 +242,7 @@ Certificate fingerprint (SHA-256), to compare with the browser's warning:
   <fingerprint>
 ```
 
-`lyrica` (in `/usr/local/bin`) runs the CLI as the `lyrica` user with her
+`lyrica` (in `/usr/local/bin`, or on the system path on NixOS) runs the CLI as the `lyrica` user with her
 state folder, from root or any sudoer, so the files it makes are hers; every
 `lyrica admin …` command in this guide works the same way from any shell.
 Each restart while she is still setting up makes a new code.
@@ -617,7 +632,8 @@ the SSH ones, and `ssh remove <name>` takes one away.
   release can't read her databases, it restores the newest snapshot it can
   read, asking first (`--yes` skips the question), or refuses and names the
   oldest release it could go back to.
-- **Upgrading from a checkout:** as root:
+- **Upgrading from a checkout** (Debian or Ubuntu; on NixOS it is the
+  flake update in "On NixOS"): as root:
 
   ```sh
   cd /root/lyrica && git pull
@@ -646,6 +662,11 @@ the SSH ones, and `ssh remove <name>` takes one away.
 
 Run these in order the first time and note where each stops. Each one is
 something the code expects but nobody has confirmed on real hardware.
+
+On NixOS, items 1 and 2 are `nixos-rebuild switch` building the module and
+`nix/check-host.sh` passing after the first run (it covers items 4 and 5
+too), and item 3's code comes from `lyrica admin setup-code`. The rest
+apply as written.
 
 1. The LXC features and tun device from "In a Proxmox LXC container", then
    the proofs in [docs/workspace.md](../workspace.md#host-requirements):

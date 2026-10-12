@@ -756,7 +756,8 @@ and never logged; a Caddy error that quotes one has it replaced with
 `daemon/deploy/install.sh`, run as root on Debian or Ubuntu from a clean git
 checkout outside `/opt/lyrica`, installs or upgrades everything. Running it
 again installs that checkout's commit as a release, the way an update does
-("Updates" below). On NixOS, the flake's module does the same ("On NixOS" below).
+("Updates" below). On NixOS, her expected home, the flake's module does the
+same ("On NixOS" below).
 
 - It installs the packages (bubblewrap, gocryptfs, FUSE, passt, nftables,
   openssl, ImageMagick, and for the updater build-essential, python3, git,
@@ -884,7 +885,7 @@ check names and counts, never text.
 - **Units:** `lyrica-update.service` (oneshot, `Nice=10`, idle I/O),
   `lyrica-update.path`, `lyrica-rollback.service` (`--auto`).
 - **The operator's part:** add the deploy key to the repository; keep a
-  scheduled Proxmox backup of the container, which the updater can't
+  scheduled Proxmox backup of the VM or container, which the updater can't
   snapshot; delete `/opt/lyrica/before-releases` once the first release
   runs.
 
