@@ -594,6 +594,42 @@ export interface MachineKey { hostKey: string; token?: string }
 /** POST /api/u/:userId/machines/:name/confirm-off-network → MachineInfo. A private machine gone off network can be used again. */
 /** DELETE /api/u/:userId/machines/:name → Ok. Every thread's grant of it goes too. */
 
+/** What a Git account's host runs: GitHub, Forgejo, Gitea, or Other (plain git over HTTPS). */
+export type GitKind = "github" | "forgejo" | "gitea" | "other";
+
+/** GET /api/u/:userId/git-accounts → GitAccountInfo[]. The token is never sent back. */
+export interface GitAccountInfo {
+  name: string;
+  kind: GitKind;
+  /** host or host:port. */
+  host: string;
+  /** The account's name on the host. */
+  account: string;
+  /** A GitHub account is always general. */
+  pool: Pool;
+  /** Its host resolved outside the LAN, loopback and tailnet at the last check. */
+  offNetwork: boolean;
+  /** How the last use went, and since when: signedIn (the token worked), rejected (the host refused it), unreachable. Absent before the first. */
+  state?: { kind: "signedIn" | "rejected" | "unreachable"; since: string };
+}
+/**
+ * POST /api/u/:userId/git-accounts/probe (GitAccountInput) → Ok. Checks the
+ * token against the host, saving nothing: 400 with why when it doesn't work.
+ * POST /api/u/:userId/git-accounts (GitAccountInput) → GitAccountInfo. Checks
+ * it again and saves it. A private account whose host resolves outside her
+ * network needs `offNetworkConfirmed`; a GitHub account can't be private.
+ */
+export interface GitAccountInput { name: string; kind: GitKind; host: string; account: string; token: string; pool: Pool; offNetworkConfirmed?: boolean }
+/** PATCH /api/u/:userId/git-accounts/:name → GitAccountInfo. A new pool takes its repositories from every thread; a new name follows into them. */
+export interface GitAccountChange { name?: string; host?: string; account?: string; pool?: Pool; offNetworkConfirmed?: boolean }
+/** POST /api/u/:userId/git-accounts/:name/token → GitAccountInfo. Replace token: checked against the host before it replaces the old one. */
+export interface GitToken { token: string }
+/** POST /api/u/:userId/git-accounts/:name/confirm-off-network → GitAccountInfo. A private account gone off network can be used again. */
+/** DELETE /api/u/:userId/git-accounts/:name → Ok. Every thread's repositories that use it go too. */
+/** GET /api/u/:userId/git-accounts/:name/repositories?q= → GitRepository[]. What the account can see, from its forge; none for Other. */
+/** A repository a thread clones, and the Git account it uses. */
+export interface GitRepository { name: string; account: string }
+
 // --- Threads ---
 
 export interface ThreadSummary {
@@ -806,6 +842,8 @@ export interface ThreadSettings {
   grants: Grant[];
   /** The machines it may use besides the sandbox, by name: its own, less any an ancestor has since taken off (`effective`). */
   machines: string[];
+  /** The repositories it clones into /workspace/repos, each with its Git account: its own, less any an ancestor has since taken off. */
+  repositories: GitRepository[];
   mode: PermissionMode;
   /** Switches: web_search and web_fetch, and the image tool. Off removes them from the session. */
   webSearch: boolean;
@@ -845,6 +883,8 @@ export interface ThreadSettingsChange {
   grants?: Grant[];
   /** Machines of the thread's pool; a branch takes a subset of its parent's. */
   machines?: string[];
+  /** Repositories of Git accounts of the thread's pool; a child takes a subset of its parent's. */
+  repositories?: GitRepository[];
   mode?: PermissionMode;
   webSearch?: boolean;
   images?: boolean;

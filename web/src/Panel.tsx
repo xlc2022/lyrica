@@ -7,6 +7,7 @@ import {
   type OfferingInfo, type OfferingSettings, type Pool, type Probe, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type Task, type Theme, type UserCard,
   type NameSetting,
 } from "./api.ts";
+import { GitAccountsSection } from "./Git.tsx";
 import { MachinesSection } from "./Machines.tsx";
 import { her } from "./name.ts";
 import { TailnetSection } from "./Tailnet.tsx";
@@ -53,6 +54,7 @@ const SETTINGS: SectionDef[] = [
   { key: "profiles", label: "Model profiles", body: (ctx) => <ProfilesSection ctx={ctx} /> },
   { key: "network", label: "Network", body: (ctx) => <NetworkSection ctx={ctx} /> },
   { key: "machines", label: "Machines", body: (ctx, rest) => <MachinesSection ctx={ctx} rest={rest} /> },
+  { key: "git", label: "Git accounts", body: (ctx) => <GitAccountsSection ctx={ctx} /> },
 ];
 const ADMIN: SectionDef[] = [
   { key: "status", label: "Status", body: (ctx) => <StatusSection ctx={ctx} /> },

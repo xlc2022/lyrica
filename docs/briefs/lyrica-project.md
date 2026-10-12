@@ -22,9 +22,12 @@ written here.
    press its empty space), in the general pool, and name it "Lyrica"
    (**Rename…** in its menu). In **Project settings** (the **Project** link in the project chat's header):
    General → Goal: "Improve Lyrica's own code from what we notice in use,
-   through review."; then **Thread settings** under This chat: grant her
-   code folder and turn the internet on (or allow `github.com` and
-   `registry.npmjs.org`).
+   through review."; under This chat, **Repositories** → **+** →
+   `xlc2022/lyrica` from her GitHub account, then **Thread settings**: turn
+   the internet on (or allow `github.com`, `api.github.com` and
+   `registry.npmjs.org`). Her account goes in **Settings → Git accounts**
+   first: kind GitHub, her login, and her fine-grained token
+   (docs/workspace.md, "Her own code").
 2. Paste the **Project instructions** below into Project settings →
    Memory → Instructions (the count shows it is under 2,000; only Li can
    change them).

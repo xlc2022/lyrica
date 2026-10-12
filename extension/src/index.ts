@@ -4,6 +4,7 @@ import { assemble, type Budgets, type Section } from "./assemble.ts";
 import { contextLines, registerContext, type ContextMeter } from "./context.ts";
 import { setToolsOff } from "./gate.ts";
 import { memorySections } from "./memory.ts";
+import { SELF_PRIMER } from "./primer.ts";
 import { TopicRouter, type RoutedTopic } from "./routing.ts";
 import { reactionLines, type UserReaction } from "./react.ts";
 import { registerMemoryTools } from "./tools.ts";
@@ -66,7 +67,7 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
     if (opts.sleep) pi.registerCommand("sleep", { description: "Sleep now: consolidate, dream and wake, for this pool", handler: (_args, ctx) => opts.sleep!(ctx) });
     pi.on("before_agent_start", async (event, ctx) => {
       const persona = opts.persona();
-      const topics = router.route(persona.topics, event.prompt);
+      const topics = router.route([...persona.topics, SELF_PRIMER], event.prompt);
       const memory = await memorySections(view, event.prompt, { ...who(), folders: opts.folders?.() ?? [], projectThreads: opts.projectThreads });
       // An unlogged thread isn't offered remember at all.
       if (opts.memoryTools !== "read") setToolsOff(pi, ctx, "unlogged", memory.notice ? ["remember"] : []);
