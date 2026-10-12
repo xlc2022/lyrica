@@ -243,8 +243,9 @@ volume. They apply at its next load, or at once with Reload.
   length times the stretch), the trained length (null when the host couldn't
   read it), the KV cache at the served context by the host's estimate, what
   the model's card recommends, and whether a stretch on this server is
-  untested (vLLM 0.30 misreads the original context on Qwen3.5-style M-RoPE,
-  vllm#58870). A model never set has `{ "placement": { "mode": "auto" } }`.
+  untested: true for any vLLM model until the pinned image carries the fix
+  for vllm#58870 (vLLM 0.30 misreads the original context on Qwen3.5-style
+  M-RoPE). A model never set has `{ "placement": { "mode": "auto" } }`.
 - `PUT /host/v1/models/settings` `{ "model": "<id>", "settings": { ... },
   "anyway": true }` saves them, whole, and answers with the model's entry. A
   stretch above the factor the card documents is refused

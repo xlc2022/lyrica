@@ -690,7 +690,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `proxmox` (Machines; see [core/workspace](#coreworkspace)) and
     `add_repository` (Repositories; see [core/workspace](#coreworkspace));
   - `models`, with `lookup { offering, repo? }` and `propose { offering,
-    stretch, contextLength }`, in general threads only (Context stretching;
+    stretch, contextLength, originalContext? }`, in general threads only (Context stretching;
     see [docs/briefs/context-stretch.md](briefs/context-stretch.md));
   - in sleep sessions only: `write_page`, `write_journal`, `write_wake`,
     `raise` and `propose_persona` (Sleep thread; see [sleep.md](sleep.md)).
