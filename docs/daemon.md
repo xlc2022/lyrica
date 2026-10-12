@@ -981,7 +981,13 @@ system with the module on. Only x86_64-linux.
   root) checks the module's package: when `nixos-rebuild switch` changed
   it, it snapshots the databases and points the profile at it, restoring
   the newest readable snapshot if the package can't read them. An
-  unchanged package leaves an Update's choice in place. The unit names
+  unchanged package leaves an Update's choice in place, and so does a
+  package whose commit is older in the running release's history (an
+  Update leaves the system flake's lock behind; it fetches `repo.git`
+  first if either commit is missing): it logs "the module's package (…)
+  is older than the running release (…); keeping …" and starts the
+  running release. A newer commit, one on another branch, a dirty build
+  or one whose history it can't tell is followed. The unit names
   `cfg.package`, so it stays in the system closure until that first start.
 - **Host check:** `nix/check-host.sh`, as root after the setup page:
   lyricad and Caddy run, the `lyrica` profile exists, `lyrica-update.path`
