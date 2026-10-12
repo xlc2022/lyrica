@@ -2,19 +2,20 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import type { Logger } from "../src/log.ts";
 import { HostError } from "../src/http.ts";
 import { Scheduler, type Priority } from "../src/scheduler.ts";
 import { StateFile } from "../src/state.ts";
 import { FakeBackend, FakeGpus, GIB, textModel } from "./fakes.ts";
 
 type Srv = "llamacpp" | "vllm" | "images";
-function setup(totals = [24], opts: { waitLimits?: Record<Priority, number>; dir?: string; servers?: Srv[]; gpuBackend?: "rocm" | "vulkan"; sharedMemory?: Srv[] } = {}) {
+function setup(totals = [24], opts: { waitLimits?: Record<Priority, number>; dir?: string; servers?: Srv[]; gpuBackend?: "rocm" | "vulkan"; sharedMemory?: Srv[]; log?: Logger } = {}) {
   const dir = opts.dir ?? mkdtempSync(join(tmpdir(), "lyrica-sched-"));
   const gpus = new FakeGpus(totals);
   const llamacpp = new FakeBackend(gpus);
   const vllm = new FakeBackend(gpus);
   const state = new StateFile(dir);
-  const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp, vllm }, state, log: () => {}, waitLimits: opts.waitLimits, servers: opts.servers, gpuBackend: opts.gpuBackend, sharedMemory: opts.sharedMemory });
+  const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp, vllm }, state, log: opts.log ?? (() => {}), waitLimits: opts.waitLimits, servers: opts.servers, gpuBackend: opts.gpuBackend, sharedMemory: opts.sharedMemory });
   return { dir, gpus, llamacpp, vllm, state, scheduler };
 }
 
@@ -80,7 +81,8 @@ describe("the GPU queue", () => {
   });
 
   it("reports the replacement error when restoring also fails", async () => {
-    const { scheduler, llamacpp } = setup();
+    const events: Array<[string, Record<string, unknown> | undefined]> = [];
+    const { scheduler, llamacpp } = setup([24], { log: (event, fields) => void events.push([event, fields]) });
     await scheduler.start([]);
     const m = textModel("m", 4);
     await scheduler.loadNow(m);
@@ -93,6 +95,7 @@ describe("the GPU queue", () => {
     await expect(scheduler.reload(m)).rejects.toBe(original);
     expect(attempts).toBe(2);
     expect(scheduler.settings(m)).toEqual({ placement: { mode: "auto" } });
+    expect(events).toContainEqual(["restore failed", { model: "m", error: "Error", message: "restore failed" }]);
   });
 
   it("validates against other programs, subtracting the host's loaded models", async () => {
