@@ -1730,7 +1730,7 @@ from Monika's runbooks.
   forge's own rules; the client (`tea`) follows the account's kind. Claude's project threads
   are the part that is tied to GitHub.
 - **The outer net is the operator's:** a scheduled Proxmox backup of the
-  container. The updater can't snapshot the container it runs in.
+  VM or container. The updater can't snapshot the machine it runs in.
 - **Not covered:** her persona, which has its own revisions; model hosts,
   which keep `host/install.sh` until this has proved itself.
 

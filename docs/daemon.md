@@ -885,7 +885,7 @@ check names and counts, never text.
 - **Units:** `lyrica-update.service` (oneshot, `Nice=10`, idle I/O),
   `lyrica-update.path`, `lyrica-rollback.service` (`--auto`).
 - **The operator's part:** add the deploy key to the repository; keep a
-  scheduled Proxmox backup of the container, which the updater can't
+  scheduled Proxmox backup of the VM or container, which the updater can't
   snapshot; delete `/opt/lyrica/before-releases` once the first release
   runs.
 
