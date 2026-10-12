@@ -9,6 +9,8 @@ export const CORE_FILES = ["SOUL.md", "STYLE.md", "REGISTER.md"] as const;
 const TOPIC_DIR = "persona_topics";
 /** Most characters in the core (SOUL, STYLE and REGISTER joined), so it is never cut in her prompt. */
 export const CORE_LIMIT = 12_000;
+/** checkName's longest name, for measuring the core whatever she is called. */
+const LONGEST_NAME = "x".repeat(40);
 const VALID_PATH = /^(persona_topics\/)?[A-Za-z0-9_.-]+\.md$/;
 
 /** Her name when none is set. */
@@ -126,13 +128,18 @@ export class PersonaStore {
     this.insert(path, text, `user:${actor.id}`);
   }
 
-  /** Refuses a change that would take the core past CORE_LIMIT. */
+  /**
+   * Refuses a change that would take the core past CORE_LIMIT, measured with
+   * the longest name she could be given, so no rename can push it over. An
+   * edit that doesn't grow an already oversized core is allowed.
+   */
   checkCore(path: string, text: string): void {
     if (!(CORE_FILES as readonly string[]).includes(path)) return;
-    const files = this.files().set(path, text);
-    const size = coreText(coreOf(files, selfName(this.db))).length;
-    if (size > CORE_LIMIT) {
-      throw new Error(`SOUL, STYLE and REGISTER together would be ${size} characters, over the ${CORE_LIMIT} limit; shorten them, or put it in a topic file`);
+    const files = this.files();
+    const before = coreText(coreOf(files, LONGEST_NAME)).length;
+    const size = coreText(coreOf(files.set(path, text), LONGEST_NAME)).length;
+    if (size > CORE_LIMIT && size > before) {
+      throw new Error(`Too long: SOUL, STYLE and REGISTER would be ${size.toLocaleString("en-US")} characters together, over ${CORE_LIMIT.toLocaleString("en-US")}. Shorten them, or move it into a topic.`);
     }
   }
 

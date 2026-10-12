@@ -1365,9 +1365,10 @@ Details in [docs/sleep.md](docs/sleep.md).
 - She proposes changes when asked to reflect on how things have been going, and
   in her dream journal. Every change keeps a revision.
 - Her core (SOUL, STYLE and REGISTER) is in every prompt and holds at most
-  12,000 characters; a proposal or edit that would go over is refused, so the
-  prompt never cuts it (2026-10-12). Most growth goes in topic files,
-  which have no such limit because they load only when routed.
+  12,000 characters, measured as if her name were 40 characters long. A
+  proposal or edit that would go over is refused, so neither it nor a
+  rename makes the prompt cut it (2026-10-12). Most growth goes in topic
+  files, which have no such limit because they load only when routed.
 - A proposal comes from one user's conversation or dream, so it may carry that
   user's details. That user sees it first, and can edit it, send it on, or drop
   it. Only a proposal they send on reaches the administrators, who approve or
