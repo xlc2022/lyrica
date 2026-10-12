@@ -1,7 +1,7 @@
 // Sleep (docs/sleep.md "Sleep in the UI"): her items from the night at the top, each with Start a chat
 // and Dismiss; then each run per pool, Last night and Earlier, opening to its notes, pages with their word
 // differences, questions, dream and WAKE, each linking into the memory browser; Sleep now at the foot.
-// Also the per-user mode (Settings → Model profiles) and the administrator's sleep time.
+// Also the per-user mode (Settings → Sleep) and the administrator's sleep time.
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   del, get, HttpError, post, put, u,
@@ -284,7 +284,7 @@ function SleepFoot({ ctx }: { ctx: ShellContext }) {
       else ctx.sleep.reload();
     } catch (e) { setToast(e instanceof HttpError ? e.message : String(e)); } finally { setBusy(false); }
   };
-  const change = href({ page: "settings", userId, section: "profiles" });
+  const change = href({ page: "settings", userId, section: "sleep" });
   return (
     <div className="sleep-foot">
       <div className="msg-menu" ref={ref}>
@@ -315,7 +315,7 @@ function SleepFoot({ ctx }: { ctx: ShellContext }) {
   );
 }
 
-/** Settings → Model profiles: when sleep happens for this user. Saved at once, like Sleep fallback beside it. */
+/** Settings → Sleep: when sleep happens for this user. Saved at once, like Sleep fallback beside it. */
 export function SleepModeField({ ctx }: { ctx: ShellContext }) {
   const o = ctx.sleep.overview;
   const [run, busy, error] = useAction();

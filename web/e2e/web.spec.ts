@@ -816,13 +816,19 @@ test("dictation goes in at the caret, Read aloud plays her reply, and a speech s
 
 test("a speaking model's Settings drawer sets its voice and clamps its speed; only the local profile has Dictation", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
-  await page.goto(`/#/u/${encodeURIComponent(userId)}/settings/profiles`);
-  await expect(page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible();
-  // Dictation and Read aloud rows offer only models that transcribe or speak; a cloud model hears a voice only when a thread picks it.
-  await expect(page.getByRole("group", { name: "Cloud profile" }).getByLabel("Dictation")).toHaveCount(0);
-  const local = page.getByRole("group", { name: "Local profile" });
-  await expect(local.getByLabel("Dictation").locator("option")).toHaveText(["Not set", "whisper"]);
-  await expect(local.getByLabel("Read aloud").locator("option")).toHaveText(["Not set", "kokoro"]);
+  await page.goto(`/#/u/${encodeURIComponent(userId)}/models/tasks`);
+  await expect(page.getByRole("heading", { level: 1, name: "Tasks" })).toBeVisible();
+  // Dictation is only in the Private threads column (Local); a cloud model hears a voice only when a thread picks it.
+  await expect(page.locator('[data-cell="cloud:speech.transcribe"]')).toHaveCount(0);
+  await expect(page.locator('[data-cell="local:speech.transcribe"]')).toContainText("whisper");
+  await expect(page.locator('[data-cell="local:speech.speak"]')).toContainText("kokoro");
+  await expect(page.locator('[data-cell="cloud:speech.speak"]')).toContainText("kokoro");
+  // Read aloud's picker offers only models that speak: kokoro on speech is already in the list, so nothing else is left.
+  await page.locator('[data-cell="local:speech.speak"]').click();
+  const tasks = page.getByRole("complementary", { name: "Edit Read aloud" });
+  await tasks.getByRole("button", { name: "Add…" }).click();
+  await expect(tasks.getByText("No models match.")).toBeVisible();
+  await tasks.getByRole("button", { name: "Close" }).click();
 
   // The speech endpoint's models, under Models → Hosts and endpoints.
   await page.goto(`/#/u/${encodeURIComponent(userId)}/models/hosts`);
@@ -1306,8 +1312,8 @@ test("Sleep: the sidebar link opens it empty, the mode is set in Settings, Sleep
   if (phone(page)) expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await noHorizontalScroll(page);
 
-  // Settings → Model profiles: Only when I ask, saved at once; the Sleep page says so.
-  await page.goto(`/#/u/${userId}/settings/profiles`);
+  // Settings → Sleep: Only when I ask, saved at once; the Sleep page says so.
+  await page.goto(`/#/u/${userId}/settings/sleep`);
   const mode = page.getByRole("combobox", { name: "Sleep", exact: true });
   const saved = page.waitForResponse((r) => r.request().method() === "PUT" && r.url().endsWith("/sleep/mode"));
   await mode.selectOption({ label: "Only when I ask" });
@@ -1476,4 +1482,121 @@ test("Models: the sidebar link opens Overview, Hosts and endpoints lists the end
   await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/hosts$`));
   await expect(page.getByRole("heading", { level: 1, name: "Hosts and endpoints" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Settings sections" })).toHaveCount(0);
+});
+
+test("Tasks: the table shows each profile's models; a cell's drawer adds, reorders and removes, switches to Same as and back; Use Custom instead flips the header; Settings → Model profiles lands here", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/tasks-${name}-${page.viewportSize()!.width}.png`, fullPage: true }); };
+  // A second cloud chat model, added by hand on router, for a fallback.
+  const api = (method: string, path: string, data?: unknown) => page.evaluate(async ([method, path, data]) => {
+    const r = await fetch(path, { method, headers: { "content-type": "application/json" }, body: data === undefined ? undefined : JSON.stringify(data) });
+    if (!r.ok) throw new Error(`${method} ${path}: ${r.status} ${await r.text()}`);
+    return r.json() as unknown;
+  }, [method, `/api/u/${userId}${path}`, data] as const);
+  const endpoints = await api("GET", "/endpoints") as { id: string; name: string; models: { modelId: string }[] }[];
+  const router = endpoints.find((e) => e.name === "router")!;
+  if (!router.models.some((m) => m.modelId === "cloud-mini")) await api("POST", `/endpoints/${router.id}/models`, { modelId: "cloud-mini" });
+
+  // The Backend tile leads to Tasks.
+  await page.goto(`/#/u/${userId}/models`);
+  await page.locator('[data-tile="backend"]').click();
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/tasks$`));
+  await expect(page.getByRole("heading", { level: 1, name: "Tasks" })).toBeVisible();
+  await expect(page.locator(".head .cap")).toHaveText("Private threads use the Local profile. General threads use Cloud by default.");
+  const local = page.locator('[data-cell="local:chat"]'), general = page.locator('[data-cell="cloud:chat"]');
+  await expect(local).toContainText("local-model");
+  await expect(general).toContainText("cloud-model");
+  await expect(general).toContainText("no fallback");
+  await expect(page.locator('[data-cell="cloud:title"]')).toContainText("= Cheap subagents");
+  await noHorizontalScroll(page);
+  await shot("table");
+
+  // Chat for General threads: Add… offers only suitable cloud models, so cloud-mini and not the speech models.
+  await general.click();
+  await expect(general).toHaveAttribute("aria-pressed", "true");
+  const drawer = page.getByRole("complementary", { name: "Edit Chat" });
+  await expect(drawer).toContainText("Cloud profile · general threads by default");
+  await drawer.getByRole("button", { name: "Add…" }).click();
+  const picker = drawer.getByRole("region", { name: "Add to Chat" });
+  await expect(picker.locator(".pick-row")).toHaveCount(1);
+  await expect(picker).not.toContainText("whisper");
+  await expect(picker).not.toContainText("local-model");
+  await drawer.getByLabel("Search models").fill("mini");
+  if (phone(page)) await noHorizontalScroll(page);
+  await shot("picker");
+  const put = () => page.waitForResponse((r) => r.request().method() === "PUT" && r.url().endsWith("/profiles/cloud/chat"));
+  let saved = put();
+  await picker.locator(".pick-row").filter({ hasText: "cloud-mini" }).getByRole("button", { name: "Add" }).click();
+  expect((await saved).ok()).toBe(true);
+  await expect(general).toContainText("+1 fallback");
+  const entries = drawer.locator("li.oentry");
+  await expect(entries).toHaveCount(2);
+  await expect(entries.nth(0).getByRole("button", { name: "Move up" })).toBeDisabled();
+  await expect(entries.nth(1).getByRole("button", { name: "Move down" })).toBeDisabled();
+  await noHorizontalScroll(page);
+  await shot("drawer");
+  // ↑ puts cloud-mini first; × takes it out again.
+  saved = put();
+  await entries.nth(1).getByRole("button", { name: "Move up" }).click();
+  expect((await saved).ok()).toBe(true);
+  await expect(entries.nth(0)).toContainText("cloud-mini");
+  await expect(general.locator(".m")).toContainText("cloud-mini");
+  saved = put();
+  await entries.nth(0).getByRole("button", { name: "Remove" }).click();
+  expect((await saved).ok()).toBe(true);
+  await expect(entries).toHaveCount(1);
+  await expect(entries.nth(0).getByRole("button", { name: "Remove" })).toBeDisabled();
+  await expect(general).toContainText("cloud-model");
+  await expect(general).toContainText("no fallback");
+  await drawer.getByRole("button", { name: "Close" }).click();
+  await expect(drawer).toHaveCount(0);
+  await expect(general).toHaveAttribute("aria-pressed", "false");
+
+  // Titles: its own list, then Same as Chat, then back to Cheap subagents.
+  const titles = page.locator('[data-cell="cloud:title"]');
+  await titles.click();
+  const edit = page.getByRole("complementary", { name: "Edit Titles" });
+  await edit.getByRole("radio", { name: "Its own list" }).click();
+  await expect(titles).toContainText("no fallback");
+  await expect(edit.locator("li.oentry")).toHaveCount(1);
+  await edit.getByRole("radio", { name: "Same as" }).click();
+  await expect(titles).toContainText("= Chat");
+  await edit.getByLabel("Task to share with").selectOption({ label: "Cheap subagents" });
+  await expect(titles).toContainText("= Cheap subagents");
+  await expect(edit.getByRole("button", { name: "Add…" })).toHaveCount(0);
+  await edit.getByRole("button", { name: "Close" }).click();
+  // Cheap subagents has followers, so it can't follow another task itself.
+  await page.locator('[data-cell="cloud:subagent.cheap"]').click();
+  const cheap = page.getByRole("complementary", { name: "Edit Cheap subagents" });
+  await expect(cheap.getByRole("radio", { name: "Same as" })).toBeDisabled();
+  await expect(cheap).toContainText("Compaction, Titles and Watching threads use this list.");
+  await cheap.getByRole("button", { name: "Close" }).click();
+
+  // Use Custom instead flips the header and the General column; and back.
+  await page.getByRole("button", { name: "Use Custom instead" }).click();
+  await expect(page.locator(".head .cap")).toHaveText("Private threads use the Local profile. General threads use Custom by default.");
+  await expect(page.locator(".ttable thead")).toContainText("Custom profile · local and cloud, falls back across");
+  await expect(page.locator('[data-cell="custom:chat"]')).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show Cloud too" })).toBeVisible();
+  await page.getByRole("button", { name: "Use Cloud instead" }).click();
+  await expect(page.locator(".head .cap")).toHaveText("Private threads use the Local profile. General threads use Cloud by default.");
+  await expect(page.locator(".ttable thead")).toContainText("Cloud profile · cloud models only");
+
+  // Show Custom too adds its column; Hide Custom takes it away.
+  await page.getByRole("button", { name: "Show Custom too" }).click();
+  await expect(page.locator(".ttable thead")).toContainText("Not the default. A general thread can switch to it.");
+  await expect(page.locator('[data-cell="custom:chat"]')).toBeVisible();
+  await noHorizontalScroll(page);
+  await shot("custom");
+  await page.getByRole("button", { name: "Hide Custom" }).click();
+  await expect(page.locator('[data-cell="custom:chat"]')).toHaveCount(0);
+
+  // The old Settings → Model profiles address lands here; Settings has Sleep in its place.
+  await page.goto(`/#/u/${userId}/settings/profiles`);
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/tasks$`));
+  await expect(page.getByRole("heading", { level: 1, name: "Tasks" })).toBeVisible();
+  await page.goto(`/#/u/${userId}/settings/sleep`);
+  await expect(page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "Sleep" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("checkbox", { name: "Sleep fallback" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "Model profiles" })).toHaveCount(0);
 });
