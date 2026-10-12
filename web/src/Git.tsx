@@ -9,6 +9,7 @@ import {
 } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { duration } from "./Machines.tsx";
+import { her } from "./name.ts";
 import { href } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, ErrorText, useAction, useDismiss, useLoad } from "./ui.tsx";
@@ -40,7 +41,7 @@ function facts(a: GitAccountInfo) {
   return <>{a.host} · {a.pool} · {KINDS[a.kind]} · {a.account}</>;
 }
 
-/** The dialog's sentence for a private account whose host is outside her network, ending in its question. */
+/** The dialog's sentence for a private account whose host is outside her network. */
 const offNetworkSentence = (name: string) => `${name}'s host is outside your network, so a private thread's code would leave it.`;
 
 export function GitAccountsSection({ ctx }: { ctx: ShellContext }) {
@@ -165,7 +166,7 @@ function GitDrawer({ userId, account, onSaved, onRemoved, onChanged, onClose }: 
           {(adding || replacing) && (
             <label className="field"><span>Token</span>
               <input className="mono" type="password" value={form.token} autoComplete="off" spellCheck={false} autoFocus={replacing}
-                title={github ? "A fine-grained token for the repositories she works on, with Contents and Pull requests." : "An access token with read and write access to repositories."}
+                title={github ? `A fine-grained token for the repositories ${her()} works on, with Contents and Pull requests.` : "An access token with read and write access to repositories."}
                 onChange={(e) => set("token", e.target.value)} />
             </label>
           )}
