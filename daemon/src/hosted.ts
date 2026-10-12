@@ -36,6 +36,8 @@ export interface HostOptions {
   projectThreads?: (userId: string, pool: Pool, project: string) => string | undefined;
   /** A turn started or ended in a thread. */
   onTurn?: (userId: string, pool: Pool, threadId: string, working: boolean) => void;
+  /** Every event the thread's stream carries, as it goes out (the watcher hears of errors and approvals from it). */
+  onEvent?: (userId: string, pool: Pool, threadId: string, event: ThreadEvent) => void;
 }
 
 /** Events kept for reconnecting streams. Older ones reload from stored entries. */
@@ -260,6 +262,7 @@ export class HostedThread {
 
   private emit(event: ThreadEvent): void {
     this.track(event);
+    this.o.onEvent?.(this.userId, this.pool, this.threadId, event);
     const n = ++this.n;
     this.buffer.push({ n, event });
     if (this.buffer.length > BUFFER) this.buffer.shift();

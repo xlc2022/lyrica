@@ -5,14 +5,14 @@ export type Interface = "web" | "cli" | "matrix" | "forum" | "sleep";
 
 export const TASKS = [
   "chat", "subagent.cheap", "subagent.strong", "compaction",
-  "title", "embedding", "sleep.consolidate", "sleep.dream", "sleep.wake",
+  "title", "watching", "embedding", "sleep.consolidate", "sleep.dream", "sleep.wake",
   "image.create", "image.edit", "speech.transcribe", "speech.speak",
 ] as const;
 export type Task = (typeof TASKS)[number];
 /** Each task as people read it, as the Models page names it: for messages that reach the interface. */
 export const TASK_NAMES: Record<Task, string> = {
   chat: "Main conversation", "subagent.cheap": "Cheap subagents", "subagent.strong": "Strong subagents", compaction: "Compaction",
-  title: "Titles", embedding: "Embeddings", "sleep.consolidate": "Sleep: consolidate", "sleep.dream": "Sleep: dream", "sleep.wake": "Sleep: wake",
+  title: "Titles", watching: "Watching threads", embedding: "Embeddings", "sleep.consolidate": "Sleep: consolidate", "sleep.dream": "Sleep: dream", "sleep.wake": "Sleep: wake",
   "image.create": "Images", "image.edit": "Image edits", "speech.transcribe": "Dictation", "speech.speak": "Read aloud",
 };
 

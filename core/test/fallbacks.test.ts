@@ -90,6 +90,22 @@ describe("ordered fallbacks", () => {
     expect(() => s.models.setProfile(s.li.id, "local", "chat", { same: "title" })).toThrow(/one level deep/);
     expect(() => s.models.setProfile(s.li.id, "local", "embedding", { same: "chat" })).toThrow(/same kind of model/);
     expect(() => s.models.setProfile(s.li.id, "local", "chat", { same: "chat" })).toThrow(/itself/);
+    expect(s.models.resolveModel("watching", priv)).toEqual(s.spare.ref);
+  });
+
+  it("has a profile made before the Watching task follow cheap subagents for it, until it has a list of its own", async () => {
+    const s = await setup();
+    s.models.setProfile(s.li.id, "local", "chat", [s.blackwell.ref]);
+    s.models.setProfile(s.li.id, "local", "subagent.cheap", [s.spare.ref]);
+    // As a profile stored by an older release: no entry for watching.
+    const db = s.users.openUserDb(s.li.id);
+    db.prepare("DELETE FROM model_profiles WHERE task = 'watching'").run();
+    db.close();
+    const priv = s.ctx({ pool: "private", localOnly: true });
+    expect(s.models.profile(s.li.id, "local").watching).toEqual({ same: "subagent.cheap" });
+    expect(s.models.resolveModel("watching", priv)).toEqual(s.spare.ref);
+    s.models.setProfile(s.li.id, "local", "watching", [s.blackwell.ref]);
+    expect(s.models.resolveModel("watching", priv)).toEqual(s.blackwell.ref);
   });
 
   it("keeps image tasks resolvable, to models that make or edit images, with no chat fallback", async () => {
@@ -119,7 +135,8 @@ describe("ordered fallbacks", () => {
     const { Models } = await import("../src/index.ts");
     const models = new Models(s.keyring, s.users);
     expect(models.profile(s.bob.id, "cloud")).toEqual({});
-    expect(models.profile(s.bob.id, "custom")).toEqual({ chat: [{ offeringId: shared!.id }] });
+    // Watching, a later task, follows cheap subagents as in a new profile.
+    expect(models.profile(s.bob.id, "custom")).toEqual({ chat: [{ offeringId: shared!.id }], watching: { same: "subagent.cheap" } });
     expect(models.defaultProfile(s.bob.id)).toBe("custom");
     expect(models.notice(s.bob.id)[0]).toMatch(/copied to the new custom profile/);
   });

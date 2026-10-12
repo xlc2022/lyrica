@@ -286,9 +286,12 @@ const capability = (t: Task) => (t === "embedding" ? "embedding" : t === "image.
 const OWN_LIST_ONLY: readonly Task[] = ["embedding", "image.create", "image.edit", "speech.transcribe", "speech.speak"];
 /** A new profile starts with these following other tasks. */
 const NEW_PROFILE: Partial<Record<Task, { same: Task }>> = {
-  title: { same: "subagent.cheap" }, compaction: { same: "subagent.cheap" },
+  title: { same: "subagent.cheap" }, compaction: { same: "subagent.cheap" }, watching: { same: "subagent.cheap" },
   "sleep.consolidate": { same: "subagent.strong" }, "sleep.dream": { same: "subagent.strong" }, "sleep.wake": { same: "subagent.strong" },
 };
+
+/** Tasks added after profiles were first stored: a profile with no entry for one gets its NEW_PROFILE default when read. */
+const LATER_TASKS: readonly Task[] = ["watching"];
 
 const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
 /** A primary language tag: "en", "zh", "yue". */
@@ -1342,7 +1345,16 @@ export class Models {
   /** A profile's entries: an ordered list per task, or `{ same }` for a task that uses another task's list. */
   profile(userId: string, name: ProfileName): Profiles {
     const rows = this.withUser(userId, (db) => db.prepare("SELECT task, entry FROM model_profiles WHERE profile = ?").all(name)) as { task: Task; entry: string }[];
-    return Object.fromEntries(rows.map((r) => [r.task, JSON.parse(r.entry) as Entry]));
+    const out: Profiles = Object.fromEntries(rows.map((r) => [r.task, JSON.parse(r.entry) as Entry]));
+    // A profile made before a task existed: the task follows its default, as in a new profile, where that stays one level deep.
+    if (rows.length) {
+      for (const task of LATER_TASKS) {
+        const d = NEW_PROFILE[task]!;
+        const target = out[d.same];
+        if (!(task in out) && (!target || isList(target))) out[task] = d;
+      }
+    }
+    return out;
   }
 
   /**
@@ -1351,7 +1363,8 @@ export class Models {
    * (a group needs at least one member of the right kind); Custom takes both.
    * `same` names a task of the same capability that doesn't itself follow
    * another. A profile's first entry brings the defaults: titles and
-   * compaction follow cheap subagents, and sleep follows strong subagents.
+   * compaction follow cheap subagents, and so does watching (in an older
+   * profile too, until it has a list of its own), and sleep follows strong subagents.
    * A single model is a one-model list.
    */
   setProfile(userId: string, name: ProfileName, task: Task, value?: Entry | ModelRef): void {

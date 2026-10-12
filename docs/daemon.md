@@ -275,7 +275,29 @@ Each active thread is one Pi session from `openThreadSession`, with
   `threadsModel`, `threadsThinking` and `threadsFallback` (the model,
   thinking and Fallback its new threads start with; each null follows the
   project chat), and `watchThreads` (on unless turned off; see
-  [delegation.md](delegation.md#child-threads)). `projectSettings.pageId` is the
+  [delegation.md](delegation.md#child-threads)). A **look** at the threads
+  (`watch.ts`) is one call to the `watching` task, through
+  `callWithFallback` and `completeSimple` in a model runtime built from the
+  project chat's `CallContext` (so local models only for a private or
+  local-only project), recorded in Recent calls on the project chat. Its
+  prompt: her name, the project's goal and instructions, the project
+  chat's thread lines (`projectLines`), the digest (for each thread, up to
+  500 characters of what the user wrote and its reply, its latest update,
+  or that it stopped with an error or waits for an approval), and the
+  `Told` lines of the last three looks. It asks for JSON only,
+  `{"tell":[{"thread","text"}],"raise"}`. Each `tell` (at most 3; open
+  threads of the project, never the project chat) goes through
+  `ChildThreads.tellFromProject`, the project chat's `threads message`
+  path, marked `[From t:<project chat>]`. The look is then kept in the
+  project chat: with no `raise`, as a delivered entry (`storeLook`, the
+  delivery path, `details.status: "watching"`), with no turn; with a
+  `raise`, as the message of one project-chat turn marked `[Watching
+  threads]`. Either way the text is `In [t:<id>]: <what happened>.` lines,
+  a blank line, then `Told [t:<id>]: "<line>"` lines (or `Told no
+  thread.`) and, after a raise, `Raised: "<line>"`; the digest's quotes
+  are never stored. An answer that isn't that JSON, or no model answering,
+  does nothing and is logged by error name only. Turn errors and
+  permission requests reach the watcher through `HostOptions.onEvent`. `projectSettings.pageId` is the
   project page's memory ID, for the memory browser. Pausing or hiding stops its working threads; a
   message to a paused project's thread is `409`. **Start a thread** (`POST
   …/messages/:n/thread`, optional `title`) starts a thread of the project
