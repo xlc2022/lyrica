@@ -1031,9 +1031,8 @@ a.tile:hover { text-decoration: none; border-color: var(--accent); }
 .models .ttable td { padding: 0; vertical-align: top; }
 .models .ttable td.task { padding: 10px; }
 .ttable td.task b { font-weight: 500; font-size: 14px; }
-.ttable td.task div { font-size: 12px; color: var(--muted); }
 .models .ttable thead th { font-size: 12px; font-weight: 400; text-transform: none; letter-spacing: 0; padding: 10px; vertical-align: top; }
-.ttable thead th b { display: block; font-size: 13px; font-weight: 600; color: var(--fg); margin-bottom: 2px; }
+.ttable thead th b { display: block; font-size: 13px; font-weight: 600; color: var(--fg); }
 .models .ttable thead th .actions { margin-top: 6px; justify-content: start; }
 .models .ttable tr.tgroup td { background: var(--tool); padding: 5px 10px; }
 .ttable .cell { width: 100%; min-height: 56px; border: 0; border-radius: 0; background: none; text-align: left; display: grid; justify-content: stretch; gap: 2px; padding: 8px 10px; align-content: center; white-space: normal; font-weight: 400; color: var(--fg); }
@@ -1043,7 +1042,6 @@ a.tile:hover { text-decoration: none; border-color: var(--accent); }
 .cell .sub { font-size: 12px; color: var(--muted); }
 .cell .sub .warn-text { font-size: 12px; }
 .ttable .cell.other { color: var(--muted); }
-.drawer-title { display: grid; gap: 2px; min-width: 0; }
 .task-drawer .drawer-body { gap: 12px; }
 .task-drawer .actions { justify-content: start; }
 .follow-block { display: grid; gap: 4px; }
