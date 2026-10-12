@@ -7,6 +7,10 @@ import { Forbidden, type User, type Users } from "./users.ts";
 export const MATRIX = "PERSONALITY_MATRIX.md";
 export const CORE_FILES = ["SOUL.md", "STYLE.md", "REGISTER.md"] as const;
 const TOPIC_DIR = "persona_topics";
+/** Most characters in the core (SOUL, STYLE and REGISTER joined), so it is never cut in her prompt. */
+export const CORE_LIMIT = 12_000;
+/** checkName's longest name (40 code points, 80 UTF-16 units), for measuring the core whatever she is called. */
+const LONGEST_NAME = "😀".repeat(40);
 const VALID_PATH = /^(persona_topics\/)?[A-Za-z0-9_.-]+\.md$/;
 
 /** Her name when none is set. */
@@ -103,7 +107,7 @@ export class PersonaStore {
   read(): Persona {
     const files = this.files();
     return {
-      core: CORE_FILES.filter((p) => files.has(p)).map((path) => ({ path, text: path === "REGISTER.md" ? named(files.get(path)!, selfName(this.db)) : files.get(path)! })),
+      core: coreOf(files, selfName(this.db)),
       topics: parseMatrix(files.get(MATRIX) ?? "").map((t) => ({
         id: t.id,
         summary: t.summary,
@@ -120,7 +124,23 @@ export class PersonaStore {
     if (!VALID_PATH.test(path)) throw new Error(`not a persona file: ${path}`);
     if (path === MATRIX) parseMatrix(text, true);
     if (this.files().get(path) === text) return;
+    this.checkCore(path, text);
     this.insert(path, text, `user:${actor.id}`);
+  }
+
+  /**
+   * Refuses a change that would take the core past CORE_LIMIT, measured with
+   * the longest name she could be given, so no rename can push it over. An
+   * edit that doesn't grow an already oversized core is allowed.
+   */
+  checkCore(path: string, text: string): void {
+    if (!(CORE_FILES as readonly string[]).includes(path)) return;
+    const files = this.files();
+    const before = coreText(coreOf(files, LONGEST_NAME)).length;
+    const size = coreText(coreOf(files.set(path, text), LONGEST_NAME)).length;
+    if (size > CORE_LIMIT && size > before) {
+      throw new Error(`Too long: SOUL, STYLE and REGISTER would be ${size.toLocaleString("en-US")} characters together, over ${CORE_LIMIT.toLocaleString("en-US")}. Shorten them, or move it into a topic.`);
+    }
   }
 
   /** The file's newest revision, or 0 if it doesn't exist yet. */
@@ -161,6 +181,15 @@ export class PersonaStore {
     this.db.prepare("INSERT INTO persona_revisions (path, text, author, created_at) VALUES (?, ?, ?, ?)")
       .run(path, text, author, new Date().toISOString());
   }
+}
+
+function coreOf(files: Map<string, string>, name: string): Persona["core"] {
+  return CORE_FILES.filter((p) => files.has(p)).map((path) => ({ path, text: path === "REGISTER.md" ? named(files.get(path)!, name) : files.get(path)! }));
+}
+
+/** The core as her prompt joins it. */
+export function coreText(core: Persona["core"]): string {
+  return core.map((f) => f.text.trim()).join("\n\n");
 }
 
 /** REGISTER.md with her set name in its `Name:` line. The stored file is left as it is. */
@@ -217,6 +246,7 @@ export class PersonaProposals {
   propose(view: PoolView, threadId: string, p: { path: string; text: string; reason: string; author: string }): { sent: boolean; id: number } {
     if (!isThreadView(view) || !view.own.getThread(threadId)) throw new Error("a proposal comes from one of the user's own threads");
     if (!VALID_PATH.test(p.path)) throw new Error(`not a persona file: ${p.path}`);
+    this.persona.checkCore(p.path, p.text);
     const owner = view.own.owner;
     const base = this.persona.latest(p.path);
     if (this.users.get(owner)?.admin) return { sent: true, id: this.insert({ ...p, sentBy: `user:${owner}`, edited: false, base }) };
