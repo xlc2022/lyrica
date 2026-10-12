@@ -8,6 +8,8 @@
 let
   cfg = config.services.lyrica;
   state = "/var/lib/lyrica";
+  # Direct web access's port, whatever `port` is: DIRECT_PORT in daemon/src/web/access.ts.
+  directPort = 7340;
 
   # The DNS plugins, read from the same table install.sh builds from.
   providers = builtins.readFile ../daemon/src/web/providers.ts;
@@ -72,7 +74,7 @@ in {
       type = lib.types.bool;
       default = true;
       description = ''
-        Opens lyricad's port (7340) in the firewall. On by default, unlike most
+        Opens Direct's port (7340) in the firewall. On by default, unlike most
         NixOS modules: a headless host is set up from another machine through
         it, as on Debian, and it answers only while setting up or in the Direct
         web access mode.
@@ -115,7 +117,7 @@ in {
     # Exists before the first start, for `lyrica admin setup-code` and `lyrica admin init`.
     systemd.tmpfiles.rules = [ "d ${state} 0700 lyrica lyrica -" ];
 
-    networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall [ cfg.port ];
+    networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall [ directPort ];
 
     systemd.services.lyrica-tailscaled = lib.mkIf cfg.tailscale {
       description = "Tailscale for Lyrica (her own device, userspace networking)";

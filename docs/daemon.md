@@ -714,7 +714,7 @@ system with the module on. Only x86_64-linux.
   install.sh's, so the first-run step is `lyrica admin setup-code` as root:
   nothing prints the code or the fingerprint at `nixos-rebuild`.
 - **Firewall.** `openFirewall` (default on, unlike most NixOS modules) opens
-  `port` (7340): a headless host is set up from another machine through it,
+  Direct's port, 7340 whatever `port` is: a headless host is set up from another machine through it,
   as on Debian, and it answers only while setting up or in Direct.
   It refuses to build with `security.allowUserNamespaces` off.
 - **PATH.** lyricad's starts with `/run/wrappers/bin`, so `fusermount3` is
