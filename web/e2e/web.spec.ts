@@ -1761,7 +1761,7 @@ test("hovering New project opens its flyout beside the item, and it flips at the
   await enter(page, baseURL!);
   const list = page.locator(".threads");
   const box = (await list.boundingBox())!;
-  await list.dispatchEvent("contextmenu", { clientX: box.x + 40, clientY: box.y + box.height - 6 });
+  await list.click({ button: "right", position: { x: 40, y: box.height - 6 } });
   const menu = page.getByRole("menu", { name: "Thread list menu" });
   const item = menu.getByRole("menuitem", { name: "New project" });
   await expect(item).toBeVisible();
@@ -1772,7 +1772,8 @@ test("hovering New project opens its flyout beside the item, and it flips at the
   await expect(menu.getByRole("menuitem", { name: "New group…" })).toBeVisible();
   await expect(item).toHaveAttribute("aria-expanded", "true");
   const f = (await fly.boundingBox())!, i = (await item.boundingBox())!;
-  expect(Math.abs(f.y - i.y)).toBeLessThan(2); // the top lines up with the item
+  const first = (await fly.getByRole("menuitem", { name: "General" }).boundingBox())!;
+  expect(Math.abs(first.y - i.y)).toBeLessThan(2); // its first row lines up with the item
   expect(f.x).toBeGreaterThanOrEqual(i.x + i.width - 2); // and it opens to the right
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/flyout-${page.viewportSize()!.width}.png` });
 
@@ -1800,7 +1801,7 @@ test("tapping New project on a phone replaces the menu in place with its choices
   await page.getByRole("button", { name: "Show threads" }).click();
   const list = page.locator(".threads");
   const box = (await list.boundingBox())!;
-  await list.dispatchEvent("contextmenu", { clientX: box.x + box.width / 2, clientY: box.y + box.height - 6 });
+  await list.click({ button: "right", position: { x: box.width / 2, y: box.height - 6 } });
   await page.getByRole("menu", { name: "Thread list menu" }).getByRole("menuitem", { name: "New project" }).click();
   // Without hover the menu is replaced in place by a ‹ Back row, as today.
   await expect(page.locator(".ctx-menu .back")).toBeVisible();
@@ -1824,7 +1825,8 @@ test("New project in the sidebar creates a pinned project and opens it", async (
   // A new project is created pinned and opened at once, same as the list menu's item does.
   await expect(page.getByRole("heading", { level: 1, name: "New project" })).toBeVisible();
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
-  await expect(side.locator(".thread.project")).toHaveCount(1);
+  // Earlier tests share this user, so look for the project just opened: it is the current row, under Pinned.
+  await expect(side.locator('.thread.project[aria-current="page"]')).toHaveCount(1);
   await expect(side.locator(".eyebrow").first()).toContainText("Pinned");
 });
 

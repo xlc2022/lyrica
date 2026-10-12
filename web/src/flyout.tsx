@@ -85,13 +85,20 @@ export function Flyout({ parentRef, anchor, children }: {
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
-    const el = ref.current, parent = parentRef.current;
-    if (!el || !parent) return;
-    const item = parent.querySelector<HTMLElement>(`[data-submenu="${anchor}"]`);
-    if (!item) return;
-    const { left, top } = flyoutBox(item.getBoundingClientRect(), el.getBoundingClientRect(), { width: innerWidth, height: innerHeight });
-    el.style.left = `${left}px`;
-    el.style.top = `${top}px`;
+    // The menu keeps itself on screen in its own effect, which runs after this one, so the flyout is placed a frame later, from where the item ends up.
+    const frame = requestAnimationFrame(() => {
+      const el = ref.current, parent = parentRef.current;
+      const item = parent?.querySelector<HTMLElement>(`[data-submenu="${anchor}"]`);
+      if (!el || !item) return;
+      // Its first row, not its border, lines up with the item.
+      const box = el.getBoundingClientRect(), r = item.getBoundingClientRect();
+      const inset = (el.firstElementChild?.getBoundingClientRect().top ?? box.top) - box.top;
+      const { left, top } = flyoutBox({ x: r.x, y: r.y - inset, width: r.width, height: r.height }, box, { width: innerWidth, height: innerHeight });
+      el.style.left = `${left}px`;
+      el.style.top = `${top}px`;
+      el.style.visibility = "";
+    });
+    return () => cancelAnimationFrame(frame);
   });
-  return <div ref={ref} className="ctx-menu flyout" role="menu">{children}</div>;
+  return <div ref={ref} className="ctx-menu flyout" role="menu" style={{ visibility: "hidden" }}>{children}</div>;
 }
