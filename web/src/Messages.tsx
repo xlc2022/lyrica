@@ -138,9 +138,7 @@ function StoredMessage({ m, env, you, cards, told, folded }: { m: Message; env: 
   if (m.role === "notice") {
     return <>{m.parts.map((p, i) => (p.type === "delegation"
       ? <Notice key={i} text={p.text} status={p.status} threads={p.threads} env={env} />
-      : p.type === "text" && p.text.startsWith("Turn stopped after ")
-        ? <Notice key={i} text={p.text} status="limit" env={env} />
-        : <Notice key={i} text={p.type === "text" ? p.text : p.type === "compacted" ? compactedLabel(p) : ""} env={env} />))}{after}</>;
+      : <Notice key={i} text={p.type === "text" ? p.text : p.type === "compacted" ? compactedLabel(p) : ""} env={env} />))}{after}</>;
   }
   return (
     <>

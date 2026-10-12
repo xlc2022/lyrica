@@ -110,7 +110,7 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
     const reactions = opts.userId ? toReactions(stored, opts.userId) : undefined;
     const e = data as PiEntry;
     if (e.type === "custom_message" && e.customType === TURN_TOOL_NOTICE) {
-      out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "notice", parts: [{ type: "text", text: textOf(e.content) }] });
+      out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "notice", parts: [{ type: "delegation", text: textOf(e.content), status: "limit" }] });
       continue;
     }
     if (e.type === "custom_message" && e.customType === "lyrica-turn") {
