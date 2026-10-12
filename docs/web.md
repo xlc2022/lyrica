@@ -32,8 +32,10 @@ A thread's address may carry what the panel beside it shows:
   "Search titles and messages": the list filters by title as it is typed;
   from 2 characters, 300 ms after the last key, `GET …/search` turns it
   into a group per thread in the order of their newest hit, the thread's
-  row then up to three hits, each who wrote it and its time in mono with
-  the sentence and its matches marked, and "<n> more in this thread" to
+  row then up to three hits of up to two lines, each who wrote it and its
+  time in mono (as a message shows it: HH:MM today, "11 Oct 14:32"
+  otherwise, the full date as its tooltip) with the sentence and its
+  matches marked, and "<n> more in this thread" to
   open the rest in place; after the groups, the threads whose title alone
   matched; **Show more** under a full page of 50; "Nothing matches." when
   nothing does; Escape clears it. A hit opens its thread at that message,

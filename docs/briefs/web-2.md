@@ -462,9 +462,10 @@ with radios All threads / Pinned messages / Hidden threads. Design:
   today. With a query of 2+ characters: titles match at once (as now) and
   after 300 ms the server's hits arrive; the list becomes result groups,
   one per thread in hit order: the thread row as the sidebar draws it
-  (pool mark, title, time), then under it up to three hits as one-line
-  rows: the who in mono small, the snippet with `<mark>`, the time in
-  mono; a fourth line "<n> more in this thread" opens the rest in place.
+  (pool mark, title, time), then under it up to three hits of up to two
+  lines: the who in mono small, the snippet with `<mark>`, the time in
+  mono as a message shows it (HH:MM today, "11 Oct 14:32" otherwise);
+  a fourth line "<n> more in this thread" opens the rest in place.
   A hit row opens the thread at that message (the existing jump, the
   message briefly highlighted). Empty: "Nothing matches." The Sort menu's
   Hidden entry gets the tooltip "Hidden threads are left out of the list

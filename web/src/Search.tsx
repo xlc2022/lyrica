@@ -7,7 +7,7 @@ import { her } from "./name.ts";
 import { href } from "./route.ts";
 import { PoolLock, ThreadLink, type MenuHandlers } from "./Shell.tsx";
 import { findThread } from "./Thread.tsx";
-import { shortTime } from "./ui.tsx";
+import { fullTime, shortTime, wakeTime } from "./ui.tsx";
 
 /** lyricad's page of hits. */
 const PAGE = 50;
@@ -112,7 +112,7 @@ function HitGroup({ g, t, userId, current, menu, onOpen }: {
             <a className="hit" href={to} onClick={() => onOpen(h)}>
               <span className="by">{h.who === "you" ? "you" : h.who === "agent" ? her() : h.who}</span>
               <span className="snip">{marked(h)}</span>
-              <span className="when">{shortTime(h.at)}</span>
+              <time className="when" dateTime={h.at} title={fullTime(h.at)}>{wakeTime(h.at)}</time>
             </a>
           </li>
         ))}
@@ -125,8 +125,8 @@ function HitGroup({ g, t, userId, current, menu, onOpen }: {
 }
 
 /**
- * The snippet with its matches marked. A hit is one narrow line, so a match
- * past the first few words starts the line one word before it, after "…".
+ * The snippet with its matches marked. A hit is at most two narrow lines, so a
+ * match past the first few words starts the text one word before it, after "…".
  */
 function marked(h: SearchHit): React.ReactNode[] {
   const s = h.snippet;
