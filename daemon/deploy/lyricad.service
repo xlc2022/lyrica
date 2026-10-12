@@ -5,6 +5,12 @@
 Description=Lyrica (lyricad)
 After=network-online.target lyrica-caddy.service
 Wants=network-online.target lyrica-caddy.service
+# Three failed starts in two minutes is a crash loop: lyrica-rollback.service
+# goes back to the previous release if this one is on probation, and does
+# nothing otherwise.
+StartLimitBurst=3
+StartLimitIntervalSec=120
+OnFailure=lyrica-rollback.service
 
 [Service]
 Type=simple
@@ -17,7 +23,8 @@ Environment=LYRICA_HOME=/var/lib/lyrica
 StateDirectory=lyrica lyrica/credentials
 StateDirectoryMode=0700
 UMask=0077
-ExecStart=/opt/lyrica/bin/lyrica serve --port 7340
+# The release `current` points at (docs/daemon.md, "Updates").
+ExecStart=/opt/lyrica/current/bin/lyrica serve --port 7340
 # Saved credentials (self.db passphrase, users' keys), sealed by lyricad with
 # `systemd-creds encrypt --user`. systemd unseals them at start into
 # $CREDENTIALS_DIRECTORY as lyrica_<name>, readable only by this service.

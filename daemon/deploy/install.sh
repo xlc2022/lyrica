@@ -2,8 +2,12 @@
 # Installs or upgrades Lyrica on Debian or Ubuntu (in the LXC container or VM):
 # the service users, lyricad's code and unit, and the built-in Caddy, built
 # from pinned versions with the DNS plugins in daemon/src/web/providers.ts.
-# Run as root from a checkout of the repository. Running it again upgrades in
-# place: the code is replaced, and Caddy is rebuilt only if a pin changed.
+# Run as root from a git checkout of the repository (not inside /opt/lyrica).
+# Each run builds the checkout's commit into its own release,
+# /opt/lyrica/releases/<commit>, snapshots her databases and switches
+# /opt/lyrica/current to it, as an update does; Caddy is rebuilt only if a pin
+# changed. It also installs the updater (lyrica-update and its units), which
+# no update replaces. See docs/daemon.md, "Deployment" and "Updates".
 set -euo pipefail
 
 # --- Pins ---
@@ -16,6 +20,10 @@ CADDY_VERSION=v2.11.7
 
 PREFIX=/opt/lyrica
 STATE=/var/lib/lyrica
+# The updater fetches update tags from here with a read-only deploy key.
+REPO_URL=${LYRICA_REPO:-git@github.com:xlc2022/lyrica.git}
+# GitHub's published SSH host key, so the updater never trusts a first answer.
+GITHUB_HOST_KEY="github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
 CADDY=/usr/local/bin/lyrica-caddy
 STAMP=/usr/local/lib/lyrica-caddy.stamp
 SRC=$(cd "$(dirname "$0")/../.." && pwd)
@@ -25,6 +33,7 @@ die() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" = 0 ] || die "run as root"
 [ -f "$SRC/daemon/src/web/providers.ts" ] || die "run it from a checkout of the repository"
+case "$SRC/" in "$PREFIX"/*) die "run it from a checkout outside $PREFIX, such as /root/lyrica" ;; esac
 . /etc/os-release
 case " $ID ${ID_LIKE:-} " in *" debian "*|*" ubuntu "*) ;; *) die "this script is for Debian or Ubuntu" ;; esac
 ARCH=$(dpkg --print-architecture)
@@ -35,7 +44,8 @@ say "Installing packages..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
-  bubblewrap gocryptfs fuse3 passt nftables openssl ca-certificates curl unzip rsync imagemagick >/dev/null
+  bubblewrap gocryptfs fuse3 passt nftables openssl ca-certificates curl unzip rsync imagemagick \
+  build-essential python3 git openssh-client jq >/dev/null
 command -v node >/dev/null || die "install Node.js 22.6 or later (for example from NodeSource), then run this again"
 # 22.6 for the SSH helper, which runs with type stripping.
 node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 6) ? 0 : 1)' \
@@ -47,24 +57,83 @@ node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.ex
 getent group lyrica-caddy >/dev/null || groupadd --system lyrica-caddy
 id lyrica-caddy >/dev/null 2>&1 || useradd --system --gid lyrica-caddy --home-dir /var/lib/lyrica-caddy --no-create-home --shell /usr/sbin/nologin lyrica-caddy
 id lyrica >/dev/null 2>&1 || useradd --system --user-group --home-dir "$STATE" --no-create-home --shell /usr/sbin/nologin lyrica
+# lyrica-build builds releases and runs their smoke tests: no access to her data.
+id lyrica-build >/dev/null 2>&1 || useradd --system --user-group --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin lyrica-build
 # lyricad gets the lyrica-caddy group from its unit (SupplementaryGroups), not from /etc/group.
 
-# --- lyricad's code ---
-say "Installing lyricad into $PREFIX..."
-mkdir -p "$PREFIX"
-if [ "$SRC" != "$PREFIX" ]; then
-  rsync -a --delete --exclude .git --exclude node_modules --exclude runtime "$SRC/" "$PREFIX/"
+# --- The updater (never replaced by an update) ---
+install -d -m 0755 /usr/local/lib/lyrica-update /var/lib/lyrica-update
+install -d -m 0700 /var/lib/lyrica-snapshots
+install -m 0644 "$SRC/daemon/deploy/updater/common.sh" /usr/local/lib/lyrica-update/common.sh
+for t in lyrica-update lyrica-snapshot lyrica-restore lyrica-rollback; do
+  install -m 0755 "$SRC/daemon/deploy/updater/$t" "/usr/local/sbin/$t"
+done
+install -d -m 0755 /etc/lyrica
+if [ ! -f /etc/lyrica/deploy-key ]; then
+  ssh-keygen -q -t ed25519 -N "" -C "lyrica-update@$(hostname)" -f /etc/lyrica/deploy-key
+  NEW_DEPLOY_KEY=yes
 fi
-(cd "$PREFIX" && npm ci --omit=dev --no-audit --no-fund --loglevel=error)
-chown -R root:root "$PREFIX"
-chmod -R a+rX,go-w "$PREFIX"
+chmod 0600 /etc/lyrica/deploy-key
+printf '%s\n' "$GITHUB_HOST_KEY" >/etc/lyrica/known_hosts
+if [ ! -d "$PREFIX/repo.git" ]; then
+  git init -q --bare "$PREFIX/repo.git"
+  git --git-dir="$PREFIX/repo.git" remote add origin "$REPO_URL"
+fi
+git --git-dir="$PREFIX/repo.git" fetch -q "$SRC" HEAD
+
+# --- lyricad's code: a release ---
+# The common functions the updater uses: releases.json, switching, snapshots.
+. /usr/local/lib/lyrica-update/common.sh
+say() { printf '%s\n' "$*"; }
+COMMIT=$(git -C "$SRC" rev-parse HEAD 2>/dev/null) || die "run it from a git checkout: a release is named by its commit"
+[ -z "$(git -C "$SRC" status --porcelain --untracked-files=no)" ] || die "the checkout has uncommitted changes: a release is exactly one commit"
+REL="$PREFIX/releases/$COMMIT"
+mkdir -p "$PREFIX/releases"
+# Before releases, the code was /opt/lyrica itself: set it aside (not a release to go back to).
+if [ -d "$PREFIX/bin" ] && [ ! -L "$PREFIX/current" ]; then
+  mkdir -p "$PREFIX/before-releases"
+  for f in "$PREFIX"/* "$PREFIX"/.[!.]*; do
+    case "$(basename "$f")" in releases|repo.git|before-releases|build) ;; *) [ -e "$f" ] && mv "$f" "$PREFIX/before-releases/" ;; esac
+  done
+  say "The code from before releases is in $PREFIX/before-releases; delete it once this release runs."
+fi
+if [ -f "$REL/RELEASE.json" ]; then
+  say "Release ${COMMIT:0:12} is already built."
+else
+  say "Building release ${COMMIT:0:12} (npm and the web UI, a few minutes)..."
+  WORK="$PREFIX/build/$COMMIT"
+  rm -rf "$WORK"; mkdir -p "$WORK/src" "$WORK/home"
+  git -C "$SRC" archive "$COMMIT" | tar -x -C "$WORK/src"
+  chown -R lyrica-build:lyrica-build "$WORK"
+  runuser -u lyrica-build -- env -i HOME="$WORK/home" PATH=/usr/local/bin:/usr/bin:/bin npm_config_cache="$WORK/home/.npm" \
+    sh -c 'cd "$1" && npm ci --no-audit --no-fund --loglevel=error && npm run build --silent && npm prune --omit=dev --no-audit --no-fund --loglevel=error' \
+    sh "$WORK/src" >"$WORK/build.log" 2>&1 || { tail -20 "$WORK/build.log" >&2; die "building the release failed"; }
+  (cd "$WORK/src" && runuser -u lyrica-build -- env -i HOME="$WORK/home" PATH=/usr/local/bin:/usr/bin:/bin node bin/lyrica version --json) \
+    | jq --arg c "$COMMIT" --arg at "$(now)" '{commit: $c, builtAt: $at, version, schema, minReader}' >"$WORK/RELEASE.json"
+  mv "$WORK/RELEASE.json" "$WORK/src/RELEASE.json"
+  chown -R root:root "$WORK/src"
+  chmod -R a+rX,a-w "$WORK/src"
+  mv -T "$WORK/src" "$REL"
+  rm -rf "$WORK"
+fi
+add_release "$COMMIT" "$REL"
+if [ "$(current_commit)" != "$COMMIT" ]; then
+  # As an update does: turns finish, then a snapshot from a clean stop, then the switch.
+  if [ -f "$STATE/self.db" ]; then
+    if [ -d /run/systemd/system ]; then drain || die "lyricad stayed busy for 10 minutes; run this again later"; systemctl stop lyricad; fi
+    lyrica-snapshot --commit "$(current_commit || true)" >/dev/null
+  fi
+  switch_to "$COMMIT"
+  raise_min_reader "$(cat "$REL/RELEASE.json")"
+fi
+prune_releases
 install -d -o lyrica -g lyrica -m 0700 "$STATE"
 # `lyrica` on the PATH runs the CLI as the lyrica user with her state folder.
-sed -e "s|@CLI@|$PREFIX/bin/lyrica|" -e "s|@STATE@|$STATE|" "$PREFIX/daemon/deploy/lyrica" >/usr/local/bin/lyrica
+sed -e "s|@CLI@|$PREFIX/current/bin/lyrica|" -e "s|@STATE@|$STATE|" "$REL/daemon/deploy/lyrica" >/usr/local/bin/lyrica
 chmod 0755 /usr/local/bin/lyrica
 
 # --- The built-in Caddy ---
-MODULES=$(sed -n 's/.*module: "\([^"]*\)".*/\1/p' "$PREFIX/daemon/src/web/providers.ts" | sort)
+MODULES=$(sed -n 's/.*module: "\([^"]*\)".*/\1/p' "$REL/daemon/src/web/providers.ts" | sort)
 [ -n "$MODULES" ] || die "found no DNS plugins in daemon/src/web/providers.ts"
 WANT="caddy $CADDY_VERSION go $GO_VERSION xcaddy $XCADDY_VERSION $(printf '%s ' $MODULES)"
 if [ -x "$CADDY" ] && [ "$(cat "$STAMP" 2>/dev/null || true)" = "$WANT" ]; then
@@ -96,17 +165,18 @@ fi
 printf 'net.ipv4.ip_nonlocal_bind = 1\n' >/etc/sysctl.d/60-lyrica.conf
 sysctl -q -w net.ipv4.ip_nonlocal_bind=1 || say "Couldn't set net.ipv4.ip_nonlocal_bind here; Caddy may need a restart once Tailscale is up."
 
-install -d -m 0755 /etc/lyrica
 # Only Caddy's first start: its admin API on the group-only socket. lyricad loads the rest.
 printf '%s\n' '{"admin":{"listen":"unix//run/lyrica-caddy/admin.sock|0660"}}' >/etc/lyrica/caddy.json
 chmod 0644 /etc/lyrica/caddy.json
 
 # --- Units ---
-install -m 0644 "$PREFIX/daemon/deploy/lyrica-caddy.service" /etc/systemd/system/lyrica-caddy.service
-install -m 0644 "$PREFIX/daemon/deploy/lyricad.service" /etc/systemd/system/lyricad.service
+for u in lyrica-caddy.service lyricad.service lyrica-update.service lyrica-update.path lyrica-rollback.service; do
+  install -m 0644 "$SRC/daemon/deploy/$u" "/etc/systemd/system/$u"
+done
 if [ -d /run/systemd/system ]; then
   systemctl daemon-reload
-  systemctl enable --quiet lyrica-caddy lyricad
+  systemctl enable --quiet lyrica-caddy lyricad lyrica-update.path
+  systemctl start lyrica-update.path
   if [ "$CADDY_CHANGED" = yes ]; then systemctl restart lyrica-caddy; else systemctl start lyrica-caddy; fi
   if [ -f "$STATE/self.db" ]; then
     systemctl restart lyricad
@@ -119,4 +189,9 @@ if [ -d /run/systemd/system ]; then
 else
   say "systemd isn't running here: the units are installed but not started."
 fi
+if [ "${NEW_DEPLOY_KEY:-}" = yes ]; then
+  say "For Administration → Updates, add this as a read-only deploy key of $REPO_URL:"
+  cat /etc/lyrica/deploy-key.pub
+fi
+say "Running release ${COMMIT:0:12}. Go back with: sudo lyrica-rollback"
 say "Done. lyricad listens on 127.0.0.1:7340; web access is set up through its API (PUT /api/u/<id>/admin/web-access)."

@@ -1,0 +1,77 @@
+#!/bin/bash
+# lyrica-snapshot [--note <file>] [--commit <commit>] [--pin]
+# Copies her databases and settings (encrypted as they are; never the users'
+# homes) into /var/lib/lyrica-snapshots/<time>-<commit>/, with the commit,
+# the schema each release must read, and a checksum per file. Only with
+# lyricad stopped. A database a crash left with its -wal is copied with it, so
+# every committed transaction is kept: root holds no key to checkpoint it.
+# Checks every copy against its source before returning, then keeps the last
+# 3, plus pinned ones (see common.sh). See docs/daemon.md, "Updates".
+set -euo pipefail
+. "${LYRICA_UPDATER_LIB:-/usr/local/lib/lyrica-update}/common.sh"
+
+NOTE= COMMIT= PIN=false
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --note) NOTE=$2; shift 2 ;;
+    --commit) COMMIT=$2; shift 2 ;;
+    --pin) PIN=true; shift ;;
+    *) die "usage: lyrica-snapshot [--note <file>] [--commit <commit>] [--pin]" ;;
+  esac
+done
+need_root_or_service
+lyricad_active && die "stop lyricad first: a snapshot is taken only after a clean stop"
+[ -d "$STATE" ] || die "no $STATE"
+COMMIT=${COMMIT:-$(current_commit)}
+COMMIT=${COMMIT:-unknown}
+
+exec 9>"$UPDATE/snapshot.lock" 2>/dev/null || { mkdir -p "$UPDATE"; exec 9>"$UPDATE/snapshot.lock"; }
+flock 9
+
+mapfile -t FILES < <(state_files)
+[ "${#FILES[@]}" -gt 0 ] || die "no databases in $STATE"
+for f in "${FILES[@]}"; do
+  [ -L "$STATE/$f" ] && die "$f is a symbolic link; refusing"
+  [ -f "$STATE/$f-wal" ] && [ -s "$STATE/$f-wal" ] && say "$f has a write-ahead log from an unclean stop; copying it with it"
+done
+
+# Room for one more snapshot, checked before anything is copied.
+mkdir -p "$SNAPSHOTS"
+chmod 0700 "$SNAPSHOTS"
+NEED=$(cd "$STATE" && du -cb -- "${FILES[@]}" $(for f in "${FILES[@]}"; do [ -s "$f-wal" ] && echo "$f-wal"; done) | tail -1 | cut -f1)
+FREE=$(df -B1 --output=avail "$SNAPSHOTS" | tail -1 | tr -d ' ')
+[ "$FREE" -gt $((NEED + NEED / 10 + 1048576)) ] || die "not enough room in $SNAPSHOTS: $NEED bytes needed, $FREE free"
+
+AT=$(now)
+DIR="$SNAPSHOTS/$(date -u +%Y%m%dT%H%M%SZ)-${COMMIT:0:12}"
+[ -e "$DIR" ] && DIR="$DIR-$$"
+mkdir -m 0700 "$DIR"
+trap 'rm -rf -- "$DIR"' ERR
+
+entries=()
+copy() { # relative path
+  mkdir -p "$DIR/$(dirname "$1")"
+  cp --preserve=mode,timestamps -- "$STATE/$1" "$DIR/$1"
+  local a b size
+  a=$(sha256sum <"$STATE/$1" | cut -d' ' -f1)
+  b=$(sha256sum <"$DIR/$1" | cut -d' ' -f1)
+  size=$(stat -c %s "$DIR/$1")
+  [ "$a" = "$b" ] && [ "$size" = "$(stat -c %s "$STATE/$1")" ] || die "the copy of $1 doesn't match it"
+  entries+=("$(jq -nc --arg p "$1" --argjson s "$size" --arg h "$a" '{path: $p, size: $s, sha256: $h}')")
+}
+for f in "${FILES[@]}"; do
+  copy "$f"
+  if [ -s "$STATE/$f-wal" ]; then copy "$f-wal"; fi
+done
+if [ -n "$NOTE" ] && [ -f "$NOTE" ]; then cp -- "$NOTE" "$DIR/update-note.txt"; fi
+
+MINREADER=$(releases_json | jq -c '.minReader // {self: 0, user: 0, pool: 0}')
+printf '%s\n' "${entries[@]}" | jq -s --arg at "$AT" --arg c "$COMMIT" --argjson m "$MINREADER" \
+  '{at: $at, commit: $c, minReader: $m, kind: "snapshot", files: .}' >"$DIR/meta.json"
+trap - ERR
+
+write_json "$UPDATE/releases.json" --arg d "$DIR" --arg at "$AT" --arg c "$COMMIT" --argjson m "$MINREADER" --argjson pin "$PIN" \
+  '.snapshots = ((.snapshots // []) + [{dir: $d, at: $at, commit: $c, minReader: $m, kind: "snapshot", pinned: $pin}])'
+prune_snapshots
+say "snapshot of ${#FILES[@]} files at $(basename "$DIR")"
+echo "$DIR"

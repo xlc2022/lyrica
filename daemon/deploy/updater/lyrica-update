@@ -1,0 +1,219 @@
+#!/bin/bash
+# lyrica-update [--tag update/<name> | --check | --request]
+# Installs an update note's commit, run as root by lyrica-update.service when
+# lyricad writes a request (lyrica-update.path), or by hand. In order: fetch
+# with the read-only deploy key; refuse a tag that isn't annotated or whose
+# commit isn't on main; build the release as an unprivileged build user with
+# no access to her data; smoke-test it in a scratch home; drain lyricad (up to
+# 10 minutes, else undrain and change nothing); stop it; snapshot; switch;
+# start; probation (every /health check ok once unlocked, and 10 minutes up),
+# rolling back by itself if a check fails. One run at a time.
+# Logs commits, tags and check names, never message text. See docs/daemon.md, "Updates".
+set -euo pipefail
+. "${LYRICA_UPDATER_LIB:-/usr/local/lib/lyrica-update}/common.sh"
+
+REPO=$PREFIX/repo.git
+KEY=${LYRICA_DEPLOY_KEY:-/etc/lyrica/deploy-key}
+KNOWN=${LYRICA_KNOWN_HOSTS:-/etc/lyrica/known_hosts}
+PROBATION_SECONDS=${LYRICA_PROBATION_SECONDS:-600}
+SBIN=${LYRICA_UPDATER_BIN:-/usr/local/sbin}
+
+[ "$(id -u)" = 0 ] || [ -n "${LYRICA_TEST:-}" ] || die "run this as root"
+mkdir -p "$UPDATE"
+chmod 0755 "$UPDATE"
+exec 9>"$UPDATE/update.lock"
+flock -n 9 || die "an update is already running"
+
+# --- What to do: an argument, or lyricad's request file ---
+ACTION= TAG= COMMIT=
+take_request() {
+  local f="$STATE/updates/request.json" req
+  [ -e "$f" ] || [ -L "$f" ] || return 1
+  # Written by lyricad, read by root: a small regular file, never a link.
+  if [ -L "$f" ] || [ ! -f "$f" ] || [ "$(stat -c %s "$f")" -gt 4096 ]; then rm -f -- "$f"; die "refused a malformed request"; fi
+  req=$(cat -- "$f"); rm -f -- "$f"
+  ACTION=$(jq -r '.action // empty' <<<"$req" 2>/dev/null || true)
+  TAG=$(jq -r '.tag // empty' <<<"$req" 2>/dev/null || true)
+  COMMIT=$(jq -r '.commit // empty' <<<"$req" 2>/dev/null || true)
+}
+case "${1:-}" in
+  --tag) ACTION=update; TAG=${2:-} ;;
+  --check) ACTION=check ;;
+  --request|"") take_request || { say "no request"; exit 0; } ;;
+  *) die "usage: lyrica-update [--tag update/<name> | --check | --request]" ;;
+esac
+case "$ACTION" in
+  update) [[ "$TAG" =~ ^update/[A-Za-z0-9._-]{1,64}$ ]] || die "an update is an update/… tag" ;;
+  rollback)
+    [[ "$COMMIT" =~ ^[0-9a-f]{7,40}$ ]] || die "a rollback names a commit"
+    exec 9>&-
+    exec "$SBIN/lyrica-rollback" --yes "$COMMIT" ;;
+  check) ;;
+  *) die "refused an unknown request" ;;
+esac
+
+fail() { # check name: the update stops here, and the running release is untouched
+  set_state failed "$TAG" "$COMMIT" "$1"
+  die "update ${TAG:-} failed: $1"
+}
+
+# --- Fetch, and the newest update note ---
+git_() { GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN" git --git-dir="$REPO" "$@"; }
+fetch() {
+  set_state fetching "$TAG"
+  [ -d "$REPO" ] || die "no $REPO: install.sh sets it up with the deploy key"
+  git_ fetch --quiet --prune --prune-tags --force origin '+refs/heads/main:refs/heads/main' '+refs/tags/update/*:refs/tags/update/*' \
+    || fail "fetch"
+  local newest
+  newest=$(git_ for-each-ref --sort=-creatordate --format='%(refname:short)' 'refs/tags/update/*' | while read -r t; do
+    [ "$(git_ cat-file -t "refs/tags/$t")" = tag ] && git_ merge-base --is-ancestor "$t^{commit}" main && { echo "$t"; break; }
+  done || true)
+  if [ -n "$newest" ]; then
+    write_json "$UPDATE/state.json" --arg t "$newest" --arg c "$(git_ rev-parse "$newest^{commit}")" \
+      --arg m "$(git_ for-each-ref --format='%(contents)' "refs/tags/$newest")" '.note = {tag: $t, commit: $c, message: $m}'
+  fi
+}
+fetch
+if [ "$ACTION" = check ]; then set_state idle; say "fetched; newest update note: $(jq -r '.note.tag // "none"' "$UPDATE/state.json")"; exit 0; fi
+
+# --- The tag: annotated, its commit on main ---
+[ "$(git_ cat-file -t "refs/tags/$TAG" 2>/dev/null)" = tag ] || fail "not an annotated update tag"
+COMMIT=$(git_ rev-parse "$TAG^{commit}")
+git_ merge-base --is-ancestor "$COMMIT" main || fail "not on main"
+[ "$COMMIT" != "$(current_commit)" ] || { set_state idle; say "${COMMIT:0:12} is already running"; exit 0; }
+mkdir -p "$UPDATE/notes"
+git_ for-each-ref --format='%(contents)' "refs/tags/$TAG" >"$UPDATE/notes/$COMMIT.txt"
+say "updating to ${COMMIT:0:12} ($TAG)"
+
+# --- Build, as the build user ---
+build_debian() {
+  local rel work
+  rel=$(release_dir "$COMMIT")
+  if [ -f "$rel/RELEASE.json" ]; then say "release ${COMMIT:0:12} is already built"; return 0; fi
+  work=$PREFIX/build/$COMMIT
+  rm -rf -- "$work"; mkdir -p "$work/src" "$work/home"
+  git_ archive "$COMMIT" | tar -x -C "$work/src"
+  if [ -n "${LYRICA_UPDATE_BUILD:-}" ]; then
+    "$LYRICA_UPDATE_BUILD" "$work/src" || return 1  # tests: a stand-in for npm
+  else
+    chown -R "$BUILD_USER:" "$work"
+    runuser -u "$BUILD_USER" -- env -i HOME="$work/home" PATH=/usr/local/bin:/usr/bin:/bin npm_config_cache="$work/home/.npm" \
+      sh -c 'cd "$1" && npm ci --no-audit --no-fund --loglevel=error && npm run build --silent && npm prune --omit=dev --no-audit --no-fund --loglevel=error' \
+      sh "$work/src" >"$work/build.log" 2>&1 || { tail -20 "$work/build.log" >&2; return 1; }
+  fi
+  (cd "$work/src" && ${LYRICA_NODE:-node} bin/lyrica version --json) \
+    | jq --arg c "$COMMIT" --arg t "$TAG" --arg at "$(now)" '{commit: $c, tag: $t, builtAt: $at, version, schema, minReader}' >"$work/src/RELEASE.json" \
+    || return 1
+  mkdir -p "$PREFIX/releases"
+  chown -R root:root "$work/src" 2>/dev/null || true
+  chmod -R a+rX,a-w "$work/src"
+  mv -T -- "$work/src" "$rel"
+  rm -rf -- "$work"
+}
+build_nix() {
+  local out
+  out=$(nix build --no-link --print-out-paths "git+file://$REPO?rev=$COMMIT#lyrica") || return 1
+  # The package records no commit (so an unchanged one isn't rebuilt): RELEASE.json goes beside it.
+  local info="$UPDATE/releases/$COMMIT"
+  mkdir -p "$info"
+  "$out/bin/lyrica" version --json | jq --arg c "$COMMIT" --arg t "$TAG" --arg at "$(now)" --arg p "$out" \
+    '{commit: $c, tag: $t, builtAt: $at, version, schema, minReader, path: $p}' >"$info/RELEASE.json"
+  nix-store --add-root "$info/out" --indirect --realise "$out" >/dev/null
+  NIX_OUT=$out
+}
+set_state building "$TAG" "$COMMIT"
+if [ -n "$NIX" ]; then build_nix || fail "build"; REL_PATH="$UPDATE/releases/$COMMIT"; BIN="$NIX_OUT/bin/lyrica"
+else build_debian || fail "build"; REL_PATH=$(release_dir "$COMMIT"); BIN="$REL_PATH/bin/lyrica"; fi
+add_release "$COMMIT" "$REL_PATH"
+INFO=$(cat "$REL_PATH/RELEASE.json")
+
+# --- Smoke test: a scratch home and a test user, never her data ---
+set_state testing "$TAG" "$COMMIT"
+if [ -n "${LYRICA_UPDATE_SMOKE:-}" ]; then
+  "$LYRICA_UPDATE_SMOKE" "$BIN" || fail "smoke test"
+else
+  SCRATCH=$(mktemp -d /tmp/lyrica-smoke.XXXXXX)
+  chown "$BUILD_USER:" "$SCRATCH"
+  if ! out=$(runuser -u "$BUILD_USER" -- env -i HOME="$SCRATCH" PATH=/usr/local/bin:/usr/bin:/bin "$BIN" smoke-test "$SCRATCH/home" 2>&1); then
+    rm -rf -- "$SCRATCH"
+    fail "smoke test: $(grep '^FAIL' <<<"$out" | sed 's/:.*//; s/^FAIL *//' | paste -sd, -)"
+  fi
+  rm -rf -- "$SCRATCH"
+fi
+
+# --- Drain, stop, snapshot, switch, start ---
+set_state draining "$TAG" "$COMMIT"
+drain || fail "drain timed out"
+set_state switching "$TAG" "$COMMIT"
+$SYSTEMCTL stop lyricad
+NEEDED=$(releases_json | jq -c '.minReader // {}')
+# Before a contract (the release raises what must read the databases), the snapshot is pinned.
+CONTRACT=$(jq -n --argjson r "$INFO" --argjson n "$NEEDED" '[("self","user","pool") as $k | ($r.minReader[$k] // 0) > ($n[$k] // 0)] | any')
+pin=(); [ "$CONTRACT" = true ] && pin=(--pin)
+if ! SNAP=$("$SBIN/lyrica-snapshot" --note "$UPDATE/notes/$COMMIT.txt" "${pin[@]}"); then
+  $SYSTEMCTL start lyricad || true
+  sock POST /undrain >/dev/null 2>&1 || true
+  fail "snapshot"
+fi
+FROM=$(current_commit)
+switch_to "$COMMIT"
+raise_min_reader "$INFO"
+PROBATION_FILE="$UPDATE/probation.json"
+jq -n --arg f "$FROM" --arg t "$COMMIT" --arg tag "$TAG" --arg s "$SNAP" --arg at "$(now)" --argjson c "$CONTRACT" \
+  '{from: $f, to: $t, tag: $tag, snapshot: $s, since: $at, contract: $c}' >"$PROBATION_FILE"
+$SYSTEMCTL reset-failed lyricad 2>/dev/null || true
+$SYSTEMCTL start lyricad || true
+
+# --- Probation ---
+# Passes when /health reports every check ok once unlocked and lyricad has
+# stayed up PROBATION_SECONDS since; without saved credentials it waits for
+# the first unlock. A failed check rolls back here; a crash loop through
+# lyricad's OnFailure=lyrica-rollback.service, which removes the probation file.
+set_state probation "$TAG" "$COMMIT"
+healthy_since= pid= unreachable=0
+while :; do
+  [ -f "$PROBATION_FILE" ] || { say "rolled back during probation"; exit 1; }
+  # Administration's Roll back, pressed during probation, is taken now; anything else waits for the next run.
+  if [ -e "$STATE/updates/request.json" ] && jq -e '.action == "rollback"' "$STATE/updates/request.json" >/dev/null 2>&1; then
+    U_TAG=$TAG U_COMMIT=$COMMIT
+    take_request || true
+    if [[ "$COMMIT" =~ ^[0-9a-f]{7,40}$ ]]; then exec 9>&-; exec "$SBIN/lyrica-rollback" --yes "$COMMIT"; fi
+    TAG=$U_TAG COMMIT=$U_COMMIT
+  fi
+  if health=$(sock GET /health); then
+    unreachable=0
+    failed=$(jq -r '[.checks[] | select(.ok | not) | .name] | join(", ")' <<<"$health")
+    if [ -n "$failed" ]; then
+      say "probation failed: $failed"
+      "$SBIN/lyrica-rollback" --auto --check "$failed" || true
+      exit 1
+    fi
+    if [ "$(jq -r '.locked' <<<"$health")" = true ]; then
+      healthy_since=
+    else
+      now_pid=$($SYSTEMCTL show -p MainPID --value lyricad 2>/dev/null || echo 0)
+      if [ -z "$healthy_since" ] || [ "$now_pid" != "$pid" ]; then healthy_since=$(date +%s); pid=$now_pid; fi
+      if [ $(( $(date +%s) - healthy_since )) -ge "$PROBATION_SECONDS" ]; then break; fi
+    fi
+  else
+    unreachable=$((unreachable + ${LYRICA_PROBATION_POLL:-5}))
+    healthy_since=
+    if [ "$unreachable" -ge "${LYRICA_UNREACHABLE_SECONDS:-300}" ]; then
+      say "probation failed: the update socket hasn't answered"
+      "$SBIN/lyrica-rollback" --auto --check "update socket" || true
+      exit 1
+    fi
+  fi
+  sleep "${LYRICA_PROBATION_POLL:-5}"
+done
+
+# Passed. A contract that passes releases the snapshots pinned before older contracts.
+if [ "$CONTRACT" = true ]; then
+  write_json "$UPDATE/releases.json" --arg keep "$SNAP" --arg at "$(now)" \
+    '.snapshots = [(.snapshots // [])[] | if .pinned and .kind == "snapshot" and .dir != $keep and (.released | not) then .released = $at else . end]'
+fi
+rm -f "$PROBATION_FILE"
+prune_releases
+prune_snapshots
+set_state idle
+say "${COMMIT:0:12} passed probation"
