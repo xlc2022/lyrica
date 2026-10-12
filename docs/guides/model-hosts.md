@@ -287,6 +287,17 @@ the fix; llama.cpp is the safer choice for it. Details are in
 On a host with one large GPU: pin Whisper (vLLM memory share about 0.1 on
 a 24 GB card) and Kokoro, and leave the rest for chat models.
 
+Measured on an RTX 3090 (24 GB) with Qwen3.8-27B Q4_K_M on llama.cpp:
+
+| Context | KV cache | Result |
+|---|---|---|
+| 128k | q8_0 | Fits: 22.2 GB, about 41 tokens/s |
+| 336k (stretch factor 2) | q4_0 | Loads: 23.8 GB |
+| 352k and up | q4_0 | Refused at load, too big |
+| 600k | q4_0 | Doesn't fit: 3.6 GB short; needs 48 GB |
+
+So the 600k stretch needs a 48 GB GPU; on 24 GB, stay at 336k or below.
+
 ## Use it from Lyrica
 
 Once paired, the host's models are offerings named `<host>/<model id>`
