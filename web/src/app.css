@@ -204,6 +204,10 @@ button.private { color: var(--private); border-color: color-mix(in oklab, var(--
 .ctx-menu kbd { font-size: 12px; color: var(--muted); }
 .ctx-menu .has-sub > span::after { content: " ›"; color: var(--muted); }
 .ctx-menu .back { color: var(--muted); font-size: 13px; justify-content: flex-start; }
+/* A submenu flies out beside its item on devices that can hover (docs/ux.md §3); it is the same menu, placed by JS. The item keeps its highlight while its flyout is open. */
+@media (hover: hover) {
+  .ctx-menu button[aria-expanded="true"] { background: var(--tool); }
+}
 .ctx-menu .sep { height: 1px; background: var(--line); margin: 4px 0; }
 .ctx-menu form { display: flex; gap: 6px; padding: 4px; }
 .ctx-menu form input { flex: 1; min-height: 32px; }

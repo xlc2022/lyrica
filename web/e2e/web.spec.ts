@@ -1756,6 +1756,78 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await noHorizontalScroll(page);
 });
 
+test("hovering New project opens its flyout beside the item, and it flips at the right edge", async ({ page, baseURL }) => {
+  test.skip(phone(page), "flyouts are for devices that can hover");
+  await enter(page, baseURL!);
+  const list = page.locator(".threads");
+  const box = (await list.boundingBox())!;
+  await list.dispatchEvent("contextmenu", { clientX: box.x + 40, clientY: box.y + box.height - 6 });
+  const menu = page.getByRole("menu", { name: "Thread list menu" });
+  const item = menu.getByRole("menuitem", { name: "New project" });
+  await expect(item).toBeVisible();
+  await item.hover();
+  const fly = page.locator(".ctx-menu.flyout");
+  await expect(fly.getByRole("menuitem", { name: "General" })).toBeVisible();
+  // The menu itself stays as it was, and the item keeps its highlight while its flyout is open.
+  await expect(menu.getByRole("menuitem", { name: "New group…" })).toBeVisible();
+  await expect(item).toHaveAttribute("aria-expanded", "true");
+  const f = (await fly.boundingBox())!, i = (await item.boundingBox())!;
+  expect(Math.abs(f.y - i.y)).toBeLessThan(2); // the top lines up with the item
+  expect(f.x).toBeGreaterThanOrEqual(i.x + i.width - 2); // and it opens to the right
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/flyout-${page.viewportSize()!.width}.png` });
+
+  // Resting on a sibling item closes it.
+  await menu.getByRole("menuitem", { name: "New group…" }).hover();
+  await expect(fly).toHaveCount(0);
+
+  // Near the right edge there is no room on the right, so it opens to the left instead.
+  // The thread header's ⋯ puts its menu's right edge under the button, at the viewport's edge.
+  await newThread(page, "General");
+  const more = page.getByRole("button", { name: "Thread actions" });
+  await more.click();
+  const shareItem = page.getByRole("menuitem", { name: "Share with" });
+  await expect(shareItem).toBeVisible();
+  await shareItem.hover();
+  await expect(fly).toBeVisible();
+  const f2 = (await fly.boundingBox())!, i2 = (await shareItem.boundingBox())!;
+  expect(f2.x + f2.width).toBeLessThanOrEqual(i2.x + 1); // it opens to the left of its item
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/flyout-flip-${page.viewportSize()!.width}.png` });
+});
+
+test("tapping New project on a phone replaces the menu in place with its choices", async ({ page, baseURL }) => {
+  test.skip(!phone(page), "devices that can hover get the flyout instead");
+  await enter(page, baseURL!);
+  await page.getByRole("button", { name: "Show threads" }).click();
+  const list = page.locator(".threads");
+  const box = (await list.boundingBox())!;
+  await list.dispatchEvent("contextmenu", { clientX: box.x + box.width / 2, clientY: box.y + box.height - 6 });
+  await page.getByRole("menu", { name: "Thread list menu" }).getByRole("menuitem", { name: "New project" }).click();
+  // Without hover the menu is replaced in place by a ‹ Back row, as today.
+  await expect(page.locator(".ctx-menu .back")).toBeVisible();
+  await expect(page.locator(".flyout")).toHaveCount(0);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/submenu-in-place-390.png` });
+});
+
+test("New project in the sidebar creates a pinned project and opens it", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  const side = page.locator(".side");
+  // One row style each, and opening one choice closes the other.
+  await side.getByRole("button", { name: "New thread" }).click();
+  await expect(side.getByRole("group", { name: "New thread in" })).toBeVisible();
+  await side.getByRole("button", { name: "New project" }).click();
+  await expect(side.getByRole("group", { name: "New thread in" })).toHaveCount(0);
+  const choice = side.getByRole("group", { name: "New project in" });
+  await expect(choice).toBeVisible();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/sidebar-new-${page.viewportSize()!.width}.png` });
+  await choice.getByRole("button", { name: "General" }).click();
+  // A new project is created pinned and opened at once, same as the list menu's item does.
+  await expect(page.getByRole("heading", { level: 1, name: "New project" })).toBeVisible();
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await expect(side.locator(".thread.project")).toHaveCount(1);
+  await expect(side.locator(".eyebrow").first()).toContainText("Pinned");
+});
+
 test("the split view: a thread from its card opens in the panel, links inside it grow the breadcrumb, Open as a page and Close panel, and below 1180 px the address is the page", async ({ page, baseURL }) => {
   test.skip(phone(page), "the panel starts at 1180 px");
   await enter(page, baseURL!);
