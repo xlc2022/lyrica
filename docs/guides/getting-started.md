@@ -454,9 +454,10 @@ hand. The button is disabled, with the reason, on a system where
 by hand. On Debian or Ubuntu, an install from before lyricad unsealed it
 itself gets the new `lyricad.service` only from an `install.sh` run:
 Updates never replace units, so an install that only takes Updates keeps
-the old one. Run `install.sh` once before saving the passphrase: the
-old unit has systemd unseal the file itself, which can fail and stop
-lyricad from starting.
+the old one, and Administration → Status says the unit is older than
+the release. Run `install.sh` once before saving the passphrase: the old
+unit has systemd unseal the file itself, which can fail and stop lyricad
+from starting.
 
 To change the passphrase later, use **Change passphrase…** under
 Administration, Start unlocked: the current passphrase, then the new one
