@@ -18,9 +18,9 @@ and in the stored message (principle 1: experience before infrastructure).
   (`daemon/src/hosted.ts:828-833`). Stored messages keep Pi's `thinking`
   blocks as `thinking` parts (`daemon/src/messages.ts:178`). The web app
   shows them as a collapsed Thought marker (`web/src/Messages.tsx:347-377`).
-- Lyrica itself does no tag parsing. Splitting `<think>` tags,
-  `reasoning_content` (DeepSeek's API, LM Studio, llama.cpp), `reasoning`
-  (OpenRouter) and Anthropic thinking blocks is up to Pi and the server.
+- Pi handles provider reasoning fields and thinking blocks. Lyrica's
+  extension wrapper handles inline and split `<think>` tags, and a missing
+  opening tag when thinking was requested for the call.
 - The host offers a thinking switch only when the chat template mentions
   `enable_thinking` or `<think>` (`host/src/library.ts:62-66`). A switch
   always sends Qwen's `enable_thinking` (`extension/src/models.ts:19`).
@@ -78,14 +78,21 @@ reasoning is replayed into later context.
   `node_modules/@earendil-works/pi-ai/dist/utils/event-stream.js`,
   `AssistantMessageEventStream` passes through `done.message` as the result;
   `EventStream.result` returns it without parsing.
-- **Done:** items 2 and 4. `extension/src/inline-thinking.ts` wraps Pi's
-  provider `streamSimple` hook, registered in `extension/src/models.ts`, for
-  inline and split tags in streamed events and final blocks. Only reasoning
-  models hold leading content until the first tag (or emit it unchanged as
-  text at the end), to recognise template-opened thoughts. Dedicated reasoning
-  stays with Pi. `extension/test/inline-thinking.test.ts` uses scripted deltas
-  in `core/test/fake-openai.ts`. Typecheck and in-memory Pi stream checks pass;
-  fake-server tests cannot bind loopback in this sandbox (`EPERM`).
-- **Next:** items 3 and 5: template-specific thinking-switch detection and
-  the affected docs. Run the fake-server tests where loopback binding works.
-- **Open:** none.
+- **Done:** items 2 and 4 (principles 1 and 3). `extension/src/inline-thinking.ts`
+  wraps Pi's provider `streamSimple` hook, registered in `extension/src/models.ts`,
+  for inline and split tags in streamed events and final blocks. Leading content
+  is held for a template-opened thought only when the call requests thinking
+  after Pi clamps the level. Plain replies with thinking off stream live;
+  plain and dedicated reasoning replies preserve Pi's events and final blocks.
+  `extension/test/inline-thinking.test.ts` covers these cases using made-up
+  replies from `core/test/fake-openai.ts`, including live plain text and a
+  closing-only tag with thinking requested.
+- **Done:** item 5. `docs/models.md` describes how provider reasoning and
+  inline tags reach the Thought marker live and stored. `docs/contracts.md`
+  was checked: stream and thinking-switch contracts remain current.
+  `docs/web.md` needs no change because the marker did not change.
+- **Next:** item 3. Thinking-switch detection lives in
+  `host/src/library.ts` (`templateCapabilities`), waiting for the host PR
+  touching that file to merge. Templates that always open `<think>` themselves,
+  such as DeepSeek R1, take no switch.
+- **Open:** which models the host serves.

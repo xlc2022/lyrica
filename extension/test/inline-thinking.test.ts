@@ -39,6 +39,22 @@ describe("inline thinking in the Pi runtime", () => {
     }
   });
 
+  it("streams a reasoning model's plain reply live with thinking off", async () => {
+    const s = await setup(true);
+    s.local.reply({ text: "Ada sails.", slowMs: 200 });
+    const stream = s.runtime.streamSimple(s.model, context);
+    let firstText: string | undefined;
+    for await (const event of stream) {
+      if (event.type === "text_delta" && firstText === undefined) {
+        const block = event.partial.content[event.contentIndex]!;
+        firstText = block.type === "text" ? block.text : undefined;
+      }
+    }
+    // If held until text_end, the first event's partial already contains the whole reply.
+    expect(firstText).toBe("Ada");
+    expect((await stream.result()).content).toEqual([{ type: "text", text: "Ada sails." }]);
+  });
+
   it.each([false, true])("splits tags across chunks and keeps indices and final blocks aligned (reasoning=%s)", async (reasoning) => {
     const s = await setup(reasoning);
     s.local.reply({ deltas: ["<th", "ink>Consider", " the tide.</th", "ink>\n", "  Ada sails."].map((content) => ({ content })) });
@@ -52,10 +68,10 @@ describe("inline thinking in the Pi runtime", () => {
     expect(result.events.filter((e) => e.type.endsWith("_start") || e.type.endsWith("_end")).map((e) => e.type)).toEqual(["thinking_start", "thinking_end", "text_start", "text_end"]);
   });
 
-  it("recognises a template's missing opening tag on a model that thinks", async () => {
+  it("recognises a template's missing opening tag when thinking is requested", async () => {
     const s = await setup(true);
     s.local.reply({ deltas: ["Consider", " the tide.</th", "ink>\n Ada sails."].map((content) => ({ content })) });
-    const result = await collect(s.runtime.streamSimple(s.model, context));
+    const result = await collect(s.runtime.streamSimple(s.model, context, { reasoning: "low" }));
     expect(result.message.content).toEqual([{ type: "thinking", thinking: "Consider the tide." }, { type: "text", text: "Ada sails." }]);
     expect(parts(result.events)).toEqual([{ type: "thinking_delta", index: 0, delta: "Consider the tide." }, { type: "text_delta", index: 1, delta: "Ada sails." }]);
   });

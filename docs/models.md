@@ -308,6 +308,12 @@ note. Pi passes it as `reasoning_effort` to OpenAI-compatible
 endpoints. Subagent roles keep their own level. Thinking text is stored with
 the thread but never made searchable.
 
+Pi handles provider `reasoning_content` and `reasoning` fields. Lyrica's
+extension wrapper (`extension/src/inline-thinking.ts`) turns inline `<think>`
+tags, split tags and replies that open mid-thought (only when thinking was
+requested) into thinking blocks. These reach the Thought marker both live
+and in stored messages.
+
 ## Image calls
 
 `image(ctx, request, { signal?, beforeSend? })` creates, edits or upscales through the

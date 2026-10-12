@@ -1,15 +1,24 @@
-import { createAssistantMessageEventStream, type AssistantMessageEventStream, type AssistantMessage, type AssistantMessageEvent, type Model, type SimpleStreamOptions, type TranscriptContext } from "@earendil-works/pi-ai";
+import { clampThinkingLevel, createAssistantMessageEventStream, type AssistantMessageEventStream, type AssistantMessage, type AssistantMessageEvent, type Model, type SimpleStreamOptions, type TranscriptContext } from "@earendil-works/pi-ai";
 import { streamSimple } from "@earendil-works/pi-ai/api/openai-completions";
 
 const OPEN = "<think>", CLOSE = "</think>";
 function partialTagLength(text: string, tags: string[]): number {
   let keep = 0;
-  for (const tag of tags) for (let n = 1; n < tag.length; n++) if (text.endsWith(tag.slice(0, n))) keep = Math.max(keep, n);
+  for (const tag of tags) {
+    for (let n = 1; n < tag.length; n++) {
+      if (text.endsWith(tag.slice(0, n))) keep = Math.max(keep, n);
+    }
+  }
   return keep;
 }
 
-/** Principle 1: keep inline reasoning out of the reply, in both Pi events and storage. */
+/**
+ * Principle 1: keep inline reasoning out of the reply, in both Pi events and storage.
+ * Hold leading text for a template-opened thought only when this call requests
+ * thinking after Pi clamps the level; otherwise plain text streams immediately.
+ */
 export function streamWithInlineThinking(model: Model<"openai-completions">, context: TranscriptContext, options?: SimpleStreamOptions): AssistantMessageEventStream {
+  const reasoning = options?.reasoning ? clampThinkingLevel(model, options.reasoning) : undefined;
   const source = streamSimple(model, context, options);
   const out = createAssistantMessageEventStream();
   void (async () => {
@@ -17,8 +26,8 @@ export function streamWithInlineThinking(model: Model<"openai-completions">, con
     const indices = new Map<number, number>();
     let partial!: AssistantMessage;
     let dedicated = false, thinking = false, trim = false, transformed = false;
-    // Only a reasoning model may start inside a template-opened thought.
-    let pending = "", undecided = model.reasoning;
+    let pending = "";
+    let undecided = reasoning !== undefined && reasoning !== "off";
     let held: AssistantMessageEvent[] = [];
     let active: number | undefined;
     let changed = false;
@@ -89,9 +98,16 @@ export function streamWithInlineThinking(model: Model<"openai-completions">, con
       const message = "partial" in event ? event.partial : event.type === "done" ? event.message : event.error;
       if (partial) Object.assign(partial, message, { content });
       else partial = view(message);
-      if (event.type === "start") { out.push({ ...event, partial }); continue; }
+      if (event.type === "start") {
+        out.push({ ...event, partial });
+        continue;
+      }
       if (event.type === "thinking_start") dedicated = true;
-      if (event.type === "text_start" && !dedicated) { held = [event]; transformed = false; continue; }
+      if (event.type === "text_start" && !dedicated) {
+        held = [event];
+        transformed = false;
+        continue;
+      }
       if (event.type === "text_delta" && !dedicated) {
         held.push(event);
         pending += event.delta;
@@ -100,18 +116,23 @@ export function streamWithInlineThinking(model: Model<"openai-completions">, con
         if (!transformed && !thinking && !trim && !pending.includes(OPEN) && !pending.includes(CLOSE) && !partialTagLength(pending, [OPEN, CLOSE])) {
           for (const e of held) forward(e);
           active = indices.get(event.contentIndex);
-          held = []; pending = "";
-        } else { transformed = true; held = []; parse(); }
+          held = [];
+          pending = "";
+        } else {
+          transformed = true;
+          held = [];
+          parse();
+        }
         continue;
       }
       if (event.type === "text_end" && !dedicated) {
-        if (undecided) {
+        if (undecided || !transformed) {
           for (const e of held) forward(e);
           forward(event);
-          pending = ""; held = []; undecided = false; active = undefined;
-        } else if (!transformed) {
-          for (const e of held) forward(e);
-          forward(event); held = []; active = undefined;
+          pending = "";
+          held = [];
+          undecided = false;
+          active = undefined;
         } else {
           parse(true);
           end();
@@ -119,7 +140,8 @@ export function streamWithInlineThinking(model: Model<"openai-completions">, con
         continue;
       }
       if (event.type === "done" || event.type === "error") {
-        parse(true); end();
+        parse(true);
+        end();
         out.push(!changed ? event : event.type === "done" ? { ...event, message: partial } : { ...event, error: partial });
       } else forward(event);
     }
