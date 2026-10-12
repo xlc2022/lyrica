@@ -7,7 +7,8 @@ reference for each piece is [docs/daemon.md](../daemon.md) ("Deployment")
 and [docs/workspace.md](../workspace.md) ("Host requirements"). Model hosts
 (the GPU machines that run her models) have their own guide,
 [model-hosts.md](model-hosts.md), and the machines that run the project's
-checks have [ci-runners.md](ci-runners.md).
+checks have [ci-runners.md](ci-runners.md). Her web search uses a SearXNG
+you host: [searxng.md](searxng.md).
 
 **What has and hasn't been exercised.** No automated check runs
 `install.sh`, and it has never been run on a fresh Debian host. The systemd
@@ -405,6 +406,16 @@ them under Settings, Network (below its "New threads" group, which holds
 the default mode and Fallback), or with `lyrica admin net`. Each
 thread can narrow or widen its own from the thread settings drawer.
 
+## Give her web search
+
+Her `web_search` asks one SearXNG that you host yourself; Lyrica never
+installs or runs it. Host one and give its address under Administration,
+**Web search**, which says **Reachable** once a test search works:
+[searxng.md](searxng.md). Every thread with the Web search switch on can
+then search, private ones included (the engines see the query, never who
+asked). `web_fetch` reads a page with `curl` inside the thread's sandbox,
+so its network switches decide what it reaches.
+
 ## Give her repositories
 
 She works on code in Git repositories the way Claude's project threads do.
@@ -666,6 +677,8 @@ something the code expects but nobody has confirmed on real hardware.
     `lyrica-rollback` do the same from a terminal.
 11. Add a Git account and give a thread a repository: it is cloned into
     `/workspace/repos`, and with internet on `gh pr list` works there.
+12. Set the SearXNG address under Administration, Web search: it says
+    Reachable, and `web_search` answers in a thread.
 
 Report what fails, with the journal lines, in the Operator docs thread; the
 guide gets corrected from the real run.
