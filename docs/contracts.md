@@ -1158,11 +1158,16 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   whose account is of the other pool; `inheritSettings` takes a subset;
   `effective()` keeps only repositories every ancestor grants.
   `repositoriesFor(t)`; `cloneFor(t)` makes or fetches each clone under the
-  thread's folder in the home workspace (`repos/<name>`); `forgeEnv(t)`
-  returns the environment for a sandbox run: one credential per
-  repository URL (`useHttpPath`), `GH_TOKEN` for a GitHub account, `tea`'s
-  login for Gitea and Forgejo; empty when the thread is of the other pool,
-  has no repository, or can't reach the host. Never a file, never argv.
+  thread's folder in the home workspace (`repos/<name>`), and never removes
+  one (a clone goes with the thread); `forgeEnv(t)` returns the
+  environment for a sandbox run: one credential per repository URL
+  (`useHttpPath`), each GitHub token keyed by its host and account for the
+  `gh` wrapper, each Gitea or Forgejo login for the `tea` wrapper; empty
+  when the thread is of the other pool, has no repository, or can't reach
+  the host. Never argv; never a file, except the `tea` config the wrapper
+  writes on the run's tmpfs. The thread row's `repositories` column and
+  the `git_accounts` table are numbered expand steps in
+  `core/src/migrations.ts`.
   `probeGitAccount(userId, { kind, host, account, token })` checks the
   token and saves nothing; `listRepositories(userId, account, q)` is what
   the account can see. API: `/api/u/:userId/git-accounts` (`GET`; `POST

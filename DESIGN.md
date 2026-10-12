@@ -1548,18 +1548,28 @@ from Monika's runbooks.
   it uses) is granted to a thread like a folder: a Repositories row in the
   thread drawer and under This chat in Project settings, so every thread of
   the project gets them, narrower or the same; she may add one to a thread
-  with Li's approval, like any change that reaches beyond the thread.
+  from an account of its pool, with the user's approval, like any change
+  that reaches beyond the thread.
   Each thread clones its repositories into its own folder in the encrypted
-  home workspace (`repos/<name>`), fetched at the start of a turn and
-  removed with the thread, so two threads never share a working tree. A
+  home workspace (`repos/<name>`), fetched at the start of a turn, so two
+  threads never share a working tree. A clone goes only with its thread:
+  when a repository leaves a thread (removed, narrowed away, its account
+  removed or moved to the other pool), the credential stops at once and
+  the clone stays, since it may hold her unpushed work and she deletes
+  only what she downloaded. A
   sandbox run gets a repository's token only when the thread's pool is the
   account's, the thread has the repository, and the run can reach the host
   (internet on, or an allowed host); it travels in the environment only, as
-  a git credential bound to that repository's URL and as `GH_TOKEN` or
-  `tea`'s login, never on a command line or in a file, so two accounts on
-  one host never mix. A repository or account taken away leaves running
-  threads at once, as a folder or machine does. Tokens only, no SSH keys;
-  `gh` for GitHub, `tea` for Gitea and Forgejo, plain git for Other.
+  a git credential bound to that repository's URL, never on a command
+  line or in a file, so two accounts on one host never mix. The forge
+  clients are thin wrappers in the tools image: `gh` picks its token by
+  the current repository's remote, so two GitHub accounts in one thread
+  stay apart; `tea` reads its logins from a config file, so the wrapper
+  writes one from the environment onto the run's tmpfs, gone when the run
+  ends and never in the workspace, the one place a token touches a file.
+  A repository or account taken away leaves running threads at once, as a
+  folder or machine does. Tokens only, no SSH keys; `gh` for GitHub,
+  `tea` for Gitea and Forgejo, plain git for Other.
 - **Git etiquette** (Li, 2026-10-12). A short Git guide ships with the code
   and is in the prompt of every turn of a thread that has repositories:
   never commit on the default branch, one branch per piece of work named
