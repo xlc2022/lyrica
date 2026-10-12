@@ -58,6 +58,29 @@ reasoning is replayed into later context.
 
 ## Handoff
 
-- **Done:** nothing yet.
-- **Next:** item 1.
+- **Done:** item 1 (principle 3: lean on Pi). Installed
+  `node_modules/@earendil-works/pi-ai/package.json` confirms version 1.1.0.
+  Findings below refer to `stream` in
+  `node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js`
+  and its local helpers `ensureThinkingBlock`, `ensureTextBlock` and
+  `finishBlock`.
+
+  | Case | Handled? | Stream and final assistant message |
+  |---|---|---|
+  | (a) `reasoning_content` deltas | Yes | `stream` uses `ensureThinkingBlock`, appends to `thinking`, emits `thinking_delta`; final block is `thinking`, with field name as `thinkingSignature`. |
+  | (b) `reasoning` deltas (OpenRouter) | Yes | Same path as (a). Per chunk, only the first nonempty string among `reasoning_content`, `reasoning`, `reasoning_text` is used. |
+  | (c) Inline `<think>...</think>` in content | No | `stream` uses `ensureTextBlock`, appends content unchanged and emits `text_delta`; reasoning and both tags remain in final `text`. |
+  | (d) Either tag split across chunks | No | Same content path: fragments stream as text and concatenate verbatim into final `text`; no tag buffer or parser. |
+  | (e) Mid-thought start with only `</think>` | No | Same content path: initial reasoning, closing tag and answer all remain `text`. |
+  | (f) Final blocks | Yes for (a–b), no separation for (c–e) | `finishBlock` emits end events without reclassifying blocks; `stream` returns the same `output` in `done.message`. Separate content alongside (a–b) remains a `text` block. |
+
+  No shared thinking/tag parser is called by this provider. In
+  `node_modules/@earendil-works/pi-ai/dist/utils/event-stream.js`,
+  `AssistantMessageEventStream` passes through `done.message` as the result;
+  `EventStream.result` returns it without parsing.
+- **Next:** item 2: cover inline tags, split tags and missing opening tags
+  upstream in Pi or with the smallest extension wrapper, for both streaming
+  and storage; no fallback needed for dedicated reasoning fields. Item 3:
+  template-specific thinking-switch detection. Item 4: the specified fake
+  OpenAI tests. Item 5: update the affected docs with those changes.
 - **Open:** none.
