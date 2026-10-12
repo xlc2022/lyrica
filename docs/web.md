@@ -272,11 +272,13 @@ A thread's address may carry what the panel beside it shows:
   the sign-in) and **Add model host** (the one primary; a page
   at `…/models/hosts/add-host`: Name, Addresses, Pairing code, Shared,
   **Pair**, then the fingerprint in mono). A host card: name, kind, state
-  (Online, Paused, Pausing, Restarting, Unreachable with the duration),
-  Pause or Resume (administrators on a shared host; disabled with "Nothing
-  is loaded"), Dashboard (`GET …/dashboard`, a new tab), "N models"
+  (Online, Paused, Pausing, Restarting, Unreachable with the duration, or
+  Unpaired when the host has revoked this server), Pause or Resume
+  (administrators on a shared host; disabled with "Nothing is loaded"),
+  or **Pair again…** in their place while Unpaired, opening Pairing code
+  and **Pair** in the card (otherwise Pair again… is in the ⋯), Dashboard (`GET …/dashboard`, a new tab), "N models"
   opening its model list (a speaking model's **Settings** there), the facts
-  line (shared or only you, paired, ID and addresses in mono, **Edit** for
+  line (shared or only you, paired unless Unpaired, ID and addresses in mono, **Edit** for
   the addresses, `PUT …/addresses`), per GPU its card, used/total in mono,
   a bar of pinned, loaded-on-demand and vLLM-share segments, the loaded
   models and the queue when nonzero. A plain endpoint row: name, kind,
@@ -345,7 +347,10 @@ A thread's address may carry what the panel beside it shows:
   **Settings** opens a drawer: **Sampling** (`GET|PUT …/settings`; **Yours**
   | **Everyone's** for an administrator on a shared endpoint; a row per key
   with its source word, the shared value as placeholder, a dropped key
-  disabled with "not sent", Reset; on a plain endpoint **Context window**,
+  disabled with "not sent", Maximum reply length "of <cap> tokens" (`replyCap`
+  of the context in effect, a quarter of 32,768 when unknown; clamped on leaving the
+  field and on save, and a saved value above it shown clamped), Reset; on a
+  plain endpoint **Context window**,
   `PATCH …/offerings/:id`) and, on a model host, **Serving** (`GET|PUT
   …/serving`, the server read from the raw name: a `.gguf` is llama.cpp,
   else vLLM): Placement (Auto or Choose GPUs, Split ratio or Parallelism,

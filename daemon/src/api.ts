@@ -416,7 +416,8 @@ export interface ServingSettings {
 /** GET /api/u/:userId/models/page → ModelsPage: what the Models page shows, endpoints with live status. An endpoint seen down in the last 30 s isn't asked again, and each gets 3 s. */
 export interface ModelsPage {
   endpoints: (EndpointInfo & Probe)[];
-  hosts: ({ endpointId: string; status: HostStatus } | { endpointId: string; error: string })[];
+  /** A host that is down says why; `unpaired` when it has revoked this server, so pairing again is the fix. */
+  hosts: ({ endpointId: string; status: HostStatus } | { endpointId: string; error: string; unpaired?: true })[];
   profiles: Profiles;
   calls: CallInfo[];
   notice: string[];

@@ -2,10 +2,9 @@ import type { Api, Model } from "@earendil-works/pi-ai";
 import { ModelRuntime, type ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { PlanCredentials, planProvider } from "./plans.ts";
-import { acceptedSettings, isPlan, CloudModelForbidden, isRestricted, payloadFields, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
+import { acceptedSettings, DEFAULT_CONTEXT, replyCap, isPlan, CloudModelForbidden, isRestricted, payloadFields, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
 
 const FREE = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-const DEFAULT_CONTEXT = 32_768;
 
 // Local servers (LM Studio, KoboldCpp, llama-server) take `system` and
 // `max_tokens`; they don't all know `developer`, `store` or `max_completion_tokens`.
@@ -21,7 +20,7 @@ function piModel(ep: Endpoint, m: Offering): ProviderModelConfig {
     : ep.kind === "local" ? { ...LOCAL_COMPAT, supportsReasoningEffort: reasoning } : undefined;
   return {
     id: m.modelId, name: m.modelId, input: m.vision ? ["text", "image"] : ["text"], cost: FREE, reasoning,
-    contextWindow, maxTokens: Math.min(8192, Math.floor(contextWindow / 4)),
+    contextWindow, maxTokens: replyCap(contextWindow),
     ...(compat ? { compat } : {}),
   };
 }

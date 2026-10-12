@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { acceptedSettings, Forbidden, payloadFields } from "../src/index.ts";
+import { acceptedSettings, Forbidden, payloadFields, replyCap } from "../src/index.ts";
 import { fakeOpenAI } from "./fake-openai.ts";
 import { profile, withModels } from "./helpers.ts";
 
@@ -14,6 +14,10 @@ async function setup() {
 }
 
 describe("how a model answers", () => {
+  it("caps a reply at the smaller of 32,768 tokens and a quarter of the context, taking 32,768 as the context when it isn't known", () => {
+    expect([replyCap(262_144), replyCap(32_768), replyCap(undefined)]).toEqual([32_768, 8192, 8192]);
+  });
+
   it("layers a user's own values over the shared ones, for that user only, with each value's source", async () => {
     const s = await setup();
     s.models.setOfferingSettings(s.ada, s.qwen.id, { temperature: 0.7, topK: 40 }, "shared");

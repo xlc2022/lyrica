@@ -1,6 +1,12 @@
 // Sampling: the settings saved per offering and sent with every
 // call to it. Unset values are never sent, so the server's own default applies.
 
+/** The context window a model is taken to have when nothing says what it is. */
+export const DEFAULT_CONTEXT = 32_768;
+
+/** The longest reply a model is asked for: the smaller of 32,768 tokens and a quarter of its context window (DEFAULT_CONTEXT when that isn't known). A saved maximum above it is clamped. */
+export const replyCap = (contextWindow?: number) => Math.min(32_768, Math.floor((contextWindow || DEFAULT_CONTEXT) / 4));
+
 /** Settings an offering answers with. */
 export interface AnswerSettings {
   temperature?: number;

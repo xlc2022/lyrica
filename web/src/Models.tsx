@@ -77,6 +77,7 @@ function stateOf(ep: Endpoint, host?: Host): { dot: string; word: string; since?
     if (s === "restarting") return { dot: "info", word: "Restarting" };
     return { dot: "away", word: s === "pausing" ? "Pausing" : "Paused" };
   }
+  if (unpaired(host)) return { dot: "down", word: "Unpaired" };
   if (ep.signedOut) return { dot: "down", word: "Signed out" };
   if (ep.state === "up") return { dot: "up", word: ep.api === "host" ? "Online" : "Up" };
   return { dot: "down", word: "Unreachable", since };
@@ -93,6 +94,8 @@ function StateWord({ ep, host }: { ep: Endpoint; host?: Host }) {
 
 const loadedNothing = (h?: Host) => !!h && "status" in h && h.status.gpus.every((g) => !g.models.length);
 const paused = (h?: Host) => !!h && "status" in h && (h.status.state === "paused" || h.status.state === "pausing");
+/** The host has revoked this server: pairing again is the fix. */
+const unpaired = (h?: Host) => !!h && "error" in h && !!h.unpaired;
 
 /** The Models area, at one of its tabs. */
 export function ModelsArea({ ctx: shell, tab = "overview", add }: { ctx: ShellContext; tab?: ModelsTab; add?: ModelsPageUnder }) {
@@ -207,7 +210,8 @@ function Tiles({ ctx, p }: { ctx: MCtx; p: ModelsPage }) {
   const down = p.endpoints.filter((e) => e.state !== "up");
   const first = down[0];
   const reach = !first ? { dot: "up", word: "All reachable" }
-    : paused(hostOf(p, first.id)) ? { dot: "away", word: `${first.name} paused` } : { dot: "down", word: `${first.name} unreachable` };
+    : paused(hostOf(p, first.id)) ? { dot: "away", word: `${first.name} paused` }
+    : unpaired(hostOf(p, first.id)) ? { dot: "down", word: `${first.name} unpaired` } : { dot: "down", word: `${first.name} unreachable` };
   const general = firstChat(p, p.profiles.default);
   const local = firstChat(p, "local");
   const needGroups = !!(general && "groupId" in general) || !!(local && "groupId" in local);
@@ -770,7 +774,7 @@ function useEndpointActions(ctx: MCtx, ep: Endpoint, others: Endpoint[], onSignI
   return { items, forms };
 }
 
-/** A paired model host: its state, Pause or Resume, Dashboard, its models, addresses and each GPU. */
+/** A paired model host: its state, Pause or Resume (Pair again… once it has revoked this server), Dashboard, its models, addresses and each GPU. */
 function HostCard({ ctx, ep, host, others, onVoice }: { ctx: MCtx; ep: Endpoint; host?: Host; others: Endpoint[]; onVoice: (m: OfferingInfo) => void }) {
   const userId = ctx.user.id;
   const editable = canEdit(ctx, ep);
@@ -780,6 +784,7 @@ function HostCard({ ctx, ep, host, others, onVoice }: { ctx: MCtx; ep: Endpoint;
   const [run, busy, error] = useAction();
   const actions = useEndpointActions(ctx, ep, others);
   const status = host && "status" in host ? host.status : undefined;
+  const revoked = unpaired(host);
   const id = `h-host-${ep.id}`;
   const saveAddresses = () => run(async () => {
     await put(u(userId, "hosts", ep.id, "addresses"), { addresses: (addresses ?? "").split(/[\s,]+/).filter(Boolean) });
@@ -792,15 +797,17 @@ function HostCard({ ctx, ep, host, others, onVoice }: { ctx: MCtx; ep: Endpoint;
         <h3 id={id}>{ep.name}</h3><Kind kind="local" /><StateWord ep={ep} host={host} />
         <span className="spacer" />
         <div className="actions">
-          {editable && <PauseButton ctx={ctx} ep={ep} host={host} />}
+          {editable && (revoked
+            ? <button type="button" className="sm" aria-expanded={code !== undefined} aria-controls={`${id}-pair`} onClick={() => setCode(code === undefined ? "" : undefined)}>Pair again…</button>
+            : <PauseButton ctx={ctx} ep={ep} host={host} />)}
           <DashboardButton ctx={ctx} ep={ep} />
           <button type="button" className="link sm" aria-expanded={open} onClick={() => setOpen(!open)}>{plural(ep.models.length, "model", "models")}</button>
-          {editable && <RowMenu label={`Actions for ${ep.name}`} items={[actions.items[0]!, { label: "Pair again…", onPick: () => setCode("") }, ...actions.items.slice(1)]} />}
+          {editable && <RowMenu label={`Actions for ${ep.name}`} items={revoked ? actions.items : [actions.items[0]!, { label: "Pair again…", onPick: () => setCode("") }, ...actions.items.slice(1)]} />}
         </div>
       </div>
       {addresses === undefined ? (
         <div className="addrs">
-          <span className="muted">{ep.shared ? "Shared with every user" : "Only you"} · paired · ID</span><code>{ep.id}</code>
+          <span className="muted">{ep.shared ? "Shared with every user" : "Only you"}{revoked ? "" : " · paired"} · ID</span><code>{ep.id}</code>
           <span className="muted">· addresses</span>{(ep.addresses ?? []).map((a) => <code key={a}>{a}</code>)}
           {editable && <button type="button" className="link sm" onClick={() => setAddresses((ep.addresses ?? []).join(" "))}>Edit</button>}
         </div>
@@ -812,7 +819,7 @@ function HostCard({ ctx, ep, host, others, onVoice }: { ctx: MCtx; ep: Endpoint;
         </form>
       )}
       {code !== undefined && (
-        <form className="inline" onSubmit={(e) => { e.preventDefault(); void pair(); }}>
+        <form className="inline" id={`${id}-pair`} onSubmit={(e) => { e.preventDefault(); void pair(); }}>
           <label className="field grow"><span>Pairing code</span><input className="mono" autoFocus autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} /></label>
           <button className="sm" disabled={busy || !code.trim()}>Pair</button>
           <button type="button" className="sm" onClick={() => setCode(undefined)}>Cancel</button>
