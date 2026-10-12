@@ -1502,7 +1502,6 @@ test("Tasks: the table shows each profile's models; a cell's drawer adds, reorde
   await page.locator('[data-tile="backend"]').click();
   await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/tasks$`));
   await expect(page.getByRole("heading", { level: 1, name: "Tasks" })).toBeVisible();
-  await expect(page.locator(".head .cap")).toHaveText("Private threads use the Local profile. General threads use Cloud by default.");
   const local = page.locator('[data-cell="local:chat"]'), general = page.locator('[data-cell="cloud:chat"]');
   await expect(local).toContainText("local-model");
   await expect(general).toContainText("cloud-model");
@@ -1574,12 +1573,10 @@ test("Tasks: the table shows each profile's models; a cell's drawer adds, reorde
 
   // Use Custom instead flips the header and the General column; and back.
   await page.getByRole("button", { name: "Use Custom instead" }).click();
-  await expect(page.locator(".head .cap")).toHaveText("Private threads use the Local profile. General threads use Custom by default.");
   await expect(page.locator(".ttable thead")).toContainText("Custom profile · local and cloud, falls back across");
   await expect(page.locator('[data-cell="custom:chat"]')).toBeVisible();
   await expect(page.getByRole("button", { name: "Show Cloud too" })).toBeVisible();
   await page.getByRole("button", { name: "Use Cloud instead" }).click();
-  await expect(page.locator(".head .cap")).toHaveText("Private threads use the Local profile. General threads use Cloud by default.");
   await expect(page.locator(".ttable thead")).toContainText("Cloud profile · cloud models only");
 
   // Show Custom too adds its column; Hide Custom takes it away.

@@ -439,7 +439,6 @@ function Tasks({ ctx }: { ctx: MCtx }) {
   const general = p?.profiles.default ?? "cloud";
   const other = general === "custom" ? "cloud" : "custom";
   const G = PROFILE_WORD[general], O = PROFILE_WORD[other];
-  const facts = p && `Private threads use the Local profile. General threads use ${G} by default.`;
   const actions = p && <button type="button" className="sm" onClick={() => setShowOther(!showOther)}>{showOther ? `Hide ${O}` : `Show ${O} too`}</button>;
   const useOther = () => run(async () => {
     const profiles = await patch<Profiles>(u(userId, "profiles"), { default: other });
@@ -475,7 +474,7 @@ function Tasks({ ctx }: { ctx: MCtx }) {
   };
   const cols = showOther ? 4 : 3;
   return (
-    <Frame ctx={ctx} tab="tasks" title="Tasks" facts={facts} actions={actions}>
+    <Frame ctx={ctx} tab="tasks" title="Tasks" actions={actions}>
       <ErrorText error={ctx.models.error || groups.error || error} />
       {p && (
         <div className="tablewrap tasks">
