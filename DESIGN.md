@@ -23,9 +23,13 @@ individual: her persona is the only thing users share.
   - approve changes to Lyrica's persona;
   - edit global settings such as the sleep time and the endpoint list.
 
-  They can't read another user's threads or memory: each user's data is
-  encrypted with that user's own key. There is no password reset that keeps
-  data, so a forgotten password loses that user's data.
+  They can also **set any user's password** from Administration → Users
+  (2026-10-11, Li's decision): the server keeps a recovery copy of each
+  user's key in `self.db`, so nothing is lost, and the user is told who set
+  it, until they change it themselves. So each user's data is encrypted with
+  that user's own key and private from other users, but an administrator who
+  sets a password can log in as that user: users are protected from each
+  other, not from administrators or the operator (below).
 - **One browser, one person.** A browser holds several users at once only if
   they are **linked**: users that belong to the same person, linked by entering
   both passwords. Switching between linked users needs no password. Logging in
@@ -1124,7 +1128,9 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
 - Each user's data key is wrapped by their password. It becomes available when
   the user logs in, or at startup if they chose **save credentials**, in which
   case it's kept with systemd credentials and sealed to the TPM where one
-  exists.
+  exists. It is also kept under a **recovery key** that lives in `self.db`,
+  so an administrator can set a new password without losing the user's data;
+  that copy is readable only while `self.db` is unlocked.
 - `lyricad` needs a passphrase to unlock `self.db`.
   - As a service, it starts **locked** and the web UI shows an unlock page.
   - Run by hand with `lyrica serve`, it can prompt in the terminal instead.
@@ -1150,7 +1156,8 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
 - What this protects against: a stolen disk, a leaked backup, or someone
   reading the files while a user is locked.
 - What it doesn't protect against: root on the running server while a user is
-  unlocked, or anything already sent to a cloud model.
+  unlocked, whoever holds the `self.db` passphrase (the recovery copies open
+  with it), or anything already sent to a cloud model.
 
 ## Memory
 

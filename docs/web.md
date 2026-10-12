@@ -18,7 +18,8 @@ A thread's address may carry what the panel beside it shows:
 - **Unlock** while `lyricad` is locked, then **login**. A browser holds one
   person's users: the user menu at the foot of the sidebar opens Settings and
   Administration, switches between linked personas (separate users of the same
-  person), logs in as another, logs one out, or **Lock**s one. Logging in as a
+  person), logs in as another, and has **Lock** and **Log out** for the
+  current user. Logging in as a
   user who isn't linked signs the browser's users out first, and a short
   notice says so without naming them. Logging out says when the user stays
   unlocked because another browser still holds them.
@@ -186,8 +187,9 @@ A thread's address may carry what the panel beside it shows:
   (`#/u/<user>/settings/machines/<name>/key`) opens the same card at the
   Fingerprint step, with a Replace token field for Proxmox.
 - **Administration**, for administrators: Status (the server's network
-  self-test, sleep time, start unlocked), Users with the administrator flag and
-  their allowed folders, Sleep, Start unlocked (saving the `self.db`
+  self-test, sleep time, start unlocked), Users with the administrator flag,
+  **Change password…** (one field in the row; the user's data stays and
+  they are told at their next visit) and their allowed folders, Sleep, Start unlocked (saving the `self.db`
   passphrase), Web access, and Persona changes that users sent on (who sent
   them, whether they edited them, and a confirmation when the file changed
   since). **Web access** has:

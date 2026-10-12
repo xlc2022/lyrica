@@ -262,6 +262,7 @@ export class Lyricad {
   /** The user's key is in memory: mount their home workspace. A failed mount leaves tools failing with the reason. */
   async keyAvailable(userId: string): Promise<void> {
     if (this.mounted.has(userId)) return;
+    this.services!.users.ensureRecoveryCopy(userId);
     try {
       await this.services!.workspace.mountHome(userId);
       this.mounted.add(userId);

@@ -513,6 +513,32 @@ function UnlockedSection({ ctx }: { ctx: ShellContext }) {
   );
 }
 
+/** Change password… on a user's row (docs/ux.md §6, editing in place): one field and one button; the user's data stays. */
+function PasswordSetter({ userId, target }: { userId: string; target: UserCard }) {
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [done, setDone] = useState(false);
+  const [run, busy, error] = useAction();
+  if (!open) {
+    return (
+      <div className="row">
+        <button type="button" className="sm" onClick={() => { setOpen(true); setDone(false); }}>Change password…</button>
+        {done && <span className="muted small" role="status">Password changed. {target.displayName} is told at their next visit.</span>}
+      </div>
+    );
+  }
+  return (
+    <form className="row" onSubmit={(e) => { e.preventDefault(); void run(async () => { await put(u(userId, "admin", "users", target.id, "password"), { password }); setPassword(""); setOpen(false); setDone(true); }); }}>
+      <label className="field"><span>New password for {target.displayName}</span>
+        <input type="password" autoComplete="new-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} />
+      </label>
+      <button type="submit" className="primary sm" disabled={busy || !password}>Change password</button>
+      <button type="button" className="sm" onClick={() => { setOpen(false); setPassword(""); }}>Cancel</button>
+      <ErrorText error={error} />
+    </form>
+  );
+}
+
 function UsersSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const users = useLoad(() => get<UserCard[]>(u(userId, "admin", "users")), [userId]);
@@ -529,6 +555,7 @@ function UsersSection({ ctx }: { ctx: ShellContext }) {
               <Switch label="Administrator" checked={x.admin}
                 onChange={(admin) => run(async () => { await put(u(userId, "admin", "users", x.id, "admin"), { admin }); users.reload(); })} />
             </div>
+            <PasswordSetter userId={userId} target={x} />
             <AllowedPathsEditor userId={userId} target={x.id} />
           </li>
         ))}
