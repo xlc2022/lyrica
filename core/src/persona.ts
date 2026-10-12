@@ -166,19 +166,6 @@ export function parseMatrix(text: string, strict = false): MatrixTopic[] {
 }
 
 /** Drafts in the originating user's user.db, encrypted with their key. */
-export const DRAFT_SCHEMA = `
-CREATE TABLE IF NOT EXISTS persona_drafts (
-  id         INTEGER PRIMARY KEY,
-  path       TEXT NOT NULL,
-  text       TEXT NOT NULL,
-  original   TEXT NOT NULL,
-  reason     TEXT NOT NULL,
-  author     TEXT NOT NULL,
-  base       INTEGER NOT NULL,
-  created_at TEXT NOT NULL
-);
-`;
-
 export interface Draft { id: number; path: string; text: string; reason: string; author: string; createdAt: string }
 
 /**
@@ -242,7 +229,6 @@ export class PersonaProposals {
   private db<T>(userId: string, fn: (db: Db) => T): T {
     const db = this.users.openUserDb(userId);
     try {
-      db.exec(DRAFT_SCHEMA);
       return fn(db);
     } finally {
       db.close();

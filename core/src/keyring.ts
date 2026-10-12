@@ -5,7 +5,8 @@ import { hashRaw } from "@node-rs/argon2";
 
 const ARGON2ID = 2; // Algorithm.Argon2id, a const enum
 import type { CredentialStore } from "./credentials.ts";
-import { openEncrypted, SELF_SCHEMA, type Db } from "./db.ts";
+import { openEncrypted, type Db } from "./db.ts";
+import { migrate } from "./migrations.ts";
 
 export interface Argon2Params {
   memoryCost: number; // KiB
@@ -58,17 +59,26 @@ export class Keyring {
 
   async unlockSelf(passphrase: string): Promise<void> {
     if (!this.selfExists()) throw new Error(`${this.selfPath} does not exist; run "lyrica admin init"`);
+    this.openSelf(passphrase);
+  }
+
+  /** Opens self.db and brings it up to this release's schema. A wrong passphrase is WrongPassword; SchemaTooNew and MigrationFailed pass through. */
+  private openSelf(passphrase: string): void {
+    this.selfDb?.close();
+    this.selfDb = undefined;
+    let db: Db;
     try {
-      this.openSelf(passphrase);
+      db = openEncrypted(this.selfPath, { passphrase });
     } catch {
       throw new WrongPassword();
     }
-  }
-
-  private openSelf(passphrase: string): void {
-    this.selfDb?.close();
-    this.selfDb = openEncrypted(this.selfPath, { passphrase });
-    this.selfDb.exec(SELF_SCHEMA);
+    try {
+      migrate(db, "self");
+    } catch (err) {
+      db.close();
+      throw err;
+    }
+    this.selfDb = db;
   }
 
   self(): Db {

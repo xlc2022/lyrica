@@ -4,17 +4,6 @@ import type { Pool } from "../types.ts";
 import { Forbidden, type User, type Users } from "../users.ts";
 import { cleanPath, overlaps } from "./settings.ts";
 
-/** In self.db, so only an administrator decides them and no user can widen their own. */
-export const PATHS_SCHEMA = `
--- Host folders an administrator lets each user grant, per pool.
-CREATE TABLE IF NOT EXISTS workspace_paths (
-  user_id TEXT NOT NULL,
-  pool    TEXT NOT NULL,
-  path    TEXT NOT NULL,
-  PRIMARY KEY (user_id, pool, path)
-);
-`;
-
 /**
  * Never grantable: the built-in Caddy's runtime directory. Sandboxes run as
  * lyricad's user, which is in its group, so a grant there would hand them
@@ -25,9 +14,7 @@ export const NEVER_GRANTED = ["/run/lyrica-caddy"];
 /** The folders each user may grant to their threads, kept in self.db. */
 export class AllowedPaths {
   /** `runtime` is LYRICA_HOME: no allowed folder may overlap it. */
-  constructor(private readonly db: Db, private readonly users: Users, private readonly runtime: string) {
-    db.exec(PATHS_SCHEMA);
-  }
+  constructor(private readonly db: Db, private readonly users: Users, private readonly runtime: string) {}
 
   list(userId: string): Record<Pool, string[]> {
     const rows = this.db.prepare("SELECT pool, path FROM workspace_paths WHERE user_id = ? ORDER BY path").all(userId) as { pool: Pool; path: string }[];

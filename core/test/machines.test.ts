@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  cleanOutput, generateSshKey, maskKeys, RemoteMissing, suspectCommand, Users, Workspace, WorkspaceSettings,
+  cleanOutput, generateSshKey, maskKeys, migrate, RemoteMissing, suspectCommand, Users, Workspace, WorkspaceSettings,
   type Db, type NewMachine, type SshSession, type SshTransport,
 } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
@@ -267,11 +267,13 @@ describe("an older user.db", () => {
     const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
     await users.authenticate("li", "pw");
     const db: Db = users.openUserDb(li.id);
-    db.exec(`CREATE TABLE thread_workspaces (thread_id TEXT PRIMARY KEY, grants TEXT NOT NULL, internet INTEGER, services INTEGER, hosts TEXT,
+    db.exec(`DROP TABLE thread_workspaces; DROP TABLE machines; PRAGMA user_version = 0;
+      CREATE TABLE thread_workspaces (thread_id TEXT PRIMARY KEY, grants TEXT NOT NULL, internet INTEGER, services INTEGER, hosts TEXT,
         mode TEXT NOT NULL, target TEXT NOT NULL, parent TEXT, web_search INTEGER NOT NULL DEFAULT 1, images INTEGER NOT NULL DEFAULT 1);
       CREATE TABLE ssh_targets (name TEXT PRIMARY KEY, host TEXT NOT NULL, port INTEGER NOT NULL, username TEXT NOT NULL, private_key TEXT NOT NULL, root TEXT, host_key TEXT);
       INSERT INTO ssh_targets VALUES ('nas', 'nas.lan', 22, 'lyrica', 'key', NULL, NULL);
       INSERT INTO thread_workspaces (thread_id, grants, mode, target) VALUES ('t1', '[]', 'ask-changes', 'ssh:nas'), ('t2', '[]', 'auto', 'sandbox');`);
+    migrate(db, "user");
     const settings = new WorkspaceSettings(db, () => ({ general: [], private: [] }));
     expect(settings.machine("nas")).toMatchObject({ pool: "general", limit: "ask", hostKey: null, offNetwork: false, state: null });
     expect(settings.thread("t1")).toMatchObject({ machines: ["nas"], mode: "ask" });

@@ -1,6 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { Db } from "../db.ts";
 
+/** The settings key holding lines about models rewritten under the user, until they dismiss them. */
+export const NOTICE = "models_notice";
+
+export function addNotice(db: Db, lines: string[]): void {
+  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(NOTICE) as { value: string } | undefined;
+  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(NOTICE, JSON.stringify([...(row ? JSON.parse(row.value) : []), ...lines]));
+}
+
 /** Endpoint tables. In self.db they hold the shared endpoints; in user.db, the user's own. */
 export const ENDPOINT_SCHEMA = `
 -- A model server. id is permanent; name is a label that can change. kind is

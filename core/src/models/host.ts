@@ -52,7 +52,7 @@ export function pairingProofs(code: string, hostFp: string, clientFp: string, cl
 
 // --- Lyrica's own key and certificate, one per lyricad, in self.db ---
 
-const IDENTITY_SCHEMA = `
+export const IDENTITY_SCHEMA = `
 -- This lyricad's key and self-signed certificate, presented to model hosts.
 CREATE TABLE IF NOT EXISTS host_identity (
   id         INTEGER PRIMARY KEY CHECK (id = 1),
@@ -64,7 +64,6 @@ CREATE TABLE IF NOT EXISTS host_identity (
 
 /** This lyricad's identity, made on first use and kept in self.db. */
 export function lyricaIdentity(self: Db, name = "Lyrica"): Identity {
-  self.exec(IDENTITY_SCHEMA);
   let row = self.prepare("SELECT key, cert FROM host_identity WHERE id = 1").get() as { key: string; cert: string } | undefined;
   if (!row) {
     const made = makeIdentity(name);
