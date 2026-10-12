@@ -87,12 +87,12 @@ ui:                             # optional: only for using it in a browser
 
 With `use_default_settings: true`, the default engines load, and an entry
 under `engines:` changes the default engine of that name. DuckDuckGo,
-Brave, Wikipedia, GitHub and Stack Overflow are on by default; Google and
-Qwant are off. To turn one off, or on:
+Brave, Wikipedia, GitHub and Stack Overflow are on by default; Google,
+Bing and Qwant are off. To turn one off, or on:
 
 ```yaml
 engines:
-  - name: bing
+  - name: brave
     disabled: true
   - name: google
     disabled: false
@@ -129,12 +129,17 @@ on NixOS `nixos-rebuild switch` (which restarts `searx.service`).
 
 ### Testing it
 
+On the SearXNG machine (the container publishes only 127.0.0.1:8080):
+
 ```sh
-curl 'https://search.example.org/search?q=test&format=json' | head -c 400
+curl 'http://127.0.0.1:8080/search?q=test&format=json' | head -c 400
 ```
 
 JSON with a `results` list means it works. A 403 means `json` is missing
-from `search.formats`; a 429 means the limiter refused you.
+from `search.formats`; a 429 means the limiter refused you. Once HTTPS is
+in front (below), try the public address the same way, with
+`-u lyrica:password` if you added basic auth; a 401 means the user and
+password are missing.
 
 ## HTTPS and who can reach it
 
