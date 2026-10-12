@@ -186,7 +186,11 @@ read it for anything not covered here.
    `nix.extraOptions = "!include /etc/nix/access-tokens.conf";` to
    `configuration.nix`. Not on the command line, which keeps it in shell
    history, and not in `nix.settings`, which copies it into the
-   world-readable Nix store.
+   world-readable Nix store. Until the first rebuild applies that, pass
+   the file in for those two commands, for example `sudo env
+   NIX_CONFIG="$(sudo cat /etc/nix/access-tokens.conf)" nixos-rebuild
+   switch --flake /etc/nixos#lyrica`; history keeps the command, not the
+   token.
    Leaving `nixpkgs` unfollowed also builds, but then the system's
    nixpkgs can differ from the one the module's Caddy hash and CI use
    (inferred; only the followed form was evaluated).
