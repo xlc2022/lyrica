@@ -337,6 +337,12 @@ export class PoolReader {
     return row?.id;
   }
 
+  /** The user's unsent composer text for a thread, if any. */
+  draft(threadId: string): { text: string; updatedAt: string } | undefined {
+    const row = this.db.prepare("SELECT text, updated_at FROM drafts WHERE thread = ?").get(threadId) as { text: string; updated_at: string } | undefined;
+    return row && { text: row.text, updatedAt: row.updated_at };
+  }
+
   /** The newest entry of the thread with one of the roles, or of any role. */
   lastEntry(threadId: string, roles?: string[]): StoredEntry | undefined {
     const filter = roles ? `AND role IN (${roles.map(() => "?").join(",")})` : "";
@@ -859,6 +865,13 @@ export class PoolStore extends PoolReader {
     const next = current.filter((r) => r.by.length);
     this.db.prepare("UPDATE entries SET reactions = ? WHERE thread = ? AND n = ?").run(next.length ? JSON.stringify(next) : null, threadId, n);
     return next;
+  }
+
+  /** Keeps the user's unsent composer text for a thread; empty text deletes it. Forgetting the thread takes it too. */
+  setDraft(threadId: string, text: string): void {
+    this.mustThread(threadId);
+    if (!text) this.db.prepare("DELETE FROM drafts WHERE thread = ?").run(threadId);
+    else this.db.prepare("INSERT INTO drafts (thread, text, updated_at) VALUES (?, ?, ?) ON CONFLICT (thread) DO UPDATE SET text = excluded.text, updated_at = excluded.updated_at").run(threadId, text, now());
   }
 
   /** Pinned entries, oldest first: one thread's, or every thread's in this pool. */

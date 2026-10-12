@@ -215,6 +215,11 @@ For each part:
   of each user's key in `self.db` (DESIGN.md "Users" and "Storage",
   contracts core/users; Li chose this over a reset that loses data). Nothing
   for sleep or the pools changes; the privacy boundary note is in DESIGN.
+- 2026-10-12, PR 16 (drafts): the composer's unsent text is a draft on
+  lyricad per thread (`GET|PUT …/threads/:pool/:id/draft`, pool schema
+  step 3, cleared by a successful send), never in browser storage (Li's
+  pick, principle "No plaintext memory"). Next in the pre-deploy batch:
+  context meter, Copy on code blocks, message-text search in Search.
 - 2026-10-12, PR 15 (Tasks): the Tasks tab in `src/Models.tsx` (kept
   there to avoid a circular import with `Frame`), Settings → Model profiles
   removed and Settings → Sleep added for the mode select and Sleep

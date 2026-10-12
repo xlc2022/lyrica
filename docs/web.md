@@ -544,7 +544,11 @@ A thread's address may carry what the panel beside it shows:
   Ask, Accept edits, Plan, Auto, shown at once. Changes are saved one at a
   time in the order pressed, and a message sent meanwhile waits for them; a
   settings refresh that a change overtakes is dropped. A `settings` event (an approved plan)
-  refreshes them.
+  refreshes them. The unsent text is kept on lyricad as the thread's draft
+  (`…/draft`), encrypted with the thread's store: loaded when the thread
+  opens (only into an empty box), saved a second after typing stops, on blur
+  and on leaving, and cleared by a send; nothing is kept in the browser. A
+  draft over 64 KiB shows "The draft is too long to keep." in the error line.
 - **Dictation** (`src/Voice.tsx`, DESIGN.md "Voice"): the mic in the row
   under the box records 16 kHz mono PCM through an AudioWorklet
   (`public/dictation-worklet.js`). While it records the icon is accent and

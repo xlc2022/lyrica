@@ -205,6 +205,7 @@ nothing else. No code path gives a general view a private handle.
 | Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title?, project?, goal? })` (a child of a child is refused), `setProject`, `setGoal`, `projectOf`, `projectThreads`, `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared), `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)`, `copyEntries(from, to, { upTo? })` (a thread's entries into another, for forks and branches), `exportEntries(threadId)` → `ExportedEntry[]` (the conversation alone, for Share with: `conversationOnly` drops her context, memory tool calls and results and thinking, and strips citations; `MEMORY_TOOLS` names the tools), `importEntries(threadId, entries)` (into an empty thread of this pool, as its own, indexed, entries), `entriesMentioning(needle)` → `{ thread, n }[]` (where an upload is still mentioned) |
 | Pins | `pinEntry(threadId, n, pinned)`, `pins(threadId?)` → `PinnedEntry[]` (one thread's, or the pool's), oldest first |
 | Reactions | `react(threadId, n, emoji, by, on)` → `Reaction[]` (`{ emoji, by: string[] }`, `by` user IDs or `LYRICA_REACTS`); `entryPage` entries carry `reactions`. Pool schema step 2 (`entries.reactions`, JSON) |
+| Drafts | `draft(threadId)` → `{ text, updatedAt }` or undefined, `setDraft(threadId, text)` (empty deletes it); one per thread, gone with the thread. Pool schema step 3 (`drafts`) |
 | Projects | `pageForProject(threadId)`, `projectNotes(threadId, since?)` |
 | Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
@@ -581,7 +582,7 @@ One model-facing tool: `delegate({ action?, ... })`.
   parent's child, `ThreadsHost.stop`). `later` (`minutes`, clamped to 1 to
   `WAKEUP_LIMITS.maxMinutes`, and `note`; or `cancel: true`) sets a
   wake-up for the calling thread through `ThreadsHost.later` /
-  `cancelLater`: pool step 3's `wakeups` table (thread, due, note, set and
+  `cancelLater`: pool step 4's `wakeups` table (thread, due, note, set and
   fired times; a fired one keeps no note and goes after a day),
   `PoolStore.addWakeup`, `fireWakeup`, `removeWakeups`, `PoolReader.wakeups`
   and `wakeupsFired`. It fires as `HostedThread.send(note, { wakeup:
@@ -963,6 +964,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     replies only, `400` otherwise, `409` in a subagent's thread), `GET
     …/pins` → `Pins { pins: Pin[], shortened }`, `Message.pinned`,
     `RewindResponse.pins`;
+  - drafts: `GET …/draft` → `DraftInfo { text, updatedAt? }` (`text` empty
+    when none), `PUT …/draft` with `DraftChange { text }` → `DraftInfo`
+    (empty clears it, over 64 KiB is `413`); a sent message clears it;
   - messages (send, stream; `POST …/messages/:n/branch` → `ThreadSummary`;
     `POST …/messages/:n/rewind` with `RewindRequest` `delete`, `regenerate`
     with an optional `model`, or `edit` with `text`, `409` while a turn runs;

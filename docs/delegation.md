@@ -298,7 +298,7 @@ turn, marked `[Wake-up, set <time>]`, or joins a running turn as a steer.
 `later({ cancel: true })` drops its pending ones. Limits
 (`WAKEUP_LIMITS`): 1 minute to 7 days ahead, clamped; 3 pending; 12 fired
 in a day, so a chain she forgets stops by itself. The note is stored in
-the thread's pool (step 3, `wakeups`), so it is encrypted and survives a
+the thread's pool (step 4, `wakeups`), so it is encrypted and survives a
 restart; due times are held in memory while the user is unlocked, and
 lyricad's 20-second tick fires them, not while an update drains. A child
 past the at-once limit, a queued thread and a paused or hidden project's

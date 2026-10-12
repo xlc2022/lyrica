@@ -204,8 +204,18 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     version: 2,
     run(db) { db.exec("ALTER TABLE entries ADD COLUMN reactions TEXT"); },
   }, {
-    // Wake-ups (DESIGN.md, Projects): a thread's note to itself for later. Adds a table only.
+    // The user's unsent composer text, one per thread: kept here, encrypted, never in the browser. Expands only.
     version: 3,
+    run(db) {
+      db.exec(`CREATE TABLE drafts (
+        thread     TEXT PRIMARY KEY REFERENCES threads (id) ON DELETE CASCADE,
+        text       TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`);
+    },
+  }, {
+    // Wake-ups (DESIGN.md, Projects): a thread's note to itself for later. Adds a table only.
+    version: 4,
     run(db) { db.exec(WAKEUPS_SCHEMA); },
   }],
 };
