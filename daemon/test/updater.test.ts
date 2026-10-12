@@ -257,3 +257,59 @@ describe("lyrica-snapshot and lyrica-restore", () => {
     expect(readdirSync(w.snapshots).filter((n) => n.endsWith("set-aside"))).toHaveLength(1);
   });
 });
+
+describe("lyrica-nixos-start", () => {
+  it("follows a changed module package into the profile after a snapshot, leaves an Update's choice alone, and restores a snapshot for a package that can't read the databases", async () => {
+    const w = await world();
+    writeFileSync(join(w.fake, "lyricad"), "inactive\n");
+    const profile = join(w.root, "profile");
+    // nix-env -p <profile> --set <path>: the profile is a symlink to the package.
+    writeFileSync(join(w.fake, "nix-env"), `#!/bin/bash\n[ "$3" = --set ] && ln -sfn "$4" "$2"\nexit 0\n`);
+    // ssh-keygen ... -f <key>: a stand-in key pair.
+    writeFileSync(join(w.fake, "ssh-keygen"), `#!/bin/bash\nf="\${@: -1}"; echo key >"$f"; echo pub >"$f.pub"\n`);
+    for (const f of ["nix-env", "ssh-keygen"]) chmodSync(join(w.fake, f), 0o755);
+    const pkg = (name: string, schema: Schema, minReader: Schema) => {
+      const dir = join(w.root, "store", name);
+      mkdirSync(join(dir, "bin"), { recursive: true });
+      writeFileSync(join(dir, "bin", "lyrica"), `#!/bin/bash\necho '${JSON.stringify({ version: "0.1.0", build: "dev", schema, minReader })}'\n`);
+      chmodSync(join(dir, "bin", "lyrica"), 0o755);
+      return dir;
+    };
+    const start = (p: string, commit: string) => new Promise<{ code: number; err: string }>((resolve) => {
+      execFile(join(UPDATER, "lyrica-nixos-start"), [p, commit], {
+        env: { ...process.env, PATH: `${w.fake}:${process.env.PATH}`, LYRICA_USER: userInfo().username, LYRICA_UPDATER_LIB: UPDATER, LYRICA_UPDATER_BIN: UPDATER,
+          LYRICA_PREFIX: w.prefix, LYRICA_STATE: w.state, LYRICA_UPDATE_DIR: w.update, LYRICA_SNAPSHOTS: w.snapshots, LYRICA_SYSTEMCTL: join(w.fake, "systemctl"),
+          LYRICA_NIX: "1", LYRICA_PROFILE: profile, LYRICA_DEPLOY_KEY: join(w.root, "deploy-key") },
+        timeout: 60_000,
+      }, (err, _out, errOut) => resolve({ code: err ? 1 : 0, err: errOut }));
+    });
+
+    const a = pkg("a", S(1, 1, 1), S(1, 1, 1));
+    expect((await start(a, "aaaaaaa")).code).toBe(0);
+    expect(readlinkSync(profile)).toBe(a);
+    expect(readFileSync(join(w.update, "build.env"), "utf8")).toBe("LYRICA_BUILD=aaaaaaa\n");
+    expect(existsSync(join(w.root, "deploy-key.pub"))).toBe(true);
+    const snaps = () => (w.json("releases.json").snapshots ?? []).filter((s: { kind: string }) => s.kind === "snapshot").length;
+    const first = snaps();
+
+    // An Update switched the profile; a restart with the same module package keeps it.
+    const updated = pkg("updated", S(1, 1, 1), S(1, 1, 1));
+    execFileSync(join(w.fake, "nix-env"), ["-p", profile, "--set", updated]);
+    expect((await start(a, "aaaaaaa")).code).toBe(0);
+    expect(readlinkSync(profile)).toBe(updated);
+
+    // A new flake: snapshot, then the profile follows. Its contract raises what must read the databases.
+    const b = pkg("b", S(2, 2, 2), S(2, 2, 2));
+    expect((await start(b, "bbbbbbb")).code).toBe(0);
+    expect(readlinkSync(profile)).toBe(b);
+    expect(snaps()).toBe(first + 1);
+    expect(w.json("releases.json")).toMatchObject({ current: "bbbbbbb", previous: "aaaaaaa", minReader: S(2, 2, 2) });
+
+    // Back to the old flake: it can't read them, so the snapshot taken before b comes back.
+    writeFileSync(join(w.state, "self.db"), "self v2");
+    expect((await start(a, "aaaaaaa")).err).toContain("can't read the databases: restoring");
+    expect(readFileSync(join(w.state, "self.db"), "utf8")).toBe("self v0");
+    expect(readlinkSync(profile)).toBe(a);
+    expect(w.json("releases.json").minReader).toEqual(S(1, 1, 1));
+  });
+});

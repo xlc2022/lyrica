@@ -134,7 +134,9 @@ if [ -n "${LYRICA_UPDATE_SMOKE:-}" ]; then
 else
   SCRATCH=$(mktemp -d /tmp/lyrica-smoke.XXXXXX)
   chown "$BUILD_USER:" "$SCRATCH"
-  if ! out=$(runuser -u "$BUILD_USER" -- env -i HOME="$SCRATCH" PATH=/usr/local/bin:/usr/bin:/bin "$BIN" smoke-test "$SCRATCH/home" 2>&1); then
+  # NixOS: the module's sandbox tools and PATH, as lyricad has them.
+  sandbox=(); for v in LYRICA_SANDBOX_TOOLS LYRICA_SANDBOX_CLOSURE; do [ -n "${!v:-}" ] && sandbox+=("$v=${!v}"); done
+  if ! out=$(runuser -u "$BUILD_USER" -- env -i HOME="$SCRATCH" PATH="${LYRICA_SMOKE_PATH:-/usr/local/bin:/usr/bin:/bin}" "${sandbox[@]}" "$BIN" smoke-test "$SCRATCH/home" 2>&1); then
     rm -rf -- "$SCRATCH"
     fail "smoke test: $(grep '^FAIL' <<<"$out" | sed 's/:.*//; s/^FAIL *//' | paste -sd, -)"
   fi
