@@ -54,10 +54,12 @@ if ! command -v tailscale >/dev/null || [ ! -x /usr/sbin/tailscaled ]; then
   install -d -m 0755 /usr/share/keyrings
   curl -fsSL "https://pkgs.tailscale.com/stable/$TS_DIST/$VERSION_CODENAME.noarmor.gpg" -o /usr/share/keyrings/tailscale-archive-keyring.gpg
   curl -fsSL "https://pkgs.tailscale.com/stable/$TS_DIST/$VERSION_CODENAME.tailscale-keyring.list" -o /etc/apt/sources.list.d/tailscale.list
+  # Whether the host's own tailscaled.service was on before: if so, it stays exactly as it was.
+  TS_WAS=$(systemctl is-enabled tailscaled 2>/dev/null || true)
   apt-get update -qq
   apt-get install -y -qq --no-install-recommends tailscale >/dev/null
-  # The package enables the host's own tailscaled; a host that had none keeps none.
-  if [ -d /run/systemd/system ]; then systemctl disable --now --quiet tailscaled 2>/dev/null || true; fi
+  # The package enables the host's own tailscaled; a host that had none on keeps none on.
+  if [ -d /run/systemd/system ] && [ "$TS_WAS" != enabled ]; then systemctl disable --now --quiet tailscaled 2>/dev/null || true; fi
 fi
 
 # --- Users ---

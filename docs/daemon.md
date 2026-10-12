@@ -31,7 +31,8 @@ came through her tailnet address.
   credentials isn't available), unlocks, deletes the code file and logs the
   administrator in (`LoginResponse`). A new start while still setting up
   makes a new code. `lyrica admin init` asks the same questions at a terminal
-  and calls the same `bootstrap()`.
+  and calls the same `bootstrap()`; once it has run, the setup page answers
+  `409` and lyricad wants a restart (it is then locked, as usual).
 - Otherwise it starts **locked**. Until `self.db` is unlocked, only `GET /api/state`
   (locked, her `name` and the users; lyricad's `version` from `package.json` and
   `build` from `LYRICA_BUILD` or the git commit join it once unlocked, so
@@ -646,8 +647,8 @@ module does the same ("On NixOS" below).
 - It installs the packages (bubblewrap, gocryptfs, FUSE, passt, nftables,
   openssl), and the `tailscale` package from Tailscale's apt repository when
   its binaries are missing (then disabling the host's own `tailscaled.service`
-  the package enables, so a host that had none keeps none; one that had it
-  keeps it as it was), checks for Node.js 22.6 or later (the SSH helper runs with type
+  the package enables, unless it was enabled before, so a host keeps its own
+  as it was), checks for Node.js 22.6 or later (the SSH helper runs with type
   stripping), and creates two system users: `lyrica` runs `lyricad`,
   `lyrica-caddy` runs Caddy. The `lyrica-caddy`
   group shares Caddy's admin socket (mode `0660`) and TLS log; lyricad's unit
