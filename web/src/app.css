@@ -581,7 +581,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 /* Touch screens: every control is at least 44 px. Last, so nothing above overrides it. */
 @media (pointer: coarse) {
   button.badge, .chev, .chips button, .check, .marker > button, .from-head, .picker-item, .showing > summary, .showing label { min-height: 44px; }
-  .tfacts .link::after { content: ""; position: absolute; inset: -9px -6px; }
+  .tfacts .link::after, .tcard-count .link::after { content: ""; position: absolute; inset: -9px -6px; }
   .chev { width: 32px; height: 44px; }
   .threads .trow { grid-template-columns: 32px minmax(0, 1fr); }
   button.icon-btn, button.icon.sm { width: 44px; height: 44px; min-height: 44px; }
@@ -738,6 +738,27 @@ form.drawer-body { flex: 1; }
 .tcard-line { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tcard .msg-menu { position: relative; }
 .tcard .menu.end { left: auto; right: 0; min-width: 160px; }
+/* Her checklist (docs/ux.md §6): "2 of 5" after a card's state word, the current step as the card's first line, and the popover. */
+.tcard-count .link { font-size: 12px; min-height: 26px; padding: 0; position: relative; white-space: nowrap; }
+.tcard-count > .picker { left: auto; right: 0; }
+.sub-head .tcard-count { margin-left: auto; }
+.sub-head .tcard-count + .open { margin-left: 0; }
+.tcard-step { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tcard-step .step-mark { color: var(--muted); margin-right: 6px; }
+.step-mark { font-family: var(--mono); }
+.checklist-pop { padding: 10px 12px; }
+.checklist { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.checklist li { display: grid; grid-template-columns: 1.2em minmax(0, 1fr); gap: 4px; align-items: baseline; overflow-wrap: anywhere; }
+.checklist li[data-state="done"] { color: var(--muted); }
+.checklist li[data-state="doing"] .step-mark { color: var(--accent); }
+/* On a phone a card's checklist opens in flow under the card's head, the card's width, as the Repositories picker does. */
+@media (max-width: 760px) {
+  .tcard-head:has(> .tcard-count) { display: flex; flex-wrap: wrap; }
+  .tcard-head:has(> .tcard-count) > .tcard-title { flex: 1 1 0; }
+  .tcard-count { display: contents; }
+  .sub-head .tcard-count > .link { margin-left: auto; }
+  .tcard-count > .picker { position: static; order: 1; flex-basis: 100%; width: auto; max-height: none; margin-top: 2px; box-shadow: none; }
+}
 /* Suggested threads: like the plan card. */
 .suggestions { margin: 0; padding: 0 0 0 20px; display: grid; gap: 8px; }
 .suggestions li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: start; }

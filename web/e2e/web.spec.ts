@@ -1,6 +1,6 @@
 // The web UI against a real lyricad (e2e/serve.ts) and a fake model server,
 // at phone and desktop sizes. Tests run in order on one lyricad per size.
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const PASSPHRASE = "correct horse";
 test.describe.configure({ mode: "serial" });
@@ -93,6 +93,20 @@ async function togglePrivate(page: Page) {
 
 /** Body is overflow: hidden, so check the containers that scroll, and that nothing pokes past the viewport. */
 const location_of = (page: Page) => page.url();
+
+/** A general thread's ID, from a link to it. */
+const threadIdOf = (href: string) => decodeURIComponent(href.split("/t/general/")[1]!.split("/")[0]!);
+
+/** Sends a message to a general thread through the API, as another tab would: the page stays as it is, an open popover too. */
+async function sendTo(page: Page, userId: string, threadId: string, text: string) {
+  await page.evaluate(async ([path, text]) => {
+    const r = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) });
+    if (!r.ok) throw new Error(`${path}: ${r.status} ${await r.text()}`);
+  }, [`/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/messages`, text] as const);
+}
+
+/** On a touch screen, a facts-line link reaches 44 px through its ::after. */
+const hitHeight = (button: Locator) => button.evaluate((el) => parseFloat(getComputedStyle(el, "::after").height) || el.getBoundingClientRect().height);
 
 async function noHorizontalScroll(page: Page) {
   // A drawer slides in from 30 px past the edge for 180 ms; measure once every animation has finished.
@@ -560,6 +574,99 @@ test("after a reply the header's Context shows the percent, and its popover list
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/context-${page.viewportSize()!.width}.png` });
   await page.keyboard.press("Escape");
   await expect(popover).toHaveCount(0);
+});
+
+test("a thread's checklist: Checklist and its count after Context, a popover of the steps with their marks that a new list redraws in place, the child's card in its parent, and Checklists off in Appearance hides it", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "start: Seed tray");
+  await expect(page.getByText("Started it.")).toBeVisible();
+  const parentUrl = page.url();
+  const card = page.locator(".threads-card");
+  const childId = threadIdOf((await card.getByRole("link", { name: "Open" }).getAttribute("href"))!);
+  const childUrl = `/#/u/${userId}/t/general/${encodeURIComponent(childId)}`;
+  await expect(card.locator(".tcard-count")).toHaveCount(0);
+
+  // In the child: her checklist arrives on the stream and shows after Context, its count in mono; her call is a marker, not a card.
+  await page.goto(childUrl);
+  await expect(page.getByRole("heading", { level: 1, name: "Seed tray" })).toBeVisible();
+  const facts = page.locator(".thread-head .tfacts");
+  const fact = facts.getByRole("button", { name: /^Checklist/ });
+  await expect(fact).toHaveCount(0);
+  await send(page, "steps: done Fill the tray; doing Sow the seeds; todo Label the rows");
+  await expect(page.getByText("Checklist set.")).toBeVisible();
+  await expect(fact).toHaveText(/^Checklist 1 of 3/);
+  await expect(fact.locator(".num")).toHaveText(["1", "3"]);
+  await expect(fact.locator(".num").first()).toHaveCSS("font-family", /Plex Mono|monospace/);
+  await expect(facts.getByRole("button", { name: /^Context/ })).toBeVisible();
+  const words = await facts.evaluate((el) => [...el.querySelectorAll("button")].map((b) => b.textContent!.trim().split(" ")[0]));
+  expect(words.indexOf("Checklist")).toBe(words.indexOf("Context") + 1);
+  await expect(page.locator(".threads-card")).toHaveCount(0);
+  if (phone(page)) expect(await hitHeight(fact)).toBeGreaterThanOrEqual(44);
+
+  // The popover: the steps in order, each a mark in mono (hidden from screen readers, which read its word) and its text.
+  await fact.click();
+  const pop = page.getByRole("dialog", { name: "Checklist" });
+  const items = pop.getByRole("listitem");
+  const marks = items.locator(".step-mark");
+  await expect(marks).toHaveText(["✓", "✱", "○"]);
+  await expect(marks.first()).toHaveAttribute("aria-hidden", "true");
+  await expect(marks.first()).toHaveCSS("font-family", /Plex Mono|monospace/);
+  await expect(items.locator(".sr-only")).toHaveText(["Done", "Doing", "To do"]);
+  await expect(items).toContainText(["Fill the tray", "Sow the seeds", "Label the rows"]);
+  // Done muted, the doing mark in the accent, to do in the normal colour: three colours.
+  expect(new Set(await marks.evaluateAll((els) => els.map((el) => getComputedStyle(el).color))).size).toBe(3);
+  await expect(pop.getByRole("button")).toHaveCount(0);
+  await expect(pop.getByRole("heading")).toHaveCount(0);
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/checklist-facts-${page.viewportSize()!.width}.png` });
+
+  // A new list (as from another tab) redraws the fact and the open popover in place.
+  await sendTo(page, userId, childId, "steps: done Fill the tray; done Sow the seeds; doing Label the rows");
+  await expect(marks).toHaveText(["✓", "✓", "✱"]);
+  await expect(fact).toHaveText(/^Checklist 2 of 3/);
+  await expect(pop).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(pop).toHaveCount(0);
+  await page.reload();
+  await expect(fact).toHaveText(/^Checklist 2 of 3/);
+
+  // The child's card in its parent: the count opens the same popover, and the step under way is its first line.
+  await page.goto(parentUrl);
+  const count = card.getByRole("button", { name: "Checklist, 2 of 3 steps done" });
+  await expect(count).toHaveAttribute("title", "Checklist");
+  await expect(count.locator(".num")).toHaveText(["2", "3"]);
+  await expect(card.locator(".tcard-step")).toContainText("Label the rows");
+  await expect(card.locator(".tcard-step .step-mark")).toHaveText("✱");
+  if (phone(page)) expect(await hitHeight(count)).toBeGreaterThanOrEqual(44);
+  await count.click();
+  await expect(pop.getByRole("listitem")).toHaveCount(3);
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/checklist-child-card-${page.viewportSize()!.width}.png` });
+  await page.keyboard.press("Escape");
+  // The sidebar rows show nothing.
+  await expect(page.locator(".side").getByText("2 of 3")).toHaveCount(0);
+
+  // Checklists off in Appearance: no thread shows one. On again, the stored list is back.
+  await page.goto(`/#/u/${userId}/settings/appearance`);
+  const on = page.getByRole("checkbox", { name: "Checklists" });
+  await expect(on).toBeChecked();
+  await expect(page.locator("label.switch").filter({ has: on })).toHaveAttribute("title", "When off, no thread shows a checklist and the agent isn't offered one.");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/checklist-switch-${page.viewportSize()!.width}.png` });
+  // It saves at once: the box follows the saved setting.
+  await on.click();
+  await expect(on).not.toBeChecked();
+  await page.goto(parentUrl);
+  await expect(page.getByText("Child thread: Seed tray")).toBeVisible();
+  await expect(card.locator(".tcard-count, .tcard-step")).toHaveCount(0);
+  await page.goto(childUrl);
+  await expect(page.getByRole("heading", { level: 1, name: "Seed tray" })).toBeVisible();
+  await expect(fact).toHaveCount(0);
+  await page.goto(`/#/u/${userId}/settings/appearance`);
+  await on.click();
+  await expect(on).toBeChecked();
+  await page.goto(childUrl);
+  await expect(fact).toHaveText(/^Checklist 2 of 3/);
 });
 
 test("each message shows when it was sent in mono after its name, her reply once it is stored, and on a phone the header line stays on one line", async ({ page, baseURL }) => {
@@ -1428,6 +1535,77 @@ test("watching threads: writing in a project's thread leads to a look, shown as 
   await expect(page.getByText("Saved.")).toBeVisible();
   await page.reload();
   await expect(page.getByRole("checkbox", { name: "Watching threads" })).not.toBeChecked();
+  await noHorizontalScroll(page);
+});
+
+test("a project's thread cards: the checklist's count after the state word opens its popover, and the current step is the first line until all are done or the thread is resolved", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  const list = page.locator(".threads");
+  const box = (await list.boundingBox())!;
+  await list.dispatchEvent("contextmenu", { clientX: box.x + box.width / 2, clientY: box.y + box.height - 6 });
+  await page.getByRole("menu", { name: "Thread list menu" }).getByRole("menuitem", { name: "New project" }).click();
+  await page.getByRole("menuitem", { name: "General" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "New project" })).toBeVisible();
+  // No looks: one could message Gamma after it is resolved, and a message reopens it.
+  await page.evaluate(async (path) => {
+    const r = await fetch(path, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ watchThreads: false }) });
+    if (!r.ok) throw new Error(`${path}: ${r.status} ${await r.text()}`);
+  }, `/api/u/${userId}/threads/general/${encodeURIComponent(threadIdOf(page.url()))}`);
+  await send(page, "suggest: Gamma, Delta");
+  await expect(page.getByText("Suggested.")).toBeVisible();
+  await page.getByRole("group", { name: "Suggested threads" }).getByRole("button", { name: "Start all" }).click();
+  await expect(page.locator(".tcard")).toHaveCount(2);
+  const cardOf = (name: string) => page.locator(".tcard").filter({ has: page.getByRole("link", { name, exact: true }) });
+  const [gamma, delta] = [cardOf("Gamma"), cardOf("Delta")];
+  const idOf = async (card: Locator) => threadIdOf((await card.locator(".tcard-title").getAttribute("href"))!);
+  await expect(gamma.locator(".tcard-count, .tcard-step")).toHaveCount(0);
+
+  // One mid-way, one all done.
+  await sendTo(page, userId, await idOf(gamma), "steps: done Sow the beds; doing Water the rows; todo Weed the paths");
+  await sendTo(page, userId, await idOf(delta), "steps: done Sow the beds; done Water the rows; done Weed the paths");
+  const count = gamma.getByRole("button", { name: "Checklist, 1 of 3 steps done" });
+  await expect(count).toHaveAttribute("title", "Checklist");
+  // Only the numbers are mono.
+  await expect(count).toHaveText("1 of 3");
+  await expect(count.locator(".num")).toHaveText(["1", "3"]);
+  await expect(count.locator(".num").first()).toHaveCSS("font-family", /Plex Mono|monospace/);
+  await expect(count).not.toHaveCSS("font-family", /Plex Mono|monospace/);
+  await expect(gamma.locator(".tstate + .tcard-count")).toHaveCount(1);
+  const step = gamma.locator(".tcard-step");
+  await expect(step).toContainText("Water the rows");
+  await expect(step.locator(".step-mark")).toHaveText("✱");
+  await expect(step).toHaveCSS("white-space", "nowrap");
+  await expect(step).toHaveCSS("text-overflow", "ellipsis");
+  await expect(delta.getByRole("button", { name: "Checklist, 3 of 3 steps done" })).toBeVisible();
+  await expect(delta.locator(".tcard-step")).toHaveCount(0);
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/checklist-cards-${page.viewportSize()!.width}.png` });
+  if (phone(page)) expect(await hitHeight(count)).toBeGreaterThanOrEqual(44);
+
+  await count.click();
+  const pop = page.getByRole("dialog", { name: "Checklist" });
+  await expect(pop.getByRole("listitem").locator(".step-mark")).toHaveText(["✓", "✱", "○"]);
+  if (phone(page)) {
+    // On a phone it opens in flow under the card's head, inside the card, with no shadow.
+    const [p, c, h] = await Promise.all([pop.boundingBox(), gamma.boundingBox(), gamma.locator(".tcard-head").boundingBox()]);
+    expect(p!.x).toBeGreaterThanOrEqual(c!.x);
+    expect(p!.x + p!.width).toBeLessThanOrEqual(c!.x + c!.width + 1);
+    expect(p!.y).toBeGreaterThanOrEqual(h!.y + 20);
+    expect(p!.y + p!.height).toBeLessThanOrEqual(c!.y + c!.height + 1);
+    await expect(pop).toHaveCSS("box-shadow", "none");
+  }
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/checklist-card-popover-${page.viewportSize()!.width}.png` });
+  await page.keyboard.press("Escape");
+  await expect(pop).toHaveCount(0);
+
+  // Resolved: the count stays, the step line goes.
+  await gamma.getByRole("button", { name: "Actions for Gamma" }).click();
+  await page.getByRole("menuitem", { name: "Resolve" }).click();
+  await expect(gamma).toContainText("Resolved");
+  await expect(gamma.locator(".tcard-step")).toHaveCount(0);
+  await expect(count).toBeVisible();
   await noHorizontalScroll(page);
 });
 

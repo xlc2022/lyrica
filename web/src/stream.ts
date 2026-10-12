@@ -3,10 +3,14 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { get, threadPath, type Message, type MessagePage, type Pool, type ThreadEvent } from "./api.ts";
 import { initialLive, liveReducer } from "./live.ts";
 
-const EVENT_TYPES: ThreadEvent["type"][] = [
-  "hello", "reset", "turn_start", "message_start", "text", "thinking", "tool_start", "tool_end", "recall", "remember",
-  "permission", "permission_end", "usage", "queue", "received", "error", "title", "settings", "turn_end", "delegation", "notice", "rewound", "child", "reactions",
-];
+// Every event the stream sends, each listened for by name: a new ThreadEvent type fails the typecheck until it's here.
+const LISTENED: Record<ThreadEvent["type"], true> = {
+  hello: true, reset: true, turn_start: true, message_start: true, text: true, thinking: true, tool_start: true, tool_end: true,
+  recall: true, remember: true, permission: true, permission_end: true, usage: true, queue: true, received: true, error: true,
+  offline: true, title: true, settings: true, turn_end: true, delegation: true, notice: true, rewound: true, child: true,
+  reactions: true, steps: true, wakeups: true, context: true, compacted: true,
+};
+const EVENT_TYPES = Object.keys(LISTENED) as ThreadEvent["type"][];
 
 export function useThread(userId: string, pool: Pool, threadId: string) {
   const [messages, setMessages] = useState<Message[]>([]);

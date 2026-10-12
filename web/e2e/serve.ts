@@ -5,7 +5,8 @@
 // The fake model answers from the last user message: "run: <command>" calls
 // bash with that command (then says "The command finished."), "start: <title>"
 // starts a child thread with that title (then says "Started it."), "suggest: <a>, <b>"
-// proposes threads with those titles (then says "Suggested."), "plan: <plan>"
+// proposes threads with those titles (then says "Suggested."), "steps: done <a>;
+// doing <b>; todo <c>" sets the thread's checklist (then says "Checklist set."), "plan: <plan>"
 // calls propose_plan with that plan (then says "On it."), "reply: <markdown>"
 // answers with that markdown as written (the echo's "You said: " would put a
 // fence mid-line, where it is not a fence), a look at a project's
@@ -96,6 +97,10 @@ function fakeModel() {
       // "start long: <title>" gives the child a task of many lines, for the collapsed message's Show more.
       const task = said.startsWith("start long:") ? Array.from({ length: 30 }, (_, i) => `Step ${i + 1} of the plan for ${child}.`).join("\n\n") : `Work on ${child}.`;
       const suggest = /^suggest: (.+)/.exec(said)?.[1];
+      const steps = /^steps: (.+)/.exec(said)?.[1]?.split(";").flatMap((x) => {
+        const m = /^\s*(done|doing|todo) (.+?)\s*$/.exec(x);
+        return m ? [{ state: m[1], text: m[2] }] : [];
+      });
       // "mcp: <tool>": tool_search for it, then the house server's tool, then the usual echo.
       const mcpTool = /^mcp: (\w+)/.exec(said)?.[1];
       const sinceUser = chat.messages.length - 1 - chat.messages.map((m) => m.role).lastIndexOf("user");
@@ -113,13 +118,13 @@ function fakeModel() {
         const other = [...said.matchAll(/^- \[t:([^\]\s]+)\]/gm)].map((m) => m[1]).find((id) => !about.has(id));
         send({ role: "assistant", content: JSON.stringify({ tell: other ? [{ thread: other, text: "Heads up: the plan changed." }] : [] }) });
         send({}, "stop");
-      } else if ((child || suggest) && last?.role !== "tool") {
-        const args = child ? { action: "start", title: child, task }
+      } else if ((child || suggest || steps) && last?.role !== "tool") {
+        const args = child ? { action: "start", title: child, task } : steps ? { action: "steps", steps }
           : { action: "suggest", threads: suggest!.split(",").map((t) => t.trim()).map((title) => ({ title, task: `Work on ${title}.` })) };
         send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: { name: "threads", arguments: JSON.stringify(args) } }] });
         send({}, "tool_calls");
-      } else if (child || suggest) {
-        send({ role: "assistant", content: child ? "Started it." : "Suggested." });
+      } else if (child || suggest || steps) {
+        send({ role: "assistant", content: child ? "Started it." : steps ? "Checklist set." : "Suggested." });
         send({}, "stop");
       } else if ((command || plan) && last?.role !== "tool") {
         const call = command ? { name: "bash", arguments: JSON.stringify({ command }) } : { name: "propose_plan", arguments: JSON.stringify({ plan }) };

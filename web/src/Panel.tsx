@@ -163,6 +163,9 @@ function AppearanceSection({ ctx }: { ctx: ShellContext }) {
           <option value="dark">Dark</option>
         </select>
       </label>
+      {/* Off, the API sends no steps, so every card and header shows none; the thread list reloads to drop them. */}
+      <Switch label="Checklists" hint="When off, no thread shows a checklist and the agent isn't offered one."
+        checked={me.display.checklists} onChange={(checklists) => run(async () => { ctx.setMe(await patch<Me>(u(me.user.id, "me", "display"), { checklists })); ctx.refreshThreads(); })} />
       {profiles.data && (
         <>
           <div className="eyebrow">Speech</div>

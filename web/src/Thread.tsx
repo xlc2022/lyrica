@@ -10,6 +10,7 @@ import { useThread } from "./stream.ts";
 import { Conversation, MessageBox } from "./Messages.tsx";
 import { Composer } from "./Composer.tsx";
 import { ContextFact, newerContext } from "./ContextMeter.tsx";
+import { ChecklistButton } from "./Checklist.tsx";
 import { ModelBadge, SettingsDrawer } from "./Settings.tsx";
 import { Crumbs, Main, PanelButtons, type ShellContext } from "./Shell.tsx";
 import { ErrorText, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
@@ -231,6 +232,8 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   const phone = usePhone();
   // The stream's reading after a turn, or the one the settings brought (the open session's, else the last call's).
   const context = newerContext(t.live.context, settings.data?.context);
+  // Her checklist: the stream's, once a `steps` event came, else the summary's.
+  const steps = t.live.steps ?? s?.steps;
 
   return (
     <Main className="main" data-drawer-open={drawer}>
@@ -245,6 +248,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
             {pins.data && !s?.subagent && <PinnedBadge pins={pins.data} you={ctx.user.displayName} userId={ctx.user.id} pool={pool} />}
             {s && !s.subagent && !s.child && <GroupPicker ctx={ctx} base={base} summary={s} onChange={(x) => { summary.set(x); refreshThreads(); }} />}
             {context && <ContextFact context={context} />}
+            {!!steps?.length && <ChecklistButton steps={steps} />}
             {s?.project && overview.data && <ThreadsFact userId={userId} overview={overview.data} phone={phone} />}
             {s?.project && overview.data && !phone && <span className="tokens"><span className="num">{tokenCount(overview.data.tokens)}</span> tokens</span>}
             {!!settings.data?.wakeups?.length && <WakeupsFact base={base} wakeups={settings.data.wakeups} onChange={setWakeups} />}

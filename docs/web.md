@@ -93,6 +93,15 @@ A thread's address may carry what the panel beside it shows:
   and the last turn's speed. It reads `ThreadSettings.context` and then each
   `context` stream event, so it follows every turn without a reload. After
   a rewind or a reset it is hidden until the next turn measures again.
+  Then, while the thread has a checklist (her `threads steps`),
+  **Checklist** and "2 of 5", its numbers in mono (`src/Checklist.tsx`),
+  open a popover (full width under the header on a phone) listing the steps
+  in order, each a mark in mono (✓ done, ✱ doing, ○ to do; hidden from
+  screen readers, which read Done, Doing or To do) and its
+  text, done ones muted and the doing mark in the accent; no heading, no
+  buttons. It reads the stream's `steps` event (`live.steps`) once one
+  came, else `ThreadSummary.steps`, so a new list redraws the fact and
+  the open popover in place. Her call itself is a tool marker.
   Then, while she has wake-ups waiting (`ThreadSettings.wakeups`, soonest
   first), **Wake-up** and the soonest time in mono (`wakeTime`: HH:MM today,
   the date before it otherwise) open a popover with each one's time and an
@@ -375,7 +384,10 @@ A thread's address may carry what the panel beside it shows:
   wrong code, up to 15 minutes.
 - **Settings** (`src/Panel.tsx`): a page with its sections listed at the
   left (a scrolling row on a phone): Notifications, Profile (name, pronouns, accent colour,
-  monogram), Appearance (theme), Unlock and lock (saved credentials, stay
+  monogram), Appearance (theme; the **Checklists** switch, which saves
+  `Display.checklists` at once and reloads the thread list: off, the API
+  sends no steps, so no card or header shows one; then Read aloud while
+  agent writes under Speech), Unlock and lock (saved credentials, stay
   unlocked after logout, and `lyricad`'s warning when the two contradict),
   Password, Your personas (linking a separate persona needs both passwords),
   Persona suggestions (edit, send on to the administrators, or drop),
@@ -567,6 +579,9 @@ A thread's address may carry what the panel beside it shows:
   never waits there: it shows where it reached the turn (`received`).
 - `src/live.ts` turns stream events into the in-progress turn. When a turn
   ends, the stored messages are reloaded and the live copy is dropped.
+  `src/stream.ts` listens for every `ThreadEvent` type by name, from a
+  record keyed by the type, so a new type fails the typecheck until it's
+  listed.
   `EventSource` reconnects with `Last-Event-ID`. If it gives up, a new one
   can't send that header, so the UI starts again from the stored messages,
   and one request checks whether the login still holds. A `reset` reloads
@@ -627,15 +642,24 @@ A thread's address may carry what the panel beside it shows:
   for a second. When the pins are over their budget the badge adds "shortened", with
   a tooltip saying the oldest reach her as their first line only.
 - A `threads` call is a card: the child thread started (title and task) or
-  messaged, linking to it. A child's update shows in the parent as a card
-  headed "Child thread", linking to it. **In a project chat** there is no
+  messaged, linking to it. While the child has a checklist (its
+  `ThreadSummary.steps` in the thread list), the start card shows its
+  count and current step as a project's card does. A child's update shows
+  in the parent as a card headed "Child thread", linking to it. **In a project chat** there is no
   card per start or update: each of the project's threads gets one card
   under the message that started it (its anchor; threads whose anchor is
   gone sit under the last message), updated in place from the overview:
   title, state as a dot and word (Working blue, Waiting amber, Resolved
-  green, Idle plain), "wakes" and its next wake-up's time in mono after the
-  word while one waits (`ThreadSummary.wakeAt`), the first line of its last
-  update beneath, and Open, Stop, Resolve or Reopen behind ⋯. A card waiting on the user carries
+  green, Idle plain), its checklist's count while it has one
+  (`ThreadSummary.steps`: "2 of 5" with its numbers in mono, a link named
+  "Checklist, 2 of 5 steps done" that opens the header's popover; on a
+  phone it opens in flow under the card's head, the card's width, with no
+  shadow), "wakes" and its next
+  wake-up's time in mono while one waits (`ThreadSummary.wakeAt`);
+  beneath, the step under way (or the first to do) with its mark, on one
+  line with an ellipsis, left off once all are done or the thread is
+  resolved; then the first line of its last update, and Open, Stop,
+  Resolve or Reopen behind ⋯. The sidebar rows show no checklist. A card waiting on the user carries
   `data-pending`, so the pending bar reads "Thread waiting for your answer".
   A `threads suggest` call is the **Suggested threads** card, like the plan
   card: each proposed thread with Start, one primary Start all; started ones
@@ -761,9 +785,10 @@ turns animations off.
   it.
 - `web/test/` has unit tests for the stream reducer (`live.test.ts`), memory
   links and word diffs, mentions, which paths become links, which code
-  blocks get Copy and what it copies (`codeblock.test.ts`), the
-  recorder's context fallback and clip limit (`voice.test.ts`), and a text
-  model group's warn lines (`library.test.ts`).
+  blocks get Copy and what it copies (`codeblock.test.ts`), a checklist's
+  count and current step (`checklist.test.ts`), the recorder's context
+  fallback and clip limit (`voice.test.ts`), and a text model group's warn
+  lines (`library.test.ts`).
 - `npm run e2e -w @lyrica/web` runs Playwright (after a build). The upload
   test needs `gocryptfs`, as `lyricad` does. Each project in
   `playwright.config.ts` (phone 390×844 with touch, desktop 1280×800, and a
