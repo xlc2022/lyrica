@@ -340,8 +340,9 @@ A thread's address may carry what the panel beside it shows:
   **Repository** popover on `need_repo`), Throughput and Template (a custom
   file read in the browser). The foot: Cancel, **Save and reload** (`POST
   …/reload`) when the model is loaded and the serving draft changed, **Save
-  anyway** after `above_recommended`, and Save; a toast after. A speaking
-  model's Settings opens its Voice drawer.
+  anyway** after `above_recommended` (it repeats the refused save, reload
+  included), and Save; a toast after. A speaking model's Settings opens its
+  Voice drawer.
 - **Notifications** (`src/Notifications.tsx`; docs/ux.md §6 "Anything
   waiting for the user"): the first section of Settings, one list from
   `GET …/notifications`. Chips filter by type (All with the count, Needs a

@@ -495,7 +495,8 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
   const [draft, setDraft] = useState<Record<string, unknown>>();
   const [splitText, setSplitText] = useState<string>();
   const [pin, setPin] = useState<boolean>();
-  const [above, setAbove] = useState(false);
+  // Past the card's stretch: Save anyway repeats the save that was refused, reload included.
+  const [above, setAbove] = useState<false | { reload: boolean }>(false);
   const [repo, setRepo] = useState<string>();
   const [run, busy, error] = useAction();
   const [look, looking, lookError] = useAction();
@@ -608,7 +609,7 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
       try {
         await put(u(userId, "offerings", id, "serving"), { settings: draft, ...(anyway ? { anyway: true } : {}) });
       } catch (e) {
-        if (e instanceof HttpError && e.code === "above_recommended") setAbove(true);
+        if (e instanceof HttpError && e.code === "above_recommended") setAbove({ reload });
         throw e;
       }
     }
@@ -688,7 +689,7 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
       )}
       <label className="check"><input type="checkbox" checked={pin ?? pinned} onChange={(e) => setPin(e.target.checked)} /> Pinned</label>
       {invalid ? <p className="estimate bad" role="status">{invalid}</p>
-        : sv.kvBytes !== null && <p className="estimate" role="status">KV cache <span className="num">{gb(sv.kvBytes)}</span> GB at <span className="num">{sv.contextLength.toLocaleString("en-US")}</span> tokens</p>}
+        : sv.kvBytes !== null && <p className="estimate" role="status">KV cache <span className="num">{gb(sv.kvBytes)}</span> GB at <span className="num">{tokensK(sv.contextLength)}</span> tokens</p>}
     </fieldset>
     <fieldset className="sgroup" disabled={busy || !serveOwn}>
       <legend className="sr-only">Memory</legend>
@@ -785,7 +786,7 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
         {loaded && servingChanged && (
           <button type="button" className="sm" disabled={busy || !!invalid} title="Reload the model with these settings now" onClick={() => void save(true)}>Save and reload</button>
         )}
-        {above && <button type="button" className="sm" disabled={busy} onClick={() => void save(false, true)}>Save anyway</button>}
+        {above && <button type="button" className="sm" disabled={busy} onClick={() => void save(above.reload, true)}>Save anyway</button>}
         <button type="button" className="sm primary" disabled={busy || !changed || !!invalid} title={tab === "serving" ? "Applies at the next load" : "Sent with every call to this copy"}
           onClick={() => void save(false)}>Save</button>
       </div>
