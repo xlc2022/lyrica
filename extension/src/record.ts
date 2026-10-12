@@ -3,8 +3,9 @@ import type { AgentSession, SessionEntry } from "@earendil-works/pi-coding-agent
 import { MEMORY_TOOLS, type NewEntry, type PoolStore } from "@lyrica/core";
 
 // Threads live in the pool database, never in Pi session files. Pi saves a
-// message only after its message_end listeners run, so entries are copied over
-// at turn and agent boundaries, by Pi entry ID, which makes copying idempotent.
+// message only after its message_end listeners run, so user entries are copied
+// in a microtask after that append, before the model runs. Other entries are
+// copied at turn and agent boundaries. Pi entry IDs make copying idempotent.
 // Memory tools (MEMORY_TOOLS): what they wrote is indexed where it was written.
 
 /** What a thread started from a sleep item is prompted with, so she speaks first. Never shown or indexed. */
@@ -27,6 +28,16 @@ export function syncEntries(source: EntrySource, store: PoolStore, threadId: str
 /** For lyricad: records a hosted session's entries as they finish. Returns the unsubscribe function. */
 export function recordEntries(session: AgentSession, store: PoolStore, threadId: string): () => void {
   return session.subscribe((event) => {
+    if (event.type === "message_end" && event.message.role === "user") {
+      queueMicrotask(() => {
+        // A failure here (a locked store, a database error) must not take lyricad down: the turn's own sync retries.
+        try {
+          syncEntries(session.sessionManager, store, threadId);
+        } catch (err) {
+          console.error(`recording a sent message failed (${(err as Error)?.name ?? "Error"}); it is recorded at the turn's end`);
+        }
+      });
+    }
     if (event.type === "turn_end" || event.type === "agent_end" || event.type === "compaction_end") syncEntries(session.sessionManager, store, threadId);
   });
 }

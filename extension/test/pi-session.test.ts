@@ -20,7 +20,7 @@ const profile: Profile = { displayName: "Ada", pronouns: PRONOUN_PRESETS.she, pr
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-type Step = (ctx: { messages: unknown[] }) => ReturnType<typeof fauxAssistantMessage>;
+type Step = (ctx: { messages: unknown[] }) => ReturnType<typeof fauxAssistantMessage> | Promise<ReturnType<typeof fauxAssistantMessage>>;
 
 /** A Pi session for the thread, run by pi-ai's fake model, with its entries recorded in the pool. */
 async function session(thread: ThreadContext, steps?: Step[]) {
@@ -59,6 +59,62 @@ async function session(thread: ThreadContext, steps?: Step[]) {
 }
 
 describe("in a Pi session", () => {
+  it("records the user entry before a hanging model answers, without duplicating it at turn end", async () => {
+    const thread = (await withMemory()).thread().context;
+    let finish!: (reply: ReturnType<typeof fauxAssistantMessage>) => void;
+    let started!: () => void;
+    const called = new Promise<void>((resolve) => { started = resolve; });
+    const { session: s } = await session(thread, [() => new Promise((resolve) => {
+      finish = resolve;
+      started();
+    })]);
+    let ended = false;
+    s.subscribe((e) => { if (e.type === "turn_end") ended = true; });
+    const turn = s.prompt("keep this message");
+    try {
+      await called;
+      expect(ended).toBe(false);
+      const users = () => thread.view.own.loadEntries(thread.threadId).filter((e) =>
+        (e as { message?: { role: string } }).message?.role === "user");
+      const before = users();
+      expect(before).toHaveLength(1);
+      expect(thread.view.own.lastEntry(thread.threadId, ["user"])?.text).toBe("keep this message");
+      finish(fauxAssistantMessage("Done."));
+      await turn;
+      expect(ended).toBe(true);
+      expect(users()).toEqual(before);
+    } finally {
+      finish?.(fauxAssistantMessage("Done."));
+      await turn;
+      s.dispose();
+    }
+  });
+
+  it("survives a failed early record and records the user entry at turn end", async () => {
+    const thread = (await withMemory()).thread().context;
+    const store = thread.view.own;
+    const append = store.appendEntry.bind(store);
+    let failed = 0;
+    // The first write, the early one right after send, fails as a locked store would.
+    store.appendEntry = ((...args: Parameters<typeof append>) => {
+      if (failed++ === 0) throw new Error("store locked");
+      return append(...args);
+    }) as typeof store.appendEntry;
+    const errors: string[] = [];
+    const log = console.error;
+    console.error = (line: string) => { errors.push(String(line)); };
+    const { session: s } = await session(thread, [() => fauxAssistantMessage("Done.")]);
+    try {
+      await s.prompt("keep this anyway");
+    } finally {
+      console.error = log;
+      s.dispose();
+    }
+    expect(errors.some((e) => e.includes("recording a sent message failed (Error)"))).toBe(true);
+    expect(errors.join("\n")).not.toContain("keep this anyway");
+    expect(store.loadEntries(thread.threadId).filter((e) => (e as { message?: { role: string } }).message?.role === "user")).toHaveLength(1);
+  });
+
   it("keeps the system prompt identical across turns and sends the time as a message", async () => {
     const { session: s, seen } = await session((await withMemory()).thread().context);
     try {
