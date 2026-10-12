@@ -1814,9 +1814,10 @@ from Monika's runbooks.
 
 - **Claude does most of the rebuild.** Lyrica edits herself with other models
   only once she is usable again.
-- **The design thread** (the "Agent harness design principles" session) owns
-  PRINCIPLES, this document and the contracts, and keeps coding to a minimum.
-- **Feature threads** are separate Claude Code sessions tagged `project:lyrica`:
+- **The PR review thread** owns PRINCIPLES, this document, the contracts and
+  docs/ux.md, and keeps coding to a minimum. Roles, review and merging are in
+  [AGENTS.md](AGENTS.md), "Workflow".
+- **Feature threads** are separate sessions, one per area:
   Core, Memory, Workspace, Models, Delegation, Daemon, Web UI, Sleep,
   Model host, Models 2, Images, Delegation 2, Child
   threads, Modes and Projects.
