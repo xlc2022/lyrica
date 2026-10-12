@@ -102,6 +102,8 @@ Rules:
   model, Group, Add…, Reset, Dictation, Dictate, Read aloud, Stop reading,
   Read aloud while agent writes, Local services (localhost), Fallback, Sleep fallback, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, Thread settings, New threads, This chat, Threads, Watching threads, Checked the other threads, Message received from, Show more, Show less, Open as a page, Close panel,
   Start a thread, Suggested threads, Start all, Resolve, Reopen, Resolved,
+  Memory, Pages, Notes, WAKE, Journal, User introduced, Add a memory, Came
+  from, Used in, History, Restore, Archive, Preview, Edit, Remember this,
   Waiting on you, Goal, Instructions, Paused, All threads, Only projects,
   No projects, Machines, Add machine, Mode limit, Replace key, Use anyway,
   Allow in this thread, Online, Unreachable, Key changed, Off network,
@@ -145,6 +147,13 @@ Rules:
 | Models, hosts, downloads, clean-up | the **Models** area: Overview, Tasks, Text models, Image models, Hosts and endpoints, Downloads, Clean up, Recent calls |
 | The app's version | the header, "Lyrica (ver. …, build …)" |
 | Lyrica's inner workings (recall, tools, notes) | one-line **markers** in the conversation that expand when tapped |
+| A user's memory | the **Memory** page (the sidebar's Memory link): the Files panel's layout, a browse pane at the left with a search box above a segmented control of the layers (**Pages** \| **Notes** \| **WAKE** \| **Journal**), a pool select and **User introduced** in one filters row, and the list (title, date in mono, pool word and summary or tags); the memory at the right, or in the pane's place on a phone with a **Memory** back button. The page header states facts (pages, notes, when she slept, in mono) and holds one action, **Add a memory**. The memory: its title, a facts line (pool, layer, origin as a word, updated date in mono, folders in mono), its summary, the text, then **Edit** and a **⋯** with Archive and Delete…, then **Came from**, **Used in**, **History** as eyebrow sections. Delete is confirmed by a **dialog** named after the memory with its one sentence |
+| A memory looked at from a conversation (a recall marker, a citation in her text, a sleep item's source) | the **panel**, like a thread; below 1180 px the Memory page at that memory |
+| A link inside a memory's text | a page link reads as the page's **title**, a thread citation as the thread's title, a note citation as a small dated **source mark** in mono (the note has no title); each is a link that opens the memory in place (the breadcrumb grows) and shows a **preview** of its first lines on hover or focus. Never the raw ID; the stored text keeps it |
+| What a memory came from, and what uses it | **Came from** and **Used in**: a card per memory with its title (or first words), its date in mono, and the citing sentence beneath |
+| A memory's versions | **History**: a row per version with its time in mono and its author (Lyrica, sleep, or yours), the current one open; a version opens to the word differences against the current text (removed words struck through in the danger colour, added words in the ok colour) and a **Restore** button |
+| A note's tags | its `about` words as **tag** chips under the facts line, in mono; the Notes layer lists the pool's tags above its list, and a tapped tag filters it |
+| Editing a memory | in place where the text was: an **Edit** \| **Preview** segment, the textarea, **Save** as the one primary and Cancel; typing `[[` opens a popover of pages and people (a page is saved as its ID, a person as their name token). Notes cite by ID in the editor, since they have no title. No draft is kept in the browser |
 | A message written in another thread (what a parent sent its child, a sibling's in a project, a look at a project's threads) | collapsed to one line, **Message received from <thread>** with a chevron (the look is its own marker, Checked the other threads); tapping it shows the message as a tinted block with its menu; a long one shows its first lines and **Show more**. Never shown open by default: said elsewhere, it would crowd this conversation |
 | The message box | one box holding the textarea and Send as a plain icon (Stop while she works); under it, a row with "+" (Attach and the tool switches), the mic, and, at its end, the mode word with a caret |
 | Anything in the conversation waiting for an answer (a plan, a permission, a question from a subagent) | a **card** in the conversation, with its actions at its foot and one primary action at most. When the latest such card has scrolled out of view, a thin bar in the accent colour across the top of the chat names it and jumps to it; it is the one bar the chat may show |
@@ -176,7 +185,9 @@ Rules:
 
 The project rows are drawn in the app mockup's projects frame
 (https://claude.ai/artifact/96BoPXPoxL2LDBg8eLxjHx, version 22: `#t/p1` and
-`#project/p1/general`).
+`#project/p1/general`); the Memory page in its memory frame (version 27:
+`#memory/none/p:proxmox-homelab`, a note at `#memory/none/n:20261009-k3f9`;
+the `local` and `pool` frames there are the graph options Li declined).
 
 If your thing isn't in this table, it needs the design thread, not a new
 spot.

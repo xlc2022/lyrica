@@ -1181,6 +1181,20 @@ Details in [docs/memory.md](docs/memory.md).
   - Name tokens survive edits.
   - Sleep treats user edits as authoritative and asks rather than overwriting
     them.
+  - **The browser reads like a notebook** (Li, 2026-10-11, after Obsidian;
+    [briefs/memory-browser.md](docs/briefs/memory-browser.md)): a browse
+    pane by layer (Pages, Notes, WAKE, Journal) with search above it, so
+    memory can be read without searching; a page link in a memory's text
+    reads as the page's title, a note citation as a small dated source
+    mark, a thread citation as the thread's title, each previewing on hover
+    or focus, while the stored text keeps its IDs; **Came from** and **Used
+    in** show the citing sentence; history shows word differences between
+    versions; a note's `about` words are its tags. Editing is in place,
+    with `[[` offering pages and people. No graph: lineage is layers, so a
+    graph would only redraw Came from and Used in (principle 5). No tags on
+    pages, no live-preview editor, no draft kept in the browser.
+  - A memory opened from a conversation (a recall marker, a citation) shows
+    in the panel beside it, like a thread does.
 - **Users can add their own memories**, notes or pages, in either pool. A
   memory can link to threads, specific messages or other memories, or float
   free. Everything a user adds is in the **User introduced** collection.
