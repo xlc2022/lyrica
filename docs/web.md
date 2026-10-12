@@ -222,7 +222,11 @@ A thread's address may carry what the panel beside it shows:
   a plain endpoint with its model count) and the first five calls. Hosts
   and endpoints: **Add endpoint** (a drawer: Name, Kind, Base URL, API key,
   Shared for administrators; a plain-HTTP warning for a local URL off
-  loopback and the tailnet) and **Add model host** (the one primary; a page
+  loopback and the tailnet. Kind also offers ChatGPT plan, with **Sign in with
+  ChatGPT**, which opens OpenAI's page in a new tab, then **Redirect URL**
+  and **Finish** in place of the URL and key; and Grok plan, with **Sign in with Grok**, which opens
+  xAI's page, then its **Code** and **Finish**; closing the drawer cancels
+  the sign-in) and **Add model host** (the one primary; a page
   at `…/models/hosts/add-host`: Name, Addresses, Pairing code, Shared,
   **Pair**, then the fingerprint in mono). A host card: name, kind, state
   (Online, Paused, Pausing, Restarting, Unreachable with the duration),
@@ -233,9 +237,10 @@ A thread's address may carry what the panel beside it shows:
   the addresses, `PUT …/addresses`), per GPU its card, used/total in mono,
   a bar of pinned, loaded-on-demand and vLLM-share segments, the loaded
   models and the queue when nonzero. A plain endpoint row: name, kind,
-  unencrypted and stale pills, URL, shared or only you, ID, state, "N
+  ChatGPT plan or Grok plan, unencrypted and stale pills, URL, shared or only you, ID, state, "N
   models", **Edit** (the same drawer; API key "leave blank to keep",
-  Remove key). Each row's ⋯: Read its models, Add a model by hand, Pair
+  Remove key; a plan's drawer has Name only). A plan whose sign-in lapsed
+  reads **Signed out**. Each row's ⋯: Sign in again (plans), Read its models, Add a model by hand, Pair
   again… (hosts), Reset IDs…, Merge into… (same kind and sharing), Remove,
   the last three confirmed by a dialog. Clean up: a row per item with a
   stale, gone or empty pill, "Unreachable for N days." / "Missing for N

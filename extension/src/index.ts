@@ -122,5 +122,6 @@ function showDebug(ctx: ExtensionContext, topics: RoutedTopic[], sections: Secti
   else process.stderr.write(`${text}\n`);
 }
 export * from "./models.ts";
+export * from "./plans.ts";
 export * from "./session.ts";
 export * from "./delegate/index.ts";

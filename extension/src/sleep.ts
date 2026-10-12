@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { AgentSessionEvent, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import {
-  citationsIn, danglingPages, emptySleepMaterial, kindOf, NoModel, CloudModelForbidden, projectSlug, sleepInstruction,
+  citationsIn, CORE_LIMIT, danglingPages, emptySleepMaterial, kindOf, NoModel, CloudModelForbidden, projectSlug, sleepInstruction,
   type CallContext, type Memory, type ModelRef, type Models, type PersonaProposals, type PersonaStore, type Pool, type PoolView,
   type SkipReason, type SleepItem, type SleepMaterial, type SleepPhase, type SleepRunRecord, type Users,
 } from "@lyrica/core";
@@ -391,7 +391,7 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
       pi.registerTool({
         name: "propose_persona",
         label: "Propose persona change",
-        description: "Propose a change to one of your persona files, as its whole new text. It is reviewed before anything changes.",
+        description: `Propose a change to one of your persona files, as its whole new text. It is reviewed before anything changes. SOUL, STYLE and REGISTER together hold at most ${CORE_LIMIT} characters; most growth belongs in a topic file.`,
         promptSnippet: "propose a change to who you are",
         parameters: Type.Object({
           path: Type.String({ description: "For example persona_topics/music.md." }),

@@ -69,6 +69,11 @@ export function isUnreachable(err: unknown): boolean {
   return e.cause !== undefined && e.cause !== err && isUnreachable(e.cause);
 }
 
+/** A plan's usage limit, as OpenAI reports it: it resets after hours, not seconds. */
+export const isPlanLimit = (message: string | undefined): boolean => /subscription_sharing_usage_limit_exceeded|usage.?limit/i.test(message ?? "");
+/** How long a plan that reached its limit is skipped. */
+const PLAN_LIMIT_MS = 60 * 60_000;
+
 /** An endpoint unreachable this long is stale; a model missing this long is gone. */
 export const STALE_DAYS = 14;
 export const GONE_DAYS = 30;
@@ -86,8 +91,8 @@ export interface Endpoint {
   /** A label that can change. */
   name: string;
   kind: "cloud" | "local";
-  /** A plain OpenAI-compatible server, or a paired model host. */
-  api: "openai-compatible" | "host";
+  /** A plain OpenAI-compatible server, a paired model host, or a subscription plan (ChatGPT or Grok) signed in with its provider. */
+  api: "openai-compatible" | "host" | PlanKind;
   /** For a host, its first address's `/v1`. */
   baseUrl: string;
   apiKey?: string;
@@ -102,7 +107,20 @@ export interface Endpoint {
   downSince?: string;
   /** Unreachable for STALE_DAYS. Fallbacks skip it. */
   stale: boolean;
+  /** A plan whose sign-in lapsed (its refresh was refused). Fallbacks skip it until it signs in again. */
+  signedOut?: boolean;
 }
+
+/** The subscription plans a user can sign in with (docs/models.md, "Subscription plans"). */
+export const PLAN_KINDS = ["chatgpt", "grok"] as const;
+export type PlanKind = (typeof PLAN_KINDS)[number];
+export const isPlan = (api: string | undefined): api is PlanKind => (PLAN_KINDS as readonly string[]).includes(api ?? "");
+/** Where each plan's calls go: its provider's Responses API, with the plan's own token. */
+export const PLAN_URLS: Record<PlanKind, string> = { chatgpt: "https://api.openai.com/v1", grok: "https://api.x.ai/v1" };
+const PLAN_NAMES: Record<PlanKind, string> = { chatgpt: "ChatGPT", grok: "Grok" };
+
+/** A plan's sign-in, as Pi's sign-in returns it (access, refresh, expires, and for ChatGPT clientId and scopes). */
+export type PlanCredential = { access: string; refresh: string; expires: number } & Record<string, unknown>;
 
 /** What a model can do. Discovered where the endpoint says, else set by hand. */
 export interface Capabilities {
@@ -355,9 +373,12 @@ interface GroupRow { id: string; name: string; members: string }
 
 const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint => {
   const url = new URL(r.base_url);
+  const plan = isPlan(r.api);
   return {
-    id: r.id, name: r.name, kind: r.kind, api: r.api === "host" ? "host" : "openai-compatible", baseUrl: r.base_url, shared,
-    ...(r.api_key ? { apiKey: r.api_key } : {}),
+    id: r.id, name: r.name, kind: r.kind, api: plan ? r.api as PlanKind : r.api === "host" ? "host" : "openai-compatible", baseUrl: r.base_url, shared,
+    // A plan's api_key column holds its sign-in, which is read only through planCredential.
+    ...(r.api_key && !plan ? { apiKey: r.api_key } : {}),
+    ...(plan && !r.api_key ? { signedOut: true } : {}),
     ...(r.api === "host" ? { addresses: JSON.parse(r.addresses ?? "[]") as string[], fingerprint: r.pin ?? "" } : {}),
     unencrypted: r.kind === "local" && url.protocol === "http:" && !nearby(url.hostname),
     ...(r.down_since ? { downSince: r.down_since } : {}),
@@ -417,6 +438,10 @@ export class Models {
   private readonly reached = new Map<string, string>();
   /** Finished downloads already read as offerings, by host and download ID. */
   private readonly discovered = new Set<string>();
+  /** Plans that reached their usage limit, until when they're skipped. */
+  private readonly limited = new Map<string, number>();
+  /** The models each plan offers (setPlanCatalog). */
+  private planCatalog: (kind: PlanKind) => DiscoveredModel[] = () => [];
 
   constructor(private readonly keyring: Keyring, private readonly users: Users) {}
 
@@ -438,7 +463,9 @@ export class Models {
   /** Renames an endpoint or changes its URL or key. Its IDs, and its models' IDs, never change. A null key removes it. */
   editEndpoint(actor: User, id: string, change: { name?: string; baseUrl?: string; apiKey?: string | null }): Endpoint {
     if (change.name !== undefined) checkName(change.name);
-    if ((change.baseUrl !== undefined || change.apiKey !== undefined) && this.endpoint(actor.id, id)?.api === "host") throw new Error("a model host has addresses and a pinned key, not a URL or an API key");
+    const api = this.endpoint(actor.id, id)?.api;
+    if ((change.baseUrl !== undefined || change.apiKey !== undefined) && api === "host") throw new Error("a model host has addresses and a pinned key, not a URL or an API key");
+    if ((change.baseUrl !== undefined || change.apiKey !== undefined) && isPlan(api)) throw new Error(`a ${PLAN_NAMES[api]} plan signs in with ${PLAN_NAMES[api]}; it has no URL or API key to change`);
     const baseUrl = change.baseUrl === undefined ? undefined : checkUrl(change.baseUrl);
     this.write(actor, id, (db) => {
       const current = db.prepare("SELECT * FROM endpoints WHERE id = ?").get(id) as EndpointRow;
@@ -458,6 +485,60 @@ export class Models {
       if (!db.prepare("SELECT 1 FROM endpoints WHERE id = ?").get(id)) throw new Error(`no endpoint ${id}`);
       return (db.prepare("SELECT id FROM offerings WHERE endpoint = ?").all(id) as { id: string }[]).map((r) => [r.id, null]);
     }, (db) => { db.prepare("DELETE FROM endpoints WHERE id = ?").run(id); });
+  }
+
+  // --- Subscription plans ---
+
+  /**
+   * Adds a ChatGPT or Grok plan from a finished sign-in: always cloud,
+   * always the user's own (a plan belongs to one person), calling its
+   * PLAN_URLS entry. Its sign-in is kept in the user's user.db, in the api_key column.
+   */
+  addPlan(actor: User, input: { name: string; plan: PlanKind; credential: PlanCredential }): Endpoint {
+    checkName(input.name);
+    if (!isPlan(input.plan)) throw new Error("a plan is ChatGPT or Grok");
+    const id = randomUUID();
+    this.place(actor, false, (db) => {
+      if (db.prepare("SELECT 1 FROM endpoints WHERE name = ?").get(input.name)) throw new Error(`endpoint ${input.name} already exists`);
+      db.prepare("INSERT INTO endpoints (id, name, kind, api, base_url, api_key, created_at) VALUES (?, ?, 'cloud', ?, ?, ?, ?)")
+        .run(id, input.name, input.plan, PLAN_URLS[input.plan], JSON.stringify(checkCredential(input.credential)), new Date().toISOString());
+    });
+    return this.endpoint(actor.id, id)!;
+  }
+
+  /** A plan's sign-in, or undefined when it is signed out. Only its owner's user.db has it. */
+  planCredential(userId: string, endpointId: string): PlanCredential | undefined {
+    return this.withUser(userId, (db) => {
+      const r = db.prepare("SELECT api_key FROM endpoints WHERE id = ? AND api IN ('chatgpt', 'grok')").get(endpointId) as { api_key: string | null } | undefined;
+      return r?.api_key ? JSON.parse(r.api_key) as PlanCredential : undefined;
+    });
+  }
+
+  /**
+   * Saves a plan's refreshed or new sign-in, keeping every ID. Null signs it
+   * out: the router skips it until it signs in again.
+   */
+  setPlanCredential(userId: string, endpointId: string, credential: PlanCredential | null): void {
+    this.withUser(userId, (db) => {
+      const r = db.prepare("UPDATE endpoints SET api_key = ? WHERE id = ? AND api IN ('chatgpt', 'grok')").run(credential ? JSON.stringify(checkCredential(credential)) : null, endpointId);
+      if (!r.changes) throw new Error(`no plan ${endpointId}`);
+    });
+    if (credential) this.health.delete(endpointId);
+  }
+
+  /** This installation's ID for Sign in with ChatGPT, which OpenAI asks for: made on first use and kept in self.db. */
+  installationId(): string {
+    const db = this.self();
+    const row = db.prepare("SELECT value FROM settings WHERE key = 'chatgpt.installation'").get() as { value: string } | undefined;
+    if (row) return row.value;
+    const id = randomUUID();
+    db.prepare("INSERT INTO settings (key, value) VALUES ('chatgpt.installation', ?)").run(id);
+    return id;
+  }
+
+  /** The models each plan offers, from Pi's catalogue (core has no Pi). Set once at start. */
+  setPlanCatalog(list: (kind: PlanKind) => DiscoveredModel[]): void {
+    this.planCatalog = list;
   }
 
   /** The user's own endpoints, then the shared ones. */
@@ -553,7 +634,8 @@ export class Models {
     if (!ep) throw new Error(`no endpoint ${endpointId}`);
     let found: DiscoveredModel[];
     try {
-      found = ep.api === "host" ? await this.hostModels(ep) : await discoverModels(ep.baseUrl, ep.apiKey);
+      if (ep.signedOut) throw new Error(`${ep.name} is signed out; sign in again`);
+      found = ep.api === "host" ? await this.hostModels(ep) : isPlan(ep.api) ? this.planCatalog(ep.api) : await discoverModels(ep.baseUrl, ep.apiKey);
     } catch (err) {
       this.seen(ep, false, actor.id);
       throw err;
@@ -584,7 +666,7 @@ export class Models {
     const ep = this.endpoint(userId, endpointId);
     if (!ep) throw new Error(`no endpoint ${endpointId}`);
     const [state, warning] = await Promise.all([
-      ep.api === "host" ? this.hostUp(ep, timeoutMs) : probeUrl(ep.baseUrl, ep.apiKey, timeoutMs),
+      this.answers(ep, timeoutMs),
       ep.kind === "local" ? localWarning(ep) : undefined,
     ]);
     this.seen(ep, state === "up", userId);
@@ -1031,7 +1113,7 @@ export class Models {
     if (h && !h.up && Date.now() - h.at < HEALTH_MS) return { state: "down", error: `${ep.name} is down` };
     const warning = ep.kind === "local" ? Promise.race([localWarning(ep), new Promise<undefined>((r) => setTimeout(() => r(undefined), budgetMs).unref())]) : undefined;
     if (ep.api !== "host") {
-      const state = await probeUrl(ep.baseUrl, ep.apiKey, budgetMs);
+      const state = await this.answers(ep, budgetMs);
       this.seen(ep, state === "up", userId);
       const w = await warning;
       return w ? { state, warning: w } : { state };
@@ -1122,6 +1204,11 @@ export class Models {
         ...(m.size ? { size: m.size } : {}),
       } as DiscoveredModel;
     }), ...recipes];
+  }
+
+  /** A plan answered that its usage limit is reached: the router skips it for an hour, so the next turn falls back. */
+  reportPlanLimit(endpointId: string): void {
+    this.limited.set(endpointId, Date.now() + PLAN_LIMIT_MS);
   }
 
   /** A call to the endpoint failed to connect or was refused as away: the router skips it for HEALTH_MS. */
@@ -1341,6 +1428,7 @@ export class Models {
     if (fromId === intoId) throw new Error("an endpoint can't be merged into itself");
     if (from.shared !== into.shared) throw new Error("a shared endpoint can only be merged with another shared endpoint");
     if (from.kind !== into.kind) throw new CloudModelForbidden("a cloud endpoint and a local endpoint can't be merged");
+    if ((isPlan(from.api) || isPlan(into.api)) && from.api !== into.api) throw new Error("a plan merges only with another plan of the same kind");
     const moved: string[] = [];
     this.retire(actor, from.shared, (db) => {
       const target = new Map((db.prepare("SELECT id, model FROM offerings WHERE endpoint = ?").all(intoId) as { id: string; model: string }[]).map((r) => [r.model, r.id]));
@@ -1737,8 +1825,13 @@ export class Models {
     }
   }
 
-  /** Whether an endpoint answers, within `ms`. Never throws. */
-  private answers(ep: Endpoint, ms: number): Promise<"up" | "down"> {
+  /**
+   * Whether an endpoint answers, within `ms`. Never throws. A plan is
+   * up while it is signed in: its token is for the Responses API, so there is
+   * nothing to probe; a failed call marks it down like any other.
+   */
+  private answers(ep: Endpoint, ms?: number): Promise<"up" | "down"> {
+    if (isPlan(ep.api)) return Promise.resolve(ep.signedOut ? "down" : "up");
     return (ep.api === "host" ? this.hostUp(ep, ms) : probeUrl(ep.baseUrl, ep.apiKey, ms)).catch(() => "down" as const);
   }
 
@@ -1953,6 +2046,8 @@ export class Models {
   /** Why a model's machine is away now, if it is: stale, or down in the health cache. */
   private away(ep: Endpoint, opts: ResolveOptions, o: Offering): string | undefined {
     if (ep.stale) return `${ep.name} hasn't answered for ${STALE_DAYS} days`;
+    if (ep.signedOut) return `${ep.name} is signed out`;
+    if ((this.limited.get(ep.id) ?? 0) > Date.now()) return `${ep.name} has reached its plan's limit`;
     const m = this.modelDown.get(o.id);
     if (m !== undefined && Date.now() - m < HEALTH_MS) return `${ep.name} couldn't run it`;
     if (opts.except?.has(ep.id)) return `${ep.name} is down`;
@@ -2255,6 +2350,15 @@ export class Models {
     if (!this.users.get(actor.id)?.admin) throw new Forbidden("only an administrator can change shared endpoints and groups");
     fn(this.self());
   }
+}
+
+/** A plan's sign-in must carry its tokens and expiry; anything else is refused before it's saved. */
+function checkCredential(c: PlanCredential): PlanCredential {
+  if (typeof c?.access !== "string" || !c.access || typeof c.refresh !== "string" || !c.refresh || typeof c.expires !== "number") {
+    throw new Error("a plan's sign-in needs its access and refresh tokens and when it expires");
+  }
+  const { type: _t, ...rest } = c;
+  return rest as PlanCredential;
 }
 
 const labelOf = (ep: Endpoint, o: Offering) => `${ep.shared ? SHARED : ""}${ep.name}/${o.modelId}`;

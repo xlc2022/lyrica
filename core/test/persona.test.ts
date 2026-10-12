@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { Forbidden, MATRIX, PersonaStore, Users } from "../src/index.ts";
+import { CORE_LIMIT, coreText, Forbidden, MATRIX, PersonaStore, setSelfName, Users } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 const SEED = fileURLToPath(new URL("../../persona", import.meta.url));
@@ -35,6 +35,23 @@ describe("persona", () => {
     const revs = store.revisions("STYLE.md");
     expect(revs.map((r) => r.author)).toEqual(["seed", `user:${ada.id}`]);
     expect(revs[0]!.text).toBe(original);
+  });
+
+  it("refuses a core over its limit with her longest possible name, so no rename makes her prompt cut it", async () => {
+    const keyring = await freshKeyring();
+    const self = keyring.self();
+    const owner = await new Users(keyring).createUser("owner", "pw", profile("Owner"), { admin: true });
+    const store = new PersonaStore(self);
+    store.importSeed(SEED);
+    // Measured as if she were called 40 emoji (80 UTF-16 units), against "Lyrica"'s 6.
+    const room = CORE_LIMIT - coreText(store.read().core).length - (80 - "Lyrica".length);
+    const style = store.files().get("STYLE.md")!.trim();
+    expect(() => store.apply(owner, "STYLE.md", `${style}${"x".repeat(room + 1)}`)).toThrow(/over 12,000/);
+    store.apply(owner, "STYLE.md", `${style}${"x".repeat(room)}`);
+    setSelfName(self, "😀".repeat(40));
+    expect(coreText(store.read().core)).toHaveLength(CORE_LIMIT);
+    // Topics have no such limit.
+    store.apply(owner, "persona_topics/music.md", "y".repeat(CORE_LIMIT + 1));
   });
 
   it("rejects a matrix it can't parse", async () => {
