@@ -7,6 +7,7 @@ import {
   type Pool, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type Theme, type UserCard,
   type NameSetting,
 } from "./api.ts";
+import { RoutinesSection } from "./Routines.tsx";
 import { ClaudeCodeSection } from "./ClaudeCode.tsx";
 import { GitAccountsSection } from "./Git.tsx";
 import { McpServersSection } from "./Mcp.tsx";
@@ -46,6 +47,7 @@ const SETTINGS: SectionDef[] = [
   { key: "git", label: "Git accounts", body: (ctx) => <GitAccountsSection ctx={ctx} /> },
   { key: "mcp", label: "MCP servers", body: (ctx) => <McpServersSection ctx={ctx} /> },
   { key: "claude-code", label: "Claude Code", body: (ctx) => <ClaudeCodeSection ctx={ctx} /> },
+  { key: "routines", label: "Routines", body: (ctx) => <RoutinesSection ctx={ctx} /> },
   { key: "portraits", label: "Portrait photos", body: (ctx) => <PortraitPhotosSection key={ctx.user.id} userId={ctx.user.id} /> },
 ];
 const ADMIN: SectionDef[] = [

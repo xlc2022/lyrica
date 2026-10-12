@@ -1,4 +1,4 @@
-import { FROM_PARENT, WAKEUP, WATCHING, WATCHING_MARK, type Memory, type Models, type Pool } from "@lyrica/core";
+import { FROM_PARENT, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK, type Memory, type Models, type Pool } from "@lyrica/core";
 import { DELEGATE_MESSAGE, modelRuntimeFor, piModelFor } from "@lyrica/extension";
 import type { ThreadHost } from "./hosted.ts";
 import { toldLines } from "./messages.ts";
@@ -79,7 +79,7 @@ export class Watcher {
         const t = own.getThread(threadId);
         if (!project || !t || t.subagent) return;
         const last = own.lastEntry(threadId, ["user"])?.text ?? "";
-        theirs = !!last && !FROM_PARENT.test(last) && !WATCHING.test(last) && !WAKEUP.test(last);
+        theirs = !!last && !FROM_PARENT.test(last) && !WATCHING.test(last) && !WAKEUP.test(last) && !ROUTINE.test(last);
         logged = !t.unlogged;
       } finally {
         view.close();

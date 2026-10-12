@@ -151,3 +151,18 @@ CREATE TABLE IF NOT EXISTS wakeups (
 );
 CREATE INDEX IF NOT EXISTS wakeups_thread ON wakeups (thread, fired_at);
 `;
+
+/** Recurring turns, encrypted with their thread's pool. */
+export const ROUTINES_SCHEMA = `
+CREATE TABLE routines (
+  id INTEGER PRIMARY KEY,
+  thread TEXT NOT NULL REFERENCES threads (id) ON DELETE CASCADE,
+  schedule TEXT NOT NULL,
+  note TEXT NOT NULL,
+  new_thread INTEGER NOT NULL DEFAULT 0 CHECK (new_thread IN (0, 1)),
+  paused INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1)),
+  next_at TEXT NOT NULL,
+  last_at TEXT,
+  created_at TEXT NOT NULL
+);
+`;

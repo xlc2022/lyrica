@@ -385,7 +385,7 @@ fingerprint matches the one printed. The page is **Set up Lyrica**:
 1. **Code and passphrase:** the setup code, a new `self.db` passphrase
    twice, and **Start unlocked**, which saves the passphrase (see "Save the
    passphrase" below). It is off, with the reason, where saving isn't
-   available.
+   available. On NixOS, leave it off for now (see the warning there).
 2. **Name:** her name, Lyrica by default.
 3. **Administrator:** the first administrator's login, password, display
    name and pronouns. **Create** makes `self.db`, imports the persona seed
@@ -450,6 +450,19 @@ the foot of the sidebar opens Administration), enter the passphrase and
 comes up unlocked after a reboot. The button is disabled, with the reason,
 on a system where `systemd-creds` isn't available. Forget it there to go
 back to unlocking by hand.
+
+> **On NixOS, don't use Start unlocked yet.** The saved passphrase is
+> sealed in a way the unit can't unseal, so lyricad fails at every start
+> and restarts in a loop. If that has happened, move the sealed file out
+> of the credentials folder, restart, and unlock by hand on the unlock
+> page:
+>
+> ```sh
+> sudo mv /var/lib/lyrica/credentials/self /var/lib/lyrica/self.credential.broken
+> sudo systemctl restart lyricad
+> ```
+>
+> This warning goes once the fix is merged.
 
 Each user can likewise save their own data key under Settings, Unlock and
 lock, so

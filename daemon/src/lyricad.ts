@@ -13,6 +13,7 @@ import {
 } from "@lyrica/core";
 import { Delegation, planCatalog, Sleep, type Limits, type SleepLimits } from "@lyrica/extension";
 import { ChildThreads } from "./children.ts";
+import { Routines } from "./routines.ts";
 import { Wakeups } from "./wakeups.ts";
 import { Projects } from "./projects.ts";
 import { Watcher } from "./watch.ts";
@@ -97,6 +98,7 @@ export interface LyricadOptions {
 /** What exists once self.db is unlocked. */
 export interface Services {
   wakeups: Wakeups;
+  routines: Routines;
   users: Users;
   memory: Memory;
   models: Models;
@@ -448,6 +450,7 @@ export class Lyricad implements Drainable {
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000, offlineRetryMs: this.opts.offlineRetryMs,
       threads: children, onTurn: (u, p, t, working) => {
         children.turn(u, p, t, working);
+        if (!working) routines.ended(u, p, t);
         const k = `${u}/${p}/${t}`;
         if (working) { erred.delete(k); aborted.delete(k); return watcher.turnStarted(u, p, t); }
         watcher.turnEnded(u, p, t);
@@ -474,7 +477,8 @@ export class Lyricad implements Drainable {
     const prefs = new ThreadPrefs((id) => users.openUserDb(id));
     host.draining = this.drainingNow;
     const shares = new ThreadShares(keyring.self());
-    this.services = { wakeups, users, memory, models, workspace, persona, proposals, delegation, children, projects, watcher, sleep, host, web, tailnet: this.tailnet, prefs, shares };
+    const routines = new Routines({ memory, host: () => host, children, log: this.log });
+    this.services = { routines, wakeups, users, memory, models, workspace, persona, proposals, delegation, children, projects, watcher, sleep, host, web, tailnet: this.tailnet, prefs, shares };
     this.rememberName(selfName(keyring.self()));
     await web.resume();
     for (const u of users.all()) {
@@ -496,11 +500,12 @@ export class Lyricad implements Drainable {
     } catch (err) {
       this.log(`the home workspace didn't mount: ${(err as Error).message.split("\n")[0]}`);
     }
-    // Wake-ups wait in the pools; their times are held while the user is unlocked, and late ones fire at the next tick.
+    // Scheduled turns wait in the encrypted pools and fire on the tick while unlocked.
     try {
       this.services!.wakeups.load(userId);
+      this.services!.routines.load(userId);
     } catch (err) {
-      this.log(`loading wake-ups failed: ${(err as Error).name}`);
+      this.log(`loading scheduled turns failed: ${(err as Error).name}`);
     }
     // Child threads a restart left working are idle now, and their parents are told.
     try {
@@ -527,11 +532,12 @@ export class Lyricad implements Drainable {
     const s = this.services!;
     // First, at once: no request or stream gets past userFor from here on.
     this.sessions.dropUser(userId);
+    s.wakeups.drop(userId);
+    s.routines.drop(userId);
     // Subagent runs record how they ended in user.db, and a sleep run in the pool, so they stop before the key goes.
     await s.delegation.stopAll(userId);
     await s.children.lock(userId);
     s.watcher.close(userId);
-    s.wakeups.drop(userId);
     await s.sleep.stop(userId);
     this.keyring.lockUser(userId);
     await s.host.close(userId);
@@ -548,7 +554,10 @@ export class Lyricad implements Drainable {
   private tick(): void {
     if (!this.services) return;
     const now = new Date();
-    if (!this.draining) this.services.wakeups.tick(now);
+    if (!this.draining) {
+      this.services.wakeups.tick(now);
+      this.services.routines.tick(now);
+    }
     const pad = (n: number) => String(n).padStart(2, "0");
     if (`${pad(now.getHours())}:${pad(now.getMinutes())}` !== this.sleepTime() || this.sleptOn === now.toDateString()) return;
     this.sleptOn = now.toDateString();
