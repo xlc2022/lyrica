@@ -162,7 +162,7 @@ if [[ $CHECK_GPU == 1 ]]; then
       say "GPUs: $(nvidia-smi --query-gpu=name --format=csv,noheader | paste -sd, -)" ;;
     amd)
       compgen -G '/dev/dri/renderD*' >/dev/null || fail "no /dev/dri/renderD*: install the amdgpu driver."
-      lsmod | grep -q '^amdgpu' || fail "the amdgpu kernel module isn't loaded."
+      lsmod | grep '^amdgpu' >/dev/null || fail "the amdgpu kernel module isn't loaded."
       choose_amd_backend ;;
     *) fail "--vendor must be nvidia or amd." ;;
   esac
