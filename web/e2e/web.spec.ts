@@ -174,6 +174,67 @@ test("a message's menu regenerates, edits, deletes with Undo, and branches", asy
   await noHorizontalScroll(page);
 });
 
+test("a code block in her reply shows its language and Copy, which copies its text and reads Copied, then Copy failed where the clipboard refuses", async ({ page, baseURL, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  // The fake model answers "reply: <markdown>" with the markdown as written; its echo would put the fence mid-line.
+  const fence = "```";
+  const code = `const wide = [${Array.from({ length: 24 }, (_, i) => `"item-${i}"`).join(", ")}];\nconsole.log(wide.length);`;
+  await send(page, ["reply: Try this:", "", `${fence}ts`, code, fence, "", "Then `npm test` again."].join("\n"));
+  // Her stored copy has replaced the live one once its menu is there.
+  await expect(page.locator("section.turn").getByRole("button", { name: "Message actions" })).toBeVisible();
+  const block = page.locator(".code-block");
+  await expect(block).toHaveCount(1);
+  await expect(block.locator(".code-lang")).toHaveText("ts");
+  // Inline code has no strip.
+  await expect(page.locator(".turn :not(pre) > code", { hasText: "npm test" })).toBeVisible();
+
+  const copy = block.getByRole("button", { name: "Copy code" });
+  await expect(copy).toHaveText("Copy");
+  if (phone(page)) {
+    const box = (await copy.boundingBox())!;
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(box.width).toBeGreaterThanOrEqual(44);
+  }
+  // A long line scrolls inside the block, never the page, and the strip stays where it is.
+  const pre = block.locator("pre");
+  expect(await pre.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  const before = await copy.boundingBox();
+  await pre.evaluate((el) => { el.scrollLeft = 200; });
+  expect(await pre.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+  expect(await copy.boundingBox()).toEqual(before);
+  await noHorizontalScroll(page);
+  await pre.evaluate((el) => { el.scrollLeft = 0; });
+
+  // With SCREENSHOTS set, light and dark copies for the UI review.
+  const shot = async (name: string) => {
+    if (!process.env.SCREENSHOTS) return;
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.screenshot({ path: `${process.env.SCREENSHOTS}/${name}-${page.viewportSize()!.width}-${colorScheme}.png` });
+    }
+    await page.emulateMedia({ colorScheme: null });
+  };
+  await shot("code-block");
+
+  await copy.click();
+  const copied = block.getByRole("button", { name: "Copied" });
+  await expect(copied).toHaveText("Copied");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(code);
+  await shot("code-block-copied");
+  // No toast, and the label goes back.
+  await expect(page.locator(".toast")).toHaveCount(0);
+  await expect(copy).toHaveText("Copy");
+
+  // Where the clipboard refuses, the label says so, and nothing else changes.
+  await page.evaluate(() => { Object.defineProperty(navigator.clipboard, "writeText", { value: () => Promise.reject(new Error("denied")) }); });
+  await copy.click();
+  await expect(block.getByRole("button", { name: "Copy failed" })).toHaveText("Copy failed");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(code);
+  await expect(copy).toHaveText("Copy");
+});
+
 test("a pinned message shows in the header's Pinned popover, and unpinning removes it", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");
@@ -475,6 +536,30 @@ test("the composer's draft survives a reload, goes once sent, and stays with its
   await page.reload();
   await loaded;
   await expect(box).toHaveValue("");
+});
+
+test("after a reply the header's Context shows the percent, and its popover lists the parts", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  const facts = page.locator(".thread-head .tfacts");
+  await expect(facts.getByRole("button", { name: /^Context/ })).toHaveCount(0);
+  await send(page, "How full is it");
+  await expect(page.getByText("You said: How full is it")).toBeVisible();
+  // From the stream's context event, without a reload.
+  const meter = facts.getByRole("button", { name: /^Context \d+%$/ });
+  await expect(meter).toBeVisible();
+  await expect(meter.locator(".num")).toHaveCSS("font-family", /Plex Mono|monospace/);
+  await meter.click();
+  const popover = page.getByRole("dialog", { name: "Context" });
+  for (const name of ["Conversation", "Free"]) {
+    const row = popover.getByRole("listitem").filter({ hasText: new RegExp(`^${name}`) });
+    await expect(row.locator(".num")).toHaveText(/^[\d,]+$/);
+  }
+  await expect(popover.getByText(/^Measured /)).toBeVisible();
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/context-${page.viewportSize()!.width}.png` });
+  await page.keyboard.press("Escape");
+  await expect(popover).toHaveCount(0);
 });
 
 test("a memory can be added, edited and restored", async ({ page, baseURL }) => {

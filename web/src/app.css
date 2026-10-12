@@ -320,6 +320,14 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
 .prose pre { background: var(--tool); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; overflow-x: auto; max-width: 100%; }
 .prose code { background: var(--tool); border-radius: 4px; padding: 0 3px; }
 .prose pre code { background: none; padding: 0; }
+/* A fenced block in a message (docs/ux.md §6, Code in a message). The strip with the language and Copy sits outside the
+   scrolling pre, so it stays put while a long line scrolls. No `.prose` before .code-block: first and last child still lose their margin. */
+.code-block { margin: 1em 0; max-width: 100%; background: var(--tool); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.code-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 0 12px; }
+.code-lang { font: 12px/1 var(--mono); color: var(--muted); }
+.code-copy { margin-left: auto; }
+.prose .code-block pre { margin: 0; padding: 2px 12px 10px; border: 0; border-radius: 0; background: none; font-size: 12px; line-height: 1.5; white-space: pre; overflow-x: auto; }
+.prose .code-block pre code { font-size: inherit; }
 .prose blockquote { margin-left: 0; padding-left: 12px; border-left: 3px solid var(--line); color: var(--muted); }
 .prose table { border-collapse: collapse; display: block; overflow-x: auto; font-size: 13px; }
 .prose th, .prose td { border: 1px solid var(--line); padding: 4px 8px; }
@@ -568,6 +576,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   .threads .trow { grid-template-columns: 32px minmax(0, 1fr); }
   button.icon-btn, button.icon.sm { width: 44px; height: 44px; min-height: 44px; }
   .head-actions button.sm { min-height: 44px; min-width: 44px; }
+  button.code-copy { min-height: 44px; min-width: 44px; }
   .chips button { min-width: 44px; }
   .check input, .showing input { width: 22px; height: 22px; }
 }
@@ -673,6 +682,27 @@ form.drawer-body { flex: 1; }
 .status[data-state="waiting"], .status[data-state="needsYou"] { background: var(--warn); }
 .status[data-state="resolved"] { background: var(--ok); }
 .threads-pop .tokens { margin: 0; padding: 2px 6px 4px; color: var(--muted); }
+/* The header's Context: the percent in warn from 80 %, danger from 95 %; the popover's bar and rows share one shade per part, all from the accent. */
+.ctx-pct[data-level="warn"] { color: var(--warn); }
+.ctx-pct[data-level="danger"] { color: var(--danger); }
+.ctx-pop { gap: 8px; padding: 10px 12px; }
+.ctx-pop p { margin: 0; }
+.ctx-total, .ctx-foot { font-size: 13px; color: var(--muted); }
+.ctx-bar { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--tool); box-shadow: inset 0 0 0 1px var(--line); }
+.ctx-bar span { height: 100%; flex: none; }
+.ctx-parts { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.ctx-parts li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 8px; align-items: center; min-height: 26px; }
+.ctx-parts i { width: 10px; height: 10px; border-radius: 3px; }
+.ctx-parts .num { font-size: 13px; }
+.ctx-pop [data-part="persona"] { background: color-mix(in oklab, var(--accent) 85%, var(--panel)); }
+.ctx-pop [data-part="about"] { background: color-mix(in oklab, var(--accent) 70%, var(--panel)); }
+.ctx-pop [data-part="memory"] { background: color-mix(in oklab, var(--accent) 58%, var(--panel)); }
+.ctx-pop [data-part="pinned"] { background: color-mix(in oklab, var(--accent) 46%, var(--panel)); }
+.ctx-pop [data-part="recall"] { background: color-mix(in oklab, var(--accent) 36%, var(--panel)); }
+.ctx-pop [data-part="tools"] { background: color-mix(in oklab, var(--accent) 26%, var(--panel)); }
+.ctx-pop [data-part="conversation"], .ctx-pop [data-part="used"] { background: var(--accent); }
+.ctx-pop [data-part="reserve"] { background: repeating-linear-gradient(135deg, var(--edge) 0 2px, transparent 2px 5px); }
+.ctx-pop [data-part="free"] { background: var(--tool); box-shadow: inset 0 0 0 1px var(--line); }
 /* A project thread's card under the message that started it. */
 /* The dot and the word carry the state (docs/ux.md §2: nothing coloured for decoration); Idle is the word alone. */
 .tcard { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 8px 12px; display: grid; gap: 4px; }

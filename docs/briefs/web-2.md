@@ -418,12 +418,11 @@ mockup doesn't draw (its only Copy is the message-level one). Design:
 
 - A fenced block gets a header strip inside the block's top edge: the
   language name on the left as a cap in mono when the fence names one
-  (nothing when it doesn't), and a **Copy** text button on the right in the
-  message actions' look (12 px, muted, no border until hover), always
-  visible, 44 px touch target on coarse pointers. Copying puts the block's
-  text on the clipboard and swaps the label to **Copied** for 2 s, no
-  toast (the message-level Copy keeps its toast; two toasts for one
-  gesture would read as a bug). `aria-label` "Copy code" and "Copied".
+  (nothing when it doesn't), and **Copy** on the right as a small
+  secondary button (ux.md §3: nothing pressable is plain grey text),
+  always visible, 44 px touch target on coarse pointers. Copying puts the
+  block's text on the clipboard and swaps the label to **Copied** for
+  2 s, no toast. `aria-label` "Copy code" and "Copied". (Built in PR 19.)
 - The block itself: 12 px/1.5 mono, the tool background, 8 px radius,
   `white-space: pre`, horizontal scroll inside the block only; the header
   strip stays put while the code scrolls.
@@ -616,6 +615,12 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   of each user's key in `self.db` (DESIGN.md "Users" and "Storage",
   contracts core/users; Li chose this over a reset that loses data). Nothing
   for sleep or the pools changes; the privacy boundary note is in DESIGN.
+- 2026-10-12, PR 18 (context meter): `src/ContextMeter.tsx`, the facts
+  line's **Context <n>% ▾** after Group with its popover of parts, Reserve
+  and Free, Measured and Last turn; `live.ts` keeps the streamed reading
+  and drops it on a rewind. The fake model's window is 32,768, so the
+  warn (80 %) and danger (95 %) colours were never seen in e2e. Left in
+  the batch: Copy on code blocks, message-text search.
 - 2026-10-12, PR 16 (drafts): the composer's unsent text is a draft on
   lyricad per thread (`GET|PUT …/threads/:pool/:id/draft`, pool schema
   step 3, cleared by a successful send), never in browser storage (Li's

@@ -1228,6 +1228,30 @@ Decided 2026-10-12 (docs/briefs/mcp.md).
 - **Budget.** MCP tools are deferred, loaded by `tool_search` when she
   needs one, and count as one tool together (principle 8).
 
+## Claude Code
+
+Anthropic forbids Claude plan sign-in in other apps, but lets a person run
+the unmodified `claude` program on their own plan. So her sandbox has that
+program, and she hands it coding and repository jobs from `bash`.
+Decided 2026-10-12 (docs/briefs/claude-code.md).
+
+- **A program, not a model.** Her chat, persona and memory never go
+  through it; no tool is added (principle 8), only one prompt line where
+  it's available.
+- **The user's own sign-in.** `claude setup-token` on their own computer;
+  the token is kept in `user.db` and never enters a sandbox. A run that may
+  use Claude Code reaches Anthropic through its own relay in `lyricad`,
+  with a capability that dies with the run, so nothing a command reads
+  can carry the token out.
+- **Off until a thread turns it on**, and never in a private or local-only
+  thread, since what it reads goes to Anthropic. Children inherit it,
+  narrower or the same.
+- **No prompts of its own:** the sandbox is the fence, and her `bash`
+  call already went through the thread's mode (the owner's call). Its
+  transcripts stay in the thread's encrypted folder.
+- **Installed by default** with the sandbox tools on NixOS (unfree,
+  allowed by itself) and by `install.sh` on Debian and Ubuntu.
+
 ## Storage, encryption and unlocking
 
 - Each user's memory and threads live in encrypted SQLite (SQLCipher): a
@@ -1372,6 +1396,11 @@ Details in [docs/sleep.md](docs/sleep.md).
   nickname: she is one identity across users.
 - She proposes changes when asked to reflect on how things have been going, and
   in her dream journal. Every change keeps a revision.
+- Her core (SOUL, STYLE and REGISTER) is in every prompt and holds at most
+  12,000 characters, measured as if her name were 40 characters long. A
+  proposal or edit that would go over is refused, so neither it nor a
+  rename makes the prompt cut it (2026-10-12). Most growth goes in topic
+  files, which have no such limit because they load only when routed.
 - A proposal comes from one user's conversation or dream, so it may carry that
   user's details. That user sees it first, and can edit it, send it on, or drop
   it. Only a proposal they send on reaches the administrators, who approve or

@@ -399,6 +399,8 @@ export class Lyricad implements Drainable {
     // Where the front door is, read at every sandbox start, so a change in web access applies to the next command.
     const workspace = new Workspace(keyring, users, {
       excludePorts: [this.port, this.servePort], frontDoor: () => web.frontDoor(), bwrap: this.opts.bwrap, pasta: this.opts.pasta,
+      // A private or local-only thread never gets Claude Code. Asked at each run, once the models below exist.
+      restricted: (u, p, thread) => isRestricted(models.callContext(u, p, thread)),
     });
     if (this.opts.selfTest !== false) {
       const refused = await workspace.selfTest();

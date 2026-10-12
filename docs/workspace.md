@@ -373,6 +373,7 @@ values are always visible next to the model badge:
 | **Repositories** | The repositories the thread clones, each with the Git account it uses (Git accounts and repositories). |
 | **Mode** | Ask, Accept edits, Plan or Auto (see Approval). |
 | **Web search, Images** | Switches for `web_search` and `web_fetch`, and for `image`. On unless turned off. |
+| **Claude Code** | Whether her sandbox runs can use Claude Code on the user's Claude plan (Claude Code). Off unless turned on; shown only in a general thread that isn't local-only, once a token is saved and the program is installed. |
 | **Do not log thread in memory** | See [memory.md](memory.md#threads-that-arent-logged). |
 
 ## Network access from tools
@@ -578,6 +579,57 @@ gives her its tools through Pi's own MCP client (DESIGN.md, "MCP servers").
   other call asks, whatever the mode, with **Allow in this thread** for
   that tool. A read-only or narrowed subagent gets no MCP servers; an
   unnarrowed writer gets its parent's, and its calls ask in both threads.
+
+## Claude Code
+
+Anthropic doesn't let other apps sign in to a Claude plan, but it does let
+a person use the unmodified `claude` program with their own plan
+(docs/briefs/claude-code.md). So she can hand Claude Code a coding or
+repository job from her `bash` tool, and it runs on the user's Claude plan.
+It isn't a model: her chat, persona and memory never go through it, and
+it adds no tool.
+
+- **Installed** with the sandbox's tools: nixpkgs' `claude-code` in the
+  NixOS sandbox tools (unfree, allowed by itself in its own import in
+  `nix/sandbox-tools.nix`, so the machine's configuration needs nothing),
+  and on Debian and Ubuntu `install.sh` puts the same version in
+  `/usr/local`. An update never installs it. `claudeCodeInstalled()` says
+  whether it is there.
+- **Signing in:** the user runs `claude setup-token` on their own
+  computer, Anthropic's own sign-in, and pastes the token it prints into
+  Settings → **Claude Code**. It is kept in their `user.db` (`settings`,
+  `claude_code.token`), never shown back, with **Remove**.
+- **Per thread:** a **Claude Code** switch in the thread drawer, off by
+  default (`thread_workspaces.claude_code`, user step 4). Children and
+  subagents inherit it, never wider; a read-only or narrowed one gets it
+  off. A private thread can't turn it on, and a local-only one is refused
+  it, since Claude Code sends what it reads to Anthropic.
+- **A run** gets Claude Code only when `Workspace.claudeCodeFor` allows
+  it: a general thread that isn't local-only, itself or any ancestor
+  (lyricad's `restricted` option; without it, never), with the switch on,
+  a saved token, and a network that reaches `api.anthropic.com`.
+- **The token never enters the sandbox.** Such a run gets its own relay
+  (`openClaudeRelay`, `core/src/workspace/claude-relay.ts`): a server in
+  `lyricad` on a random loopback port, forwarded into the run's sandbox
+  like a machine on `127.0.0.1`, that lives as long as the run. The run's
+  environment has `ANTHROPIC_BASE_URL` pointing at it and, as
+  `CLAUDE_CODE_OAUTH_TOKEN`, a random capability for this run only. The
+  relay refuses any other bearer and any path outside `/v1/`, drops the
+  run's own keys, swaps in the user's token, and passes the request to
+  `https://api.anthropic.com`, logging and keeping nothing. A command that
+  reads the environment learns only a capability that dies with the run.
+- **The wrapper** (`core/src/workspace/claude.sh`) is at
+  `/run/lyrica/bin/claude`, first on the run's PATH. It runs the real program with `CLAUDE_CONFIG_DIR` at
+  `/workspace/.claude`, in the thread's folder in the encrypted home
+  workspace, so its transcripts stay encrypted and `claude -c` continues
+  the thread's last job. It drops any other Anthropic key, turns off
+  Claude Code's update checks and telemetry, and skips its permission
+  prompts (`--permission-mode bypassPermissions`, as the owner chose): the
+  sandbox is the fence, and her `bash` call already went through the
+  thread's mode. Plan mode has no `bash`, so no Claude Code.
+- **The prompt** has one line for such a thread (`CLAUDE_CODE_LINE`):
+  `claude -p` is for coding and repository jobs worth the user's plan, never
+  conversation.
 
 ## Her own code
 

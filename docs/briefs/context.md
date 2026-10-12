@@ -99,8 +99,8 @@ compaction marker shown as one line in the web UI.
   reads 0, and compaction keeps nothing special. When pins land: count them in
   that part, re-inject them after a compaction, and add the brief's "keeps the
   pinned messages" test.
-- **The context meter UI** (the facts line and its popover) and a compaction
-  marker that expands: Web UI 2.
+- **A compaction marker that expands**: Web UI 2. (The context meter, the
+  facts line's Context and its popover, is built.)
 - **Speed in the web UI**, which the API already sends: the tok/s and prompt
   tok/s columns in Recent calls (each call's `pace`), and each copy's median
   speed in the text library (a library copy's `speed`). Web UI 2.

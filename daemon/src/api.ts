@@ -930,6 +930,10 @@ export interface ThreadSettings {
   /** Whether the server has a SearXNG address: without one, the switch gives web_fetch alone. */
   searchProvider: boolean;
   images: boolean;
+  /** Claude Code on the user's Claude plan in her sandbox runs: the switch along its ancestors (docs/workspace.md, "Claude Code"). */
+  claudeCode: boolean;
+  /** Whether the switch can do anything here: a general thread that isn't local-only, a saved token, and Claude Code installed. Without it, the drawer leaves the switch out. */
+  claudeCodeOffered: boolean;
   /** "Do not log thread in memory". */
   unlogged: boolean;
   /** Fallback: the thread's choice, or null to follow the user's default. Off, only the first model in a list answers. */
@@ -972,6 +976,7 @@ export interface ThreadSettingsChange {
   mode?: PermissionMode;
   webSearch?: boolean;
   images?: boolean;
+  claudeCode?: boolean;
   unlogged?: boolean;
   /** null follows the user's default. */
   fallback?: boolean | null;
@@ -1831,3 +1836,9 @@ export interface RollbackRequest { commit: string }
 
 /** A thread's wake-up, waiting: her note to herself stays in the pool, so only its time and ID are shown. */
 export interface WakeupInfo { id: number; dueAt: string }
+
+/** Settings → Claude Code: whether a token is saved (never the token) and whether the program is installed on this server. */
+export interface ClaudeCodeStatus { token: boolean; installed: boolean }
+
+/** Saves the token `claude setup-token` printed. */
+export interface ClaudeCodeTokenInput { token: string }
