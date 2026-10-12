@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -23,14 +23,14 @@ async function setup() {
   mkdirSync(join(home, "photos-of-me")); mkdirSync(join(folder, "uploads"), { recursive: true });
   writeFileSync(join(home, "photos-of-me", "portrait.png"), png);
   writeFileSync(join(folder, "uploads", "landscape.png"), png);
+  const workspace = new Workspace(s.keyring, s.users, { excludePorts: [] });
+  const settings = workspace.settings(s.ada.id);
   const files = new ThreadImages(() => home, () => ["threads", encodeURIComponent(thread)], async path => {
     const local = path.replace(/^\/workspace\//, "");
     if (local.includes("..") || local.startsWith("/")) throw new Error("outside the thread");
     const bytes = readFileSync(join(folder, local));
     return { stream: Readable.from([bytes]), size: bytes.length };
-  });
-  const workspace = new Workspace(s.keyring, s.users, { excludePorts: [] });
-  const settings = workspace.settings(s.ada.id);
+  }, settings);
   let date = new Date(2026, 9, 12, 10), context: Partial<CallContext> = {}, enabled = true, allowed = true;
   const asked: ApprovalRequest[] = [];
   const options = { models: s.models, threadId: thread, files, call: () => s.ctx(context), settings: () => settings,
@@ -45,6 +45,33 @@ async function setup() {
 }
 
 describe("image tool: portrait photos (principle 2)", () => {
+  it("Never refuses cloud edits of derived portraits after copying, renaming and another local edit", async () => {
+    const s = await setup(); s.settings.setPhotoCloudPolicy("never"); s.context({ localOnly: true });
+    const first = await s.run(edit);
+    const path = (first.details as { image: { paths: string[] } }).image.paths[0]!;
+    renameSync(join(s.folder, path.slice("/workspace/".length)), join(s.folder, "uploads", "renamed.png"));
+    copyFileSync(join(s.folder, "uploads", "renamed.png"), join(s.folder, "uploads", "copy.png"));
+    const input = "/workspace/uploads/copy.png";
+    expect((await s.files.read(input)).portrait).toBe(true);
+    // Reopening settings demonstrates that provenance persists in encrypted user.db.
+    const reopened = new Workspace(s.keyring, s.users, { excludePorts: [] }).settings(s.ada.id);
+    const reader = new ThreadImages(() => s.home, () => ["threads", "web%2Fa"], async () => {
+      const bytes = readFileSync(join(s.folder, "uploads", "copy.png")); return { stream: Readable.from([bytes]), size: bytes.length };
+    }, reopened);
+    try { expect((await reader.read(input)).portrait).toBe(true); } finally { reopened.close(); }
+    s.context({ localOnly: false });
+    await expect(s.run({ ...edit, image: input })).rejects.toThrow(/aren't allowed/);
+    // A different output proves the next generation gets its own hash marker.
+    const next = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+    s.workstation.server.replyImage(next);
+    s.context({ localOnly: true });
+    const second = await s.run({ ...edit, image: input });
+    const secondPath = (second.details as { image: { paths: string[] } }).image.paths[0]!;
+    expect((await s.files.read(secondPath)).portrait).toBe(true);
+    s.context({ localOnly: false });
+    await expect(s.run({ ...edit, image: secondPath })).rejects.toThrow(/aren't allowed/);
+    expect(s.heard).toEqual([]); expect(s.asked).toEqual([]);
+  });
   it("Never refuses create references, edit inputs and masks before any bytes reach cloud", async () => {
     const s = await setup(); s.settings.setPhotoCloudPolicy("never");
     for (const args of [create, edit, { action: "edit", instruction: "Add flowers", image: "/workspace/uploads/landscape.png", mask: "/photos-of-me/portrait.png" }]) {

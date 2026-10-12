@@ -14,7 +14,9 @@ afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, f
 function setup() {
   const root = mkdtempSync(join(tmpdir(), "lyrica-image-files-")); dirs.push(root);
   const home = join(root, "home"); mkdirSync(home); ensurePhotosDir(home);
-  const files = new ThreadImages(() => home, () => ["threads", "web%2Fa"], async () => ({ stream: Readable.from([png]), size: png.length }));
+  const portraits = new Set<string>();
+  const files = new ThreadImages(() => home, () => ["threads", "web%2Fa"], async () => ({ stream: Readable.from([png]), size: png.length }),
+    { isPortraitImage: hash => portraits.has(hash), recordPortraitImage: hash => { portraits.add(hash); } });
   return { root, home, files };
 }
 const has = (cmd: string) => { try { execFileSync("sh", ["-c", `command -v ${cmd}`], { stdio: "ignore" }); return true; } catch { return false; } };

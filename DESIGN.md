@@ -892,6 +892,7 @@ it's off.
 
   This rule is enforced by the `image` tool before every resolved provider
   attempt, including fallbacks; local models always remain allowed.
+  Images made from them follow the same rule.
 - **Later:** a personal LoRA, trained on the user's photos on the GPU machine
   for a closer likeness. It would be stored encrypted in their home, and loaded
   into the GPU machine's memory only for a job. Choosing a LoRA for one image

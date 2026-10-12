@@ -307,6 +307,12 @@ export class WorkspaceSettings {
     this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('images.photos.approved_day', ?)").run(day);
   }
 
+  /** Principle 2: derived portraits retain their cloud policy across copies and renames. */
+  isPortraitImage(hash: string): boolean { return this.setting(`images.portrait.sha256.${hash}`) === "1"; }
+  recordPortraitImage(hash: string): void {
+    this.db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, '1')").run(`images.portrait.sha256.${hash}`);
+  }
+
   /** The user's network defaults for threads in `pool`. */
   defaultNetwork(pool: Pool): Network {
     const stored = this.setting(`workspace.network.${pool}`);

@@ -55,7 +55,7 @@ deployment.
 | Context and pace | partly: API in #46, pins counted in #48 | the context meter and the speed columns in Recent calls, with the Models page |
 | Projects (web) | partly: #80, #100, #110, #150 | Files and images on the Project settings page, Recent calls by project (docs/briefs/projects-web.md) |
 | Context stretching | building; design in #151, #152 | docs/briefs/context-stretch.md |
-| Images | A/B committed; C built on feature/images, awaiting supervisor checks and review | Web UI is separate; real GPU and offline-render host checks (docs/briefs/images.md) |
+| Images | built in #219 | Real ComfyUI run and the separate Web UI (docs/briefs/images.md) |
 | MCP servers | built | docs/briefs/mcp.md |
 | Subscription logins | ChatGPT and Grok plans built in #169 | docs/briefs/subscription-logins.md |
 | Claude Code | built | docs/briefs/claude-code.md |

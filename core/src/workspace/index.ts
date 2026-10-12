@@ -312,7 +312,7 @@ export class Workspace {
       const id = encodeURIComponent(this.settings(t.userId).folderThread(t.threadId));
       if (!id || id === "." || id === "..") throw new Error("unusable thread id");
       return ["threads", id];
-    }, path => this.files(t).read(path));
+    }, path => this.files(t).read(path), this.settings(t.userId));
   }
 
   photos(userId: string): PortraitPhotos { return new PortraitPhotos(() => this.imageHome(userId)); }

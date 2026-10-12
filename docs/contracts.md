@@ -1315,13 +1315,16 @@ imageFiles(t): ThreadImages
 //   the thread's folder only (including the shared project folder); traversal/symlinks/nonfiles → HomeFileMissing.
 // ThreadImages.read(path): Promise<{ input: ImageInput; portrait: boolean }>; ordinary paths via ThreadFiles,
 //   /photos-of-me/<file> from that user's mounted encrypted home, refusing symlinks/traversal; at most 20 MB, PNG/JPEG/WebP.
-// ThreadImages.save(GeneratedImage[]): string[]; exclusive images/<uuid>.png in the encrypted thread folder,
+// ThreadImages.read also marks bytes whose SHA-256 was recorded as a derived portrait, regardless of path.
+// ThreadImages.save(GeneratedImage[], portrait = false): string[]; exclusive images/<uuid>.png in the encrypted thread folder,
 //   removes PNG metadata, refuses symlinks, returns /workspace/images/<uuid>.png paths.
+//   With a portrait input, records each result's SHA-256 in encrypted user.db settings before writing; descendants inherit the rule.
 photos(userId): PortraitPhotos
 // list(): PortraitPhoto[] { path; size; type }; upload(bytes): path (PNG/JPEG/WebP, 20 MB, metadata removed,
 //   exclusive generated name); remove(name): void. Every access checks the user's key and mounted home.
 settings(userId).photoCloudPolicy(): "never" | "ask" | "always" / setPhotoCloudPolicy(policy)
 settings(userId).photoCloudApproved(day): boolean / approvePhotoCloud(day) // encrypted day only; no prompt
+settings(userId).isPortraitImage(hash): boolean / recordPortraitImage(hash) // additive images.portrait.sha256.<hash> settings, no schema step
 mountHome(userId) / unmountHome(userId)   // gocryptfs; mount when the user's key becomes available; makes photos-of-me/ outside thread folders
 selfTest(): Promise<string | undefined>   // lyricad calls this at startup
 ```

@@ -110,7 +110,7 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
           if (r.endpoint.kind === "cloud" && isRestricted(o.call())) throw new CloudModelForbidden("This thread uses local models only.");
         } });
         signal?.throwIfAborted();
-        const paths = o.files.save(out.images);
+        const paths = o.files.save(out.images, portrait);
         const part: ImagePart = { type: "image", paths, model: out.resolution.label, ...(p.action === "create" ? { tier: p.tier } : {}) };
         o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: `image.${p.action}`, resolution: out.resolution });
         return { content: [{ type: "text" as const, text: `Saved ${paths.join(", ")}.` },

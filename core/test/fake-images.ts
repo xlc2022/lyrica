@@ -12,10 +12,11 @@ export async function fakeImages() {
   const host = async (name: string) => {
     const images: { action: string; body: Record<string, unknown> }[] = [];
     let down: string | false = false;
+    let output: Buffer = png;
     const ep = models.addEndpoint(ada, { name, kind: "local", baseUrl: `https://${name}.example/v1` }, { shared: true });
     // A paired host's persisted endpoint shape; TLS itself is covered by host tests.
     keyring.self().prepare("UPDATE endpoints SET api = 'host', addresses = ?, pin = ? WHERE id = ?").run(JSON.stringify([`${name}.example`]), "fake-pin", ep.id);
-    const server = { images, imagesOff(code: string | false = "unavailable") { down = code; } };
+    const server = { images, imagesOff(code: string | false = "unavailable") { down = code; }, replyImage(bytes: Buffer) { output = bytes; } };
     hostFetches.set(ep.id, (async (url: string, opts: RequestInit = {}) => {
       const path = new URL(url).pathname;
       if (path === "/host/v1/status") return Response.json({ state: "running" });
@@ -31,7 +32,7 @@ export async function fakeImages() {
       const allowed = ["recipe", "prompt", "count", "references", ...(action === "create" ? ["width", "height"] : action === "edit" ? ["image", "mask"] : ["image", "scale", "maxSize"])];
       expect(Object.keys(body).every(k => allowed.includes(k))).toBe(true);
       images.push({ action, body });
-      return Response.json({ images: Array.from({ length: body.count ?? 1 }, () => ({ png: png.toString("base64"), width: 1, height: 1, seed: 42 })), seconds: 0.1 });
+      return Response.json({ images: Array.from({ length: body.count ?? 1 }, () => ({ png: output.toString("base64"), width: 1, height: 1, seed: 42 })), seconds: 0.1 });
     }) as typeof fetch);
     const offerings = await models.discover(ada, ep.id);
     expect(offerings).toHaveLength(1);
@@ -55,4 +56,3 @@ export async function fakeImages() {
   const ctx = (opts: Partial<CallContext> = {}): CallContext => ({ userId: ada.id, pool: "general", localOnly: false, ...opts });
   return { keyring, users, models, ada, workstation, spare, ref, heard, ctx };
 }
-

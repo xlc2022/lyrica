@@ -1,11 +1,12 @@
 // Principles 2 and 4: image bytes live in the user's mounted encrypted home.
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { closeSync, constants, createReadStream, fstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { posix } from "node:path";
 import type { Readable } from "node:stream";
 import { cleanPng, type GeneratedImage, type ImageInput } from "../models/images.ts";
 import { sniffImage } from "./ops.ts";
 import { WORKDIR } from "./sandbox.ts";
+import type { WorkspaceSettings } from "./settings.ts";
 
 export const PHOTOS_DIR = "/photos-of-me";
 export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
@@ -149,7 +150,8 @@ export class PortraitPhotos {
 export class ThreadImages {
   /** home must check the key and mount on every access; thread names its relative folder in that home. */
   constructor(private readonly home: () => string, private readonly thread: () => string[],
-    private readonly readWorkspace: (path: string) => Promise<{ stream: Readable; size: number }>) {}
+    private readonly readWorkspace: (path: string) => Promise<{ stream: Readable; size: number }>,
+    private readonly portraits: Pick<WorkspaceSettings, "isPortraitImage" | "recordPortraitImage">) {}
 
   content(path: string): HomeFile {
     const home = this.home();
@@ -186,13 +188,16 @@ export class ThreadImages {
         chunks.push(bytes);
       }
     } finally { file.stream.destroy(); }
-    return { input: imageInput(Buffer.concat(chunks)), portrait: false };
+    const bytes = Buffer.concat(chunks);
+    return { input: imageInput(bytes), portrait: this.portraits.isPortraitImage(createHash("sha256").update(bytes).digest("hex")) };
   }
 
   /** Exclusive PNG names, no sidecars or prompt metadata, and no writes through a symlink. */
-  save(images: GeneratedImage[]): string[] {
+  save(images: GeneratedImage[], portrait = false): string[] {
     return inDir(this.home(), [...this.thread(), "images"], true, dir => images.map(image => {
       const png = cleanPng(image.bytes);
+      // Record before publishing the bytes so concurrent readers cannot miss the policy.
+      if (portrait) this.portraits.recordPortraitImage(createHash("sha256").update(png.bytes).digest("hex"));
       const name = `${randomUUID()}.png`;
       const fd = openSync(`/proc/self/fd/${dir}/${name}`, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
       try { writeFileSync(fd, png.bytes); } finally { closeSync(fd); }
