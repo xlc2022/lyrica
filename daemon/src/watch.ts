@@ -95,8 +95,8 @@ export class Watcher {
     const p = this.pending.get(k);
     if (!p) return;
     if (!this.o.wanted(userId, pool, project)) return void this.pending.delete(k);
-    // A turn running there: look once it's done, rather than join a message the person wrote.
-    if (this.o.host().busy(userId, pool, project)) {
+    // A turn running there: look once it's done, rather than join a message the person wrote. During an update's drain, after it.
+    if (this.o.host().busy(userId, pool, project) || this.o.host().draining) {
       p.timer = setTimeout(() => void this.look(userId, pool, project), (this.o.delayMs ?? 30_000) / 2);
       p.timer.unref?.();
       return;

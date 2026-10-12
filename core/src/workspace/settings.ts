@@ -129,7 +129,7 @@ CREATE TABLE IF NOT EXISTS panel_files (
 `;
 
 /** Machines she can work on, with the key she signs in with. Older databases call it ssh_targets; migrate renames it. */
-const MACHINES_SCHEMA = `
+export const MACHINES_SCHEMA = `
 CREATE TABLE IF NOT EXISTS machines (
   name        TEXT PRIMARY KEY,
   kind        TEXT NOT NULL DEFAULT 'ssh',
@@ -197,10 +197,7 @@ const DEFAULTS: Record<Pool, Network> = {
  * grant are an administrator's, in self.db; `allowed` reads them.
  */
 export class WorkspaceSettings {
-  constructor(private readonly db: Db, readonly allowed: () => Record<Pool, string[]>) {
-    migrate(db);
-    db.exec(WORKSPACE_SCHEMA + MACHINES_SCHEMA);
-  }
+  constructor(private readonly db: Db, readonly allowed: () => Record<Pool, string[]>) {}
 
   close(): void { this.db.close(); }
 
@@ -554,23 +551,12 @@ interface ThreadRow {
 const columnsOf = (db: Db, table: string) => (db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as { name: string }[]).map((c) => c.name);
 
 /**
- * Brings an older user.db up to date in place: the switches, the old mode
- * names, SSH targets as general machines at Ask, and a thread's target as
- * its one machine.
+ * Brings an older user.db's workspace tables up to date in place, before
+ * WORKSPACE_SCHEMA: the switches, the old mode names, SSH targets as general
+ * machines at Ask, and a thread's target as its one machine. Run by the
+ * user.db migration (migrations.ts), inside its transaction.
  */
-function migrate(db: Db): void {
-  // All or nothing: a crash halfway would leave a user.db the next start can't migrate.
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    migrateSteps(db);
-    db.exec("COMMIT");
-  } catch (err) {
-    db.exec("ROLLBACK");
-    throw err;
-  }
-}
-
-function migrateSteps(db: Db): void {
+export function upgradeWorkspace(db: Db): void {
   const columns = columnsOf(db, "thread_workspaces");
   if (!columns.length) return;
   for (const c of ["web_search", "images"]) if (!columns.includes(c)) db.exec(`ALTER TABLE thread_workspaces ADD COLUMN ${c} INTEGER NOT NULL DEFAULT 1`);

@@ -128,6 +128,9 @@ export class Sleep {
     }
   }
 
+  /** Users with a sleep run going now: what an update's drain waits for. */
+  working(): string[] { return [...this.running.keys()]; }
+
   /** Lock: the running phase stops, and the run is marked partial. Resolves once it is recorded. */
   async stop(userId: string): Promise<void> {
     const r = this.running.get(userId);

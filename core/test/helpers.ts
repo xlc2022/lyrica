@@ -2,11 +2,23 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach } from "vitest";
-import { Keyring, Models, PRONOUN_PRESETS, Users, type CallContext, type Profile } from "../src/index.ts";
+import { Keyring, Models, PRONOUN_PRESETS, Users, type CallContext, type Db, type Profile } from "../src/index.ts";
 import { fakeOpenAI } from "./fake-openai.ts";
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+
+/**
+ * Turns a migrated database back into one from before schema versions,
+ * without the tables `schemas` create, so a test can build an older layout
+ * in their place and migrate it.
+ */
+export function beforeVersions(db: Db, ...schemas: string[]): void {
+  db.pragma("foreign_keys = OFF");
+  for (const s of schemas) for (const [, table] of s.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)) db.exec(`DROP TABLE IF EXISTS ${table}`);
+  db.exec("DROP TABLE IF EXISTS meta; PRAGMA user_version = 0");
+  db.pragma("foreign_keys = ON");
+}
 
 /** A fresh, unlocked keyring in a temp dir, with cheap Argon2 settings. */
 export async function freshKeyring(): Promise<Keyring> {

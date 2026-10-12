@@ -8,7 +8,7 @@ import type { Pool } from "../types.ts";
 import type { Users } from "../users.ts";
 import { PoolReader, PoolStore, type Hit, type Item, type SearchOptions, type StoredEntry } from "./pool.ts";
 import { splitId } from "./refs.ts";
-import { POOL_SCHEMA, POOL_UPGRADES } from "./schema.ts";
+import { checkReadable, migrate } from "../migrations.ts";
 
 /**
  * Store handles for one conversation (or one sleep run). A general view holds
@@ -72,12 +72,23 @@ export class Memory {
   private open(userId: UserId, pool: Pool, readonly: boolean): Db {
     const path = join(this.users.userDir(userId), `${pool}.db`);
     const key = { raw: this.keyring.subkey(userId, `pool:${pool}`) };
-    if (readonly && !existsSync(path)) openEncrypted(path, key).exec(POOL_SCHEMA).close();
-    if (readonly) return openEncrypted(path, key, { readonly: true });
+    if (readonly && !existsSync(path)) {
+      const made = openEncrypted(path, key);
+      try { migrate(made, "pool"); } finally { made.close(); }
+    }
+    if (readonly) {
+      const db = openEncrypted(path, key, { readonly: true });
+      try { checkReadable(db, "pool"); } catch (err) { db.close(); throw err; }
+      return db;
+    }
     const db = openEncrypted(path, key);
-    db.pragma("secure_delete = ON");
-    db.exec(POOL_SCHEMA);
-    for (const u of POOL_UPGRADES) if (!db.prepare(u.check).get()) db.exec(u.sql);
+    try {
+      db.pragma("secure_delete = ON");
+      migrate(db, "pool");
+    } catch (err) {
+      db.close();
+      throw err;
+    }
     return db;
   }
 

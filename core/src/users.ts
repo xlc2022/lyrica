@@ -1,7 +1,8 @@
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { openEncrypted, USER_SCHEMA, type Db } from "./db.ts";
+import { openEncrypted, type Db } from "./db.ts";
+import { migrate } from "./migrations.ts";
 import { WrongPassword, type Keyring, type WrappedKey } from "./keyring.ts";
 import { checkProfile, type Profile } from "./profile.ts";
 
@@ -36,6 +37,8 @@ const COLUMNS = "id, login, admin, profile";
 export class Users {
   /** Unlocked against for unknown logins, so the time taken doesn't tell which names exist. */
   private dummy: Promise<WrappedKey> | undefined;
+  /** Users whose user.db this process has already migrated. */
+  private readonly migrated = new Set<string>();
 
   constructor(private readonly keyring: Keyring) {}
 
@@ -57,7 +60,8 @@ export class Users {
     const wrapped = await this.keyring.wrap(dataKey, password);
     const recovery = this.recoveryWrap(dataKey);
     mkdirSync(this.userDir(user.id), { recursive: true, mode: 0o700 });
-    openEncrypted(join(this.userDir(user.id), "user.db"), { raw: dataKey }).exec(USER_SCHEMA).close();
+    const db = openEncrypted(join(this.userDir(user.id), "user.db"), { raw: dataKey });
+    try { migrate(db, "user", { self: this.db }); } finally { db.close(); }
     dataKey.fill(0);
 
     this.db.prepare("INSERT INTO users (id, login, admin, profile, wrapped_key, recovery_wrap, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
@@ -270,10 +274,13 @@ export class Users {
     return row && toUser(row);
   }
 
-  /** Opens the user's user.db. The user must be unlocked. */
+  /** Opens the user's user.db, migrated to this release's schema the first time in this process. The user must be unlocked. */
   openUserDb(userId: string): Db {
     const db = openEncrypted(join(this.userDir(userId), "user.db"), { raw: this.keyring.userKey(userId) });
-    db.exec(USER_SCHEMA);
+    if (!this.migrated.has(userId)) {
+      try { migrate(db, "user", { self: this.db }); } catch (err) { db.close(); throw err; }
+      this.migrated.add(userId);
+    }
     return db;
   }
 

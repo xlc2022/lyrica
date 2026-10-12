@@ -1,0 +1,68 @@
+#!/bin/bash
+# lyrica-restore <snapshot folder>
+# Puts a snapshot's databases and settings back, with lyricad stopped. First
+# it checks the snapshot against its checksums, then moves every file it
+# replaces (with its -wal and -shm) into /var/lib/lyrica-snapshots/<time>-set-aside/,
+# still encrypted and never deleted: kept like a snapshot taken before a
+# contract. Then it copies the snapshot in with no stale -wal or -shm beside
+# a database, so SQLite never applies an old log to it. See docs/daemon.md, "Updates".
+set -euo pipefail
+. "${LYRICA_UPDATER_LIB:-/usr/local/lib/lyrica-update}/common.sh"
+
+[ $# = 1 ] || die "usage: lyrica-restore <snapshot folder>"
+SRC=$(realpath -e -- "$1")
+need_root_or_service
+lyricad_active && die "stop lyricad first"
+case "$SRC" in "$SNAPSHOTS"/*) ;; *) die "$SRC isn't in $SNAPSHOTS" ;; esac
+[ -f "$SRC/meta.json" ] || die "$SRC has no meta.json"
+
+exec 9>"$UPDATE/snapshot.lock"
+flock 9
+
+# Every file present and unchanged, before anything moves.
+while IFS=$'\t' read -r path size sum; do
+  case "$path" in /*|*..*) die "an unsafe path in meta.json" ;; esac
+  [ -f "$SRC/$path" ] || die "the snapshot lacks $path"
+  [ "$(stat -c %s "$SRC/$path")" = "$size" ] || die "$path in the snapshot has the wrong size"
+  [ "$(sha256sum <"$SRC/$path" | cut -d' ' -f1)" = "$sum" ] || die "$path in the snapshot doesn't match its checksum"
+done < <(jq -r '.files[] | [.path, (.size | tostring), .sha256] | @tsv' "$SRC/meta.json")
+
+# Set aside what is there now: the snapshot's files, and every database and log it would leave behind.
+AT=$(now)
+ASIDE="$SNAPSHOTS/$(date -u +%Y%m%dT%H%M%SZ)-set-aside"
+[ -e "$ASIDE" ] && ASIDE="$ASIDE-$$"
+mkdir -m 0700 "$ASIDE"
+mapfile -t CURRENT < <(state_files)
+moved=()
+for f in "${CURRENT[@]}"; do
+  for x in "$f" "$f-wal" "$f-shm"; do
+    [ -e "$STATE/$x" ] || continue
+    mkdir -p "$ASIDE/$(dirname "$x")"
+    mv -- "$STATE/$x" "$ASIDE/$x"
+    moved+=("$(jq -nc --arg p "$x" --argjson s "$(stat -c %s "$ASIDE/$x")" --arg h "$(sha256sum <"$ASIDE/$x" | cut -d' ' -f1)" '{path: $p, size: $s, sha256: $h}')")
+  done
+done
+MINREADER=$(releases_json | jq -c '.minReader // {self: 0, user: 0, pool: 0}')
+printf '%s\n' "${moved[@]}" | jq -s --arg at "$AT" --arg c "$(current_commit)" --argjson m "$MINREADER" \
+  '{at: $at, commit: $c, minReader: $m, kind: "set-aside", files: .}' >"$ASIDE/meta.json"
+write_json "$UPDATE/releases.json" --arg d "$ASIDE" --arg at "$AT" --arg c "$(current_commit)" --argjson m "$MINREADER" \
+  '.snapshots = ((.snapshots // []) + [{dir: $d, at: $at, commit: $c, minReader: $m, kind: "set-aside", pinned: true}])'
+
+# The snapshot back in place, owned by the service user.
+while IFS= read -r path; do
+  if [ ! -d "$STATE/$(dirname "$path")" ]; then
+    mkdir -p -m 0700 "$STATE/$(dirname "$path")"
+    if [ "$(id -u)" = 0 ]; then chown "$SERVICE_USER:$SERVICE_USER" "$STATE/$(dirname "$path")"; fi
+  fi
+  cp -- "$SRC/$path" "$STATE/$path"
+  own_state_file "$STATE/$path"
+done < <(jq -r '.files[].path' "$SRC/meta.json")
+for f in $(jq -r '.files[].path | select(endswith(".db"))' "$SRC/meta.json"); do
+  rm -f -- "$STATE/$f-shm"
+  jq -e --arg w "$f-wal" '.files | any(.path == $w)' "$SRC/meta.json" >/dev/null || rm -f -- "$STATE/$f-wal"
+done
+
+# The databases now hold what the snapshot held: so does what a release must read.
+write_json "$UPDATE/releases.json" --argjson m "$(jq -c '.minReader' "$SRC/meta.json")" '.minReader = $m'
+say "restored $(basename "$SRC"); what it replaced is in $(basename "$ASIDE")"
+echo "$ASIDE"

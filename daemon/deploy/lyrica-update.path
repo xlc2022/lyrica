@@ -1,0 +1,11 @@
+# Starts lyrica-update.service when lyricad writes a request into its own
+# state folder (the folder is never granted to a thread). See docs/daemon.md, "Updates".
+[Unit]
+Description=Lyrica's update requests
+
+[Path]
+PathExists=/var/lib/lyrica/updates/request.json
+Unit=lyrica-update.service
+
+[Install]
+WantedBy=multi-user.target
