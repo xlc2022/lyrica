@@ -49,6 +49,7 @@ unlockSelf(passphrase: string): Promise<void>            // self.db only
 unlockUser(userId: string, password: string): Promise<void>
 saveUserKey(userId) / forgetSavedKey(userId) / hasSavedKey(userId)   // "save credentials"
 saveSelfPassphrase(p) / forgetSelfPassphrase() / hasSavedPassphrase()
+changeSelfPassphrase(current, next): Promise<void>        // rekeys self.db; wrong current is WrongPassword
 unlockSaved(): Promise<boolean>                           // at start: the saved passphrase
 loadSavedKey(userId): Promise<boolean>                    // at start: each saved user key
 closeSelf(): void                                         // locks self.db again
@@ -76,6 +77,7 @@ lockUser(userId: string): void
   `systemd-creds decrypt --user --name=lyrica_<name> <file> -`, reading plaintext only from stdout into
   memory. Missing, failed or empty credentials stay locked; logs contain
   only the credential name/id and error class, never stderr or secrets.
+- Changing the self.db passphrase (`POST /api/u/:userId/admin/passphrase/change` with `PassphraseRotate { current, next }`, administrators; `lyrica admin passphrase`) rekeys self.db in place and re-saves a saved passphrase (if the re-save fails, the saved copy is removed and the response carries a note to save it again); a wrong `current` is `403`. See [daemon.md](daemon.md).
 
 ## core/users
 

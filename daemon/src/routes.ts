@@ -1420,6 +1420,13 @@ export function apiRoutes(d: Lyricad): Route[] {
       else await d.keyring.forgetSelfPassphrase();
       return adminStatus(d);
     }),
+    route("POST", `${u}/admin/passphrase/change`, async (r) => {
+      d.adminFor(r);
+      const { current, next } = await r.json<Api.PassphraseRotate>();
+      // Guesses at the current passphrase count on the limiter, like a login.
+      const done = await limited(d, [`passphrase:${r.ip}`], () => d.keyring.changeSelfPassphrase(String(current ?? ""), String(next ?? "")), "That isn't the current passphrase.", 403);
+      return { ...adminStatus(d), ...(done.savedCopyRemoved ? { note: "Changed. The saved copy couldn't be updated and was removed; save it again." } : {}) };
+    }),
     route("GET", `${u}/admin/users`, (r) => s().users.listUsers(d.adminFor(r)).map(card)),
     route("POST", `${u}/admin/users`, async (r) => {
       d.adminFor(r);

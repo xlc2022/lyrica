@@ -14,6 +14,7 @@ import { modelsAdmin, MODELS_USAGE } from "./models.ts";
 const USAGE = `usage:
   lyrica admin setup-code         (first run: the setup page's code, addresses and fingerprint)
   lyrica admin init               (first run from a terminal instead of the setup page)
+  lyrica admin passphrase         (change the self.db passphrase)
   lyrica admin user add <login> [--admin]
   lyrica admin user list
   lyrica admin user set-admin <login> on|off
@@ -129,6 +130,15 @@ async function admin(args: string[], home: string): Promise<void> {
     return;
   }
   if (sub === "setup-code") return setupCode(home);
+  if (sub === "passphrase") {
+    // A running lyricad holds self.db open with the old key: rekeying the file under it would break it.
+    if (existsSync(join(home, "lyricad.sock"))) throw new Error("lyricad is running: change the passphrase under Administration, or stop lyricad first");
+    const current = await ask("Current self.db passphrase: ", true);
+    await keyring.unlockSelf(current);
+    await keyring.changeSelfPassphrase(current, await askNew("New self.db passphrase: "));
+    console.log("Passphrase changed.");
+    return;
+  }
   if (sub !== "user" && sub !== "grants" && sub !== "ssh" && sub !== "proxmox" && sub !== "net" && sub !== "models") throw new Error(USAGE);
 
   await keyring.unlockSelf(await ask("self.db passphrase: ", true));
