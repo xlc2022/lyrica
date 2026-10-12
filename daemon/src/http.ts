@@ -135,7 +135,8 @@ export function checkOrigin(req: IncomingMessage): void {
 
 /** Headers on every response: a strict CSP, no framing, no sniffing, no referrer. No CORS headers, ever. */
 export const SECURITY_HEADERS: Record<string, string> = {
-  "content-security-policy": "default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+  // style-src allows inline styles: the emoji picker (a custom element) styles its shadow root with a <style> it injects. Scripts stay 'self'.
+  "content-security-policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
   "x-frame-options": "DENY",
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",

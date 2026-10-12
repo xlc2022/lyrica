@@ -1,4 +1,5 @@
 // Talking to lyricad. The types all come from daemon/src/api.ts.
+import { her } from "./name.ts";
 import type { Pool } from "@lyrica/daemon/api";
 
 export type * from "@lyrica/daemon/api";
@@ -6,6 +7,8 @@ export { THREAD_TASKS } from "@lyrica/daemon/api";
 
 /** A refused request, with lyricad's reason in plain words. */
 export class HttpError extends Error {
+  /** 409 while an update drains: the message stays in the box (docs/daemon.md "Updates"). */
+  updating?: boolean;
   constructor(readonly status: number, message: string) { super(message); }
 }
 
@@ -15,7 +18,7 @@ const PLAIN: Record<number, string> = {
   404: "That doesn't exist any more.",
   413: "That file is too large.",
   429: "Too many attempts. Wait a little and try again.",
-  503: "Lyrica is locked.",
+  503: "She is locked.",
 };
 
 /** Called on 401 and 503, so the app can go back to login or unlock. */
@@ -33,7 +36,7 @@ export async function request<T>(method: string, path: string, body?: unknown, i
       ...init,
     });
   } catch {
-    throw new HttpError(0, "Lyrica can't be reached. Check the connection.");
+    throw new HttpError(0, `${her()} can't be reached. Check the connection.`);
   }
   if (!res.ok) throw await errorFrom(res);
   const text = await res.text();
@@ -45,7 +48,9 @@ export async function errorFrom(res: Response): Promise<HttpError> {
   if (res.status === 401 || res.status === 503) onAuthLost(res.status);
   const data = safeJson(await res.text().catch(() => ""));
   const reason = data && typeof data === "object" && "error" in data ? sentence(String(data.error)) : "";
-  return new HttpError(res.status, reason || PLAIN[res.status] || `Something went wrong (${res.status}).`);
+  const err = new HttpError(res.status, reason || (res.status === 503 ? `${her()} is locked.` : PLAIN[res.status]) || `Something went wrong (${res.status}).`);
+  if (data && typeof data === "object" && "updating" in data && data.updating === true) err.updating = true;
+  return err;
 }
 
 /** lyricad's reasons are lower-case phrases; show them as sentences. */

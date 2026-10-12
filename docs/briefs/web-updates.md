@@ -45,4 +45,9 @@ Administration → Updates. Plus the merge notice to the project chat.
 
 ## Handoff notes
 
-(The thread fills this in if it stops before it's done.)
+- 2026-10-12 (Web UI 2, the combined PR): built as `web/src/Updates.tsx`
+  (Administration → Updates), the `rollback` notification in
+  `daemon/src/notifications.ts`, and the Updating send error in
+  `web/src/Thread.tsx`. Docs in docs/web.md and docs/daemon.md. The
+  section is exercised by the setup e2e only where no updater is installed;
+  the updater's states are covered by the daemon's tests of `readUpdates`.

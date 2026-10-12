@@ -4,13 +4,18 @@ import {
   get, put, u,
   type WebAccess, type WebAccessChange, type WebAccessSnippet, type WebAccessStatus, type WebMode,
 } from "./api.ts";
+import { her } from "./name.ts";
 import { ErrorText, Switch, useAction, useLoad } from "./ui.tsx";
 
-const MODES: { mode: WebMode; label: string; hint: string }[] = [
-  { mode: "off", label: "Only this machine", hint: "Nothing listens beyond 127.0.0.1." },
-  { mode: "builtin", label: "Built-in Caddy", hint: "Lyrica runs Caddy on the addresses you pick, with a certificate for your hostname from a DNS challenge." },
-  { mode: "external", label: "A proxy elsewhere", hint: "Another machine's proxy forwards to an address here." },
+const MODES: { mode: WebMode; label: string; hint: () => string }[] = [
+  { mode: "off", label: "Only this machine", hint: () => "Nothing listens beyond 127.0.0.1." },
+  { mode: "direct", label: "Direct", hint: () => `${her()}'s own HTTPS on this machine's addresses, with a certificate she made; a browser trusts it once by its fingerprint.` },
+  { mode: "tailnet", label: "Tailnet", hint: () => "HTTPS at her tailnet name through Tailscale, for every device on the tailnet." },
+  { mode: "builtin", label: "Built-in Caddy", hint: () => `${her()} runs Caddy on the addresses you pick, with a certificate for your hostname from a DNS challenge.` },
+  { mode: "external", label: "A proxy elsewhere", hint: () => "Another machine's proxy forwards to an address here." },
 ];
+/** Modes with a hostname of the user's own. */
+const NAMED: WebMode[] = ["builtin", "external"];
 
 export function WebAccessSection({ userId }: { userId: string }) {
   const path = u(userId, "admin", "web-access");
@@ -49,7 +54,7 @@ function WebAccessForm({ path, access, onSaved }: { path: string; access: WebAcc
   const saved = (field: string) => b?.provider === provider && b.credentials[field]?.set;
 
   const save = () => run(async () => {
-    const change: WebAccessChange = { mode, ...(mode !== "off" && { name: name.trim() }) };
+    const change: WebAccessChange = { mode, ...(NAMED.includes(mode) && { name: name.trim() }) };
     if (mode === "builtin") {
       // Secret fields left empty keep their saved values.
       const creds = Object.fromEntries(Object.entries(credentials).filter(([, v]) => v !== ""));
@@ -67,17 +72,30 @@ function WebAccessForm({ path, access, onSaved }: { path: string; access: WebAcc
   return (
     <form className="stack" onSubmit={(ev) => { ev.preventDefault(); void save(); }}>
       <fieldset className="group" disabled={busy}>
-        <legend>How Lyrica is reached</legend>
+        <legend>How {her()} is reached</legend>
         {MODES.map((m) => (
           <label key={m.mode} className="switch">
             <input type="radio" name="web-mode" checked={mode === m.mode} onChange={() => setMode(m.mode)} />
             <span>{m.label}</span>
-            <small>{m.hint}</small>
+            <small>{m.hint()}</small>
           </label>
         ))}
       </fieldset>
 
-      {mode !== "off" && (
+      {mode === "direct" && (
+        <dl className="facts" aria-label="Direct">
+          <dt>Addresses</dt><dd>{access.direct ? access.direct.addresses.map((a) => <div key={a} className="mono">https://{a.includes(":") ? `[${a}]` : a}:{access.direct!.port}</div>) : <span className="muted">This machine has no LAN or Tailscale address.</span>}</dd>
+          {access.direct && <><dt>Fingerprint</dt><dd className="mono small">{access.direct.fingerprint}</dd></>}
+        </dl>
+      )}
+      {mode === "tailnet" && (
+        <dl className="facts" aria-label="Tailnet">
+          <dt>Name</dt><dd>{access.tailnet ? <span className="mono">https://{access.tailnet.dnsName}</span> : <span className="muted">Not on a tailnet yet: join one under Tailnet first.</span>}</dd>
+          {access.tailnet && <><dt>Certificate</dt><dd>{access.tailnet.certificates ? "From Tailscale" : "Not issued yet"}</dd></>}
+        </dl>
+      )}
+
+      {NAMED.includes(mode) && (
         <label className="field"><span>Hostname</span>
           <input value={name} placeholder="lyrica.example.net" autoCapitalize="none" disabled={busy} onChange={(ev) => setName(ev.target.value)} />
           <small className="muted">The address you'll open in the browser, for example lyrica.example.net. Its DNS record should point at this machine's Tailscale address.</small>
@@ -150,7 +168,7 @@ function WebAccessForm({ path, access, onSaved }: { path: string; access: WebAcc
 
       <ErrorText error={error} />
       {busy && <p className="muted" role="status">Applying… {elapsed} s. A new hostname can take up to 90 s while its certificate is checked; the old setup keeps running until then.</p>}
-      <div className="row"><button className="primary" disabled={busy || (mode !== "off" && !name.trim())}>Apply</button></div>
+      <div className="row"><button className="primary" disabled={busy || (NAMED.includes(mode) && !name.trim())}>Apply</button></div>
     </form>
   );
 }
@@ -174,11 +192,11 @@ function Status({ status, error, onRefresh, staging }: { status?: WebAccessStatu
       {staging && <p className="warn-text" role="status">Testing with untrusted certificates: browsers will warn about this hostname until you turn it off under Advanced.</p>}
       {status && (
         <dl className="facts">
-          {status.name && <><dt>Hostname</dt><dd>{status.name}</dd></>}
+          {status.name && NAMED.includes(status.mode) && <><dt>Hostname</dt><dd>{status.name}</dd></>}
           {status.caddy && (
             <>
               <dt>Caddy</dt>
-              <dd>{!status.caddy.answers ? "Not answering" : !status.caddy.configured ? "Running without a site: its saved setup couldn't load" : status.caddy.applied ? "Running Lyrica's setup" : "Running a different setup"}</dd>
+              <dd>{!status.caddy.answers ? "Not answering" : !status.caddy.configured ? "Running without a site: its saved setup couldn't load" : status.caddy.applied ? `Running ${her()}'s setup` : "Running a different setup"}</dd>
             </>
           )}
           {status.certificate && (
@@ -192,6 +210,19 @@ function Status({ status, error, onRefresh, staging }: { status?: WebAccessStatu
             <>
               <dt>Last certificate error</dt>
               <dd className="error">{status.lastAcmeError.message} <span className="muted">({status.lastAcmeError.at.slice(0, 16).replace("T", " ")})</span></dd>
+            </>
+          )}
+          {status.direct && (
+            <>
+              <dt>Direct</dt>
+              <dd>{status.direct.listening.length ? status.direct.listening.map((a) => <div key={a} className="mono">https://{a.includes(":") ? `[${a}]` : a}:{status.direct!.port}</div>) : <span className="muted">Not listening</span>}</dd>
+              <dt>Fingerprint</dt><dd className="mono small">{status.direct.fingerprint}</dd>
+            </>
+          )}
+          {status.tailnet && (
+            <>
+              <dt>Tailnet</dt>
+              <dd><span className="mono">https://{status.tailnet.dnsName}</span>{" "}{status.tailnet.answers ? <span className="status-word"><span className="dot up" />Answers</span> : <span className="error">{status.tailnet.error ?? "Doesn't answer yet"}</span>}</dd>
             </>
           )}
           {status.external && (

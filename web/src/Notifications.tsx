@@ -17,6 +17,7 @@ const TYPES: Record<NotificationType, { glyph: string; label: string }> = {
   approval: { glyph: "✓", label: "Persona change" },
   suggestion: { glyph: "✎", label: "Persona suggestion" },
   sleep: { glyph: "☾", label: "Last night" },
+  rollback: { glyph: "↶", label: "Update rolled back" },
 };
 const PAGE = 20;
 type Sort = "newest" | "oldest" | "type" | "scope";

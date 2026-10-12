@@ -76,7 +76,8 @@ class Users {
   createUser(login, password, profile: Omit<Profile, "previousNames">, { admin }): Promise<User>  // first user must be admin
   authenticate(login, password): Promise<User>               // also unlocks the user's key; Argon2 runs for unknown logins too
   changePassword(user, oldPassword, newPassword): Promise<void>  // rewraps the same data key; clears passwordSetBy
-  setPassword(actor: User, target: User, newPassword): Promise<void>  // admin; the key from its recovery copy, under the new password; NoRecoveryCopy if none yet
+  setPassword(actor: User, actorPassword, target: User, newPassword): Promise<void>  // admin, confirming their own password (AuthError); the key from its recovery copy, under the new password; NoRecoveryCopy if none yet
+  checkPassword(user: User, password): Promise<boolean>     // is it theirs; unlocks nothing
   passwordSetBy(userId): { by; at } | undefined              // an administrator set it and the user hasn't changed it since
   ensureRecoveryCopy(userId): void                           // writes the copy for a user from before, once their key is in memory
   setAdmin(actor: User, target: User, admin: boolean): void  // refuses to demote the last admin
@@ -201,6 +202,7 @@ nothing else. No code path gives a general view a private handle.
 |---|---|
 | Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title?, project?, goal? })` (a child of a child is refused), `setProject`, `setGoal`, `projectOf`, `projectThreads`, `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared), `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)`, `copyEntries(from, to, { upTo? })` (a thread's entries into another, for forks and branches), `exportEntries(threadId)` → `ExportedEntry[]` (the conversation alone, for Share with: `conversationOnly` drops her context, memory tool calls and results and thinking, and strips citations; `MEMORY_TOOLS` names the tools), `importEntries(threadId, entries)` (into an empty thread of this pool, as its own, indexed, entries), `entriesMentioning(needle)` → `{ thread, n }[]` (where an upload is still mentioned) |
 | Pins | `pinEntry(threadId, n, pinned)`, `pins(threadId?)` → `PinnedEntry[]` (one thread's, or the pool's), oldest first |
+| Reactions | `react(threadId, n, emoji, by, on)` → `Reaction[]` (`{ emoji, by: string[] }`, `by` user IDs or `LYRICA_REACTS`); `entryPage` entries carry `reactions`. Pool schema step 2 (`entries.reactions`, JSON) |
 | Projects | `pageForProject(threadId)`, `projectNotes(threadId, since?)` |
 | Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
@@ -670,6 +672,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `threads`, in every hosted thread but a subagent's
     (`createThreadsExtension(thread, host?, meter?)`; Child threads; see
     [delegate](#delegate));
+  - `react({ emoji, message?, remove? })`, in every hosted thread but a
+    subagent's (`createReactExtension(thread, { reacted(n, reactions) })`):
+    writes through the thread's own view and tells lyricad, which publishes
+    the `reactions` event. `LyricaOptions.reactions()` hands the extension
+    the user's reactions since her last turn; `reactionLines` puts them in
+    the turn message as `<reactions>`;
   - `calendar` and `sort` (Integrations thread);
   - `image`, with `create` and `edit` (Images thread);
   - `web_search` and `web_fetch` (research, carried over from v1 or taken from
