@@ -303,8 +303,9 @@ takes is `lyrica@pve!agent=<that secret>`.
   mount units, with credentials in system config). Once mounted, they're
   ordinary paths an administrator can add to a user's grant lists. Lyrica never
   handles share credentials.
-- **Her own code.** Later, when she edits her own code, her repository checkout
-  is simply another grant.
+- **Her own code.** When she edits her own code, the repository is granted to
+  threads like a folder, from a Git account in Settings (DESIGN.md, "Updates
+  and self-editing"; built from docs/briefs/repositories.md).
 
 ## The home workspace and uploads
 

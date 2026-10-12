@@ -970,8 +970,8 @@ web part and sleep's project page are not yet. The briefs are
   notes and no page from sleep; its instructions still apply.
 - **Files.** The project chat's folder is the project folder, granted to
   each of its threads (read-only to a read-only thread), shown in each
-  thread's Files panel as a root named after the project. A folder or
-  machine taken off the project chat leaves its running threads at once
+  thread's Files panel as a root named after the project. A folder,
+  machine or repository taken off the project chat leaves its running threads at once
   (decided 2026-10-11; folders in
   [briefs/folder-narrowing.md](docs/briefs/folder-narrowing.md)). Two threads may
   write one file; her guidance is a subfolder per thread for its outputs.
@@ -995,8 +995,8 @@ web part and sleep's project page are not yet. The briefs are
     card, with **Start** per thread and **Start all**.
   - **Project settings** is a page with sections: General (Goal; Threads,
     the model and thinking new threads start with; Paused; then the project
-    chat's own settings under **This chat**, including the **Folders** and
-    **Machines** every thread of the project inherits), Memory
+    chat's own settings under **This chat**, including the **Folders**,
+    **Machines** and **Repositories** every thread of the project inherits), Memory
     (Instructions, and a link to the project page in the memory browser),
     and **Files and
     images** (Files | Images), where the project folder is managed. Files in the header stays the quick view.
@@ -1534,13 +1534,58 @@ from Monika's runbooks.
   issue linked to the tag.
 - **Updates are manual.** An administrator presses **Update** in
   Administration. She can say an update is ready; she can't press it.
-- **Her own code** is a checkout granted like any folder, to general
-  threads only: the code goes to GitHub and CI, so private memory
-  never reaches a commit. She works like a feature thread: one branch and
-  one pull request per piece of work, typecheck and tests in her sandbox.
+- **Git accounts and repositories** (decided 2026-10-12 from
+  `/mnt/project-files/repositories/proposal.md`; replaces the
+  administrator-named checkout). A **Git account** is a row in Settings
+  like a machine: a kind (GitHub, Forgejo, Gitea or Other), a host, an
+  account name, a token kept encrypted in `user.db` and never shown back,
+  and a pool. Several accounts, two on one host included. A private account
+  is self-hosted on her own network (LAN, loopback or tailnet, the private
+  machines' check, with **Off network** and its dialog when that stops
+  holding), never GitHub. A **repository** (`owner/name` and the account
+  it uses) is granted to a thread like a folder: a Repositories row in the
+  thread drawer and under This chat in Project settings, so every thread of
+  the project gets them, narrower or the same; she may add one to a thread
+  from an account of its pool, with the user's approval, like any change
+  that reaches beyond the thread.
+  Each thread clones its repositories into its own folder in the encrypted
+  home workspace (`repos/<name>`), fetched at the start of a turn, so two
+  threads never share a working tree. A clone goes only with its thread:
+  when a repository leaves a thread (removed, narrowed away, its account
+  removed or moved to the other pool), the credential stops at once and
+  the clone stays, since it may hold her unpushed work and she deletes
+  only what she downloaded. A
+  sandbox run gets a repository's token only when the thread's pool is the
+  account's, the thread has the repository, and the run can reach the host
+  (internet on, or an allowed host); it travels in the environment only, as
+  a git credential bound to that repository's URL, never on a command
+  line or in a file, so two accounts on one host never mix. The forge
+  clients are thin wrappers in the tools image: `gh` picks its token by
+  the current repository's remote, so two GitHub accounts in one thread
+  stay apart; `tea` reads its logins from a config file, so the wrapper
+  writes one from the environment onto the run's tmpfs, gone when the run
+  ends and never in the workspace, the one place a token touches a file.
+  A repository or account taken away leaves running threads at once, as a
+  folder or machine does. Tokens only, no SSH keys; `gh` for GitHub,
+  `tea` for Gitea and Forgejo, plain git for Other.
+- **Git etiquette** (Li, 2026-10-12). A short Git guide ships with the code
+  and is in the prompt of every turn of a thread that has repositories:
+  never commit on the default branch, one branch per piece of work named
+  for it; small commits with clear messages, never a secret or private
+  memory; fetch and merge or rebase the base before pushing, no force-push
+  on a shared branch; a pull request, then wait for CI and never merge on
+  red, using the forge's merge queue or auto-merge where there is one;
+  delete merged branches. Project instructions override these defaults,
+  and the guide says so. Her self-primer's section is the Lyrica-specific
+  part on top of it.
+- **Her own code** is the `xlc2022/lyrica` repository in her "Lyrica"
+  project, with her own account, so every thread there clones it; a
+  private thread can't have it, because her account is general and the
+  code goes to the forge and CI. She works like a feature thread: one
+  branch and one pull request per piece of work, typecheck and tests in
+  her sandbox.
 - **Her own GitHub account**, a collaborator with a fine-grained token for
-  this repository (contents, pull requests), stored encrypted in her user's
-  settings and handed to the sandbox only in a thread with the checkout.
+  this repository (contents, pull requests), is one of her Git accounts.
   She pushes branches to the repository itself, never a fork, so her pull
   requests run the same CI as Claude's on Li's runners (docs/ci.md), with
   no first-time-contributor approval. `main` is protected: pull requests
@@ -1581,10 +1626,10 @@ from Monika's runbooks.
   its command-line client in her sandbox (`gh` today), with no tool of
   her own; the updater needs only git and a read-only key; update notes
   are git tags; CI is Actions-syntax workflows. Moving to Forgejo or
-  Gitea means re-creating her account, token and branch protection
-  there, running their Actions runner on Li's VMs with the same label,
-  and swapping the client (`tea` or `fj`), plus `CODEOWNERS` and the
-  branch limit in that forge's own rules. Claude's project threads
+  Gitea means adding a Git account of that kind, re-creating her account
+  and branch protection there, running their Actions runner on Li's VMs
+  with the same label, plus `CODEOWNERS` and the branch limit in that
+  forge's own rules; the client (`tea`) follows the account's kind. Claude's project threads
   are the part that is tied to GitHub.
 - **The outer net is the operator's:** a scheduled Proxmox backup of the
   container. The updater can't snapshot the container it runs in.
