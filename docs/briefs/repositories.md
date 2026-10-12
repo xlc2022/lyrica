@@ -12,7 +12,7 @@ docs/contracts.md `core/workspace` (the planned Git accounts entries),
 docs/ux.md (the Git account and A thread's repositories rows), docs/web.md
 "Thread settings drawer" and "Project settings page", PR #141 as it stands,
 and `/mnt/project-files/repositories/proposal.md` for the reasoning and
-Li's decisions (2026-10-12).
+the owner's decisions (2026-10-12).
 
 ## Goal
 
@@ -20,7 +20,7 @@ She works on code the way Claude's threads do here: a project lists
 repositories, every thread of it clones its own copy, and her credentials
 come from a list of Git accounts that covers several GitHub accounts and
 self-hosted Forgejo or Gitea (principle 6 within principle 2's structural
-boundaries; principle 1: what Li sets up once lives in one place). This
+boundaries; principle 1: what the user sets up once lives in one place). This
 replaces #141's administrator-named checkout and `lyrica admin code`. What
 #141 built for the token's handling, `CODEOWNERS`, the self-primer and `gh`
 in the sandbox carries over.

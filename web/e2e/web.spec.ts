@@ -7,7 +7,7 @@ test.describe.configure({ mode: "serial" });
 
 const phone = (page: Page) => (page.viewportSize()?.width ?? 1000) < 760;
 
-/** Unlocks and logs in as needed, and makes sure li has a cloud and a local endpoint. Returns li's user ID. */
+/** Unlocks and logs in as needed, and makes sure ada has a cloud and a local endpoint. Returns ada's user ID. */
 async function enter(page: Page, baseURL: string): Promise<string> {
   await page.goto("/");
   const passphrase = page.getByLabel("Passphrase");
@@ -20,7 +20,7 @@ async function enter(page: Page, baseURL: string): Promise<string> {
     await expect(login.or(signedIn)).toBeAttached();
   }
   if (await login.isVisible()) {
-    await login.fill("li");
+    await login.fill("ada");
     await page.getByLabel("Password").fill("pw");
     await page.getByRole("button", { name: "Log in" }).click();
   }
@@ -172,6 +172,67 @@ test("a message's menu regenerates, edits, deletes with Undo, and branches", asy
   await page.keyboard.press("1");
   await expect(page.locator(".mode-picker > button")).toContainText("Ask");
   await noHorizontalScroll(page);
+});
+
+test("a code block in her reply shows its language and Copy, which copies its text and reads Copied, then Copy failed where the clipboard refuses", async ({ page, baseURL, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  // The fake model answers "reply: <markdown>" with the markdown as written; its echo would put the fence mid-line.
+  const fence = "```";
+  const code = `const wide = [${Array.from({ length: 24 }, (_, i) => `"item-${i}"`).join(", ")}];\nconsole.log(wide.length);`;
+  await send(page, ["reply: Try this:", "", `${fence}ts`, code, fence, "", "Then `npm test` again."].join("\n"));
+  // Her stored copy has replaced the live one once its menu is there.
+  await expect(page.locator("section.turn").getByRole("button", { name: "Message actions" })).toBeVisible();
+  const block = page.locator(".code-block");
+  await expect(block).toHaveCount(1);
+  await expect(block.locator(".code-lang")).toHaveText("ts");
+  // Inline code has no strip.
+  await expect(page.locator(".turn :not(pre) > code", { hasText: "npm test" })).toBeVisible();
+
+  const copy = block.getByRole("button", { name: "Copy code" });
+  await expect(copy).toHaveText("Copy");
+  if (phone(page)) {
+    const box = (await copy.boundingBox())!;
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(box.width).toBeGreaterThanOrEqual(44);
+  }
+  // A long line scrolls inside the block, never the page, and the strip stays where it is.
+  const pre = block.locator("pre");
+  expect(await pre.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  const before = await copy.boundingBox();
+  await pre.evaluate((el) => { el.scrollLeft = 200; });
+  expect(await pre.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+  expect(await copy.boundingBox()).toEqual(before);
+  await noHorizontalScroll(page);
+  await pre.evaluate((el) => { el.scrollLeft = 0; });
+
+  // With SCREENSHOTS set, light and dark copies for the UI review.
+  const shot = async (name: string) => {
+    if (!process.env.SCREENSHOTS) return;
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.screenshot({ path: `${process.env.SCREENSHOTS}/${name}-${page.viewportSize()!.width}-${colorScheme}.png` });
+    }
+    await page.emulateMedia({ colorScheme: null });
+  };
+  await shot("code-block");
+
+  await copy.click();
+  const copied = block.getByRole("button", { name: "Copied" });
+  await expect(copied).toHaveText("Copied");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(code);
+  await shot("code-block-copied");
+  // No toast, and the label goes back.
+  await expect(page.locator(".toast")).toHaveCount(0);
+  await expect(copy).toHaveText("Copy");
+
+  // Where the clipboard refuses, the label says so, and nothing else changes.
+  await page.evaluate(() => { Object.defineProperty(navigator.clipboard, "writeText", { value: () => Promise.reject(new Error("denied")) }); });
+  await copy.click();
+  await expect(block.getByRole("button", { name: "Copy failed" })).toHaveText("Copy failed");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(code);
+  await expect(copy).toHaveText("Copy");
 });
 
 test("a pinned message shows in the header's Pinned popover, and unpinning removes it", async ({ page, baseURL }) => {
@@ -732,7 +793,7 @@ test("linked users share a browser; logging in as anyone else signs this browser
   await admin("", { login: "lark", password: "pw-lark", displayName: "Lark", pronouns, admin: false });
   await admin("", { login: "sam", password: "pw-sam", displayName: "Sam", pronouns, admin: false });
 
-  // Link Lark to Li from Settings.
+  // Link Lark to Ada from Settings.
   await page.goto(`/#/u/${userId}/settings/personas`);
   const links = page.getByRole("region", { name: "Your personas" });
   await links.getByLabel("Your password").fill("pw");
@@ -752,7 +813,7 @@ test("linked users share a browser; logging in as anyone else signs this browser
     await expect(page.getByText("Switch user")).toBeAttached();
   };
 
-  // A linked user joins Li on this browser.
+  // A linked user joins Ada on this browser.
   await logInAs("lark", "pw-lark");
   await expect(page.getByText("Signed out the previous user")).toHaveCount(0);
   expect((await page.evaluate(() => fetch("/api/state").then((r) => r.json())) as { users: unknown[] }).users).toHaveLength(2);
@@ -1380,7 +1441,7 @@ test("Share with sends a copy; the recipient sees it in Notifications and adds i
     const r = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
     if (!r.ok && r.status !== 400) throw new Error(`${path}: ${r.status} ${await r.text()}`);
   }, [`/api/u/${userId}/admin/users`, { login: "sam", password: "pw-sam", displayName: "Sam", pronouns, admin: false }] as const);
-  // Li's thread with one exchange.
+  // Ada's thread with one exchange.
   const t = await page.evaluate(async ([uid]) => {
     const r = await fetch(`/api/u/${uid}/threads`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pool: "general", title: "Seed order" }) });
     const th = (await r.json()) as { id: string };
@@ -1411,7 +1472,7 @@ test("Share with sends a copy; the recipient sees it in Notifications and adds i
   const link = page.getByRole("link", { name: /^Notifications/ });
   await expect(link.locator(".count")).toHaveText("1");
   await link.click();
-  const row = page.locator(".nrow", { hasText: "Li shared “Seed order” with you" });
+  const row = page.locator(".nrow", { hasText: "Ada shared “Seed order” with you" });
   await expect(row).toBeVisible();
   await row.getByRole("button", { name: "Add to Private" }).click();
   await expect(page.getByText("You said: beans and squash").last()).toBeVisible();

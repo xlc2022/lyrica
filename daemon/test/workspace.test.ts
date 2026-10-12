@@ -35,20 +35,20 @@ describe("lyricad and the home workspace", () => {
     const rt = await runtime();
     const first = await daemon(rt);
     await browser(first.base).post("/api/unlock", { passphrase: "passphrase" });
-    const li = await login(first.base, "li", "pw");
-    await li.put(`/api/u/${rt.li.id}/admin/passphrase`, { save: true, passphrase: "passphrase" });
-    expect((await li.put<Me>(`/api/u/${rt.li.id}/me/credentials`, { save: true })).body.savedCredentials).toBe(true);
+    const ada = await login(first.base, "ada", "pw");
+    await ada.put(`/api/u/${rt.ada.id}/admin/passphrase`, { save: true, passphrase: "passphrase" });
+    expect((await ada.put<Me>(`/api/u/${rt.ada.id}/me/credentials`, { save: true })).body.savedCredentials).toBe(true);
     await first.stop();
 
     const h = homes();
     systemdStart(rt);
     const second = await daemon(rt);
     expect(second.d.locked).toBe(false);
-    expect(h.mounted()).toEqual([rt.li.id]);
+    expect(h.mounted()).toEqual([rt.ada.id]);
     await login(second.base, "sam", "pw2");
     expect(h.unmounted()).toEqual([]);
     await second.stop();
-    expect(h.unmounted().sort()).toEqual([rt.li.id, rt.sam.id].sort());
+    expect(h.unmounted().sort()).toEqual([rt.ada.id, rt.sam.id].sort());
   });
 });
 
@@ -60,11 +60,11 @@ describe("lyricad's network self-test", () => {
     homes();
     const { base, d, logs } = await daemon(rt, { selfTest: true, bwrap: "/bin/false", pasta: "/bin/false" });
     await browser(base).post("/api/unlock", { passphrase: "passphrase" });
-    await login(base, "li", "pw");
+    await login(base, "ada", "pw");
     const ws = d.services!.workspace;
     expect(ws.networkRefused).toMatch(/networked sandbox didn't start/);
     expect(logs.some((l) => l.startsWith("network is off for every thread:"))).toBe(true);
-    expect(ws.network(thread(rt.li.id))).toEqual({ internet: false, services: false, hosts: [] });
+    expect(ws.network(thread(rt.ada.id))).toEqual({ internet: false, services: false, hosts: [] });
   });
 
   it("leaves a thread's own network settings alone when it's skipped", async () => {
@@ -72,11 +72,11 @@ describe("lyricad's network self-test", () => {
     homes();
     const { base, d, logs } = await daemon(rt, { bwrap: "/bin/false", pasta: "/bin/false" });
     await browser(base).post("/api/unlock", { passphrase: "passphrase" });
-    await login(base, "li", "pw");
+    await login(base, "ada", "pw");
     expect(d.services!.workspace.networkRefused).toBeUndefined();
     expect(logs.some((l) => l.startsWith("network is off"))).toBe(false);
     // A general thread has internet on by default.
-    expect(d.services!.workspace.network(thread(rt.li.id)).internet).toBe(true);
+    expect(d.services!.workspace.network(thread(rt.ada.id)).internet).toBe(true);
   });
 });
 
@@ -87,27 +87,27 @@ describe("Git accounts", () => {
     const probe = vi.spyOn(Workspace.prototype, "probeGitAccount").mockResolvedValue();
     const { base } = await daemon(rt);
     await browser(base).post("/api/unlock", { passphrase: "passphrase" });
-    const li = await login(base, "li", "pw");
-    const accounts = `/api/u/${rt.li.id}/git-accounts`;
+    const ada = await login(base, "ada", "pw");
+    const accounts = `/api/u/${rt.ada.id}/git-accounts`;
     const token = "github_pat_11AAAAAAA0abcdefghijklmnopqrstuvwxyz";
-    const added = await li.post<GitAccountInfo>(accounts, { name: "li", kind: "github", host: "github.com", account: "xlc2022", token, pool: "general" });
-    expect(added.body).toMatchObject({ name: "li", kind: "github", host: "github.com", account: "xlc2022", pool: "general", state: { kind: "signedIn" } });
+    const added = await ada.post<GitAccountInfo>(accounts, { name: "ada", kind: "github", host: "github.com", account: "xlc2022", token, pool: "general" });
+    expect(added.body).toMatchObject({ name: "ada", kind: "github", host: "github.com", account: "xlc2022", pool: "general", state: { kind: "signedIn" } });
     expect(probe).toHaveBeenCalledWith(expect.objectContaining({ token }));
-    expect(JSON.stringify((await li.get(accounts)).body)).not.toContain(token);
-    expect((await li.post(accounts, { name: "p", kind: "github", host: "github.com", account: "xlc2022", token, pool: "private" })).status).toBe(400);
-    expect((await li.post(accounts, { name: "x", kind: "svn", host: "h", account: "a", token, pool: "general" })).status).toBe(400);
+    expect(JSON.stringify((await ada.get(accounts)).body)).not.toContain(token);
+    expect((await ada.post(accounts, { name: "p", kind: "github", host: "github.com", account: "xlc2022", token, pool: "private" })).status).toBe(400);
+    expect((await ada.post(accounts, { name: "x", kind: "svn", host: "h", account: "a", token, pool: "general" })).status).toBe(400);
     // Another user can't reach them.
     const sam = await login(base, "sam", "pw2");
     expect((await sam.get(accounts)).status).toBe(401);
 
-    const g = (await li.post<ThreadSummary>(`/api/u/${rt.li.id}/threads`, { pool: "general", title: "code" })).body;
-    const url = `/api/u/${rt.li.id}/threads/general/${encodeURIComponent(g.id)}/settings`;
-    const repositories = [{ name: "xlc2022/lyrica", account: "li" }];
-    expect((await li.patch<ThreadSettings>(url, { repositories })).body.repositories).toEqual(repositories);
-    expect((await li.patch(url, { repositories: [{ name: "xlc2022/lyrica", account: "nobody" }] })).status).toBe(400);
-    expect((await li.patch<GitAccountInfo>(`${accounts}/li`, { name: "mine" })).body.name).toBe("mine");
-    expect((await li.get<ThreadSettings>(url)).body.repositories).toEqual([{ name: "xlc2022/lyrica", account: "mine" }]);
-    expect((await li.del(`${accounts}/mine`)).status).toBe(200);
-    expect((await li.get<ThreadSettings>(url)).body.repositories).toEqual([]);
+    const g = (await ada.post<ThreadSummary>(`/api/u/${rt.ada.id}/threads`, { pool: "general", title: "code" })).body;
+    const url = `/api/u/${rt.ada.id}/threads/general/${encodeURIComponent(g.id)}/settings`;
+    const repositories = [{ name: "xlc2022/lyrica", account: "ada" }];
+    expect((await ada.patch<ThreadSettings>(url, { repositories })).body.repositories).toEqual(repositories);
+    expect((await ada.patch(url, { repositories: [{ name: "xlc2022/lyrica", account: "nobody" }] })).status).toBe(400);
+    expect((await ada.patch<GitAccountInfo>(`${accounts}/ada`, { name: "mine" })).body.name).toBe("mine");
+    expect((await ada.get<ThreadSettings>(url)).body.repositories).toEqual([{ name: "xlc2022/lyrica", account: "mine" }]);
+    expect((await ada.del(`${accounts}/mine`)).status).toBe(200);
+    expect((await ada.get<ThreadSettings>(url)).body.repositories).toEqual([]);
   });
 });

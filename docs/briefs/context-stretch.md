@@ -13,7 +13,7 @@ UI 2 builds (Fable). **Depends on:** Model host and Models 2 (merged).
 
 ## Why
 
-Li's ask: Lyrica should stretch a local model's context with RoPE scaling
+The owner's ask: Lyrica should stretch a local model's context with RoPE scaling
 (YaRN) the way Qwen documents it, so a model such as Qwen3.8-27B runs at a
 million tokens, and she should look up each model's recommended settings
 on Hugging Face rather than have someone copy them by hand.
@@ -77,7 +77,7 @@ Qwen3.5-style M-RoPE path (vllm-project/vllm#58870). The build pins a vLLM
 image where that is fixed, or the host shows the stretched vLLM copy as
 untested until it is.
 
-## Decisions (Li, pending)
+## Decisions (owner, pending)
 
 1. **Stretch is a per-copy Serving setting, not a second model.** One
    `stretch` setting beside `contextLength`, applied at the next load. A

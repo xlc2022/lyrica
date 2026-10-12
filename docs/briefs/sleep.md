@@ -142,7 +142,7 @@ becomes understanding (principle 5), and where she wakes up continuous
   - `no-key` and `no-activity` skips are recorded;
   - manual mode only runs on `/sleep`;
   - logs contain no text, checked with a marker string.
-- **The continuity eval passes after a sleep.** Li states a dislike, sleep
+- **The continuity eval passes after a sleep.** A user states a dislike, sleep
   puts it in `p:about-user`, and a later unrelated thread avoids it.
 - docs/sleep.md describes what exists, and the PR lists any contract change.
 

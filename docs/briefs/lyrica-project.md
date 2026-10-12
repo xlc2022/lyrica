@@ -1,6 +1,6 @@
 # Brief: her own project (the handoff)
 
-**For:** Li, who creates the project, and Lyrica, who runs it. **Model:**
+**For:** the owner, who creates the project, and Lyrica, who runs it. **Model:**
 none to build; the threads it sets up follow the models below.
 **Depends on:** Projects (project instructions, threads that message
 each other) and Self-editing merged.
@@ -16,7 +16,7 @@ rediscovering them (principle 6: trust her judgment, make review easy).
 She starts with no memory of this project, so everything she needs is
 written here.
 
-## Setup, by Li, once
+## Setup, by the owner, once
 
 1. **New project** from the thread list's own menu (right-click or long
    press its empty space), in the general pool, and name it "Lyrica"
@@ -33,9 +33,14 @@ written here.
    looking things up, set a SearXNG in Administration → Web search
    (docs/guides/searxng.md) and leave each thread's Web search switch on:
    `web_search`, and `web_fetch` for reading a page, which needs the
-   thread's internet or the page's host allowed.
+   thread's internet or the page's host allowed. To let her hand big or
+   hard coding jobs to Claude Code on the owner's Claude plan, save the
+   token from `claude setup-token` in **Settings → Claude Code** and turn
+   on the project chat's **Claude Code** switch in Thread settings, so the
+   project's threads inherit it (docs/workspace.md, "Claude Code"); with
+   the internet off, also allow `api.anthropic.com`.
 2. Paste the **Project instructions** below into Project settings →
-   Memory → Instructions (the count shows it is under 2,000; only Li can
+   Memory → Instructions (the count shows it is under 2,000; only the owner can
    change them).
 3. Start three standing threads in the project chat (**Start a thread**
    on a message; they sit under the project row) and pick each one's
@@ -52,8 +57,8 @@ written here.
 
 4. Leave the project's `watchThreads` setting on (the default): the
    project chat then takes a batched look at its threads 30 s after one
-   ends a turn Li started or posts an update, marked `[Watching threads]`,
-   tells the threads a change affects and speaks only when Li must know
+   ends a turn the owner started or posts an update, marked `[Watching threads]`,
+   tells the threads a change affects and speaks only when the owner must know
    or decide (docs/delegation.md, "Watching threads"). A thread that
    stops with an error, or finishes a task without an update, is reported
    to the project chat whatever the setting; she reads its latest
@@ -84,16 +89,16 @@ characters, the limit on project instructions.
 > review, which approves and merges it; answer its comments on the PR.
 > Never ask anyone to merge past a red check.
 >
-> **Boundary code needs Li**: keys, the privacy boundary, the model
+> **Boundary code needs the owner**: keys, the privacy boundary, the model
 > router, the sandbox, authentication, deployment, the updater and CI
 > (listed in CODEOWNERS). A PR touching it says so in its first line and
-> waits for Li's own approval.
+> waits for the owner's own approval.
 >
 > **Handoffs.** Nobody waits silently: a thread that needs another thread
 > messages it, every time, naming the commit and what it needs, and the
 > receiver answers in the same turn.
 >
-> **Updates.** Li presses Update. Before Li does, write the update note:
+> **Updates.** The owner presses Update. Before the owner does, write the update note:
 > an annotated tag `update/<date>` on the `main` commit to install,
 > listing everything merged since the running version (Claude's PRs
 > too), what each changes, any schema change and what a rollback would
@@ -104,7 +109,7 @@ characters, the limit on project instructions.
 > into code, issues, PRs or notes; you delete only files you downloaded.
 > Docs describe what exists: update a component's doc in the same PR.
 >
-> **This chat** posts only what needs Li: a decision, a blocker, an
+> **This chat** posts only what needs the owner: a decision, a blocker, an
 > update ready to press.
 
 ## Claude's side

@@ -1,6 +1,6 @@
 # Brief: MCP servers
 
-**Thread:** Self-development tools (Opus). Design approved by Li on
+**Thread:** Self-development tools (Opus). Design approved by the owner on
 2026-10-12 from `/mnt/project-files/self-dev/mcp-design.md`. The design
 lines live in DESIGN.md, "MCP servers"; this brief is the build plan.
 
@@ -48,7 +48,7 @@ integration becomes "add a server" instead of a tool we write and keep
    asks with the permission card (server name first in its title), with
    **Allow in this thread** for that tool. `tool_search` is model-facing
    and counted; the MCP tools it loads are not (principle 8).
-8. **Tests** (what Li would notice): a private thread never gets a general
+8. **Tests** (what the user would notice): a private thread never gets a general
    server; a granted server's read-only tool runs in Plan mode and a
    writing one asks in Auto; removing a server from a project takes it from
    a running thread; a server in a global `mcp.json` is not registered;
@@ -57,7 +57,7 @@ integration becomes "add a server" instead of a tool we write and keep
 ## Out of scope
 
 Stdio servers, OAuth sign-in (Pi supports it, but its redirect lands on
-the server's loopback address, which Li's browser can't reach), MCP
+the server's loopback address, which the user's browser can't reach), MCP
 resources and prompts, Lyrica as an MCP server, a catalogue of servers.
 
 ## Order

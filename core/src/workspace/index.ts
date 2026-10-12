@@ -37,6 +37,7 @@ export * from "./net.ts";
 export * from "./paths.ts";
 export * from "./ops.ts";
 export * from "./proxmox.ts";
+export * from "./claude-relay.ts";
 export * from "./sandbox.ts";
 export * from "./settings.ts";
 export * from "./ssh.ts";
@@ -78,7 +79,18 @@ export interface WorkspaceOptions {
   self?: () => Self;
   /** How lyricad asks a Git host's API about a token and its repositories. Default: fetch. */
   forgeFetch?: typeof fetch;
+  /**
+   * Whether a thread's model calls must stay local (private or local-only):
+   * such a thread never gets Claude Code. Without it, every thread counts as
+   * restricted, so Claude Code is never given by mistake.
+   */
+  restricted?: (userId: string, pool: Pool, threadId: string) => boolean;
+  /** Where Claude Code's relay sends requests. Default: Anthropic's API; tests use their own. */
+  anthropic?: string;
 }
+
+/** Where Claude Code sends what it reads: a run gets Claude Code only if its network reaches this. */
+export const CLAUDE_CODE_HOST = "api.anthropic.com";
 
 /** A repository as one thread sees it: where it is cloned, and through which account. */
 export interface ThreadGitRepository extends ThreadRepository {
@@ -113,7 +125,7 @@ export interface MachineProbe {
   login: boolean;
   /** Why the test failed, in plain words. */
   problem?: string;
-  /** The address resolves outside Li's LAN, loopback and tailnet. */
+  /** The address resolves outside the operator's LAN, loopback and tailnet. */
   offNetwork: boolean;
 }
 
@@ -172,7 +184,7 @@ export function parseMachineAddress(address: string): { username: string; host: 
   return { username: m[1]!, host: m[2]!.replace(/^\[|\]$/g, ""), port };
 }
 
-/** A host's addresses, and whether any is outside Li's own network. A resolver that never answers is no answer. */
+/** A host's addresses, and whether any is outside the operator's own network. A resolver that never answers is no answer. */
 async function resolveHost(host: string): Promise<{ addresses: string[]; outside: boolean }> {
   const addresses = isIP(host) ? [host] : await Promise.race([
     lookup(host, { all: true }).then((all) => all.map((a) => a.address)),
@@ -191,7 +203,7 @@ export class Workspace {
   private readonly settingsByUser = new Map<string, WorkspaceSettings>();
   private readonly changesByUser = new Map<string, FileChanges>();
   private readonly sshTargets = new Map<string, SshTarget>();
-  /** Private Git accounts whose host has newly left her network, by `<userId>/<name>`: no token goes out until Li confirms. */
+  /** Private Git accounts whose host has newly left her network, by `<userId>/<name>`: no token goes out until the user confirms. */
   private readonly gitRefused = new Set<string>();
   /**
    * Private MCP servers whose host passed the own-network check in this
@@ -300,26 +312,28 @@ export class Workspace {
       repositories: () => this.repositoriesFor(t),
       /** Clones or fetches the thread's repositories, at the start of a turn: what failed, in plain words. */
       cloneRepositories: () => this.cloneFor(t),
-      /** She adds a repository to the thread, after Li approved it. */
+      /** She adds a repository to the thread, after the user approved it. */
       addRepository: (r: ThreadRepository) => this.addRepository(t, r),
       /** What the thread's pool's Git accounts can see, for her to pick from. */
       gitAccounts: () => this.settings(t.userId).gitAccounts().filter((a) => a.pool === t.pool).map((a) => ({ name: a.name, kind: a.kind, host: a.host })),
       /** One action on one of the thread's Proxmox machines. */
       proxmox: (machine: string, action: ProxmoxAction, vm?: string) => this.proxmox(t, machine, action, vm),
-      /** Whether Li allowed this exact suspect command on this machine in this thread. */
+      /** Whether the user allowed this exact suspect command on this machine in this thread. */
       allowedInThread: (machine: string, command: string) =>
         this.settings(t.userId).allowedInThread(t.threadId).some((a) => a.machine === machine && a.command === command),
       /** The MCP servers the thread may use now, read at every call. */
       mcpServers: () => this.mcpServersFor(t),
-      /** Checks each private server's host at the start of a turn: one that left her network is held back until Li confirms. */
+      /** Checks each private server's host at the start of a turn: one that left her network is held back until the user confirms. */
       checkMcpServers: () => this.checkMcpServers(t),
       /** How a connection to one of its servers went, for Settings. */
       mcpServerState: (name: string, kind: McpStateKind) => { try { this.settings(t.userId).mcpServerState(name, kind); } catch { /* locked: shown only */ } },
-      /** Whether Li allowed this MCP tool on this server in this thread. */
+      /** Whether the user allowed this MCP tool on this server in this thread. */
       toolAllowedInThread: (server: string, tool: string) => this.settings(t.userId).toolAllowedInThread(t.threadId, server, tool),
       /** An approved plan switching the thread's mode. */
       setMode: (mode: PermissionMode) => { this.settings(t.userId).setThread(t.threadId, t.pool, { mode }); },
       network: (): Network => this.network(t),
+      /** Whether her sandbox runs here have Claude Code now. */
+      claudeCode: () => this.claudeCodeFor(t),
       folders: () => this.folders(t),
       /** Called after her write or edit tool changed a file, so removing the turn can undo it. */
       recordChange: (c: NewChange) => { this.changes(t.userId).record(t.pool, t.threadId, c); },
@@ -465,6 +479,7 @@ export class Workspace {
       repos: this.reposDir(t),
       reposReadOnly: t.reposReadOnly,
       env: this.forgeEnv(t),
+      ...this.claudeFor(t),
       ...this.door(),
       check: (g) => checkGrant(s.allowed(), t.pool, g),
       bwrap: this.opts.bwrap,
@@ -476,7 +491,7 @@ export class Workspace {
    * The tokens of the thread's repositories, as its sandbox's environment
    * (`gitEnv`): only for a repository the thread has, of an account of its
    * pool, whose host its network reaches; a private account whose host has
-   * left her network gives nothing until Li confirms. Anywhere else nothing.
+   * left her network gives nothing until the user confirms. Anywhere else nothing.
    */
   forgeEnv(t: WorkspaceThread): Record<string, string> {
     const s = this.settings(t.userId);
@@ -485,10 +500,36 @@ export class Workspace {
   }
 
   /**
+   * Whether the thread's sandbox runs get Claude Code now: a general thread,
+   * neither it nor any ancestor local-only, with the switch on along its
+   * chain, the user's token saved, and a network that reaches Anthropic.
+   */
+  claudeCodeFor(t: WorkspaceThread): boolean {
+    if (t.pool !== "general") return false;
+    const s = this.settings(t.userId);
+    if (!s.effective(t.threadId).claudeCode || !s.claudeCodeToken()) return false;
+    const restricted = this.opts.restricted ?? (() => true);
+    for (let id: string | null = t.threadId, i = 0; id && i < 100; id = s.thread(id).parent, i++) {
+      if (restricted(t.userId, t.pool, id)) return false;
+    }
+    return reachesHost(this.network(t), CLAUDE_CODE_HOST);
+  }
+
+  /**
+   * Claude Code for the thread's sandbox runs where `claudeCodeFor` allows
+   * it: the token for the run's relay, which keeps it in this process
+   * (claude-relay.ts). Anywhere else nothing.
+   */
+  claudeFor(t: WorkspaceThread): { claude?: { token: string; upstream?: string } } {
+    if (!this.claudeCodeFor(t)) return {};
+    return { claude: { token: this.settings(t.userId).claudeCodeToken()!, ...(this.opts.anthropic ? { upstream: this.opts.anthropic } : {}) } };
+  }
+
+  /**
    * Clones each of the thread's repositories into its repos/ (or fetches it,
    * once cloned), in the thread's sandbox with that run's credentials, and
    * records how each account did. A private account's host is checked first:
-   * one that has left her network gets no token until Li confirms. Returns
+   * one that has left her network gets no token until the user confirms. Returns
    * what failed, one plain line each; nothing failing returns none.
    */
   async cloneFor(t: WorkspaceThread): Promise<string[]> {
@@ -526,7 +567,7 @@ export class Workspace {
     return problems;
   }
 
-  /** She adds a repository to the thread, once Li approved it: checked like any change to the thread's settings. */
+  /** She adds a repository to the thread, once the user approved it: checked like any change to the thread's settings. */
   addRepository(t: WorkspaceThread, r: ThreadRepository): ThreadRepository[] {
     const s = this.settings(t.userId);
     const now = s.thread(t.threadId).repositories;
@@ -535,7 +576,7 @@ export class Workspace {
 
   /**
    * Checks a Git account's host before it is used. A private account whose
-   * host has newly left her network is refused until Li confirms, so a DNS
+   * host has newly left her network is refused until the user confirms, so a DNS
    * change can't get past the warning; a general one only records it.
    */
   private async checkGitHost(userId: string, a: GitAccountConfig): Promise<void> {
@@ -729,7 +770,7 @@ export class Workspace {
     return probeMcp(mcpUrl(url), token?.trim() || undefined, this.opts.forgeFetch);
   }
 
-  /** Whether a server's host resolves outside her network; a private one needs Li's confirmation then. */
+  /** Whether a server's host resolves outside her network; a private one needs the user's confirmation then. */
   private async mcpOutside(url: string, pool: Pool, confirmed: boolean | undefined): Promise<boolean> {
     const host = mcpHost(url);
     const { outside } = await resolveHost(parseHost(host).host);
@@ -811,7 +852,7 @@ export class Workspace {
   /**
    * Checks a machine's address before each connection and returns the one to
    * connect to. A private machine that has newly gone off network is refused
-   * until Li confirms again, so a DNS change can't get past the warning.
+   * until the user confirms again, so a DNS change can't get past the warning.
    */
   private async checkAddress(userId: string, name: string): Promise<string> {
     const s = this.settings(userId);
@@ -871,7 +912,7 @@ export class Workspace {
     }
   }
 
-  /** Proxmox's Test step: its certificate's fingerprint and the setup steps. The token isn't sent before Li confirms the certificate. */
+  /** Proxmox's Test step: its certificate's fingerprint and the setup steps. The token isn't sent before the user confirms the certificate. */
   private async probeProxmox(address: string): Promise<MachineProbe> {
     const { host, port } = parseProxmoxAddress(address);
     const base = { setup: proxmoxSetup(), login: false };
@@ -916,7 +957,7 @@ export class Workspace {
     if (why) throw new Error(`this Proxmox can't be used: ${why}. Stopping it would stop her, so it stays off the list for now.`);
   }
 
-  /** One action on a thread's Proxmox machine, after its address check, sent only to the certificate Li confirmed. */
+  /** One action on a thread's Proxmox machine, after its address check, sent only to the certificate the user confirmed. */
   async proxmox(t: WorkspaceThread, machine: string, action: ProxmoxAction, vm?: string): Promise<string> {
     this.settings(t.userId).checkInherited(t.threadId, t.pool);
     if (!this.machinesFor(t).some((m) => m.name === machine && m.kind === "proxmox")) throw new Error(`${machine} isn't one of this thread's Proxmox machines`);
@@ -933,7 +974,7 @@ export class Workspace {
 
   /**
    * Saves a machine with the key from its probe (for Proxmox, the token) and
-   * the host key or certificate Li confirmed. Its address is checked now: a
+   * the host key or certificate the user confirmed. Its address is checked now: a
    * private machine off network needs `offNetworkConfirmed`, which the Add
    * anyway dialog gives. A Proxmox token is tried first, and the Proxmox
    * that runs Lyrica is refused.
@@ -987,7 +1028,7 @@ export class Workspace {
 
   /**
    * Re-pairs a machine whose host key (or certificate) changed, with the one
-   * Li confirmed. A Proxmox machine may get a new token too, tried against
+   * the user confirmed. A Proxmox machine may get a new token too, tried against
    * that certificate before anything is saved.
    */
   async setHostKey(userId: string, name: string, confirmedHostKey: string, token?: string): Promise<MachineConfig> {

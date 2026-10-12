@@ -1,4 +1,4 @@
-// For Playwright: a real lyricad on a temporary runtime, locked, with user li
+// For Playwright: a real lyricad on a temporary runtime, locked, with user ada
 // (password "pw", administrator), plus a fake OpenAI-compatible model server.
 // Usage: tsx web/e2e/serve.ts <lyricad port> <model port>
 //
@@ -6,7 +6,9 @@
 // bash with that command (then says "The command finished."), "start: <title>"
 // starts a child thread with that title (then says "Started it."), "suggest: <a>, <b>"
 // proposes threads with those titles (then says "Suggested."), "plan: <plan>"
-// calls propose_plan with that plan (then says "On it."), a look at a project's
+// calls propose_plan with that plan (then says "On it."), "reply: <markdown>"
+// answers with that markdown as written (the echo's "You said: " would put a
+// fence mid-line, where it is not a fence), a look at a project's
 // threads (the `watching` call) tells the first thread it wasn't about "Heads up:
 // the plan changed.", /searxng is a SearXNG answering JSON, anything else gets a few streamed sentences that echo it. /local/v1 serves "local-model"
 // and /cloud/v1 "cloud-model". /speech/v1 is a speech server: "whisper"
@@ -122,7 +124,8 @@ function fakeModel() {
         send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: call }] });
         send({}, "tool_calls");
       } else {
-        const text = command ? "The command finished." : plan ? "On it." : `You said: ${said.slice(0, 200)}. This reply comes from the fake ${chat.model}, in a few pieces.`;
+        const verbatim = /^reply:\s*([\s\S]+)/.exec(said)?.[1];
+        const text = command ? "The command finished." : plan ? "On it." : verbatim ?? `You said: ${said.slice(0, 200)}. This reply comes from the fake ${chat.model}, in a few pieces.`;
         // A message that says "slowly" streams slowly enough to be read aloud while it is written.
         const pace = /slowly/.test(said) ? 300 : 30;
         for (const piece of text.match(/.{1,12}/gs) ?? []) {
@@ -142,7 +145,7 @@ if (!settingUp) {
   const keyring = new Keyring(home, ARGON2);
   await keyring.initSelf(PASSPHRASE);
   new PersonaStore(keyring.self()).importSeed(fileURLToPath(new URL("../../persona", import.meta.url)));
-  await new Users(keyring).createUser("li", "pw", { displayName: "Li", pronouns: PRONOUN_PRESETS.she }, { admin: true });
+  await new Users(keyring).createUser("ada", "pw", { displayName: "Ada", pronouns: PRONOUN_PRESETS.she }, { admin: true });
   keyring.self().close();
 }
 

@@ -1,6 +1,6 @@
 # CI runners: adding a machine that runs the checks
 
-The checks in `.github/workflows/` run on Li's own GitHub Actions runners,
+The checks in `.github/workflows/` run on your own GitHub Actions runners,
 labelled `lyrica-ci`, not on GitHub's hosted runners. This guide follows
 `.github/runner/setup.sh`; why it is set up this way, and what the runner
 may and may not reach, is in [docs/ci.md](../ci.md).

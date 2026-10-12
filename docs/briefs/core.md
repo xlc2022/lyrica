@@ -26,7 +26,7 @@ scaffolding, users, keys and extension skeleton from this thread.
      display name.
    - Store users in per-user `user.db` files plus a small user index in
      `self.db`.
-   - `bin/lyrica admin init` suggests **Li** as the first user's display name.
+   - `bin/lyrica admin init` suggests a display name for the first user.
 4. **`core/mentions`**, as in the contracts: `toStored`, `render` and
    `queryTokens`, with pronoun presets and custom pronouns. These are pure
    functions with thorough tests. The Memory thread wires them into the store.

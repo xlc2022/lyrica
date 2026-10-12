@@ -32,7 +32,7 @@ Read these, in this order:
 - **Docs describe what exists.** When you change behavior, update its doc in the
   same commit. Write plainly and keep docs short. Plans go in briefs, never in
   component docs. If a doc and the code disagree, the PR isn't done.
-- **Tests protect what Li would notice:** context assembly, memory round trips,
+- **Tests protect what the user would notice:** context assembly, memory round trips,
   the privacy and cloud boundaries, and sleep output. Don't add a test for
   every hypothetical.
 - **Migrations expand, then contract.** A schema change that removes or
@@ -41,6 +41,9 @@ Read these, in this order:
   database's oldest-reader version. Each database migrates
   in one transaction, and a migration comes with a test from every
   released schema (DESIGN.md, Updates and self-editing).
+- **No personal names.** Docs, comments, prompts and test fixtures never
+  name the owner or another real person: say "the user" or "the operator",
+  and use a made-up name (Ada, Sam) in examples.
 - **Deleting code is progress.**
 
 ## Workflow
@@ -67,5 +70,5 @@ npm test
 npm run evals      # continuity scenarios in evals/; a failure is evidence, not a broken build
 ```
 
-CI runs on Li's own runner ([docs/ci.md](docs/ci.md)); a job waiting in the
+CI runs on the owner's own runner ([docs/ci.md](docs/ci.md)); a job waiting in the
 queue means the runner is busy or offline.

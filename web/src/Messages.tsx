@@ -536,7 +536,7 @@ function HerProse({ text, env, elsewhere }: { text: string; env: Pick<Env, "user
   const files = useFileLinks(env.userId, env.pool, env.threadId);
   const { large } = env;
   const onLarge = useCallback((path: string) => large(path, files), [large, files]);
-  return <Prose text={useThreadMentions(text, env.userId, env.pool)} files={elsewhere ? undefined : files} onLarge={onLarge} />;
+  return <Prose text={useThreadMentions(text, env.userId, env.pool)} files={elsewhere ? undefined : files} onLarge={onLarge} copyCode />;
 }
 
 /**

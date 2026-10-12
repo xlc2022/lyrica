@@ -9,7 +9,7 @@
 // - Every state-changing request (POST, PUT, PATCH, DELETE) needs the session
 //   cookie and an `Origin` header matching the host. Unlock and login need only
 //   the Origin.
-// - A browser session can hold several users (Li's personas). Everything a user
+// - A browser session can hold several users (a person's personas). Everything a user
 //   owns is under `/api/u/:userId/…`, and that user must be logged in on this
 //   browser session.
 // - Path segments are URI-encoded: thread IDs contain "/" (`web/3f7a2c`), so
@@ -560,7 +560,7 @@ export interface MachineInfo {
   /** Proxmox: the token's id (user@realm!tokenid). The token itself is never shown. */
   tokenId?: string;
   /**
-   * The host key Li confirmed (SHA256:…), or for Proxmox the certificate's
+   * The host key the user confirmed (SHA256:…), or for Proxmox the certificate's
    * fingerprint (AB:CD:…); null for a machine from before confirming, which
    * can't be used until it is.
    */
@@ -606,7 +606,7 @@ export interface MachineProbe {
 }
 /**
  * POST /api/u/:userId/machines → MachineInfo. Confirm: saves the machine with
- * its probe's key and the host key Li confirmed. A private machine off network
+ * its probe's key and the host key the user confirmed. A private machine off network
  * needs `offNetworkConfirmed` (the Add anyway dialog). New machines start at Ask.
  */
 /**
@@ -624,7 +624,7 @@ export interface MachineInput {
 export interface MachineChange { address?: string; root?: string | null; pool?: Pool; limit?: MachineLimit }
 /**
  * POST /api/u/:userId/machines/:name/key → MachineInfo. Replace key: the host
- * key (or Proxmox certificate) Li confirmed after a probe. A Proxmox machine
+ * key (or Proxmox certificate) the user confirmed after a probe. A Proxmox machine
  * may take a new `token`, tried against that certificate before saving.
  */
 export interface MachineKey { hostKey: string; token?: string }
@@ -929,6 +929,10 @@ export interface ThreadSettings {
   /** Whether the server has a SearXNG address: without one, the switch gives web_fetch alone. */
   searchProvider: boolean;
   images: boolean;
+  /** Claude Code on the user's Claude plan in her sandbox runs: the switch along its ancestors (docs/workspace.md, "Claude Code"). */
+  claudeCode: boolean;
+  /** Whether the switch can do anything here: a general thread that isn't local-only, a saved token, and Claude Code installed. Without it, the drawer leaves the switch out. */
+  claudeCodeOffered: boolean;
   /** "Do not log thread in memory". */
   unlogged: boolean;
   /** Fallback: the thread's choice, or null to follow the user's default. Off, only the first model in a list answers. */
@@ -971,6 +975,7 @@ export interface ThreadSettingsChange {
   mode?: PermissionMode;
   webSearch?: boolean;
   images?: boolean;
+  claudeCode?: boolean;
   unlogged?: boolean;
   /** null follows the user's default. */
   fallback?: boolean | null;
@@ -1830,3 +1835,9 @@ export interface RollbackRequest { commit: string }
 
 /** A thread's wake-up, waiting: her note to herself stays in the pool, so only its time and ID are shown. */
 export interface WakeupInfo { id: number; dueAt: string }
+
+/** Settings → Claude Code: whether a token is saved (never the token) and whether the program is installed on this server. */
+export interface ClaudeCodeStatus { token: boolean; installed: boolean }
+
+/** Saves the token `claude setup-token` printed. */
+export interface ClaudeCodeTokenInput { token: string }

@@ -11,7 +11,7 @@ and keeps both.
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md "Storage, encryption
 and unlocking", "Persona" and "Runtime" (Deployment, Reaching the web UI),
 docs/daemon.md, docs/contracts.md `core/keyring` and `daemon`, and
-`/mnt/project-files/bootstrap/proposal.md` for the reasoning. Li agreed to
+`/mnt/project-files/bootstrap/proposal.md` for the reasoning. The owner agreed to
 the proposal on 2026-10-11.
 
 ## Goal
@@ -61,7 +61,7 @@ Administration. No new model-facing tool, no new process of Lyrica's
    address, plain HTTP on Tailscale's own interface) on **every** LAN and
    Tailscale address `hostAddresses()` finds, port 7340, with no proxy
    allow-list and the client's own address as its address. The host is
-   headless (Li), so this is how the setup page is reached:
+   headless, so this is how the setup page is reached:
    `https://<lan address>:7340`, the browser's one-time certificate
    warning, the fingerprint printed by `install.sh` and shown in Web access
    for comparing. Direct stays on after setup until an administrator turns
@@ -177,7 +177,7 @@ Administration. No new model-facing tool, no new process of Lyrica's
 
 The setup page and the Administration sections (Web: bootstrap); the
 getting-started guide (Operator docs, after the merge); the releases layout
-of `/opt/lyrica` (Releases); a per-user nickname for her (not now, Li
+of `/opt/lyrica` (Releases); a per-user nickname for her (not now, decided
 2026-10-11); routes, exit nodes and Tailscale SSH; her own outbound path
 to tailnet peers through her device (a SOCKS proxy for sandboxes and
 machines; later, if a host that isn't on the tailnet needs it).

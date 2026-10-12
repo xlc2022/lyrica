@@ -232,7 +232,7 @@ Each active thread is one Pi session from `openThreadSession`, with
   An emoji is one pictograph, flag or keycap with its joiners, variation
   selectors and skin tones (`isEmoji` in `core/src/store/pool.ts`, shared by
   the route and her tool). The user's reactions since her last turn go into
-  her next turn's message as a `<reactions>` block ("Li reacted 🎉 to your
+  her next turn's message as a `<reactions>` block ("Sam reacted 🎉 to your
   message [e:…]") while the thread stays open; a reaction made after the
   hosted thread is dropped for idleness isn't told. The user's stored
   message is untouched. In a branched thread her tool takes the copy's id

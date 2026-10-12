@@ -1,6 +1,6 @@
 // A Proxmox machine: reached over its API with a narrow token, never a shell
 // on the hypervisor. One call per action; the token is sent only to the
-// certificate Li confirmed.
+// certificate the user confirmed.
 
 import { readFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
@@ -54,7 +54,7 @@ export function parseProxmoxAddress(address: string): { host: string; port: numb
 /** The address as shown: https://host:port. */
 export const proxmoxAddress = (host: string, port: number): string => `https://${host.includes(":") ? `[${host}]` : host}:${port}`;
 
-/** What Li runs as root on the Proxmox node, for a token that can see everything and power only the chosen VMs. */
+/** What the operator runs as root on the Proxmox node, for a token that can see everything and power only the chosen VMs. */
 export function proxmoxSetup(): string {
   return [
     "# 1. A user and a role that can see VMs and power them, nothing more",
