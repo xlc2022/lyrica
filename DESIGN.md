@@ -1170,6 +1170,39 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   protected from each other), short-lived SSH certificates from a Lyrica
   certificate authority, and an installed Lyrica agent.
 
+## MCP servers
+
+Lyrica is an MCP client, so a service with an MCP server (Home Assistant,
+a calendar, Gitea, a docs site) gives her its tools without code of ours.
+Decided 2026-10-12 (docs/briefs/mcp.md).
+
+- **Pi's own client** (principle 3). Each granted server is registered for
+  the session; nothing about servers is written to disk outside the
+  user's encrypted database.
+- **Remote servers only:** a URL (streamable HTTP) and an optional token,
+  sent as a bearer token and stored like a Git account's. A local (stdio)
+  server would be a process running for the whole session, which the
+  process budget and "nothing runs inside lyricad's process" rule out; she
+  has `bash` for local work. OAuth sign-in comes later.
+- **Added like Git accounts, granted like repositories.** Settings → MCP
+  servers holds each user's servers, each in one pool, checked before it
+  is saved. A thread gets a server only when granted: an MCP servers row
+  in the thread drawer and under This chat, so a project's threads
+  inherit it, narrower or the same. Removing one from a project takes it
+  from running threads at once.
+- **Pools.** Private and local-only threads use only servers marked
+  Private; general threads only General ones. A private server is on her
+  own network (LAN, this machine or the tailnet), checked like a private
+  Git account's host, with **Off network** and the "Use a host outside
+  your network?" dialog when it isn't.
+- **Approval.** A call to a tool its server marks read-only runs freely,
+  and only those run in Plan mode. Every other call leaves the server, so
+  it always asks, whatever the mode, with **Allow in this thread** for that
+  tool. A server's hints are its own claim: a server Li doesn't trust
+  shouldn't be added.
+- **Budget.** MCP tools are deferred, loaded by `tool_search` when she
+  needs one, and count as one tool together (principle 8).
+
 ## Storage, encryption and unlocking
 
 - Each user's memory and threads live in encrypted SQLite (SQLCipher): a
