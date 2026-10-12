@@ -53,7 +53,11 @@ written here.
    project chat then takes a batched look at its threads 30 s after one
    ends a turn Li started or posts an update, marked `[Watching threads]`,
    tells the threads a change affects and speaks only when Li must know
-   or decide (docs/delegation.md, "Watching threads").
+   or decide (docs/delegation.md, "Watching threads"). A thread that
+   stops with an error, or finishes a task without an update, is reported
+   to the project chat whatever the setting; she reads its latest
+   messages with `threads read` and stops a thread that went wrong with
+   `threads stop` (docs/delegation.md, "Child threads").
 
 ## Project instructions (paste as is)
 

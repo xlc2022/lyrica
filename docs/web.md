@@ -196,7 +196,7 @@ A thread's address may carry what the panel beside it shows:
   **Sleep now** resends with `confirm: true`; a 409 is shown as a toast in
   `lyricad`'s words. Text arrives in stored form and is shown with the users of
   the runs already read; an unknown mention reads "someone". The foot names
-  the schedule and links **change** to Settings → Model profiles, where the
+  the schedule and links **change** to Settings → Sleep, where the
   **Sleep** select (Nightly at the server's time, or Only when I ask) sits
   above Sleep fallback and saves at once (`PUT …/sleep/mode`). A pool hidden in
   the Sort menu is left out: its items, runs and **Sleep now** choice, with the
@@ -207,14 +207,14 @@ A thread's address may carry what the panel beside it shows:
   the sidebar's Models link, whose badge counts Clean up's items
   (`GET …/models/cleanup`, reread every 30 s and on focus; nothing probes
   an endpoint until the area is open). Tabs down the left (a scrolling row
-  on a phone), so far **Overview**, **Hosts and endpoints**, **Clean up**
-  and **Recent calls**; Tasks, Text models, Image models and Downloads come
-  with their own PRs. The area reads `GET …/models/page` while open (30 s,
+  on a phone), so far **Overview**, **Tasks**, **Hosts and endpoints**,
+  **Clean up** and **Recent calls**; Text models, Image models and Downloads
+  come with their own PRs. The area reads `GET …/models/page` while open (30 s,
   focus), which probes each endpoint (3 s each, one seen down in the last
   30 s not asked again). Overview: a banner for a paused host or a stale
   endpoint; tiles Endpoints (n of m up), Backend (the first `chat` model of
-  the general profile and of Local, following Same as; links to Model
-  profiles until Tasks exists) and Clean up; then the hosts and endpoints
+  the general profile and of Local, following Same as; links to Tasks)
+  and Clean up; then the hosts and endpoints
   summary (a host with its combined VRAM bar, Pause or Resume, Dashboard;
   a plain endpoint with its model count) and the first five calls. Hosts
   and endpoints: **Add endpoint** (a drawer: Name, Kind, Base URL, API key,
@@ -249,7 +249,23 @@ A thread's address may carry what the panel beside it shows:
   sentence as its tooltip. Recent calls: Time (mono), Thread (a link; private
   kind mark; "a forgotten thread" when gone), Task, Answered by ("model ·
   endpoint"), Note (the fallback or note, warn text); hidden pools left
-  out; the table stacks on a phone.
+  out; the table stacks on a phone. Tasks (`GET …/profiles`, the former
+  Settings → Model profiles): a table of every task (grouped Conversation,
+  Memory, Sleep, Images, Speech, with a hint under each name) by profile,
+  **Private threads** (Local) and **General threads** (the default profile;
+  **Use Custom instead** in its head sends `PATCH …/profiles`; **Show
+  Custom too** adds the third column). A cell shows the first model with
+  its state dot (up; away when only a later entry can answer; down when
+  none can), then "+N fallbacks", "no fallback" (warn) or "= Chat" for a
+  task following another; Dictation has a cell under Private threads only.
+  A cell opens the task's drawer: **Its own list** or **Same as** a task of
+  the same kind (**Task to share with**; a task with followers can't
+  follow), the ordered list with Move up, Move down and Remove (in Custom,
+  "Falls back to cloud from here" where the kind changes), and **Add…**, a
+  picker with a search box, group chips and only models the task can use;
+  each change is a `PUT …/profiles/<profile>/<task>` at once, a refusal
+  shown as an error line. Settings → Sleep holds the Sleep mode select and
+  Sleep fallback; `…/settings/profiles` goes to the Tasks tab.
 - **Notifications** (`src/Notifications.tsx`; docs/ux.md §6 "Anything
   waiting for the user"): the first section of Settings, one list from
   `GET …/notifications`. Chips filter by type (All with the count, Needs a
@@ -285,9 +301,9 @@ A thread's address may carry what the panel beside it shows:
   unlocked after logout, and `lyricad`'s warning when the two contradict),
   Password, Your personas (linking a separate persona needs both passwords),
   Persona suggestions (edit, send on to the administrators, or drop),
-  Model profiles (with the **Sleep** mode select
-  and the **Sleep fallback** switch above the profiles; endpoints moved to
-  the Models area, and `…/settings/endpoints` goes there), Network (New threads: the default
+  Sleep (the **Sleep** mode select and the **Sleep fallback** switch;
+  model profiles moved to Models → Tasks and endpoints to Hosts and
+  endpoints, so `…/settings/profiles` and `…/settings/endpoints` go there), Network (New threads: the default
   mode and Fallback; then network defaults per pool), and **Machines**
   (`src/Machines.tsx`, docs/ux.md section 6): a row per machine with its
   name, a facts line in mono (address, pool, "SSH · key" or "Proxmox API ·
@@ -575,9 +591,9 @@ A thread's address may carry what the panel beside it shows:
   first asks in a dialog naming the model (Use cloud dictation or Cancel);
   confirmed, it is what sends that thread's voice to the cloud.
   **Read aloud while agent writes** (`Profiles.readAloudLive`) is a switch
-  under Speech in Settings, Appearance. The Model profiles
-  section has Read aloud rows in every profile and a Dictation row in Local
-  only, and a speaking model
+  under Speech in Settings, Appearance. Models → Tasks has a Read aloud
+  row in every profile and a Dictation row under Private threads only, and
+  a speaking model
   in an endpoint's model list (Models → Hosts and endpoints, "N models") has
   a Settings link opening its drawer: a voice per
   language (English, Mandarin) and the speed (a number, of 4, clamped when

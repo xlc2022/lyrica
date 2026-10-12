@@ -275,6 +275,14 @@ checks it reaches her, and with a real model which she picks. Code:
   its stored thread, without starting a turn there.
 - `list`: the children, with status (working, waiting for approval, idle)
   and last update.
+- `read({ id, last? })`: the latest `last` messages (10 by default, at
+  most 30) of a thread `list` shows, tool results left out, each cut as
+  `read_memory` cuts an entry. Read as from another thread, so entries
+  written unlogged are left out, and an unlogged thread is refused. A
+  child that isn't a project's thread can't read.
+- `stop({ id })`: stops one of the thread's children (in a project chat,
+  one of its threads) as Pause does: the running turn is aborted and the
+  child is idle. The project's threads can't stop each other.
 - `compact({ summary })`: compacts the thread she's in with her summary
   (daemon.md, "Compacting herself"). Child threads have it too.
 
@@ -283,6 +291,18 @@ is a child thread and to post updates at milestones and when done, not after
 every step. **Depth 1:** the store refuses a child of a child; a child can
 delegate. The user talks in a child like any thread, and the parent isn't
 told. Its approvals work as in any thread.
+
+**Told when a child ends.** A child working on a task from its parent (a
+`start`, a queued start that began, or a parent's `message`; not a look's
+line) owes it a report. When its turn ends and it is idle, the parent gets
+a note, delivered like an update: "stopped with an error" if the turn
+ended with an error, or "finished without a report" if the child sent no
+`message to: "parent"` since the task. The parent hears this once: after
+a note, the child's next bad end tells nobody until it messages the parent
+or the user writes in it, so a child that fails every time can't keep its
+parent taking turns. A stopped turn tells nobody, nor does a turn the user
+started in the child. Which children owe a report is
+held in memory; a restart tells the parent anyway.
 
 **Limits:** `start`s per message to the parent (`perRequest`, default 3,
 counted before each start so parallel calls can't slip past), and children

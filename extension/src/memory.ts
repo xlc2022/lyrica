@@ -109,7 +109,8 @@ export function formatRead(view: PoolView, id: string, ctx: Pick<MemoryContext, 
   return lines.join("\n");
 }
 
-function formatEntry(e: StoredEntry): string {
+/** One entry of a past thread, cut as `read_memory` cuts it. */
+export function formatEntry(e: StoredEntry): string {
   const text = lookPointer(e.text) ?? (e.text.length > 1500 ? `${e.text.slice(0, 1500)}…` : e.text);
   return `[${e.id}] ${e.role} (${e.createdAt.slice(0, 16).replace("T", " ")}): ${text || "(no text)"}`;
 }

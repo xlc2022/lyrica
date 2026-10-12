@@ -679,10 +679,13 @@ The machine running `lyricad` needs:
 - passt (for `pasta`), nftables, `unshare` and bash, and `/dev/net/tun`;
 - unprivileged user namespaces.
 
-In a Proxmox LXC container, turn on the **nesting** and **FUSE** features. A
-VM needs nothing special.
+On NixOS the module brings them, refuses to build while
+`security.allowUserNamespaces` is off, and `nix/check-host.sh` checks the
+rest on the running host ([daemon.md](daemon.md#on-nixos)). In a Proxmox
+LXC container, turn on the **nesting** and **FUSE** features. A VM needs
+nothing special.
 
-**Checklist for Li's LXC container:**
+**Checklist for a Debian or Ubuntu LXC container:**
 1. In Proxmox, under the container's Options → Features, turn on `nesting`
    and `fuse` (or `features: nesting=1,fuse=1` in its config). For `pasta`,
    also pass the tun device through, in `/etc/pve/lxc/<id>.conf`:
