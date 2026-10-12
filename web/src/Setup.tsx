@@ -31,7 +31,7 @@ const ORDER: StepKey[] = ["code", "name", "admin", "tailnet", "models", "done"];
 function explain(e: Error, step: StepKey): string {
   const status = e instanceof HttpError ? e.status : 0;
   if (step === "admin" && status === 403) return "The code doesn't match. It is in the journal: journalctl -u lyricad.";
-  if (step === "admin" && status === 429) return "Too many wrong codes. Wait a minute, then try again.";
+  if (step === "admin" && status === 429) return "Too many wrong codes. Wait before trying again: the wait grows with each wrong code, up to 15 minutes.";
   if (step === "tailnet" && status === 409 && /cut this connection/.test(e.message)) return "This page is reached over the tailnet, so joining another one would cut it off. Open her LAN address and do it there.";
   if (step === "tailnet") return tailnetReason(e.message);
   return e.message;

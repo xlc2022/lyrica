@@ -123,6 +123,9 @@ brake.
 | Core extension | about 2,500 lines |
 | Docs | README, AGENTS, PRINCIPLES, DESIGN, the contracts, briefs, at most one page per component, and the operator guides in docs/guides/ |
 
+MCP servers' tools are reached through one `tool_search` tool and count
+as one, whatever the servers offer.
+
 Going over a budget takes an agreed change to DESIGN.md, or removing
 something else.
 

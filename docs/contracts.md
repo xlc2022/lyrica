@@ -702,6 +702,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     see [docs/briefs/context-stretch.md](briefs/context-stretch.md));
   - in sleep sessions only: `write_page`, `write_journal`, `write_wake`,
     `raise` and `propose_persona` (Sleep thread; see [sleep.md](sleep.md)).
+  - `tool_search`, Pi's, in a thread with a granted MCP server: it loads
+    the servers' deferred tools, which don't count against the budget
+    (MCP servers; see [docs/briefs/mcp.md](briefs/mcp.md));
   - `propose_plan({ plan })`, only in Plan mode and never in a subagent
     (Modes; see [workspace.md](workspace.md));
   - compacting is `threads({ action: "compact", summary })`
@@ -1239,6 +1242,12 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   carry `repositories`. A sandbox's tools have `git`, `gh` and `tea`. The
   Git guide is a prompt section (`extension/src/git.md`) added to every
   turn of a thread with repositories.
+- **MCP servers API** (planned, docs/briefs/mcp.md): `lyricad`'s
+  `/api/u/:userId/mcp-servers` (`GET`; `POST …/probe`; `POST`; `PATCH
+  …/:name` for name, url and pool; `POST …/:name/token`; `DELETE`); thread
+  settings carry `mcpServers` (names). User database step 3 adds
+  `mcp_servers` and `thread_workspaces.mcp_servers`. Servers are registered
+  per session with Pi's `registerMcpServer`, exposure `deferred`.
 - **Machines API:** `lyricad`'s `/api/u/:userId/machines` (`GET`; `POST
   …/machines/probe` for the Test step; `POST …/machines` to confirm;
   `PATCH …/machines/:name` for address, root, pool and limit; `POST

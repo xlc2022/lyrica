@@ -1,10 +1,10 @@
 // Settings (the user's own) and Administration (server-wide), each a page with
 // its sections listed at the left. The old control panel's cards moved here.
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import {
   del, get, patch, post, put, u,
   type AdminStatus, type AllowedPaths, type EndpointInfo, type Me, type ModeDefault, type NetworkDefaults, type PersonaProposal,
-  type OfferingInfo, type OfferingSettings, type Pool, type Probe, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type Task, type Theme, type UserCard,
+  type OfferingInfo, type Pool, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type Task, type Theme, type UserCard,
   type NameSetting,
 } from "./api.ts";
 import { GitAccountsSection } from "./Git.tsx";
@@ -51,7 +51,6 @@ const SETTINGS: SectionDef[] = [
   { key: "password", label: "Password", body: (ctx) => <PasswordSection ctx={ctx} /> },
   { key: "personas", label: "Your personas", body: (ctx) => <LinksSection ctx={ctx} /> },
   { key: "suggestions", label: "Persona suggestions", body: (ctx) => <DraftsSection ctx={ctx} /> },
-  { key: "endpoints", label: "Endpoints", body: (ctx) => <EndpointsSection ctx={ctx} /> },
   { key: "profiles", label: "Model profiles", body: (ctx) => <ProfilesSection ctx={ctx} /> },
   { key: "network", label: "Network", body: (ctx) => <NetworkSection ctx={ctx} /> },
   { key: "machines", label: "Machines", body: (ctx, rest) => <MachinesSection ctx={ctx} rest={rest} /> },
@@ -226,146 +225,6 @@ function PasswordSection({ ctx }: { ctx: ShellContext }) {
         <div className="row"><button className="primary" disabled={busy || !oldPassword || !newPassword || newPassword !== again}>Change password</button></div>
       </form>
     </Section>
-  );
-}
-
-function EndpointsSection({ ctx }: { ctx: ShellContext }) {
-  const userId = ctx.user.id;
-  const eps = useLoad(() => get<EndpointInfo[]>(u(userId, "endpoints")), [userId]);
-  const [run, busy, error] = useAction();
-  const [form, setForm] = useState({ name: "", kind: "local" as "cloud" | "local", baseUrl: "", apiKey: "", shared: false });
-  const add = () => run(async () => {
-    await post(u(userId, "endpoints"), { ...form, apiKey: form.apiKey || undefined });
-    setForm({ name: "", kind: "local", baseUrl: "", apiKey: "", shared: false });
-    eps.reload();
-  });
-  return (
-    <Section title="Endpoints">
-      <ErrorText error={eps.error || error} />
-      <ul className="list">
-        {(eps.data ?? []).map((ep) => <EndpointRow key={ep.id} userId={userId} ep={ep} canEdit={!ep.shared || ctx.user.admin} onChange={eps.reload} />)}
-      </ul>
-      <form className="stack sub-card" onSubmit={(e) => { e.preventDefault(); void add(); }}>
-        <h3>Add endpoint</h3>
-        <div className="row wrap">
-          <label className="field"><span>Name</span><input value={form.name} placeholder="Blackwell host" onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
-          <label className="field narrow"><span>Kind</span>
-            <select value={form.kind} title={`Local means on your own network: the LAN or your tailnet. ${her()} warns if a local endpoint looks public.`} onChange={(e) => setForm({ ...form, kind: e.target.value as "cloud" | "local" })}>
-              <option value="local">Local</option><option value="cloud">Cloud</option>
-            </select>
-          </label>
-        </div>
-        <label className="field"><span>Base URL</span><input value={form.baseUrl} placeholder="http://192.168.1.50:1234/v1" onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} /></label>
-        <label className="field"><span>API key</span><input type="password" autoComplete="off" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} /></label>
-        {ctx.user.admin && <Switch label="Shared" hint="Every user on this server can use it" checked={form.shared} onChange={(shared) => setForm({ ...form, shared })} />}
-        <div className="row"><button className="primary" disabled={busy || !form.name || !form.baseUrl}>Add endpoint</button></div>
-      </form>
-    </Section>
-  );
-}
-
-function EndpointRow({ userId, ep, canEdit, onChange }: { userId: string; ep: EndpointInfo; canEdit: boolean; onChange: () => void }) {
-  const path = u(userId, "endpoints", ep.id);
-  const probe = useLoad(() => get<Probe>(`${path}/probe`), [path]);
-  const [run, busy, error] = useAction();
-  const [model, setModel] = useState("");
-  const [voice, setVoice] = useState<OfferingInfo>();
-  return (
-    <li className="endpoint">
-      <div className="row between">
-        <span><span className={`k ${ep.kind}`}>{ep.kind}</span> <b>{ep.name}</b>{ep.shared && <span className="muted"> · shared</span>}</span>
-        <span className="probe" data-state={probe.data?.state ?? "unknown"}>{probe.data ? (probe.data.state === "up" ? "Up" : "Down") : probe.error ? "Unknown" : "Checking…"}</span>
-      </div>
-      <code className="url">{ep.baseUrl}</code>
-      {probe.data?.warning && <p className="warn-text">{probe.data.warning}</p>}
-      <p className="meta muted models">
-        {ep.models.length ? ep.models.map((m, i) => (
-          <span key={m.id}>{i > 0 && ", "}{m.modelId}{m.speak?.voices.length ? <> <button type="button" className="link sm" aria-label={`${m.modelId} settings`} onClick={() => setVoice(m)}>Settings</button></> : null}</span>
-        )) : "No models yet."}
-      </p>
-      {voice && <VoiceDrawer userId={userId} model={voice} onClose={() => setVoice(undefined)} />}
-      {voice && <div className="scrim drawer-scrim" aria-hidden="true" onClick={() => setVoice(undefined)} />}
-      <ErrorText error={error} />
-      {canEdit && (
-        <div className="row wrap">
-          <button type="button" disabled={busy} onClick={() => run(async () => { await post(`${path}/discover`); onChange(); probe.reload(); })}>Read its models</button>
-          <form className="inline" onSubmit={(e) => { e.preventDefault(); void run(async () => { await post(`${path}/models`, { modelId: model }); setModel(""); onChange(); }); }}>
-            <input aria-label={`Add a model to ${ep.name}`} placeholder="Model ID" value={model} onChange={(e) => setModel(e.target.value)} />
-            <button disabled={!model || busy}>Add model</button>
-          </form>
-          <Confirm label="Remove" danger confirm="Remove" question={`Remove ${ep.name}? Threads using its models fall back to the profile.`}
-            onConfirm={() => run(async () => { await del(path); onChange(); })} />
-        </div>
-      )}
-    </li>
-  );
-}
-
-const LANGUAGES: Record<string, string> = { en: "English", zh: "Mandarin" };
-const MAX_SPEED = 4;
-const MIN_SPEED = 0.25;
-
-/** A speech model's Settings drawer: its voice per language and its speed, yours over the shared ones. */
-function VoiceDrawer({ userId, model, onClose }: { userId: string; model: OfferingInfo; onClose: () => void }) {
-  const path = u(userId, "offerings", model.id, "settings");
-  const settings = useLoad(() => get<OfferingSettings>(path), [path]);
-  const [run, busy, error] = useAction();
-  const [speed, setSpeed] = useState<string>();
-  const ref = useRef<HTMLElement>(null);
-  useEffect(() => {
-    ref.current?.focus();
-    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    addEventListener("keydown", key);
-    return () => removeEventListener("keydown", key);
-  }, [onClose]);
-  const voices = model.speak?.voices ?? [];
-  const languages = [...new Set(voices.map((v) => v.language))];
-  const s = settings.data;
-  const save = (values: { voices?: Record<string, string> | null; speed?: number | null }) => run(async () => settings.set(await put<OfferingSettings>(path, { values })));
-  const source = (k: "voices" | "speed") => s?.sources[k] && <span className="muted meta source"> {s.sources[k]}</span>;
-  // The field clamps to its range when it is left; empty goes back to the default.
-  const commitSpeed = () => {
-    if (speed === undefined) return;
-    const n = Number(speed);
-    setSpeed(undefined);
-    if (speed.trim() === "") { if (s?.values.speed !== undefined) void save({ speed: null }); return; }
-    if (!Number.isFinite(n)) return;
-    void save({ speed: Math.min(MAX_SPEED, Math.max(MIN_SPEED, n)) });
-  };
-  return (
-    <aside ref={ref} tabIndex={-1} className="drawer" aria-label={`${model.modelId} settings`}>
-      <div className="drawer-head">
-        <h2>{model.modelId}</h2>
-        <button type="button" onClick={onClose}>Close</button>
-      </div>
-      <div className="drawer-body">
-        <ErrorText error={settings.error || error} />
-        <fieldset className="group" disabled={!s || busy}>
-          <legend>Voice{source("voices")}</legend>
-          {languages.map((lang) => (
-            <label key={lang} className="field"><span>{LANGUAGES[lang] ?? lang}</span>
-              <select value={s?.values.voices?.[lang] ?? ""} onChange={(e) => save({ voices: { ...s?.values.voices, [lang]: e.target.value } })}>
-                {!s?.values.voices?.[lang] && <option value="">Default</option>}
-                {voices.filter((v) => v.language === lang).map((v) => <option key={v.id} value={v.id}>{v.id}</option>)}
-              </select>
-            </label>
-          ))}
-          {s?.sources.voices === "yours" && <button type="button" className="link sm" onClick={() => save({ voices: null })}>Reset</button>}
-        </fieldset>
-        <fieldset className="group" disabled={!s || busy}>
-          <legend>Speed{source("speed")}</legend>
-          <div className="field">
-            <span className="unit-field">
-              <input type="number" inputMode="decimal" min={MIN_SPEED} max={MAX_SPEED} step={0.05} placeholder="1" aria-label="Speed"
-                value={speed ?? s?.values.speed ?? ""} onChange={(e) => setSpeed(e.target.value)} onBlur={commitSpeed}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitSpeed(); } }} />
-              <span className="muted meta">of {MAX_SPEED}</span>
-            </span>
-          </div>
-          {s?.sources.speed === "yours" && <button type="button" className="link sm" onClick={() => save({ speed: null })}>Reset</button>}
-        </fieldset>
-      </div>
-    </aside>
   );
 }
 

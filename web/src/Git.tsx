@@ -166,7 +166,7 @@ function GitDrawer({ userId, account, onSaved, onRemoved, onChanged, onClose }: 
           {(adding || replacing) && (
             <label className="field"><span>Token</span>
               <input className="mono" type="password" value={form.token} autoComplete="off" spellCheck={false} autoFocus={replacing}
-                title={github ? `A fine-grained token for the repositories ${her()} works on, with Contents and Pull requests.` : "An access token with read and write access to repositories."}
+                title={github ? `A fine-grained token for the repositories ${her()} works on, with Contents and Pull requests, and Actions read for CI logs.` : "An access token with read and write access to repositories."}
                 onChange={(e) => set("token", e.target.value)} />
             </label>
           )}

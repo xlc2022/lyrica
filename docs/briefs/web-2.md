@@ -215,6 +215,17 @@ For each part:
   of each user's key in `self.db` (DESIGN.md "Users" and "Storage",
   contracts core/users; Li chose this over a reset that loses data). Nothing
   for sleep or the pools changes; the privacy boundary note is in DESIGN.
+- 2026-10-12, PR 14 (Models area, part one): `src/Models.tsx` with the
+  area's shell and tabs Overview, Hosts and endpoints, Clean up, Recent
+  calls; Settings → Endpoints removed (its address lands on the hosts tab;
+  the speaking model's Settings link lives in an endpoint's model list).
+  Not yet: Tasks (replaces Model profiles; carry `watching` from #156),
+  Text models with the copy Settings drawer and the Serving rows of
+  docs/briefs/context-stretch.md item 8 (#157 is on main), Image models,
+  Downloads. The badge reads `models/cleanup` so no tab probes endpoints
+  on a timer; `models/page` is read only while the area is open. No model
+  host was available in e2e, so the host card and Add model host are
+  checked by hand on a real host.
 - 2026-10-12, PR 13 (the Sleep section): `src/Sleep.tsx`, the sidebar link
   with its badge, the Sleep mode select in Settings → Model profiles, the
   administrator's Sleep section moved into the same file (docs/web.md, ux
