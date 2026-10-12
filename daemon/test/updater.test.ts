@@ -129,6 +129,18 @@ describe("lyrica-update", () => {
     expect(w.json("state.json")).not.toHaveProperty("unitsStale");
   });
 
+  it("clears the stale-unit report when install.sh installs the units", async () => {
+    const w = await world();
+    writeFileSync(join(w.root, "work", "daemon", "deploy", "lyricad.service"), "new confinement\n");
+    w.release("changed", S(1, 1, 1), S(1, 1, 1));
+    expect((await w.run("lyrica-update", "--tag", "update/changed")).code).toBe(0);
+    expect(w.json("state.json").unitsStale).toEqual(["lyricad.service"]);
+    // install.sh calls this right after installing the units.
+    execFileSync("bash", ["-c", `. "${UPDATER}/common.sh"; clear_units_stale`], { env: { ...process.env, LYRICA_UPDATE_DIR: w.update, LYRICA_STATE: w.state, LYRICA_PREFIX: w.prefix } });
+    expect(w.json("state.json")).not.toHaveProperty("unitsStale");
+    expect(w.json("state.json").state).toBeDefined();
+  });
+
   it("records no stale-unit report when updating in Nix mode", async () => {
     const w = await world(true);
     rmSync(w.systemd, { recursive: true });

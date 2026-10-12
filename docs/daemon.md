@@ -945,7 +945,7 @@ check names and counts, never text.
 
 - **Kept state.** `/var/lib/lyrica-update` (root's, readable): `state.json`
   (the updater's state, busy work while draining, the newest update note,
-  `lastRollback`, and `unitsStale` when installed Debian units differ), `releases.json` (kept releases, `current`, `previous`,
+  `lastRollback`, and `unitsStale` when installed Debian units differ, which install.sh clears when it installs the units), `releases.json` (kept releases, `current`, `previous`,
   the snapshots, and the highest `min_reader` any release has written),
   `notes/<commit>.txt`. Snapshots are in `/var/lib/lyrica-snapshots`
   (root's, `0700`). Neither is ever granted to a thread.
