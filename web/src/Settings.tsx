@@ -6,6 +6,7 @@ import {
   type TaskModel, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTask,
 } from "./api.ts";
 import { Repositories } from "./Git.tsx";
+import { McpServers } from "./Mcp.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
@@ -159,6 +160,11 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
         <fieldset className="group" disabled={sub || busy}>
           <legend>Repositories</legend>
           <Repositories userId={userId} pool={pool} granted={settings.repositories} onChange={(repositories) => change({ repositories })} />
+        </fieldset>
+
+        <fieldset className="group" disabled={sub || busy}>
+          <legend>MCP servers</legend>
+          <McpServers userId={userId} pool={pool} granted={settings.mcpServers} onChange={(mcpServers) => change({ mcpServers })} />
         </fieldset>
 
         <fieldset className="group" disabled={sub || busy}>

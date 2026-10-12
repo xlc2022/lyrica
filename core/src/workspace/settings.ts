@@ -2,6 +2,7 @@ import { isAbsolute, posix } from "node:path";
 import type { Db } from "../db.ts";
 import type { Pool } from "../types.ts";
 import { parseHost } from "./net.ts";
+import { MCP_NAME, mcpNamespace, mcpUrl, type McpStateKind } from "./mcp.ts";
 import { certFingerprint } from "./proxmox.ts";
 
 /** A folder a thread may touch. It is mounted at the same path inside the sandbox. */
@@ -48,6 +49,8 @@ export interface ThreadWorkspace {
   machines: string[];
   /** The repositories it clones, each with the Git account of its pool that reaches it. */
   repositories: ThreadRepository[];
+  /** The MCP servers it may use, by name, from its pool's servers. */
+  mcpServers: string[];
   /** Set for a subagent's thread: its settings can only be the parent's or stricter. */
   parent: string | null;
 }
@@ -119,6 +122,28 @@ export interface GitAccountConfig {
 export interface GitAccountState { kind: "signedIn" | "rejected" | "unreachable"; since: string }
 
 export type NewGitAccount = Omit<GitAccountConfig, "state">;
+
+/** An MCP server she can use: a URL (streamable HTTP) and an optional token, in one pool. */
+export interface McpServerConfig {
+  name: string;
+  url: string;
+  /** Sent as `Authorization: Bearer`. Lives only in user.db and in memory; empty for none. */
+  token: string;
+  /** Used only by threads of this pool. A private one must be on her own network. */
+  pool: Pool;
+  /** The line Pi lists it with: the first line of its instructions, or its title, from the last check. */
+  description: string | null;
+  /** How many tools it offered at the last check. */
+  tools: number;
+  /** Its host resolved outside the LAN, loopback and tailnet at the last check; for a private server, Li confirmed that. */
+  offNetwork: boolean;
+  /** How the last connection went, and since when; null before the first, or after its URL changed. */
+  state: McpServerState | null;
+}
+
+export interface McpServerState { kind: McpStateKind; since: string }
+
+export type NewMcpServer = Omit<McpServerConfig, "state">;
 
 const GIT_ACCOUNT = /^[A-Za-z0-9._-]{1,100}$/;
 const REPO_PART = /^[A-Za-z0-9_.-]+$/;
@@ -291,19 +316,19 @@ export class WorkspaceSettings {
   thread(threadId: string): ThreadWorkspace {
     const row = this.db.prepare("SELECT * FROM thread_workspaces WHERE thread_id = ?").get(threadId) as ThreadRow | undefined;
     // A thread from before modes were saved for every new thread: Auto, as it had then. New threads get the default from startThread.
-    if (!row) return { grants: [], internet: null, services: null, hosts: null, mode: "auto", webSearch: true, images: true, machines: [], repositories: [], parent: null };
+    if (!row) return { grants: [], internet: null, services: null, hosts: null, mode: "auto", webSearch: true, images: true, machines: [], repositories: [], mcpServers: [], parent: null };
     const bool = (v: number | null) => (v === null ? null : v === 1);
     return {
       grants: JSON.parse(row.grants), internet: bool(row.internet), services: bool(row.services),
       hosts: row.hosts === null ? null : JSON.parse(row.hosts), mode: row.mode, webSearch: row.web_search === 1, images: row.images === 1,
-      machines: JSON.parse(row.machines), repositories: JSON.parse(row.repositories), parent: row.parent,
+      machines: JSON.parse(row.machines), repositories: JSON.parse(row.repositories), mcpServers: JSON.parse(row.mcp_servers), parent: row.parent,
     };
   }
 
   /**
    * What applies to the thread now: its own settings, with the strictest mode,
-   * each switch off where any ancestor's is, only the folders, machines and
-   * repositories every ancestor grants, and a folder read-only where any ancestor has it
+   * each switch off where any ancestor's is, only the folders, machines,
+   * repositories and MCP servers every ancestor grants, and a folder read-only where any ancestor has it
    * read-only. A parent changed after its subagent or child thread started
    * narrows it at once; a parent gaining something gives the child nothing.
    */
@@ -317,6 +342,7 @@ export class WorkspaceSettings {
       t.grants = narrowGrants(t.grants, up.grants);
       t.machines = t.machines.filter((m) => up.machines.includes(m));
       t.repositories = t.repositories.filter((r) => up.repositories.some((u) => sameRepository(r, u)));
+      t.mcpServers = t.mcpServers.filter((m) => up.mcpServers.includes(m));
       id = up.parent;
     }
     return t;
@@ -328,12 +354,13 @@ export class WorkspaceSettings {
    */
   setThread(threadId: string, pool: Pool, change: Partial<Omit<ThreadWorkspace, "parent">>): ThreadWorkspace {
     const next = { ...this.thread(threadId), ...change };
-    // Folders, machines and repositories a parent has since taken away go with any other change, rather than refusing it.
-    if (next.parent && (change.grants === undefined || change.machines === undefined || change.repositories === undefined)) {
+    // Folders, machines, repositories and MCP servers a parent has since taken away go with any other change, rather than refusing it.
+    if (next.parent && (change.grants === undefined || change.machines === undefined || change.repositories === undefined || change.mcpServers === undefined)) {
       const now = this.effective(threadId);
       if (change.grants === undefined) next.grants = now.grants;
       if (change.machines === undefined) next.machines = now.machines;
       if (change.repositories === undefined) next.repositories = now.repositories;
+      if (change.mcpServers === undefined) next.mcpServers = now.mcpServers;
     }
     next.grants = next.grants.map((g) => ({ path: cleanPath(g.path), writable: g.writable }));
     next.hosts = next.hosts?.map((h) => parseHost(h).entry) ?? null;
@@ -351,6 +378,12 @@ export class WorkspaceSettings {
       if (m.pool !== pool) throw new Error(`${name} is a ${m.pool} machine; a ${pool} thread can't use it`);
     }
     next.repositories = this.checkRepositories(next.repositories, pool);
+    next.mcpServers = [...new Set((next.mcpServers ?? []).map(String))];
+    for (const name of next.mcpServers) {
+      const m = this.mcpServer(name);
+      if (!m) throw new Error(`no MCP server ${name}`);
+      if (m.pool !== pool) throw new Error(`${name} is a ${m.pool} MCP server; a ${pool} thread can't use it`);
+    }
     if (next.parent) this.checkNarrower(next.parent, pool, next);
     this.write(threadId, next);
     this.narrowChildren(threadId);
@@ -359,7 +392,7 @@ export class WorkspaceSettings {
 
   /**
    * Writes what `effective` already applies into the rows of the thread's
-   * subagents and child threads, so a folder, machine or repository taken away stays
+   * subagents and child threads, so a folder, machine, repository or MCP server taken away stays
    * away: the parent getting it back later gives them nothing.
    */
   private narrowChildren(threadId: string, depth = 0): void {
@@ -369,8 +402,8 @@ export class WorkspaceSettings {
       const own = this.thread(id);
       const now = this.effective(id);
       const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-      if (!same(own.grants, now.grants) || !same(own.machines, now.machines) || !same(own.repositories, now.repositories)) {
-        this.write(id, { ...own, grants: now.grants, machines: now.machines, repositories: now.repositories });
+      if (!same(own.grants, now.grants) || !same(own.machines, now.machines) || !same(own.repositories, now.repositories) || !same(own.mcpServers, now.mcpServers)) {
+        this.write(id, { ...own, grants: now.grants, machines: now.machines, repositories: now.repositories, mcpServers: now.mcpServers });
       }
       this.narrowChildren(id, depth + 1);
     }
@@ -379,25 +412,26 @@ export class WorkspaceSettings {
   private write(threadId: string, t: ThreadWorkspace): void {
     const int = (v: boolean | null) => (v === null ? null : v ? 1 : 0);
     // The upsert keeps the thread's allowed commands.
-    this.db.prepare(`INSERT INTO thread_workspaces (thread_id, grants, internet, services, hosts, mode, parent, web_search, images, machines, repositories)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (thread_id) DO UPDATE SET grants = excluded.grants, internet = excluded.internet,
+    this.db.prepare(`INSERT INTO thread_workspaces (thread_id, grants, internet, services, hosts, mode, parent, web_search, images, machines, repositories, mcp_servers)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (thread_id) DO UPDATE SET grants = excluded.grants, internet = excluded.internet,
       services = excluded.services, hosts = excluded.hosts, mode = excluded.mode, parent = excluded.parent, web_search = excluded.web_search,
-      images = excluded.images, machines = excluded.machines, repositories = excluded.repositories`).run(threadId, JSON.stringify(t.grants), int(t.internet), int(t.services),
-      t.hosts === null ? null : JSON.stringify(t.hosts), t.mode, t.parent, int(t.webSearch), int(t.images), JSON.stringify(t.machines), JSON.stringify(t.repositories));
+      images = excluded.images, machines = excluded.machines, repositories = excluded.repositories, mcp_servers = excluded.mcp_servers`).run(threadId,
+      JSON.stringify(t.grants), int(t.internet), int(t.services), t.hosts === null ? null : JSON.stringify(t.hosts), t.mode, t.parent, int(t.webSearch), int(t.images),
+      JSON.stringify(t.machines), JSON.stringify(t.repositories), JSON.stringify(t.mcpServers));
   }
 
   /**
    * Gives a subagent's thread its parent's folders, network, permission mode,
-   * switches, machines and repositories, or the stricter ones in `narrower`. It works in the
+   * switches, machines, repositories and MCP servers, or the stricter ones in `narrower`. It works in the
    * parent's folder. Anything wider than the parent's is refused.
    */
   inheritSettings(parentThreadId: string, childThreadId: string, pool: Pool,
-    narrower: Partial<Pick<ThreadWorkspace, "grants" | "mode" | "webSearch" | "images" | "machines" | "repositories">> & Partial<Network> = {}): ThreadWorkspace {
+    narrower: Partial<Pick<ThreadWorkspace, "grants" | "mode" | "webSearch" | "images" | "machines" | "repositories" | "mcpServers">> & Partial<Network> = {}): ThreadWorkspace {
     const parent = this.effective(parentThreadId);
     const net = this.network(parentThreadId, pool);
     // Start from nothing, so a refused narrowing leaves the child with no access at all.
     this.write(childThreadId, {
-      grants: [], internet: false, services: false, hosts: [], mode: "plan", webSearch: false, images: false, machines: [], repositories: [], parent: parentThreadId,
+      grants: [], internet: false, services: false, hosts: [], mode: "plan", webSearch: false, images: false, machines: [], repositories: [], mcpServers: [], parent: parentThreadId,
     });
     return this.setThread(childThreadId, pool, {
       grants: narrower.grants ?? parent.grants,
@@ -409,6 +443,7 @@ export class WorkspaceSettings {
       images: narrower.images ?? parent.images,
       machines: narrower.machines ?? parent.machines,
       repositories: narrower.repositories ?? parent.repositories,
+      mcpServers: narrower.mcpServers ?? parent.mcpServers,
     });
   }
 
@@ -422,8 +457,8 @@ export class WorkspaceSettings {
     const t = this.thread(threadId);
     if (t.parent) {
       this.checkInherited(t.parent, pool);
-      // Folders, machines and repositories a parent dropped later are dropped from the child by `effective`, not refused.
-      this.checkNarrower(t.parent, pool, { ...t, grants: [], machines: [], repositories: [] });
+      // Folders, machines, repositories and MCP servers a parent dropped later are dropped from the child by `effective`, not refused.
+      this.checkNarrower(t.parent, pool, { ...t, grants: [], machines: [], repositories: [], mcpServers: [] });
     }
   }
 
@@ -447,6 +482,8 @@ export class WorkspaceSettings {
     if (machine) throw new Error(`${machine} isn't in the parent thread's machines`);
     const repository = child.repositories.find((r) => !parent.repositories.some((p) => sameRepository(r, p)));
     if (repository) throw new Error(`${repository.name} isn't in the parent thread's repositories`);
+    const server = child.mcpServers.find((m) => !parent.mcpServers.includes(m));
+    if (server) throw new Error(`${server} isn't in the parent thread's MCP servers`);
   }
 
   /** Repositories cleaned and checked: each of a Git account of the thread's pool, and no two in one folder. */
@@ -697,6 +734,118 @@ export class WorkspaceSettings {
     this.eachRepositories((list) => list.map((r) => (r.account === from ? { ...r, account: to } : r)));
   }
 
+  mcpServers(): McpServerConfig[] {
+    return (this.db.prepare("SELECT * FROM mcp_servers ORDER BY name").all() as McpServerRow[]).map(toMcpServer);
+  }
+
+  mcpServer(name: string): McpServerConfig | undefined {
+    const row = this.db.prepare("SELECT * FROM mcp_servers WHERE name = ?").get(name) as McpServerRow | undefined;
+    return row && toMcpServer(row);
+  }
+
+  private needMcp(name: string): McpServerConfig {
+    const m = this.mcpServer(name);
+    if (!m) throw new Error(`no MCP server ${name}`);
+    return m;
+  }
+
+  /** A name no other server has, in Pi's eyes too: names that differ only in '-' and '_' are one server to it. */
+  private checkMcpName(name: string, except?: string): void {
+    if (!MCP_NAME.test(name)) throw new Error("server names use letters, digits, '_' and '-'");
+    const clash = this.mcpServers().find((m) => m.name !== except && mcpNamespace(m.name) === mcpNamespace(name));
+    if (clash) throw new Error(`MCP server ${clash.name} already exists`);
+  }
+
+  /** Saves a server that answered its check (`Workspace.addMcpServer` does that first). */
+  addMcpServer(m: NewMcpServer, state: McpStateKind | null = null): McpServerConfig {
+    this.checkMcpName(m.name);
+    const next = checkMcpServer(m);
+    this.db.prepare(`INSERT INTO mcp_servers (name, url, token, pool, description, tools, off_network, state, checked_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(next.name, next.url, next.token, next.pool, next.description, next.tools, next.offNetwork ? 1 : 0,
+      state, state && new Date().toISOString());
+    return this.needMcp(m.name);
+  }
+
+  /**
+   * Renames a server or changes its URL or pool. A new pool takes it from
+   * every thread, so it is never reached from both pools; a new name follows
+   * into the threads that use it.
+   */
+  updateMcpServer(name: string, change: Partial<Pick<McpServerConfig, "name" | "url" | "pool" | "description" | "tools">>): McpServerConfig {
+    const before = this.needMcp(name);
+    const next = checkMcpServer({ ...before, ...change });
+    if (next.name !== name) this.checkMcpName(next.name, name);
+    const moved = next.url !== before.url;
+    this.db.prepare(`UPDATE mcp_servers SET name = ?, url = ?, pool = ?, description = ?, tools = ?${moved ? ", state = NULL, checked_at = NULL" : ""} WHERE name = ?`)
+      .run(next.name, next.url, next.pool, next.description, next.tools, name);
+    if (next.pool !== before.pool) this.dropMcpServer(name);
+    else if (next.name !== name) this.renameMcpServer(name, next.name);
+    return this.needMcp(next.name);
+  }
+
+  /** Replace token: the new one, checked against the server by `Workspace.setMcpToken` first. */
+  setMcpToken(name: string, token: string, state: McpStateKind | null = null): McpServerConfig {
+    const next = checkMcpServer({ ...this.needMcp(name), token });
+    this.db.prepare("UPDATE mcp_servers SET token = ?, state = ?, checked_at = ? WHERE name = ?").run(next.token, state, state && new Date().toISOString(), name);
+    return this.needMcp(name);
+  }
+
+  /** Removes the server, every thread's grant of it, and the tools allowed on it in a thread. */
+  removeMcpServer(name: string): void {
+    if (!this.db.prepare("DELETE FROM mcp_servers WHERE name = ?").run(name).changes) throw new Error(`no MCP server ${name}`);
+    this.dropMcpServer(name);
+  }
+
+  /** Records how a connection went; `checked_at` moves only when the outcome changes. */
+  mcpServerState(name: string, kind: McpStateKind | null): void {
+    this.db.prepare("UPDATE mcp_servers SET state = ?, checked_at = ? WHERE name = ? AND state IS NOT ?")
+      .run(kind, kind && new Date().toISOString(), name, kind);
+  }
+
+  /** Records whether the host resolved outside Li's network at the last check. */
+  setMcpOffNetwork(name: string, off: boolean): void {
+    this.db.prepare("UPDATE mcp_servers SET off_network = ? WHERE name = ?").run(off ? 1 : 0, name);
+  }
+
+  /** Li accepted that a private server's host is off network: it can be used again. */
+  confirmMcpOffNetwork(name: string): McpServerConfig {
+    this.needMcp(name);
+    this.setMcpOffNetwork(name, true);
+    return this.needMcp(name);
+  }
+
+  /** The threads that grant the server themselves. */
+  threadsWithMcpServer(name: string): string[] {
+    return (this.db.prepare("SELECT thread_id, mcp_servers FROM thread_workspaces").all() as { thread_id: string; mcp_servers: string }[])
+      .filter((r) => (JSON.parse(r.mcp_servers) as string[]).includes(name)).map((r) => r.thread_id);
+  }
+
+  private eachMcp(f: (list: string[], allowed: AllowedCommand[]) => [string[], AllowedCommand[]]): void {
+    for (const row of this.db.prepare("SELECT thread_id, mcp_servers, allowed FROM thread_workspaces").all() as { thread_id: string; mcp_servers: string; allowed: string }[]) {
+      const [list, allowed] = f(JSON.parse(row.mcp_servers), JSON.parse(row.allowed));
+      if (JSON.stringify(list) !== row.mcp_servers || JSON.stringify(allowed) !== row.allowed) {
+        this.db.prepare("UPDATE thread_workspaces SET mcp_servers = ?, allowed = ? WHERE thread_id = ?").run(JSON.stringify(list), JSON.stringify(allowed), row.thread_id);
+      }
+    }
+  }
+
+  private dropMcpServer(name: string): void {
+    this.eachMcp((list, allowed) => [list.filter((m) => m !== name), allowed.filter((a) => a.machine !== mcpKey(name))]);
+  }
+
+  private renameMcpServer(from: string, to: string): void {
+    this.eachMcp((list, allowed) => [list.map((m) => (m === from ? to : m)), allowed.map((a) => (a.machine === mcpKey(from) ? { ...a, machine: mcpKey(to) } : a))]);
+  }
+
+  /** An MCP tool Li allowed in this thread: that tool on that server stops asking here, and only here. */
+  allowToolInThread(threadId: string, server: string, tool: string): void {
+    this.allowInThread(threadId, mcpKey(server), tool);
+  }
+
+  toolAllowedInThread(threadId: string, server: string, tool: string): boolean {
+    return this.allowedInThread(threadId).some((a) => a.machine === mcpKey(server) && a.command === tool);
+  }
+
   /** A suspect command Li allowed in this thread: that exact command on that machine stops asking here, and only here. */
   allowInThread(threadId: string, machine: string, command: string): void {
     if (!this.db.prepare("SELECT 1 FROM thread_workspaces WHERE thread_id = ?").get(threadId)) this.write(threadId, this.thread(threadId));
@@ -711,11 +860,14 @@ export class WorkspaceSettings {
   }
 }
 
+/** A suspect command allowed on a machine; for an MCP tool, `machine` is `mcp:<server>` (no machine's name has a colon) and `command` the tool. */
 export interface AllowedCommand { machine: string; command: string }
+
+const mcpKey = (server: string) => `mcp:${server}`;
 
 interface ThreadRow {
   grants: string; internet: number | null; services: number | null; hosts: string | null;
-  mode: PermissionMode; parent: string | null; web_search: number; images: number; machines: string; repositories: string;
+  mode: PermissionMode; parent: string | null; web_search: number; images: number; machines: string; repositories: string; mcp_servers: string;
 }
 
 export const sameRepository = (a: ThreadRepository, b: ThreadRepository): boolean => a.name === b.name && a.account === b.account;
@@ -731,6 +883,23 @@ function checkGitAccount(a: NewGitAccount): NewGitAccount {
   if (!token || token.length > 1024 || /[\s\0-\x1f\x7f]/.test(token)) throw new Error("that doesn't look like a token");
   return { ...a, host: gitHost(a.host), account, token };
 }
+
+/** An MCP server's fields cleaned and checked: a URL its pool allows, and a token with no spaces. */
+function checkMcpServer(m: NewMcpServer): NewMcpServer {
+  if (m.pool !== "general" && m.pool !== "private") throw new Error("an MCP server is general or private");
+  const token = String(m.token ?? "").trim();
+  if (token.length > 4096 || /[\s\0-\x1f\x7f]/.test(token)) throw new Error("that doesn't look like a token");
+  return { ...m, url: mcpUrl(m.url, m.pool, token), token };
+}
+
+interface McpServerRow {
+  name: string; url: string; token: string; pool: Pool; description: string | null; tools: number; off_network: number;
+  state: McpStateKind | null; checked_at: string | null;
+}
+const toMcpServer = (r: McpServerRow): McpServerConfig => ({
+  name: r.name, url: r.url, token: r.token, pool: r.pool, description: r.description, tools: r.tools, offNetwork: r.off_network === 1,
+  state: r.state && r.checked_at ? { kind: r.state, since: r.checked_at } : null,
+});
 
 interface GitAccountRow {
   name: string; kind: GitKind; host: string; account: string; token: string; pool: Pool; off_network: number;

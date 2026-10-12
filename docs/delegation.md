@@ -33,9 +33,12 @@ subagent:
   model. A refused model fails the run before any thread is made;
 - gets its workspace from `inheritSettings`: the parent's folders (or the
   ones asked for), read-only for a read-only role or `readOnly: true`, and
-  internet off if asked. It gets the parent's machines only when none of
-  those narrowings apply and it isn't a writer in a worktree: bash on a
-  machine follows none of them. The workspace refuses anything wider;
+  internet off if asked, and then Web search off too, so it has neither
+  `web_search` nor `web_fetch`. It gets the parent's machines and MCP
+  servers only when none of those narrowings apply and it isn't a writer
+  in a worktree: bash on a machine, and an MCP server, follow none of
+  them. With MCP servers it also gets `tool_search`. The workspace refuses
+  anything wider;
 - gets a short preamble plus its role's prompt instead of Lyrica's persona,
   `recall` and `read_memory` (never `remember`), `ask_parent`, and only the
   tools its role lists.
@@ -140,6 +143,10 @@ the subagent being stopped refuses that one call, and the subagent is told
 "Not approved", as the parent would be. With no `approve` (no lyricad), every
 such call is refused. So writers run in threads that ask first, and parallel
 writers each ask for their own calls.
+
+An MCP call that its server doesn't mark read-only asks the same way in
+every mode, shown in both threads; **Allow in this thread** holds for that
+tool in the subagent's thread only.
 
 ## Roles
 

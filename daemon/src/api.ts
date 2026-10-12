@@ -652,6 +652,42 @@ export interface GitToken { token: string }
 /** A repository a thread clones, and the Git account it uses. */
 export interface GitRepository { name: string; account: string }
 
+/** GET /api/u/:userId/mcp-servers → McpServerInfo[]. The token is never sent back. */
+export interface McpServerInfo {
+  name: string;
+  /** Its streamable HTTP address. */
+  url: string;
+  /** host or host:port, from the URL. */
+  host: string;
+  pool: Pool;
+  /** Whether a token is sent with each request. */
+  hasToken: boolean;
+  /** How many tools it offered at the last check. */
+  tools: number;
+  /** The line she sees it listed with: the first line of its instructions, or its title. */
+  description: string | null;
+  /** Its host resolved outside the LAN, loopback and tailnet at the last check. */
+  offNetwork: boolean;
+  /** How the last connection went, and since when: online, rejected (the token), unreachable. Absent before the first. */
+  state?: { kind: "online" | "rejected" | "unreachable"; since: string };
+}
+/**
+ * POST /api/u/:userId/mcp-servers/probe (McpServerInput) → McpServerProbe. An
+ * MCP `initialize` and `tools/list`, saving nothing: 400 with why when the
+ * server doesn't answer as one. POST /api/u/:userId/mcp-servers
+ * (McpServerInput) → McpServerInfo. Checks it again and saves it. Remote
+ * (streamable HTTP) servers only. A private server whose host resolves
+ * outside her network needs `offNetworkConfirmed`.
+ */
+export interface McpServerInput { name: string; url: string; token?: string; pool: Pool; offNetworkConfirmed?: boolean }
+export interface McpServerProbe { tools: number; description: string | null }
+/** PATCH /api/u/:userId/mcp-servers/:name → McpServerInfo. A new URL is checked first; a new pool takes it from every thread; a new name follows into them. */
+export interface McpServerChange { name?: string; url?: string; pool?: Pool; offNetworkConfirmed?: boolean }
+/** POST /api/u/:userId/mcp-servers/:name/token → McpServerInfo. Replace token: the server is checked with it first; empty sends none. */
+export interface McpToken { token: string }
+/** POST /api/u/:userId/mcp-servers/:name/confirm-off-network → McpServerInfo. A private server gone off network can be used again. */
+/** DELETE /api/u/:userId/mcp-servers/:name → Ok. Every thread's grant of it goes too. */
+
 // --- Threads ---
 
 export interface ThreadSummary {
@@ -870,6 +906,8 @@ export interface ThreadSettings {
   machines: string[];
   /** The repositories it clones into /workspace/repos, each with its Git account: its own, less any an ancestor has since taken off. */
   repositories: GitRepository[];
+  /** The MCP servers it may use, by name: its own, less any an ancestor has since taken off (`effective`). */
+  mcpServers: string[];
   mode: PermissionMode;
   /** Switches: web_search and web_fetch, and the image tool. Off removes them from the session. */
   webSearch: boolean;
@@ -913,6 +951,8 @@ export interface ThreadSettingsChange {
   machines?: string[];
   /** Repositories of Git accounts of the thread's pool; a child takes a subset of its parent's. */
   repositories?: GitRepository[];
+  /** MCP servers of the thread's pool, by name; a child takes a subset of its parent's. */
+  mcpServers?: string[];
   mode?: PermissionMode;
   webSearch?: boolean;
   images?: boolean;
@@ -1282,6 +1322,9 @@ export interface PermissionRequest {
   /** A suspect command, with its warning sentence: the card offers Allow in this thread. */
   suspect?: true;
   warning?: string;
+  /** Set for a call to an MCP tool its server doesn't mark read-only: the server's name and the tool's own name there. The card offers Allow in this thread. */
+  server?: string;
+  serverTool?: string;
   /**
    * Set for a subagent's tool call. The same request shows in the subagent's
    * thread and its parent's; either can answer it, and the first answer wins.

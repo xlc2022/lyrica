@@ -139,7 +139,22 @@ CREATE TABLE IF NOT EXISTS git_accounts (
 );
 `;
 
-const hasColumn = (db: Db, table: string, column: string) => !!db.prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = ?").get(table, column);
+/** MCP servers she can use, one row per server (core/src/workspace/settings.ts, McpServerConfig). */
+const MCP_SERVERS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS mcp_servers (
+  name        TEXT PRIMARY KEY,
+  url         TEXT NOT NULL,
+  token       TEXT NOT NULL DEFAULT '',
+  pool        TEXT NOT NULL,
+  description TEXT,
+  tools       INTEGER NOT NULL DEFAULT 0,
+  off_network INTEGER NOT NULL DEFAULT 0,
+  state       TEXT,
+  checked_at  TEXT
+);
+`;
+
+const hasColumn =(db: Db, table: string, column: string) => !!db.prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = ?").get(table, column);
 
 /** Pre-release columns added after their tables were made: [table, column, definition]. */
 function addColumns(db: Db, columns: [string, string, string][]): void {
@@ -191,6 +206,13 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     run(db) {
       db.exec(GIT_ACCOUNTS_SCHEMA);
       addColumns(db, [["thread_workspaces", "repositories", "TEXT NOT NULL DEFAULT '[]'"]]);
+    },
+  }, {
+    // MCP servers and each thread's grants of them (docs/briefs/mcp.md). Adds only.
+    version: 3,
+    run(db) {
+      db.exec(MCP_SERVERS_SCHEMA);
+      addColumns(db, [["thread_workspaces", "mcp_servers", "TEXT NOT NULL DEFAULT '[]'"]]);
     },
   }],
   pool: [{
