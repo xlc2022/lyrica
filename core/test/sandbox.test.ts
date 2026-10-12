@@ -5,7 +5,7 @@ import { connect as connectTcp, createServer, type Server } from "node:net";
 import { lookup } from "node:dns/promises";
 import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { FilesRefused, gitEnv, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Grant, type Network } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
@@ -21,6 +21,10 @@ const homeRunnable = runnable && has("gocryptfs") && has("fusermount3") && exist
 if (process.env.LYRICA_SANDBOX_TESTS === "require" && !homeRunnable) {
   throw new Error(`sandbox tests required but can't run here (${root ? "running as root" : "bwrap, gocryptfs, fusermount3 or /dev/fuse missing"})`);
 }
+
+// Each test starts real sandboxes, often several at once, and a CI runner
+// busy with other jobs runs them 3 to 5 times slower than an idle one.
+vi.setConfig({ testTimeout: 120_000 });
 
 // Making a file someone else owns needs root; CI's runner has passwordless sudo.
 const sudo = runnable && (() => { try { execFileSync("sudo", ["-n", "true"], { stdio: "ignore" }); return true; } catch { return false; } })();
