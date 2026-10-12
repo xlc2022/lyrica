@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PLAN_URLS } from "@lyrica/core";
 import { profile, withModels } from "../../core/test/helpers.ts";
-import { modelRuntimeFor, planCatalog, planError } from "../src/index.ts";
+import { modelRuntimeFor, planCatalog, planError, startPlanSignIn } from "../src/index.ts";
 
 const TOKEN_URLS = { chatgpt: "https://auth.openai.com/api/accounts/oauth/token", grok: "https://auth.x.ai/oauth2/token" };
 const realFetch = globalThis.fetch;
@@ -117,5 +117,16 @@ describe("a provider's refusal", () => {
     expect(planError(e, "chatgpt", "sign-in").message).toBe("ChatGPT refused the sign-in (HTTP 400).");
     expect(planError(new Error("token refresh failed (HTTP 401)"), "grok", "sign-in refresh").message).toBe("Grok refused the sign-in refresh (HTTP 401).");
     expect(planError(new Error("state mismatch\nmore"), "chatgpt", "sign-in").message).toBe("state mismatch");
+  });
+});
+
+describe("a ChatGPT sign-in", () => {
+  it("lets go of the listener on port 1455 when it is cancelled", async () => {
+    const id = "00000000-0000-4000-8000-000000000001";
+    const first = await startPlanSignIn("chatgpt", id);
+    first.cancel();
+    const second = await startPlanSignIn("chatgpt", id); // "Port 1455 is in use" if the first still held it
+    second.cancel();
+    expect(second.url).toContain("auth");
   });
 });
