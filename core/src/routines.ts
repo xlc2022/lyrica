@@ -74,7 +74,7 @@ export function describe(schedule: Schedule): string {
       const [month, day] = dateParts(schedule.date);
       return `Yearly on ${day} ${MONTHS[month - 1]} at ${schedule.time}`;
     }
-    case "every": return `Every ${schedule.hours} hour${schedule.hours === 1 ? "" : "s"}`;
+    case "every": return schedule.hours === 1 ? "Every hour" : `Every ${schedule.hours} hours`;
   }
 }
 

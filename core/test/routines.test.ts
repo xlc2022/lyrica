@@ -211,6 +211,6 @@ describe("describe", () => {
     expect(describeSchedule({ kind: "yearly", date: "03-14", time: "07:00" })).toBe("Yearly on 14 Mar at 07:00");
     expect(describeSchedule({ kind: "yearly", date: "12-01", time: "09:05" })).toBe("Yearly on 1 Dec at 09:05");
     expect(describeSchedule({ kind: "every", hours: 6, from: "2026-10-12T00:00:00.000Z" })).toBe("Every 6 hours");
-    expect(describeSchedule({ kind: "every", hours: 1, from: "2026-10-12T00:00:00.000Z" })).toBe("Every 1 hour");
+    expect(describeSchedule({ kind: "every", hours: 1, from: "2026-10-12T00:00:00.000Z" })).toBe("Every hour");
   });
 });

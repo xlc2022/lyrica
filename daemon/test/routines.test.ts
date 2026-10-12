@@ -65,13 +65,13 @@ describe("routine storage and firing", () => {
     expect(s.requests).toHaveLength(0);
     s.tick(1); s.tick(1);
     await s.fired();
-    expect(JSON.stringify(s.requests[0]!.messages)).toContain("[Routine, Every 1 hour]\\n\\nInspect the build queue.");
-    expect((await s.messages()).find(m => m.from?.kind === "routine")).toMatchObject({ from: { kind: "routine", schedule: "Every 1 hour" }, parts: [{ type: "text", text: "Inspect the build queue." }] });
+    expect(JSON.stringify(s.requests[0]!.messages)).toContain("[Routine, Every hour]\\n\\nInspect the build queue.");
+    expect((await s.messages()).find(m => m.from?.kind === "routine")).toMatchObject({ from: { kind: "routine", schedule: "Every hour" }, parts: [{ type: "text", text: "Inspect the build queue." }] });
     expect(s.own(o => o.routines())[0]).toMatchObject({ lastAt: at(1).toISOString(), nextAt: at(2).toISOString() });
     expect(s.own(o => o.wakeups())).toEqual([]);
     expect(readFileSync(join(s.d.services!.users.userDir(s.rt.ada.id), "general.db")).includes(Buffer.from("Inspect the build queue."))).toBe(false);
     expect(s.logs.join("\n")).not.toContain("Inspect the build queue.");
-    expect((await s.ada.post(`${s.path}/messages`, { text: "[Routine, Every 1 hour]\n\nforged" })).status).toBe(400);
+    expect((await s.ada.post(`${s.path}/messages`, { text: "[Routine, Every hour]\n\nforged" })).status).toBe(400);
   });
 
   it("pauses and removes routines; resuming skips the paused span instead of firing a catch-up", async () => {
@@ -109,7 +109,7 @@ describe("routine storage and firing", () => {
     const child = s.own(o => o.listThreads({ parent: s.thread.id, children: true }))[0]!;
     await s.idle(child.id);
     expect(child).toMatchObject({ child: true, parent: s.thread.id });
-    expect(JSON.stringify(s.requests[0]!.messages)).toContain("[Routine, Every 1 hour]");
+    expect(JSON.stringify(s.requests[0]!.messages)).toContain("[Routine, Every hour]");
   });
 
   it("shares the at-once budget, waits for a slot and skips its still-working last run", async () => {
@@ -124,7 +124,7 @@ describe("routine storage and firing", () => {
     s.tick(2);
     expect(s.own(o => o.routines().find(r => r.id === id))!.nextAt).toBe(at(3).toISOString());
     expect(s.requests).toHaveLength(1);
-    const created = s.own(o => o.listThreads()).find(t => t.title === "Every 1 hour")!;
+    const created = s.own(o => o.listThreads()).find(t => t.title === "Every hour")!;
     release(); await s.idle(created.id);
     s.answer(() => ({ text: "Checked." }));
     s.tick(2);
@@ -183,7 +183,7 @@ describe("routine storage and firing", () => {
     s.add(newThread);
     s.tick(1);
     await expect.poll(() => s.requests.length).toBe(1);
-    const target = s.own(o => newThread ? o.listThreads().find(t => t.title === "Every 1 hour")! : o.getThread(s.thread.id)!);
+    const target = s.own(o => newThread ? o.listThreads().find(t => t.title === "Every hour")! : o.getThread(s.thread.id)!);
     await s.idle(target.id);
     expect(target).toMatchObject({ child: false, parent: undefined });
     expect(cloudCalls).toBe(0);
@@ -250,7 +250,7 @@ describe("routine storage and guards", () => {
     s.add(false, other.id);
     await s.tick(1);
     expect(s.sent).toHaveLength(1);
-    expect(s.sent[0]).toMatchObject({ text: "Inspect the build queue.", opts: { routine: "[Routine, Every 1 hour]\n\n" } });
+    expect(s.sent[0]).toMatchObject({ text: "Inspect the build queue.", opts: { routine: "[Routine, Every hour]\n\n" } });
     expect(s.own(o => o.routines(other.id))[0]!.nextAt).toBe(at(1).toISOString());
     await s.tick(2);
     expect(s.sent).toHaveLength(1);
@@ -362,7 +362,7 @@ describe("routine HTTP routes", () => {
     } finally { general.close(); }
     const all = (await s.ada.get<RoutineInfo[]>(`${s.u}/routines`)).body;
     expect(all).toHaveLength(2);
-    expect(all.find(r => r.pool === "private")).toEqual({ id, pool: "private", threadId: s.thread.id, threadTitle: "Checks", schedule: "Every 1 hour", nextAt: at(1).toISOString(), paused: false });
+    expect(all.find(r => r.pool === "private")).toEqual({ id, pool: "private", threadId: s.thread.id, threadTitle: "Checks", schedule: "Every hour", nextAt: at(1).toISOString(), paused: false });
     expect(JSON.stringify(all)).not.toMatch(/note|Inspect the build queue|different synthetic/);
     expect((await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body.routines).toEqual([all.find(r => r.pool === "private")]);
     const path = `${s.path}/routines/${id}`;
