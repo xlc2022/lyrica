@@ -81,7 +81,7 @@ export class Comfy implements Backend {
               if (view.length > 8 && view.readUInt32BE(0) === 1 && view.readUInt32BE(4) === 2) pngs.push(view.subarray(8));
               return;
             }
-            let msg: { type?: string; data?: { prompt_id?: string; node?: unknown } };
+            let msg: { type?: string; data?: { prompt_id?: string; node?: unknown; node_type?: unknown; exception_type?: unknown } };
             try {
               msg = JSON.parse(String(e.data));
             } catch {
@@ -89,7 +89,8 @@ export class Comfy implements Backend {
             }
             // Only this client's messages arrive here; skip any for another prompt.
             if (promptId && msg.data?.prompt_id && msg.data.prompt_id !== promptId) return;
-            if (msg.type === "execution_error") reject(new HostError(503, "model_unavailable", "ComfyUI failed to make the image."));
+            // The node and the exception's type name what broke; the exception's message can carry the prompt, so it stays out.
+            if (msg.type === "execution_error") reject(new HostError(503, "model_unavailable", `ComfyUI failed to make the image (${String(msg.data?.node_type ?? "a node")}: ${String(msg.data?.exception_type ?? "error")}).`));
             else if (msg.type === "executing" && msg.data?.node === null) resolve();
           };
           socket.onclose = () => reject(unavailable());
