@@ -4,11 +4,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   get, patch, post, threadPath, u,
-  type AllowedPaths, type Grant, type MachineInfo, type MessagePart, type ModelRef, type PermissionMode, type Pool, type ProjectOverview, type ThinkingLevel, type ThreadChange, type ThreadSettings, type ThreadSummary,
+  type AllowedPaths, type GitRepository, type Grant, type MachineInfo, type MessagePart, type ModelRef, type PermissionMode, type Pool, type ProjectOverview, type ThinkingLevel, type ThreadChange, type ThreadSettings, type ThreadSummary,
 } from "./api.ts";
 import { Icon } from "./icons.tsx";
+import { her } from "./name.ts";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { href } from "./route.ts";
+import { Repositories } from "./Git.tsx";
 import { Folders, Machines, TaskSelect } from "./Settings.tsx";
 import { Main, PageHead, type ShellContext } from "./Shell.tsx";
 import { ErrorText, Prose, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
@@ -66,7 +68,7 @@ export function ThreadsFact({ userId, overview, phone }: { userId: string; overv
       {open && (
         <div className="picker threads-pop" role="dialog" aria-label="The project's threads">
           {phone && <p className="small tokens"><span className="num">{tokenCount(overview.tokens)}</span> tokens</p>}
-          {!threads.length && <p className="muted small">No threads yet. Ask Lyrica for some, or pick Start a thread in a message's menu.</p>}
+          {!threads.length && <p className="muted small">No threads yet. Ask {her()} for some, or pick Start a thread in a message's menu.</p>}
           {GROUPS.map((g) => {
             const mine = threads.filter(g.of);
             if (!mine.length) return null;
@@ -206,7 +208,7 @@ export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContex
   );
 }
 
-/** Goal, Paused and Watching threads; New threads (Model, Thinking, Fallback); This chat (Model, Mode, Group, Folders, Machines); one Save. */
+/** Goal, Paused and Watching threads; New threads (Model, Thinking, Fallback); This chat (Model, Mode, Group, Folders, Machines, Repositories); one Save. */
 function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }: {
   ctx: ShellContext; base: string; summary: ThreadSummary; settings: ThreadSettings; onSummary: (s: ThreadSummary) => void; onSettings: (s: ThreadSettings) => void;
 }) {
@@ -223,6 +225,7 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
   // The chat's workspace, which every thread of the project inherits; undefined until changed here.
   const [grants, setGrants] = useState<Grant[]>();
   const [granted, setGranted] = useState<string[]>();
+  const [repositories, setRepositories] = useState<GitRepository[]>();
   const paths = useLoad(() => get<AllowedPaths>(u(ctx.user.id, "paths")), [ctx.user.id]);
   const machines = useLoad(() => get<MachineInfo[]>(u(ctx.user.id, "machines")), [ctx.user.id]);
   const [run, busy, error] = useAction();
@@ -238,16 +241,16 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
       ...(group !== (summary.group ?? "") ? { group: group || null } : {}),
     };
     onSummary(await patch<ThreadSummary>(base, change));
-    if (chat !== undefined || mode !== settings.mode || grants || granted) {
+    if (chat !== undefined || mode !== settings.mode || grants || granted || repositories) {
       onSettings(await patch<ThreadSettings>(`${base}/settings`, {
         ...(chat !== undefined ? { models: { chat } } : {}), ...(mode !== settings.mode ? { mode } : {}),
-        ...(grants ? { grants } : {}), ...(granted ? { machines: granted } : {}),
+        ...(grants ? { grants } : {}), ...(granted ? { machines: granted } : {}), ...(repositories ? { repositories } : {}),
       }));
-      setChat(undefined); setGrants(undefined); setGranted(undefined);
+      setChat(undefined); setGrants(undefined); setGranted(undefined); setRepositories(undefined);
     }
     setSaved(true);
   });
-  const newThreadsHint = "Threads Lyrica starts from this chat. Each one can be changed after it starts.";
+  const newThreadsHint = `Threads ${her()} starts from this chat. Each one can be changed after it starts.`;
   return (
     <form className="card project-form" aria-labelledby="h-general" onSubmit={(e) => { e.preventDefault(); void save(); }}>
       <h2 id="h-general">General</h2>
@@ -257,7 +260,7 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
       </label>
       <div className="row switches">
         <Switch label="Paused" hint="Running threads stop and queued ones wait." checked={paused} onChange={setPaused} />
-        <Switch label="Watching threads" hint="After you write in a thread or one posts an update, Lyrica checks whether the other threads are affected and tells them." checked={watch} onChange={setWatch} />
+        <Switch label="Watching threads" hint={`After you write in a thread or one posts an update, ${her()} checks whether the other threads are affected and tells them.`} checked={watch} onChange={setWatch} />
       </div>
 
       <h3 title={newThreadsHint}>New threads</h3>
@@ -309,7 +312,7 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
         </label>
       </div>
 
-      {/* The drawer's own two controls: every thread the project starts gets these folders and machines or fewer. */}
+      {/* The drawer's own three controls: every thread the project starts gets these folders, machines and repositories or fewer. */}
       <div className="workspace">
         <div className="field" role="group" aria-labelledby="h-folders">
           <span id="h-folders">Folders</span>
@@ -318,6 +321,10 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
         <div className="field" role="group" aria-labelledby="h-machines">
           <span id="h-machines">Machines</span>
           <Machines granted={granted ?? settings.machines} machines={(machines.data ?? []).filter((m) => m.pool === summary.pool)} onChange={setGranted} />
+        </div>
+        <div className="field" role="group" aria-labelledby="h-repositories">
+          <span id="h-repositories">Repositories</span>
+          <Repositories userId={ctx.user.id} pool={summary.pool} granted={repositories ?? settings.repositories} onChange={setRepositories} />
         </div>
         <ErrorText error={paths.error || machines.error} />
       </div>
@@ -346,10 +353,10 @@ function MemorySection({ base, summary, pool, userId, onSummary }: { base: strin
       <h2 id="h-memory">Memory</h2>
       <label className="field">
         <span>Instructions</span>
-        <textarea rows={6} maxLength={2000} value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="How Lyrica should work in this project. Every thread of it reads this." />
+        <textarea rows={6} maxLength={2000} value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder={`How ${her()} should work in this project. Every thread of it reads this.`} />
         <small className="muted num">{instructions.length} / 2000</small>
       </label>
-      <p className="small"><a href={href({ page: "memory", userId, pool, id: summary.projectSettings!.pageId })}>Project page</a> <span className="muted">· what Lyrica knows about the project, rewritten while she sleeps</span></p>
+      <p className="small"><a href={href({ page: "memory", userId, pool, id: summary.projectSettings!.pageId })}>Project page</a> <span className="muted">· what {her()} knows about the project, rewritten while she sleeps</span></p>
       <div className="row">
         <button type="submit" className="primary" disabled={busy}>Save</button>
         {saved && <span className="muted" role="status">Saved.</span>}

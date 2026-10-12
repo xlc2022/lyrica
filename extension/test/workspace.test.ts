@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import { createAgentSession, DefaultResourceLoader, SessionManager, type AgentSession, type ExtensionAPI, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import type { ExecutionTarget, ThreadMachine, ThreadWorkspace, ToolOps } from "@lyrica/core";
+import type { ExecutionTarget, ThreadGitRepository, ThreadMachine, ThreadRepository, ThreadWorkspace, ToolOps } from "@lyrica/core";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { createWorkspaceExtension, setToolsOff, type ThreadTools } from "../src/index.ts";
@@ -46,6 +46,13 @@ interface Run {
   after?: ExtensionFactory[];
   /** Suspect commands allowed in the thread, as "<machine>: <command>". */
   allowed?: string[];
+  /** The thread's repositories, and what cloning them at the turn's start says failed. */
+  repositories?: ThreadGitRepository[];
+  cloneProblems?: string[];
+  /** The pool's Git accounts, by name; with none, there is nothing to add a repository from. */
+  gitAccounts?: string[];
+  /** Repositories add_repository added. */
+  added?: ThreadRepository[];
 }
 
 /** Tools any thread has besides the workspace's: memory, and the switched ones, which do nothing here. */
@@ -78,7 +85,7 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
   ]);
   const settings: ThreadWorkspace = {
     grants: [{ path: "/srv/music", writable: false }], internet: false, services: false, hosts: [], mode, webSearch: true, images: true,
-    machines: (o.machines ?? []).map((m) => m.name), parent: null, ...o.settings,
+    machines: (o.machines ?? []).map((m) => m.name), repositories: [], parent: null, ...o.settings,
   };
   const workspace = createWorkspaceExtension({
     target: (machine) => fakeTarget(files, commands, machine), settings: () => settings,
@@ -86,6 +93,9 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
     proxmox: async (machine, action, vm) => { commands.push(`${machine}: proxmox ${action}${vm ? ` ${vm}` : ""}`); return `${action} done`; },
     allowedInThread: (machine, command) => (o.allowed ?? []).includes(`${machine}: ${command}`), network: () => ({ internet: false, services: false, hosts: ["nas.lan:8080"] }),
     approve: o.approve, proposePlan: o.proposePlan, setMode: (m) => { settings.mode = m; },
+    repositories: () => o.repositories ?? [], cloneRepositories: async () => o.cloneProblems ?? [],
+    gitAccounts: () => (o.gitAccounts ?? []).map((name) => ({ name, kind: "github", host: "github.com" })),
+    addRepository: (r) => { o.added?.push(r); return [...(o.repositories ?? []), ...(o.added ?? [])]; },
   });
   const loader = new DefaultResourceLoader({
     cwd: dir, agentDir: dir, noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true,
@@ -387,5 +397,34 @@ describe("the proxmox tool", () => {
     expect(asked).toHaveLength(1);
     expect(commands).toEqual([]);
     expect(results[0]).toContain("isn't what was approved");
+  });
+});
+
+describe("Git in a thread", () => {
+  const lyrica: ThreadGitRepository = { name: "xlc2022/lyrica", account: "li", kind: "github", host: "github.com", path: "/workspace/repos/lyrica", reachable: true };
+
+  it("puts the Git guide and the thread's repositories in the prompt of every turn of a thread that has any, with what failed at its start", async () => {
+    const { system } = await run("auto", [], { repositories: [lyrica, { ...lyrica, name: "li/notes", path: "/workspace/repos/notes", reachable: false }], cloneProblems: ["li/notes: this thread can't reach github.com"] });
+    expect(system).toContain("Never commit on the default branch");
+    expect(system).toContain("The project's instructions win wherever they say otherwise.");
+    expect(system).toContain("- xlc2022/lyrica on github.com, through your account li, cloned at /workspace/repos/lyrica");
+    expect(system).toContain("li/notes on github.com, through your account li, cloned at /workspace/repos/notes (its host isn't reachable");
+    // The system prompt is recorded as JSON.
+    expect(system).toContain("At the start of this turn:\\n- li/notes: this thread can't reach github.com");
+    expect((await run("auto", [])).system).not.toContain("Working with Git");
+  });
+
+  it("adds a repository only after the person approves, even in Auto, and offers it only with a Git account of the pool", async () => {
+    const add = fauxToolCall("add_repository", { repository: "xlc2022/dotfiles", account: "li" }, { id: "1" });
+    const added: ThreadRepository[] = [];
+    const asked: string[] = [];
+    await run("auto", [add], { gitAccounts: ["li"], added, approve: async (r) => { asked.push(r.tool); return false; } });
+    expect(asked).toEqual(["add_repository"]);
+    expect(added).toEqual([]);
+    const { results } = await run("auto", [add], { gitAccounts: ["li"], added, approve: async () => true });
+    expect(added).toEqual([{ name: "xlc2022/dotfiles", account: "li" }]);
+    expect(results.join("\n")).toContain("cloned at the start of your next turn");
+    const { offered } = await run("auto", [], { added: [] });
+    expect(offered[0]).not.toContain("add_repository");
   });
 });

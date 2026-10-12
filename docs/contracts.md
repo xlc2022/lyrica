@@ -76,7 +76,8 @@ class Users {
   createUser(login, password, profile: Omit<Profile, "previousNames">, { admin }): Promise<User>  // first user must be admin
   authenticate(login, password): Promise<User>               // also unlocks the user's key; Argon2 runs for unknown logins too
   changePassword(user, oldPassword, newPassword): Promise<void>  // rewraps the same data key; clears passwordSetBy
-  setPassword(actor: User, target: User, newPassword): Promise<void>  // admin; the key from its recovery copy, under the new password; NoRecoveryCopy if none yet
+  setPassword(actor: User, actorPassword, target: User, newPassword): Promise<void>  // admin, confirming their own password (AuthError); the key from its recovery copy, under the new password; NoRecoveryCopy if none yet
+  checkPassword(user: User, password): Promise<boolean>     // is it theirs; unlocks nothing
   passwordSetBy(userId): { by; at } | undefined              // an administrator set it and the user hasn't changed it since
   ensureRecoveryCopy(userId): void                           // writes the copy for a user from before, once their key is in memory
   setAdmin(actor: User, target: User, admin: boolean): void  // refuses to demote the last admin
@@ -201,6 +202,7 @@ nothing else. No code path gives a general view a private handle.
 |---|---|
 | Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title?, project?, goal? })` (a child of a child is refused), `setProject`, `setGoal`, `projectOf`, `projectThreads`, `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared), `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)`, `copyEntries(from, to, { upTo? })` (a thread's entries into another, for forks and branches), `exportEntries(threadId)` → `ExportedEntry[]` (the conversation alone, for Share with: `conversationOnly` drops her context, memory tool calls and results and thinking, and strips citations; `MEMORY_TOOLS` names the tools), `importEntries(threadId, entries)` (into an empty thread of this pool, as its own, indexed, entries), `entriesMentioning(needle)` → `{ thread, n }[]` (where an upload is still mentioned) |
 | Pins | `pinEntry(threadId, n, pinned)`, `pins(threadId?)` → `PinnedEntry[]` (one thread's, or the pool's), oldest first |
+| Reactions | `react(threadId, n, emoji, by, on)` → `Reaction[]` (`{ emoji, by: string[] }`, `by` user IDs or `LYRICA_REACTS`); `entryPage` entries carry `reactions`. Pool schema step 2 (`entries.reactions`, JSON) |
 | Projects | `pageForProject(threadId)`, `projectNotes(threadId, since?)` |
 | Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
@@ -670,6 +672,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `threads`, in every hosted thread but a subagent's
     (`createThreadsExtension(thread, host?, meter?)`; Child threads; see
     [delegate](#delegate));
+  - `react({ emoji, message?, remove? })`, in every hosted thread but a
+    subagent's (`createReactExtension(thread, { reacted(n, reactions) })`):
+    writes through the thread's own view and tells lyricad, which publishes
+    the `reactions` event. `LyricaOptions.reactions()` hands the extension
+    the user's reactions since her last turn; `reactionLines` puts them in
+    the turn message as `<reactions>`;
   - `calendar` and `sort` (Integrations thread);
   - `image`, with `create` and `edit` (Images thread);
   - `web_search` and `web_fetch` (research, carried over from v1 or taken from
@@ -1116,9 +1124,13 @@ settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overr
 settings(userId).defaultMode() / setDefaultMode(mode)  // the mode new threads start in (default auto)
 settings(userId).startThread(threadId, pool)           // fixes the default mode on a new thread
 settings(userId).effective(threadId): ThreadWorkspace  // strictest mode and switches of it and its ancestors; only the folders
-//   (read-only where any ancestor's is) and machines every ancestor grants. Sandbox, Files panel, grantsFor and folders() use it.
+//   (read-only where any ancestor's is), machines and repositories every ancestor grants. Sandbox, Files panel, grantsFor and folders() use it.
 //   setThread on a parent writes the narrowing into its descendants' rows; checkInherited no longer refuses a dropped folder.
 allowedPaths.allow(actor, userId, pool, path) / disallow(...) / list(userId)
+  // NEVER_GRANTED (Caddy's runtime, /opt/lyrica, the updater's state and snapshots) and LYRICA_HOME are refused, and rows
+  //   overlapping them are left out of list()
+forgeEnv(t): Record<string, string>       // gitEnv of the thread's reachable repositories (Git accounts below); targetFor
+  // passes it as the sandbox's env, never argv, and `repos` (reposDir(t)) mounted at /workspace/repos
 saveUpload(t, name, bytes): Promise<string>  // cleans the name (cleanUploadName), never overwrites
 mountHome(userId) / unmountHome(userId)   // gocryptfs; mount when the user's key becomes available
 selfTest(): Promise<string | undefined>   // lyricad calls this at startup
@@ -1153,40 +1165,46 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   - If `selfTest()` finds that a sandbox could undo its firewall, or can't
     start one, every thread runs with network off and the reason is kept in
     `networkRefused` for the UI.
-- **Planned: Git accounts and repositories** (decided 2026-10-12,
-  [briefs/repositories.md](briefs/repositories.md)):
-  `settings(userId).gitAccounts() / gitAccount(name) / addGitAccount({ name,
-  kind, host, account, token, pool }) / updateGitAccount(name, { name?,
-  host?, account?, pool? }) / setGitToken(name, token) /
-  removeGitAccount(name) / gitAccountState(name, state)`; a new pool drops
-  the account's repositories from every thread, and removing it does too.
-  `GitAccountConfig { name, kind: "github" | "forgejo" | "gitea" | "other",
-  host, account, token, pool, offNetwork, state: { kind: "signedIn" |
-  "rejected" | "unreachable", since } | null }`; `kind: "github"` is
-  general only; a private account's host must resolve on this machine's
-  network, checked when added and on every use (`offNetwork`,
-  `confirmOffNetwork`, as for machines). A thread's row carries
-  `repositories: { name, account }[]`; `setThread` refuses a repository
-  whose account is of the other pool; `inheritSettings` takes a subset;
-  `effective()` keeps only repositories every ancestor grants.
-  `repositoriesFor(t)`; `cloneFor(t)` makes or fetches each clone under the
-  thread's folder in the home workspace (`repos/<name>`), and never removes
-  one (a clone goes with the thread); `forgeEnv(t)` returns the
-  environment for a sandbox run: one credential per repository URL
-  (`useHttpPath`), each GitHub token keyed by its host and account for the
-  `gh` wrapper, each Gitea or Forgejo login for the `tea` wrapper; empty
-  when the thread is of the other pool, has no repository, or can't reach
-  the host. Never argv; never a file, except the `tea` config the wrapper
-  writes on the run's tmpfs. The thread row's `repositories` column and
-  the `git_accounts` table are numbered expand steps in
-  `core/src/migrations.ts`.
-  `probeGitAccount(userId, { kind, host, account, token })` checks the
-  token and saves nothing; `listRepositories(userId, account, q)` is what
-  the account can see. API: `/api/u/:userId/git-accounts` (`GET`; `POST
-  …/probe`; `POST`; `PATCH …/:name`; `POST …/:name/token`; `POST
-  …/:name/confirm-off-network`; `DELETE`); `GET
-  …/git-accounts/:name/repositories?q=`; thread settings carry
-  `repositories`. A sandbox tool image has `git`, `gh` and `tea`. The
+- **Git accounts and repositories** (DESIGN.md, "Updates and
+  self-editing"): `settings(userId).gitAccounts() / gitAccount(name) /
+  addGitAccount({ name, kind, host, account, token, pool, offNetwork },
+  state?) / updateGitAccount(name, { name?, host?, account?, pool? }) /
+  setGitToken(name, token, state?) / removeGitAccount(name) /
+  gitAccountState(name, state) / setGitOffNetwork(name, off) /
+  confirmGitOffNetwork(name)`; a new pool drops the account's repositories
+  from every thread, removing it does too, and a new name follows into
+  them. `GitAccountConfig { name, kind: "github" | "forgejo" | "gitea" |
+  "other", host, account, token, pool, offNetwork, state: { kind:
+  "signedIn" | "rejected" | "unreachable", since } | null }`; `kind:
+  "github"` is general only; a private account's host must resolve on this
+  machine's network, checked when added and on every use. A thread's row
+  carries `repositories: { name, account }[]`; `setThread` refuses a
+  repository whose account is missing or of the other pool, and two with
+  the same clone folder; `inheritSettings` takes a subset; `effective()`
+  keeps only repositories every ancestor grants, and a parent's change
+  narrows its running children. `Workspace`: `probeGitAccount({ kind, host,
+  account, token })` checks the token against the host and saves nothing
+  (`GitAccountProblem` with the state when it fails); `addGitAccount(userId,
+  { …, offNetworkConfirmed? })`, `updateGitAccount`, `setGitToken`,
+  `confirmGitOffNetwork`, `removeGitAccount`; `listRepositories(userId,
+  name, q)` is what the account can see (none for Other).
+  `repositoriesFor(t)`; `cloneFor(t)` makes or fetches each clone in the
+  sandbox under the thread's folder in the home workspace (`repos/<name>`,
+  a subagent's under its parent's) and returns the problems, never removing
+  one (a clone goes with the thread); `addRepository(t, r)` is the
+  `add_repository` tool's change. `forgeEnv(t)` (`gitEnv`) is the
+  environment for a sandbox run: one credential helper per repository URL
+  (`useHttpPath`) and `LYRICA_GIT_*` for the `gh` and `tea` wrappers
+  (`core/src/workspace/forge.sh`, mounted first on the run's PATH), which
+  pick the account by the clone's origin; empty when the thread is of the
+  other pool, has no repository, or can't reach the host (`reachesHost`).
+  Never argv; never a file, except the `tea` config the wrapper writes on
+  the run's tmpfs. The thread row's `repositories` column and the
+  `git_accounts` table are user step 2 in `core/src/migrations.ts`. API:
+  `/api/u/:userId/git-accounts` (`GET`; `POST …/probe`; `POST`; `PATCH
+  …/:name`; `POST …/:name/token`; `POST …/:name/confirm-off-network`;
+  `DELETE`); `GET …/git-accounts/:name/repositories?q=`; thread settings
+  carry `repositories`. A sandbox's tools have `git`, `gh` and `tea`. The
   Git guide is a prompt section (`extension/src/git.md`) added to every
   turn of a thread with repositories.
 - **Machines API:** `lyricad`'s `/api/u/:userId/machines` (`GET`; `POST

@@ -5,12 +5,12 @@ import {
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  ContextMeter, createDelegateExtension, createLyricaExtension, createThreadsExtension, createWorkspaceExtension, DELEGATE_MESSAGE, OPENING, openThreadSession, piModelFor,
-  GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type PlanRequest, type SubagentApproval, type ThreadContext,
+  ContextMeter, createDelegateExtension, createLyricaExtension, createReactExtension, createThreadsExtension, createWorkspaceExtension, DELEGATE_MESSAGE, OPENING, openThreadSession, piModelFor,
+  GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
-import { delegateThreads, delegationPart, markersFor, plainError, shortResult, turnRecall } from "./messages.ts";
+import { delegateThreads, delegationPart, markersFor, plainError, shortResult, toReactions, turnRecall } from "./messages.ts";
 
 export interface HostOptions {
   users: Users;
@@ -202,6 +202,24 @@ export class HostedThread {
   constructor(private readonly o: HostOptions, readonly userId: string, readonly pool: Pool, readonly threadId: string,
     private readonly release: () => void) {
     this.startIdle();
+  }
+
+  // --- Reactions ---
+
+  /** The user's reactions since her last turn, told to her in the next one (extension `reactions`). */
+  private unseenReactions: UserReaction[] = [];
+
+  /**
+   * Message n's reactions changed: every open tab hears. `by` is the user's own
+   * reaction, which she is told of in her next turn; hers (the `react` tool) only
+   * publish.
+   */
+  reacted(n: number, reactions: Api.Reaction[], by?: { emoji: string; on: boolean; hers: boolean }): void {
+    if (by) {
+      this.unseenReactions = this.unseenReactions.filter((r) => !(r.n === n && r.emoji === by.emoji));
+      this.unseenReactions.push({ n, ...by });
+    }
+    this.emit({ type: "reactions", n, reactions });
   }
 
   // --- The stream ---
@@ -572,6 +590,7 @@ export class HostedThread {
         extensions: [
           createLyricaExtension(ctx, {
             persona: () => persona.read(), profile: () => users.get(this.userId)!.profile, folders: tools.folders, meter,
+            reactions: () => this.unseenReactions.splice(0),
             ...(thread.project ? { projectThreads: () => this.o.projectThreads?.(this.userId, this.pool, this.threadId) } : {}),
           }),
           createWorkspaceExtension({
@@ -583,6 +602,8 @@ export class HostedThread {
           ...(canDelegate ? [createDelegateExtension(ctx, delegation)] : []),
           // Child threads and compacting. Never a subagent's: a subagent works for its run, not on streams of its own.
           ...(!thread.subagent ? [createThreadsExtension(ctx, this.o.threads, meter)] : []),
+          // Her reactions. Never a subagent's: the messages there are hers.
+          ...(!thread.subagent ? [createReactExtension(ctx, { reacted: (n, reactions) => this.reacted(n, toReactions(reactions, this.userId) ?? []) })] : []),
         ],
       });
       const unsubscribe = session.subscribe((e) => this.forward(e));

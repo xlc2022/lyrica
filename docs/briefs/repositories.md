@@ -127,4 +127,7 @@ docs/briefs/lyrica-project.md.
 
 ## Handoff notes
 
-(The thread fills this in if it stops before it's done.)
+Built in PR #141. The `gh` wrapper matches the clone's whole repository,
+not only its owner, so a repository of the same owner that the thread
+doesn't have gets no token. A nested subagent clones into its immediate
+parent's folder.

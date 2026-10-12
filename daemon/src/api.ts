@@ -64,6 +64,8 @@ export interface State {
   setup?: boolean;
   /** Her name for this deployment (default Lyrica), in every state. */
   name: string;
+  /** Setting up: whether this machine can save the passphrase (Start unlocked), and why not. */
+  credentials?: { available: boolean; reason?: string };
   /** Users logged in on this browser session. Empty while locked. */
   users: UserCard[];
   /** lyricad's version (package.json) and build (the git commit it was built from, or "dev"). Shown in the header; absent while locked. */
@@ -592,6 +594,42 @@ export interface MachineKey { hostKey: string; token?: string }
 /** POST /api/u/:userId/machines/:name/confirm-off-network → MachineInfo. A private machine gone off network can be used again. */
 /** DELETE /api/u/:userId/machines/:name → Ok. Every thread's grant of it goes too. */
 
+/** What a Git account's host runs: GitHub, Forgejo, Gitea, or Other (plain git over HTTPS). */
+export type GitKind = "github" | "forgejo" | "gitea" | "other";
+
+/** GET /api/u/:userId/git-accounts → GitAccountInfo[]. The token is never sent back. */
+export interface GitAccountInfo {
+  name: string;
+  kind: GitKind;
+  /** host or host:port. */
+  host: string;
+  /** The account's name on the host. */
+  account: string;
+  /** A GitHub account is always general. */
+  pool: Pool;
+  /** Its host resolved outside the LAN, loopback and tailnet at the last check. */
+  offNetwork: boolean;
+  /** How the last use went, and since when: signedIn (the token worked), rejected (the host refused it), unreachable. Absent before the first. */
+  state?: { kind: "signedIn" | "rejected" | "unreachable"; since: string };
+}
+/**
+ * POST /api/u/:userId/git-accounts/probe (GitAccountInput) → Ok. Checks the
+ * token against the host, saving nothing: 400 with why when it doesn't work.
+ * POST /api/u/:userId/git-accounts (GitAccountInput) → GitAccountInfo. Checks
+ * it again and saves it. A private account whose host resolves outside her
+ * network needs `offNetworkConfirmed`; a GitHub account can't be private.
+ */
+export interface GitAccountInput { name: string; kind: GitKind; host: string; account: string; token: string; pool: Pool; offNetworkConfirmed?: boolean }
+/** PATCH /api/u/:userId/git-accounts/:name → GitAccountInfo. A new pool takes its repositories from every thread; a new name follows into them. */
+export interface GitAccountChange { name?: string; host?: string; account?: string; pool?: Pool; offNetworkConfirmed?: boolean }
+/** POST /api/u/:userId/git-accounts/:name/token → GitAccountInfo. Replace token: checked against the host before it replaces the old one. */
+export interface GitToken { token: string }
+/** POST /api/u/:userId/git-accounts/:name/confirm-off-network → GitAccountInfo. A private account gone off network can be used again. */
+/** DELETE /api/u/:userId/git-accounts/:name → Ok. Every thread's repositories that use it go too. */
+/** GET /api/u/:userId/git-accounts/:name/repositories?q= → GitRepository[]. What the account can see, from its forge; none for Other. */
+/** A repository a thread clones, and the Git account it uses. */
+export interface GitRepository { name: string; account: string }
+
 // --- Threads ---
 
 export interface ThreadSummary {
@@ -731,7 +769,7 @@ export interface AcceptShare { pool: Pool }
 // her items from the night, and, for administrators, persona changes to approve.
 // Not yet in it: downloads, clean-up items, image models to review, host problems.
 
-export type NotificationType = "share" | "permission" | "update" | "sleep" | "suggestion" | "approval";
+export type NotificationType = "share" | "permission" | "update" | "sleep" | "suggestion" | "approval" | "rollback";
 /** An action on an item: a request the UI sends as it is. `opens`: the answer is a ThreadSummary to go to. */
 export interface NotificationAction { label: string; method: "POST" | "DELETE"; path: string; body?: unknown; danger?: boolean; opens?: boolean }
 export interface Notification {
@@ -746,7 +784,7 @@ export interface Notification {
   decision: boolean;
   /** Where it leads, if anywhere: a thread, or a section of Settings or Administration. */
   thread?: { pool: Pool; id: string };
-  section?: "settings/suggestions" | "admin/persona";
+  section?: "settings/suggestions" | "admin/persona" | "admin/updates";
   actions: NotificationAction[];
   at: string;
 }
@@ -804,6 +842,8 @@ export interface ThreadSettings {
   grants: Grant[];
   /** The machines it may use besides the sandbox, by name: its own, less any an ancestor has since taken off (`effective`). */
   machines: string[];
+  /** The repositories it clones into /workspace/repos, each with its Git account: its own, less any an ancestor has since taken off. */
+  repositories: GitRepository[];
   mode: PermissionMode;
   /** Switches: web_search and web_fetch, and the image tool. Off removes them from the session. */
   webSearch: boolean;
@@ -843,6 +883,8 @@ export interface ThreadSettingsChange {
   grants?: Grant[];
   /** Machines of the thread's pool; a branch takes a subset of its parent's. */
   machines?: string[];
+  /** Repositories of Git accounts of the thread's pool; a child takes a subset of its parent's. */
+  repositories?: GitRepository[];
   mode?: PermissionMode;
   webSearch?: boolean;
   images?: boolean;
@@ -939,7 +981,19 @@ export interface Message {
   error?: string;
   /** The user pinned it: it stays in her context word for word. */
   pinned?: boolean;
+  /** Emoji on the message, in the order they first came, by the user (`you`), Lyrica (`her`) or both. */
+  reactions?: Reaction[];
 }
+
+/** One emoji on a message and who put it there. Both can react with the same emoji; it is then one chip counting two. */
+export interface Reaction { emoji: string; you: boolean; her: boolean }
+/**
+ * PUT /api/u/:userId/threads/:pool/:threadId/messages/:n/reactions/:emoji → Reactions puts the user's reaction on
+ * message n, DELETE takes it off; `emoji` is URL-encoded. Any message, including her own; not in a subagent's thread.
+ * She is told of it in her next turn, and she reacts herself with her `react` tool; every tab with the thread open
+ * sees a `reactions` event.
+ */
+export interface Reactions { reactions: Reaction[] }
 
 /**
  * GET /api/u/:userId/threads/:pool/:threadId/messages?before=<n>&limit=<k> → MessagePage
@@ -1127,6 +1181,8 @@ export type ThreadEvent =
    */
   | { type: "offline"; task: Task; tried: { label: string; reason: string }[] }
   | { type: "title"; title: string }
+  /** Message n's reactions changed: hers, or the user's from another tab. */
+  | { type: "reactions"; n: number; reactions: Reaction[] }
   /** The thread's settings changed (an approved plan switched its mode, say): fetch them again. */
   | { type: "settings" }
   /** In a project chat: one of its threads changed state; fetch it (`GET threads/:pool/:id`) to update its card in place. */
@@ -1367,8 +1423,8 @@ export interface PassphraseChange { save: boolean; passphrase?: string }
 /** POST /api/u/:userId/admin/users → UserCard */
 export interface NewUser { login: string; password: string; displayName: string; pronouns: Pronouns; admin: boolean }
 /** PUT /api/u/:userId/admin/users/:targetId/admin → UserCard. The last administrator can't be demoted. */
-/** PUT /api/u/:userId/admin/users/:targetId/password (AdminPassword) → Ok. The user's data stays (DESIGN.md, "Users"); `Me.warning` tells them until they change it. 409 for a user with no recovery copy yet. */
-export interface AdminPassword { password: string }
+/** PUT /api/u/:userId/admin/users/:targetId/password (AdminPassword) → Ok. The user's data stays (DESIGN.md, "Users"); they are logged out everywhere, and `Me.warning` tells them until they change it. 401 when `yourPassword` is wrong; 409 for a user with no recovery copy yet. */
+export interface AdminPassword { password: string; /** The administrator's own password, asked again. */ yourPassword: string }
 export interface AdminFlag { admin: boolean }
 /** PATCH /api/u/:userId/admin/users/:targetId/profile → UserCard */
 

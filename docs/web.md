@@ -73,8 +73,8 @@ A thread's address may carry what the panel beside it shows:
 - **Thread:** a header with the title; under it the pool word, the model
   badge (cloud or local, model and endpoint; it opens the model picker), the
   thread's group as a link that changes it, the folders as words with the
-  paths in their tooltip, and the granted machines' names in mono; at the
-  right a Settings button. Below it the conversation and the composer.
+  paths in their tooltip, and the granted machines' and repositories' names
+  in mono; at the right a Settings button. Below it the conversation and the composer.
 - **Project chat** (`src/Project.tsx`): the facts line adds **Threads** with
   the count, opening a popover of the project's threads grouped Waiting on
   you, Working, Queued, Idle and Resolved (each a link, with its unseen
@@ -126,15 +126,17 @@ A thread's address may carry what the panel beside it shows:
   threads** switches (`watchThreads`; the tooltip says what a look does), **New
   threads** (Model, Thinking and Fallback the project's threads start with;
   "This chat's model", "This chat's fallback" follow the project chat), **This chat** (Model, Mode,
-  Group, then **Folders** and **Machines**, the drawer's own two controls,
+  Group, then **Folders**, **Machines** and **Repositories**, the drawer's
+  own three controls,
   then a **Thread settings** link that opens the project chat with its
   drawer showing, `…/t/<pool>/<thread>/settings`, for network, local-only
   and the other task models), and one Save, which patches the thread
   (`goal`, `paused`, `watchThreads` when it changed, `threadsModel`,
   `threadsThinking`, `threadsFallback`, `group`) and, when they changed, its
-  settings (`grants`, `machines` among them); `lyricad`'s reason shows when
-  it refuses. Every thread the project starts gets these folders and
-  machines or fewer. A folder or machine taken off here leaves the
+  settings (`grants`, `machines`, `repositories` among them); `lyricad`'s
+  reason shows when it refuses. Every thread the project starts gets these
+  folders, machines and repositories or fewer. A folder, machine or
+  repository taken off here leaves the
   project's running threads at once, and their open views show it gone. **Memory**: the
   Instructions kept on the project page (2,000 characters, counted under
   the box), and a link to that page in the memory browser. Files and
@@ -145,7 +147,12 @@ A thread's address may carry what the panel beside it shows:
   read-write), **Machines** (the sandbox, always, then each granted machine
   in mono with its limit and an ✕ to take it off, a machine that no longer
   exists included; **+** (Add machine) opens a search of the pool's other
-  machines by name or address, Enter picks the first), the mode, the
+  machines by name or address, Enter picks the first), **Repositories**
+  (each `owner/name` in mono with its account muted and an ✕; **+** (Add
+  repository) opens a search, "Search, or paste a URL", of what each Git
+  account of the thread's pool can see, grouped by account, a pasted URL
+  under each account on its host, with a **Git accounts** link at its
+  foot; a change applies at once), the mode, the
   Web search and Images switches, "Do not log", rename, hide, and forget. `lyricad` validates every
   change and its reason is shown.
 - **Subagents live inline**, not in the sidebar: see the `delegate` card
@@ -182,6 +189,23 @@ A thread's address may carry what the panel beside it shows:
   (Add to Private 2, Decline 2), and none when they share none. Twenty rows at a time, with
   Show more. The welcome page shows the first four decisions in a card
   with All N.
+- **Set up Lyrica** (`src/Setup.tsx`; docs/ux.md §6 "Setting her up";
+  [briefs/web-bootstrap.md](briefs/web-bootstrap.md)): while
+  `GET /api/state` says `setup`, this page stands where the unlock page
+  would. One card, steps as sections with eyebrows: Code and passphrase
+  (the code from the journal or `lyrica admin setup-code`, the passphrase
+  twice, **Start unlocked** when `State.credentials` allows it, else the
+  reason), her name, Administrator (login, password, name, pronouns);
+  **Create** posts `/api/setup` and the page continues signed in as that
+  administrator: Tailnet (the state, an Auth key with Hostname and Advanced →
+  Control server, **Connect**, then a **Web access over the tailnet** switch
+  applied on Continue; or Skip), Models (one endpoint, shared, its first
+  chat model set for the profile; or Skip), Done (the addresses to open her
+  at with the fingerprint, the administrator's login, the tailnet, and a
+  sentence when she starts locked), **Start a chat**. The current step's
+  button is the one primary; a done step's turns secondary; the fields of a
+  done step stay editable until Create. A wrong code says so at Create and
+  counts on the unlock limiter; too many say to wait a minute.
 - **Settings** (`src/Panel.tsx`): a page with its sections listed at the
   left (a scrolling row on a phone): Notifications, Profile (name, pronouns, accent colour,
   monogram), Appearance (theme), Unlock and lock (saved credentials, stay
@@ -214,22 +238,63 @@ A thread's address may carry what the panel beside it shows:
   anyway** or Cancel) before Confirm saves it. Replace key
   (`#/u/<user>/settings/machines/<name>/key`) opens the same card at the
   Fingerprint step, with a Replace token field for Proxmox.
+  **Git accounts** (`src/Git.tsx`): a row per account, its name, a facts
+  line in mono (host, pool, kind, account) and one state (Signed in, Token
+  rejected, Unreachable with how long, Off network). A row opens the drawer
+  (Name, Kind, Host, Account, Pool; a GitHub account's Pool is the fact
+  General, with the reason as its tooltip), with Replace token, Use anyway
+  (a private account Off network) and Remove behind ⋯; Remove names what
+  leaves in its dialog (**Keep** / **Remove**). **Add account** opens the
+  same drawer with a Token field; Add account checks the token against the
+  host (`POST …/git-accounts/probe`, then `POST …/git-accounts`), and a
+  private account off network asks first. The token is never sent back.
 - **Administration**, for administrators: Status (the server's network
   self-test, sleep time, start unlocked), Users with the administrator flag,
-  **Change password…** (one field in the row; the user's data stays and
-  they are told at their next visit) and their allowed folders, Sleep, Start unlocked (saving the `self.db`
-  passphrase), Web access, and Persona changes that users sent on (who sent
-  them, whether they edited them, and a confirmation when the file changed
-  since). **Web access** has:
-  - the mode: only this machine, the built-in Caddy, or a proxy elsewhere;
-  - the hostname, with a hint that its DNS record points at the Tailscale address;
+  **Change password…** (the new password and the administrator's own, in
+  the row; the user's data stays, they are logged out and told at their
+  next visit) and their allowed folders, Sleep, Start unlocked (saving the `self.db`
+  passphrase), **Tailnet**, Web access, **Updates**, and **Persona**: her
+  **Name** at the top (one field, Save, and the sentence that memories and
+  threads written so far keep the old name; `PUT …/admin/name`, then the
+  page re-reads `/api/state`), then the persona changes that users sent on
+  (who sent them, whether they edited them, and a confirmation when the file
+  changed since). Her name (`src/name.ts`, `her()`) is what every label,
+  placeholder and sentence says where this doc says Lyrica, and the tab's
+  title. **Tailnet** (`src/Tailnet.tsx`; docs/ux.md §6 "The tailnet"): a
+  facts line in mono (tailnet, address, MagicDNS name, control server) and
+  one state (Connected, Disconnected, Not installed with the reason, Not
+  joined); **Connect** and **Disconnect**; Leave and Connect to another
+  tailnet behind ⋯, each asked in a dialog; joining in a drawer (Auth key,
+  Hostname, Advanced → Control server; `PUT …/admin/tailnet`). A `409`
+  from leaving over the tailnet itself is shown as its sentence. **Updates**
+  (`src/Updates.tsx`; docs/ux.md §6 "Updates"): the running version in mono,
+  **Check**, the newest update note (its tag in mono, its text in a block),
+  **Update** as the one primary (disabled while an update runs), a state
+  line beneath (Draining with the count of busy threads and the user's own
+  linked, Building, Testing, Probation, Failed with the error), the last
+  rollback as a sentence, and the kept releases as rows (commit in mono,
+  date, Running) with **Roll back** in the row's ⋯, asked in a dialog that
+  names the commit and says when messages since the snapshot are lost.
+  While an update drains, the page polls every 5 s; sending a message that
+  gets `409 {updating:true}` keeps the text in the box and says Updating.
+  Where no updater is installed (a development run) the section says so.
+  A failed probation also shows in Notifications as "Update <commit> rolled
+  back" for a week. **Web access** has:
+  - the mode: only this machine, **Direct** (her own HTTPS on the
+    machine's LAN and Tailscale addresses, port 7340, her own certificate
+    with its fingerprint shown), **Tailnet** (HTTPS at her tailnet name
+    through `tailscale serve`; needs a joined tailnet), the built-in Caddy,
+    or a proxy elsewhere;
+  - the hostname (Caddy and proxy modes), with a hint that its DNS record points at the Tailscale address;
   - for the built-in Caddy: the Tailscale and LAN addresses to serve on, the
     DNS provider with its credential fields and its token-scoping hint, an
     an email for certificate warnings, and, under Advanced, testing with
     untrusted certificates (the status warns while it is on);
   - for a proxy: the address and ports to listen on, the proxy addresses,
     the certificate to pin, and a Caddyfile snippet;
-  - the status of Caddy, the certificate, and the last certificate error.
+  - the status of Caddy, the certificate, and the last certificate error;
+    for Direct the addresses listening and the fingerprint, for Tailnet the
+    name and whether it answers.
 
   Applying waits as long as `lyricad` needs (a new hostname can take about 90 s)
   and shows the time so far.
@@ -325,6 +390,15 @@ A thread's address may carry what the panel beside it shows:
   event drops the removed messages from every open view. A new branch opens,
   under "Branched from" its parent, and its settings can be changed within
   its parent's.
+- **Reactions** (`src/Reactions.tsx`; the picker styles its shadow root
+  inline, so lyricad's CSP allows inline styles, scripts stay `'self'`): a React button (a face with a plus)
+  beside each message's ⋯ opens a quick row (🙏 👍 ❤️ 🎉 👀 🚀, tooltips
+  "React with tada") whose last button, More emoji, opens the full picker
+  with search and categories (`emoji-picker-element`, loaded only then; its
+  data is served with the UI, never from a CDN, and kept by the browser).
+  Reactions show as chips under the message, each emoji with its count; the
+  user's own are outlined in the accent and pressing one takes it off. Hers
+  arrive by the `reactions` event, as do the user's from another tab.
 - **Pinned messages** carry a "pinned" badge after the sender's name. The
   header's "N pinned ▾" badge (the number in mono) opens a popover listing
   them by sender and first line; choosing one scrolls to it and outlines it

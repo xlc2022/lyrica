@@ -78,6 +78,13 @@ export interface StoredEntry {
   createdAt: string;
 }
 
+/** One emoji on a message and who put it there: user IDs, or "lyrica". */
+export interface Reaction { emoji: string; by: string[] }
+export const LYRICA_REACTS = "lyrica";
+/** One emoji: pictographs, flags or keycaps, joined with ZWJ, variation selectors and skin tones; up to 32 code units. */
+const EMOJI = /^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[#*0-9]\uFE0F?\u20E3)(?:[\u200D\uFE0F]|\p{Emoji_Modifier}|\p{Extended_Pictographic}|\p{Regional_Indicator}|[#*0-9]\uFE0F?\u20E3)*$/u;
+export const isEmoji = (s: string): boolean => s.length > 0 && s.length <= 32 && EMOJI.test(s);
+
 /** A pinned entry, with where it is. */
 export interface PinnedEntry extends StoredEntry {
   thread: string;
@@ -301,11 +308,11 @@ export class PoolReader {
   }
 
   /** A page of the thread's raw entries, oldest first: the newest `limit`, or those before entry `before`. */
-  entryPage(threadId: string, opts: { before?: number; limit: number }): { entries: { n: number; data: unknown; createdAt: string; pinned: boolean }[]; hasMore: boolean } {
-    const rows = this.db.prepare("SELECT n, data, created_at, pinned FROM entries WHERE thread = ? AND n < ? ORDER BY n DESC LIMIT ?")
-      .all(threadId, opts.before ?? Number.MAX_SAFE_INTEGER, opts.limit + 1) as { n: number; data: string; created_at: string; pinned: number }[];
+  entryPage(threadId: string, opts: { before?: number; limit: number }): { entries: { n: number; data: unknown; createdAt: string; pinned: boolean; reactions: Reaction[] }[]; hasMore: boolean } {
+    const rows = this.db.prepare("SELECT n, data, created_at, pinned, reactions FROM entries WHERE thread = ? AND n < ? ORDER BY n DESC LIMIT ?")
+      .all(threadId, opts.before ?? Number.MAX_SAFE_INTEGER, opts.limit + 1) as { n: number; data: string; created_at: string; pinned: number; reactions: string | null }[];
     const hasMore = rows.length > opts.limit;
-    return { entries: rows.slice(0, opts.limit).reverse().map((r) => ({ n: r.n, data: json(r.data), createdAt: r.created_at, pinned: r.pinned === 1 })), hasMore };
+    return { entries: rows.slice(0, opts.limit).reverse().map((r) => ({ n: r.n, data: json(r.data), createdAt: r.created_at, pinned: r.pinned === 1, reactions: parseReactions(r.reactions) })), hasMore };
   }
 
   /** The number the thread's next entry will get: past every entry, and past what a rewind removed. */
@@ -319,6 +326,12 @@ export class PoolReader {
   /** Pi entry IDs already stored for the thread. */
   storedPiIds(threadId: string): Set<string> {
     return new Set((this.db.prepare("SELECT pi_id FROM entries WHERE thread = ?").all(threadId) as { pi_id: string }[]).map((r) => r.pi_id));
+  }
+
+  /** The ID an entry goes by: its own, or the original's for a copy. */
+  entryId(threadId: string, n: number): string | undefined {
+    const row = this.db.prepare("SELECT coalesce(orig, 'e:' || thread || '#' || n) AS id FROM entries WHERE thread = ? AND n = ?").get(threadId, n) as { id: string } | undefined;
+    return row?.id;
   }
 
   /** The newest entry of the thread with one of the roles, or of any role. */
@@ -756,8 +769,8 @@ export class PoolStore extends PoolReader {
     this.mustThread(from);
     this.mustThread(to);
     if ((this.db.prepare("SELECT count(*) AS c FROM entries WHERE thread = ?").get(to) as { c: number }).c) throw new Error("entries are copied only into an empty thread");
-    this.db.prepare(`INSERT INTO entries (thread, n, pi_id, role, data, text, unlogged, orig, pinned, created_at)
-      SELECT ?, n, pi_id, role, data, text, unlogged, coalesce(orig, 'e:' || thread || '#' || n), pinned, created_at FROM entries WHERE thread = ? AND n <= ?`)
+    this.db.prepare(`INSERT INTO entries (thread, n, pi_id, role, data, text, unlogged, orig, pinned, reactions, created_at)
+      SELECT ?, n, pi_id, role, data, text, unlogged, coalesce(orig, 'e:' || thread || '#' || n), pinned, reactions, created_at FROM entries WHERE thread = ? AND n <= ?`)
       .run(to, from, opts.upTo ?? Number.MAX_SAFE_INTEGER);
   }
 
@@ -800,6 +813,30 @@ export class PoolStore extends PoolReader {
     this.mustThread(threadId);
     const changed = this.db.prepare("UPDATE entries SET pinned = ? WHERE thread = ? AND n = ?").run(pinned ? 1 : 0, threadId, n).changes;
     if (!changed) throw new Error(`no entry ${n} in ${threadId}`);
+  }
+
+  /**
+   * Puts `by`'s reaction `emoji` on entry `n`, or takes it off, and answers the
+   * entry's reactions as they stand. Reactions are kept with the entry (a branch
+   * copies them) and never reach her context by themselves: lyricad tells her
+   * of a user's in her next turn. Throws if there's no such entry.
+   */
+  react(threadId: string, n: number, emoji: string, by: string, on: boolean): Reaction[] {
+    this.mustThread(threadId);
+    if (!isEmoji(emoji)) throw new Error("not an emoji");
+    const row = this.db.prepare("SELECT reactions FROM entries WHERE thread = ? AND n = ?").get(threadId, n) as { reactions: string | null } | undefined;
+    if (!row) throw new Error(`no entry ${n} in ${threadId}`);
+    const current = parseReactions(row.reactions);
+    const at = current.find((r) => r.emoji === emoji);
+    if (on) {
+      if (at) { if (!at.by.includes(by)) at.by.push(by); }
+      else current.push({ emoji, by: [by] });
+    } else if (at) {
+      at.by = at.by.filter((x) => x !== by);
+    }
+    const next = current.filter((r) => r.by.length);
+    this.db.prepare("UPDATE entries SET reactions = ? WHERE thread = ? AND n = ?").run(next.length ? JSON.stringify(next) : null, threadId, n);
+    return next;
   }
 
   /** Pinned entries, oldest first: one thread's, or every thread's in this pool. */
@@ -1234,6 +1271,12 @@ function toItem(r: ItemRow): SleepItem {
     id: r.id, run: r.run, kind: r.kind as SleepItem["kind"], text: r.text, ...(r.source ? { source: r.source } : {}),
     ...(r.thread ? { thread: r.thread } : {}), dismissed: r.dismissed === 1, createdAt: r.created_at,
   };
+}
+
+function parseReactions(raw: string | null): Reaction[] {
+  if (!raw) return [];
+  const v = json(raw);
+  return Array.isArray(v) ? (v as Reaction[]).filter((r) => typeof r.emoji === "string" && Array.isArray(r.by)).map((r) => ({ emoji: r.emoji, by: [...r.by] })) : [];
 }
 
 function toEntry(r: EntryRow): StoredEntry {

@@ -186,6 +186,131 @@ describe("grants", () => {
   });
 });
 
+describe("never granted", () => {
+  it("refuses releases, snapshots, the updater's state and update requests, whenever they were listed", async () => {
+    const { keyring, li, paths } = await setup();
+    for (const never of ["/opt/lyrica", "/opt/lyrica/releases/abc", "/var/lib/lyrica-snapshots", "/var/lib/lyrica-update", join(keyring.home, "updates")]) {
+      expect(() => paths.allow(li, li.id, "general", never), never).toThrow(/never granted/);
+    }
+    // A row listed before a folder became never granted is dropped when read, so the check before each run refuses it.
+    keyring.self().prepare("INSERT INTO workspace_paths (user_id, pool, path) VALUES (?, 'general', '/opt/lyrica')").run(li.id);
+    expect(paths.list(li.id).general).not.toContain("/opt/lyrica");
+  });
+});
+
+describe("Git accounts and repositories", () => {
+  const TOKEN = "github_pat_11AAAAAAA0abcdefghijklmnopqrstuvwxyz";
+  /** A forge that knows one token per account, by its Authorization header. */
+  const forge = (tokens: Record<string, string>, repos: string[] = []): typeof fetch => (async (url: string | URL, init?: RequestInit) => {
+    const auth = String((init?.headers as Record<string, string> | undefined)?.Authorization ?? "").replace(/^(Bearer|token) /, "");
+    const login = Object.entries(tokens).find(([, t]) => t === auth)?.[0];
+    if (!login) return new Response("{}", { status: 401 });
+    const path = new URL(String(url)).pathname;
+    if (path.endsWith("/user")) return Response.json({ login });
+    if (path.endsWith("/user/repos")) return Response.json(repos.map((full_name) => ({ full_name })));
+    return Response.json({ data: repos.map((full_name) => ({ full_name })) });
+  }) as typeof fetch;
+
+  async function withAccounts(fetch = forge({ "lyrica-bot": TOKEN, li: "li-token", forge: "forge-token" })) {
+    const s = await setup();
+    const workspace = new Workspace(s.keyring, s.users, { excludePorts: [], forgeFetch: fetch });
+    const settings = workspace.settings(s.li.id);
+    // IP hosts: no resolver needed; 127.0.0.1 is her own machine, 192.0.2.7 is outside her network.
+    settings.addGitAccount({ name: "bot", kind: "github", host: "github.com", account: "lyrica-bot", token: TOKEN, pool: "general", offNetwork: true });
+    settings.addGitAccount({ name: "li", kind: "github", host: "github.com", account: "li", token: "li-token", pool: "general", offNetwork: true });
+    settings.addGitAccount({ name: "forge", kind: "forgejo", host: "127.0.0.1:3000", account: "forge", token: "forge-token", pool: "private", offNetwork: false });
+    return { ...s, workspace, settings, thread: (threadId: string, pool: "general" | "private" = "general") => ({ userId: s.li.id, pool, threadId }) };
+  }
+
+  it("keeps a GitHub account general and a private account on her network unless Li confirms", async () => {
+    const { li, workspace, settings } = await withAccounts();
+    const add = (name: string, host: string, pool: "general" | "private", more = {}) =>
+      workspace.addGitAccount(li.id, { name, kind: "gitea", host, account: "forge", token: "forge-token", pool, ...more });
+    await expect(workspace.addGitAccount(li.id, { name: "gh", kind: "github", host: "github.com", account: "li", token: "li-token", pool: "private" }))
+      .rejects.toThrow(/GitHub account is general/);
+    expect(() => settings.updateGitAccount("li", { pool: "private" })).toThrow(/GitHub account is general/);
+    await expect(add("away", "192.0.2.7", "private")).rejects.toThrow(/outside your network/);
+    expect((await add("away", "192.0.2.7", "private", { offNetworkConfirmed: true })).offNetwork).toBe(true);
+    expect((await add("home", "https://127.0.0.1:3000/", "private")).host).toBe("127.0.0.1:3000");
+    // The token is checked first: a wrong one, or another account's, saves nothing.
+    await expect(workspace.addGitAccount(li.id, { name: "x", kind: "github", host: "github.com", account: "li", token: "nope", pool: "general" })).rejects.toThrow(/rejected the token/);
+    await expect(workspace.addGitAccount(li.id, { name: "x", kind: "github", host: "github.com", account: "li", token: TOKEN, pool: "general" })).rejects.toThrow(/lyrica-bot's, not li's/);
+    expect(settings.gitAccount("x")).toBeUndefined();
+    expect(settings.gitAccount("home")!.state?.kind).toBe("signedIn");
+  });
+
+  it("gives a repository's token only to a sandbox of its pool, in a thread that has it, that can reach its host, and each account only its own", async () => {
+    const { workspace, settings, thread } = await withAccounts();
+    expect(() => settings.setThread("p", "private", { repositories: [{ name: "xlc2022/lyrica", account: "li" }] })).toThrow(/general Git account; a private thread/);
+    expect(() => settings.setThread("g", "general", { repositories: [{ name: "li/notes", account: "forge" }] })).toThrow(/private Git account; a general thread/);
+    expect(() => settings.setThread("g", "general", { repositories: [{ name: "../x", account: "li" }] })).toThrow(/owner\/name/);
+
+    settings.setThread("code", "general", { repositories: [{ name: "xlc2022/lyrica", account: "li" }, { name: "lyrica-bot/scratch.git", account: "bot" }] });
+    const env = workspace.forgeEnv(thread("code"));
+    const helpers = Object.entries(env).filter(([k]) => k.startsWith("GIT_CONFIG_KEY_")).map(([k, v]) => [v, env[k.replace("KEY", "VALUE")]]);
+    expect(helpers.map(([k]) => k)).toEqual([
+      "credential.https://github.com.useHttpPath", "credential.https://github.com/xlc2022/lyrica.git.helper", "credential.https://github.com/lyrica-bot/scratch.git.helper",
+    ]);
+    // Each helper reads its own pair of variables, so two accounts on one host never mix.
+    expect(helpers[1]![1]).toContain("$LYRICA_GIT_TOKEN_0");
+    expect(env).toMatchObject({ LYRICA_GIT_USER_0: "li", LYRICA_GIT_TOKEN_0: "li-token", LYRICA_GIT_USER_1: "lyrica-bot", LYRICA_GIT_TOKEN_1: TOKEN, LYRICA_GIT_COUNT: "2",
+      LYRICA_GIT_REPO_0: "github.com/xlc2022/lyrica", LYRICA_GIT_KIND_0: "github", LYRICA_GIT_REPO_1: "github.com/lyrica-bot/scratch" });
+    // GH_TOKEN is one value, so it is never set: the gh wrapper picks by the clone (core/test/forge.test.ts).
+    expect(env.GH_TOKEN).toBeUndefined();
+    expect(JSON.stringify(env)).not.toContain("forge-token");
+    expect(workspace.repositoriesFor(thread("code")).map((r) => r.path)).toEqual(["/workspace/repos/lyrica", "/workspace/repos/scratch"]);
+
+    // Without the repository, or without a way to its host.
+    expect(workspace.forgeEnv(thread("other"))).toEqual({});
+    settings.setThread("code", "general", { internet: false });
+    expect(workspace.forgeEnv(thread("code"))).toEqual({});
+    settings.setThread("code", "general", { hosts: ["github.com"] });
+    expect(workspace.forgeEnv(thread("code")).LYRICA_GIT_TOKEN_0).toBe("li-token");
+
+    // A private thread: only with the host allowed, and only its private account's token, for tea.
+    settings.setThread("p", "private", { repositories: [{ name: "li/notes", account: "forge" }] });
+    expect(workspace.forgeEnv(thread("p", "private"))).toEqual({});
+    settings.setThread("p", "private", { hosts: ["127.0.0.1:3000"] });
+    expect(workspace.forgeEnv(thread("p", "private"))).toMatchObject({ LYRICA_GIT_COUNT: "1", LYRICA_GIT_TOKEN_0: "forge-token", LYRICA_GIT_REPO_0: "127.0.0.1:3000/li/notes", LYRICA_GIT_KIND_0: "forgejo" });
+    expect(JSON.stringify(workspace.forgeEnv(thread("p", "private")))).not.toContain("li-token");
+  });
+
+  it("takes a removed account's repositories, or one taken off a project, from its running threads at once", async () => {
+    const { settings } = await withAccounts();
+    const lyrica = { name: "xlc2022/lyrica", account: "li" };
+    const scratch = { name: "lyrica-bot/scratch", account: "bot" };
+    settings.setThread("project", "general", { repositories: [lyrica, scratch] });
+    settings.inheritSettings("project", "thread", "general");
+    expect(settings.effective("thread").repositories).toEqual([lyrica, scratch]);
+    expect(() => settings.setThread("thread", "general", { repositories: [lyrica, scratch, { name: "li/other", account: "li" }] })).toThrow(/isn't in the parent thread's repositories/);
+    settings.setThread("project", "general", { repositories: [lyrica] });
+    expect(settings.effective("thread").repositories).toEqual([lyrica]);
+    // Given back to the project, it doesn't come back to the thread.
+    settings.setThread("project", "general", { repositories: [lyrica, scratch] });
+    expect(settings.effective("thread").repositories).toEqual([lyrica]);
+    settings.removeGitAccount("li");
+    expect(settings.effective("project").repositories).toEqual([scratch]);
+    expect(settings.effective("thread").repositories).toEqual([]);
+    // A new pool, or a new name, follows too.
+    settings.updateGitAccount("bot", { name: "robot" });
+    expect(settings.effective("project").repositories).toEqual([{ ...scratch, account: "robot" }]);
+    settings.addGitAccount({ name: "gitea", kind: "gitea", host: "127.0.0.1", account: "li", token: "t", pool: "general", offNetwork: false });
+    settings.setThread("project", "general", { repositories: [{ ...scratch, account: "robot" }, { name: "li/notes", account: "gitea" }] });
+    settings.updateGitAccount("gitea", { pool: "private" });
+    expect(settings.effective("project").repositories).toEqual([{ ...scratch, account: "robot" }]);
+  });
+
+  it("lists what an account can see, and records a rejected token", async () => {
+    const { li, workspace, settings } = await withAccounts(forge({ li: "li-token", "lyrica-bot": TOKEN }, ["xlc2022/lyrica", "xlc2022/dotfiles"]));
+    expect(await workspace.listRepositories(li.id, "li", "dot")).toEqual([{ name: "xlc2022/dotfiles", account: "li" }]);
+    settings.addGitAccount({ name: "old", kind: "gitea", host: "127.0.0.1", account: "li", token: "expired", pool: "general", offNetwork: false });
+    await expect(workspace.listRepositories(li.id, "old")).rejects.toThrow(/rejected the token/);
+    expect(settings.gitAccount("old")!.state?.kind).toBe("rejected");
+    await expect(workspace.setGitToken(li.id, "old", "wrong")).rejects.toThrow(/rejected/);
+    expect(settings.gitAccount("old")!.token).toBe("expired");
+  });
+});
+
 describe("modes and switches", () => {
   it("renames stored modes in place and adds the switches, on", async () => {
     const { users, li } = await setup();

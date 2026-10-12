@@ -100,4 +100,10 @@ the guide's words) and the project chat the merge commit.
 
 ## Handoff notes
 
-(The thread fills this in if it stops before it's done.)
+- 2026-10-12 (Web UI 2, the combined PR): built as `web/src/Setup.tsx`,
+  `web/src/Tailnet.tsx`, `web/src/name.ts` and the Direct and Tailnet modes
+  in `web/src/WebAccess.tsx`; `State.credentials` added for Start unlocked;
+  the setup e2e runs its own lyricad with no `self.db`
+  (`web/e2e/serve.ts … setup`, `web/e2e/setup.spec.ts`). Docs in
+  docs/web.md. Not built: nothing from this brief; the Models step adds one
+  endpoint and sets its first chat model, as the brief says.

@@ -1,7 +1,7 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, normalize, sep } from "node:path";
-import { AuthError, CloudModelForbidden, Forbidden, HostRefused, Locked, MigrationFailed, NoModel, Offline, PairingFailed, SchemaTooNew, WrongPassword } from "@lyrica/core";
+import { AuthError, CloudModelForbidden, Forbidden, GitAccountProblem, HostRefused, Locked, MigrationFailed, NoModel, Offline, PairingFailed, SchemaTooNew, WrongPassword } from "@lyrica/core";
 import { COOKIE } from "./auth.ts";
 
 /** An error with an HTTP status. Its message is shown to the user. */
@@ -135,7 +135,8 @@ export function checkOrigin(req: IncomingMessage): void {
 
 /** Headers on every response: a strict CSP, no framing, no sniffing, no referrer. No CORS headers, ever. */
 export const SECURITY_HEADERS: Record<string, string> = {
-  "content-security-policy": "default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+  // style-src allows inline styles: the emoji picker (a custom element) styles its shadow root with a <style> it injects. Scripts stay 'self'.
+  "content-security-policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
   "x-frame-options": "DENY",
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
@@ -159,7 +160,8 @@ export function statusOf(err: unknown): number {
   if (err instanceof AuthError || err instanceof WrongPassword) return 401;
   // A database this release can't read or migrate: said plainly, and a failed health check for the updater.
   if (err instanceof SchemaTooNew || err instanceof MigrationFailed) return 409;
-  if (err instanceof CloudModelForbidden || err instanceof NoModel || err instanceof PairingFailed) return 400;
+  // A Git host that refused a token or didn't answer: said as the reason the account wasn't saved.
+  if (err instanceof CloudModelForbidden || err instanceof NoModel || err instanceof PairingFailed || err instanceof GitAccountProblem) return 400;
   // A model host's refusal keeps its meaning; anything else from it is a bad gateway.
   if (err instanceof HostRefused) return ({ invalid: 400, refused: 403, not_found: 404, in_use: 409, too_big: 413, no_space: 507 } as Record<string, number>)[err.code] ?? 502;
   if (err instanceof Error && err.constructor === Error) return 400;

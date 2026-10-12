@@ -5,7 +5,7 @@ import { lookup } from "node:dns/promises";
 import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { FilesRefused, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Grant, type Network } from "../src/index.ts";
+import { FilesRefused, gitEnv, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Grant, type Network } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 // Escaping the sandbox is the main failure. These tests must run as an
@@ -72,6 +72,17 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect((await ops.read.readFile(p("ro", "song.txt"))).toString()).toBe("la la la\n");
     const r = await sh(`cat draft.md && ls ${p("ro")}`);
     expect(r).toEqual({ code: 0, out: "hellosong.txt\n" });
+  });
+
+  it("puts the gh and tea wrappers first on a run with repositories, and tea's login only on that run's /tmp", async () => {
+    const env = gitEnv([{ name: "li/home", account: { kind: "forgejo", host: "forge.lan", account: "li", token: "forge-token" } }]);
+    const git = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], env });
+    const r = await sh("command -v gh tea; git init -q home && git -C home remote add origin https://forge.lan/li/home.git && cd home && "
+      + "{ tea 2>/dev/null; cat /tmp/lyrica-forge/tea/config.yml; }; cd .. && rm -rf home", git);
+    expect(r.out).toContain("/run/lyrica/bin/gh\n/run/lyrica/bin/tea\n");
+    expect(r.out).toContain("token: 'forge-token'");
+    expect((await sh("ls /tmp/lyrica-forge 2>&1 || true", git)).out).toContain("No such file");
+    expect((await sh("command -v gh || echo NONE")).out).not.toContain("/run/lyrica");
   });
 
   it("hides lyricad's runtime directory, other users' files and everything else on the host", async () => {
@@ -394,6 +405,31 @@ describe.skipIf(!homeRunnable)("a running child thread's folders", () => {
   });
 });
 
+describe.skipIf(!homeRunnable)("a thread's clones", () => {
+  it("are its own: a project's thread works in the project's folder but sees only its own repos/, and they go with its folder", async () => {
+    const keyring = await freshKeyring();
+    const users = new Users(keyring);
+    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    await users.authenticate("li", "pw");
+    const workspace = new Workspace(keyring, users, { excludePorts: [] });
+    const settings = workspace.settings(li.id);
+    settings.inheritSettings("project", "thread", "general");
+    const project = { userId: li.id, pool: "general" as const, threadId: "project" };
+    const thread = { ...project, threadId: "thread" };
+    await workspace.mountHome(li.id);
+    try {
+      await sh("mkdir -p repos/lyrica && echo project > repos/lyrica/who && echo shared > notes.txt", workspace.targetFor(project) as Sandbox);
+      const seen = await sh("cat notes.txt; ls repos; mkdir -p repos/lyrica && echo thread > repos/lyrica/who", workspace.targetFor(thread) as Sandbox);
+      expect(seen.out).toBe("shared\n");
+      expect((await sh("cat repos/lyrica/who", workspace.targetFor(project) as Sandbox)).out).toBe("project\n");
+      expect(workspace.reposDir(thread)).toBe(join(workspace.homeDir(li.id), "threads", "thread", "repos"));
+      expect(readFileSync(join(workspace.reposDir(thread), "lyrica", "who"), "utf8")).toBe("thread\n");
+    } finally {
+      await workspace.unmountHome(li.id);
+    }
+  });
+});
+
 // The host's own LAN address stands in for a machine on the network: the
 // sandbox has an address of its own, so the host is just another peer to it.
 const lan = Object.values(networkInterfaces()).flat().find((i) => i?.family === "IPv4" && !i.internal)?.address;
@@ -423,6 +459,17 @@ describe.skipIf(!netRunnable || !lan)("a sandbox's network switches", () => {
   const tcp = (host: string, port: number) => `timeout 5 bash -c 'exec 3<>/dev/tcp/${host}/${port} && cat <&3'`;
   const reach = async (net: Partial<Network>, host: string, port: number, exclude: number[] = []) =>
     (await sh(tcp(host, port), box(net, [], exclude))).out;
+
+  it("hands a repository's token to a networked command through its environment, as git's credential for that repository only", async () => {
+    const token = "github_pat_11AAAAAAA0abcdefghijklmnopqrstuvwxyz";
+    const env = gitEnv([{ name: "xlc2022/lyrica", account: { kind: "github", host: "github.com", account: "lyrica-bot", token } }]);
+    const sandbox = new Sandbox({ workdir: p("work"), grants: grants(), network: { ...OFF, internet: true }, self: [], env });
+    const fill = (path: string) => `printf 'protocol=https\\nhost=github.com\\npath=${path}\\n\\n' | git credential fill 2>&1`;
+    const r = await sh(`printenv GH_TOKEN || echo NONE; ${fill("xlc2022/lyrica.git")}; ${fill("xlc2022/other.git")}`, sandbox);
+    expect(r.out).toContain(`NONE\nprotocol=https\nhost=github.com\npath=xlc2022/lyrica.git\nusername=lyrica-bot\npassword=${token}\n`);
+    expect(r.out).toContain("could not read Username for 'https://github.com/xlc2022/other.git'");
+    expect((await sh("printenv LYRICA_GIT_TOKEN_0 || echo NONE", box({ internet: true }))).out).toBe("NONE\n");
+  });
 
   it("with internet only, reaches the network but not this machine's loopback", async () => {
     expect(await reach({ internet: true }, lan!, peer)).toContain("PEER");

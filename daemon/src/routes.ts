@@ -1,7 +1,7 @@
 import {
-  AuthError, NoRecoveryCopy, WrongPassword, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS, projectSlug,
-  citationsIn, firstLine, sentenceCiting, splitId,
-  type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type MachineConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
+  AuthError, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS, projectSlug,
+  citationsIn, firstLine, GIT_KINDS, sentenceCiting, splitId,
+  type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
@@ -12,7 +12,7 @@ import type { ProjectThreadInfo } from "./children.ts";
 import { Busy } from "./hosted.ts";
 import { BUILD, card, type Lyricad, type Services } from "./lyricad.ts";
 import { readUpdates, writeRequest } from "./updates.ts";
-import { toMessages } from "./messages.ts";
+import { toMessages, toReactions } from "./messages.ts";
 import { messageText, readAloud, readClip, speechState, storedSource, transcribeClip, titlesIn, type SpeechSource } from "./speech.ts";
 import { notifications } from "./notifications.ts";
 import { applyRemoval, entriesFrom, removalPlan, uploadsIn, type RemovalContext } from "./removal.ts";
@@ -473,6 +473,38 @@ export function apiRoutes(d: Lyricad): Route[] {
       return { ok: true };
     }),
 
+    // --- Git accounts (docs/workspace.md, "Git accounts and repositories") ---
+    route("GET", `${u}/git-accounts`, (r) => s().workspace.settings(d.userFor(r).id).gitAccounts().map(gitAccountInfo)),
+    route("POST", `${u}/git-accounts/probe`, async (r): Promise<Api.Ok> => {
+      d.userFor(r);
+      const input = await r.json<Api.GitAccountInput>();
+      await s().workspace.probeGitAccount({ kind: checkGitKind(input.kind), host: String(input.host ?? ""), account: String(input.account ?? ""), token: String(input.token ?? "") });
+      return { ok: true };
+    }),
+    route("POST", `${u}/git-accounts`, async (r) => {
+      const userId = d.userFor(r).id;
+      const input = await r.json<Api.GitAccountInput>();
+      return gitAccountInfo(await s().workspace.addGitAccount(userId, {
+        name: String(input.name ?? ""), kind: checkGitKind(input.kind), host: String(input.host ?? ""), account: String(input.account ?? ""),
+        token: String(input.token ?? ""), pool: checkPool(input.pool), offNetworkConfirmed: input.offNetworkConfirmed === true,
+      }));
+    }),
+    route("PATCH", `${u}/git-accounts/:name`, async (r) => {
+      const change = pick(await r.json<Api.GitAccountChange>(), ["name", "host", "account", "pool", "offNetworkConfirmed"]);
+      if (change.pool !== undefined) checkPool(change.pool);
+      for (const k of ["name", "host", "account"] as const) if (change[k] !== undefined) change[k] = String(change[k]);
+      return gitAccountInfo(await s().workspace.updateGitAccount(d.userFor(r).id, r.params.name!, { ...change, offNetworkConfirmed: change.offNetworkConfirmed === true }));
+    }),
+    route("POST", `${u}/git-accounts/:name/token`, async (r) =>
+      gitAccountInfo(await s().workspace.setGitToken(d.userFor(r).id, r.params.name!, String((await r.json<Api.GitToken>()).token ?? "")))),
+    route("POST", `${u}/git-accounts/:name/confirm-off-network`, (r) => gitAccountInfo(s().workspace.confirmGitOffNetwork(d.userFor(r).id, r.params.name!))),
+    route("DELETE", `${u}/git-accounts/:name`, (r) => {
+      s().workspace.removeGitAccount(d.userFor(r).id, r.params.name!);
+      return { ok: true };
+    }),
+    route("GET", `${u}/git-accounts/:name/repositories`, async (r): Promise<Api.GitRepository[]> =>
+      s().workspace.listRepositories(d.userFor(r).id, r.params.name!, r.query.get("q") ?? "")),
+
     // --- The user's own groups of threads ---
     route("GET", `${u}/thread-groups`, (r): Api.ThreadGroup[] => s().prefs.groups(d.userFor(r).id)),
     route("POST", `${u}/thread-groups`, async (r): Promise<Api.ThreadGroup> => s().prefs.addGroup(d.userFor(r).id, String((await r.json<Api.NewThreadGroup>()).name ?? ""))),
@@ -681,7 +713,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         const page = o[poolOf(r)].entryPage(thread.id, { before: before ? Number(before) : undefined, limit });
         const names = thread.subagent ? { userName: (id: string) => s().users.get(id)?.profile.displayName ?? "a user" } : undefined;
         return { messages: toMessages(thread.id, poolOf(r), page.entries,
-          (run) => s().delegation.store.runs(user.id, poolOf(r), { run }).map((x) => x.thread), names, thread.child && thread.parent ? { parent: thread.parent } : {}), hasMore: page.hasMore };
+          (run) => s().delegation.store.runs(user.id, poolOf(r), { run }).map((x) => x.thread), names, { ...(thread.child && thread.parent ? { parent: thread.parent } : {}), userId: user.id }), hasMore: page.hasMore };
       });
     }),
     route("POST", `${t}/messages`, async (r) => {
@@ -789,6 +821,8 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("PUT", `${t}/messages/:n/pin`, (r) => pin(d, d.userFor(r), r, true)),
     route("DELETE", `${t}/messages/:n/pin`, (r) => pin(d, d.userFor(r), r, false)),
+    route("PUT", `${t}/messages/:n/reactions/:emoji`, (r) => react(d, d.userFor(r), r, true)),
+    route("DELETE", `${t}/messages/:n/reactions/:emoji`, (r) => react(d, d.userFor(r), r, false)),
     route("GET", `${t}/pins`, (r) => {
       const user = d.userFor(r);
       return owner(d, user, (o): Api.Pins => {
@@ -1185,13 +1219,18 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("PUT", `${u}/admin/users/:targetId/password`, async (r) => {
       const actor = d.adminFor(r);
-      const { password } = await r.json<Api.AdminPassword>();
+      const { password, yourPassword } = await r.json<Api.AdminPassword>();
+      const t = target(d, r);
+      // An open session isn't enough: the administrator's own password is checked, and guesses count on the limiter.
+      const keys = [`login:${actor.login.toLowerCase()}`, `ip:${r.ip}`];
       try {
-        await s().users.setPassword(actor, target(d, r), String(password ?? ""));
+        await limited(d, keys, () => s().users.setPassword(actor, String(yourPassword ?? ""), t, String(password ?? "")), "that isn't your password");
       } catch (err) {
         if (err instanceof NoRecoveryCopy) throw new HttpError(409, err.message);
         throw err;
       }
+      // The old password's sessions end: the user logs in again with the new one.
+      await d.lockUser(t.id);
       return { ok: true };
     }),
     route("PATCH", `${u}/admin/users/:targetId/profile`, async (r) => {
@@ -1497,6 +1536,16 @@ function networkDefaults(d: Lyricad, userId: string): Api.NetworkDefaults {
   return { general: s.defaultNetwork("general"), private: s.defaultNetwork("private") };
 }
 
+/** A Git account as the API shows it: never its token. */
+function gitAccountInfo(a: GitAccountConfig): Api.GitAccountInfo {
+  return { name: a.name, kind: a.kind, host: a.host, account: a.account, pool: a.pool, offNetwork: a.offNetwork, ...(a.state ? { state: a.state } : {}) };
+}
+
+function checkGitKind(kind: unknown): Api.GitKind {
+  if (!GIT_KINDS.includes(kind as Api.GitKind)) throw new Error("a Git account is GitHub, Forgejo, Gitea or Other");
+  return kind as Api.GitKind;
+}
+
 /** A machine as the API shows it: never its key or token. */
 function machineInfo(m: MachineConfig): Api.MachineInfo {
   if (m.kind === "proxmox") {
@@ -1757,14 +1806,14 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     localOnly: ctx.localOnly,
     internet: tw.internet, services: tw.services, hosts: tw.hosts,
     network: workspace.network({ userId: user.id, pool, threadId }),
-    grants: applies.grants, machines: applies.machines, mode: applies.mode, webSearch: applies.webSearch, images: applies.images, unlogged: isUnlogged, parent: tw.parent,
+    grants: applies.grants, machines: applies.machines, repositories: applies.repositories, mode: applies.mode, webSearch: applies.webSearch, images: applies.images, unlogged: isUnlogged, parent: tw.parent,
     speech: speechState(models, ctx),
     fallback: models.threadFallback(user.id, threadId), fallbackOn: ctx.fallback !== false,
     allowed: models.allowed(ctx).map(({ endpoint }) => endpointInfo(d, user.id, endpoint.id)),
   };
 }
 
-const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "mode", "webSearch", "images", "machines"] as const;
+const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "mode", "webSearch", "images", "machines", "repositories"] as const;
 
 /** A thread's subagents and child threads, and theirs, hidden ones included. */
 function descendants(d: Lyricad, user: User, pool: Pool, threadId: string): string[] {
@@ -1868,6 +1917,25 @@ function pin(d: Lyricad, user: User, r: Request, pinned: boolean): Api.Ok {
     if (role !== "user" && role !== "assistant") throw new HttpError(400, "only your messages and her replies can be pinned");
     o[pool].pinEntry(thread.id, n, pinned);
     return { ok: true };
+  });
+}
+
+/** The user's reaction on a message. She hears of it in her next turn, and every open tab sees it at once. */
+function react(d: Lyricad, user: User, r: Request, on: boolean): Api.Reactions {
+  const pool = poolOf(r);
+  const n = entryN(r);
+  const emoji = String(r.params.emoji ?? "");
+  if (!isEmoji(emoji)) throw new HttpError(400, "not an emoji");
+  return owner(d, user, (o) => {
+    const thread = threadOf(o, r);
+    if (thread.subagent) throw new HttpError(409, "a subagent's thread has no reactions");
+    const at = o[pool].entryPage(thread.id, { before: n + 1, limit: 1 }).entries.find((e) => e.n === n);
+    const role = (at?.data as { type?: string; message?: { role?: string } } | undefined)?.message?.role;
+    if (!at) throw new HttpError(404, "no such message");
+    if (role !== "user" && role !== "assistant") throw new HttpError(400, "only your messages and her replies take reactions");
+    const reactions = toReactions(o[pool].react(thread.id, n, emoji, user.id, on), user.id) ?? [];
+    d.services!.host.get(user.id, pool, thread.id).reacted(n, reactions, { emoji, on, hers: role === "assistant" });
+    return { reactions };
   });
 }
 

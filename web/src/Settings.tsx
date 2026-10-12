@@ -5,7 +5,9 @@ import {
   type AllowedPaths, type EndpointInfo, type Grant, type ModelRef, type PermissionMode, type MachineInfo,
   type TaskModel, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTask,
 } from "./api.ts";
+import { Repositories } from "./Git.tsx";
 import { Icon } from "./icons.tsx";
+import { her } from "./name.ts";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { go } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
@@ -137,7 +139,7 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
             onChange={(v) => change({ localOnly: v })} />
           <NetSwitch label="Internet" hint="For her commands and fetches." value={settings.internet} effective={settings.network.internet}
             onChange={(v) => change({ internet: v })} />
-          <NetSwitch label="Local services (localhost)" hint="Programs running on Lyrica's own server, such as a database. Never Lyrica's own page." value={settings.services} effective={settings.network.services}
+          <NetSwitch label="Local services (localhost)" hint={`Programs running on ${her()}'s own server, such as a database. Never ${her()}'s own page.`} value={settings.services} effective={settings.network.services}
             onChange={(v) => change({ services: v })} />
           <Hosts hosts={settings.hosts ?? settings.network.hosts} overridden={settings.hosts !== null} onChange={(hosts) => change({ hosts })} />
         </fieldset>
@@ -150,6 +152,11 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
         <fieldset className="group" disabled={sub || busy}>
           <legend>Machines</legend>
           <Machines granted={settings.machines} machines={machines.filter((m) => m.pool === pool)} onChange={(names) => change({ machines: names })} />
+        </fieldset>
+
+        <fieldset className="group" disabled={sub || busy}>
+          <legend>Repositories</legend>
+          <Repositories userId={userId} pool={pool} granted={settings.repositories} onChange={(repositories) => change({ repositories })} />
         </fieldset>
 
         <fieldset className="group" disabled={sub || busy}>

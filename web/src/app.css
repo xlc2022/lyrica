@@ -538,7 +538,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   .picker { position: fixed; top: 104px; left: 16px; right: 16px; width: auto; }
   /* In a scrolling form the search opens under its +, where the finger is, not at the top like a header picker. */
   .machine-add { display: block; }
-  .machine-add .machine-pick { position: static; width: auto; margin-top: 6px; box-shadow: none; }
+  .machine-add .machine-pick, .machine-add .repo-pick { position: static; width: auto; margin-top: 6px; box-shadow: none; }
   /* max-content keeps the section row at its height when a tall section would squeeze it (the scrolling row has no automatic minimum). */
   .page-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content 1fr; }
   .subnav { position: static; display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px var(--gutter); gap: 2px; scrollbar-width: none; mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
@@ -606,6 +606,13 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .state-word { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; }
 .row-menu { position: relative; display: inline-flex; }
 .row-menu .menu { left: auto; right: 0; width: max-content; min-width: 160px; }
+/* Git accounts (docs/ux.md section 6): rows like a machine's, with no ⋯ (the drawer has it); Add repository's groups by account. */
+.list > li.machine-row.git-row { grid-template-columns: minmax(0, 1fr) auto; }
+.drawer-head .row-menu { margin-left: auto; }
+.repo-group { display: grid; gap: 2px; }
+.repo-group .eyebrow { padding: 4px 10px 0; }
+.repo-group .eyebrow .muted { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.picker-foot { border-top: 1px solid var(--line); padding: 8px 10px 2px; font-size: 14px; }
 .mono, input.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .mode-list { display: grid; gap: 2px; }
 .mode-list .mode-item { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px; text-align: left; border: 0; background: transparent; border-radius: 8px; padding: 6px 10px; font-size: 14px; font-weight: 400; justify-content: start; }
@@ -627,6 +634,7 @@ form.drawer-body { flex: 1; }
 @media (max-width: 760px) {
   .list > li.machine-row { grid-template-columns: minmax(0, 1fr) auto; }
   .machine-row .state-word { grid-column: 1; justify-self: start; padding-left: 14px; padding-bottom: 6px; }
+  .list > li.machine-row.git-row { grid-template-columns: minmax(0, 1fr); }
   .machine-row .row-menu { grid-column: 2; grid-row: 1 / span 2; }
 }
 
@@ -796,6 +804,7 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .inline-img:hover { border-color: var(--muted); }
 .inline-img img { display: block; max-width: 100%; max-height: 320px; object-fit: contain; }
 .prose p:has(> .inline-img:only-child) { margin: 8px 0; }
+.field-fact { padding: 7px 0; }
 
 /* Notifications (docs/ux.md §6): one list over what waits for the user; rows with their actions, filters above. */
 .ntop { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
@@ -825,3 +834,45 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
   .nrow .actions { grid-column: 2 / -1; justify-content: start; }
   .chip, .ntop select { min-height: 36px; }
 }
+
+/* Reactions (docs/ux.md §6): chips under a message; the React button beside the message menu; the quick row and the full picker as popovers. */
+.reactions { display: flex; flex-wrap: wrap; gap: 6px; }
+.msg.user .reactions { justify-self: start; }
+.reaction { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 1px 8px 1px 6px; font-size: 13px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--fg); font-weight: 400; }
+.reaction .emoji { font-size: 15px; line-height: 1; }
+.reaction[aria-pressed="true"] { border-color: var(--accent); background: var(--user-block); }
+.reaction:hover:not(:disabled) { border-color: var(--accent); }
+.reaction:disabled { cursor: default; opacity: 1; }
+.react-anchor { position: relative; display: inline-flex; margin-left: 6px; vertical-align: middle; }
+.who .react-btn + .msg-menu { margin-left: 2px; }
+.react-anchor .quick { position: absolute; z-index: 12; top: 50%; transform: translateY(-50%); left: calc(100% + 6px); display: flex; gap: 2px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; box-shadow: 0 8px 30px rgb(0 0 0 / 0.15); }
+.turn .react-anchor .full { left: auto; right: 0; }
+.react-anchor .quick button { width: 36px; height: 36px; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: transparent; font-size: 20px; line-height: 1; }
+.react-anchor .quick button:hover, .react-anchor .quick button:focus-visible { background: var(--tool); }
+.react-anchor .quick button[aria-pressed="true"] { background: var(--user-block); box-shadow: inset 0 0 0 1px var(--accent); }
+.react-anchor .quick button.more { color: var(--muted); }
+.react-anchor .full { position: absolute; z-index: 12; top: calc(100% + 4px); left: 0; width: min(352px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 30px rgb(0 0 0 / 0.18); overflow: hidden; text-transform: none; letter-spacing: normal; font-weight: 400; }
+.react-anchor .full .picker-wait { padding: 12px; }
+emoji-picker { width: 100%; height: min(400px, 60vh); --background: var(--panel); --border-color: var(--line); --input-border-color: var(--line); --input-font-color: var(--fg); --input-placeholder-color: var(--muted); --input-border-radius: 8px; --indicator-color: var(--accent); --outline-color: var(--accent); --button-hover-background: var(--tool); --button-active-background: var(--user-block); --category-font-color: var(--muted); --category-font-size: 11px; --num-columns: 8; --emoji-size: 1.3rem; --emoji-padding: 0.4rem; --skintone-border-radius: 8px; font-family: inherit; }
+@media (max-width: 700px) {
+  /* The quick row hangs from the message's left edge, not the button's, so it never leaves the screen (both sides of a chat). */
+  .who { position: relative; }
+  .react-anchor { position: static; }
+  .react-anchor .quick { left: 0; right: auto; top: calc(100% + 4px); transform: none; }
+  .react-anchor .quick button { width: 44px; height: 44px; }
+  .react-anchor .full { position: fixed; top: auto; bottom: 0; left: 0; right: 0; width: auto; border-radius: 12px 12px 0 0; }
+}
+
+/* Set up Lyrica (docs/ux.md §6): the Gate card, wider, with steps as sections. */
+.gate-card.wide { width: min(640px, 100%); }
+.gate-card.wide h1 { margin-bottom: 4px; }
+.setup-steps > * { max-width: none; }
+.setup-steps .state-word.muted { font-size: 13px; }
+/* Administration → Tailnet and Updates. */
+.tailnet-state { gap: 4px; }
+pre.note { white-space: pre-wrap; max-height: 40vh; overflow: auto; }
+.releases .release-row { align-items: center; gap: 12px; }
+.releases .release-row > .mono { min-width: 7ch; }
+.releases .release-row > .state-word { margin-left: auto; }
+.state-line .plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.dlg-commit { font-weight: 400; font-size: 15px; color: var(--muted); }

@@ -1,7 +1,9 @@
 // Unlock, login, and the signed-in shell.
 import { useCallback, useEffect, useState } from "react";
 import { get, post, whenAuthLost, type LoginResponse, type State } from "./api.ts";
+import { her, setHer } from "./name.ts";
 import { go, useRoute } from "./route.ts";
+import { Setup } from "./Setup.tsx";
 import { Shell } from "./Shell.tsx";
 import { Icon } from "./icons.tsx";
 import { ErrorText, useAction } from "./ui.tsx";
@@ -14,12 +16,19 @@ export function App() {
   const route = useRoute();
 
   const refresh = useCallback(() => {
-    get<State>("/api/state").then((s) => { setState(s); setUnreachable(""); }, (e: Error) => setUnreachable(e.message));
+    get<State>("/api/state").then((s) => { setHer(s.name); setState(s); setUnreachable(""); }, (e: Error) => setUnreachable(e.message));
   }, []);
   useEffect(() => { refresh(); whenAuthLost(refresh); }, [refresh]);
+  // Setting up: the page stays until its Done step, though lyricad is unlocked and signed in from Create on.
+  const [setup, setSetup] = useState<{ userId?: string }>();
+  useEffect(() => { if (state?.setup) setSetup((s) => s ?? {}); }, [state?.setup]);
 
   const toast = notice && <Toast text={notice} onClose={() => setNotice("")} />;
-  if (!state) return <Gate title="Lyrica">{unreachable ? <ErrorText error={unreachable} /> : <p className="muted">Connecting…</p>}</Gate>;
+  if (!state) return <Gate title={her()}>{unreachable ? <ErrorText error={unreachable} /> : <p className="muted">Connecting…</p>}</Gate>;
+  if (setup) {
+    return <Setup userId={setup.userId} onCreated={(r) => { setSetup({ userId: r.user.id }); refresh(); }}
+      onDone={() => { const userId = setup.userId; setSetup(undefined); if (userId) go({ page: "home", userId }); }} />;
+  }
   if (state.locked) return <Unlock onDone={setState} />;
   const user = state.users.find((x) => "userId" in route && x.id === route.userId) ?? state.users[0];
   if (!user || route.page === "login") {
@@ -36,17 +45,17 @@ export function App() {
   }
   return (
     <>
-      <Shell key={user.id} user={user} users={state.users} route={route} build={{ version: state.version ?? "", build: state.build ?? "" }}
-        onAuthChange={(text) => { if (text) setNotice(text); refresh(); }} />
+      <Shell key={`${user.id}:${state.name}`} user={user} users={state.users} route={route} build={{ version: state.version ?? "", build: state.build ?? "" }}
+        onAuthChange={(text) => { if (text) setNotice(text); refresh(); }} refreshState={refresh} />
       {toast}
     </>
   );
 }
 
-function Gate({ title, children }: { title: string; children: React.ReactNode }) {
+export function Gate({ title, children, wide }: { title: string; children: React.ReactNode; wide?: boolean }) {
   return (
     <main className="gate">
-      <div className="gate-card">
+      <div className={wide ? "gate-card wide" : "gate-card"}>
         <h1>{title}</h1>
         {children}
       </div>
@@ -58,8 +67,8 @@ function Unlock({ onDone }: { onDone: (s: State) => void }) {
   const [passphrase, setPassphrase] = useState("");
   const [run, busy, error] = useAction();
   return (
-    <Gate title="Unlock Lyrica">
-      <p className="muted">Lyrica is locked. Enter the passphrase to unlock her.</p>
+    <Gate title={`Unlock ${her()}`}>
+      <p className="muted">{her()} is locked. Enter the passphrase to unlock her.</p>
       <form className="stack" onSubmit={(e) => { e.preventDefault(); run(() => post<State>("/api/unlock", { passphrase }).then(onDone)); }}>
         <label className="field"><span>Passphrase</span>
           <input type="password" autoComplete="off" autoFocus value={passphrase} onChange={(e) => setPassphrase(e.target.value)} />

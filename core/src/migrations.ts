@@ -124,6 +124,21 @@ CREATE TABLE IF NOT EXISTS child_threads (
 );
 `;
 
+/** Tokens for Git hosts, one row per account (core/src/workspace/settings.ts, GitAccountConfig). */
+const GIT_ACCOUNTS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS git_accounts (
+  name        TEXT PRIMARY KEY,
+  kind        TEXT NOT NULL,
+  host        TEXT NOT NULL,
+  account     TEXT NOT NULL,
+  token       TEXT NOT NULL,
+  pool        TEXT NOT NULL,
+  off_network INTEGER NOT NULL DEFAULT 0,
+  state       TEXT,
+  state_since TEXT
+);
+`;
+
 const hasColumn = (db: Db, table: string, column: string) => !!db.prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = ?").get(table, column);
 
 /** Pre-release columns added after their tables were made: [table, column, definition]. */
@@ -170,6 +185,13 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
       upgradeCalls(db);
       if (dropped.length) addNotice(db, [`Models that no longer existed were taken out of your lists: ${dropped.join(", ")}.`]);
     },
+  }, {
+    // Git accounts and each thread's repositories (docs/briefs/repositories.md). Adds only.
+    version: 2,
+    run(db) {
+      db.exec(GIT_ACCOUNTS_SCHEMA);
+      addColumns(db, [["thread_workspaces", "repositories", "TEXT NOT NULL DEFAULT '[]'"]]);
+    },
   }],
   pool: [{
     version: 1, contract: true,
@@ -177,6 +199,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
       db.exec(POOL_SCHEMA);
       for (const u of POOL_UPGRADES) if (!db.prepare(u.check).get()) db.exec(u.sql);
     },
+  }, {
+    // Reactions on messages (DESIGN.md, Threads): the emoji and who reacted, as JSON; null means none.
+    version: 2,
+    run(db) { db.exec("ALTER TABLE entries ADD COLUMN reactions TEXT"); },
   }],
 };
 

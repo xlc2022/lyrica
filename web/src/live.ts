@@ -122,6 +122,7 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     case "usage":
     case "context":
     case "compacted":
+    case "reactions":
       return s;
   }
 }

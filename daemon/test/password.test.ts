@@ -12,14 +12,16 @@ describe("an administrator sets a password", () => {
     const li = await login(base, "li", "pw");
     const lu = `/api/u/${rt.li.id}`;
     const su = `/api/u/${rt.sam.id}`;
-    // Sam has a thread, then locks: their key leaves memory.
+    // Sam has a thread and stays logged in.
     let sam = await login(base, "sam", "pw2");
     const t = (await sam.post<ThreadSummary>(`${su}/threads`, { pool: "private", title: "Sam's notes" })).body;
-    expect((await sam.put(`${su}/admin/users/${rt.li.id}/password`, { password: "x" })).status).toBe(403);
-    expect((await sam.post(`${su}/lock`, {})).status).toBe(200);
-    // Li sets a new one; the old stops working and the new opens the same data.
-    expect((await li.put(`${lu}/admin/users/${rt.sam.id}/password`, { password: "" })).status).toBe(400);
-    expect((await li.put(`${lu}/admin/users/${rt.sam.id}/password`, { password: "fresh-pw" })).status).toBe(200);
+    expect((await sam.put(`${su}/admin/users/${rt.li.id}/password`, { password: "x", yourPassword: "pw2" })).status).toBe(403);
+    // Li sets a new one, with their own password: the old stops working, Sam's session ends, and the new opens the same data.
+    expect((await li.put(`${lu}/admin/users/${rt.sam.id}/password`, { password: "", yourPassword: "pw" })).status).toBe(400);
+    expect((await li.put(`${lu}/admin/users/${rt.sam.id}/password`, { password: "fresh-pw", yourPassword: "not-li" })).status).toBe(401);
+    expect((await sam.get(`${su}/threads`)).status).toBe(200);
+    expect((await li.put(`${lu}/admin/users/${rt.sam.id}/password`, { password: "fresh-pw", yourPassword: "pw" })).status).toBe(200);
+    expect((await sam.get(`${su}/threads`)).status).toBe(401);
     expect((await browser(base).post("/api/login", { login: "sam", password: "pw2" })).status).toBe(401);
     sam = await login(base, "sam", "fresh-pw");
     expect((await sam.get<ThreadSummary[]>(`${su}/threads`)).body.map((x) => x.title)).toEqual(["Sam's notes"]);
@@ -29,5 +31,10 @@ describe("an administrator sets a password", () => {
     expect((await sam.post(`${su}/me/password`, { oldPassword: "fresh-pw", newPassword: "mine-again" })).status).toBe(200);
     expect((await sam.get<Me>(`${su}/me`)).body.warning).toBeUndefined();
     expect((await login(base, "sam", "mine-again")).cookie).toBeDefined();
+    // Guessing the administrator's password from an open session counts on the limiter.
+    const tries: number[] = [];
+    for (let i = 0; i < 4; i++) tries.push((await li.put(`${lu}/admin/users/${rt.sam.id}/password`, { password: "guess-pw", yourPassword: `wrong-${i}` })).status);
+    expect(tries[0]).toBe(401);
+    expect(tries.at(-1)).toBe(429);
   });
 });
