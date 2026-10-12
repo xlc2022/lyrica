@@ -528,7 +528,9 @@ describe.skipIf(!netRunnable || !lan)("a sandbox's network switches", () => {
     const sandbox = new Sandbox({ workdir: p("work"), grants: grants(), network: { ...OFF, internet: true }, self: [], env });
     const fill = (path: string) => `printf 'protocol=https\\nhost=github.com\\npath=${path}\\n\\n' | git credential fill 2>&1`;
     const r = await sh(`printenv GH_TOKEN || echo NONE; ${fill("xlc2022/lyrica.git")}; ${fill("xlc2022/other.git")}`, sandbox);
-    expect(r.out).toContain(`NONE\nprotocol=https\nhost=github.com\npath=xlc2022/lyrica.git\nusername=lyrica-bot\npassword=${token}\n`);
+    expect(r.out).toContain(`NONE\nprotocol=https\nhost=github.com\npath=xlc2022/lyrica.git\nusername=lyrica-bot\npassword=[credential hidden]\n`);
+    // The helper gave git the token; what she sees has it hidden (Sandbox.secrets).
+    expect(r.out).not.toContain(token);
     expect(r.out).toContain("could not read Username for 'https://github.com/xlc2022/other.git'");
     expect((await sh("printenv LYRICA_GIT_TOKEN_0 || echo NONE", box({ internet: true }))).out).toBe("NONE\n");
   });
