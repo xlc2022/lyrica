@@ -2,7 +2,7 @@
 // its sections listed at the left. The old control panel's cards moved here.
 import { useState } from "react";
 import {
-  del, get, patch, post, put, saveName, u,
+  del, get, HttpError, patch, post, put, saveName, u,
   type AdminStatus, type AllowedPaths, type Me, type ModeDefault, type NetworkDefaults, type PersonaProposal,
   type Pool, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type Theme, type UserCard,
   type NameSetting,
@@ -336,7 +336,75 @@ function UnlockedSection({ ctx }: { ctx: ShellContext }) {
           <button className="primary" disabled={busy || !passphrase || !s.credentials.available}>Save</button>
         </form>
       )}
+      {s && <PassphraseChanger userId={userId} onChanged={status.set} />}
     </Section>
+  );
+}
+
+/** Minutes left from a rate-limit refusal ("… try again in <n> s"), at least 1. */
+export function retryMinutes(message: string): number {
+  const seconds = Number(/(\d+)\s*s\b/.exec(message)?.[1] ?? 60);
+  return Math.max(1, Math.ceil(seconds / 60));
+}
+
+/** Change passphrase… under Start unlocked (docs/ux.md, "Changing the server passphrase"): three fields in place, no dialog; nothing is kept after a success or Cancel. */
+function PassphraseChanger({ userId, onChanged }: { userId: string; onChanged: (s: AdminStatus) => void }) {
+  const [open, setOpen] = useState(false);
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [again, setAgain] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<{ wrong?: true; minutes?: number; text?: string }>({});
+  const [done, setDone] = useState<"" | "changed" | "removed">("");
+  const clear = () => { setCurrent(""); setNext(""); setAgain(""); };
+  const submit = async () => {
+    setBusy(true); setProblem({});
+    try {
+      const result = await post<AdminStatus & { note?: string }>(u(userId, "admin", "passphrase", "change"), { current, next });
+      clear(); setOpen(false);
+      setDone(result.note ? "removed" : "changed");
+      onChanged(result);
+    } catch (e) {
+      const err = e as Error;
+      if (err instanceof HttpError && err.status === 403) setProblem({ wrong: true });
+      else if (err instanceof HttpError && err.status === 429) {
+        const minutes = retryMinutes(err.message);
+        setProblem({ minutes });
+        window.setTimeout(() => setProblem((p) => (p.minutes ? {} : p)), minutes * 60_000);
+      } else setProblem({ text: err.message });
+    } finally { setBusy(false); }
+  };
+  const status = done && (
+    <p className="muted small" role="status">{done === "removed"
+      ? "Passphrase changed. It couldn't be saved for Start unlocked, so the saved copy was removed: save it again. Snapshots taken before now still open with the old one."
+      : "Passphrase changed. Snapshots taken before now still open with the old one."}</p>
+  );
+  if (!open) {
+    return (
+      <>
+        <div className="row"><button type="button" className="sm" onClick={() => { setOpen(true); setDone(""); setProblem({}); }}>Change passphrase…</button></div>
+        {status}
+      </>
+    );
+  }
+  const ready = !!next && next === again && next !== current && !!current;
+  return (
+    <form className="row" onSubmit={(e) => { e.preventDefault(); if (ready && !problem.minutes) void submit(); }}>
+      <label className="field"><span>Current passphrase</span>
+        <input type="password" autoComplete="current-password" autoFocus value={current} onChange={(e) => setCurrent(e.target.value)} />
+      </label>
+      <label className="field"><span>New passphrase</span>
+        <input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
+      </label>
+      <label className="field"><span>New passphrase again</span>
+        <input type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} />
+      </label>
+      <button type="submit" className="primary sm" disabled={busy || !ready || !!problem.minutes}>Change passphrase</button>
+      <button type="button" className="sm" onClick={() => { clear(); setProblem({}); setOpen(false); }}>Cancel</button>
+      {problem.wrong && <p className="error" role="alert">That isn't the current passphrase.</p>}
+      {problem.minutes && <p className="error" role="alert">Too many tries. Try again in <span className="mono">{problem.minutes}</span> min.</p>}
+      <ErrorText error={problem.text ?? ""} />
+    </form>
   );
 }
 
