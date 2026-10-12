@@ -1,7 +1,7 @@
 import {
   AuthError, NoRecoveryCopy, WrongPassword, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS, projectSlug,
-  citationsIn, firstLine, sentenceCiting, splitId,
-  type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type MachineConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
+  citationsIn, firstLine, GIT_KINDS, sentenceCiting, splitId,
+  type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
@@ -472,18 +472,37 @@ export function apiRoutes(d: Lyricad): Route[] {
       return { ok: true };
     }),
 
-    // --- Her GitHub token, for her own code (docs/workspace.md, "Her own code") ---
-    route("GET", `${u}/github`, (r) => github(d, d.userFor(r).id)),
-    route("PUT", `${u}/github`, async (r) => {
-      const userId = d.userFor(r).id;
-      s().workspace.settings(userId).setGithubToken(String((await r.json<Api.GithubToken>()).token ?? ""));
-      return github(d, userId);
+    // --- Git accounts (docs/workspace.md, "Git accounts and repositories") ---
+    route("GET", `${u}/git-accounts`, (r) => s().workspace.settings(d.userFor(r).id).gitAccounts().map(gitAccountInfo)),
+    route("POST", `${u}/git-accounts/probe`, async (r): Promise<Api.Ok> => {
+      d.userFor(r);
+      const input = await r.json<Api.GitAccountInput>();
+      await s().workspace.probeGitAccount({ kind: checkGitKind(input.kind), host: String(input.host ?? ""), account: String(input.account ?? ""), token: String(input.token ?? "") });
+      return { ok: true };
     }),
-    route("DELETE", `${u}/github`, (r) => {
+    route("POST", `${u}/git-accounts`, async (r) => {
       const userId = d.userFor(r).id;
-      s().workspace.settings(userId).setGithubToken(null);
-      return github(d, userId);
+      const input = await r.json<Api.GitAccountInput>();
+      return gitAccountInfo(await s().workspace.addGitAccount(userId, {
+        name: String(input.name ?? ""), kind: checkGitKind(input.kind), host: String(input.host ?? ""), account: String(input.account ?? ""),
+        token: String(input.token ?? ""), pool: checkPool(input.pool), offNetworkConfirmed: input.offNetworkConfirmed === true,
+      }));
     }),
+    route("PATCH", `${u}/git-accounts/:name`, async (r) => {
+      const change = pick(await r.json<Api.GitAccountChange>(), ["name", "host", "account", "pool", "offNetworkConfirmed"]);
+      if (change.pool !== undefined) checkPool(change.pool);
+      for (const k of ["name", "host", "account"] as const) if (change[k] !== undefined) change[k] = String(change[k]);
+      return gitAccountInfo(await s().workspace.updateGitAccount(d.userFor(r).id, r.params.name!, { ...change, offNetworkConfirmed: change.offNetworkConfirmed === true }));
+    }),
+    route("POST", `${u}/git-accounts/:name/token`, async (r) =>
+      gitAccountInfo(await s().workspace.setGitToken(d.userFor(r).id, r.params.name!, String((await r.json<Api.GitToken>()).token ?? "")))),
+    route("POST", `${u}/git-accounts/:name/confirm-off-network`, (r) => gitAccountInfo(s().workspace.confirmGitOffNetwork(d.userFor(r).id, r.params.name!))),
+    route("DELETE", `${u}/git-accounts/:name`, (r) => {
+      s().workspace.removeGitAccount(d.userFor(r).id, r.params.name!);
+      return { ok: true };
+    }),
+    route("GET", `${u}/git-accounts/:name/repositories`, async (r): Promise<Api.GitRepository[]> =>
+      s().workspace.listRepositories(d.userFor(r).id, r.params.name!, r.query.get("q") ?? "")),
 
     // --- The user's own groups of threads ---
     route("GET", `${u}/thread-groups`, (r): Api.ThreadGroup[] => s().prefs.groups(d.userFor(r).id)),
@@ -1454,10 +1473,14 @@ function networkDefaults(d: Lyricad, userId: string): Api.NetworkDefaults {
   return { general: s.defaultNetwork("general"), private: s.defaultNetwork("private") };
 }
 
-/** Whether her GitHub token is saved, never the token, and her checkout. */
-function github(d: Lyricad, userId: string): Api.GithubInfo {
-  const ws = d.services!.workspace;
-  return { token: !!ws.settings(userId).githubToken(), checkout: ws.allowedPaths.checkout() ?? null };
+/** A Git account as the API shows it: never its token. */
+function gitAccountInfo(a: GitAccountConfig): Api.GitAccountInfo {
+  return { name: a.name, kind: a.kind, host: a.host, account: a.account, pool: a.pool, offNetwork: a.offNetwork, ...(a.state ? { state: a.state } : {}) };
+}
+
+function checkGitKind(kind: unknown): Api.GitKind {
+  if (!GIT_KINDS.includes(kind as Api.GitKind)) throw new Error("a Git account is GitHub, Forgejo, Gitea or Other");
+  return kind as Api.GitKind;
 }
 
 /** A machine as the API shows it: never its key or token. */
@@ -1720,14 +1743,14 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     localOnly: ctx.localOnly,
     internet: tw.internet, services: tw.services, hosts: tw.hosts,
     network: workspace.network({ userId: user.id, pool, threadId }),
-    grants: applies.grants, machines: applies.machines, mode: applies.mode, webSearch: applies.webSearch, images: applies.images, unlogged: isUnlogged, parent: tw.parent,
+    grants: applies.grants, machines: applies.machines, repositories: applies.repositories, mode: applies.mode, webSearch: applies.webSearch, images: applies.images, unlogged: isUnlogged, parent: tw.parent,
     speech: speechState(models, ctx),
     fallback: models.threadFallback(user.id, threadId), fallbackOn: ctx.fallback !== false,
     allowed: models.allowed(ctx).map(({ endpoint }) => endpointInfo(d, user.id, endpoint.id)),
   };
 }
 
-const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "mode", "webSearch", "images", "machines"] as const;
+const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "mode", "webSearch", "images", "machines", "repositories"] as const;
 
 /** A thread's subagents and child threads, and theirs, hidden ones included. */
 function descendants(d: Lyricad, user: User, pool: Pool, threadId: string): string[] {

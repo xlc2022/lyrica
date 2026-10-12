@@ -206,6 +206,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
               <span key={g.path} className="badge folder" title={g.path}>{g.path} <span className="muted">{g.writable ? "rw" : "ro"}</span></span>
             ))}
             {settings.data?.machines.map((m) => <span key={m} className="badge folder" title="Machine">{m}</span>)}
+            {settings.data?.repositories.map((r) => <span key={`${r.account}/${r.name}`} className="badge folder" title={`Repository, through ${r.account}`}>{r.name}</span>)}
           </div>
         </div>
         {!s?.subagent && (

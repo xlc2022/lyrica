@@ -2,10 +2,11 @@
 # (LYRICA_SANDBOX_TOOLS, core/src/workspace/sandbox.ts). bubblewrap, passt,
 # nftables, bash, coreutils and util-linux must stay: lyricad and its
 # self-test use them. imagemagick makes the Files panel's thumbnails; git,
-# gh and nodejs_22 are for her own code (docs/workspace.md, "Her own code").
+# gh and tea are for threads with repositories (docs/workspace.md, "Git
+# accounts and repositories"), and nodejs_22 for her own code.
 pkgs: with pkgs; [
   bashInteractive coreutils findutils gnugrep gnused gawk diffutils patch
   gnutar gzip xz bzip2 zstd unzip which file less procps util-linux
-  getent git gh nodejs_22 openssh curl cacert jq ripgrep python3 imagemagick
+  getent git gh tea nodejs_22 openssh curl cacert jq ripgrep python3 imagemagick
   bubblewrap passt nftables
 ]

@@ -1,6 +1,6 @@
 import { Workspace } from "@lyrica/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Me } from "../src/api.ts";
+import type { GitAccountInfo, Me, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, login, runtime, systemdStart } from "./helpers.ts";
 
 afterEach(() => { vi.restoreAllMocks(); });
@@ -80,22 +80,34 @@ describe("lyricad's network self-test", () => {
   });
 });
 
-describe("her GitHub token", () => {
-  it("is saved and removed by its user, and never sent back", async () => {
+describe("Git accounts", () => {
+  it("are added once their token works, never send it back, and take their repositories from threads when they go", async () => {
     const rt = await runtime();
     homes();
+    const probe = vi.spyOn(Workspace.prototype, "probeGitAccount").mockResolvedValue();
     const { base } = await daemon(rt);
     await browser(base).post("/api/unlock", { passphrase: "passphrase" });
     const li = await login(base, "li", "pw");
+    const accounts = `/api/u/${rt.li.id}/git-accounts`;
     const token = "github_pat_11AAAAAAA0abcdefghijklmnopqrstuvwxyz";
-    expect((await li.get(`/api/u/${rt.li.id}/github`)).body).toEqual({ token: false, checkout: null });
-    const saved = await li.put(`/api/u/${rt.li.id}/github`, { token });
-    expect(saved.body).toEqual({ token: true, checkout: null });
-    expect(JSON.stringify((await li.get(`/api/u/${rt.li.id}/github`)).body)).not.toContain(token);
-    expect((await li.put(`/api/u/${rt.li.id}/github`, { token: "not a token" })).status).toBe(400);
-    // Another user can't reach it.
+    const added = await li.post<GitAccountInfo>(accounts, { name: "li", kind: "github", host: "github.com", account: "xlc2022", token, pool: "general" });
+    expect(added.body).toMatchObject({ name: "li", kind: "github", host: "github.com", account: "xlc2022", pool: "general", state: { kind: "signedIn" } });
+    expect(probe).toHaveBeenCalledWith(expect.objectContaining({ token }));
+    expect(JSON.stringify((await li.get(accounts)).body)).not.toContain(token);
+    expect((await li.post(accounts, { name: "p", kind: "github", host: "github.com", account: "xlc2022", token, pool: "private" })).status).toBe(400);
+    expect((await li.post(accounts, { name: "x", kind: "svn", host: "h", account: "a", token, pool: "general" })).status).toBe(400);
+    // Another user can't reach them.
     const sam = await login(base, "sam", "pw2");
-    expect((await sam.get(`/api/u/${rt.li.id}/github`)).status).toBe(401);
-    expect((await li.del(`/api/u/${rt.li.id}/github`)).body).toEqual({ token: false, checkout: null });
+    expect((await sam.get(accounts)).status).toBe(401);
+
+    const g = (await li.post<ThreadSummary>(`/api/u/${rt.li.id}/threads`, { pool: "general", title: "code" })).body;
+    const url = `/api/u/${rt.li.id}/threads/general/${encodeURIComponent(g.id)}/settings`;
+    const repositories = [{ name: "xlc2022/lyrica", account: "li" }];
+    expect((await li.patch<ThreadSettings>(url, { repositories })).body.repositories).toEqual(repositories);
+    expect((await li.patch(url, { repositories: [{ name: "xlc2022/lyrica", account: "nobody" }] })).status).toBe(400);
+    expect((await li.patch<GitAccountInfo>(`${accounts}/li`, { name: "mine" })).body.name).toBe("mine");
+    expect((await li.get<ThreadSettings>(url)).body.repositories).toEqual([{ name: "xlc2022/lyrica", account: "mine" }]);
+    expect((await li.del(`${accounts}/mine`)).status).toBe(200);
+    expect((await li.get<ThreadSettings>(url)).body.repositories).toEqual([]);
   });
 });

@@ -552,6 +552,7 @@ function permissionText(args: unknown): string {
   if (!args || typeof args !== "object") return JSON.stringify(args);
   const { machine: _, ...a } = args as Record<string, unknown>;
   if (typeof a.command === "string") return a.command;
+  if (typeof a.repository === "string") return `${a.repository} · ${String(a.account ?? "")}`;
   if (typeof a.action === "string") return [a.action, a.vm].filter((x) => typeof x === "string" && x).join(" ");
   if (typeof a.path === "string" && Object.keys(a).length === 1) return a.path;
   return JSON.stringify(a, null, 2);

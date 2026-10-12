@@ -488,25 +488,68 @@ test("Machines lists none, and Add machine reaches a machine before anything is 
   await expect(page.getByRole("region", { name: "Machines", exact: true })).toContainText("None yet.");
 });
 
-test("GitHub saves her token, never shows it back, and removes it after a dialog", async ({ page, baseURL }) => {
+test("Git accounts lists none, and Add account checks the token with the host before anything is saved", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
-  await page.goto(`/#/u/${userId}/settings/github`);
-  const section = page.getByRole("region", { name: "GitHub", exact: true });
-  await expect(section).toContainText("None");
-  const token = section.getByLabel("Token");
-  await expect(section.getByRole("button", { name: "Save" })).toBeDisabled();
-  await token.fill("github_pat_11AAAAAAA0abcdefghijklmnopqrstuvwxyz");
-  await section.getByRole("button", { name: "Save" }).click();
-  await expect(token).toHaveValue("");
-  await expect(token).toHaveAttribute("placeholder", "Saved");
+  await page.goto(`/#/u/${userId}/settings/git`);
+  const section = page.getByRole("region", { name: "Git accounts", exact: true });
+  await expect(section).toContainText("None yet.");
+  await section.getByRole("button", { name: "Add account" }).click();
+  const drawer = page.getByRole("complementary", { name: "Add account" });
+  // A GitHub account is general only.
+  await expect(drawer.getByLabel("Kind")).toHaveValue("github");
+  await expect(drawer.getByLabel("Host")).toHaveValue("github.com");
+  await expect(drawer.getByLabel("Pool")).toBeDisabled();
+  await expect(drawer.getByLabel("Pool")).toHaveAttribute("title", /A GitHub account is general/);
+  await drawer.getByLabel("Kind").selectOption("gitea");
+  await expect(drawer.getByLabel("Pool")).toBeEnabled();
+  await expect(drawer.getByRole("button", { name: "Add account" })).toBeDisabled();
+  await drawer.getByLabel("Name").fill("forge");
+  await drawer.getByLabel("Host").fill("127.0.0.1:9");
+  await drawer.getByLabel("Account", { exact: true }).fill("lyrica");
+  await drawer.getByLabel("Token").fill("not-a-real-token");
+  await drawer.getByRole("button", { name: "Add account" }).click();
+  await expect(drawer.getByRole("alert")).toContainText("didn't answer");
   await noHorizontalScroll(page);
-  await page.reload();
-  await expect(section.getByLabel("Token")).toHaveAttribute("placeholder", "Saved");
-  await section.getByRole("button", { name: "Remove" }).click();
-  const dialog = page.getByRole("dialog", { name: "Remove the GitHub token?" });
-  await dialog.getByRole("button", { name: "Remove" }).click();
-  await expect(section.getByRole("button", { name: "Remove" })).toHaveCount(0);
-  await expect(section.getByLabel("Token")).toHaveAttribute("placeholder", "");
+  await drawer.getByRole("button", { name: "Cancel" }).click();
+  await expect(section).toContainText("None yet.");
+});
+
+test("Git accounts show their state, and a thread's Repositories adds from what each account can see", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const since = new Date(Date.now() - 3 * 3600_000).toISOString();
+  await page.route("**/git-accounts", (r) => r.request().method() === "GET" ? r.fulfill({ json: [
+    { name: "lyrica-bot", kind: "github", host: "github.com", account: "lyrica-bot", pool: "general", offNetwork: true, state: { kind: "signedIn", since } },
+    { name: "Forge", kind: "forgejo", host: "git.lan", account: "lyrica", pool: "private", offNetwork: false, state: { kind: "unreachable", since } },
+  ] }) : r.fallback());
+  await page.route("**/git-accounts/*/repositories*", (r) => r.fulfill({ json: [{ name: "lyrica-bot/scratch", account: "lyrica-bot" }] }));
+  await page.goto(`/#/u/${userId}/settings/git`);
+  const section = page.getByRole("region", { name: "Git accounts", exact: true });
+  await expect(section.locator(".machine-row").first()).toContainText("github.com · general · GitHub · lyrica-bot");
+  await expect(section.locator(".machine-row").first()).toContainText("Signed in");
+  await expect(section.locator(".machine-row").nth(1)).toContainText("Unreachable 3 h");
+  await section.getByRole("button", { name: /^lyrica-bot/ }).click();
+  const drawer = page.getByRole("complementary", { name: "lyrica-bot" });
+  await drawer.getByRole("button", { name: "Actions for lyrica-bot" }).click();
+  await page.getByRole("menuitem", { name: "Remove" }).click();
+  const dialog = page.getByRole("dialog", { name: "Remove “lyrica-bot”?" });
+  await expect(dialog).toContainText("leave every project and thread");
+  await dialog.getByRole("button", { name: "Keep" }).click();
+  await drawer.getByRole("button", { name: "Close" }).click();
+
+  await newThread(page, "General");
+  await send(page, "Hello");
+  const settings = await openSettings(page);
+  const repos = settings.getByRole("group", { name: "Repositories" });
+  await repos.getByRole("button", { name: "Add repository" }).click();
+  const pick = page.getByRole("dialog", { name: "Add repository" });
+  await expect(pick.getByPlaceholder("Search, or paste a URL")).toBeFocused();
+  await expect(pick.getByRole("group", { name: "lyrica-bot" })).toContainText("lyrica-bot/scratch");
+  // A private account isn't offered in a general thread.
+  await expect(pick.getByRole("group", { name: "Forge" })).toHaveCount(0);
+  await pick.getByPlaceholder("Search, or paste a URL").fill("https://github.com/xlc2022/lyrica.git");
+  await expect(pick.getByRole("button", { name: "xlc2022/lyrica" })).toBeVisible();
+  await expect(pick.getByRole("link", { name: "Git accounts ›" })).toBeVisible();
+  await noHorizontalScroll(page);
 });
 
 test("an administrator sees how Lyrica is reached", async ({ page, baseURL }) => {

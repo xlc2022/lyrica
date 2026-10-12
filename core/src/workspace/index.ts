@@ -19,7 +19,10 @@ import {
   type ProxmoxAction, type ProxmoxCall, type ProxmoxTransport, type Self,
 } from "./proxmox.ts";
 import { parseHost } from "./net.ts";
-import { checkGrant, stricterMode, within, WorkspaceSettings, type Grant, type MachineConfig, type MachineKind, type MachineLimit, type Network, type NewMachine, type PermissionMode, type ThreadWorkspace } from "./settings.ts";
+import {
+  checkGrant, gitHost, repositoryDir, repositoryName, stricterMode, WorkspaceSettings, type GitAccountConfig, type GitAccountState, type GitKind, type Grant,
+  type MachineConfig, type MachineKind, type MachineLimit, type Network, type NewMachine, type PermissionMode, type ThreadRepository, type ThreadWorkspace,
+} from "./settings.ts";
 import { AllowedPaths } from "./paths.ts";
 import { generateSshKey, SshTarget } from "./ssh.ts";
 import { sandboxedTransport, type SshTransport } from "./transport.ts";
@@ -42,6 +45,8 @@ export interface WorkspaceThread {
   userId: string;
   pool: Pool;
   threadId: string;
+  /** A subagent's: the thread whose clones it works in, its parent's. Otherwise its own. */
+  reposOf?: string;
 }
 
 export interface FrontDoor { ports: number[]; hosts: string[]; exclude: number[] }
@@ -67,7 +72,22 @@ export interface WorkspaceOptions {
   proxmoxTransport?: ProxmoxTransport;
   /** This computer's name, network cards, addresses and gateways, for refusing the Proxmox that runs it. Default: read now. */
   self?: () => Self;
+  /** How lyricad asks a Git host's API about a token and its repositories. Default: fetch. */
+  forgeFetch?: typeof fetch;
 }
+
+/** A repository as one thread sees it: where it is cloned, and through which account. */
+export interface ThreadGitRepository extends ThreadRepository {
+  kind: GitKind;
+  host: string;
+  /** Where the clone is, inside the sandbox: /workspace/repos/<last part of the name>. */
+  path: string;
+  /** Whether this thread's sandbox gets the account's token now: its network reaches the host, and a private host hasn't left her network. */
+  reachable: boolean;
+}
+
+/** One repository an account can see, for Add repository. */
+export interface GitRepositoryInfo { name: string; account: string }
 
 /** A machine as one thread sees it: granted, of its pool, with its limit. */
 export interface ThreadMachine { name: string; kind: MachineKind; limit: MachineLimit; root: string | null }
@@ -92,18 +112,50 @@ export interface MachineProbe {
 
 const DRAFT_MS = 60 * 60_000;
 
+/** A repository's HTTPS address on its account's host. */
+export const repositoryUrl = (host: string, name: string): string => `https://${host}/${name}.git`;
+
 /**
- * A GitHub token as a sandbox's environment: `GH_TOKEN` for `gh`, and a git
- * credential helper for github.com, set through git's environment config so
- * nothing is written to disk. The helper reads the token from the environment.
+ * Git accounts' tokens as a sandbox's environment, nothing on disk or on a
+ * command line: for each repository, a git credential helper bound to that
+ * repository's URL (git's `GIT_CONFIG_*` environment, with `useHttpPath` for
+ * its host, so another repository on the same host never gets it), reading
+ * the token from the environment; `GH_TOKEN` (or `GH_ENTERPRISE_TOKEN` and
+ * `GH_HOST`) for the first GitHub account's `gh`, and `GITEA_SERVER_URL` and
+ * `GITEA_SERVER_TOKEN` for the first Gitea or Forgejo account's `tea`.
  */
-export function githubEnv(token: string): Record<string, string> {
-  return {
-    GH_TOKEN: token,
-    GIT_CONFIG_COUNT: "1",
-    GIT_CONFIG_KEY_0: "credential.https://github.com.helper",
-    GIT_CONFIG_VALUE_0: '!f() { test "$1" = get && printf "username=x-access-token\\npassword=%s\\n" "$GH_TOKEN"; }; f',
-  };
+export function gitEnv(repos: { name: string; account: Pick<GitAccountConfig, "kind" | "host" | "account" | "token"> }[]): Record<string, string> {
+  if (!repos.length) return {};
+  const env: Record<string, string> = { GIT_TERMINAL_PROMPT: "0" };
+  const config: [string, string][] = [];
+  for (const host of new Set(repos.map((r) => r.account.host))) config.push([`credential.https://${host}.useHttpPath`, "true"]);
+  repos.forEach((r, i) => {
+    env[`LYRICA_GIT_USER_${i}`] = r.account.account;
+    env[`LYRICA_GIT_TOKEN_${i}`] = r.account.token;
+    config.push([`credential.${repositoryUrl(r.account.host, r.name)}.helper`,
+      `!f() { test "$1" = get && printf "username=%s\\npassword=%s\\n" "$LYRICA_GIT_USER_${i}" "$LYRICA_GIT_TOKEN_${i}"; }; f`]);
+  });
+  config.forEach(([k, v], i) => { env[`GIT_CONFIG_KEY_${i}`] = k; env[`GIT_CONFIG_VALUE_${i}`] = v; });
+  env.GIT_CONFIG_COUNT = String(config.length);
+  const gh = repos.find((r) => r.account.kind === "github")?.account;
+  if (gh?.host === "github.com") env.GH_TOKEN = gh.token;
+  else if (gh) Object.assign(env, { GH_HOST: gh.host, GH_ENTERPRISE_TOKEN: gh.token });
+  const tea = repos.find((r) => r.account.kind === "gitea" || r.account.kind === "forgejo")?.account;
+  if (tea) Object.assign(env, { GITEA_SERVER_URL: `https://${tea.host}`, GITEA_SERVER_TOKEN: tea.token });
+  return env;
+}
+
+/** Whether a sandbox on `net` can reach a Git host: internet on, or the host (and its port, if the entry names one) an allowed host. */
+export function reachesHost(net: Network, host: string): boolean {
+  if (net.internet) return true;
+  const want = parseHost(host);
+  const port = want.port ?? 443;
+  return net.hosts.some((h) => {
+    try {
+      const e = parseHost(h);
+      return e.host === want.host && (e.port === undefined || e.port === port);
+    } catch { return false; }
+  });
 }
 /** account@host or account@host:port, with [v6] in brackets. */
 export function parseMachineAddress(address: string): { username: string; host: string; port: number } {
@@ -132,6 +184,8 @@ export class Workspace {
   private readonly settingsByUser = new Map<string, WorkspaceSettings>();
   private readonly changesByUser = new Map<string, FileChanges>();
   private readonly sshTargets = new Map<string, SshTarget>();
+  /** Private Git accounts whose host has newly left her network, by `<userId>/<name>`: no token goes out until Li confirms. */
+  private readonly gitRefused = new Set<string>();
   /** Key pairs for machines being added, by draft id, never saved before the machine is. */
   private readonly drafts = new Map<string, { userId: string; privateKey: string; publicKey: string; expires: number }>();
   /**
@@ -228,6 +282,14 @@ export class Workspace {
       target: (machine?: string) => this.targetFor(t, machine),
       settings: () => this.settings(t.userId).effective(t.threadId),
       machines: () => this.machinesFor(t),
+      /** The thread's repositories, where each is cloned and whether its token reaches the sandbox now. */
+      repositories: () => this.repositoriesFor(t),
+      /** Clones or fetches the thread's repositories, at the start of a turn: what failed, in plain words. */
+      cloneRepositories: () => this.cloneFor(t),
+      /** She adds a repository to the thread, after Li approved it. */
+      addRepository: (r: ThreadRepository) => this.addRepository(t, r),
+      /** What the thread's pool's Git accounts can see, for her to pick from. */
+      gitAccounts: () => this.settings(t.userId).gitAccounts().filter((a) => a.pool === t.pool).map((a) => ({ name: a.name, kind: a.kind, host: a.host })),
       /** One action on one of the thread's Proxmox machines. */
       proxmox: (machine: string, action: ProxmoxAction, vm?: string) => this.proxmox(t, machine, action, vm),
       /** Whether Li allowed this exact suspect command on this machine in this thread. */
@@ -336,6 +398,34 @@ export class Workspace {
     return stricterMode(mode, m.limit);
   }
 
+  /**
+   * Where the thread's clones are on the host: its own folder's repos/, in
+   * the home workspace, so a child thread that shares its project's folder
+   * still has clones of its own (a subagent works in its parent's). The
+   * sweep removes it with the thread.
+   */
+  reposDir(t: WorkspaceThread): string {
+    const home = this.homeDir(t.userId);
+    if (!isMounted(home)) throw new Locked("the home workspace is not mounted");
+    const dir = join(home, "threads", encodeURIComponent(t.reposOf ?? t.threadId), "repos");
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    // Where it is mounted, in the folder the thread works in (its project's, for a project's thread).
+    mkdirSync(join(this.threadDir(t), "repos"), { recursive: true, mode: 0o700 });
+    return dir;
+  }
+
+  /** The thread's repositories now: granted by it and every ancestor, of an account of its pool. */
+  repositoriesFor(t: WorkspaceThread): ThreadGitRepository[] {
+    const s = this.settings(t.userId);
+    const net = this.network(t);
+    return s.effective(t.threadId).repositories.flatMap((r) => {
+      const a = s.gitAccount(r.account);
+      if (!a || a.pool !== t.pool) return [];
+      const refused = this.gitRefused.has(`${t.userId}/${a.name}`) || (a.pool === "private" && a.kind === "github");
+      return [{ ...r, kind: a.kind, host: a.host, path: `${WORKDIR}/repos/${repositoryDir(r.name)}`, reachable: !refused && reachesHost(net, a.host) }];
+    });
+  }
+
   /** Where a call runs: the sandbox, or one of the thread's machines. */
   targetFor(t: WorkspaceThread, machine?: string): ExecutionTarget {
     const s = this.settings(t.userId);
@@ -350,6 +440,7 @@ export class Workspace {
       workdir: this.threadDir(t),
       grants: s.effective(t.threadId).grants,
       network: this.network(t),
+      repos: this.reposDir(t),
       env: this.forgeEnv(t),
       ...this.door(),
       check: (g) => checkGrant(s.allowed(), t.pool, g),
@@ -359,20 +450,207 @@ export class Workspace {
   }
 
   /**
-   * Her GitHub token, as git's credential and `GH_TOKEN`, for the thread's
-   * sandbox: only in a general thread that has her checkout granted, and only
-   * while it can reach GitHub (internet on, or github.com or one of its subdomains an allowed host).
-   * Anywhere else nothing (docs/workspace.md, "Her own code").
+   * The tokens of the thread's repositories, as its sandbox's environment
+   * (`gitEnv`): only for a repository the thread has, of an account of its
+   * pool, whose host its network reaches; a private account whose host has
+   * left her network gives nothing until Li confirms. Anywhere else nothing.
    */
   forgeEnv(t: WorkspaceThread): Record<string, string> {
-    if (t.pool !== "general") return {};
-    const checkout = this.allowedPaths.checkout();
     const s = this.settings(t.userId);
-    if (!checkout || !s.effective(t.threadId).grants.some((g) => within(checkout, g.path))) return {};
-    const net = this.network(t);
-    if (!net.internet && !net.hosts.some((h) => /^(.+\.)?github\.com$/.test(parseHost(h).host))) return {};
-    const token = s.githubToken();
-    return token ? githubEnv(token) : {};
+    const repos = this.repositoriesFor(t).filter((r) => r.reachable);
+    return gitEnv(repos.map((r) => ({ name: r.name, account: s.gitAccount(r.account)! })));
+  }
+
+  /**
+   * Clones each of the thread's repositories into its repos/ (or fetches it,
+   * once cloned), in the thread's sandbox with that run's credentials, and
+   * records how each account did. A private account's host is checked first:
+   * one that has left her network gets no token until Li confirms. Returns
+   * what failed, one plain line each; nothing failing returns none.
+   */
+  async cloneFor(t: WorkspaceThread): Promise<string[]> {
+    const s = this.settings(t.userId);
+    const wanted = s.effective(t.threadId).repositories;
+    if (!wanted.length) return [];
+    const problems: string[] = [];
+    for (const name of new Set(wanted.map((r) => r.account))) {
+      const a = s.gitAccount(name);
+      if (!a || a.pool !== t.pool) continue;
+      const refused = await this.checkGitHost(t.userId, a).then(() => undefined, (err: Error) => err.message);
+      if (refused) problems.push(refused);
+    }
+    const box = this.targetFor(t) as Sandbox;
+    // Fetches when the folder is a clone already; otherwise clones into it, which git refuses if something else is there.
+    const script = 'if [ -e "$1/.git" ]; then git -C "$1" fetch --prune --quiet origin; else mkdir -p "$(dirname "$1")" && git clone --quiet "$2" "$1"; fi';
+    for (const r of this.repositoriesFor(t)) {
+      const a = s.gitAccount(r.account)!;
+      if (!r.reachable) {
+        if (!this.gitRefused.has(`${t.userId}/${a.name}`)) problems.push(`${r.name}: this thread can't reach ${a.host}; allow it in the thread's hosts (or turn the internet on) to use it.`);
+        continue;
+      }
+      let out: { code: number | null; stderr: Buffer };
+      try {
+        out = await box.run(["sh", "-c", script, "sh", r.path, repositoryUrl(a.host, r.name)], { timeoutMs: 10 * 60_000 });
+      } catch (err) {
+        problems.push(`${r.name}: ${(err as Error).message}`);
+        continue;
+      }
+      const err = out.stderr.toString();
+      const state = out.code === 0 ? "signedIn" : gitFailure(err);
+      if (state) s.gitAccountState(a.name, state);
+      if (out.code !== 0) problems.push(`${r.name} couldn't be ${/fetch/.test(err) ? "fetched" : "cloned"}: ${lastLine(err)}`);
+    }
+    return problems;
+  }
+
+  /** She adds a repository to the thread, once Li approved it: checked like any change to the thread's settings. */
+  addRepository(t: WorkspaceThread, r: ThreadRepository): ThreadRepository[] {
+    const s = this.settings(t.userId);
+    const now = s.thread(t.threadId).repositories;
+    return s.setThread(t.threadId, t.pool, { repositories: [...now, { name: repositoryName(r.name), account: r.account }] }).repositories;
+  }
+
+  /**
+   * Checks a Git account's host before it is used. A private account whose
+   * host has newly left her network is refused until Li confirms, so a DNS
+   * change can't get past the warning; a general one only records it.
+   */
+  private async checkGitHost(userId: string, a: GitAccountConfig): Promise<void> {
+    const s = this.settings(userId);
+    const key = `${userId}/${a.name}`;
+    let outside: boolean;
+    try {
+      outside = (await resolveHost(parseHost(a.host).host)).outside;
+    } catch {
+      s.gitAccountState(a.name, "unreachable");
+      return;
+    }
+    if (outside && a.pool === "private" && !a.offNetwork) {
+      this.gitRefused.add(key);
+      throw new Error(`${a.host} now resolves outside your network, so ${a.name}'s token isn't used; confirm it in Settings → Git accounts to use it again.`);
+    }
+    this.gitRefused.delete(key);
+    if (outside !== a.offNetwork) s.setGitOffNetwork(a.name, outside);
+  }
+
+  private forge(): typeof fetch { return this.opts.forgeFetch ?? fetch; }
+
+  /** One call to a Git host's API with an account's token: GitHub's REST API, or Gitea's (which Forgejo shares). */
+  private async forgeApi(a: Pick<GitAccountConfig, "kind" | "host" | "token">, path: string): Promise<unknown> {
+    const base = a.kind === "github" ? (a.host === "github.com" ? "https://api.github.com" : `https://${a.host}/api/v3`) : `https://${a.host}/api/v1`;
+    let res: Response;
+    try {
+      res = await this.forge()(`${base}${path}`, {
+        headers: { Accept: "application/json", "User-Agent": "lyrica", Authorization: a.kind === "github" ? `Bearer ${a.token}` : `token ${a.token}` },
+        signal: AbortSignal.timeout(15_000), redirect: "error",
+      });
+    } catch {
+      throw new GitAccountProblem("unreachable", `${a.host} didn't answer`);
+    }
+    if (res.status === 401 || res.status === 403) throw new GitAccountProblem("rejected", `${a.host} rejected the token`);
+    if (!res.ok) throw new GitAccountProblem("unreachable", `${a.host} answered ${res.status}`);
+    return res.json();
+  }
+
+  /**
+   * Checks a token against its host before anything is saved: GitHub's and
+   * Gitea's (Forgejo's) user endpoint, which must name the account; for
+   * Other, only that the host answers HTTPS. Throws GitAccountProblem.
+   */
+  async probeGitAccount(a: Pick<GitAccountConfig, "kind" | "host" | "account" | "token">): Promise<void> {
+    const host = gitHost(a.host);
+    if (a.kind === "other") {
+      try {
+        await this.forge()(`https://${host}/`, { method: "HEAD", signal: AbortSignal.timeout(15_000), redirect: "manual" });
+      } catch {
+        throw new GitAccountProblem("unreachable", `${host} didn't answer`);
+      }
+      return;
+    }
+    const me = await this.forgeApi({ ...a, host }, "/user") as { login?: string };
+    if (String(me.login ?? "").toLowerCase() !== a.account.trim().toLowerCase()) {
+      throw new GitAccountProblem("rejected", `that token is ${me.login ? `${me.login}'s` : "no account's"}, not ${a.account}'s`);
+    }
+  }
+
+  /**
+   * Saves a Git account once its token works. A private account's host must
+   * resolve on her own network, or `offNetworkConfirmed` (the Add anyway
+   * dialog); a GitHub account is general only.
+   */
+  async addGitAccount(userId: string, input: Omit<GitAccountConfig, "offNetwork" | "state"> & { offNetworkConfirmed?: boolean }): Promise<GitAccountConfig> {
+    const s = this.settings(userId);
+    if (s.gitAccount(input.name)) throw new Error(`Git account ${input.name} already exists`);
+    if (input.kind === "github" && input.pool === "private") throw new Error("a GitHub account is general. Private threads use only self-hosted accounts on your own network.");
+    const host = gitHost(input.host);
+    const { outside } = await resolveHost(parseHost(host).host);
+    if (outside && input.pool === "private" && !input.offNetworkConfirmed) throw new Error(`${host} resolves outside your network; confirm adding it anyway`);
+    await this.probeGitAccount({ ...input, host });
+    const { offNetworkConfirmed: _, ...a } = input;
+    return s.addGitAccount({ ...a, host, offNetwork: outside }, "signedIn");
+  }
+
+  /** Changes a Git account's name, host, account or pool; a private one moved to a host off her network needs `offNetworkConfirmed`. */
+  async updateGitAccount(userId: string, name: string, change: Partial<Pick<GitAccountConfig, "name" | "host" | "account" | "pool">> & { offNetworkConfirmed?: boolean }): Promise<GitAccountConfig> {
+    const s = this.settings(userId);
+    const before = s.gitAccount(name);
+    if (!before) throw new Error(`no Git account ${name}`);
+    const { offNetworkConfirmed, ...rest } = change;
+    const host = rest.host === undefined ? before.host : gitHost(rest.host);
+    const pool = rest.pool ?? before.pool;
+    let outside = before.offNetwork;
+    if (host !== before.host || pool !== before.pool) {
+      outside = (await resolveHost(parseHost(host).host)).outside;
+      if (outside && pool === "private" && !offNetworkConfirmed) throw new Error(`${host} resolves outside your network; confirm it anyway`);
+    }
+    const a = s.updateGitAccount(name, rest);
+    s.setGitOffNetwork(a.name, outside);
+    this.gitRefused.delete(`${userId}/${name}`);
+    return s.gitAccount(a.name)!;
+  }
+
+  /** Replace token: the new one is checked against the host before it replaces the old. */
+  async setGitToken(userId: string, name: string, token: string): Promise<GitAccountConfig> {
+    const s = this.settings(userId);
+    const a = s.gitAccount(name);
+    if (!a) throw new Error(`no Git account ${name}`);
+    await this.probeGitAccount({ ...a, token });
+    return s.setGitToken(name, token, "signedIn");
+  }
+
+  confirmGitOffNetwork(userId: string, name: string): GitAccountConfig {
+    this.gitRefused.delete(`${userId}/${name}`);
+    return this.settings(userId).confirmGitOffNetwork(name);
+  }
+
+  removeGitAccount(userId: string, name: string): void {
+    this.settings(userId).removeGitAccount(name);
+    this.gitRefused.delete(`${userId}/${name}`);
+  }
+
+  /**
+   * The repositories a Git account can see, matching `q`, for Add
+   * repository: from its forge's API. Other has none to list; the person
+   * pastes a URL. Records the account's state.
+   */
+  async listRepositories(userId: string, name: string, q = ""): Promise<GitRepositoryInfo[]> {
+    const s = this.settings(userId);
+    const a = s.gitAccount(name);
+    if (!a) throw new Error(`no Git account ${name}`);
+    if (a.kind === "other") return [];
+    if (this.gitRefused.has(`${userId}/${a.name}`)) return [];
+    let names: string[];
+    try {
+      const path = a.kind === "github" ? "/user/repos?per_page=100&sort=pushed" : `/repos/search?limit=50&q=${encodeURIComponent(q)}`;
+      const body = await this.forgeApi(a, path) as { full_name?: string }[] | { data?: { full_name?: string }[] };
+      names = (Array.isArray(body) ? body : body.data ?? []).map((r) => String(r.full_name ?? "")).filter(Boolean);
+      s.gitAccountState(a.name, "signedIn");
+    } catch (err) {
+      if (err instanceof GitAccountProblem) s.gitAccountState(a.name, err.state);
+      throw err;
+    }
+    const want = q.trim().toLowerCase();
+    return names.filter((n) => n.toLowerCase().includes(want)).slice(0, 50).map((n) => ({ name: n, account: a.name }));
   }
 
   private ssh(userId: string, name: string): SshTarget {
@@ -625,3 +903,17 @@ export class Workspace {
     return `${WORKDIR}/uploads/${r.stdout.toString()}`;
   }
 }
+
+/** A token that didn't work, or a host that didn't answer: the state it leaves the account in, and why. */
+export class GitAccountProblem extends Error {
+  constructor(readonly state: Exclude<GitAccountState["kind"], "signedIn">, message: string) { super(message); this.name = "GitAccountProblem"; }
+}
+
+/** What a failed clone or fetch says about the account: its token refused, its host away, or neither. */
+function gitFailure(stderr: string): GitAccountState["kind"] | undefined {
+  if (/Authentication failed|could not read Username|terminal prompts disabled|returned error: 40[13]|HTTP 40[13]/i.test(stderr)) return "rejected";
+  if (/Could not resolve host|Failed to connect|Connection (timed out|refused)|Network is unreachable|Operation timed out/i.test(stderr)) return "unreachable";
+  return undefined;
+}
+
+const lastLine = (text: string): string => text.trim().split("\n").at(-1)?.replace(/^fatal: /, "").slice(0, 300) || "git failed";

@@ -538,7 +538,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   .picker { position: fixed; top: 104px; left: 16px; right: 16px; width: auto; }
   /* In a scrolling form the search opens under its +, where the finger is, not at the top like a header picker. */
   .machine-add { display: block; }
-  .machine-add .machine-pick { position: static; width: auto; margin-top: 6px; box-shadow: none; }
+  .machine-add .machine-pick, .machine-add .repo-pick { position: static; width: auto; margin-top: 6px; box-shadow: none; }
   /* max-content keeps the section row at its height when a tall section would squeeze it (the scrolling row has no automatic minimum). */
   .page-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content 1fr; }
   .subnav { position: static; display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px var(--gutter); gap: 2px; scrollbar-width: none; mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
@@ -606,6 +606,14 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .state-word { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; }
 .row-menu { position: relative; display: inline-flex; }
 .row-menu .menu { left: auto; right: 0; width: max-content; min-width: 160px; }
+/* Git accounts (docs/ux.md section 6): rows like a machine's, with no ⋯ (the drawer has it); Add repository's groups by account. */
+.list > li.machine-row.git-row { grid-template-columns: minmax(0, 1fr) auto; }
+.drawer-head .row-menu { margin-left: auto; }
+.pool-word { color: var(--private); }
+.repo-group { display: grid; gap: 2px; }
+.repo-group .eyebrow { padding: 4px 10px 0; }
+.repo-group .eyebrow .muted { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.picker-foot { border-top: 1px solid var(--line); padding: 8px 10px 2px; font-size: 14px; }
 .mono, input.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .mode-list { display: grid; gap: 2px; }
 .mode-list .mode-item { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px; text-align: left; border: 0; background: transparent; border-radius: 8px; padding: 6px 10px; font-size: 14px; font-weight: 400; justify-content: start; }
@@ -627,6 +635,7 @@ form.drawer-body { flex: 1; }
 @media (max-width: 760px) {
   .list > li.machine-row { grid-template-columns: minmax(0, 1fr) auto; }
   .machine-row .state-word { grid-column: 1; justify-self: start; padding-left: 14px; padding-bottom: 6px; }
+  .list > li.machine-row.git-row { grid-template-columns: minmax(0, 1fr); }
   .machine-row .row-menu { grid-column: 2; grid-row: 1 / span 2; }
 }
 

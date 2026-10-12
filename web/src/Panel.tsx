@@ -3,15 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import {
   del, get, patch, post, put, u,
-  type AdminStatus, type AllowedPaths, type EndpointInfo, type GithubInfo, type Me, type ModeDefault, type NetworkDefaults, type PersonaProposal,
+  type AdminStatus, type AllowedPaths, type EndpointInfo, type Me, type ModeDefault, type NetworkDefaults, type PersonaProposal,
   type OfferingInfo, type OfferingSettings, type Pool, type Probe, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type Task, type Theme, type UserCard,
 } from "./api.ts";
+import { GitAccountsSection } from "./Git.tsx";
 import { MachinesSection } from "./Machines.tsx";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { href } from "./route.ts";
 import { PageHead, type ShellContext } from "./Shell.tsx";
 import { WebAccessSection } from "./WebAccess.tsx";
-import { Confirm, ConfirmDialog, ErrorText, Switch, useAction, useLoad } from "./ui.tsx";
+import { Confirm, ErrorText, Switch, useAction, useLoad } from "./ui.tsx";
 
 const PRESETS: Record<string, Pronouns> = {
   "she/her": { subj: "she", obj: "her", poss: "her", possPro: "hers", refl: "herself" },
@@ -47,7 +48,7 @@ const SETTINGS: SectionDef[] = [
   { key: "profiles", label: "Model profiles", body: (ctx) => <ProfilesSection ctx={ctx} /> },
   { key: "network", label: "Network", body: (ctx) => <NetworkSection ctx={ctx} /> },
   { key: "machines", label: "Machines", body: (ctx, rest) => <MachinesSection ctx={ctx} rest={rest} /> },
-  { key: "github", label: "GitHub", body: (ctx) => <GithubSection ctx={ctx} /> },
+  { key: "git", label: "Git accounts", body: (ctx) => <GitAccountsSection ctx={ctx} /> },
 ];
 const ADMIN: SectionDef[] = [
   { key: "status", label: "Status", body: (ctx) => <StatusSection ctx={ctx} /> },
@@ -215,42 +216,6 @@ function PasswordSection({ ctx }: { ctx: ShellContext }) {
         <ErrorText error={error} />
         <div className="row"><button className="primary" disabled={busy || !oldPassword || !newPassword || newPassword !== again}>Change password</button></div>
       </form>
-    </Section>
-  );
-}
-
-/** Her GitHub token, for her own code (docs/workspace.md, "Her own code"). Never shown back once saved. */
-function GithubSection({ ctx }: { ctx: ShellContext }) {
-  const userId = ctx.user.id;
-  const info = useLoad(() => get<GithubInfo>(u(userId, "github")), [userId]);
-  const [token, setToken] = useState("");
-  const [removing, setRemoving] = useState(false);
-  const [run, busy, error] = useAction();
-  const saved = !!info.data?.token;
-  return (
-    <Section title="GitHub">
-      <form className="stack" onSubmit={(e) => {
-        e.preventDefault();
-        void run(async () => { info.set(await put<GithubInfo>(u(userId, "github"), { token })); setToken(""); });
-      }}>
-        <div className="field"><span>Checkout</span>
-          <span className={info.data?.checkout ? "mono" : "muted"} title="Only general threads that have this folder get the token.">{info.data?.checkout ?? "None"}</span>
-        </div>
-        <label className="field"><span>Token</span>
-          <input type="password" className="mono" autoComplete="off" spellCheck={false} value={token} placeholder={saved ? "Saved" : ""}
-            title="A fine-grained token for her repository only, with contents and pull requests." onChange={(e) => setToken(e.target.value)} />
-        </label>
-        <ErrorText error={info.error || error} />
-        <div className="row">
-          <button className="primary" disabled={busy || !token.trim()}>Save</button>
-          {saved && <button type="button" className="danger" disabled={busy} onClick={() => setRemoving(true)}>Remove</button>}
-        </div>
-      </form>
-      {removing && (
-        <ConfirmDialog title="Remove the GitHub token?" sentence="Threads with the checkout can no longer push or open pull requests."
-          confirm="Remove" danger onCancel={() => setRemoving(false)}
-          onConfirm={() => { setRemoving(false); void run(async () => info.set(await del<GithubInfo>(u(userId, "github")))); }} />
-      )}
     </Section>
   );
 }

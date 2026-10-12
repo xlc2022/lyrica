@@ -46,6 +46,8 @@ export interface ThreadWorkspace {
   images: boolean;
   /** The machines it may work on besides the sandbox, by name, from its pool's machines. */
   machines: string[];
+  /** The repositories it clones, each with the Git account of its pool that reaches it. */
+  repositories: ThreadRepository[];
   /** Set for a subagent's thread: its settings can only be the parent's or stricter. */
   parent: string | null;
 }
@@ -88,6 +90,58 @@ export interface MachineConfig {
 
 /** How the last connection to a machine went: it got in, couldn't reach it, or saw a host key other than the confirmed one. */
 export interface MachineState { kind: "online" | "unreachable" | "keyChanged"; since: string }
+
+/** A repository a thread clones: `owner/name` on its account's host (a path with more parts on some hosts), and the account's name. */
+export interface ThreadRepository { name: string; account: string }
+
+/** What a Git account's host runs: its API and command-line client follow (`gh` for GitHub, `tea` for Gitea and Forgejo, plain git for Other). */
+export type GitKind = "github" | "forgejo" | "gitea" | "other";
+export const GIT_KINDS: readonly GitKind[] = ["github", "forgejo", "gitea", "other"];
+
+/** A token for one account on one Git host, reached over HTTPS. */
+export interface GitAccountConfig {
+  name: string;
+  kind: GitKind;
+  /** host or host:port, lowercase. */
+  host: string;
+  /** The account's name on the host. */
+  account: string;
+  /** Lives only in user.db and in memory, and reaches a sandbox only through `Workspace.forgeEnv`. */
+  token: string;
+  /** Used only by threads of this pool. A GitHub account is always general. */
+  pool: Pool;
+  /** The host resolved outside the LAN, loopback and tailnet at the last check; for a private account, Li confirmed that. */
+  offNetwork: boolean;
+  /** How the last use went, and since when; null before the first, or after its host, account or token changed. */
+  state: GitAccountState | null;
+}
+
+export interface GitAccountState { kind: "signedIn" | "rejected" | "unreachable"; since: string }
+
+export type NewGitAccount = Omit<GitAccountConfig, "state">;
+
+const GIT_ACCOUNT = /^[A-Za-z0-9._-]{1,100}$/;
+const REPO_PART = /^[A-Za-z0-9_.-]+$/;
+
+/** host or host:port as stored: a scheme and trailing slash are dropped. */
+export function gitHost(raw: string): string {
+  const s = raw.trim().replace(/^https:\/\//i, "").replace(/\/+$/, "");
+  if (!s || /[/@\s]/.test(s) || /^[a-z][a-z0-9+.-]*:\/\//i.test(s)) throw new Error("the host looks like git.example.com or git.lan:3000");
+  const h = parseHost(s);
+  if (h.host.includes("/")) throw new Error("the host looks like git.example.com or git.lan:3000");
+  return h.entry;
+}
+
+/** A repository's name as kept: `owner/name`, without `.git`. */
+export function repositoryName(raw: string): string {
+  const name = raw.trim().replace(/\.git$/, "").replace(/^\/+|\/+$/g, "");
+  const parts = name.split("/");
+  if (parts.length < 2 || parts.some((p) => !REPO_PART.test(p) || p === "." || p === "..")) throw new Error(`${raw} doesn't look like owner/name`);
+  return name;
+}
+
+/** The folder a repository is cloned into, under the thread's repos/: its last part. */
+export const repositoryDir = (name: string): string => name.split("/").at(-1)!;
 
 /** What adding a machine takes: the rest starts empty. */
 export type NewMachine = Omit<MachineConfig, "kind" | "hostKey" | "limit" | "lastUsed" | "state"> & { kind?: MachineKind; limit?: MachineLimit };
@@ -229,23 +283,6 @@ export class WorkspaceSettings {
     this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('workspace.mode', ?)").run(mode);
   }
 
-  /**
-   * Her GitHub token (a fine-grained token for her repository), kept in
-   * user.db like a machine's key and never shown back. Workspace hands it to
-   * a sandbox only where `forgeEnv` allows.
-   */
-  githubToken(): string | undefined { return this.setting("github.token"); }
-
-  setGithubToken(token: string | null): void {
-    if (token === null) {
-      this.db.prepare("DELETE FROM settings WHERE key = 'github.token'").run();
-      return;
-    }
-    token = token.trim();
-    if (!/^[A-Za-z0-9_]{20,255}$/.test(token)) throw new Error("that doesn't look like a GitHub token");
-    this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('github.token', ?)").run(token);
-  }
-
   /** A new thread's settings: the default mode, everything else as the user's defaults say. */
   startThread(threadId: string, pool: Pool): ThreadWorkspace {
     return this.setThread(threadId, pool, { mode: this.defaultMode() });
@@ -254,19 +291,19 @@ export class WorkspaceSettings {
   thread(threadId: string): ThreadWorkspace {
     const row = this.db.prepare("SELECT * FROM thread_workspaces WHERE thread_id = ?").get(threadId) as ThreadRow | undefined;
     // A thread from before modes were saved for every new thread: Auto, as it had then. New threads get the default from startThread.
-    if (!row) return { grants: [], internet: null, services: null, hosts: null, mode: "auto", webSearch: true, images: true, machines: [], parent: null };
+    if (!row) return { grants: [], internet: null, services: null, hosts: null, mode: "auto", webSearch: true, images: true, machines: [], repositories: [], parent: null };
     const bool = (v: number | null) => (v === null ? null : v === 1);
     return {
       grants: JSON.parse(row.grants), internet: bool(row.internet), services: bool(row.services),
       hosts: row.hosts === null ? null : JSON.parse(row.hosts), mode: row.mode, webSearch: row.web_search === 1, images: row.images === 1,
-      machines: JSON.parse(row.machines), parent: row.parent,
+      machines: JSON.parse(row.machines), repositories: JSON.parse(row.repositories), parent: row.parent,
     };
   }
 
   /**
    * What applies to the thread now: its own settings, with the strictest mode,
-   * each switch off where any ancestor's is, only the folders and machines
-   * every ancestor grants, and a folder read-only where any ancestor has it
+   * each switch off where any ancestor's is, only the folders, machines and
+   * repositories every ancestor grants, and a folder read-only where any ancestor has it
    * read-only. A parent changed after its subagent or child thread started
    * narrows it at once; a parent gaining something gives the child nothing.
    */
@@ -279,6 +316,7 @@ export class WorkspaceSettings {
       t.images &&= up.images;
       t.grants = narrowGrants(t.grants, up.grants);
       t.machines = t.machines.filter((m) => up.machines.includes(m));
+      t.repositories = t.repositories.filter((r) => up.repositories.some((u) => sameRepository(r, u)));
       id = up.parent;
     }
     return t;
@@ -290,11 +328,12 @@ export class WorkspaceSettings {
    */
   setThread(threadId: string, pool: Pool, change: Partial<Omit<ThreadWorkspace, "parent">>): ThreadWorkspace {
     const next = { ...this.thread(threadId), ...change };
-    // Folders and machines a parent has since taken away go with any other change, rather than refusing it.
-    if (next.parent && (change.grants === undefined || change.machines === undefined)) {
+    // Folders, machines and repositories a parent has since taken away go with any other change, rather than refusing it.
+    if (next.parent && (change.grants === undefined || change.machines === undefined || change.repositories === undefined)) {
       const now = this.effective(threadId);
       if (change.grants === undefined) next.grants = now.grants;
       if (change.machines === undefined) next.machines = now.machines;
+      if (change.repositories === undefined) next.repositories = now.repositories;
     }
     next.grants = next.grants.map((g) => ({ path: cleanPath(g.path), writable: g.writable }));
     next.hosts = next.hosts?.map((h) => parseHost(h).entry) ?? null;
@@ -311,6 +350,7 @@ export class WorkspaceSettings {
       if (!m) throw new Error(`no machine ${name}`);
       if (m.pool !== pool) throw new Error(`${name} is a ${m.pool} machine; a ${pool} thread can't use it`);
     }
+    next.repositories = this.checkRepositories(next.repositories, pool);
     if (next.parent) this.checkNarrower(next.parent, pool, next);
     this.write(threadId, next);
     this.narrowChildren(threadId);
@@ -319,7 +359,7 @@ export class WorkspaceSettings {
 
   /**
    * Writes what `effective` already applies into the rows of the thread's
-   * subagents and child threads, so a folder or machine taken away stays
+   * subagents and child threads, so a folder, machine or repository taken away stays
    * away: the parent getting it back later gives them nothing.
    */
   private narrowChildren(threadId: string, depth = 0): void {
@@ -329,7 +369,9 @@ export class WorkspaceSettings {
       const own = this.thread(id);
       const now = this.effective(id);
       const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-      if (!same(own.grants, now.grants) || !same(own.machines, now.machines)) this.write(id, { ...own, grants: now.grants, machines: now.machines });
+      if (!same(own.grants, now.grants) || !same(own.machines, now.machines) || !same(own.repositories, now.repositories)) {
+        this.write(id, { ...own, grants: now.grants, machines: now.machines, repositories: now.repositories });
+      }
       this.narrowChildren(id, depth + 1);
     }
   }
@@ -337,25 +379,25 @@ export class WorkspaceSettings {
   private write(threadId: string, t: ThreadWorkspace): void {
     const int = (v: boolean | null) => (v === null ? null : v ? 1 : 0);
     // The upsert keeps the thread's allowed commands.
-    this.db.prepare(`INSERT INTO thread_workspaces (thread_id, grants, internet, services, hosts, mode, parent, web_search, images, machines)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (thread_id) DO UPDATE SET grants = excluded.grants, internet = excluded.internet,
+    this.db.prepare(`INSERT INTO thread_workspaces (thread_id, grants, internet, services, hosts, mode, parent, web_search, images, machines, repositories)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (thread_id) DO UPDATE SET grants = excluded.grants, internet = excluded.internet,
       services = excluded.services, hosts = excluded.hosts, mode = excluded.mode, parent = excluded.parent, web_search = excluded.web_search,
-      images = excluded.images, machines = excluded.machines`).run(threadId, JSON.stringify(t.grants), int(t.internet), int(t.services),
-      t.hosts === null ? null : JSON.stringify(t.hosts), t.mode, t.parent, int(t.webSearch), int(t.images), JSON.stringify(t.machines));
+      images = excluded.images, machines = excluded.machines, repositories = excluded.repositories`).run(threadId, JSON.stringify(t.grants), int(t.internet), int(t.services),
+      t.hosts === null ? null : JSON.stringify(t.hosts), t.mode, t.parent, int(t.webSearch), int(t.images), JSON.stringify(t.machines), JSON.stringify(t.repositories));
   }
 
   /**
    * Gives a subagent's thread its parent's folders, network, permission mode,
-   * switches and machines, or the stricter ones in `narrower`. It works in the
+   * switches, machines and repositories, or the stricter ones in `narrower`. It works in the
    * parent's folder. Anything wider than the parent's is refused.
    */
   inheritSettings(parentThreadId: string, childThreadId: string, pool: Pool,
-    narrower: Partial<Pick<ThreadWorkspace, "grants" | "mode" | "webSearch" | "images" | "machines">> & Partial<Network> = {}): ThreadWorkspace {
+    narrower: Partial<Pick<ThreadWorkspace, "grants" | "mode" | "webSearch" | "images" | "machines" | "repositories">> & Partial<Network> = {}): ThreadWorkspace {
     const parent = this.effective(parentThreadId);
     const net = this.network(parentThreadId, pool);
     // Start from nothing, so a refused narrowing leaves the child with no access at all.
     this.write(childThreadId, {
-      grants: [], internet: false, services: false, hosts: [], mode: "plan", webSearch: false, images: false, machines: [], parent: parentThreadId,
+      grants: [], internet: false, services: false, hosts: [], mode: "plan", webSearch: false, images: false, machines: [], repositories: [], parent: parentThreadId,
     });
     return this.setThread(childThreadId, pool, {
       grants: narrower.grants ?? parent.grants,
@@ -366,6 +408,7 @@ export class WorkspaceSettings {
       webSearch: narrower.webSearch ?? parent.webSearch,
       images: narrower.images ?? parent.images,
       machines: narrower.machines ?? parent.machines,
+      repositories: narrower.repositories ?? parent.repositories,
     });
   }
 
@@ -379,8 +422,8 @@ export class WorkspaceSettings {
     const t = this.thread(threadId);
     if (t.parent) {
       this.checkInherited(t.parent, pool);
-      // Folders and machines a parent dropped later are dropped from the child by `effective`, not refused.
-      this.checkNarrower(t.parent, pool, { ...t, grants: [], machines: [] });
+      // Folders, machines and repositories a parent dropped later are dropped from the child by `effective`, not refused.
+      this.checkNarrower(t.parent, pool, { ...t, grants: [], machines: [], repositories: [] });
     }
   }
 
@@ -402,6 +445,24 @@ export class WorkspaceSettings {
     if (child.images && !parent.images) throw new Error("the parent thread has images off");
     const machine = child.machines.find((m) => !parent.machines.includes(m));
     if (machine) throw new Error(`${machine} isn't in the parent thread's machines`);
+    const repository = child.repositories.find((r) => !parent.repositories.some((p) => sameRepository(r, p)));
+    if (repository) throw new Error(`${repository.name} isn't in the parent thread's repositories`);
+  }
+
+  /** Repositories cleaned and checked: each of a Git account of the thread's pool, and no two in one folder. */
+  private checkRepositories(list: ThreadRepository[], pool: Pool): ThreadRepository[] {
+    const out: ThreadRepository[] = [];
+    for (const r of list) {
+      const repo = { name: repositoryName(String(r.name ?? "")), account: String(r.account ?? "") };
+      const a = this.gitAccount(repo.account);
+      if (!a) throw new Error(`no Git account ${repo.account}`);
+      if (a.pool !== pool) throw new Error(`${a.name} is a ${a.pool} Git account; a ${pool} thread can't use it`);
+      if (out.some((o) => sameRepository(o, repo))) continue;
+      const clash = out.find((o) => repositoryDir(o.name) === repositoryDir(repo.name));
+      if (clash) throw new Error(`${clash.name} and ${repo.name} would both be cloned into repos/${repositoryDir(repo.name)}; keep one`);
+      out.push(repo);
+    }
+    return out;
   }
 
   private resolve(t: ThreadWorkspace, pool: Pool): Network {
@@ -544,6 +605,98 @@ export class WorkspaceSettings {
     }
   }
 
+  gitAccounts(): GitAccountConfig[] {
+    return (this.db.prepare("SELECT * FROM git_accounts ORDER BY name").all() as GitAccountRow[]).map(toGitAccount);
+  }
+
+  gitAccount(name: string): GitAccountConfig | undefined {
+    const row = this.db.prepare("SELECT * FROM git_accounts WHERE name = ?").get(name) as GitAccountRow | undefined;
+    return row && toGitAccount(row);
+  }
+
+  private needGit(name: string): GitAccountConfig {
+    const a = this.gitAccount(name);
+    if (!a) throw new Error(`no Git account ${name}`);
+    return a;
+  }
+
+  /** Saves a Git account whose token was checked against its host (`Workspace.addGitAccount` does that first). */
+  addGitAccount(a: NewGitAccount, state: GitAccountState["kind"] | null = null): GitAccountConfig {
+    if (!GIT_ACCOUNT.test(a.name)) throw new Error("account names use letters, digits, '.', '_' and '-'");
+    if (this.gitAccount(a.name)) throw new Error(`Git account ${a.name} already exists`);
+    const next = checkGitAccount(a);
+    this.db.prepare(`INSERT INTO git_accounts (name, kind, host, account, token, pool, off_network, state, state_since)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(next.name, next.kind, next.host, next.account, next.token, next.pool, next.offNetwork ? 1 : 0,
+      state, state && new Date().toISOString());
+    return this.needGit(a.name);
+  }
+
+  /**
+   * Renames a Git account or changes its host, account name or pool. A new
+   * pool takes its repositories from every thread, so a token is never
+   * reached from both pools; a new name follows into the threads that use it.
+   */
+  updateGitAccount(name: string, change: Partial<Pick<GitAccountConfig, "name" | "host" | "account" | "pool">>): GitAccountConfig {
+    const before = this.needGit(name);
+    const next = checkGitAccount({ ...before, ...change });
+    if (next.name !== name) {
+      if (!GIT_ACCOUNT.test(next.name)) throw new Error("account names use letters, digits, '.', '_' and '-'");
+      if (this.gitAccount(next.name)) throw new Error(`Git account ${next.name} already exists`);
+    }
+    const moved = next.host !== before.host || next.account !== before.account;
+    this.db.prepare(`UPDATE git_accounts SET name = ?, host = ?, account = ?, pool = ?${moved ? ", state = NULL, state_since = NULL" : ""} WHERE name = ?`)
+      .run(next.name, next.host, next.account, next.pool, name);
+    if (next.pool !== before.pool) this.dropRepositories(name);
+    else if (next.name !== name) this.renameRepositories(name, next.name);
+    return this.needGit(next.name);
+  }
+
+  /** Replace token: the new one, checked against the host by `Workspace.setGitToken` first. */
+  setGitToken(name: string, token: string, state: GitAccountState["kind"] | null = null): GitAccountConfig {
+    const a = this.needGit(name);
+    const next = checkGitAccount({ ...a, token });
+    this.db.prepare("UPDATE git_accounts SET token = ?, state = ?, state_since = ? WHERE name = ?").run(next.token, state, state && new Date().toISOString(), name);
+    return this.needGit(name);
+  }
+
+  /** Removes the account and every thread's repositories that use it. */
+  removeGitAccount(name: string): void {
+    if (!this.db.prepare("DELETE FROM git_accounts WHERE name = ?").run(name).changes) throw new Error(`no Git account ${name}`);
+    this.dropRepositories(name);
+  }
+
+  /** Records how a use went; `since` moves only when the outcome changes. */
+  gitAccountState(name: string, kind: GitAccountState["kind"] | null): void {
+    this.db.prepare("UPDATE git_accounts SET state = ?, state_since = ? WHERE name = ? AND state IS NOT ?")
+      .run(kind, kind && new Date().toISOString(), name, kind);
+  }
+
+  /** Records whether the host resolved outside Li's network at the last check. */
+  setGitOffNetwork(name: string, off: boolean): void {
+    this.db.prepare("UPDATE git_accounts SET off_network = ? WHERE name = ?").run(off ? 1 : 0, name);
+  }
+
+  /** Li accepted that a private account's host is off network: it can be used again. */
+  confirmGitOffNetwork(name: string): GitAccountConfig {
+    this.needGit(name);
+    this.setGitOffNetwork(name, true);
+    return this.needGit(name);
+  }
+
+  private eachRepositories(f: (list: ThreadRepository[]) => ThreadRepository[]): void {
+    for (const row of this.db.prepare("SELECT thread_id, repositories FROM thread_workspaces").all() as { thread_id: string; repositories: string }[]) {
+      const list = JSON.parse(row.repositories) as ThreadRepository[];
+      const next = f(list);
+      if (JSON.stringify(next) !== row.repositories) this.db.prepare("UPDATE thread_workspaces SET repositories = ? WHERE thread_id = ?").run(JSON.stringify(next), row.thread_id);
+    }
+  }
+
+  private dropRepositories(account: string): void { this.eachRepositories((list) => list.filter((r) => r.account !== account)); }
+
+  private renameRepositories(from: string, to: string): void {
+    this.eachRepositories((list) => list.map((r) => (r.account === from ? { ...r, account: to } : r)));
+  }
+
   /** A suspect command Li allowed in this thread: that exact command on that machine stops asking here, and only here. */
   allowInThread(threadId: string, machine: string, command: string): void {
     if (!this.db.prepare("SELECT 1 FROM thread_workspaces WHERE thread_id = ?").get(threadId)) this.write(threadId, this.thread(threadId));
@@ -562,8 +715,31 @@ export interface AllowedCommand { machine: string; command: string }
 
 interface ThreadRow {
   grants: string; internet: number | null; services: number | null; hosts: string | null;
-  mode: PermissionMode; parent: string | null; web_search: number; images: number; machines: string;
+  mode: PermissionMode; parent: string | null; web_search: number; images: number; machines: string; repositories: string;
 }
+
+export const sameRepository = (a: ThreadRepository, b: ThreadRepository): boolean => a.name === b.name && a.account === b.account;
+
+/** A Git account's fields cleaned and checked. A GitHub account can't be private. */
+function checkGitAccount(a: NewGitAccount): NewGitAccount {
+  if (!GIT_KINDS.includes(a.kind)) throw new Error(`unknown kind of Git account: ${String(a.kind)}`);
+  if (a.pool !== "general" && a.pool !== "private") throw new Error("a Git account is general or private");
+  if (a.kind === "github" && a.pool === "private") throw new Error("a GitHub account is general. Private threads use only self-hosted accounts on your own network.");
+  const account = String(a.account ?? "").trim();
+  if (!GIT_ACCOUNT.test(account)) throw new Error("the account is its name on the host, like xlc2022");
+  const token = String(a.token ?? "").trim();
+  if (!token || token.length > 1024 || /[\s\0-\x1f\x7f]/.test(token)) throw new Error("that doesn't look like a token");
+  return { ...a, host: gitHost(a.host), account, token };
+}
+
+interface GitAccountRow {
+  name: string; kind: GitKind; host: string; account: string; token: string; pool: Pool; off_network: number;
+  state: GitAccountState["kind"] | null; state_since: string | null;
+}
+const toGitAccount = (r: GitAccountRow): GitAccountConfig => ({
+  name: r.name, kind: r.kind, host: r.host, account: r.account, token: r.token, pool: r.pool, offNetwork: r.off_network === 1,
+  state: r.state && r.state_since ? { kind: r.state, since: r.state_since } : null,
+});
 
 const columnsOf = (db: Db, table: string) => (db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as { name: string }[]).map((c) => c.name);
 

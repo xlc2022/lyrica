@@ -2,8 +2,9 @@ import {
   createBashToolDefinition, createEditToolDefinition, createReadToolDefinition, createWriteToolDefinition,
   type ExtensionContext, type ExtensionFactory, type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { readFileSync } from "node:fs";
 import {
-  PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, WORKDIR, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadMachine, type ThreadWorkspace, type ToolOps,
+  PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, WORKDIR, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -20,6 +21,14 @@ export interface ThreadTools {
   machines?(): ThreadMachine[];
   /** Whether Li allowed this exact suspect command on this machine in this thread. */
   allowedInThread?(machine: string, command: string): boolean;
+  /** The thread's repositories, where each is cloned, and whether its token reaches the sandbox now. Without it, none. */
+  repositories?(): ThreadGitRepository[];
+  /** Clones or fetches them at the start of a turn, saying what failed. A subagent works in its parent's, so it has none. */
+  cloneRepositories?(): Promise<string[]>;
+  /** Adds a repository to the thread once the person approved it. Without it, there is no add_repository tool. */
+  addRepository?(r: ThreadRepository): ThreadRepository[];
+  /** The Git accounts of the thread's pool, by name. */
+  gitAccounts?(): { name: string; kind: string; host: string }[];
   /** One action on one of the thread's Proxmox machines. Without it, there is no proxmox tool. */
   proxmox?(machine: string, action: ProxmoxAction, vm?: string): Promise<string>;
   /**
@@ -114,7 +123,8 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
   return (pi) => {
     // proxmox is offered only while the thread has a Proxmox machine.
     const off = () => [...toolsOff(tools.settings(), pi.getAllTools().map((t) => t.name)),
-      ...(tools.proxmox && !tools.machines?.().some((m) => m.kind === "proxmox") ? ["proxmox"] : [])];
+      ...(tools.proxmox && !tools.machines?.().some((m) => m.kind === "proxmox") ? ["proxmox"] : []),
+      ...(tools.addRepository && !tools.gitAccounts?.().length ? ["add_repository"] : [])];
     const gate = (ctx: ExtensionContext) => setToolsOff(pi, ctx, "workspace", off());
     /** What each approved call was approved for, by tool call. */
     const approved = new Map<string, string>();
@@ -149,6 +159,27 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
     }
 
     if (tools.proxmox) pi.registerTool(proxmoxTool(tools.proxmox, (id, { machine, ...rest }) => bound(id, "proxmox", rest, machine as string)));
+
+    if (tools.addRepository) {
+      const add = tools.addRepository;
+      pi.registerTool({
+        name: "add_repository",
+        label: "Add repository",
+        description: "Add a repository to this conversation, from one of your Git accounts. The person is asked first. Once added, it is cloned into "
+          + `${WORKDIR}/repos at the start of your next turn, and the account's token reaches your sandbox for it.`,
+        promptSnippet: "ask to add a repository from your Git accounts to this conversation",
+        // Reaches beyond the thread, so it always asks, in every mode.
+        annotations: { openWorldHint: true, readOnlyHint: false },
+        parameters: Type.Object({
+          repository: Type.String({ description: "owner/name, as on the forge." }),
+          account: Type.String({ description: "Which of your Git accounts reaches it, by name." }),
+        }),
+        async execute(_id, p: { repository: string; account: string }) {
+          const list = add({ name: p.repository, account: p.account });
+          return text(`Added. This conversation's repositories: ${list.map((r) => r.name).join(", ")}. It is cloned at the start of your next turn.`);
+        },
+      } as ToolDefinition);
+    }
 
     if (tools.setMode) {
       const setMode = tools.setMode;
@@ -222,11 +253,14 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
     // Commands typed with "!" in the terminal run where her tools do.
     pi.on("user_bash", () => ({ operations: tools.target().ops().bash }));
 
-    pi.on("before_agent_start", (event, ctx) => {
+    pi.on("before_agent_start", async (event, ctx) => {
       places = new Set();
       gate(ctx);
+      // Each turn starts from the forge as it is now; what failed is said, and the turn goes on.
+      const problems = tools.repositories?.().length && tools.cloneRepositories ? await tools.cloneRepositories().catch((err: Error) => [err.message]) : [];
       const options = event.systemPromptOptions;
-      options.sections = { ...options.sections, workspace: describe(tools) };
+      const git = gitSection(tools, problems);
+      options.sections = { ...options.sections, workspace: describe(tools), ...(git ? { git } : {}) };
     });
   };
 }
@@ -291,6 +325,17 @@ export function describe(tools: ThreadTools): string {
     ...(pves.length ? [`Proxmox machines you can manage with the proxmox tool: ${pves.join(", ")}.`] : []),
     ...fileNotes(tools.fileNotes?.()),
   ].join("\n");
+}
+
+/** The Git guide (git.md): the defaults the project's instructions can override. */
+export const GIT_GUIDE = readFileSync(new URL("./git.md", import.meta.url), "utf8").trim();
+
+/** The Git guide and the thread's repositories, for every turn of a thread that has any. */
+export function gitSection(tools: ThreadTools, problems: string[] = []): string | undefined {
+  const repos = tools.repositories?.() ?? [];
+  if (!repos.length) return undefined;
+  const line = (r: ThreadGitRepository) => `- ${r.name} on ${r.host}, through your account ${r.account}, cloned at ${r.path}${r.reachable ? "" : " (its host isn't reachable from this conversation's sandbox, so you can't push or fetch)"}`;
+  return [GIT_GUIDE, `Your repositories here:\n${repos.map(line).join("\n")}`, ...(problems.length ? [`At the start of this turn:\n${problems.map((p) => `- ${p}`).join("\n")}`] : [])].join("\n\n");
 }
 
 /** One line naming what the person added or removed in the Files panel since her last turn. */

@@ -5,7 +5,7 @@ import { lookup } from "node:dns/promises";
 import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { FilesRefused, githubEnv, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Grant, type Network } from "../src/index.ts";
+import { FilesRefused, gitEnv, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Grant, type Network } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 // Escaping the sandbox is the main failure. These tests must run as an
@@ -394,6 +394,31 @@ describe.skipIf(!homeRunnable)("a running child thread's folders", () => {
   });
 });
 
+describe.skipIf(!homeRunnable)("a thread's clones", () => {
+  it("are its own: a project's thread works in the project's folder but sees only its own repos/, and they go with its folder", async () => {
+    const keyring = await freshKeyring();
+    const users = new Users(keyring);
+    const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
+    await users.authenticate("li", "pw");
+    const workspace = new Workspace(keyring, users, { excludePorts: [] });
+    const settings = workspace.settings(li.id);
+    settings.inheritSettings("project", "thread", "general");
+    const project = { userId: li.id, pool: "general" as const, threadId: "project" };
+    const thread = { ...project, threadId: "thread" };
+    await workspace.mountHome(li.id);
+    try {
+      await sh("mkdir -p repos/lyrica && echo project > repos/lyrica/who && echo shared > notes.txt", workspace.targetFor(project) as Sandbox);
+      const seen = await sh("cat notes.txt; ls repos; mkdir -p repos/lyrica && echo thread > repos/lyrica/who", workspace.targetFor(thread) as Sandbox);
+      expect(seen.out).toBe("shared\n");
+      expect((await sh("cat repos/lyrica/who", workspace.targetFor(project) as Sandbox)).out).toBe("project\n");
+      expect(workspace.reposDir(thread)).toBe(join(workspace.homeDir(li.id), "threads", "thread", "repos"));
+      expect(readFileSync(join(workspace.reposDir(thread), "lyrica", "who"), "utf8")).toBe("thread\n");
+    } finally {
+      await workspace.unmountHome(li.id);
+    }
+  });
+});
+
 // The host's own LAN address stands in for a machine on the network: the
 // sandbox has an address of its own, so the host is just another peer to it.
 const lan = Object.values(networkInterfaces()).flat().find((i) => i?.family === "IPv4" && !i.internal)?.address;
@@ -424,11 +449,14 @@ describe.skipIf(!netRunnable || !lan)("a sandbox's network switches", () => {
   const reach = async (net: Partial<Network>, host: string, port: number, exclude: number[] = []) =>
     (await sh(tcp(host, port), box(net, [], exclude))).out;
 
-  it("hands a GitHub token to a networked command through its environment, as git's credential for github.com", async () => {
+  it("hands a repository's token to a networked command through its environment, as git's credential for that repository only", async () => {
     const token = "github_pat_11AAAAAAA0abcdefghijklmnopqrstuvwxyz";
-    const sandbox = new Sandbox({ workdir: p("work"), grants: grants(), network: { ...OFF, internet: true }, self: [], env: githubEnv(token) });
-    const r = await sh("printenv GH_TOKEN; printf 'protocol=https\\nhost=github.com\\n\\n' | GIT_TERMINAL_PROMPT=0 git credential fill", sandbox);
-    expect(r.out).toBe(`${token}\nprotocol=https\nhost=github.com\nusername=x-access-token\npassword=${token}\n`);
+    const env = gitEnv([{ name: "xlc2022/lyrica", account: { kind: "github", host: "github.com", account: "lyrica-bot", token } }]);
+    const sandbox = new Sandbox({ workdir: p("work"), grants: grants(), network: { ...OFF, internet: true }, self: [], env });
+    const fill = (path: string) => `printf 'protocol=https\\nhost=github.com\\npath=${path}\\n\\n' | git credential fill 2>&1`;
+    const r = await sh(`printenv GH_TOKEN; ${fill("xlc2022/lyrica.git")}; ${fill("xlc2022/other.git")}`, sandbox);
+    expect(r.out).toContain(`${token}\nprotocol=https\nhost=github.com\npath=xlc2022/lyrica.git\nusername=lyrica-bot\npassword=${token}\n`);
+    expect(r.out).toContain("could not read Username for 'https://github.com/xlc2022/other.git'");
     expect((await sh("printenv GH_TOKEN || echo NONE", box({ internet: true }))).out).toBe("NONE\n");
   });
 
