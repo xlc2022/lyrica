@@ -2,7 +2,7 @@
 // Image models (ImageModels.tsx), Hosts and endpoints (with the Add model host page), Downloads (Downloads.tsx), Clean
 // up and Recent calls, with its sections listed at the left (the frame and what the tabs share are in ModelsFrame.tsx).
 // The shell polls GET …/models/cleanup for the sidebar's count; GET …/models/page, which probes every
-// endpoint, is read only while the area is open, and the Hosts tab's changes reload it.
+// endpoint, is read while the area or the welcome page is open, and the Hosts tab's changes reload it.
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   del, get, patch, post, put, u,
@@ -29,7 +29,7 @@ export function useCleanupCount(userId: string): { count: number; reload: () => 
 }
 
 /**
- * GET …/models/page, only while the Models area is open: it probes every endpoint, so it is read on arriving,
+ * GET …/models/page, while Models or the welcome page is open: it probes every endpoint, so it is read on arriving,
  * on each tab, and every 30 s and on focus while the area stays open. A reload also refreshes the sidebar's count.
  */
 function useModelsPage(ctx: ShellContext): ModelsState {
@@ -199,9 +199,44 @@ function firstChat(p: ModelsPage, profile: "cloud" | "custom" | "local") {
   if ("groupId" in ref) return { groupId: ref.groupId };
   for (const ep of p.endpoints) {
     const m = ep.models.find((o) => o.id === ref.offeringId);
-    if (m) return { model: m.modelId, endpoint: ep.name };
+    if (m) return { model: m.modelId, endpoint: ep.name, kind: ep.kind };
   }
   return undefined;
+}
+
+export function BackendCard({ ctx }: { ctx: ShellContext }) {
+  const models = useModelsPage(ctx);
+  const p = models.page;
+  const userId = ctx.user.id;
+  const general = p && firstChat(p, p.profiles.default);
+  const local = p && firstChat(p, "local");
+  const needGroups = !!(general && "groupId" in general) || !!(local && "groupId" in local);
+  const groups = useLoad(() => (needGroups ? get<GroupInfo[]>(u(userId, "groups")) : Promise.resolve([])), [userId, needGroups]);
+  const line = (c: ReturnType<typeof firstChat>, profile: "cloud" | "custom" | "local") => {
+    if (c && "groupId" in c) {
+      const groupId = c.groupId;
+      const group = groups.data?.find((g) => g.id === groupId);
+      c = group?.members.flatMap((id) => (p?.endpoints ?? []).flatMap((ep) => {
+        const m = ep.models.find((m) => m.id === id);
+        return m && (profile === "custom" || ep.kind === profile) ? [{ model: m.modelId, endpoint: ep.name, kind: ep.kind }] : [];
+      }))[0];
+    }
+    return <>{c && "model" in c ? <><span className={`badge kind ${c.kind}`}>{c.kind}</span> {c.model} · {c.endpoint}</> : "No model"} · {PROFILE_WORD[profile]}</>;
+  };
+  return (
+    <section className="card" aria-labelledby="h-home-backend">
+      <div className="section-head"><h2 id="h-home-backend"><a href={href({ page: "models", userId })}>Backend</a></h2></div>
+      <ErrorText error={models.error || groups.error} />
+      {p && <dl className="facts">
+        <dt>General threads</dt><dd>{line(general, p.profiles.default)}</dd>
+        <dt>Private threads</dt><dd>{line(local, "local")}</dd>
+        <dt>Hosts</dt><dd>{p.hosts.length ? p.hosts.map((h) => {
+          const ep = p.endpoints.find((e) => e.id === h.endpointId);
+          return ep && <div key={h.endpointId} className="backend-host"><span>{ep.name}</span> <StateWord ep={ep} host={h} /></div>;
+        }) : "None"}</dd>
+      </dl>}
+    </section>
+  );
 }
 
 function Tiles({ ctx, p }: { ctx: MCtx; p: ModelsPage }) {

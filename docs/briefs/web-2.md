@@ -777,7 +777,7 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   Text models with the copy Settings drawer and the Serving rows of
   docs/briefs/context-stretch.md item 8 (#157 is on main), Image models,
   Downloads. The badge reads `models/cleanup` so no tab probes endpoints
-  on a timer; `models/page` is read only while the area is open. No model
+  on a timer; `models/page` is read while Models or the welcome page is open. No model
   host was available in e2e, so the host card and Add model host are
   checked by hand on a real host.
 - 2026-10-12, PR 13 (the Sleep section): `src/Sleep.tsx`, the sidebar link

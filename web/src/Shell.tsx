@@ -9,8 +9,8 @@ import { Memory, memoryTitle } from "./Memory.tsx";
 import { AdminPage, SettingsPage } from "./Panel.tsx";
 import { FilesPage } from "./Files.tsx";
 import { NotificationsCard, useWaiting } from "./Notifications.tsx";
-import { SleepPage, useSleepOverview, type SleepState } from "./Sleep.tsx";
-import { ModelsArea, useCleanupCount } from "./Models.tsx";
+import { SleepCard, SleepPage, useSleepOverview, type SleepState } from "./Sleep.tsx";
+import { BackendCard, ModelsArea, useCleanupCount } from "./Models.tsx";
 import { ThreadMenu, useThreadMenu } from "./ThreadMenu.tsx";
 import { ProjectPage, stateWord } from "./Project.tsx";
 import { SearchGroups, searchable, useMessageSearch } from "./Search.tsx";
@@ -725,7 +725,11 @@ function Welcome({ ctx }: { ctx: ShellContext }) {
         <div className="welcome">
           <h1>{greeting(now.getHours())}, {ctx.user.displayName}.</h1>
           <HomeBox ctx={ctx} />
-          <NotificationsCard ctx={ctx} />
+          <div className="cards">
+            <SleepCard ctx={ctx} />
+            <NotificationsCard ctx={ctx} />
+            <BackendCard ctx={ctx} />
+          </div>
         </div>
       </div>
     </main>

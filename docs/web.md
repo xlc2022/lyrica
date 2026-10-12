@@ -27,7 +27,15 @@ A thread's address may carry what the panel beside it shows:
   `package.json`, the build from `LYRICA_BUILD` or the git commit; both
   come with `GET /api/state` once unlocked) with the date and time under it, then a greeting by the hour and a
   message box that starts a thread in General or Private with its first
-  message.
+  message. Beneath it, a responsive grid holds **Last night**, **Notifications**
+  and **Backend**. Last night links to Sleep and shows new items from visible
+  pools with the same Start a chat and Dismiss actions, a lock for private
+  items, or "Nothing she wants to raise." with the latest
+  run's time in mono when available. Notifications keeps its card when empty
+  ("Nothing waiting.") and its All link. Backend links to Models and lists
+  each pool's first chat model, host, local/cloud chip and profile, then each
+  model host's state as a dot and word. It uses the existing Models page and
+  groups reads; the grid becomes one column on a phone.
 - **Sidebar:** her name links to the user's welcome page, marks it as current
   there, and closes the phone drawer when pressed. New thread (General or Private), Search (`src/Search.tsx`,
   "Search titles and messages": the list filters by title as it is typed;
@@ -254,11 +262,11 @@ A thread's address may carry what the panel beside it shows:
   `src/ModelsFrame.tsx`; [models.md](models.md); docs/ux.md §6
   "Models, hosts, downloads, clean-up"): `#/u/<user>/models[/<tab>]`, from
   the sidebar's Models link, whose badge counts Clean up's items
-  (`GET …/models/cleanup`, reread every 30 s and on focus; nothing probes
-  an endpoint until the area is open). Tabs down the left (a scrolling row
+  (`GET …/models/cleanup`, reread every 30 s and on focus; endpoints are probed
+  while Models or Home is open). Tabs down the left (a scrolling row
   on a phone): **Overview**, **Tasks**, **Text models**, **Image models**,
   **Hosts and endpoints**, **Downloads**, **Clean up** and **Recent calls**.
-  The area reads `GET …/models/page` while open (30 s,
+  Models and Home read `GET …/models/page` while open (30 s,
   focus), which probes each endpoint (3 s each, one seen down in the last
   30 s not asked again). Overview: a banner for a paused host or a stale
   endpoint; tiles Endpoints (n of m up, then a dot and "All reachable" or
@@ -870,7 +878,8 @@ turns animations off.
 - `web/test/` has unit tests for the stream reducer (`live.test.ts`), memory
   links and word diffs, mentions, which paths become links, which code
   blocks get Copy and what it copies (`codeblock.test.ts`), a checklist's
-  count and current step (`checklist.test.ts`), the recorder's context
+  count and current step (`checklist.test.ts`), the welcome cards' empty states,
+  hidden sleep pools and backend profiles (`cards.test.ts`), the recorder's context
   fallback and clip limit (`voice.test.ts`), and a text model group's warn
   lines (`library.test.ts`).
 - `npm run e2e -w @lyrica/web` runs Playwright (after a build). The upload
