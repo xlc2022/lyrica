@@ -141,6 +141,174 @@ test("unlock, log in, start a thread, and see a streamed reply that survives a r
   await noHorizontalScroll(page);
 });
 
+test("Portrait photos uploads, downloads, confirms deletion, and saves the cloud setting across reloads", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const base = `/api/u/${userId}/photos-of-me`;
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aS1sAAAAASUVORK5CYII=", "base64");
+  // Mounted homes need FUSE. Fake only portrait storage; the cloud setting uses real encrypted user.db.
+  let photos: { path: string; size: number; type: string }[] = [];
+  let uploads = 0;
+  await page.route(`**${base}`, async (route) => {
+    if (route.request().method() === "POST") {
+      expect(route.request().postDataBuffer()).toEqual(png);
+      const path = `/photos-of-me/synthetic-${++uploads}.png`;
+      photos.push({ path, size: png.length, type: "image/png" });
+      await route.fulfill({ json: { path } });
+    } else await route.fulfill({ json: photos });
+  });
+  await page.route(`**${base}/*`, async (route) => {
+    const path = `/photos-of-me/${new URL(route.request().url()).pathname.split("/").at(-1)!}`;
+    if (route.request().method() === "DELETE") {
+      photos = photos.filter((p) => p.path !== path);
+      await route.fulfill({ json: { ok: true } });
+    } else await route.fulfill({ contentType: "image/png", body: png });
+  });
+  // Set the starting policy through the real API; the page loads and changes it itself.
+  await page.evaluate((id) => fetch(`/api/u/${id}/photo-cloud`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ policy: "ask" }) }), userId);
+  await page.goto(`/#/u/${userId}/settings/portraits`);
+  const nav = page.getByRole("navigation", { name: "Settings sections" });
+  await expect(nav.getByRole("link").last()).toHaveText("Portrait photos");
+  await expect(page.getByText("No photos yet.", { exact: true })).toBeVisible();
+  const policy = page.getByLabel("Sending them to a cloud image model");
+  await expect(policy).toHaveValue("ask");
+  await expect(policy).toHaveAttribute("title", "The first time a day one would go to a cloud model, she asks first. A yes lasts until the end of that day.");
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Add photos", exact: true }).click();
+  const picker = await chooser;
+  expect(picker.isMultiple()).toBe(true);
+  await picker.setFiles([
+    { name: "too-large.png", mimeType: "image/png", buffer: Buffer.alloc(20 * 1024 * 1024 + 1) },
+    { name: "tiny.png", mimeType: "image/png", buffer: png },
+    { name: "second.png", mimeType: "image/png", buffer: png },
+  ]);
+  await expect(page.getByRole("alert")).toHaveText("too-large.png: Each photo must be at most 20 MB.");
+  await expect(page.getByRole("region", { name: "Portrait photos" }).locator(".pill")).toHaveText("2 photos");
+  expect(uploads).toBe(2);
+  const image = page.getByRole("img", { name: "synthetic-1.png", exact: true });
+  await expect(image).toBeVisible();
+  await expect.poll(() => image.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBe(1);
+  await noHorizontalScroll(page);
+  await page.getByRole("button", { name: "Actions for synthetic-1.png", exact: true }).click();
+  const downloading = page.waitForEvent("download");
+  await page.getByRole("menuitem", { name: "Download", exact: true }).click();
+  expect((await downloading).suggestedFilename()).toBe("synthetic-1.png");
+  await page.getByRole("button", { name: "Actions for synthetic-1.png", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Delete…", exact: true }).click();
+  let dialog = page.getByRole("dialog", { name: "Delete synthetic-1.png?" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(image).toBeVisible();
+  for (const name of ["synthetic-1.png", "synthetic-2.png"]) {
+    await page.getByRole("button", { name: `Actions for ${name}`, exact: true }).click();
+    await page.getByRole("menuitem", { name: "Delete…", exact: true }).click();
+    dialog = page.getByRole("dialog", { name: `Delete ${name}?` });
+    await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(page.getByRole("img", { name, exact: true })).toHaveCount(0);
+  }
+  await expect(page.getByText("No photos yet.", { exact: true })).toBeVisible();
+  for (const value of ["never", "always", "ask"]) {
+    const saved = page.waitForResponse((r) => r.request().method() === "PUT" && r.url().endsWith("/photo-cloud"));
+    await policy.selectOption(value);
+    expect((await saved).ok()).toBe(true);
+    await page.reload();
+    await expect(policy).toHaveValue(value);
+  }
+  await noHorizontalScroll(page);
+});
+
+test("the portrait permission card names the resolved model and offers only daily consent", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "An imaginary portrait");
+  await expect(page.getByText("You said: An imaginary portrait")).toBeVisible();
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadIdOf(page.url()))}`;
+  let pending = true;
+  const answers: unknown[] = [];
+  await page.route(`**${base}/events`, (route) => route.fulfill({ contentType: "text/event-stream", body: `event: hello\ndata: ${JSON.stringify({
+    type: "hello", busy: false, queued: [], permissions: pending ? [{ requestId: "portrait-ask", toolCallId: "image-call", tool: "image",
+      args: { question: "Send photos of you to cloud-images?", provider: "cloud-images", model: "cloud-images/gpt-image-1" },
+      expiresAt: new Date(Date.now() + 60_000).toISOString() }] : [],
+  })}\n\n` }));
+  await page.route(`**${base}/permissions/portrait-ask`, (route) => {
+    answers.push(route.request().postDataJSON()); pending = false;
+    return route.fulfill({ json: { ok: true } });
+  });
+  for (const label of ["Send today", "Not today"]) {
+    pending = true;
+    await page.reload();
+    const card = page.getByRole("group", { name: "Send portrait photos?" });
+    await expect(card).toContainText("Send your portrait photos to cloud-images/gpt-image-1 (cloud) for this image? A yes lasts until the end of the day.");
+    await expect(card.getByRole("button")).toHaveCount(2);
+    await expect(card.getByRole("button", { name: "Send today", exact: true })).toHaveClass("primary");
+    await expect(card.getByRole("button", { name: "Allow in this thread" })).toHaveCount(0);
+    await noHorizontalScroll(page);
+    const answered = page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith("/permissions/portrait-ask"));
+    await card.getByRole("button", { name: label, exact: true }).click();
+    await answered;
+  }
+  expect(answers).toEqual([{ allow: true }, { allow: false }]);
+});
+
+test("an image tool result shows inline, opens large, and starts an edit with Images enabled", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "An imaginary garden");
+  await expect(page.getByText("You said: An imaginary garden")).toBeVisible();
+  const threadId = threadIdOf(page.url());
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}`;
+  const path = "/workspace/images/garden.png";
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=", "base64");
+  await page.route(`**${base}/messages`, (route) => route.fulfill({ json: {
+    messages: [{ id: `e:${threadId}#1`, n: 1, role: "assistant", createdAt: "2026-10-12T12:00:00Z", parts: [
+      { type: "tool", toolCallId: "garden", name: "image", args: { action: "create", tier: "fast", prompt: "A garden" }, result: path, isError: false },
+      { type: "image", paths: [path], model: "box/Z-Image", tier: "fast" },
+      { type: "tool", toolCallId: "edit", name: "image", args: { action: "edit", image: path, instruction: "Add a pond" }, result: "The image host is offline.", isError: true },
+      { type: "tool", toolCallId: "upscale", name: "image", args: { action: "upscale", image: path }, result: path, isError: false },
+    ] }], hasMore: false,
+  } }));
+  await page.route(`**${base}/files/thumb?*`, (route) => route.fulfill({ status: 404 }));
+  await page.route(`**${base}/file?*`, (route) => route.fulfill({ contentType: "image/png", body: png }));
+  await page.evaluate(async (base) => {
+    const r = await fetch(`${base}/settings`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ images: false }) });
+    if (!r.ok) throw new Error(`Settings: ${r.status}`);
+  }, base);
+  await page.reload();
+  const image = page.getByRole("button", { name: "garden.png", exact: true });
+  await expect(image).toBeVisible();
+  await expect(image.getByRole("img", { name: "garden.png" })).toHaveAttribute("src", `${base}/file?path=${encodeURIComponent(path)}`);
+  await expect(page.getByText("Made with box/Z-Image · fast", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Making an image · fast\b/ })).toBeVisible();
+  await page.getByRole("button", { name: "Editing an image" }).click();
+  await expect(page.locator(".tool-error")).toHaveText("The image host is offline.");
+  await expect(page.getByRole("button", { name: "Upscaling an image" })).toBeVisible();
+  await image.click();
+  const lightbox = page.getByRole("dialog", { name: "garden.png" });
+  await expect(lightbox).toBeVisible();
+  await expect(lightbox.locator(".fname")).toHaveText("garden.png");
+  await expect(lightbox.getByRole("img")).toHaveAttribute("src", `${base}/file?path=${encodeURIComponent(path)}`);
+  await lightbox.getByRole("button", { name: "Image actions", exact: true }).click();
+  await expect(lightbox.getByRole("menuitem", { name: "Download", exact: true })).toBeVisible();
+  await expect(lightbox.getByRole("menuitem", { name: "Copy path" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(lightbox).toBeVisible();
+  await expect(lightbox.getByRole("menu")).toBeHidden();
+  await lightbox.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(lightbox).toBeHidden();
+  await page.getByRole("button", { name: "Attach or switch tools" }).click();
+  const tools = page.getByRole("menu", { name: "Attach and tools" });
+  await expect(tools.getByRole("checkbox", { name: "Images", exact: true })).not.toBeChecked();
+  await expect(tools.locator("label", { hasText: "Images" })).toHaveAttribute("title", "Lets the agent make and edit images in this thread.");
+  await page.getByRole("button", { name: "Attach or switch tools" }).click();
+  await page.getByRole("button", { name: "Image actions for garden.png" }).click();
+  await expect(page.getByRole("menuitem", { name: "Show in Files" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Edit…", exact: true }).click();
+  await expect(page.getByLabel("Message", { exact: true })).toHaveValue(`Edit ${path}: `);
+  await expect(page.getByLabel("Message", { exact: true })).toBeFocused();
+  await page.getByRole("button", { name: "Attach or switch tools" }).click();
+  await expect(tools.getByRole("checkbox", { name: "Images", exact: true })).toBeChecked();
+  await noHorizontalScroll(page);
+});
+
 test("a message's menu regenerates, edits, deletes with Undo, and branches", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");
@@ -2444,7 +2612,7 @@ async function fakeImages(page: Page) {
     part("comfy/diffusion_models/qwen_image_fp8.safetensors", "diffusion", "qwen-image", 20.4, { precision: "fp8", usedBy: [qi] }),
   ];
   const recipes = [
-    { id: zi, name: "Z-Image Turbo", state: "confirmed", ready: true, arch: "z-image", template: "z-image", does: ["create"], loras: [], base: null, starter: null,
+    { id: zi, name: "Z-Image Turbo", useFor: "both", state: "confirmed", ready: true, arch: "z-image", template: "z-image", does: ["create"], loras: [], base: null, starter: null,
       parts: [{ role: "diffusion", slot: null, file: parts[0]!.file, added: false }, { role: "text_encoder", slot: "qwen3", file: parts[1]!.file, added: false }, { role: "vae", slot: null, file: parts[2]!.file, added: false }],
       defaults: { steps: 8, cfg: 1, width: 1024, height: 1024 } },
     { id: qi, name: "Qwen-Image", state: "proposed", ready: false, arch: "qwen-image", template: "qwen-image", does: ["create"], loras: [], base: null, starter: null, defaults: { steps: 30, cfg: 4 },
@@ -2458,8 +2626,9 @@ async function fakeImages(page: Page) {
   });
   await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/(recipes\/[^/]+|manage)$/, (route) => {
     const path = new URL(route.request().url()).pathname.replace(/^.*\/ep-box\//, "");
-    const body = route.request().postDataJSON() as { do?: string; name?: string };
+    const body = route.request().postDataJSON() as { do?: string; name?: string; change?: { op?: string; useFor?: string } };
     asked.push({ path, body });
+    if (body.do === "change" && body.change?.op === "useFor") recipes.find((r) => path === `recipes/${r.id}`)!.useFor = body.change.useFor;
     return route.fulfill(json(body.do === "copy" ? { ...recipes[0], id: "00000000-0000-4000-8000-000000000003", name: body.name } : body.do === "delete" ? { deleted: [], kept: [] } : { models: 0, parts: 6, proposals: 1 }));
   });
   await page.route(/\/api\/u\/[^/]+\/offerings\/off-z\/delete-copy$/, (route) => route.fulfill(json({ usedIn: [] })));
@@ -2478,7 +2647,7 @@ test("Image models: a recipe opens to its parts with Change, Add a part and Dele
 
   // A recipe: its facts, then its copy on the host as a block of parts.
   const list = page.getByRole("list", { name: "Image models" });
-  await expect(list.getByRole("button", { name: /Z-Image Turbo/ })).toContainText("Z-Image · create · 1 copy · box");
+  await expect(list.getByRole("button", { name: /Z-Image Turbo/ })).toContainText("Z-Image · create · fast and quality · 1 copy · box");
   await expect(list.getByText("Qwen-Image")).toHaveCount(0);
   await list.getByRole("button", { name: /Z-Image Turbo/ }).click();
   const block = page.getByRole("region", { name: "Z-Image Turbo on box" });
@@ -2490,12 +2659,27 @@ test("Image models: a recipe opens to its parts with Change, Add a part and Dele
     expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   }
 
+  // Use for saves at once and the facts line reflects the tag after reload.
+  const useFor = block.getByRole("group", { name: "Use for" });
+  await expect(useFor.getByRole("button", { name: "Both", exact: true })).toHaveAttribute("aria-pressed", "true");
+  for (const [label, tag, facts] of [["Fast", "fast", "fast"], ["Quality", "quality", "quality"], ["Both", "both", "fast and quality"]]) {
+    await useFor.getByRole("button", { name: label!, exact: true }).click();
+    await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "useFor", useFor: tag } });
+    await expect(useFor.getByRole("button", { name: label!, exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(list.locator(".lrow-main .meta")).toContainText(`create · ${facts} ·`);
+  }
+  await page.reload();
+  await list.getByRole("button", { name: /Z-Image Turbo/ }).click();
+  await expect(useFor.getByRole("button", { name: "Both", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await noHorizontalScroll(page);
+  if (phone(page)) expect((await useFor.getByRole("button", { name: "Fast", exact: true }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+
   // Change: the host's other VAEs for the architecture, or Download another….
   await block.getByRole("button", { name: "Change the VAE" }).click();
   const vae = block.getByLabel("Choose the VAE");
   await expect(vae.locator("option")).toHaveText(["ae.safetensors · BF16", "ae_fp32.safetensors · FP32 · shared folder", "Download another…"]);
   await vae.selectOption("comfy/vae/ae_fp32.safetensors");
-  await expect.poll(() => post(`recipes/${images.zi}`)).toEqual([{ do: "change", change: { op: "swap", role: "vae", slot: null, file: "comfy/vae/ae_fp32.safetensors" } }]);
+  await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "swap", role: "vae", slot: null, file: "comfy/vae/ae_fp32.safetensors" } });
 
   // Add a part: a LoRA goes into a copy named after it, unless the box is unticked.
   await block.getByRole("button", { name: "Add a part" }).click();

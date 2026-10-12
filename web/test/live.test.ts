@@ -46,6 +46,21 @@ describe("the live view of a thread's stream", () => {
     expect(s.items[1]).toEqual({ role: "notice", text: "Subagent run r1 finished" });
   });
 
+  it("shows an image result beside its call while the reply streams, until the stored copy arrives", () => {
+    const image = { type: "image" as const, paths: ["/workspace/images/garden.png", "/workspace/images/pond.png"], model: "box/Z-Image", tier: "fast" as const };
+    const s = run([
+      { type: "turn_start" },
+      { type: "tool_start", toolCallId: "i1", name: "image", args: { action: "create", tier: "fast", prompt: "A garden" } },
+      { type: "tool_end", toolCallId: "i1", name: "image", result: "Made two images.", isError: false, image },
+      { type: "text", delta: "Here is the garden." },
+    ]);
+    expect(s.items[0]).toMatchObject({ role: "assistant", parts: [
+      { type: "tool", toolCallId: "i1", result: "Made two images.", isError: false }, image,
+      { type: "text", text: "Here is the garden." },
+    ] });
+    expect(run([{ type: "turn_end", aborted: false }, { type: "stored" }], s).items).toEqual([]);
+  });
+
   it("shows a follow-up once it leaves the queue", () => {
     const s = run([
       { type: "turn_start" },

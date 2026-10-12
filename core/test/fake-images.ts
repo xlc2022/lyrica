@@ -9,20 +9,20 @@ export async function fakeImages() {
   const models = new Models(keyring, users);
   const hostFetches = new Map<string, typeof fetch>();
   vi.spyOn(models, "fetchFor").mockImplementation(ep => hostFetches.get(ep.id));
-  const host = async (name: string) => {
+  const host = async (name: string, useFor?: "fast" | "quality" | "both") => {
     const images: { action: string; body: Record<string, unknown> }[] = [];
     let down: string | false = false;
     let output: Buffer = png;
     const ep = models.addEndpoint(ada, { name, kind: "local", baseUrl: `https://${name}.example/v1` }, { shared: true });
     // A paired host's persisted endpoint shape; TLS itself is covered by host tests.
     keyring.self().prepare("UPDATE endpoints SET api = 'host', addresses = ?, pin = ? WHERE id = ?").run(JSON.stringify([`${name}.example`]), "fake-pin", ep.id);
-    const server = { images, imagesOff(code: string | false = "unavailable") { down = code; }, replyImage(bytes: Buffer) { output = bytes; } };
+    const server = { images, useFor, imagesOff(code: string | false = "unavailable") { down = code; }, replyImage(bytes: Buffer) { output = bytes; } };
     hostFetches.set(ep.id, (async (url: string, opts: RequestInit = {}) => {
       const path = new URL(url).pathname;
       if (path === "/host/v1/status") return Response.json({ state: "running" });
       if (path === "/host/v1/models") return Response.json({ models: [] });
       if (path === "/host/v1/recipes") return Response.json({ recipes: [
-        { id: "art", name: "Art", state: "confirmed", ready: true, does: ["create", "edit", "upscale"] },
+        { id: "art", name: "Art", state: "confirmed", ready: true, useFor: server.useFor, does: ["create", "edit", "upscale"] },
         { id: "proposal", name: "Proposal", state: "proposed", ready: true, does: ["create"] },
       ] });
       if (down) return Response.json({ error: { code: down, message: "Images unavailable." } }, { status: 503 });
@@ -54,5 +54,5 @@ export async function fakeImages() {
   for (const task of ["image.create", "image.edit", "image.upscale"] as const) models.setProfile(ada.id, "local", task, [workstation.ref, spare.ref]);
   for (const task of ["image.create", "image.edit"] as const) models.setProfile(ada.id, "cloud", task, [ref]);
   const ctx = (opts: Partial<CallContext> = {}): CallContext => ({ userId: ada.id, pool: "general", localOnly: false, ...opts });
-  return { keyring, users, models, ada, workstation, spare, ref, heard, ctx };
+  return { keyring, users, models, ada, workstation, spare, ref, heard, ctx, host };
 }

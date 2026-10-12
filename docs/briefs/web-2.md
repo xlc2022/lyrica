@@ -483,49 +483,60 @@ with radios All threads / Pinned messages / Hidden threads. Design:
   step: send a message with a rare word, search it, the hit row opens the
   thread at that message.
 
-### Images (after the Images back end)
+### Images (after the Images back end; built in #236)
 
 DESIGN.md "Images" and the app mockup's Files and Images panel. The back
-end (`image` tool, ComfyUI through the host, portrait photos store) is not
-built; the API below is what the web needs from it, to agree in
-docs/contracts.md with the Images thread before this PR.
+end merged in #219: the `image` tool, the image part, the thread file route,
+photos-of-me and its cloud setting. Build against docs/contracts.md as it
+stands; change the contract only where the UI needs it, in the same PR.
 
-- **Inline images** (built in PR 8 for files she names): a message part
-  `{ type: "image"; path; alt; made?: { by: "fast" | "quality"; model } }`
-  renders the thumbnail at up to 320 px wide, 8 px radius, the alt as its
-  accessible name, a cap line under it "Made with <model> · fast | quality"
-  (facts, not a caption) with a ⋯ menu Download, Copy path, Show in
-  Files, Edit… (opens the composer with "Edit <path>: " filled, the
-  Images switch on). A tap opens the existing Lightbox (mockup: filename
-  header, ⋯ with Download and Copy path, ✕; no prev/next).
+- **Inline images**: the message's `ImagePart` (`{ type: "image", paths,
+  model, tier? }`, also on `tool_end`) renders each path through the thread
+  file route as a thumbnail up to 320 px tall, 8 px radius, the file name as
+  its accessible name, and a cap line under it "Made with <model> · fast"
+  or "· quality" (facts, not a caption) with a ⋯ menu Download, Copy path,
+  Show in Files, Edit… (opens the composer with "Edit <path>: " filled, the
+  Images switch on). A tap opens the existing Lightbox (filename header, ⋯
+  with Download and Copy path, ✕; no prev/next).
 - **Progress while one is made**: the tool-call marker for `image` reads
-  "Making an image · fast | quality" with the running dot, then, when the
-  host reports steps, "step <n> of <m>" in mono after it; no progress bar
-  (the marker is the one running indicator in a message). When it fails,
-  the marker's error text is the host's reason.
-- **Portrait photos** (Settings → Portrait photos, last in the list, as
-  the mockup): a card with the pill "<n> photos", a grid of square thumbs
+  "Making an image · fast" (or quality; "Editing an image", "Upscaling an
+  image" for the other actions) with the running dot; "step <n> of <m>" in
+  mono after it only if the host reports steps. No progress bar. When it
+  fails, the marker's error text is the reason.
+- **Portrait photos** (Settings → Portrait photos, last in the list, as the
+  mockup): a card with the pill "<n> photos", a grid of square thumbs
   (minmax 132 px, 12 px gap, filename cap in mono) with a ⋯ per photo
-  (Download, Delete…) and the secondary **Add photos** (file picker,
-  images only, several at once); the select **Sending them to a cloud
-  image model** with Ask once a day (default), Never, Always, saved at
-  once; the tooltip on the select (not a caption): "The first time a day
-  one would go to a cloud model, she asks first. A yes lasts until the end
-  of that day." Empty: "No photos yet." API: `GET|POST|DELETE
-  …/me/photos[/:id]`, `PATCH …/me/display` gains `photosToCloud:
-  "never" | "ask" | "always"`; the photos live in the user's encrypted
-  home, served through the Files route's protections.
-- **The ask**: the existing permission card worded "Send your portrait
-  photos to <model> (cloud) for this image? A yes lasts until the end of
-  the day." with **Send today** primary and **Not today**.
-- **The Images switch** in the composer's "+" menu (built with Modes)
-  gains the tooltip "Lets the agent make and edit images in this thread."
+  (Download, Delete…, confirmed by a dialog "Delete <name>?") and the
+  secondary **Add photos** (file picker, PNG/JPEG/WebP, several at once, at
+  most 20 MB each); the select **Sending them to a cloud image model** with
+  Ask once a day (default), Never, Always, saved at once; its tooltip:
+  "The first time a day one would go to a cloud model, she asks first. A
+  yes lasts until the end of that day." Empty: "No photos yet." API:
+  `GET|POST …/photos-of-me`, `DELETE …/photos-of-me/:name`,
+  `GET|PUT …/photo-cloud`.
+- **The ask**: the existing permission card for `tool: "image"` (no
+  thread-wide Allow), worded "Send your portrait photos to <model> (cloud)
+  for this image? A yes lasts until the end of the day." with **Send
+  today** primary and **Not today**.
+- **The Images switch** in the composer's "+" menu gains the tooltip "Lets
+  the agent make and edit images in this thread."
+- **The recipe's fast/quality tag** (DESIGN.md "Images", decided
+  2026-10-12): stored per recipe as `fast`, `quality` or
+  both (default both); the router's tier takes the first model in the
+  task's list whose tag matches and falls back down the same list; cloud
+  models serve both. Its home: the Image models tab, in a recipe's block
+  per host, a segmented **Use for** with **Fast** | **Quality** | **Both**,
+  saved at once, and the tag in the recipe row's facts line ("fast",
+  "quality" or "fast and quality"). Changing it is part of
+  `POST …/recipes/:recipeId`.
 - docs/ux.md: §4 names Add photos, Send today, Not today, Edit…, Making an
-  image; §6 rows "An image the agent made" and "Portrait photos".
-- Tests: e2e with a fake `image` tool result (the fake model can emit a
-  tool part): the inline image, the lightbox, the Edit… prefill; the
-  photos page with an upload and the setting; a daemon test that a photo
-  never reaches a cloud call when the setting is Never.
+  image, Use for; §6 rows "An image the agent made" and "Portrait photos",
+  and "Image models, recipes and parts" gains Use for.
+- Tests: e2e with a fake `image` tool result: the inline image, the
+  lightbox, the Edit… prefill; the photos page with an upload, a delete and
+  the setting; a router test that each tier skips recipes tagged only for
+  the other; a daemon test that a photo never reaches a cloud call when
+  the setting is Never.
 
 ### Pin in the remaining places
 
@@ -804,3 +815,19 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   Next: Pin in the remaining places, the Models page (carry the Fallback
   default), the Sleep section; Web: bootstrap once the daemon API is pushed;
   the Updates page after releases.
+
+- 2026-10-12, Images (parts 1 to 3): the Images section is built. Inline
+  image parts and lightbox actions, image tool markers, the Images tooltip,
+  Settings → Portrait photos and the daily permission card are present.
+  **Use for** saves Fast, Quality or Both per host recipe and shows the tag
+  in the row's facts. The optional `useFor` field lives in the host's
+  `recipes.json`; absent means both, so no database migration. Create routing
+  skips recipes for the other tier and falls back down the same list; cloud
+  models serve both. Router, route persistence and older JSON tests cover it;
+  the Image models e2e exercises all three choices and reload. The docs for
+  all three parts are current. Open: the API sends no image step progress,
+  so the marker has no step count; real GPU image jobs remain unexercised.
+  Validation: typecheck passes and `npm test` adds no failures over main's
+  baseline on the build machine. The new e2e steps (inline image, lightbox,
+  Edit…, Portrait photos, Use for) have not run yet: the build machine has
+  no Playwright browser, so CI is their first run.

@@ -333,6 +333,9 @@ The tasks `image.create`, `image.edit` and `image.upscale` have their own
 ordered lists and require `image`, `edit` and `upscale` capabilities respectively.
 Private and local-only threads use local lists only; unavailable endpoints
 fall back in order, including from a workstation to a smaller GPU host.
+For create, resolution takes the first recipe whose `useFor` matches the
+requested tier, skipping recipes tagged only for the other tier on every
+attempt. Cloud models serve both; edit and upscale keep their existing lists.
 
 A create request has `prompt`, `tier` (`fast` or `quality`), optional
 `size: { width, height }`, `count` and `references`. Edit takes `prompt`,
@@ -439,10 +442,15 @@ whether the user starred it (`star`, per user, starred first).
 proposals and missing parts) and parts by role, as the host reports them.
 Confirm, ignore, download missing parts (with the hub token for the hub
 they come from), change (swap a part within its role
-and slot, LoRAs, defaults, rename), copy or delete; the host keeps every part
+and slot, LoRAs, defaults, rename, or `useFor`), copy or delete; the host keeps every part
 another recipe uses. Only confirmed recipes become offerings (`recipe/<id>`,
 with `image` or `edit`), so a proposal never resolves; a recipe deleted here
-leaves a tombstone.
+leaves a tombstone. The tag is `fast`, `quality` or `both`, stored as an
+optional field in the host's `recipes.json`; absent reads as both. The daemon
+recipe action `{ do: "change", change: { op: "useFor", useFor } }` forwards
+it to the host's PATCH, then refreshes discovery. Offerings cache it in their
+existing `found` JSON; there is no database migration. Image models exposes
+it as **Use for**, saved at once per host, and a fact in the recipe row.
 
 ## Downloads, hub tokens and deleting
 
