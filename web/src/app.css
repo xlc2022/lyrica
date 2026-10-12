@@ -968,6 +968,50 @@ a.tile:hover { text-decoration: none; border-color: var(--accent); }
 .models td.num { white-space: nowrap; }
 .models td.warn-text { font-size: 13px; }
 .add-host textarea { width: 100%; }
+/* Tasks: a table of tasks against Private and General threads; each cell opens its list in the drawer. */
+.ttable { table-layout: fixed; }
+.ttable th:first-child, .ttable tr:not(.tgroup) td:first-child { width: 28%; }
+.models .ttable td { padding: 0; vertical-align: top; }
+.models .ttable td.task { padding: 10px; }
+.ttable td.task b { font-weight: 500; font-size: 14px; }
+.ttable td.task div { font-size: 12px; color: var(--muted); }
+.models .ttable thead th { font-size: 12px; font-weight: 400; text-transform: none; letter-spacing: 0; padding: 10px; vertical-align: top; }
+.ttable thead th b { display: block; font-size: 13px; font-weight: 600; color: var(--fg); margin-bottom: 2px; }
+.models .ttable thead th .actions { margin-top: 6px; justify-content: start; }
+.models .ttable tr.tgroup td { background: var(--tool); padding: 5px 10px; }
+.ttable .cell { width: 100%; min-height: 56px; border: 0; border-radius: 0; background: none; text-align: left; display: grid; justify-content: stretch; gap: 2px; padding: 8px 10px; align-content: center; white-space: normal; font-weight: 400; color: var(--fg); }
+.ttable .cell:hover:not(:disabled) { background: var(--tool); border: 0; }
+.ttable .cell[aria-pressed="true"] { background: var(--tool); box-shadow: inset 3px 0 0 var(--accent); }
+.cell .m { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; overflow-wrap: anywhere; min-width: 0; }
+.cell .sub { font-size: 12px; color: var(--muted); }
+.cell .sub .warn-text { font-size: 12px; }
+.ttable .cell.other { color: var(--muted); }
+.drawer-title { display: grid; gap: 2px; min-width: 0; }
+.task-drawer .drawer-body { gap: 12px; }
+.task-drawer .actions { justify-content: start; }
+.follow-block { display: grid; gap: 4px; }
+.follow { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+.follow label { display: inline-flex; gap: 6px; align-items: center; min-height: var(--tap); }
+.follow-block .cap { margin: 0; }
+.olist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.oentry { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 6px 6px 6px 10px; background: var(--bg); }
+.onum { color: var(--muted); font-size: 13px; }
+.obody { display: grid; gap: 3px; min-width: 0; }
+.oname { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; overflow-wrap: anywhere; min-width: 0; }
+.members { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.members .off { opacity: 0.7; }
+.members .dot { width: 7px; height: 7px; }
+.octl { display: flex; gap: 2px; }
+.crossline { font-size: 12px; color: var(--cloud); font-weight: 600; padding: 2px 10px; }
+.pick { display: grid; gap: 8px; min-width: 0; }
+.pick h3 { font-size: 14px; margin: 0; margin-right: auto; }
+.pick input[type="search"] { width: 100%; }
+.pick-groups { display: flex; flex-wrap: wrap; gap: 6px; }
+.picklist { max-height: 46vh; overflow: auto; }
+.picklist .group-head { position: sticky; top: 0; z-index: 1; background: var(--tool); padding: 5px 12px; }
+.picklist .pick-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; align-items: center; padding: 6px 8px 6px 12px; }
+.picklist .pick-row .name { overflow-wrap: anywhere; }
+.picklist .empty { padding: 10px 12px; }
 @media (max-width: 760px) {
   .head:has(> .models-actions) { flex-wrap: wrap; }
   .models-actions { flex-basis: 100%; flex-wrap: wrap; }
@@ -984,4 +1028,14 @@ a.tile:hover { text-decoration: none; border-color: var(--accent); }
   .models .stack-table td { border: 0; padding: 2px 12px; overflow-wrap: anywhere; }
   .stack-table td[data-h]::before { content: attr(data-h) ": "; color: var(--muted); font-size: 12px; font-family: var(--ui); }
   .stack-table td:empty { display: none; }
+  .tablewrap.tasks { border: 1px solid var(--line); background: var(--panel); overflow: hidden; }
+  .ttable, .ttable thead, .ttable tbody, .ttable tr, .ttable th, .ttable td { display: block; width: 100% !important; }
+  .models .ttable thead th:first-child { display: none; }
+  .models .ttable thead th + th { border-top: 1px solid var(--line); }
+  .models .ttable td { border-top: 0; }
+  .models .ttable td:empty { display: none; }
+  .models .ttable td.task { padding: 10px 10px 2px; border-top: 1px solid var(--line); }
+  .models .ttable tr.tgroup td { border-top: 1px solid var(--line); }
+  .ttable .cell { min-height: 44px; padding: 6px 10px; }
+  .ttable .cell::before { content: attr(data-col); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 }

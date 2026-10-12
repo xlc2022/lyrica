@@ -3,8 +3,8 @@
 import { useState } from "react";
 import {
   del, get, patch, post, put, u,
-  type AdminStatus, type AllowedPaths, type EndpointInfo, type Me, type ModeDefault, type NetworkDefaults, type PersonaProposal,
-  type OfferingInfo, type Pool, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type Task, type Theme, type UserCard,
+  type AdminStatus, type AllowedPaths, type Me, type ModeDefault, type NetworkDefaults, type PersonaProposal,
+  type Pool, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type Theme, type UserCard,
   type NameSetting,
 } from "./api.ts";
 import { GitAccountsSection } from "./Git.tsx";
@@ -26,21 +26,6 @@ export const PRESETS: Record<string, Pronouns> = {
   "he/him": { subj: "he", obj: "him", poss: "his", possPro: "his", refl: "himself" },
   "they/them": { subj: "they", obj: "them", poss: "their", possPro: "theirs", refl: "themself" },
 };
-const TASKS: { task: Task; label: string }[] = [
-  { task: "chat", label: "Main conversation" },
-  { task: "subagent.cheap", label: "Cheap subagents" },
-  { task: "subagent.strong", label: "Strong subagents" },
-  { task: "title", label: "Titles" },
-  { task: "embedding", label: "Embeddings" },
-  { task: "sleep.consolidate", label: "Sleep: consolidate" },
-  { task: "sleep.dream", label: "Sleep: dream" },
-  { task: "sleep.wake", label: "Sleep: wake" },
-  { task: "speech.transcribe", label: "Dictation" },
-  { task: "speech.speak", label: "Read aloud" },
-];
-/** The models a task's select offers: speech tasks take only models that transcribe or speak. */
-const fits = (task: Task, m: OfferingInfo) => (task === "speech.transcribe" ? !!m.transcribe : task === "speech.speak" ? !!m.speak?.voices.length : true);
-
 /** `rest` is what follows the section's key in the hash (settings/machines/new → "new"), for a section with pages of its own. */
 type SectionDef = { key: string; label: string; body: (ctx: ShellContext, rest: string) => React.ReactNode };
 
@@ -52,7 +37,7 @@ const SETTINGS: SectionDef[] = [
   { key: "password", label: "Password", body: (ctx) => <PasswordSection ctx={ctx} /> },
   { key: "personas", label: "Your personas", body: (ctx) => <LinksSection ctx={ctx} /> },
   { key: "suggestions", label: "Persona suggestions", body: (ctx) => <DraftsSection ctx={ctx} /> },
-  { key: "profiles", label: "Model profiles", body: (ctx) => <ProfilesSection ctx={ctx} /> },
+  { key: "sleep", label: "Sleep", body: (ctx) => <SleepSection ctx={ctx} /> },
   { key: "network", label: "Network", body: (ctx) => <NetworkSection ctx={ctx} /> },
   { key: "machines", label: "Machines", body: (ctx, rest) => <MachinesSection ctx={ctx} rest={rest} /> },
   { key: "git", label: "Git accounts", body: (ctx) => <GitAccountsSection ctx={ctx} /> },
@@ -230,46 +215,19 @@ function PasswordSection({ ctx }: { ctx: ShellContext }) {
   );
 }
 
-function ProfilesSection({ ctx }: { ctx: ShellContext }) {
+/** Settings → Sleep: when sleep happens for this user, and Sleep fallback. Each saved at once. */
+function SleepSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const profiles = useLoad(() => get<Profiles>(u(userId, "profiles")), [userId]);
-  const eps = useLoad(() => get<EndpointInfo[]>(u(userId, "endpoints")), [userId]);
   const [run, , error] = useAction();
-  if (!profiles.data) return <Section title="Model profiles"><ErrorText error={profiles.error} /></Section>;
-  const set = (profile: "cloud" | "local" | "custom", task: Task, value: string) => run(async () => {
-    profiles.set(await put<Profiles>(u(userId, "profiles", profile, task), { model: value ? { offeringId: value } : null }));
-  });
   return (
-    <Section title="Model profiles">
-      <p className="meta muted">General threads: {profiles.data.default} profile. Private and local-only threads: local profile.</p>
-      <ErrorText error={error} />
+    <Section title="Sleep">
+      <ErrorText error={profiles.error || error} />
       <SleepModeField ctx={ctx} />
-      <Switch label="Sleep fallback" hint="When off, each sleep phase uses its first model only; if that one is away, sleep waits for the next night."
-        checked={profiles.data.sleepFallback} onChange={(sleepFallback) => run(async () => profiles.set(await patch<Profiles>(u(userId, "profiles"), { sleepFallback })))} />
-      <div className="profiles">
-        {(["local", "cloud", "custom"] as const).map((profile) => (
-          <fieldset key={profile} className="group">
-            <legend>{profile === "cloud" ? "Cloud profile" : profile === "local" ? "Local profile" : "Custom profile"}</legend>
-            {/* Dictation without a thread's own pick always uses the local profile's, so only Local offers it. */}
-            {TASKS.filter(({ task }) => task !== "speech.transcribe" || profile === "local").map(({ task, label }) => {
-              const cur = profiles.data![profile][task];
-              const first = Array.isArray(cur) && cur[0] && "offeringId" in cur[0] ? cur[0].offeringId : "";
-              return (
-                <label key={task} className="field"><span>{label}</span>
-                  <select value={first} onChange={(e) => set(profile, task, e.target.value)}>
-                    <option value="">{cur && !Array.isArray(cur) ? `Same as ${cur.same}` : "Not set"}</option>
-                    {(eps.data ?? []).filter((ep) => profile === "custom" || ep.kind === profile).map((ep) => (
-                      <optgroup key={ep.id} label={`${ep.name} (${ep.kind})`}>
-                        {ep.models.filter((m) => fits(task, m)).map((m) => <option key={m.id} value={m.id}>{m.modelId}</option>)}
-                      </optgroup>
-                    ))}
-                  </select>
-                </label>
-              );
-            })}
-          </fieldset>
-        ))}
-      </div>
+      {profiles.data && (
+        <Switch label="Sleep fallback" hint="When off, each sleep phase uses its first model only; if that one is away, sleep waits for the next night."
+          checked={profiles.data.sleepFallback} onChange={(sleepFallback) => run(async () => profiles.set(await patch<Profiles>(u(userId, "profiles"), { sleepFallback })))} />
+      )}
     </Section>
   );
 }
