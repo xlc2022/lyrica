@@ -287,6 +287,7 @@ export class Runtime {
       contextLength: m.kind === "image" || m.kind === "speak" ? null : contextOf(m, this.scheduler.settings(m)),
       maxContextLength: m.contextLength,
       kvBytes: this.servingEntry(m).kvBytes,
+      stretch: this.scheduler.settings(m).stretch?.factor ?? null,
       state: at?.state ?? "unloaded",
       gpus: at?.gpus ?? null,
       placement: this.scheduler.settings(m).placement,

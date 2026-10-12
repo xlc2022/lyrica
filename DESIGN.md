@@ -555,7 +555,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     and vLLM the flags their publisher documents. It is off unless set,
     since static YaRN costs a little on short prompts, and refused on a
     model whose trained length the host couldn't read. A factor above the
-    publisher's needs **Save anyway**. The host counts KV cache for the
+    publisher's needs **Save anyway**, or Allow on her card, which names
+    the documented factor. The host counts KV cache for the
     layers that hold one, so a hybrid model (Qwen3.5 and later) is placed
     by its real need.
   - **Recommended settings** come from the model's card. The host's fetch

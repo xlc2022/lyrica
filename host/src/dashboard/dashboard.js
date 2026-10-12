@@ -123,13 +123,14 @@ function renderModels(models, cpuServers) {
     const row = table.insertRow();
     row.insertCell().textContent = m.id;
     const where = cpuServers.includes(m.server) ? "on the CPU" : m.placement.mode === "auto" ? "auto" : `GPU ${m.placement.gpus.join("+")}`;
-    const extra = m.capabilities.speak ? `${m.capabilities.speak.voices.length} voices` : `${m.contextLength ?? "?"} context${m.kvBytes ? `, ${gib(m.kvBytes)} KV` : ""}`;
+    const extra = m.capabilities.speak ? `${m.capabilities.speak.voices.length} voices` : `${m.contextLength ?? "?"} context${m.stretch ? `, stretched ×${m.stretch}` : ""}${m.kvBytes ? `, ${gib(m.kvBytes)} KV` : ""}`;
     row.insertCell().textContent = `${m.kind}, ${m.server}, ${gib(m.size)}, ${where}, ${extra}`;
     const actions = row.insertCell();
     if (m.state === "unloaded") actions.append(button("Load", () => post("/host/v1/models/load", { model: m.id })));
     else actions.append(button("Reload", () => post("/host/v1/models/reload", { model: m.id })));
     actions.append(" ", button(m.pinned ? "Unpin" : "Pin", () => post("/host/v1/models/pin", { model: m.id, pinned: !m.pinned })));
     actions.append(" ", button("Settings", () => editSettings(m)));
+    if (m.kind === "chat") actions.append(" ", button("Look up", () => lookUp(m)));
   }
 }
 
@@ -153,6 +154,22 @@ async function editSettings(m) {
     if (e.code !== "above_recommended" || !confirm(`${e.message} Save anyway?`)) throw e;
     await save(true);
   }
+}
+
+/** Reads the model's card for its recommended context; asks for the repository when the host doesn't know it. */
+async function lookUp(m) {
+  const look = (repo) => api("/host/v1/models/lookup", { method: "POST", body: JSON.stringify({ model: m.id, ...(repo ? { repo } : {}) }) });
+  let entry;
+  try {
+    entry = await look();
+  } catch (e) {
+    if (e.code !== "need_repo") throw e;
+    const repo = prompt(`Repository for ${m.id} (owner/name, or modelscope:owner/name)`);
+    if (!repo) return;
+    entry = await look(repo);
+  }
+  const r = entry.recommended;
+  alert(r?.factor ? `${r.source.repo}: ${r.native} tokens, or ${r.stretched} with a stretch of ${r.factor} from ${r.originalContext}.` : `${r?.source.repo ?? m.id}: ${r?.native ?? "?"} tokens; no stretch documented.`);
 }
 
 async function renderRecipes() {

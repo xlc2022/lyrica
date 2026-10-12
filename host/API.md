@@ -320,7 +320,9 @@ model was downloaded from, or the one its GGUF names
 (`general.source.huggingface.repository`, `general.base_model.0.repo_url`);
 with neither it answers `need_repo`. `repo` may be `modelscope:owner/name`
 or a link. A hub token in `x-hub-token` is used only when `x-hub` names the
-hub the lookup reads.
+hub the lookup reads. The dashboard has **Look up** on each chat model,
+asking for the repository on `need_repo`, and shows each model's KV cache
+and stretch.
 
 The fetch service reads the repository's `config.json` and `README.md`
 (`POST /read`: at most 1 MB, returned as text, never written; `.md` is still
