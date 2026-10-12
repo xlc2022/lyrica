@@ -199,6 +199,18 @@ describe("lyrica-update --resume", () => {
     expect(w.json("state.json")).toMatchObject({ state: "failed", lastRollback: { from: b, to: a, automatic: true } });
   });
 
+  it("ends a leftover probation when another release runs now, without rolling back", async () => {
+    const { w, a, b } = await leftover();
+    writeFileSync(join(w.update, "probation.json"), JSON.stringify({ from: b, to: a, tag: "update/a", snapshot: "", since: "2026-10-12T00:00:00Z", contract: false }));
+    const r = await w.run("lyrica-update", "--resume");
+    expect(r.code).toBe(0);
+    expect(r.err).toContain(`probation of ${a.slice(0, 12)} ended: ${b.slice(0, 12)} is running now`);
+    expect(existsSync(join(w.update, "probation.json"))).toBe(false);
+    expect(w.json("state.json")).toMatchObject({ state: "idle" });
+    expect(w.json("state.json").lastRollback).toBeUndefined();
+    expect(w.current()).toBe(b);
+  });
+
   it("resumes it before taking a request", async () => {
     const { w } = await leftover();
     const c = w.release("c", S(1, 1, 1), S(1, 1, 1));

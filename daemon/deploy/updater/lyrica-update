@@ -106,6 +106,14 @@ resume() {
   local p; p=$(cat "$PROBATION_FILE")
   TAG=$(jq -r '.tag // empty' <<<"$p") COMMIT=$(jq -r '.to // empty' <<<"$p")
   SNAP=$(jq -r '.snapshot // empty' <<<"$p") CONTRACT=$(jq -r '.contract // false' <<<"$p")
+  # Something else moved the release since (a rebuild's package, a rollback): nothing left to watch.
+  local cur; cur=$(current_commit || true)
+  if [ -z "$COMMIT" ] || [ -z "$cur" ] || { [[ "$COMMIT" != "$cur"* ]] && [[ "$cur" != "$COMMIT"* ]]; }; then
+    say "probation of ${COMMIT:0:12} ended: ${cur:0:12} is running now"
+    rm -f "$PROBATION_FILE"
+    set_state idle
+    return 0
+  fi
   say "resuming probation of ${COMMIT:0:12}"
   probation
 }

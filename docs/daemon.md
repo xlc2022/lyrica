@@ -904,7 +904,9 @@ check names and counts, never text.
   stopped) leaves `probation.json`; `lyrica-update --resume` starts it
   over from that file, at boot through `lyrica-probation.service` and
   before any other updater run (`--request`, `--tag`, `--check`). With no
-  file, or while another run holds the lock, `--resume` does nothing.
+  file, or while another run holds the lock, `--resume` does nothing; when
+  another release runs by then (a rebuild's package, a rollback), it ends
+  that probation, removes the file and goes idle, rolling nothing back.
 - **`lyrica-snapshot`** (lyricad stopped) copies `self.db`, the users'
   databases, the pools and the top-level settings files, each database
   with its `-wal` (root holds no key to checkpoint it, so the log travels
