@@ -64,10 +64,12 @@ services:
     environment:
       <<: *server-env
       CUDA_VISIBLE_DEVICES: ${COMFY_GPU:-0}
+      # Triton builds and loads small CUDA helpers at run time; /tmp is noexec.
+      TRITON_CACHE_DIR: /triton
     volumes:
       - ${MODELS_DIR}:/models:ro
       - serving:/serving:ro
-    tmpfs: [/tmp]
+    tmpfs: [/tmp, "/triton:exec,mode=1777"]
     init: true
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8188/system_stats', timeout=5)"]

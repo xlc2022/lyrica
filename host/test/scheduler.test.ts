@@ -166,6 +166,57 @@ describe("the GPU queue", () => {
     expect(state.get().vram["m@0"]).toEqual({ 0: Math.round(10 * GIB * 1.05) + GIB / 2 + GIB / 2 });
   });
 
+  it("remeasures first-use buffers so an idle model can be evicted for images", async () => {
+    const { scheduler, state, gpus, llamacpp } = setup([24]);
+    await scheduler.start([]);
+    const chat = textModel("chat", 17);
+    await scheduler.loadNow(chat);
+    const initial = state.get().vram["chat@0"]![0]!;
+    await scheduler.run(chat, "chat", async () => {
+      gpus.loaded.get("chat")![0] = initial + 1.9 * GIB;
+    });
+    expect(state.get().vram["chat@0"]![0]).toBe(initial + 1.9 * GIB);
+    // 21.7 GB fits with the real 1 GB baseline and 0.5 GB reserve,
+    // but not if the chat server's 1.9 GB growth is treated as another program.
+    const image = textModel("image", 21.2 / 1.1, { kind: "image", contextLength: 0 });
+    await scheduler.run(image, "image", async () => {});
+    expect(llamacpp.calls).toEqual(["load chat@0", "unload chat", "load image@0"]);
+    expect(gpus.on("chat")).toEqual([]);
+    expect(gpus.on("image")).toEqual([0]);
+  });
+
+  it("keeps the larger first-use measurement across reloads without counting growth twice", async () => {
+    const { scheduler, state, gpus } = setup();
+    await scheduler.start([]);
+    const m = textModel("m", 10);
+    await scheduler.loadNow(m);
+    const initial = state.get().vram["m@0"]![0]!;
+    const serve = () => scheduler.run(m, "chat", async () => {
+      gpus.loaded.get("m")![0] = initial + GIB;
+    });
+    await serve();
+    await scheduler.unloadNow("m");
+    await scheduler.loadNow(m);
+    await serve();
+    expect(state.get().vram["m@0"]![0]).toBe(initial + GIB);
+  });
+
+  it("does not attribute another model's request growth to the first model", async () => {
+    const { scheduler, state, gpus } = setup();
+    await scheduler.start([]);
+    const a = textModel("a", 4);
+    const b = textModel("b", 4);
+    await scheduler.loadNow(a);
+    await scheduler.loadNow(b);
+    const initial = state.get().vram["a@0"]![0]!;
+    await scheduler.run(a, "chat", async () => {
+      await scheduler.run(b, "chat", async () => {
+        gpus.loaded.get("b")![0]! += GIB;
+      });
+    });
+    expect(state.get().vram["a@0"]![0]).toBe(initial);
+  });
+
   it("measures again after a model's settings change", async () => {
     const { scheduler, state } = setup([24]);
     await scheduler.start([]);
