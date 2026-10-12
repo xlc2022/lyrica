@@ -260,7 +260,7 @@ function Tiles({ ctx, p }: { ctx: MCtx; p: ModelsPage }) {
     <div className="tiles">
       <a className="tile" href={href({ page: "models", userId, tab: "hosts" })} data-tile="endpoints">
         <span className="cap">Endpoints</span>
-        <span className="big">{up.length}<small>of {p.endpoints.length} up</small></span>
+        <span className="big num">{up.length}<small>of {p.endpoints.length} up</small></span>
         <span className="cap">{downLine}</span>
       </a>
       <a className="tile" href={href({ page: "settings", userId, section: "profiles" })} data-tile="backend">
@@ -272,7 +272,7 @@ function Tiles({ ctx, p }: { ctx: MCtx; p: ModelsPage }) {
       </a>
       <a className="tile" href={href({ page: "models", userId, tab: "cleanup" })} data-tile="cleanup">
         <span className="cap">Clean up</span>
-        <span className="big">{cleanup}<small>{cleanup === 1 ? "item" : "items"}</small></span>
+        <span className="big num">{cleanup}<small>{cleanup === 1 ? "item" : "items"}</small></span>
         <span className="cap">{cleanup ? "To decide" : "Nothing to clean up"}</span>
       </a>
     </div>
@@ -727,7 +727,7 @@ function Cleanup({ ctx }: { ctx: MCtx }) {
             return (
               <li key={it.endpoint?.id ?? it.offering?.id ?? it.group?.id} className="ep-row" data-cleanup={pill}>
                 <div className="main-col">
-                  <span className="name">{it.label}<span className={`pill ${pill === "stale" ? "bad" : "warn"}`}>{pill}</span></span>
+                  <span className="name">{it.label}<span className={`pill ${pill === "stale" ? "bad" : "warn"}`} title={pill === "stale" ? "Unreachable for 14 days or more" : pill === "gone" ? "Missing for 30 days or more" : undefined}>{pill}</span></span>
                   <span className="meta muted">
                     {detail}{since && <> for <span className="num">{duration(Date.now() - Date.parse(since))}</span></>}. {used.length ? `Used in ${used.join(", ")}.` : "Nothing uses it."}
                   </span>
@@ -735,7 +735,7 @@ function Cleanup({ ctx }: { ctx: MCtx }) {
                 {(!shared || ctx.user.admin) && (
                   <div className="actions">
                     {it.offering && it.suggestion && (
-                      <button type="button" className="sm" disabled={busy}
+                      <button type="button" className="sm" disabled={busy} title="Leaves a redirect, so other people's settings follow at once."
                         onClick={() => void run(async () => { await post(u(userId, "offerings", it.offering!.id, "replace"), { with: it.suggestion!.offeringId }); done(); })}>
                         Replace with {modelAndEndpoint(it.suggestion.label)}
                       </button>
@@ -748,7 +748,6 @@ function Cleanup({ ctx }: { ctx: MCtx }) {
           }) : <li className="empty">Nothing to clean up.</li>}
         </ul>
       )}
-      <p className="cap">Endpoints unreachable for 14 days are stale, and models missing for 30 days are gone; fallbacks already skip them. Replacing leaves a redirect, so other people's settings follow at once.</p>
       {removing && (
         <ConfirmDialog title={`Remove ${removing.label}?`}
           sentence={removing.usedIn.length || removing.otherUsers ? "Every list that names it drops it." : "Nothing uses it, so nothing else changes."}

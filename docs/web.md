@@ -237,8 +237,10 @@ A thread's address may carry what the panel beside it shows:
   stale, gone or empty pill, "Unreachable for N days." / "Missing for N
   days." / "No members left.", where it is used or "Nothing uses it.",
   **Replace with <model · endpoint>** when the server suggests one and
-  **Remove**; the notice lines as a dashed note with Dismiss; the mockup's
-  two foot sentences. Recent calls: Time (mono), Thread (a link; private
+  **Remove**; the notice lines as a dashed note with Dismiss. The
+  thresholds are the pills' tooltips (stale: unreachable 14 days or more;
+  gone: missing 30 days or more), and Replace with… carries the redirect
+  sentence as its tooltip. Recent calls: Time (mono), Thread (a link; private
   kind mark; "a forgotten thread" when gone), Task, Answered by ("model ·
   endpoint"), Note (the fallback or note, warn text); hidden pools left
   out; the table stacks on a phone.
