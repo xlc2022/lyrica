@@ -1285,6 +1285,84 @@ test("Share with sends a copy; the recipient sees it in Notifications and adds i
   await noHorizontalScroll(page);
 });
 
+test("Sleep: the sidebar link opens it empty, the mode is set in Settings, Sleep now asks and then runs, and the administrator sets the time", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await page.locator('a[data-nav="sleep"]').click();
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/sleep$`));
+  await expect(page.getByRole("heading", { level: 1, name: "Sleep" })).toBeVisible();
+  await expect(page.getByText("Nothing to raise.")).toBeVisible();
+  await expect(page.getByText("No sleep yet.")).toBeVisible();
+  if (phone(page)) expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await noHorizontalScroll(page);
+
+  // Settings → Model profiles: Only when I ask, saved at once; the Sleep page says so.
+  await page.goto(`/#/u/${userId}/settings/profiles`);
+  const mode = page.getByRole("combobox", { name: "Sleep", exact: true });
+  const saved = page.waitForResponse((r) => r.request().method() === "PUT" && r.url().endsWith("/sleep/mode"));
+  await mode.selectOption({ label: "Only when I ask" });
+  expect((await saved).ok()).toBe(true);
+  await expect(mode).toHaveValue("manual");
+  await page.goto(`/#/u/${userId}/sleep`);
+  await expect(page.getByText("Manual: only when you ask")).toBeVisible();
+
+  // Something has to have happened since the last sleep, or Sleep now is refused ("nothing is new").
+  await newThread(page, "General");
+  await send(page, "Pelicans eat fish");
+  await expect(page.getByText("You said: Pelicans eat fish")).toBeVisible();
+  await page.goto(`/#/u/${userId}/sleep`);
+
+  // Sleep now → General asks first; confirming runs it. The fake model never calls her sleep tools; in manual mode a fresh thread opens when it ends.
+  await page.getByRole("button", { name: "Sleep now" }).click();
+  await page.getByRole("menu", { name: "Sleep now" }).getByRole("menuitem", { name: "General" }).click();
+  const confirm = page.getByRole("dialog");
+  await expect(confirm).toBeVisible();
+  await confirm.getByRole("button", { name: "Sleep now" }).click();
+  await expect(page).toHaveURL(/\/t\/general\//);
+  await page.goto(`/#/u/${userId}/sleep`);
+  const row = page.locator(".sleep-run[data-pool=general]");
+  // The fake model only echoes and never calls her sleep tools, so the phases end unwritten: the run is partial.
+  await expect(row).toHaveAttribute("data-status", "partial");
+  await expect(row).toContainText("Stopped early");
+  await expect(page.getByRole("heading", { name: "Last night" })).toBeVisible();
+  await expect(page.getByText("No sleep yet.")).toHaveCount(0);
+  await row.locator("summary.sleep-sum").click();
+  await expect(row.locator(".sleep-detail")).toBeVisible();
+  await expect(row.locator(".sleep-detail")).not.toContainText("Loading…");
+  if (phone(page)) expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await noHorizontalScroll(page);
+  // Items need her to call tools, which the fake model doesn't: Start a chat and Dismiss are covered by daemon tests.
+  await expect(page.locator("ul.sleep-items")).toHaveCount(0);
+
+  // Private hidden in the Sort menu: its line shows and Sleep now no longer offers it. Then back on.
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await togglePrivate(page);
+  if (phone(page)) await page.locator(".scrim").first().click({ position: { x: 370, y: 400 } });
+  await expect(page.getByText("Private is hidden.")).toBeVisible();
+  await page.getByRole("button", { name: "Sleep now" }).click();
+  const poolMenu = page.getByRole("menu", { name: "Sleep now" });
+  await expect(poolMenu.getByRole("menuitem", { name: "General" })).toBeVisible();
+  await expect(poolMenu.getByRole("menuitem", { name: "Private" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await togglePrivate(page);
+  if (phone(page)) await page.locator(".scrim").first().click({ position: { x: 370, y: 400 } });
+  await expect(page.getByText("Private is hidden.")).toHaveCount(0);
+
+  // Administration → Sleep: the time saves, then Save is off again.
+  await page.goto(`/#/u/${userId}/admin/sleep`);
+  const time = page.getByLabel("Sleep time");
+  const save = page.getByRole("button", { name: "Save" });
+  await expect(time).not.toHaveValue("");
+  await expect(save).toBeDisabled();
+  await time.fill(await time.inputValue() === "04:30" ? "05:15" : "04:30");
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(save).toBeDisabled();
+  await page.reload();
+  await expect(page.getByLabel("Sleep time")).toHaveValue(/^(04:30|05:15)$/);
+});
+
 test("no horizontal scrolling and big enough tap targets on a phone", async ({ page, baseURL }) => {
   test.skip(!phone(page), "phone only");
   const userId = await enter(page, baseURL!);
