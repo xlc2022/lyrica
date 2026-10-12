@@ -9,7 +9,7 @@ import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
 import { Sessions } from "./auth.ts";
 import { HttpError, route, type Request, type Route } from "./http.ts";
-import { DEFAULT_BUDGETS, OPENING, pinnedBlock, pinnedOf, reserveFor, startPlanSignIn, type PlanSignIn } from "@lyrica/extension";
+import { DEFAULT_BUDGETS, OPENING, OPENROUTER_URL, pinnedBlock, pinnedOf, reserveFor, startOpenRouterSignIn, startPlanSignIn, type OpenRouterSignIn, type PlanSignIn } from "@lyrica/extension";
 import type { ProjectThreadInfo } from "./children.ts";
 import { Busy } from "./hosted.ts";
 import { BUILD, card, type Lyricad, type Services } from "./lyricad.ts";
@@ -261,6 +261,41 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("DELETE", `${u}/plans/sign-in/:signInId`, (r) => {
       const p = signIns.get(r.params.signInId!);
       if (p && p.userId === d.userFor(r).id) dropSignIn(r.params.signInId!);
+      return { ok: true };
+    }),
+    // --- OpenRouter: approve on its page, paste the code it shows; the key it returns is a plain cloud endpoint's ---
+    route("POST", `${u}/openrouter/sign-in`, async (r) => {
+      const user = d.userFor(r);
+      const input = await r.json<Api.OpenRouterSignInStart>();
+      const name = String(input.name ?? "").trim();
+      if (!name) throw new HttpError(400, "an endpoint needs a name");
+      if (s().models.findEndpoint(user.id, name)) throw new HttpError(400, `endpoint ${name} already exists`);
+      for (const [id, p] of openRouterSignIns) if (p.userId === user.id) dropOpenRouter(id);
+      const signIn = startOpenRouterSignIn();
+      const id = randomUUID();
+      openRouterSignIns.set(id, { userId: user.id, signIn, name, shared: !!input.shared, timer: setTimeout(() => dropOpenRouter(id), SIGN_IN_MS).unref() });
+      return { id, url: signIn.url } satisfies Api.PlanSignInStarted;
+    }),
+    route("POST", `${u}/openrouter/sign-in/:signInId`, async (r) => {
+      const user = d.userFor(r);
+      const p = openRouterSignIns.get(r.params.signInId!);
+      if (!p || p.userId !== user.id) throw new HttpError(404, "this sign-in has ended; start again");
+      const { code } = await r.json<Api.OpenRouterSignInFinish>();
+      let apiKey;
+      try {
+        apiKey = await p.signIn.finish(String(code ?? ""));
+      } catch (e) {
+        throw new HttpError(400, e instanceof Error ? e.message : "the sign-in failed");
+      } finally {
+        dropOpenRouter(r.params.signInId!);
+      }
+      const ep = s().models.addEndpoint(user, { name: p.name, kind: "cloud", baseUrl: OPENROUTER_URL, apiKey }, { shared: p.shared });
+      await s().models.discover(user, ep.id).catch(() => {});
+      return endpointInfo(d, user.id, ep.id);
+    }),
+    route("DELETE", `${u}/openrouter/sign-in/:signInId`, (r) => {
+      const p = openRouterSignIns.get(r.params.signInId!);
+      if (p && p.userId === d.userFor(r).id) dropOpenRouter(r.params.signInId!);
       return { ok: true };
     }),
     route("DELETE", `${u}/endpoints/:endpointId`, (r) => {
@@ -1710,6 +1745,14 @@ function dropSignIn(id: string): void {
   clearTimeout(p.timer);
   p.signIn.cancel();
   signIns.delete(id);
+}
+
+const openRouterSignIns = new Map<string, { userId: string; signIn: OpenRouterSignIn; name: string; shared: boolean; timer: NodeJS.Timeout }>();
+function dropOpenRouter(id: string): void {
+  const p = openRouterSignIns.get(id);
+  if (!p) return;
+  clearTimeout(p.timer);
+  openRouterSignIns.delete(id);
 }
 
 function endpointInfo(d: Lyricad, userId: string, id: string): Api.EndpointInfo {

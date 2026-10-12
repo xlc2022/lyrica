@@ -634,6 +634,24 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
 - Removing a plan deletes its sign-in; Lyrica stays connected in the
   provider's account settings until it is disconnected there.
 
+## OpenRouter sign-in
+
+Add endpoint's Kind **OpenRouter** gets the user an OpenRouter API key
+without copying one by hand. Code: `extension/src/openrouter.ts`. It is
+OpenRouter's PKCE flow in its headless mode, so it needs no callback address
+and no registration: `startOpenRouterSignIn` makes a verifier and sends its
+S256 challenge to `openrouter.ai/auth`; the person approves there and pastes
+the one-time code the page shows; `finish` posts the code and verifier to
+`https://openrouter.ai/api/v1/auth/keys`, which returns an ordinary key that
+belongs to them. The route (`POST …/openrouter/sign-in`, then
+`…/:signInId`) stores that key on a plain cloud endpoint at
+`https://openrouter.ai/api/v1` (`api: "openai"`), exactly as if it had been
+typed, so nothing else differs from the plain-endpoint flow: no refresh, no
+signed-out state, no schema change. A sign-in under way is held in
+`lyricad`'s memory for 10 minutes, one per user. OpenRouter's refusal reaches
+the interface as one fixed line with its status, never its text. The user caps
+what the key can spend on OpenRouter's own site; Lyrica sets no limit.
+
 ## Local servers
 
 For native tool calling, start KoboldCpp with `--jinja --jinja_tools` and
