@@ -330,7 +330,6 @@ export class PoolReader {
     return { entries: rows.slice(0, opts.limit).reverse().map((r) => ({ n: r.n, data: json(r.data), createdAt: r.created_at, pinned: r.pinned === 1, reactions: parseReactions(r.reactions) })), hasMore };
   }
 
-  /** The number the thread's next entry will get: past every entry, and past what a rewind removed. */
   /**
    * Where the turn now running began: the entry after the last one an earlier turn ended with (her reply or a
    * tool result) before the newest stored user message. A sent message is stored before the model runs, so the
@@ -348,6 +347,7 @@ export class PoolReader {
     return Math.max(before.n ?? 0, cut) + 1;
   }
 
+  /** The number the thread's next entry will get: past every entry, and past what a rewind removed. */
   nextEntryN(threadId: string): number {
     const row = this.db.prepare("SELECT max(coalesce((SELECT max(n) FROM entries WHERE thread = @id), 0), cut) + 1 AS n FROM threads WHERE id = @id")
       .get({ id: threadId }) as { n: number } | undefined;
