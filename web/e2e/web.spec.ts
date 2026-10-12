@@ -1336,8 +1336,11 @@ test("home attachments and tool switches stay local until send and follow the se
   await box.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.locator(".msg.user")).toContainText("general.txt");
   await expect(page.locator(".msg.user")).not.toContainText("private.txt");
-  const settings = await page.request.get(`/api/u/${userId}/threads/general/${page.url().split("/").at(-1)}/settings`);
-  expect((await settings.json()).images).toBe(false);
+  const made = (await threads() as { id: string; pool: string }[]).find((t) => !(before as { id: string }[]).some((b) => b.id === t.id));
+  expect(made?.pool).toBe("general");
+  const settings = await page.request.get(`/api/u/${userId}/threads/general/${encodeURIComponent(made!.id)}/settings`);
+  expect(settings.ok()).toBe(true);
+  expect(await settings.json()).toMatchObject({ images: false });
   expect(uploads).toHaveLength(1);
   expect(uploads[0]).toContain("/threads/general/");
   expect(uploads[0]).toContain("name=general.txt");
