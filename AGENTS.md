@@ -29,9 +29,14 @@ Read these, in this order:
   telling the model not to do something.
 - **No plaintext memory.** Memory and thread text never reach disk unencrypted:
   no logs of message text, no temp files, no fixtures copied from real data.
-- **Docs describe what exists.** When you change behavior, update its doc in the
-  same commit. Write plainly and keep docs short. Plans go in briefs, never in
-  component docs. If a doc and the code disagree, the PR isn't done.
+- **Docs never drift.** Every person, agent and model on this project starts
+  from the docs, so they are the source of truth. A change updates every doc
+  it makes stale (its component doc, the contracts, DESIGN, docs/ux.md, the
+  guides, a brief that describes it) in the same PR. Docs describe what
+  exists: write plainly, keep them short, and put plans in briefs, never in
+  component docs. If a doc and the code disagree, the PR isn't done, and a
+  missing doc update blocks review. Whoever notices drift anywhere fixes it
+  in a small docs PR or tells the thread that owns the doc.
 - **Tests protect what the user would notice:** context assembly, memory round trips,
   the privacy and cloud boundaries, and sleep output. Don't add a test for
   every hypothetical.
@@ -52,7 +57,8 @@ Read these, in this order:
   work on their own branch from a brief and finish with a pull request into
   `main`.
 - A pull request description says what changed and why, what is out of scope,
-  and any contract change it needs.
+  any contract change it needs, and which docs it updated (or why none needed
+  it).
 - When a change alters how Lyrica works on her own code (roles, review,
   boundaries, updates, the tools she uses for it), update the handoff in
   [docs/briefs/lyrica-project.md](docs/briefs/lyrica-project.md) in the same
