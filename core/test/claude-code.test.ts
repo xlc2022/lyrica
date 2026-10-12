@@ -15,12 +15,12 @@ const TOKEN = "sk-ant-oat01-made-up-for-tests-only";
 async function setup() {
   const keyring = await freshKeyring();
   const users = new Users(keyring);
-  const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
-  await users.authenticate("li", "pw");
+  const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+  await users.authenticate("ada", "pw");
   const localOnly = new Set<string>();
   const workspace = new Workspace(keyring, users, { excludePorts: [], restricted: (_u, pool, thread) => pool === "private" || localOnly.has(thread) });
-  const thread = (threadId: string, pool: Pool = "general") => ({ userId: li.id, pool, threadId });
-  return { workspace, settings: workspace.settings(li.id), thread, localOnly };
+  const thread = (threadId: string, pool: Pool = "general") => ({ userId: ada.id, pool, threadId });
+  return { workspace, settings: workspace.settings(ada.id), thread, localOnly };
 }
 
 describe("Claude Code's token", () => {
@@ -68,12 +68,12 @@ describe("Claude Code's token", () => {
   it("is never given when the workspace isn't told which threads are local-only", async () => {
     const keyring = await freshKeyring();
     const users = new Users(keyring);
-    const li = await users.createUser("li", "pw", profile("Ada"), { admin: true });
-    await users.authenticate("li", "pw");
+    const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+    await users.authenticate("ada", "pw");
     const workspace = new Workspace(keyring, users, { excludePorts: [] });
-    workspace.settings(li.id).setClaudeCodeToken(TOKEN);
-    workspace.settings(li.id).setThread("code", "general", { claudeCode: true });
-    expect(workspace.claudeEnv({ userId: li.id, pool: "general", threadId: "code" })).toEqual({});
+    workspace.settings(ada.id).setClaudeCodeToken(TOKEN);
+    workspace.settings(ada.id).setThread("code", "general", { claudeCode: true });
+    expect(workspace.claudeEnv({ userId: ada.id, pool: "general", threadId: "code" })).toEqual({});
   });
 });
 
