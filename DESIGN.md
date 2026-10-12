@@ -1062,6 +1062,13 @@ Project settings and Recent calls by project. The briefs are
     **Hide** stops it too. **Delete** forgets the project chat, its threads,
     its page, the notes that came only from it, and its folder.
   - **Waiting on you** is a type in Notifications.
+- **Checklists** (2026-10-12). Any thread with the `threads` tool keeps a
+  short checklist of its own work (`threads steps`: up to 12 steps, each
+  todo, doing or done), stored in its pool. The person follows a thread's
+  progress on its card and header instead of reading it, and her parent or
+  project chat sees where each thread stands in `threads list`. A display
+  switch, **Checklists**, turns it off for the person who prefers the
+  messages alone; then she isn't offered it.
 - **Wake-ups** (Li, 2026-10-12). Any thread with the `threads` tool can set
   a one-shot wake-up for itself, `threads later` with minutes (1 to 7 days)
   and a note to itself; at that time the note starts a turn there, marked

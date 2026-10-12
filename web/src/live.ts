@@ -1,6 +1,6 @@
 // What a thread's event stream says is happening now, before it is stored.
 // Pure, so it can be tested without a browser.
-import type { MessagePart, PermissionRequest, ThreadEvent, ThreadRef, Told, WakeupInfo } from "./api.ts";
+import type { MessagePart, PermissionRequest, ThreadEvent, ThreadRef, ThreadStep, Told, WakeupInfo } from "./api.ts";
 
 export type LiveItem =
   | { role: "user"; text: string }
@@ -32,6 +32,8 @@ export interface Live {
   children: number;
   /** The wake-ups waiting, as the stream last said; the settings' list until then. */
   wakeups?: WakeupInfo[];
+  /** Her checklist for the thread, as the stream last said; the thread summary's until then. */
+  steps?: ThreadStep[];
 }
 
 export const initialLive: Live = { busy: false, queued: [], permissions: [], items: [], errors: [], reload: 0, ended: 0, subagents: {}, settings: 0, children: 0 };
@@ -110,6 +112,8 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       return { ...s, children: s.children + 1 };
     case "wakeups":
       return { ...s, wakeups: e.wakeups };
+    case "steps":
+      return { ...s, steps: e.steps };
     case "turn_end":
       // A subagent's request outlives the parent's turn: it ends with its own permission_end.
       return { ...s, busy: false, permissions: s.permissions.filter((p) => p.subagent), reload: s.reload + 1, ended: s.items.length };

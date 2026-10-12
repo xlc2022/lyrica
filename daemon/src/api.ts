@@ -130,6 +130,8 @@ export interface Display {
   sort: ThreadSort;
   /** The thread list's third part: every thread, only projects (with their threads), or none of them. */
   projects: "all" | "only" | "none";
+  /** Her threads keep a checklist the cards show (`threads steps`). Off, she isn't offered it and cards show none. */
+  checklists: boolean;
 }
 
 /** GET /api/u/:userId/me */
@@ -734,7 +736,12 @@ export interface ThreadSummary {
   needsYou?: true;
   /** Its next wake-up, if one is waiting (her `threads later`). */
   wakeAt?: string;
+  /** Her checklist for it (`threads steps`), in order; absent when it has none or Checklists is off. */
+  steps?: ThreadStep[];
 }
+
+/** One step of a thread's checklist: done, under way, or not started. */
+export interface ThreadStep { text: string; state: "done" | "doing" | "todo" }
 
 export interface ProjectSettingsInfo {
   /** The project page's memory ID, for the memory browser. The page exists once instructions are saved or sleep writes it. */
@@ -1278,6 +1285,8 @@ export type ThreadEvent =
   | { type: "child"; threadId: string }
   /** The thread's pending wake-ups changed: set, removed or fired. Soonest first. */
   | { type: "wakeups"; wakeups: WakeupInfo[] }
+  /** Her checklist for the thread changed (`threads steps`): the whole list, empty when cleared. */
+  | { type: "steps"; steps: ThreadStep[] }
   /** The turn is over; the messages are stored. */
   | { type: "turn_end"; aborted: boolean }
   /** After each turn: the context as it now stands. */

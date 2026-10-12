@@ -239,6 +239,16 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Wake-ups (DESIGN.md, Projects): a thread's note to itself for later. Adds a table only.
     version: 4,
     run(db) { db.exec(WAKEUPS_SCHEMA); },
+  }, {
+    // A thread's checklist (DESIGN.md, Projects): the steps she keeps as JSON, encrypted with the pool. Adds a table only.
+    version: 5,
+    run(db) {
+      db.exec(`CREATE TABLE thread_steps (
+        thread     TEXT PRIMARY KEY REFERENCES threads (id) ON DELETE CASCADE,
+        steps      TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`);
+    },
   }],
 };
 
