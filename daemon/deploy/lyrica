@@ -6,9 +6,11 @@ home=@STATE@
 if [ "$(id -un)" = lyrica ]; then
   exec env LYRICA_HOME="$home" "$cli" "$@"
 elif [ "$(id -u)" = 0 ]; then
+  # From a folder lyrica can't enter, such as an operator's home, the CLI's helpers fail to start.
+  runuser -u lyrica -- test -x . 2>/dev/null || cd /
   exec runuser -u lyrica -- env LYRICA_HOME="$home" "$cli" "$@"
 elif command -v sudo >/dev/null; then
-  exec sudo -u lyrica env LYRICA_HOME="$home" "$cli" "$@"
+  exec sudo -u lyrica sh -c 'test -x . || cd /; exec env LYRICA_HOME="$0" "$@"' "$home" "$cli" "$@"
 else
   echo "lyrica: run this as root or as the lyrica user" >&2
   exit 1
