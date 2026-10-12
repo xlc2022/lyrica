@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
-  CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, NoModel, Offline, suspectKey, WAKEUP, WATCHING, WATCHING_MARK,
+  CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, NoModel, Offline, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
@@ -320,11 +320,13 @@ export class HostedThread {
    * watcher with `watching`, and only a wake-up with `wakeup` (its mark);
    * anyone else's text can't carry the line that marks it.
    */
-  async send(text: string, opts: { fromParent?: string; fromThread?: string; watching?: boolean; wakeup?: string } = {}): Promise<{ queued: boolean }> {
+  async send(text: string, opts: { fromParent?: string; fromThread?: string; watching?: boolean; wakeup?: string; routine?: string } = {}): Promise<{ queued: boolean }> {
     if (!text.trim()) throw new Error("the message is empty");
     if (FROM_PARENT.test(text)) throw new MarkedText("a message can't start with a [From t:…] line");
     if (WATCHING.test(text)) throw new MarkedText("a message can't start with a [Watching threads] line");
     if (WAKEUP.test(text)) throw new MarkedText("a message can't start with a [Wake-up, …] line");
+    if (ROUTINE.test(text)) throw new MarkedText("a message can’t start with a [Routine, …] line");
+    if (opts.routine) return this.post(`${opts.routine}${text}`, true);
     if (opts.watching) return this.post(`${WATCHING_MARK}${text}`, true);
     if (opts.wakeup) return this.post(`${opts.wakeup}${text}`, true);
     const from = opts.fromParent ?? opts.fromThread;

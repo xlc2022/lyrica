@@ -189,3 +189,25 @@ describe("pre-release databases", () => {
     expect(keyring.self().prepare("SELECT value FROM settings WHERE key = 'sleep.time'").get()).toEqual({ value: "05:30" });
   });
 });
+
+
+describe("pool step 6 (routines)", () => {
+  it("expands every released pool schema and keeps the previous readers and thread data", () => {
+    for (let version = 1; version < 6; version++) {
+      const db = scratchDb();
+      const previous = STEPS.pool.filter(s => s.version <= version);
+      migrate(db, "pool", {}, previous);
+      SEED.pool(db);
+      migrate(db, "pool");
+      expect(schemaOf(db)).toEqual({ version: 6, minReader: 1 });
+      expect(() => checkReadable(db, "pool", previous)).not.toThrow();
+      expect(db.prepare("SELECT title FROM threads WHERE id = 'web/a'").get()).toEqual({ title: "A test thread" });
+      expect((db.prepare("PRAGMA table_info(routines)").all() as { name: string }[]).map(r => r.name)).toEqual(["id", "thread", "schedule", "note", "new_thread", "paused", "next_at", "last_at", "created_at"]);
+      db.prepare("INSERT INTO routines (thread, schedule, note, next_at, created_at) VALUES ('web/a', '{}', 'A synthetic note.', '2026-01-02', '2026-01-01')").run();
+      expect(db.prepare("SELECT new_thread, paused, last_at FROM routines").get()).toEqual({ new_thread: 0, paused: 0, last_at: null });
+      db.prepare("DELETE FROM threads WHERE id = 'web/a'").run();
+      expect(db.prepare("SELECT * FROM routines").all()).toEqual([]);
+      db.close();
+    }
+  });
+});

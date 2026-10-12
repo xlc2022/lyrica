@@ -1,7 +1,7 @@
 // Message search for the sidebar (docs/daemon.md "Search"): the search index's
 // entries, through the owner view, as hits the browser marks without guessing.
 // Message text goes only into the response, never into a log.
-import { FROM_PARENT, WAKEUP, searchWords, stripCitations, type MessageHit, type OwnerView, type Pool } from "@lyrica/core";
+import { FROM_PARENT, ROUTINE, WAKEUP, searchWords, stripCitations, type MessageHit, type OwnerView, type Pool } from "@lyrica/core";
 import type { Display, SearchHit } from "./api.ts";
 
 export const SEARCH_PAGE = 50;
@@ -32,8 +32,8 @@ export function searchMessages(o: OwnerView, pools: Pool[], query: string, opts:
 }
 
 function toHit(pool: Pool, title: string | undefined, m: MessageHit, words: string[]): SearchHit {
-  // What she sent from another thread, and her wake-up notes, are user entries she wrote.
-  const mark = m.role === "user" ? FROM_PARENT.exec(m.text) ?? WAKEUP.exec(m.text) : null;
+  // What she sent from another thread, and her wake-up and routine notes, are user entries she wrote.
+  const mark = m.role === "user" ? FROM_PARENT.exec(m.text) ?? WAKEUP.exec(m.text) ?? ROUTINE.exec(m.text) : null;
   const text = plain(stripCitations(mark ? m.text.slice(mark[0].length) : m.text));
   return {
     threadId: m.thread, pool, ...(title ? { title } : {}), n: m.n,

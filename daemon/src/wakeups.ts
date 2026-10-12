@@ -67,7 +67,7 @@ export class Wakeups {
     const fired = own.wakeupsFired(from.threadId, new Date(now.getTime() - DAY_MS).toISOString());
     if (fired.length >= WAKEUP_LIMITS.perDay) {
       const resets = new Date(Date.parse(fired[0]!) + DAY_MS).toISOString();
-      throw new Error(`this thread's wake-ups fired ${fired.length} times in the last day; the next can be set after ${resets.slice(0, 16)}Z`);
+      throw new Error(`this thread's wake-ups and routines fired ${fired.length} times in the last day; the next can be set after ${resets.slice(0, 16)}Z`);
     }
     const dueAt = new Date(now.getTime() + minutes * 60_000).toISOString();
     const id = own.addWakeup(from.threadId, dueAt, note, now.toISOString());
@@ -126,6 +126,7 @@ export class Wakeups {
       let w;
       try {
         w = view.own.getThread(d.thread) ? view.own.wakeups(d.thread).find((x) => x.id === d.id) : undefined;
+        if (w && view.own.wakeupsFired(d.thread, new Date(now.getTime() - DAY_MS).toISOString()).length >= WAKEUP_LIMITS.perDay) return;
         if (w) view.own.fireWakeup(d.id, now.toISOString());
       } finally {
         view.close();

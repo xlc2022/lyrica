@@ -842,7 +842,8 @@ judgment and make review easy. Each thread has a **mode**:
 - **Accept edits** (`acceptEdits`): asks before `bash`.
 - **Plan** (`plan`): only `read`, `recall`, `read_memory`, `web_search`, read-only MCP tools and `tool_search`,
   `web_fetch`, `proxmox` for reading, `delegate` with read-only roles, a subagent's `ask_parent`,
-  `threads` (her child threads, and compacting her context), `react` and
+  `threads` (child threads and project actions, wake-ups, routines,
+  checklists, and compacting her context), `react` and
   `propose_plan` are active. A child thread of a Plan-mode thread is in
   Plan mode too.
 - **Auto** (`auto`, the default): works freely inside the grants.

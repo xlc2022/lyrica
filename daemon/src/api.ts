@@ -902,6 +902,8 @@ export interface ThreadSettings {
   models: Record<ThreadTask, TaskModel>;
   /** Wake-ups waiting, soonest first; the user may remove each (`DELETE …/wakeups/:id`). */
   wakeups: WakeupInfo[];
+  /** Recurring schedules, including paused ones; never notes. */
+  routines: RoutineInfo[];
   /** Local in a private or local-only thread; otherwise the thread's choice or the user's default. */
   profile: "local" | "cloud" | "custom";
   /** Set when the thread chose its profile rather than following the default. */
@@ -1077,9 +1079,10 @@ export interface Message {
    * `watching`: in a project chat, a look at its threads (watch.ts): the text names the threads it was
    * about (`In [t:<id>]: …` lines) and who it told; `told` is those threads with the line each was sent.
    * A look stored before looks were one model call has no `told`: her next turn's messages are what it led to.
+   * `routine`: her recurring note, with its schedule in describe() words.
    * `wakeup`: her note to herself from `threads later`, set at `setAt`; `dueAt` when it fired late (the user was locked).
    */
-  from?: { kind: "lyrica" } | { kind: "watching"; told?: Told[] } | { kind: "wakeup"; setAt: string; dueAt?: string } | { kind: "user"; userId: string; name: string } | { kind: "parent"; threadId: string } | { kind: "thread"; threadId: string };
+  from?: { kind: "routine"; schedule: string } | { kind: "lyrica" } | { kind: "watching"; told?: Told[] } | { kind: "wakeup"; setAt: string; dueAt?: string } | { kind: "user"; userId: string; name: string } | { kind: "parent"; threadId: string } | { kind: "thread"; threadId: string };
   parts: MessagePart[];
   createdAt: string;
   /** The model that wrote an assistant message. */
@@ -1891,3 +1894,6 @@ export interface ClaudeCodeTokenInput { token: string }
 export interface PortraitPhoto { path: string; size: number; type: string }
 /** GET /api/u/:userId/photo-cloud; PUT { policy } → PhotoCloudSetting. */
 export interface PhotoCloudSetting { policy: "never" | "ask" | "always" }
+
+/** Routine metadata only; notes stay in the thread. */
+export interface RoutineInfo { id: number; pool: Pool; threadId: string; threadTitle: string; schedule: string; nextAt: string; paused: boolean }
