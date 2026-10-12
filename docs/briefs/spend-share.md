@@ -27,9 +27,11 @@ tokens, not instead: tokens are what fills her context on either kind.
 **B. Keeping the sums.** `model_calls` keeps the latest 500 per user, so a sum
 over it would shrink. Before pruning deletes rows, fold their counts into a
 `call_totals` table: pool, thread, label, kind, tokens, gpu_ms, calls, keyed by
-the first four. One user.db step (the next free version; command rules may
-take one first) adds `model_calls.read_tokens` and `call_totals`, expand only,
-with a migration test from every released user schema. `forgetThread` deletes
+the first four. One user.db step (the next free version) adds `model_calls.read_tokens` and `call_totals`, expand only,
+with a migration test from every released user schema. Command rules adds a
+step too, in parallel: whichever merges second merges main, renumbers its step
+after the other's and keeps its migration test from every released schema,
+since two steps sharing a number would leave one never run. `forgetThread` deletes
 a thread's totals too. No other table.
 
 **C. Sums.** `Models.usage(userId, pool, threadIds)`: per thread and model
@@ -52,7 +54,8 @@ is the same total. `GET …/models/calls` keeps `?project=&pool=`.
 tokens" in mono with a caret (`tokenCount`), after Checklist, once the thread
 has a counted turn; reloaded after each turn. Its popover: a row per model
 (label, local or cloud muted, tokens in mono, GPU time in mono for local),
-then Total. In a project chat it replaces the plain "312k tokens": the same
+then Total, then one muted line, "Counts every request, cached reads
+included." (a long cached tool loop counts its context once per request). In a project chat it replaces the plain "312k tokens": the same
 rows for the whole project, then **By thread** (This chat, then each thread
 as a link, tokens and GPU time), and **Recent calls** linking to that tab
 filtered to the project. On a phone it is a line at the foot of the Context
@@ -64,7 +67,7 @@ pools left out), kept in the route (`web/src/route.ts`).
 **F. Docs.** DESIGN.md (Context and pace, the project facts line),
 docs/models.md, docs/delegation.md, docs/contracts.md, docs/daemon.md,
 docs/web.md, docs/ux.md (a thread's tokens row, "A project's usage", Recent
-calls; names Tokens, GPU time, By thread, All projects), and the status table
+calls; names Tokens, GPU time, By thread, All projects, and the muted line "Counts every request, cached reads included."), and the status table
 in docs/briefs/design.md. The guarantee, once: "Totals count her turns and her
 subagents' work; titles, images, speech and a project chat's looks at its
 threads carry no counts and aren't included."
