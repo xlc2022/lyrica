@@ -7,15 +7,13 @@ engines see your SearXNG asking, never who in Lyrica asked; they still see
 the query text.
 
 Lyrica never installs or runs it. You host it, then give her its address.
-Where this guide is unsure of SearXNG's current behaviour it says **check**;
-SearXNG's own docs (docs.searxng.org) are the reference.
+SearXNG's own documentation (docs.searxng.org) is the reference.
 
 ## Where to run it
 
 Anywhere Lyrica's server can reach over HTTP(S): a container on the same
 Proxmox, a machine on your LAN or tailnet, or a small VPS. Every thread
-uses it, private ones included, so pick a place you trust. 512 MB of
-memory is enough for one household.
+uses it, private ones included, so pick a place you trust.
 
 ### Docker (a VPS or a Proxmox LXC)
 
@@ -27,38 +25,38 @@ Features), as Docker needs it.
 ```yaml
 services:
   searxng:
-    image: searxng/searxng:latest   # pin a tag once it works
+    image: docker.io/searxng/searxng:latest   # pin a tag once it works
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8080:8080"       # only the local proxy reaches it
+      - "127.0.0.1:8080:8080"     # the container listens on 8080; only the local proxy reaches it
     volumes:
-      - ./searxng:/etc/searxng      # settings.yml (and limiter.toml) live here
-    environment:
-      - SEARXNG_BASE_URL=https://search.example.org/
+      - ./config:/etc/searxng     # settings.yml (and limiter.toml) live here
+      - ./data:/var/cache/searxng
 ```
 
-Put `settings.yml` (below) in `./searxng/`, then `docker compose up -d`.
-The image reads `/etc/searxng/settings.yml`. **Check** the image's README
-for the port and volume if a newer release changes them.
+Put `settings.yml` (below) in `./config/`, then `docker compose up -d`.
+SearXNG's own compose file also runs Valkey, which only the limiter needs;
+a private instance can leave it out.
 
 ### NixOS
 
 ```nix
 services.searx = {
-  enable = true;
-  package = pkgs.searxng;
+  enable = true;                              # package defaults to pkgs.searxng
+  domain = "search.example.org";
   environmentFile = "/run/secrets/searxng";   # holds SEARX_SECRET_KEY=…
   settings = {
     use_default_settings = true;
-    server = { bind_address = "127.0.0.1"; port = 8080; secret_key = "@SEARX_SECRET_KEY@"; limiter = false; image_proxy = false; };
+    server = { bind_address = "127.0.0.1"; port = 8080; secret_key = "$SEARX_SECRET_KEY"; limiter = false; image_proxy = false; };
     search = { formats = [ "html" "json" ]; safe_search = 0; default_lang = "auto"; };
   };
 };
 ```
 
-`services.searx.settings` is the same tree as `settings.yml` below.
-**Check** the option names against your channel's NixOS options; the
-`@…@` substitution from `environmentFile` keeps the key out of the store.
+`services.searx.settings` is the same tree as `settings.yml` below, and
+`$NAME` in it is filled from `environmentFile`, which keeps the key out of
+the Nix store. `services.searx.limiterSettings` is `limiter.toml`, and
+`redisCreateLocally = true` adds the Valkey the limiter needs.
 
 ## Configure it
 
@@ -73,12 +71,12 @@ server:
   image_proxy: false            # she reads results as text; no images to proxy
 
 search:
-  formats: [html, json]         # json is what Lyrica asks for; without it, 403
+  formats: [html, json]         # json is what Lyrica asks for; the default is html only, which answers her with 403
   safe_search: 0                # 0 off, 1 moderate, 2 strict
   default_lang: "auto"          # or "en", "de", …
 
 outgoing:
-  request_timeout: 3.0          # seconds each engine gets
+  request_timeout: 3.0          # seconds each engine gets (the default)
   max_request_timeout: 8.0      # the most any request may wait
 
 ui:                             # optional: only for using it in a browser
@@ -87,53 +85,47 @@ ui:                             # optional: only for using it in a browser
 
 ### Engines
 
-With `use_default_settings: true`, every default engine is on. Turn some
-off, or on, by name:
+With `use_default_settings: true`, the default engines load, and an entry
+under `engines:` changes the default engine of that name. DuckDuckGo,
+Brave, Wikipedia, GitHub and Stack Overflow are on by default; Google and
+Qwant are off. To turn one off, or on:
 
 ```yaml
 engines:
-  - name: google
-    disabled: true              # often blocked from a VPS's address
-  - name: qwant
+  - name: bing
     disabled: true
-  - name: duckduckgo
-    disabled: false
-  - name: brave
-    disabled: false
-  - name: wikipedia
-    disabled: false
-  - name: github
-    disabled: false
-  - name: stackoverflow
+  - name: google
     disabled: false
 ```
 
 An engine that keeps timing out or answering with a CAPTCHA only slows
-every search; turn it off. To keep a short list and drop all the others,
-`use_default_settings: { engines: { keep_only: [duckduckgo, brave, wikipedia, github, stackoverflow] } }`
-replaces the `true` above (**check** that `keep_only` and the engine names
-are current in SearXNG's settings docs).
+every search; turn it off. To load only a short list instead:
+
+```yaml
+use_default_settings:
+  engines:
+    keep_only: [duckduckgo, brave, wikipedia, github, stackoverflow]
+```
 
 ### The limiter
 
-The limiter and its bot detection (`limiter.toml`, next to `settings.yml`)
-protect a public instance from scrapers, and they need a Valkey or Redis
-beside SearXNG. A private instance that only Lyrica and you can reach
-doesn't need them: `server.limiter: false`. Left on, Lyrica's searches can
-be refused with 429 (she says so). If you keep it on, let Lyrica's address
-through in `limiter.toml`:
+The limiter and its bot detection protect a public instance from scrapers,
+and need a Valkey database (`valkey: url:` in `settings.yml`). It is off by
+default. A private instance that only Lyrica and you can reach doesn't
+need it: keep `server.limiter: false`. If you turn it on, Lyrica's
+searches can be refused with 429 (she says so), so let her address
+through in `limiter.toml`, which SearXNG reads from the same folder
+(`/etc/searxng/` in the container):
 
 ```toml
 [botdetection.ip_lists]
 pass_ip = ["100.64.0.0/10", "192.168.1.0/24"]   # her tailnet or LAN address
 ```
 
-(**check** the section name for your SearXNG version.)
-
 ### Applying changes
 
 SearXNG reads its settings at start: `docker compose restart searxng`, or
-on NixOS `nixos-rebuild switch` (which restarts the `searx` unit).
+on NixOS `nixos-rebuild switch` (which restarts `searx.service`).
 
 ### Testing it
 
@@ -154,7 +146,7 @@ from `search.formats`; a 429 means the limiter refused you.
   auth in the proxy (Caddy's `basic_auth` with a hash from `caddy
   hash-password`) and give Lyrica the address with the user and password
   in it: `https://lyrica:password@search.example.org`. She sends them as
-  basic auth.
+  basic auth, and Administration never shows the password again.
 
 ## Giving Lyrica the address
 

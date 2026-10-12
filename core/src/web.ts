@@ -14,9 +14,31 @@ export function searxngAddress(self: Db): string | null {
   return row?.value || null;
 }
 
-/** Sets or clears it; an http(s) URL, kept without a trailing slash. */
+/** What the API shows of an address: never its password, only whether there is one. */
+export function searxngView(address: string | null): { searxng: string | null; auth: boolean } {
+  if (!address) return { searxng: null, auth: false };
+  const url = new URL(address);
+  const auth = !!url.password;
+  url.password = "";
+  return { searxng: url.href.replace(/\/+$/, ""), auth };
+}
+
+/**
+ * Sets or clears it; an http(s) URL, kept without a trailing slash. An
+ * address with the stored one's user@host and no password keeps the stored
+ * password, since the API never shows it; a new password replaces it.
+ */
 export function setSearxngAddress(self: Db, address: string | null): string | null {
-  const a = checkSearxng(address);
+  let a = checkSearxng(address);
+  const stored = searxngAddress(self);
+  if (a && stored) {
+    const url = new URL(a);
+    const was = new URL(stored);
+    if (url.username && !url.password && was.password && url.username === was.username && url.host === was.host) {
+      url.password = was.password;
+      a = url.href.replace(/\/+$/, "");
+    }
+  }
   if (a) self.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(KEY, a);
   else self.prepare("DELETE FROM settings WHERE key = ?").run(KEY);
   return a;

@@ -2,7 +2,7 @@ import {
   AuthError, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, firstLine, GIT_KINDS, sentenceCiting, splitId,
   type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
-  searxngAddress, searxngStatus, setSearxngAddress,
+  searxngAddress, searxngStatus, searxngView, setSearxngAddress,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
@@ -1301,13 +1301,13 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("GET", `${u}/admin/web-search`, async (r): Promise<Api.WebSearch> => {
       d.adminFor(r);
       const searxng = searxngAddress(d.keyring.self());
-      return { searxng, ...await searxngStatus(searxng) };
+      return { ...searxngView(searxng), ...await searxngStatus(searxng) };
     }),
     route("PUT", `${u}/admin/web-search`, async (r): Promise<Api.WebSearch> => {
       d.adminFor(r);
       const { searxng } = await r.json<Pick<Api.WebSearch, "searxng">>();
       const saved = setSearxngAddress(d.keyring.self(), typeof searxng === "string" ? searxng : null);
-      return { searxng: saved, ...await searxngStatus(saved) };
+      return { ...searxngView(saved), ...await searxngStatus(saved) };
     }),
     route("GET", `${u}/admin/proposals`, (r): Api.PersonaProposal[] => {
       d.adminFor(r);

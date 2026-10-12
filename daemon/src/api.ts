@@ -1600,9 +1600,11 @@ export interface SleepTime { time: string }
 /**
  * GET /api/u/:userId/admin/web-search → WebSearch; PUT `{ searxng }` → WebSearch (null or "" clears it).
  * The server's SearXNG, for every thread's web_search; the state is a test search made on each call.
- * `reason` says why it is unreachable. Administrators.
+ * `reason` says why it is unreachable. A password in the address (basic auth) is never sent back:
+ * `searxng` comes without it and `auth` says one is stored; a PUT with the same user@host and no
+ * password keeps it, and one with a password replaces it. Administrators.
  */
-export interface WebSearch { searxng: string | null; state: "reachable" | "unreachable" | "unset"; reason?: string }
+export interface WebSearch { searxng: string | null; auth: boolean; state: "reachable" | "unreachable" | "unset"; reason?: string }
 
 export interface PersonaProposal {
   id: number;

@@ -324,7 +324,8 @@ A thread's address may carry what the panel beside it shows:
   next visit) and their allowed folders, Sleep (**Sleep time**, `type="time"`, one Save;
   `GET`/`PUT …/admin/sleep`), Start unlocked (saving the `self.db`
   passphrase), **Tailnet**, Web access, **Web search** (`src/WebSearch.tsx`:
-  **SearXNG address** in mono, one Save, and Reachable or Unreachable as a
+  **SearXNG address** in mono, without its password (a basic-auth password
+  is kept when the user@host is unchanged), one Save, and Reachable or Unreachable as a
   dot and a word, what failed as its tooltip; `GET`/`PUT …/admin/web-search`),
   **Updates**, and **Persona**: her
   **Name** at the top (one field, Save, and the sentence that memories and

@@ -885,9 +885,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 - **Web search** (`core/src/web.ts`): the server's SearXNG address is
   `self.db` `settings` `web.searxng` (`searxngAddress`,
   `setSearxngAddress`); `GET`/`PUT /api/u/:userId/admin/web-search` →
-  `WebSearch { searxng: string | null, state: "reachable" | "unreachable"
-  | "unset", reason? }`, administrators only, the state from a test search
-  on each call; `PUT { searxng }` with null or "" clears it.
+  `WebSearch { searxng: string | null, auth, state: "reachable" |
+  "unreachable" | "unset", reason? }`, administrators only, the state from
+  a test search on each call; `PUT { searxng }` with null or "" clears it.
+  A password in the address (basic auth) is never sent back: `searxng`
+  comes without it and `auth` says one is stored; a `PUT` with the same
+  user@host and no password keeps it, one with a password replaces it.
   `ThreadSettings.searchProvider` says whether one is set.
   `HostOptions.searxng` and `DelegationOptions.searxng` give it to sessions.
 - **HTTP/SSE API**, defined in `daemon/src/api.ts` and described in
