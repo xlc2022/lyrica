@@ -130,16 +130,34 @@ export class ChildThreads implements ThreadsHost {
    * the limit, like a start of hers.
    */
   async startFrom(userId: string, pool: Pool, project: string, anchor: number, req: { title: string; task: string }): Promise<string> {
-    const view = this.o.memory.openThreadView(userId, pool);
-    try {
-      const user = this.o.users.get(userId)!;
-      const ctx = { user, pool, interface: view.own.getThread(project)!.interface, threadId: project, view, call: this.o.models.callContext(userId, pool, project) } as ThreadContext;
+    return this.asProjectChat(userId, pool, project, async (ctx) => {
       const made = await this.start(ctx, req);
       this.db(userId, (db) => db.prepare("UPDATE child_threads SET anchor = ? WHERE pool = ? AND thread = ?").run(anchor, pool, made.id));
       return made.id;
+    });
+  }
+
+  /** A look's line to a thread (watch.ts): sent as the project chat's `threads message` sends it, marked as from the project chat. */
+  tellFromProject(userId: string, pool: Pool, project: string, to: string, text: string): Promise<void> {
+    return this.asProjectChat(userId, pool, project, (ctx) => this.message(ctx, to, text));
+  }
+
+  private async asProjectChat<T>(userId: string, pool: Pool, project: string, fn: (ctx: ThreadContext) => Promise<T>): Promise<T> {
+    const view = this.o.memory.openThreadView(userId, pool);
+    try {
+      const user = this.o.users.get(userId)!;
+      return await fn({ user, pool, interface: view.own.getThread(project)!.interface, threadId: project, view, call: this.o.models.callContext(userId, pool, project) } as ThreadContext);
     } finally {
       view.close();
     }
+  }
+
+  /** A look's entry in the project chat, without a turn: as a delivery is stored. */
+  storeLook(userId: string, pool: Pool, project: string, content: string, details: object): void {
+    const ref = { user: { id: userId }, pool, threadId: project } as Parameters<Delegation["deliver"]>[0];
+    const d = { ...details, id: randomBytes(8).toString("hex") };
+    this.o.delegation.deliver(ref, content, d);
+    this.o.host().delivered(userId, pool, project, content, d);
   }
 
   async message(from: ThreadContext, to: string, text: string, opts: { needsYou?: boolean } = {}): Promise<void> {

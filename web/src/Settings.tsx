@@ -18,6 +18,7 @@ export const TASK_LABELS: Record<ThreadTask, string> = {
   "subagent.cheap": "Cheap subagents",
   "subagent.strong": "Strong subagents",
   title: "Titles",
+  watching: "Watching threads",
   "speech.transcribe": "Dictation",
   "speech.speak": "Read aloud",
 };

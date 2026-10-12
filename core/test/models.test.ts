@@ -212,13 +212,15 @@ describe("migrating to permanent IDs", () => {
     const deepseek = models.find(li.id, "openrouter/deepseek/deepseek-4.1-flash") as { offeringId: string };
     expect(models.offering(li.id, deepseek.offeringId)!.offering).toMatchObject({ manual: true });
     expect(qwen).toMatchObject({ modelId: "qwen3.8-27b", contextWindow: 32768, tools: true });
-    expect(models.profile(li.id, "cloud")).toEqual({ chat: [deepseek] });
-    expect(models.profile(li.id, "local")).toEqual({ chat: [{ offeringId: qwen!.id }] });
+    // Watching, a task added later, follows cheap subagents in a stored profile.
+    const later = { watching: { same: "subagent.cheap" } };
+    expect(models.profile(li.id, "cloud")).toEqual({ chat: [deepseek], ...later });
+    expect(models.profile(li.id, "local")).toEqual({ chat: [{ offeringId: qwen!.id }], ...later });
     expect(models.callContext(li.id, "private", "web/p").overrides).toEqual({ chat: [{ offeringId: qwen!.id }] });
     expect(models.notice(li.id)).toEqual(["Models that no longer existed were taken out of your lists: shared.lan/long-gone."]);
     // Bob was locked; his shared reference migrates when he next opens.
     await users.authenticate("bob", "pw");
-    expect(models.profile(bob.id, "local")).toEqual({ chat: [{ offeringId: qwen!.id }] });
+    expect(models.profile(bob.id, "local")).toEqual({ chat: [{ offeringId: qwen!.id }], ...later });
   });
 });
 

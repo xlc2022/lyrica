@@ -324,7 +324,11 @@ A thread's address may carry what the panel beside it shows:
   and the stored copy replaces the live one.
 - In a project chat, a look at its threads (a message with `from.kind ===
   "watching"`) is the marker **Checked the other threads**, with "· told 2"
-  (the count in mono) when her next turn messaged threads. It expands to the
+  (the count in mono) when her next turn messaged threads. A look made by
+  one model call carries `from.told` (each thread told, `threadId`, and the
+  line sent, `text`), and its text is `In [t:<id>]: …` lines, then `Told`
+  lines and maybe `Raised: "…"`; live, it is a `notice` event with
+  `status: "watching"` and `told`. It expands to the
   threads looked at and, for each thread she told, the thread and what she
   sent; those `threads message` calls fold into it instead of showing as
   cards. It is never the user's bubble, and nothing shows when the setting
