@@ -514,7 +514,8 @@ cloud, custom), each mapping tasks (main conversation, subagents, titles,
 sleep, dictation, read aloud and so on) to ordered lists of models; the
 first model that answers is used, and private and local-only threads use
 the local profile only. Dictation uses the local profile too, unless a
-thread picks its own model, so its `speech.transcribe` list goes there. See [docs/models.md](../models.md).
+thread picks its own model, so its `speech.transcribe` list goes there.
+See [docs/models.md](../models.md).
 
 - **A cloud or OpenAI-compatible endpoint:** Models, Hosts and endpoints,
   **Add endpoint** (Name, Kind local or cloud, Base URL, API key). Shared

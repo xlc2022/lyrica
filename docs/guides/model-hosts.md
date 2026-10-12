@@ -302,7 +302,7 @@ Measured on an RTX 3090 (24 GB) with Qwen3.8-27B Q4_K_M on llama.cpp:
 | 336k (stretch factor 2) | q4_0 | Loads: 23.8 GB |
 | 352k | q4_0 | Refused at load, too big |
 | 384k and up | q4_0 | Refused when saved |
-| 600k | q4_0 | Doesn't fit: 3.6 GB short; needs 48 GB |
+| 600k | q4_0 | Refused when saved: 3.6 GB short; needs 48 GB |
 
 So the 600k stretch needs a 48 GB GPU; on 24 GB, stay at 336k or below.
 A night's sleep ran cleanly on this model at 128k in 7.5 minutes.
