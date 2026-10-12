@@ -467,7 +467,11 @@ shared host needs an administrator. Serving settings go only through
 **Serving** (the Serving tab): `servingSettings`, `setServingSettings` and
 `reloadModel` read and save one host model's placement and serving settings
 and apply them now. The host
-refuses a placement that can't work, with its reason. The context a host
+refuses a placement that can't work after accounting for other programs
+and kept-free VRAM, with its reason. A refused reload keeps the serving
+instance; a failed replacement load reverts the saved settings and attempts
+to restore the previous instance, reporting the original load error even
+if restoration fails. The context a host
 serves a model with is the offering's context window, over one set by hand
 or discovered; compaction and group fitting plan by it.
 

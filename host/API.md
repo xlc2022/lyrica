@@ -236,7 +236,10 @@ seconds of audio.
   its GPUs; `in_use` while a request is running on it.
 - `POST /host/v1/models/reload` `{ "model": "<id>" }`: applies its saved
   settings now, by unloading and loading it again; `in_use` while busy.
-  Nothing happens to a model that isn't loaded.
+  A refused placement leaves the previous instance serving. If the new load
+  fails after unloading, the host reverts the saved settings and attempts to
+  reload the previous instance. It reports the original load error even if
+  restoration fails. Nothing happens to a model that isn't loaded.
 - `POST /host/v1/models/pin` `{ "model": "<id>", "pinned": true }`: a pinned
   model is loaded now, where its placement says, and kept loaded; it is
   never unloaded to make room. Pins survive a restart.
@@ -244,7 +247,24 @@ seconds of audio.
 ### Placement and serving settings
 
 Each model has a placement and serving settings, kept in the host's data
-volume. They apply at its next load, or at once with Reload.
+volume. They apply at its next load, or at once with Reload. Save-time fit
+checks subtract memory currently used by other programs (GPU usage minus
+this host's loaded models) and the GPU's kept-free amount. Load refusal
+messages include pinned, other-program and kept-free memory.
+
+llama.cpp loads are confirmed through the router's `/models` status. A child
+that fails to load returns `model_unavailable`. If a serving child disappears
+and the router says the model is not loaded, the host returns a 503
+`model_unavailable`, marks it unloaded, and loads again on the next request.
+
+For vLLM chat, the host selects parsers from `config.json` family metadata:
+Qwen2.5 uses `hermes` for tools; Qwen3.x uses `hermes` and `qwen3` for
+reasoning. Llama 3.x families use `llama3_json`; Llama 2 and plain `llama`
+receive no tool parser. Mistral/Mixtral uses `mistral`. DeepSeek uses
+`deepseek_v3` for tools, with `deepseek_r1` for reasoning only when the
+model name or family contains `r1`. Tool parsers enable automatic
+tool choice. Unknown families receive no tool flags and report `tools: false`;
+embeddings and dictation receive neither parser.
 
 - `GET /host/v1/models/settings?model=<id>` answers
   `{ "model": "<id>", "settings": { ... }, "contextLength": 32768,

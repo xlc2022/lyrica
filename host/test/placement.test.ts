@@ -11,6 +11,13 @@ describe("placements, as they are saved", () => {
   const llama = textModel("llama", 20, { contextLength: 131072, kvPerToken: 2 * 64 * 8 * 128 });
   const vllm = textModel("vllm", 20, { server: "vllm", format: "safetensors", contextLength: 131072 });
 
+  it("subtracts memory used by other programs at save time", () => {
+    const m = textModel("near-limit", 21);
+    const body = { placement: { mode: "auto" } };
+    expect(() => validate(m, body, [{ ...gpu(0, 24), used: 0 }], all)).not.toThrow();
+    expect(() => validate(m, body, [{ ...gpu(0, 24), used: GIB }], all)).toThrow();
+  });
+
   it("accepts Auto, one GPU, or several with a split", () => {
     expect(validate(llama, { placement: { mode: "auto" } }, gpus, all).placement).toEqual({ mode: "auto" });
     expect(() => validate(llama, { placement: { mode: "gpus", gpus: [2] }, contextLength: 65536 }, gpus, all)).not.toThrow();
@@ -25,7 +32,7 @@ describe("placements, as they are saved", () => {
   });
 
   it("refuses a model too big for its GPUs even when empty, and a context too big for them", () => {
-    expect(() => validate(textModel("huge", 40), { placement: { mode: "gpus", gpus: [0] } }, gpus, all)).toThrow(/needs about .* GB on GPU 0, which has 23\.5 GB to give/);
+    expect(() => validate(textModel("huge", 40), { placement: { mode: "gpus", gpus: [0] } }, gpus, all)).toThrow(/needs about .* GB on GPU 0, which has 22\.5 GB to give/);
     // 20 GB of weights fit on a 24 GB GPU; 128k of KV cache (32 GB) doesn't.
     expect(() => validate(llama, { placement: { mode: "gpus", gpus: [0] }, contextLength: 131072 }, gpus, all)).toThrow(/A context of 131072 tokens needs about .* GB more than GPU 0 has; lower the context length\./);
     expect(() => validate(llama, { placement: { mode: "auto" }, contextLength: 262144 }, gpus, all)).toThrow("trained for 131072 tokens");
@@ -40,7 +47,7 @@ describe("placements, as they are saved", () => {
     const one = { mode: "gpus", gpus: [0] };
     expect(() => validate(vllm, { placement: one, memoryShare: 0.5 }, gpus, all)).toThrow(/weights need about .* more than vLLM's share of 12\.0 GB; raise the memory share/);
     // 20 GB of weights fit in 95% of 24 GB; 128k of KV cache beside them doesn't.
-    expect(() => validate(vllm, { placement: one, memoryShare: 0.95, contextLength: 8192 }, gpus, all)).not.toThrow();
+    expect(() => validate(vllm, { placement: one, memoryShare: 0.95, contextLength: 8192 }, gpus.map((g) => ({ ...g, used: 0 })), all)).not.toThrow();
     expect(() => validate(vllm, { placement: one, memoryShare: 0.95, contextLength: 131072 }, gpus, all)).toThrow(/A context of 131072 tokens needs about .* GB more than vLLM's share of GPU 0; lower the context length\./);
   });
 

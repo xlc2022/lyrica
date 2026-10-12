@@ -51,6 +51,8 @@ export interface TextModel {
   remoteCode: boolean;
   /** A speech model's ONNX file, relative to its folder. */
   onnx?: string;
+  toolCallParser?: string;
+  reasoningParser?: string;
 }
 
 const SHARD = /-(\d{5})-of-(\d{5})\.gguf$/;
@@ -64,6 +66,18 @@ function templateCapabilities(template: string | null): Pick<Capabilities, "tool
     tools: !!template && /\btools\b/.test(template),
     reasoning: template && /enable_thinking|<think>/.test(template) ? ["off", "on"] : null,
   };
+}
+
+/** Parsers for families whose tool format the host can serve. */
+export function familyParsers(family: string, name = ""): { toolCallParser?: string; reasoningParser?: string } {
+  const f = family.toLowerCase().replace(/[_ .-]/g, "");
+  if (f.startsWith("qwen3")) return { toolCallParser: "hermes", reasoningParser: "qwen3" };
+  if (f.startsWith("qwen2")) return { toolCallParser: "hermes" };
+  // Llama 3's config says only "llama", like Llama 2's: the name tells them apart.
+  if (f.startsWith("llama") && /llama[\s._-]*3/i.test(`${family} ${name}`)) return { toolCallParser: "llama3_json" };
+  if (f.startsWith("mistral") || f.startsWith("mixtral")) return { toolCallParser: "mistral" };
+  if (f.startsWith("deepseek")) return { toolCallParser: "deepseek_v3", ...(/r1/i.test(`${family} ${name}`) ? { reasoningParser: "deepseek_r1" } : {}) };
+  return {};
 }
 
 function ggufModel(root: string, path: string, siblings: string[]): TextModel | null {
@@ -90,6 +104,7 @@ function ggufModel(root: string, path: string, siblings: string[]): TextModel | 
     id: relative(root, path).split("\\").join("/"),
     kind: embedding ? "embedding" : "chat",
     server: "llamacpp",
+    ...familyParsers(arch, str(meta["general.name"]) ?? basename(path)),
     format: "gguf",
     size,
     identity: {
@@ -168,14 +183,17 @@ function vllmModel(root: string, dir: string, files: string[]): TextModel | null
   const embedding = files.includes("modules.json");
   if (config.architectures.some((a: unknown) => TRANSCRIBE.includes(a as string))) return transcribeModel(root, dir, config, size);
   const text = config.text_config ?? config;
+  const parsers = familyParsers(text.model_type ?? config.model_type ?? config.architectures[0] ?? "", basename(dir));
+  const caps = templateCapabilities(embedding ? null : template);
   return {
     id: relative(root, dir).split("\\").join("/"),
     kind: embedding ? "embedding" : "chat",
     server: "vllm",
+    ...parsers,
     format: "safetensors",
     size,
     identity: { basename: basename(dir), sizeLabel: null, finetune: null, baseModels: [] },
-    capabilities: { ...templateCapabilities(embedding ? null : template), vision: !!config.vision_config && !embedding, embedding },
+    capabilities: { ...caps, tools: caps.tools && !!parsers.toolCallParser, vision: !!config.vision_config && !embedding, embedding },
     contextLength: typeof text.max_position_embeddings === "number" ? text.max_position_embeddings : null,
     kvPerToken: kvElements(configKvLayers(text), text.hidden_size, text.num_attention_heads, text.num_key_value_heads ?? text.num_attention_heads, text.head_dim),
     mmproj: null,

@@ -188,7 +188,7 @@ export class Runtime {
       const model = this.find(body.model);
       if (!body.settings || typeof body.settings !== "object") throw invalid("settings is needed.");
       // Refused when saved if the placement can't work, with the reason. Applies at the next load, or on Reload.
-      const saved = validate(model, body.settings as Record<string, unknown>, s.gpusFor(serverOf(model)), (i) => s.gpuSettings(i), s.onCpu(model));
+      const saved = validate(model, body.settings as Record<string, unknown>, await s.validationGpus(serverOf(model)), (i) => s.gpuSettings(i), s.onCpu(model));
       // A stretch past what the publisher documents was never tested by them: saved only when asked for anyway.
       const rec = this.state.get().recommended[model.id];
       if (saved.stretch && rec?.factor && saved.stretch.factor > rec.factor && body.anyway !== true) {
@@ -391,6 +391,18 @@ export class Runtime {
         r.on("error", () => reject(new HostError(503, "model_unavailable", `The ${SERVER_NAMES[serverOf(model)]} server didn't answer.`)));
         r.end(raw);
       });
+      if (model.server === "llamacpp" && upstream.statusCode === 400) {
+        const chunks: Buffer[] = [];
+        for await (const chunk of upstream) chunks.push(Buffer.from(chunk));
+        const error = Buffer.concat(chunks);
+        if (/model (?:is )?not loaded/i.test(error.toString("utf8"))) {
+          this.scheduler.missing(model.id);
+          throw new HostError(503, "model_unavailable", "llama.cpp no longer has this model loaded; try again.");
+        }
+        res.writeHead(400, { "content-type": upstream.headers["content-type"] ?? "application/json" });
+        res.end(error);
+        return;
+      }
       res.writeHead(upstream.statusCode ?? 502, { "content-type": upstream.headers["content-type"] ?? "application/json", "cache-control": "no-store" });
       // A server that dies half way through ends the answer: "close" always
       // comes, and an answer cut short isn't "complete".
