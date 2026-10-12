@@ -509,8 +509,8 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   of a thread with repositories, with the repository list and their
   folders: a branch per piece of work, never commits on the default
   branch, merge or rebase the base before pushing, a pull request, wait
-  for CI and never merge on red, the merge queue where there is one, delete
-  merged branches. The project's instructions win where they differ.
+  for CI, read a failing check's log and never merge on red, the merge
+  queue where there is one, delete merged branches. The project's instructions win where they differ.
 
 ## Her own code
 
@@ -525,8 +525,13 @@ her account is general.
 - **The repository's settings**, Li's to set, once:
   1. Her GitHub account as a collaborator with **Write**.
   2. Under her account, a fine-grained token for this repository only,
-     with **Contents** and **Pull requests** read and write, added in
-     Settings → Git accounts as a GitHub account.
+     with **Contents** and **Pull requests** read and write and
+     **Actions** read, added in Settings → Git accounts as a GitHub
+     account. Actions read lets her see why a check failed
+     (`gh pr checks`, `gh run view --log-failed`); re-running a job stays
+     with the reviewers. GitHub serves a job's log from storage hosts
+     that change, so reading logs needs the thread's internet on, not
+     only allowed hosts.
   3. A branch protection rule (or ruleset) on `main`: pull requests only,
      the CI jobs from `.github/workflows/ci.yml` required, one approval;
      "Do not allow bypassing" off, so Li's account, which Claude's threads
