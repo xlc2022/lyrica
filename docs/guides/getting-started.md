@@ -829,9 +829,10 @@ the SSH ones, and `ssh remove <name>` takes one away.
   next unlock; if another release is running by then (a rebuild or a
   rollback), that probation just ends. An install from before the unit
   existed gets it on its next `install.sh` run, NixOS on its next
-  rebuild; an Update doesn't add it. The Updates page shows each step; the updater's state is in
-  `/var/lib/lyrica-update`. An update installs no packages: when a release
-  needs a new one, install it by hand or run `install.sh` from a checkout.
+  rebuild; an Update doesn't add it. The Updates page shows each step;
+  the updater's state is in `/var/lib/lyrica-update`. An update installs
+  no packages: when a release needs a new one, install it by hand or run
+  `install.sh` from a checkout.
 - **Rollback:** under Updates, **Roll back** in a kept release's ⋯ goes
   back to it. As root, `lyrica-rollback` goes back to the previous
   release, or `lyrica-rollback <commit>` to another kept one. When that
