@@ -107,7 +107,7 @@ Rules:
   Move to group, Change password…, Change password, Sampling, Serving, Placement, Memory,
   Throughput, Template, Pinned, Excluded, Servers, Keep free, Not this
   model, Group, Add…, Reset, Dictation, Dictate, Read aloud, Stop reading,
-  Read aloud while agent writes, Local services (localhost), Fallback, Sleep fallback, Sleep, Sleep now, Start a chat, Last night, Earlier, Questions, Skipped, Stopped early, Nothing changed, Sleeping…, Thoughts, Dream, Sleep time, Nightly at, Only when I ask, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, Thread settings, New threads, This chat, Threads, Watching threads, Checked the other threads, Raised with you, Message received from, Show more, Show less, Open as a page, Close panel,
+  Read aloud while agent writes, Local services (localhost), Fallback, Sleep fallback, Sleep, Sleep now, Start a chat, Last night, Earlier, Questions, Skipped, Stopped early, Nothing changed, Sleeping…, Thoughts, Dream, Sleep time, Nightly at, Only when I ask, Voice, Speed, Pin, Unpin, Project, New project, Make project, Project settings, Thread settings, New threads, This chat, Threads, Watching threads, Checked the other threads, Raised with you, Message received from, Wake-up, Woke up, Show more, Show less, Open as a page, Close panel,
   Start a thread, Suggested threads, Start all, Resolve, Reopen, Resolved,
   Memory, Pages, Notes, WAKE, Journal, User introduced, Add a memory, Came
   from, Used in, History, Restore, Archive, Preview, Edit, Remember this,
