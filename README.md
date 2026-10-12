@@ -54,9 +54,10 @@ The repository was rebuilt from scratch starting 2026-10-09.
   text and image models, their downloads and hub tokens.
 - Releases with automatic rollback, and numbered database migrations.
 
-Not built yet: `lyrica chat` and `lyrica mem` (clients of `lyricad`), images
-in conversation, and calendar and sorting. After that comes living with her
-for a few weeks while keeping the evals and a friction log.
+Not built yet: `lyrica chat` and `lyrica mem` (clients of `lyricad`) and images
+in conversation. A calendar and sorting data wait until real use asks. Next
+comes living with her for a few weeks while keeping the evals and a friction
+log.
 
 ## Layout
 
