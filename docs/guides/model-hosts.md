@@ -92,6 +92,16 @@ git clone https://github.com/xlc2022/lyrica && cd lyrica
 host/install.sh
 ```
 
+On NixOS, add the `model-host` module and `nixos-rebuild switch` first
+([host/README.md](../../host/README.md), "On NixOS"), then clone into its
+`checkout` folder. `/srv` belongs to root, so make the folder yours first:
+
+```sh
+sudo mkdir -p /srv/lyrica-host && sudo chown "$USER" /srv/lyrica-host
+git clone https://github.com/xlc2022/lyrica /srv/lyrica-host && cd /srv/lyrica-host
+host/install.sh
+```
+
 It first checks the GPU, the driver and Docker's GPU support, and for AMD
 picks ROCm or Vulkan. Then it asks three questions, each with a default:
 the host's name (lower-case letters, digits and dashes;
