@@ -188,8 +188,12 @@ profile, and outside Custom they keep to one kind.
 
 `same` names a task of the same kind (text, embeddings, images, speech) that doesn't
 itself follow another, so it is one level deep. A profile's first entry
-brings the defaults: titles and compaction follow cheap subagents, and the
-sleep phases follow strong subagents. The compaction entry is stored but
+brings the defaults: titles, compaction and watching follow cheap
+subagents, and the sleep phases follow strong subagents. Watching came
+later, so a profile stored without an entry for it reads as following
+cheap subagents too, unless cheap subagents themselves follow another task. Only a project chat
+has a `watching` list of its own, since only it makes looks: setting one on
+any other thread is refused. The compaction entry is stored but
 unused, since compaction uses the thread's chat model. A task with no list follows chat,
 except embeddings, the image tasks and the speech tasks.
 
@@ -242,8 +246,9 @@ skipped because its machine is down or stale, `resolve` throws `Offline`
 (a `NoModel`, with the task and what was tried); a list where nothing fits
 the call is a plain `NoModel`. Before throwing it, `resolveLive` asks those
 machines again, in order, so one that has just come back answers at once.
-`callWithFallback` runs a call that isn't a Pi turn (a title, and speech and
-images when they come) on each model in turn: a machine that can't be
+`callWithFallback` runs a call that isn't a Pi turn (a title, a look at a
+project's threads (`watching`, "Watching threads", in the project chat's
+context), and speech and images when they come) on each model in turn: a machine that can't be
 reached or is away (`isUnreachable`) is marked down and the next tries (a
 host's `model_unavailable` marks only that model down), any
 other failure is the call's own, and when none answers it throws `Offline`

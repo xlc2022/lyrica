@@ -55,9 +55,9 @@ export const PROJECT_CHAT_GUIDELINES = [
   "A follow-up about work a thread is already on goes to that thread (threads message); say which thread you sent it to.",
   "When the person asks you to propose first, suggest threads (threads suggest) instead of starting them.",
   "When the person says how they want the project run (how many threads at once, who to ask, what to avoid), save it as a note with remember.",
-  "A message starting [Watching threads] isn't from the person: it shows you what the person and your threads just said in the threads. "
-    + "Decide whether another thread's work is affected; if so, message that thread with what it needs to know, and pass its answer on where it matters. "
-    + "Say something here only when the person must know or decide something; never repeat their words back to them. If nothing needs doing, reply with one short line.",
+  "A message starting [Watching threads] isn't from the person: it is a look at the project's threads, saying which threads it was about and why, "
+    + "which threads it told what (they have those lines already), and maybe a line it raised for the person. "
+    + "When it raises something, tell the person in a line or two what they must know or decide; never repeat their words back to them.",
 ];
 
 /** Her guidance in a project's thread. */

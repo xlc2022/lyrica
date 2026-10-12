@@ -479,7 +479,8 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   mode or when the pool has no Git account.
 - **Clones.** At the start of each turn, `cloneFor` clones each repository
   into the thread's own folder in the home workspace (`repos/<name>`,
-  mounted at `/workspace/repos`; a subagent uses its parent's) or fetches
+  mounted at `/workspace/repos`; a subagent uses its parent's, read-only
+  unless it is an unnarrowed writer) or fetches
   it, in the sandbox with that run's credential. A clone that fails is a
   line in the turn's prompt, not an error. A clone stays when its
   repository leaves the thread, since it may hold unpushed work; it goes
@@ -570,6 +571,10 @@ settings:
 - **Machines:** the parent's or a subset. Delegation gives none to a read-only,
   offline or folder-narrowed subagent or child thread, or to a writer in a
   worktree, since bash on a machine follows none of those narrowings.
+- **Repositories:** a subagent works in its parent's clones. One that gets
+  no machines gets no repositories or credentials either, and its sandbox
+  mounts those clones read-only, so it can't change their working trees or
+  commits.
 
 A subagent can never widen what its parent was given. `inheritSettings`
 copies the parent's settings, or the narrower ones it is given, and the

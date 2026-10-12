@@ -1,6 +1,6 @@
 # Contracts
 
-**Status: proposed.** These are the interfaces between components. Feature
+These are the interfaces between components, as built. Feature
 threads build against them. If a thread needs a contract to change, it says so
 in its pull request, and the design thread updates this page. Signatures are
 sketches; names may move, but the boundaries may not.
@@ -18,9 +18,11 @@ sketches; names may move, but the boundaries may not.
 core/        keyring, users, stores, model router (no Pi dependency)
 extension/   the Lyrica Pi extension (depends on core)
 daemon/      lyricad: auth, session hosting, HTTP/SSE API, scheduler
+host/        the model host: a Docker Compose stack for a GPU machine
 web/         web chat, control panel, memory browser, sleep sidebar
 persona/     seed, imported into self.db on first run
 bin/         launchers and admin commands
+evals/       continuity scenarios, run with `npm run evals`
 ```
 
 ## Vocabulary
@@ -183,7 +185,7 @@ renderThreadMentions(text, titleOf: (id, pool?) => string | undefined): string  
 ```ts
 class Memory {                                // new Memory(keyring, users)
   openThreadView(userId, pool): PoolView      // conversations, tools and sleep
-  openOwnerView(userId): OwnerView            // memory browser and lyrica mem only
+  openOwnerView(userId): OwnerView            // memory browser only
 }
 interface PoolView { pool; own: PoolStore; reads: PoolReader[]; close() }
 // general: own = general.db, reads = []
@@ -243,7 +245,7 @@ refuses a sleep edit that doesn't keep the latest user-written text word for
 word: sleep can only add around it.
 
 **Owner view.** `openOwnerView(userId)` gives the signed-in user read and write
-access to both of their own pools, for the memory browser and `lyrica mem`.
+access to both of their own pools, for the memory browser.
 It is never passed to the extension, a Pi session or sleep.
 
 **Pages can describe folders.** A page has an optional `folders` list of host
@@ -304,8 +306,8 @@ the project chat where it branched (anchors live in `user.db`).
 ## core/models: the cloud boundary lives here
 
 ```ts
-type Task = "chat" | "subagent.cheap" | "subagent.strong" | "compaction" | "title" | "embedding"
-          | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "image.create" | "image.edit"
+type Task = "chat" | "subagent.cheap" | "subagent.strong" | "compaction" | "title" | "watching"
+          | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "image.create" | "image.edit"
           | "speech.transcribe" | "speech.speak";
 type ThinkingLevel = "off" | "low" | "medium" | "high";
 
@@ -498,6 +500,12 @@ class Models {                                              // new Models(keyrin
   with an administrator actor. A `user.db` is migrated, has pending shared
   redirects applied, and is indexed into `shared_refs` the first time it is
   opened in a process.
+- **Watching.** `watching` ("Watching threads") is a text task: a new
+  profile starts it following `subagent.cheap`, and a stored profile with
+  no entry for it reads as following `subagent.cheap` too (unless that
+  itself follows another task). It is a thread task (`THREAD_TASKS` in
+  daemon/src/api.ts) for project chats only: the project chat can choose
+  its own, and `PATCH …/settings` choosing it for any other thread is 400.
 - **Speech.** `speech.transcribe` and `speech.speak` have lists of their
   own (neither follows chat) and take models with the `transcribe` or
   `speak` capability, reported by a host or set by hand. `transcribe` and
@@ -828,32 +836,33 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   (`SetupRequest { code, passphrase, saveCredentials?, name?, admin: { login,
   password, displayName, pronouns? } }` → `LoginResponse`) answer, on
   loopback, the Unix socket and the Direct listener; the one-time code is
-  logged at start and in `<runtime>/setup-code` (0600). `State.name` (her
-  deployment name, `self.db` `settings` `self.name`, default Lyrica, with a
-  copy in `<runtime>/name` for while locked) answers in every state; `GET`/`PUT
-  /api/u/:userId/admin/name` `NameSetting { name }`; `PersonaStore.read()`
-  puts it in REGISTER's `Name:` line; `DelegationOptions.name` gives it to
-  subagents. The tailnet, through the `tailscale` CLI against her own
-  tailscaled's socket (`lyrica-tailscaled.service`, userspace networking,
-  the `lyrica` user; `daemon/src/tailnet.ts`, `Services.tailnet`,
-  `LyricadOptions.tailnet { binary?, socket? }`): `GET
-  /api/u/:userId/admin/tailnet` → `Tailnet { state, tailnet?, address?,
-  dnsName?, hostname?, controlServer?, version?, reason? }`; `PUT` with
-  `TailnetJoin { authKey, hostname?, controlServer?, leave? }` (409 when
-  joined without `leave`); `POST …/disconnect`, `POST …/connect`, `DELETE`
-  (leave; turns the Tailnet web mode off). The auth key is written to a 0600
-  file for `--auth-key=file:` and deleted at once, never stored or logged.
-  `Request.via: "tailnet"` marks a request on the serve port
-  (`LyricadOptions.web.servePort`, 7342); disconnect, leave and a join that
-  leaves are 409 then. `WebMode` gains `"direct"` (the extra listener on
-  every LAN and Tailscale address, port 7340 (`web.directPort`), HTTPS with
-  lyricad's own certificate, no proxy list; the mode she starts in;
-  `WebAccess.direct: { addresses, port, fingerprint, pem }`,
-  `WebAccessStatus.direct`) and `"tailnet"` (`tailscale serve` to the serve
-  port; `WebAccess.tailnet: { dnsName, certificates }`,
-  `WebAccessStatus.tailnet`), and `frontDoor` includes the Direct port on
-  this machine's addresses and, in Tailnet, 443 on her Tailscale address and
-  DNS name. All additive.
+  logged at start and in `<runtime>/setup-code` (0600).
+  - **Name.** `State.name` (her deployment name, `self.db` `settings`
+    `self.name`, default Lyrica, with a copy in `<runtime>/name` for while
+    locked) answers in every state; `GET`/`PUT /api/u/:userId/admin/name`
+    `NameSetting { name }`; `PersonaStore.read()` puts it in REGISTER's
+    `Name:` line; `DelegationOptions.name` gives it to subagents.
+  - **Tailnet.** Through the `tailscale` CLI against her own
+    tailscaled's socket (`lyrica-tailscaled.service`, userspace networking,
+    the `lyrica` user; `daemon/src/tailnet.ts`, `Services.tailnet`,
+    `LyricadOptions.tailnet { binary?, socket? }`): `GET
+    /api/u/:userId/admin/tailnet` → `Tailnet { state, tailnet?, address?,
+    dnsName?, hostname?, controlServer?, version?, reason? }`; `PUT` with
+    `TailnetJoin { authKey, hostname?, controlServer?, leave? }` (409 when
+    joined without `leave`); `POST …/disconnect`, `POST …/connect`, `DELETE`
+    (leave; turns the Tailnet web mode off). The auth key is written to a 0600
+    file for `--auth-key=file:` and deleted at once, never stored or logged.
+  - **Web modes.** `Request.via: "tailnet"` marks a request on the serve port
+    (`LyricadOptions.web.servePort`, 7342); disconnect, leave and a join that
+    leaves are 409 then. `WebMode` gains `"direct"` (the extra listener on
+    every LAN and Tailscale address, port 7340 (`web.directPort`), HTTPS with
+    lyricad's own certificate, no proxy list; the mode she starts in;
+    `WebAccess.direct: { addresses, port, fingerprint, pem }`,
+    `WebAccessStatus.direct`) and `"tailnet"` (`tailscale serve` to the serve
+    port; `WebAccess.tailnet: { dnsName, certificates }`,
+    `WebAccessStatus.tailnet`), and `frontDoor` includes the Direct port on
+    this machine's addresses and, in Tailnet, 443 on her Tailscale address and
+    DNS name. All additive.
 - **HTTP/SSE API**, defined in `daemon/src/api.ts` and described in
   [daemon.md](daemon.md). The web UI imports its types from there:
   - auth;
@@ -874,7 +883,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     user's send or edit starting with the parent's mark is `400`;
     `ForgetThread` / `DELETE …?children=1`; `ThreadHost.status`,
     `delivered`, `HostedThread.waiting`, `send(text, { fromParent })` and
-    `settled()`;
+    `settled()`; a `received` thread event (`text`) when a message from
+    another thread or a look reaches the running turn, or is kept in the
+    stored thread because no turn took it;
   - **projects** (`daemon/src/projects.ts`, `children.ts`): thread pins,
     per user: `user.db` `pinned_threads` (pool, thread; no text), `PUT`/`DELETE
     threads/:id/pin`, `ThreadSummary.pinned`, pinned first in the list;
@@ -884,9 +895,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `goal`, `paused`, `threadsModel`, `threadsThinking`, `threadsFallback` and `watchThreads`
     (`user.db` `project_settings`, IDs and switches only), and
     `projectSettings.pageId` names the project page's memory ID; a project chat's
-    look at its threads is a user message marked `[Watching threads]`
-    (`WATCHING_MARK`, core/src/threads.ts), which only `daemon/src/watch.ts`
-    writes and `Message.from` shows as `{ kind: "watching" }`; `POST …/messages/:n/thread` (Start a
+    look at its threads is marked `[Watching threads]` (`WATCHING_MARK`,
+    core/src/threads.ts), which only `daemon/src/watch.ts` writes: a
+    delivered entry, or the message of the turn it raised; `Message.from`
+    shows it as `{ kind: "watching", told?: Told[] }` (`Told`: `threadId`,
+    `text`; absent on looks from before looks were one call), and its live
+    `notice` event has `status: "watching"` and `told`; `POST …/messages/:n/thread` (Start a
     thread) → `ThreadSummary`; `POST threads/:id/resolve` and `…/reopen`;
     `POST …/suggestions/:callId/start` (`index`, or all with none; `user.db`
     `started_suggestions`); `GET threads/:id/overview` (`ProjectOverview`:
@@ -956,12 +970,16 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       `modelId`. `ThreadSettingsChange.models` takes a ref, a list or null, and
       gains `profile` and `thinking`. `DELETE` on a thread calls
       `Models.forgetThread` for it and each subagent thread under it.
-    - **Errors from core** (`statusOf`): `CloudModelForbidden`, `NoModel` and
-      `PairingFailed` are `400`; `Offline` is `502`; `Forbidden` is `403`. A `HostRefused` keeps the
-      host's meaning by `code`: `invalid` 400, `refused` 403, `not_found` 404,
-      `in_use` 409, `too_big` 413, `no_space` 507; any other code (`unreachable`,
-      `paused`, `busy`, `unpaired`, `identity_changed`, …) is `502` with the
-      host's plain message.
+    - **Errors from core** (`statusOf`): `CloudModelForbidden`, `NoModel`,
+      `PairingFailed`, `GitAccountProblem` and a plain `Error` (a validation
+      message) are `400`; `AuthError` and `WrongPassword` are `401`;
+      `Forbidden` is `403`; `SchemaTooNew` and `MigrationFailed` are `409`;
+      `Offline` is `502`; `Locked` is `503`. A `HostRefused` keeps the
+      host's meaning by `code`: `invalid` and `need_repo` 400, `refused` 403,
+      `not_found` 404, `in_use` and `above_recommended` 409, `too_big` 413,
+      `no_space` 507; any other code (`unreachable`, `paused`, `busy`,
+      `unpaired`, `identity_changed`, …) is `502` with the host's plain
+      message.
   - users and admin;
   - memory browser ([briefs/memory-browser.md](briefs/memory-browser.md)):
     `GET …/memory` → `MemoryOverview` (pages and notes counted over the
@@ -999,8 +1017,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     start a run, and an event stream. `/sleep` typed in a thread is
     `SendRequest.confirm` and `SendResponse.sleep`.
 - **Local socket:** a Unix socket (mode `0600`, owned by the service user)
-  serves the same API to `lyrica chat` and `lyrica mem`. The user still logs in
-  with a password over the socket. Being on the machine isn't enough.
+  serves the same API to local clients; no `lyrica` subcommand uses it. The
+  user still logs in with a password over the socket. Being on the machine
+  isn't enough.
 - **Scheduler:** at `sleep.time` (default 04:00), for each user not in manual
   mode, sleep each pool, one run at a time.
 - **Updates** (docs/daemon.md, "Updates"): an update socket,
@@ -1036,8 +1055,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 
 ## bin/lyrica
 
-One entry point with subcommands: `serve`, `chat`, `admin`, `mem` and `dev`
-(see [DESIGN.md](../DESIGN.md#runtime)).
+One entry point with subcommands: `serve`, `admin`, `dev`, `version` and
+`smoke-test`. `chat` and `mem` are reserved and not built (see
+[DESIGN.md](../DESIGN.md#runtime)).
 - `dev` refuses to start unless it is pointed at a development runtime: a
   directory with a marker file, created by `lyrica dev --init`.
 - No subcommand reads a password from arguments or the environment.
@@ -1201,7 +1221,8 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   name, q)` is what the account can see (none for Other).
   `repositoriesFor(t)`; `cloneFor(t)` makes or fetches each clone in the
   sandbox under the thread's folder in the home workspace (`repos/<name>`,
-  a subagent's under its parent's) and returns the problems, never removing
+  a subagent's under its parent's, mounted read-only for one with
+  `reposReadOnly`) and returns the problems, never removing
   one (a clone goes with the thread); `addRepository(t, r)` is the
   `add_repository` tool's change. `forgeEnv(t)` (`gitEnv`) is the
   environment for a sandbox run: one credential helper per repository URL

@@ -108,6 +108,10 @@ describe("delegate", () => {
     ws.settings(s.li.id).addMachine({ name: "nas", host: "127.0.0.1", port: 22, username: "lyrica", privateKey: generateSshKey("test").privateKey, root: null, pool: "general", offNetwork: false }, `SHA256:${"A".repeat(43)}`);
     ws.settings(s.li.id).setThread(parent.threadId, "general", { grants: [{ path: join(host, "a"), writable: true }], internet: false, hosts: ["10.0.0.5"], mode: "acceptEdits", machines: ["nas"] });
 
+    const opened: WorkspaceThread[] = [];
+    const forThread = ws.forThread.bind(ws);
+    ws.forThread = (t) => { opened.push(t); return forThread(t); };
+
     const outside = await s.run(parent, { task: "read there", role: "scout", folders: [join(host, "b")] });
     expect(outside.status).toBe("failed");
     expect(outside.result).toContain("isn't one of this thread's folders");
@@ -122,6 +126,9 @@ describe("delegate", () => {
     expect(child(worker!.thread)).toMatchObject({ grants: [{ path: join(host, "a"), writable: true }], network: { internet: false, hosts: ["10.0.0.5"] } });
     // Bash on a machine follows no folder or read-only narrowing, so only an unnarrowed writer keeps the parent's machines.
     expect([scout, worker, narrowed, offline].map((r) => child(r!.thread).machines)).toEqual([[], ["nas"], [], []]);
+    // Only an unnarrowed writer works in its parent's clones; the others see them read-only.
+    expect([scout, worker, narrowed, offline].map((r) => opened.find((t) => t.threadId === r!.thread)))
+      .toMatchObject([true, false, true, true].map((reposReadOnly) => ({ reposOf: parent.threadId, reposReadOnly })));
     // Anything wider is refused by the workspace itself.
     const p = { userId: s.li.id, pool: "general" as const, threadId: parent.threadId };
     expect(() => ws.inheritSettings(p, worker!.thread, { internet: true })).toThrow("no internet");

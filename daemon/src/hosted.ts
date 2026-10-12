@@ -5,7 +5,7 @@ import {
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  ContextMeter, createDelegateExtension, createLyricaExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWorkspaceExtension, DELEGATE_MESSAGE, OPENING, openThreadSession, piModelFor,
+  appendUserMessage, ContextMeter, createDelegateExtension, createLyricaExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWorkspaceExtension, DELEGATE_MESSAGE, OPENING, openThreadSession, piModelFor, syncEntries,
   GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
@@ -36,6 +36,8 @@ export interface HostOptions {
   projectThreads?: (userId: string, pool: Pool, project: string) => string | undefined;
   /** A turn started or ended in a thread. */
   onTurn?: (userId: string, pool: Pool, threadId: string, working: boolean) => void;
+  /** Every event the thread's stream carries, as it goes out (the watcher hears of errors and approvals from it). */
+  onEvent?: (userId: string, pool: Pool, threadId: string, event: ThreadEvent) => void;
 }
 
 /** Events kept for reconnecting streams. Older ones reload from stored entries. */
@@ -46,6 +48,13 @@ const EPOCH = randomBytes(4).toString("hex");
 type Client = (id: string, event: ThreadEvent) => void;
 type Outcome = "answered" | "timeout" | "stopped";
 type Done = (allowed: boolean, reason: Outcome, mode?: GoAhead) => void;
+
+/**
+ * A marked message (from another thread, or a look) for the running or next
+ * turn: `handed` once it is in Pi's steering queue, `prompt` while it is the
+ * message a turn starts with.
+ */
+interface Steer { text: string; handed: boolean; prompt: boolean }
 
 interface Opened { session: AgentSession; view: PoolView; meter: ContextMeter; dispose(): void; title(): Promise<string | undefined>; prepare(opts?: { retry?: boolean }): Promise<unknown> }
 
@@ -176,8 +185,9 @@ export class ThreadHost {
 
 /**
  * One thread: its Pi session while active, its event stream, and its
- * permission prompts. One turn runs at a time; messages sent meanwhile wait
- * and go together as the next turn.
+ * permission prompts. One turn runs at a time; the person's messages sent
+ * meanwhile wait and go together as the next turn, and marked ones (from
+ * another thread, or a look) join the running turn as a steer.
  */
 export class HostedThread {
   private opened: Opened | undefined;
@@ -188,7 +198,12 @@ export class HostedThread {
   private n = 0;
   private readonly clients = new Set<Client>();
   private readonly pending = new Map<string, { request: PermissionRequest; done: Done }>();
+  /** The person's follow-ups (and a message held for a model): shown as waiting, and Stop gives them back. */
   private queued: string[] = [];
+  /** Marked messages no turn has taken yet. Never dropped: what no turn takes is kept in the stored thread. */
+  private steering: Steer[] = [];
+  /** The latest model reply of the running turn ended in an error. */
+  private failed = false;
   private idle: NodeJS.Timeout | undefined;
   /** No model could be reached: the queued messages wait, and this asks again until one answers. */
   private held: NodeJS.Timeout | undefined;
@@ -247,6 +262,7 @@ export class HostedThread {
 
   private emit(event: ThreadEvent): void {
     this.track(event);
+    this.o.onEvent?.(this.userId, this.pool, this.threadId, event);
     const n = ++this.n;
     this.buffer.push({ n, event });
     if (this.buffer.length > BUFFER) this.buffer.shift();
@@ -287,39 +303,64 @@ export class HostedThread {
   // --- Turns ---
 
   /**
-   * Starts a turn, or queues the message while one runs. Throws, with the
-   * reason, if the session can't open. Only a child's parent sends with
-   * `fromParent`, in a project another of its threads with `fromThread`, and
-   * only the watcher with `watching`; anyone else's text can't carry the
-   * line that marks it.
+   * Starts a turn, or, while one runs, queues the person's message as a
+   * follow-up; a marked message joins the running turn as a steer, after its
+   * current tool call. `queued` is true when the message waits for a later
+   * turn (behind the running one, or for a model to answer), false when it
+   * started a turn or joined the running one. Throws, with the reason, if
+   * the session can't open. Only a child's parent sends with `fromParent`,
+   * in a project another of its threads with `fromThread`, and only the
+   * watcher with `watching`; anyone else's text can't carry the line that
+   * marks it.
    */
   async send(text: string, opts: { fromParent?: string; fromThread?: string; watching?: boolean } = {}): Promise<{ queued: boolean }> {
     if (!text.trim()) throw new Error("the message is empty");
     if (FROM_PARENT.test(text)) throw new MarkedText("a message can't start with a [From t:…] line");
     if (WATCHING.test(text)) throw new MarkedText("a message can't start with a [Watching threads] line");
-    if (opts.watching) return this.post(`${WATCHING_MARK}${text}`);
+    if (opts.watching) return this.post(`${WATCHING_MARK}${text}`, true);
     const from = opts.fromParent ?? opts.fromThread;
-    return this.post(from ? `${fromParent(from)}${text}` : text);
+    return from ? this.post(`${fromParent(from)}${text}`, true) : this.post(text);
   }
 
-  /** The text as it goes to the session, its marks already checked. */
-  private async post(text: string): Promise<{ queued: boolean }> {
+  /** The text as it goes to the session, its marks already checked. `marked`: from another thread or a look. */
+  private async post(text: string, marked = false): Promise<{ queued: boolean }> {
     if (this.busy) {
+      if (marked) {
+        this.steer(text);
+        return { queued: false };
+      }
       this.queued.push(text);
       this.emit({ type: "queue", queued: [...this.queued] });
       return { queued: true };
     }
-    // Messages held while no model could be reached go first, with this one.
-    if (this.queued.length) {
-      text = [...this.queued.splice(0), text].join("\n\n");
-      this.emit({ type: "queue", queued: [] });
+    const steer: Steer | undefined = marked ? { text, handed: false, prompt: false } : undefined;
+    if (steer) this.steering.push(steer);
+    // The person's messages held while no model could be reached go first, with this one; marked ones go apart.
+    const held = this.queued.splice(0);
+    if (held.length) this.emit({ type: "queue", queued: [] });
+    const person = [...held, ...(marked ? [] : [text])];
+    try {
+      return await this.start(person.length ? person.join("\n\n") : undefined);
+    } catch (err) {
+      // The sender is told it failed.
+      if (steer) this.steering = this.steering.filter((s) => s !== steer);
+      throw err;
     }
+  }
+
+  /** Starts a turn with the person's text, or else with the first marked message waiting. */
+  private async start(text: string | undefined): Promise<{ queued: boolean }> {
+    const first = text === undefined ? this.steering[0] : undefined;
+    const prompt = text ?? first?.text;
+    if (prompt === undefined) return { queued: false };
+    if (first) first.prompt = true;
     this.unhold();
     this.busy = true;
     try {
       await this.open();
     } catch (err) {
       this.busy = false;
+      if (first) first.prompt = false;
       if (err instanceof Offline) {
         this.hold(text, err);
         return { queued: true };
@@ -328,8 +369,70 @@ export class HostedThread {
       this.emit({ type: "error", message });
       throw new Error(message);
     }
-    this.running = this.run(text);
+    this.running = this.run(prompt);
     return { queued: false };
+  }
+
+  /** A marked message for the running turn: into Pi's steering queue if the session is open, else at the next turn's start. */
+  private steer(text: string): void {
+    const s: Steer = { text, handed: false, prompt: false };
+    this.steering.push(s);
+    if (this.opened) this.hand(this.opened, s);
+  }
+
+  /**
+   * Pi takes a steer after the current tool call, or after the reply being
+   * written, and stores it as a user message. It goes straight to the
+   * agent's queue, so nothing in it is expanded and it is queued at once.
+   */
+  private hand(opened: Opened, s: Steer): void {
+    s.handed = true;
+    opened.session.agent.steer({ role: "user", content: [{ type: "text", text: s.text }], timestamp: Date.now() });
+  }
+
+  /** Pi took a user message: a marked one shows in the views now. */
+  private took(text: string): void {
+    const i = this.steering.findIndex((s) => (s.handed || s.prompt) && s.text === text);
+    if (i < 0) return;
+    this.steering.splice(i, 1);
+    this.emit({ type: "received", text });
+  }
+
+  /** After a turn: the steers it didn't take come out of Pi's queue, to go into the next turn or be kept. */
+  private untake(opened: Opened | undefined): void {
+    opened?.session.agent.clearSteeringQueue();
+    // A turn's own first message went with it.
+    this.steering = this.steering.filter((s) => !s.prompt);
+    for (const s of this.steering) s.handed = false;
+  }
+
+  /**
+   * Marked messages no turn will take (it was stopped or failed, or the
+   * thread is closing, or no model answers): appended to the stored thread
+   * after what Pi stored, as the user messages they would have been, and
+   * shown. The open session lacks them, so the next turn opens a fresh one.
+   */
+  private keep(): void {
+    const opened = this.opened;
+    this.untake(opened);
+    const kept = this.steering.splice(0);
+    if (!kept.length) return;
+    try {
+      const view = this.o.memory.openThreadView(this.userId, this.pool);
+      try {
+        if (!view.own.getThread(this.threadId)) return;
+        if (opened) syncEntries(opened.session.sessionManager, view.own, this.threadId);
+        for (const s of kept) appendUserMessage(view.own, this.threadId, s.text);
+      } finally {
+        view.close();
+      }
+    } catch (err) {
+      this.o.log(`keeping ${kept.length} message(s) in a ${this.pool} thread failed: ${(err as Error).name}`);
+      return;
+    }
+    for (const s of kept) this.emit({ type: "received", text: s.text });
+    if (this.busy) this.stale = true;
+    else this.dispose();
   }
 
   private running: Promise<void> = Promise.resolve();
@@ -356,30 +459,41 @@ export class HostedThread {
           await opened.prepare();
         } catch (err) {
           if (!(err instanceof Offline)) throw err;
-          // Nothing is stored yet: the message waits, and goes once a model answers again.
-          this.hold([next, ...this.queued.splice(0)].join("\n\n"), err);
+          // Nothing is stored yet: the messages wait, and go once a model answers again. Marked ones wait apart.
+          const marked = this.steering.find((s) => s.prompt);
+          if (marked) marked.prompt = false;
+          const person = [...(marked ? [] : [next]), ...this.queued.splice(0)];
+          this.hold(person.length ? person.join("\n\n") : undefined, err);
           break;
         }
+        // Marked messages that came while no session was open: Pi takes them after this turn's first message.
+        for (const s of this.steering) if (!s.handed && !s.prompt) this.hand(opened, s);
         this.emit({ type: "turn_start" });
         // A compaction belongs to the turn that asked for it, even one that failed.
         opened.meter.pending = undefined;
+        this.failed = false;
         await opened.session.prompt(next);
         aborted = this.aborted;
         await this.afterTurn(opened, aborted);
+        // What the turn didn't take goes next, or, if it was stopped or failed, is kept in the stored thread.
+        this.untake(opened);
+        if (aborted || this.failed) this.keep();
         this.emit({ type: "turn_end", aborted });
         this.aborted = false;
         void this.maybeTitle(opened);
         if (this.stale) this.dispose();
-        next = this.queued.length ? this.queued.splice(0).join("\n\n") : undefined;
-        if (next !== undefined) this.emit({ type: "queue", queued: [] });
+        next = this.next();
       }
     } catch (err) {
       this.emit({ type: "error", message: plainError(refusal(err)) });
+      this.keep();
       this.emit({ type: "turn_end", aborted });
       this.queued = [];
     } finally {
       this.busy = false;
       this.aborted = false;
+      // A session that lacks what keep stored: the next turn opens afresh.
+      if (this.stale) this.dispose();
       // Shutdown, Lock or forgetting closes it: a child keeps its record of working, so a restart tells its parent.
       if (!this.closing) this.o.onTurn?.(this.userId, this.pool, this.threadId, false);
       this.startIdle();
@@ -388,14 +502,28 @@ export class HostedThread {
 
   private aborted = false;
 
+  /** The next turn's message: the person's follow-ups together, else the first marked message waiting. */
+  private next(): string | undefined {
+    if (this.queued.length) {
+      const text = this.queued.splice(0).join("\n\n");
+      this.emit({ type: "queue", queued: [] });
+      return text;
+    }
+    const s = this.steering[0];
+    if (!s) return undefined;
+    s.prompt = true;
+    return s.text;
+  }
+
   /**
-   * No model for the thread's chat can be reached: the text waits in the
-   * queue, the views are told once, and every HEALTH_MS lyricad asks the
-   * machines again (resolveLive), sending it as soon as one answers. Stop,
-   * or a new message (which goes with it), ends the wait.
+   * No model for the thread's chat can be reached: the person's text waits in
+   * the queue (marked messages wait apart), the views are told once, and
+   * every HEALTH_MS lyricad asks the machines again (resolveLive), sending it
+   * as soon as one answers. Stop, or a new message (which goes with it), ends
+   * the wait.
    */
-  private hold(text: string, err: Offline): void {
-    this.queued = [text];
+  private hold(text: string | undefined, err: Offline): void {
+    this.queued = text !== undefined ? [text] : [];
     this.emit({ type: "queue", queued: [...this.queued] });
     this.emit({ type: "offline", task: err.task, tried: err.tried });
     this.waitForModel();
@@ -405,8 +533,9 @@ export class HostedThread {
     this.unhold();
     this.held = setTimeout(() => {
       this.held = undefined;
-      if (this.closed || this.busy || !this.queued.length) return;
-      const send = () => { if (!this.closed && !this.busy && this.queued.length) void this.post(this.queued.splice(0).join("\n\n")).catch(() => {}); };
+      const waiting = () => this.queued.length > 0 || this.steering.length > 0;
+      if (this.closed || this.busy || !waiting()) return;
+      const send = () => { if (!this.closed && !this.busy && waiting()) void this.start(this.queued.length ? this.queued.splice(0).join("\n\n") : undefined).catch(() => {}); };
       // Anything but Offline (the list was changed to one that can't work, say) is said by the turn itself.
       this.o.models.resolveLive("chat", this.o.models.callContext(this.userId, this.pool, this.threadId))
         .then(send, (err) => (err instanceof Offline ? this.waitForModel() : send()));
@@ -472,7 +601,11 @@ export class HostedThread {
     const waiting = this.queued.splice(0);
     if (waiting.length) this.emit({ type: "queue", queued: [] });
     const next = [then, ...waiting].filter((t): t is string => t !== undefined);
-    if (!next.length) return;
+    // Marked messages that came meanwhile start a turn of their own.
+    if (!next.length) {
+      await this.start(undefined);
+      return;
+    }
     try {
       await this.post(next[0]!);
     } catch (err) {
@@ -487,7 +620,11 @@ export class HostedThread {
     for (const t of next.slice(1)) await this.post(t);
   }
 
-  /** Stop: aborts the running turn, denies waiting permission requests and drops queued messages. */
+  /**
+   * Stop: aborts the running turn, denies waiting permission requests and
+   * drops the person's queued messages (the views give them back). Marked
+   * messages no turn took are kept in the stored thread.
+   */
   async stop(): Promise<void> {
     this.unhold();
     for (const p of [...this.pending.values()]) p.done(false, "stopped");
@@ -495,9 +632,12 @@ export class HostedThread {
       this.queued = [];
       this.emit({ type: "queue", queued: [] });
     }
-    if (!this.busy || !this.opened) return;
+    if (!this.busy) return this.keep();
+    if (!this.opened) return;
     this.aborted = true;
     await this.opened.session.abort();
+    // Lock, forgetting or shutdown disposes the session next: kept now, while it can still be synced.
+    if (this.closing) this.keep();
   }
 
   // --- Permission prompts ---
@@ -661,6 +801,7 @@ export class HostedThread {
     switch (e.type) {
       case "message_start": {
         if (e.message.role === "assistant") this.emit({ type: "message_start", model: e.message.model });
+        if (e.message.role === "user") this.took(textOf(e.message.content));
         break;
       }
       case "message_update": {
@@ -678,6 +819,7 @@ export class HostedThread {
         // Delivered during a turn, as a follow-up.
         if (m.role === "custom" && m.customType === DELEGATE_MESSAGE) this.notice(m.content, m.details);
         if (m.role === "assistant") {
+          this.failed = m.stopReason === "error";
           const u = m.usage;
           if (u) this.emit({ type: "usage", input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite, total: u.totalTokens });
           if (m.stopReason === "error" && m.errorMessage) {
@@ -828,6 +970,12 @@ function refusal(err: unknown): string {
   if (err instanceof CloudModelForbidden) return `Refused: ${message}`;
   if (err instanceof NoModel) return `No model: ${message}`;
   return message;
+}
+
+/** A message's text parts, joined. */
+function textOf(content: unknown): string {
+  if (typeof content === "string") return content;
+  return Array.isArray(content) ? content.filter((p: { type?: string }) => p.type === "text").map((p: { text?: string }) => p.text ?? "").join("\n") : "";
 }
 
 /** "user: …" or "assistant: …" for the title model. */

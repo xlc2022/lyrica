@@ -47,6 +47,8 @@ export interface WorkspaceThread {
   threadId: string;
   /** A subagent's: the thread whose clones it works in, its parent's. Otherwise its own. */
   reposOf?: string;
+  /** A read-only subagent's: its parent's clones are mounted read-only, so it can't change their working trees or commits. */
+  reposReadOnly?: boolean;
 }
 
 export interface FrontDoor { ports: number[]; hosts: string[]; exclude: number[] }
@@ -441,6 +443,7 @@ export class Workspace {
       grants: s.effective(t.threadId).grants,
       network: this.network(t),
       repos: this.reposDir(t),
+      reposReadOnly: t.reposReadOnly,
       env: this.forgeEnv(t),
       ...this.door(),
       check: (g) => checkGrant(s.allowed(), t.pool, g),
