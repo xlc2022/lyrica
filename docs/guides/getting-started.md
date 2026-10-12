@@ -112,7 +112,9 @@ What `install.sh` does, in order:
    passt, nftables, ImageMagick (the Files panel's thumbnails are made in
    the sandbox), openssl, curl, unzip and rsync for itself, and
    build-essential, python3, git, openssh-client and jq for building
-   releases and fetching updates. When
+   releases and fetching updates, and `gh` and `tea` for threads with
+   repositories (`tea` only where it is packaged; without it, Gitea and
+   Forgejo accounts work through git alone). When
    Tailscale's binaries are missing it adds Tailscale's apt repository and
    installs `tailscale`; the package turns on the host's own `tailscaled`,
    and the script turns it off again unless it was on before.
@@ -175,7 +177,8 @@ is [docs/daemon.md](../daemon.md#on-nixos). Instead of the steps above:
    Direct, whatever `port` is, so the machine can be set up from another
    one), `caddyPackage`, and `sandboxPackages`, the tools her commands see
    (NixOS has no `/usr` to share, so the module builds one directory from
-   that list; add to it to give her more). The module refuses to build
+   that list, which includes git, gh, tea and Node 22 by default; add to
+   it to give her more). The module refuses to build
    while `security.allowUserNamespaces` is off.
 2. `nixos-rebuild switch`. The package builds lyricad, the CLI and the web
    UI, and `lyricad` starts setting up, as on Debian. Nothing prints the
@@ -389,7 +392,8 @@ lyrica admin grants list --user li
 
 The folder must be a real directory with no symlinks on its path, readable
 by the `lyrica` user (through its group or an ACL for anything she should
-write), and may not be in both pools. The same lists are under
+write), and may not be in both pools. `/opt/lyrica`, the updater's state
+and the snapshots can never be granted. The same lists are under
 Administration, Users.
 
 Network defaults are per user and pool: general threads start with internet
@@ -397,6 +401,28 @@ on and local services off, private threads with both off. Change
 them under Settings, Network (below its "New threads" group, which holds
 the default mode and Fallback), or with `lyrica admin net`. Each
 thread can narrow or widen its own from the thread settings drawer.
+
+## Give her repositories
+
+She works on code in Git repositories the way Claude's project threads do.
+Each user adds their accounts under Settings, **Git accounts** (GitHub,
+Forgejo, Gitea or Other): a host, the account's login and a token, checked
+against the host before it is saved, in one pool. A GitHub account is
+general only; a private account must be on a host on your own network.
+Make each token fine-grained, for the repositories she works on, with no
+admin rights: every command in a thread that has the repository can read
+it.
+
+A project's **Repositories** row (Project settings, under This chat) and
+the thread drawer list which repositories a thread has. Each thread clones
+its own copy into `/workspace/repos`, and `gh` and `tea` there use the
+right account by themselves. Details are in
+[docs/workspace.md](../workspace.md#git-accounts-and-repositories).
+
+For her own code, the one-time setup on GitHub (her account as a
+collaborator, its token as a Git account, rules for `main` and her
+`lyrica/*` branches, CODEOWNERS) is in
+[docs/workspace.md](../workspace.md#her-own-code).
 
 ## Give her another computer
 
@@ -567,7 +593,8 @@ the SSH ones, and `ssh remove <name>` takes one away.
   without a saved passphrase someone has to unlock her. A failed check or a
   crash loop rolls back by itself, and Notifications says so for a week.
   The Updates page shows each step; the updater's state is in
-  `/var/lib/lyrica-update`.
+  `/var/lib/lyrica-update`. An update installs no packages: when a release
+  needs a new one, install it by hand or run `install.sh` from a checkout.
 - **Rollback:** under Updates, **Roll back** in a kept release's ⋯ goes
   back to it. As root, `lyrica-rollback` goes back to the previous
   release, or `lyrica-rollback <commit>` to another kept one. When that
@@ -593,7 +620,9 @@ the SSH ones, and `ssh remove <name>` takes one away.
   NixOS the next `nixos-rebuild switch` brings ImageMagick in with the
   default `sandboxPackages`. An existing install gets Tailscale and her
   `tailscaled` on its next run and keeps its web access as it was; Direct
-  comes only with a fresh install. The home page header
+  comes only with a fresh install. An install made before 2026-10-12
+  needs `apt-get install gh tea` (or this run) for threads with
+  repositories; on NixOS the next rebuild brings them. The home page header
   ("Lyrica 0.1.0 · <build>") shows the git commit that is running.
 
 ## Checklist for the first install on Li's machine
@@ -629,6 +658,8 @@ something the code expects but nobody has confirmed on real hardware.
     Update on Administration, Updates runs through probation. Then Roll
     back goes back to the release before; `lyrica-update` and
     `lyrica-rollback` do the same from a terminal.
+11. Add a Git account and give a thread a repository: it is cloned into
+    `/workspace/repos`, and with internet on `gh pr list` works there.
 
 Report what fails, with the journal lines, in the Operator docs thread; the
 guide gets corrected from the real run.
