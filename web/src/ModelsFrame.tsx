@@ -18,7 +18,7 @@ export interface ModelsState {
 /** The shell's context with the Models page's data, for everything inside the area. */
 export type MCtx = ShellContext & { models: ModelsState };
 
-export type Host = { status: HostStatus } | { error: string };
+export type Host = { status: HostStatus } | { error: string; unpaired?: true };
 
 const TABS: { tab: ModelsTab; label: string }[] = [
   { tab: "overview", label: "Overview" },

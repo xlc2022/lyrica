@@ -100,7 +100,9 @@ administrator pairs or manages them; a personal host lives in its user's
   pauses, resumes or restarts it.
 - `pageStatus` is an endpoint's state for the Models page: one seen down in
   the last 30 seconds isn't asked again, and nothing waits more than 3
-  seconds, so a host that's off doesn't hold the page.
+  seconds, so a host that's off doesn't hold the page. A host that answered
+  `unpaired` (it revoked this server) says `unpaired: true` until it answers
+  again or is paired again, so the page can offer Pair again….
 - Unpairing is removing the endpoint; the host keeps listing this server
   until it is revoked there.
 - Every user who can use a shared host sees its addresses, fingerprint and
@@ -115,7 +117,10 @@ administrator pairs or manages them; a personal host lives in its user's
   both.
 - `prune` runs nightly. It removes gone offerings no list names: a shared one
   only once every user's lists have been indexed and none names it, a
-  user's own while they are unlocked.
+  user's own while they are unlocked. A shared offering gone for 7 days
+  goes even while lists name it, leaving a tombstone; a locked user's lists
+  drop it at their next unlock. An administrator's Remove in Clean up does
+  the same sooner.
 - `cleanup(userId)` lists the stale endpoints, gone models and empty groups
   the user can see, where they are used (the user's profiles, threads, saved
   workflows and groups, and shared groups), how many other users' lists name it, and the same model on
@@ -475,8 +480,9 @@ never sent with a chat request.
   hosts and OpenRouter; OpenAI's set (temperature, top-p, presence and
   frequency penalties, longest reply, seed, stop) for other cloud endpoints.
   `offeringSettings` lists the saved values that aren't sent (`dropped`).
-  The longest reply is never more than the room Pi leaves in the context
-  window.
+  The longest reply is capped at the smaller of 32,768 tokens and a quarter
+  of the context window (`replyCap`, the room Pi leaves), and a saved
+  maximum above the cap is clamped to it.
 - Settings follow redirects: a replacement, merge or Reset IDs moves them to
   the new ID (shared values at once, each user's when their lists are
   rewritten); a removed model's go.

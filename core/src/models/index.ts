@@ -77,6 +77,8 @@ const PLAN_LIMIT_MS = 60 * 60_000;
 /** An endpoint unreachable this long is stale; a model missing this long is gone. */
 export const STALE_DAYS = 14;
 export const GONE_DAYS = 30;
+/** How long a gone shared model stays before it is removed, even while lists name it. */
+export const SHARED_GONE_DAYS = 7;
 const DAY = 86_400_000;
 /** How long a probe or a failed call counts for in the health cache. */
 export const HEALTH_MS = 30_000;
@@ -430,6 +432,8 @@ export class Models {
   private readonly ready = new Set<string>();
   /** Endpoint ID → whether it answered lately, from probes and calls. */
   private readonly health = new Map<string, { up: boolean; at: number }>();
+  /** Hosts that answered `unpaired`: they revoked this server, so pairing again is the fix. Cleared when one answers or is paired again. */
+  private readonly unpaired = new Set<string>();
   /** Models whose host answered but couldn't run them (`model_unavailable`), skipped for HEALTH_MS without marking the host down. */
   private readonly modelDown = new Map<string, number>();
   /** Each host's pinned fetch, by endpoint, key and addresses. */
@@ -1069,6 +1073,7 @@ export class Models {
         .run(id, input.name, baseUrl, new Date().toISOString(), JSON.stringify(addresses), paired.fingerprint);
     });
     this.health.delete(id);
+    this.unpaired.delete(id);
     return this.endpoint(actor.id, id)!;
   }
 
@@ -1089,7 +1094,10 @@ export class Models {
     const key = `${ep.id}\u0000${ep.fingerprint}\u0000${(ep.addresses ?? []).join(",")}`;
     let f = this.fetches.get(key);
     if (!f) {
-      f = hostFetch(lyricaIdentity(this.self(), selfName(this.self())), { addresses: ep.addresses ?? [], pin: ep.fingerprint ?? "" }, () => this.reportDown(ep.id), (origin) => this.reached.set(ep.id, origin));
+      f = hostFetch(lyricaIdentity(this.self(), selfName(this.self())), { addresses: ep.addresses ?? [], pin: ep.fingerprint ?? "" }, (_, code) => {
+        this.reportDown(ep.id);
+        if (code === "unpaired") this.unpaired.add(ep.id);
+      }, (origin) => this.reached.set(ep.id, origin));
       this.fetches.set(key, f);
     }
     return f;
@@ -1105,11 +1113,12 @@ export class Models {
    * saw down in the last HEALTH_MS isn't asked again, and nothing waits more
    * than `budgetMs`, so a host that's off doesn't hold the page.
    */
-  async pageStatus(userId: string, endpointId: string, budgetMs = 3000): Promise<{ state: "up" | "down"; warning?: string; status?: unknown; error?: string }> {
+  async pageStatus(userId: string, endpointId: string, budgetMs = 3000): Promise<{ state: "up" | "down"; warning?: string; status?: unknown; error?: string; unpaired?: true }> {
     const ep = this.endpoint(userId, endpointId);
     if (!ep) throw new Error(`no endpoint ${endpointId}`);
+    const unpaired = () => (this.unpaired.has(ep.id) ? { unpaired: true as const } : {});
     const h = this.health.get(ep.id);
-    if (h && !h.up && Date.now() - h.at < HEALTH_MS) return { state: "down", error: `${ep.name} is down` };
+    if (h && !h.up && Date.now() - h.at < HEALTH_MS) return { state: "down", error: `${ep.name} is down`, ...unpaired() };
     const warning = ep.kind === "local" ? Promise.race([localWarning(ep), new Promise<undefined>((r) => setTimeout(() => r(undefined), budgetMs).unref())]) : undefined;
     if (ep.api !== "host") {
       const state = await this.answers(ep, budgetMs);
@@ -1119,13 +1128,14 @@ export class Models {
     }
     try {
       const status = await this.hostCall(ep, "GET", "/host/v1/status", undefined, undefined, budgetMs);
+      this.unpaired.delete(ep.id);
       const state = (status as { state?: string }).state === "running" ? "up" : "down";
       this.seen(ep, state === "up", userId);
       const w = await warning;
       return { state, status, ...(w ? { warning: w } : {}) };
     } catch (e) {
       this.seen(ep, false, userId);
-      return { state: "down", error: (e as Error).message };
+      return { state: "down", error: (e as Error).message, ...unpaired() };
     }
   }
 
@@ -1448,11 +1458,15 @@ export class Models {
    * Housekeeping, run nightly: removes gone models nothing refers to. For a
    * shared model that means no user's lists and no shared group name it,
    * which needs every user to have been indexed; a user's own gone models go
-   * while they are unlocked. Old call records are trimmed too.
+   * while they are unlocked. A shared model gone for SHARED_GONE_DAYS goes
+   * even while lists name it, leaving a tombstone that locked users' lists
+   * catch up with at their next unlock. Old call records are trimmed too.
    */
   prune(now = Date.now()): void {
     const self = this.self();
     const gone = (db: Db) => (db.prepare("SELECT * FROM offerings WHERE missing_since IS NOT NULL").all() as OfferingRow[]).filter((r) => toOffering(r, now).status === "gone");
+    const expired = gone(self).filter((r) => now - Date.parse(r.missing_since!) >= (GONE_DAYS + SHARED_GONE_DAYS) * DAY).map((r) => r.id);
+    if (expired.length) this.retireShared(() => expired.map((id) => [id, null]), (db) => { for (const id of expired) db.prepare("DELETE FROM offerings WHERE id = ?").run(id); });
     const allIndexed = this.users.all().every((u) => self.prepare("SELECT 1 FROM shared_refs_indexed WHERE user = ?").get(u.id));
     if (allIndexed) {
       const inGroups = collectRefs(self);
@@ -2300,25 +2314,7 @@ export class Models {
   private retire(actor: User, shared: boolean, pairs: (db: Db) => [string, string | null][], change: (db: Db) => void): void {
     if (shared) {
       if (!this.users.get(actor.id)?.admin) throw new Forbidden("only an administrator can change shared endpoints and groups");
-      const self = this.self();
-      const users = this.users.all();
-      self.transaction(() => {
-        const list = pairs(self);
-        const now = new Date().toISOString();
-        for (const [from, to] of list) {
-          // Earlier redirects to `from` now point straight at its target, so chains stay one hop long and can't loop.
-          self.prepare("UPDATE offering_redirects SET to_id = ? WHERE to_id = ?").run(to, from);
-          self.prepare("INSERT OR REPLACE INTO offering_redirects (from_id, to_id, label, created_at) VALUES (?, ?, ?, ?)").run(from, to, this.labelIn(self, from) ?? from, now);
-          for (const u of users) self.prepare("INSERT OR IGNORE INTO redirect_pending (from_id, user) VALUES (?, ?)").run(from, u.id);
-        }
-        change(self);
-        const map = new Map(list);
-        moveSettings(self, map);
-        for (const g of self.prepare("SELECT id, members FROM model_groups").all() as { id: string; members: string }[]) {
-          const next = mapMembers(JSON.parse(g.members), map);
-          if (next) self.prepare("UPDATE model_groups SET members = ? WHERE id = ?").run(JSON.stringify(next), g.id);
-        }
-      })();
+      this.retireShared(pairs, change);
       return;
     }
     this.withUser(actor.id, (db) => {
@@ -2330,6 +2326,29 @@ export class Models {
       })();
       this.index(actor.id, db);
     });
+  }
+
+  /** The shared half of retire: redirects every user's lists catch up with, and shared groups rewritten now. */
+  private retireShared(pairs: (db: Db) => [string, string | null][], change: (db: Db) => void): void {
+    const self = this.self();
+    const users = this.users.all();
+    self.transaction(() => {
+      const list = pairs(self);
+      const now = new Date().toISOString();
+      for (const [from, to] of list) {
+        // Earlier redirects to `from` now point straight at its target, so chains stay one hop long and can't loop.
+        self.prepare("UPDATE offering_redirects SET to_id = ? WHERE to_id = ?").run(to, from);
+        self.prepare("INSERT OR REPLACE INTO offering_redirects (from_id, to_id, label, created_at) VALUES (?, ?, ?, ?)").run(from, to, this.labelIn(self, from) ?? from, now);
+        for (const u of users) self.prepare("INSERT OR IGNORE INTO redirect_pending (from_id, user) VALUES (?, ?)").run(from, u.id);
+      }
+      change(self);
+      const map = new Map(list);
+      moveSettings(self, map);
+      for (const g of self.prepare("SELECT id, members FROM model_groups").all() as { id: string; members: string }[]) {
+        const next = mapMembers(JSON.parse(g.members), map);
+        if (next) self.prepare("UPDATE model_groups SET members = ? WHERE id = ?").run(JSON.stringify(next), g.id);
+      }
+    })();
   }
 
   /** Shared endpoints change only with an administrator; own endpoints, only as their user. */

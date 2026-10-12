@@ -7,6 +7,9 @@ import { acceptedSettings, isPlan, CloudModelForbidden, isRestricted, payloadFie
 const FREE = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const DEFAULT_CONTEXT = 32_768;
 
+/** The longest reply a model is asked for: the smaller of 32,768 tokens and a quarter of its context window. A saved maximum above it is clamped. */
+export const replyCap = (contextWindow: number) => Math.min(32_768, Math.floor(contextWindow / 4));
+
 // Local servers (LM Studio, KoboldCpp, llama-server) take `system` and
 // `max_tokens`; they don't all know `developer`, `store` or `max_completion_tokens`.
 const LOCAL_COMPAT = { supportsDeveloperRole: false, supportsStore: false, supportsReasoningEffort: false, maxTokensField: "max_tokens" } as const;
@@ -21,7 +24,7 @@ function piModel(ep: Endpoint, m: Offering): ProviderModelConfig {
     : ep.kind === "local" ? { ...LOCAL_COMPAT, supportsReasoningEffort: reasoning } : undefined;
   return {
     id: m.modelId, name: m.modelId, input: m.vision ? ["text", "image"] : ["text"], cost: FREE, reasoning,
-    contextWindow, maxTokens: Math.min(8192, Math.floor(contextWindow / 4)),
+    contextWindow, maxTokens: replyCap(contextWindow),
     ...(compat ? { compat } : {}),
   };
 }
