@@ -947,7 +947,8 @@ check names and counts, never text.
   (the updater's state, busy work while draining, the newest update note,
   `lastRollback`), `releases.json` (kept releases, `current`, `previous`,
   the snapshots, and the highest `min_reader` any release has written),
-  `notes/<commit>.txt`. Snapshots are in `/var/lib/lyrica-snapshots`
+  `notes/<commit>.txt` (the tag message; its first line, at most 80
+  characters, is the release's summary in the Updates list, so write it as one). Snapshots are in `/var/lib/lyrica-snapshots`
   (root's, `0700`). Neither is ever granted to a thread.
 - **lyricad's side.** `<home>/update.sock` (`0600`): `GET /health`
   (`{ commit, locked, checks }`: databases, workspace self-test, models,

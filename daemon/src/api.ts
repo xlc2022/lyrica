@@ -1859,6 +1859,8 @@ export interface KeptRelease {
   commit: string;
   builtAt: string;
   tag?: string;
+  /** The first line of its update note, at most 80 characters; absent for a build with no note. */
+  summary?: string;
   running: boolean;
   previous: boolean;
   /**

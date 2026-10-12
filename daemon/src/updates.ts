@@ -47,6 +47,15 @@ function readJson<T>(path: string): T | undefined {
 
 const reads = (release: Schema, needed: Schema) => KINDS.every((k) => (release[k] ?? 0) >= (needed[k] ?? 0));
 
+/** The first line of a release's update note (the tag's message), at most 80 characters; none when it has no note. */
+function summaryOf(state: string, commit: string): string | undefined {
+  if (!COMMIT.test(commit)) return undefined;
+  try {
+    const first = readFileSync(join(state, "notes", `${commit}.txt`), "utf8").split("\n").find((l) => l.trim())?.trim();
+    return first ? (first.length > 80 ? `${first.slice(0, 79)}…` : first) : undefined;
+  } catch { return undefined; }
+}
+
 /** What Administration → Updates shows. */
 export function readUpdates(paths: UpdatePaths, running: { version: string; build: string }): Updates {
   const file = readJson<ReleasesFile>(join(paths.state, "releases.json"));
@@ -65,6 +74,7 @@ export function readUpdates(paths: UpdatePaths, running: { version: string; buil
       })();
     return {
       commit: r.commit, builtAt: r.builtAt, ...(r.tag ? { tag: r.tag } : {}),
+      ...(summaryOf(paths.state, r.commit) ? { summary: summaryOf(paths.state, r.commit) } : {}),
       running: r.commit === file?.current, previous: r.commit === file?.previous, rollback,
     };
   });

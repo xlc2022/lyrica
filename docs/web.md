@@ -579,7 +579,7 @@ A thread's address may carry what the panel beside it shows:
   line beneath (Draining with the count of busy threads and the user's own
   linked, Building, Testing, Probation, Failed with the error), the last
   rollback as a sentence, and the kept releases as rows (commit in mono,
-  date, Running) with **Roll back** in the row's ⋯, asked in a dialog that
+  date, the first line of its update note when it has one, Running) with **Roll back** in the row's ⋯, asked in a dialog that
   names the commit and says when messages since the snapshot are lost.
   While an update drains, the page polls every 5 s; sending a message that
   gets `409 {updating:true}` keeps the text in the box and says Updating.
