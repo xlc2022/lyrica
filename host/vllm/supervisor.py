@@ -58,6 +58,10 @@ def argv(spec):
     ]
     if spec.get("embedding"):
         args += ["--runner", "pooling"]
+    if not spec.get("embedding") and spec.get("toolCallParser"):
+        args += ["--enable-auto-tool-choice", "--tool-call-parser", spec["toolCallParser"]]
+    if not spec.get("embedding") and spec.get("reasoningParser"):
+        args += ["--reasoning-parser", spec["reasoningParser"]]
     if spec.get("maxModelLen"):
         args += ["--max-model-len", str(int(spec["maxModelLen"]))]
     if spec.get("maxNumSeqs"):

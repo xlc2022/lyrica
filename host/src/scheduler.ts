@@ -32,6 +32,7 @@ interface Loaded {
   option: Option;
   /** Bytes it takes on each of its GPUs: measured, else expected. */
   vram: Record<number, number>;
+  settings: ModelSettings;
   ready: boolean;
   active: number;
   lastUsed: number;
@@ -134,6 +135,16 @@ export class Scheduler {
   gpusFor(server: Server): Gpu[] {
     if (this.o.sharedMemory?.includes(server)) return this.gpus;
     return this.gpus.map((g) => (g.carveOut ? { ...g, total: g.carveOut.total, used: g.carveOut.used } : g));
+  }
+
+  async validationGpus(server: Server): Promise<Gpu[]> {
+    await this.readGpus();
+    return this.gpusFor(server).map((g) => ({ ...g, used: Math.max(0, g.used - [...this.loaded.values()].reduce((n, l) => n + (l.vram[g.index] ?? 0), 0)) }));
+  }
+
+  /** A router child disappeared; the next request must load it again. */
+  missing(id: string): void {
+    this.loaded.delete(id);
   }
 
   gpuSettings(index: number): GpuSettings {
@@ -305,7 +316,7 @@ export class Scheduler {
    * Where the job's model can load now, unloading idle models least recently
    * used first; or which GPUs it must wait for; or why it can never fit.
    */
-  private plan(job: Job, held: Set<number>): Plan {
+  private plan(job: Pick<Job, "model" | "gpu">, held: Set<number>): Plan {
     const model = job.model;
     const opts = this.optionsFor(job);
     const s = this.settings(model);
@@ -325,8 +336,9 @@ export class Scheduler {
     // A way that can't work even on empty GPUs is out, whatever unloading
     // could free (on an integrated GPU, a model may sit in shared memory that
     // this server can't use).
-    const possible = opts.filter((o) => !neverFits(model, s, o, view, (i) => this.gpuSettings(i)));
-    if (!possible.length) return new HostError(413, "too_big", neverFits(model, s, opts[0]!, view, (i) => this.gpuSettings(i))!);
+    const empty = view.map((g) => ({ ...g, used: 0 }));
+    const possible = opts.filter((o) => !neverFits(model, s, o, empty, (i) => this.gpuSettings(i)));
+    if (!possible.length) return new HostError(413, "too_big", neverFits(model, s, opts[0]!, empty, (i) => this.gpuSettings(i))!);
     const usable = possible.filter((o) => !o.gpus.some((g) => held.has(g)));
     // A way that needs no unloading beats one that does, whatever its order.
     const roomy = usable.find((o) => !deficitOf(o)(new Set()));
@@ -350,7 +362,7 @@ export class Scheduler {
     if (!usable.length) return { wait: [...new Set(possible.flatMap((o) => o.gpus))] };
     // It can never fit: say why, for the first way it could have run.
     const o = opts[0]!;
-    const reason = neverFits(model, s, o, view, (i) => this.gpuSettings(i));
+    const reason = neverFits(model, s, o, empty, (i) => this.gpuSettings(i));
     if (reason) return new HostError(413, "too_big", reason);
     const gb = (n: number) => (n / GIB).toFixed(1);
     const need = this.needOf(model, o);
@@ -358,7 +370,7 @@ export class Scheduler {
     const gpu = view.find((x) => x.index === g)!;
     const pinned = loadedOn(g).filter((l) => this.pinned(l.model.id)).reduce((n, l) => n + (l.vram[g] ?? 0), 0);
     const others = gpu.used - loadedOn(g).reduce((n, l) => n + (l.vram[g] ?? 0), 0);
-    return new HostError(413, "too_big", `This model needs about ${gb(need[g]!)} GB on GPU ${g}; it has ${gb(gpu.total)} GB, of which ${gb(pinned)} GB is pinned and ${gb(Math.max(others, 0))} GB is used by other programs.`);
+    return new HostError(413, "too_big", `This model needs about ${gb(need[g]!)} GB on GPU ${g}; it has ${gb(gpu.total)} GB, of which ${gb(pinned)} GB is pinned and ${gb(Math.max(others, 0))} GB is used by other programs and ${gb(this.gpuSettings(g).keepFree)} GB is kept free.`);
   }
 
   private begin(job: Job, l: Loaded): void {
@@ -375,14 +387,14 @@ export class Scheduler {
     job.reject(error);
   }
 
-  private async load(model: TextModel, o: Option): Promise<void> {
+  private async load(model: TextModel, o: Option, settings = this.settings(model)): Promise<void> {
     const before = Object.fromEntries((await this.readGpus()).map((g) => [g.index, g.used]));
     const key = `${model.id}@${placementKey(o)}`;
-    const entry: Loaded = { model, option: o, vram: { ...this.needOf(model, o) }, ready: false, active: 0, lastUsed: this.now() };
+    const entry: Loaded = { model, option: o, vram: { ...this.needOf(model, o) }, settings, ready: false, active: 0, lastUsed: this.now() };
     this.loaded.set(model.id, entry);
     this.changing++;
     try {
-      await this.backend(model).load(model, o, this.settings(model));
+      await this.backend(model).load(model, o, settings);
     } catch (e) {
       this.loaded.delete(model.id);
       throw e;
@@ -430,9 +442,45 @@ export class Scheduler {
 
   /** Applies a model's saved settings now: unloads it if idle and loads it again. */
   async reload(model: TextModel): Promise<void> {
-    if (!this.loaded.has(model.id)) return;
-    await this.unloadNow(model.id);
-    await this.loadNow(model);
+    const previous = this.loaded.get(model.id);
+    if (!previous) return;
+    if (previous.active > 0 || !previous.ready) throw new HostError(409, "in_use", "The model is in use.");
+    if (this.runState !== "running") throw paused();
+    await this.readGpus();
+    if (this.pumping || previous.active > 0 || this.loaded.get(model.id) !== previous) throw new HostError(409, "in_use", "The model host is loading or serving a model.");
+    this.pumping = true;
+    this.changing++;
+    try {
+      // Count the old instance as reclaimable, including when pinned.
+      this.loaded.delete(model.id);
+      const view = this.gpus;
+      this.gpus = view.map((g) => ({ ...g, used: Math.max(0, g.used - (previous.vram[g.index] ?? 0)) }));
+      let plan: Plan;
+      try {
+        plan = this.plan({ model }, new Set());
+      } finally {
+        this.gpus = view;
+        this.loaded.set(model.id, previous);
+      }
+      if (plan instanceof HostError) throw plan;
+      if ("wait" in plan) throw new HostError(503, "busy", "The GPU is busy with other work.");
+      await this.unload(previous);
+      try {
+        for (const l of plan.evict) await this.unload(l);
+        await this.load(model, plan.option);
+      } catch (e) {
+        await this.load(model, previous.option, previous.settings);
+        // The restored measurement belongs to the old settings, not the saved ones.
+        this.o.state.update((st) => {
+          delete st.vram[`${model.id}@${placementKey(previous.option)}`];
+        });
+        throw e;
+      }
+    } finally {
+      this.changing--;
+      this.pumping = false;
+      this.kick();
+    }
   }
 
   async pin(model: TextModel, pinned: boolean): Promise<void> {

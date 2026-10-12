@@ -24,13 +24,13 @@ describe.skipIf(!python)("the vLLM supervisor", () => {
     chmodSync(fake, 0o755);
     const state = join(dir, "vllm.json");
     const write = (servers: object, generation = 0) => writeFileSync(state, JSON.stringify({ generation, servers }));
-    const a = { model: "/models/a", name: "a", port: 8000, gpus: [0, 1], embedding: false, tensorParallel: 2, pipelineParallel: 1, memoryShare: 0.4, maxModelLen: 32768, maxNumSeqs: 16, maxNumBatchedTokens: null, dtype: "bfloat16", chatTemplate: null };
+    const a = { model: "/models/a", name: "a", port: 8000, gpus: [0, 1], embedding: false, tensorParallel: 2, pipelineParallel: 1, memoryShare: 0.4, maxModelLen: 32768, maxNumSeqs: 16, maxNumBatchedTokens: null, dtype: "bfloat16", chatTemplate: null, toolCallParser: "hermes", reasoningParser: "qwen3" };
     write({ a });
     const proc = spawn("python3", [SUPERVISOR], { env: { ...process.env, VLLM_STATE: state, VLLM_COMMAND: fake }, stdio: "ignore" });
     try {
       const runs = () => (existsSync(join(dir, "runs")) ? readFileSync(join(dir, "runs"), "utf8").trim().split("\n") : []);
       await until(() => runs().length === 1);
-      expect(runs()[0]).toBe("0,1 serve /models/a --served-model-name a --host 0.0.0.0 --port 8000 --gpu-memory-utilization 0.4 --tensor-parallel-size 2 --pipeline-parallel-size 1 --disable-uvicorn-access-log --load-format safetensors --max-model-len 32768 --max-num-seqs 16 --dtype bfloat16");
+      expect(runs()[0]).toBe("0,1 serve /models/a --served-model-name a --host 0.0.0.0 --port 8000 --gpu-memory-utilization 0.4 --tensor-parallel-size 2 --pipeline-parallel-size 1 --disable-uvicorn-access-log --load-format safetensors --enable-auto-tool-choice --tool-call-parser hermes --reasoning-parser qwen3 --max-model-len 32768 --max-num-seqs 16 --dtype bfloat16");
       // A second model beside it on GPU 1: its own server; the first keeps running.
       write({ a, b: { model: "/models/b", name: "b", port: 8001, gpus: [1], embedding: true, tensorParallel: 1, pipelineParallel: 1, memoryShare: 0.3, maxModelLen: null } });
       await until(() => runs().length === 2);

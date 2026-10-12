@@ -88,7 +88,7 @@ export function textModel(id: string, gb: number, over: Partial<TextModel> = {})
  * A fake llama.cpp router: presets from the shared folder, /models, load and
  * unload, and chat completions that echo the last message.
  */
-export async function fakeLlamaRouter() {
+export async function fakeLlamaRouter(loadState = "loaded") {
   const status = new Map<string, string>();
   const server = http.createServer(async (req, res) => {
     const chunks: Buffer[] = [];
@@ -101,7 +101,7 @@ export async function fakeLlamaRouter() {
     };
     if (url.pathname === "/models") return json(200, { data: [...status].map(([id, value]) => ({ id, status: { value } })) });
     if (url.pathname === "/models/load") {
-      status.set(body.model, "loaded");
+      status.set(body.model, loadState);
       return json(200, { success: true });
     }
     if (url.pathname === "/models/unload") {
