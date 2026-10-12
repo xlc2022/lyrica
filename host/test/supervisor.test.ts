@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -38,6 +38,36 @@ describe.skipIf(!python)("the vLLM supervisor", () => {
       await new Promise((r) => setTimeout(r, 1500));
       expect(runs()).toHaveLength(2);
       expect(runs().join("\n")).not.toMatch(/trust-remote-code/);
+    } finally {
+      proc.kill("SIGTERM");
+      await new Promise((r) => proc.once("exit", r));
+    }
+  });
+
+  it("gives a stretched model YaRN in its own RoPE settings, and allows the long context for that process only", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-vllm-"));
+    const fake = join(dir, "fake-vllm");
+    writeFileSync(fake, `#!/bin/sh\necho "$VLLM_ALLOW_LONG_MAX_MODEL_LEN|$*" >> ${dir}/runs\nexec sleep 1000\n`);
+    chmodSync(fake, 0o755);
+    // A Qwen3.5-style config: RoPE settings in text_config, with M-RoPE sections that must stay.
+    const model = join(dir, "hybrid");
+    mkdirSync(model);
+    writeFileSync(join(model, "config.json"), JSON.stringify({ text_config: { rope_parameters: { rope_type: "default", rope_theta: 10000000, mrope_section: [11, 11, 10], partial_rotary_factor: 0.25 } } }));
+    const plain = { model: join(dir, "plain"), name: "plain", port: 8001, gpus: [1] };
+    const state = join(dir, "vllm.json");
+    writeFileSync(state, JSON.stringify({ generation: 0, servers: { hybrid: { model, name: "hybrid", port: 8000, gpus: [0], maxModelLen: 1010000, ropeOverride: { factor: 4, originalContext: 262144 } }, plain } }));
+    const proc = spawn("python3", [SUPERVISOR], { env: { ...process.env, VLLM_STATE: state, VLLM_COMMAND: fake, VLLM_ALLOW_LONG_MAX_MODEL_LEN: "" }, stdio: "ignore" });
+    try {
+      const runs = () => (existsSync(join(dir, "runs")) ? readFileSync(join(dir, "runs"), "utf8").trim().split("\n") : []);
+      await until(() => runs().length === 2);
+      const hybrid = runs().find((r) => r.includes("--served-model-name hybrid"))!;
+      expect(hybrid.split("|")[0]).toBe("1");
+      const override = JSON.parse(hybrid.split("--hf-overrides ")[1]!);
+      expect(override).toEqual({ text_config: { rope_parameters: { rope_type: "yarn", rope_theta: 10000000, mrope_section: [11, 11, 10], partial_rotary_factor: 0.25, factor: 4, original_max_position_embeddings: 262144 } } });
+      expect(hybrid).toContain("--max-model-len 1010000");
+      const other = runs().find((r) => r.includes("--served-model-name plain"))!;
+      expect(other.split("|")[0]).toBe("");
+      expect(other).not.toContain("--hf-overrides");
     } finally {
       proc.kill("SIGTERM");
       await new Promise((r) => proc.once("exit", r));

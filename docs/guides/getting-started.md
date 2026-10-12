@@ -566,7 +566,9 @@ the SSH ones, and `ssh remove <name>` takes one away.
 - **Her name** is under Administration, Persona, Name. Memories and threads
   written so far keep the old one.
 - **Sleep** runs at `sleep.time` (04:00 local by default; Administration,
-  Sleep) for every user whose key is available.
+  Sleep) for every user whose key is available, unless they set Sleep to
+  Only when I ask in Settings, Model profiles. The **Sleep** page in the
+  sidebar shows each night's runs and has **Sleep now**.
 - **Where the data is:** everything is under `/var/lib/lyrica`. `self.db`
   and each `users/<id>/` directory are encrypted at rest; a copy made while
   the service is stopped is a backup, and useless without the passphrase.

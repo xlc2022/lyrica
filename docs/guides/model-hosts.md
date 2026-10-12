@@ -257,6 +257,23 @@ saved, with the reason. Each GPU says which servers it may run and how much
 memory to keep free. Idle models are unloaded least-recently-used when
 another needs room; pinned models never are.
 
+A chat model can serve more context than it was trained for with a YaRN
+stretch, set in the model's settings on the dashboard together with the
+context to serve, for example
+`"contextLength": 1010000, "stretch": { "type": "yarn", "factor": 4 }`.
+The stretch raises the most it may serve (the trained length times the
+factor, measured from `originalContext`, which defaults to the trained
+length); `contextLength` still picks what it serves, 32k unless set. The
+editor's hint shows what
+the model's card recommends; **Look up** on the model reads the card (it
+asks for the repository when the host doesn't know it). A factor above the
+card's asks "<publisher> documents N. Save anyway?". Each model row shows
+"stretched ×N" and the size of its KV cache, which grows with the context
+length, so a stretched model may need a lower context or more memory. The
+host reports a stretch on any vLLM model as untested (vllm#58870) until its
+image carries the fix; llama.cpp is the safer choice for it. Details are in
+[host/API.md](../../host/API.md#recommended-settings).
+
 On a host with one large GPU: pin Whisper (vLLM memory share about 0.1 on
 a 24 GB card) and Kokoro, and leave the rest for chat models.
 

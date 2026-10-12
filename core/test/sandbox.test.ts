@@ -85,6 +85,17 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect((await sh("command -v gh || echo NONE")).out).not.toContain("/run/lyrica");
   });
 
+  it("mounts a thread's clones at /workspace/repos, read-only for a read-only subagent", async () => {
+    mkdirSync(p("clones", "lyrica"), { recursive: true });
+    writeFileSync(p("clones", "lyrica", "README.md"), "hello\n");
+    const clones = (reposReadOnly?: boolean) => new Sandbox({ workdir: p("work"), grants: [], network: OFF, self: [], repos: p("clones"), reposReadOnly });
+    expect((await sh("cat repos/lyrica/README.md && echo more >> repos/lyrica/README.md", clones())).code).toBe(0);
+    const r = await sh("echo x >> repos/lyrica/README.md; touch repos/new", clones(true));
+    expect(r.out).toContain("Read-only file system");
+    expect(readFileSync(p("clones", "lyrica", "README.md"), "utf8")).toBe("hello\nmore\n");
+    expect(readdirSync(p("clones"))).toEqual(["lyrica"]);
+  });
+
   it("hides lyricad's runtime directory, other users' files and everything else on the host", async () => {
     for (const path of [p("runtime"), p("other-user"), p("outside"), "/home", "/root", "/var", "/etc/shadow"]) {
       const r = await sh(`ls -a ${path}`);

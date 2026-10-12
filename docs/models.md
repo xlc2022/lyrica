@@ -416,7 +416,32 @@ shared host needs an administrator. Serving settings go only through
 and apply them now. The host
 refuses a placement that can't work, with its reason. The context a host
 serves a model with is the offering's context window, over one set by hand
-or discovered; compaction and group fitting plan by it. `hostDashboard` gives a link to the host's dashboard, at the address
+or discovered; compaction and group fitting plan by it.
+
+**Stretch and recommended settings.** A text model's settings may carry
+`stretch` (YaRN: factor and original context), which raises its context
+limit to the trained length times the factor; the host passes the flags to
+llama.cpp or vLLM (host/API.md). `servingSettings` also returns the maximum
+context, the trained length, the host's KV estimate and `recommended`, what
+the model's card says. `lookupRecommended(actor, offeringId, repo?)` asks the
+host to read the card again through its fetch service, from the repository
+the model came from or `repo` (owner/name, modelscope:owner/name or a
+link); the user's hub token goes along, marked with the hub it is for. A
+stretch above the card's factor is saved only with `{ anyway: true }` (Save
+anyway). Lookups and changes need the host's administrator (shared) or
+owner.
+
+**The `models` tool** (extension/src/models-tool.ts): `lookup { offering,
+repo? }` returns the recommended settings and the KV estimate as numbers;
+`propose { offering, contextLength, stretch, originalContext? }` shows a
+card ("Serve Qwen3.8-27B with 1,010,000 tokens of context? It reloads, and
+its KV cache grows to 17 GB.", with "Qwen documents 4." when the factor is
+above the card's) and, on Allow, saves the settings and reloads the model
+if it is idle. lyricad registers it only when `hostCopies` lists a model:
+host chat models the user can manage, and none in a private or local-only
+thread, since a lookup is an outside call. Never in a subagent.
+
+`hostDashboard` gives a link to the host's dashboard, at the address
 it last answered on, and the dashboard keeps its own password away from the
 machine.
 

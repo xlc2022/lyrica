@@ -2,6 +2,7 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { GpuSettings, ModelSettings } from "./placement.ts";
+import type { Recommended } from "./recommended.ts";
 
 export interface PairedClient {
   fingerprint: string;
@@ -32,6 +33,8 @@ export interface HostState {
   gpuSettings: Record<number, GpuSettings>;
   /** Model ID → its placement and serving settings; a model not listed is Auto with defaults. */
   models: Record<string, ModelSettings>;
+  /** Model ID → what its publisher's card recommends, from a download or a Look up. */
+  recommended: Record<string, Recommended>;
   /** Model IDs kept loaded. */
   pins: string[];
   /** "<model ID>@<placement>" → bytes measured on each GPU on its first load there. */
@@ -42,7 +45,7 @@ export interface HostState {
   migrations: string[];
 }
 
-const EMPTY: HostState = { clients: [], password: null, paused: false, gpuSettings: {}, models: {}, pins: [], vram: {}, usageSince: "", usage: {}, migrations: [] };
+const EMPTY: HostState = { clients: [], password: null, paused: false, gpuSettings: {}, models: {}, recommended: {}, pins: [], vram: {}, usageSince: "", usage: {}, migrations: [] };
 
 export class StateFile {
   readonly path: string;

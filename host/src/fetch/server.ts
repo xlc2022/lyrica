@@ -34,6 +34,10 @@ export function fetchServer(d: Downloader, isCaller: (address: string) => Promis
         const b = await body(req);
         return send(res, 200, await d.listRepo(b.source, b.repo, b.revision, b.token));
       }
+      if (path === "/read" && method === "POST") {
+        const b = await body(req);
+        return send(res, 200, await d.readFile(b.source, b.repo, b.revision, b.path, b.token));
+      }
       if (path === "/downloads" && method === "POST") {
         const { token, ...request } = await body(req);
         return send(res, 202, { downloads: (await d.request(request, token)).map((x) => d.shown(x)) });

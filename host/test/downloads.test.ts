@@ -1,5 +1,5 @@
 import http from "node:http";
-import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,7 +21,7 @@ afterEach(async () => {
   for (const o of open.splice(0)) await o.close();
 });
 
-async function stack(opts: { gated?: boolean } = {}) {
+async function stack(opts: Parameters<typeof fakeHub>[0] = {}) {
   const hub = await fakeHub(opts);
   // The hub serves a real GGUF header, so the scan finds a model.
   hub.files["model-Q4_K_M.gguf"] = Buffer.concat([ggufBytes({ "general.architecture": "llama", "general.basename": "Tiny", "tokenizer.ggml.model": "gpt2" }), Buffer.alloc(1000)]);
@@ -132,6 +132,33 @@ describe("downloads through host-api", () => {
 
     const outside = await s.api(`/host/v1/files?path=${encodeURIComponent("lyrica/../x.gguf")}`, { method: "DELETE" });
     expect(outside.body.error).toEqual({ code: "refused", message: "That path is outside the host's downloads." });
+  });
+
+  it("fills a downloaded model's recommended context from its base model's card, and looks up again on request", async () => {
+    // The quantization's card says nothing; its base model's has the recipe. Both written for this test.
+    const recipe = "```json\n{ \"rope_scaling\": { \"rope_type\": \"yarn\", \"factor\": 4.0, \"original_max_position_embeddings\": 32768 } }\n```\n```\nllama-server -c 131072 --yarn-orig-ctx 32768\n```\n";
+    const s = await stack({ readme: "# A quantization of org/base\n", base: { config: JSON.stringify({ max_position_embeddings: 40960 }), readme: recipe } });
+    await s.api("/host/v1/downloads", { body: { source: "huggingface", repo: "org/repo", files: ["model-Q4_K_M.gguf"] } });
+    await finished(s.api);
+    await s.host.downloads!.refresh();
+    const id = "lyrica/huggingface/org/repo/model-Q4_K_M.gguf";
+    const settings = async () => (await s.api(`/host/v1/models/settings?model=${encodeURIComponent(id)}`)).body;
+    for (let i = 0; i < 100 && !(await settings()).recommended; i++) await new Promise((r) => setTimeout(r, 20));
+    expect((await settings()).recommended).toMatchObject({ native: 32768, factor: 4, originalContext: 32768, stretched: 131072, source: { hub: "huggingface", repo: "org/base", revision: "def456" } });
+    // Look up names the repository it reads, which needs no hint for a downloaded model.
+    const again = await s.api("/host/v1/models/lookup", { body: { model: id } });
+    expect(again.body.recommended.source.repo).toBe("org/base");
+    // A repository that isn't a name is refused before anything leaves the host.
+    expect((await s.api("/host/v1/models/lookup", { body: { model: id, repo: "../x" } })).body.error.code).toBe("invalid");
+    expect(JSON.stringify(s.host.state.get())).not.toContain("llama-server");
+  });
+
+  it("asks for the repository when the host can't tell which one a model came from", async () => {
+    const s = await stack();
+    writeFileSync(join(s.models, "found.gguf"), ggufBytes({ "general.architecture": "llama", "tokenizer.ggml.model": "gpt2", "llama.context_length": 8192 }));
+    await s.api("/host/v1/scan", { method: "POST" });
+    const asked = await s.api("/host/v1/models/lookup", { body: { model: "found.gguf" } });
+    expect(asked.body.error.code).toBe("need_repo");
   });
 
   it("fetch answers only host-api", async () => {

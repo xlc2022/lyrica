@@ -206,6 +206,38 @@ describe("serving settings", () => {
   });
 });
 
+describe("recommended settings and the models tool's reach", () => {
+  it("looks up a card as an administrator, with the token for that hub only, and passes on need_repo and above_recommended", async () => {
+    const s = await setup();
+    const q8 = s.offering("Qwen3-8B-Q8_0.gguf");
+    await expect(s.models.lookupRecommended(s.bob, q8.id)).rejects.toThrow(Forbidden);
+    s.models.setHubToken(s.li, "huggingface", "hf_lisecrettoken5678");
+    expect((await s.models.lookupRecommended(s.li, q8.id)).recommended).toMatchObject({ factor: 4, stretched: 131072 });
+    await s.models.lookupRecommended(s.li, q8.id, "modelscope:Qwen/Qwen3-8B");
+    // The Hugging Face token goes with a Hugging Face lookup, and never with a ModelScope one.
+    expect(s.big.lookups).toEqual([
+      { model: q8.modelId, hub: "huggingface", token: "hf_lisecrettoken5678" },
+      { model: q8.modelId, repo: "modelscope:Qwen/Qwen3-8B" },
+    ]);
+    const odd = s.offering("odd-name.gguf");
+    await expect(s.models.lookupRecommended(s.li, odd.id)).rejects.toMatchObject({ code: "need_repo" });
+    await expect(s.models.setServingSettings(s.li, q8.id, { placement: { mode: "auto" }, stretch: { type: "yarn", factor: 8 } })).rejects.toMatchObject({ code: "above_recommended" });
+    await s.models.setServingSettings(s.li, q8.id, { placement: { mode: "auto" }, stretch: { type: "yarn", factor: 8 } }, { anyway: true });
+  });
+
+  it("offers host chat models to manage in a general thread only, and only to who can manage the host", async () => {
+    const s = await setup();
+    const general = { userId: s.li.id, pool: "general" as const, localOnly: false };
+    expect(s.models.hostCopies(s.li, general).map((c) => c.host)).toContain("blackwell");
+    expect(s.models.hostCopies(s.li, general).find((c) => c.offering === s.offering("Qwen3-8B-Q8_0.gguf").id)).toMatchObject({ name: "Qwen3", host: "blackwell" });
+    // A lookup is an outside call: none in a private or local-only thread.
+    expect(s.models.hostCopies(s.li, { ...general, pool: "private" })).toEqual([]);
+    expect(s.models.hostCopies(s.li, { ...general, localOnly: true })).toEqual([]);
+    // Shared hosts are an administrator's.
+    expect(s.models.hostCopies(s.bob, { ...general, userId: s.bob.id })).toEqual([]);
+  });
+});
+
 describe("host management", () => {
   it("passes on only host management paths, and only an administrator manages a shared host", async () => {
     const s = await setup();
