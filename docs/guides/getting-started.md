@@ -446,11 +446,15 @@ Two things to look at once she is unlocked:
 Under Administration, Start unlocked (administrators only; the user menu at
 the foot of the sidebar opens Administration), enter the passphrase and
 **Save**: it is sealed with `systemd-creds` into
-`/var/lib/lyrica/credentials/`; lyricad unseals it into memory at each start with
-`systemd-creds decrypt --user`, so she comes up unlocked after a reboot.
-If the saved file cannot be decrypted, she starts locked; unlock by hand. The button is disabled, with the reason,
-on a system where `systemd-creds` isn't available. Forget it there to go
-back to unlocking by hand.
+`/var/lib/lyrica/credentials/`, and lyricad unseals it into memory at each
+start with `systemd-creds decrypt --user`, so she comes up unlocked after a
+reboot. If the saved file can't be decrypted, she starts locked; unlock by
+hand. The button is disabled, with the reason, on a system where
+`systemd-creds` isn't available. Forget it there to go back to unlocking
+by hand. On Debian or Ubuntu, an install from before lyricad unsealed it
+itself gets the new `lyricad.service` at its next `install.sh` run (an
+Update doesn't change the unit). Run it before saving the passphrase: the
+old unit has systemd unseal the file, can't, and fails to start.
 
 Each user can likewise save their own data key under Settings, Unlock and
 lock, so

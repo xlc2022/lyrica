@@ -370,7 +370,13 @@ second pairing. Then:
   servers log nothing at all.
 - **Upgrade:** `git pull && host/install.sh` in the checkout. It rebuilds
   the images and restarts the stack; `.env` keeps the settings, and the
-  `data` volume keeps the host's key, so pairing survives.
+  `data` volume keeps the host's key, so pairing survives. A host
+  installed before the image server got its `/triton` scratch space needs
+  this once, or every image job fails with an `ImportError`.
+- **Restarting host-api alone** (a re-run of `install.sh` that leaves
+  llama.cpp running) loses track of the models llama.cpp still holds:
+  their memory counts as other programs', so a model may be refused as too
+  big. `docker restart lyrica-host-llamacpp-1` clears it.
 - **After a firewall reload** that flushes `INPUT`, `sudo systemctl
   restart lyrica-host-egress`. `host/test/stack/network.sh` checks the network
   layout on the running stack whenever you doubt it.
