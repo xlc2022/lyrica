@@ -119,4 +119,33 @@ of how she works with the user, from storyboards to edits of the user's own phot
 
 ## Handoff notes
 
-(The thread fills this in if it stops before it's done.)
+**Step A (2026-10-12): done.** Principles 1 (images in conversation), 2
+(structural cloud boundary) and 8 (reuse the router; no new tools here).
+`Models.image` creates, edits and upscales in memory with ordered fallbacks,
+capability filtering and the thread's CallContext. Confirmed host recipes use
+host defaults; fast/quality share image.create's list and retain those defaults.
+OpenAI GPT image generation/editing is the sole cloud table adapter (key required;
+fast=low quality, quality=high). PNG outputs lose metadata. No extra cloud provider:
+a second distinct API would add work without a current need. Contracts and models
+docs updated. No commits or pushes, as instructed; the supervisor handles them.
+
+**Validation:** `npm run typecheck` passes. `core/test/images.test.ts`: five
+passing tests with in-memory host/OpenAI API fakes, covering host create/edit/upscale,
+cloud create/edit, tiers, defaults, references/masks, restricted contexts, recipe
+discovery, workstation → 3090 fallback and PNG metadata removal. Socket-based host
+fakes hung in this sandbox, so these tests don't open sockets; paired TLS is covered
+by the existing host tests. The known environmental main-suite failures weren't
+addressed. The shared daemon Task type gained image.upscale; the web's exhaustive
+shared task-label map gained its required label to keep typecheck passing. No
+controls, screens or image UI were added.
+
+**Next:** B: image tool, portrait-photo policy and additive user setting/migration,
+encrypted results, returning image content/message parts. C: authenticated routes,
+Chromium deployment and workspace command documentation. Workspace and host API
+docs need no step-A change: their behavior is unchanged. Run the complete suite on
+the supervisor/CI host before merging.
+
+**Open questions:** no real ComfyUI was exercised. Hosts' fast/quality behavior
+comes from the selected recipe; the tier isn't a host API parameter. Portrait
+permission is deliberately left to B's tool, before cloud calls. Future cloud
+adapters can be added to CLOUD_IMAGE_PROVIDERS when needed.

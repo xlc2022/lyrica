@@ -310,7 +310,7 @@ the project chat where it branched (anchors live in `user.db`).
 
 ```ts
 type Task = "chat" | "subagent.cheap" | "subagent.strong" | "compaction" | "title" | "watching"
-          | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "image.create" | "image.edit"
+          | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "image.create" | "image.edit" | "image.upscale"
           | "speech.transcribe" | "speech.speak";
 type ThinkingLevel = "off" | "low" | "medium" | "high";
 
@@ -326,7 +326,7 @@ interface Endpoint {
   unencrypted: boolean;                     // local, plain HTTP, outside this machine and the tailnet
   downSince?: string; stale: boolean;       // stale: unreachable for STALE_DAYS (14)
 }
-interface Capabilities { contextWindow?; tools?; vision?; embedding?; image?; edit?; reasoning?: ("low" | "medium" | "high")[];
+interface Capabilities { contextWindow?; tools?; vision?; embedding?; image?; edit?; upscale?; reasoning?: ("low" | "medium" | "high")[];
                          transcribe?: boolean; speak?: { voices: Voice[] } }
 interface Voice { id; language }                             // language: a primary tag, "en" or "zh"
 interface Offering extends Capabilities {   // one model on one endpoint, with a permanent id
@@ -401,6 +401,13 @@ class Models {                                              // new Models(keyrin
   callWithFallback(task, ctx, need, call: (r) => Promise<T>, { probeMs? }?): Promise<T>   // the next model on isUnreachable; Offline when none answers
   resolveModel(task, ctx, need?): { offeringId }             // resolve(…).ref
   allowed(ctx): { endpoint; offerings }[]                   // local endpoints only when restricted
+  // Images (memory only; caller stores and records results)
+  image(ctx, request: ImageRequest, { signal? }?): Promise<{ images: GeneratedImage[]; resolution }>
+  // ImageInput { bytes: Uint8Array; type: "image/png" | "image/jpeg" | "image/webp" }
+  // ImageRequest: create { prompt, tier: "fast" | "quality", size?: { width, height }, count?, references?: ImageInput[] }
+  //   | edit { prompt, image: ImageInput, mask?: ImageInput, count?, references?: ImageInput[] }
+  //   | upscale { image: ImageInput, scale?, maxSize? }; each has action: "create" | "edit" | "upscale"
+  // GeneratedImage { bytes: Uint8Array; type: "image/png"; width; height; seed? }; no prompt metadata
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
   thinkingFor(resolution, asked): { level; note? }

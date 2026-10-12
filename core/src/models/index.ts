@@ -1,3 +1,5 @@
+import { imageAt, validateImageRequest, type ImageRequest, type GeneratedImage } from "./images.ts";
+export { CLOUD_IMAGE_PROVIDERS, type ImageRequest, type GeneratedImage, type ImageInput } from "./images.ts";
 import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import type { Db } from "../db.ts";
@@ -130,6 +132,7 @@ export interface Capabilities {
   embedding?: boolean;
   image?: boolean;
   edit?: boolean;
+  upscale?: boolean;
   /** The thinking levels it offers, besides off. */
   reasoning?: Exclude<ThinkingLevel, "off">[];
   /** Speech to text (Dictation). */
@@ -139,7 +142,7 @@ export interface Capabilities {
 }
 /** One of a speech model's voices. `language` is a primary language tag, such as "en" or "zh". */
 export interface Voice { id: string; language: string }
-export const CAPABILITIES = ["contextWindow", "tools", "vision", "embedding", "image", "edit", "reasoning", "transcribe", "speak"] as const satisfies readonly (keyof Capabilities)[];
+export const CAPABILITIES = ["contextWindow", "tools", "vision", "embedding", "image", "edit", "upscale", "reasoning", "transcribe", "speak"] as const satisfies readonly (keyof Capabilities)[];
 
 /** One model on one endpoint, with a permanent ID. */
 export interface Offering extends Capabilities {
@@ -322,10 +325,10 @@ export function checkTask(task: string): Task {
 }
 
 /** What a task needs: text models, embeddings, images or speech. `same` stays within one. */
-const capability = (t: Task) => (t === "embedding" ? "embedding" : t === "image.create" ? "image" : t === "image.edit" ? "edit"
+const capability = (t: Task) => (t === "embedding" ? "embedding" : t === "image.create" ? "image" : t === "image.edit" ? "edit" : t === "image.upscale" ? "upscale"
   : t === "speech.transcribe" ? "transcribe" : t === "speech.speak" ? "speak" : "text");
 /** Tasks with no list of their own follow chat, except these. */
-const OWN_LIST_ONLY: readonly Task[] = ["embedding", "image.create", "image.edit", "speech.transcribe", "speech.speak"];
+const OWN_LIST_ONLY: readonly Task[] = ["embedding", "image.create", "image.edit", "image.upscale", "speech.transcribe", "speech.speak"];
 /** A new profile starts with these following other tasks. */
 const NEW_PROFILE: Partial<Record<Task, { same: Task }>> = {
   title: { same: "subagent.cheap" }, compaction: { same: "subagent.cheap" }, watching: { same: "subagent.cheap" },
@@ -1182,7 +1185,7 @@ export class Models {
     // Image models are recipes: only confirmed ones become offerings, so a proposal never resolves.
     const recipes = (listIn<{ id: string; name: string; state: string; does?: string[] }>(await this.hostCall(ep, "GET", "/host/v1/recipes?state=confirmed").catch(() => []), "recipes") ?? [])
       .filter((r) => r?.state === "confirmed").map((r) => ({
-        modelId: `recipe/${r.id}`, recipe: r.name, ...(r.does?.includes("create") ? { image: true } : {}), ...(r.does?.includes("edit") ? { edit: true } : {}),
+        modelId: `recipe/${r.id}`, recipe: r.name, ...(r.does?.includes("create") ? { image: true } : {}), ...(r.does?.includes("edit") ? { edit: true } : {}), ...(r.does?.includes("upscale") ? { upscale: true } : {}),
       } as DiscoveredModel));
     return [...list.filter((m) => typeof m?.id === "string" && m.kind !== "image").map((m) => {
       const levels = (m.capabilities?.reasoning ?? []).filter((l) => l !== "off");
@@ -1868,6 +1871,18 @@ export class Models {
     }
   }
 
+  /** Images stay in memory; the caller stores results and records the call. */
+  async image(ctx: CallContext, request: ImageRequest, opts: { signal?: AbortSignal } = {}): Promise<{ images: GeneratedImage[]; resolution: Resolution }> {
+    validateImageRequest(request);
+    return this.callWithFallback(`image.${request.action}`, ctx, {}, async (r) => {
+      opts.signal?.throwIfAborted();
+      const ep = r.endpoint;
+      const images = await imageAt({ fetch: this.fetchFor(ep) ?? fetch, baseUrl: ep.api === "host" ? hostOrigin(ep.addresses![0]!) : ep.baseUrl,
+        host: ep.api === "host", modelId: r.offering.modelId, apiKey: ep.apiKey }, request, opts.signal);
+      return { images, resolution: r };
+    });
+  }
+
   // --- Speech ---
 
   /**
@@ -2059,6 +2074,7 @@ export class Models {
   private unfit(task: Task, o: Offering, ep: Endpoint, need: Need): string | undefined {
     if (o.status === "gone") return `it has been missing from ${ep.name} for ${GONE_DAYS} days`;
     if (task === "image.create" && !o.image) return "it doesn't make images";
+    if (task === "image.upscale" && !o.upscale) return "it doesn't upscale images";
     if (task === "image.edit" && !o.edit) return "it doesn't edit images";
     if (task === "speech.transcribe" && !o.transcribe) return "it doesn't transcribe speech";
     if (task === "speech.speak" && !o.speak?.voices.length) return "it doesn't speak";
@@ -2076,7 +2092,7 @@ export class Models {
     const c = this.catalog(userId);
     const out: ModelRef[] = [];
     const kinds = new Set<string>();
-    const fits = (o: Offering) => (opts.task === "image.create" ? !!o.image : opts.task === "image.edit" ? !!o.edit
+    const fits = (o: Offering) => (opts.task === "image.create" ? !!o.image : opts.task === "image.edit" ? !!o.edit : opts.task === "image.upscale" ? !!o.upscale
       : opts.task === "speech.transcribe" ? !!o.transcribe : opts.task === "speech.speak" ? !!o.speak?.voices.length : true);
     for (const ref of list) {
       const id = ref && typeof ref === "object" ? refId(ref) : undefined;

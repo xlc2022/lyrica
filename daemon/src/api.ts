@@ -22,7 +22,7 @@ export type Interface = "web" | "cli" | "matrix" | "forum" | "sleep";
 export type Task =
   | "chat" | "subagent.cheap" | "subagent.strong" | "compaction"
   | "title" | "watching" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
-  | "image.create" | "image.edit" | "speech.transcribe" | "speech.speak";
+  | "image.create" | "image.edit" | "image.upscale" | "speech.transcribe" | "speech.speak";
 /** The tasks a thread can choose models for. Compaction isn't one: Pi compacts with the thread's chat model. */
 export const THREAD_TASKS = ["chat", "subagent.cheap", "subagent.strong", "title", "watching", "speech.transcribe", "speech.speak"] as const satisfies readonly Task[];
 export type ThreadTask = (typeof THREAD_TASKS)[number];

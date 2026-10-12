@@ -32,7 +32,7 @@ it, never inferred), an OpenAI-compatible base URL and an optional API key.
   endpoint stops listing keeps its offering, marked `missing`, and gets it
   back if it returns. Models can be added by hand (`addModel`) and are never
   marked missing.
-- **Capabilities:** context window, tools, vision, embedding, image, edit
+- **Capabilities:** context window, tools, vision, embedding, image, edit, upscale
   and thinking levels. OpenRouter reports the context, tools, thinking and
   modalities; llama-server reports the context
   (`meta.n_ctx`); LM Studio and KoboldCpp report neither. Anything can be
@@ -248,7 +248,7 @@ the call is a plain `NoModel`. Before throwing it, `resolveLive` asks those
 machines again, in order, so one that has just come back answers at once.
 `callWithFallback` runs a call that isn't a Pi turn (a title, a look at a
 project's threads (`watching`, "Watching threads", in the project chat's
-context), and speech and images when they come) on each model in turn: a machine that can't be
+context), speech and images) on each model in turn: a machine that can't be
 reached or is away (`isUnreachable`) is marked down and the next tries (a
 host's `model_unavailable` marks only that model down), any
 other failure is the call's own, and when none answers it throws `Offline`
@@ -302,6 +302,37 @@ was asked; on a plain endpoint, a single level is the nearest level, with the
 note. Pi passes it as `reasoning_effort` to OpenAI-compatible
 endpoints. Subagent roles keep their own level. Thinking text is stored with
 the thread but never made searchable.
+
+## Image calls
+
+`image(ctx, request, { signal? })` creates, edits or upscales through the
+thread's `CallContext`, returning `{ images, resolution }`. Each image has
+PNG `bytes`, `type`, `width`, `height` and an optional host `seed`. Everything
+stays in memory; the caller stores results and records the call without prompts.
+The tasks `image.create`, `image.edit` and `image.upscale` have their own
+ordered lists and require `image`, `edit` and `upscale` capabilities respectively.
+Private and local-only threads use local lists only; unavailable endpoints
+fall back in order, including from a workstation to a smaller GPU host.
+
+A create request has `prompt`, `tier` (`fast` or `quality`), optional
+`size: { width, height }`, `count` and `references`. Edit takes `prompt`,
+`image`, optional `mask`, `references` and `count`; upscale takes `image`,
+optional `scale` and `maxSize`. Inputs are `{ bytes, type }` (PNG, JPEG or WebP).
+
+Hosts are called through their paired fetch at `/host/v1/images/<action>`
+with the confirmed recipe's ID. Size and count are sent only when supplied;
+all other recipe defaults remain the host's, including for both create tiers.
+Calls never name parts, LoRAs or workflows. Discovery includes recipes'
+upscale capability. A recipe that isn't confirmed and ready cannot run.
+
+`CLOUD_IMAGE_PROVIDERS` is the small cloud adapter table, currently OpenAI's
+GPT image API only. Add a cloud OpenAI-compatible endpoint with an API key,
+then a GPT image offering with `image` and `edit` capabilities. Creation uses
+`/images/generations` (or `/images/edits` when references are supplied), and
+editing uses multipart `/images/edits`; fast requests low quality and quality
+requests high. Upscale is host-only. Returned PNGs lose text, EXIF and other
+metadata before reaching the caller. Provider errors report status and host
+error codes, never a provider's potentially prompt-bearing error text.
 
 ## Speech
 
