@@ -617,7 +617,10 @@ export class Lyricad implements Drainable {
   }
 
   state(cookie: string | undefined): State {
-    if (this.settingUp) return { locked: true, setup: true, name: this.name(), users: [] };
+    if (this.settingUp) {
+      const why = this.keyring.credentials ? this.keyring.credentials.unavailable() : "saving credentials isn't set up here";
+      return { locked: true, setup: true, name: this.name(), users: [], credentials: why ? { available: false, reason: why } : { available: true } };
+    }
     if (!this.services) return { locked: true, name: this.name(), users: [] };
     const ids = this.sessions.users(cookie) ?? new Set<string>();
     const users = [...ids].map((id) => this.services!.users.get(id)).filter((u): u is User => !!u && this.keyring.hasUserKey(u.id));

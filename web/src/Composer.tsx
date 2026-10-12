@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { upload, type ThreadSettings, type ThreadSettingsChange } from "./api.ts";
 import { Icon } from "./icons.tsx";
+import { her } from "./name.ts";
 import { ATTACH_EVENT, ATTACH_KEY, take, type AttachRequest } from "./links.ts";
 import { ModePicker, nextMode, ToolsMenu, type GrantedMachine } from "./Modes.tsx";
 import { MicButton, stopReading, useDictation } from "./Voice.tsx";
@@ -126,7 +127,7 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
             ref={area}
             rows={1}
             aria-label="Message"
-            placeholder={mic.state === "recording" ? "Listening…" : busy ? "Add a follow-up" : "Message Lyrica"}
+            placeholder={mic.state === "recording" ? "Listening…" : busy ? "Add a follow-up" : `Message ${her()}`}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onPaste={(e) => { if (e.clipboardData.files.length) { e.preventDefault(); attach(e.clipboardData.files); } }}

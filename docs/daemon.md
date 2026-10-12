@@ -15,7 +15,9 @@ tailscaled's `tailscale serve` targets (Web access, Tailnet); a request on it
 came through her tailnet address.
 
 - **Setting up.** Without `<runtime>/self.db` it starts anyway, setting up:
-  `GET /api/state` says `{ locked: true, setup: true, name, users: [] }` and
+  `GET /api/state` says `{ locked: true, setup: true, name, users: [],
+  credentials }` (`credentials` says whether saving the passphrase is
+  available here, and why not; the setup page's Start unlocked follows it) and
   only `POST /api/setup` answers besides (and the web UI's files); everything
   else is `503`. At start it makes a one-time code, eight characters in two
   groups from 32 symbols (digits and capitals without 0, O, 1 and I; 40
@@ -92,12 +94,14 @@ service.
   The response lists who stays unlocked because another session holds them.
   `Me.warning` points out saved credentials with stay-unlocked off: the key
   then comes back at every start.
-- **An administrator sets a password** with `PUT …/admin/users/:targetId/password`.
-  The user's data key comes from its recovery copy in `self.db` and goes
-  under the new password, so their data stays; `Me.warning` tells them who
-  set it and when, until they change it in Settings → Password. A user
-  created before recovery copies has none until they next log in (409
-  with the reason).
+- **An administrator sets a password** with `PUT …/admin/users/:targetId/password`,
+  giving their own password again (401 when it is wrong). The user's data
+  key comes from its recovery copy in `self.db` and goes under the new
+  password, so their data stays. The user is locked as by **Lock** below,
+  so every session of theirs ends, and `Me.warning` tells them who set it
+  and when, until they change it in Settings → Password. A user created
+  before recovery copies has none until they next log in (409 with the
+  reason).
 - **Lock** (`POST /api/u/:userId/lock`) at once removes the user from every
   session, stops their subagent runs and sleep (which record how they ended), drops
   their key, then stops their threads and unmounts their home. Event
@@ -202,6 +206,16 @@ Each active thread is one Pi session from `openThreadSession`, with
   subagent's thread). `GET …/pins` lists the thread's pins, oldest first,
   and whether they're over the pinned budget (`shortened`). Messages carry
   `pinned`.
+- **Reactions** (`PUT` and `DELETE …/messages/:n/reactions/:emoji`, the
+  emoji URL-encoded) put the user's reaction on one of their messages or her
+  replies, or take it off, and answer the message's reactions (`400` for any
+  other entry or a string that isn't an emoji, `409` in a subagent's
+  thread). Messages carry `reactions`, each emoji with `you` and `her`. Hers
+  come from her `react` tool, which writes to the pool directly; either way
+  the thread's stream gets a `reactions` event with the message's new set.
+  The user's reactions since her last turn go into her next turn's message
+  as a `<reactions>` block ("Li reacted 🎉 to your message [e:…]"); the
+  user's stored message is untouched.
 - **Rewinding** (`POST …/messages/:n/rewind`, `RewindRequest`): `delete`
   removes message `n` and everything after it; `regenerate` removes her
   reply's turn from its user message and sends that message again;
@@ -303,7 +317,9 @@ things are".
   is one list over what waits for the user, built from where each thing
   lives: shares, permission requests in hosted threads, child thread updates
   and threads waiting on them, her items from the night, her persona
-  suggestions, and, for administrators, persona changes to approve. Each
+  suggestions, and, for administrators, persona changes to approve and an
+  update that failed its probation and rolled back (`rollback`, for seven
+  days after it, leading to Administration → Updates). Each
   item has its type, pool, time, whether it is a decision, where it leads,
   and its actions as requests the UI sends as they are; `total` counts the
   filtered items, `waiting` the decisions over everything (the sidebar's

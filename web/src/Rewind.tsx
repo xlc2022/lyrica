@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ModelRef, Pins, Pool, RemovalPlan, RewindRequest, ThreadSettings } from "./api.ts";
 import { Icon } from "./icons.tsx";
+import { her } from "./name.ts";
 import { useMentionText } from "./mentions.ts";
 import { useDismiss } from "./ui.tsx";
 
@@ -14,6 +15,8 @@ export interface Rewinder {
   /** The pinned messages' numbers. */
   pinned: ReadonlySet<number>;
   pin(n: number, on: boolean): void;
+  /** Puts the user's reaction `emoji` on message `n`, or takes it off. */
+  react(n: number, emoji: string, on: boolean): void;
   branch(n: number): void;
   /** Removes from message `n` (and sends again, for regenerate and edit). Messages from `hide` on are hidden meanwhile. */
   rewind(n: number, req: RewindRequest, hide: number): void;
@@ -138,7 +141,7 @@ export function PinnedBadge({ pins, you, userId, pool }: { pins: Pins; you: stri
         <div className="picker" role="dialog" aria-label="Pinned">
           {pins.pins.map((p) => (
             <button key={p.n} type="button" className="picker-item pin-item" onClick={() => show(p.n)}>
-              <span className="muted">{p.role === "user" ? you : "Lyrica"} · </span><PinPreview text={p.text} userId={userId} pool={pool} />
+              <span className="muted">{p.role === "user" ? you : her()} · </span><PinPreview text={p.text} userId={userId} pool={pool} />
             </button>
           ))}
         </div>

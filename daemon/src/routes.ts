@@ -12,7 +12,7 @@ import type { ProjectThreadInfo } from "./children.ts";
 import { Busy } from "./hosted.ts";
 import { BUILD, card, type Lyricad, type Services } from "./lyricad.ts";
 import { readUpdates, writeRequest } from "./updates.ts";
-import { toMessages } from "./messages.ts";
+import { toMessages, toReactions } from "./messages.ts";
 import { messageText, readAloud, readClip, speechState, storedSource, transcribeClip, titlesIn, type SpeechSource } from "./speech.ts";
 import { notifications } from "./notifications.ts";
 import { applyRemoval, entriesFrom, removalPlan, uploadsIn, type RemovalContext } from "./removal.ts";
@@ -681,7 +681,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         const page = o[poolOf(r)].entryPage(thread.id, { before: before ? Number(before) : undefined, limit });
         const names = thread.subagent ? { userName: (id: string) => s().users.get(id)?.profile.displayName ?? "a user" } : undefined;
         return { messages: toMessages(thread.id, poolOf(r), page.entries,
-          (run) => s().delegation.store.runs(user.id, poolOf(r), { run }).map((x) => x.thread), names, thread.child && thread.parent ? { parent: thread.parent } : {}), hasMore: page.hasMore };
+          (run) => s().delegation.store.runs(user.id, poolOf(r), { run }).map((x) => x.thread), names, { ...(thread.child && thread.parent ? { parent: thread.parent } : {}), userId: user.id }), hasMore: page.hasMore };
       });
     }),
     route("POST", `${t}/messages`, async (r) => {
@@ -789,6 +789,8 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("PUT", `${t}/messages/:n/pin`, (r) => pin(d, d.userFor(r), r, true)),
     route("DELETE", `${t}/messages/:n/pin`, (r) => pin(d, d.userFor(r), r, false)),
+    route("PUT", `${t}/messages/:n/reactions/:emoji`, (r) => react(d, d.userFor(r), r, true)),
+    route("DELETE", `${t}/messages/:n/reactions/:emoji`, (r) => react(d, d.userFor(r), r, false)),
     route("GET", `${t}/pins`, (r) => {
       const user = d.userFor(r);
       return owner(d, user, (o): Api.Pins => {
@@ -1185,13 +1187,17 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("PUT", `${u}/admin/users/:targetId/password`, async (r) => {
       const actor = d.adminFor(r);
-      const { password } = await r.json<Api.AdminPassword>();
+      const { password, yourPassword } = await r.json<Api.AdminPassword>();
+      const t = target(d, r);
       try {
-        await s().users.setPassword(actor, target(d, r), String(password ?? ""));
+        await s().users.setPassword(actor, String(yourPassword ?? ""), t, String(password ?? ""));
       } catch (err) {
         if (err instanceof NoRecoveryCopy) throw new HttpError(409, err.message);
+        if (err instanceof AuthError) throw new HttpError(401, "that isn't your password");
         throw err;
       }
+      // The old password's sessions end: the user logs in again with the new one.
+      await d.lockUser(t.id);
       return { ok: true };
     }),
     route("PATCH", `${u}/admin/users/:targetId/profile`, async (r) => {
@@ -1868,6 +1874,25 @@ function pin(d: Lyricad, user: User, r: Request, pinned: boolean): Api.Ok {
     if (role !== "user" && role !== "assistant") throw new HttpError(400, "only your messages and her replies can be pinned");
     o[pool].pinEntry(thread.id, n, pinned);
     return { ok: true };
+  });
+}
+
+/** The user's reaction on a message. She hears of it in her next turn, and every open tab sees it at once. */
+function react(d: Lyricad, user: User, r: Request, on: boolean): Api.Reactions {
+  const pool = poolOf(r);
+  const n = entryN(r);
+  const emoji = String(r.params.emoji ?? "");
+  if (!emoji || emoji.length > 32 || /\s/.test(emoji)) throw new HttpError(400, "not an emoji");
+  return owner(d, user, (o) => {
+    const thread = threadOf(o, r);
+    if (thread.subagent) throw new HttpError(409, "a subagent's thread has no reactions");
+    const at = o[pool].entryPage(thread.id, { before: n + 1, limit: 1 }).entries.find((e) => e.n === n);
+    const role = (at?.data as { type?: string; message?: { role?: string } } | undefined)?.message?.role;
+    if (!at) throw new HttpError(404, "no such message");
+    if (role !== "user" && role !== "assistant") throw new HttpError(400, "only your messages and her replies take reactions");
+    const reactions = toReactions(o[pool].react(thread.id, n, emoji, user.id, on), user.id) ?? [];
+    d.services!.host.get(user.id, pool, thread.id).reacted(n, reactions, { emoji, on, hers: role === "assistant" });
+    return { reactions };
   });
 }
 

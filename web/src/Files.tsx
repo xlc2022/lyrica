@@ -8,6 +8,7 @@ import { get, post, threadPath, upload, type FileEntry, type FileListing, type F
 import { ask, ATTACH_EVENT, ATTACH_KEY, keep, SHOW_EVENT, SHOW_KEY, type AttachRequest, type ShowRequest } from "./links.ts";
 import { Lightbox, shown, Thumb, useFileLinks, WORKDIR, type FileLinks } from "./paths.tsx";
 import { Icon } from "./icons.tsx";
+import { her } from "./name.ts";
 import { go } from "./route.ts";
 import { Crumbs, Main, PanelButtons, type ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, ErrorText, menuArrows } from "./ui.tsx";
@@ -366,7 +367,7 @@ function ImagesTab({ images, filter, onFilter, url, links, sel, onPick, press, o
     <>
       <div className="ifilter">
         <div className="seg" role="group" aria-label="Show">
-          {([["all", "All"], ["uploaded", "Uploaded"], ["made", "Made by Lyrica"]] as const).map(([k, l]) => (
+          {([["all", "All"], ["uploaded", "Uploaded"], ["made", `Made by ${her()}`]] as const).map(([k, l]) => (
             <button key={k} type="button" aria-pressed={filter === k} onClick={() => onFilter(k)}>{l}</button>
           ))}
         </div>
