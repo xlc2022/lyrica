@@ -2138,6 +2138,139 @@ test("Text models: a row per model with starred first; a row opens to its copies
   await expect(facts).toContainText("· 0 starred");
 });
 
+/**
+ * The e2e has no model host: a made-up one, "box", joins the Models page's answer, and its host-backed calls are
+ * answered here. Returns what was posted to start a download.
+ */
+async function fakeHost(page: Page, downloads: Record<string, unknown>[]) {
+  const GB = 2 ** 30;
+  const started: unknown[] = [];
+  const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  await page.route(/\/api\/u\/[^/]+\/models\/page$/, async (route) => {
+    const real = await (await route.fetch()).json() as { endpoints: Record<string, unknown>[]; hosts: unknown[] };
+    const local = real.endpoints.find((e) => e.kind === "local")!;
+    real.endpoints.push({ ...local, id: "ep-box", name: "box", api: "host", addresses: ["box.lan:7236"], fingerprint: "SHA256:aaaa", state: "up", shared: false, models: [] });
+    real.hosts.push({ endpointId: "ep-box", status: {
+      name: "box", version: "0.9.0", fingerprint: "SHA256:aaaa", state: "running", gpus: [], downloads: { active: downloads.filter((d) => d.state === "downloading").length },
+      modelsFolder: { path: "/srv/models", free: 96 * GB },
+    } });
+    await route.fulfill(json(real));
+  });
+  await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/downloads(\/[^/]+)?$/, async (route) => {
+    const method = route.request().method();
+    const id = /downloads\/([^/]+)$/.exec(route.request().url())?.[1];
+    if (method === "GET") return route.fulfill(json({ downloads }));
+    if (method === "POST") { started.push(route.request().postDataJSON()); return route.fulfill(json({ downloads: [] })); }
+    // DELETE cancels a running one, or clears a finished one from the list.
+    const at = downloads.findIndex((d) => d.id === id);
+    if (downloads[at]!.state === "downloading") downloads[at] = { ...downloads[at], state: "cancelled" };
+    else downloads.splice(at, 1);
+    return route.fulfill(json({}));
+  });
+  await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/hub\/files\?/, (route) => route.fulfill(json({
+    source: "huggingface", repo: new URL(route.request().url()).searchParams.get("repo"), revision: "abc", gated: false, card: null, free: 96 * GB,
+    files: [
+      { path: "m-Q4_K_M.gguf", size: 4.7 * GB, sha256: null, allowed: true, reason: null, present: false, fits: true },
+      { path: "m-Q8_0.gguf", size: 8.5 * GB, sha256: null, allowed: true, reason: null, present: true, fits: true },
+    ],
+  })));
+  return started;
+}
+
+test("Downloads: the queue shows progress with Cancel and how each ended, Accounts keeps a token showing only its last four, and Download text model starts one", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const GB = 2 ** 30;
+  const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/downloads-${name}-${page.viewportSize()!.width}.png`, fullPage: true }); };
+  const started = await fakeHost(page, [
+    { id: "d1", source: "huggingface", repo: "a/m-GGUF", url: null, path: "lyrica/huggingface/a/m-GGUF/m-Q4_K_M.gguf", size: 4.7 * GB, received: 1.2 * GB,
+      state: "downloading", verified: null, error: null, startedAt: new Date().toISOString() },
+    { id: "d2", source: "url", repo: null, url: null, path: "lyrica/url/example.org/vae.safetensors", size: 0.3 * GB, received: 0.3 * GB,
+      state: "done", verified: false, error: null, startedAt: "2026-10-01T10:00:00Z" },
+  ]);
+  await page.goto(`/#/u/${userId}/models/downloads`);
+  await expect(page.getByRole("heading", { level: 1, name: "Downloads" })).toBeVisible();
+  await expect(page.locator(".head .cap")).toHaveText("1 running · 1 finished");
+  await expect(page.getByRole("navigation", { name: "Models pages" }).getByRole("link", { name: /^Downloads/ }).locator(".count")).toHaveText("1");
+
+  // In progress: the file, where from and to, a progress bar and Cancel.
+  const running = page.locator("li.dl[data-download=d1]");
+  await expect(running).toContainText("m-Q4_K_M.gguf");
+  await expect(running).toContainText("from Hugging Face to box");
+  const bar = running.getByRole("progressbar", { name: "m-Q4_K_M.gguf" });
+  await expect(bar).toHaveAttribute("aria-valuenow", "25");
+  await expect(bar).toHaveAttribute("aria-valuemax", "100");
+  await expect(running).toContainText("Downloading · 1.2 GB of 4.7 GB");
+  // Finished: unverified, with why, then its size and Ready.
+  const done = page.locator("li.dl[data-download=d2]");
+  await expect(done).toContainText("from example.org to box");
+  await expect(done.locator(".dl-end")).toHaveText("Unverified no checksum given · 0.3 GB · Ready");
+  await expect(page.locator("[aria-live=polite]")).toBeAttached();
+  await noHorizontalScroll(page);
+  if (phone(page)) for (const b of [running.getByRole("button", { name: "Cancel m-Q4_K_M.gguf" }), page.getByRole("button", { name: "Add a Hugging Face token" })]) {
+    expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  }
+  await shot("queue");
+
+  // Cancel: the host keeps nothing, and the queue says so.
+  await running.getByRole("button", { name: "Cancel m-Q4_K_M.gguf" }).click();
+  await expect(running).toContainText("Cancelled Nothing was kept.");
+  await expect(page.locator(".head .cap")).toHaveText("Nothing running · 2 finished");
+  await page.getByRole("button", { name: "Clear finished" }).click();
+  await expect(page.getByText("No downloads yet. Start one from a library's Download model button, or here.")).toBeVisible();
+
+  // Accounts: a token is a password field, and afterwards only its last four show.
+  const hf = page.locator("li.acct[data-hub=huggingface]");
+  await expect(hf).toContainText("No token");
+  await hf.getByRole("button", { name: "Add a Hugging Face token" }).click();
+  const field = hf.getByLabel("Access token");
+  await expect(field).toHaveAttribute("type", "password");
+  await field.fill("hf_madeUpToken1234abcd");
+  await expect(hf.getByRole("group", { name: "Who can use it" })).toBeVisible();
+  await shot("accounts");
+  await hf.getByRole("button", { name: "Save" }).click();
+  await expect(hf).toContainText("Token saved · ••••abcd · only you");
+  await expect(page.getByText("hf_madeUpToken1234abcd")).toHaveCount(0);
+  expect(await page.content()).not.toContain("madeUpToken");
+  if (phone(page)) expect((await hf.getByRole("button", { name: "Remove the Hugging Face token" }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await hf.getByRole("button", { name: "Remove the Hugging Face token" }).click();
+  await expect(hf).toContainText("No token");
+
+  // Download model on Text models leads to Download text model, and Cancel back to it.
+  await page.goto(`/#/u/${userId}/models/text`);
+  await page.getByRole("button", { name: "Download model" }).click();
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/downloads/text$`));
+  await expect(page.getByRole("heading", { level: 1, name: "Download text model" })).toBeVisible();
+  await expect(page.getByLabel("Download to")).toHaveValue("ep-box");
+  await page.getByRole("link", { name: "Cancel" }).click();
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/text$`));
+  await page.getByRole("button", { name: "Download model" }).click();
+  await page.getByRole("button", { name: "Download", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("Look up the repository first.");
+  await page.getByLabel("Repository").fill("not a repository");
+  await page.getByRole("button", { name: "Look up" }).click();
+  await expect(page.getByRole("alert")).toHaveText("That isn't a repository. Use owner/name, or paste the page's link.");
+  await page.getByLabel("Repository").fill("https://huggingface.co/a/m-GGUF/tree/main");
+  await page.getByRole("button", { name: "Look up" }).click();
+  const files = page.getByRole("radiogroup", { name: "File to download" });
+  await expect(files.getByRole("radio")).toHaveCount(2);
+  await expect(files.locator(".choice").nth(1)).toContainText("already on this host");
+  await expect(files.getByRole("radio").nth(1)).toBeDisabled();
+  await page.getByRole("button", { name: "Download", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("Choose a file.");
+  await files.getByRole("radio").first().check();
+  await noHorizontalScroll(page);
+  await shot("text");
+  await page.getByRole("button", { name: "Download", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/downloads$`));
+  expect(started).toEqual([{ source: "huggingface", repo: "a/m-GGUF", files: ["m-Q4_K_M.gguf"] }]);
+  // A link must be https and name one model file.
+  await page.goto(`/#/u/${userId}/models/downloads/text`);
+  await page.getByRole("group", { name: "Source" }).getByRole("button", { name: "Link" }).click();
+  await page.getByLabel("Link to the file").fill("http://example.org/m.bin");
+  await page.getByRole("button", { name: "Download", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("Use an https link to one .gguf or .safetensors file.");
+});
+
 test("Web search: the administrator sets the SearXNG address and sees whether it answers; without one the switch says why", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const shot = async (name: string) => {

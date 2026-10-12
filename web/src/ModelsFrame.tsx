@@ -1,5 +1,5 @@
-// The Models area's frame and what its tabs share (src/Models.tsx, src/TextModels.tsx): the page with its tabs at the
-// left, the area's context, the words for tasks, profiles and uses, and a speaking model's Settings drawer.
+// The Models area's frame and what its tabs share (src/Models.tsx, src/TextModels.tsx, src/Downloads.tsx): the page with
+// its tabs at the left, the area's context, the words for tasks, profiles and uses, and a speaking model's Settings drawer.
 import { useEffect, useRef, useState } from "react";
 import { get, put, u, type CallInfo, type HostStatus, type ModelsPage, type ModelUse, type OfferingInfo, type OfferingSettings, type Task } from "./api.ts";
 import { href, type ModelsTab } from "./route.ts";
@@ -24,6 +24,7 @@ const TABS: { tab: ModelsTab; label: string }[] = [
   { tab: "tasks", label: "Tasks" },
   { tab: "text", label: "Text models" },
   { tab: "hosts", label: "Hosts and endpoints" },
+  { tab: "downloads", label: "Downloads" },
   { tab: "cleanup", label: "Clean up" },
   { tab: "calls", label: "Recent calls" },
 ];
@@ -44,12 +45,19 @@ export const Kind = ({ kind }: { kind: "local" | "cloud" }) => <span className={
 
 export const hostOf = (p: ModelsPage, endpointId: string): Host | undefined => p.hosts.find((h) => h.endpointId === endpointId);
 
-/** The page: its header, the tabs at the left, and the tab's content. */
-export function Frame({ ctx, tab, title, facts, actions, children }: {
-  ctx: MCtx; tab: ModelsTab; title: string; facts?: React.ReactNode; actions?: React.ReactNode; children: React.ReactNode;
+/** The downloads running on the hosts, as their status last said. */
+export const runningOnHosts = (p?: ModelsPage) => (p?.hosts ?? []).reduce((n, h) => n + ("status" in h ? h.status.downloads.active : 0), 0);
+
+/**
+ * The page: its header, the tabs at the left, and the tab's content. Downloads has a count while anything runs: the
+ * hosts' own, or `running` from the Downloads tab, which watches them closer.
+ */
+export function Frame({ ctx, tab, title, facts, actions, running, children }: {
+  ctx: MCtx; tab: ModelsTab; title: string; facts?: React.ReactNode; actions?: React.ReactNode; running?: number; children: React.ReactNode;
 }) {
   const userId = ctx.user.id;
   const cleanup = ctx.cleanup.count;
+  const downloads = running ?? runningOnHosts(ctx.models.page);
   return (
     <main className="main">
       <PageHead ctx={ctx} title={title} facts={facts}>{actions && <div className="head-actions models-actions">{actions}</div>}</PageHead>
@@ -58,6 +66,7 @@ export function Frame({ ctx, tab, title, facts, actions, children }: {
           {TABS.map((t) => (
             <a key={t.tab} href={href({ page: "models", userId, tab: t.tab })} aria-current={t.tab === tab ? "page" : undefined} data-tab={t.tab}>
               {t.label}{t.tab === "cleanup" && cleanup > 0 && <span className="count" aria-label={`${cleanup} to clean up`}>{cleanup}</span>}
+              {t.tab === "downloads" && downloads > 0 && <span className="count" aria-label={`${downloads} running`}>{downloads}</span>}
             </a>
           ))}
         </nav>

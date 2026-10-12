@@ -17,12 +17,15 @@ export type Route =
   | { page: "project"; userId: string; pool: Pool; threadId: string; section?: string }
   | { page: "memory"; userId: string; pool?: Pool; id?: string }
   | { page: "sleep"; userId: string }
-  /** The Models area, at one of its tabs (Overview when none); `add: "host"` is the Add model host page under Hosts and endpoints. */
-  | { page: "models"; userId: string; tab?: ModelsTab; add?: "host" }
+  /**
+   * The Models area, at one of its tabs (Overview when none). `add` is a page with steps under its tab: "host" is Add
+   * model host under Hosts and endpoints (`…/hosts/add-host`), "text" is Download text model under Downloads (`…/downloads/text`).
+   */
+  | { page: "models"; userId: string; tab?: ModelsTab; add?: "host" | "text" }
   | { page: "settings"; userId: string; section?: string }
   | { page: "admin"; userId: string; section?: string };
 
-export const MODELS_TABS = ["overview", "tasks", "text", "hosts", "cleanup", "calls"] as const;
+export const MODELS_TABS = ["overview", "tasks", "text", "hosts", "downloads", "cleanup", "calls"] as const;
 export type ModelsTab = (typeof MODELS_TABS)[number];
 
 /** What the panel can show: a thread (with its drawer), a thread's files, a project's settings, or a memory. */
@@ -59,7 +62,8 @@ export function parse(hash: string): Route {
   if (section === "sleep") return { page: "sleep", userId };
   if (section === "models") {
     const tab = MODELS_TABS.find((t) => t === a);
-    return { page: "models", userId, ...(tab && tab !== "overview" ? { tab } : {}), ...(tab === "hosts" && b === "add-host" ? { add: "host" as const } : {}) };
+    const add = tab === "hosts" && b === "add-host" ? "host" as const : tab === "downloads" && b === "text" ? "text" as const : undefined;
+    return { page: "models", userId, ...(tab && tab !== "overview" ? { tab } : {}), ...(add ? { add } : {}) };
   }
   // Settings → Endpoints moved to Models → Hosts and endpoints, and Settings → Model profiles to Models → Tasks.
   if (section === "settings" && a === "endpoints") return { page: "models", userId, tab: "hosts" };
@@ -86,7 +90,8 @@ export function href(r: Route): string {
     case "project": return `#/u/${e(r.userId)}/p/${r.pool}/${e(r.threadId)}` + (r.section ? `/${e(r.section)}` : "");
     case "memory": return `#/u/${e(r.userId)}/memory` + (r.pool && r.id ? `/${r.pool}/${e(r.id)}` : "");
     case "sleep": return `#/u/${e(r.userId)}/sleep`;
-    case "models": return `#/u/${e(r.userId)}/models` + (r.tab && r.tab !== "overview" ? `/${r.tab}` : "") + (r.tab === "hosts" && r.add === "host" ? "/add-host" : "");
+    case "models": return `#/u/${e(r.userId)}/models` + (r.tab && r.tab !== "overview" ? `/${r.tab}` : "")
+      + (r.tab === "hosts" && r.add === "host" ? "/add-host" : r.tab === "downloads" && r.add === "text" ? "/text" : "");
     case "settings": return `#/u/${e(r.userId)}/settings` + (r.section ? `/${r.section.split("/").map(e).join("/")}` : "");
     case "admin": return `#/u/${e(r.userId)}/admin` + (r.section ? `/${r.section.split("/").map(e).join("/")}` : "");
   }
@@ -112,10 +117,14 @@ function current(): Route {
   return r;
 }
 
+/** The address before the last move inside the app ("" when the page was opened at its own address): a page's way back. */
+let previous = "";
+export const cameFrom = () => previous;
+
 export function useRoute(): Route {
   const [route, setRoute] = useState(current);
   useEffect(() => {
-    const on = () => setRoute(current());
+    const on = (e: HashChangeEvent) => { previous = new URL(e.oldURL).hash; setRoute(current()); };
     addEventListener("hashchange", on);
     return () => removeEventListener("hashchange", on);
   }, []);

@@ -1,6 +1,6 @@
 // The Models area (docs/ux.md §6, "Models, hosts, downloads, clean-up"): Overview, Tasks, Text models (TextModels.tsx),
-// Hosts and endpoints (with the Add model host page), Clean up and Recent calls, with its sections listed at the left
-// (the frame and what the tabs share are in ModelsFrame.tsx).
+// Hosts and endpoints (with the Add model host page), Downloads (Downloads.tsx), Clean up and Recent calls, with its
+// sections listed at the left (the frame and what the tabs share are in ModelsFrame.tsx).
 // The shell polls GET …/models/cleanup for the sidebar's count; GET …/models/page, which probes every
 // endpoint, is read only while the area is open, and the Hosts tab's changes reload it.
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
@@ -10,6 +10,7 @@ import {
   type ModelRef, type OfferingInfo, type PlanSignInStarted, type ProfileEntry, type ProfileEntryChange, type Profiles, type Task,
 } from "./api.ts";
 import { Icon } from "./icons.tsx";
+import { Downloads, DownloadText } from "./Downloads.tsx";
 import { duration, RowMenu } from "./Machines.tsx";
 import {
   canEdit, Frame, GB, gb, hostOf, Kind, plural, PROFILE_WORD, TASK_WORD, useWords, VoiceDrawer,
@@ -93,7 +94,7 @@ const loadedNothing = (h?: Host) => !!h && "status" in h && h.status.gpus.every(
 const paused = (h?: Host) => !!h && "status" in h && (h.status.state === "paused" || h.status.state === "pausing");
 
 /** The Models area, at one of its tabs. */
-export function ModelsArea({ ctx: shell, tab = "overview", add }: { ctx: ShellContext; tab?: ModelsTab; add?: "host" }) {
+export function ModelsArea({ ctx: shell, tab = "overview", add }: { ctx: ShellContext; tab?: ModelsTab; add?: "host" | "text" }) {
   const models = useModelsPage(shell);
   const ctx: MCtx = { ...shell, models };
   const { reload } = models;
@@ -104,6 +105,8 @@ export function ModelsArea({ ctx: shell, tab = "overview", add }: { ctx: ShellCo
   if (tab === "tasks") return <Tasks ctx={ctx} />;
   if (tab === "text") return <TextModels ctx={ctx} />;
   if (tab === "hosts") return <Hosts ctx={ctx} />;
+  if (tab === "downloads" && add === "text") return <DownloadText ctx={ctx} />;
+  if (tab === "downloads") return <Downloads ctx={ctx} />;
   if (tab === "cleanup") return <Cleanup ctx={ctx} />;
   if (tab === "calls") return <Calls ctx={ctx} />;
   return <Overview ctx={ctx} />;

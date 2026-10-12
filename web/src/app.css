@@ -1174,3 +1174,38 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 @media (pointer: coarse) {
   .models .chip, .lrow-main, .models button.link.sm, .ldetail button.sm, .copy-drawer .seg button, .copy-foot button.sm { min-height: 44px; }
 }
+/* Downloads: the queue, In progress then Finished; Accounts; the pages that start a download. */
+.models .list > li.group-head { padding: 5px 14px; background: var(--tool); }
+.list > li.dl { gap: 6px; }
+.dl-top { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; min-width: 0; }
+.dl-top b { font-weight: 500; overflow-wrap: anywhere; }
+.dl .bar { max-width: 420px; }
+.dl-foot { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; font-size: 13px; min-width: 0; }
+.dl-end { margin: 0; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.dl-end .status-word { vertical-align: baseline; }
+.dl-end button.link { min-height: 0; padding: 0; font-size: 13px; display: inline; }
+.models p.list.empty { padding: 18px 14px; }
+.list > li.acct { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; align-items: center; min-height: 52px; }
+.list > li.acct:has(.acct-form) { grid-template-columns: minmax(0, 1fr); }
+.acct-form { display: grid; gap: 10px; max-width: 520px; }
+.acct-form .seg { justify-self: start; }
+.dl-form { display: grid; gap: 12px; max-width: 640px; }
+.dl-form .seg { justify-self: start; flex-wrap: wrap; }
+.dl-form .seg button { padding: 0 12px; }
+.lookup { display: flex; flex-wrap: wrap; gap: 8px; }
+.field.repo > label { color: var(--muted); font-size: 13px; }
+.lookup input { flex: 1 1 240px; }
+.note.gated { grid-template-columns: minmax(0, 1fr); }
+.choices { display: grid; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); }
+.choice { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 12px; min-height: var(--tap); font-size: 14px; color: var(--fg); cursor: pointer; }
+.choice + .choice { border-top: 1px solid var(--line); }
+.choice:has(input:disabled) { cursor: default; }
+.choice-name { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; min-width: 0; }
+.choice-name .mono { overflow-wrap: anywhere; min-width: 0; }
+@media (max-width: 760px) {
+  .list > li.acct { grid-template-columns: minmax(0, 1fr); }
+}
+@media (pointer: coarse) {
+  .dl button.sm, .acct button.sm, .acct-form .seg button, .dl-form .seg button, .dl-form a.link, .models .section-head button.link { min-height: 44px; }
+  .dl-end button.link { display: inline-flex; min-height: 44px; }
+}

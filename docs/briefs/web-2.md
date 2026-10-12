@@ -616,6 +616,29 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   of each user's key in `self.db` (DESIGN.md "Users" and "Storage",
   contracts core/users; the owner chose this over a reset that loses data). Nothing
   for sleep or the pools changes; the privacy boundary note is in DESIGN.
+- 2026-10-12, PR 24 (downloads): the Downloads tab, the Download text model
+  page and Accounts in `src/Downloads.tsx`, their wording in
+  `src/downloads.ts` (tested in `web/test/downloads.test.ts`); Text
+  models' **Download model** opens the page. Judgement calls: a page's way
+  back is the Models address it was opened from (`cameFrom` in
+  `route.ts`, kept from the last `hashchange`), else Downloads; a split
+  GGUF is one choice, and a repository without GGUF files is one,
+  **Whole repository**, since a safetensors model is its folder; the
+  refused lines name only files of 10 MB or more, so a README isn't one;
+  a failed download reads **Failed** (red dot) with the host's reason,
+  which the design didn't name; **Add to the group** offers a group holding
+  a copy the strong suggestions pair the new copy with; Remove on a token
+  asks nothing, as in the mockup; only the hosts the user may manage are
+  listed, since a shared host's queue needs an administrator. Strings the
+  design didn't give: "Nothing in it can be downloaded.", "No model host to
+  download to." and "A SHA-256 is 64 hex characters." lyricad sends a hub
+  only a saved token, so a typed one is saved before the download starts
+  and removed after it when Save it for next time is off. Not built, as
+  the API gives nothing for them: a deletion's row in the queue ("deleted
+  from <host>", what it freed) and a file's note such as "the usual
+  choice". The e2e answers for a made-up host in the browser (`fakeHost` in
+  `web/e2e/web.spec.ts`). Next: Image models and Download image model
+  (PR 25).
 - 2026-10-12, PR 23 (thread checklist): `src/Checklist.tsx`, as UI review
   settled it after #185: **Checklist** and its count in the facts line after
   Context, read from `live.steps` once a `steps` event came, else the
