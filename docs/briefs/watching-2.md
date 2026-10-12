@@ -48,12 +48,16 @@ coordinator.
      for project-chat-to-thread messages), only to threads of this project
      that are not resolved, at most 3 per look, and never back to a
      thread the look was about unless the digest shows it asked something.
-   - The look is stored in the project chat as one entry without a turn:
-     the `[Watching threads]` text as today, plus who was told and the
-     line sent to each, so the marker shows "Checked the other threads ·
-     told 2" from the entry itself.
+   - The look is stored in the project chat as one short entry without a
+     turn: which threads it was about and what happened in each, who was
+     told and the line sent to each, so the marker shows "Checked the
+     other threads · told 2" from the entry itself. The quoted words go
+     only into the one call and are never stored, so the project chat
+     grows by a line or two per look (Li asked about compaction,
+     2026-10-12). The next look reads the last three looks' told lines so
+     it doesn't repeat itself; nothing else carries over.
    - `raise` starts one project-chat turn, on the chat's own model, with
-     the look's text and the line it raised, exactly as a look starts a
+     the short look and the line it raised, exactly as a look starts a
      turn today. Without `raise`, no project-chat turn runs.
    - Unparseable output counts as nothing to do and is logged by name
      only (no text, AGENTS.md "No plaintext memory").

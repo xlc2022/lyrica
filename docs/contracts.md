@@ -869,7 +869,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     user's send or edit starting with the parent's mark is `400`;
     `ForgetThread` / `DELETE …?children=1`; `ThreadHost.status`,
     `delivered`, `HostedThread.waiting`, `send(text, { fromParent })` and
-    `settled()`;
+    `settled()`; a `received` thread event (`text`) when a message from
+    another thread or a look reaches the running turn, or is kept in the
+    stored thread because no turn took it;
   - **projects** (`daemon/src/projects.ts`, `children.ts`): thread pins,
     per user: `user.db` `pinned_threads` (pool, thread; no text), `PUT`/`DELETE
     threads/:id/pin`, `ThreadSummary.pinned`, pinned first in the list;
