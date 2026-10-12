@@ -796,3 +796,32 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .inline-img:hover { border-color: var(--muted); }
 .inline-img img { display: block; max-width: 100%; max-height: 320px; object-fit: contain; }
 .prose p:has(> .inline-img:only-child) { margin: 8px 0; }
+
+/* Notifications (docs/ux.md §6): one list over what waits for the user; rows with their actions, filters above. */
+.ntop { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.ntop select { min-height: 32px; font-size: 13px; }
+.ntop .cap { display: inline-flex; gap: 6px; align-items: center; }
+.ntop .spacer, .bulk .spacer { flex: 1; }
+.chip { min-height: 30px; padding: 0 10px; font-size: 13px; border-radius: 999px; }
+.chip[aria-pressed="true"] { background: var(--tool); font-weight: 600; }
+.bulk { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 0 10px; }
+.nrow { display: grid; grid-template-columns: auto 18px minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; min-height: 52px; }
+.nrow.nopick { grid-template-columns: 18px minmax(0, 1fr) auto; }
+.nrow .main-col { display: grid; gap: 2px; min-width: 0; }
+.nrow .main-col .name { display: block; overflow-wrap: anywhere; }
+.nrow .ico { width: 18px; text-align: center; color: var(--muted); font-size: 14px; }
+.nrow .when { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.nrow .actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: end; }
+.nrow .actions a.btn { display: inline-flex; align-items: center; min-height: 30px; padding: 0 9px; font-size: 13px; border: 1px solid var(--edge); border-radius: 7px; text-decoration: none; color: inherit; }
+.nkind { font-size: 12px; color: var(--muted); }
+.nkind .kind.private { color: var(--private); }
+.ngroup + .ngroup { margin-top: 12px; }
+.ngroup .eyebrow { padding: 0 0 6px; }
+.more-row { padding: 10px 0 0; }
+.welcome .card { margin-top: 24px; text-align: left; }
+@media (max-width: 760px) {
+  .nrow { grid-template-columns: auto 18px minmax(0, 1fr); }
+  .nrow.nopick { grid-template-columns: 18px minmax(0, 1fr); }
+  .nrow .actions { grid-column: 2 / -1; justify-content: start; }
+  .chip, .ntop select { min-height: 36px; }
+}

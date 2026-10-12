@@ -1,4 +1,4 @@
-import { SELF_SCHEMA, USER_SCHEMA, type Db } from "./db.ts";
+import { SELF_SCHEMA, THREAD_SHARES_SCHEMA, USER_SCHEMA, type Db } from "./db.ts";
 import { DELEGATION_SCHEMA } from "./delegation.ts";
 import { IDENTITY_SCHEMA } from "./models/host.ts";
 import { addNotice, ENDPOINT_SCHEMA, migrate as moveModels, MODEL_CHOICE_SCHEMA, REDIRECT_SCHEMA, upgradeCalls } from "./models/schema.ts";
@@ -145,6 +145,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
         legacy: (pairs) => { for (const p of pairs) db.prepare("INSERT OR IGNORE INTO legacy_refs (endpoint, model, offering) VALUES (?, ?, ?)").run(p.endpoint, p.model, p.offering); },
       });
     },
+  }, {
+    // Share with (DESIGN.md, "Where things are"): a thread in transit between two users. Expands only.
+    version: 2,
+    run(db) { db.exec(THREAD_SHARES_SCHEMA); },
   }],
   user: [{
     version: 1, contract: true,

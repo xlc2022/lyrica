@@ -1,9 +1,9 @@
 // A thread's menu in the sidebar (docs/ux.md §6): right-click, or a long press
 // on a phone, with a letter shortcut for each item. Mark as unread, Rename,
-// Move to group, Hide and Delete; Pin; Make project for a top-level thread, Resolve and
-// Reopen for a project's thread. Share with comes with its back end.
+// Share with, Move to group, Hide and Delete; Pin; Make project for a top-level thread, Resolve and
+// Reopen for a project's thread.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { del, patch, post, put, threadPath, u, type ThreadGroup, type ThreadSummary } from "./api.ts";
+import { del, get, patch, post, put, threadPath, u, type Person, type ThreadGroup, type ThreadSummary } from "./api.ts";
 import { go, type Route } from "./route.ts";
 import { ConfirmDialog, ErrorText, menuArrows } from "./ui.tsx";
 
@@ -55,10 +55,17 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onCl
   const t = at.thread;
   const base = threadPath(userId, t.pool, t.id);
   const ref = useRef<HTMLDivElement>(null);
-  const [sub, setSub] = useState<"" | "group" | "rename" | "newgroup" | "delete" | "project">("");
+  const [sub, setSub] = useState<"" | "group" | "rename" | "newgroup" | "delete" | "project" | "share">("");
   const [draft, setDraft] = useState(t.title ?? "");
   const [error, setError] = useState("");
+  const [people, setPeople] = useState<Person[]>();
+  const [recipient, setRecipient] = useState<Person>();
   const children = t.children.length;
+  // The other users on this server, read when Share with opens.
+  useEffect(() => {
+    if (sub !== "share" || people) return;
+    get<Person[]>(u(userId, "people")).then(setPeople, (e: Error) => setError(e.message));
+  }, [sub, people, userId]);
 
   // Keep the menu on screen.
   useLayoutEffect(() => {
@@ -70,7 +77,7 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onCl
   }, [at, sub, groups.length, error]);
   // Escape closes the topmost thing; a click elsewhere closes the menu; letters pick items.
   useEffect(() => {
-    if (sub === "delete" || sub === "project") return;
+    if (sub === "delete" || sub === "project" || recipient) return;
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.preventDefault(); if (sub) setSub(""); else onClose(); return; }
       if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -82,7 +89,7 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onCl
     addEventListener("keydown", key);
     addEventListener("pointerdown", down);
     return () => { removeEventListener("keydown", key); removeEventListener("pointerdown", down); };
-  }, [sub, onClose]);
+  }, [sub, recipient, onClose]);
   useEffect(() => { if (!sub) ref.current?.querySelector("button")?.focus(); }, [sub]);
 
   const act = (fn: () => Promise<unknown>) => fn().then(() => { onChange(); onClose(); }, (e: Error) => setError(e.message));
@@ -94,6 +101,15 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onCl
     if (route.page === "thread" && route.threadId === t.id) go({ page: "home", userId });
   });
 
+  if (recipient) {
+    // DESIGN.md, "Share with": a copy as it is now; the sender's later messages and memory never go; a private thread asks first.
+    const name = t.title || "this thread";
+    return (
+      <ConfirmDialog title={`Send a copy to ${recipient.displayName}?`} confirm="Send a copy" onCancel={() => setRecipient(undefined)}
+        onConfirm={() => act(() => post(`${base}/share`, { to: recipient.id }))}
+        sentence={`${recipient.displayName} gets “${name}” as it is now, to add to their General or Private threads or decline; your later messages and none of your memories go with it${t.pool === "private" ? ", and this thread is private." : "."}`} />
+    );
+  }
   if (sub === "project") {
     return (
       <ConfirmDialog title="Make this a project?" confirm="Make project" onCancel={onClose} onConfirm={() => change({ project: true })}
@@ -108,7 +124,15 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onCl
     );
   }
   let body: ReactNode;
-  if (sub === "group") {
+  if (sub === "share") {
+    body = (
+      <>
+        <button type="button" className="back" onClick={() => setSub("")}>‹ Share with</button>
+        {people?.map((p) => <Item key={p.id} label={<>{p.displayName}{p.linked && <span className="cap"> your persona</span>}</>} onClick={() => setRecipient(p)} />)}
+        {people && !people.length && <span className="empty">No one else on this server.</span>}
+      </>
+    );
+  } else if (sub === "group") {
     body = (
       <>
         <button type="button" className="back" onClick={() => setSub("")}>‹ Move to group</button>
@@ -138,6 +162,7 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onCl
         <span className="eyebrow">{t.title || (t.project ? "New project" : "New thread")}</span>
         <Item label={t.unread ? "Mark as read" : "Mark as unread"} kbd="U" onClick={() => change({ unread: !t.unread })} />
         <Item label="Rename…" kbd="R" onClick={() => { setDraft(t.title ?? ""); setSub("rename"); }} />
+        {!t.project && !t.subagent && <Item label="Share with" kbd="S" sub onClick={() => setSub("share")} />}
         <Item label="Move to group" kbd="M" sub onClick={() => setSub("group")} />
         {!t.child && !t.parent && <Item label={t.pinned ? "Unpin" : "Pin"} kbd="P" onClick={() => act(() => (t.pinned ? del(`${base}/pin`) : put(`${base}/pin`, {})))} />}
         {!t.child && !t.parent && !t.project && <Item label="Make project…" kbd="K" onClick={() => setSub("project")} />}
