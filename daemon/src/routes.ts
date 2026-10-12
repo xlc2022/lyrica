@@ -270,6 +270,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const input = await r.json<Api.OpenRouterSignInStart>();
       const name = String(input.name ?? "").trim();
       if (!name) throw new HttpError(400, "an endpoint needs a name");
+      s().models.checkEndpointName(name);
       if (s().models.findEndpoint(user.id, name)) throw new HttpError(400, `endpoint ${name} already exists`);
       for (const [id, p] of openRouterSignIns) if (p.userId === user.id) dropOpenRouter(id);
       const signIn = startOpenRouterSignIn();
