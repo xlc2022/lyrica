@@ -1061,6 +1061,14 @@ export interface SendRequest {
 export interface SendResponse { queued: boolean; sleep?: SleepStarted }
 
 /**
+ * GET /api/u/:userId/threads/:pool/:threadId/draft → DraftInfo, and PUT (DraftChange) to keep one.
+ * The composer's unsent text, one per thread, in the thread's pool database; empty text clears it,
+ * and so does sending a message. At most 64 KiB, or `413`.
+ */
+export interface DraftInfo { text: string; updatedAt?: string }
+export interface DraftChange { text: string }
+
+/**
  * POST /api/u/:userId/threads/:pool/:threadId/messages/:n/branch → ThreadSummary.
  * A child thread holding the conversation up to message `n` (and its tool
  * results), with the thread's settings; the thread itself is unchanged.
