@@ -363,8 +363,8 @@ sleep, dictation, read aloud and so on) to ordered lists of models; the
 first model that answers is used, and private and local-only threads use
 the local profile only. See [docs/models.md](../models.md).
 
-- **A cloud or OpenAI-compatible endpoint:** Settings, Endpoints, Add
-  an endpoint (a name, cloud or local, the base URL, the API key). Shared
+- **A cloud or OpenAI-compatible endpoint:** Models, Hosts and endpoints,
+  **Add endpoint** (Name, Kind local or cloud, Base URL, API key). Shared
   endpoints, which every user can use, need an administrator. The same from
   a terminal:
 

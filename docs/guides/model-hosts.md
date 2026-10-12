@@ -151,42 +151,23 @@ address.
 1. On the dashboard choose **Pair with Lyrica**. A code like
    `7KQ2-M9XD-4RTB-W1HZ` appears there and in `docker compose logs
    host-api`. It works once, for 10 minutes, and 5 wrong tries void it.
-2. In Lyrica, pair with the code, giving the host a name and its addresses
-   in the order to try them (LAN address first, tailnet name second, say).
+2. In Lyrica, open Models, Hosts and endpoints, **Add model host**. Give
+   the host a name, its addresses one per line in the order to try them
+   (LAN address first, tailnet name second, say) and the pairing code.
+   Turn on **Shared** for a host every user may use (administrators only);
+   leave it off for one of your own. Then **Pair**.
+3. Lyrica shows the host's fingerprint: compare it with the one the install
+   printed. The host's dashboard now lists this Lyrica server, and Lyrica
+   has read its model library. A plain reason comes back for no active
+   code, a wrong code, or no address reachable.
 
-The web UI has no control for step 2, so call the API from the Lyrica
-machine. Log in first; the password is read from a hidden prompt, never put
-on a command line:
-
-```sh
-read -rs -p 'Password: ' PASSWORD; echo
-ESCAPED=${PASSWORD//\\/\\\\}; ESCAPED=${ESCAPED//\"/\\\"}
-printf '{"login":"li","password":"%s"}' "$ESCAPED" |
-  curl -sS -c jar -H 'Origin: http://127.0.0.1:7340' -H 'content-type: application/json' \
-    --data @- http://127.0.0.1:7340/api/login
-unset PASSWORD ESCAPED
-```
-
-The answer carries your user id. Then, with `shared: true` for a host every
-user may use (you must be an administrator), or without it for one of your
-own:
-
-```sh
-curl -sS -b jar -H 'Origin: http://127.0.0.1:7340' -H 'content-type: application/json' \
-  -d '{"name":"blackwell","addresses":["192.168.1.20","blackwell.tail1234.ts.net"],"code":"7KQ2-M9XD-4RTB-W1HZ","shared":true}' \
-  http://127.0.0.1:7340/api/u/<user id>/hosts
-rm jar
-```
-
-The response is the new endpoint, with the host's `fingerprint`: compare it
-with the one the install printed. The host's dashboard now lists this
-Lyrica server, and Lyrica has read its model library. A plain reason comes
-back for no active code, a wrong code, or no address reachable.
+The same is `POST /api/u/<user id>/hosts` with `name`, `addresses`, `code`
+and `shared` ([docs/contracts.md](../contracts.md)).
 
 If the host's key ever changes (a rebuilt `data` volume), Lyrica refuses it
-with "This host's identity changed. Pair it again." Make a new code and
-`POST …/hosts/<endpoint id>/pair` with it; every id stays. New addresses go
-to `PUT …/hosts/<endpoint id>/addresses`.
+with "This host's identity changed. Pair it again." Make a new code on the
+dashboard and choose **Pair again…** in the host's ⋯ menu; every id stays.
+New addresses go in with **Edit** on the host card's facts line.
 
 ## Put models on it
 
@@ -295,9 +276,9 @@ lyrica admin models profile show --user li
 A model id is its path under the models folder, as the dashboard and
 `GET /host/v1/models` show it. Private and local-only threads use the local
 profile, so a host is how private threads get a model at all. Each user
-picks their own voice and speed per language under the speech model's
-**Settings** link in Settings, Endpoints; without one, the model's first
-voice for the language is used.
+picks their own voice and speed per language with the speech model's
+**Settings**, in its host's "N models" list under Models, Hosts and
+endpoints; without one, the model's first voice for the language is used.
 
 ## More than one host
 
@@ -354,7 +335,7 @@ workstation"). Note what goes wrong against each.
 1. `host/install.sh` ends with the dashboard address and the fingerprint,
    and its own egress check passed. Then `host/test/stack/network.sh`.
 2. Set the dashboard password and open the dashboard from another machine.
-3. Pair from Lyrica with the API call above; the fingerprints match; the
+3. Pair from Lyrica with Add model host; the fingerprints match; the
    dashboard lists the server.
 4. A GGUF in the models folder: Scan, put it in the local chat list, chat
    with it from a private thread. Check the context length, that it
