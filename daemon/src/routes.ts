@@ -1413,6 +1413,13 @@ export function apiRoutes(d: Lyricad): Route[] {
       else await d.keyring.forgetSelfPassphrase();
       return adminStatus(d);
     }),
+    route("POST", `${u}/admin/passphrase/change`, async (r) => {
+      d.adminFor(r);
+      const { current, next } = await r.json<Api.PassphraseRotate>();
+      // Guesses at the current passphrase count on the limiter, like a login.
+      await limited(d, [`passphrase:${r.ip}`], () => d.keyring.changeSelfPassphrase(String(current ?? ""), String(next ?? "")), "That isn't the current passphrase.", 403);
+      return adminStatus(d);
+    }),
     route("GET", `${u}/admin/users`, (r) => s().users.listUsers(d.adminFor(r)).map(card)),
     route("POST", `${u}/admin/users`, async (r) => {
       d.adminFor(r);

@@ -74,6 +74,7 @@ came through her tailnet address.
   else is `503`.
 - Run by hand in a terminal, it asks for the passphrase at a hidden prompt.
 - With a saved passphrase (below), it starts unlocked.
+- **Changing the passphrase** (`POST …/admin/passphrase/change` with the current one, administrators; or `lyrica admin passphrase` while lyricad is stopped, which it refuses otherwise) rekeys self.db in place: she keeps running, and from then on only the new passphrase opens her. A wrong current passphrase is refused (`403`) and changes nothing; a saved passphrase is re-saved with the new one. Old update snapshots of self.db keep the old passphrase, which still opens them.
 - When unlocked it builds `Workspace` with its own two ports as `excludePorts`, and
   runs `selfTest()`. If network is refused, the reason is logged and shown to
   administrators (`GET …/admin/status`).
