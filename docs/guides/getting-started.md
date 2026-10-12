@@ -461,12 +461,11 @@ lyricad from starting.
 To change the passphrase later, stop lyricad (`sudo systemctl stop lyricad`)
 and run `sudo lyrica admin passphrase`: it asks for the current one, then
 the new one twice, and refuses while lyricad runs. Start lyricad again and
-unlock with the new one. While she runs, an administrator can instead
-`POST /api/u/<user-id>/admin/passphrase/change` with `{"current": …,
-"next": …}`; there is no button for it. A saved Start unlocked
-passphrase is re-saved with the new one; if that fails, the saved copy is
-removed (the API response says so), so save it again. Old update
-snapshots of `self.db` keep opening with the old passphrase.
+unlock with the new one. A saved Start unlocked passphrase is re-saved
+with the new one; if that fails, the saved copy is removed, so check Start
+unlocked under Administration and save it again if it says the passphrase
+isn't saved. Old update snapshots of `self.db` keep opening with the old
+passphrase.
 
 Each user can likewise save their own data key under Settings, Unlock and
 lock, so
