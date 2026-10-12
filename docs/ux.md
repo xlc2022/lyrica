@@ -86,7 +86,7 @@ Rules:
 - → opens the flyout, and ← or Escape closes one level. Items in it keep their
   letter shortcuts.
 - Without hover, tapping the item replaces the menu in place with a ‹ Back
-  row, as today.
+  row.
 
 ## 4. Words
 

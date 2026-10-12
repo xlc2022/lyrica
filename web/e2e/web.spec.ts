@@ -1777,7 +1777,17 @@ test("hovering New project opens its flyout beside the item, and it flips at the
   expect(f.x).toBeGreaterThanOrEqual(i.x + i.width - 2); // and it opens to the right
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/flyout-${page.viewportSize()!.width}.png` });
 
-  // Resting on a sibling item closes it.
+  // From the keyboard: → moves into the flyout, ← closes it and puts focus back on its item.
+  await item.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(fly.getByRole("menuitem", { name: "General" })).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(fly).toHaveCount(0);
+  await expect(item).toBeFocused();
+
+  // Resting on a sibling item closes it (the pointer is still on the item, so a click reopens the flyout first).
+  await item.click();
+  await expect(fly).toBeVisible();
   await menu.getByRole("menuitem", { name: "New group…" }).hover();
   await expect(fly).toHaveCount(0);
 

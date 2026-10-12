@@ -551,8 +551,10 @@ function ListMenu({ at, ctx, onClose }: { at: { x: number; y: number }; ctx: She
     if (!fly) el.querySelector("button")?.focus();
   }, [at, sub]);
   useEffect(() => {
+    // Closing a flyout from the keyboard puts focus back on its item.
+    const back = () => { const open = fly; setSub(""); if (open) requestAnimationFrame(() => ref.current?.querySelector<HTMLElement>(`[data-submenu="${sub}"]`)?.focus()); };
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.preventDefault(); if (sub) setSub(""); else onClose(); return; }
+      if (e.key === "Escape") { e.preventDefault(); if (sub) back(); else onClose(); return; }
       // → opens the item's flyout, ← closes one level.
       const focus = document.activeElement as HTMLElement | null;
       if (e.key === "ArrowRight" && focus?.dataset.submenu) {
@@ -560,7 +562,7 @@ function ListMenu({ at, ctx, onClose }: { at: { x: number; y: number }; ctx: She
         requestAnimationFrame(() => ref.current?.querySelector<HTMLElement>(".flyout button")?.focus());
         return;
       }
-      if (e.key === "ArrowLeft" && sub) { e.preventDefault(); setSub(""); return; }
+      if (e.key === "ArrowLeft" && sub) { e.preventDefault(); back(); return; }
       if (e.target instanceof HTMLInputElement) return;
       // Letters and arrows act inside the open flyout when focus is there, else in the menu itself.
       const scope = (focus?.closest(".flyout") as HTMLElement | null) ?? ref.current;
