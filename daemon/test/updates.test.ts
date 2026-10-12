@@ -116,7 +116,7 @@ describe("Administration's updates API", () => {
       ["aaaaaaa", false, false, { possible: true, restores: "2026-10-09T14:02:00Z" }],
     ]);
 
-    expect(got.releases.map((r) => r.summary)).toEqual([`${"Releases and rollback ".repeat(6).trim().slice(0, 79)}…`, undefined, undefined]);
+    expect(got.releases.map((r) => r.summary)).toEqual(["Releases and rollback ".repeat(6).trim(), undefined, undefined]);
 
     expect((await ada.post(u, { tag: "main" })).status).toBe(400);
     expect((await ada.post(u, { tag: "update/2026-10-12" })).status).toBe(200);
