@@ -59,10 +59,11 @@ A thread's address may carry what the panel beside it shows:
   pool dot's place (amber-dotted when one of its threads waits on the user)
   and its threads nested under it, open by default, each with its pool dot,
   its state as a word (Working, Waiting on you, Waiting for approval,
-  Queued, Idle) and its unseen count; resolved ones fold under a
-  **Resolved** row with their count. The list's own menu (right-click or a
-  long press on its empty space) has **New project** (General or Private:
-  an empty, pinned project chat) and **New group…**.
+  Queued, Idle) and its unseen count, the ones pinned from their cards
+  first; resolved ones fold under a **Resolved** row with their count. The
+  list's own menu (right-click or a long press on its empty space) has
+  **New project** (General or Private: an empty, pinned project chat) and
+  **New group…**.
 - **Thread menu** (`src/ThreadMenu.tsx`): right-click a thread, or hold it
   for half a second on a touch screen. Mark as unread or read (U), Rename…
   (R, inline), **Share with** (S: the other users on this server, from
@@ -71,13 +72,16 @@ A thread's address may carry what the panel beside it shows:
   don't go, and that the thread is private when it is; `POST …/share`;
   not on a project chat or a subagent's thread; a private thread's
   notification offers Add to Private only), Move to group (M: the groups, Not in a group, New group… N),
-  **Pin** or **Unpin** (P, top-level threads), **Make project…** (K, a
+  **Pin** or **Unpin** (P, top-level threads; a toast says "Pinned to the
+  top" or "Unpinned", the shell's one, gone after 4 s), **Make project…** (K, a
   top-level thread; confirms in a dialog, since there is no way back),
   **Resolve** or **Reopen** (E, a project's thread), Hide or Unhide (H), and
   Delete… (D), which confirms in a dialog and offers
   to delete child threads too. From the keyboard, Shift+F10 or the Menu key
   on a focused thread opens it under the row; the arrows move between items
-  and Escape closes it. The user menu works the same way. Groups and unread marks are
+  and Escape closes it. The thread header's ⋯ (Thread actions) opens the
+  same menu under it, and pressing it again closes it; in the panel,
+  Delete closes the panel. The user menu works the same way. Groups and unread marks are
   the user's own (`thread_groups`, `thread_prefs` in `user.db`); opening a
   thread clears its unread mark.
 - **Hidden pools:** with Show general or Show private off, a thread or
@@ -87,7 +91,8 @@ A thread's address may carry what the panel beside it shows:
   badge (cloud or local, model and endpoint; it opens the model picker), the
   thread's group as a link that changes it, the folders as words with the
   paths in their tooltip, and the granted machines', repositories' and MCP
-  servers' names in mono; at the right a Settings button. Below it the conversation and the composer.
+  servers' names in mono; at the right Files, Settings and ⋯, which opens
+  the thread menu. Below it the conversation and the composer.
   After the group, **Context** and the percent (`src/ContextMeter.tsx`)
   open a popover of the parts, the reserve and what's free, when measured,
   and the last turn's speed. It reads `ThreadSettings.context` and then each
@@ -101,7 +106,8 @@ A thread's address may carry what the panel beside it shows:
   text, done ones muted and the doing mark in the accent; no heading, no
   buttons. It reads the stream's `steps` event (`live.steps`) once one
   came, else `ThreadSummary.steps`, so a new list redraws the fact and
-  the open popover in place. Her call itself is a tool marker.
+  the open popover in place; with Checklists off it shows none, a list
+  already streamed included. Her call itself is a tool marker.
   Then, while she has wake-ups waiting (`ThreadSettings.wakeups`, soonest
   first), **Wake-up** and the soonest time in mono (`wakeTime`: HH:MM today,
   the date before it otherwise) open a popover with each one's time and an
@@ -721,7 +727,10 @@ A thread's address may carry what the panel beside it shows:
   beneath, the step under way (or the first to do) with its mark, on one
   line with an ellipsis, left off once all are done or the thread is
   resolved; then the first line of its last update, and Open, Stop,
-  Resolve or Reopen behind ⋯. The sidebar rows show no checklist. A card waiting on the user carries
+  Pin or Unpin (`…/pin`, as the thread menu's, with its toast; a pinned
+  thread sits first among the project's threads in the sidebar, never in
+  the Pinned group), Resolve or Reopen behind ⋯. The sidebar rows show no
+  checklist. A card waiting on the user carries
   `data-pending`, so the pending bar reads "Thread waiting for your answer".
   A `threads suggest` call is the **Suggested threads** card, like the plan
   card: each proposed thread with Start, one primary Start all; started ones
@@ -811,7 +820,11 @@ A thread's address may carry what the panel beside it shows:
   a Settings link opening its drawer: a voice per
   language (English, Mandarin) and the speed (a number, of 4, clamped when
   the field is left), each with its source word (shared or yours) and a
-  Reset link.
+  Reset link. The thread drawer's Read aloud select has the same
+  **Settings** link after it, opening that drawer over the thread drawer
+  for the model the select shows (the thread's pick, else the profile's),
+  when it speaks and the thread may use it; Escape closes the voice
+  drawer first, and focus goes back to the link.
 - **The plan card:** a `propose_plan` request shows "Plan", its step count
   when it has numbered or bulleted steps, the plan as prose, a primary
   "Go ahead in…" whose menu offers Ask, Accept edits or Auto, Keep planning,

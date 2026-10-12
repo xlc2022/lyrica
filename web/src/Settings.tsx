@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   del, get, patch, u, THREAD_TASKS,
-  type AllowedPaths, type EndpointInfo, type Grant, type ModelRef, type PermissionMode, type MachineInfo,
+  type AllowedPaths, type EndpointInfo, type Grant, type ModelRef, type PermissionMode, type MachineInfo, type OfferingInfo,
   type TaskModel, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTask,
 } from "./api.ts";
 import { Repositories } from "./Git.tsx";
@@ -10,6 +10,7 @@ import { McpServers } from "./Mcp.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
+import { VoiceDrawer } from "./ModelsFrame.tsx";
 import { go } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
 import { Confirm, ConfirmDialog, ErrorText, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
@@ -29,6 +30,13 @@ const fits = (task: ThreadTask, m: EndpointInfo["models"][number]) => (task === 
 
 const refKey = (m?: { offeringId: string }) => m?.offeringId ?? "";
 const named = (t: TaskModel) => t.label ?? (t.modelId ? `${t.modelId} · ${t.endpointName}` : "a model that no longer exists");
+
+/** The speaking model a task select shows, the thread's pick or else the profile's, when the thread may use it: for its Settings drawer. */
+function speaker(value: TaskModel, allowed: EndpointInfo[]): OfferingInfo | undefined {
+  const first = value.list?.[0];
+  const id = value.model?.offeringId ?? (first && "offeringId" in first ? first.offeringId : undefined);
+  return allowed.flatMap((ep) => ep.models).find((m) => m.id === id && m.speak?.voices.length);
+}
 
 /** Always visible in the header: the main conversation's model, cloud or local, and its endpoint. */
 export function ModelBadge({ base, settings, onChange, readOnly }: {
@@ -109,18 +117,25 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
   const paths = useLoad(() => get<AllowedPaths>(u(userId, "paths")), [userId]);
   const [title, setTitle] = useState(summary.title ?? "");
   const ref = useRef<HTMLElement>(null);
+  // Read aloud's model's voice drawer (Models' own), over this one; Escape closes it first, and focus goes back to its link.
+  const speaking = speaker(settings.models["speech.speak"], settings.allowed);
+  const [voice, setVoice] = useState<OfferingInfo>();
+  const voiceLink = useRef<HTMLButtonElement>(null);
+  const closeVoice = useCallback(() => { setVoice(undefined); voiceLink.current?.focus(); }, []);
+  const voiceOpen = useRef(false);
+  voiceOpen.current = !!voice;
   // Focus moves in once, when the drawer opens: the thread re-renders on every streamed event, and
   // re-focusing then would pull focus out of a dialog opened from the drawer.
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   useEffect(() => {
     ref.current?.focus();
-    const key = (e: KeyboardEvent) => e.key === "Escape" && closeRef.current();
+    const key = (e: KeyboardEvent) => e.key === "Escape" && !voiceOpen.current && closeRef.current();
     addEventListener("keydown", key);
     return () => removeEventListener("keydown", key);
   }, []);
 
-  return (
+  return (<>
     <aside id={id} ref={ref} tabIndex={-1} className="drawer" aria-label="Thread settings">
       <div className="drawer-head">
         <h2>Thread settings</h2>
@@ -132,9 +147,15 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
         <fieldset className="group" disabled={sub || busy}>
           <legend>Models</legend>
           {/* Watching threads only in a project chat, the one thread that makes looks; it comes after Titles. */}
-          {THREAD_TASKS.filter((task) => task !== "watching" || summary.project).map((task) => (
-            <TaskSelect key={task} task={task} value={settings.models[task]} allowed={settings.allowed} onChange={(m) => change({ models: { [task]: m } })} />
-          ))}
+          {THREAD_TASKS.filter((task) => task !== "watching" || summary.project).map((task) => {
+            const select = <TaskSelect key={task} task={task} value={settings.models[task]} allowed={settings.allowed} onChange={(m) => change({ models: { [task]: m } })} />;
+            return task === "speech.speak" && speaking ? (
+              <div key={task} className="inline speak-row">
+                {select}
+                <button ref={voiceLink} type="button" className="link sm" aria-label={`${speaking.modelId} settings`} onClick={() => setVoice(speaking)}>Settings</button>
+              </div>
+            ) : select;
+          })}
           <NetSwitch label="Fallback" hint="When off, only the first model in each list answers; if it can't, the message waits for it." value={settings.fallback} effective={settings.fallbackOn}
             onChange={(v) => change({ fallback: v })} />
         </fieldset>
@@ -204,7 +225,8 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
         </fieldset>
       </div>
     </aside>
-  );
+    {voice && <VoiceDrawer userId={userId} model={voice} onClose={closeVoice} />}
+  </>);
 }
 
 export function TaskSelect({ task, label, value, allowed, onChange }: {

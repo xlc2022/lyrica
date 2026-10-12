@@ -15,7 +15,7 @@ import { ThreadMenu, useThreadMenu } from "./ThreadMenu.tsx";
 import { ProjectPage, stateWord } from "./Project.tsx";
 import { SearchGroups, searchable, useMessageSearch } from "./Search.tsx";
 import { ask, JUMP_EVENT, JUMP_KEY, keep, type JumpRequest } from "./links.ts";
-import { ErrorText, hidden, menuArrows, shortTime, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
+import { ErrorText, hidden, menuArrows, shortTime, Toast, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
 
 export interface ShellContext {
   user: UserCard;
@@ -40,6 +40,8 @@ export interface ShellContext {
   openSide: () => void;
   /** Reload GET /api/state: after her name changes. */
   refreshState: () => void;
+  /** Says what an action did in a toast at the foot of the screen ("Pinned to the top"), gone after a few seconds. */
+  toast: (text: string) => void;
 }
 
 export function Shell({ user, users, route, build, onAuthChange, refreshState }: {
@@ -52,6 +54,9 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
   const threads = useLoad(() => get<ThreadSummary[]>(u(user.id, "threads")), [user.id]);
   const groups = useLoad(() => get<ThreadGroup[]>(u(user.id, "thread-groups")), [user.id]);
   const [sideOpen, setSideOpen] = useState(false);
+  // Numbered, so the same words said again start their few seconds again.
+  const [toast, setToast] = useState<{ text: string; n: number }>();
+  const closeToast = useCallback(() => setToast(undefined), []);
   const wide = useWide();
   // Below the split width the panel's address is the page itself (docs/ux.md §6).
   const shown: Route = route.page === "thread" && route.panel && !wide ? panelRoute(route.userId, route.panel) : route;
@@ -75,7 +80,7 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
   const ctx: ShellContext = {
     user: me.data.user, me: me.data, setMe: me.set, build, refreshThreads: threads.reload,
     groups: groups.data ?? [], refreshGroups: groups.reload, waiting: notes.waiting, refreshNotifications: notes.reload, sleep, cleanup, threads: threads.data ?? [], openSide: () => setSideOpen(true),
-    refreshState,
+    refreshState, toast: (text) => setToast((t) => ({ text, n: (t?.n ?? 0) + 1 })),
   };
 
   const panel = wide && route.page === "thread" ? route.panel : undefined;
@@ -116,6 +121,7 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
           {page(panelRoute(route.userId, panel), () => dropDrawer("panel"))}
         </PanelColumn>
       )}
+      {toast && <Toast key={toast.n} text={toast.text} after={4000} onClose={closeToast} />}
     </div>
   );
 }
@@ -469,7 +475,7 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
         {nothing && <li className="muted empty">Nothing matches.</li>}
       </ul>
       {menu.at && (
-        <ThreadMenu at={menu.at} userId={user.id} route={route} groups={ctx.groups} onGroups={ctx.refreshGroups} onChange={ctx.refreshThreads} onClose={menu.close} />
+        <ThreadMenu at={menu.at} userId={user.id} route={route} groups={ctx.groups} onGroups={ctx.refreshGroups} onChange={ctx.refreshThreads} onToast={ctx.toast} onClose={menu.close} />
       )}
       {listMenu.at && <ListMenu at={listMenu.at} ctx={ctx} onClose={listMenu.close} />}
       <div className="side-foot">
@@ -589,11 +595,12 @@ export type MenuHandlers = ReturnType<ReturnType<typeof useThreadMenu>["handlers
 
 function ThreadRow({ t, userId, current, menu }: { t: ThreadSummary; userId: string; current: string; menu: (t: ThreadSummary) => MenuHandlers }) {
   const key = `${t.pool}/${t.id}`;
-  // A project's threads show by default; resolved ones fold under one Resolved row.
+  // A project's threads show by default, pinned ones first (pinned from their cards); resolved ones fold under one Resolved row.
   const [open, setOpen] = useState(() => !!t.project || t.children.some((c) => `${c.pool}/${c.id}` === current));
   const [resolvedOpen, setResolvedOpen] = useState(() => t.children.some((c) => c.state === "resolved" && `${c.pool}/${c.id}` === current));
-  const active = t.project ? t.children.filter((c) => c.state !== "resolved") : t.children;
-  const resolved = t.project ? t.children.filter((c) => c.state === "resolved") : [];
+  const children = t.children.filter((c) => c.pinned).concat(t.children.filter((c) => !c.pinned));
+  const active = t.project ? children.filter((c) => c.state !== "resolved") : children;
+  const resolved = t.project ? children.filter((c) => c.state === "resolved") : [];
   return (
     <li>
       <div className="trow">

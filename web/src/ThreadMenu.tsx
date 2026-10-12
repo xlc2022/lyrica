@@ -1,14 +1,16 @@
 // A thread's menu in the sidebar (docs/ux.md §6): right-click, or a long press
-// on a phone, with a letter shortcut for each item. Mark as unread, Rename,
-// Share with, Move to group, Hide and Delete; Pin; Make project for a top-level thread, Resolve and
-// Reopen for a project's thread.
+// on a phone, with a letter shortcut for each item; the thread header's ⋯ opens
+// the same menu. Mark as unread, Rename, Share with, Move to group, Hide and
+// Delete; Pin; Make project for a top-level thread, Resolve and Reopen for a
+// project's thread.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { del, get, patch, post, put, threadPath, u, type Person, type ThreadGroup, type ThreadSummary } from "./api.ts";
 import { go, type Route } from "./route.ts";
 import { her } from "./name.ts";
 import { ConfirmDialog, ErrorText, menuArrows } from "./ui.tsx";
 
-export interface MenuAt { x: number; y: number; thread: ThreadSummary }
+/** Where the menu opens: at a pointer, or under a button with `end` set, `x` being the edge its right side keeps to. */
+export interface MenuAt { x: number; y: number; thread: ThreadSummary; end?: boolean }
 
 /** Opens the menu from a right-click, or from a press held for half a second. The click after a long press is swallowed. */
 export function useThreadMenu() {
@@ -45,12 +47,16 @@ function Item({ label, kbd, danger, sub, onClick }: { label: ReactNode; kbd?: st
   );
 }
 
-export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onClose }: {
-  at: MenuAt; userId: string; route: Route; groups: ThreadGroup[];
+export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onToast, onGone, onClose }: {
+  at: MenuAt; userId: string; route?: Route; groups: ThreadGroup[];
   /** The groups changed (one was made). */
   onGroups: () => void;
   /** The thread changed; the list reloads. */
   onChange: () => void;
+  /** What Pin and Unpin did, for the shell's toast. */
+  onToast: (text: string) => void;
+  /** The thread was deleted. Without it, deleting the open thread (per `route`) goes home. */
+  onGone?: () => void;
   onClose: () => void;
 }) {
   const t = at.thread;
@@ -72,8 +78,10 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onCl
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
+    // Measured at the left edge, since a fixed box near the right one narrows to fit.
+    el.style.left = "0px";
     const r = el.getBoundingClientRect();
-    el.style.left = `${Math.max(8, Math.min(at.x, innerWidth - r.width - 8))}px`;
+    el.style.left = `${Math.max(8, Math.min(at.end ? at.x - r.width : at.x, innerWidth - r.width - 8))}px`;
     el.style.top = `${Math.max(8, Math.min(at.y, innerHeight - r.height - 8))}px`;
   }, [at, sub, groups.length, error]);
   // Escape closes the topmost thing; a click elsewhere closes the menu; letters pick items.
@@ -93,13 +101,14 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onCl
   }, [sub, recipient, onClose]);
   useEffect(() => { if (!sub) ref.current?.querySelector("button")?.focus(); }, [sub]);
 
-  const act = (fn: () => Promise<unknown>) => fn().then(() => { onChange(); onClose(); }, (e: Error) => setError(e.message));
+  const act = (fn: () => Promise<unknown>, said?: string) => fn().then(() => { onChange(); if (said) onToast(said); onClose(); }, (e: Error) => setError(e.message));
   const change = (c: { title?: string; hidden?: boolean; group?: string | null; unread?: boolean; project?: true }) => act(() => patch(base, c));
   const inProject = t.state !== undefined;
   const forget = (withChildren: boolean) => act(async () => {
     await del(base, { children: withChildren });
     // The open thread is gone: leave it.
-    if (route.page === "thread" && route.threadId === t.id) go({ page: "home", userId });
+    if (onGone) onGone();
+    else if (route?.page === "thread" && route.threadId === t.id) go({ page: "home", userId });
   });
 
   if (recipient) {
@@ -165,7 +174,7 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onCl
         <Item label="Rename…" kbd="R" onClick={() => { setDraft(t.title ?? ""); setSub("rename"); }} />
         {!t.project && !t.subagent && <Item label="Share with" kbd="S" sub onClick={() => setSub("share")} />}
         <Item label="Move to group" kbd="M" sub onClick={() => setSub("group")} />
-        {!t.child && !t.parent && <Item label={t.pinned ? "Unpin" : "Pin"} kbd="P" onClick={() => act(() => (t.pinned ? del(`${base}/pin`) : put(`${base}/pin`, {})))} />}
+        {!t.child && !t.parent && <Item label={t.pinned ? "Unpin" : "Pin"} kbd="P" onClick={() => act(() => (t.pinned ? del(`${base}/pin`) : put(`${base}/pin`, {})), t.pinned ? "Unpinned" : "Pinned to the top")} />}
         {!t.child && !t.parent && !t.project && <Item label="Make project…" kbd="K" onClick={() => setSub("project")} />}
         {inProject && <Item label={t.state === "resolved" ? "Reopen" : "Resolve"} kbd="E" onClick={() => act(() => post(`${base}/${t.state === "resolved" ? "reopen" : "resolve"}`))} />}
         <div className="sep" role="separator" />

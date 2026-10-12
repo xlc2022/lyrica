@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Markdown, { type Components } from "react-markdown";
 import { CodeBlock } from "./CodeBlock.tsx";
+import { Icon } from "./icons.tsx";
 import { InlineImage, isUnderWorkdir, Lightbox, rehypePaths, type FileLinks } from "./paths.tsx";
 import type { Display, Pool } from "./api.ts";
 
@@ -62,6 +63,21 @@ export function menuArrows(e: KeyboardEvent, menu: HTMLElement | null): boolean 
 
 export function ErrorText({ error }: { error?: string }) {
   return error ? <p className="error" role="alert">{error}</p> : null;
+}
+
+/** One line at the foot of the screen about what just happened, with Dismiss; `after` takes it away by itself (ms). */
+export function Toast({ text, after, onClose }: { text: string; after?: number; onClose: () => void }) {
+  useEffect(() => {
+    if (!after) return;
+    const t = setTimeout(onClose, after);
+    return () => clearTimeout(t);
+  }, [after, onClose]);
+  return (
+    <div className="toast" role="status">
+      <span>{text}</span>
+      <button type="button" className="icon sm" aria-label="Dismiss" onClick={onClose}><Icon name="close" /></button>
+    </div>
+  );
 }
 
 /** A switch with a label; a hint is its tooltip, never a caption (docs/ux.md §4). */

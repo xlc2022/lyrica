@@ -5,8 +5,7 @@ import { her, setHer } from "./name.ts";
 import { go, useRoute } from "./route.ts";
 import { Setup } from "./Setup.tsx";
 import { Shell } from "./Shell.tsx";
-import { Icon } from "./icons.tsx";
-import { ErrorText, useAction } from "./ui.tsx";
+import { ErrorText, Toast, useAction } from "./ui.tsx";
 
 export function App() {
   const [state, setState] = useState<State>();
@@ -77,15 +76,6 @@ function Unlock({ onDone }: { onDone: (s: State) => void }) {
         <button className="primary" disabled={busy || !passphrase}>Unlock</button>
       </form>
     </Gate>
-  );
-}
-
-function Toast({ text, onClose }: { text: string; onClose: () => void }) {
-  return (
-    <div className="toast" role="status">
-      <span>{text}</span>
-      <button type="button" className="icon sm" aria-label="Dismiss" onClick={onClose}><Icon name="close" /></button>
-    </div>
   );
 }
 
