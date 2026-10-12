@@ -616,6 +616,31 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   of each user's key in `self.db` (DESIGN.md "Users" and "Storage",
   contracts core/users; the owner chose this over a reset that loses data). Nothing
   for sleep or the pools changes; the privacy boundary note is in DESIGN.
+- 2026-10-12, PR 26 (pin and the speech drawer): the thread header's
+  ⋯ (Thread actions) opens the sidebar's own thread menu under it
+  (`ThreadMenu`, which gains `end` and `onGone`), so Pin and Unpin come
+  with the rest; a project's thread card gets Pin or Unpin behind its ⋯,
+  and the sidebar lists a project's pinned threads first. Both say
+  "Pinned to the top" or "Unpinned" in a toast, now one in the shell
+  (`ctx.toast`; `Toast` moved to `src/ui.tsx`, App's notice uses it).
+  The thread drawer's Read aloud select gets a **Settings** link opening
+  Models' VoiceDrawer over it for the model the select shows (the
+  thread's pick, else the profile's), found in `ThreadSettings.allowed`,
+  so nothing more is loaded; Escape closes it first. The header's
+  checklist follows Checklists, a streamed list too. The e2e covers the
+  header's Pin and Unpin, a card's, and which model's settings the link
+  reads; the ⋯ joins the phone's 44 px targets. Judgement calls: the
+  header's ⋯ is the whole thread menu, not Pin alone (ux.md §3 puts a
+  row's other actions behind ⋯, and a menu of one item isn't a menu);
+  the mockup's header has no ⋯, and there is no breadcrumbs menu, so a
+  thread in the panel uses its own header's ⋯, whose Delete closes the
+  panel; the brief's `PATCH { pinned }` is the `PUT|DELETE …/pin` the
+  sidebar already used; the sidebar menu still pins top-level threads
+  only, so a project's thread is pinned from its card; the link is left
+  out when the model shown isn't one the thread may use, or none
+  answers; the toast goes after 4 s. Not built: the pinned badge in
+  Search results, since `SearchHit` doesn't say whether a message is
+  pinned and the back end is unchanged.
 - 2026-10-12, PR 25 (image models): the Image models tab, To review and
   the Download image model page in `src/ImageModels.tsx`, their pure parts
   in `src/images.ts` (tested in `web/test/images.test.ts`); Downloads'

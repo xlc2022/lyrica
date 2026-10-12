@@ -1233,6 +1233,51 @@ test("a speaking model's Settings drawer sets its voice and clamps its speed; on
   await expect(drawer).toHaveCount(0);
 });
 
+test("the thread drawer's Read aloud has a Settings link opening the voice drawer of the profile's model, or of the thread's pick; Escape closes that drawer first", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  // The dictation test leaves the speech server marked down for a while, so nothing answers Read aloud: reading its models again says it is up.
+  await page.evaluate(async (base) => {
+    const eps = await (await fetch(`${base}/endpoints`)).json() as { id: string; name: string }[];
+    for (const ep of eps.filter((e) => e.name === "speech" || e.name === "openai")) await fetch(`${base}/endpoints/${ep.id}/discover`, { method: "POST", headers: { "content-type": "application/json" } });
+  }, `/api/u/${encodeURIComponent(userId)}`);
+  await newThread(page, "General");
+  const drawer = await openSettings(page);
+  const read = drawer.getByRole("combobox", { name: "Read aloud", exact: true });
+  const valueOf = (label: string) => read.evaluate((el: HTMLSelectElement, label) => [...el.options].find((o) => o.text === label)?.value, label);
+  const cloud = await valueOf("cloud · kokoro · openai");
+  const local = await valueOf("local · kokoro · speech");
+  expect(cloud && local && cloud !== local).toBeTruthy();
+  const link = drawer.getByRole("button", { name: "kokoro settings" });
+  const voice = page.getByRole("complementary", { name: "kokoro settings" });
+  const opened = () => page.waitForRequest((r) => /\/offerings\/[^/]+\/settings$/.test(r.url())).then((r) => decodeURIComponent(r.url().split("/offerings/")[1]!.split("/")[0]!));
+
+  // Nothing picked: the general profile's model, kokoro on the cloud endpoint.
+  await expect(read).toHaveValue("");
+  let asked = opened();
+  await link.click();
+  expect(await asked).toBe(cloud);
+  await voice.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+  await expect(voice.getByLabel("English")).toBeVisible();
+  await noHorizontalScroll(page);
+  await page.keyboard.press("Escape");
+  await expect(voice).toHaveCount(0);
+  await expect(drawer).toBeVisible();
+  await expect(link).toBeFocused();
+
+  // The thread's own pick: the link follows it.
+  await read.selectOption(local!);
+  await expect(read).toHaveValue(local!);
+  asked = opened();
+  await link.click();
+  expect(await asked).toBe(local);
+  await voice.getByRole("button", { name: "Close" }).click();
+  await expect(voice).toHaveCount(0);
+  await read.selectOption("");
+  await expect(read).toHaveValue("");
+  await drawer.getByRole("button", { name: "Close" }).click();
+  await expect(drawer).toHaveCount(0);
+});
+
 test("the header names the version and build, and the home box starts a thread", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}`);
@@ -1313,6 +1358,42 @@ test("the thread menu renames, marks unread, groups, hides and deletes; the Sort
   await noHorizontalScroll(page);
 });
 
+test("the thread header's ⋯ opens the thread's menu: Pin puts the thread under Pinned with a toast, and Unpin takes it out", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "A thread to pin");
+  await expect(page.getByText("You said: A thread to pin")).toBeVisible();
+  const more = page.getByRole("button", { name: "Thread actions" });
+  const pinnedRows = page.locator(".threads .group-rows").filter({ has: page.locator(".eyebrow", { hasText: "Pinned" }) });
+  const row = page.locator(".threads").getByRole("link", { name: /A thread to pin/ });
+
+  await more.click();
+  // The sidebar's own menu, its letter shortcuts with it.
+  await page.getByRole("menuitem", { name: "Pin P", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Pinned to the top" })).toBeVisible();
+  await expect(more).toBeFocused();
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await expect(pinnedRows.getByRole("link", { name: /A thread to pin/ })).toBeVisible();
+  if (phone(page)) await page.getByRole("button", { name: "Hide threads" }).click();
+
+  // Pressing ⋯ again closes the menu; Escape does too.
+  await more.click();
+  const unpin = page.getByRole("menuitem", { name: "Unpin" });
+  await expect(unpin).toBeVisible();
+  await noHorizontalScroll(page);
+  await more.click();
+  await expect(unpin).toHaveCount(0);
+  await more.click();
+  await page.keyboard.press("Escape");
+  await expect(unpin).toHaveCount(0);
+  await more.click();
+  await unpin.click();
+  await expect(page.getByRole("status").filter({ hasText: "Unpinned" })).toBeVisible();
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await expect(row).toBeVisible();
+  await expect(pinnedRows.getByRole("link", { name: /A thread to pin/ })).toHaveCount(0);
+});
+
 test("a project: New project, suggested threads start into cards, the Threads popover, Start a thread, Resolve, and its settings page", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
@@ -1356,6 +1437,22 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await expect(page.locator(".tcard")).toHaveCount(3);
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
   await expect(page.locator(".side .children .thread")).toHaveCount(3);
+  await expect(page.locator(".side .children .thread").first()).toContainText("Alpha");
+  if (phone(page)) await page.getByRole("button", { name: "Hide threads" }).click();
+
+  // Pin from a card: that thread sits first among the project's threads in the sidebar, and Unpin puts it back.
+  const beta = page.locator(".tcard").filter({ has: page.getByRole("link", { name: "Beta", exact: true }) });
+  await beta.getByRole("button", { name: "Actions for Beta" }).click();
+  await page.getByRole("menuitem", { name: "Pin", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Pinned to the top" })).toBeVisible();
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await expect(page.locator(".side .children .thread").first()).toContainText("Beta");
+  if (phone(page)) await page.getByRole("button", { name: "Hide threads" }).click();
+  await beta.getByRole("button", { name: "Actions for Beta" }).click();
+  await page.getByRole("menuitem", { name: "Unpin" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Unpinned" })).toBeVisible();
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await expect(page.locator(".side .children .thread").first()).toContainText("Alpha");
   if (phone(page)) await page.getByRole("button", { name: "Hide threads" }).click();
 
   // Resolve from the card's menu: the sidebar folds it under Resolved, and its own message box is one Reopen link.
@@ -1835,7 +1932,7 @@ test("no horizontal scrolling and big enough tap targets on a phone", async ({ p
   await newThread(page, "General");
   await noHorizontalScroll(page);
   for (const button of [
-    page.getByRole("button", { name: "Show threads" }), page.getByRole("button", { name: "Thread settings" }),
+    page.getByRole("button", { name: "Show threads" }), page.getByRole("button", { name: "Thread settings" }), page.getByRole("button", { name: "Thread actions" }),
     page.getByRole("button", { name: /^Model:/ }), page.getByRole("button", { name: "Attach or switch tools" }),
     page.getByRole("button", { name: "Send" }),
   ]) {

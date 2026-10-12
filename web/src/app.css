@@ -428,6 +428,9 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
 .group { display: grid; gap: 10px; }
 .group > legend { margin-bottom: 8px; padding: 0; }
 .net-switch { display: grid; gap: 2px; justify-items: start; }
+/* Read aloud's select, then its model's Settings link on the same line. */
+.speak-row > .field { flex: 1 1 160px; }
+.speak-row > button.link { min-height: var(--tap); }
 .chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .chips li { display: inline-flex; align-items: center; gap: 2px; font: 13px var(--mono); border: 1px solid var(--line); border-radius: 6px; padding: 0 0 0 8px; background: var(--bg); max-width: 100%; overflow-wrap: anywhere; }
 .chips button { min-height: 28px; padding: 0 6px; }

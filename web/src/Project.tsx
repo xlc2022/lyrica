@@ -3,7 +3,7 @@
 // Suggested threads card, and the Project settings page.
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  get, patch, post, threadPath, u,
+  del, get, patch, post, put, threadPath, u,
   type AllowedPaths, type GitRepository, type Grant, type MachineInfo, type MessagePart, type ModelRef, type PermissionMode, type Pool, type ProjectOverview, type ThinkingLevel, type ThreadChange, type ThreadSettings, type ThreadSummary,
 } from "./api.ts";
 import { ChecklistButton, StepLine } from "./Checklist.tsx";
@@ -43,8 +43,10 @@ export interface ProjectEnv {
   overview: ProjectOverview;
   /** The last update each thread sent, by thread ID: its first line goes on the card. */
   lastUpdates: ReadonlyMap<string, string>;
-  /** A thread was started, stopped, resolved or reopened here. */
+  /** A thread was started, stopped, resolved, reopened, pinned or unpinned here. */
   onChange: () => void;
+  /** The shell's toast, for what Pin and Unpin did. */
+  toast: (text: string) => void;
 }
 
 const GROUPS: { label: string; of: (t: ThreadSummary) => boolean }[] = [
@@ -96,8 +98,8 @@ export function ThreadsFact({ userId, overview, phone }: { userId: string; overv
 /**
  * One of the project's threads, under the message that started it: its title as written,
  * its state as a dot and a word (then its checklist's count, and when it next wakes), its current step, what it
- * waits on, the last update's first line, and Open, Stop, Resolve or Reopen behind ⋯. A thread waiting on the user
- * counts as waiting for an answer.
+ * waits on, the last update's first line, and Open, Stop, Pin or Unpin, Resolve or Reopen behind ⋯. A pinned one sits
+ * first among the project's threads in the sidebar. A thread waiting on the user counts as waiting for an answer.
  */
 export function ThreadCard({ t, userId, env }: { t: ThreadSummary; userId: string; env: ProjectEnv }) {
   const [open, setOpen] = useState(false);
@@ -107,6 +109,12 @@ export function ThreadCard({ t, userId, env }: { t: ThreadSummary; userId: strin
   const [run, busy, error] = useAction();
   const base = threadPath(userId, t.pool, t.id);
   const act = (path: string) => run(async () => { close(); await post(`${base}/${path}`); env.onChange(); });
+  const pin = () => run(async () => {
+    close();
+    await (t.pinned ? del(`${base}/pin`) : put(`${base}/pin`, {}));
+    env.onChange();
+    env.toast(t.pinned ? "Unpinned" : "Pinned to the top");
+  });
   const state = t.needsYou ? "needsYou" : t.state ?? "idle";
   const update = env.lastUpdates.get(t.id);
   const line = update?.split("\n").find((l) => l.trim())?.trim();
@@ -125,6 +133,7 @@ export function ThreadCard({ t, userId, env }: { t: ThreadSummary; userId: strin
             <div className="menu end" role="menu">
               <a href={open_} role="menuitem" onClick={close}>Open</a>
               {(t.state === "working" || t.busy) && <button type="button" role="menuitem" disabled={busy} onClick={() => act("stop")}>Stop</button>}
+              <button type="button" role="menuitem" disabled={busy} onClick={pin}>{t.pinned ? "Unpin" : "Pin"}</button>
               {t.state === "resolved"
                 ? <button type="button" role="menuitem" disabled={busy} onClick={() => act("reopen")}>Reopen</button>
                 : <button type="button" role="menuitem" disabled={busy} onClick={() => act("resolve")}>Resolve</button>}

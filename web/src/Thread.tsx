@@ -12,7 +12,8 @@ import { Composer } from "./Composer.tsx";
 import { ContextFact, newerContext } from "./ContextMeter.tsx";
 import { ChecklistButton } from "./Checklist.tsx";
 import { ModelBadge, SettingsDrawer } from "./Settings.tsx";
-import { Crumbs, Main, PanelButtons, type ShellContext } from "./Shell.tsx";
+import { Crumbs, Main, PanelButtons, usePanel, type ShellContext } from "./Shell.tsx";
+import { ThreadMenu, type MenuAt } from "./ThreadMenu.tsx";
 import { ErrorText, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
 import { stopReading } from "./Voice.tsx";
 
@@ -51,7 +52,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
     for (const item of t.live.items) if (item.role === "notice" && item.threads?.[0] && (item.status === "update" || item.status === "waiting")) out.set(item.threads[0].id, afterHead(item.text));
     return out;
   }, [t.messages, t.live.items]);
-  const projectEnv: ProjectEnv | undefined = isProject && overview.data ? { overview: overview.data, lastUpdates, onChange: () => { overview.reload(); refreshThreads(); } } : undefined;
+  const projectEnv: ProjectEnv | undefined = isProject && overview.data ? { overview: overview.data, lastUpdates, onChange: () => { overview.reload(); refreshThreads(); }, toast: ctx.toast } : undefined;
 
   // A new title, or a finished turn, may change the sidebar.
   useEffect(() => { if (t.live.title) { summary.reload(); refreshThreads(); } }, [t.live.title, summary.reload, refreshThreads]);
@@ -232,8 +233,14 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   const phone = usePhone();
   // The stream's reading after a turn, or the one the settings brought (the open session's, else the last call's).
   const context = newerContext(t.live.context, settings.data?.context);
-  // Her checklist: the stream's, once a `steps` event came, else the summary's.
-  const steps = t.live.steps ?? s?.steps;
+  // Her checklist: the stream's, once a `steps` event came, else the summary's; none while Checklists is off.
+  const steps = ctx.me.display.checklists ? t.live.steps ?? s?.steps : undefined;
+  // The thread's menu from the header's ⋯, the sidebar's own (docs/ux.md §6), under the button.
+  const panel = usePanel();
+  const [menuAt, setMenuAt] = useState<MenuAt>();
+  const moreBtn = useRef<HTMLButtonElement>(null);
+  const closeMenu = useCallback(() => { setMenuAt(undefined); moreBtn.current?.focus(); }, []);
+  const listed = findThread(threads, pool, threadId) ?? s;
 
   return (
     <Main className="main" data-drawer-open={drawer}>
@@ -270,6 +277,14 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
             <button type="button" className="sm" aria-label="Thread settings" aria-expanded={drawer} aria-controls={drawerId} onClick={() => setDrawer(!drawer)}>
               <Icon name="gear" /><span className="long">Settings</span>
             </button>
+            {/* Its pointerdown stays here, so a press while the menu is open closes it rather than closing and reopening. */}
+            {listed && (
+              <button ref={moreBtn} type="button" className="icon sm" aria-label="Thread actions" title="Thread actions" aria-haspopup="menu" aria-expanded={!!menuAt}
+                onPointerDown={(e) => { if (menuAt) e.stopPropagation(); }}
+                onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenuAt(menuAt ? undefined : { x: r.right, y: r.bottom + 4, thread: listed, end: true }); }}>
+                <Icon name="more" />
+              </button>
+            )}
           </div>
         )}
         <PanelButtons />
@@ -311,6 +326,11 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
         />
       )}
       {drawer && <div className="scrim drawer-scrim" aria-hidden="true" onClick={() => setDrawer(false)} />}
+      {menuAt && (
+        <ThreadMenu at={menuAt} userId={userId} groups={ctx.groups} onGroups={ctx.refreshGroups} onToast={ctx.toast}
+          onChange={() => { summary.reload(); refreshThreads(); }} onClose={closeMenu}
+          onGone={panel ? panel.close : () => go({ page: "home", userId })} />
+      )}
     </Main>
   );
 }
