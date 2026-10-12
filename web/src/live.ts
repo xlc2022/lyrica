@@ -1,6 +1,6 @@
 // What a thread's event stream says is happening now, before it is stored.
 // Pure, so it can be tested without a browser.
-import type { MessagePart, PermissionRequest, ThreadEvent, ThreadRef, Told, WakeupInfo } from "./api.ts";
+import type { ContextInfo, MessagePart, PermissionRequest, ThreadEvent, ThreadRef, Told, WakeupInfo } from "./api.ts";
 
 export type LiveItem =
   | { role: "user"; text: string }
@@ -32,6 +32,8 @@ export interface Live {
   children: number;
   /** The wake-ups waiting, as the stream last said; the settings' list until then. */
   wakeups?: WakeupInfo[];
+  /** The context as the last turn left it, for the header's Context meter. Cleared when turns are rewound or reset. */
+  context?: ContextInfo;
 }
 
 export const initialLive: Live = { busy: false, queued: [], permissions: [], items: [], errors: [], reload: 0, ended: 0, subagents: {}, settings: 0, children: 0 };
@@ -60,9 +62,9 @@ export function liveReducer(s: Live, e: LiveAction): Live {
         ...(!e.busy && { reload: s.reload + 1, ended: s.items.length }) };
     }
     case "reset":
-      return { ...s, items: [], ended: 0, reload: s.reload + 1 };
+      return { ...s, items: [], ended: 0, reload: s.reload + 1, context: undefined };
     case "rewound":
-      return { ...s, items: [], ended: 0, errors: [], reload: s.reload + 1 };
+      return { ...s, items: [], ended: 0, errors: [], reload: s.reload + 1, context: undefined };
     case "sent":
       return { ...s, items: [...s.items, { role: "user", text: e.text }] };
     case "turn_start":
@@ -125,9 +127,10 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       const { threadId, type } = e.event;
       return STORED.includes(type) ? { ...s, subagents: { ...s.subagents, [threadId]: (s.subagents[threadId] ?? 0) + 1 } } : s;
     }
-    // The context meter is not built yet; the compaction marker appears when the messages reload.
-    case "usage":
     case "context":
+      return { ...s, context: e.context };
+    // The compaction marker appears when the messages reload.
+    case "usage":
     case "compacted":
     case "reactions":
       return s;

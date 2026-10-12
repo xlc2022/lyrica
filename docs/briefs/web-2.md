@@ -616,6 +616,12 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   of each user's key in `self.db` (DESIGN.md "Users" and "Storage",
   contracts core/users; the owner chose this over a reset that loses data). Nothing
   for sleep or the pools changes; the privacy boundary note is in DESIGN.
+- 2026-10-12, PR 18 (context meter): `src/ContextMeter.tsx`, the facts
+  line's **Context <n>% ▾** after Group with its popover of parts, Reserve
+  and Free, Measured and Last turn; `live.ts` keeps the streamed reading
+  and drops it on a rewind. The fake model's window is 32,768, so the
+  warn (80 %) and danger (95 %) colours were never seen in e2e. Left in
+  the batch: Copy on code blocks, message-text search.
 - 2026-10-12, PR 16 (drafts): the composer's unsent text is a draft on
   lyricad per thread (`GET|PUT …/threads/:pool/:id/draft`, pool schema
   step 3, cleared by a successful send), never in browser storage (the owner's
