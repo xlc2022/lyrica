@@ -1141,9 +1141,37 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   - If `selfTest()` finds that a sandbox could undo its firewall, or can't
     start one, every thread runs with network off and the reason is kept in
     `networkRefused` for the UI.
-- **GitHub API:** `lyricad`'s `/api/u/:userId/github` (`GET`, `PUT` with
-  `{ token }`, `DELETE`) answers `GithubInfo { token: boolean; checkout }`,
-  never the token.
+- **Planned: Git accounts and repositories** (decided 2026-10-12,
+  [briefs/repositories.md](briefs/repositories.md)):
+  `settings(userId).gitAccounts() / gitAccount(name) / addGitAccount({ name,
+  kind, host, account, token, pool }) / updateGitAccount(name, { name?,
+  host?, account?, pool? }) / setGitToken(name, token) /
+  removeGitAccount(name) / gitAccountState(name, state)`; a new pool drops
+  the account's repositories from every thread, and removing it does too.
+  `GitAccountConfig { name, kind: "github" | "forgejo" | "gitea" | "other",
+  host, account, token, pool, offNetwork, state: { kind: "signedIn" |
+  "rejected" | "unreachable", since } | null }`; `kind: "github"` is
+  general only; a private account's host must resolve on this machine's
+  network, checked when added and on every use (`offNetwork`,
+  `confirmOffNetwork`, as for machines). A thread's row carries
+  `repositories: { name, account }[]`; `setThread` refuses a repository
+  whose account is of the other pool; `inheritSettings` takes a subset;
+  `effective()` keeps only repositories every ancestor grants.
+  `repositoriesFor(t)`; `cloneFor(t)` makes or fetches each clone under the
+  thread's folder in the home workspace (`repos/<name>`); `forgeEnv(t)`
+  returns the environment for a sandbox run: one credential per
+  repository URL (`useHttpPath`), `GH_TOKEN` for a GitHub account, `tea`'s
+  login for Gitea and Forgejo; empty when the thread is of the other pool,
+  has no repository, or can't reach the host. Never a file, never argv.
+  `probeGitAccount(userId, { kind, host, account, token })` checks the
+  token and saves nothing; `listRepositories(userId, account, q)` is what
+  the account can see. API: `/api/u/:userId/git-accounts` (`GET`; `POST
+  …/probe`; `POST`; `PATCH …/:name`; `POST …/:name/token`; `POST
+  …/:name/confirm-off-network`; `DELETE`); `GET
+  …/git-accounts/:name/repositories?q=`; thread settings carry
+  `repositories`. A sandbox tool image has `git`, `gh` and `tea`. The
+  Git guide is a prompt section (`extension/src/git.md`) added to every
+  turn of a thread with repositories.
 - **Machines API:** `lyricad`'s `/api/u/:userId/machines` (`GET`; `POST
   …/machines/probe` for the Test step; `POST …/machines` to confirm;
   `PATCH …/machines/:name` for address, root, pool and limit; `POST
