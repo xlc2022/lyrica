@@ -45,7 +45,7 @@ export interface SshTargetOptions {
 
 /**
  * A machine reached over SSH. The private key is handed over in memory, and
- * the host key must be the one Li confirmed. A failed connection fails the
+ * the host key must be the one the user confirmed. A failed connection fails the
  * operation: nothing ever falls back to running locally. Command output is
  * cleaned of terminal control and private keys, and write and edit never
  * touch SSH's or sudo's files.

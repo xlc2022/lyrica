@@ -40,29 +40,29 @@ describe("the update socket", () => {
     // The test runtime has no built web UI.
     expect(health.checks.filter((c) => !c.ok).map((c) => c.name)).toEqual(["web"]);
 
-    const li = await login(base, "li", "pw");
+    const ada = await login(base, "ada", "pw");
     const model = await fakeOpenAI({ label: "local", models: [{ id: "qwen3.8-27b" }] });
-    await localModel(li, rt.li.id, model.baseUrl);
-    const thread = (await li.post<ThreadSummary>(`/api/u/${rt.li.id}/threads`, { pool: "general", title: "a turn" })).body;
-    const path = `/api/u/${rt.li.id}/threads/general/${enc(thread.id)}`;
-    const stream = li.events(`${path}/events`);
+    await localModel(ada, rt.ada.id, model.baseUrl);
+    const thread = (await ada.post<ThreadSummary>(`/api/u/${rt.ada.id}/threads`, { pool: "general", title: "a turn" })).body;
+    const path = `/api/u/${rt.ada.id}/threads/general/${enc(thread.id)}`;
+    const stream = ada.events(`${path}/events`);
     await stream.ready;
     model.reply({ text: "A slow answer that takes a while.", slowMs: 1500 });
-    await li.post(`${path}/messages`, { text: "something slow" });
+    await ada.post(`${path}/messages`, { text: "something slow" });
 
     // A drain while the turn runs: it waits for that thread, and new sends are refused.
     const busy = await sock<Drain>(socket, "POST", "/drain");
-    expect(busy.busy).toEqual([{ kind: "turn", userId: rt.li.id, pool: "general", threadId: thread.id }]);
-    const refused = await li.post(`${path}/messages`, { text: "one more" });
+    expect(busy.busy).toEqual([{ kind: "turn", userId: rt.ada.id, pool: "general", threadId: thread.id }]);
+    const refused = await ada.post(`${path}/messages`, { text: "one more" });
     expect(refused).toMatchObject({ status: 409, body: { updating: true } });
-    expect((await li.post(`/api/u/${rt.li.id}/sleep/general`, {})).status).toBe(409);
+    expect((await ada.post(`/api/u/${rt.ada.id}/sleep/general`, {})).status).toBe(409);
     await stream.until((e) => e.type === "turn_end", 0, 20_000);
     expect((await sock<Drain>(socket, "POST", "/drain")).busy).toEqual([]);
 
     // Giving up: undrain, and sends go through again.
     await sock(socket, "POST", "/undrain");
     model.reply({ text: "Back." });
-    expect((await li.post(`${path}/messages`, { text: "after" })).status).toBe(200);
+    expect((await ada.post(`${path}/messages`, { text: "after" })).status).toBe(200);
     stream.close();
   });
 
@@ -84,11 +84,11 @@ describe("Administration's updates API", () => {
   it("shows kept releases, what a rollback would restore, and writes requests only lyricad writes", async () => {
     const { rt, state, base } = await setup();
     await browser(base).post("/api/unlock", { passphrase: "passphrase" });
-    const li = await login(base, "li", "pw");
+    const ada = await login(base, "ada", "pw");
     const sam = await login(base, "sam", "pw2");
-    const u = `/api/u/${rt.li.id}/admin/updates`;
+    const u = `/api/u/${rt.ada.id}/admin/updates`;
     expect((await sam.get(`/api/u/${rt.sam.id}/admin/updates`)).status).toBe(403);
-    expect((await li.get<Updates>(u)).body).toMatchObject({ available: false, releases: [], note: null, state: { state: "idle" } });
+    expect((await ada.get<Updates>(u)).body).toMatchObject({ available: false, releases: [], note: null, state: { state: "idle" } });
 
     const one = { self: 1, user: 1, pool: 1 };
     writeFileSync(join(state, "releases.json"), JSON.stringify({
@@ -105,7 +105,7 @@ describe("Administration's updates API", () => {
     writeFileSync(join(state, "state.json"), JSON.stringify({
       state: "idle", since: "2026-10-09T14:12:00Z", note: { tag: "update/2026-10-12", commit: "ddddddd", message: "Releases and rollback" },
     }));
-    const got = (await li.get<Updates>(u)).body;
+    const got = (await ada.get<Updates>(u)).body;
     expect(got.available).toBe(true);
     expect(got.note).toEqual({ tag: "update/2026-10-12", commit: "ddddddd", message: "Releases and rollback" });
     expect(got.releases.map((r) => [r.commit, r.running, r.previous, r.rollback])).toEqual([
@@ -114,19 +114,19 @@ describe("Administration's updates API", () => {
       ["aaaaaaa", false, false, { possible: true, restores: "2026-10-09T14:02:00Z" }],
     ]);
 
-    expect((await li.post(u, { tag: "main" })).status).toBe(400);
-    expect((await li.post(u, { tag: "update/2026-10-12" })).status).toBe(200);
+    expect((await ada.post(u, { tag: "main" })).status).toBe(400);
+    expect((await ada.post(u, { tag: "update/2026-10-12" })).status).toBe(200);
     const request = join(rt.home, "updates", "request.json");
     expect(JSON.parse(readFileSync(request, "utf8"))).toEqual({ action: "update", tag: "update/2026-10-12" });
     expect(statSync(request).mode & 0o777).toBe(0o600);
-    expect((await li.post(`${u}/rollback`, { commit: "bbbbbbb" })).status).toBe(409);
+    expect((await ada.post(`${u}/rollback`, { commit: "bbbbbbb" })).status).toBe(409);
     rmSync(request);
     // While an update runs, only a rollback during probation is taken.
     writeFileSync(join(state, "state.json"), JSON.stringify({ state: "building", since: "2026-10-12T00:00:00Z" }));
-    expect((await li.post(u, { tag: "update/2026-10-12" })).status).toBe(409);
+    expect((await ada.post(u, { tag: "update/2026-10-12" })).status).toBe(409);
     expect(existsSync(request)).toBe(false);
     writeFileSync(join(state, "state.json"), JSON.stringify({ state: "probation", since: "2026-10-12T00:00:00Z" }));
-    expect((await li.post(`${u}/rollback`, { commit: "bbbbbbb" })).status).toBe(200);
+    expect((await ada.post(`${u}/rollback`, { commit: "bbbbbbb" })).status).toBe(200);
     expect(JSON.parse(readFileSync(request, "utf8"))).toEqual({ action: "rollback", commit: "bbbbbbb" });
   });
 });

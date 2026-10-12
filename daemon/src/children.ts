@@ -105,7 +105,7 @@ export class ChildThreads implements ThreadsHost {
       if (req.folders && grants.length < req.folders.length) throw new Error("a child thread can only have folders its parent has");
       // Machines are reached through bash, which no folder, read-only or network narrowing covers: a narrowed child gets none.
       const noMachines = !!req.readOnly || !!req.folders || req.internet === false;
-      ws.inheritSettings(parent.threadId, child.id, parent.pool, { grants, ...(req.internet === false ? { internet: false } : {}), ...(noMachines ? { machines: [], repositories: [], mcpServers: [] } : {}) });
+      ws.inheritSettings(parent.threadId, child.id, parent.pool, { grants, ...(req.internet === false ? { internet: false } : {}), ...(noMachines ? { machines: [], repositories: [], mcpServers: [], claudeCode: false } : {}) });
       this.o.models.inheritContext(this.o.models.callContext(userId, parent.pool, parent.threadId), child.id);
       // A cloud Dictation pick is consent for the thread it was made in: a new thread starts without it.
       this.o.models.setThreadModel(userId, parent.pool, child.id, "speech.transcribe");

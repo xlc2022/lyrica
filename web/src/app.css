@@ -320,6 +320,14 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
 .prose pre { background: var(--tool); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; overflow-x: auto; max-width: 100%; }
 .prose code { background: var(--tool); border-radius: 4px; padding: 0 3px; }
 .prose pre code { background: none; padding: 0; }
+/* A fenced block in a message (docs/ux.md §6, Code in a message). The strip with the language and Copy sits outside the
+   scrolling pre, so it stays put while a long line scrolls. No `.prose` before .code-block: first and last child still lose their margin. */
+.code-block { margin: 1em 0; max-width: 100%; background: var(--tool); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.code-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 0 12px; }
+.code-lang { font: 12px/1 var(--mono); color: var(--muted); }
+.code-copy { margin-left: auto; }
+.prose .code-block pre { margin: 0; padding: 2px 12px 10px; border: 0; border-radius: 0; background: none; font-size: 12px; line-height: 1.5; white-space: pre; overflow-x: auto; }
+.prose .code-block pre code { font-size: inherit; }
 .prose blockquote { margin-left: 0; padding-left: 12px; border-left: 3px solid var(--line); color: var(--muted); }
 .prose table { border-collapse: collapse; display: block; overflow-x: auto; font-size: 13px; }
 .prose th, .prose td { border: 1px solid var(--line); padding: 4px 8px; }
@@ -568,6 +576,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   .threads .trow { grid-template-columns: 32px minmax(0, 1fr); }
   button.icon-btn, button.icon.sm { width: 44px; height: 44px; min-height: 44px; }
   .head-actions button.sm { min-height: 44px; min-width: 44px; }
+  button.code-copy { min-height: 44px; min-width: 44px; }
   .chips button { min-width: 44px; }
   .check input, .showing input { width: 22px; height: 22px; }
 }

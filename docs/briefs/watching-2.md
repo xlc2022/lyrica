@@ -18,8 +18,8 @@ reasoning.
 ## Goal
 
 Watching her threads costs little and reaches the threads it means to
-(principle 1: Li notices when a thread that should have been told wasn't;
-principle 8: no new process, no new tool). Li asked for these four
+(principle 1: the user notices when a thread that should have been told wasn't;
+principle 8: no new process, no new tool). The owner asked for these four
 changes on 2026-10-12 after comparing them with this project's own
 coordinator.
 
@@ -37,11 +37,11 @@ coordinator.
    turn. In `watch.ts`, when a look fires, `lyricad` builds one prompt:
    her name, the project's goal and instructions, the project's threads as
    the project chat sees them (`threads list` lines), and the digest it
-   builds today (what Li wrote, what the thread answered, that a thread
+   builds today (what the user wrote, what the thread answered, that a thread
    posted an update, failed or is waiting for an approval). It asks the
    `watching` model, through `callWithFallback` and `completeSimple` as
    the `title` call does, for JSON:
-   `{ "tell": [{ "thread": "<id>", "text": "<one or two lines>" }], "raise": "<one line for Li>" }`,
+   `{ "tell": [{ "thread": "<id>", "text": "<one or two lines>" }], "raise": "<one line for the user>" }`,
    with `tell` empty and `raise` absent when nothing is needed.
    - Each `tell` goes to that thread as a message from the project chat
      (the `[From t:<project chat>]` mark `children.message` already uses
@@ -53,7 +53,7 @@ coordinator.
      told and the line sent to each, so the marker shows "Checked the
      other threads · told 2" from the entry itself. The quoted words go
      only into the one call and are never stored, so the project chat
-     grows by a line or two per look (Li asked about compaction,
+     grows by a line or two per look (the owner asked about compaction,
      2026-10-12). The next look reads the last three looks' told lines so
      it doesn't repeat itself; nothing else carries over.
    - `raise` starts one project-chat turn, on the chat's own model, with
@@ -66,7 +66,7 @@ coordinator.
 3. **Looks on failures and approvals.** A project thread whose turn ends
    with an error, and one that starts waiting for a permission answer, are
    triggers like an update (`Watcher.failed`, `Watcher.waiting`), batched
-   the same way. They don't count toward the run of 3 looks without Li
+   the same way. They don't count toward the run of 3 looks without the user
    and aren't stopped by it, since threads can't cause them by messaging
    each other; each thread triggers at most once per turn. The same
    privacy rules apply as now: unlogged threads are left out, and a
@@ -93,7 +93,7 @@ chat covers it), reading another thread's messages and stopping a thread
 
 ## Tests
 
-What Li would notice: a look on a cheap model tells the affected thread
+What the user would notice: a look on a cheap model tells the affected thread
 and starts no project-chat turn; a look that raises starts one; a private
 project's look never reaches a cloud model; a failed thread and a waiting
 approval each trigger a look even after a run of 3; a message from

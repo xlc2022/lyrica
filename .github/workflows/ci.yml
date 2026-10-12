@@ -3,7 +3,7 @@ on:
   pull_request:
   push:
     branches: [main]
-# The jobs run on Li's own runner (docs/ci.md), so their token can only read.
+# The jobs run on the operator's own runner (docs/ci.md), so their token can only read.
 permissions:
   contents: read
 # A newer push to a PR cancels its older runs. Main runs the newest merge

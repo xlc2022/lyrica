@@ -12,24 +12,24 @@ async function setup() {
   const rt = await runtime();
   const dm = await daemon(rt);
   await browser(dm.base).post("/api/unlock", { passphrase: "passphrase" });
-  const li = await login(dm.base, "li", "pw");
+  const ada = await login(dm.base, "ada", "pw");
   const model = await fakeOpenAI({ label: "local", models: [{ id: "qwen3.8-27b" }] });
-  await localModel(li, rt.li.id, model.baseUrl);
+  await localModel(ada, rt.ada.id, model.baseUrl);
   const replies: Reply[] = [];
   const asked: ChatRequest[] = [];
   model.respond((c) => { asked.push(c); return replies.shift() ?? { text: "ok" }; });
-  const thread = (await li.post<ThreadSummary>(`/api/u/${rt.li.id}/threads`, { pool: "general", title: "Build" })).body;
-  const path = `/api/u/${rt.li.id}/threads/general/${enc(thread.id)}`;
-  const stream = li.events(`${path}/events`);
+  const thread = (await ada.post<ThreadSummary>(`/api/u/${rt.ada.id}/threads`, { pool: "general", title: "Build" })).body;
+  const path = `/api/u/${rt.ada.id}/threads/general/${enc(thread.id)}`;
+  const stream = ada.events(`${path}/events`);
   await stream.ready;
   const say = async (text: string) => {
     const from = stream.events.length;
-    expect((await li.post(`${path}/messages`, { text })).status).toBe(200);
+    expect((await ada.post(`${path}/messages`, { text })).status).toBe(200);
     await stream.until((e) => e.type === "turn_end", from);
     return stream.events.slice(from).map((e) => e.event);
   };
-  const summary = async () => (await li.get<ThreadSummary>(path)).body;
-  return { rt, li, replies, asked, path, stream, say, summary };
+  const summary = async () => (await ada.get<ThreadSummary>(path)).body;
+  return { rt, ada, replies, asked, path, stream, say, summary };
 }
 
 describe("a thread's checklist", () => {
@@ -63,20 +63,20 @@ describe("a thread's checklist", () => {
   });
 
   it("is off with the person's Checklists switch: she isn't offered it, can't set it, and summaries show none", async () => {
-    const { rt, li, replies, asked, say, summary } = await setup();
+    const { rt, ada, replies, asked, say, summary } = await setup();
     replies.push(steps([{ text: "Plan", state: "doing" }]), { text: "Planned." });
     await say("plan it");
     expect(JSON.stringify(asked.at(-1)!.messages)).toContain("keep this thread's checklist");
     expect((await summary()).steps).toHaveLength(1);
 
-    const me = await li.patch<Me>(`/api/u/${rt.li.id}/me/display`, { checklists: false });
+    const me = await ada.patch<Me>(`/api/u/${rt.ada.id}/me/display`, { checklists: false });
     expect(me.body.display.checklists).toBe(false);
     expect((await summary()).steps).toBeUndefined();
     replies.push(steps([{ text: "Plan", state: "done" }]), { text: "Fine." });
     const ends = toolEnds(await say("carry on"));
     expect(JSON.stringify(asked.at(-2)!.messages)).not.toContain("keep this thread's checklist");
     expect(ends[0]).toMatchObject({ isError: true, result: expect.stringContaining("checklists are off") });
-    expect((await li.patch(`/api/u/${rt.li.id}/me/display`, { checklists: "no" })).status).toBe(400);
+    expect((await ada.patch(`/api/u/${rt.ada.id}/me/display`, { checklists: "no" })).status).toBe(400);
   });
 
   it("shows in a parent's list of its threads as where the work stands", () => {

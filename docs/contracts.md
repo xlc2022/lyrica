@@ -29,7 +29,7 @@ evals/       continuity scenarios, run with `npm run evals`
 
 | Term | Meaning |
 |---|---|
-| **User** | One account with its own login and data: one of Li's, or another person's. Either an administrator or a normal user. Linked users belong to the same person. |
+| **User** | One account with its own login and data: one of the owner's, or another person's. Either an administrator or a normal user. Linked users belong to the same person. |
 | **Pool** | `general` or `private`. Each user has one of each. |
 | **Interface** | Where a thread lives: `web`, `cli`, `matrix`, `forum` or `sleep`. |
 | **Thread** | One conversation. It belongs to one user, one pool and one interface. |
@@ -136,7 +136,7 @@ interface Profile {
   affects signing in.
 - Pronoun presets are she/her, he/him and they/them, plus a custom option that
   fills in all five forms.
-- `subj` is used only in live prompts (for example, "Li's pronouns are
+- `subj` is used only in live prompts (for example, "Sam's pronouns are
   they/them"). It is never substituted into stored memory.
 
 ## core/shares
@@ -177,7 +177,7 @@ renderThreadMentions(text, titleOf: (id, pool?) => string | undefined): string  
 - **Search must keep the literal words.** A user's name in a query (current or
   previous) adds that user's token as an *alternative*. It never replaces the
   word.
-  - Example: "Li-ion battery" must still match notes that say "Li-ion".
+  - Example: with a user named Al, "Al-ion battery" must still match notes that say "Al-ion".
   - `queryTokens` returns the name matches found in the query, as names and
     user IDs. The Memory thread builds the full-text query from them, as
     word OR token.
@@ -770,12 +770,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `ExecutionTarget.run?(argv, { signal?, timeoutMs? })` runs argv with no
     shell under the target's own rules; the sandbox has it.
   - `ThreadTools` is `{ target(machine?), settings(), network(),
-    machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?),
+    claudeCode?(), machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?),
     mcpServers?(), toolAllowedInThread?(server, tool), approve?, setMode?,
     proposePlan?(PlanRequest), recordChange?(NewChange), fileNotes?() }`.
     `settings()` is the thread's effective settings. `fileNotes()` returns
     `{ added, removed }` paths the Files panel changed since her last turn,
-    which the `workspace` prompt section names in one line.
+    which the `workspace` prompt section names in one line. `claudeCode()`
+    true adds `CLAUDE_CODE_LINE` to that section.
   - `read`, `write`, `edit` and `bash` take an optional `machine`. On a
     machine the call's mode is `stricterMode(settings().mode, limit)`; a
     suspect `bash` (`suspectCommand`) asks in every mode unless
@@ -1191,7 +1192,7 @@ interface SshTransport { connect(to: SshEndpoint, verify(fingerprint): boolean):
 sandboxedTransport(sandbox: () => HelperSandbox): SshTransport  // the only client; Workspace.sshTransport (WorkspaceOptions.sshTransport for tests)
 // HelperSandbox { exclude, front?, frontHosts?, bwrap?, pasta?, refused? }: refused (the self-test's reason) fails the call
 helperSandbox(address, port, sandbox): Sandbox           // the helper's sandbox: no workspace, that address and port only
-forThread(t)  // { target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), folders(), recordChange(), fileNotes() },
+forThread(t)  // { target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), fileNotes() },
               // each read fresh; settings() is effective; fileNotes() takes (reads and clears) what the Files panel added and removed
 files(t): ThreadFiles                     // the Files panel, every call a fresh no-network sandbox over the thread's grants:
   // roots(), list(dir), search(root, q), images(), read(path) → { stream, size, type }, upload(dir, name, bytes) → path,
@@ -1212,7 +1213,8 @@ setHostKey(userId, name, hostKey, token?): Promise / confirmOffNetwork(userId, n
 grantsFor(t): Grant[]                     // { path, writable }
 folders(t): string[]                      // grants, and "<machine>:<root>" for its machines with a root
 network(t): Network
-inheritSettings(parent, childThreadId, narrower?)  // subagents and child threads: same or stricter (folders, network, mode, webSearch, images), never wider
+inheritSettings(parent, childThreadId, narrower?)  // subagents and child threads: same or stricter (folders, network, mode, webSearch, images, claudeCode), never wider
+claudeCodeFor(t): boolean / claudeFor(t)  // Claude Code for a run: general, not local-only along its chain (WorkspaceOptions.restricted; without it never), switch on, token saved, reaches api.anthropic.com; the token goes to SandboxSpec.claude, never the env
 settings(userId).detach(threadId)          // a kept child, once its parent is forgotten: no longer narrowed by it
 // A project's threads, like any child thread, work in their project chat's folder (folderThread)
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, machines
@@ -1248,7 +1250,7 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
 - Every sandbox run receives exactly the thread's grants, the thread's folder
   in the home workspace, and a read-only system.
 - **Workspace settings live in the user's `user.db`:** each thread's grants,
-  network switches, permission mode, `webSearch` and `images` switches and
+  network switches, permission mode, `webSearch`, `images` and `claudeCode` switches and
   machines and allowed suspect commands, and the machines. Allowed
   paths are the exception (below). Workspace never adds tables to the pool
   databases, which belong to Memory.
@@ -1333,6 +1335,22 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   granted server with Pi's `registerMcpServer`, exposure `deferred`, and
   loads Pi's MCP and `tool_search` extensions with no `mcp.json`, no log
   and Lyrica's transport.
+- **Claude Code API:** `lyricad`'s `/api/u/:userId/claude-code` (`GET`;
+  `PUT { token }`; `DELETE`), each answering `ClaudeCodeStatus { token,
+  installed }`: whether a token is saved, never the token. Thread settings
+  carry `claudeCode` (the effective switch) and `claudeCodeOffered`; a
+  change turning it on in a private or local-only thread, or local-only on
+  while it is on, is `400`. User database step 4 adds
+  `thread_workspaces.claude_code`; the token is `claude_code.token` in
+  `settings` (`settings(userId).claudeCodeToken() /
+  setClaudeCodeToken(token | null)`). A run with `SandboxSpec.claude`
+  gets `openClaudeRelay(token)` (`core/src/workspace/claude-relay.ts`):
+  a loopback port forwarded into the run, `ANTHROPIC_BASE_URL` and a
+  per-run capability as `CLAUDE_CODE_OAUTH_TOKEN` in its environment, and
+  the `claude` wrapper (`core/src/workspace/claude.sh`) at
+  `/run/lyrica/bin/claude`; the relay closes when the run ends.
+  `claudeCodeInstalled()` says whether the program is among the sandbox's
+  tools.
 - **Machines API:** `lyricad`'s `/api/u/:userId/machines` (`GET`; `POST
   …/machines/probe` for the Test step; `POST …/machines` to confirm;
   `PATCH …/machines/:name` for address, root, pool and limit; `POST

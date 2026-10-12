@@ -58,6 +58,8 @@ interface Run {
   added?: ThreadRepository[];
   /** The thread's MCP servers, read on every call (a test may empty it mid-turn), and the tools allowed in the thread as "<server>/<tool>". */
   mcp?: { servers: ThreadMcpServer[]; allowed?: string[] };
+  /** Whether the thread's runs have Claude Code. */
+  claudeCode?: boolean;
 }
 
 /** Tools any thread has besides the workspace's: memory, and the switched ones, which do nothing here. */
@@ -89,7 +91,7 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
     ...(o.again ? [(_ctx: unknown) => { offered.push(session!.getActiveToolNames()); return fauxAssistantMessage("again"); }] : []),
   ]);
   const settings: ThreadWorkspace = {
-    grants: [{ path: "/srv/music", writable: false }], internet: false, services: false, hosts: [], mode, webSearch: true, images: true,
+    grants: [{ path: "/srv/music", writable: false }], internet: false, services: false, hosts: [], mode, webSearch: true, images: true, claudeCode: false,
     machines: (o.machines ?? []).map((m) => m.name), repositories: [], mcpServers: [], parent: null, ...o.settings,
   };
   const workspace = createWorkspaceExtension({
@@ -98,6 +100,7 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
     proxmox: async (machine, action, vm) => { commands.push(`${machine}: proxmox ${action}${vm ? ` ${vm}` : ""}`); return `${action} done`; },
     allowedInThread: (machine, command) => (o.allowed ?? []).includes(`${machine}: ${command}`), network: () => ({ internet: false, services: false, hosts: ["nas.lan:8080"] }),
     approve: o.approve, proposePlan: o.proposePlan, setMode: (m) => { settings.mode = m; },
+    claudeCode: () => !!o.claudeCode,
     repositories: () => o.repositories ?? [], cloneRepositories: async () => o.cloneProblems ?? [],
     gitAccounts: () => (o.gitAccounts ?? []).map((name) => ({ name, kind: "github", host: "github.com" })),
     addRepository: (r) => { o.added?.push(r); return [...(o.repositories ?? []), ...(o.added ?? [])]; },
@@ -443,31 +446,38 @@ describe("the proxmox tool", () => {
 });
 
 describe("Git in a thread", () => {
-  const lyrica: ThreadGitRepository = { name: "xlc2022/lyrica", account: "li", kind: "github", host: "github.com", path: "/workspace/repos/lyrica", reachable: true };
+  const lyrica: ThreadGitRepository = { name: "xlc2022/lyrica", account: "ada", kind: "github", host: "github.com", path: "/workspace/repos/lyrica", reachable: true };
 
   it("puts the Git guide and the thread's repositories in the prompt of every turn of a thread that has any, with what failed at its start", async () => {
-    const { system } = await run("auto", [], { repositories: [lyrica, { ...lyrica, name: "li/notes", path: "/workspace/repos/notes", reachable: false }], cloneProblems: ["li/notes: this thread can't reach github.com"] });
+    const { system } = await run("auto", [], { repositories: [lyrica, { ...lyrica, name: "ada/notes", path: "/workspace/repos/notes", reachable: false }], cloneProblems: ["ada/notes: this thread can't reach github.com"] });
     expect(system).toContain("Never commit on the default branch");
     expect(system).toContain("The project's instructions win wherever they say otherwise.");
-    expect(system).toContain("- xlc2022/lyrica on github.com, through your account li, cloned at /workspace/repos/lyrica");
-    expect(system).toContain("li/notes on github.com, through your account li, cloned at /workspace/repos/notes (its host isn't reachable");
+    expect(system).toContain("- xlc2022/lyrica on github.com, through your account ada, cloned at /workspace/repos/lyrica");
+    expect(system).toContain("ada/notes on github.com, through your account ada, cloned at /workspace/repos/notes (its host isn't reachable");
     // The system prompt is recorded as JSON.
-    expect(system).toContain("At the start of this turn:\\n- li/notes: this thread can't reach github.com");
+    expect(system).toContain("At the start of this turn:\\n- ada/notes: this thread can't reach github.com");
     expect((await run("auto", [])).system).not.toContain("Working with Git");
   });
 
   it("adds a repository only after the person approves, even in Auto, and offers it only with a Git account of the pool", async () => {
-    const add = fauxToolCall("add_repository", { repository: "xlc2022/dotfiles", account: "li" }, { id: "1" });
+    const add = fauxToolCall("add_repository", { repository: "xlc2022/dotfiles", account: "ada" }, { id: "1" });
     const added: ThreadRepository[] = [];
     const asked: string[] = [];
-    await run("auto", [add], { gitAccounts: ["li"], added, approve: async (r) => { asked.push(r.tool); return false; } });
+    await run("auto", [add], { gitAccounts: ["ada"], added, approve: async (r) => { asked.push(r.tool); return false; } });
     expect(asked).toEqual(["add_repository"]);
     expect(added).toEqual([]);
-    const { results } = await run("auto", [add], { gitAccounts: ["li"], added, approve: async () => true });
-    expect(added).toEqual([{ name: "xlc2022/dotfiles", account: "li" }]);
+    const { results } = await run("auto", [add], { gitAccounts: ["ada"], added, approve: async () => true });
+    expect(added).toEqual([{ name: "xlc2022/dotfiles", account: "ada" }]);
     expect(results.join("\n")).toContain("cloned at the start of your next turn");
     const { offered } = await run("auto", [], { added: [] });
     expect(offered[0]).not.toContain("add_repository");
+  });
+
+  it("tells her about Claude Code in one line only where her runs have it, with no tool of its own", async () => {
+    const on = await run("auto", [], { claudeCode: true });
+    expect(on.system).toContain("Claude Code is in your sandbox");
+    expect(on.offered[0]).not.toContain("claude");
+    expect((await run("auto", [])).system).not.toContain("Claude Code");
   });
 });
 
@@ -539,16 +549,16 @@ describe("MCP servers in a thread", () => {
     try {
       const keyring = await freshKeyring();
       const users = new Users(keyring);
-      const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
-      await users.authenticate("li", "pw");
+      const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+      await users.authenticate("ada", "pw");
       // A fresh Workspace, as after a restart: nothing checked.
       const ws = new Workspace(keyring, users, { excludePorts: [] });
-      const settings = ws.settings(li.id);
+      const settings = ws.settings(ada.id);
       settings.addMcpServer({ name: "away", url: `http://192.0.2.7:${awayPort}/mcp`, token: "away-token", pool: "private", description: null, tools: 2, offNetwork: false });
       settings.addMcpServer({ name: "home", url: home.url, token: "home-token", pool: "private", description: null, tools: 2, offNetwork: false });
       settings.setThread("t", "private", { mcpServers: ["away", "home"] });
-      const host = ws.forThread({ userId: li.id, pool: "private", threadId: "t" });
-      // Time between opening the session and the first prompt, as when a thread opens before Li writes.
+      const host = ws.forThread({ userId: ada.id, pool: "private", threadId: "t" });
+      // Time between opening the session and the first prompt, as when a thread opens before the user writes.
       const idle: ExtensionFactory = (pi) => void pi.on("session_start", () => new Promise<void>((r) => setTimeout(r, 1000)));
       await run("auto", [], { steps: [[search]], after: [createMcpServersExtension(host), idle] });
       for (let i = 0; i < 40 && !home.seen.requests; i++) await new Promise((r) => setTimeout(r, 50));

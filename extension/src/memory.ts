@@ -79,7 +79,7 @@ export function search(view: PoolView, query: string, opts: SearchOptions, hide?
   return searchView(view, query, { ...opts, limit: limit * 4 }).filter((h) => !hide(h.id)).slice(0, limit);
 }
 
-/** One recall hit: `[id] (kind, added by Li) snippet`. */
+/** One recall hit: `[id] (kind, added by Sam) snippet`. */
 export function formatHit(h: Hit, user: MemoryContext["user"]): string {
   const labels = [h.kind, authorLabel(h.author, user), h.supersededBy && `superseded by ${h.supersededBy}`].filter(Boolean);
   return `[${h.id}] (${labels.join(", ")}) ${h.snippet}`;

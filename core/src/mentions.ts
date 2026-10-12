@@ -46,7 +46,7 @@ export interface NameMatch {
 /**
  * Finds users' names (current or previous) in a search query. The query is
  * not changed: the caller searches for each name OR its user's token, so
- * "Li-ion" still matches notes that say "Li-ion".
+ * "Al-ion" still matches notes that say "Al-ion".
  */
 export function queryTokens(query: string, profiles: Map<UserId, Profile>): NameMatch[] {
   // Current names win over previous ones; longer names win over their prefixes.

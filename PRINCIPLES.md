@@ -6,12 +6,12 @@
 ## Thesis
 
 Lyrica is a continuous companion for one person. What we optimize for is that
-each conversation feels like it continues a life she and Li share. She
+each conversation feels like it continues a life she and the user share. She
 remembers what happened, has her own point of view, and changes with
 experience.
 
 A feature belongs in Lyrica if it makes that more true, or if it lets her be
-present where Li's life actually happens. Anything else is out of scope until
+present where the user's life actually happens. Anything else is out of scope until
 real use shows otherwise.
 
 From Monika we take the thesis (narrative continuity as the main engineering
@@ -28,7 +28,7 @@ The order matters. When two principles conflict, the earlier one wins.
 Build what makes the next conversation better. Build infrastructure only after
 real use has run into a real wall.
 
-- Ask every proposal one question: what will Li notice in a conversation this
+- Ask every proposal one question: what will the user notice in a conversation this
   month? If the answer is "nothing, but it closes a gap," the proposal waits.
 - Pick the next piece of work from the continuity evals and the friction log
   (see [Evaluation](#evaluation-does-she-remember)), not from a list of things
@@ -36,11 +36,11 @@ real use has run into a real wall.
 
 ### 2. One operator, one server, simple boundaries
 
-Lyrica runs on a server Li administers. Everyone who uses her, Li and anyone
-Li lets in, has one or more separate **users**, with their own credentials and
+Lyrica runs on a server the owner administers. Everyone who uses her, the owner and anyone
+the owner lets in, has one or more separate **users**, with their own credentials and
 their own encrypted databases. The server's operator is trusted; users are
 protected from each other. An administrator can set a user's password, and
-so read their data (Li, 2026-10-11).
+so read their data (decided 2026-10-11).
 
 - A boundary is enforced by the structure of the system (separate databases,
   separate keys, no cloud model offered in a private pool), never by
@@ -95,7 +95,7 @@ recall, sleep). Bookkeeping doesn't add to it.
 The persona asks her to take initiative and use independent judgment. The
 harness shouldn't then treat her as an adversary.
 
-- She writes memories without asking each time. Li reviews afterwards in the
+- She writes memories without asking each time. The user reviews afterwards in the
   memory browser.
 - Confirmation is required only for changes to her core identity files (SOUL,
   STYLE, REGISTER) and for irreversible actions that leave the server (sending
@@ -156,7 +156,7 @@ interfaces because she remembers, not because threads are mirrored.
 The previous attempt drifted because every review added guards and caveats and
 nothing ever removed them. These rules work against that:
 
-1. **Li owns decisions.** Models propose and Li decides. Settled decisions are
+1. **The owner owns decisions.** Models propose and the owner decides. Settled decisions are
    written into [DESIGN.md](DESIGN.md) as current design, not as a log.
    Reversals are noted in its History section. A new model session reads
    PRINCIPLES.md and DESIGN.md first, and doesn't reopen a settled point
@@ -171,10 +171,10 @@ nothing ever removed them. These rules work against that:
 5. **Docs describe what exists or has been agreed.** Work in progress lives in
    briefs or issues, not in architecture documents that keep growing. No doc
    should say "staged, not yet validated."
-6. **Tests protect what Li would notice:** context assembly, memory round trips
+6. **Tests protect what the user would notice:** context assembly, memory round trips
    and sleep output. Don't add a test for every hypothetical guard.
 7. **Choose what models know best.** Models write almost all of the code and
-   Li rarely edits it by hand, so prefer mainstream languages and libraries
+   the owner rarely edits it by hand, so prefer mainstream languages and libraries
    that models are fluent in, and that a type checker can verify.
 
 ## Evaluation: does she remember?
@@ -189,5 +189,5 @@ hand or scripted against a model:
 - Does she sound like herself, and not like a generic assistant?
 
 Next to the evals, keep a **friction log**: one line every time she forgot
-something, got something wrong, or couldn't do what Li asked. The evals and the
+something, got something wrong, or couldn't do what the user asked. The evals and the
 friction log are what decide the next piece of work.

@@ -282,7 +282,7 @@ API `GET …/library/text` (`TextLibrary`, `LibraryEntry`), `PUT
 - Tests: the e2e Models test gains the Text models tab (the fake endpoints
   give two text models; star one, open its detail, open Settings, change
   Temperature and save, see "yours"); the Serving tab needs a host and is
-  checked by hand on Li's host; a vitest for the group warn lines.
+  checked by hand on the owner's host; a vitest for the group warn lines.
 
 ### Image models and Downloads (PR D)
 
@@ -408,7 +408,7 @@ and Accounts views, and the API `GET …/hosts/:id/images`, `POST
   image model management moves.
 - Tests: the e2e has no host, so Image models and Downloads are checked
   with a fake host answer in `web/e2e/serve.ts` (one recipe, one proposal,
-  one download in progress) and by hand on Li's host; vitest for the
+  one download in progress) and by hand on the owner's host; vitest for the
   download item wording.
 
 ### Copy on code blocks (pre-deployment batch)
@@ -418,12 +418,11 @@ mockup doesn't draw (its only Copy is the message-level one). Design:
 
 - A fenced block gets a header strip inside the block's top edge: the
   language name on the left as a cap in mono when the fence names one
-  (nothing when it doesn't), and a **Copy** text button on the right in the
-  message actions' look (12 px, muted, no border until hover), always
-  visible, 44 px touch target on coarse pointers. Copying puts the block's
-  text on the clipboard and swaps the label to **Copied** for 2 s, no
-  toast (the message-level Copy keeps its toast; two toasts for one
-  gesture would read as a bug). `aria-label` "Copy code" and "Copied".
+  (nothing when it doesn't), and **Copy** on the right as a small
+  secondary button (ux.md §3: nothing pressable is plain grey text),
+  always visible, 44 px touch target on coarse pointers. Copying puts the
+  block's text on the clipboard and swaps the label to **Copied** for
+  2 s, no toast. `aria-label` "Copy code" and "Copied". (Built in PR 19.)
 - The block itself: 12 px/1.5 mono, the tool background, 8 px radius,
   `white-space: pre`, horizontal scroll inside the block only; the header
   strip stays put while the code scrolls.
@@ -583,7 +582,7 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   as pages wait for a design.
 - 2026-10-11, PR 4 (Watching threads): the switch on Project settings and
   the "Checked the other threads" marker, after #97 and #110.
-- 2026-10-11, PR 5 (Li's ask): messages from other threads collapse to one
+- 2026-10-11, PR 5 (the owner's ask): messages from other threads collapse to one
   line, "Message received from <thread>", and expand on a tap; the rule is
   in docs/ux.md §6.
 - 2026-10-11, PR 6 (Files panel, back end): `Workspace.files(t)` and the
@@ -595,26 +594,26 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   itself.
 - 2026-10-11, PR 7 (Files panel, the UI): `web/src/Files.tsx` and the
   `files` route and panel kind (docs/web.md "The Files panel", docs/ux.md
-  §6; Show in thread finds the first message naming the path, on Li's ask).
+  §6; Show in thread finds the first message naming the path, on the owner's ask).
   Not built: thumbnails.
-- 2026-10-11, PR 8 (files in the conversation, Li's ask): `web/src/paths.tsx`;
+- 2026-10-11, PR 8 (files in the conversation, the owner's ask): `web/src/paths.tsx`;
   a `/workspace` path in a message links to `…/files/<encoded path>`, which
   shows the file; her images from the thread folder show in the message and
   open large (docs/web.md "Chat", docs/ux.md §6); her prompt says so.
-- 2026-10-11, PR 9 (thumbnails, Li's pick): `ThreadFiles.thumb` runs
+- 2026-10-11, PR 9 (thumbnails, the owner's pick): `ThreadFiles.thumb` runs
   ImageMagick inside the sandbox and keeps the copy under `.lyrica/thumbs`,
-  gone with the image on delete or rename (Li's rule); `GET …/files/thumb`
+  gone with the image on delete or rename (the owner's rule); `GET …/files/thumb`
   (docs/daemon.md "Files"); the Images grid and inline images use it and
   fall back to the image itself; `imagemagick` joins the NixOS sandbox tools
   and the Debian install. Not done: a grant-less sandbox for the thumbnail
   run (PR review's suggestion; `ThreadFiles` gets the thread's box) and a
   replaced-by-older image, which `-nt` misses. Next: Notifications, Pin in the remaining places,
   the Models page (carry the Fallback default), the Sleep section; Web:
-  bootstrap on Li's go.
-- 2026-10-11, PR 10 (Li's asks): the user menu says Lock and Log out;
+  bootstrap on the owner's go.
+- 2026-10-11, PR 10 (the owner's asks): the user menu says Lock and Log out;
   Administration → Users gets Change password…, backed by a recovery copy
   of each user's key in `self.db` (DESIGN.md "Users" and "Storage",
-  contracts core/users; Li chose this over a reset that loses data). Nothing
+  contracts core/users; the owner chose this over a reset that loses data). Nothing
   for sleep or the pools changes; the privacy boundary note is in DESIGN.
 - 2026-10-12, PR 18 (context meter): `src/ContextMeter.tsx`, the facts
   line's **Context <n>% ▾** after Group with its popover of parts, Reserve
@@ -624,7 +623,7 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   the batch: Copy on code blocks, message-text search.
 - 2026-10-12, PR 16 (drafts): the composer's unsent text is a draft on
   lyricad per thread (`GET|PUT …/threads/:pool/:id/draft`, pool schema
-  step 3, cleared by a successful send), never in browser storage (Li's
+  step 3, cleared by a successful send), never in browser storage (the owner's
   pick, principle "No plaintext memory"). Next in the pre-deploy batch:
   context meter, Copy on code blocks, message-text search in Search.
 - 2026-10-12, PR 15 (Tasks): the Tasks tab in `src/Models.tsx` (kept
@@ -651,7 +650,7 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   row "What she did at night"). Memory links open the Memory page, not the
   panel: the panel exists only beside a thread. Next: the Models page (carry
   the Fallback default), Pin in the remaining places, the speech drawer.
-- 2026-10-12, PR 12 (the rest of the queue in one PR, Li's ask): the
+- 2026-10-12, PR 12 (the rest of the queue in one PR, the owner's ask): the
   password follow-up (the administrator's own password, the user logged
   out); reactions on messages, hers too (DESIGN.md "Reactions",
   docs/daemon.md, docs/web.md, ux row "Reacting to a message"; pool schema

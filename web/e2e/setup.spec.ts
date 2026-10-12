@@ -28,9 +28,9 @@ test("the setup page takes the code, her name and the first administrator, skips
   await nameStep.getByRole("textbox", { name: "Name", exact: true }).fill("Aria");
   await expect(codeStep.getByRole("button", { name: "Continue" })).not.toHaveClass(/primary/);
   await nameStep.getByRole("button", { name: "Continue" }).click();
-  await page.getByLabel("Login name").fill("li");
+  await page.getByLabel("Login name").fill("ada");
   await page.getByLabel("Password").fill("pw");
-  await page.getByRole("form", { name: "Administrator" }).getByRole("textbox", { name: "Name", exact: true }).fill("Li");
+  await page.getByRole("form", { name: "Administrator" }).getByRole("textbox", { name: "Name", exact: true }).fill("Ada");
   await page.getByRole("button", { name: "Create" }).click();
   await expect(page.getByText("The code doesn't match.")).toBeVisible();
   await page.getByRole("textbox", { name: "Code" }).fill(code);
@@ -41,7 +41,7 @@ test("the setup page takes the code, her name and the first administrator, skips
   await tailnet.getByRole("button", { name: "Skip" }).click();
   await page.getByRole("form", { name: "Models" }).getByRole("button", { name: "Skip" }).click();
   const done = page.getByRole("region", { name: "Done" });
-  await expect(done).toContainText("Administratorli");
+  await expect(done).toContainText("Administratorada");
   await done.getByRole("button", { name: "Start a chat" }).click();
   await expect(page.getByText("Switch user")).toBeAttached();
   // Her name is on the page, and stays after a reload.
@@ -54,7 +54,7 @@ test("the setup page takes the code, her name and the first administrator, skips
 test("Administration: her name changes from Persona, Tailnet says what's missing, and Updates says there is no updater", async ({ page }) => {
   // A new browser: she is unlocked, so it goes straight to Log in.
   await page.goto("/");
-  await page.getByLabel("Login name").fill("li");
+  await page.getByLabel("Login name").fill("ada");
   await page.getByLabel("Password").fill("pw");
   await page.getByRole("button", { name: "Log in" }).click();
   await expect(page.getByText("Switch user")).toBeAttached();

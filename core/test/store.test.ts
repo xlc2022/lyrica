@@ -7,9 +7,9 @@ import { freshKeyring, profile } from "./helpers.ts";
 async function setup() {
   const keyring = await freshKeyring();
   const users = new Users(keyring);
-  const li = await users.createUser("li", "pw", profile("Li"), { admin: true });
-  await users.authenticate("li", "pw");
-  return { keyring, users, li, memory: new Memory(keyring, users) };
+  const ada = await users.createUser("ada", "pw", profile("Al"), { admin: true });
+  await users.authenticate("ada", "pw");
+  return { keyring, users, ada, memory: new Memory(keyring, users) };
 }
 
 /** A logged thread with one user message, for notes to cite. */
@@ -21,12 +21,12 @@ function said(store: PoolStore, text: string, opts: { unlogged?: boolean } = {})
 
 describe("the privacy boundary", () => {
   it("never lets a general view read, search or cite private memory", async () => {
-    const { memory, li } = await setup();
-    const priv = memory.openThreadView(li.id, "private");
+    const { memory, ada } = await setup();
+    const priv = memory.openThreadView(ada.id, "private");
     const p = said(priv.own, "the diagnosis came back");
     const [secret] = priv.own.addNotes([{ text: "{user} has a quiet diagnosis", source: p.entry }], { author: "lyrica", thread: p.thread });
 
-    const general = memory.openThreadView(li.id, "general");
+    const general = memory.openThreadView(ada.id, "general");
     expect(general.pool).toBe("general");
     expect(general.own.pool).toBe("general");
     expect(general.reads).toEqual([]);
@@ -42,15 +42,15 @@ describe("the privacy boundary", () => {
   });
 
   it("lets private read general but write only private", async () => {
-    const { memory, li } = await setup();
-    const general = memory.openThreadView(li.id, "general");
+    const { memory, ada } = await setup();
+    const general = memory.openThreadView(ada.id, "general");
     const g = said(general.own, "Satie on the piano");
     const [note] = general.own.addNotes([{ text: "{user} plays Satie", source: g.entry }], { author: "lyrica", thread: g.thread });
 
-    const priv = memory.openThreadView(li.id, "private");
+    const priv = memory.openThreadView(ada.id, "private");
     expect(priv.reads.map((r) => r.pool)).toEqual(["general"]);
     expect(searchView(priv, "Satie").map((h) => h.id)).toContain(`general/${note}`);
-    expect(readView(priv, `general/${note}`)?.item?.text).toMatch(/^Li plays Satie/);
+    expect(readView(priv, `general/${note}`)?.item?.text).toMatch(/^Al plays Satie/);
 
     const p = said(priv.own, "private aside");
     const [mine] = priv.own.addNotes([{ text: `builds on [general/${note}]`, source: p.entry }], { author: "lyrica", thread: p.thread });
@@ -65,14 +65,14 @@ describe("the privacy boundary", () => {
   });
 
   it("keeps the owner view out of sessions", async () => {
-    const { memory, li } = await setup();
-    const owner = memory.openOwnerView(li.id);
-    const view = memory.openThreadView(li.id, "general");
+    const { memory, ada } = await setup();
+    const owner = memory.openOwnerView(ada.id);
+    const view = memory.openThreadView(ada.id, "general");
     expect(isThreadView(view)).toBe(true);
     expect(isThreadView(owner)).toBe(false);
     expect(isThreadView({ ...view })).toBe(false);
     expect(() => owner.general.addNotes([{ text: "x" }], { author: "lyrica" })).toThrow(/owner view/);
-    expect(() => view.own.addNotes([{ text: "x" }], { author: `user:${li.id}` })).toThrow(/thread view/);
+    expect(() => view.own.addNotes([{ text: "x" }], { author: `user:${ada.id}` })).toThrow(/thread view/);
     owner.close();
     view.close();
   });
@@ -80,8 +80,8 @@ describe("the privacy boundary", () => {
 
 describe("unlogged threads", () => {
   it("are never indexed, can't write notes, and pass that on to daughters", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
     const u = said(own, "the zeppelin surprise party", { unlogged: true });
     expect(own.search("zeppelin")).toEqual([]);
     expect(() => own.addNotes([{ text: "party", source: u.entry }], { author: "lyrica", thread: u.thread })).toThrow(/isn't logged/);
@@ -95,8 +95,8 @@ describe("unlogged threads", () => {
   });
 
   it("don't expose earlier entries when logging is turned on later", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
     const u = said(own, "the zeppelin surprise party", { unlogged: true });
     own.setUnlogged(u.thread, false);
     const later = own.appendEntry(u.thread, { piId: "a2", role: "user", data: {}, text: "the zeppelin cake" });
@@ -108,37 +108,37 @@ describe("unlogged threads", () => {
 
 describe("notes", () => {
   it("round-trip mentions, and a rename changes rendering and search with no rewrite", async () => {
-    const { memory, users, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
+    const { memory, users, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
     const s = said(own, "I love Satie");
     const [id] = own.addNotes([{ text: "{user} loves Satie; play {user:obj} Gymnopédies", about: ["music"], source: s.entry }], { author: "lyrica", thread: s.thread });
-    expect(own.get(id!, { raw: true })!.text).toBe(`[[u:${li.id}]] loves Satie; play [[u:${li.id}:obj]] Gymnopédies [${s.entry}]`);
-    expect(own.get(id!)!.text).toBe(`Li loves Satie; play her Gymnopédies [${s.entry}]`);
+    expect(own.get(id!, { raw: true })!.text).toBe(`[[u:${ada.id}]] loves Satie; play [[u:${ada.id}:obj]] Gymnopédies [${s.entry}]`);
+    expect(own.get(id!)!.text).toBe(`Al loves Satie; play her Gymnopédies [${s.entry}]`);
     expect(own.cameFrom(id!)).toEqual([s.entry]);
-    expect(own.search("Li").map((h) => h.id)).toContain(id);
+    expect(own.search("Al").map((h) => h.id)).toContain(id);
 
-    users.updateProfile(li, li, { displayName: "Lin", pronouns: { subj: "they", obj: "them", poss: "their", possPro: "theirs", refl: "themself" } });
+    users.updateProfile(ada, ada, { displayName: "Lin", pronouns: { subj: "they", obj: "them", poss: "their", possPro: "theirs", refl: "themself" } });
     expect(own.get(id!)!.text).toBe(`Lin loves Satie; play them Gymnopédies [${s.entry}]`);
     expect(own.search("Lin").map((h) => h.id)).toContain(id);
-    expect(own.search("Li").map((h) => h.id)).toContain(id); // a previous name
+    expect(own.search("Al").map((h) => h.id)).toContain(id); // a previous name
     expect(own.revisions(id!)).toHaveLength(1);
   });
 
-  it("finds 'Li-ion' literally as well as by name", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
+  it("finds 'Al-ion' literally as well as by name", async () => {
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
     const s = said(own, "batteries");
     const [battery, tea] = own.addNotes([
-      { text: "The drone uses a Li-ion battery", source: s.entry },
+      { text: "The drone uses an Al-ion battery", source: s.entry },
       { text: "{user} drinks green tea", source: s.entry },
     ], { author: "lyrica", thread: s.thread });
-    expect(own.search("Li-ion")[0]!.id).toBe(battery);
-    expect(own.search("what does Li drink?").map((h) => h.id)).toContain(tea);
+    expect(own.search("Al-ion")[0]!.id).toBe(battery);
+    expect(own.search("what does Al drink?").map((h) => h.id)).toContain(tea);
   });
 
   it("supersedes without losing the old note", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
     const s = said(own, "moving");
     const [old] = own.addNotes([{ text: "{user} lives in Vienna", source: s.entry }], { author: "lyrica", thread: s.thread });
     const [fresh] = own.addNotes([{ text: "{user} lives in Graz now", supersedes: [old!], source: s.entry }], { author: "lyrica", thread: s.thread });
@@ -150,17 +150,17 @@ describe("notes", () => {
 
 describe("editing", () => {
   it("keeps tokens, updates citations and search, and restores from revisions", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
     const s = said(own, "homelab");
     const [a, b] = own.addNotes([{ text: "three nodes", source: s.entry }, { text: "node two backups", source: s.entry }], { author: "lyrica", thread: s.thread });
     own.putPage({ slug: "homelab", title: "Homelab", summary: "{user}'s Proxmox cluster", text: `Three nodes [${a}].` }, "sleep");
 
-    const owner = memory.openOwnerView(li.id);
+    const owner = memory.openOwnerView(ada.id);
     const stored = owner.general.get("p:homelab", { raw: true })!;
-    owner.general.edit("p:homelab", { text: `[[u:${li.id}]] runs three nodes [${b}]; {user:poss} NAS is old.` }, `user:${li.id}`);
+    owner.general.edit("p:homelab", { text: `[[u:${ada.id}]] runs three nodes [${b}]; {user:poss} NAS is old.` }, `user:${ada.id}`);
     const edited = owner.general.get("p:homelab", { raw: true })!;
-    expect(edited.text).toBe(`[[u:${li.id}]] runs three nodes [${b}]; [[u:${li.id}:poss]] NAS is old.`);
+    expect(edited.text).toBe(`[[u:${ada.id}]] runs three nodes [${b}]; [[u:${ada.id}:poss]] NAS is old.`);
     expect(edited.summary).toBe(stored.summary);
     expect(own.cameFrom("p:homelab")).toEqual([b]);
     expect(own.usedIn(a!)).toEqual([]);
@@ -169,8 +169,8 @@ describe("editing", () => {
     expect(owner.general.editedSince("2000-01-01").map((e) => e.id)).toEqual(["p:homelab"]);
 
     const [first, second] = own.revisions("p:homelab");
-    expect([first!.author, second!.author]).toEqual(["sleep", `user:${li.id}`]);
-    owner.general.restore("p:homelab", first!.id, `user:${li.id}`);
+    expect([first!.author, second!.author]).toEqual(["sleep", `user:${ada.id}`]);
+    owner.general.restore("p:homelab", first!.id, `user:${ada.id}`);
     expect(own.get("p:homelab")!.text).toBe(`Three nodes [${a}].`);
     expect(own.revisions("p:homelab")).toHaveLength(3);
     expect(own.usedIn(a!)).toEqual(["p:homelab"]);
@@ -179,14 +179,14 @@ describe("editing", () => {
   });
 
   it("lets WAKE and the journal be edited too", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
-    own.putWake("Li is moving next week.", "sleep");
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
+    own.putWake("Al is moving next week.", "sleep");
     const j = own.addJournal("A dream about trains.", "sleep");
-    const owner = memory.openOwnerView(li.id);
-    owner.general.edit("wake", { text: "Li moved last week." }, `user:${li.id}`);
-    owner.general.edit(j, { text: "A dream about boats." }, `user:${li.id}`);
-    expect(own.getWake()).toBe("Li moved last week.");
+    const owner = memory.openOwnerView(ada.id);
+    owner.general.edit("wake", { text: "Al moved last week." }, `user:${ada.id}`);
+    owner.general.edit(j, { text: "A dream about boats." }, `user:${ada.id}`);
+    expect(own.getWake()).toBe("Al moved last week.");
     expect(own.listJournal()[0]!.text).toBe("A dream about boats.");
     expect(own.revisions("wake")).toHaveLength(2);
     owner.close();
@@ -195,18 +195,18 @@ describe("editing", () => {
 
 describe("user-introduced memories", () => {
   it("are recalled with their author and show up in lineage", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
     const s = said(own, "about the garden");
-    const owner = memory.openOwnerView(li.id);
+    const owner = memory.openOwnerView(ada.id);
     const [linked, free] = owner.general.addNotes([
       { text: `The tomatoes went in on 3 May [t:${s.thread}]` },
       { text: "My grandmother's tomato soup recipe uses fennel" },
-    ], { author: `user:${li.id}` });
+    ], { author: `user:${ada.id}` });
 
     const hits = own.search("tomato tomatoes");
     expect(hits.map((h) => h.id).sort()).toEqual([linked, free].sort());
-    expect(hits.every((h) => h.origin === "user" && h.author === `user:${li.id}`)).toBe(true);
+    expect(hits.every((h) => h.origin === "user" && h.author === `user:${ada.id}`)).toBe(true);
     expect(own.cameFrom(linked!)).toEqual([`t:${s.thread}`]);
     expect(own.usedIn(`t:${s.thread}`)).toEqual([linked]);
     expect(own.cameFrom(free!)).toEqual([]);
@@ -220,8 +220,8 @@ describe("user-introduced memories", () => {
 
 describe("deletion", () => {
   it("removes text and revisions, leaves a text-free tombstone and flags citing pages", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
     const s = said(own, "the gift");
     const [gift] = own.addNotes([{ text: "{user} is getting a red bicycle", source: s.entry }], { author: "lyrica", thread: s.thread });
     own.putPage({ slug: "gifts", title: "Gifts", summary: "ideas", text: `A bicycle [${gift}].` }, "sleep");
@@ -240,8 +240,8 @@ describe("deletion", () => {
   });
 
   it("forgets a thread with the notes that came only from it", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
     const a = said(own, "first");
     const b = said(own, "second");
     const [only, both] = own.addNotes([
@@ -263,8 +263,8 @@ describe("deletion", () => {
   });
 
   it("deletes the matches of a search in bulk", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
     const s = said(own, "ex");
     own.addNotes([{ text: "Sam likes jazz", source: s.entry }, { text: "Sam moved away", source: s.entry }, { text: "jazz is fine" }], { author: "lyrica", thread: s.thread });
     own.deleteMany(own.search("Sam").map((h) => h.id), "lyrica");
@@ -275,8 +275,8 @@ describe("deletion", () => {
 
 describe("threads", () => {
   it("export copies keep entry IDs and aren't indexed twice", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
     const s = said(own, "the harbour at dawn");
     const copy = own.exportThread(s.thread, "web");
     expect(copy.parent).toBe(s.thread);
@@ -286,8 +286,8 @@ describe("threads", () => {
   });
 
   it("branches: the turns up to the chosen one, copied, with the source unchanged", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
     const t = own.createThread({ interface: "web", title: "Garden", unlogged: false });
     const add = (piId: string, role: string, text: string) => own.appendEntry(t.id, { piId, role, data: { id: piId }, text });
     add("u1", "user", "plant tulips");
@@ -320,8 +320,8 @@ describe("threads", () => {
   });
 
   it("rewinds: removed turns go as forgotten ones do, and their numbers aren't reused", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
     const t = own.createThread({ interface: "web" });
     const keep = own.appendEntry(t.id, { piId: "u1", role: "user", data: {}, text: "the boat is blue" });
     own.appendEntry(t.id, { piId: "a1", role: "assistant", data: {}, text: "lovely" });
@@ -367,8 +367,8 @@ describe("threads", () => {
   });
 
   it("keeps child threads one level deep, and forgets them with their parent only when asked", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
     const parent = own.createThread({ interface: "web", unlogged: true });
     const child = own.createThread({ interface: "web", parent: parent.id, child: true, title: "Child" });
     expect(child).toMatchObject({ child: true, unlogged: true, parent: parent.id });
@@ -391,8 +391,8 @@ describe("threads", () => {
   });
 
   it("makes projects of top-level threads only, and keeps their branches in the project", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
     const project = own.createThread({ interface: "web", project: true, goal: "move the homelab", title: "Homelab" });
     expect(project).toMatchObject({ project: true, goal: "move the homelab" });
     const thread = own.createThread({ interface: "web", parent: project.id, child: true, title: "DNS" });
@@ -419,8 +419,8 @@ describe("threads", () => {
   });
 
   it("ranks a project's own memories higher when recalling from inside it, without hiding the rest", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
     const project = own.createThread({ interface: "web", project: true });
     const thread = own.createThread({ interface: "web", parent: project.id, child: true });
     const a = own.appendEntry(project.id, { piId: "u1", role: "user", data: {}, text: "set it up" });
@@ -447,14 +447,14 @@ describe("threads", () => {
   });
 
   it("finds a project's notes by citation, and forgets its page and notes with it", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
     const project = own.createThread({ interface: "web", project: true });
     const thread = own.createThread({ interface: "web", parent: project.id, child: true });
     const a = own.appendEntry(project.id, { piId: "u1", role: "user", data: {}, text: "run two at a time" });
     const b = own.appendEntry(thread.id, { piId: "u1", role: "user", data: {}, text: "the router does DNS" });
     const other = said(own, "unrelated");
-    const [n1] = own.addNotes([{ text: "Li wants two threads at a time", source: a }], { author: "lyrica", thread: project.id });
+    const [n1] = own.addNotes([{ text: "Al wants two threads at a time", source: a }], { author: "lyrica", thread: project.id });
     const [n2] = own.addNotes([{ text: "DNS is on the router", source: b }], { author: "lyrica", thread: thread.id });
     const [mixed] = own.addNotes([{ text: `DNS also came up [${other.entry}]`, source: b }], { author: "lyrica", thread: thread.id });
     const [elsewhere] = own.addNotes([{ text: "unrelated note", source: other.entry }], { author: "lyrica", thread: other.thread });
@@ -481,11 +481,11 @@ describe("threads", () => {
   });
 
   it("keeps a project's instructions apart from what sleep writes on its page", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
     const project = own.createThread({ interface: "web", project: true, title: "Homelab" });
-    const owner = memory.openOwnerView(li.id);
-    const me = `user:${li.id}` as const;
+    const owner = memory.openOwnerView(ada.id);
+    const me = `user:${ada.id}` as const;
     expect(() => own.setProjectInstructions(project.id, "x", "sleep")).toThrow(/only be changed by the user/);
     owner.general.setProjectInstructions(project.id, "Ask before buying anything.", me);
     const page = `p:${projectSlug(project.id)}`;
@@ -499,14 +499,14 @@ describe("threads", () => {
     expect(() => own.edit(page, { instructions: "Buy anything." }, "sleep")).toThrow(/only be changed by the user/);
 
     // Text the user wrote on the page is still kept word for word.
-    owner.general.edit(page, { text: "DNS is done; rack next. Li: the rails are on order." }, me);
+    owner.general.edit(page, { text: "DNS is done; rack next. Al: the rails are on order." }, me);
     expect(() => own.edit(page, { text: "Rack next." }, "sleep")).toThrow(/text a user wrote/);
     owner.close();
   });
 
   it("rewinds turns a branch still holds: their notes stay, and citations resolve through the copy", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
     const t = own.createThread({ interface: "web" });
     own.appendEntry(t.id, { piId: "u1", role: "user", data: {}, text: "the kettle is copper" });
     const kept = own.appendEntry(t.id, { piId: "a1", role: "assistant", data: {}, text: "a copper kettle" });
@@ -525,9 +525,9 @@ describe("threads", () => {
   });
 
   it("brings back pages about granted folders", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
-    own.putPage({ slug: "site", title: "Website", summary: "Li's site", text: "Astro.", folders: ["/srv/site"] }, "sleep");
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
+    own.putPage({ slug: "site", title: "Website", summary: "Al's site", text: "Astro.", folders: ["/srv/site"] }, "sleep");
     own.putPage({ slug: "other", title: "Other", summary: "x", text: "y" }, "sleep");
     expect(own.forFolders(["/srv/site/src"]).map((p) => p.id)).toEqual(["p:site"]);
     expect(own.forFolders(["/srv/site/"]).map((p) => p.id)).toEqual(["p:site"]);
@@ -536,8 +536,8 @@ describe("threads", () => {
   });
 
   it("brings back pages about folders on an SSH machine, never the host's or another machine's", async () => {
-    const { memory, li } = await setup();
-    const { own } = memory.openThreadView(li.id, "general");
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
     own.putPage({ slug: "nas-site", title: "Site on the NAS", summary: "x", text: "y", folders: ["nas:/srv/site"] }, "sleep");
     own.putPage({ slug: "host-site", title: "Site here", summary: "x", text: "y", folders: ["/srv/site"] }, "sleep");
     own.putPage({ slug: "nas", title: "The NAS", summary: "x", text: "y", folders: ["nas:/"] }, "sleep");
@@ -552,14 +552,14 @@ describe("threads", () => {
 
 describe("on disk", () => {
   it("holds no memory or thread text in plaintext", async () => {
-    const { memory, users, li } = await setup();
-    const view = memory.openThreadView(li.id, "private");
+    const { memory, users, ada } = await setup();
+    const view = memory.openThreadView(ada.id, "private");
     const s = said(view.own, "MARKERTHREADTEXT");
     view.own.addNotes([{ text: "MARKERNOTETEXT", source: s.entry }], { author: "lyrica", thread: s.thread });
     view.own.putPage({ slug: "p", title: "MARKERPAGE", summary: "s", text: "t" }, "sleep");
-    const general = memory.openThreadView(li.id, "general");
+    const general = memory.openThreadView(ada.id, "general");
     said(general.own, "MARKERGENERAL");
-    const dir = users.userDir(li.id);
+    const dir = users.userDir(ada.id);
     const files = readdirSync(dir);
     expect(files).toEqual(expect.arrayContaining(["general.db", "private.db"]));
     for (const f of files) expect(readFileSync(join(dir, f)).toString("latin1")).not.toMatch(/MARKER/);

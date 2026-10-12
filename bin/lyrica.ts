@@ -121,8 +121,8 @@ async function admin(args: string[], home: string): Promise<void> {
     if (keyring.selfExists()) throw new Error(`${keyring.selfPath} already exists`);
     const passphrase = await askNew("New self.db passphrase: ");
     const name = await ask("Her name [Lyrica]: ") || "Lyrica";
-    const first = await ask("First administrator's login name [li]: ") || "li";
-    const profile = await askProfile({ displayName: "Li" });
+    const first = await ask("First administrator's login name [admin]: ") || "admin";
+    const profile = await askProfile({ displayName: first });
     const password = await askNew(`Password for ${first}: `);
     await bootstrap(keyring, { passphrase, name, seed: SEED, admin: { login: first, password, profile } });
     console.log(`Created ${keyring.selfPath}, imported the persona and added ${first}. If lyricad is running, restart it.`);

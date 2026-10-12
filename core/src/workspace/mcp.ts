@@ -41,7 +41,7 @@ export const mcpNamespace = (name: string): string => `mcp__${name.replace(/-/g,
 
 const headers = (token?: string): Record<string, string> => (token ? { Authorization: `Bearer ${token}` } : {});
 
-/** Fetch that never follows a redirect, so the token goes only to the URL Li gave. */
+/** Fetch that never follows a redirect, so the token goes only to the URL the user gave. */
 const noRedirects = (f: typeof fetch = fetch) => (input: string | URL, init?: RequestInit) => f(input, { ...init, redirect: "error" });
 
 /** Why a connection failed, as the state it leaves the server in. */

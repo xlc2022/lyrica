@@ -897,7 +897,7 @@ export class Delegation {
         // Offline means web_search too: SearXNG is asked from lyricad, not the sandbox.
         workspace.inheritSettings(p, child.id, {
           grants, ...(narrowing.internet === false ? { internet: false, webSearch: false } : {}),
-          ...(noMachines ? { machines: [], repositories: [], mcpServers: [] } : {}),
+          ...(noMachines ? { machines: [], repositories: [], mcpServers: [], claudeCode: false } : {}),
         });
         // Its settings follow its parent's as they are now (the stricter mode, switches off where theirs are); it can't leave Plan mode itself.
         // It works in its parent's clones, which the parent fetched at its turn's start; read-only when it gets

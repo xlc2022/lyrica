@@ -22,7 +22,7 @@ database files. A command that could see either one could read everything.
 | Target | What it is | How she is confined |
 |---|---|---|
 | **Sandbox** (always there) | Each command runs on the Lyrica host inside bubblewrap. | The sandbox is described below. |
-| **A machine** | One of Li's other computers, reached over SSH, when a call names it. | She is confined by the machine's own account, so each machine uses a dedicated account. An optional root path limits `read`, `write` and `edit`. If SSH fails, the action fails: it **never** falls back to running locally. See [Machines](#machines). |
+| **A machine** | One of the owner's other computers, reached over SSH, when a call names it. | She is confined by the machine's own account, so each machine uses a dedicated account. An optional root path limits `read`, `write` and `edit`. If SSH fails, the action fails: it **never** falls back to running locally. See [Machines](#machines). |
 
 **The sandbox:**
 - It runs with every namespace unshared (mount, process, user, IPC, network),
@@ -57,8 +57,8 @@ database files. A command that could see either one could read everything.
   at the same time sees the old file or the new one, never an empty or
   half-written one, and a failed write leaves the old file in place.
 - **Files she doesn't own are written in place**, so they keep their owner,
-  group and permissions: a file of Li's that `lyrica` may write through its
-  group or an ACL stays Li's. The same goes for a file whose group can't be
+  group and permissions: a file of the user's that `lyrica` may write through its
+  group or an ACL stays the user's. The same goes for a file whose group can't be
   kept, or one in a folder she can't create files in. A read can then briefly
   see a partial file.
 - A symlink at the target is refused, not followed or replaced.
@@ -72,12 +72,12 @@ database files. A command that could see either one could read everything.
 
 ## Machines
 
-A machine is one of Li's other computers that she works on over SSH, or a
+A machine is one of the owner's other computers that she works on over SSH, or a
 Proxmox she manages over its API ([below](#proxmox)). The SSH targets that
 existed before became general machines at Ask.
 
 - **Kept in `user.db`** (`machines`): name, address, account, the private
-  key, an optional root, the host key Li confirmed, the pool, the **mode
+  key, an optional root, the host key the user confirmed, the pool, the **mode
   limit**, whether the address is off network, when she last
   connected, and how the last connection went (online, unreachable, or host
   key changed) and since when. That state clears when the address or host key
@@ -129,16 +129,16 @@ existed before became general machines at Ask.
   masks key blocks too; `edit` reads the file as it is, so
   writing it back keeps the key.
 - **The host key is confirmed when the machine is added**, never pinned on
-  first use: a machine with no key from before can't be reached until Li
+  first use: a machine with no key from before can't be reached until the user
   confirms one; a key pinned on first use before machines existed is kept
   as confirmed. A different key fails every call, with no
-  fallback, until Li confirms the new one (`setHostKey`). Strict key
+  fallback, until the user confirms the new one (`setHostKey`). Strict key
   exchange (`kex-strict-*`) is required. No agent, no forwarding.
 - **Off network.** Before each connection the address is resolved and the
-  connection goes to that address. If it resolves outside Li's LAN,
+  connection goes to that address. If it resolves outside the owner's LAN,
   loopback and tailnet (the model endpoints' check), the machine is marked
   off network. A private machine that has newly gone off network is refused
-  until Li confirms (`confirmOffNetwork`), so a DNS change can't get past the
+  until the user confirms (`confirmOffNetwork`), so a DNS change can't get past the
   warning; back on network clears the mark.
 - **The SSH client** sits behind `SshTransport`
   (`core/src/workspace/transport.ts`): `SshTarget` keeps the root, the
@@ -183,7 +183,7 @@ existed before became general machines at Ask.
 
 **Adding a machine** (`Workspace.probeMachine`, then `addMachine`, or
 `lyrica admin ssh add`): Lyrica makes a key pair and keeps it in memory for
-an hour; nothing is saved until Li confirms the host key. The key's
+an hour; nothing is saved until the user confirms the host key. The key's
 `authorized_keys` line is `restrict,from="<Lyrica's addresses>" ssh-ed25519
 …`, usable only from this computer. The setup, run as root on the machine:
 
@@ -200,7 +200,7 @@ sshd -t && systemctl reload ssh
 ```
 
 The test then reads the host key the machine shows and tries the login,
-and Li compares the fingerprint with `ssh-keygen -lf
+and the user compares the fingerprint with `ssh-keygen -lf
 /etc/ssh/ssh_host_ed25519_key.pub` on the machine before confirming. A
 private machine that resolves off network needs a second confirmation.
 Replacing the key (`setHostKey`) re-confirms the host key only; her own key
@@ -217,14 +217,14 @@ with a token, never a shell on the hypervisor
 - **Kept like an SSH machine**, in the same `machines` table: the address
   (`https://host:8006`), the token (`user@realm!tokenid=secret`) where an
   SSH machine keeps its private key, the token's id where it keeps the
-  account, the SHA-256 fingerprint of the TLS certificate Li confirmed
+  account, the SHA-256 fingerprint of the TLS certificate the user confirmed
   (`AB:CD:…`) where it keeps the host key, the pool, the mode limit and the
   off-network mark. No root. The token is never shown to her, in the API
   (`MachineInfo` has `tokenId` only) or in the log.
 - **The certificate is pinned.** Each call opens a TLS connection, checks the
   certificate's fingerprint, and only then sends the request with the token
   over that same connection. A different certificate fails every call, with
-  no fallback and nothing sent, until Li confirms the new fingerprint
+  no fallback and nothing sent, until the user confirms the new fingerprint
   (`setHostKey`, which may also take a new token). The address is checked
   for off network before each call, as for SSH.
 - **One tool, `proxmox`** (`extension/src/proxmox.ts`), with `machine`,
@@ -244,7 +244,7 @@ with a token, never a shell on the hypervisor
 **Adding a Proxmox** (`probeMachine` with `kind: "proxmox"`, then
 `addMachine`, or `lyrica admin proxmox add`): the test reads only the
 certificate's fingerprint and gives the setup steps; the token isn't sent
-until Li confirms the fingerprint. Confirm then tries the token
+until the user confirms the fingerprint. Confirm then tries the token
 (`/version`) against that certificate, refuses the Proxmox that runs
 Lyrica's own VM where it can tell, and saves only if both pass. That
 refusal (`ownNode`) covers an address that is this computer or its default
@@ -373,6 +373,7 @@ values are always visible next to the model badge:
 | **Repositories** | The repositories the thread clones, each with the Git account it uses (Git accounts and repositories). |
 | **Mode** | Ask, Accept edits, Plan or Auto (see Approval). |
 | **Web search, Images** | Switches for `web_search` and `web_fetch`, and for `image`. On unless turned off. |
+| **Claude Code** | Whether her sandbox runs can use Claude Code on the user's Claude plan (Claude Code). Off unless turned on; shown only in a general thread that isn't local-only, once a token is saved and the program is installed. |
 | **Do not log thread in memory** | See [memory.md](memory.md#threads-that-arent-logged). |
 
 ## Network access from tools
@@ -383,7 +384,7 @@ Every thread has two switches and a list:
   and UDP, or on the host's own addresses (except lyricad's front door).
 - **Allowed hosts:** IPs, CIDR ranges or hostnames (a URL is reduced to its
   host and port), each with an optional port. They are reachable even with
-  internet off: a private thread can use one service on another PC on Li's
+  internet off: a private thread can use one service on another PC on the owner's
   LAN and nothing else.
 
 Each user has defaults per pool, and each thread can override them. General
@@ -573,6 +574,57 @@ gives her its tools through Pi's own MCP client (DESIGN.md, "MCP servers").
   that tool. A read-only or narrowed subagent gets no MCP servers; an
   unnarrowed writer gets its parent's, and its calls ask in both threads.
 
+## Claude Code
+
+Anthropic doesn't let other apps sign in to a Claude plan, but it does let
+a person use the unmodified `claude` program with their own plan
+(docs/briefs/claude-code.md). So she can hand Claude Code a coding or
+repository job from her `bash` tool, and it runs on the user's Claude plan.
+It isn't a model: her chat, persona and memory never go through it, and
+it adds no tool.
+
+- **Installed** with the sandbox's tools: nixpkgs' `claude-code` in the
+  NixOS sandbox tools (unfree, allowed by itself in its own import in
+  `nix/sandbox-tools.nix`, so the machine's configuration needs nothing),
+  and on Debian and Ubuntu `install.sh` puts the same version in
+  `/usr/local`. An update never installs it. `claudeCodeInstalled()` says
+  whether it is there.
+- **Signing in:** the user runs `claude setup-token` on their own
+  computer, Anthropic's own sign-in, and pastes the token it prints into
+  Settings → **Claude Code**. It is kept in their `user.db` (`settings`,
+  `claude_code.token`), never shown back, with **Remove**.
+- **Per thread:** a **Claude Code** switch in the thread drawer, off by
+  default (`thread_workspaces.claude_code`, user step 4). Children and
+  subagents inherit it, never wider; a read-only or narrowed one gets it
+  off. A private thread can't turn it on, and a local-only one is refused
+  it, since Claude Code sends what it reads to Anthropic.
+- **A run** gets Claude Code only when `Workspace.claudeCodeFor` allows
+  it: a general thread that isn't local-only, itself or any ancestor
+  (lyricad's `restricted` option; without it, never), with the switch on,
+  a saved token, and a network that reaches `api.anthropic.com`.
+- **The token never enters the sandbox.** Such a run gets its own relay
+  (`openClaudeRelay`, `core/src/workspace/claude-relay.ts`): a server in
+  `lyricad` on a random loopback port, forwarded into the run's sandbox
+  like a machine on `127.0.0.1`, that lives as long as the run. The run's
+  environment has `ANTHROPIC_BASE_URL` pointing at it and, as
+  `CLAUDE_CODE_OAUTH_TOKEN`, a random capability for this run only. The
+  relay refuses any other bearer and any path outside `/v1/`, drops the
+  run's own keys, swaps in the user's token, and passes the request to
+  `https://api.anthropic.com`, logging and keeping nothing. A command that
+  reads the environment learns only a capability that dies with the run.
+- **The wrapper** (`core/src/workspace/claude.sh`) is at
+  `/run/lyrica/bin/claude`, first on the run's PATH. It runs the real program with `CLAUDE_CONFIG_DIR` at
+  `/workspace/.claude`, in the thread's folder in the encrypted home
+  workspace, so its transcripts stay encrypted and `claude -c` continues
+  the thread's last job. It drops any other Anthropic key, turns off
+  Claude Code's update checks and telemetry, and skips its permission
+  prompts (`--permission-mode bypassPermissions`, as the owner chose): the
+  sandbox is the fence, and her `bash` call already went through the
+  thread's mode. Plan mode has no `bash`, so no Claude Code.
+- **The prompt** has one line for such a thread (`CLAUDE_CODE_LINE`):
+  `claude -p` is for coding and repository jobs worth the user's plan, never
+  conversation.
+
 ## Her own code
 
 She changes her own code the way Claude's feature threads do: the
@@ -583,7 +635,7 @@ does reaches `main` or the server without that review and an
 administrator's Update. A private thread can't have the repository, since
 her account is general.
 
-- **The repository's settings**, Li's to set, once:
+- **The repository's settings**, the owner's to set, once:
   1. Her GitHub account as a collaborator with **Write**.
   2. Under her account, a fine-grained token for this repository only,
      with **Contents** and **Pull requests** read and write and
@@ -595,21 +647,21 @@ her account is general.
      only allowed hosts.
   3. A branch protection rule (or ruleset) on `main`: pull requests only,
      the CI jobs from `.github/workflows/ci.yml` required, one approval;
-     "Do not allow bypassing" off, so Li's account, which Claude's threads
+     "Do not allow bypassing" off, so the owner's account, which Claude's threads
      work through, still merges as administrator.
   4. A ruleset that lets her account create and update only `lyrica/*`
      branches and `update/*` tags.
   5. She pushes to the repository, never a fork, so her pull requests run
      CI on the `lyrica-ci` runners like Claude's, with no
      first-time-contributor approval.
-- **`.github/CODEOWNERS`** names Li for the boundary code: keys and users
+- **`.github/CODEOWNERS`** names the owner for the boundary code: keys and users
   (each user's key and its recovery wrap), database migrations, the model
   router, the workspace (sandbox and grants), `openThreadView`,
   authentication, deployment, the updater and CI. GitHub then asks for
-  Li's review on a pull request that touches them; it isn't required for
+  the owner's review on a pull request that touches them; it isn't required for
   merging, since Claude's approvals come from the same account. PR review
-  asks Li before approving such a pull request of hers.
-- **Update notes.** Before Li presses Update she writes one: an annotated
+  asks the owner before approving such a pull request of hers.
+- **Update notes.** Before the owner presses Update she writes one: an annotated
   tag `update/<date>` on the `main` commit to install, its message listing
   the pull requests merged since the running version (Claude's too), what
   each changes, any schema change and what a rollback would lose, and what
@@ -621,7 +673,7 @@ her account is general.
   skip there, since her sandbox has neither; CI runs them with
   `LYRICA_SANDBOX_TESTS=require`, so they can't skip.
 - **Screenshots.** After `npm run build`, `npx tsx web/e2e/shot.ts
-  [page]...` starts a throwaway `lyricad` with li signed in (the e2e one,
+  [page]...` starts a throwaway `lyricad` with ada signed in (the e2e one,
   web/e2e/serve.ts), saves each page at 390×844 and 1280×800, light and
   dark, as PNGs under `shots/`, and prints their paths for `read`. It
   needs no internet. The browser is the sandbox's headless Chromium:

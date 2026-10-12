@@ -16,7 +16,7 @@ box is the agreed design; its voice buttons are placeholders.
 ## Goal
 
 Dictating to her and hearing her are one press each, on a phone as on a
-desktop, in the message box Li already knows (principle 1).
+desktop, in the message box the user already knows (principle 1).
 
 ## In scope
 

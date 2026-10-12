@@ -34,8 +34,11 @@ export interface Live {
   wakeups?: WakeupInfo[];
   /** Her checklist for the thread, as the stream last said; the thread summary's until then. */
   steps?: ThreadStep[];
-  /** The context as the last turn left it, for the header's Context meter. Cleared when turns are rewound or reset. */
-  context?: ContextInfo;
+  /**
+   * The context as the last turn left it, for the header's Context meter. Null once turns are rewound or
+   * reset: nothing has measured what is left until the next turn, and the settings' reading is from before.
+   */
+  context?: ContextInfo | null;
 }
 
 export const initialLive: Live = { busy: false, queued: [], permissions: [], items: [], errors: [], reload: 0, ended: 0, subagents: {}, settings: 0, children: 0 };
@@ -64,9 +67,9 @@ export function liveReducer(s: Live, e: LiveAction): Live {
         ...(!e.busy && { reload: s.reload + 1, ended: s.items.length }) };
     }
     case "reset":
-      return { ...s, items: [], ended: 0, reload: s.reload + 1, context: undefined };
+      return { ...s, items: [], ended: 0, reload: s.reload + 1, context: null };
     case "rewound":
-      return { ...s, items: [], ended: 0, errors: [], reload: s.reload + 1, context: undefined };
+      return { ...s, items: [], ended: 0, errors: [], reload: s.reload + 1, context: null };
     case "sent":
       return { ...s, items: [...s.items, { role: "user", text: e.text }] };
     case "turn_start":

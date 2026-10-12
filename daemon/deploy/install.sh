@@ -75,6 +75,17 @@ if [ "$(cat "$BROWSERS/version" 2>/dev/null)" != "$PW_VERSION" ]; then
   printf '%s\n' "$PW_VERSION" >"$BROWSERS/version"
 fi
 
+# --- Claude Code ---
+# Anthropic's `claude` program, for threads with Claude Code on
+# (docs/workspace.md, "Claude Code"). The version NixOS 26.05 packages, in
+# /usr/local, where her sandbox finds it. An update leaves it as it is.
+CLAUDE_CODE_VERSION=2.1.223
+if [ "$(/usr/local/bin/claude --version 2>/dev/null | cut -d' ' -f1)" != "$CLAUDE_CODE_VERSION" ]; then
+  say "Installing Claude Code..."
+  npm install -g --prefix /usr/local --no-audit --no-fund --loglevel=error "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION" >/dev/null \
+    || say "installing Claude Code failed: threads can't use it until it's installed."
+fi
+
 # --- Tailscale ---
 # Her own tailscaled (lyrica-tailscaled.service, below) runs the package's
 # binaries. Installed from Tailscale's repository only when they're missing; a

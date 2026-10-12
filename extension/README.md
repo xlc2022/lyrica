@@ -32,7 +32,7 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
   when it's over.
 - **`memory.ts`** reads the thread's `PoolView`: an unlogged notice, WAKE, the
   about-user page (private first, then general), the page index and pages about the thread's `folders()` go in the system
-  prompt; recall hits for the message (labelled "added by Li" for a user's
+  prompt; recall hits for the message (labelled "added by Sam" for a user's
   own memories) and the time since the user last spoke go in the turn
   message.
 - **`tools.ts`** registers `remember`, `recall` and `read_memory`, each with a
@@ -82,7 +82,7 @@ In a checkout it's `bin/lyrica`. On a machine set up with install.sh it's
 
 ```sh
 bin/lyrica admin setup-code            # first run: the setup page's code, addresses and fingerprint
-bin/lyrica admin init                  # self.db passphrase, first administrator (suggests Li)
+bin/lyrica admin init                  # self.db passphrase, first administrator
 bin/lyrica admin user add <login> [--admin]
 bin/lyrica admin user list | set-admin <login> on|off | passwd <login> | profile <login>
 bin/lyrica dev --init <dir>            # development runtime with test administrator "tester"
