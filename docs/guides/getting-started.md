@@ -180,9 +180,13 @@ read it for anything not covered here.
    ```
 
    While the repository is private, `nix flake lock` and `nixos-rebuild`
-   need a GitHub token to fetch it: add `--option access-tokens
-   github.com=<token>` to each, or put `access-tokens = github.com=<token>`
-   in `nix.conf`.
+   need a GitHub token to fetch it. Make a fine-grained, read-only token
+   for this one repository, put `access-tokens = github.com=<token>` in
+   `/etc/nix/access-tokens.conf` (owned by root, mode 0600), and add
+   `nix.extraOptions = "!include /etc/nix/access-tokens.conf";` to
+   `configuration.nix`. Not on the command line, which keeps it in shell
+   history, and not in `nix.settings`, which copies it into the
+   world-readable Nix store.
    Leaving `nixpkgs` unfollowed also builds, but then the system's
    nixpkgs can differ from the one the module's Caddy hash and CI use
    (inferred; only the followed form was evaluated).

@@ -377,8 +377,7 @@ second pairing. Then:
   names, ids and counts; never a pairing code or a prompt. The model
   servers log nothing at all, so `docker logs` on them fails. To see what
   holds the GPU, `nvidia-smi --query-compute-apps=pid,process_name,used_memory
-  --format=csv`; for an image job, ComfyUI's `/history` from inside its
-  container.
+  --format=csv`.
 - **Upgrade:** `git pull && host/install.sh` in the checkout. It rebuilds
   the images and restarts the stack; `.env` keeps the settings, and the
   `data` volume keeps the host's key, so pairing survives. A host
