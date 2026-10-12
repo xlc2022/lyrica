@@ -66,8 +66,9 @@ database files. A command that could see either one could read everything.
   (`--bind-fd`), after checking that the opened folder is exactly the granted
   path and that the grant is still allowed. A symlink swapped in by a running
   command can't redirect a mount.
-- Command output past 20 KB is cut to its last 20 KB before Pi sees it. Pi
-  would otherwise save long output to a plaintext temp file on the host.
+- Command output past 20 KB (or 800 lines) is cut to the first 20 KB and the
+  last 20 KB, with a note of what was left out, before Pi sees it. Pi would
+  otherwise save long output to a plaintext temp file on the host.
 
 ## Machines
 
@@ -249,8 +250,8 @@ Lyrica's own VM where it can tell, and saves only if both pass. That
 refusal (`ownNode`) covers an address that is this computer or its default
 gateway, and a cluster with a guest that has this computer's name or one of
 its network cards' MAC addresses (read from each guest's config, up to 300
-guests, a few at a time). Its message says which; there is no way past it
-yet. The address part is checked again when the address changes and before
+guests, a few at a time). Its message says which; there is no way past it.
+The address part is checked again when the address changes and before
 every call, so a machine moved (or resolving) onto this computer's gateway
 is refused before the token is sent.
 
@@ -442,8 +443,8 @@ How it is enforced:
   runs with network off and `networkRefused` says why. `lyricad` runs it at
   startup (administrators see the reason in the control panel), and
   `lyrica dev` prints it.
-- IPv4 only for now: sandboxes run `pasta --ipv4-only`, and IPv6 host
-  entries are refused until IPv6 is supported end to end.
+- IPv4 only: sandboxes run `pasta --ipv4-only`, and IPv6 host entries are
+  refused.
 - Machines don't depend on these switches: each connection's helper gets
   network to its machine alone, whatever the thread's switches say. If the
   self-test refuses network, machine calls fail too. Model calls come from
@@ -605,7 +606,7 @@ judgment and make review easy. Each thread has a **mode**:
 - **Accept edits** (`acceptEdits`): asks before `bash`.
 - **Plan** (`plan`): only `read`, `recall`, `read_memory`, `web_search`,
   `web_fetch`, `proxmox` for reading, `delegate` with read-only roles, a subagent's `ask_parent`,
-  `threads` (her child threads, and compacting her context) and
+  `threads` (her child threads, and compacting her context), `react` and
   `propose_plan` are active. A child thread of a Plan-mode thread is in
   Plan mode too.
 - **Auto** (`auto`, the default): works freely inside the grants.
@@ -647,8 +648,7 @@ names) looked up on every call, so changing a thread's settings applies at
 once. Commands typed with `!` in the terminal run in the sandbox. A short
 `workspace` prompt section tells her where she works, what she was given,
 whether she has internet, and her machines. `proxmox` is the tool for
-Proxmox machines ([above](#proxmox)). Pi's `grep`, `find` and `ls` can be added
-inside the 30-tool budget if `bash` turns out not to be enough. The memory tool
+Proxmox machines ([above](#proxmox)). The memory tool
 is `read_memory`, so it doesn't clash with `read`.
 
 ## Host requirements

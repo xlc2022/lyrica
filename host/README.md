@@ -12,7 +12,7 @@ The machine needs:
 - Debian or Ubuntu (other Linux distributions should work), with iptables;
 - the GPU driver;
 - Docker with the compose plugin, and its iptables firewall backend (the
-  default). Podman isn't supported yet;
+  default). Podman isn't supported;
 - the container runtime's GPU support. For NVIDIA, that's
   `nvidia-container-toolkit`.
 
@@ -109,10 +109,11 @@ subfolder, under `lyrica/<source>/<repository>/`.
   or a broken connection keeps the partial file) and can be cancelled,
   which deletes the partial file. A sharded model appears once all its
   shards are here.
-- The **download record** lists each file downloaded, with its size and
-  checksum. **Delete** removes only a file in it, inside `lyrica/` with no
-  symlink on the way, unchanged since it was downloaded. A loaded model is
-  unloaded first. Nothing else is ever deleted.
+- The **download record** (`GET /host/v1/files`) lists each file downloaded,
+  with its size and checksum. `DELETE /host/v1/files` removes only a file in
+  it, inside `lyrica/` with no symlink on the way, unchanged since it was
+  downloaded. A loaded model is unloaded first. Nothing else is ever
+  deleted. (The dashboard's Delete is for image recipes.)
 
 ## Image models
 
@@ -132,10 +133,10 @@ fills the recipe's template in `workflows/` (one per architecture).
   pinned commits of ComfyUI, ComfyUI-GGUF and the SeedVR2 upscaler, with no
   plugin manager. Only those nodes load. Their Python packages go into a
   venv, each pinned with its hash in `comfyui/requirements.txt`
-  (`comfyui/lock.sh` remakes it); torch is the base image's. It has no route out, logs nothing,
-  keeps its input, output and temp folders in memory, saves no metadata,
-  and its history is cleared after every job. It uses one GPU,
-  `COMFY_GPU` in `.env`, and frees its memory after ten idle minutes.
+  (`comfyui/lock.sh` remakes it); torch is the base image's. It has no
+  route out, logs nothing, keeps its input, output and temp folders in
+  memory, saves no metadata, and its history is cleared after every job.
+  It uses one GPU, `COMFY_GPU` in `.env`, and frees its memory after ten idle minutes.
   A ComfyUI that is off, or doesn't answer a request within 30 seconds,
   fails that job as `unavailable`, and the next job still runs.
 
@@ -180,8 +181,9 @@ fills the recipe's template in `workflows/` (one per architecture).
 1. On the dashboard, choose **Pair with Lyrica**. A code like
    `7KQ2-M9XD-4RTB-W1HZ` appears there and in the log
    (`docker compose logs host-api`). It works once, for 10 minutes.
-2. In Lyrica, on the Models page, choose **Add model host**. Give it the
-   host's addresses (`192.168.1.20`, or its tailnet name) and the code.
+2. In Lyrica, add the host with its addresses (`192.168.1.20`, or its
+   tailnet name) and the code. The steps are in the
+   [model hosts guide](../docs/guides/model-hosts.md#pair-it-with-lyrica).
 
 Paired Lyrica servers are listed on the dashboard, where they can be
 revoked. A revoked server must pair again.
@@ -202,15 +204,15 @@ revoked. A revoked server must pair again.
     must be unloaded, else split over every GPU that allows its server.
   - Or chosen GPUs: one, or several, split by ratio (llama.cpp) or by
     tensor or pipeline parallel (vLLM).
-  - Its context length (32k by default), KV-cache type, flash attention, GPU
-    layers, parallel requests, batch size, a chat template, and for vLLM a
-    memory share, so several vLLM models can share one GPU (each is its own
-    server).
+  - Its context length (32k by default, or more with a YaRN stretch),
+    KV-cache type, flash attention, GPU layers, parallel requests, batch
+    size, a chat template, and for vLLM a memory share, so several vLLM
+    models can share one GPU (each is its own server).
   - Settings apply at the next load, or now with Reload. A placement that
     can't work is refused when it's saved, with the reason.
-- **Each GPU** says which servers it may run (llama.cpp, vLLM, images, speech), how
-  much memory to keep free, or that it is left out. It can hold several
-  models of any mix; a split model loads only when all its GPUs have room
+- **Each GPU** says which servers it may run (llama.cpp, vLLM, images,
+  speech), how much memory to keep free, or that it is left out. It can
+  hold several models of any mix; a split model loads only when all its GPUs have room
   and unloads from all at once.
 - **Pinned** models are loaded at start and never unloaded to make room.
 - **Making room.** When a model needs room, idle models are unloaded, least
@@ -241,16 +243,16 @@ revoked. A revoked server must pair again.
   digest. `compose.nvidia.yaml` uses CUDA images, `compose.amd.yaml` ROCm,
   and `compose.vulkan.yaml` Vulkan (llama.cpp only); `install.sh` picks one,
   and for ROCm adds `compose.hsa.yaml` for `--hsa-override` and
-  `compose.apu.yaml` (unified memory) on an APU alone. They log nothing (Docker's `none` log
-  driver).
+  `compose.apu.yaml` (unified memory) on an APU alone. They log nothing
+  (Docker's `none` log driver).
   - llama.cpp runs in router mode. host-api writes its preset file (each
     model's file, GPU and context), then loads and unloads models through
     its API.
   - vLLM runs under `vllm/supervisor.py`, which starts one server per vLLM
-    model on its GPUs as host-api asks in a file, in its own process group, with a growing
-    wait between restarts of one that crashes. It reports servers that
-    exited in the `vllm-status` volume, so a load that can't start fails at
-    once.
+    model on its GPUs, as host-api asks in a file, each in its own process
+    group. A server that crashes is restarted after a growing wait (10
+    seconds, doubling, up to 5 minutes). It reports servers that exited in
+    the `vllm-status` volume, so a load that can't start fails at once.
   - host-api reads VRAM with `nvidia-smi`, through NVIDIA's `utility`
     capability, or from AMD's sysfs (with GTT for an integrated GPU). With
     ROCm, AMD GPUs are numbered as ROCm numbers them; with Vulkan, by PCI
@@ -306,10 +308,11 @@ revoked. A revoked server must pair again.
 - The host's key, certificate and state are in the `data` volume, readable
   only by host-api's user. The state is paired clients, the password hash,
   pause, GPU settings, model placements and serving settings, pins,
-  measured VRAM and usage counts. Prompts are never stored, and host-api's log has no text: only
-  event names, IDs and counts, plus the pairing code while it's valid.
+  measured VRAM and usage counts. Prompts are never stored, and host-api's
+  log has no text: only event names, IDs and counts, plus the pairing code
+  while it's valid.
 - Images are pinned by digest. `host-api` is built from this checkout by
-  `install.sh`, and CI builds it on every pull request.
+  `install.sh`, and CI builds the stack on pull requests that touch `host/`.
 - `test/stack/network.sh` checks the network layout on a running stack.
 
 The local dashboard's address check and the egress rules assume Docker's

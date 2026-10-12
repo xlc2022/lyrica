@@ -37,9 +37,10 @@ came through her tailnet address.
   `409` and lyricad wants a restart (it is then locked, as usual).
 - Otherwise it starts **locked**. Until `self.db` is unlocked, only `GET /api/state`
   (locked, her `name` and the users; lyricad's `version` from `package.json` and
-  `build` from `LYRICA_BUILD` or the git commit join it once unlocked, so
-  the unlock page gives away no commit) and `POST /api/unlock` answer (and the web UI's static files, so the unlock
-  page loads); everything else is `503`.
+  `build` from `RELEASE.json`, `LYRICA_BUILD` or the git commit join it once
+  unlocked, so the unlock page gives away no commit) and `POST /api/unlock`
+  answer, plus the web UI's static files so the unlock page loads; everything
+  else is `503`.
 - Run by hand in a terminal, it asks for the passphrase at a hidden prompt.
 - With a saved passphrase (below), it starts unlocked.
 - When unlocked it builds `Workspace` with its own two ports as `excludePorts`, and
@@ -153,9 +154,9 @@ Each active thread is one Pi session from `openThreadSession`, with
   If the turn hadn't started, nothing is stored: the message waits in the
   queue, and every 30 seconds (`offlineRetryMs`) lyricad asks the machines
   again and sends it as soon as one answers, or at once when the thread's
-  settings change. A new message goes with it; Stop drops it. If the machine went away mid-turn, Pi's retry is called
-  off and the turn ends. A title whose models are all away is tried again
-  after a later turn.
+  settings change. A new message goes with it; Stop drops it. If the machine
+  went away mid-turn, Pi's retry is called off and the turn ends. A title
+  whose models are all away is tried again after a later turn.
 - `lyrica serve` logs an unhandled rejection (its class and first line) and
   keeps running, so one thread's failure never takes the others down.
 - **Context and pace.** Each hosted thread has a `ContextMeter`
@@ -165,7 +166,7 @@ Each active thread is one Pi session from `openThreadSession`, with
     estimate of each part, using Pi's `estimateTokens` and the prompt sections
     `assemble` made. The parts are persona (with topics, who she's talking
     with and the time), about, memory (WAKE, the page index, folder pages),
-    pinned (0 until pins exist), recall, tools (definitions and guidance) and
+    pinned (the thread's pinned messages), recall, tools (definitions and guidance) and
     the conversation. They're scaled to add up to the measured total, then
     Pi's reserve and the free space fill the window.
   - After each turn `lyricad` records the pace on the call (`recordPace`) and
@@ -373,8 +374,8 @@ things are".
   hidden is off, adds nothing, not even to the count, so nothing on screen
   says hidden content exists.
   `POST …/threads/:pool/:threadId/seen` marks a child thread's updates seen
-  without opening it. Not in the list yet: downloads, clean-up items, image
-  models to review, host problems.
+  without opening it. The list has no downloads, clean-up items, image
+  models to review or host problems.
 
 ## The event stream
 
@@ -847,8 +848,8 @@ check names and counts, never text.
   child thread, a subagent) finishes, since the drain waits for it.
   Administration's requests go to `<home>/updates/request.json`, which
   `lyrica-update.path` picks up.
-- **`lyrica version --json`** prints the commit, version, schema and
-  min_reader; **`lyrica smoke-test <empty dir>`** starts a scratch lyricad
+- **`lyrica version --json`** prints the version, build (commit), schema and
+  `minReader`; **`lyrica smoke-test <empty dir>`** starts a scratch lyricad
   there (random passphrase, a test admin, no saved credentials), unlocks,
   logs in, reads the health checks over its socket and fetches the web UI,
   printing `ok` or `FAIL` per check.

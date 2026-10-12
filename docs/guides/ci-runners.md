@@ -12,9 +12,8 @@ set up with the script on 2026-10-11, and every pull request and push to
 ## The machine
 
 - A dedicated **Ubuntu 24.04** VM that holds nothing else. The script warns
-  on anything but Ubuntu. Keep every runner on 24.04 for now; moving the
-  pool to a newer release is done all at once, after trying one VM under a
-  label of its own.
+  on anything but Ubuntu. Keep every runner on 24.04; move the pool to a
+  newer release all at once, after trying one VM under a label of its own.
 - **x86-64.** The script accepts arm64, but the model host's images and
   pinned wheels are x86 only, so an ARM runner could run only the `check`
   job and would need a label of its own.
