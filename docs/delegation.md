@@ -314,7 +314,22 @@ fire at the first tick after unlock, marked with when they were due. The
 views get times and IDs only, never the note; the user removes one from
 the facts line.
 
-**Routines** (`daemon/src/routines.ts`). Pool step 6's `routines` keeps
+**Routines** (`threads routine`, `daemon/src/routines.ts`).
+`threads({ action: "routine", routineAction, ... })` manages only the calling
+thread's routines: `add` takes `schedule`, `note` and optional `newThread`
+(false by default); `list` returns IDs, schedules, next times, paused state
+and whether they open a thread, without notes; `pause`, `resume` and
+`remove` take numeric `routineId`. At most 10 routines per thread,
+including paused ones. Schedules are validated by `parseSchedule`, with
+plain-word errors: `{ kind: "daily" | "weekdays", time: "HH:MM" }`,
+`{ kind: "weekly", day: 0..6, time }` (Sunday is 0),
+`{ kind: "yearly", date: "MM-DD", time }`, or `{ kind: "every", hours: 1..168 }`.
+Hourly intervals start when added; calendar times use the daemon's local
+zone. Routines are for what the user asked to happen regularly; a one-off
+later is a wake-up. This extends the existing tool, serving principles 1
+and 8.
+
+**Routines storage** (`daemon/src/routines.ts`). Pool step 6's `routines` keeps
 its schedule and note encrypted. The same 20-second tick starts a turn
 marked `[Routine, <schedule in words>]`, with the note, or opens a fresh
 thread in the source's project or thread list. New threads inherit the

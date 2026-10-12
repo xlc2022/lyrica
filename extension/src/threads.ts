@@ -1,7 +1,7 @@
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
 import {
-  CHILD_THREAD_GUIDELINES, cleanSteps, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, STEPS_GUIDELINE, STEPS_LIMITS, threadLine, WAKEUP_GUIDELINE, WAKEUP_LIMITS,
+  CHILD_THREAD_GUIDELINES, cleanSteps, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, STEPS_GUIDELINE, STEPS_LIMITS, threadLine, describe, parseSchedule, ROUTINE_GUIDELINE, WAKEUP_GUIDELINE, WAKEUP_LIMITS,
   type ChildInfo, type StartRequest, type ThreadsLimits,
 } from "@lyrica/core";
 import { askCompaction, COMPACT_GUIDELINES, type ContextMeter } from "./context.ts";
@@ -47,7 +47,7 @@ export const READ_DEFAULT = 10;
 export const READ_MAX = 30;
 
 const Params = Type.Object({
-  action: Type.Union(["start", "message", "list", "read", "stop", "later", "steps", "suggest", "resolve", "reopen", "compact"].map((a) => Type.Literal(a))),
+  action: Type.Union(["start", "message", "list", "read", "stop", "later", "routine", "steps", "suggest", "resolve", "reopen", "compact"].map((a) => Type.Literal(a))),
   title: Type.Optional(Type.String({ description: "For start: the child thread's title." })),
   task: Type.Optional(Type.String({ description: "For start: what to work on, with everything it needs. It starts with your persona and memory, but none of this conversation." })),
   folders: Type.Optional(Type.Array(Type.String(), { description: "For start: only these of this thread's folders." })),
@@ -55,7 +55,17 @@ const Params = Type.Object({
   internet: Type.Optional(Type.Literal(false, { description: "For start: false cuts it off from the internet." })),
   id: Type.Optional(Type.String({ description: "For message, read, stop, resolve and reopen: the thread, by its ID ([t:…]) or its current title." })),
   minutes: Type.Optional(Type.Number({ description: `For later: how many minutes from now to wake this thread, 1 to ${WAKEUP_LIMITS.maxMinutes}.` })),
-  note: Type.Optional(Type.String({ description: "For later: the note to yourself the wake-up starts with: what to check and what to do then." })),
+  note: Type.Optional(Type.String({ description: "For later or routine add: the note to yourself the wake-up starts with: what to check and what to do then." })),
+  routineAction: Type.Optional(Type.Union(["add", "list", "pause", "resume", "remove"].map((a) => Type.Literal(a)), { description: "For routine: what to do with this thread's routines." })),
+  routineId: Type.Optional(Type.Integer({ minimum: 1, description: "For routine pause, resume or remove: the routine's numeric ID from routine list." })),
+  schedule: Type.Optional(Type.Object({
+    kind: Type.String({ description: "daily, weekdays, weekly, yearly or every." }),
+    time: Type.Optional(Type.String({ description: "HH:MM in the daemon's local time zone." })),
+    day: Type.Optional(Type.Number({ description: "For weekly: 0 (Sunday) to 6 (Saturday)." })),
+    date: Type.Optional(Type.String({ description: "For yearly: MM-DD." })),
+    hours: Type.Optional(Type.Number({ description: "For every: a whole number from 1 to 168, counted from now." })),
+  }, { description: "For routine add: the recurring schedule." })),
+  newThread: Type.Optional(Type.Boolean({ description: "For routine add: open a fresh thread each time; false (default) runs here." })),
   cancel: Type.Optional(Type.Literal(true, { description: "For later: drop this thread's pending wake-ups instead." })),
   steps: Type.Optional(Type.Array(Type.Object({ text: Type.String(), state: Type.Union([Type.Literal("todo"), Type.Literal("doing"), Type.Literal("done")]) }),
     { description: `For steps: this thread's whole checklist, at most ${STEPS_LIMITS.steps} steps of a few words each; an empty list clears it.` })),
@@ -118,6 +128,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           : "Child threads: start one on a stream of work of its own, which works in the background and which the person can open and steer; message one; list them; read one's latest messages; stop one's running turn."
             + (inProjectChat() ? " In this project chat, also suggest threads (a card the person starts them from), and resolve or reopen one." : ""),
       host?.later ? "Set a wake-up for this thread: threads({ action: \"later\", minutes, note }) starts a turn here then, with your note." : "",
+      host ? "Manage only this thread's routines: threads({ action: \"routine\", routineAction: \"add\", schedule, note, newThread? }); list, pause, resume or remove with routineAction and routineId. At most 10, including paused routines." : "",
       steps ? "Keep this thread's checklist, shown on its card: threads({ action: \"steps\", steps })." : "",
       meter ? "When your context is filling up, compact this thread: threads({ action: \"compact\", summary }) replaces the older part of the conversation with your summary when this turn ends; recent messages stay." : "",
     ].filter(Boolean).join(" ");
@@ -126,10 +137,10 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
       name: "threads",
       label: "Threads",
       description: description(),
-      promptSnippet: [!host ? "" : child ? "post an update to the parent thread" : "start, message and list child threads", host?.later ? "set a wake-up for this thread" : "", steps ? "keep this thread's checklist" : "", meter ? "compact this thread with your own summary" : ""].filter(Boolean).join("; "),
+      promptSnippet: [!host ? "" : child ? "post an update to the parent thread" : "start, message and list child threads", host?.later ? "set a wake-up for this thread" : "", host ? "manage this thread's routines" : "", steps ? "keep this thread's checklist" : "", meter ? "compact this thread with your own summary" : ""].filter(Boolean).join("; "),
       promptGuidelines: [
         ...(!host ? [] : projectThread() ? PROJECT_THREAD_GUIDELINES : child ? [] : inProjectChat() ? PROJECT_CHAT_GUIDELINES : CHILD_THREAD_GUIDELINES),
-        ...(host?.later ? [WAKEUP_GUIDELINE] : []), ...(steps ? [STEPS_GUIDELINE] : []), ...(host || meter ? [MENTION_GUIDELINE] : []), ...(meter ? COMPACT_GUIDELINES : []),
+        ...(host?.later ? [WAKEUP_GUIDELINE] : []), ...(host ? [ROUTINE_GUIDELINE] : []), ...(steps ? [STEPS_GUIDELINE] : []), ...(host || meter ? [MENTION_GUIDELINE] : []), ...(meter ? COMPACT_GUIDELINES : []),
       ],
       parameters: Params,
       async execute(_id, p: Params, _signal, _update, ctx) {
@@ -139,6 +150,31 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           return { ...text(r.text), ...(r.isError ? { isError: true } : {}) };
         }
         if (!host) throw new Error("child threads aren't available here");
+        if (p.action === "routine") {
+          try {
+            if (p.routineAction === "list") {
+              const rows = store.routines(thread.threadId);
+              return text(rows.length ? rows.map((r) => `Routine ${r.id}: ${describe(r.schedule)}, ${r.paused ? "paused" : `next ${r.nextAt}`}, ${r.newThread ? "opens a new thread" : "runs here"}.`).join("\n") : "This thread has no routines.");
+            }
+            if (p.routineAction === "add") {
+              if (!p.note?.trim()) throw new Error("routine add needs a note to yourself");
+              const at = new Date().toISOString();
+              const schedule = parseSchedule(p.schedule?.kind === "every" ? { ...p.schedule, from: at } : p.schedule);
+              if (store.routines(thread.threadId).length >= 10) throw new Error("this thread has at most 10 routines, including paused ones; remove one first");
+              const id = store.addRoutine(thread.threadId, schedule, p.note.trim(), !!p.newThread, at);
+              return text(`Added routine ${id}: ${describe(schedule)}, ${p.newThread ? "opens a new thread" : "runs here"}.`);
+            }
+            if (!["pause", "resume", "remove"].includes(p.routineAction ?? "")) throw new Error("routine needs add, list, pause, resume or remove");
+            if (!Number.isSafeInteger(p.routineId) || p.routineId! < 1) throw new Error("routine needs its numeric ID from routine list");
+            const changed = p.routineAction === "remove"
+              ? store.removeRoutine(thread.threadId, p.routineId!)
+              : store.pauseRoutine(thread.threadId, p.routineId!, p.routineAction === "pause");
+            if (!changed) throw new Error("this thread has no routine with that ID");
+            return text(`${p.routineAction === "remove" ? "Removed" : p.routineAction === "pause" ? "Paused" : "Resumed"} routine ${p.routineId}.`);
+          } catch (err) {
+            return { ...text(err instanceof Error ? err.message : "The routine could not be changed."), isError: true };
+          }
+        }
         if (p.action === "steps") {
           if (!steps || !host.stepsChanged) throw new Error("checklists are off here");
           const list = cleanSteps(p.steps ?? []);

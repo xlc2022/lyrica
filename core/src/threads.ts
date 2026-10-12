@@ -110,6 +110,9 @@ export const PROJECT_THREAD_GUIDELINES = [
 export const WAKEUP_GUIDELINE = "To come back to something later without waiting in this turn (CI to finish, a review to land), set a wake-up: threads later with minutes and a note to yourself. "
   + "At that time the note starts a turn here, marked [Wake-up, set …]. One wakes only this thread; at most 3 wait at once and wake-ups and routines together fire at most 24 times a day.";
 
+/** Her guidance on recurring turns requested by the user. */
+export const ROUTINE_GUIDELINE = "Use threads routine for what the user asked to happen regularly; a one-off later is a wake-up.";
+
 /** How she mentions a thread, in every thread: by ID, which the person sees as its current title. */
 export const MENTION_GUIDELINE = "Mention a thread as [t:<id>] and a message as [e:<id>#<n>]: the person sees the thread's current title, linked, so don't write the title beside it. A person may name a thread by its title; use its ID when you mention it.";
 

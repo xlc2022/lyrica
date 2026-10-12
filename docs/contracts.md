@@ -589,6 +589,15 @@ One model-facing tool: `delegate({ action?, ... })`.
   `narrowing` so a subagent can be continued.
 - Subagents aren't listed in the thread list; child threads (forks, copies)
   nest under their parent.
+- **Routine tool** (`threads` in hosted threads): `action: "routine"`
+  with `routineAction: "add" | "list" | "pause" | "resume" | "remove"`.
+  Add takes `schedule`, `note`, optional `newThread` (false by default).
+  `parseSchedule` validates it; `every` gets its `from` at creation.
+  List returns only the calling thread's IDs, schedule descriptions, next
+  times, paused state and destination choice, without notes. Pause, resume
+  and remove take numeric `routineId`; store mutations always include the
+  calling thread ID. Add refuses more than 10 routines including paused
+  ones. Errors return plain text with `isError: true`.
 - **Routine storage and firing** (`core/src/routines.ts`,
   `daemon/src/routines.ts`): `parseSchedule`, `nextRun` and `describe`
   supply local-time schedule maths. Expand-only pool step 6 adds `routines`
