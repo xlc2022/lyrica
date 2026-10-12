@@ -6,6 +6,7 @@ import type { Models, Resolution } from "@lyrica/core";
 import { keepRecentFor, reserveFor } from "./context.ts";
 import type { ThreadContext } from "./index.ts";
 import { modelRuntimeFor, piModelFor, prepareTurn } from "./models.ts";
+import { createTurnToolsExtension } from "./turn-tools.ts";
 import { recordEntries } from "./record.ts";
 
 type Settings = Parameters<typeof SettingsManager.inMemory>[0];
@@ -54,7 +55,7 @@ export async function openThreadSession(o: ThreadSessionOptions): Promise<Thread
   const loader = new DefaultResourceLoader({
     cwd: o.cwd, agentDir: o.cwd, settingsManager,
     noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true, noThemes: true,
-    extensionFactories: o.extensions,
+    extensionFactories: [createTurnToolsExtension(), ...o.extensions],
   });
   await loader.reload();
   const { session } = await createAgentSession({

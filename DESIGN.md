@@ -363,6 +363,12 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - It keeps going in the background and stays until it is forgotten.
     Forgetting a parent asks whether to forget its child threads too, ticked
     by default.
+- **A turn stops after 100 attempted tool calls or 25 consecutive calls to
+  one tool.** The third identical call to a tool is refused with an error
+  asking her to answer or try something different. Invalid arguments are
+  rejected before execution. Each subagent turn counts separately. A
+  stopped turn shows a plain notice with the number of calls; the runtime
+  ends the loop, rather than relying on a prompt instruction.
 - **The user can rewind, retry and branch at any turn,** because weak local
   models often need a few tries:
   - **Regenerate** on any of Lyrica's replies removes it and everything after
