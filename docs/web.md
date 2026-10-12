@@ -158,7 +158,9 @@ A thread's address may carry what the panel beside it shows:
   selection, and Add a memory. `…/memory/<pool>/<id>` is a memory on the
   page; `…/t/<pool>/<thread>/panel/memory/<pool>/<id>` is the same memory in
   the panel beside a conversation, where recall markers and citations open
-  it. Mention tokens show as current names; the editor shows them as
+  it; the panel is named Memory, and a memory followed from it adds its title
+  to the breadcrumbs. The lineage names the memory being read as itself, never
+  as gone. Mention tokens show as current names; the editor shows them as
   `[[Name]]` or `[[Name:obj]]` and saves them back as tokens. Nothing of a
   memory's text is kept in the browser's storage.
 - **Settings** (`src/Panel.tsx`): a page with its sections listed at the
@@ -280,9 +282,10 @@ A thread's address may carry what the panel beside it shows:
   a turn may have ended between fetching the messages and opening the stream,
   such as a child thread opened as its first turn ends.
 - **Each message has a menu** (a bordered ⋯ icon button by the sender's
-  name; `src/Rewind.tsx`): Pin or Unpin; Remember this (a one-line
-  user-introduced note, prefilled with the message's first line, in the
-  thread's pool, citing the message; `RememberBox` in `src/Messages.tsx`);
+  name; `src/Rewind.tsx`): Pin or Unpin; Remember this (a labelled field
+  under the message, prefilled with its first line, whose Remember button
+  writes a user-introduced note in the thread's pool citing the message;
+  `RememberBox` in `src/Messages.tsx`);
   Branch from here; on her replies Regenerate and
   Regenerate with… (the models the thread may use); on the user's messages
   Edit, which turns the message into a box (Save, Cancel) whose text is sent

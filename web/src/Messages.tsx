@@ -233,10 +233,11 @@ function RememberBox({ text, n, env, onClose }: { text: string; n: number; env: 
   }
   return (
     <form className="remember-box" onSubmit={(e) => { e.preventDefault(); if (value.trim()) void save(); }}>
-      <textarea rows={2} aria-label="Remember this" value={value} autoFocus onChange={(e) => setValue(e.target.value)} />
+      <label htmlFor={`remember-${n}`}>Remember this as a note <span className="eyebrow">{env.pool}</span></label>
+      <textarea id={`remember-${n}`} rows={2} value={value} autoFocus onChange={(e) => setValue(e.target.value)} />
       <ErrorText error={error} />
       <div className="row">
-        <button type="submit" className="primary sm" disabled={busy || !value.trim()}>Save</button>
+        <button type="submit" className="primary sm" disabled={busy || !value.trim()}>Remember</button>
         <button type="button" className="sm" onClick={onClose}>Cancel</button>
       </div>
     </form>

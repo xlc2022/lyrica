@@ -185,8 +185,11 @@ function PanelColumn({ route, panel, trail, threads, children }: { route: Route 
   const [width, setWidth] = useState(() => { try { const n = Number(localStorage.getItem(PANEL_WIDTH_KEY)); return n >= PANEL_MIN && n <= PANEL_MAX ? n : PANEL_DEFAULT; } catch { return PANEL_DEFAULT; } });
   const resize = (w: number) => { const x = Math.round(Math.min(PANEL_MAX, Math.max(PANEL_MIN, w))); setWidth(x); try { localStorage.setItem(PANEL_WIDTH_KEY, String(x)); } catch { /* kept for this visit only */ } };
   const close = useCallback(() => go({ ...route, drawer: undefined, panel: undefined }), [route]);
-  const label = (p: Panel) => p.page === "project" ? "Project settings" : p.page === "files" ? "Files" : p.page === "memory" ? memoryTitle(p.pool, p.id) ?? "Memory" : findThread(threads, p.pool, p.threadId)?.title || "New thread";
-  const crumbs = trail.crumbs.map((p) => ({ label: label(p), href: href(panelRoute(route.userId, p)) }));
+  // The first memory in the trail is the panel's name, Memory; a memory followed from it carries its title, so the crumbs grow.
+  const label = (p: Panel, i: number) => p.page === "project" ? "Project settings" : p.page === "files" ? "Files"
+    : p.page === "memory" ? (trail.crumbs[i - 1]?.page === "memory" && memoryTitle(p.pool, p.id)) || "Memory"
+    : findThread(threads, p.pool, p.threadId)?.title || "New thread";
+  const crumbs = trail.crumbs.map((p, i) => ({ label: label(p, i), href: href(panelRoute(route.userId, p)) }));
   const ctx: PanelContext = { crumbs, expand: href(panelRoute(route.userId, panel)), close };
   const current = href(panelRoute("", panel));
   // Focus lands on the page's heading each time the panel shows something else.

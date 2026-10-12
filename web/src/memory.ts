@@ -100,7 +100,7 @@ export function plainWords(text: string, pool: Pool, links: Record<string, Memor
   return text.replace(new RegExp(String.raw`\s*${CITATION_GROUP.source}`, "g"), (whole, inside: string) => {
     const kept = refsOf(inside, pool).map((ref) => wordFor(ref, links[ref.raw], display, userId)).filter((w) => !w.cite && w.ref.kind !== "journal").map((w) => w.text);
     return kept.length ? `${/^\s/.test(whole) ? " " : ""}${kept.join(", ")}` : "";
-  }).replace(/\s+([.,;:!?])/g, "$1").replace(/\s+/g, " ").trim();
+  }).replace(/\s+(\u2063*[.,;:!?])/g, "$1").replace(/\s+/g, " ").trim(); // U+2063 is Sentence's mark around a citation
 }
 
 export type DiffOp = { kind: "same" | "del" | "ins"; text: string };

@@ -513,6 +513,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .add-memory { max-width: 60ch; }
 /* Remembering a message: a one-line box under it, prefilled with its first line. */
 .remember-box { display: grid; gap: 6px; max-width: 72ch; }
+.remember-box label { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: baseline; }
 .remember-box textarea { width: 100%; border: 1px solid var(--edge); border-radius: 10px; padding: 8px 10px; font: 14px/1.5 var(--ui); background: var(--bg); color: var(--fg); resize: vertical; }
 
 /* ---- Narrow screens: the sidebar and drawer become overlays, the section list a row ---- */

@@ -420,7 +420,8 @@ Files panel.
   several list rows and **Forget…** removes them as a topic.
 - **From a conversation.** A recall marker or a citation in her text opens
   the memory in the panel beside the thread (the Memory page at that memory
-  below the split width). **Remember this** in a message's menu writes a
+  below the split width). **Remember this** in a message's menu opens a
+  labelled field under the message whose **Remember** button writes a
   one-line user-introduced note citing the message.
 - **Privacy.** Titles, snippets and citing sentences come only from pools
   the display shows, and a general memory's detail never carries a private

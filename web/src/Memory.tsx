@@ -11,7 +11,7 @@ import {
   type Display, type MemoryDetail, type MemoryHit, type MemoryKind, type MemoryLink, type MemoryOverview, type MemoryRevision, type MemoryTag, type MemoryUse, type Pool, type UserMap,
 } from "./api.ts";
 import { Icon } from "./icons.tsx";
-import { CITATION_GROUP, dateWord, firstWords, KIND_WORD, linkCitations, longDate, parseRef, plainWords, poolWord, wordDiff, wordFor, type Word } from "./memory.ts";
+import { CITATION_GROUP, dateWord, firstWords, KIND_WORD, linkCitations, longDate, parseRef, plainCitations, plainWords, poolWord, wordDiff, wordFor, type Word } from "./memory.ts";
 import { fromEditable, readable, toEditable } from "./mentions.ts";
 import { go, href, idHref, parse } from "./route.ts";
 import { Main, PageHead, usePanel, type ShellContext } from "./Shell.tsx";
@@ -59,7 +59,7 @@ export function Memory({ ctx, pool, id }: { ctx: ShellContext; pool?: Pool; id?:
   if (inPanel) {
     return (
       <Main className="main memory">
-        <PageHead ctx={ctx} title={title ?? "Memory"} />
+        <PageHead ctx={ctx} title="Memory" />
         <div className="mem-read">{detail}</div>
       </Main>
     );
@@ -224,7 +224,10 @@ function Detail({ ctx, pool, id, onTitle, onTag }: { ctx: ShellContext; pool: Po
   const name = item && nameOf(item.kind, item.title && readable(item.title, d.data!.users), readable(item.text, d.data!.users), item.updatedAt);
   useEffect(() => { if (name) { TITLES.set(`${pool}/${id}`, name); onTitle(name); } }, [name, pool, id, onTitle]);
   if (!d.data || !item) return <ErrorText error={d.error} />;
-  const { users, links } = d.data;
+  const { users } = d.data;
+  // The memory being read is its own citer's target: the lineage names it rather than calling it gone.
+  const self: MemoryLink = { kind: item.kind, pool: item.pool, ...(item.title ? { title: item.title } : {}), snippet: firstWords(plainCitations(item.text)), updatedAt: item.updatedAt, ...(item.origin ? { origin: item.origin } : {}) };
+  const links: Record<string, MemoryLink> = { ...d.data.links, [item.id]: self, [`${item.pool}/${item.id}`]: self };
   const path = u(userId, "memory", item.pool, item.id);
   const act = (fn: () => Promise<MemoryDetail>) => run(async () => d.set(await fn()));
   const canDelete = item.kind === "note" || item.kind === "page";
@@ -347,7 +350,7 @@ function Lineage({ title, uses, mark, ctx, pool, links, users, ownText }: {
             // A hidden pool's memory, a private citer of a general memory, or one that is gone: the ID stays, no words.
             const otherPool = ref.pool !== pool && !hidden(display, ref.pool);
             return otherPool
-              ? <a key={use.id} className="lk" href={idHref(userId, pool, use.id)}><span><span className="eyebrow">{ref.pool} {KIND_WORD[ref.kind]}</span></span></a>
+              ? <a key={use.id} className="lk" href={idHref(userId, pool, use.id)} title={`A ${ref.pool} memory uses this. Its words stay out of a ${pool} memory; open it to read it.`}><span><span className="eyebrow">{ref.pool} {KIND_WORD[ref.kind]}</span></span></a>
               : <div key={use.id} className="lk plain"><span>{w.text}</span></div>;
           }
           return (
