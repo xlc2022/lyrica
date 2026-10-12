@@ -3,8 +3,16 @@
 **Thread:** Images. **Branch:** `feature/images`.
 
 **Depends on:** Models 2 (hosts and fallbacks) and Model host (the image API
-and workflow templates). Start once both are merged. Cloud image services
-don't need a host, so that part can start earlier if useful.
+and workflow templates). Both are merged.
+
+**Where things stand (2026-10-12).** The host side is built: recipes, parts,
+ComfyUI templates and SeedVR2 (`host/src/images.ts`, `host/API.md`, "Image
+models" and "Making images"). `core/models` already lists confirmed recipes as
+image offerings and routes `image.create` and `image.edit` by capability, and
+the web Models page has an Image models library. Missing on Lyrica's side:
+`image.upscale` in `TASKS`, a `core/models` call that makes an image, the
+`image` tool, `photos-of-me/` with its setting, and the routes below. Nothing
+has run on a real ComfyUI yet, so tests use fakes that follow `host/API.md`.
 
 **Read first:**
 - AGENTS.md and PRINCIPLES.md;
