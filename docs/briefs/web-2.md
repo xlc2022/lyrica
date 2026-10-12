@@ -483,7 +483,7 @@ with radios All threads / Pinned messages / Hidden threads. Design:
   step: send a message with a rare word, search it, the hit row opens the
   thread at that message.
 
-### Images (after the Images back end)
+### Images (after the Images back end; built in #236)
 
 DESIGN.md "Images" and the app mockup's Files and Images panel. The back
 end merged in #219: the `image` tool, the image part, the thread file route,

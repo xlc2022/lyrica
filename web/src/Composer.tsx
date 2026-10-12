@@ -122,7 +122,7 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
       if (detail.base !== base) return;
       detail.handled = true;
       typed.current = true;
-      setDraft(`Edit ${detail.path}: `);
+      setDraft((d) => d.trim() ? `${d.replace(/\s+$/, "")}\nEdit ${detail.path}: ` : `Edit ${detail.path}: `);
       onSettings({ images: true });
       area.current?.focus();
     };

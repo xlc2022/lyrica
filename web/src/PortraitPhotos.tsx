@@ -2,6 +2,7 @@
 import { useRef, useState } from "react";
 import { del, get, post, put, u, type PhotoCloudSetting, type PortraitPhoto, type UploadResponse } from "./api.ts";
 import { RowMenu } from "./Machines.tsx";
+import { plural } from "./ModelsFrame.tsx";
 import { Section } from "./Panel.tsx";
 import { basename } from "./paths.tsx";
 import { ConfirmDialog, ErrorText, useAction, useLoad } from "./ui.tsx";
@@ -30,7 +31,7 @@ export function PortraitPhotosSection({ userId }: { userId: string }) {
   return (
     <Section title="Portrait photos">
       <div className="row">
-        {photos.data && <span className="pill"><span className="mono">{photos.data.length}</span>&nbsp;photos</span>}
+        {photos.data && <span className="pill">{plural(photos.data.length, "photo", "photos")}</span>}
         <button type="button" disabled={busy || !photos.data} onClick={() => picker.current?.click()}>Add photos</button>
         <input ref={picker} type="file" hidden multiple accept="image/png,image/jpeg,image/webp" aria-label="Add photos" onChange={(e) => {
           const files = Array.from(e.target.files ?? []); e.target.value = "";

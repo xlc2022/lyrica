@@ -84,6 +84,8 @@ describe("recipes", () => {
     b.save();
     const reopened = book(dir);
     expect(reopened.get(old.id).useFor).toBe("both");
+    writeFileSync(join(dir, "recipes.json"), JSON.stringify([{ ...old, useFor: "slow" }]));
+    expect(book(dir).get(old.id).useFor).toBe("both");
     for (const useFor of ["fast", "quality", "both"]) {
       reopened.patch(old.id, { op: "useFor", useFor }, []);
       expect(book(dir).get(old.id)).toMatchObject({ useFor, parts: old.parts, defaults: old.defaults });

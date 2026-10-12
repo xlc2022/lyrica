@@ -100,7 +100,7 @@ export function Thumb({ path, alt, files }: { path: string; alt: string; files: 
 export const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1);
 
 /** An image shown large over the page; the Files panel's Images tab and a message's inline images share it. */
-export function Lightbox({ path, url, onClose, onMenu }: { path: string; url: string; onClose: () => void; onMenu?: (e: React.MouseEvent) => void }) {
+export function Lightbox({ path, url, onClose, onMenu, bare }: { path: string; url: string; onClose: () => void; bare?: boolean; onMenu?: (e: React.MouseEvent) => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [menu, setMenu] = useState(false);
   const [error, setError] = useState("");
@@ -111,7 +111,7 @@ export function Lightbox({ path, url, onClose, onMenu }: { path: string; url: st
       onKeyDown={(e) => { if (e.key === "Escape" && menu) { e.preventDefault(); e.stopPropagation(); setMenu(false); } }}
       onClick={(e) => { if (e.target === ref.current) onClose(); }}>
       <div className="fhead">
-        <span className="fname mono">{name}</span>
+        <span className="fname mono">{bare ? name : shown(path)}</span>
         {onMenu ? <button type="button" className="icon sm" aria-label="Image actions" aria-haspopup="menu" onClick={onMenu}><Icon name="more" /></button>
           : <RowMenu label="Image actions" open={menu} onOpen={setMenu} items={[
             { label: "Download", onPick: () => { const a = document.createElement("a"); a.href = url; a.download = name; a.click(); } },

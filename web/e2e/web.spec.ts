@@ -182,7 +182,7 @@ test("Portrait photos uploads, downloads, confirms deletion, and saves the cloud
     { name: "second.png", mimeType: "image/png", buffer: png },
   ]);
   await expect(page.getByRole("alert")).toHaveText("too-large.png: Each photo must be at most 20 MB.");
-  await expect(page.locator(".pill")).toHaveText("2 photos");
+  await expect(page.getByRole("region", { name: "Portrait photos" }).locator(".pill")).toHaveText("2 photos");
   expect(uploads).toBe(2);
   const image = page.getByRole("img", { name: "synthetic-1.png", exact: true });
   await expect(image).toBeVisible();
@@ -277,7 +277,7 @@ test("an image tool result shows inline, opens large, and starts an edit with Im
   await expect(image).toBeVisible();
   await expect(image.getByRole("img", { name: "garden.png" })).toHaveAttribute("src", `${base}/file?path=${encodeURIComponent(path)}`);
   await expect(page.getByText("Made with box/Z-Image · fast", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Making an image · fast" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Making an image · fast\b/ })).toBeVisible();
   await page.getByRole("button", { name: "Editing an image" }).click();
   await expect(page.locator(".tool-error")).toHaveText("The image host is offline.");
   await expect(page.getByRole("button", { name: "Upscaling an image" })).toBeVisible();

@@ -1379,8 +1379,7 @@ export type DelegationEvent =
 export interface PermissionRequest {
   requestId: string;
   toolCallId: string;
-  /** "propose_plan" is a plan to approve, with `args` `{ plan }`: the plan card. */
-  /** "image" asks for daily portrait consent; args carry { question, provider, model } with the resolved model label. */
+  /** "propose_plan" is a plan to approve, with `args` `{ plan }`: the plan card. "image" asks for daily portrait consent; its args carry { question, provider, model } with the resolved model label. */
   tool: string;
   args: unknown;
   /** When it is denied if nobody answers (ISO time). */

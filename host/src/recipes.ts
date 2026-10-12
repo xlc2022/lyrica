@@ -96,7 +96,7 @@ export class RecipeBook {
   constructor(dataDir: string, templates: Map<string, Template>, starters: Starter[]) {
     this.path = join(dataDir, "recipes.json");
     this.recipes = existsSync(this.path) ? JSON.parse(readFileSync(this.path, "utf8")) : [];
-    for (const r of this.recipes) r.useFor ??= "both";
+    for (const r of this.recipes) if (r.useFor !== "fast" && r.useFor !== "quality") r.useFor = "both";
     this.templates = templates;
     this.starters = starters;
   }

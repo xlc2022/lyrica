@@ -93,7 +93,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
           <div className="body">{q}</div>
         </div>
       ))}
-      {large && createPortal(<Lightbox path={large.path} url={large.url} onClose={() => setLarge(undefined)} />, document.body)}
+      {large && createPortal(<Lightbox path={large.path} url={large.url} bare onClose={() => setLarge(undefined)} />, document.body)}
     </>
   );
 }
@@ -390,7 +390,7 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
       if (part.name === "image") {
         const args = (part.args ?? {}) as { action?: string; tier?: string };
         const making = args.action === "edit" ? "Editing an image" : args.action === "upscale" ? "Upscaling an image" : "Making an image";
-        label = <><span>{making}{args.action === "create" && args.tier && <> · {args.tier}</>}</span><span className="status" data-state={state} aria-label={state} /></>;
+        label = <><span>{making}{args.action === "create" && args.tier && <> · {args.tier}</>}</span><span className="state" data-state={state}>{state}</span></>;
       }
       body = (
         <>
