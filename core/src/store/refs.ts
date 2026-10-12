@@ -104,6 +104,6 @@ export function sentenceCiting(text: string, id: string): string | undefined {
 
 /** The first line of a memory's text without its citations, for a preview. */
 export function firstLine(text: string, width = 200): string {
-  const line = text.replace(/\s*(?<!\[)\[(?:(?:general|private)\/)?(?:[etnpj]:[^\s,;[\]]+|wake)(?:[,;]\s*(?:(?:general|private)\/)?(?:[etnpj]:[^\s,;[\]]+|wake))*\](?!\])/g, "").replace(/\s+/g, " ").trim();
+  const line = text.replace(/\s*(?<!\[)\[(?:(?:general|private)\/)?(?:[etnpj]:[^\s,;[\]]+|wake)(?:[,;]\s*(?:(?:general|private)\/)?(?:[etnpj]:[^\s,;[\]]+|wake))*\](?!\])/g, "").replace(/\s+([.,;:!?])/g, "$1").replace(/\s+/g, " ").trim();
   return line.length > width ? `${line.slice(0, width - 1).trimEnd()}…` : line;
 }

@@ -4,7 +4,7 @@ import { get, patch, post, u, type Display, type DisplayChange, type LogoutRespo
 import { href, go, panelRoute, parse, type Panel, type Route } from "./route.ts";
 import { Icon } from "./icons.tsx";
 import { Thread, findThread } from "./Thread.tsx";
-import { Memory } from "./Memory.tsx";
+import { Memory, memoryTitle } from "./Memory.tsx";
 import { AdminPage, SettingsPage } from "./Panel.tsx";
 import { FilesPage } from "./Files.tsx";
 import { ThreadMenu, useThreadMenu } from "./ThreadMenu.tsx";
@@ -143,7 +143,7 @@ function openInPanel(e: React.MouseEvent, route: Route & { page: "thread" }, tra
   const a = (e.target as Element).closest("a[href^='#/u/']");
   if (!a || a.closest(".side, .panel-actions")) return;
   const to = parse(a.getAttribute("href")!);
-  if (to.page !== "thread" && to.page !== "project" && to.page !== "files") return;
+  if (to.page !== "thread" && to.page !== "project" && to.page !== "files" && !(to.page === "memory" && to.pool && to.id)) return;
   if (to.userId !== route.userId) return;
   e.preventDefault();
   if (to.page === "thread" && to.pool === route.pool && to.threadId === route.threadId) {
@@ -153,6 +153,7 @@ function openInPanel(e: React.MouseEvent, route: Route & { page: "thread" }, tra
   const panel: Panel = to.page === "thread"
     ? { page: "thread", pool: to.pool, threadId: to.threadId, ...(to.drawer ? { drawer: true as const } : {}) }
     : to.page === "files" ? { page: "files", pool: to.pool, threadId: to.threadId, ...(to.path ? { path: to.path } : {}) }
+    : to.page === "memory" ? { page: "memory", pool: to.pool!, id: to.id! }
     : { page: "project", pool: to.pool, threadId: to.threadId, ...(to.section ? { section: to.section } : {}) };
   // The Files button toggles its panel; a file's link shows that file in it.
   if (panel.page === "files" && !panel.path && route.panel?.page === "files" && route.panel.threadId === panel.threadId) { go({ ...route, drawer: undefined, panel: undefined }); return; }
@@ -184,7 +185,7 @@ function PanelColumn({ route, panel, trail, threads, children }: { route: Route 
   const [width, setWidth] = useState(() => { try { const n = Number(localStorage.getItem(PANEL_WIDTH_KEY)); return n >= PANEL_MIN && n <= PANEL_MAX ? n : PANEL_DEFAULT; } catch { return PANEL_DEFAULT; } });
   const resize = (w: number) => { const x = Math.round(Math.min(PANEL_MAX, Math.max(PANEL_MIN, w))); setWidth(x); try { localStorage.setItem(PANEL_WIDTH_KEY, String(x)); } catch { /* kept for this visit only */ } };
   const close = useCallback(() => go({ ...route, drawer: undefined, panel: undefined }), [route]);
-  const label = (p: Panel) => p.page === "project" ? "Project settings" : p.page === "files" ? "Files" : findThread(threads, p.pool, p.threadId)?.title || "New thread";
+  const label = (p: Panel) => p.page === "project" ? "Project settings" : p.page === "files" ? "Files" : p.page === "memory" ? memoryTitle(p.pool, p.id) ?? "Memory" : findThread(threads, p.pool, p.threadId)?.title || "New thread";
   const crumbs = trail.crumbs.map((p) => ({ label: label(p), href: href(panelRoute(route.userId, p)) }));
   const ctx: PanelContext = { crumbs, expand: href(panelRoute(route.userId, panel)), close };
   const current = href(panelRoute("", panel));

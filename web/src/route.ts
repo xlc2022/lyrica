@@ -19,11 +19,12 @@ export type Route =
   | { page: "settings"; userId: string; section?: string }
   | { page: "admin"; userId: string; section?: string };
 
-/** What the panel can show: a thread (with its drawer), a thread's files, or a project's settings. */
+/** What the panel can show: a thread (with its drawer), a thread's files, a project's settings, or a memory. */
 export type Panel =
   | { page: "thread"; pool: Pool; threadId: string; drawer?: true }
   | { page: "files"; pool: Pool; threadId: string; path?: string }
-  | { page: "project"; pool: Pool; threadId: string; section?: string };
+  | { page: "project"; pool: Pool; threadId: string; section?: string }
+  | { page: "memory"; pool: Pool; id: string };
 
 /** The panel's own page, as a route of its own. */
 export const panelRoute = (userId: string, p: Panel): Route => ({ ...p, userId });
@@ -43,6 +44,7 @@ export function parse(hash: string): Route {
     const panel: Panel | undefined = inner?.page === "thread" ? { page: "thread", pool: inner.pool, threadId: inner.threadId, ...(inner.drawer ? { drawer: true as const } : {}) }
       : inner?.page === "files" ? { page: "files", pool: inner.pool, threadId: inner.threadId, ...(inner.path ? { path: inner.path } : {}) }
       : inner?.page === "project" ? { page: "project", pool: inner.pool, threadId: inner.threadId, ...(inner.section ? { section: inner.section } : {}) }
+      : inner?.page === "memory" && inner.pool && inner.id ? { page: "memory", pool: inner.pool, id: inner.id }
       : undefined;
     return { page: "thread", userId, pool, threadId: b, ...(drawer ? { drawer: true as const } : {}), ...(panel ? { panel } : {}) };
   }

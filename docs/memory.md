@@ -390,21 +390,48 @@ Users can write their own notes and pages, not only edit hers.
 
 ## The memory browser
 
-The web UI gets a memory browser:
+The web UI's **Memory** page (`web/src/Memory.tsx`, [web.md](web.md)) reads
+like a notebook: a browse pane and the memory being read, laid out like the
+Files panel.
 
-- A search box and filters by pool and layer (note, page, WAKE, journal). The
-  **Show general** and **Show private** checkboxes apply here too.
-- An item view: the text; **Came from** (cited sources, linking into the
-  thread); **Used in** (pages and WAKE that cite it); and its revisions, with
-  differences and a restore button.
-- Add a note or page, with optional links to threads, messages and other
-  memories, and filter by the **User introduced** origin.
-- Edit, archive and delete, recorded as the user who made the change.
+- **Browsing.** A search box, a segmented control of the layers (Pages,
+  Notes, WAKE, Journal), a pool select and **User introduced**. Without a
+  search the list is one layer, newest first, paged with More; a search
+  replaces the list with hits across layers. The Notes layer shows the pool's
+  `about` words as tags above its list, and a tapped tag filters it. The
+  **Show general** and **Show private** display filters apply here too: a
+  hidden pool is left out of the lists, the facts and the lineage. The header
+  states how many pages and notes there are and when she last slept, and
+  holds **Add a memory**.
+- **Reading.** A memory's citations read as titles, never IDs: a page link
+  by the page's title, a thread citation by the thread's title, a note by a
+  small dated source mark (notes have no title). Each opens the cited memory
+  in place, with a breadcrumb trail, and previews its first lines on hover or
+  focus. The stored text keeps the IDs. **Came from** and **Used in** show a
+  card per memory with its title or first words, its date and the sentence
+  that cites it. **History** lists the versions, the current one open; an
+  older one shows its word differences against the current text, computed in
+  the browser from the revisions already returned, with **Restore**.
+- **Editing** happens in place: an Edit | Preview segment, the textarea,
+  Save and Cancel. Typing `[[` offers pages and people; a page is shown as
+  `[[Title]]` in the editor and saved as `[p:<slug>]`, a person as their name
+  token. No draft is kept in the browser. Edit, Archive and Delete are
+  recorded as the user who made the change; Ctrl- or Cmd-click selects
+  several list rows and **Forget…** removes them as a topic.
+- **From a conversation.** A recall marker or a citation in her text opens
+  the memory in the panel beside the thread (the Memory page at that memory
+  below the split width). **Remember this** in a message's menu writes a
+  one-line user-introduced note citing the message.
+- **Privacy.** Titles, snippets and citing sentences come only from pools
+  the display shows, and a general memory's detail never carries a private
+  memory's words: a private citer of a general memory is listed as
+  "Private page" or "Private note" with no sentence, and a private link in a
+  general text reads "Private is hidden".
 - The browser works through an **owner view**: the signed-in user's own
   general and private pools, read and write. An owner view never goes into a
   conversation or a model's context. Those use thread views only.
 
-Until the browser exists, `lyrica mem search|show|add|edit|delete` covers review.
+`lyrica mem search|show|add|edit|delete` covers the same from a terminal.
 It is a client of `lyricad`, so it arrives with the daemon.
 `edit` reads the new text at the terminal prompt, never through a temporary
 file, so decrypted text doesn't touch disk. Users can also ask Lyrica to
