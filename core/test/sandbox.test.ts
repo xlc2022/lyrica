@@ -105,6 +105,20 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect((await sh("command -v claude || echo NONE")).out).not.toContain("/run/lyrica");
   });
 
+  it("closes a run's Claude Code relay when the run is stopped", async () => {
+    const claude = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], claude: { token: "sk-ant-oat01-made-up-for-tests-only", upstream: "http://127.0.0.1:9" } });
+    const stop = new AbortController();
+    let out = "";
+    const done = claude.ops().bash.exec('echo "$ANTHROPIC_BASE_URL"; sleep 30', "/workspace", {
+      signal: stop.signal, onData: (d) => { out += d.toString(); if (out.includes("\n")) stop.abort(); },
+    }).catch(() => undefined);
+    await done;
+    const base = out.trim();
+    expect(base).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    await new Promise((r) => setTimeout(r, 200));
+    await expect(fetch(`${base}/v1/messages`, { method: "POST", body: "{}" })).rejects.toThrow();
+  });
+
   it("mounts a thread's clones at /workspace/repos, read-only for a read-only subagent", async () => {
     mkdirSync(p("clones", "lyrica"), { recursive: true });
     writeFileSync(p("clones", "lyrica", "README.md"), "hello\n");
