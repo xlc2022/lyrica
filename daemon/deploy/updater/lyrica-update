@@ -22,7 +22,8 @@ SBIN=${LYRICA_UPDATER_BIN:-/usr/local/sbin}
 mkdir -p "$UPDATE"
 chmod 0755 "$UPDATE"
 exec 9>"$UPDATE/update.lock"
-flock -n 9 || die "an update is already running"
+# A request waits its turn (it stays in place, so the path unit would retrigger); an argument doesn't.
+if [ "${1:-}" = --request ]; then flock 9; else flock -n 9 || die "an update is already running"; fi
 
 # --- What to do: an argument, or lyricad's request file ---
 ACTION= TAG= COMMIT=
@@ -107,7 +108,10 @@ build_debian() {
   mkdir -p "$PREFIX/releases"
   chown -R root:root "$work/src" 2>/dev/null || true
   chmod -R a+rX,a-w "$work/src"
+  # Moving a folder to another parent needs it writable (its ..) unless run as root.
+  chmod u+w "$work/src"
   mv -T -- "$work/src" "$rel"
+  chmod a-w "$rel"
   rm -rf -- "$work"
 }
 build_nix() {
@@ -214,7 +218,7 @@ done
 # Passed. A contract that passes releases the snapshots pinned before older contracts.
 if [ "$CONTRACT" = true ]; then
   write_json "$UPDATE/releases.json" --arg keep "$SNAP" --arg at "$(now)" \
-    '.snapshots = [(.snapshots // [])[] | if .pinned and .kind == "snapshot" and .dir != $keep and (.released | not) then .released = $at else . end]'
+    '.snapshots = [(.snapshots // [])[] | if .pinned and .dir != $keep and (.released | not) then .released = $at else . end]'
 fi
 rm -f "$PROBATION_FILE"
 prune_releases

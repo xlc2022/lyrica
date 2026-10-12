@@ -713,6 +713,7 @@ system with the module on. Only x86_64-linux.
   `sandboxPackages`.
 - **Releases** are generations of the profile `/nix/var/nix/profiles/lyrica`,
   which lyricad runs. An Update builds `git+file:///opt/lyrica/repo.git?rev=<commit>#lyrica`
+  as root (Nix's own sandboxed builders do the building, not `lyrica-build`),
   with the host's nixpkgs in place of the repository's (`--override-input`,
   so Node is the one in the sandbox closure, as with `nixos-rebuild`; the
   updater turns on flakes for that call), keeps its `RELEASE.json` in

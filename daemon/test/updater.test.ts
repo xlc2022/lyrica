@@ -20,7 +20,8 @@ const S = (self: number, user: number, pool: number): Schema => ({ self, user, p
 
 async function world() {
   const root = mkdtempSync(join(tmpdir(), "lyrica-updater-"));
-  cleanup.push(() => rmSync(root, { recursive: true, force: true }));
+  // Releases are read-only: writable again first, for a non-root run.
+  cleanup.push(() => { execFileSync("chmod", ["-R", "u+w", root]); rmSync(root, { recursive: true, force: true }); });
   const d = (p: string) => { mkdirSync(join(root, p), { recursive: true }); return join(root, p); };
   const prefix = d("opt"), state = d("state"), update = d("update"), snapshots = d("snapshots"), fake = d("fake"), origin = join(root, "origin.git");
 
@@ -195,7 +196,13 @@ describe("lyrica-rollback", () => {
     expect(readFileSync(join(aside.dir, "self.db"), "utf8")).toBe("written under c");
     expect(readFileSync(join(aside.dir, "self.db-wal"), "utf8")).toBe("c's log");
     expect(w.json("releases.json").minReader).toEqual(S(1, 1, 1));
-    // At a terminal-less console without --yes, a restore isn't done silently.
+
+    // A later contract that passes probation releases the set-aside folder like a pinned snapshot: kept 30 days more.
+    w.release("d", S(1, 1, 4), S(1, 1, 4));
+    await w.run("lyrica-update", "--tag", "update/d");
+    const later = w.json("releases.json").snapshots.find((s: { dir: string }) => s.dir === aside.dir);
+    expect(later.released).toBeTruthy();
+    expect(existsSync(aside.dir)).toBe(true);
     void c;
   });
 
