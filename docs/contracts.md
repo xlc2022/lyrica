@@ -728,7 +728,6 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     the `reactions` event. `LyricaOptions.reactions()` hands the extension
     the user's reactions since her last turn; `reactionLines` puts them in
     the turn message as `<reactions>`;
-  - `calendar` and `sort` (Integrations thread);
   - `image`, with `create` and `edit` (Images thread);
   - `web_search({ query, count? })` and `web_fetch({ url, maxChars? })`
     (`createWebExtension({ searxng(), target() })`, `core/src/web.ts`), in
@@ -1425,20 +1424,6 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   `NEVER_GRANTED` (`/run/lyrica-caddy`, `/var/lib/lyrica-update`, `/var/lib/lyrica-snapshots`) are refused, because sandboxes run with
   `lyricad`'s groups.
 - See [workspace.md](workspace.md).
-
-## integrations
-
-```ts
-interface CalendarProvider {          // google, icloud, caldav
-  listEvents(range): Event[]; createEvent(e): Event; updateEvent(e): Event; deleteEvent(id): void;
-}
-interface SourceProvider {            // files, notes, downloads, email (IMAP)
-  list(query): Item[]; read(id): Content; move(id, dest): void; tag(id, tags): void;
-}
-```
-
-Credentials are stored in the user's `user.db`. Providers are reached only
-through the `calendar` and `sort` tools.
 
 ## UI rules that cross components
 

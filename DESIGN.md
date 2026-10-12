@@ -1431,10 +1431,13 @@ Details in [docs/sleep.md](docs/sleep.md).
 
 ## What she does
 
-- **First duties:** maintaining a calendar and sorting data.
-- **Integrations:** Google Calendar, iCloud and CalDAV (which covers Nextcloud)
-  for calendars; files, notes, downloads and email for sorting. Each sits behind
-  a common adapter interface, and they don't all need to be connected at first.
+- **Running work and coding** come first: projects, threads she starts,
+  her own repositories and the owner's machines.
+- **Later: a calendar and sorting data.** Keeping a calendar (Google
+  Calendar, iCloud, CalDAV) and sorting files, notes, downloads and email
+  were her first duties in the original plan. Nothing is built for them,
+  and they wait until real use asks; a service's MCP server may cover one
+  without code of ours (see [MCP servers](#mcp-servers)).
 - **Machines:** working on the owner's other computers over SSH, and on Proxmox
   through its API, one machine at a time as the owner finds her reliable (see
   [Machines](#machines)). The Proxmox node that runs her own VM waits until
@@ -1815,7 +1818,7 @@ from Monika's runbooks.
   PRINCIPLES, this document and the contracts, and keeps coding to a minimum.
 - **Feature threads** are separate Claude Code sessions tagged `project:lyrica`:
   Core, Memory, Workspace, Models, Delegation, Daemon, Web UI, Sleep,
-  Integrations, Model host, Models 2, Images, Delegation 2, Child
+  Model host, Models 2, Images, Delegation 2, Child
   threads, Modes and Projects.
   - Each works from a brief in `docs/briefs/` on its own branch and ends with a
     pull request.
@@ -1943,3 +1946,7 @@ new evidence.
   sleep, MCP, web search and the models tool) against a budget of about
   2,500. The owner raised the budget to about 8,000 lines rather than move
   working code out to fit.
+- **Calendar and sorting: first duties → later (2026-10-12).** The owner's
+  direction is running work and coding now, a companion later, so the
+  calendar and sorting integrations, which had no code, left the contracts
+  and wait until real use asks for them.
