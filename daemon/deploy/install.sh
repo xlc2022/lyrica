@@ -224,12 +224,12 @@ printf '%s\n' '{"admin":{"listen":"unix//run/lyrica-caddy/admin.sock|0660"}}' >/
 chmod 0644 /etc/lyrica/caddy.json
 
 # --- Units ---
-for u in lyrica-caddy.service lyricad.service lyrica-tailscaled.service lyrica-update.service lyrica-update.path lyrica-rollback.service; do
+for u in lyrica-caddy.service lyricad.service lyrica-tailscaled.service lyrica-update.service lyrica-update.path lyrica-rollback.service lyrica-probation.service; do
   install -m 0644 "$SRC/daemon/deploy/$u" "/etc/systemd/system/$u"
 done
 if [ -d /run/systemd/system ]; then
   systemctl daemon-reload
-  systemctl enable --quiet lyrica-caddy lyrica-tailscaled lyricad lyrica-update.path
+  systemctl enable --quiet lyrica-caddy lyrica-tailscaled lyricad lyrica-update.path lyrica-probation
   systemctl start lyrica-update.path
   if [ "$CADDY_CHANGED" = yes ]; then systemctl restart lyrica-caddy; else systemctl start lyrica-caddy; fi
   systemctl start lyrica-tailscaled || say "Her tailscaled didn't start (journalctl -u lyrica-tailscaled); Administration → Tailnet will say so."
