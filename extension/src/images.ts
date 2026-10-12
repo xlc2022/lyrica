@@ -1,6 +1,6 @@
 // Principles 1, 2 and 8: one image tool, with portrait consent checked at each resolved provider.
 import type { ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import { CloudModelForbidden, isRestricted, PHOTOS_DIR, type CallContext, type ImageRequest, type Models, type Resolution,
+import { CloudModelForbidden, isRestricted, type CallContext, type ImageRequest, type Models, type Resolution,
   type ThreadImages, type WorkspaceSettings } from "@lyrica/core";
 import { Type } from "typebox";
 import type { ApprovalRequest } from "./workspace.ts";
@@ -17,13 +17,13 @@ export interface ImageTools {
   now?: () => Date;
 }
 
-const path = Type.String({ description: `Workspace image path, or ${PHOTOS_DIR}/<file> for the user's portrait photos.` });
+const path = Type.String();
 const references = Type.Optional(Type.Array(path, { maxItems: 16 }));
 const count = Type.Optional(Type.Integer({ minimum: 1, maximum: 4 }));
 const parameters = Type.Union([
   Type.Object({ action: Type.Literal("create"), prompt: Type.String(), tier: Type.Union([Type.Literal("fast"), Type.Literal("quality")]),
     size: Type.Optional(Type.Object({ width: Type.Integer(), height: Type.Integer() })),
-    aspectRatio: Type.Optional(Type.String({ description: "Width:height, such as 16:9. Leave size and ratio out to use recipe defaults." })), count, references }),
+    aspectRatio: Type.Optional(Type.String({ description: "Width:height (16:9); omit for recipe defaults." })), count, references }),
   Type.Object({ action: Type.Literal("edit"), image: path, instruction: Type.String(), mask: Type.Optional(path), references, count }),
   Type.Object({ action: Type.Literal("upscale"), image: path, scale: Type.Optional(Type.Number({ minimum: 1, maximum: 4 })),
     maxSize: Type.Optional(Type.Integer({ minimum: 256, maximum: 8192 })) }),
@@ -75,10 +75,10 @@ async function allowPortrait(o: ImageTools, r: Resolution, id: string, ctx: Exte
 export function createImageExtension(o: ImageTools): ExtensionFactory {
   return pi => {
     pi.registerTool({
-      name: "image", label: "Image", description: "Create, edit or upscale images. Inputs are workspace paths; results are saved in this thread's images/ folder and returned as images.",
+      name: "image", label: "Image", description: "Create, edit or upscale images from workspace paths or /photos-of-me/<file>; results go to images/.",
       promptSnippet: "create, edit or upscale images",
-      promptGuidelines: ["Write the image prompt from the conversation; pick fast or quality, never a model, part or LoRA. Look at the returned image and try again if needed.",
-        "For exact diagrams and layouts, draw HTML, SVG or Mermaid as code instead of asking an image model."],
+      promptGuidelines: ["Write prompts from the conversation; inspect results and retry if needed.",
+        "Draw exact layouts and diagrams as HTML, SVG or Mermaid."],
       parameters,
       async execute(id, p, signal, _update, ctx) {
         if (!o.enabled()) throw new Error("Images are off in this thread.");
