@@ -120,7 +120,7 @@ export interface Me {
   savedCredentials: boolean;
   /** Whether logging out keeps the key in memory, so sleep can run. On by default; Lock always drops it. */
   stayUnlocked: boolean;
-  /** A setting that contradicts another, in plain words: saved credentials with stay-unlocked off. */
+  /** Something the user should know, in plain words: saved credentials with stay-unlocked off; an administrator set their password. */
   warning?: string;
 }
 
@@ -1259,6 +1259,8 @@ export interface PassphraseChange { save: boolean; passphrase?: string }
 /** POST /api/u/:userId/admin/users → UserCard */
 export interface NewUser { login: string; password: string; displayName: string; pronouns: Pronouns; admin: boolean }
 /** PUT /api/u/:userId/admin/users/:targetId/admin → UserCard. The last administrator can't be demoted. */
+/** PUT /api/u/:userId/admin/users/:targetId/password (AdminPassword) → Ok. The user's data stays (DESIGN.md, "Users"); `Me.warning` tells them until they change it. 409 for a user with no recovery copy yet. */
+export interface AdminPassword { password: string }
 export interface AdminFlag { admin: boolean }
 /** PATCH /api/u/:userId/admin/users/:targetId/profile → UserCard */
 

@@ -70,7 +70,10 @@ lockUser(userId: string): void
 class Users {
   createUser(login, password, profile: Omit<Profile, "previousNames">, { admin }): Promise<User>  // first user must be admin
   authenticate(login, password): Promise<User>               // also unlocks the user's key; Argon2 runs for unknown logins too
-  changePassword(user, oldPassword, newPassword): Promise<void>  // rewraps the same data key
+  changePassword(user, oldPassword, newPassword): Promise<void>  // rewraps the same data key; clears passwordSetBy
+  setPassword(actor: User, target: User, newPassword): Promise<void>  // admin; the key from its recovery copy, under the new password; NoRecoveryCopy if none yet
+  passwordSetBy(userId): { by; at } | undefined              // an administrator set it and the user hasn't changed it since
+  ensureRecoveryCopy(userId): void                           // writes the copy for a user from before, once their key is in memory
   setAdmin(actor: User, target: User, admin: boolean): void  // refuses to demote the last admin
   updateProfile(actor: User, target: User, change): Profile  // self, or an admin; a rename appends to previousNames
   listUsers(actor: User): User[]                             // admins see everyone, others themselves
@@ -96,7 +99,13 @@ interface Profile {
   `persona_proposals` that users have sent on (`PersonaStore.proposals`,
   `decide`).
   - The wrapped key has to be readable before the user's own databases can
-    open.
+    open. Beside it, `recovery_wrap`: the same data key under the server's
+    recovery key (`settings` 'recovery.key', made once), so an administrator
+    can set a new password without losing data (DESIGN.md, "Users"). A user
+    from before gets theirs the next time their key is in memory.
+    `password_set_by` and `password_set_at` record an administrator's reset
+    until the user changes the password. Columns added since the first
+    release come from `SELF_UPGRADES`, applied when `self.db` opens.
   - The profile and admin flag must stay readable and editable while the user
     is locked, so the admin panel and `render` keep working.
   - Each user's `user.db` holds that user's settings. Their memory lives in the

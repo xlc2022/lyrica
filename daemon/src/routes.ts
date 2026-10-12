@@ -1,5 +1,5 @@
 import {
-  AuthError, WrongPassword, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS, projectSlug,
+  AuthError, NoRecoveryCopy, WrongPassword, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WATCHING, PRONOUN_PRESETS, projectSlug,
   type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type MachineConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
@@ -1060,6 +1060,17 @@ export function apiRoutes(d: Lyricad): Route[] {
       s().users.setAdmin(actor, target(d, r), !!admin);
       return card(target(d, r));
     }),
+    route("PUT", `${u}/admin/users/:targetId/password`, async (r) => {
+      const actor = d.adminFor(r);
+      const { password } = await r.json<Api.AdminPassword>();
+      try {
+        await s().users.setPassword(actor, target(d, r), String(password ?? ""));
+      } catch (err) {
+        if (err instanceof NoRecoveryCopy) throw new HttpError(409, err.message);
+        throw err;
+      }
+      return { ok: true };
+    }),
     route("PATCH", `${u}/admin/users/:targetId/profile`, async (r) => {
       const actor = d.adminFor(r);
       s().users.updateProfile(actor, target(d, r), pick(await r.json<Api.ProfileChange>(), ["displayName", "pronouns", "accent", "monogram"]));
@@ -1235,10 +1246,14 @@ function me(d: Lyricad, user: User): Api.Me {
   const fresh = d.services!.users.get(user.id)!;
   const savedCredentials = d.keyring.hasSavedKey(user.id);
   const stayUnlocked = d.services!.users.stayUnlocked(user.id);
+  const set = d.services!.users.passwordSetBy(user.id);
+  const warnings = [
+    ...(savedCredentials && !stayUnlocked ? ["Your key is saved, so it is unlocked again whenever Lyrica restarts, even though logging out drops it."] : []),
+    ...(set ? [`${d.services!.users.get(set.by)?.profile.displayName ?? "An administrator"} set your password on ${set.at.slice(0, 10)}. Change it in Settings → Password.`] : []),
+  ];
   return {
     user: card(fresh), previousNames: fresh.profile.previousNames, display: display(d, user.id), savedCredentials, stayUnlocked,
-    ...(savedCredentials && !stayUnlocked
-      ? { warning: "Your key is saved, so it is unlocked again whenever Lyrica restarts, even though logging out drops it." } : {}),
+    ...(warnings.length ? { warning: warnings.join(" ") } : {}),
   };
 }
 
