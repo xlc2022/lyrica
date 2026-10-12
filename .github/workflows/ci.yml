@@ -12,14 +12,21 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 jobs:
-  # A change only to docs/ or the top-level Markdown files (AGENTS.md,
-  # DESIGN.md and the like) runs no job below: nothing builds, tests or
-  # ships them. persona/ is her seed and counts as code. Skipped jobs count
-  # as passed for required checks. When the diff can't be read, all run.
+  # Each job below runs only when the diff touches what it checks; skipped
+  # jobs count as passed for required checks, and when the diff can't be
+  # read, all run. A change to the workflows runs all of them.
+  # - check: anything but docs/ and the top-level Markdown files (AGENTS.md,
+  #   DESIGN.md and the like). persona/ is her seed and counts as code.
+  # - nix: anything the flake builds or tests, so not the tests it leaves
+  #   out of its source (flake.nix) except core/test, which has the sandbox
+  #   tests, and not evals/.
+  # - host-stack: host/, the only directory its images and install read.
   changes:
     runs-on: lyrica-ci
     outputs:
       code: ${{ steps.diff.outputs.code }}
+      nix: ${{ steps.diff.outputs.nix }}
+      host: ${{ steps.diff.outputs.host }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,13 +38,19 @@ jobs:
         run: |
           # A pull request's checkout is its merge into the base: the first parent is the base.
           if [ "$EVENT" = pull_request ]; then base=HEAD^1; else base=$BEFORE; fi
+          # outside PATTERN: some changed file is not one PATTERN matches.
+          outside() { printf '%s\n' "$files" | grep -qvE "$1"; }
           if files=$(git diff --name-only "$base" HEAD 2>/dev/null) && [ -n "$files" ]; then
-            if printf '%s\n' "$files" | grep -qvE '^docs/|^[^/]+\.md$'; then code=true; else code=false; fi
+            docs='^docs/|^[^/]+\.md$'
+            if outside "$docs"; then code=true; else code=false; fi
+            if outside "$docs|^evals/|^web/e2e/|^(bin|daemon|extension|host|web)/test/"; then nix=true; else nix=false; fi
+            if printf '%s\n' "$files" | grep -qE '^host/|^\.github/'; then host=true; else host=false; fi
+            if printf '%s\n' "$files" | grep -qE '^\.github/'; then code=true nix=true; fi
           else
-            code=true
+            code=true nix=true host=true
           fi
           printf '%s\n' "$files" | head -50
-          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+          printf 'code=%s\nnix=%s\nhost=%s\n' "$code" "$nix" "$host" | tee -a "$GITHUB_OUTPUT"
   check:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -75,7 +88,7 @@ jobs:
   # and only their closure in /nix/store.
   nix:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.nix == 'true'
     runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4
@@ -134,7 +147,7 @@ jobs:
   # The model host's Compose stack, without a GPU: install, then check the networks.
   host-stack:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.host == 'true'
     runs-on: lyrica-ci
     steps:
       - uses: actions/checkout@v4
