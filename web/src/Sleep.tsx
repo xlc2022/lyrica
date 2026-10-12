@@ -1,0 +1,346 @@
+// Sleep (docs/sleep.md "Sleep in the UI"): her items from the night at the top, each with Start a chat
+// and Dismiss; then each run per pool, Last night and Earlier, opening to its notes, pages with their word
+// differences, questions, dream and WAKE, each linking into the memory browser; Sleep now at the foot.
+// Also the per-user mode (Settings → Model profiles) and the administrator's sleep time.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  del, get, HttpError, post, put, u,
+  type Pool, type SleepEvent, type SleepItemInfo, type SleepMode, type SleepOverview, type SleepRunDetail, type SleepRunInfo, type SleepStarted, type SleepTime, type ThreadSummary, type UserMap,
+} from "./api.ts";
+import { Icon } from "./icons.tsx";
+import { longDate, plainCitations, poolWord, wordDiff } from "./memory.ts";
+import { readable } from "./mentions.ts";
+import { go, href, idHref } from "./route.ts";
+import { PageHead, PoolLock, type ShellContext } from "./Shell.tsx";
+import { ConfirmDialog, ErrorText, Prose, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
+
+export interface SleepState {
+  overview?: SleepOverview;
+  /** Items neither started nor dismissed: the sidebar's count. */
+  fresh: number;
+  running: boolean;
+  error: string;
+  reload: () => void;
+  set: (o: SleepOverview) => void;
+}
+
+/** The overview, loaded once by the shell for the sidebar's count; the Sleep page and its events keep it fresh. */
+export function useSleepOverview(userId: string): SleepState {
+  const o = useLoad(() => get<SleepOverview>(u(userId, "sleep")), [userId]);
+  return {
+    overview: o.data,
+    fresh: o.data?.items.filter((i) => i.new).length ?? 0,
+    running: !!o.data?.runs.some((r) => r.status === "running"),
+    error: o.error,
+    reload: o.reload,
+    set: o.set,
+  };
+}
+
+const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const SKIPPED: Record<NonNullable<SleepRunInfo["skipReason"]>, string> = { "no-key": "Skipped: no key", "endpoint-down": "Skipped: the endpoint was down", "no-activity": "Skipped: nothing new" };
+const PHASE_WORD = { consolidate: "consolidating", dream: "dreaming", wake: "waking" } as const;
+const KIND_WORD: Record<SleepItemInfo["kind"], string> = { thought: "thought", question: "question", persona: "persona suggestion" };
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** Stored text as it reads: names for mention tokens (someone, where the user isn't known here), no citation groups. */
+const plain = (text: string, users: UserMap) => plainCitations(readable(text, users)).replace(/\[\[u:[^\]]+\]\]/g, "someone");
+
+/** A memory's link: a page, a note or a journal entry in that pool; a persona suggestion has none. */
+const memoryLink = (userId: string, pool: Pool, id?: string) => (id && !/^(draft|proposal):/.test(id) ? idHref(userId, pool, id) : undefined);
+
+function PoolName({ pool }: { pool: Pool }) {
+  return <span className={`kind ${pool}`}>{pool === "private" && <PoolLock />}{poolWord(pool)}</span>;
+}
+
+/** The run's one line: why it was skipped, what phase it's in, or what it wrote. */
+function runLine(run: SleepRunInfo, d?: SleepRunDetail): string {
+  if (run.status === "skipped") return run.skipReason ? SKIPPED[run.skipReason] : "Skipped";
+  if (run.status === "running") {
+    const order = ["consolidate", "dream", "wake"] as const;
+    const at = [...order].reverse().find((p) => run.phases[p]) ?? "consolidate";
+    return `Sleeping… ${PHASE_WORD[at]}`;
+  }
+  const early = run.status === "partial" ? "Stopped early" : "";
+  if (!d) return early || "Complete";
+  const created = d.pages.filter((p) => p.before === undefined).length, changed = d.pages.length - created;
+  const thoughts = d.items.filter((i) => i.kind === "thought").length, persona = d.items.length - thoughts;
+  const written = [d.dream.length > 0 && "dream", d.wake && "WAKE"].filter(Boolean).join(" and ");
+  const parts = [
+    early,
+    d.notes.length > 0 && `${plural(d.notes.length, "note", "notes")} added`,
+    created > 0 && `${plural(created, "page", "pages")} created`,
+    changed > 0 && `${plural(changed, "page", "pages")} changed`,
+    d.questions.length > 0 && plural(d.questions.length, "question", "questions"),
+    thoughts > 0 && plural(thoughts, "thought", "thoughts"),
+    persona > 0 && plural(persona, "persona suggestion", "persona suggestions"),
+    written && `${written} written`,
+  ].filter(Boolean);
+  return parts.length > (early ? 1 : 0) ? parts.join(" · ") : early || "Nothing changed";
+}
+
+export function SleepPage({ ctx }: { ctx: ShellContext }) {
+  const userId = ctx.user.id;
+  const { overview: o, reload } = ctx.sleep;
+  const [run, busy, error] = useAction();
+  const [details, setDetails] = useState<Record<string, SleepRunDetail>>({});
+
+  // Her events while the page is open: a run starting or ending refreshes the overview; manual mode's fresh thread opens.
+  useEffect(() => {
+    const es = new EventSource(u(userId, "sleep", "events"));
+    const on = (m: MessageEvent<string>) => {
+      try {
+        const e = JSON.parse(m.data) as SleepEvent;
+        if (e.type === "thread") { ctx.refreshThreads(); go({ page: "thread", userId, pool: e.pool, threadId: e.threadId }); }
+        else reload();
+      } catch { /* not ours */ }
+    };
+    for (const type of ["started", "phase", "finished", "thread"]) es.addEventListener(type, on);
+    return () => es.close();
+  }, [userId, reload]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The newest run of each pool is Last night; the rest are Earlier, by day.
+  const { last, earlier } = useMemo(() => {
+    const runs = o?.runs ?? [];
+    const last = (["general", "private"] as const).map((p) => runs.find((r) => r.pool === p)).filter((r): r is SleepRunInfo => !!r);
+    const rest = runs.filter((r) => !last.includes(r));
+    const days = new Map<string, SleepRunInfo[]>();
+    for (const r of rest) { const k = new Date(r.startedAt).toDateString(); days.set(k, [...(days.get(k) ?? []), r]); }
+    return { last, earlier: [...days.values()] };
+  }, [o]);
+
+  // Last night's runs are read at once, for their lines; an earlier one when it opens. Reread when a run ends.
+  const load = useCallback((r: SleepRunInfo) => get<SleepRunDetail>(u(userId, "sleep", r.pool, "runs", r.id)).then((d) => setDetails((m) => ({ ...m, [`${r.pool}/${r.id}`]: d }))), [userId]);
+  const lastKey = last.map((r) => `${r.pool}/${r.id}/${r.status}`).join(" ");
+  useEffect(() => { for (const r of last) if (r.status !== "skipped") void load(r).catch(() => {}); }, [lastKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const users: UserMap = useMemo(() => Object.assign({ [ctx.user.id]: { displayName: ctx.user.displayName, pronouns: ctx.user.pronouns } }, ...Object.values(details).map((d) => d.users)), [ctx.user, details]);
+  const items = (o?.items ?? []).filter((i) => i.new);
+  const chat = (i: SleepItemInfo) => run(async () => {
+    const t = await post<ThreadSummary>(u(userId, "sleep", i.pool, "items", i.id, "chat"));
+    reload(); ctx.refreshThreads();
+    go({ page: "thread", userId, pool: t.pool, threadId: t.id });
+  });
+  const dismiss = (i: SleepItemInfo) => run(async () => {
+    await del(u(userId, "sleep", i.pool, "items", i.id));
+    if (o) ctx.sleep.set({ ...o, items: o.items.filter((x) => x !== i) });
+    reload();
+  });
+
+  const row = (r: SleepRunInfo) => <RunRow key={`${r.pool}/${r.id}`} run={r} detail={details[`${r.pool}/${r.id}`]} userId={userId} users={users} load={load} />;
+  return (
+    <main className="main">
+      <PageHead ctx={ctx} title="Sleep" facts={items.length > 0 ? <><span className="num">{items.length}</span> new</> : undefined} />
+      <div className="scroll">
+        <div className="sleep">
+          <section aria-labelledby="h-sleep-items" className="sleep-block">
+            <h2 id="h-sleep-items" className="sr-only">Items</h2>
+            <ErrorText error={ctx.sleep.error || error} />
+            {o && !items.length && <p className="empty">Nothing to raise.</p>}
+            {items.length > 0 && (
+              <ul className="list sleep-items" aria-label="Items">
+                {items.map((i) => (
+                  <li key={`${i.pool}/${i.id}`} className="sleep-item" data-item={i.id}>
+                    <div className="main-col">
+                      <span className="text">{plain(i.text, users)}</span>
+                      <span className="cap"><PoolName pool={i.pool} /> · {KIND_WORD[i.kind]} · <span className="num">{shortTime(i.createdAt)}</span>
+                        {memoryLink(userId, i.pool, i.source) && <> · <a href={memoryLink(userId, i.pool, i.source)}>Came from</a></>}</span>
+                    </div>
+                    <div className="actions">
+                      <button type="button" className="sm" disabled={busy} onClick={() => void chat(i)}>Start a chat</button>
+                      <button type="button" className="sm" disabled={busy} onClick={() => void dismiss(i)}>Dismiss</button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          {last.length > 0 && (
+            <section aria-labelledby="h-last-night" className="sleep-block">
+              <h2 id="h-last-night" className="eyebrow">Last night</h2>
+              <div className="list sleep-runs">{last.map(row)}</div>
+            </section>
+          )}
+          {earlier.length > 0 && (
+            <section aria-labelledby="h-earlier" className="sleep-block">
+              <h2 id="h-earlier" className="eyebrow">Earlier</h2>
+              {earlier.map((day) => (
+                <div key={day[0]!.startedAt} className="sleep-day">
+                  <div className="eyebrow">{longDate(day[0]!.startedAt)}</div>
+                  <div className="list sleep-runs">{day.map(row)}</div>
+                </div>
+              ))}
+            </section>
+          )}
+          {o && !o.runs.length && <p className="empty">No sleep yet.</p>}
+          <SleepFoot ctx={ctx} />
+        </div>
+      </div>
+    </main>
+  );
+}
+
+/** One run: the pool, the time, its line; it opens to what it wrote. */
+function RunRow({ run, detail, userId, users, load }: { run: SleepRunInfo; detail?: SleepRunDetail; userId: string; users: UserMap; load: (r: SleepRunInfo) => Promise<void> }) {
+  const [error, setError] = useState("");
+  const open = (e: React.SyntheticEvent<HTMLDetailsElement>) => {
+    if (e.currentTarget.open && !detail) load(run).catch((err: Error) => setError(err.message));
+  };
+  const head = <>
+    <span className="t"><PoolName pool={run.pool} />{run.status === "running" && <span className="busy" title="Sleeping" />}<span className="when num">{clock(run.startedAt)}</span></span>
+    <span className="meta">{runLine(run, detail)}</span>
+  </>;
+  // A skipped run wrote nothing, so there is nothing to open.
+  if (run.status === "skipped") return <div className="sleep-run" data-run={run.id} data-pool={run.pool} data-status={run.status}><div className="sleep-sum">{head}</div></div>;
+  return (
+    <details className="sleep-run" data-run={run.id} data-pool={run.pool} data-status={run.status} onToggle={open}>
+      <summary className="sleep-sum">{head}</summary>
+      <div className="sleep-detail">
+        <ErrorText error={error} />
+        {detail ? <RunDetail d={detail} userId={userId} users={users} /> : !error && <p className="muted small">Loading…</p>}
+      </div>
+    </details>
+  );
+}
+
+function RunDetail({ d, userId, users }: { d: SleepRunDetail; userId: string; users: UserMap }) {
+  const all = { ...users, ...d.users };
+  const text = (t: string) => plain(t, all);
+  const empty = !d.notes.length && !d.pages.length && !d.questions.length && !d.items.length && !d.dream.length && !d.wake;
+  const itemList = (list: SleepItemInfo[]) => (
+    <ul className="plain">
+      {list.map((i) => {
+        const from = memoryLink(userId, d.pool, i.source);
+        return (
+          <li key={i.id}>{text(i.text)}
+            {(from || i.thread) && <span className="cap">{from && <> · <a href={from}>Came from</a></>}{i.thread && <> · <a href={href({ page: "thread", userId, pool: d.pool, threadId: i.thread })}>Open thread</a></>}</span>}
+          </li>
+        );
+      })}
+    </ul>
+  );
+  return (
+    <>
+      {empty && <p className="muted small">Nothing changed.</p>}
+      {d.notes.length > 0 && (
+        <div className="sleep-part"><div className="eyebrow">Notes</div>
+          <ul className="plain">{d.notes.map((n) => <li key={n.id}><a href={idHref(userId, d.pool, n.id)}>{text(n.text) || n.id}</a></li>)}</ul>
+        </div>
+      )}
+      {d.pages.length > 0 && (
+        <div className="sleep-part"><div className="eyebrow">Pages</div>
+          <ul className="plain">
+            {d.pages.map((p) => (
+              <li key={p.id}>
+                <a href={idHref(userId, d.pool, p.id)}>{p.title ? readable(p.title, all) : p.id}</a>
+                <div className="wdiff">{wordDiff(p.before === undefined ? "" : text(p.before), text(p.after)).map((op, k) => (op.kind === "same" ? <span key={k}>{op.text}</span> : op.kind === "del" ? <del key={k}>{op.text}</del> : <ins key={k}>{op.text}</ins>))}</div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {d.questions.length > 0 && <div className="sleep-part"><div className="eyebrow">Questions</div>{itemList(d.questions)}</div>}
+      {d.items.length > 0 && <div className="sleep-part"><div className="eyebrow">Thoughts</div>{itemList(d.items)}</div>}
+      {d.dream.length > 0 && (
+        <div className="sleep-part"><a className="eyebrow" href={idHref(userId, d.pool, d.dream[0]!.id)}>Dream</a>
+          {d.dream.map((x) => <div key={x.id} className="prose small"><Prose text={text(x.text)} /></div>)}
+        </div>
+      )}
+      {d.wake && (
+        <div className="sleep-part"><a className="eyebrow" href={idHref(userId, d.pool, "wake")}>WAKE</a>
+          <div className="prose small"><Prose text={text(d.wake)} /></div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Sleep now, with its menu of pools, and the mode in one line with a link to where it changes. */
+function SleepFoot({ ctx }: { ctx: ShellContext }) {
+  const userId = ctx.user.id;
+  const o = ctx.sleep.overview;
+  const [open, setOpen] = useState(false);
+  const [asking, setAsking] = useState<{ pool: Pool; sentence: string }>();
+  const [toast, setToast] = useState("");
+  const [busy, setBusy] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(ref, open, close);
+  const sleep = async (pool: Pool, confirm?: true) => {
+    setOpen(false); setBusy(true); setToast("");
+    try {
+      const r = await post<SleepStarted>(u(userId, "sleep", pool), confirm ? { confirm } : {});
+      if ("confirm" in r) setAsking({ pool, sentence: r.confirm });
+      else ctx.sleep.reload();
+    } catch (e) { setToast(e instanceof HttpError ? e.message : String(e)); } finally { setBusy(false); }
+  };
+  const change = href({ page: "settings", userId, section: "profiles" });
+  return (
+    <div className="sleep-foot">
+      <div className="msg-menu" ref={ref}>
+        <button type="button" disabled={busy} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>Sleep now <span className="caret" aria-hidden="true">▾</span></button>
+        {open && (
+          <div className="menu above" role="menu" aria-label="Sleep now">
+            <button type="button" role="menuitem" onClick={() => void sleep("general")}>General</button>
+            <button type="button" role="menuitem" onClick={() => void sleep("private")}><PoolLock />Private</button>
+          </div>
+        )}
+      </div>
+      {o && (
+        <span className="cap sleep-mode">
+          {o.mode === "scheduled" ? <>Scheduled nightly at <span className="num">{o.time}</span></> : "Manual: only when you ask"} · <a href={change}>change</a>
+        </span>
+      )}
+      {asking && (
+        // lyricad's sentence opens with its question: that is the dialog's title, the rest its sentence.
+        <ConfirmDialog title={/^[^?]*\?/.exec(asking.sentence)?.[0] ?? "Sleep now?"} sentence={asking.sentence.replace(/^[^?]*\?\s*/, "") || asking.sentence} confirm="Sleep now"
+          onCancel={() => setAsking(undefined)} onConfirm={() => { const p = asking.pool; setAsking(undefined); void sleep(p, true); }} />
+      )}
+      {toast && (
+        <div className="toast" role="status">
+          <span>{toast}</span>
+          <button type="button" className="icon sm" aria-label="Dismiss" onClick={() => setToast("")}><Icon name="close" /></button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Settings → Model profiles: when sleep happens for this user. Saved at once, like Sleep fallback beside it. */
+export function SleepModeField({ ctx }: { ctx: ShellContext }) {
+  const o = ctx.sleep.overview;
+  const [run, busy, error] = useAction();
+  if (!o) return null;
+  const set = (mode: SleepMode) => run(async () => ctx.sleep.set(await put<SleepOverview>(u(ctx.user.id, "sleep", "mode"), { mode })));
+  return (
+    <>
+      <label className="field sleep-mode-field"><span>Sleep</span>
+        <select name="sleep-mode" aria-label="Sleep" value={o.mode} disabled={busy} onChange={(e) => void set(e.target.value as SleepMode)}>
+          <option value="scheduled">Nightly at {o.time}</option>
+          <option value="manual">Only when I ask</option>
+        </select>
+      </label>
+      <ErrorText error={error} />
+    </>
+  );
+}
+
+/** Administration → Sleep: the time each pool with new activity sleeps. */
+export function SleepTimeSection({ ctx }: { ctx: ShellContext }) {
+  const userId = ctx.user.id;
+  const path = u(userId, "admin", "sleep");
+  const sleep = useLoad(() => get<SleepTime>(path), [path]);
+  const [run, busy, error] = useAction();
+  const [time, setTime] = useState<string>();
+  const save = () => run(async () => { sleep.set(await put<SleepTime>(path, { time: time ?? sleep.data?.time })); setTime(undefined); ctx.sleep.reload(); });
+  return (
+    <section className="card" aria-labelledby="h-sleep">
+      <div className="section-head"><h2 id="h-sleep">Sleep</h2></div>
+      <ErrorText error={sleep.error || error} />
+      <form className="inline" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+        <label className="field"><span>Sleep time</span><input type="time" name="sleep-time" value={time ?? sleep.data?.time ?? ""} onChange={(e) => setTime(e.target.value)} /></label>
+        <button className="primary" disabled={busy || !time || time === sleep.data?.time}>Save</button>
+      </form>
+    </section>
+  );
+}

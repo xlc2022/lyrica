@@ -16,6 +16,7 @@ export type Route =
   /** A project's settings page, with its section. */
   | { page: "project"; userId: string; pool: Pool; threadId: string; section?: string }
   | { page: "memory"; userId: string; pool?: Pool; id?: string }
+  | { page: "sleep"; userId: string }
   | { page: "settings"; userId: string; section?: string }
   | { page: "admin"; userId: string; section?: string };
 
@@ -50,6 +51,7 @@ export function parse(hash: string): Route {
   }
   if (section === "p" && pool && b) return { page: "project", userId, pool, threadId: b, ...(c ? { section: c } : {}) };
   if (section === "memory") return { page: "memory", userId, pool, id: pool ? b : undefined };
+  if (section === "sleep") return { page: "sleep", userId };
   // A section may have pages of its own under it (settings/machines/new): the rest of the path rides along.
   const rest = [a, b, ...more].filter((x): x is string => x !== undefined).join("/");
   if (section === "settings") return { page: "settings", userId, ...(rest ? { section: rest } : {}) };
@@ -71,6 +73,7 @@ export function href(r: Route): string {
     case "files": return `#/u/${e(r.userId)}/t/${r.pool}/${e(r.threadId)}/files` + (r.path ? `/${e(r.path)}` : "");
     case "project": return `#/u/${e(r.userId)}/p/${r.pool}/${e(r.threadId)}` + (r.section ? `/${e(r.section)}` : "");
     case "memory": return `#/u/${e(r.userId)}/memory` + (r.pool && r.id ? `/${r.pool}/${e(r.id)}` : "");
+    case "sleep": return `#/u/${e(r.userId)}/sleep`;
     case "settings": return `#/u/${e(r.userId)}/settings` + (r.section ? `/${r.section.split("/").map(e).join("/")}` : "");
     case "admin": return `#/u/${e(r.userId)}/admin` + (r.section ? `/${r.section.split("/").map(e).join("/")}` : "");
   }

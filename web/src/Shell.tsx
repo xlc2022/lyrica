@@ -9,6 +9,7 @@ import { Memory, memoryTitle } from "./Memory.tsx";
 import { AdminPage, SettingsPage } from "./Panel.tsx";
 import { FilesPage } from "./Files.tsx";
 import { NotificationsCard, useWaiting } from "./Notifications.tsx";
+import { SleepPage, useSleepOverview, type SleepState } from "./Sleep.tsx";
 import { ThreadMenu, useThreadMenu } from "./ThreadMenu.tsx";
 import { ProjectPage, stateWord } from "./Project.tsx";
 import { ErrorText, hidden, menuArrows, shortTime, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
@@ -27,6 +28,8 @@ export interface ShellContext {
   /** How many decisions wait in Notifications (the sidebar's count), and a reload after one is acted on. */
   waiting: number;
   refreshNotifications: () => void;
+  /** The Sleep overview, loaded once for the sidebar's count of new items; the Sleep page refreshes it from its events. */
+  sleep: SleepState;
   openSide: () => void;
   /** Reload GET /api/state: after her name changes. */
   refreshState: () => void;
@@ -50,19 +53,20 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
   // Close the sidebar overlay whenever the page changes.
   useEffect(() => setSideOpen(false), [route]);
   const notes = useWaiting(user.id);
+  const sleep = useSleepOverview(user.id);
   // Refresh the list and the count now and then, so other threads' titles and activity show, and what waits.
   useEffect(() => {
-    const tick = () => { if (document.visibilityState === "visible") { threads.reload(); notes.reload(); } };
+    const tick = () => { if (document.visibilityState === "visible") { threads.reload(); notes.reload(); sleep.reload(); } };
     const t = setInterval(tick, 30_000);
     addEventListener("focus", tick);
     return () => { clearInterval(t); removeEventListener("focus", tick); };
-  }, [threads.reload, notes.reload]);
+  }, [threads.reload, notes.reload, sleep.reload]);
   useLook(me.data);
 
   if (!me.data) return <div className="loading">{me.error ? <ErrorText error={me.error} /> : "Loading…"}</div>;
   const ctx: ShellContext = {
     user: me.data.user, me: me.data, setMe: me.set, build, refreshThreads: threads.reload,
-    groups: groups.data ?? [], refreshGroups: groups.reload, waiting: notes.waiting, refreshNotifications: notes.reload, openSide: () => setSideOpen(true),
+    groups: groups.data ?? [], refreshGroups: groups.reload, waiting: notes.waiting, refreshNotifications: notes.reload, sleep, openSide: () => setSideOpen(true),
     refreshState,
   };
 
@@ -82,6 +86,8 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
       <ProjectPage key={`${r.pool}/${r.threadId}`} ctx={ctx} pool={r.pool} threadId={r.threadId} section={r.section} />
     ) : r.page === "memory" ? (
       <Memory ctx={ctx} pool={r.pool} id={r.id} />
+    ) : r.page === "sleep" ? (
+      <SleepPage ctx={ctx} />
     ) : r.page === "settings" ? (
       <SettingsPage ctx={ctx} section={r.section} />
     ) : r.page === "admin" ? (
@@ -297,6 +303,11 @@ export function HiddenPool({ ctx, pool }: { ctx: ShellContext; pool: Pool }) {
   );
 }
 
+/** The private pool's small lock, where a general row has its dot. */
+export const PoolLock = () => (
+  <svg className="pool-lock" viewBox="0 0 12 14" aria-hidden="true"><rect x="1" y="6" width="10" height="7.5" rx="1.5" /><path d="M3.5 6V4.2a2.5 2.5 0 0 1 5 0V6" fill="none" strokeWidth="1.6" /></svg>
+);
+
 export const monogram = (user: UserCard) => user.monogram || user.displayName.slice(0, 2);
 
 const PROJECT_FILTERS: { projects: Display["projects"]; label: string }[] = [
@@ -381,6 +392,10 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
           <Icon name="bell" />Notifications{ctx.waiting > 0 && <span className="count" aria-label={`${ctx.waiting} waiting`}>{ctx.waiting}</span>}
         </a>
         <a href={href({ page: "memory", userId: user.id })} aria-current={route.page === "memory" ? "page" : undefined}><Icon name="memory" />Memory</a>
+        <a href={href({ page: "sleep", userId: user.id })} aria-current={route.page === "sleep" ? "page" : undefined} data-nav="sleep">
+          <Icon name="moon" />Sleep{ctx.sleep.fresh > 0 ? <span className="count" aria-label={`${ctx.sleep.fresh} new`}>{ctx.sleep.fresh}</span>
+            : ctx.sleep.running && <span className="busy" title="Sleeping" />}
+        </a>
       </nav>
       <div className="thread-tools">
         <details className="showing">
@@ -583,7 +598,7 @@ function ThreadLink({ t, userId, on, menu, child }: { t: ThreadSummary; userId: 
     <a className={`thread${t.unread ? " unread" : ""}${t.project ? " project" : ""}${child && inProject ? " dotted" : ""}`} href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })} aria-current={on ? "page" : undefined} {...menu(t)}>
       {t.project ? <span className={`project-mark ${t.pool}`} data-waiting={waiting || undefined}><Icon name="project" />{waiting && <span className="sr-only">a thread waits on you</span>}</span>
         : (!child || inProject) && (t.pool === "private"
-          ? <svg className="pool-lock" viewBox="0 0 12 14" aria-hidden="true"><rect x="1" y="6" width="10" height="7.5" rx="1.5" /><path d="M3.5 6V4.2a2.5 2.5 0 0 1 5 0V6" fill="none" strokeWidth="1.6" /></svg>
+          ? <PoolLock />
           : <span className="pool-dot" aria-hidden="true" />)}
       <span className="title">{t.title || (t.project ? "New project" : "New thread")}</span>
       <span className="when">

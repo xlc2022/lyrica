@@ -9,6 +9,7 @@ import {
 } from "./api.ts";
 import { MachinesSection } from "./Machines.tsx";
 import { her } from "./name.ts";
+import { SleepModeField, SleepTimeSection } from "./Sleep.tsx";
 import { TailnetSection } from "./Tailnet.tsx";
 import { UpdatesSection } from "./Updates.tsx";
 import { NotificationsSection } from "./Notifications.tsx";
@@ -57,7 +58,7 @@ const SETTINGS: SectionDef[] = [
 const ADMIN: SectionDef[] = [
   { key: "status", label: "Status", body: (ctx) => <StatusSection ctx={ctx} /> },
   { key: "users", label: "Users", body: (ctx) => <UsersSection ctx={ctx} /> },
-  { key: "sleep", label: "Sleep", body: (ctx) => <SleepSection ctx={ctx} /> },
+  { key: "sleep", label: "Sleep", body: (ctx) => <SleepTimeSection ctx={ctx} /> },
   { key: "unlocked", label: "Start unlocked", body: (ctx) => <UnlockedSection ctx={ctx} /> },
   { key: "tailnet", label: "Tailnet", body: (ctx) => <TailnetSection ctx={ctx} /> },
   { key: "web", label: "Web access", body: (ctx) => <Section title="Web access"><WebAccessSection userId={ctx.user.id} /></Section> },
@@ -379,6 +380,7 @@ function ProfilesSection({ ctx }: { ctx: ShellContext }) {
     <Section title="Model profiles">
       <p className="meta muted">General threads: {profiles.data.default} profile. Private and local-only threads: local profile.</p>
       <ErrorText error={error} />
+      <SleepModeField ctx={ctx} />
       <Switch label="Sleep fallback" hint="When off, each sleep phase uses its first model only; if that one is away, sleep waits for the next night."
         checked={profiles.data.sleepFallback} onChange={(sleepFallback) => run(async () => profiles.set(await patch<Profiles>(u(userId, "profiles"), { sleepFallback })))} />
       <div className="profiles">
@@ -478,22 +480,6 @@ function StatusSection({ ctx }: { ctx: ShellContext }) {
         <dt>Sleep time</dt><dd className="num">{sleep.data?.time ?? "…"}</dd>
         <dt>Start unlocked</dt><dd>{s ? (s.savedPassphrase ? "Passphrase saved" : "Passphrase not saved") : "…"}</dd>
       </dl>
-    </Section>
-  );
-}
-
-function SleepSection({ ctx }: { ctx: ShellContext }) {
-  const userId = ctx.user.id;
-  const sleep = useLoad(() => get<SleepTime>(u(userId, "admin", "sleep")), [userId]);
-  const [run, busy, error] = useAction();
-  const [time, setTime] = useState<string>();
-  return (
-    <Section title="Sleep">
-      <ErrorText error={sleep.error || error} />
-      <form className="inline" onSubmit={(e) => { e.preventDefault(); void run(async () => { sleep.set(await put<SleepTime>(u(userId, "admin", "sleep"), { time: time ?? sleep.data?.time })); setTime(undefined); }); }}>
-        <label className="field"><span>Sleep time</span><input type="time" value={time ?? sleep.data?.time ?? ""} onChange={(e) => setTime(e.target.value)} /></label>
-        <button className="primary" disabled={busy || !time || time === sleep.data?.time}>Save</button>
-      </form>
     </Section>
   );
 }
