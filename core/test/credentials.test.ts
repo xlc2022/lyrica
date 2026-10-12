@@ -175,6 +175,25 @@ describe("changing the passphrase", () => {
     started.closeSelf();
   });
 
+  it("keeps the change when the saved copy can't be re-saved, and removes the stale copy", async () => {
+    const home = directory();
+    const { secrets, store } = fakeStore(home);
+    const keyring = new Keyring(home);
+    keyring.credentials = store;
+    await keyring.initSelf("old-passphrase");
+    await keyring.saveSelfPassphrase("old-passphrase");
+    const save = store.save.bind(store);
+    store.save = async () => { throw new Error("systemd-creds encrypt failed"); };
+    expect(await keyring.changeSelfPassphrase("old-passphrase", "new-passphrase")).toEqual({ savedCopyRemoved: true });
+    store.save = save;
+    expect(keyring.hasSavedPassphrase()).toBe(false);
+    keyring.closeSelf();
+    const again = new Keyring(home);
+    await expect(again.unlockSelf("old-passphrase")).rejects.toThrow();
+    await again.unlockSelf("new-passphrase");
+    again.closeSelf();
+  });
+
   it("leaves a saved passphrase alone when there is none", async () => {
     const home = directory();
     const { secrets, store } = fakeStore(home);

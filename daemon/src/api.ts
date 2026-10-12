@@ -1580,7 +1580,7 @@ export interface AdminStatus {
 /** PUT /api/u/:userId/admin/passphrase → AdminStatus. Saves (with the passphrase) or forgets the self.db passphrase. */
 export interface PassphraseChange { save: boolean; passphrase?: string }
 
-/** POST /api/u/:userId/admin/passphrase/change → AdminStatus. Rekeys self.db with `next`; a wrong `current` is 403, counted on the limiter. A saved passphrase is re-saved. */
+/** POST /api/u/:userId/admin/passphrase/change → AdminStatus, plus `note` when a saved passphrase could not be re-saved and was removed. Rekeys self.db with `next`; a wrong `current` is 403, counted on the limiter. */
 export interface PassphraseRotate { current: string; next: string }
 
 /** GET /api/u/:userId/admin/users → UserCard[] */
