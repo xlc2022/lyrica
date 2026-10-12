@@ -6,7 +6,7 @@ import { TASK_NAMES, TASKS, THINKING_LEVELS, type CallContext, type ModelRef, ty
 import { selfName } from "../persona.ts";
 import { Forbidden, type User, type Users } from "../users.ts";
 import { addressesOutside, discoverModels, probeUrl, type DiscoveredModel, type ModelIdentity } from "./http.ts";
-import { hostError, hostFetch, HostRefused, hostOrigin, lyricaIdentity, pair } from "./host.ts";
+import { hostError, hostFetch, HostRefused, hostOrigin, listIn, lyricaIdentity, pair } from "./host.ts";
 import { baseName } from "./identity.ts";
 import { copyIdentity } from "./library.ts";
 import { acceptedSettings, ANSWER_SETTINGS, checkSettings, type AnswerSettings, type SettingSource } from "./settings.ts";
@@ -791,8 +791,7 @@ export class Models {
    */
   async downloads(actor: User, hostId: string): Promise<{ downloads: { id: string; state: string }[] }> {
     const ep = this.manageable(actor, hostId);
-    const list = (await this.hostCall(ep, "GET", "/host/v1/downloads")) as { downloads?: { id: string; state: string }[] } | { id: string; state: string }[];
-    const downloads = Array.isArray(list) ? list : list.downloads ?? [];
+    const downloads = listIn<{ id: string; state: string }>(await this.hostCall(ep, "GET", "/host/v1/downloads"), "downloads") ?? [];
     const fresh = downloads.filter((d) => d.state === "done" && !this.discovered.has(`${hostId}/${d.id}`));
     if (fresh.length) {
       await this.discover(actor, hostId);
@@ -818,8 +817,8 @@ export class Models {
     const ep = this.manageable(actor, o.endpoint.id);
     const usedIn = [...(this.uses(actor.id).get(offeringId) ?? []), ...(collectRefs(this.self()).get(offeringId) ?? [])];
     if (!opts.confirm) return { usedIn };
-    const record = (await this.hostCall(ep, "GET", "/host/v1/files")) as { path: string }[] | { files?: { path: string }[] };
-    const files = (Array.isArray(record) ? record : record.files ?? []).map((f) => f.path).filter((p) => copyFile(o.offering.modelId, p));
+    const record = listIn<{ path: string }>(await this.hostCall(ep, "GET", "/host/v1/files"), "files") ?? [];
+    const files = record.map((f) => f.path).filter((p) => copyFile(o.offering.modelId, p));
     if (!files.length) throw new HostRefused("refused", "Only files Lyrica downloaded can be deleted.");
     // A split GGUF is offered as its first shard; every shard goes. If one can't, the copy is gone anyway: say what's left.
     const deleted: string[] = [];
@@ -841,8 +840,8 @@ export class Models {
   /** A host's image library: its recipes (with proposals and missing parts) and its parts by role. */
   async imageLibrary(userId: string, hostId: string): Promise<{ recipes: unknown[]; parts: Record<string, unknown[]> }> {
     const ep = this.needHost(userId, hostId);
-    const recipes = (await this.hostCall(ep, "GET", "/host/v1/recipes")) as unknown[];
-    const parts = (await this.hostCall(ep, "GET", "/host/v1/parts")) as { role?: string }[];
+    const recipes = listIn<unknown>(await this.hostCall(ep, "GET", "/host/v1/recipes"), "recipes") ?? [];
+    const parts = listIn<{ role?: string }>(await this.hostCall(ep, "GET", "/host/v1/parts"), "parts") ?? [];
     const byRole: Record<string, unknown[]> = {};
     for (const p of parts) (byRole[p.role ?? "unknown"] ??= []).push(p);
     return { recipes, parts: byRole };
@@ -1175,13 +1174,13 @@ export class Models {
 
   /** A host's text models, from its library (host/API.md "Models"). */
   private async hostModels(ep: Endpoint): Promise<DiscoveredModel[]> {
-    const list = (await this.hostCall(ep, "GET", "/host/v1/models")) as {
+    const list = listIn<{
       id: string; kind?: string; sha256?: string | null; contextLength?: number | null; size?: number; downloaded?: boolean; identity?: ModelIdentity | null;
       capabilities?: { tools?: boolean; vision?: boolean; embedding?: boolean; reasoning?: string[] | null; transcribe?: boolean; speak?: { voices?: unknown } | null };
-    }[];
-    if (!Array.isArray(list)) throw new Error(`${ep.name} didn't return a model list`);
+    }>(await this.hostCall(ep, "GET", "/host/v1/models"), "models");
+    if (!list) throw new Error(`${ep.name} didn't return a model list`);
     // Image models are recipes: only confirmed ones become offerings, so a proposal never resolves.
-    const recipes = ((await this.hostCall(ep, "GET", "/host/v1/recipes?state=confirmed").catch(() => [])) as { id: string; name: string; state: string; does?: string[] }[])
+    const recipes = (listIn<{ id: string; name: string; state: string; does?: string[] }>(await this.hostCall(ep, "GET", "/host/v1/recipes?state=confirmed").catch(() => []), "recipes") ?? [])
       .filter((r) => r?.state === "confirmed").map((r) => ({
         modelId: `recipe/${r.id}`, recipe: r.name, ...(r.does?.includes("create") ? { image: true } : {}), ...(r.does?.includes("edit") ? { edit: true } : {}),
       } as DiscoveredModel));
