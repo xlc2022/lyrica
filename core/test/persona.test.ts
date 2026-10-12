@@ -43,12 +43,12 @@ describe("persona", () => {
     const owner = await new Users(keyring).createUser("owner", "pw", profile("Owner"), { admin: true });
     const store = new PersonaStore(self);
     store.importSeed(SEED);
-    // Measured as if she were called 40 characters, against "Lyrica"'s 6.
-    const room = CORE_LIMIT - coreText(store.read().core).length - (40 - "Lyrica".length);
+    // Measured as if she were called 40 emoji (80 UTF-16 units), against "Lyrica"'s 6.
+    const room = CORE_LIMIT - coreText(store.read().core).length - (80 - "Lyrica".length);
     const style = store.files().get("STYLE.md")!.trim();
     expect(() => store.apply(owner, "STYLE.md", `${style}${"x".repeat(room + 1)}`)).toThrow(/over 12,000/);
     store.apply(owner, "STYLE.md", `${style}${"x".repeat(room)}`);
-    setSelfName(self, "y".repeat(40));
+    setSelfName(self, "😀".repeat(40));
     expect(coreText(store.read().core)).toHaveLength(CORE_LIMIT);
     // Topics have no such limit.
     store.apply(owner, "persona_topics/music.md", "y".repeat(CORE_LIMIT + 1));

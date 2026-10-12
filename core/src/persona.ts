@@ -9,8 +9,8 @@ export const CORE_FILES = ["SOUL.md", "STYLE.md", "REGISTER.md"] as const;
 const TOPIC_DIR = "persona_topics";
 /** Most characters in the core (SOUL, STYLE and REGISTER joined), so it is never cut in her prompt. */
 export const CORE_LIMIT = 12_000;
-/** checkName's longest name, for measuring the core whatever she is called. */
-const LONGEST_NAME = "x".repeat(40);
+/** checkName's longest name (40 code points, 80 UTF-16 units), for measuring the core whatever she is called. */
+const LONGEST_NAME = "😀".repeat(40);
 const VALID_PATH = /^(persona_topics\/)?[A-Za-z0-9_.-]+\.md$/;
 
 /** Her name when none is set. */
