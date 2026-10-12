@@ -1199,7 +1199,8 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   name, q)` is what the account can see (none for Other).
   `repositoriesFor(t)`; `cloneFor(t)` makes or fetches each clone in the
   sandbox under the thread's folder in the home workspace (`repos/<name>`,
-  a subagent's under its parent's) and returns the problems, never removing
+  a subagent's under its parent's, mounted read-only for one with
+  `reposReadOnly`) and returns the problems, never removing
   one (a clone goes with the thread); `addRepository(t, r)` is the
   `add_repository` tool's change. `forgeEnv(t)` (`gitEnv`) is the
   environment for a sandbox run: one credential helper per repository URL
