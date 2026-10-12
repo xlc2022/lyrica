@@ -17,8 +17,13 @@ export type Route =
   | { page: "project"; userId: string; pool: Pool; threadId: string; section?: string }
   | { page: "memory"; userId: string; pool?: Pool; id?: string }
   | { page: "sleep"; userId: string }
+  /** The Models area, at one of its tabs (Overview when none); `add: "host"` is the Add model host page under Hosts and endpoints. */
+  | { page: "models"; userId: string; tab?: ModelsTab; add?: "host" }
   | { page: "settings"; userId: string; section?: string }
   | { page: "admin"; userId: string; section?: string };
+
+export const MODELS_TABS = ["overview", "hosts", "cleanup", "calls"] as const;
+export type ModelsTab = (typeof MODELS_TABS)[number];
 
 /** What the panel can show: a thread (with its drawer), a thread's files, a project's settings, or a memory. */
 export type Panel =
@@ -52,6 +57,12 @@ export function parse(hash: string): Route {
   if (section === "p" && pool && b) return { page: "project", userId, pool, threadId: b, ...(c ? { section: c } : {}) };
   if (section === "memory") return { page: "memory", userId, pool, id: pool ? b : undefined };
   if (section === "sleep") return { page: "sleep", userId };
+  if (section === "models") {
+    const tab = MODELS_TABS.find((t) => t === a);
+    return { page: "models", userId, ...(tab && tab !== "overview" ? { tab } : {}), ...(tab === "hosts" && b === "add-host" ? { add: "host" as const } : {}) };
+  }
+  // Settings → Endpoints moved to Models → Hosts and endpoints.
+  if (section === "settings" && a === "endpoints") return { page: "models", userId, tab: "hosts" };
   // A section may have pages of its own under it (settings/machines/new): the rest of the path rides along.
   const rest = [a, b, ...more].filter((x): x is string => x !== undefined).join("/");
   if (section === "settings") return { page: "settings", userId, ...(rest ? { section: rest } : {}) };
@@ -74,6 +85,7 @@ export function href(r: Route): string {
     case "project": return `#/u/${e(r.userId)}/p/${r.pool}/${e(r.threadId)}` + (r.section ? `/${e(r.section)}` : "");
     case "memory": return `#/u/${e(r.userId)}/memory` + (r.pool && r.id ? `/${r.pool}/${e(r.id)}` : "");
     case "sleep": return `#/u/${e(r.userId)}/sleep`;
+    case "models": return `#/u/${e(r.userId)}/models` + (r.tab && r.tab !== "overview" ? `/${r.tab}` : "") + (r.tab === "hosts" && r.add === "host" ? "/add-host" : "");
     case "settings": return `#/u/${e(r.userId)}/settings` + (r.section ? `/${r.section.split("/").map(e).join("/")}` : "");
     case "admin": return `#/u/${e(r.userId)}/admin` + (r.section ? `/${r.section.split("/").map(e).join("/")}` : "");
   }
@@ -92,10 +104,17 @@ export function idHref(userId: string, pool: Pool, id: string): string {
 
 export const go = (r: Route) => { location.hash = href(r); };
 
+/** The route at the current address; an address that moved is replaced by its new one (settings/endpoints). */
+function current(): Route {
+  const r = parse(location.hash);
+  if (r.page === "models" && !location.hash.includes("/models")) history.replaceState(null, "", href(r));
+  return r;
+}
+
 export function useRoute(): Route {
-  const [route, setRoute] = useState(() => parse(location.hash));
+  const [route, setRoute] = useState(current);
   useEffect(() => {
-    const on = () => setRoute(parse(location.hash));
+    const on = () => setRoute(current());
     addEventListener("hashchange", on);
     return () => removeEventListener("hashchange", on);
   }, []);
