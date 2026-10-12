@@ -795,6 +795,10 @@ it's off.
   - The profiles' `image.create` and `image.edit` tasks decide what those
     mean, so the router's rules apply as for text. Private and local-only
     threads use local image models only.
+  - Each recipe is tagged **fast**, **quality** or both (2026-10-12). A
+    tier takes the first model in the task's ordered list whose tag
+    matches, and falls back down the same list; a cloud model serves both,
+    asking its service for low or high quality.
   - Results go to `images/` in the thread's encrypted folder, with prompt
     metadata removed, and return to her as image content. Messages and
     `tool_end` carry image paths, model and create tier; the prompts stay in
