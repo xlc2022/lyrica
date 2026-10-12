@@ -9,7 +9,8 @@ import { cleanPath, overlaps } from "./settings.ts";
  * lyricad's user, which is in its group, so a grant there would hand them
  * Caddy's admin socket.
  */
-export const NEVER_GRANTED = ["/run/lyrica-caddy"];
+// Caddy's admin socket, and the updater's state and snapshots (root's; docs/daemon.md, "Updates").
+export const NEVER_GRANTED = ["/run/lyrica-caddy", "/var/lib/lyrica-update", "/var/lib/lyrica-snapshots"];
 
 /** The folders each user may grant to their threads, kept in self.db. */
 export class AllowedPaths {

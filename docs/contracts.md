@@ -944,26 +944,36 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   with a password over the socket. Being on the machine isn't enough.
 - **Scheduler:** at `sleep.time` (default 04:00), for each user not in manual
   mode, sleep each pool, one run at a time.
-- **Planned (Updates,** [briefs/releases.md](briefs/releases.md)**):** an
-  update socket, `<runtime>/update.sock` (mode `0600`, the service user's,
-  for root's updater; no login, and like the rest of the runtime directory
-  never inside a sandbox), serving only `GET /health` (`{ commit,
-  locked, checks: { name, ok, error? }[] }`, no text), `POST /drain` (stop
-  new turns; answers `{ busy: threadId[] }` until idle) and `POST /undrain`.
-  While draining, `SendRequest` is `409` with `{ updating: true }` (`503`
-  stays "locked"). Each
-  encrypted database records its schema version (`PRAGMA user_version`)
-  and the oldest schema that can read it (`meta.min_reader`: an expand
-  leaves it, a contract raises it); opening one whose `min_reader` is above
-  the release's schema throws `SchemaTooNew`. A
-  database migrates in one transaction that checks `integrity_check` and
-  `foreign_key_check` before committing; a failure leaves it unchanged and
-  shows as a failed `/health` check. An
-  administrator's `GET /api/u/:userId/admin/updates` lists the running
-  release, kept releases, the newest update note (tag, commit, message) and
-  the updater's state; `POST …/updates` with `{ tag }` and `POST
-  …/updates/rollback` with `{ commit }` write a request the updater's
-  path unit picks up. The request directory is refused as a grant.
+- **Updates** (docs/daemon.md, "Updates"): an update socket,
+  `<runtime>/update.sock` (mode `0600`, the service user's, for root's
+  updater; no login, and like the rest of the runtime directory never
+  inside a sandbox; `LyricadOptions.update: { socket?: string | false,
+  state?, requests? }`), serving only `GET /health` (`Health`: `{ commit,
+  locked, checks: { name, ok, error? }[] }`, no text), `POST /drain`
+  (`Drain`: refuses new turns; `{ busy: BusyItem[] }` with `BusyItem {
+  kind: "turn" | "subagent" | "sleep", userId, pool?, threadId? }`, empty
+  when idle) and `POST /undrain`. While draining, `SendRequest`, sleep
+  starts, sleep-item chats, suggestion starts and a rewind with `then` are
+  `409` with `{ updating: true }` (`Updating`; `503` stays "locked"). An
+  administrator's `GET /api/u/:userId/admin/updates` (`Updates`: running
+  release, kept releases with whether each can be rolled back to, the
+  newest update note, the updater's state, `lastRollback`); `POST
+  …/updates` with `{ tag }`, `POST …/updates/rollback` with `{ commit }`
+  and `POST …/updates/check` write `<runtime>/updates/request.json` for the
+  updater's path unit (`409` while an update runs, except a rollback on
+  probation).
+- **Schema versions** (`core/migrations`): each encrypted database records
+  its schema version (`PRAGMA user_version`) and the oldest schema that can
+  read it (`meta.min_reader`: an expand step leaves it, a contract step
+  raises it). `STEPS[kind]` lists `MigrationStep { version, contract?,
+  run(db, ctx) }` for `"self" | "user" | "pool"`; `SCHEMA` and `MIN_READER`
+  are this release's. `migrate(db, kind, ctx?)` runs the missing steps in
+  one transaction with foreign keys off, then `integrity_check` and
+  `foreign_key_check`, and throws `MigrationFailed(kind, check)` leaving the
+  database unchanged; opening one whose `min_reader` is above `SCHEMA`
+  throws `SchemaTooNew(kind, minReader, schema)` (unlock answers `409`, and
+  `/health`'s databases check fails). `checkReadable` does only that check,
+  for read-only opens. Modules no longer create their own tables.
 
 ## bin/lyrica
 
@@ -1139,7 +1149,7 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   Buffer`, so a snapshot is put back byte for byte.
 - **Allowed paths** live in `self.db` (`workspace_paths`, keyed by user ID)
   and change only with an administrator actor. Paths overlapping
-  `NEVER_GRANTED` (`/run/lyrica-caddy`) are refused, because sandboxes run with
+  `NEVER_GRANTED` (`/run/lyrica-caddy`, `/var/lib/lyrica-update`, `/var/lib/lyrica-snapshots`) are refused, because sandboxes run with
   `lyricad`'s groups.
 - See [workspace.md](workspace.md).
 
