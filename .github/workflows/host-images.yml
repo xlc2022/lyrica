@@ -9,7 +9,7 @@ on:
   push:
     branches: [main]
     paths: ["host/comfyui/**", "host/speech/**", "host/compose.nvidia.yaml", "host/compose.amd.yaml", "host/recipes/**"]
-# The jobs run on the operator's own runner (docs/ci.md), so their token can only read.
+# The jobs run on Li's own runner (docs/ci.md), so their token can only read.
 permissions:
   contents: read
 # One runner: a newer push to a PR replaces its older runs; main tests every commit.
@@ -29,7 +29,7 @@ jobs:
       # The ROCm base image is about 12 GB compressed and over 30 GB unpacked.
       # Free the runner's disk, and use Docker's classic overlay2 store, which
       # drops each compressed layer once it is unpacked (the containerd store
-      # keeps both). Only on GitHub's runners: the operator's runner has the disk, and
+      # keeps both). Only on GitHub's runners: Li's runner has the disk, and
       # keeps its Docker cache between builds.
       - name: Make room
         if: runner.environment == 'github-hosted'
