@@ -61,6 +61,98 @@ async function until<T>(fn: () => Promise<T>, ok: (t: T) => boolean, ms = 8000):
   }
 }
 
+/** A child's first model call that waits until released, then answers `reply` (by default a tool call, so the turn goes on). */
+function held(reply: Reply = toParent("Planning the beds.")) {
+  let entered!: () => void;
+  let release!: () => void;
+  const busy = new Promise<void>((r) => (entered = r));
+  const gate = new Promise<void>((r) => (release = r));
+  const first = async (): Promise<Reply> => { entered(); await gate; return reply; };
+  return { busy, release, first };
+}
+
+describe("messages to a busy thread", () => {
+  it("a parent's message joins the child's running turn; the person's waits for the next", async () => {
+    const { li, model, parent, child, say, childPath, messages, thread } = await setup();
+    const turn = held();
+    parent.push(start("Garden", "Plan the beds."), { text: "Started." });
+    child.push(turn.first, { text: "Tulips added." }, { text: "Roses too." });
+    const id = toolEnd(await say("plan the garden in its own thread"))!.threads![0]!.id;
+    await turn.busy;
+    const view = li.events(`${childPath(id)}/events`);
+    await view.ready;
+
+    // While the child works: its parent writes, then the person does.
+    parent.push({ tools: [{ name: "threads", args: { action: "message", id, text: "Add tulips." } }] }, { text: "Told it." });
+    expect(toolEnd(await say("tell it to add tulips"))).toMatchObject({ isError: false });
+    const sent = await li.post<{ queued: boolean }>(`${childPath(id)}/messages`, { text: "and roses" });
+    expect(sent.body.queued).toBe(true);
+    await view.until((e) => e.type === "queue");
+    turn.release();
+
+    // The parent's message reached the turn after its tool call, before the turn's reply; the person's went as the next turn.
+    const stored = await until(() => messages(childPath(id)), (m) => m.filter((x) => x.role === "assistant").length === 3);
+    expect(stored.map((m) => m.role === "user" ? `${m.from?.kind ?? "you"}: ${(m.parts[0] as { text: string }).text}` : m.role)).toEqual([
+      "parent: Plan the beds.", "assistant", "parent: Add tulips.", "assistant", "you: and roses", "assistant",
+    ]);
+    const calls = model.requests.filter(isChild).map(said);
+    expect(calls).toHaveLength(3);
+    expect(calls[1]).toContain("Add tulips.");
+    expect(calls[1]).not.toContain("and roses");
+    expect(calls[2]).toContain("and roses");
+    // Its open view saw it land inside the turn, and never as waiting.
+    await view.until((e) => e.type === "turn_end");
+    const seen = view.events.map((e) => e.event);
+    expect(seen.findIndex((e) => e.type === "received")).toBeLessThan(seen.findIndex((e) => e.type === "turn_end"));
+    expect(seen.find((e) => e.type === "received")).toEqual({ type: "received", text: `[From t:${thread.id}]\n\nAdd tulips.` });
+    expect(seen.filter((e) => e.type === "queue").every((e) => !JSON.stringify(e).includes("tulips"))).toBe(true);
+  });
+
+  it("a parent's message to a child whose turn fails is kept in the child's thread", async () => {
+    const { li, model, parent, child, say, childPath, messages } = await setup();
+    const turn = held({ status: 400 });
+    parent.push(start("Garden", "Plan the beds."), { text: "Started." });
+    child.push(turn.first, { status: 400 }, { text: "Tulips added." });
+    const id = toolEnd(await say("plan the garden in its own thread"))!.threads![0]!.id;
+    await turn.busy;
+    const view = li.events(`${childPath(id)}/events`);
+    await view.ready;
+    parent.push({ tools: [{ name: "threads", args: { action: "message", id, text: "Add tulips." } }] }, { text: "Told it." });
+    await say("tell it to add tulips");
+    turn.release();
+    await view.until((e) => e.type === "turn_end");
+    expect(view.events.map((e) => e.event.type)).toContain("received");
+
+    // Both replies failed: the message is stored between them, as from the parent, and the next turn has it.
+    const stored = await messages(childPath(id));
+    expect(stored.map((m) => m.role === "user" ? `${m.from?.kind}: ${(m.parts[0] as { text: string }).text}` : m.error ? "failed" : "answered"))
+      .toEqual(["parent: Plan the beds.", "failed", "parent: Add tulips.", "failed"]);
+    expect((await li.post(`${childPath(id)}/messages`, { text: "go on" })).status).toBe(200);
+    await until(() => messages(childPath(id)), (m) => m.at(-1)?.role === "assistant" && !m.at(-1)!.error);
+    expect(said(model.requests.filter(isChild).at(-1)!)).toContain("Add tulips.");
+  });
+
+  it("a parent's message the turn hadn't taken when stopped is kept", async () => {
+    const { li, parent, child, say, childPath, messages } = await setup();
+    const turn = held({ text: "Too late." });
+    parent.push(start("Garden", "Plan the beds."), { text: "Started." });
+    child.push(turn.first);
+    const id = toolEnd(await say("plan the garden in its own thread"))!.threads![0]!.id;
+    await turn.busy;
+    const view = li.events(`${childPath(id)}/events`);
+    await view.ready;
+    parent.push({ tools: [{ name: "threads", args: { action: "message", id, text: "Add tulips." } }] }, { text: "Told it." });
+    await say("tell it to add tulips");
+    expect((await li.post(`${childPath(id)}/stop`)).status).toBe(200);
+    turn.release();
+    await view.until((e) => e.type === "turn_end");
+    const seen = view.events.map((e) => e.event.type);
+    expect(seen.indexOf("received")).toBeGreaterThan(-1);
+    expect(seen.indexOf("received")).toBeLessThan(seen.indexOf("turn_end"));
+    expect((await messages(childPath(id))).at(-1)).toMatchObject({ role: "user", from: { kind: "parent" }, parts: [{ type: "text", text: "Add tulips." }] });
+  });
+});
+
 describe("naming a thread", () => {
   it("finds it by ID in any form, or by its current title", () => {
     const rows = [{ id: "web/aa11", title: "Homelab" }, { id: "web/bb22", title: "DNS" }, { id: "web/cc33", title: "dns" }, { id: "web/dd44" }];

@@ -163,7 +163,7 @@ export class ChildThreads implements ThreadsHost {
     if (!target || (target.parent !== from.threadId && !sibling)) throw new Error(`[t:${to}] isn't a child thread of this one${mine ? ", or another thread of this project" : ""}`);
     if (this.o.paused?.(userId, from.pool, target.parent)) throw new Error("this project is paused; its threads take no messages until the person resumes it");
     if (target.queued) throw new Error(`[t:${to}] is queued and hasn't started; it starts when another thread finishes`);
-    // An idle child starts a turn, so the limit holds here too; a working one takes it into its next turn.
+    // An idle child starts a turn, so the limit holds here too; a working one takes it into its running turn.
     if (!this.o.host().busy(userId, from.pool, to)) this.mayStartTurn(userId);
     if (target.resolved_at) this.setResolved(userId, from.pool, to, false);
     await this.o.host().get(userId, from.pool, to).send(text, sibling ? { fromThread: from.threadId } : { fromParent: from.threadId });
