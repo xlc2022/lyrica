@@ -13,13 +13,14 @@ import { Delegation, Sleep, type Limits, type SleepLimits } from "@lyrica/extens
 import { ChildThreads } from "./children.ts";
 import { Projects } from "./projects.ts";
 import { Watcher } from "./watch.ts";
-import type { State, UserCard } from "./api.ts";
+import type { BusyItem, Health, State, UserCard } from "./api.ts";
 import { RateLimiter, Sessions } from "./auth.ts";
 import { ThreadHost } from "./hosted.ts";
 import {
-  checkOrigin, fromLoopback, HttpError, makeRequest, match, plainAddress, sendJson, serveStatic, statusOf,
+  checkOrigin, fromLoopback, HttpError, makeRequest, match, plainAddress, sendJson, serveStatic, statusOf, Updating,
   type Request, type Route, type TrustForwarded,
 } from "./http.ts";
+import { listenUpdateSocket, type Drainable, type UpdatePaths } from "./updates.ts";
 import { ExternalListener, WebAccess, type External } from "./web/access.ts";
 import { apiRoutes } from "./routes.ts";
 import { sweepUser } from "./sweep.ts";
@@ -70,6 +71,12 @@ export interface LyricadOptions {
   rateLimit?: ConstructorParameters<typeof RateLimiter>[0];
   /** Where log lines go. They carry method, route, status and timing, never text. */
   log?: (line: string) => void;
+  /**
+   * Updates: the socket root's updater uses (default `<home>/update.sock`;
+   * false for none), the updater's state folder (default
+   * /var/lib/lyrica-update) and where requests go (default `<home>/updates`).
+   */
+  update?: { socket?: string | false; state?: string; requests?: string };
 }
 
 /** What exists once self.db is unlocked. */
@@ -98,12 +105,18 @@ export interface Services {
 
 const DEFAULT_WEB = fileURLToPath(new URL("../../web/dist", import.meta.url));
 
-/** The version from the repository's package.json, and the build: LYRICA_BUILD (set when building a release), else the git commit, else "dev". */
-const BUILD: Pick<State, "version" | "build"> = (() => {
+/**
+ * The version from the repository's package.json, and the build: the commit in
+ * RELEASE.json (written when a release is built), else LYRICA_BUILD (the NixOS
+ * module), else the git commit, else "dev".
+ */
+export const BUILD: Pick<State, "version" | "build"> = (() => {
   const root = fileURLToPath(new URL("../..", import.meta.url));
   let version = "0";
   try { version = String((JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { version?: string }).version ?? "0"); } catch { /* no package.json beside us */ }
-  let build = process.env.LYRICA_BUILD?.trim() || "";
+  let build = "";
+  try { build = String((JSON.parse(readFileSync(join(root, "RELEASE.json"), "utf8")) as { commit?: string }).commit ?? "").slice(0, 12); } catch { /* not a built release */ }
+  build ||= process.env.LYRICA_BUILD?.trim() || "";
   if (!build) {
     try { build = execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: root, stdio: ["ignore", "pipe", "ignore"], timeout: 2000 }).toString().trim(); } catch { /* not a checkout */ }
   }
@@ -115,7 +128,7 @@ const BUILD: Pick<State, "version" | "build"> = (() => {
  * in-process Pi sessions, and serves the HTTP and SSE API on 127.0.0.1 and a
  * Unix socket. It starts locked unless the self.db passphrase was saved.
  */
-export class Lyricad {
+export class Lyricad implements Drainable {
   readonly keyring: Keyring;
   readonly sessions: Sessions;
   readonly limiter: RateLimiter;
@@ -130,6 +143,12 @@ export class Lyricad {
   private readonly nightly: NodeJS.Timeout;
   /** The day the scheduled sleep last ran, so it runs once a night. */
   private sleptOn = "";
+  /** The scheduled sleep came due during an update's drain: it runs at undrain. */
+  private sleepDue = false;
+  private drainingNow = false;
+  /** Why unlocking failed, other than a wrong passphrase (a database this release can't read or migrate): a failed health check. */
+  private unlockError: string | undefined;
+  readonly updatePaths: UpdatePaths;
 
   constructor(readonly opts: LyricadOptions) {
     this.keyring = new Keyring(opts.home, opts.argon2);
@@ -143,6 +162,7 @@ export class Lyricad {
     this.log = opts.log ?? ((line) => process.stderr.write(`${line}\n`));
     this.routes = apiRoutes(this);
     this.external = new ExternalListener(join(opts.home, "web-external.json"), (o) => this.listenExternal(o));
+    this.updatePaths = { state: opts.update?.state ?? "/var/lib/lyrica-update", requests: opts.update?.requests ?? join(opts.home, "updates") };
   }
 
   get locked(): boolean { return !this.services; }
@@ -167,10 +187,12 @@ export class Lyricad {
       chmodSync(socket, 0o600);
       this.servers.push(local);
     }
+    const updateSocket = this.opts.update?.socket === false ? undefined : this.opts.update?.socket ?? join(this.opts.home, "update.sock");
+    if (updateSocket) this.servers.push(await listenUpdateSocket(updateSocket, this, this.log));
     this.log(`lyricad listening on 127.0.0.1:${this.port}${socket ? ` and ${socket}` : ""}`);
     // While locked it answers only state, unlock and the web UI's files here too, so the proxy can show the unlock page.
     await this.external.start().catch((err: Error) => this.log(`the external proxy's listener didn't open: ${err.message}`));
-    if (await this.keyring.unlockSaved().catch((err: Error) => { this.log(`the saved passphrase didn't unlock self.db: ${err.message}`); return false; })) {
+    if (await this.keyring.unlockSaved().catch((err: Error) => { this.unlockFailed(err); this.log(`the saved passphrase didn't unlock self.db: ${err.message}`); return false; })) {
       await this.unlocked();
     } else {
       this.log("lyricad is locked");
@@ -187,7 +209,13 @@ export class Lyricad {
   async unlock(passphrase: string): Promise<void> {
     if (this.services || this.unlocking) throw new HttpError(409, "already unlocked or unlocking");
     this.unlocking = (async () => {
-      await this.keyring.unlockSelf(passphrase);
+      try {
+        await this.keyring.unlockSelf(passphrase);
+      } catch (err) {
+        this.unlockFailed(err as Error);
+        throw err;
+      }
+      this.unlockError = undefined;
       await this.unlocked();
     })();
     try {
@@ -195,6 +223,11 @@ export class Lyricad {
     } finally {
       this.unlocking = undefined;
     }
+  }
+
+  /** A database this release can't read or migrate fails the health check; a wrong passphrase doesn't. */
+  private unlockFailed(err: Error): void {
+    if (err.name === "SchemaTooNew" || err.name === "MigrationFailed") this.unlockError = `${err.name}: ${err.message}`;
   }
 
   /** Builds everything that needs self.db, runs the network self-test, and takes saved user keys. */
@@ -248,6 +281,7 @@ export class Lyricad {
     const proposals = new PersonaProposals(keyring.self(), users, persona);
     const sleep = new Sleep({ users, memory, models, persona, proposals, hasKey: (id) => keyring.hasUserKey(id), cwd, limits: this.opts.sleep, log: this.log });
     const prefs = new ThreadPrefs((id) => users.openUserDb(id));
+    host.draining = this.drainingNow;
     this.services = { users, memory, models, workspace, persona, proposals, delegation, children, projects, watcher, sleep, host, web, prefs };
     await web.resume();
     for (const u of users.all()) {
@@ -316,6 +350,13 @@ export class Lyricad {
     const pad = (n: number) => String(n).padStart(2, "0");
     if (`${pad(now.getHours())}:${pad(now.getMinutes())}` !== this.sleepTime() || this.sleptOn === now.toDateString()) return;
     this.sleptOn = now.toDateString();
+    if (this.draining) { this.sleepDue = true; return; }
+    this.night(now);
+  }
+
+  /** The night's work: model cleanup, the sweep, idle project threads, then sleep. */
+  private night(now: Date): void {
+    if (!this.services) return;
     try { this.services.models.prune(); } catch (err) { this.log(`model cleanup failed: ${(err as Error).name}`); }
     this.sweep(now);
     for (const u of this.services.users.all()) {
@@ -355,6 +396,71 @@ export class Lyricad {
         await s.sleep.run(u.id, pool, "scheduled").catch((err: Error) => this.log(`sleep failed: ${err.name}`));
       }
     }
+  }
+
+  // --- Updates (updates.ts) ---
+
+  get draining(): boolean { return this.drainingNow; }
+  set draining(on: boolean) {
+    this.drainingNow = on;
+    if (this.services) this.services.host.draining = on;
+  }
+
+  /** New turns from outside are refused while an update drains. */
+  refuseWhileDraining(): void {
+    if (this.drainingNow) throw new Updating();
+  }
+
+  /** Back from a drain that gave up: the sleep that came due meanwhile runs now. */
+  undrained(): void {
+    if (this.sleepDue && this.services) {
+      this.sleepDue = false;
+      this.night(new Date());
+    }
+  }
+
+  /** What a drain waits for: turns (and messages waiting for a model), subagent runs and sleep runs. IDs only. */
+  busy(): BusyItem[] {
+    const s = this.services;
+    if (!s) return [];
+    return [
+      ...s.host.working().map((t) => ({ kind: "turn" as const, ...t })),
+      ...s.delegation.working().map((t) => ({ kind: "subagent" as const, ...t })),
+      ...s.sleep.working().map((userId) => ({ kind: "sleep" as const, userId })),
+    ];
+  }
+
+  /**
+   * The checks probation waits for once unlocked: every open database
+   * migrates and opens, the workspace self-test, the model router for each
+   * user whose key is here, and the web UI's files. Check names and error
+   * names only.
+   */
+  async health(): Promise<Health> {
+    const commit = BUILD.build ?? "dev";
+    const s = this.services;
+    if (!s) return { commit, locked: true, checks: this.unlockError ? [{ name: "databases", ok: false, error: this.unlockError }] : [] };
+    const checks: Health["checks"] = [];
+    const check = (name: string, fn: () => void) => {
+      try { fn(); checks.push({ name, ok: true }); } catch (err) { checks.push({ name, ok: false, error: `${(err as Error).name}: ${(err as Error).message.split("\n")[0]}` }); }
+    };
+    const keyed = s.users.all().filter((u) => this.keyring.hasUserKey(u.id));
+    check("databases", () => {
+      this.keyring.self().prepare("SELECT count(*) FROM users").get();
+      for (const u of keyed) {
+        s.users.openUserDb(u.id).close();
+        s.memory.openOwnerView(u.id).close();
+      }
+    });
+    check("workspace", () => { if (s.workspace.networkRefused) throw new Error(s.workspace.networkRefused); });
+    check("models", () => {
+      for (const u of keyed) {
+        s.models.callContext(u.id, "general", "update-health");
+        s.models.profile(u.id, "cloud");
+      }
+    });
+    check("web", () => { readFileSync(join(this.opts.webDir ?? DEFAULT_WEB, "index.html")); });
+    return { commit, locked: false, checks };
   }
 
   state(cookie: string | undefined): State {
@@ -431,7 +537,8 @@ export class Lyricad {
       if (status === 500) this.log(`error in ${method} ${routeName}: ${(err as Error).name}: ${(err as Error).message.split("\n")[0]}`);
       // Offline says which models were tried, so the interface can show it the same way for chat, images and speech.
       const offline = err instanceof Offline ? { code: err.code, task: err.task, tried: err.tried } : {};
-      if (!res.headersSent) sendJson(res, status, { error: message, ...offline }, err instanceof HttpError ? err.headers : {});
+      const updating = err instanceof Updating ? { updating: true } : {};
+      if (!res.headersSent) sendJson(res, status, { error: message, ...offline, ...updating }, err instanceof HttpError ? err.headers : {});
       else res.end();
     }
   }

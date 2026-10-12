@@ -52,6 +52,8 @@ interface Opened { session: AgentSession; view: PoolView; meter: ContextMeter; d
 /** The threads lyricad hosts, keyed by user, pool and thread. A record is light; its Pi session opens on first use. */
 export class ThreadHost {
   private readonly threads = new Map<string, HostedThread>();
+  /** An update is draining: new turns from outside are refused, and the watcher's looks wait. */
+  draining = false;
 
   constructor(readonly opts: HostOptions) {
     // A run's events go to its parent thread's stream and its subagent thread's own, wherever they are open.
@@ -131,6 +133,14 @@ export class ThreadHost {
   /** Something was delivered into the thread: its open views see it, once, however it got there. */
   delivered(userId: string, pool: Pool, threadId: string, content: string, details: unknown): void {
     this.threads.get(`${userId}/${pool}/${threadId}`)?.delivered(content, details);
+  }
+
+  /** Threads with a turn running or a message waiting for a model to answer: what an update's drain waits for. */
+  working(): { userId: string; pool: Pool; threadId: string }[] {
+    return [...this.threads].filter(([, t]) => t.working).map(([k]) => {
+      const [userId, pool, ...rest] = k.split("/");
+      return { userId: userId!, pool: pool as Pool, threadId: rest.join("/") };
+    });
   }
 
   /** Whether a turn is running in the thread, without creating a record. */
@@ -304,6 +314,9 @@ export class HostedThread {
 
   /** Waiting for an answer to a permission request. */
   get waiting(): boolean { return this.pending.size > 0; }
+
+  /** A turn runs, or a message waits for a model to answer. */
+  get working(): boolean { return this.busy || !!this.held; }
 
   private async run(text: string): Promise<void> {
     this.stopIdle();

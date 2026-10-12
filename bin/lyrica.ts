@@ -2,11 +2,11 @@ import { existsSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  Keyring, MACHINE_LIMITS, parseHost, proxmoxAddress, PersonaStore, PRONOUN_PRESETS, pronounLabel, Users, Workspace,
+  Keyring, MACHINE_LIMITS, MIN_READER, SCHEMA, parseHost, proxmoxAddress, PersonaStore, PRONOUN_PRESETS, pronounLabel, Users, Workspace,
   type MachineLimit, type Pool, type Profile, type Pronouns, type User,
 } from "@lyrica/core";
 import { AgentSessionRuntime, InteractiveMode } from "@earendil-works/pi-coding-agent";
-import { Lyricad } from "@lyrica/daemon";
+import { BUILD, Lyricad, smokeTest } from "@lyrica/daemon";
 import { openBench } from "./bench.ts";
 import { modelsAdmin, MODELS_USAGE } from "./models.ts";
 
@@ -30,6 +30,8 @@ ${MODELS_USAGE}
   lyrica dev --runtime <dir> --user <login> [--private | --local-only] [--debug-prompt]
   lyrica serve [--port <port>]   (default 7340)
   lyrica chat | mem              (not built yet)
+  lyrica version [--json]        (the build, and each database's schema version and oldest reader)
+  lyrica smoke-test <empty dir> [--port <port>]   (the updater's check of a release, with test data only)
 
 serve and admin commands use --runtime <dir>, else LYRICA_HOME, else ./runtime.
 Passwords are only read at a hidden prompt.`;
@@ -57,6 +59,20 @@ async function run(argv: string[]): Promise<void> {
     return admin(argv.slice(1), home);
   }
   if (cmd === "dev") return dev(argv.slice(1));
+  if (cmd === "version") {
+    const info = { version: BUILD.version, build: BUILD.build, schema: SCHEMA, minReader: MIN_READER };
+    console.log(argv.includes("--json") ? JSON.stringify(info) : `Lyrica ${info.version}, build ${info.build}`);
+    return;
+  }
+  if (cmd === "smoke-test") {
+    const port = Number(flag("--port") ?? 0);
+    const dir = argv[1];
+    if (!dir) throw new Error(USAGE);
+    const results = await smokeTest(dir, { port });
+    for (const r of results) console.log(`${r.ok ? "ok  " : "FAIL"} ${r.name}${r.error ? `: ${r.error}` : ""}`);
+    if (results.some((r) => !r.ok)) process.exitCode = 1;
+    return;
+  }
   if (cmd === "serve") {
     const home = flag("--runtime") ?? process.env.LYRICA_HOME ?? "runtime";
     const port = Number(flag("--port") ?? 7340);
