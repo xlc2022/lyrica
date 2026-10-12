@@ -37,7 +37,7 @@ user and pool:
 ```text
 runtime/
   self.db                      shared: persona (with revisions), global settings, and the users
-                               index (login, admin flag, profile, password-wrapped key)
+                               index (login, admin flag, profile, password-wrapped key, recovery copy)
   users/<user-id>/
     user.db                    endpoint and model settings
     general.db                 threads, entries, notes, pages, WAKE, journal, index
@@ -65,7 +65,10 @@ users.
   plaintext index.
 - **Unlocking.** The `lyricad` passphrase unlocks `self.db`. As a service,
   `lyricad` starts locked and the web UI shows an unlock page. Each user's
-  databases are unlocked by that user's password at login. "Save credentials"
+  databases are unlocked by that user's password at login. A recovery copy of
+  each user's key, kept in `self.db`, lets an administrator set a new
+  password without losing data, so whoever can unlock `self.db` can open any
+  user's memory, private pool included (DESIGN.md, "Users"). "Save credentials"
   (for `lyricad` or for a user) keeps the key with systemd credentials, sealed
   to the TPM if one exists. That trades protection for convenience, and the
   settings page says so.

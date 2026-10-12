@@ -124,6 +124,8 @@ const model = fakeModel();
 await new Promise<void>((r) => model.listen(modelPort, "127.0.0.1", r));
 const daemon = new Lyricad({
   home, port, argon2: ARGON2, selfTest: false, socket: false, permissionMs: 60_000, watchMs: 1500,
+  // Two of these run side by side: her tailnet's loopback port picks a free one, not 7342.
+  web: { servePort: 0 },
   credentials: new SystemdCredentials(join(home, "credentials")),
   log: () => {},
 });

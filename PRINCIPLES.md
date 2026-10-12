@@ -39,7 +39,8 @@ real use has run into a real wall.
 Lyrica runs on a server Li administers. Everyone who uses her, Li and anyone
 Li lets in, has one or more separate **users**, with their own credentials and
 their own encrypted databases. The server's operator is trusted; users are
-protected from each other.
+protected from each other. An administrator can set a user's password, and
+so read their data (Li, 2026-10-11).
 
 - A boundary is enforced by the structure of the system (separate databases,
   separate keys, no cloud model offered in a private pool), never by

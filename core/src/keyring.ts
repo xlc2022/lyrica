@@ -5,7 +5,7 @@ import { hashRaw } from "@node-rs/argon2";
 
 const ARGON2ID = 2; // Algorithm.Argon2id, a const enum
 import type { CredentialStore } from "./credentials.ts";
-import { openEncrypted, SELF_SCHEMA, type Db } from "./db.ts";
+import { applySchema, openEncrypted, SELF_SCHEMA, SELF_UPGRADES, type Db } from "./db.ts";
 
 export interface Argon2Params {
   memoryCost: number; // KiB
@@ -57,7 +57,7 @@ export class Keyring {
   }
 
   async unlockSelf(passphrase: string): Promise<void> {
-    if (!this.selfExists()) throw new Error(`${this.selfPath} does not exist; run "lyrica admin init"`);
+    if (!this.selfExists()) throw new Error(`${this.selfPath} does not exist; set Lyrica up first`);
     try {
       this.openSelf(passphrase);
     } catch {
@@ -68,12 +68,18 @@ export class Keyring {
   private openSelf(passphrase: string): void {
     this.selfDb?.close();
     this.selfDb = openEncrypted(this.selfPath, { passphrase });
-    this.selfDb.exec(SELF_SCHEMA);
+    applySchema(this.selfDb, SELF_SCHEMA, SELF_UPGRADES);
   }
 
   self(): Db {
     if (!this.selfDb) throw new Locked("self.db is locked");
     return this.selfDb;
+  }
+
+  /** Closes self.db, if open: it is locked again. */
+  closeSelf(): void {
+    this.selfDb?.close();
+    this.selfDb = undefined;
   }
 
   async unlockUser(userId: string, password: string): Promise<void> {

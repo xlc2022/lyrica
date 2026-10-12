@@ -625,8 +625,8 @@ function UserMenu({ ctx, users, onAuthChange }: { ctx: ShellContext; users: User
           ))}
           <a href="#/login" role="menuitem" onClick={close}>Log in as another user…</a>
           <div className="sep" role="separator" />
-          <button type="button" role="menuitem" onClick={() => leave(u(user.id, "lock"), {})}>Lock {user.displayName}</button>
-          <button type="button" role="menuitem" onClick={() => leave("/api/logout", { userId: user.id })}>Log out {user.displayName}</button>
+          <button type="button" role="menuitem" onClick={() => leave(u(user.id, "lock"), {})}>Lock</button>
+          <button type="button" role="menuitem" onClick={() => leave("/api/logout", { userId: user.id })}>Log out</button>
           <ErrorText error={error} />
         </div>
       )}

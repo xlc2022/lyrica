@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { openEncrypted, USER_SCHEMA, type Db } from "./db.ts";
@@ -21,6 +21,12 @@ export class AuthError extends Error {
 }
 
 export class Forbidden extends Error {}
+
+/** There is no recovery copy of the user's key yet, so an administrator can't set them a new password. */
+export class NoRecoveryCopy extends Error {}
+
+/** A user's data key under the server's recovery key: AES-256-GCM, base64 fields. */
+interface RecoveryWrap { nonce: string; ct: string; tag: string }
 
 interface Row { id: string; login: string; admin: number; profile: string }
 const toUser = (r: Row): User => ({ id: r.id, login: r.login, admin: r.admin === 1, profile: JSON.parse(r.profile) });
@@ -49,13 +55,71 @@ export class Users {
     const user: User = { id: randomUUID(), login, admin: opts.admin, profile: full };
     const dataKey = randomBytes(32);
     const wrapped = await this.keyring.wrap(dataKey, password);
+    const recovery = this.recoveryWrap(dataKey);
     mkdirSync(this.userDir(user.id), { recursive: true, mode: 0o700 });
     openEncrypted(join(this.userDir(user.id), "user.db"), { raw: dataKey }).exec(USER_SCHEMA).close();
     dataKey.fill(0);
 
-    this.db.prepare("INSERT INTO users (id, login, admin, profile, wrapped_key, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(user.id, user.login, user.admin ? 1 : 0, JSON.stringify(full), JSON.stringify(wrapped), new Date().toISOString());
+    this.db.prepare("INSERT INTO users (id, login, admin, profile, wrapped_key, recovery_wrap, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(user.id, user.login, user.admin ? 1 : 0, JSON.stringify(full), JSON.stringify(wrapped), recovery, new Date().toISOString());
     return user;
+  }
+
+  /** The server's recovery key, made once and kept in self.db's settings; each user's data key is kept under it too. */
+  private recoveryKey(): Buffer {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'recovery.key'").get() as { value: string } | undefined;
+    if (row) return Buffer.from(row.value, "base64");
+    const key = randomBytes(32);
+    this.db.prepare("INSERT INTO settings (key, value) VALUES ('recovery.key', ?)").run(key.toString("base64"));
+    return key;
+  }
+
+  private recoveryWrap(dataKey: Buffer): string {
+    const nonce = randomBytes(12);
+    const cipher = createCipheriv("aes-256-gcm", this.recoveryKey(), nonce);
+    const ct = Buffer.concat([cipher.update(dataKey), cipher.final()]);
+    const wrap: RecoveryWrap = { nonce: nonce.toString("base64"), ct: ct.toString("base64"), tag: cipher.getAuthTag().toString("base64") };
+    return JSON.stringify(wrap);
+  }
+
+  private recoveryUnwrap(wrap: string): Buffer {
+    const w = JSON.parse(wrap) as RecoveryWrap;
+    const b = (s: string) => Buffer.from(s, "base64");
+    const decipher = createDecipheriv("aes-256-gcm", this.recoveryKey(), b(w.nonce));
+    decipher.setAuthTag(b(w.tag));
+    return Buffer.concat([decipher.update(b(w.ct)), decipher.final()]);
+  }
+
+  /** A user from before recovery copies gets theirs once their key is in memory: at login, or from a saved key at start. */
+  ensureRecoveryCopy(userId: string): void {
+    if (!this.keyring.hasUserKey(userId)) return;
+    const row = this.db.prepare("SELECT recovery_wrap FROM users WHERE id = ?").get(userId) as { recovery_wrap: string | null } | undefined;
+    if (!row || row.recovery_wrap) return;
+    this.db.prepare("UPDATE users SET recovery_wrap = ? WHERE id = ?").run(this.recoveryWrap(this.keyring.userKey(userId)), userId);
+  }
+
+  /**
+   * An administrator sets a user's password (DESIGN.md, "Users"): the data
+   * key from its recovery copy goes under the new password, so nothing is
+   * lost. The user is told until they change the password themselves.
+   */
+  async setPassword(actor: User, target: User, newPassword: string): Promise<void> {
+    if (!this.get(actor.id)?.admin) throw new Forbidden("only an administrator can set another user's password");
+    if (!newPassword) throw new Error("password must not be empty");
+    const row = this.db.prepare("SELECT recovery_wrap FROM users WHERE id = ?").get(target.id) as { recovery_wrap: string | null } | undefined;
+    if (!row) throw new Error(`no such user: ${target.login}`);
+    if (!row.recovery_wrap) throw new NoRecoveryCopy(`${target.profile.displayName} hasn't logged in since recovery copies began, so there is no key here to put under a new password.`);
+    const dataKey = this.recoveryUnwrap(row.recovery_wrap);
+    const wrapped = await this.keyring.wrap(dataKey, newPassword);
+    dataKey.fill(0);
+    this.db.prepare("UPDATE users SET wrapped_key = ?, password_set_by = ?, password_set_at = ? WHERE id = ?")
+      .run(JSON.stringify(wrapped), actor.id, new Date().toISOString(), target.id);
+  }
+
+  /** The administrator who set the password and when, until the user changes it. */
+  passwordSetBy(userId: string): { by: string; at: string } | undefined {
+    const r = this.db.prepare("SELECT password_set_by AS by, password_set_at AS at FROM users WHERE id = ?").get(userId) as { by: string | null; at: string | null } | undefined;
+    return r?.by && r.at ? { by: r.by, at: r.at } : undefined;
   }
 
   /** Checks the password and unlocks the user's key. */
@@ -68,6 +132,7 @@ export class Users {
       if (err instanceof WrongPassword) throw new AuthError();
       throw err;
     }
+    this.ensureRecoveryCopy(user.id);
     return user;
   }
 
@@ -150,7 +215,7 @@ export class Users {
     }
     const wrapped = await this.keyring.wrap(dataKey, newPassword);
     dataKey.fill(0);
-    this.db.prepare("UPDATE users SET wrapped_key = ? WHERE id = ?").run(JSON.stringify(wrapped), user.id);
+    this.db.prepare("UPDATE users SET wrapped_key = ?, password_set_by = NULL, password_set_at = NULL WHERE id = ?").run(JSON.stringify(wrapped), user.id);
   }
 
   setAdmin(actor: User, target: User, admin: boolean): void {
