@@ -562,6 +562,47 @@ test("after a reply the header's Context shows the percent, and its popover list
   await expect(popover).toHaveCount(0);
 });
 
+test("each message shows when it was sent in mono after its name, her reply once it is stored, and on a phone the header line stays on one line", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  // "slowly" keeps her reply streaming long enough to look at it.
+  await send(page, "What time is it, slowly, and take your time over the answer");
+  await expect(page.getByText("You said: What time")).toBeVisible();
+  await expect(page.locator(".turn .who").first()).toBeVisible();
+  await expect(page.locator(".turn .who time")).toHaveCount(0);
+
+  const mine = page.locator(".msg.user .who");
+  const hers = page.locator(".turn .who");
+  // Stored: both header lines have a time after the name, hers after the model, in mono, with the whole date as its tooltip.
+  for (const who of [mine, hers]) {
+    const time = who.locator("time");
+    await expect(time).toHaveText(/^\d\d:\d\d$/);
+    await expect(time).toHaveClass(/\bnum\b/);
+    await expect(time).toHaveCSS("font-family", /Plex Mono|monospace/);
+    await expect(time).toHaveAttribute("datetime", /^\d{4}-\d\d-\d\dT/);
+    await expect(time).toHaveAttribute("title", /\d{4}.*\d\d:\d\d$/);
+  }
+  await expect(mine).toHaveText(/^[^·]+ · \d\d:\d\d$/);
+  await expect(hers).toHaveText(/^Lyrica · cloud-model · \d\d:\d\d$/);
+
+  // Nothing wraps on a phone: the time and the ⋯ button are on the same row, today's time and another day's, the widest.
+  const oneLine = async () => {
+    if (!phone(page)) return;
+    for (const who of [mine, hers]) {
+      const [time, menu, line] = await Promise.all([who.locator("time").boundingBox(), who.getByRole("button", { name: "Message actions" }).boundingBox(), who.boundingBox()]);
+      expect(Math.abs(time!.y - menu!.y)).toBeLessThan(menu!.height / 2);
+      expect(line!.height).toBeLessThan(menu!.height + 8);
+    }
+  };
+  await oneLine();
+  await noHorizontalScroll(page);
+  await page.clock.setFixedTime(new Date(Date.now() + 3 * 864e5));
+  await page.reload();
+  for (const who of [mine, hers]) await expect(who.locator("time")).toHaveText(/^(\d{1,2} [A-Z][a-z]{2}|[A-Z][a-z]{2} \d{1,2}) \d\d:\d\d$/);
+  await oneLine();
+  await noHorizontalScroll(page);
+});
+
 test("Search finds messages by a rare word, marks it, and a hit opens its thread at that message", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");

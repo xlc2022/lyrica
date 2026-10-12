@@ -540,6 +540,19 @@ A thread's address may carry what the panel beside it shows:
   event drops the removed messages from every open view. A new branch opens,
   under "Branched from" its parent, and its settings can be changed within
   its parent's.
+- **A message's header line** (`.who.sent` in `Messages.tsx`) reads the
+  sender's name, for hers the model, then the time it was sent, then the
+  "pinned" badge and the actions (Read aloud, React, ⋯). The time is a
+  `<time>` in mono, muted like the model: `wakeTime`'s HH:MM today and
+  "11 Oct 14:32" otherwise, with `fullTime`'s weekday, date and 24-hour
+  time in the reader's locale as its tooltip ("Monday, October 12, 2026 at
+  14:32" in en-US; `ui.tsx`). It comes from the stored message's
+  `createdAt`, so a reply that is still streaming (or a message waiting to
+  go) has none until its stored copy replaces it. Markers keep their own
+  lines and show no time; there are no day dividers. The line never wraps:
+  the name and model are the one item that shrinks (`min-width: 0`, an
+  ellipsis, the model whole in its `title`), while the time and the actions
+  keep their size, so on a phone a long model name loses its tail.
 - **Reactions** (`src/Reactions.tsx`; the picker styles its shadow root
   inline, so lyricad's CSP allows inline styles, scripts stay `'self'`): a React button (a face with a plus)
   beside each message's ⋯ opens a quick row (🙏 👍 ❤️ 🎉 👀 🚀, tooltips

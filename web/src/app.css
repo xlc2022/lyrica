@@ -310,6 +310,12 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
 .who { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 /* The eyebrow carries names; the facts after them read as written. */
 .who .muted { text-transform: none; letter-spacing: normal; font-weight: 400; font-size: 12px; }
+/* A message's header line (docs/ux.md §6): the name and model, the time, then the actions, on one line. Only the name and
+   model shrink, losing their tail to an ellipsis, so the time and the actions never move to a second line. */
+.who.sent { flex-wrap: nowrap; min-width: 0; }
+.who.sent > * { flex: none; white-space: nowrap; }
+.who.sent > .who-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.who-name .muted { margin-left: 5px; }
 .msg { display: grid; gap: 4px; min-width: 0; }
 .msg.user .body { background: var(--user-block); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.5; }
 .msg.user.queued { opacity: 0.65; }
