@@ -259,6 +259,8 @@ button.badge:hover:not(:disabled) { border-color: var(--accent); }
 /* Lists: one bordered container, 1 px dividers, rows 48 px and up. */
 .list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr); max-width: 900px; }
 .list > * + * { border-top: 1px solid var(--line); }
+/* An open row menu hangs below the card rather than being cut off by it. */
+.list:has(.row-menu .menu) { overflow: visible; }
 .list > li { padding: 10px 14px; display: grid; gap: 6px; min-width: 0; }
 .list > li.muted { color: var(--muted); }
 .name { font-weight: 500; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; min-width: 0; }
