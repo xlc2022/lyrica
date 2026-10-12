@@ -33,12 +33,16 @@ export class Routines {
 
   tick(now = new Date()): void {
     for (const userId of this.unlocked) for (const pool of ["general", "private"] as const) {
-      const view = this.o.memory.openThreadView(userId, pool);
       try {
-        for (const r of view.own.routines()) {
-          if (!r.paused && Date.parse(r.nextAt) <= now.getTime()) void this.fire(userId, pool, r.id, now);
-        }
-      } finally { view.close(); }
+        const view = this.o.memory.openThreadView(userId, pool);
+        try {
+          for (const r of view.own.routines()) {
+            if (!r.paused && Date.parse(r.nextAt) <= now.getTime()) void this.fire(userId, pool, r.id, now);
+          }
+        } finally { view.close(); }
+      } catch (err) {
+        this.o.log(`routines could not check a ${pool} pool: ${(err as Error).name}`); // locked mid-tick
+      }
     }
   }
 
@@ -81,6 +85,7 @@ export class Routines {
         view.own.advanceRoutine(id, at.toISOString(), now.toISOString());
       } finally { view.close(); }
       const label = describe(r.schedule);
+      if (!this.unlocked.has(userId)) return; // locked since the check above: no empty thread behind
       const target = r.newThread ? await this.o.children.routineThread(userId, pool, r.thread, label) : r.thread;
       if (!this.unlocked.has(userId)) return;
       this.lastRun.set(key, target);

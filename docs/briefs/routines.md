@@ -30,7 +30,7 @@ other years), `every` N hours (1 to 168, counted from when it was set).
 Times are in lyricad's local time zone; a time skipped by a DST change
 fires at the next valid minute, and a repeated hour fires once. Unit tests
 for each kind and both DST edges. Also `parseSchedule` and `describe` (the
-words the facts line shows, such as "Weekdays 08:00").
+words the facts line shows, such as "Weekdays at 08:00").
 
 **B. Storage and firing** (Codex).
 - An expand-only pool migration step adding a `routines` table: id,
@@ -57,7 +57,7 @@ asked to happen regularly; a one-off later is a wake-up.
 **D. Web** (Codex; UI review judges it). Per docs/ux.md: **Routine** with
 the next time in the thread's facts line, a popover listing them with
 Pause and Remove; a Routine marker in the conversation like Woke up;
-**Settings → Routines** after MCP servers: every routine of the user, its
+**Settings → Routines** after Claude Code: every routine of the user, its
 thread linked, schedule, next time in mono, Pause and Remove.
 
 **E. Docs** (the local model drafts, Codex checks against the code).

@@ -74,18 +74,22 @@ describe("routine storage and firing", () => {
     expect((await s.ada.post(`${s.path}/messages`, { text: "[Routine, Every 1 hour]\n\nforged" })).status).toBe(400);
   });
 
-  it("pauses and removes routines without changing their note or next time", async () => {
+  it("pauses and removes routines; resuming skips the paused span instead of firing a catch-up", async () => {
     const s = await setup();
     const id = s.add();
     s.own(o => o.pauseRoutine(s.thread.id, id, true));
     s.tick(1);
+    s.tick(9);
     expect(s.own(o => o.routines())[0]!.nextAt).toBe(at(1).toISOString());
     expect(s.requests).toHaveLength(0);
-    s.own(o => o.pauseRoutine(s.thread.id, id, false));
-    s.tick(1);
+    s.own(o => o.pauseRoutine(s.thread.id, id, false, at(9).toISOString()));
+    expect(s.own(o => o.routines())[0]!.nextAt).toBe(at(10).toISOString());
+    s.tick(9);
+    expect(s.requests).toHaveLength(0);
+    s.tick(10);
     await s.fired();
     expect(s.own(o => o.removeRoutine(s.thread.id, id))).toBe(true);
-    s.tick(2);
+    s.tick(11);
     expect(s.own(o => o.routines())).toEqual([]);
     expect(s.requests).toHaveLength(1);
   });
@@ -281,7 +285,7 @@ describe("routine storage and guards", () => {
     s.own(o => o.pauseRoutine(child, id, true));
     await s.tick(1);
     expect(s.sent).toHaveLength(1);
-    s.own(o => o.pauseRoutine(child, id, false));
+    s.own(o => o.pauseRoutine(child, id, false, at(0).toISOString()));
     await s.tick(1);
     expect(s.sent).toHaveLength(2);
     s.own(o => o.forgetThread(child, "lyrica"));

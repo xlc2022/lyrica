@@ -1,4 +1,3 @@
-import { ScheduleText } from "./Routines.tsx";
 // The conversation: stored messages, then what's streaming now.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -6,6 +5,7 @@ import { get, post, threadPath, u, type GoAhead, type MemoryDetail, type Message
 import type { LiveItem } from "./live.ts";
 import { useMentionText, useThreadMentions } from "./mentions.ts";
 import { GoAheadMenu } from "./Modes.tsx";
+import { ScheduleText } from "./Routines.tsx";
 import { Icon } from "./icons.tsx";
 import { href, idHref } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";

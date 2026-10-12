@@ -341,7 +341,7 @@ pool. The same 20-second tick as wake-ups starts a due turn marked
 `[Routine, <schedule in words>]`, with its note; or, when it opens a new
 thread, starts one in the source's project or thread list, inheriting the
 source's workspace and model privacy and the project's new-thread choices.
-Paused routines don't fire; a queued thread and a paused or hidden
+Paused routines don't fire, and resuming one schedules its next run from then, with no catch-up for the paused span; a queued thread and a paused or hidden
 project's thread wait; turns share the child at-once budget, and a resolved
 project thread reopens. A still-working last run is skipped and `next_at`
 moves on. Missed runs fire once, saying how many were due; Lock stops

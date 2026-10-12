@@ -45,8 +45,8 @@ const SETTINGS: SectionDef[] = [
   { key: "machines", label: "Machines", body: (ctx, rest) => <MachinesSection ctx={ctx} rest={rest} /> },
   { key: "git", label: "Git accounts", body: (ctx) => <GitAccountsSection ctx={ctx} /> },
   { key: "mcp", label: "MCP servers", body: (ctx) => <McpServersSection ctx={ctx} /> },
-  { key: "routines", label: "Routines", body: (ctx) => <RoutinesSection ctx={ctx} /> },
   { key: "claude-code", label: "Claude Code", body: (ctx) => <ClaudeCodeSection ctx={ctx} /> },
+  { key: "routines", label: "Routines", body: (ctx) => <RoutinesSection ctx={ctx} /> },
 ];
 const ADMIN: SectionDef[] = [
   { key: "status", label: "Status", body: (ctx) => <StatusSection ctx={ctx} /> },

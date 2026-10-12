@@ -16,7 +16,7 @@ const TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const DATE = /^(\d{2})-(\d{2})$/;
 // February keeps its 29th: a routine set for it runs on the 28th in other years.
 const MONTH_LENGTHS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const WEEKDAYS = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
 
 /** A schedule from JSON (the routines table's column): checked, or a short Error. */
@@ -64,15 +64,15 @@ export function nextRun(schedule: Schedule, after: Date): Date {
   throw new Error("the schedule never runs"); // unreachable: every kind runs within a year
 }
 
-/** The words the facts line shows, such as "Weekdays 08:00". */
+/** The words the facts line shows, such as "Weekdays at 08:00". */
 export function describe(schedule: Schedule): string {
   switch (schedule.kind) {
-    case "daily": return `Daily ${schedule.time}`;
-    case "weekdays": return `Weekdays ${schedule.time}`;
-    case "weekly": return `${WEEKDAYS[schedule.day]} ${schedule.time}`;
+    case "daily": return `Daily at ${schedule.time}`;
+    case "weekdays": return `Weekdays at ${schedule.time}`;
+    case "weekly": return `${WEEKDAYS[schedule.day]} at ${schedule.time}`;
     case "yearly": {
       const [month, day] = dateParts(schedule.date);
-      return `Yearly ${day} ${MONTHS[month - 1]} ${schedule.time}`;
+      return `Yearly on ${day} ${MONTHS[month - 1]} at ${schedule.time}`;
     }
     case "every": return `Every ${schedule.hours} hour${schedule.hours === 1 ? "" : "s"}`;
   }

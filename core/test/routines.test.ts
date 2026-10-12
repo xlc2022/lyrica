@@ -203,13 +203,13 @@ describe("nextRun", () => {
 
 describe("describe", () => {
   it("says each schedule the way the facts line shows it", () => {
-    expect(describeSchedule({ kind: "daily", time: "08:00" })).toBe("Daily 08:00");
-    expect(describeSchedule({ kind: "weekdays", time: "08:00" })).toBe("Weekdays 08:00");
-    expect(describeSchedule({ kind: "weekly", day: 1, time: "09:30" })).toBe("Mondays 09:30");
-    expect(describeSchedule({ kind: "weekly", day: 0, time: "10:00" })).toBe("Sundays 10:00");
-    expect(describeSchedule({ kind: "weekly", day: 6, time: "10:00" })).toBe("Saturdays 10:00");
-    expect(describeSchedule({ kind: "yearly", date: "03-14", time: "07:00" })).toBe("Yearly 14 March 07:00");
-    expect(describeSchedule({ kind: "yearly", date: "12-01", time: "09:05" })).toBe("Yearly 1 December 09:05");
+    expect(describeSchedule({ kind: "daily", time: "08:00" })).toBe("Daily at 08:00");
+    expect(describeSchedule({ kind: "weekdays", time: "08:00" })).toBe("Weekdays at 08:00");
+    expect(describeSchedule({ kind: "weekly", day: 1, time: "09:30" })).toBe("Mondays at 09:30");
+    expect(describeSchedule({ kind: "weekly", day: 0, time: "10:00" })).toBe("Sundays at 10:00");
+    expect(describeSchedule({ kind: "weekly", day: 6, time: "10:00" })).toBe("Saturdays at 10:00");
+    expect(describeSchedule({ kind: "yearly", date: "03-14", time: "07:00" })).toBe("Yearly on 14 Mar at 07:00");
+    expect(describeSchedule({ kind: "yearly", date: "12-01", time: "09:05" })).toBe("Yearly on 1 Dec at 09:05");
     expect(describeSchedule({ kind: "every", hours: 6, from: "2026-10-12T00:00:00.000Z" })).toBe("Every 6 hours");
     expect(describeSchedule({ kind: "every", hours: 1, from: "2026-10-12T00:00:00.000Z" })).toBe("Every 1 hour");
   });

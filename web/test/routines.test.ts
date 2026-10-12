@@ -3,12 +3,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { RoutineInfo } from "../src/api.ts";
 import { ScheduledMarker } from "../src/Messages.tsx";
-import { nextRoutine, RoutinesFact } from "../src/Routines.tsx";
+import { nextRoutine, RoutineRows, RoutinesFact } from "../src/Routines.tsx";
 
-const routine = (id: number, nextAt: string, paused = false): RoutineInfo => ({ id, nextAt, paused, pool: "general", threadId: "checks", threadTitle: "Checks", schedule: "Daily 08:00" });
+const routine = (id: number, nextAt: string, paused = false): RoutineInfo => ({ id, nextAt, paused, pool: "general", threadId: "checks", threadTitle: "Checks", schedule: "Daily at 08:00" });
 describe("routine facts", () => {
   it("shows a collapsed Routine ran marker with the schedule and no note", () => {
-    const html = renderToStaticMarkup(createElement(ScheduledMarker, { text: "A synthetic private note.", schedule: "Weekdays 08:00", n: 2, env: {} as never }));
+    const html = renderToStaticMarkup(createElement(ScheduledMarker, { text: "A synthetic private note.", schedule: "Weekdays at 08:00", n: 2, env: {} as never }));
     expect(html).toContain('data-type="routine"');
     expect(html).toContain('id="m-2"');
     expect(html).toContain('Routine ran');
@@ -32,5 +32,10 @@ describe("routine facts", () => {
     const html = renderToStaticMarkup(createElement(RoutinesFact, { userId: "user", routines: rows, onChange: () => {} }));
     expect(html).toContain('class="muted">Paused');
     expect(html).not.toContain('class="num"');
+  });
+  it("shows Paused muted in the popover rows, linked or not", () => {
+    const html = renderToStaticMarkup(createElement(RoutineRows, { userId: "user", routines: [routine(1, "2026-01-01T08:00:00Z", true), routine(2, "2026-01-02T08:00:00Z")], onChange: () => {} }));
+    expect(html.match(/class="muted">Paused/g)).toHaveLength(1);
+    expect(html.match(/class="num"/g)).toBeTruthy();
   });
 });

@@ -522,16 +522,16 @@ A thread's address may carry what the panel beside it shows:
   the server first (`POST …/mcp-servers/probe`, then `POST
   …/mcp-servers`); a private server off network asks first (**Add
   anyway**, or **Save anyway** for a changed URL).
-  **Routines** (`src/Routines.tsx`), after MCP servers: every routine of
+  **Claude Code** (`src/ClaudeCode.tsx`), after MCP servers: a Token field
+  and **Save token** (`PUT …/claude-code`), or once saved Signed in and
+  **Remove** (`DELETE`), confirmed in place; Not installed when the server
+  lacks the program. The token is never sent back.
+  **Routines** (`src/Routines.tsx`), after Claude Code: every routine of
   the user across both pools (`GET …/routines`), sorted by pool and thread, its
   thread linked, schedule from `describe()`, next time in mono or Paused,
   **Pause** or **Resume** (`PATCH …/threads/:pool/:threadId/routines/:id`
   with `paused`) and the bordered Remove icon (`DELETE` at the same path).
   Listings contain no notes. Empty: "No routines."
-  **Claude Code** (`src/ClaudeCode.tsx`), after Routines: a Token field
-  and **Save token** (`PUT …/claude-code`), or once saved Signed in and
-  **Remove** (`DELETE`), confirmed in place; Not installed when the server
-  lacks the program. The token is never sent back.
 - **Administration**, for administrators: Status (the server's network
   self-test, sleep time, start unlocked), Users with the administrator flag,
   **Change password…** (the new password and the administrator's own, in

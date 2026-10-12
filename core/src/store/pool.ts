@@ -1002,8 +1002,16 @@ export class PoolStore extends PoolReader {
       .run(threadId, JSON.stringify(checked), note, newThread ? 1 : 0, nextRun(checked, new Date(at)).toISOString(), at).lastInsertRowid);
   }
 
-  pauseRoutine(threadId: string, id: number, paused: boolean): boolean {
-    return this.db.prepare("UPDATE routines SET paused = ? WHERE thread = ? AND id = ?").run(paused ? 1 : 0, threadId, id).changes > 0;
+  /** Resuming also moves the next time to the next run from `at`, so the paused span is not a pile of missed runs. */
+  pauseRoutine(threadId: string, id: number, paused: boolean, at = now()): boolean {
+    return this.tx(() => {
+      const row = this.db.prepare("SELECT schedule FROM routines WHERE thread = ? AND id = ?").get(threadId, id) as { schedule: string } | undefined;
+      if (!row) return false;
+      if (paused) this.db.prepare("UPDATE routines SET paused = 1 WHERE thread = ? AND id = ?").run(threadId, id);
+      else this.db.prepare("UPDATE routines SET paused = 0, next_at = ? WHERE thread = ? AND id = ?")
+        .run(nextRun(parseSchedule(JSON.parse(row.schedule)), new Date(at)).toISOString(), threadId, id);
+      return true;
+    });
   }
 
   removeRoutine(threadId: string, id: number): boolean {
@@ -1017,6 +1025,7 @@ export class PoolStore extends PoolReader {
       if (!r) return;
       this.db.prepare("UPDATE routines SET next_at = ?, last_at = coalesce(?, last_at) WHERE id = ?").run(nextAt, firedAt ?? null, id);
       if (firedAt) {
+        // An empty-note wakeups row, inserted already fired: a ledger entry for the shared daily cap.
         const ledger = this.addWakeup(r.thread, firedAt, "", firedAt);
         this.fireWakeup(ledger, firedAt);
       }

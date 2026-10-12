@@ -1126,7 +1126,7 @@ Project settings and Recent calls by project. The briefs are
   once after unlock, saying how many were due. Stored in the thread's pool,
   so privacy follows the pool. The user sees **Routine** and the next time in the thread's
   facts line, and every routine in **Settings → Routines**, with **Pause**,
-  **Resume** and **Remove**, after MCP servers and before Claude Code.
+  **Resume** and **Remove**.
   One-shot reminders stay wake-ups; a calendar is Later.
 - **Not in projects:** moving an existing thread into a project, and
   sharing a project (Share with copies one thread).

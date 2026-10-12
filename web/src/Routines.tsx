@@ -14,7 +14,7 @@ export function ScheduleText({ text }: { text: string }) {
   return <>{text.split(/(\d+(?::\d+)?)/).map((part, i) => /^\d/.test(part) ? <span className="num" key={i}>{part}</span> : part)}</>;
 }
 
-function RoutineRows({ userId, routines, linked, onChange }: {
+export function RoutineRows({ userId, routines, linked, onChange }: {
   userId: string; routines: RoutineInfo[]; linked?: boolean; onChange: () => void;
 }) {
   const [run, busy, error] = useAction();
@@ -25,7 +25,7 @@ function RoutineRows({ userId, routines, linked, onChange }: {
         <div className="routine-facts">
           {linked && <a href={href({ page: "thread", userId, pool: r.pool, threadId: r.threadId })}>{r.threadTitle}</a>}
           <span title="Schedule in the server’s local time zone"><ScheduleText text={r.schedule} /></span>
-          {r.paused && linked ? <span className="muted">Paused</span> : <time className="num" dateTime={r.nextAt} title={fullTime(r.nextAt)}>{wakeTime(r.nextAt)}</time>}
+          {r.paused ? <span className="muted">Paused</span> : <time className="num" dateTime={r.nextAt} title={fullTime(r.nextAt)}>{wakeTime(r.nextAt)}</time>}
         </div>
         <button type="button" className="sm" disabled={busy} onClick={() => void run(async () => { await patch(path, { paused: !r.paused }); onChange(); })}>{r.paused ? "Resume" : "Pause"}</button>
         <button type="button" className="icon sm danger" aria-label={`Remove routine: ${r.schedule}`} title="Remove" disabled={busy}
