@@ -20,6 +20,8 @@ export interface Request {
   /** The client's address: the proxy's X-Forwarded-For when it came through one on loopback. */
   ip: string;
   cookie: string | undefined;
+  /** "tailnet": it came through her own tailnet address (`tailscale serve` to its own loopback port). */
+  via?: "tailnet";
   /** The parsed JSON body. */
   json<T>(): Promise<T>;
   /** The raw body, up to `limit` bytes. */
@@ -79,12 +81,12 @@ export type TrustForwarded = (remote: string) => boolean;
 export const fromLoopback: TrustForwarded = (remote) => remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1";
 
 export function makeRequest(req: IncomingMessage, res: ServerResponse, route: string, params: Record<string, string>, url: URL,
-  trust: TrustForwarded = fromLoopback): Request {
+  trust: TrustForwarded = fromLoopback, via?: "tailnet"): Request {
   let body: Promise<Buffer> | undefined;
   const bytes = (limit: number) => (body ??= readBody(req, limit));
   return {
     req, res, method: req.method ?? "GET", route, params, query: url.searchParams, ip: clientIp(req, trust), cookie: cookieOf(req),
-    bytes,
+    ...(via ? { via } : {}), bytes,
     async json<T>() {
       const raw = await bytes(JSON_LIMIT);
       if (!raw.length) return {} as T;

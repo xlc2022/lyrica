@@ -1,7 +1,9 @@
 #!/bin/bash
 # Installs or upgrades Lyrica on Debian or Ubuntu (in the LXC container or VM):
-# the service users, lyricad's code and unit, and the built-in Caddy, built
-# from pinned versions with the DNS plugins in daemon/src/web/providers.ts.
+# the service users, lyricad's code and unit, her own tailscaled, and the
+# built-in Caddy, built from pinned versions with the DNS plugins in
+# daemon/src/web/providers.ts. A first install ends with the setup page's
+# addresses, certificate fingerprint and code.
 # Run as root from a checkout of the repository. Running it again upgrades in
 # place: the code is replaced, and Caddy is rebuilt only if a pin changed.
 set -euo pipefail
@@ -40,6 +42,25 @@ command -v node >/dev/null || die "install Node.js 22.6 or later (for example fr
 # 22.6 for the SSH helper, which runs with type stripping.
 node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 6) ? 0 : 1)' \
   || die "Node.js $(node -v) is too old: lyricad needs 22.6 or later"
+
+# --- Tailscale ---
+# Her own tailscaled (lyrica-tailscaled.service, below) runs the package's
+# binaries. Installed from Tailscale's repository only when they're missing; a
+# host's own tailscaled.service is left as it is.
+if ! command -v tailscale >/dev/null || [ ! -x /usr/sbin/tailscaled ]; then
+  say "Installing Tailscale from its repository..."
+  case "$ID" in debian|ubuntu) TS_DIST=$ID ;; *) die "no Tailscale repository for $ID: install the tailscale package, then run this again" ;; esac
+  [ -n "${VERSION_CODENAME:-}" ] || die "can't tell this release's codename for Tailscale's repository"
+  install -d -m 0755 /usr/share/keyrings
+  curl -fsSL "https://pkgs.tailscale.com/stable/$TS_DIST/$VERSION_CODENAME.noarmor.gpg" -o /usr/share/keyrings/tailscale-archive-keyring.gpg
+  curl -fsSL "https://pkgs.tailscale.com/stable/$TS_DIST/$VERSION_CODENAME.tailscale-keyring.list" -o /etc/apt/sources.list.d/tailscale.list
+  # Whether the host's own tailscaled.service was on before: if so, it stays exactly as it was.
+  TS_WAS=$(systemctl is-enabled tailscaled 2>/dev/null || true)
+  apt-get update -qq
+  apt-get install -y -qq --no-install-recommends tailscale >/dev/null
+  # The package enables the host's own tailscaled; a host that had none on keeps none on.
+  if [ -d /run/systemd/system ] && [ "$TS_WAS" != enabled ]; then systemctl disable --now --quiet tailscaled 2>/dev/null || true; fi
+fi
 
 # --- Users ---
 # lyrica runs lyricad; lyrica-caddy runs Caddy. The lyrica-caddy group shares
@@ -104,19 +125,26 @@ chmod 0644 /etc/lyrica/caddy.json
 # --- Units ---
 install -m 0644 "$PREFIX/daemon/deploy/lyrica-caddy.service" /etc/systemd/system/lyrica-caddy.service
 install -m 0644 "$PREFIX/daemon/deploy/lyricad.service" /etc/systemd/system/lyricad.service
+install -m 0644 "$PREFIX/daemon/deploy/lyrica-tailscaled.service" /etc/systemd/system/lyrica-tailscaled.service
 if [ -d /run/systemd/system ]; then
   systemctl daemon-reload
-  systemctl enable --quiet lyrica-caddy lyricad
+  systemctl enable --quiet lyrica-caddy lyrica-tailscaled lyricad
   if [ "$CADDY_CHANGED" = yes ]; then systemctl restart lyrica-caddy; else systemctl start lyrica-caddy; fi
+  systemctl start lyrica-tailscaled || say "Her tailscaled didn't start (journalctl -u lyrica-tailscaled); Administration → Tailnet will say so."
   if [ -f "$STATE/self.db" ]; then
     systemctl restart lyricad
     say "lyricad restarted."
   else
-    say "Next: create self.db and the first administrator, then start lyricad:"
-    say "  lyrica admin init"
-    say "  systemctl start lyricad"
+    # Without self.db lyricad starts setting up: a one-time code, and Direct on this machine's addresses.
+    systemctl restart lyricad
+    for _ in $(seq 1 30); do [ -f "$STATE/setup-code" ] && break; sleep 1; done
+    say ""
+    say "Set Lyrica up in a browser. Your browser will warn about the certificate once;"
+    say "check that its SHA-256 fingerprint is the one below before going on."
+    /usr/local/bin/lyrica admin setup-code || say "No setup code yet: run 'lyrica admin setup-code' once lyricad is up (journalctl -u lyricad)."
+    say ""
   fi
 else
   say "systemd isn't running here: the units are installed but not started."
 fi
-say "Done. lyricad listens on 127.0.0.1:7340; web access is set up through its API (PUT /api/u/<id>/admin/web-access)."
+say "Done. lyricad listens on 127.0.0.1:7340; 'lyrica admin setup-code' prints the setup page's code until Lyrica is set up."

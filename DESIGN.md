@@ -1145,13 +1145,13 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   headless, so the page is reached from another machine: `lyricad` starts
   in the **Direct** web access mode (below), HTTPS on the machine's LAN
   addresses with its own certificate, whose fingerprint the install script
-  prints beside the code, and plain HTTP on the host's Tailscale addresses
-  if it has any (inside WireGuard, as the external-proxy mode already
-  allows). The passphrase and the first password cross the LAN only under
-  TLS; a device on the LAN or the tailnet can't claim her without the
-  code. `lyrica admin init` does the same from a terminal; both call one
-  function. Nothing of a user's exists yet, so the code and TLS-or-WireGuard
-  reach are the whole fence (principle 2).
+  prints beside the code, and on the host's Tailscale addresses if it has
+  any (HTTPS there too: the login cookie is `Secure`, which a browser
+  keeps only over HTTPS or on localhost). The passphrase and the first
+  password cross the network only under TLS; a device on the LAN or the
+  tailnet can't claim her without the code. `lyrica admin init` does the
+  same from a terminal; both call one function. Nothing of a user's exists
+  yet, so the code and TLS are the whole fence (principle 2).
 - Memory never goes into a git repository. Backups are encrypted.
 - What this protects against: a stolen disk, a leaked backup, or someone
   reading the files while a user is locked.
@@ -1400,8 +1400,9 @@ Details in [docs/sleep.md](docs/sleep.md).
       serves HTTPS on the machine's LAN addresses with a certificate it
       makes for those addresses (the one the external-proxy mode already
       makes; its fingerprint is shown in Web access and printed by the
-      install script, for the browser's one-time warning), and plain HTTP
-      on the host's Tailscale addresses. It is what a headless host is
+      install script, for the browser's one-time warning), and the same on
+      the host's Tailscale addresses (HTTPS too, since the login cookie is
+      `Secure`). It is what a headless host is
       set up through, and it stays on until an administrator turns it off
       or another mode replaces it, so finishing setup without a tailnet
       never locks anyone out. Plain HTTP still never crosses the LAN.

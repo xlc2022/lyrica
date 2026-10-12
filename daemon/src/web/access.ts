@@ -9,24 +9,31 @@ import type { Db, FrontDoor } from "@lyrica/core";
 import type * as Api from "../api.ts";
 import { adminOnly, CaddyAdmin, caddyConfig, type CaddyPaths, type CaddySite } from "./caddy.ts";
 import { provider, PROVIDERS } from "./providers.ts";
+import type { TailnetControl } from "../tailnet.ts";
 
-// How Lyrica is reached from other machines: a built-in Caddy that lyricad
-// configures, or an external proxy that reaches an extra listener. The mode,
-// name and built-in settings (with the DNS credentials) live in self.db under
-// `web.access`. The extra listener's settings and TLS key live in a 0600 file
-// in lyricad's state directory instead, so the listener opens before unlock.
+// How Lyrica is reached from other machines: lyricad's own HTTPS on the
+// machine's addresses (Direct, the mode she starts in), her tailscaled's
+// `tailscale serve` (Tailnet), a built-in Caddy that lyricad configures, or an
+// external proxy that reaches an extra listener. The mode, name and built-in
+// settings (with the DNS credentials) live in self.db under `web.access`. The
+// extra listener's settings and TLS key (Direct's or the external proxy's)
+// live in a 0600 file in lyricad's state directory instead, so the listener
+// opens before unlock, and before setup.
 
 interface Builtin { addresses: string[]; provider: string; credentials: Record<string, string>; email?: string; staging: boolean }
 interface Stored {
   mode: Api.WebMode;
   name: string;
   builtin?: Builtin;
+  /** Tailnet: her DNS name and address when it was turned on, and whether its certificate answered. */
+  tailnet?: { dnsName: string; address?: string; certificates: boolean };
   /** When the setup last changed (ms). Caddy's TLS errors from before don't count. */
   appliedAt?: number;
 }
 
 /** The extra listener for an external proxy. */
 export interface External {
+  direct?: undefined;
   address: string;
   port: number;
   /** The only addresses that may connect, and whose X-Forwarded-For is believed. */
@@ -37,23 +44,44 @@ export interface External {
   tls?: { key: string; cert: string };
 }
 
+/** Direct: lyricad's own HTTPS on each of these addresses, with one certificate naming them all. */
+export interface Direct {
+  direct: true;
+  addresses: string[];
+  port: number;
+  tls: { key: string; cert: string };
+}
+
+/** One socket the extra listener opens. */
+export interface Bind { address: string; port: number; tls?: { key: string; cert: string }; direct: boolean }
+
+const binds = (c: External | Direct): Bind[] => (c.direct
+  ? c.addresses.map((address) => ({ address, port: c.port, tls: c.tls, direct: true }))
+  : [{ address: c.address, port: c.port, ...(c.tls ? { tls: c.tls } : {}), direct: false }]);
+
+/** Direct's port, the same as lyricad's loopback one. */
+export const DIRECT_PORT = 7340;
+
 const OFF: Stored = { mode: "off", name: "" };
 const KEY = "web.access";
 /** How long a new name may take to get its certificate before the change is undone. */
 export const CERT_WAIT_MS = 90_000;
 
-export type OpenListener = (o: External) => Promise<Server>;
+export type OpenListener = (b: Bind) => Promise<Server>;
 
 /**
- * The extra listener and its settings file. It exists before unlock: at
- * start lyricad opens it from the file, and while locked it serves only
- * state, unlock and the web UI's files, like every other listener.
+ * The extra listener and its settings file: the external proxy's one socket,
+ * or Direct's one per address. It exists before unlock: at start lyricad opens
+ * it from the file, and while locked it serves only state, unlock (or setup)
+ * and the web UI's files, like every other listener.
  */
 export class ExternalListener {
-  private cfg: External | undefined;
-  private server: Server | undefined;
+  private cfg: External | Direct | undefined;
+  private servers: Server[] = [];
+  private open: OpenListener;
 
-  constructor(private readonly path: string, private readonly open: OpenListener) {
+  constructor(private readonly path: string, open: OpenListener) {
+    this.open = open;
     try {
       this.cfg = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : undefined;
     } catch {
@@ -61,50 +89,81 @@ export class ExternalListener {
     }
   }
 
-  config(): External | undefined { return this.cfg; }
-  proxies(): string[] { return this.cfg?.proxies ?? []; }
-  get listening(): boolean { return !!this.server?.listening; }
+  /** The external proxy's listener, if that's what this is. */
+  config(): External | undefined { return this.cfg && !this.cfg.direct ? this.cfg : undefined; }
+  /** Direct's listener, if that's what this is. */
+  direct(): Direct | undefined { return this.cfg?.direct ? this.cfg : undefined; }
+  proxies(): string[] { return this.config()?.proxies ?? []; }
+  get listening(): boolean { return this.servers.some((s) => s.listening); }
+  /** The addresses with an open socket. */
+  listeningOn(): string[] { return this.servers.filter((s) => s.listening).map((s) => plainOf(s)); }
 
-  /** Opens the saved listener, at start. */
+  /**
+   * Opens the saved listener, at start. Direct opens every address it can and
+   * names the ones it couldn't; the external proxy's one socket must open.
+   */
   async start(): Promise<void> {
-    if (this.cfg && !this.server) this.server = await this.open(this.cfg);
+    if (!this.cfg || this.servers.length) return;
+    const failed: string[] = [];
+    for (const b of binds(this.cfg)) {
+      try {
+        this.servers.push(await this.open(b));
+      } catch (err) {
+        failed.push(`${b.address}:${b.port} (${(err as Error).message})`);
+      }
+    }
+    if (failed.length) throw new Error(`couldn't listen on ${failed.join(", ")}`);
   }
 
   /**
-   * Makes `next` the listener (undefined: none). The new one opens before the
-   * old one closes; if it can't open, the old one stays (or is reopened if it
-   * had to close first), and nothing is saved.
+   * Makes `next` the listener (undefined: none). The new sockets open before
+   * the old ones close, unless they share an address and port; if they can't
+   * open, the old ones stay (or are reopened if they had to close first), and
+   * nothing is saved. Old sockets close gracefully, so the request that asked
+   * for the change still gets its answer.
    */
-  async set(next: External | undefined): Promise<void> {
+  async set(next: External | Direct | undefined): Promise<void> {
     const prev = this.cfg;
-    const same = (a?: External, b?: External) => !!a && !!b && a.address === b.address && a.port === b.port && a.tls?.cert === b.tls?.cert;
-    if (next && same(prev, next) && this.server) {
+    const key = (b: Bind) => `${b.address}:${b.port}:${b.tls?.cert ?? ""}`;
+    const same = !!prev && !!next && binds(prev).map(key).join() === binds(next).map(key).join();
+    if (same && this.servers.length) {
       this.save(next); // only the proxies changed; they're read per connection
       return;
     }
-    const old = this.server;
-    const sameSocket = !!(old && next && prev && prev.address === next.address && prev.port === next.port);
-    if (sameSocket) await closeServer(old!);
+    const old = this.servers;
+    const overlap = !!(prev && next && binds(next).some((b) => binds(prev).some((p) => p.address === b.address && p.port === b.port)));
+    if (overlap) await Promise.all(old.map((s) => closeServer(s)));
+    const opened: Server[] = [];
     if (next) {
-      try {
-        this.server = await this.open(next);
-      } catch (err) {
-        if (sameSocket) this.server = await this.open(prev!).catch(() => undefined);
-        throw new Error(`couldn't listen on ${next.address}:${next.port}: ${(err as Error).message}`);
+      for (const b of binds(next)) {
+        try {
+          opened.push(await this.open(b));
+        } catch (err) {
+          await Promise.all(opened.map((s) => closeServer(s)));
+          if (overlap) {
+            this.servers = [];
+            await this.start().catch(() => {});
+          }
+          throw new Error(`couldn't listen on ${b.address}:${b.port}: ${(err as Error).message}`);
+        }
       }
-    } else {
-      this.server = undefined;
     }
-    if (old && !sameSocket) await closeServer(old);
+    this.servers = opened;
+    if (!overlap) for (const s of old) void closeServer(s, GRACE_MS);
+    this.save(next);
+  }
+
+  /** Takes these settings without opening anything (start() opens them). */
+  adopt(next: External | Direct): void {
     this.save(next);
   }
 
   close(): void {
-    if (this.server) void closeServer(this.server);
-    this.server = undefined;
+    for (const s of this.servers) void closeServer(s);
+    this.servers = [];
   }
 
-  private save(next: External | undefined): void {
+  private save(next: External | Direct | undefined): void {
     this.cfg = next;
     if (!next) return rmSync(this.path, { force: true });
     const tmp = `${this.path}.tmp`;
@@ -114,8 +173,32 @@ export class ExternalListener {
   }
 }
 
+/** How long a replaced listener's open requests may take to finish. */
+const GRACE_MS = 5000;
+
+const plainOf = (s: Server): string => {
+  const a = s.address();
+  return a && typeof a === "object" ? a.address.replace(/^::ffff:/, "") : "";
+};
+
+/**
+ * Direct's settings for these addresses: the certificate is kept while it
+ * names exactly them, so its fingerprint stays what the operator compared.
+ */
+export async function directFor(addresses: string[], port: number, prev?: Direct): Promise<Direct> {
+  const list = [...new Set(addresses)].sort();
+  const keep = prev && [...prev.addresses].sort().join() === list.join() ? prev.tls : undefined;
+  return { direct: true, addresses: list, port, tls: keep ?? (list.length ? await makeCertificate(list) : { key: "", cert: "" }) };
+}
+
 export interface WebAccessOptions {
   self: () => Db;
+  /** Her tailscaled, for the Tailnet mode. */
+  tailnet?: TailnetControl;
+  /** lyricad's loopback listener that only `tailscale serve` targets. */
+  servePort?: number;
+  /** Direct's port (7340 outside tests). */
+  directPort?: number;
   caddy: CaddyPaths;
   /** Caddy's HTTPS port. 443 outside tests. */
   httpsPort: number;
@@ -176,7 +259,9 @@ export class WebAccess {
 
   private load(): Stored {
     const row = this.o.self().prepare("SELECT value FROM settings WHERE key = ?").get(KEY) as { value: string } | undefined;
-    return row ? JSON.parse(row.value) : OFF;
+    if (row) return JSON.parse(row.value);
+    // Set up through Direct, before self.db existed: its listener file is the setting.
+    return this.o.external.direct() ? { mode: "direct", name: "" } : OFF;
   }
 
   private save(s: Stored): void {
@@ -190,6 +275,7 @@ export class WebAccess {
     const s = this.load();
     const b = s.builtin;
     const e = s.mode === "external" ? this.o.external.config() : undefined;
+    const dir = this.o.external.direct();
     return {
       mode: s.mode, name: s.name,
       builtin: b ? {
@@ -203,6 +289,8 @@ export class WebAccess {
         address: e.address, port: e.port, proxies: e.proxies, proxyPort: e.proxyPort, https: !!e.tls,
         ...(e.tls ? { fingerprint: new X509Certificate(e.tls.cert).fingerprint256, pem: e.tls.cert } : {}),
       } : null,
+      direct: dir ? { addresses: dir.addresses, port: dir.port, ...certOf(dir.tls.cert) } : null,
+      tailnet: s.mode === "tailnet" && s.tailnet ? { dnsName: s.tailnet.dnsName, certificates: s.tailnet.certificates } : null,
       addresses: this.addresses(),
       providers: PROVIDERS.map(({ module: _m, ...p }) => p),
     };
@@ -227,9 +315,21 @@ export class WebAccess {
     return this.view();
   }
 
-  private async validate(c: Api.WebAccessChange, prev: Stored): Promise<{ next: Stored; external?: External }> {
-    if (c.mode !== "off" && c.mode !== "builtin" && c.mode !== "external") throw new Error("the mode is off, builtin or external");
+  private async validate(c: Api.WebAccessChange, prev: Stored): Promise<{ next: Stored; external?: External | Direct }> {
+    if (!["off", "direct", "tailnet", "builtin", "external"].includes(c.mode)) throw new Error("the mode is off, direct, tailnet, builtin or external");
     if (c.mode === "off") return { next: { ...prev, mode: "off" } };
+    if (c.mode === "direct") {
+      const addresses = this.addresses().map((a) => a.address);
+      if (!addresses.length) throw new Error("this machine has no LAN or Tailscale address to listen on");
+      return { next: { ...prev, mode: "direct" }, external: await directFor(addresses, this.o.directPort ?? DIRECT_PORT, this.o.external.direct()) };
+    }
+    if (c.mode === "tailnet") {
+      if (!this.o.tailnet || this.o.servePort === undefined) throw new Error("the tailnet isn't available here");
+      const t = await this.o.tailnet.serveName();
+      if (!t.magicDns) throw new Error("MagicDNS is off in her tailnet; turn it on in the tailnet's DNS settings");
+      if (!t.certificates) throw new Error("HTTPS certificates are off in her tailnet; turn them on in the tailnet's DNS settings");
+      return { next: { ...prev, mode: "tailnet", tailnet: { dnsName: t.dnsName, ...(t.address ? { address: t.address } : {}), certificates: false } } };
+    }
     const name = String(c.name ?? prev.name).trim().toLowerCase();
     if (!NAME.test(name)) throw new Error("the hostname is a domain name, like lyrica.example.net");
     const mine = this.addresses();
@@ -275,7 +375,29 @@ export class WebAccess {
   }
 
   /** Makes the change live. The new way in is up and checked before the old one goes. */
-  private async apply(next: Stored, prev: Stored, external?: External): Promise<void> {
+  private async apply(next: Stored, prev: Stored, external?: External | Direct): Promise<void> {
+    if (prev.mode === "tailnet" && next.mode !== "tailnet") await this.o.tailnet?.serveReset().catch((err: Error) => this.o.log(`tailscale serve didn't reset: ${err.message}`));
+    if (next.mode === "direct") {
+      await this.o.external.set(external);
+      if (prev.mode === "builtin") await this.caddy.load(adminOnly(this.o.caddy)).catch((err: Error) => this.o.log(`Caddy kept its old site: ${err.name}`));
+      return;
+    }
+    if (next.mode === "tailnet") {
+      const t = next.tailnet!;
+      await this.o.tailnet!.serve(this.o.servePort!);
+      const why = await answers(t.dnsName, this.o.certWaitMs ?? CERT_WAIT_MS);
+      t.certificates = !why;
+      if (why) {
+        // This machine may not be on her tailnet, so it can't always check: Direct, if on, stays on
+        // beside it, so nobody is locked out, until a later switch to Tailnet is confirmed.
+        this.o.log(`couldn't check https://${t.dnsName} from this machine (${why}); Direct stays on if it was`);
+        if (!this.o.external.direct()) await this.o.external.set(undefined);
+      } else {
+        await this.o.external.set(undefined);
+      }
+      if (prev.mode === "builtin") await this.caddy.load(adminOnly(this.o.caddy)).catch((err: Error) => this.o.log(`Caddy kept its old site: ${err.name}`));
+      return;
+    }
     if (next.mode === "external") {
       await this.o.external.set(external);
       if (prev.mode === "builtin") await this.caddy.load(adminOnly(this.o.caddy)).catch((err: Error) => this.o.log(`Caddy kept its old site: ${err.name}`));
@@ -359,6 +481,12 @@ export class WebAccess {
     }
     const e = this.o.external.config();
     if (s.mode === "external" && e) out.external = { listening: this.o.external.listening, address: e.address, port: e.port };
+    const dir = this.o.external.direct();
+    if (dir) out.direct = { listening: this.o.external.listeningOn(), port: dir.port, fingerprint: certOf(dir.tls.cert).fingerprint };
+    if (s.mode === "tailnet" && s.tailnet) {
+      const why = await answers(s.tailnet.dnsName, 5000);
+      out.tailnet = { dnsName: s.tailnet.dnsName, answers: !why, ...(why ? { error: why } : {}) };
+    }
     return out;
   }
 
@@ -381,7 +509,13 @@ export class WebAccess {
     const e = this.o.external.config();
     if (s.mode === "builtin") return { ports: [this.o.httpsPort], hosts: [s.name], exclude: [] };
     if (s.mode === "external" && e) return { ports: [e.proxyPort], hosts: [s.name, ...e.proxies], exclude: [e.port] };
-    return { ports: [443], hosts: [], exclude: [] };
+    // Direct, also while it stays on beside Tailnet: its port on this machine's addresses.
+    const dir = this.o.external.direct();
+    const ports = dir ? [443, dir.port] : [443];
+    if (s.mode === "tailnet" && s.tailnet) {
+      return { ports, hosts: [s.tailnet.dnsName, ...(s.tailnet.address ? [s.tailnet.address] : [])], exclude: [] };
+    }
+    return { ports, hosts: [], exclude: [] };
   }
 
   /** Caddy's messages can quote a token; never pass one on. */
@@ -392,21 +526,57 @@ export class WebAccess {
   }
 }
 
-function closeServer(s: Server): Promise<void> {
-  return new Promise((resolve) => { s.close(() => resolve()); s.closeAllConnections(); });
+/** Stops listening. Open requests get `graceMs` to finish (none by default). */
+function closeServer(s: Server, graceMs = 0): Promise<void> {
+  return new Promise((resolve) => {
+    s.close(() => resolve());
+    if (!graceMs) return s.closeAllConnections();
+    s.closeIdleConnections();
+    setTimeout(() => s.closeAllConnections(), graceMs).unref();
+  });
+}
+
+/** The certificate's fingerprint and PEM, for comparing in the browser's warning. */
+function certOf(pem: string): { fingerprint: string; pem: string } {
+  return { fingerprint: pem ? new X509Certificate(pem).fingerprint256 : "", pem };
 }
 
 /**
- * A self-signed certificate for the extra listener, naming only its address:
+ * Whether https://<name>/api/state answers 200 with a certificate that
+ * verifies, trying until `waitMs` (the first certificate can take a while).
+ * The reason if not.
+ */
+async function answers(name: string, waitMs: number): Promise<string | undefined> {
+  const deadline = Date.now() + waitMs;
+  let why = "no answer";
+  for (;;) {
+    try {
+      const res = await fetch(`https://${name}/api/state`, { signal: AbortSignal.timeout(5000) });
+      if (res.ok) return undefined;
+      why = `it answered ${res.status}`;
+    } catch (err) {
+      const cause = (err as { cause?: { code?: string; message?: string } }).cause;
+      why = cause?.code ?? cause?.message ?? (err as Error).message;
+      // The name doesn't resolve here: this machine isn't on her tailnet, and waiting won't change it.
+      if (why === "ENOTFOUND" || why === "EAI_AGAIN") return `this machine can't resolve ${name}`;
+    }
+    if (Date.now() >= deadline) return why;
+    await new Promise((resolve) => setTimeout(resolve, Math.min(2000, Math.max(100, deadline - Date.now()))));
+  }
+}
+
+/**
+ * A self-signed certificate for the extra listener, naming only its addresses:
  * a new P-256 key, made in memory, and openssl signing it from a pipe.
  */
-export async function makeCertificate(address: string): Promise<{ key: string; cert: string }> {
+export async function makeCertificate(addresses: string | string[]): Promise<{ key: string; cert: string }> {
+  const san = [addresses].flat().map((a) => `IP:${a}`).join(",");
   const { privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const key = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
   const cert = await new Promise<string>((resolve, reject) => {
     // Node's stdin pipe is a socket, which openssl can't open as /dev/stdin; `cat |` gives it a real pipe. The key never touches disk.
     const child = spawn("sh", ["-c", 'cat | openssl "$@"', "sh", "req", "-new", "-x509", "-key", "/dev/stdin", "-subj", "/CN=lyricad",
-      "-days", "3650", "-sha256", "-addext", `subjectAltName=IP:${address}`], { stdio: ["pipe", "pipe", "pipe"] });
+      "-days", "3650", "-sha256", "-addext", `subjectAltName=${san}`], { stdio: ["pipe", "pipe", "pipe"] });
     let out = "";
     let err = "";
     child.stdout.on("data", (d) => (out += d));
