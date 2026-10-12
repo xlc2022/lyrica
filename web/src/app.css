@@ -846,7 +846,10 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .react-anchor .full .picker-wait { padding: 12px; }
 emoji-picker { width: 100%; height: min(400px, 60vh); --background: var(--panel); --border-color: var(--line); --input-border-color: var(--line); --input-font-color: var(--fg); --input-placeholder-color: var(--muted); --input-border-radius: 8px; --indicator-color: var(--accent); --outline-color: var(--accent); --button-hover-background: var(--tool); --button-active-background: var(--user-block); --category-font-color: var(--muted); --category-font-size: 11px; --num-columns: 8; --emoji-size: 1.3rem; --emoji-padding: 0.4rem; --skintone-border-radius: 8px; font-family: inherit; }
 @media (max-width: 700px) {
-  .react-anchor .quick { left: auto; right: 0; }
+  /* The quick row hangs from the message's left edge, not the button's, so it never leaves the screen (both sides of a chat). */
+  .who { position: relative; }
+  .react-anchor { position: static; }
+  .react-anchor .quick { left: 0; right: auto; top: calc(100% + 4px); }
   .react-anchor .quick button { width: 44px; height: 44px; }
   .react-anchor .full { position: fixed; top: auto; bottom: 0; left: 0; right: 0; width: auto; border-radius: 12px 12px 0 0; }
 }
