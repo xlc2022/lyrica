@@ -588,7 +588,8 @@ A thread's address may carry what the panel beside it shows:
 The header shows her name, version and build, with the date and time beneath.
 A greeting by the hour precedes the message box. Its shared composer row has
 the **+** menu (Attach a file, Web search, Internet for commands and Images),
-the mic, and **General / Private**; no Mode or Thinking controls. The menu reads
+the mic, and **General / Private**; no Mode or Thinking controls. On home the
+menu opens downward, since the box sits near the top. The menu reads
 new-thread defaults from `GET …/thread-defaults?pool=general|private`; switch
 changes and attached File objects stay in component memory per pool. Only Send
 creates the thread, then PATCHes its changed settings, uploads its files and
@@ -596,7 +597,8 @@ sends the first message with their paths. Dictation uses `POST …/transcribe?po
 without creating a thread. Leaving home discards the unsent text and files.
 
 The content is one column in a centred block at most 960 px wide.
-Beneath the box, each card has a plain h2 with its link on the right:
+Beneath the box the cards sit side by side (auto-fit, each at least 240 px) and
+stack when they don't fit. Each card has a plain h2 with its link on the right:
 **Last night** with Sleep and shows new visible-pool items with Start a chat
 and Dismiss, private locks, or "Nothing she wants to raise." and the latest run's
 time in mono. **Notifications** has All <n> and "Nothing waiting." when
