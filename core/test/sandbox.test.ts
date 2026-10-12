@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { createServer as createHttpServer } from "node:http";
 import { connect as connectTcp, createServer, type Server } from "node:net";
 import { lookup } from "node:dns/promises";
 import { networkInterfaces, tmpdir } from "node:os";
@@ -83,6 +84,39 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect(r.out).toContain("token: 'forge-token'");
     expect((await sh("ls /tmp/lyrica-forge 2>&1 || true", git)).out).toContain("No such file");
     expect((await sh("command -v gh || echo NONE")).out).not.toContain("/run/lyrica");
+  });
+
+  it("gives a run with Claude Code the wrapper and its relay, and never the token", async () => {
+    const TOKEN = "sk-ant-oat01-made-up-for-tests-only";
+    const seen: string[] = [];
+    const upstream = createHttpServer((req, res) => { seen.push(String(req.headers.authorization)); req.resume(); res.end("ok"); });
+    await new Promise<void>((r) => upstream.listen(0, "127.0.0.1", r));
+    try {
+      const claude = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], claude: { token: TOKEN, upstream: `http://127.0.0.1:${(upstream.address() as { port: number }).port}` } });
+      const r = await sh('command -v claude; env; curl -s -H "authorization: Bearer $CLAUDE_CODE_OAUTH_TOKEN" "$ANTHROPIC_BASE_URL/v1/messages"', claude);
+      expect(r.out).toContain("/run/lyrica/bin/claude\n");
+      expect(r.out).toMatch(/ANTHROPIC_BASE_URL=http:\/\/127\.0\.0\.1:\d+/);
+      expect(r.out).not.toContain(TOKEN);
+      expect(r.out.endsWith("ok")).toBe(true);
+      expect(seen).toEqual([`Bearer ${TOKEN}`]);
+    } finally {
+      upstream.close();
+    }
+    expect((await sh("command -v claude || echo NONE")).out).not.toContain("/run/lyrica");
+  });
+
+  it("closes a run's Claude Code relay when the run is stopped", async () => {
+    const claude = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], claude: { token: "sk-ant-oat01-made-up-for-tests-only", upstream: "http://127.0.0.1:9" } });
+    const stop = new AbortController();
+    let out = "";
+    const done = claude.ops().bash.exec('echo "$ANTHROPIC_BASE_URL"; sleep 30', "/workspace", {
+      signal: stop.signal, onData: (d) => { out += d.toString(); if (out.includes("\n")) stop.abort(); },
+    }).catch(() => undefined);
+    await done;
+    const base = out.trim();
+    expect(base).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    await new Promise((r) => setTimeout(r, 200));
+    await expect(fetch(`${base}/v1/messages`, { method: "POST", body: "{}" })).rejects.toThrow();
   });
 
   it("mounts a thread's clones at /workspace/repos, read-only for a read-only subagent", async () => {

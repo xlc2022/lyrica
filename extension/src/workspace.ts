@@ -17,6 +17,8 @@ export interface ThreadTools {
   /** What applies to the thread now, its ancestors' limits included. */
   settings(): ThreadWorkspace;
   network(): Network;
+  /** Whether her sandbox runs have Claude Code on the person's Claude plan now. Without it, never. */
+  claudeCode?(): boolean;
   /** The machines the thread may use now, with their mode limits. Without it, none. */
   machines?(): ThreadMachine[];
   /** Whether Li allowed this exact suspect command on this machine in this thread. */
@@ -355,9 +357,13 @@ export function describe(tools: ThreadTools): string {
     network(tools.network()),
     ...(machines.length ? [`Machines you can work on over SSH, with the machine argument: ${machines.join(", ")}. The sandbox's network settings don't apply there.`] : []),
     ...(pves.length ? [`Proxmox machines you can manage with the proxmox tool: ${pves.join(", ")}.`] : []),
+    ...(tools.claudeCode?.() ? [CLAUDE_CODE_LINE] : []),
     ...fileNotes(tools.fileNotes?.()),
   ].join("\n");
 }
+
+/** The one prompt line for a thread with Claude Code (docs/workspace.md, "Claude Code"). */
+export const CLAUDE_CODE_LINE = "Claude Code is in your sandbox: `claude -p \"<task>\"` with bash, in this folder or a clone, hands a coding or repository job to Anthropic's coding agent, which works here and reports back; `claude -c -p \"<more>\"` continues its last job. It spends the person's own Claude plan, so use it for jobs big or hard enough to need it, never for conversation.";
 
 /** The Git guide (git.md): the defaults the project's instructions can override. */
 export const GIT_GUIDE = readFileSync(new URL("./git.md", import.meta.url), "utf8").trim();
