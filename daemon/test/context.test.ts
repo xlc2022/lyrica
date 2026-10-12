@@ -57,7 +57,8 @@ describe("her context", () => {
   });
 
   it("is compacted by Pi at the window's edge when she doesn't, with a marker", async () => {
-    const { li, path, stream, turn } = await setup("general", 8192);
+    // Pi compacts after a turn that lands between its reserve and the window, so this window follows the seed persona's size.
+    const { li, path, stream, turn } = await setup("general", 11_264);
     await turn(long("FIRST-MARK"));
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));
