@@ -743,6 +743,7 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .chip[aria-pressed="true"] { background: var(--tool); font-weight: 600; }
 .bulk { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 0 10px; }
 .nrow { display: grid; grid-template-columns: auto 18px minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; min-height: 52px; }
+.nrow.nopick { grid-template-columns: 18px minmax(0, 1fr) auto; }
 .nrow .main-col { display: grid; gap: 2px; min-width: 0; }
 .nrow .main-col .name { display: block; overflow-wrap: anywhere; }
 .nrow .ico { width: 18px; text-align: center; color: var(--muted); font-size: 14px; }
@@ -757,6 +758,7 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .welcome .card { margin-top: 24px; text-align: left; }
 @media (max-width: 760px) {
   .nrow { grid-template-columns: auto 18px minmax(0, 1fr); }
+  .nrow.nopick { grid-template-columns: 18px minmax(0, 1fr); }
   .nrow .actions { grid-column: 2 / -1; justify-content: start; }
   .chip, .ntop select { min-height: 36px; }
 }
