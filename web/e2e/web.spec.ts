@@ -95,6 +95,8 @@ async function togglePrivate(page: Page) {
 const location_of = (page: Page) => page.url();
 
 async function noHorizontalScroll(page: Page) {
+  // A drawer slides in from 30 px past the edge for 180 ms; measure once every animation has finished.
+  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))));
   const found = await page.evaluate(() => {
     const wide = [...document.querySelectorAll<HTMLElement>(".scroll, .head, .drawer-body, .mem-pane, .mem-read, .side")]
       .filter((el) => el.scrollWidth > el.clientWidth + 1)
