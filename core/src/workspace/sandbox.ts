@@ -108,6 +108,8 @@ function nixSystem(dir: string): string[] {
 }
 // Loads the firewall into the new namespaces (fails closed), says so on
 // fd $2, waits on fd $3 until pasta is attached, then starts bwrap.
+// --norc: its stdin is a socket, so bash would source the host's bashrc,
+// which on NixOS resets PATH and loses nft.
 const HOLD = 'printf "%s" "$1" | nft -f - || exit 125; r=$2; g=$3; shift 3; eval "echo ready >&$r; exec $r>&-; read -r _ <&$g; exec $g<&-"; exec "$@"';
 
 /** Waits for the namespaces' "ready", or refuses with why they didn't come up. */
@@ -353,7 +355,7 @@ export class Sandbox implements ExecutionTarget {
         addresses: this.spec.self ?? hostAddresses(), services, front: this.spec.front ?? [],
         frontAddresses: frontAddresses ?? [],
       });
-      cmd = ["unshare", "--user", "--map-root-user", "--net", "--", "bash", "-c", HOLD, "bash", rules, String(ready), String(ready + 1), ...cmd];
+      cmd = ["unshare", "--user", "--map-root-user", "--net", "--", "bash", "--norc", "-c", HOLD, "bash", rules, String(ready), String(ready + 1), ...cmd];
     }
     const child = spawn(cmd[0]!, cmd.slice(1), {
       env: { ...runEnv, ...env(), ...forge || claude ? { PATH: `${FORGE_BIN}:${env().PATH}` } : {} },
