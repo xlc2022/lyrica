@@ -1664,7 +1664,8 @@ from Monika's runbooks.
   database opens, migrates and passes its integrity check, the workspace
   self-test, the model router,
   the web UI's files) and stay up 10 minutes. With saved credentials that
-  happens at start; without them, at the first unlock. A crash loop or a
+  happens at start; without them, at the first unlock. A reboot during
+  probation resumes it at boot, from the start. A crash loop or a
   failed check rolls back by itself and tells administrators in
   Notifications which commit failed, which check, and, when the snapshot
   was restored, from when messages were lost.

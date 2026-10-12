@@ -1,0 +1,20 @@
+# Resumes a probation a reboot cut short: when probation.json is left, the
+# updater watches the release again from the start (lyrica-update --resume).
+# Type=exec, not oneshot: probation waits for the first unlock, and a oneshot
+# would hold up boot and nixos-rebuild until then. daemon/deploy/install.sh
+# installs it. See docs/daemon.md, "Updates".
+[Unit]
+Description=Resume Lyrica's update probation after a reboot
+After=lyricad.service
+Wants=lyricad.service
+ConditionPathExists=/var/lib/lyrica-update/probation.json
+
+[Service]
+Type=exec
+ExecStart=/usr/local/sbin/lyrica-update --resume
+Nice=10
+IOSchedulingClass=idle
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

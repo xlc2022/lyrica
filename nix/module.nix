@@ -247,7 +247,7 @@ in {
       };
     };
 
-    # As daemon/deploy/lyrica-update.service, .path and lyrica-rollback.service.
+    # As daemon/deploy/lyrica-update.service, .path, lyrica-rollback.service and lyrica-probation.service.
     systemd.services.lyrica-update = {
       description = "Lyrica's updater (build, smoke test, drain, snapshot, switch, probation)";
       after = [ "network-online.target" ];
@@ -272,6 +272,20 @@ in {
       description = "Lyrica's update requests";
       wantedBy = [ "multi-user.target" ];
       pathConfig.PathExists = "${state}/updates/request.json";
+    };
+    systemd.services.lyrica-probation = {
+      description = "Resume Lyrica's update probation after a reboot";
+      after = [ "lyricad.service" ];
+      wants = [ "lyricad.service" ];
+      wantedBy = [ "multi-user.target" ];
+      unitConfig.ConditionPathExists = "/var/lib/lyrica-update/probation.json";
+      serviceConfig = {
+        Type = "exec";
+        ExecStart = "${updater}/bin/lyrica-update --resume";
+        Nice = 10;
+        IOSchedulingClass = "idle";
+        PrivateTmp = true;
+      };
     };
     systemd.services.lyrica-rollback = {
       description = "Roll Lyrica back if the release on probation crash-loops";

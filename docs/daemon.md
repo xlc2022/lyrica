@@ -900,7 +900,11 @@ check names and counts, never text.
   socket gone for 5 minutes, runs `lyrica-rollback --auto` and records
   `lastRollback` (state `failed`); a crash loop does the same through
   `OnFailure`. Passing prunes releases (the last 5, plus current and
-  previous) and snapshots.
+  previous) and snapshots. A probation cut short (a reboot, the updater
+  stopped) leaves `probation.json`; `lyrica-update --resume` starts it
+  over from that file, at boot through `lyrica-probation.service` and
+  before any other updater run (`--request`, `--tag`, `--check`). With no
+  file, or while another run holds the lock, `--resume` does nothing.
 - **`lyrica-snapshot`** (lyricad stopped) copies `self.db`, the users'
   databases, the pools and the top-level settings files, each database
   with its `-wal` (root holds no key to checkpoint it, so the log travels
@@ -918,7 +922,10 @@ check names and counts, never text.
   or refuses and names the oldest release it could go back to. Outside
   probation it drains first.
 - **Units:** `lyrica-update.service` (oneshot, `Nice=10`, idle I/O),
-  `lyrica-update.path`, `lyrica-rollback.service` (`--auto`).
+  `lyrica-update.path`, `lyrica-rollback.service` (`--auto`),
+  `lyrica-probation.service` (`--resume` at boot when `probation.json`
+  exists; `Type=exec`, since probation waits for the first unlock and a
+  oneshot would hold up boot and `nixos-rebuild`).
 - **The operator's part:** add the deploy key to the repository; keep a
   scheduled Proxmox backup of the VM or container, which the updater can't
   snapshot; delete `/opt/lyrica/before-releases` once the first release

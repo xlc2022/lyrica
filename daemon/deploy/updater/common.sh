@@ -13,7 +13,8 @@ BUILD_USER=${LYRICA_BUILD_USER:-lyrica-build}
 SYSTEMCTL=${LYRICA_SYSTEMCTL:-systemctl}
 # NixOS: releases are generations of this profile instead of folders under $PREFIX/releases.
 PROFILE=${LYRICA_PROFILE:-/nix/var/nix/profiles/lyrica}
-if [ -n "${LYRICA_NIX:-}" ]; then NIX=$LYRICA_NIX; elif [ -e /etc/NIXOS ]; then NIX=1; else NIX=; fi
+# Set (even empty, as the tests do) it decides; unset, /etc/NIXOS does.
+if [ -n "${LYRICA_NIX+set}" ]; then NIX=$LYRICA_NIX; elif [ -e /etc/NIXOS ]; then NIX=1; else NIX=; fi
 SOCKET=$STATE/update.sock
 KEEP_RELEASES=5
 KEEP_SNAPSHOTS=3

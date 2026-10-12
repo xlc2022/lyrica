@@ -329,8 +329,9 @@ What `install.sh` does, in order:
 6. Sets `net.ipv4.ip_nonlocal_bind=1`, so Caddy can bind a Tailscale address
    before Tailscale is up.
 7. Installs, enables and starts `lyrica-caddy.service`,
-   `lyrica-tailscaled.service` and `lyricad.service`, and enables and
-   starts `lyrica-update.path`. On an upgrade it restarts `lyricad`. On a
+   `lyrica-tailscaled.service` and `lyricad.service`, enables and
+   starts `lyrica-update.path`, and enables `lyrica-probation.service`,
+   which resumes an update's probation after a reboot. On an upgrade it restarts `lyricad`. On a
    fresh install `lyricad` starts setting up, and the script ends by printing
    a one-time setup code, the addresses to open and the certificate's
    fingerprint (see "First run").

@@ -1,5 +1,5 @@
 #!/bin/bash
-# lyrica-update [--tag update/<name> | --check | --request]
+# lyrica-update [--tag update/<name> | --check | --request | --resume]
 # Installs an update note's commit, run as root by lyrica-update.service when
 # lyricad writes a request (lyrica-update.path), or by hand. In order: fetch
 # with the read-only deploy key; refuse a tag that isn't annotated or whose
@@ -7,7 +7,9 @@
 # no access to her data; smoke-test it in a scratch home; drain lyricad (up to
 # 10 minutes, else undrain and change nothing); stop it; snapshot; switch;
 # start; probation (every /health check ok once unlocked, and 10 minutes up),
-# rolling back by itself if a check fails. One run at a time.
+# rolling back by itself if a check fails. One run at a time. A probation
+# left behind by a reboot resumes first, from the start (--resume alone does
+# only that, at boot through lyrica-probation.service).
 # Logs commits, tags and check names, never message text. See docs/daemon.md, "Updates".
 set -euo pipefail
 . "${LYRICA_UPDATER_LIB:-/usr/local/lib/lyrica-update}/common.sh"
@@ -23,10 +25,13 @@ mkdir -p "$UPDATE"
 chmod 0755 "$UPDATE"
 exec 9>"$UPDATE/update.lock"
 # A request waits its turn (it stays in place, so the path unit would retrigger); an argument doesn't.
-if [ "${1:-}" = --request ]; then flock 9; else flock -n 9 || die "an update is already running"; fi
+case "${1:-}" in
+  --request) flock 9 ;;
+  --resume) flock -n 9 || exit 0 ;;  # an updater is running: it watches its own probation
+  *) flock -n 9 || die "an update is already running" ;;
+esac
+PROBATION_FILE="$UPDATE/probation.json"
 
-# --- What to do: an argument, or lyricad's request file ---
-ACTION= TAG= COMMIT=
 take_request() {
   local f="$STATE/updates/request.json" req
   [ -e "$f" ] || [ -L "$f" ] || return 1
@@ -37,11 +42,83 @@ take_request() {
   TAG=$(jq -r '.tag // empty' <<<"$req" 2>/dev/null || true)
   COMMIT=$(jq -r '.commit // empty' <<<"$req" 2>/dev/null || true)
 }
+
+# --- Probation ---
+# Passes when /health reports every check ok once unlocked and lyricad has
+# stayed up PROBATION_SECONDS since; without saved credentials it waits for
+# the first unlock. A failed check rolls back here; a crash loop through
+# lyricad's OnFailure=lyrica-rollback.service, which removes the probation file.
+probation() {
+  set_state probation "$TAG" "$COMMIT"
+  healthy_since= pid= unreachable=0
+  while :; do
+    [ -f "$PROBATION_FILE" ] || { say "rolled back during probation"; exit 1; }
+    # Administration's Roll back, pressed during probation, is taken now; anything else waits for the next run.
+    if [ -e "$STATE/updates/request.json" ] && jq -e '.action == "rollback"' "$STATE/updates/request.json" >/dev/null 2>&1; then
+      U_TAG=$TAG U_COMMIT=$COMMIT
+      take_request || true
+      if [[ "$COMMIT" =~ ^[0-9a-f]{7,40}$ ]]; then exec 9>&-; exec "$SBIN/lyrica-rollback" --yes "$COMMIT"; fi
+      TAG=$U_TAG COMMIT=$U_COMMIT
+    fi
+    if health=$(sock GET /health); then
+      unreachable=0
+      failed=$(jq -r '[.checks[] | select(.ok | not) | .name] | join(", ")' <<<"$health")
+      if [ -n "$failed" ]; then
+        say "probation failed: $failed"
+        "$SBIN/lyrica-rollback" --auto --check "$failed" || true
+        exit 1
+      fi
+      if [ "$(jq -r '.locked' <<<"$health")" = true ]; then
+        healthy_since=
+      else
+        now_pid=$($SYSTEMCTL show -p MainPID --value lyricad 2>/dev/null || echo 0)
+        if [ -z "$healthy_since" ] || [ "$now_pid" != "$pid" ]; then healthy_since=$(date +%s); pid=$now_pid; fi
+        if [ $(( $(date +%s) - healthy_since )) -ge "$PROBATION_SECONDS" ]; then break; fi
+      fi
+    else
+      unreachable=$((unreachable + ${LYRICA_PROBATION_POLL:-5}))
+      healthy_since=
+      if [ "$unreachable" -ge "${LYRICA_UNREACHABLE_SECONDS:-300}" ]; then
+        say "probation failed: the update socket hasn't answered"
+        "$SBIN/lyrica-rollback" --auto --check "update socket" || true
+        exit 1
+      fi
+    fi
+    sleep "${LYRICA_PROBATION_POLL:-5}"
+  done
+
+  # Passed. A contract that passes releases the snapshots pinned before older contracts.
+  if [ "$CONTRACT" = true ]; then
+    write_json "$UPDATE/releases.json" --arg keep "$SNAP" --arg at "$(now)" \
+      '.snapshots = [(.snapshots // [])[] | if .pinned and .dir != $keep and (.released | not) then .released = $at else . end]'
+  fi
+  rm -f "$PROBATION_FILE"
+  prune_releases
+  prune_snapshots
+  set_state idle
+  say "${COMMIT:0:12} passed probation"
+}
+
+# A probation left behind (a reboot, or the updater stopped) starts over from
+# probation.json: every check ok once unlocked, then PROBATION_SECONDS.
+resume() {
+  [ -f "$PROBATION_FILE" ] || return 0
+  local p; p=$(cat "$PROBATION_FILE")
+  TAG=$(jq -r '.tag // empty' <<<"$p") COMMIT=$(jq -r '.to // empty' <<<"$p")
+  SNAP=$(jq -r '.snapshot // empty' <<<"$p") CONTRACT=$(jq -r '.contract // false' <<<"$p")
+  say "resuming probation of ${COMMIT:0:12}"
+  probation
+}
+resume
+
+# --- What to do: an argument, or lyricad's request file ---
+ACTION= TAG= COMMIT=
 case "${1:-}" in
   --tag) ACTION=update; TAG=${2:-} ;;
   --check) ACTION=check ;;
   --request|"") take_request || { say "no request"; exit 0; } ;;
-  *) die "usage: lyrica-update [--tag update/<name> | --check | --request]" ;;
+  --resume) exit 0 ;;
+  *) die "usage: lyrica-update [--tag update/<name> | --check | --request | --resume]" ;;
 esac
 case "$ACTION" in
   update) [[ "$TAG" =~ ^update/[A-Za-z0-9._-]{1,64}$ ]] || die "an update is an update/… tag" ;;
@@ -166,62 +243,10 @@ fi
 FROM=$(current_commit)
 switch_to "$COMMIT"
 raise_min_reader "$INFO"
-PROBATION_FILE="$UPDATE/probation.json"
 jq -n --arg f "$FROM" --arg t "$COMMIT" --arg tag "$TAG" --arg s "$SNAP" --arg at "$(now)" --argjson c "$CONTRACT" \
   '{from: $f, to: $t, tag: $tag, snapshot: $s, since: $at, contract: $c}' >"$PROBATION_FILE"
 $SYSTEMCTL reset-failed lyricad 2>/dev/null || true
 $SYSTEMCTL start lyricad || true
 
 # --- Probation ---
-# Passes when /health reports every check ok once unlocked and lyricad has
-# stayed up PROBATION_SECONDS since; without saved credentials it waits for
-# the first unlock. A failed check rolls back here; a crash loop through
-# lyricad's OnFailure=lyrica-rollback.service, which removes the probation file.
-set_state probation "$TAG" "$COMMIT"
-healthy_since= pid= unreachable=0
-while :; do
-  [ -f "$PROBATION_FILE" ] || { say "rolled back during probation"; exit 1; }
-  # Administration's Roll back, pressed during probation, is taken now; anything else waits for the next run.
-  if [ -e "$STATE/updates/request.json" ] && jq -e '.action == "rollback"' "$STATE/updates/request.json" >/dev/null 2>&1; then
-    U_TAG=$TAG U_COMMIT=$COMMIT
-    take_request || true
-    if [[ "$COMMIT" =~ ^[0-9a-f]{7,40}$ ]]; then exec 9>&-; exec "$SBIN/lyrica-rollback" --yes "$COMMIT"; fi
-    TAG=$U_TAG COMMIT=$U_COMMIT
-  fi
-  if health=$(sock GET /health); then
-    unreachable=0
-    failed=$(jq -r '[.checks[] | select(.ok | not) | .name] | join(", ")' <<<"$health")
-    if [ -n "$failed" ]; then
-      say "probation failed: $failed"
-      "$SBIN/lyrica-rollback" --auto --check "$failed" || true
-      exit 1
-    fi
-    if [ "$(jq -r '.locked' <<<"$health")" = true ]; then
-      healthy_since=
-    else
-      now_pid=$($SYSTEMCTL show -p MainPID --value lyricad 2>/dev/null || echo 0)
-      if [ -z "$healthy_since" ] || [ "$now_pid" != "$pid" ]; then healthy_since=$(date +%s); pid=$now_pid; fi
-      if [ $(( $(date +%s) - healthy_since )) -ge "$PROBATION_SECONDS" ]; then break; fi
-    fi
-  else
-    unreachable=$((unreachable + ${LYRICA_PROBATION_POLL:-5}))
-    healthy_since=
-    if [ "$unreachable" -ge "${LYRICA_UNREACHABLE_SECONDS:-300}" ]; then
-      say "probation failed: the update socket hasn't answered"
-      "$SBIN/lyrica-rollback" --auto --check "update socket" || true
-      exit 1
-    fi
-  fi
-  sleep "${LYRICA_PROBATION_POLL:-5}"
-done
-
-# Passed. A contract that passes releases the snapshots pinned before older contracts.
-if [ "$CONTRACT" = true ]; then
-  write_json "$UPDATE/releases.json" --arg keep "$SNAP" --arg at "$(now)" \
-    '.snapshots = [(.snapshots // [])[] | if .pinned and .dir != $keep and (.released | not) then .released = $at else . end]'
-fi
-rm -f "$PROBATION_FILE"
-prune_releases
-prune_snapshots
-set_state idle
-say "${COMMIT:0:12} passed probation"
+probation
