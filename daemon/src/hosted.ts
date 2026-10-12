@@ -5,7 +5,7 @@ import {
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  appendUserMessage, ContextMeter, createDelegateExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, OPENING, openThreadSession, piModelFor, syncEntries,
+  appendUserMessage, ContextMeter, createDelegateExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
   GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
@@ -842,6 +842,7 @@ export class HostedThread {
         }
         // Delivered during a turn, as a follow-up.
         if (m.role === "custom" && m.customType === DELEGATE_MESSAGE) this.notice(m.content, m.details);
+        if (m.role === "custom" && m.customType === TURN_TOOL_NOTICE) this.emit({ type: "notice", text: String(m.content), status: "limit" });
         if (m.role === "assistant") {
           this.failed = m.stopReason === "error";
           const u = m.usage;
@@ -861,6 +862,7 @@ export class HostedThread {
       case "entry_appended": {
         // Delivered while she was idle: appended straight to the session.
         const entry = e.entry as { type: string; customType?: string; content?: unknown; details?: unknown };
+        if (entry.type === "custom_message" && entry.customType === TURN_TOOL_NOTICE) this.emit({ type: "notice", text: String(entry.content), status: "limit" });
         if (entry.type === "custom_message" && entry.customType === DELEGATE_MESSAGE) this.notice(entry.content, entry.details);
         break;
       }
