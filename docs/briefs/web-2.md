@@ -446,13 +446,17 @@ with radios All threads / Pinned messages / Hidden threads. Design:
 
 - API: `GET …/search?q=&pool=&limit=&before=` → `{ hits: SearchHit[] }`,
   `SearchHit { threadId, pool, title, n, who: "you" | "agent" | <display
-  name>, snippet, at }`, from the FTS index recall already keeps, over
-  the user's own pools only, hidden pools included only when the Sort
-  menu shows them (the query takes `pool` list from the display setting;
-  the server refuses a pool the user can't read). Snippets are the
-  matched sentence with the match marked by the server (`[[` `]]`), never
-  more than 160 characters, so the browser renders the mark and no message
-  text is logged. 50 hits a page, newest first. Contract change in
+  name>, snippet, marks: [start, end][], at }`, from the FTS index
+  recall already keeps, over the user's own pools only. The server reads
+  the user's saved display setting itself (`display(d, user.id)` in
+  routes.ts): a pool switched off (`showGeneral`, `showPrivate`) is left
+  out, and hidden threads are left out unless `showHidden` is on, as every
+  page and count does; a `pool` parameter only narrows further, never
+  widens. Unlogged threads are never indexed, so search can't find them.
+  The snippet is the matched sentence, never more than 160 characters,
+  and `marks` gives the matches as character offsets into it, so the
+  browser marks them without guessing and no message text is logged.
+  50 hits a page, newest first. Contract change in
   docs/contracts.md (the search route and the index it reads).
 - UI: the search box keeps its place; placeholder "Search titles and
   messages". While the query is empty the list is the thread list as
@@ -472,8 +476,10 @@ with radios All threads / Pinned messages / Hidden threads. Design:
 - docs/ux.md: §4 names Nothing matches, more in this thread; the §6 row
   "Finding a thread or a message" (replace the titles-only wording).
   README's "message search" line moves.
-- Tests: a daemon test for the route (own pools only, hidden pool
-  excluded unless asked, snippet cap, no match text in logs) and an e2e
+- Tests: a daemon test for the route (own pools only, a pool switched off
+  in the display setting left out, a hidden thread left out until
+  `showHidden` is on, an unlogged thread never found, snippet cap and
+  offsets, no match text in logs) and an e2e
   step: send a message with a rare word, search it, the hit row opens the
   thread at that message.
 
