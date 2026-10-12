@@ -3,7 +3,7 @@ import type { Db } from "../db.ts";
 import { render, toStored, type UserId } from "../mentions.ts";
 import type { Profile } from "../profile.ts";
 import type { Interface, Pool } from "../types.ts";
-import { WATCHING } from "../threads.ts";
+import { WATCHING, type ThreadStep } from "../threads.ts";
 import { citationsIn, ftsQuery, indexText, kindOf, queryWords, searchWords, snippet, stripCitations, type Kind } from "./refs.ts";
 
 /** Who made a change. Thread views write as `lyrica` or `sleep`; the owner view as `user:<id>`. */
@@ -358,6 +358,12 @@ export class PoolReader {
     const row = this.db.prepare(`SELECT * FROM entries WHERE thread = ? ${filter} ORDER BY n DESC LIMIT 1`)
       .get(threadId, ...(roles ?? [])) as EntryRow | undefined;
     return row && toEntry(row);
+  }
+
+  /** A thread's checklist (`threads steps`); empty when it has none. */
+  steps(threadId: string): ThreadStep[] {
+    const row = this.db.prepare("SELECT steps FROM thread_steps WHERE thread = ?").get(threadId) as { steps: string } | undefined;
+    return row ? JSON.parse(row.steps) as ThreadStep[] : [];
   }
 
   /** A thread's wake-ups not yet fired, soonest first; or every thread's. */
@@ -918,6 +924,13 @@ export class PoolStore extends PoolReader {
     this.mustThread(threadId);
     if (!text) this.db.prepare("DELETE FROM drafts WHERE thread = ?").run(threadId);
     else this.db.prepare("INSERT INTO drafts (thread, text, updated_at) VALUES (?, ?, ?) ON CONFLICT (thread) DO UPDATE SET text = excluded.text, updated_at = excluded.updated_at").run(threadId, text, now());
+  }
+
+  /** Replaces a thread's checklist; none clears it. Forgetting the thread takes it too. */
+  setSteps(threadId: string, steps: ThreadStep[]): void {
+    this.mustThread(threadId);
+    if (!steps.length) this.db.prepare("DELETE FROM thread_steps WHERE thread = ?").run(threadId);
+    else this.db.prepare("INSERT INTO thread_steps (thread, steps, updated_at) VALUES (?, ?, ?) ON CONFLICT (thread) DO UPDATE SET steps = excluded.steps, updated_at = excluded.updated_at").run(threadId, JSON.stringify(steps), now());
   }
 
   /** Pinned entries, oldest first: one thread's, or every thread's in this pool. */

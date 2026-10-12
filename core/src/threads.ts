@@ -36,7 +36,30 @@ export type ChildStatus = "working" | "waiting" | "idle";
 /** A project's thread, as the project chat sees it: waiting covers an approval and a question for the person (`needsYou`). */
 export type ThreadState = "working" | "waiting" | "queued" | "idle" | "resolved";
 
-export interface ChildInfo { id: string; title?: string; status: ChildStatus; state?: ThreadState; needsYou?: boolean; updatedAt: string }
+export interface ChildInfo { id: string; title?: string; status: ChildStatus; state?: ThreadState; needsYou?: boolean; updatedAt: string; steps?: ThreadStep[] }
+
+/** One step of a thread's checklist (`threads steps`), which the person follows on its card: done, under way, or not started. */
+export interface ThreadStep { text: string; state: "done" | "doing" | "todo" }
+
+/** A checklist's length, and the characters a step keeps. */
+export const STEPS_LIMITS = { steps: 12, chars: 80 };
+
+/** Her guidance on the checklist. */
+export const STEPS_GUIDELINE = "On work of several steps that runs a while, keep this thread's checklist, which the person follows on its card instead of reading the thread: threads({ action: \"steps\", steps }), each step short, with its state (todo, doing or done). Set it when you start, update it as each step starts or finishes, and leave every step at its real end state when the work ends. Not for a quick answer.";
+
+/** A checklist as `threads` takes it: steps trimmed and cut to `STEPS_LIMITS.chars`, empty ones dropped. Refuses one that is too long. */
+export function cleanSteps(steps: ThreadStep[]): ThreadStep[] {
+  const clean = steps.map((s) => ({ text: s.text.trim().replace(/\s+/g, " "), state: s.state })).filter((s) => s.text);
+  if (clean.length > STEPS_LIMITS.steps) throw new Error(`a checklist has at most ${STEPS_LIMITS.steps} steps; merge some`);
+  return clean.map((s) => ({ ...s, text: s.text.length > STEPS_LIMITS.chars ? `${s.text.slice(0, STEPS_LIMITS.chars - 1)}…` : s.text }));
+}
+
+/** Where a checklist stands, in a few words: the step under way, else the next one, with the count done. */
+const stepsNote = (steps: ThreadStep[]) => {
+  const done = steps.filter((s) => s.state === "done").length;
+  const now = steps.find((s) => s.state === "doing") ?? steps.find((s) => s.state === "todo");
+  return `${done} of ${steps.length} steps done${now ? `, ${now.state === "doing" ? "now" : "next"}: ${JSON.stringify(now.text)}` : ""}`;
+};
 
 export interface StartRequest { title: string; task: string; folders?: string[]; readOnly?: boolean; internet?: false }
 
@@ -107,7 +130,7 @@ export function pickThread(ref: string, rows: { id: string; title?: string }[]):
 
 /** One line of the threads tool's list. */
 export const threadLine = (r: ChildInfo) =>
-  `[t:${r.id}] ${r.title ? JSON.stringify(r.title) : "(untitled)"}: ${r.state ?? r.status}${r.needsYou ? " (waiting on the person)" : ""}, last ${r.updatedAt}`;
+  `[t:${r.id}] ${r.title ? JSON.stringify(r.title) : "(untitled)"}: ${r.state ?? r.status}${r.needsYou ? " (waiting on the person)" : ""}, last ${r.updatedAt}${r.steps?.length ? `; ${stepsNote(r.steps)}` : ""}`;
 
 /**
  * The project section: the goal, the user's instructions, the project's
