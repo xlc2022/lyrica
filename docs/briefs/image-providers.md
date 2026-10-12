@@ -54,6 +54,13 @@ sizes, count) and how fast and quality map onto its options.
   the §5 exception. A new
   refusal code from the provider adapters marks it apart from other errors.
 
+**A2. The result names its maker** (decided by the user, 2026-10-12). The
+image tool's text result to the model states the model and where it ran
+("Made with <model> on <host or endpoint name>"), for every provider and for
+local hosts, so she can't misstate it (she once credited a host-made image to
+ChatGPT). The message's image part keeps `model` as today. A test checks the
+result text for a host image and a cloud image.
+
 **B. Use for on cloud models.** A cloud image model can be tagged fast,
 quality or both (default both), like a host recipe, so a cheap model can be
 fast-only. The router's tier rule applies to cloud as it does to recipes.
@@ -108,6 +115,7 @@ scroll, and the row's actions stay where they are.
 
 - A ChatGPT plan in `image.create` makes an image in a general thread, and a
   private or local-only thread never reaches it (test with a fake plan).
+- The image tool's result names the model and host or endpoint.
 - A keyed endpoint serves a non-`gpt-image` model marked as making images.
 - A cloud model tagged fast-only is skipped for quality and used for fast.
 - In a private or local-only thread, Try never offers a cloud model.
