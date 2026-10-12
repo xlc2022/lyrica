@@ -96,7 +96,9 @@ const location_of = (page: Page) => page.url();
 
 async function noHorizontalScroll(page: Page) {
   // A drawer slides in from 30 px past the edge for 180 ms; measure once every animation has finished.
-  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))));
+  await page.evaluate(() => Promise.all(document.getAnimations()
+    .filter((a) => a.effect?.getComputedTiming().endTime !== Infinity) // a pulsing dot or blinking caret never finishes
+    .map((a) => a.finished.catch(() => undefined))));
   const found = await page.evaluate(() => {
     const wide = [...document.querySelectorAll<HTMLElement>(".scroll, .head, .drawer-body, .mem-pane, .mem-read, .side")]
       .filter((el) => el.scrollWidth > el.clientWidth + 1)
