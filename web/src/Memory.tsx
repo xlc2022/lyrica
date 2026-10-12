@@ -1,225 +1,514 @@
-// The memory browser: search, read with lineage, edit with history, delete, add.
-import { useEffect, useState } from "react";
+// The memory browser, read like a notebook (DESIGN.md Memory, docs/ux.md §6):
+// a browse pane by layer with search above it, and the memory beside it, its
+// citations reading as titles that preview on hover, Came from and Used in
+// with the citing sentence, history as word differences, editing in place.
+// Everything comes from the owner view through lyricad; titles, previews and
+// differences live in React state, never in browser storage.
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { Components } from "react-markdown";
 import {
   del, get, patch, post, u,
-  type MemoryDetail, type MemoryHit, type MemoryKind, type Pool,
+  type Display, type MemoryDetail, type MemoryHit, type MemoryKind, type MemoryLink, type MemoryOverview, type MemoryRevision, type MemoryTag, type MemoryUse, type Pool, type UserMap,
 } from "./api.ts";
-import { fromEditable, readable, toEditable, useThreadMentions } from "./mentions.ts";
-import { go, href, idHref } from "./route.ts";
-import { PageHead, type ShellContext } from "./Shell.tsx";
-import { Confirm, ErrorText, hidden, Prose, shortTime, useAction, useLoad } from "./ui.tsx";
+import { Icon } from "./icons.tsx";
+import { CITATION_GROUP, dateWord, firstWords, KIND_WORD, linkCitations, longDate, parseRef, plainCitations, plainWords, poolWord, wordDiff, wordFor, type Word } from "./memory.ts";
+import { fromEditable, readable, toEditable } from "./mentions.ts";
+import { go, href, idHref, parse } from "./route.ts";
+import { Main, PageHead, usePanel, type ShellContext } from "./Shell.tsx";
+import { ConfirmDialog, ErrorText, hidden, Prose, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
 
-const KINDS: { kind: MemoryKind; label: string }[] = [
-  { kind: "note", label: "Notes" },
-  { kind: "page", label: "Pages" },
-  { kind: "wake", label: "WAKE" },
-  { kind: "journal", label: "Journal" },
-  { kind: "thread", label: "Threads" },
-  { kind: "entry", label: "Thread messages" },
-];
+type Layer = "page" | "note" | "wake" | "journal";
+const LAYERS: { layer: Layer; label: string }[] = [{ layer: "page", label: "Pages" }, { layer: "note", label: "Notes" }, { layer: "wake", label: "WAKE" }, { layer: "journal", label: "Journal" }];
+const PAGE_SIZE = 40;
+
+/** Titles of memories read in this visit, for the panel's breadcrumb; nothing of a memory's text. */
+const TITLES = new Map<string, string>();
+export const memoryTitle = (pool: Pool, id: string) => TITLES.get(`${pool}/${id}`);
+
+/** A memory's name: its title, or for a note its first words, WAKE, or the journal entry's day. */
+function nameOf(kind: MemoryKind, title: string | undefined, text: string, at: string): string {
+  if (title) return title;
+  if (kind === "wake") return "WAKE";
+  if (kind === "journal") return longDate(at);
+  return firstWords(text) || "an empty memory";
+}
+
+const originWord = (origin?: string) => (origin === "user" ? "yours" : origin === "sleep" ? "sleep" : "Lyrica");
+
+/** What the browse pane shows: the layer, and a tag that narrows the Notes layer. */
+interface Browsing { layer: Layer; tag?: string }
 
 export function Memory({ ctx, pool, id }: { ctx: ShellContext; pool?: Pool; id?: string }) {
   const userId = ctx.user.id;
+  const display = ctx.me.display;
+  const inPanel = !!usePanel();
   const [adding, setAdding] = useState(false);
+  const [browsing, setBrowsing] = useState<Browsing>({ layer: "page" });
+  const [title, setTitle] = useState<string>();
+  /** The memories read in turn by following links inside one, for the page's own breadcrumb. */
+  const [trail, setTrail] = useState<{ pool: Pool; id: string; title: string }[]>([]);
+  const overview = useLoad(() => get<MemoryOverview>(u(userId, "memory")), [userId, display.showGeneral, display.showPrivate]);
+  useEffect(() => { if (!id) setTitle(undefined); }, [id]);
+
+  const reading = !!(id && pool) || adding;
+  const detail = adding ? <AddMemory userId={userId} onDone={(d) => { setAdding(false); if (d) go({ page: "memory", userId, pool: d.item.pool, id: d.item.id }); }} />
+    : id && pool && hidden(display, pool) ? <p className="muted empty">{poolWord(pool)} is hidden. Turn on {poolWord(pool)} in the Sort menu to see it.</p>
+    : id && pool ? <Detail key={`${pool}/${id}`} ctx={ctx} pool={pool} id={id} onTitle={setTitle} onTag={(tag) => { setBrowsing({ layer: "note", tag }); go({ page: "memory", userId }); }} />
+    : <p className="muted empty">Pick a memory to read it, or search.</p>;
+
+  if (inPanel) {
+    return (
+      <Main className="main memory">
+        <PageHead ctx={ctx} title="Memory" />
+        <div className="mem-read">{detail}</div>
+      </Main>
+    );
+  }
+
+  // A link inside the memory opens the next one in place, and the breadcrumb grows; a crumb goes back to that one.
+  const follow = (e: React.MouseEvent) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const a = (e.target as Element).closest("a[href^='#/u/']");
+    if (!a) return;
+    const to = parse(a.getAttribute("href")!);
+    if (to.page !== "memory" || !to.pool || !to.id) return;
+    const crumb = (a as HTMLElement).dataset.crumb;
+    if (crumb !== undefined) setTrail(trail.slice(0, Number(crumb)));
+    else if (id && pool && title) setTrail([...trail, { pool, id, title }]);
+  };
+  const facts = overview.data && (
+    <><span className="num">{overview.data.pages}</span> {overview.data.pages === 1 ? "page" : "pages"} · <span className="num">{overview.data.notes}</span> {overview.data.notes === 1 ? "note" : "notes"}
+      {overview.data.slept && <> · slept <span className="num">{shortTime(overview.data.slept)}</span></>}</>
+  );
   return (
-    <main className="main memory" data-detail={!!id || adding}>
-      <PageHead ctx={ctx} title="Memory">
-        <button type="button" className="sm" onClick={() => { setAdding(true); go({ page: "memory", userId }); }}>Add a memory</button>
+    <Main className="main memory">
+      <PageHead ctx={ctx} title="Memory" facts={facts}>
+        <button type="button" className="sm" onClick={() => { setAdding(true); go({ page: "memory", userId }); }}><Icon name="plus" /><span className="long">Add a memory</span></button>
       </PageHead>
-      <div className="memory-panes">
-        <Search ctx={ctx} current={id} />
-        <div className="memory-detail">
-          {adding ? <AddMemory userId={userId} onDone={(d) => { setAdding(false); if (d) go({ page: "memory", userId, pool: d.item.pool, id: d.item.id }); }} />
-            : id && pool && hidden(ctx.me.display, pool) ? <p className="muted empty">{pool === "private" ? "Private" : "General"} is hidden. Turn on {pool === "private" ? "Private" : "General"} in the Sort menu to see it.</p>
-            : id && pool ? <Detail key={`${pool}/${id}`} userId={userId} pool={pool} id={id} />
-            : <p className="muted empty">Search, or pick a memory to read it.</p>}
+      <div className="mem" data-reading={reading}>
+        <Browse ctx={ctx} current={id} browsing={browsing} onBrowse={setBrowsing} onPick={() => { setTrail([]); setAdding(false); }} />
+        <div className="mem-read" onClick={follow}>
+          {reading && <a className="sm mem-back" href={href({ page: "memory", userId })}><Icon name="back" />Memory</a>}
+          {trail.length > 0 && id && (
+            <nav className="crumbs" aria-label="Opened from">
+              {trail.map((c, i) => <a key={i} href={href({ page: "memory", userId, pool: c.pool, id: c.id })} data-crumb={i}>{c.title}</a>)}
+            </nav>
+          )}
+          {detail}
         </div>
       </div>
-    </main>
+    </Main>
   );
 }
 
-function Search({ ctx, current }: { ctx: ShellContext; current?: string }) {
+/** The browse pane: search, the layer segment, the filters row, the Notes layer's tags, and the list, newest first and paged. */
+function Browse({ ctx, current, browsing, onBrowse, onPick }: { ctx: ShellContext; current?: string; browsing: Browsing; onBrowse: (b: Browsing) => void; onPick: () => void }) {
   const userId = ctx.user.id;
+  const { display } = ctx.me;
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
   const [pool, setPool] = useState<"" | Pool>("");
-  const [kinds, setKinds] = useState<MemoryKind[]>(["note", "page", "wake", "journal"]);
   const [userOnly, setUserOnly] = useState(false);
-  const [picked, setPicked] = useState<string[]>([]);
-  const [run, , error] = useAction();
+  const [more, setMore] = useState<MemoryHit[]>([]);
+  const [noMore, setNoMore] = useState(false);
+  const [sel, setSel] = useState<string[]>([]);
+  const [forgetting, setForgetting] = useState(false);
+  const [run, busy, error] = useAction();
+  const { layer, tag } = browsing;
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(q.trim()), 200);
+    return () => clearTimeout(t);
+  }, [q]);
 
   const params = new URLSearchParams();
   if (query) params.set("q", query);
+  params.set("kinds", query ? "note,page,wake,journal" : layer);
   if (pool) params.set("pool", pool);
-  params.set("kinds", kinds.join(","));
   if (userOnly) params.set("origin", "user");
-  params.set("limit", "50");
+  if (!query && layer === "note" && tag) params.set("about", tag);
+  params.set("limit", String(PAGE_SIZE));
   const search = params.toString();
-  const hits = useLoad(() => (query || userOnly ? get<MemoryHit[]>(`${u(userId, "memory", "search")}?${search}`) : Promise.resolve([])), [userId, search, ctx.me.display.showGeneral, ctx.me.display.showPrivate]);
-  useEffect(() => setPicked([]), [search]);
+  const hits = useLoad(() => get<MemoryHit[]>(`${u(userId, "memory", "search")}?${search}`), [userId, search, display.showGeneral, display.showPrivate]);
+  const tags = useLoad(() => (layer === "note" && !query ? get<MemoryTag[]>(`${u(userId, "memory", "about")}${pool ? `?pool=${pool}` : ""}`) : Promise.resolve([] as MemoryTag[])), [userId, layer, query, pool, display.showGeneral, display.showPrivate]);
+  useEffect(() => { setMore([]); setNoMore(false); setSel([]); }, [search]);
 
+  const rows = [...(hits.data ?? []), ...more];
+  const canPage = !query && hits.data && hits.data.length >= PAGE_SIZE && !noMore;
+  const page = () => run(async () => {
+    const last = rows.at(-1)?.updatedAt;
+    if (!last) return;
+    const next = await get<MemoryHit[]>(`${u(userId, "memory", "search")}?${search}&before=${encodeURIComponent(last)}`);
+    setMore((m) => [...m, ...next]);
+    if (next.length < PAGE_SIZE) setNoMore(true);
+  });
+  const key = (h: MemoryHit) => `${h.pool}/${h.id}`;
+  // Ctrl- or Cmd-click adds to the selection, Shift-click takes everything between (as in the Files panel).
+  const select = (e: React.MouseEvent, h: MemoryHit) => {
+    const k = key(h);
+    if (e.shiftKey && sel.length) {
+      const keys = rows.map(key);
+      const [a, b] = [keys.indexOf(sel.at(-1)!), keys.indexOf(k)].sort((x, y) => x - y) as [number, number];
+      setSel([...new Set([...sel, ...keys.slice(a, b + 1)])]);
+    } else setSel(sel.includes(k) ? sel.filter((x) => x !== k) : [...sel, k]);
+  };
   const forget = () => run(async () => {
     const byPool = new Map<Pool, string[]>();
-    for (const key of picked) {
-      const [p, ...rest] = key.split("/");
-      byPool.set(p as Pool, [...(byPool.get(p as Pool) ?? []), rest.join("/")]);
-    }
+    for (const k of sel) { const [p, ...rest] = k.split("/"); byPool.set(p as Pool, [...(byPool.get(p as Pool) ?? []), rest.join("/")]); }
     for (const [p, ids] of byPool) await post(u(userId, "memory", p, "forget"), { ids });
+    setSel([]); setForgetting(false);
     hits.reload();
+    if (sel.some((k) => k.endsWith(`/${current}`))) go({ page: "memory", userId });
   });
 
+  const line = (h: MemoryHit): ReactNode => {
+    const kind = query ? `${KIND_WORD[h.kind]} · ` : "";
+    if (h.kind === "note") return <>{kind}{(h.about ?? []).join(", ")}{h.about?.length && h.origin === "user" ? " · " : ""}{h.origin === "user" && "yours"}{h.supersededBy && " · superseded"}</>;
+    if (h.kind === "page") return <>{kind}{h.origin === "user" && "yours · "}{h.snippet}</>;
+    return <>{kind}{h.title ? h.snippet : firstWords(h.snippet, 90)}</>;
+  };
   return (
-    <section className="memory-search" aria-label="Search memory">
-      <form role="search" className="inline" onSubmit={(e) => { e.preventDefault(); setQuery(q.trim()); }}>
-        <input type="search" aria-label="Search memory" placeholder="Search memory" value={q} onChange={(e) => setQ(e.target.value)} />
-        <button type="submit">Search</button>
-      </form>
-      <div className="filters-row">
+    <section className="mem-pane" aria-label="Browse memory" onClick={(e) => { if ((e.target as Element).closest("a")) onPick(); }}>
+      <input type="search" aria-label="Search memory" placeholder="Search memory" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="seg" role="group" aria-label="Layer">
+        {LAYERS.map((l) => <button key={l.layer} type="button" aria-pressed={!query && layer === l.layer} onClick={() => { setQ(""); onBrowse({ layer: l.layer }); }}>{l.label}</button>)}
+      </div>
+      <div className="mem-filters">
         <select aria-label="Pool" value={pool} onChange={(e) => setPool(e.target.value as "" | Pool)}>
           <option value="">Both pools</option>
           <option value="general">General</option>
           <option value="private">Private</option>
         </select>
-        {KINDS.map((k) => (
-          <label key={k.kind} className="check">
-            <input type="checkbox" checked={kinds.includes(k.kind)}
-              onChange={(e) => setKinds(e.target.checked ? [...kinds, k.kind] : kinds.filter((x) => x !== k.kind))} />
-            {k.label}
-          </label>
-        ))}
         <label className="check"><input type="checkbox" checked={userOnly} onChange={(e) => setUserOnly(e.target.checked)} /> User introduced</label>
       </div>
-      <ErrorText error={hits.error || error} />
-      <ul className="hits">
-        {(hits.data ?? []).map((h) => {
-          const key = `${h.pool}/${h.id}`;
-          return (
-            <li key={key} aria-current={current === h.id ? "true" : undefined}>
-              <input type="checkbox" aria-label={`Select ${h.id}`} checked={picked.includes(key)}
-                onChange={(e) => setPicked(e.target.checked ? [...picked, key] : picked.filter((x) => x !== key))} />
-              <a href={href({ page: "memory", userId, pool: h.pool, id: h.id })}>
-                <span className="hit-meta">
-                  <span className="badge" data-kind={h.pool === "private" ? "private" : "general"}><span className="k">{h.pool}</span></span>
-                  {h.kind}{h.origin === "user" && " · yours"}{h.supersededBy && " · superseded"}
-                </span>
-                <span className="snippet">{h.snippet}</span>
-              </a>
-            </li>
-          );
-        })}
-        {hits.data && !hits.data.length && (query || userOnly) && <li className="muted empty">Nothing found.</li>}
-      </ul>
-      {picked.length > 0 && (
-        <Confirm label={`Forget these ${picked.length}`} danger confirm="Forget them"
-          question={`Forget ${picked.length} ${picked.length === 1 ? "memory" : "memories"} as a topic? Each is deleted, leaving a tombstone so sleep doesn't learn it again. This can't be undone.`}
-          onConfirm={forget} />
+      {tags.data && tags.data.length > 0 && (
+        <div className="tags" role="group" aria-label="Tags">
+          {tags.data.map((t) => <button key={t.about} type="button" className="tag" aria-pressed={tag === t.about} onClick={() => onBrowse({ layer, tag: tag === t.about ? undefined : t.about })}>{t.about} <span className="num">{t.count}</span></button>)}
+        </div>
+      )}
+      <ErrorText error={hits.error || tags.error || error} />
+      <div className="mem-list" aria-label={query ? "Search results" : LAYERS.find((l) => l.layer === layer)!.label} data-selecting={sel.length > 0 || undefined}>
+        {rows.map((h) => (
+          <a key={key(h)} href={href({ page: "memory", userId, pool: h.pool, id: h.id })} aria-current={current === h.id ? "true" : undefined} className={sel.includes(key(h)) ? "sel" : undefined}
+            onClick={(e) => { if (e.ctrlKey || e.metaKey || e.shiftKey) { e.preventDefault(); e.stopPropagation(); select(e, h); } }}>
+            <span className="t"><span>{nameOf(h.kind, h.title, h.snippet, h.updatedAt ?? "")}</span>{h.updatedAt && <span className="when num">{shortTime(h.updatedAt)}</span>}</span>
+            <span className="s"><span className={`kind ${h.pool}`}>{h.pool}</span>{line(h)}</span>
+          </a>
+        ))}
+        {hits.data && !rows.length && <p className="muted empty">{query ? "Nothing found." : layer === "wake" ? "She hasn't woken yet." : layer === "journal" ? "No journal yet." : layer === "page" ? "No pages yet." : "No notes yet."}</p>}
+        {canPage && <div className="more-row"><button type="button" className="sm" disabled={busy} onClick={page}>More</button></div>}
+      </div>
+      {sel.length > 0 && (
+        <div className="selbar">
+          <span><span className="num">{sel.length}</span> selected</span>
+          <button type="button" className="sm" onClick={() => setSel([])}>Clear</button>
+          <button type="button" className="sm danger" onClick={() => setForgetting(true)}>Forget…</button>
+        </div>
+      )}
+      {forgetting && (
+        <ConfirmDialog title={`Forget ${sel.length === 1 ? "this memory" : `these ${sel.length} memories`}?`} confirm="Forget" danger onCancel={() => setForgetting(false)} onConfirm={forget}
+          sentence="Each is deleted for good, leaving a marker with only its ID so sleep doesn't learn it again." />
       )}
     </section>
   );
 }
 
-function Detail({ userId, pool, id }: { userId: string; pool: Pool; id: string }) {
-  const d = useLoad(() => get<MemoryDetail>(u(userId, "memory", pool, id)), [userId, pool, id]);
+/** One memory: its facts, tags, text with titled citations, actions, Came from, Used in and History. */
+function Detail({ ctx, pool, id, onTitle, onTag }: { ctx: ShellContext; pool: Pool; id: string; onTitle: (t: string) => void; onTag: (tag: string) => void }) {
+  const userId = ctx.user.id;
+  const { display } = ctx.me;
+  const d = useLoad(() => get<MemoryDetail>(u(userId, "memory", pool, id)), [userId, pool, id, display.showGeneral, display.showPrivate]);
   const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [run, busy, error] = useAction();
-  if (!d.data) return <ErrorText error={d.error} />;
-  const { item, users } = d.data;
+  const item = d.data?.item;
+  const name = item && nameOf(item.kind, item.title && readable(item.title, d.data!.users), readable(item.text, d.data!.users), item.updatedAt);
+  useEffect(() => { if (name) { TITLES.set(`${pool}/${id}`, name); onTitle(name); } }, [name, pool, id, onTitle]);
+  if (!d.data || !item) return <ErrorText error={d.error} />;
+  const { users } = d.data;
+  // The memory being read is its own citer's target: the lineage names it rather than calling it gone.
+  const self: MemoryLink = { kind: item.kind, pool: item.pool, ...(item.title ? { title: item.title } : {}), snippet: firstWords(plainCitations(item.text)), updatedAt: item.updatedAt, ...(item.origin ? { origin: item.origin } : {}) };
+  const links: Record<string, MemoryLink> = { ...d.data.links, [item.id]: self, [`${item.pool}/${item.id}`]: self };
   const path = u(userId, "memory", item.pool, item.id);
   const act = (fn: () => Promise<MemoryDetail>) => run(async () => d.set(await fn()));
+  const canDelete = item.kind === "note" || item.kind === "page";
+  const cameFrom: MemoryUse[] = d.data.cameFrom.map((ref) => ({ id: ref, sentence: sentenceCiting(item.text, ref) }));
 
   return (
-    <article className="memory-item">
-      <a className="back quiet" href={href({ page: "memory", userId })}>← Results</a>
-      <h2>{item.title ?? item.id}</h2>
-      <p className="hit-meta">
-        <span className="badge" data-kind={item.pool === "private" ? "private" : "general"}><span className="k">{item.pool}</span></span>
-        {item.kind} · {item.id}{item.origin === "user" && " · User introduced"}{item.archived && " · archived"}
-        {" · "}updated {shortTime(item.updatedAt)}
-      </p>
-      {item.supersededBy && <p className="muted">Superseded by <MemoryLink userId={userId} pool={item.pool} id={item.supersededBy} />.</p>}
+    <article className="mem-item" aria-labelledby="mem-title">
+      <h2 id="mem-title">{name}</h2>
+      <div className="tfacts">
+        <span className={`kind ${item.pool}`}>{item.pool}</span>
+        <span>{KIND_WORD[item.kind]}</span>
+        <span>{originWord(item.origin)}</span>
+        {item.archived && <span>archived</span>}
+        <span>updated <span className="num">{shortTime(item.updatedAt)}</span></span>
+        {item.folders && item.folders.length > 0 && <span className="folder" title={item.folders.join(", ")}><Icon name="folder" />{item.folders.join(", ")}</span>}
+      </div>
+      {item.about && item.about.length > 0 && (
+        <div className="tags" aria-label="Tags">{item.about.map((t) => <button key={t} type="button" className="tag" onClick={() => onTag(t)}>{t}</button>)}</div>
+      )}
+      {item.supersededBy && <p className="meta muted">Superseded by <a href={idHref(userId, item.pool, item.supersededBy)}>a later note</a>.</p>}
+      {!editing && item.summary && <p className="summary">{readable(item.summary, users)}</p>}
       <ErrorText error={error} />
       {editing
-        ? <Editor detail={d.data} busy={busy} onCancel={() => setEditing(false)}
+        ? <Editor detail={d.data} display={display} userId={userId} busy={busy} onCancel={() => setEditing(false)}
             onSave={(edit) => act(() => patch<MemoryDetail>(path, edit)).then((ok) => ok && setEditing(false))} />
         : (
           <>
-            {item.summary && <p className="summary">{readable(item.summary, users)}</p>}
-            <div className="prose"><MemoryProse text={readable(item.text, users)} userId={userId} pool={item.pool} /></div>
+            <div className="prose"><MemoryProse text={item.text} pool={item.pool} userId={userId} links={links} users={users} display={display} /></div>
             <div className="row">
-              <button type="button" onClick={() => setEditing(true)}>Edit</button>
-              <button type="button" onClick={() => act(() => post<MemoryDetail>(`${path}/archive`, { archived: !item.archived }))}>{item.archived ? "Unarchive" : "Archive"}</button>
-              <Confirm label="Delete" danger confirm="Delete it"
-                question="Delete this memory? Its text is gone for good. A tombstone with only its ID stays, so sleep doesn't learn it again."
-                onConfirm={() => run(async () => { await del(path); go({ page: "memory", userId }); })} />
+              <button type="button" className="sm" onClick={() => setEditing(true)}>Edit</button>
+              <MoreMenu>
+                <button type="button" role="menuitem" disabled={busy} onClick={() => act(() => post<MemoryDetail>(`${path}/archive`, { archived: !item.archived }))}>{item.archived ? "Unarchive" : "Archive"}</button>
+                {canDelete && <button type="button" role="menuitem" className="danger" disabled={busy} onClick={() => setDeleting(true)}>Delete…</button>}
+              </MoreMenu>
             </div>
           </>
         )}
-      <Lineage userId={userId} pool={item.pool} title="Came from" ids={d.data.cameFrom} />
-      <Lineage userId={userId} pool={item.pool} title="Used in" ids={d.data.usedIn} />
-      {d.data.revisions.length > 0 && (
-        <section className="history">
-          <h3>History</h3>
-          <ol>
-            {d.data.revisions.map((r) => (
-              <li key={r.id}>
-                <details>
-                  <summary>{shortTime(r.createdAt)} · {users[r.author]?.displayName ?? r.author}</summary>
-                  <div className="prose small"><MemoryProse text={readable(r.body.text, users)} userId={userId} pool={item.pool} /></div>
-                  <button type="button" disabled={busy} onClick={() => act(() => post<MemoryDetail>(`${path}/restore`, { revision: r.id }))}>Restore this version</button>
-                </details>
-              </li>
-            ))}
-          </ol>
-        </section>
+      <Lineage title="Came from" uses={cameFrom} mark={undefined} ctx={ctx} pool={item.pool} links={links} users={users} ownText />
+      <Lineage title="Used in" uses={d.data.usedIn} mark={item.id} ctx={ctx} pool={item.pool} links={links} users={users} />
+      <History detail={d.data} userId={userId} display={display} busy={busy} onRestore={(rev) => act(() => post<MemoryDetail>(`${path}/restore`, { revision: rev }))} />
+      {deleting && (
+        <ConfirmDialog title={`Delete “${name}”?`} confirm="Delete" danger onCancel={() => setDeleting(false)}
+          sentence={`Its text and its history are gone for good; a marker with only its ID stays, so she doesn't learn it again.${d.data.usedIn.length ? ` ${d.data.usedIn.length === 1 ? "One memory cites it and is" : `${d.data.usedIn.length} memories cite it and are`} rewritten at the next sleep.` : ""}`}
+          onConfirm={() => run(async () => { await del(path); go({ page: "memory", userId }); })} />
       )}
     </article>
   );
 }
 
-function Editor({ detail, busy, onSave, onCancel }: {
-  detail: MemoryDetail; busy: boolean; onSave: (e: { text: string; title?: string; summary?: string }) => void; onCancel: () => void;
-}) {
-  const { item, users } = detail;
-  const [text, setText] = useState(() => toEditable(item.text, users));
-  const [title, setTitle] = useState(item.title ?? "");
-  const [summary, setSummary] = useState(() => toEditable(item.summary ?? "", users));
-  const page = item.kind === "page";
+/** The sentence of `text` citing `ref` (as written), for a Came from card; the server does the same for Used in. */
+function sentenceCiting(text: string, ref: string): string | undefined {
+  const flat = text.replace(/\s+/g, " ").trim();
+  const sentences = flat.match(/[^.!?]+(?:[.!?]+(?:\s*\[[^[\]]+\])*)?|[.!?]+(?:\s*\[[^[\]]+\])*/g) ?? [flat];
+  const cites = (s: string) => [...s.matchAll(/(?<!\[)\[([^[\]]+)\](?!\])/g)].flatMap((m) => m[1]!.split(/[,;]\s*/).map((x) => x.trim()));
+  return sentences.find((s) => cites(s).includes(ref))?.trim();
+}
+
+/** Rare actions behind a ⋯ (docs/ux.md §6). */
+function MoreMenu({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(ref, open, close);
   return (
-    <form className="stack" onSubmit={(e) => {
-      e.preventDefault();
-      onSave({ text: fromEditable(text, users), ...(page && { title, summary: fromEditable(summary, users) }) });
-    }}>
-      {page && <label className="field"><span>Title</span><input value={title} onChange={(e) => setTitle(e.target.value)} /></label>}
-      {page && <label className="field"><span>Summary</span><input value={summary} onChange={(e) => setSummary(e.target.value)} /></label>}
-      <label className="field"><span>Text</span><textarea rows={10} value={text} onChange={(e) => setText(e.target.value)} /></label>
-      <p className="muted small">People appear as [[Name]] (or [[Name:obj]], [[Name:poss]]…) and are saved so a later rename still applies.</p>
-      <div className="row">
-        <button type="submit" className="primary" disabled={busy}>Save</button>
-        <button type="button" onClick={onCancel}>Cancel</button>
-      </div>
-    </form>
+    <span className="row-menu" ref={ref} onClick={(e) => { if ((e.target as Element).closest("[role='menuitem']")) setOpen(false); }}>
+      <button type="button" className="icon-btn" aria-label="More actions" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}><Icon name="more" /></button>
+      {open && <div className="menu" role="menu">{children}</div>}
+    </span>
   );
 }
 
-function Lineage({ userId, pool, title, ids }: { userId: string; pool: Pool; title: string; ids: string[] }) {
-  if (!ids.length) return null;
+/** A memory's text with each citation reading as a title, a dated source mark, or the hidden pool's word, previewing on hover or focus. */
+export function MemoryProse({ text, pool, userId, links, users, display }: { text: string; pool: Pool; userId: string; links: Record<string, MemoryLink>; users: UserMap; display: Display }) {
+  const { markdown, words } = useMemo(() => linkCitations(readable(text, users), pool, userId, links, display), [text, users, pool, userId, links, display]);
+  const a = useMemo<Components["a"]>(() => ({ node: _, ...props }) => {
+    const w = props.href ? words.get(props.href) : undefined;
+    if (!w) return props.href?.startsWith("#/") ? <a {...props} /> : <a {...props} target="_blank" rel="noopener noreferrer" />;
+    return <WordLink word={w} users={users} {...props} />;
+  }, [words, users]);
+  return <Prose text={markdown} a={a} />;
+}
+
+let tipN = 0;
+/** A link that reads as its memory's title or date and previews it (first line, pool, date) on hover or focus. */
+function WordLink({ word, users, children, href: to }: { word: Word; users: UserMap; children?: ReactNode; href?: string }) {
+  const [tip] = useState(() => `tip-${++tipN}`);
+  const l = word.link!;
+  const kind = KIND_WORD[word.ref.kind];
+  return (
+    <a href={to} className={word.cite ? "cite" : "wl"} aria-describedby={tip} aria-label={word.cite ? `Source note, ${word.text}` : undefined}>
+      {children}
+      <span className="preview" role="tooltip" id={tip}>
+        <span className="meta">{kind[0]!.toUpperCase() + kind.slice(1)} · {l.pool} · <span className="num">{dateWord(l.updatedAt)}</span>{l.origin === "user" && " · yours"}</span>
+        {l.kind === "page" || l.kind === "thread" ? (l.snippet ? readable(l.snippet, users) : l.title) : readable(l.snippet, users)}
+      </span>
+    </a>
+  );
+}
+
+/** Came from and Used in: a card per memory with its title or first words, its date, and the citing sentence (docs/ux.md §6). */
+function Lineage({ title, uses, mark, ctx, pool, links, users, ownText }: {
+  title: string; uses: MemoryUse[]; mark?: string; ctx: ShellContext; pool: Pool; links: Record<string, MemoryLink>; users: UserMap;
+  /** The sentences are this memory's own (Came from): the cited memory is marked by its ref instead. */
+  ownText?: boolean;
+}) {
+  const userId = ctx.user.id;
+  const { display } = ctx.me;
+  if (!uses.length) return null;
   return (
     <section className="lineage">
       <h3>{title}</h3>
-      <ul>{ids.map((id) => <li key={id}><MemoryLink userId={userId} pool={pool} id={id} /></li>)}</ul>
+      <div className="links">
+        {uses.map((use) => {
+          const ref = parseRef(use.id, pool);
+          if (!ref) return null;
+          const w = wordFor(ref, links[use.id], display, userId);
+          const marked = ownText ? use.id : mark;
+          const sentence = use.sentence && w.href ? <Sentence text={use.sentence} pool={ownText ? pool : ref.pool} links={links} users={users} display={display} userId={userId} mark={marked} /> : null;
+          if (!w.href) {
+            // A hidden pool's memory, a private citer of a general memory, or one that is gone: the ID stays, no words.
+            const otherPool = ref.pool !== pool && !hidden(display, ref.pool);
+            return otherPool
+              ? <a key={use.id} className="lk" href={idHref(userId, pool, use.id)} title={`A ${ref.pool} memory uses this. Its words stay out of a ${pool} memory; open it to read it.`}><span><span className="eyebrow">{ref.pool} {KIND_WORD[ref.kind]}</span></span></a>
+              : <div key={use.id} className="lk plain"><span>{w.text}</span></div>;
+          }
+          return (
+            <a key={use.id} className="lk" href={w.href}>
+              <span>{ref.kind !== "note" && <span className="eyebrow">{KIND_WORD[ref.kind]}</span>}{w.cite ? firstWords(readable(w.link!.snippet, users)) : w.text}{w.link?.origin === "user" && <span className="cap"> yours</span>}</span>
+              <span className="when num">{dateWord(w.link!.updatedAt)}</span>
+              {sentence}
+            </a>
+          );
+        })}
+      </div>
     </section>
   );
 }
 
-function MemoryLink({ userId, pool, id }: { userId: string; pool: Pool; id: string }) {
-  return <a href={idHref(userId, pool, id)}>{id}</a>;
+/** A citing sentence as it reads, titles for citations, the cited memory's title marked. */
+function Sentence({ text, pool, links, users, display, userId, mark }: { text: string; pool: Pool; links: Record<string, MemoryLink>; users: UserMap; display: Display; userId: string; mark?: string }) {
+  const MARK = "⁣";
+  const withMark = mark ? text.replace(/(?<!\[)\[([^[\]]+)\](?!\])/g, (whole, inside: string) => (inside.split(/[,;]\s*/).map((x) => x.trim()).includes(mark) ? `${MARK}${whole}${MARK}` : whole)) : text;
+  const plain = plainWords(readable(withMark, users), pool, links, display, userId);
+  const parts = plain.split(MARK);
+  return <span className="q">{parts.map((p, i) => (i % 2 ? (p.trim() ? <mark key={i}>{p.trim()}</mark> : null) : p))}</span>;
+}
+
+/** History: a row per version, the current one open, each older one showing its word differences against the current text, with Restore. */
+function History({ detail, userId, display, busy, onRestore }: { detail: MemoryDetail; userId: string; display: Display; busy: boolean; onRestore: (revision: number) => void }) {
+  const { item, revisions, users, links } = detail;
+  if (!revisions.length) return null;
+  const newestFirst = [...revisions].reverse();
+  const plain = (text: string) => plainWords(readable(text, users), item.pool, links, display, userId);
+  const current = plain(item.text);
+  const by = (r: MemoryRevision) => {
+    const who = /^user:(.+)$/.exec(r.author)?.[1];
+    return who ? (who === userId ? "yours" : users[who]?.displayName ?? "a user") : r.author;
+  };
+  return (
+    <section className="history">
+      <h3>History</h3>
+      <div className="hist">
+        {newestFirst.map((r, i) => {
+          const previous = newestFirst[i + 1];
+          const diff = i === 0 ? (previous ? wordDiff(plain(previous.body.text), current) : undefined) : wordDiff(current, plain(r.body.text));
+          return (
+            <details key={r.id} open={i === 0}>
+              <summary><span className="when num">{shortTime(r.createdAt)}</span><span className="by">{by(r)}</span><span className="n num">{i === 0 ? "current" : `${newestFirst.length - i} of ${newestFirst.length}`}</span></summary>
+              {diff ? <div className="wdiff">{diff.map((op, k) => (op.kind === "same" ? <span key={k}>{op.text}</span> : op.kind === "del" ? <del key={k}>{op.text}</del> : <ins key={k}>{op.text}</ins>))}</div>
+                : <div className="wdiff">{current}</div>}
+              {i > 0 && <div className="row actions"><button type="button" className="sm" disabled={busy} onClick={() => onRestore(r.id)}>Restore</button></div>}
+            </details>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+interface Pick { kind: "page" | "person"; label: string; meta?: string; insert: string; ref?: string; link?: MemoryLink; key: string }
+
+/** Editing in place: an Edit | Preview segment, the textarea, Save as the one primary. `[[` offers pages (saved as IDs) and people (saved as name tokens). */
+function Editor({ detail, display, userId, busy, onSave, onCancel }: {
+  detail: MemoryDetail; display: Display; userId: string; busy: boolean; onSave: (e: { text: string; title?: string; summary?: string }) => void; onCancel: () => void;
+}) {
+  const { item, users } = detail;
+  // A page citation reads as [[its title]] while editing and is saved as its ID; notes stay cited by ID, since they have no title.
+  const [pageTitles, setPageTitles] = useState<Record<string, string>>(() => Object.fromEntries(Object.entries(detail.links).filter(([, l]) => l.kind === "page" && l.title).map(([ref, l]) => [ref, l.title!])));
+  const editable = (stored: string) => toEditable(stored, users).replace(CITATION_GROUP, (whole, inside: string) => {
+    const refs = inside.split(/[,;]\s*/).map((x) => x.trim());
+    return refs.every((r) => pageTitles[r]) ? refs.map((r) => `[[${pageTitles[r]}]]`).join(", ") : whole;
+  });
+  const [text, setText] = useState(() => editable(item.text));
+  const [title, setTitle] = useState(item.title ?? "");
+  const [summary, setSummary] = useState(() => toEditable(item.summary ?? "", users));
+  const [mode, setMode] = useState<"edit" | "preview">("edit");
+  const [picked, setPicked] = useState<Record<string, MemoryLink>>({});
+  const [active, setActive] = useState(0);
+  const area = useRef<HTMLTextAreaElement>(null);
+  const [caret, setCaret] = useState(0);
+  const page = item.kind === "page";
+  const dirty = text !== editable(item.text) || title !== (item.title ?? "") || summary !== toEditable(item.summary ?? "", users);
+  // Leaving the page with an unsaved edit asks first, with the browser's own prompt; nothing is kept.
+  useEffect(() => {
+    if (!dirty) return;
+    const ask = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    addEventListener("beforeunload", ask);
+    return () => removeEventListener("beforeunload", ask);
+  }, [dirty]);
+  // The pages `[[` can link: this pool's, and general's from a private memory, from the pools the display shows.
+  const pools = (item.pool === "private" ? (["private", "general"] as Pool[]) : ["general" as Pool]).filter((p) => !hidden(display, p));
+  const pages = useLoad(() => Promise.all(pools.map((p) => get<MemoryHit[]>(`${u(userId, "memory", "search")}?kinds=page&pool=${p}&limit=100`))).then((r) => r.flat()), [userId, pools.join()]);
+
+  const typing = /\[\[([^[\]]*)$/.exec(text.slice(0, caret));
+  const query = typing?.[1]?.toLowerCase() ?? "";
+  const picks: Pick[] = typing ? [
+    ...(pages.data ?? []).filter((p) => !query || (p.title ?? p.id).toLowerCase().includes(query) || p.id.includes(query)).slice(0, 6)
+      .map((p): Pick => ({ kind: "page", label: p.title ?? p.id, meta: p.pool !== item.pool ? `${p.pool} · ${p.snippet}` : p.snippet, key: `${p.pool}/${p.id}`, insert: `[[${p.title ?? p.id}]]`, ref: `${p.pool === item.pool ? "" : `${p.pool}/`}${p.id}`, link: { kind: "page", pool: p.pool, title: p.title, snippet: p.snippet, updatedAt: p.updatedAt ?? "" } })),
+    ...Object.entries(users).filter(([, x]) => !query || x.displayName.toLowerCase().includes(query)).slice(0, 4)
+      .map(([id, x]): Pick => ({ kind: "person", label: x.displayName, meta: "saved as a name token", key: `u/${id}`, insert: `[[${x.displayName}]]` })),
+  ] : [];
+  useEffect(() => setActive(0), [query]);
+  const pick = (p: Pick) => {
+    const start = caret - typing![0].length;
+    const next = `${text.slice(0, start)}${p.insert} ${text.slice(caret)}`;
+    setText(next);
+    if (p.ref && p.link) { setPicked((x) => ({ ...x, [p.ref!]: p.link! })); setPageTitles((x) => ({ ...x, [p.ref!]: p.label })); }
+    const at = start + p.insert.length + 1;
+    requestAnimationFrame(() => { area.current?.focus(); area.current?.setSelectionRange(at, at); setCaret(at); });
+  };
+  const keys = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!picks.length) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setActive((a) => (a + 1) % picks.length); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => (a - 1 + picks.length) % picks.length); }
+    else if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); pick(picks[active]!); }
+    else if (e.key === "Escape") { e.preventDefault(); setCaret(0); }
+  };
+  // Back to stored form: people first (as today), then every [[title]] that names a page the editor knows.
+  const byTitle = new Map(Object.entries(pageTitles).map(([ref, t]) => [t, ref]));
+  const stored = () => fromEditable(text, users).replace(/\[\[([^[\]:]+)\]\]/g, (whole, t: string) => (byTitle.has(t.trim()) ? `[${byTitle.get(t.trim())}]` : whole));
+  return (
+    <form className="mem-edit stack" onSubmit={(e) => { e.preventDefault(); onSave({ text: stored(), ...(page && { title, summary: fromEditable(summary, users) }) }); }}>
+      <div className="seg" role="group" aria-label="Edit or preview">
+        <button type="button" aria-pressed={mode === "edit"} onClick={() => setMode("edit")}>Edit</button>
+        <button type="button" aria-pressed={mode === "preview"} onClick={() => setMode("preview")}>Preview</button>
+      </div>
+      {mode === "edit" && page && <label className="field"><span>Title</span><input value={title} onChange={(e) => setTitle(e.target.value)} /></label>}
+      {mode === "edit" && page && <label className="field"><span>Summary</span><input value={summary} onChange={(e) => setSummary(e.target.value)} /></label>}
+      {mode === "edit" ? (
+        <div className="ac">
+          <textarea ref={area} aria-label="Text" rows={Math.min(24, Math.max(8, text.split("\n").length + 2))} value={text} aria-autocomplete="list" aria-expanded={picks.length > 0}
+            onChange={(e) => { setText(e.target.value); setCaret(e.target.selectionStart); }} onKeyDown={keys}
+            onSelect={(e) => setCaret((e.target as HTMLTextAreaElement).selectionStart)} onBlur={() => setTimeout(() => setCaret(0), 150)} />
+          {picks.length > 0 && (
+            <div className="popover" role="listbox" aria-label="Link to">
+              {picks.some((p) => p.kind === "page") && <span className="eyebrow">Pages</span>}
+              {picks.map((p, i) => (
+                <button key={p.key} type="button" className="item" role="option" aria-selected={i === active} onMouseDown={(e) => { e.preventDefault(); pick(p); }}>
+                  {p.kind === "person" && i === picks.findIndex((x) => x.kind === "person") && <span className="eyebrow">People</span>}
+                  <span>{p.label}</span>{p.meta && <span className="meta muted">{p.meta}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="prose preview-pane"><MemoryProse text={stored()} pool={item.pool} userId={userId} links={{ ...detail.links, ...picked }} users={users} display={display} /></div>
+      )}
+      <div className="row">
+        <button type="submit" className="primary sm" disabled={busy || !text.trim()}>Save</button>
+        <button type="button" className="sm" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
+  );
 }
 
 function AddMemory({ userId, onDone }: { userId: string; onDone: (d?: MemoryDetail) => void }) {
   const [pool, setPool] = useState<Pool>("general");
   const [kind, setKind] = useState<"note" | "page">("note");
   const [text, setText] = useState("");
+  const [about, setAbout] = useState("");
   const [links, setLinks] = useState("");
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
@@ -227,13 +516,12 @@ function AddMemory({ userId, onDone }: { userId: string; onDone: (d?: MemoryDeta
   const [run, busy, error] = useAction();
   const linkList = links.split(/[\s,]+/).filter(Boolean);
   const submit = () => run(async () => {
-    const body = kind === "note" ? { text, links: linkList } : { slug, title, summary, text, links: linkList };
+    const body = kind === "note" ? { text, links: linkList, about: about.split(/[\s,]+/).filter(Boolean) } : { slug, title, summary, text, links: linkList };
     onDone(await post<MemoryDetail>(u(userId, "memory", pool, kind === "note" ? "notes" : "pages"), body));
   });
   return (
     <form className="stack add-memory" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
       <h2>Add a memory</h2>
-      <p className="muted">What you add is User introduced: she treats it as true and never rewrites it.</p>
       <div className="row">
         <label className="field"><span>Pool</span>
           <select value={pool} onChange={(e) => setPool(e.target.value as Pool)}><option value="general">General</option><option value="private">Private</option></select>
@@ -245,14 +533,14 @@ function AddMemory({ userId, onDone }: { userId: string; onDone: (d?: MemoryDeta
       {kind === "page" && (
         <>
           <label className="field"><span>Title</span><input value={title} onChange={(e) => setTitle(e.target.value)} /></label>
-          <label className="field"><span>Short name (for links)</span><input value={slug} placeholder="node-2-backups" onChange={(e) => setSlug(e.target.value)} /></label>
+          <label className="field"><span>Short name</span><input value={slug} placeholder="node-2-backups" title="How other memories link to it: lowercase letters, digits and hyphens." onChange={(e) => setSlug(e.target.value)} /></label>
           <label className="field"><span>Summary</span><input value={summary} onChange={(e) => setSummary(e.target.value)} /></label>
         </>
       )}
       <label className="field"><span>Text</span><textarea rows={6} value={text} onChange={(e) => setText(e.target.value)} /></label>
-      <label className="field"><span>Links (optional)</span>
-        <input value={links} placeholder="t:web/3f7a2c  e:web/3f7a2c#41  n:12" onChange={(e) => setLinks(e.target.value)} />
-        <small className="muted">Threads, messages or memories this comes from. Leave empty for a free memory.</small>
+      {kind === "note" && <label className="field"><span>Tags</span><input value={about} placeholder="garden, backups" onChange={(e) => setAbout(e.target.value)} /></label>}
+      <label className="field"><span>Links</span>
+        <input value={links} placeholder="t:web/3f7a2c  e:web/3f7a2c#41  n:12" title="Threads, messages or memories this comes from, by ID. Empty makes a free memory." onChange={(e) => setLinks(e.target.value)} />
       </label>
       <ErrorText error={error} />
       <div className="row">
@@ -261,9 +549,4 @@ function AddMemory({ userId, onDone }: { userId: string; onDone: (d?: MemoryDeta
       </div>
     </form>
   );
-}
-
-/** A memory's text, with each thread it mentions shown by its current title (web/src/mentions.ts). */
-function MemoryProse({ text, userId, pool }: { text: string; userId: string; pool: Pool }) {
-  return <Prose text={useThreadMentions(text, userId, pool)} />;
 }

@@ -9,6 +9,8 @@ bad() { printf 'FAIL  %s\n' "$1" >&2; exit 1; }
 [ "$(id -u)" = 0 ] || bad "run as root"
 systemctl is-active --quiet lyrica-caddy && ok "lyrica-caddy is running" || bad "lyrica-caddy isn't running: journalctl -u lyrica-caddy"
 systemctl is-active --quiet lyricad && ok "lyricad is running" || bad "lyricad isn't running: journalctl -u lyricad"
+[ -x /nix/var/nix/profiles/lyrica/bin/lyrica ] && ok "the lyrica profile points at $(readlink -f /nix/var/nix/profiles/lyrica)" || bad "no /nix/var/nix/profiles/lyrica: journalctl -u lyricad | grep lyrica-nixos-start"
+systemctl is-active --quiet lyrica-update.path && ok "lyrica-update.path is watching for Updates" || bad "lyrica-update.path isn't active: Update won't run"
 if systemctl cat lyrica-tailscaled >/dev/null 2>&1; then
   ts=$(systemctl show -p Environment --value lyricad | tr ' ' '\n' | sed -n 's/^PATH=//p' | tr ':' '\n' | while read -r d; do [ -x "$d/tailscale" ] && echo "$d/tailscale" && break; done)
   [ -n "$ts" ] || bad "tailscale isn't on lyricad's PATH"

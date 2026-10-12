@@ -883,6 +883,7 @@ system with the module on. Only x86_64-linux.
   unchanged package leaves an Update's choice in place. The unit names
   `cfg.package`, so it stays in the system closure until that first start.
 - **Host check:** `nix/check-host.sh`, as root after the setup page:
-  lyricad and Caddy run, her tailscaled answers `lyrica` on its socket, `NoNewPrivs` is `0`, `fusermount3` is setuid, Caddy's
+  lyricad and Caddy run, the `lyrica` profile exists, `lyrica-update.path`
+  is active, her tailscaled answers `lyrica` on its socket, `NoNewPrivs` is `0`, `fusermount3` is setuid, Caddy's
   admin socket exists, a sandbox and `pasta` start as `lyrica`, the
   self-test hasn't refused network, lyricad answers on port 7340.

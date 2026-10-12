@@ -1243,18 +1243,37 @@ export interface MemoryHit {
   pool: Pool;
   id: string;
   kind: MemoryKind;
-  /** Rendered with current names. */
+  /** Around the query's words; the first line when listing a layer. */
   snippet: string;
   score: number;
   origin?: Origin;
   supersededBy?: string;
+  /** A page's title. */
+  title?: string;
+  /** A note's tags. */
+  about?: string[];
+  /** The last change (a memory) or the message's time (an entry); the browse pane pages by it. */
+  updatedAt?: string;
 }
 
 /**
- * GET /api/u/:userId/memory/search?q=&pool=&kinds=note,page&origin=user&limit= → MemoryHit[]
+ * GET /api/u/:userId/memory/search?q=&pool=&kinds=note,page&origin=user&about=&limit=&before= → MemoryHit[]
  * Honours the display filters (Show general, Show private); `?all=1` ignores them.
- * Without `q`, `origin=user` lists what users introduced.
+ * Without `q`: one layer, newest first, when `kinds` names exactly one of note, page, wake or journal
+ * (`limit` and `before`, an `updatedAt`, page it; `about` keeps notes with that tag); with `origin=user` and
+ * no single layer, what users introduced.
  */
+
+/** GET /api/u/:userId/memory/about?pool= → MemoryTag[]: the shown pools' tags (notes' `about` words) with counts, most used first. */
+export interface MemoryTag { about: string; count: number }
+
+/** GET /api/u/:userId/memory → MemoryOverview, over the pools the display shows. */
+export interface MemoryOverview {
+  pages: number;
+  notes: number;
+  /** When she last finished sleeping, if ever. */
+  slept?: string;
+}
 
 export interface MemoryItem {
   pool: Pool;
@@ -1277,13 +1296,35 @@ export interface MemoryItem {
 
 export interface MemoryRevision { id: number; body: Pick<MemoryItem, "text" | "title" | "summary" | "folders" | "about">; author: string; createdAt: string }
 
+/**
+ * What a memory's text or lineage points at, so the browser can show a title
+ * instead of an ID and preview it. A thread's `title` is the thread's; a note
+ * has none. Only memories from pools the display shows are here, and a general
+ * memory's detail never carries a private one: the ID stays, the browser says
+ * "Private is hidden" or "private note".
+ */
+export interface MemoryLink {
+  kind: MemoryKind;
+  pool: Pool;
+  title?: string;
+  /** The first line, in stored form (render with `users`), without its citations; a message's first words for an entry. */
+  snippet: string;
+  updatedAt: string;
+  origin?: Origin;
+}
+
+/** A memory that cites this one, with the sentence that does (stored form), when its pool is shown. */
+export interface MemoryUse { id: string; sentence?: string }
+
 /** GET /api/u/:userId/memory/:pool/:id → MemoryDetail */
 export interface MemoryDetail {
   item: MemoryItem;
   /** What it cites. IDs in the other pool carry it: `general/n:…`. */
   cameFrom: string[];
-  /** What cites it. Private memory citing a general one shows as `private/n:…`. */
-  usedIn: string[];
+  /** What cites it. Private memory citing a general one shows as `private/n:…`, with no sentence. */
+  usedIn: MemoryUse[];
+  /** By the ID as it appears in the text, `cameFrom` or `usedIn`. */
+  links: Record<string, MemoryLink>;
   revisions: MemoryRevision[];
   users: UserMap;
 }

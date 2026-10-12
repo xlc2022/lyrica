@@ -96,7 +96,7 @@ const location_of = (page: Page) => page.url();
 
 async function noHorizontalScroll(page: Page) {
   const found = await page.evaluate(() => {
-    const wide = [...document.querySelectorAll<HTMLElement>(".scroll, .head, .drawer-body, .memory-search, .memory-detail, .side")]
+    const wide = [...document.querySelectorAll<HTMLElement>(".scroll, .head, .drawer-body, .mem-pane, .mem-read, .side")]
       .filter((el) => el.scrollWidth > el.clientWidth + 1)
       .map((el) => `${el.className}: ${el.scrollWidth} > ${el.clientWidth}`);
     const past = [...document.querySelectorAll<HTMLElement>("body *")]
@@ -416,7 +416,7 @@ test("a memory can be added, edited and restored", async ({ page, baseURL }) => 
   await page.getByRole("button", { name: "Add a memory" }).click();
   await page.getByLabel("Text").fill(`The backup job on node 2 runs at night, see [t:${threadId}].`);
   await page.getByRole("button", { name: "Add", exact: true }).click();
-  const article = page.locator("article.memory-item");
+  const article = page.locator("article.mem-item");
   await expect(article).toContainText("runs at night");
   await expect(article.locator(".prose a").first()).toHaveAttribute("href", new RegExp(encodeURIComponent(threadId).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 
@@ -425,8 +425,9 @@ test("a memory can be added, edited and restored", async ({ page, baseURL }) => 
   await article.getByRole("button", { name: "Save" }).click();
   await expect(article.locator(".prose").first()).toContainText("runs at noon");
 
-  await article.locator(".history summary").first().click();
-  await article.getByRole("button", { name: "Restore this version" }).first().click();
+  // The older version opens to its word differences and a Restore button.
+  await article.locator(".hist summary").nth(1).click();
+  await article.getByRole("button", { name: "Restore" }).first().click();
   await expect(article.locator(".prose").first()).toContainText("runs at night");
   await noHorizontalScroll(page);
 });
@@ -438,7 +439,7 @@ test("turning Show private off hides an open private thread and private memory",
   await page.locator("form.add-memory").getByLabel("Pool").selectOption("private");
   await page.getByLabel("Text").fill("A private note about the garden.");
   await page.getByRole("button", { name: "Add", exact: true }).click();
-  await expect(page.locator("article.memory-item")).toContainText("about the garden");
+  await expect(page.locator("article.mem-item")).toContainText("about the garden");
   const memoryUrl = page.url();
 
   await newThread(page, "Private");
@@ -455,7 +456,6 @@ test("turning Show private off hides an open private thread and private memory",
   await expect(page.getByText("about the garden")).toHaveCount(0);
   await page.goto(`/#/u/${userId}/memory`);
   await page.getByRole("searchbox", { name: "Search memory" }).fill("garden");
-  await page.getByRole("button", { name: "Search", exact: true }).click();
   await expect(page.getByText("Nothing found.")).toBeVisible();
 
   // Leave the filters as the other tests expect them.

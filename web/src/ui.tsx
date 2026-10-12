@@ -120,12 +120,12 @@ const PLAIN = markdown(undefined, () => {});
 /**
  * Markdown with raw HTML skipped; with `files`, the thread's paths are links and its images show. `onLarge` lets the
  * caller hold the opened image: a message's prose is replaced when its stored copy arrives, which would close a
- * lightbox whose state lived here.
+ * lightbox whose state lived here. `a` draws the links instead (a memory's titled citations).
  */
-export function Prose({ text, files, onLarge }: { text: string; files?: FileLinks; onLarge?: (path: string) => void }) {
+export function Prose({ text, files, onLarge, a }: { text: string; files?: FileLinks; onLarge?: (path: string) => void; a?: Components["a"] }) {
   const [large, setLarge] = useState<string>();
   const open = onLarge ?? setLarge;
-  const components = useMemo(() => (files ? markdown(files, open) : PLAIN), [files, open]);
+  const components = useMemo(() => ({ ...(files ? markdown(files, open) : PLAIN), ...(a ? { a } : {}) }), [files, open, a]);
   const plugins = useMemo(() => (files ? [rehypePaths(files)] : []), [files]);
   return (
     <>

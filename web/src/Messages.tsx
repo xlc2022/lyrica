@@ -1,7 +1,7 @@
 // The conversation: stored messages, then what's streaming now.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { get, post, threadPath, type GoAhead, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
+import { get, post, threadPath, u, type GoAhead, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
 import type { LiveItem } from "./live.ts";
 import { useMentionText, useThreadMentions } from "./mentions.ts";
 import { GoAheadMenu } from "./Modes.tsx";
@@ -210,20 +210,50 @@ function LiveMessage({ item, env, you, streaming }: { item: LiveItem; env: Env; 
 /** A message in the person's place; `hers` when Lyrica wrote it (a subagent's task), so the threads she mentions show by title. Its paths are links. */
 function UserMessage({ text, you, n, rewinder, env, hers }: { text: string; you: string; n?: number; rewinder?: Rewinder; env: Pick<Env, "userId" | "pool" | "threadId" | "large">; hers?: boolean }) {
   const [editing, setEditing] = useState(false);
+  const [remembering, setRemembering] = useState(false);
   const files = useFileLinks(env.userId, env.pool, env.threadId);
   const menu = rewinder && n !== undefined;
   return (
     <div className="msg user" id={n !== undefined ? `m-${n}` : undefined}>
-      <div className="who">{you}{menu && rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}{menu && <MessageMenu n={n} role="user" rewinder={rewinder} onEdit={() => setEditing(true)} />}</div>
+      <div className="who">{you}{menu && rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}{menu && <MessageMenu n={n} role="user" rewinder={rewinder} onEdit={() => setEditing(true)} onRemember={() => setRemembering(true)} />}</div>
       {editing && menu
         ? <EditBox text={text} onCancel={() => setEditing(false)} onSend={(t) => { setEditing(false); rewinder.rewind(n, { action: "edit", text: t }, n); }} />
         : hers ? <div className="body prose"><HerProse text={text} env={env} /></div> : <div className="body"><PathText text={text} files={files} /></div>}
+      {remembering && n !== undefined && <RememberBox text={text} n={n} env={env} onClose={() => setRemembering(false)} />}
     </div>
+  );
+}
+
+/**
+ * Remember this: a note in the User introduced collection, in the thread's pool,
+ * prefilled with the message's first line and citing the message (docs/ux.md §6).
+ */
+function RememberBox({ text, n, env, onClose }: { text: string; n: number; env: Pick<Env, "userId" | "pool" | "threadId">; onClose: () => void }) {
+  const [value, setValue] = useState(() => text.split("\n").find((l) => l.trim()) ?? "");
+  const [saved, setSaved] = useState<MemoryDetail>();
+  const [run, busy, error] = useAction();
+  const save = () => run(async () => {
+    setSaved(await post<MemoryDetail>(u(env.userId, "memory", env.pool, "notes"), { text: value.trim(), links: [`e:${env.threadId}#${n}`] }));
+  });
+  if (saved) {
+    return <p className="cap remembered">Remembered as <a href={idHref(env.userId, saved.item.pool, saved.item.id)}>a note</a>.</p>;
+  }
+  return (
+    <form className="remember-box" onSubmit={(e) => { e.preventDefault(); if (value.trim()) void save(); }}>
+      <label htmlFor={`remember-${n}`}>Remember this as a note <span className="eyebrow">{env.pool}</span></label>
+      <textarea id={`remember-${n}`} rows={2} value={value} autoFocus onChange={(e) => setValue(e.target.value)} />
+      <ErrorText error={error} />
+      <div className="row">
+        <button type="submit" className="primary sm" disabled={busy || !value.trim()}>Remember</button>
+        <button type="button" className="sm" onClick={onClose}>Cancel</button>
+      </div>
+    </form>
   );
 }
 
 /** Her message: prose for text, one-line markers for everything else. */
 function Parts({ parts, env, model, streaming, n, folded }: { parts: MessagePart[]; env: Env; model?: string; streaming?: boolean; n?: number; folded?: boolean }) {
+  const [remembering, setRemembering] = useState(false);
   const out: React.ReactNode[] = [];
   let prose: string[] = [];
   const flush = (key: number, last: boolean) => {
@@ -264,9 +294,10 @@ function Parts({ parts, env, model, streaming, n, folded }: { parts: MessagePart
         {env.rewinder && n === undefined && streaming && env.speech?.readAloudLive && (
           <ReadAloudButton url={`${env.base}/messages/live/speech`} speech={env.speech} onError={env.onError} />
         )}
-        {env.rewinder && n !== undefined && <MessageMenu n={n} role="assistant" rewinder={env.rewinder} />}
+        {env.rewinder && n !== undefined && <MessageMenu n={n} role="assistant" rewinder={env.rewinder} onRemember={() => setRemembering(true)} />}
       </div>
       {out}
+      {remembering && n !== undefined && <RememberBox text={parts.filter((p) => p.type === "text").map((p) => p.text).join("\n")} n={n} env={env} onClose={() => setRemembering(false)} />}
     </section>
   );
 }
