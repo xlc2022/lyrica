@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
@@ -464,7 +465,7 @@ describe("errors and logs", () => {
 });
 
 const has = (cmd: string) => { try { execFileSync("which", [cmd], { stdio: "ignore" }); return true; } catch { return false; } };
-const homeRunnable = process.getuid?.() !== 0 && has("bwrap") && has("gocryptfs") && has("fusermount3");
+const homeRunnable = process.getuid?.() !== 0 && has("bwrap") && has("gocryptfs") && has("fusermount3") && existsSync("/dev/fuse");
 
 describe.skipIf(!homeRunnable)("uploads", () => {
   it("saves a file into uploads/, where her read can open it", async () => {

@@ -649,3 +649,6 @@ turns animations off.
 - For development, `npx tsx web/e2e/serve.ts 7340 7350` starts the same
   throwaway `lyricad` (passphrase `correct horse`, login `li` / `pw`), and
   `npm run dev -w @lyrica/web` serves the UI with `/api` passed to it.
+- `npx tsx web/e2e/shot.ts [page]...` (after a build) saves screenshots of
+  li's pages from that same throwaway `lyricad`, at both widths, light and
+  dark (docs/workspace.md, "Her own code").

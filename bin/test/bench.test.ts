@@ -15,7 +15,7 @@ import { openBench } from "../bench.ts";
 // tool calls in parallel, so the read can see the file before or after the edit.
 
 const has = (cmd: string) => { try { execFileSync("sh", ["-c", `command -v ${cmd}`]); return true; } catch { return false; } };
-const runnable = process.getuid?.() !== 0 && has("bwrap") && has("gocryptfs") && has("fusermount3");
+const runnable = process.getuid?.() !== 0 && has("bwrap") && has("gocryptfs") && has("fusermount3") && existsSync("/dev/fuse");
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });

@@ -770,7 +770,12 @@ same ("On NixOS" below).
   repository when its binaries are missing (then disabling the host's own
   `tailscaled.service` the package enables, unless it was enabled before, so
   a host keeps its own as it was), checks for Node.js 22.6 or later (the SSH
-  helper runs with type stripping), and creates three system users:
+  helper runs with type stripping), installs IBM Plex and Playwright's
+  headless Chromium (the version `web/package.json` pins, with the
+  libraries it needs, in `/usr/local/lib/lyrica-chromium`, linked as
+  `/usr/local/bin/chromium-headless-shell`, so her sandboxes can take
+  screenshots; reinstalled only when that version changes), and creates
+  three system users:
   `lyrica` runs `lyricad`, `lyrica-caddy` runs Caddy, `lyrica-build` builds
   releases and runs their smoke tests with no access to her data. The `lyrica-caddy`
   group shares Caddy's admin socket (mode `0660`) and TLS log; lyricad's unit
@@ -934,7 +939,8 @@ system with the module on. Only x86_64-linux.
 - **Sandboxes.** NixOS has no `/usr` to share. The module sets
   `LYRICA_SANDBOX_TOOLS` to one directory of `sandboxPackages`
   (`nix/sandbox-tools.nix`: a shell, the usual command-line tools, git,
-  OpenSSH, curl, jq, ripgrep, Python, bubblewrap, passt, nftables) and
+  OpenSSH, curl, jq, ripgrep, Python, ImageMagick, Chromium with IBM Plex
+  and DejaVu fonts for her screenshots, bubblewrap, passt, nftables) and
   `LYRICA_SANDBOX_CLOSURE` to the store paths of their closure, Node's and
   the CA bundle's (`closureInfo`). See docs/workspace.md.
 - **Options:** `enable`, `package`, `port` (7340), `tailscale` (on),
