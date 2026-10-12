@@ -347,7 +347,10 @@ A thread's address may carry what the panel beside it shows:
   **Settings** opens a drawer: **Sampling** (`GET|PUT …/settings`; **Yours**
   | **Everyone's** for an administrator on a shared endpoint; a row per key
   with its source word, the shared value as placeholder, a dropped key
-  disabled with "not sent", Reset; on a plain endpoint **Context window**,
+  disabled with "not sent", Maximum reply length "of <cap> tokens" (`replyCap`
+  of the context in effect, 32,768 when unknown; clamped on leaving the
+  field and on save, and a saved value above it shown clamped), Reset; on a
+  plain endpoint **Context window**,
   `PATCH …/offerings/:id`) and, on a model host, **Serving** (`GET|PUT
   …/serving`, the server read from the raw name: a `.gguf` is llama.cpp,
   else vLLM): Placement (Auto or Choose GPUs, Split ratio or Parallelism,

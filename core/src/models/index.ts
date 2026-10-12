@@ -18,7 +18,7 @@ export type SpeechTask = "speech.transcribe" | "speech.speak";
 
 export { addressesOutside, discoverModels, inOwnNetwork, probeUrl, type DiscoveredModel, type ModelIdentity } from "./http.ts";
 export { baseName } from "./identity.ts";
-export { acceptedSettings, ANSWER_SETTINGS, payloadFields, type AnswerSettings, type SettingSource } from "./settings.ts";
+export { acceptedSettings, ANSWER_SETTINGS, payloadFields, replyCap, type AnswerSettings, type SettingSource } from "./settings.ts";
 export { fingerprint, HostIdentityChanged, HostRefused, hostOrigin, normaliseCode, PairingFailed, pairingProofs } from "./host.ts";
 export { refId, type Entry, type ProfileName, type Use } from "./refs.ts";
 export { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, pcmSeconds, SPEECH_CONTENT_TYPE, SPEECH_FORMAT, wavData, wavSeconds } from "./speech.ts";

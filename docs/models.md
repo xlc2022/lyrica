@@ -481,7 +481,7 @@ never sent with a chat request.
   frequency penalties, longest reply, seed, stop) for other cloud endpoints.
   `offeringSettings` lists the saved values that aren't sent (`dropped`).
   The longest reply is capped at the smaller of 32,768 tokens and a quarter
-  of the context window (`replyCap`, the room Pi leaves), and a saved
+  of the context window (`replyCap` in core, the room Pi leaves), and a saved
   maximum above the cap is clamped to it.
 - Settings follow redirects: a replacement, merge or Reset IDs moves them to
   the new ID (shared values at once, each user's when their lists are
