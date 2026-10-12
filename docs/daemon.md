@@ -217,6 +217,11 @@ Each active thread is one Pi session from `openThreadSession`, with
   subagent's thread). `GET …/pins` lists the thread's pins, oldest first,
   and whether they're over the pinned budget (`shortened`). Messages carry
   `pinned`.
+- **Drafts** (`GET` and `PUT …/draft`) keep the composer's unsent text,
+  one per thread, in the thread's pool database (`drafts`), never in the
+  browser. Empty text clears it, more than 64 KiB is `413`, and a sent
+  message (`POST …/messages`) clears it; a refused send keeps it. The text
+  is never logged.
 - **Reactions** (`PUT` and `DELETE …/messages/:n/reactions/:emoji`, the
   emoji URL-encoded) put the user's reaction on one of their messages or her
   replies, or take it off, and answer the message's reactions (`400` for any
