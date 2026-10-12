@@ -44,10 +44,10 @@ jobs:
           docker info --format '{{.Driver}}'
           df -h /
       # On the self-hosted runners, which keep Docker's cache between jobs: the ROCm
-      # build needs about 70 GB free, the CUDA one 40.
+      # build needs about 45 GB free, the CUDA one 40.
       - name: Make room
         if: runner.environment == 'self-hosted'
-        run: .github/runner/make-room.sh ${{ matrix.vendor == 'amd' && 70 || 40 }}
+        run: .github/runner/make-room.sh ${{ matrix.vendor == 'amd' && 45 || 40 }}
       - name: Build
         run: |
           base=$(sed -n 's/^ *BASE: //p' host/compose.${{ matrix.vendor }}.yaml)
