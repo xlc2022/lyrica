@@ -56,6 +56,8 @@ bootstrap(keyring, { passphrase, name?, seed, admin: { login, password, profile 
   // self.db, the persona seed, self.name, the first administrator (key in memory); admin init and
   // POST /api/setup both call it; on any failure self.db and users/ are removed
 // core/src/persona.ts: selfName(self) (default "Lyrica"), setSelfName(self, name), checkName(name) (1–40, one line)
+// CORE_LIMIT (12,000 characters of SOUL, STYLE and REGISTER as coreText joins them, her name in place);
+// PersonaStore.apply and PersonaProposals.propose refuse a core file that would go over it
 hasUserKey(userId: string): boolean
 subkey(userId: string, purpose: "pool:general" | "pool:private" | "home"): Buffer  // HKDF-SHA256
 lockUser(userId: string): void

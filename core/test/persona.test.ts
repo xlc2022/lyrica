@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { Forbidden, MATRIX, PersonaStore, Users } from "../src/index.ts";
+import { CORE_LIMIT, coreText, Forbidden, MATRIX, PersonaStore, Users } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 const SEED = fileURLToPath(new URL("../../persona", import.meta.url));
@@ -35,6 +35,19 @@ describe("persona", () => {
     const revs = store.revisions("STYLE.md");
     expect(revs.map((r) => r.author)).toEqual(["seed", `user:${li.id}`]);
     expect(revs[0]!.text).toBe(original);
+  });
+
+  it("refuses a core over its limit, so her prompt never cuts it, and leaves topics alone", async () => {
+    const keyring = await freshKeyring();
+    const li = await new Users(keyring).createUser("li", "pw", profile("Li"), { admin: true });
+    const store = new PersonaStore(keyring.self());
+    store.importSeed(SEED);
+    const room = CORE_LIMIT - coreText(store.read().core).length;
+    const style = store.files().get("STYLE.md")!.trim();
+    expect(() => store.apply(li, "STYLE.md", `${style}${"x".repeat(room + 1)}`)).toThrow(/12000 limit/);
+    store.apply(li, "STYLE.md", `${style}${"x".repeat(room)}`);
+    expect(coreText(store.read().core)).toHaveLength(CORE_LIMIT);
+    store.apply(li, "persona_topics/music.md", "y".repeat(CORE_LIMIT + 1));
   });
 
   it("rejects a matrix it can't parse", async () => {
