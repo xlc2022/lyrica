@@ -1456,10 +1456,17 @@ test("the header names the version and build, and the home box starts a thread",
   await expect(page.getByText("You said: From the home box")).toBeVisible();
 });
 
+// The app's own fetch, so the request carries the signed-in session as the page's requests do.
+async function apiGet<T>(page: Page, path: string): Promise<T> {
+  const r = await page.evaluate(async (p) => { const res = await fetch(p, { credentials: "same-origin" }); return { ok: res.ok, status: res.status, body: await res.json() }; }, path);
+  expect(r.status).toBe(200);
+  return r.body as T;
+}
+
 test("opening and closing home tools creates no thread", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}`);
-  const threads = async () => (await (await page.request.get(`/api/u/${userId}/threads`)).json());
+  const threads = () => apiGet<{ id: string; pool: string }[]>(page, `/api/u/${userId}/threads`);
   const before = await threads();
   const box = page.locator(".home-box");
   await box.getByRole("button", { name: "Attach or switch tools" }).click();
@@ -1472,7 +1479,7 @@ test("opening and closing home tools creates no thread", async ({ page, baseURL 
 test("home attachments and tool switches stay local until send and follow the selected pool", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}`);
-  const threads = async () => (await (await page.request.get(`/api/u/${userId}/threads`)).json());
+  const threads = () => apiGet<{ id: string; pool: string }[]>(page, `/api/u/${userId}/threads`);
   const before = await threads();
   const uploads: string[] = [];
   page.on("request", (r) => { if (r.method() === "POST" && r.url().includes("/uploads?")) uploads.push(r.url()); });
@@ -1504,11 +1511,9 @@ test("home attachments and tool switches stay local until send and follow the se
   await box.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.locator(".msg.user")).toContainText("general.txt");
   await expect(page.locator(".msg.user")).not.toContainText("private.txt");
-  const made = (await threads() as { id: string; pool: string }[]).find((t) => !(before as { id: string }[]).some((b) => b.id === t.id));
+  const made = (await threads()).find((t) => !before.some((b) => b.id === t.id));
   expect(made?.pool).toBe("general");
-  const settings = await page.request.get(`/api/u/${userId}/threads/general/${encodeURIComponent(made!.id)}/settings`);
-  expect(settings.ok()).toBe(true);
-  expect(await settings.json()).toMatchObject({ images: false });
+  expect(await apiGet(page, `/api/u/${userId}/threads/general/${encodeURIComponent(made!.id)}/settings`)).toMatchObject({ images: false });
   expect(uploads).toHaveLength(1);
   expect(uploads[0]).toContain("/threads/general/");
   expect(uploads[0]).toContain("name=general.txt");
