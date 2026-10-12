@@ -827,7 +827,7 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   the Image models e2e exercises all three choices and reload. The docs for
   all three parts are current. Open: the API sends no image step progress,
   so the marker has no step count; real GPU image jobs remain unexercised.
-  Validation: typecheck and the web build pass; 76 core/daemon/web tests and
-  seven host parts/recipe tests pass. Socket-based host tests and Playwright
-  are blocked by the sandbox's `listen EPERM`, including the new host API
-  test and Image models e2e. The daemon persistence test runs without sockets.
+  Validation: typecheck passes and `npm test` adds no failures over main's
+  baseline on the build machine. The new e2e steps (inline image, lightbox,
+  Edit…, Portrait photos, Use for) have not run yet: the build machine has
+  no Playwright browser, so CI is their first run.
