@@ -408,7 +408,8 @@ She works on code in Git repositories the way Claude's project threads do.
 Each user adds their accounts under Settings, **Git accounts** (GitHub,
 Forgejo, Gitea or Other): a host, the account's login and a token, checked
 against the host before it is saved, in one pool. A GitHub account is
-general only; a private account must be on a host on your own network.
+general only; a private account must be on a host on your own network,
+unless you confirm adding it anyway.
 Make each token fine-grained, for the repositories she works on, with no
 admin rights: every command in a thread that has the repository can read
 it.
@@ -621,8 +622,9 @@ the SSH ones, and `ssh remove <name>` takes one away.
   default `sandboxPackages`. An existing install gets Tailscale and her
   `tailscaled` on its next run and keeps its web access as it was; Direct
   comes only with a fresh install. An install made before 2026-10-12
-  needs `apt-get install gh tea` (or this run) for threads with
-  repositories; on NixOS the next rebuild brings them. The home page header
+  needs `apt-get install gh`, and `apt-get install tea` where it is
+  packaged (or this run), for threads with repositories; on NixOS the next
+  rebuild brings them. The home page header
   ("Lyrica 0.1.0 · <build>") shows the git commit that is running.
 
 ## Checklist for the first install on Li's machine
