@@ -78,9 +78,14 @@ reasoning is replayed into later context.
   `node_modules/@earendil-works/pi-ai/dist/utils/event-stream.js`,
   `AssistantMessageEventStream` passes through `done.message` as the result;
   `EventStream.result` returns it without parsing.
-- **Next:** item 2: cover inline tags, split tags and missing opening tags
-  upstream in Pi or with the smallest extension wrapper, for both streaming
-  and storage; no fallback needed for dedicated reasoning fields. Item 3:
-  template-specific thinking-switch detection. Item 4: the specified fake
-  OpenAI tests. Item 5: update the affected docs with those changes.
+- **Done:** items 2 and 4. `extension/src/inline-thinking.ts` wraps Pi's
+  provider `streamSimple` hook, registered in `extension/src/models.ts`, for
+  inline and split tags in streamed events and final blocks. Only reasoning
+  models hold leading content until the first tag (or emit it unchanged as
+  text at the end), to recognise template-opened thoughts. Dedicated reasoning
+  stays with Pi. `extension/test/inline-thinking.test.ts` uses scripted deltas
+  in `core/test/fake-openai.ts`. Typecheck and in-memory Pi stream checks pass;
+  fake-server tests cannot bind loopback in this sandbox (`EPERM`).
+- **Next:** items 3 and 5: template-specific thinking-switch detection and
+  the affected docs. Run the fake-server tests where loopback binding works.
 - **Open:** none.
