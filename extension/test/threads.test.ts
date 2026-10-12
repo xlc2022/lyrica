@@ -25,7 +25,7 @@ describe("threads routine", () => {
     const s = await setup(true);
     expect(s.tool.promptGuidelines).toContain(ROUTINE_GUIDELINE);
     const added = await s.call({ routineAction: "add", schedule: { kind: "weekdays", time: "08:00" }, note: "  Check the build.  ", newThread: true });
-    expect(added.content).toEqual([{ type: "text", text: expect.stringContaining("Weekdays 08:00") }]);
+    expect(added.content).toEqual([{ type: "text", text: expect.stringContaining("Weekdays at 08:00") }]);
     const [r] = s.view.own.routines(s.context.threadId);
     expect(r).toMatchObject({ note: "Check the build.", newThread: true, paused: false });
     const listed = await s.call({ routineAction: "list" });
