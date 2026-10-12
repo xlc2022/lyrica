@@ -157,27 +157,83 @@ export function ConfirmDialog({ title, commit, sentence, confirm, cancel, danger
   title: string; /** A commit in mono after the title (Roll back). */ commit?: string; sentence: string; confirm: string; /** The cancel button's word; default Cancel. */ cancel?: string;
   danger?: boolean; option?: string; onConfirm: (option: boolean) => void; onCancel: () => void;
 }) {
-  const ref = useRef<HTMLDialogElement>(null);
   const [ticked, setTicked] = useState(true);
+  return (
+    <Dialog labelledBy="confirm-title" onCancel={onCancel} onSubmit={() => onConfirm(!!option && ticked)}>
+      <h2 id="confirm-title">{title}{commit && <> <span className="mono dlg-commit">{commit}</span></>}</h2>
+      <p>{sentence}</p>
+      {option && <label className="check"><input type="checkbox" checked={ticked} onChange={(e) => setTicked(e.target.checked)} />{" "}{option}</label>}
+      <div className="dlg-actions">
+        <button type="button" onClick={onCancel}>{cancel ?? "Cancel"}</button>
+        <button type="submit" className={danger ? "danger primary" : "primary"} autoFocus>{confirm}</button>
+      </div>
+    </Dialog>
+  );
+}
+
+/** A modal dialog around one form: Escape and a click outside it cancel, and submitting it is its action. */
+export function Dialog({ labelledBy, className, onCancel, onSubmit, children }: {
+  labelledBy: string; className?: string; onCancel: () => void; onSubmit: () => void; children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const el = ref.current;
     if (el && !el.open) el.showModal();
     return () => el?.close();
   }, []);
   return (
-    <dialog ref={ref} aria-labelledby="confirm-title" onCancel={(e) => { e.preventDefault(); onCancel(); }} onClick={(e) => { if (e.target === ref.current) onCancel(); }}
+    <dialog ref={ref} className={className} aria-labelledby={labelledBy} onCancel={(e) => { e.preventDefault(); onCancel(); }} onClick={(e) => { if (e.target === ref.current) onCancel(); }}
       onKeyDown={(e) => { if (e.key === "Escape") e.stopPropagation(); }}>
-      <form method="dialog" className="dlg" onSubmit={(e) => { e.preventDefault(); onConfirm(!!option && ticked); }}>
-        <h2 id="confirm-title">{title}{commit && <> <span className="mono dlg-commit">{commit}</span></>}</h2>
-        <p>{sentence}</p>
-        {option && <label className="check"><input type="checkbox" checked={ticked} onChange={(e) => setTicked(e.target.checked)} />{" "}{option}</label>}
-        <div className="dlg-actions">
-          <button type="button" onClick={onCancel}>{cancel ?? "Cancel"}</button>
-          <button type="submit" className={danger ? "danger primary" : "primary"} autoFocus>{confirm}</button>
-        </div>
-      </form>
+      <form method="dialog" className="dlg" onSubmit={(e) => { e.preventDefault(); onSubmit(); }}>{children}</form>
     </dialog>
   );
+}
+
+/**
+ * Choosing several rows (docs/ux.md §6, the Files panel and To review): Ctrl- or Cmd-click adds a row or takes it
+ * away, Shift-click takes every row between it and the last one picked. `pick` says whether the click chose; a plain
+ * click clears the selection and is left to the row. `order` is the rows as shown.
+ */
+export function useSelection(order: string[]) {
+  const [sel, setSel] = useState<Set<string>>(() => new Set());
+  const last = useRef<string>(undefined);
+  const toggle = (key: string) => {
+    setSel((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+    last.current = key;
+  };
+  const pick = (e: React.MouseEvent, key: string) => {
+    if (e.shiftKey && last.current) {
+      const a = order.indexOf(last.current), b = order.indexOf(key);
+      if (a >= 0 && b >= 0) { setSel((s) => new Set([...s, ...order.slice(Math.min(a, b), Math.max(a, b) + 1)])); return true; }
+    }
+    if (e.metaKey || e.ctrlKey || e.shiftKey) { toggle(key); return true; }
+    last.current = key;
+    if (sel.size) setSel(new Set());
+    return false;
+  };
+  return { sel, setSel, pick, toggle };
+}
+
+/**
+ * A long press on a touch screen does what a right-click does: `open` gets where the finger was, and the click after
+ * it is swallowed. `skip` leaves a press alone (one on a button inside the thing).
+ */
+export function useLongPress() {
+  const held = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  return useCallback((open: (at: { clientX: number; clientY: number }) => void, skip?: (e: React.PointerEvent) => boolean) => ({
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.pointerType === "mouse" || skip?.(e)) return;
+      held.current = false;
+      clearTimeout(timer.current);
+      const { clientX, clientY } = e;
+      timer.current = setTimeout(() => { held.current = true; open({ clientX, clientY }); }, 500);
+    },
+    onPointerUp: () => clearTimeout(timer.current),
+    onPointerMove: () => clearTimeout(timer.current),
+    onPointerCancel: () => clearTimeout(timer.current),
+    onClickCapture: (e: React.MouseEvent) => { if (held.current) { e.preventDefault(); e.stopPropagation(); held.current = false; } },
+  }), []);
 }
 
 /** The current minute, for clocks in headers. */

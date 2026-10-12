@@ -1175,7 +1175,7 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
   .models .chip, .lrow-main, .models button.link.sm, .ldetail button.sm, .copy-drawer .seg button, .copy-foot button.sm { min-height: 44px; }
 }
 /* Downloads: the queue, In progress then Finished; Accounts; the pages that start a download. */
-.models .list > li.group-head { padding: 5px 14px; background: var(--tool); }
+.models .list > li.group-head { display: block; padding: 5px 14px; background: var(--tool); }
 .list > li.dl { gap: 6px; }
 .dl-top { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; min-width: 0; }
 .dl-top b { font-weight: 500; overflow-wrap: anywhere; }
@@ -1208,4 +1208,47 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 @media (pointer: coarse) {
   .dl button.sm, .acct button.sm, .acct-form .seg button, .dl-form .seg button, .dl-form a.link, .models .section-head button.link { min-height: 44px; }
   .dl-end button.link { display: inline-flex; min-height: 44px; }
+}
+/* Image models: a recipe's copy on a host as a block of parts; Parts; To review and its selection bar; Add a part. */
+.list > li.img-row { grid-template-columns: minmax(0, 1fr); }
+.img-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
+.img-filters input[type="search"] { flex: 1 1 220px; max-width: 420px; }
+.copyblock { border: 1px solid var(--line); border-radius: 10px; display: grid; min-width: 0; background: var(--panel); overflow: hidden; }
+.copyhead { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; padding: 8px 12px; background: var(--tool); }
+.copyhead b { font-weight: 600; }
+.copyhead .cap { margin-right: auto; overflow-wrap: anywhere; }
+.copyhead .actions, .partrow .actions, .rvrow .actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.copy-note { padding: 8px 12px 0; }
+.partrows { list-style: none; margin: 0; padding: 0; display: grid; }
+.partrow { display: grid; grid-template-columns: 130px minmax(0, 1fr) auto auto; gap: 4px 12px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--line); min-height: 44px; }
+.partrow .role { font-weight: 500; font-size: 13px; }
+.partrow .role small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+.partrow .pfile { display: grid; gap: 2px; min-width: 0; }
+.partrow .size { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.partrow .actions { justify-content: end; }
+.partrow select { min-height: 30px; font-size: 13px; max-width: 260px; }
+.partrow.missing { background: color-mix(in oklab, var(--warn) 8%, var(--panel)); }
+.list > li.prow { gap: 2px; }
+.prow .pname { overflow-wrap: anywhere; }
+.prow .cap button.link { padding: 0; min-height: 0; font-size: 12px; display: inline; }
+.list > li.rvrow { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; user-select: none; }
+.list > li.rvrow.sel { background: color-mix(in oklab, var(--accent) 16%, var(--panel)); }
+.list[data-selecting] .rvrow > .actions { visibility: hidden; }
+.rvrow .meta { overflow-wrap: anywhere; }
+.models .selbar.review-bar { position: sticky; bottom: 12px; margin: 0; max-width: 900px; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 10px; padding: 6px 12px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.08); }
+dialog.add-part { width: min(560px, calc(100vw - 32px)); }
+.add-part .seg { justify-self: start; flex-wrap: wrap; }
+.add-part .seg button { padding: 0 12px; }
+.field.strength input { width: 100%; max-width: 320px; accent-color: var(--accent); }
+.head .cap a.nowrap { white-space: nowrap; }
+@media (max-width: 760px) {
+  .partrow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "role actions" "file size"; }
+  .partrow .role { grid-area: role; } .partrow .actions { grid-area: actions; } .partrow .pfile { grid-area: file; } .partrow .size { grid-area: size; }
+  .list > li.rvrow { grid-template-columns: minmax(0, 1fr); }
+  .list[data-selecting] .rvrow > .actions { display: none; }
+}
+@media (pointer: coarse) {
+  .copyblock button.sm, .rvrow button.sm, .review-bar button.sm, .add-part .seg button, .img-filters .seg button, .partrow select { min-height: 44px; }
+  /* A link inside a line keeps the line's height; its target reaches past it. */
+  .prow .cap button.link { display: inline-flex; min-height: 44px; align-items: center; margin-block: -14px; vertical-align: middle; }
 }

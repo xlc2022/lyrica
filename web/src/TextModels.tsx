@@ -11,9 +11,9 @@ import {
 import { Icon } from "./icons.tsx";
 import { groupWarnings, type LibraryCopy as Copy } from "./library.ts";
 import { RowMenu } from "./Machines.tsx";
-import { canEdit, Frame, gb, hostOf, Kind, plural, useWords, VoiceDrawer, type MCtx } from "./ModelsFrame.tsx";
+import { canEdit, Frame, gb, hostOf, Kind, plural, UsedIn, VoiceDrawer, type MCtx } from "./ModelsFrame.tsx";
 import { go } from "./route.ts";
-import { ConfirmDialog, ErrorText, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { ConfirmDialog, Dialog, ErrorText, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 type Entry = LibraryEntry;
 const PAGE = 40;
@@ -412,32 +412,20 @@ function Detail({ L, e, group }: { L: Lib; e: Entry; group?: GroupInfo }) {
 function DeleteDialog({ ctx, entry, copy, usedIn, loaded, inGroup, busy, onConfirm, onCancel }: {
   ctx: MCtx; entry: Entry; copy: Copy; usedIn: ModelUse[]; loaded: boolean; inGroup: boolean; busy: boolean; onConfirm: () => void; onCancel: () => void;
 }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const words = useWords(ctx);
-  useEffect(() => {
-    const el = ref.current;
-    if (el && !el.open) el.showModal();
-    return () => el?.close();
-  }, []);
   return (
-    <dialog ref={ref} aria-labelledby="delete-copy-title" onCancel={(ev) => { ev.preventDefault(); onCancel(); }} onClick={(ev) => { if (ev.target === ref.current) onCancel(); }}
-      onKeyDown={(ev) => { if (ev.key === "Escape") ev.stopPropagation(); }}>
-      <form method="dialog" className="dlg" onSubmit={(ev) => { ev.preventDefault(); onConfirm(); }}>
-        <h2 id="delete-copy-title">Delete {entry.name} from {copy.endpointName}?</h2>
-        <p>
-          <code>{copy.rawName}</code> is deleted from the host{copy.size ? <>, which frees <span className="num">{gb(copy.size)}</span> GB</> : null}.
-          {loaded && " It's loaded now, so it's unloaded first."}
-        </p>
-        {usedIn.length
-          ? <p>Used in {usedIn.map(words.use).join(", ")}. Those lists skip it from now on{inGroup && ", and the group keeps its other copies"}.</p>
-          : <p className="muted">None of your profiles use it.</p>}
-        {copy.shared && <p>This host is shared, so other people's lists skip it too.</p>}
-        <div className="dlg-actions">
-          <button type="button" onClick={onCancel}>Cancel</button>
-          <button type="submit" className="danger primary" disabled={busy} autoFocus>Delete</button>
-        </div>
-      </form>
-    </dialog>
+    <Dialog labelledBy="delete-copy-title" onCancel={onCancel} onSubmit={onConfirm}>
+      <h2 id="delete-copy-title">Delete {entry.name} from {copy.endpointName}?</h2>
+      <p>
+        <code>{copy.rawName}</code> is deleted from the host{copy.size ? <>, which frees <span className="num">{gb(copy.size)}</span> GB</> : null}.
+        {loaded && " It's loaded now, so it's unloaded first."}
+      </p>
+      <UsedIn ctx={ctx} usedIn={usedIn} more={inGroup ? ", and the group keeps its other copies" : ""} />
+      {copy.shared && <p>This host is shared, so other people's lists skip it too.</p>}
+      <div className="dlg-actions">
+        <button type="button" onClick={onCancel}>Cancel</button>
+        <button type="submit" className="danger primary" disabled={busy} autoFocus>Delete</button>
+      </div>
+    </Dialog>
   );
 }
 

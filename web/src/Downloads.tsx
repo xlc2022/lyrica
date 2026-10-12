@@ -1,7 +1,8 @@
 // The Models area's Downloads tab (docs/ux.md §6, "Downloads and hub accounts"): the queue of every host's downloads,
-// In progress then Finished, read again every 2 s while anything runs; the Download text model page; and Accounts,
-// the hub tokens for gated repositories. A host's downloads need its management, so a shared host's need an
-// administrator, and only those hosts are listed. Its pure parts are in src/downloads.ts.
+// In progress then Finished, read again every 2 s while anything runs; the Download text model page (and what Download
+// image model shares with it); and Accounts, the hub tokens for gated repositories. A host's downloads need its
+// management, so a shared host's need an administrator, and only those hosts are listed. Its pure parts are in
+// src/downloads.ts.
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { del, get, patch, post, put, u, type GroupInfo, type GroupSuggestion, type HostStatus, type Hub, type HubTokenInfo, type ModelsPage } from "./api.ts";
 import { downloadWords, fileChoices, fileLink, HUB_WORD, isRunning, repoName, size, type HostDownload, type HubFiles } from "./downloads.ts";
@@ -82,7 +83,10 @@ export function Downloads({ ctx }: { ctx: MCtx }) {
   };
 
   const facts = lists.data && <>{active.length ? <><span className="num">{active.length}</span> running</> : "Nothing running"} · <span className="num">{finished.length}</span> finished</>;
-  const actions = <button type="button" onClick={() => go({ page: "models", userId, tab: "downloads", add: "text" })}>Download text model</button>;
+  const actions = <>
+    <button type="button" onClick={() => go({ page: "models", userId, tab: "downloads", add: "text" })}>Download text model</button>
+    <button type="button" onClick={() => go({ page: "models", userId, tab: "images", add: "image" })}>Download image model</button>
+  </>;
   return (
     <Frame ctx={ctx} tab="downloads" title="Downloads" facts={facts} actions={actions} running={lists.data ? active.length : undefined}>
       <ErrorText error={ctx.models.error || lists.error || error} />
@@ -308,15 +312,18 @@ export function linkProblem(link: string, sha: string): string {
 
 /**
  * Starts a download on a host. A gated repository's token typed here is saved first, since lyricad sends only a saved
- * one, and removed again once the host has it when Save it for next time is off.
+ * one, and removed again once the host has it when Save it for next time is off. A removal that fails never fails a
+ * download that started, so the page still goes to the queue rather than inviting a second start; the token then
+ * shows under Accounts there.
  */
 export async function startDownload(userId: string, hostId: string, body: { source: Hub; repo: string; files: string[] } | { source: "url"; url: string; sha256?: string }, token?: { text: string; keep: boolean }) {
   const hub = body.source === "url" ? undefined : body.source;
-  if (hub && token?.text.trim()) await put(u(userId, "hub-tokens", hub), { token: token.text.trim() });
+  const typed = hub && token?.text.trim() ? { hub, text: token.text.trim(), keep: token.keep } : undefined;
+  if (typed) await put(u(userId, "hub-tokens", typed.hub), { token: typed.text });
   try {
     await post(u(userId, "hosts", hostId, "downloads"), body);
   } finally {
-    if (hub && token?.text.trim() && !token.keep) await del(u(userId, "hub-tokens", hub));
+    if (typed && !typed.keep) await del(u(userId, "hub-tokens", typed.hub)).catch(() => {});
   }
 }
 

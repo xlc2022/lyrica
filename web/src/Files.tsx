@@ -11,7 +11,7 @@ import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { go } from "./route.ts";
 import { Crumbs, Main, PanelButtons, type ShellContext } from "./Shell.tsx";
-import { ConfirmDialog, ErrorText, menuArrows } from "./ui.tsx";
+import { ConfirmDialog, ErrorText, menuArrows, useLongPress, useSelection } from "./ui.tsx";
 
 /** Text this large is shown in the panel; anything bigger, or of another kind, is offered as a download. */
 const TEXT_LIMIT = 512 * 1024;
@@ -47,7 +47,6 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   const [listings, setListings] = useState<Record<string, FileListing>>({});
   const [open, setOpen] = useState<Set<string>>(() => new Set([WORKDIR]));
   const [current, setCurrent] = useState<FileEntry>();
-  const [sel, setSel] = useState<Set<string>>(() => new Set());
   const [menu, setMenu] = useState<MenuAt>();
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<{ q: string; entries: FileEntry[]; more: boolean }>();
@@ -123,21 +122,8 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
     for (const r of roots) if (open.has(r.path)) walk(r.path);
     return out;
   }, [hits, listings, open, roots]);
-  const lastPick = useRef<string>(undefined);
-  const pick = (e: React.MouseEvent, entry: FileEntry) => {
-    if (e.shiftKey && lastPick.current) {
-      const a = visible.indexOf(lastPick.current), b = visible.indexOf(entry.path);
-      if (a >= 0 && b >= 0) { setSel((s) => new Set([...s, ...visible.slice(Math.min(a, b), Math.max(a, b) + 1)])); return true; }
-    }
-    if (e.metaKey || e.ctrlKey || e.shiftKey) {
-      setSel((s) => { const n = new Set(s); if (n.has(entry.path)) n.delete(entry.path); else n.add(entry.path); return n; });
-      lastPick.current = entry.path;
-      return true;
-    }
-    lastPick.current = entry.path;
-    if (sel.size) setSel(new Set());
-    return false;
-  };
+  const { sel, setSel, pick: choose } = useSelection(visible);
+  const pick = (e: React.MouseEvent, entry: FileEntry) => choose(e, entry.path);
 
   const openMenu = (e: React.MouseEvent | { clientX: number; clientY: number }, target: Target) => {
     if ("preventDefault" in e) e.preventDefault();
@@ -147,23 +133,15 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
     if (target.kind === "file" && sel.size && !sel.has(target.entry.path)) setSel(new Set());
     setMenu({ x: el ? el.left + 24 : e.clientX, y: el ? el.bottom : e.clientY, target: t });
   };
-  const held = useRef(false);
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  /** A long press opens the menu, as a right-click does; the click after it is swallowed. The space under the rows answers only for itself. */
-  const press = (target: Target) => ({
-    onContextMenu: (e: React.MouseEvent) => { if (target.kind === "space" && (e.target as Element).closest("button")) return; openMenu(e, target); },
-    onPointerDown: (e: React.PointerEvent) => {
-      if (e.pointerType === "mouse" || (target.kind === "space" && (e.target as Element).closest("button"))) return;
-      held.current = false;
-      clearTimeout(timer.current);
-      const { clientX, clientY } = e;
-      timer.current = setTimeout(() => { held.current = true; openMenu({ clientX, clientY }, target); }, 500);
-    },
-    onPointerUp: () => clearTimeout(timer.current),
-    onPointerMove: () => clearTimeout(timer.current),
-    onPointerCancel: () => clearTimeout(timer.current),
-    onClickCapture: (e: React.MouseEvent) => { if (held.current) { e.preventDefault(); e.stopPropagation(); held.current = false; } },
-  });
+  const hold = useLongPress();
+  /** A right-click or a long press opens the menu. The space under the rows answers only for itself. */
+  const press = (target: Target) => {
+    const onButton = (e: React.SyntheticEvent) => target.kind === "space" && !!(e.target as Element).closest("button");
+    return {
+      onContextMenu: (e: React.MouseEvent) => { if (!onButton(e)) openMenu(e, target); },
+      ...hold((at) => openMenu(at, target), onButton),
+    };
+  };
 
   // The actions, each from the menu.
   const contentUrl = (p: string, download = false) => `${base}/content?path=${encodeURIComponent(p)}${download ? "&download=1" : ""}`;
