@@ -111,6 +111,11 @@ export function wakeTime(iso: string): string {
   return d.toDateString() === new Date().toDateString() ? hm : `${d.toLocaleDateString([], { day: "numeric", month: "short" })} ${hm}`;
 }
 
+/** A time in full, for a tooltip: the weekday, date and 24-hour time in the reader's locale. */
+export function fullTime(iso: string): string {
+  return new Date(iso).toLocaleString([], { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+}
+
 /**
  * Links open in a new tab, except Lyrica's own (a mentioned thread, a file of the thread). A remote image is never
  * loaded, only linked by its alt text; one from the thread's folder shows in the message and opens large (docs/ux.md §6).

@@ -17,6 +17,7 @@ import { readUpdates, writeRequest } from "./updates.ts";
 import { toMessages, toReactions } from "./messages.ts";
 import { messageText, readAloud, readClip, speechState, storedSource, transcribeClip, titlesIn, type SpeechSource } from "./speech.ts";
 import { notifications } from "./notifications.ts";
+import { SEARCH_PAGE, searchMessages } from "./search.ts";
 import { applyRemoval, entriesFrom, removalPlan, uploadsIn, type RemovalContext } from "./removal.ts";
 
 const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, showPrivate: true, showHidden: false, sort: "date", projects: "all" };
@@ -677,6 +678,18 @@ export function apiRoutes(d: Lyricad): Route[] {
         .flatMap((p) => tree(d, user, p, o[p], o[p].listThreads({ includeHidden: all || show.showHidden }).filter((x) => x.interface === iface), prefs))
         .filter((x) => projects === "all" || (projects === "only") === !!x.project)
         .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt)));
+    }),
+    // Message search (docs/daemon.md "Search"): what the thread list shows, through the owner view.
+    route("GET", `${u}/search`, (r): Api.SearchResults => {
+      const user = d.userFor(r);
+      const q = r.query.get("q")?.trim() ?? "";
+      const only = r.query.get("pool") ? checkPool(r.query.get("pool")) : undefined;
+      const show = display(d, user.id);
+      const pools = shownPools(show).filter((p) => !only || p === only);
+      const limit = Math.min(SEARCH_PAGE, Math.max(1, Number(r.query.get("limit") ?? SEARCH_PAGE) || SEARCH_PAGE));
+      const before = r.query.get("before") || undefined;
+      if ([...q].length < 2 || !pools.length) return { hits: [] };
+      return owner(d, user, (o) => ({ hits: searchMessages(o, pools, q, { limit, before, showHidden: show.showHidden, projects: show.projects }) }));
     }),
     route("POST", `${u}/threads`, async (r) => {
       const user = d.userFor(r);
