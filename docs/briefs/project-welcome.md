@@ -193,21 +193,11 @@ folded in), nothing built. Next: Codex run 1, then this brief's thread
 opens PR 1 and sends it to PR review.
 
 
-Run 1 handoff: built the recent-work, fold, fold-application and Continue as
-project routes, the fold and draft tool actions, and expand-only user.db
-step 9. Selected context is request-only and bounded; unlogged and
-incompatible local-only work is refused. Drafts require user Save or
-discard. The web interface remains for run 2. Merged main adaptation:
-model presets are retained, command rules survive draft saves, and
-migration step 9 follows main’s steps 6–8. The user will
-commit and push the changes and open the back-end PR; this run leaves the
-changes in the tree without committing, pushing or opening a PR.
-
-
-Resume validation: typecheck, 16 migration tests, 3 encrypted project-state
-tests and 14 extension tests pass. The core suite was interrupted after
-existing fake-model tests timed out: this sandbox refuses loopback HTTP
-listeners with EPERM. Core and daemon HTTP tests still need a run on a
-host that permits their fake listeners, under the shared test lock. The
-seven merge-conflicted source files have no markers remaining; the Git
-index still needs staging because .git is read-only in this environment.
+Run 1 (2026-10-13, Codex on lunasa): built the recent-work, fold, fold
+apply and Continue as project routes, the `fold` and `draft` tool actions,
+and the expand-only user.db step 9 (draft columns, after main's steps 6 to
+8). The ticked threads' text is held in memory for that one turn only,
+bounded by `WELCOME_LIMITS`; unlogged threads, and local-only threads for a
+cloud project chat, are refused. Drafts apply only on Save or discard.
+Typecheck and the full suite passed on lunasa apart from the known updater
+environment failure. Next: PR review of PR 1, then Codex run 2 (web).
