@@ -2602,6 +2602,32 @@ test("Tasks: the table shows each column's models; a cell's drawer adds, reorder
   await expect(page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "Model profiles" })).toHaveCount(0);
 });
 
+test("New preset summary: +N fallbacks and a red gone model", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  // General chat follows a gone offering first, with two fallbacks after it, so the New preset summary shows both.
+  await page.route(/\/api\/u\/[^/]+\/models\/page$/, async (route) => {
+    type M = { id: string; modelId: string; status?: string };
+    const real = await (await route.fetch()).json() as {
+      endpoints: { kind: string; models: M[] }[];
+      presets: { columns: { general: { preset: unknown; entries: Record<string, unknown> } } };
+    };
+    const cloud = real.endpoints.find((e) => e.kind === "cloud" && e.models.some((m) => m.modelId === "cloud-model"))!;
+    const live = cloud.models.find((m) => m.modelId === "cloud-model")!;
+    cloud.models.push({ ...live, id: "off-gone", modelId: "gone-model", status: "gone" });
+    real.presets.columns.general.preset = null;
+    real.presets.columns.general.entries.chat = [{ offeringId: "off-gone" }, { offeringId: live.id }, { offeringId: live.id }];
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(real) });
+  });
+  await page.goto(`/#/u/${userId}/models/tasks`);
+  await expect(page.getByRole("heading", { level: 1, name: "Tasks" })).toBeVisible();
+  await page.locator(".ttable thead th").nth(2).locator("button.preset-button").click();
+  await page.getByRole("button", { name: "New preset…" }).click();
+  const summary = page.getByRole("complementary", { name: "New preset" }).locator("ul.preset-summary");
+  await expect(summary).toContainText("gone-model");
+  await expect(summary).toContainText("+2 fallbacks");
+  await expect(summary.locator(".pill.bad").first()).toHaveText("gone");
+});
+
 test("Text models: a row per model with starred first; a row opens to its copies, and a copy's Settings saves Temperature as yours", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/text-models-${name}-${page.viewportSize()!.width}.png`, fullPage: true }); };

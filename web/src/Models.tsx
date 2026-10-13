@@ -424,7 +424,7 @@ const refKey = (r: ModelRef) => ("offeringId" in r ? r.offeringId : `g:${r.group
 function RefLabel({ refx, all, groups }: { refx: ModelRef; all: Map<string, Copy>; groups: GroupInfo[] }) {
   if ("groupId" in refx) return <>{groups.find((g) => g.id === refx.groupId)?.name ?? "A group"}</>;
   const c = all.get(refx.offeringId);
-  return c ? <>{c.m.modelId} <span className="muted">· {c.ep.name}</span></> : <>A model that no longer exists</>;
+  return c ? <>{c.m.modelId} <span className="muted">· {c.ep.name}</span>{c.m.status === "gone" && <span className="pill bad">gone</span>}</> : <>A model that no longer exists</>;
 }
 
 /** "A", "A and B", "A, B and C". */
@@ -558,7 +558,13 @@ function PresetMenu({ ctx, column, col, onNew, onSaveAs, onEdit, onApply }: {
     if (!open) return;
     const el = menuRef.current;
     if (el) {
-      el.style.left = `${Math.max(8, Math.min(at!.x, innerWidth - el.offsetWidth - 8))}px`;
+      if (innerWidth < 760) {
+        el.style.left = "16px";
+        el.style.right = "16px";
+      } else {
+        el.style.left = `${Math.max(8, Math.min(at!.x, innerWidth - el.offsetWidth - 8))}px`;
+        el.style.right = "";
+      }
       el.style.top = `${Math.max(8, Math.min(at!.y, innerHeight - el.offsetHeight - 8))}px`;
     }
     searchRef.current?.focus();
@@ -624,9 +630,9 @@ function PresetMenu({ ctx, column, col, onNew, onSaveAs, onEdit, onApply }: {
         <div ref={menuRef} className="preset-menu" role="dialog" aria-label="Preset" onKeyDown={onKey} style={{ left: at.x, top: at.y }}>
           <input ref={searchRef} type="search" aria-label="Search presets" placeholder="Search presets" value={q} onChange={(e) => setQ(e.target.value)} />
           <div className="preset-list">
-            {column === "general" && generalList.length > 0 && <div className="cap">General</div>}
+            {column === "general" && generalList.length > 0 && <div className="eyebrow">General</div>}
             {generalList.map(row)}
-            {column === "general" && privateList.length > 0 && <div className="cap">Private</div>}
+            {column === "general" && privateList.length > 0 && <div className="eyebrow">Private</div>}
             {privateList.map(row)}
             {shown.length === 0 && <p className="muted preset-none">Nothing matches</p>}
           </div>
@@ -841,10 +847,15 @@ function PresetDrawer({ ctx, p, all, groups, column, mode, preset, onClose }: {
     onClose();
   });
   const title = mode === "edit" ? preset!.name : mode === "new" ? "New preset" : "Save as preset";
+  const scope = mode === "edit" ? preset!.scope : column;
+  const fact = scope === "private" ? "Private preset · local models only" : "General preset · local and cloud";
   return (
     <aside ref={ref} tabIndex={-1} className="drawer" aria-label={title}>
       <div className="drawer-head">
-        <h2>{title}</h2>
+        <div>
+          <h2>{title}</h2>
+          <p className="cap">{fact}</p>
+        </div>
         <button type="button" className="icon sm" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
       </div>
       <form className="drawer-body" onSubmit={(e) => { e.preventDefault(); if (!invalid) void save(); }}>
@@ -856,8 +867,8 @@ function PresetDrawer({ ctx, p, all, groups, column, mode, preset, onClose }: {
         {mode !== "edit" && <PresetSummary entries={table} all={all} groups={groups} />}
         <ErrorText error={error} />
         <div className="row drawer-foot">
-          <button type="submit" className="primary" disabled={busy || invalid}>Save</button>
           {mode === "edit" && <button type="button" className="danger" disabled={busy} onClick={() => setDeleting(true)}>Delete preset…</button>}
+          <button type="submit" className="primary" disabled={busy || invalid}>Save</button>
         </div>
       </form>
       {deleting && (
