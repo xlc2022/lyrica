@@ -440,11 +440,11 @@ function ImageRefusalLinks({ part, env }: { part: Extract<MessagePart, { type: "
     setOptions(current);
   });
   return <>
-    <span className="image-refusal-code">image_refusal</span>
-    {options && !busy && !env.busy && <div className="image-refusal-links">
-      {options.canEdit && <button type="button" className="link sm" onClick={edit}>Edit message</button>}
+    <span className="image-refusal-note">The model declined this image.</span>
+    {!busy && !env.busy && <div className="image-refusal-links">
+      {options?.canEdit && <button type="button" className="link sm" onClick={edit}>Edit message</button>}
       <button type="button" className="link sm" onClick={() => retry(false)}>Resend</button>
-      {options.next && <button type="button" className="link sm" onClick={() => retry(true)}>Try {options.next.label}</button>}
+      {options?.next && <button type="button" className="link sm" onClick={() => retry(true)}>Try {options.next.label}</button>}
     </div>}
     <ErrorText error={error} />
   </>;

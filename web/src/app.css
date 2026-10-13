@@ -1218,6 +1218,7 @@ button.star[aria-pressed="true"] .ic { fill: currentColor; }
 .ldetail .tablewrap:has(.row-menu .menu) { overflow: visible; }
 .ldetail p { margin: 0; }
 .ldetail .note .meta { align-self: center; }
+code.raw { font-size: 12px; overflow-wrap: anywhere; }
 .models td.differs { background: color-mix(in oklab, var(--accent) 7%, var(--panel)); }
 .copies td.copy > .cap { display: block; margin-top: 2px; }
 .copy-name { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
@@ -1364,7 +1365,7 @@ dialog.add-part { width: min(560px, calc(100vw - 32px)); }
 
 .cloud-image-controls { flex-basis: 100%; display: grid; gap: 12px; padding: 12px 0; min-width: 0; }
 .cloud-image-controls .seg { width: fit-content; max-width: 100%; }
-.image-refusal-code { display: block; color: var(--muted); font-size: 12px; }
+.image-refusal-note { display: block; color: var(--muted); font-size: 12px; }
 .image-refusal-links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 4px; }
 .image-refusal-links .link { white-space: normal; text-align: left; overflow-wrap: anywhere; }
 @media (pointer: coarse) {

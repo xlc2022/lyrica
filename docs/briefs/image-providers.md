@@ -133,87 +133,25 @@ scroll, and the row's actions stay where they are.
 
 ## Handoff notes
 
-Runs 1 and 2 are committed at `65f5bae` and `24ba1db`. They built the
-provider adapters, hand-JSON flags and tiers, refusal code and retries,
-maker attribution, switches and refusal links. The local-image regression
-was repaired before run 3: only cloud endpoints use the provider table.
+Built by Codex on the test machine in four runs, then committed, merged
+with main and pushed by the coordinating thread as PR #294. Runs 1 and 2
+built the provider adapters, hand-JSON flags and tiers, the refusal code and
+retries, maker attribution, the switches and the refusal links; only cloud
+endpoints use the provider table. Run 3 built the Hosts and endpoints UI
+(API key and plan pills, Text / Vision / Image pills, masked key suffixes,
+plan facts without placeholder URLs, an account label only when sign-in
+supplies one, ChatGPT and OpenAI default names, the endpoint named after
+each model in every picker). Run 4 resolved the main merge and adapted three
+tests to it (capitalised plan names, the ModelLabel markup, a 1 ms clock
+step before sleep). The UI review round replaced the raw refusal code with
+"The model declined this image.", shows Resend before the retry options
+load, and kept the `code.raw` rule. No database migration; the flags live
+in `offerings.hand`.
 
-Run 3 completes the Hosts and endpoints UI (principles 1 and 8): API key
-versus plan pills, Text / Vision / callable Image capabilities, masked key
-suffixes, plan facts without placeholder URLs, and an explicit account
-label only when sign-in supplies it. Current Pi ChatGPT sign-in does not
-supply an account label; none is inferred from its tokens. Add endpoint
-suggests ChatGPT and OpenAI without replacing a user-entered name. Endpoint
-names now accept capitals, with the existing character and length limits,
-so these defaults can be saved. Shared ModelLabel rendering names the
-endpoint after each model in the picker, Tasks, Text copies and Images;
-endpoint text is muted and truncates first. Capability pills wrap below
-the name on a phone. Controls follow docs/ux.md §6's Models and Image models
-rows; pills use the agreed §5 exception. No new tool or database migration.
+Validation used fakes only, never a plan sign-in or a real API call.
+Typecheck and unit tests pass; focused Playwright checks pass at 390 and
+1280 px.
 
-Presets remain the source of routing and the welcome Backend card. Images
-and Backend contain no model-profile references. The docs now describe
-presets/columns and `lyrica admin models preset`, including the stale
-Tasks description in docs/web.md. Updated: DESIGN.md Images,
-docs/contracts.md, docs/models.md, docs/ux.md, docs/web.md and the
-getting-started guide. Run 3 does not touch migrations or use taken user.db
-steps. Pre-existing staged work is preserved. The pre-existing import-only
-conflict in daemon/src/hosted.ts is resolved in the working file by keeping
-both formatEntry (main) and executeImage (image retries); the read-only Git
-index still needs staging by the coordinating thread.
-
-Validation uses fakes only, never a plan sign-in or real API call. Typecheck
-and the web build pass. Focused Vitest files: core/test/models.test.ts (26),
-web/test/images.test.ts (7), daemon/test/image-routes.test.ts (9), including
-the new safe endpoint-metadata check. All 42 pass. Every test command uses
-`/tmp/lyrica-tests.lock`, with Vitest forks and two workers; no full suite
-was run. Focused Playwright checks at 390 and 1280 cover the image switches,
-refusal links, five-pill endpoint row and default names, Text model copies,
-private/local-only picker and Tasks presets: all 10 checks pass in the final
-run. The default ports were busy
-and the bundled Chromium lacked host libraries, so the runs use isolated
-ports 17741/17742 and the installed Nix Chromium through a temporary config.
-Screenshots are in `/tmp/lyrica-image-providers-run3/`: image-endpoints-390.png,
-image-endpoints-1280.png, image-refusal-390.png and image-refusal-1280.png,
-with additional switches, Tasks and Text copies views. Checked visually and
-by no-horizontal-scroll assertions at both widths.
-
-Left: the coordinating thread stages and commits this working-tree diff,
-runs the full suite, pushes, and obtains CI plus PR review and UI review of
-the head commit. Operator docs should review the guide's endpoint setup and
-preset instructions. No commit or push was attempted here.
-
-Run 4 resolves the main merge in docs/ux.md, docs/web.md, web/e2e/web.spec.ts
-and web/src/app.css, retaining image-provider and spend-share behavior and
-main's preset Tasks description. Serves principles 1 and 5: the three
-reported failures were test assumptions, not changes to routing or memory.
-The plan-name assertion now accepts capitalized defaults and still rejects
-spaces; the Backend assertion checks the muted endpoint markup and preset
-names; the project-page fixture advances a Date-only fake clock by one
-millisecond before sleep. Holding the clock fixed reproduced a no-activity
-skip: main's exclusive cutoff intentionally leaves same-millisecond material
-for the next run. Sleep's component doc also now says presets and columns
-instead of profiles. No schema step or router/memory code change was needed.
-
-Run 4 validation: typecheck and web build pass; 109 tests in nine focused
-Vitest files pass, including all branch-touched unit-test files and the
-three reported files. Another 29 tests pass in the five merge-touched
-migration, context and spend-share files. All test commands used the shared
-lock; Vitest used forks and two workers. The complete touched Playwright
-spec was attempted on phone and desktop: 30 passed, both upload tests
-failed because this sandbox has neither gocryptfs nor /dev/fuse, and serial
-execution skipped the remaining 94 checks. Separate image-provider,
-welcome and spend-share checks pass at both widths (8 checks). Models,
-Tasks presets and Text model checks also pass at both widths (6 checks).
-A further Image models check exposed existing phone overflow in local part
-filenames: its implicit grid column sized to the long path. The part-file
-column now shrinks and wraps text, following docs/ux.md §8; docs/web.md
-records that behavior. Image models then passes on phone and desktop
-(2 checks), making 16 focused browser checks passed. Tests used
-only fakes; no real provider or plan endpoint was called.
-
-Left for the coordinating thread: stage the four resolved files (the Git
-index remains unmerged because it is read-only here), commit and push,
-run the full suite and complete Playwright on a host with encrypted-home
-mount support, then obtain CI and the required reviews. No commit or push
-was attempted in run 4.
+Left: CI, PR review and UI review of the PR's head; the full Playwright run,
+which needs a host with FUSE for the upload tests; and Operator docs
+reviewing the getting-started guide's endpoint setup and image switches.

@@ -975,13 +975,14 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   top of the conversation says "Plan waiting for your answer" (or
   "Approval…") and scrolls to it.
 
-A content refusal's image marker shows `image_refusal` and the small text
+A content refusal's image marker says "The model declined this image." (never
+the code) and the small text
 links Edit message, Resend and Try <model> (ux §5's agreed action exception
 and §6's image row). The server computes choices from the current task list
 and portrait policy. Edit message appears only for the last user message
 and copies it into the composer through an in-memory event; Resend repeats
-the image call, Try selects the next eligible endpoint. Busy calls hide the
-links. Both retries save results in the conversation and recheck consent.
+the image call, Try selects the next eligible endpoint. Resend shows at once;
+the other two join it when the options arrive. Busy calls hide the links. Both retries save results in the conversation and recheck consent.
 
 ## Look
 

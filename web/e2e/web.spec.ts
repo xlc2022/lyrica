@@ -3177,7 +3177,8 @@ test("image providers run 2: cloud switches and refusal links", async ({ page, b
   await page.reload();
   const marker = page.locator('.marker[data-type="tool"]');
   await expect(marker.getByRole("button", { name: "Edit message", exact: true })).toBeVisible();
-  await expect(marker).toContainText("image_refusal");
+  await expect(marker).toContainText("The model declined this image.");
+  await expect(marker).not.toContainText("image_refusal");
   await expect(marker.getByRole("button", { name: "Try spare/art", exact: true })).toBeVisible();
   await noHorizontalScroll(page);
   if (phone(page)) expect((await marker.getByRole("button", { name: "Resend", exact: true }).boundingBox())!.height).toBeGreaterThanOrEqual(44);

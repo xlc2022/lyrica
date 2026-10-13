@@ -618,7 +618,7 @@ lyrica admin models preset set general image.edit openai-images/gpt-image-1 --us
 lyrica admin models preset set private image.upscale '<host>/<recipe>' --user ada
 ```
 
-A content refusal stops with `image_refusal`. **Edit message** copies the
+A content refusal stops, and the image says the model declined it. **Edit message** copies the
 source into the composer while it is still the last user message; **Resend**
 repeats the image call on the same model; **Try <model>** appears when another
 eligible endpoint follows it. Retries check portrait consent again and keep
