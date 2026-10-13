@@ -7,6 +7,7 @@ import {
   del, get, HttpError, patch, post, u,
   type GitAccountChange, type GitAccountInfo, type GitAccountInput, type GitKind, type GitRepository, type Pool,
 } from "./api.ts";
+import { CopyButton } from "./CopyButton.tsx";
 import { Icon } from "./icons.tsx";
 import { duration } from "./Machines.tsx";
 import { her } from "./name.ts";
@@ -141,6 +142,8 @@ function GitDrawer({ userId, account, onSaved, onRemoved, onChanged, onClose }: 
   });
   const github = form.kind === "github";
   const name = form.name.trim() || "This account";
+  // The webhook's explanation is Webhook's tooltip and its visually hidden description, as the Pool fact's is (docs/ux.md §4).
+  const webhookWhy = account?.webhook ? `When a pull request changes, ${KINDS[account.kind]} posts here and ${her()} checks it at once instead of waiting for the next poll.` : "";
   return (
     <aside ref={ref} tabIndex={-1} className="drawer" aria-label={adding ? "Add account" : account.name}>
       <div className="drawer-head">
@@ -183,6 +186,21 @@ function GitDrawer({ userId, account, onSaved, onRemoved, onChanged, onClose }: 
             </label>
           )}
         </fieldset>
+        {account?.webhook && (
+          <fieldset className="group">
+            <legend title={webhookWhy}>Webhook<span className="sr-only">. {webhookWhy}</span></legend>
+            <label className="field"><span>URL</span>
+              <input className="mono" readOnly value={account.webhook.url} onFocus={(e) => e.currentTarget.select()} />
+            </label>
+            <label className="field"><span>Secret</span>
+              <input className="mono" type="password" readOnly value={account.webhook.secret} />
+            </label>
+            <div className="row">
+              <CopyButton text={account.webhook.url} label="Copy URL" className="copy-button" />
+              <CopyButton text={account.webhook.secret} label="Copy secret" className="copy-button" />
+            </div>
+          </fieldset>
+        )}
         <ErrorText error={error} />
         <div className="row drawer-foot">
           <button type="submit" className="primary" disabled={busy || !ready}

@@ -232,7 +232,7 @@ export class Sleep {
    * Offline when none answers.
    */
   private async context(userId: string, pool: Pool, phase: SleepPhase): Promise<{ call: CallContext; ref: { offeringId: string } }> {
-    const base: CallContext = { userId, pool, localOnly: pool === "private", ...(pool === "general" ? { profile: this.o.models.defaultProfile(userId) } : {}), fallback: this.fallback(userId) };
+    const base: CallContext = { userId, pool, localOnly: pool === "private", fallback: this.fallback(userId) };
     const { ref } = await this.o.models.resolveLive(`sleep.${phase}`, base, {}, { probeLast: true });
     return { ref, call: { ...base, overrides: { chat: [ref], compaction: [ref] } } };
   }

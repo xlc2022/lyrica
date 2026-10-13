@@ -383,6 +383,7 @@ describe("modes and switches", () => {
       CREATE TABLE thread_workspaces (thread_id TEXT PRIMARY KEY, grants TEXT NOT NULL, internet INTEGER, services INTEGER, hosts TEXT, mode TEXT NOT NULL, target TEXT NOT NULL, parent TEXT);
       INSERT INTO thread_workspaces VALUES ('a', '[]', NULL, NULL, NULL, 'ask-changes', 'sandbox', NULL),
         ('b', '[]', NULL, NULL, NULL, 'ask-commands', 'sandbox', NULL), ('c', '[]', NULL, NULL, NULL, 'auto', 'sandbox', NULL);
+      DROP TABLE IF EXISTS model_presets; DROP TABLE IF EXISTS model_columns;
       PRAGMA user_version = 0;`);
     migrate(db, "user");
     const settings = new WorkspaceSettings(db, () => ({ general: [], private: [] }));

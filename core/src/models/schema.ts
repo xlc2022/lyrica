@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS model_profiles (
   entry   TEXT NOT NULL,
   PRIMARY KEY (profile, task)
 );
--- A thread's own choice for a task, which beats the profile.
+-- A thread's own choice for a task, which beats the preset.
 CREATE TABLE IF NOT EXISTS thread_models (
   pool   TEXT NOT NULL,
   thread TEXT NOT NULL,
@@ -124,12 +124,14 @@ CREATE TABLE IF NOT EXISTS starred_offerings (
 CREATE TABLE IF NOT EXISTS local_only_threads (
   thread TEXT PRIMARY KEY
 );
--- A thread's own profile (cloud or custom, general threads only), thinking
--- setting and Fallback switch (null follows the user's default). voice_cloud,
--- the old Voice to cloud switch, is no longer read; a later release drops it.
+-- A thread's own profile (cloud or custom, general threads only, kept one
+-- release for rollback) and its own preset, thinking setting and Fallback
+-- switch (null follows the user's default). voice_cloud, the old Voice to
+-- cloud switch, is no longer read; a later release drops it.
 CREATE TABLE IF NOT EXISTS thread_choices (
   thread      TEXT PRIMARY KEY,
   profile     TEXT,
+  preset      TEXT,
   thinking    TEXT,
   voice_cloud INTEGER,
   fallback    INTEGER
@@ -159,6 +161,30 @@ CREATE TABLE IF NOT EXISTS model_calls (
 );
 `;
 
+/** Named model presets and the two columns' state, in user.db (docs/briefs/model-presets.md). An entries value is a JSON object of `{ task: Entry }`. */
+export const PRESET_SCHEMA = `
+-- A named map of task to entry, with a scope: private takes local models only,
+-- general mixes local and cloud. builtin is null for user presets. Names are
+-- unique per user ignoring case (the index).
+CREATE TABLE IF NOT EXISTS model_presets (
+  id         TEXT PRIMARY KEY,
+  name       TEXT NOT NULL,
+  scope      TEXT NOT NULL CHECK (scope IN ('private', 'general')),
+  builtin    TEXT CHECK (builtin IN ('local', 'cloud')),
+  entries    TEXT NOT NULL DEFAULT '{}',
+  updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS model_presets_name ON model_presets (lower(name));
+-- The two columns' state: the preset each follows, or (when preset is null)
+-- its Custom entries and the preset those came from, for Save to.
+CREATE TABLE IF NOT EXISTS model_columns (
+  column      TEXT PRIMARY KEY CHECK (column IN ('private', 'general')),
+  preset      TEXT,
+  from_preset TEXT,
+  entries     TEXT NOT NULL DEFAULT '{}'
+);
+`;
+
 /** Adds the turn measurements and speech columns to tables made before them. */
 export function upgradeCalls(db: Db): void {
   for (const c of ["prompt_tokens", "output_tokens", "window", "ttft_ms", "gen_ms", "processed"]) {
@@ -167,6 +193,38 @@ export function upgradeCalls(db: Db): void {
   if (!hasColumn(db, "model_calls", "audio_seconds")) db.exec("ALTER TABLE model_calls ADD COLUMN audio_seconds REAL");
   if (!hasColumn(db, "thread_choices", "voice_cloud")) db.exec("ALTER TABLE thread_choices ADD COLUMN voice_cloud INTEGER");
   if (!hasColumn(db, "thread_choices", "fallback")) db.exec("ALTER TABLE thread_choices ADD COLUMN fallback INTEGER");
+  if (!hasColumn(db, "thread_choices", "preset")) db.exec("ALTER TABLE thread_choices ADD COLUMN preset TEXT");
+}
+
+/** The settings key holding the id of the preset migrated from the custom profile (so a rename doesn't break the rollback mirror). */
+export const MIXED_PRESET = "presets.mixed";
+
+/**
+ * Mirrors the presets and columns back into the legacy `model_profiles` table
+ * and the `general_profile` setting, kept one release so a rollback keeps the
+ * user's choices: built-in Local with local, Cloud with cloud, the migrated
+ * Mixed preset with custom, and the General column's preset with the default
+ * where it is one of those.
+ */
+export function syncLegacy(db: Db): void {
+  const entries = (id: string) => {
+    const r = db.prepare("SELECT entries FROM model_presets WHERE id = ?").get(id) as { entries: string } | undefined;
+    return r ? JSON.parse(r.entries) as Record<string, unknown> : undefined;
+  };
+  const write = (profile: string, table: Record<string, unknown> | undefined) => {
+    db.prepare("DELETE FROM model_profiles WHERE profile = ?").run(profile);
+    if (!table) return;
+    const ins = db.prepare("INSERT OR REPLACE INTO model_profiles (profile, task, entry) VALUES (?, ?, ?)");
+    for (const [task, e] of Object.entries(table)) ins.run(profile, task, JSON.stringify(e));
+  };
+  write("local", entries("builtin.local"));
+  write("cloud", entries("builtin.cloud"));
+  const mixed = (db.prepare("SELECT value FROM settings WHERE key = ?").get(MIXED_PRESET) as { value: string } | undefined)?.value;
+  write("custom", mixed ? entries(mixed) : undefined);
+  const col = db.prepare("SELECT preset FROM model_columns WHERE column = 'general'").get() as { preset: string | null } | undefined;
+  const preset = col?.preset ?? null;
+  const legacy = preset === "builtin.cloud" ? "cloud" : preset === mixed ? "custom" : null;
+  if (legacy) db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('general_profile', ?)").run(legacy);
 }
 
 const hasColumn = (db: Db, table: string, column: string) =>

@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import {
-  recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
+  recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, firstLine, GIT_KINDS, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
-  type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
+  type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress, claudeCodeInstalled,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
@@ -18,6 +18,7 @@ import { toMessages, toReactions } from "./messages.ts";
 import { messageText, readAloud, readClip, speechState, storedSource, transcribeClip, titlesIn, type SpeechSource } from "./speech.ts";
 import { notifications } from "./notifications.ts";
 import { SEARCH_PAGE, searchMessages } from "./search.ts";
+import { forgetThreadFiles } from "./sweep.ts";
 import { applyRemoval, entriesFrom, removalPlan, uploadsIn, type RemovalContext } from "./removal.ts";
 import { redactUrl, unredactUrl } from "./redact.ts";
 
@@ -439,7 +440,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const hosts = looks.filter(({ e }) => e.api === "host").map(({ e, look }) => look.status
         ? { endpointId: e.id, status: look.status as Api.HostStatus }
         : { endpointId: e.id, error: look.error ?? `${e.name} is down`, ...(look.unpaired ? { unpaired: true as const } : {}) });
-      return { endpoints: live, hosts, profiles: profiles(d, user.id), calls: m.recentCalls(user.id, { limit: 20 }), notice: m.notice(user.id), cleanup: m.cleanup(user.id).length };
+      return { endpoints: live, hosts, presets: presets(d, user.id), calls: m.recentCalls(user.id, { limit: 20 }), notice: m.notice(user.id), cleanup: m.cleanup(user.id).length };
     }),
     route("POST", `${u}/hosts/:endpointId/:action`, async (r) => {
       const action = r.params.action;
@@ -495,25 +496,59 @@ export function apiRoutes(d: Lyricad): Route[] {
       const ids = owner(d, user, (o) => o[pool].projectThreads(project));
       return s().models.recentCalls(user.id, { threadIds: ids });
     }),
-    route("GET", `${u}/profiles`, (r) => profiles(d, d.userFor(r).id)),
-    route("PATCH", `${u}/profiles`, async (r) => {
+    route("GET", `${u}/presets`, (r) => presets(d, d.userFor(r).id)),
+    route("PATCH", `${u}/presets`, async (r) => {
       const user = d.userFor(r);
-      const c = await r.json<Api.ProfilesChange>();
-      if (c.default !== undefined) s().models.setDefaultProfile(user.id, c.default);
+      const c = await r.json<Api.PresetsChange>();
       if (c.thinking !== undefined) s().models.setDefaultThinking(user.id, c.thinking);
       if (c.fallback !== undefined) s().models.setDefaultFallback(user.id, c.fallback);
       if (c.sleepFallback !== undefined) s().sleep.setFallback(user.id, c.sleepFallback);
       if (c.readAloudLive !== undefined) s().models.setDefaultReadAloudLive(user.id, c.readAloudLive);
-      return profiles(d, user.id);
+      return presets(d, user.id);
     }),
-    route("PUT", `${u}/profiles/:profile/:task`, async (r) => {
+    route("POST", `${u}/presets`, async (r): Promise<Api.Presets> => {
       const user = d.userFor(r);
-      const name = r.params.profile;
-      if (name !== "cloud" && name !== "local" && name !== "custom") throw new HttpError(404, "the profiles are local, cloud and custom");
-      const c = await r.json<Api.ProfileEntryChange>();
+      const c = await r.json<{ name: string; column: Column }>();
+      const column = checkColumn(c.column);
+      s().models.addPreset(user.id, { name: String(c.name ?? ""), scope: column === "private" ? "private" : "general" }, column);
+      return presets(d, user.id);
+    }),
+    route("PATCH", `${u}/presets/:id`, async (r): Promise<Api.Presets> => {
+      const user = d.userFor(r);
+      const c = await r.json<{ name: string }>();
+      s().models.editPreset(user.id, r.params.id!, { name: String(c.name ?? "") });
+      return presets(d, user.id);
+    }),
+    route("DELETE", `${u}/presets/:id`, (r): Api.Presets => {
+      const user = d.userFor(r);
+      s().models.removePreset(user.id, r.params.id!);
+      return presets(d, user.id);
+    }),
+    route("PUT", `${u}/columns/:column`, async (r): Promise<Api.Presets> => {
+      const user = d.userFor(r);
+      const column = checkColumn(r.params.column!);
+      const c = await r.json<{ preset: string }>();
+      s().models.useColumnPreset(user.id, column, String(c.preset ?? ""));
+      return presets(d, user.id);
+    }),
+    route("PUT", `${u}/columns/:column/:task`, async (r): Promise<Api.Presets> => {
+      const user = d.userFor(r);
+      const column = checkColumn(r.params.column!);
+      const c = await r.json<Api.ColumnTaskChange>();
       const entry = "same" in c ? { same: checkTask(String(c.same)) } : "models" in c ? (c.models ? toRefs(c.models) : undefined) : c.model ? [toRef(c.model)] : undefined;
-      s().models.setProfile(user.id, name, checkTask(r.params.task!), entry);
-      return profiles(d, user.id);
+      s().models.setColumnTask(user.id, column, checkTask(r.params.task!), entry);
+      return presets(d, user.id);
+    }),
+    route("POST", `${u}/columns/:column/save`, async (r): Promise<Api.Presets> => {
+      const user = d.userFor(r);
+      const column = checkColumn(r.params.column!);
+      const c = await r.json<{ preset?: string; name?: string }>();
+      if (c.preset !== undefined) s().models.savePreset(user.id, String(c.preset), column);
+      else {
+        const p = s().models.addPreset(user.id, { name: String(c.name ?? ""), scope: column === "private" ? "private" : "general" }, column);
+        s().models.useColumnPreset(user.id, column, p.id);
+      }
+      return presets(d, user.id);
     }),
 
     // --- Model groups ---
@@ -631,7 +666,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
 
     // --- Git accounts (docs/workspace.md, "Git accounts and repositories") ---
-    route("GET", `${u}/git-accounts`, (r) => s().workspace.settings(d.userFor(r).id).gitAccounts().map(gitAccountInfo)),
+    route("GET", `${u}/git-accounts`, async (r) => Promise.all(s().workspace.settings(d.userFor(r).id).gitAccounts().map((a) => gitAccountInfo(d, a)))),
     route("POST", `${u}/git-accounts/probe`, async (r): Promise<Api.Ok> => {
       d.userFor(r);
       const input = await r.json<Api.GitAccountInput>();
@@ -641,7 +676,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("POST", `${u}/git-accounts`, async (r) => {
       const userId = d.userFor(r).id;
       const input = await r.json<Api.GitAccountInput>();
-      return gitAccountInfo(await s().workspace.addGitAccount(userId, {
+      return gitAccountInfo(d, await s().workspace.addGitAccount(userId, {
         name: String(input.name ?? ""), kind: checkGitKind(input.kind), host: String(input.host ?? ""), account: String(input.account ?? ""),
         token: String(input.token ?? ""), pool: checkPool(input.pool), offNetworkConfirmed: input.offNetworkConfirmed === true,
       }));
@@ -650,11 +685,11 @@ export function apiRoutes(d: Lyricad): Route[] {
       const change = pick(await r.json<Api.GitAccountChange>(), ["name", "host", "account", "pool", "offNetworkConfirmed"]);
       if (change.pool !== undefined) checkPool(change.pool);
       for (const k of ["name", "host", "account"] as const) if (change[k] !== undefined) change[k] = String(change[k]);
-      return gitAccountInfo(await s().workspace.updateGitAccount(d.userFor(r).id, r.params.name!, { ...change, offNetworkConfirmed: change.offNetworkConfirmed === true }));
+      return gitAccountInfo(d, await s().workspace.updateGitAccount(d.userFor(r).id, r.params.name!, { ...change, offNetworkConfirmed: change.offNetworkConfirmed === true }));
     }),
     route("POST", `${u}/git-accounts/:name/token`, async (r) =>
-      gitAccountInfo(await s().workspace.setGitToken(d.userFor(r).id, r.params.name!, String((await r.json<Api.GitToken>()).token ?? "")))),
-    route("POST", `${u}/git-accounts/:name/confirm-off-network`, (r) => gitAccountInfo(s().workspace.confirmGitOffNetwork(d.userFor(r).id, r.params.name!))),
+      gitAccountInfo(d, await s().workspace.setGitToken(d.userFor(r).id, r.params.name!, String((await r.json<Api.GitToken>()).token ?? "")))),
+    route("POST", `${u}/git-accounts/:name/confirm-off-network`, (r) => gitAccountInfo(d, s().workspace.confirmGitOffNetwork(d.userFor(r).id, r.params.name!))),
     route("DELETE", `${u}/git-accounts/:name`, (r) => {
       s().workspace.removeGitAccount(d.userFor(r).id, r.params.name!);
       return { ok: true };
@@ -886,7 +921,7 @@ export function apiRoutes(d: Lyricad): Route[] {
           s().projects.pin(user.id, pool, thread.id, true);
         }
         const project = !!store.getThread(thread.id)!.project;
-        const settings = change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined || change.threadsFallback !== undefined || change.watchThreads !== undefined;
+        const settings = change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined || change.threadsFallback !== undefined || change.watchThreads !== undefined || change.commandRules !== undefined;
         if ((change.goal !== undefined || change.instructions !== undefined || change.discardDraft !== undefined || settings) && !project) {
           throw new HttpError(400, "only a project has a goal, instructions and project settings");
         }
@@ -905,6 +940,7 @@ export function apiRoutes(d: Lyricad): Route[] {
             ...(change.instructions !== undefined || change.discardDraft === true ? { draftInstructions: null } : {}),
           });
         }
+        if (change.commandRules !== undefined) s().workspace.settings(user.id).setCommandRules(pool, thread.id, change.commandRules);
         if (settings) {
           s().projects.set(user.id, pool, thread.id, {
             ...(change.paused !== undefined ? { paused: !!change.paused } : {}),
@@ -928,7 +964,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       const user = d.userFor(r);
       const pool = poolOf(r);
       const threadId = owner(d, user, (o) => threadOf(o, r).id);
-      const { children } = await r.json<Api.ForgetThread>();
+      const { children, keepMemories } = await r.json<Api.ForgetThread>();
+      const keep = keepMemories === true;
       const all = children === true || r.query.get("children") === "1";
       // Its subagents' threads go with it, deepest first, and with `children` its child threads; each one's runs are stopped and their records dropped first.
       const { doomed, kept } = owner(d, user, (o) => {
@@ -942,13 +979,14 @@ export function apiRoutes(d: Lyricad): Route[] {
         return out;
       });
       // A project's page and the notes that came only from it go before its threads do, while they still say where the notes came from.
-      if (all) owner(d, user, (o) => { if (o[pool].getThread(threadId)?.project) o[pool].forgetProjectMemory(threadId, author(user)); });
+      if (all && !keep) owner(d, user, (o) => { if (o[pool].getThread(threadId)?.project) o[pool].forgetProjectMemory(threadId, author(user)); });
       for (const id of doomed) {
         await s().delegation.forget(user.id, pool, id);
         await s().host.forget(user.id, pool, id);
-        owner(d, user, (o) => { if (o[pool].getThread(id)) o[pool].forgetThread(id, author(user), { children: all }); });
+        owner(d, user, (o) => { if (o[pool].getThread(id)) o[pool].forgetThread(id, author(user), { children: all, keepMemories: keep }); });
         s().models.forgetThread(user.id, pool, id);
       }
+      forgetThreadFiles(s(), user.id, pool, doomed);
       s().children.forget(user.id, pool, doomed);
       s().wakeups.forget(user.id, pool, doomed);
       s().prefs.forget(user.id, pool, doomed);
@@ -956,6 +994,21 @@ export function apiRoutes(d: Lyricad): Route[] {
       // A kept child is a thread of its own now: its next turn opens with its own tools and workspace.
       for (const id of kept) { s().workspace.settings(user.id).detach(id); s().host.reload(user.id, pool, id); }
       return { ok: true };
+    }),
+    route("GET", `${t}/tombstone`, (r): Api.ThreadTombstone => {
+      const user = d.userFor(r);
+      const pool = poolOf(r);
+      const threadId = r.params.threadId!;
+      return owner(d, user, (o): Api.ThreadTombstone => {
+        const gone = o[pool].getThreadTombstone(threadId);
+        if (!gone || o[pool].getThread(threadId)) throw new HttpError(404, "no such tombstone");
+        const show = display(d, user.id);
+        const memories: Api.MemoryUse[] = o[pool].citingThread(threadId).map((id) => ({ id }));
+        const links: Record<string, Api.MemoryLink> = {};
+        for (const m of memories) { const link = linkFor(o, pool, m.id, show); if (link) links[m.id] = link; }
+        const users: Api.UserMap = Object.fromEntries(d.services!.users.all().map((u) => [u.id, { displayName: u.profile.displayName, pronouns: u.profile.pronouns }]));
+        return { id: `t:${threadId}`, deletedAt: gone.deletedAt, memories, links, users };
+      });
     }),
     route("GET", `${t}/subagents`, (r): Api.Subagents => {
       const user = d.userFor(r);
@@ -1191,9 +1244,9 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("POST", `${t}/permissions/:requestId`, async (r) => {
       const user = d.userFor(r);
-      const { allow, mode, allowInThread } = await r.json<Api.PermissionAnswer>();
+      const { allow, mode, allowInThread, alwaysAllow } = await r.json<Api.PermissionAnswer>();
       const thread = owner(d, user, (o) => threadOf(o, r));
-      if (!s().host.get(user.id, poolOf(r), thread.id).answer(r.params.requestId!, allow === true, mode, allowInThread === true)) throw new HttpError(404, "that request is no longer waiting");
+      if (!s().host.get(user.id, poolOf(r), thread.id).answer(r.params.requestId!, allow === true, mode, allowInThread === true, alwaysAllow === true)) throw new HttpError(404, "that request is no longer waiting");
       return { ok: true };
     }),
     route("POST", `${t}/uploads`, async (r): Promise<Api.UploadResponse> => {
@@ -1888,11 +1941,17 @@ function endpoints(d: Lyricad, userId: string): Api.EndpointInfo[] {
   return d.services!.models.endpoints(userId).map((e) => endpointInfo(d, userId, e.id));
 }
 
-function profiles(d: Lyricad, userId: string): Api.Profiles {
+function checkColumn(column: string | undefined): Column {
+  if (column !== "private" && column !== "general") throw new HttpError(404, "the columns are private and general");
+  return column;
+}
+
+function presets(d: Lyricad, userId: string): Api.Presets {
   const m = d.services!.models;
   return {
-    local: m.profile(userId, "local"), cloud: m.profile(userId, "cloud"), custom: m.profile(userId, "custom"),
-    default: m.defaultProfile(userId), thinking: m.defaultThinking(userId),
+    presets: m.presets(userId),
+    columns: { private: m.column(userId, "private"), general: m.column(userId, "general") },
+    thinking: m.defaultThinking(userId),
     fallback: m.defaultFallback(userId), sleepFallback: d.services!.sleep.fallback(userId),
     readAloudLive: m.defaultReadAloudLive(userId),
   };
@@ -1926,9 +1985,17 @@ function networkDefaults(d: Lyricad, userId: string): Api.NetworkDefaults {
   return { general: s.defaultNetwork("general"), private: s.defaultNetwork("private") };
 }
 
-/** A Git account as the API shows it: never its token. */
-function gitAccountInfo(a: GitAccountConfig): Api.GitAccountInfo {
-  return { name: a.name, kind: a.kind, host: a.host, account: a.account, pool: a.pool, offNetwork: a.offNetwork, ...(a.state ? { state: a.state } : {}) };
+/** A Git account as the API shows it: never its token. The webhook is offered only where it would work. */
+async function gitAccountInfo(d: Lyricad, a: GitAccountConfig): Promise<Api.GitAccountInfo> {
+  const info: Api.GitAccountInfo = { name: a.name, kind: a.kind, host: a.host, account: a.account, pool: a.pool, offNetwork: a.offNetwork, ...(a.state ? { state: a.state } : {}) };
+  if (a.kind !== "forgejo" && a.kind !== "gitea") return info;
+  if (!a.webhookSecret) return info;
+  try {
+    if (!(await d.services!.workspace.forgeHostPrivate(a))) return info;
+    const { dnsName } = await d.tailnet.serveName();
+    info.webhook = { url: `https://${dnsName}/hooks/forge/${encodeURIComponent(a.name)}`, secret: a.webhookSecret };
+  } catch { /* not on her network, or no tailnet name: no webhook */ }
+  return info;
 }
 
 /** An MCP server as the API shows it: never its token. */
@@ -2092,7 +2159,7 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
     ...(settings ? { projectSettings: {
       ...(settings.draftGoal !== undefined ? { draftGoal: settings.draftGoal } : {}),
       ...(settings.draftInstructions !== undefined ? { draftInstructions: settings.draftInstructions } : {}),
-      pageId: `p:${projectSlug(th.id)}`, paused: settings.paused, watchThreads: settings.watch, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
+      commandRules: d.services!.workspace.settings(user.id).commandRules(pool, th.id), pageId: `p:${projectSlug(th.id)}`, paused: settings.paused, watchThreads: settings.watch, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
       ...(settings.fallback !== undefined ? { threadsFallback: settings.fallback } : {}),
     } } : {}),
     ...(mine ? { state: mine.state, ...(mine.anchor !== undefined ? { anchor: mine.anchor } : {}), ...(mine.needsYou ? { needsYou: true as const } : {}) } : {}),
@@ -2225,9 +2292,13 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     }
   };
   const answered = threadId ? models.recentCalls(user.id, { threadId, limit: 1, speech: false })[0] : undefined;
+  const restricted = pool === "private" || ctx.localOnly;
+  const chosen = ctx.preset ? models.preset(user.id, ctx.preset) : undefined;
+  const columnPreset = models.column(user.id, restricted ? "private" : "general").preset;
+  const effective = chosen && (!restricted || chosen.scope === "private") ? chosen : columnPreset;
   return {
     models: Object.fromEntries(THREAD_TASKS.map((task) => [task, taskModel(task)])) as Api.ThreadSettings["models"],
-    profile: profileFor(ctx), profileChoice: models.threadProfile(user.id, threadId), thinking: ctx.thinking ?? "off", thinkingLevels,
+    profile: effective?.name ?? "Custom", preset: ctx.preset ?? null, thinking: ctx.thinking ?? "off", thinkingLevels,
     ...(answered ? { answered } : {}),
     ...(threadId ? contextOf(d, user, pool, threadId, answered) ?? {} : {}),
     localOnly: ctx.localOnly,
@@ -2275,8 +2346,11 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
   const localOnly = change.localOnly ?? current.localOnly;
   if (pool === "private" && !localOnly) throw new CloudModelForbidden("a private thread is always local-only");
   if (parent && !localOnly && models.callContext(user.id, pool, parent).localOnly) throw new Error("the parent thread is local-only, so this one is too");
-  if (change.profile && pool === "private") throw new CloudModelForbidden("a private thread always uses the local profile");
-  if (change.profile !== undefined && change.profile !== null && change.profile !== "cloud" && change.profile !== "custom") throw new Error("a thread uses the cloud or the custom profile");
+  if (change.preset !== undefined && change.preset !== null) {
+    const p = models.preset(user.id, change.preset);
+    if (!p) throw new Error(`no preset ${change.preset}`);
+    if (localOnly && p.scope !== "private") throw new CloudModelForbidden("a private or local-only thread can use only private presets");
+  }
   if (change.thinking !== undefined && change.thinking !== null && !THINKING_LEVELS.includes(change.thinking)) throw new Error("thinking is off, low, medium or high");
   const overrides = { ...current.overrides };
   for (const [task, ref] of Object.entries(change.models ?? {})) {
@@ -2286,8 +2360,8 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
     if (ref) overrides[task as Api.ThreadTask] = Array.isArray(ref) ? toRefs(ref) : [toRef(ref)];
     else delete overrides[task as Api.ThreadTask];
   }
-  const profile = pool === "general" ? (change.profile === undefined ? current.profile : change.profile ?? models.defaultProfile(user.id)) : undefined;
-  const next = { ...current, localOnly, overrides, ...(profile ? { profile } : {}) };
+  const preset = change.preset === undefined ? current.preset : change.preset;
+  const next = { ...current, localOnly, overrides, ...(preset ? { preset } : {}) };
   for (const [task, list] of Object.entries(overrides)) overrides[task as Api.ThreadTask] = models.checkThreadList(next, task as Api.ThreadTask, list);
   if (change.unlogged === false && thread.parent) {
     owner(d, user, (o) => { if (o[pool].getThread(thread.parent!)?.unlogged) throw new Error("this thread's parent isn't logged, so it can't be logged either"); });
@@ -2302,7 +2376,7 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
   if (Object.keys(wsChange).length) ws.setThread(thread.id, pool, wsChange);
 
   if (change.localOnly !== undefined && pool === "general") models.setLocalOnly(user.id, pool, thread.id, change.localOnly);
-  if (change.profile !== undefined && pool === "general") models.setThreadProfile(user.id, pool, thread.id, change.profile);
+  if (change.preset !== undefined) models.setThreadPreset(user.id, pool, thread.id, change.preset);
   if (change.thinking !== undefined) models.setThinking(user.id, thread.id, change.thinking);
   for (const task of Object.keys(change.models ?? {})) models.setThreadModel(user.id, pool, thread.id, task as Api.ThreadTask, overrides[task as Api.ThreadTask]);
   if (change.unlogged !== undefined) owner(d, user, (o) => o[pool].setUnlogged(thread.id, !!change.unlogged));
@@ -2336,7 +2410,7 @@ function moveWork(d: Lyricad, user: User, pool: Pool, store: PoolStore, projectI
   checkFold(d, user, pool, store, projectId, threadId);
   const ids = store.foldThread(projectId, threadId, childrenOnly);
   for (const id of ids) {
-    s.workspace.settings(user.id).reparent(id, projectId);
+    s.workspace.settings(user.id).reparent(id, projectId, pool);
     if (s.models.callContext(user.id, pool, projectId).localOnly) s.models.setLocalOnly(user.id, pool, id, true);
     s.children.adopt(user.id, pool, id, projectId, anchor);
     s.host.reload(user.id, pool, id);
@@ -2560,7 +2634,10 @@ function linkFor(o: OwnerView, pool: Pool, ref: string, show: Api.Display): Api.
   const thread = /^[te]:([^#]+)/.exec(bare)?.[1];
   if (thread) {
     const t = store.getThread(thread);
-    if (!t) return undefined;
+    if (!t) {
+      const gone = bare.startsWith("t:") || bare.startsWith("e:") ? store.getThreadTombstone(thread) : undefined;
+      return gone ? { kind: "thread", pool: p, snippet: "", updatedAt: gone.deletedAt, deleted: true } : undefined;
+    }
     const entry = bare.startsWith("e:") ? store.entryWindow(bare, 0)[0] : undefined;
     return { kind: entry ? "entry" : "thread", pool: p, title: t.title ?? "", snippet: entry ? firstLine(entry.text) : "", updatedAt: entry?.createdAt ?? t.createdAt };
   }

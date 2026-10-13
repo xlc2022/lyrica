@@ -1,14 +1,13 @@
 // Notifications (DESIGN.md "Where things are"; docs/ux.md §6): one list over
 // everything waiting for the user, from GET …/notifications. The sidebar link
 // carries the count of decisions; the welcome page shows the first few; the
-// Settings section has the whole list with filters, sorting, paging and the
+// Notifications page has the whole list with filters, sorting, paging and the
 // actions on each row.
 import { useMemo, useState } from "react";
 import { get, request, u, type Notification, type NotificationAction, type NotificationPage, type NotificationType, type Pool, type ThreadSummary } from "./api.ts";
-import { Section } from "./Panel.tsx";
 import { go, href } from "./route.ts";
+import { PageHead, type ShellContext } from "./Shell.tsx";
 import { ErrorText, shortTime, useAction, useLoad } from "./ui.tsx";
-import type { ShellContext } from "./Shell.tsx";
 
 const TYPES: Record<NotificationType, { glyph: string; label: string }> = {
   permission: { glyph: "?", label: "Approval" },
@@ -87,7 +86,7 @@ export function NotificationsCard({ ctx }: { ctx: ShellContext }) {
   const [act, busy, error] = useAct(ctx, page.reload);
   return (
     <section className="card" aria-labelledby="h-notifications">
-      <div className="section-head"><h2 id="h-notifications">Notifications</h2>{page.data && <a href={href({ page: "settings", userId, section: "notifications" })}>All {page.data.waiting}</a>}</div>
+      <div className="section-head"><h2 id="h-notifications">Notifications</h2>{page.data && <a href={href({ page: "notifications", userId })}>All {page.data.waiting}</a>}</div>
       <ErrorText error={page.error || error} />
       {page.data && (page.data.items.length ? <ul className="list">{page.data.items.map((n) => <Row key={n.id} n={n} ctx={ctx} act={act} busy={busy} />)}</ul>
         : <p className="empty">Nothing waiting.</p>)}
@@ -95,8 +94,8 @@ export function NotificationsCard({ ctx }: { ctx: ShellContext }) {
   );
 }
 
-/** Settings → Notifications: the whole list. */
-export function NotificationsSection({ ctx }: { ctx: ShellContext }) {
+/** The Notifications page: the whole list. */
+export function NotificationsPage({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const [type, setType] = useState<"all" | "decision" | NotificationType>("all");
   const [scope, setScope] = useState<"all" | Pool>("all");
@@ -118,35 +117,40 @@ export function NotificationsSection({ ctx }: { ctx: ShellContext }) {
     : null;
   const row = (n: Notification) => <Row key={n.id} n={n} ctx={ctx} picked={picked.has(n.id)} onPick={(v) => setPicked((s) => { const next = new Set(s); if (v) next.add(n.id); else next.delete(n.id); return next; })} act={act} busy={busy} />;
   return (
-    <Section title="Notifications">
-      <div className="ntop seg-row" role="group" aria-label="Show">
-        {chips.map(([k, label]) => <button key={k} type="button" className="chip" aria-pressed={type === k} onClick={() => { setType(k); setLimit(PAGE); }}>{label}</button>)}
+    <main className="main">
+      <PageHead ctx={ctx} title="Notifications" />
+      <div className="scroll">
+        <section className="card notifications" aria-label="Notifications">
+          <div className="ntop seg-row" role="group" aria-label="Show">
+            {chips.map(([k, label]) => <button key={k} type="button" className="chip" aria-pressed={type === k} onClick={() => { setType(k); setLimit(PAGE); }}>{label}</button>)}
+          </div>
+          <div className="ntop">
+            <label className="cap">Sort <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
+              <option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="type">By type</option><option value="scope">By pool</option>
+            </select></label>
+            <label className="cap">Where <select value={scope} onChange={(e) => { setScope(e.target.value as "all" | Pool); setLimit(PAGE); }}>
+              <option value="all">Everywhere</option><option value="general">General</option><option value="private">Private</option>
+            </select></label>
+            <span className="spacer" />
+            {page.data && <span className="cap"><span className="num">{total}</span> {total === 1 ? "item" : "items"}{total > items.length ? <>, <span className="num">{items.length}</span> shown</> : ""}</span>}
+          </div>
+          <div className="bulk" role="toolbar" aria-label="Selected">
+            <label className="check"><input type="checkbox" checked={items.length > 0 && items.every((n) => picked.has(n.id))} onChange={(e) => setPicked(e.target.checked ? new Set(items.map((n) => n.id)) : new Set())} /> Select all{total > items.length ? ` ${items.length} shown` : ""}</label>
+            <span className="meta">{sel.length ? `${sel.length} selected` : ""}</span>
+            <span className="spacer" />
+            {shared.map((a, i) => (
+              <button key={a.label} type="button" className={`sm${i === 0 && !a.danger ? " primary" : ""}${a.danger ? " danger" : ""}`} disabled={busy}
+                onClick={() => bulk(a.label)}>{a.label} <span className="num">{sel.length}</span></button>
+            ))}
+          </div>
+          <ErrorText error={page.error || error} />
+          {page.data && !items.length && <p className="empty">Nothing waiting.{type !== "all" || scope !== "all" ? " Try a wider filter." : ""}</p>}
+          {items.length > 0 && (groups
+            ? groups.map(([label, list]) => <div key={label} className="ngroup"><div className="eyebrow">{label} · {list.length}</div><ul className="list">{list.map(row)}</ul></div>)
+            : <ul className="list">{items.map(row)}</ul>)}
+          {total > items.length && <div className="more-row"><button type="button" onClick={() => setLimit(limit + PAGE)}>Show {Math.min(PAGE, total - items.length)} more of {total - items.length}</button></div>}
+        </section>
       </div>
-      <div className="ntop">
-        <label className="cap">Sort <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
-          <option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="type">By type</option><option value="scope">By pool</option>
-        </select></label>
-        <label className="cap">Where <select value={scope} onChange={(e) => { setScope(e.target.value as "all" | Pool); setLimit(PAGE); }}>
-          <option value="all">Everywhere</option><option value="general">General</option><option value="private">Private</option>
-        </select></label>
-        <span className="spacer" />
-        {page.data && <span className="cap"><span className="num">{total}</span> {total === 1 ? "item" : "items"}{total > items.length ? <>, <span className="num">{items.length}</span> shown</> : ""}</span>}
-      </div>
-      <div className="bulk" role="toolbar" aria-label="Selected">
-        <label className="check"><input type="checkbox" checked={items.length > 0 && items.every((n) => picked.has(n.id))} onChange={(e) => setPicked(e.target.checked ? new Set(items.map((n) => n.id)) : new Set())} /> Select all{total > items.length ? ` ${items.length} shown` : ""}</label>
-        <span className="meta">{sel.length ? `${sel.length} selected` : ""}</span>
-        <span className="spacer" />
-        {shared.map((a, i) => (
-          <button key={a.label} type="button" className={`sm${i === 0 && !a.danger ? " primary" : ""}${a.danger ? " danger" : ""}`} disabled={busy}
-            onClick={() => bulk(a.label)}>{a.label} <span className="num">{sel.length}</span></button>
-        ))}
-      </div>
-      <ErrorText error={page.error || error} />
-      {page.data && !items.length && <p className="empty">Nothing waiting.{type !== "all" || scope !== "all" ? " Try a wider filter." : ""}</p>}
-      {items.length > 0 && (groups
-        ? groups.map(([label, list]) => <div key={label} className="ngroup"><div className="eyebrow">{label} · {list.length}</div><ul className="list">{list.map(row)}</ul></div>)
-        : <ul className="list">{items.map(row)}</ul>)}
-      {total > items.length && <div className="more-row"><button type="button" onClick={() => setLimit(limit + PAGE)}>Show {Math.min(PAGE, total - items.length)} more of {total - items.length}</button></div>}
-    </Section>
+    </main>
   );
 }

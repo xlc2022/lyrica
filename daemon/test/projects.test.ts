@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { HostedThread } from "../src/hosted.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
-import type { CallInfo, EndpointInfo, MessagePage, Profiles, ProjectOverview, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { CallInfo, EndpointInfo, MessagePage, Presets, ProjectOverview, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 const welcomeFolders: string[] = [];
@@ -87,8 +87,12 @@ describe("projects", () => {
     const db = d.services!.users.openUserDb(rt.ada.id);
     db.prepare("UPDATE child_threads SET needs_you = 1, resolved_at = ? WHERE thread = ?").run("2026-10-12T00:00:00Z", child.id);
     db.close();
+    const ws = d.services!.workspace.settings(rt.ada.id);
+    ws.setThread(project.id, "general", { internet: false, services: false, hosts: [] });
+    ws.setThread(source.id, "general", { internet: true, services: true, hosts: ["127.0.0.1"] });
     const folded = await ada.post<ThreadSummary>(`${path}/fold`, { threadId: source.id });
     expect(folded.status).toBe(200);
+    expect(ws.network(source.id, "general")).toEqual({ internet: false, services: false, hosts: [] });
     expect(folded.body).toMatchObject({ id: source.id, parent: project.id, child: true, steps });
     const moved = (await ada.get<ThreadSummary>(threadPath(child.id))).body;
     expect(moved).toMatchObject({ parent: project.id, child: true, needsYou: true, state: "resolved", wakeAt: due });
@@ -152,6 +156,8 @@ describe("projects", () => {
 
   it("stores drafts without applying them, preserves them through other settings, and clears on Save or discard", async () => {
     const { ada, script, say, path } = await setup();
+    const commandRules = [{ prefix: "npm test", decision: "ask" }];
+    await ada.patch(path, { commandRules });
     script("chat").push(tool({ action: "draft", goal: "Grow herbs", instructions: "Keep a diary" }), { text: "Edit in Project settings." });
     await say("Draft project settings");
     const get = async () => (await ada.get<ThreadSummary>(path)).body;
@@ -167,6 +173,7 @@ describe("projects", () => {
     await ada.patch(path, { discardDraft: true });
     expect((await get()).projectSettings?.draftGoal).toBeUndefined();
     expect((await get()).goal).toBe("Grow herbs");
+    expect((await get()).projectSettings?.commandRules).toEqual(commandRules);
   });
 
   it("applies fold suggestions once, by row or all", async () => {
@@ -197,12 +204,12 @@ describe("projects", () => {
     welcomeFolders.push(folder);
     d.services!.workspace.allowedPaths.allow(rt.ada, rt.ada.id, "general", folder);
     ws.setThread(source.id, "general", { grants: [{ path: folder, writable: true }], machines: ["garden-host"], repositories: [{ name: "tester/garden", account: "forge" }], mcpServers: ["garden"] });
-    await ada.patch(`${threadPath(source.id)}/settings`, { localOnly: true });
+    await ada.patch(`${threadPath(source.id)}/settings`, { localOnly: true, preset: "builtin.local" });
     const send = vi.spyOn(HostedThread.prototype, "send").mockResolvedValue({ queued: false });
     const continued = await ada.post<ThreadSummary>(`${threadPath(source.id)}/continue-as-project`, {});
     expect(continued.status).toBe(200);
     expect(continued.body).toMatchObject({ title: "Garden", project: true, pinned: true });
-    expect(d.services!.models.callContext(rt.ada.id, "general", continued.body.id).localOnly).toBe(true);
+    expect(d.services!.models.callContext(rt.ada.id, "general", continued.body.id)).toMatchObject({ localOnly: true, preset: "builtin.local" });
     expect(ws.effective(continued.body.id)).toEqual(ws.effective(source.id));
     expect((await ada.get<ThreadSummary>(threadPath(child.id))).body.parent).toBe(continued.body.id);
     expect((await ada.get<ThreadSummary>(threadPath(source.id))).body).toMatchObject({ child: false, title: "Garden" });
@@ -259,7 +266,7 @@ describe("projects", () => {
     // Cleared, new threads follow the project chat's again.
     expect((await ada.patch<ThreadSummary>(path, { threadsFallback: null })).body.projectSettings?.threadsFallback).toBeUndefined();
     // The defaults: new threads, and sleep's phases.
-    expect((await ada.patch<Profiles>(`${u}/profiles`, { fallback: false, sleepFallback: false })).body).toMatchObject({ fallback: false, sleepFallback: false });
+    expect((await ada.patch<Presets>(`${u}/presets`, { fallback: false, sleepFallback: false })).body).toMatchObject({ fallback: false, sleepFallback: false });
     expect((await ada.get<ThreadSettings>(`${path}/settings`)).body).toMatchObject({ fallback: null, fallbackOn: false });
   });
 
@@ -506,10 +513,10 @@ describe("projects", () => {
 
   it("keep a private project's looks on local models", async () => {
     const { ada, u, script, requests } = await setup({ threads: { concurrency: 5 }, watchMs: 100 });
-    // Watching on a cloud model in the custom profile, which general projects use.
+    // Watching on a cloud model in the General column, which general projects use.
     const cloud = await fakeOpenAI({ label: "cloud", models: [{ id: "deepseek" }] });
     const deepseek = { offeringId: (await ada.post<EndpointInfo>(`${u}/endpoints`, { name: "openrouter", kind: "cloud", baseUrl: cloud.baseUrl })).body.models[0]!.id };
-    expect((await ada.put(`${u}/profiles/custom/watching`, { model: deepseek })).status).toBe(200);
+    expect((await ada.put(`${u}/columns/general/watching`, { model: deepseek })).status).toBe(200);
     const asked = () => requests.filter((c) => who(c) === "watching");
     const watchIn = async (pool: "general" | "private") => {
       const project = (await ada.post<ThreadSummary>(`${u}/threads`, { pool, title: "Garden", project: true, goal: "Plant the beds" })).body;
@@ -530,7 +537,7 @@ describe("projects", () => {
     // A general project's look goes to the cloud model it was given.
     await watchIn("general");
     await until(async () => cloud.requests.length, (n) => n === 1);
-    // A private project's look resolves through its own context: the local profile, local models only.
+    // A private project's look resolves through its own context: the private column, local models only.
     script("watching").push({ text: '{"tell":[]}' });
     await watchIn("private");
     await until(async () => asked().length, (n) => n === 1);

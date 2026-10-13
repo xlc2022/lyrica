@@ -2,6 +2,10 @@
 
 export type Pool = "general" | "private";
 export type Interface = "web" | "cli" | "matrix" | "forum" | "sleep";
+/** What a model preset may hold: private is local models only; general mixes freely. */
+export type PresetScope = "private" | "general";
+/** The Models page's two columns. */
+export type Column = "private" | "general";
 
 export const TASKS = [
   "chat", "subagent.cheap", "subagent.strong", "compaction",
@@ -32,9 +36,9 @@ export interface CallContext {
   pool: Pool;
   /** The thread's local-only switch. Always true for private. */
   localOnly: boolean;
-  /** Which profile a general thread uses. Ignored in private and local-only threads, which always use local. */
-  profile?: "cloud" | "custom";
-  /** The thread's own ordered lists, which beat the profile. */
+  /** Which preset a general thread uses. Absent means its column. Ignored in private and local-only threads unless the preset is private. */
+  preset?: string;
+  /** The thread's own ordered lists, which beat the preset. */
   overrides?: Partial<Record<Task, ModelRef[]>>;
   /** The thread's thinking setting. */
   thinking?: ThinkingLevel;

@@ -1,6 +1,6 @@
 // One thread: header with its badges, the conversation, and the composer.
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { del, get, patch, post, put, threadPath, u, HttpError, type MachineInfo, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type WakeupInfo } from "./api.ts";
+import { del, get, patch, post, put, threadPath, u, HttpError, type MachineInfo, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTombstone, type WakeupInfo } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { hasConsequences, jumpTo, PinnedBadge, RemovalConfirm, useUndo, type Rewinder } from "./Rewind.tsx";
 import { JUMP_EVENT, JUMP_KEY, SHOW_EVENT, SHOW_KEY, take, type JumpRequest, type ShowRequest } from "./links.ts";
@@ -17,6 +17,7 @@ import { Crumbs, Main, PanelButtons, usePanel, type ShellContext } from "./Shell
 import { ThreadMenu, type MenuAt } from "./ThreadMenu.tsx";
 import { ErrorText, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
 import { stopReading } from "./Voice.tsx";
+import { Tombstone } from "./Tombstone.tsx";
 
 export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer }: {
   ctx: ShellContext; pool: Pool; threadId: string; threads: ThreadSummary[];
@@ -26,6 +27,8 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   const userId = ctx.user.id;
   const base = threadPath(userId, pool, threadId);
   const summary = useLoad(() => get<ThreadSummary>(base), [base]);
+  // A thread deleted with its memories kept has a tombstone where the thread was.
+  const gone = useLoad(() => (summary.error ? get<ThreadTombstone>(`${base}/tombstone`).catch(() => undefined) : Promise.resolve(undefined)), [base, summary.error]);
   const settings = useLoad(() => get<ThreadSettings>(`${base}/settings`), [base]);
   const pins = useLoad(() => get<Pins>(`${base}/pins`), [base]);
   // The user's machines, for the granted ones' limits in the mode menu and the settings drawer.
@@ -61,7 +64,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   // A child thread's update changes its badge in the sidebar.
   const updates = t.live.items.filter((x) => x.role === "notice").length;
   useEffect(() => { if (updates) refreshThreads(); }, [updates, refreshThreads]);
-  // The badge follows the profile, which may change elsewhere: refresh it after each turn and on focus.
+  // The badge follows the preset, which may change elsewhere: refresh it after each turn and on focus.
   // A refresh that a change overtakes is dropped, so it can't undo a Shift+Tab pressed meanwhile.
   const latest = useRef(0);
   const inFlight = useRef(0);
@@ -243,6 +246,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   const moreBtn = useRef<HTMLButtonElement>(null);
   const closeMenu = useCallback(() => { setMenuAt(undefined); moreBtn.current?.focus(); }, []);
   const listed = findThread(threads, pool, threadId) ?? s;
+  if (!s && summary.error && gone.data) return <Tombstone userId={userId} pool={pool} data={gone.data} />;
 
   return (
     <Main className="main" data-drawer-open={drawer}>
@@ -258,7 +262,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
             {s && !s.subagent && !s.child && <GroupPicker ctx={ctx} base={base} summary={s} onChange={(x) => { summary.set(x); refreshThreads(); }} />}
             {context && <ContextFact context={context} />}
             {!!steps?.length && <ChecklistButton steps={steps} />}
-            {s?.project && overview.data && <ThreadsFact userId={userId} overview={overview.data} phone={phone} />}
+            {s?.project && overview.data && <ThreadsFact userId={userId} pool={pool} threadId={threadId} overview={overview.data} phone={phone} />}
             {s?.project && overview.data && !phone && <span className="tokens"><span className="num">{tokenCount(overview.data.tokens)}</span> tokens</span>}
             {!!settings.data?.routines?.length && <RoutinesFact userId={userId} routines={settings.data.routines} onChange={refreshSettings} />}
             {!!settings.data?.wakeups?.length && <WakeupsFact base={base} wakeups={settings.data.wakeups} onChange={setWakeups} />}

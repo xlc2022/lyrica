@@ -112,6 +112,13 @@ export class Wakeups {
     }
   }
 
+  /** A forge poll's note (docs/briefs/ci-wakes.md): the poller already stored its wake-up; fire it through the same guards as a scheduled one. */
+  wake(userId: string, pool: Pool, thread: string, id: number, now = new Date()): void {
+    const d: Due = { id, dueAt: now.toISOString(), pool, thread };
+    this.due.set(userId, [...this.due.get(userId) ?? [], d]);
+    void this.fire(userId, d, now);
+  }
+
   /**
    * One wake-up: its note becomes the thread's next turn, or joins the
    * running one, marked. It waits while the thread can't start a turn (a

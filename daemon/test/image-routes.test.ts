@@ -150,7 +150,7 @@ describe("image routes (principles 1 and 2)", () => {
       const user = services.users.get(rt.ada.id)!;
       const ep = models.addEndpoint(user, { name: "cloud-images", kind: "cloud", baseUrl: "https://images.example/v1", apiKey: "fake-key" });
       const ref = { offeringId: models.addModel(user, ep.id, { modelId: "gpt-image-1", image: true, edit: true }).id };
-      for (const task of ["image.create", "image.edit"] as const) models.setProfile(user.id, "cloud", task, [ref]);
+      for (const task of ["image.create", "image.edit"] as const) models.setColumnTask(user.id, "general", task, [ref]);
       const { path } = (await call("POST", `/api/u/${user.id}/photos-of-me`, user.id, png)).value as { path: string };
       await call("PUT", `/api/u/${user.id}/photo-cloud`, user.id, { policy: "never" });
       let tool!: ToolDefinition;

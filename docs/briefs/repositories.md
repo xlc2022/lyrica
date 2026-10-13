@@ -103,8 +103,9 @@ in the sandbox carries over.
 ## Out of scope
 
 SSH keys for Git, a shared clone per project, merging or deploying her
-work, issue or pull request tools beyond the forge's CLI, webhooks, and
-GitHub App installation flows.
+work, issue or pull request tools beyond the forge's CLI, her adding
+webhooks (the CI-wake webhook `lyricad` receives is a separate piece of
+work, DESIGN.md "CI wakes"), and GitHub App installation flows.
 
 ## Tests
 

@@ -152,9 +152,9 @@ describe("hub tokens and downloads", () => {
     const s = await setup();
     const q8 = s.offering("Qwen3-8B-Q8_0.gguf");
     const q4 = s.offering("Qwen3-8B-Q4_K_M.gguf");
-    s.models.setProfile(s.ada.id, "local", "chat", [{ offeringId: q8.id }, { offeringId: q4.id }]);
+    s.models.setColumnTask(s.ada.id, "private", "chat", [{ offeringId: q8.id }, { offeringId: q4.id }]);
     await expect(s.models.deleteCopy(s.bob, q8.id, { confirm: true })).rejects.toThrow(Forbidden);
-    expect(await s.models.deleteCopy(s.ada, q8.id)).toEqual({ usedIn: [{ where: "profile", profile: "local", task: "chat" }] });
+    expect(await s.models.deleteCopy(s.ada, q8.id)).toEqual({ usedIn: [{ where: "column", column: "private", task: "chat" }] });
     await expect(s.models.deleteCopy(s.ada, q4.id, { confirm: true })).rejects.toThrow(HostRefused);
     expect(s.small.models.some((m) => m.id === q4.modelId)).toBe(true);
     expect((await s.models.deleteCopy(s.ada, q8.id, { confirm: true })).deleted).toEqual([q8.modelId]);
@@ -181,7 +181,7 @@ describe("the image library", () => {
     await s.models.recipe(s.ada, s.bigEp.id, "r1", { do: "confirm" });
     expect(offered().sort()).toEqual(["Z-Image Other", "Z-Image Turbo"]);
     const turbo = s.models.offerings(s.ada.id, s.bigEp.id).find((o) => o.recipe === "Z-Image Turbo")!;
-    s.models.setProfile(s.ada.id, "local", "image.create", [{ offeringId: turbo.id }]);
+    s.models.setColumnTask(s.ada.id, "private", "image.create", [{ offeringId: turbo.id }]);
     expect(s.models.resolveModel("image.create", { userId: s.ada.id, pool: "private", localOnly: true })).toEqual({ offeringId: turbo.id });
     expect(await s.models.recipe(s.ada, s.bigEp.id, "r1", { do: "delete" })).toEqual({ deleted: ["diffusion/z.safetensors"], kept: [{ file: "vae/ae.safetensors", reason: "Used by Z-Image Other." }] });
     expect(() => s.models.resolveModel("image.create", { userId: s.ada.id, pool: "private", localOnly: true })).toThrow(NoModel);

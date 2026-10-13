@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
-  recentWorkAllowed, WELCOME_LIMITS, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, NoModel, Offline, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
+  recentWorkAllowed, WELCOME_LIMITS, alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, NoModel, Offline, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
@@ -108,7 +108,7 @@ export class ThreadHost {
    */
   approveSubagent(r: SubagentApproval, signal: AbortSignal): Promise<boolean> {
     const request: PermissionRequest = {
-      requestId: randomBytes(8).toString("hex"), toolCallId: r.toolCallId, tool: r.tool, args: r.input, ...onMachine(r),
+      requestId: randomBytes(8).toString("hex"), toolCallId: r.toolCallId, tool: r.tool, args: r.input, ...onMachine(r), ...commandApproval(this.opts, r.userId, r.pool, r.threadId, r.tool, r.input),
       expiresAt: new Date(Date.now() + this.opts.permissionMs).toISOString(),
       subagent: { runId: r.runId, threadId: r.threadId, parentThreadId: r.parentThreadId, role: r.role },
     };
@@ -702,7 +702,7 @@ export class HostedThread {
 
   /** Asks every open view of the thread. A timeout or Stop denies. */
   private async approve(r: ApprovalRequest): Promise<boolean> {
-    return (await this.ask(r.toolCallId, r.tool, r.input, onMachine(r))).allowed;
+    return (await this.ask(r.toolCallId, r.tool, r.input, { ...onMachine(r), ...commandApproval(this.o, this.userId, this.pool, this.threadId, r.tool, r.input) })).allowed;
   }
 
   /** A plan, the same way: approving it says which mode to go ahead in; anything else keeps planning. */
@@ -745,10 +745,17 @@ export class HostedThread {
    * for the thread it runs in, and only that one. Returns false if it's no
    * longer waiting.
    */
-  answer(requestId: string, allow: boolean, mode?: GoAhead, allowInThread?: boolean): boolean {
+  answer(requestId: string, allow: boolean, mode?: GoAhead, allowInThread?: boolean, alwaysAllow?: boolean): boolean {
     const p = this.pending.get(requestId);
     if (!p) return false;
     if (p.request.tool === "propose_plan" && allow && !GO_AHEAD.includes(mode!)) throw new Error("say which mode to go ahead in: ask, acceptEdits or auto");
+    if (allow && alwaysAllow && allowInThread) throw new Error("Choose Always allow or Allow in this thread, not both.");
+    if (allow && alwaysAllow) {
+      if (!p.request.alwaysAllow || p.request.machine || p.request.tool !== "bash") throw new Error("This request cannot always allow a command.");
+      const project = projectFor(this.o, this.userId, this.pool, p.request.subagent?.threadId ?? this.threadId);
+      if (!project) throw new Error("This thread no longer belongs to a project.");
+      this.o.workspace.settings(this.userId).addCommandRule(this.pool, project, { prefix: p.request.alwaysAllow, decision: "allow" });
+    }
     if (allow && allowInThread) {
       // Stored for the thread the call runs in: a subagent's own, never its parent's.
       const where = p.request.subagent?.threadId ?? this.threadId;
@@ -781,7 +788,7 @@ export class HostedThread {
       const thread = view.own.getThread(this.threadId);
       if (!thread) throw new Error("no such thread");
       const call = models.callContext(this.userId, this.pool, this.threadId);
-      const tools = workspace.forThread({ userId: this.userId, pool: this.pool, threadId: this.threadId });
+      const tools = workspace.forThread({ userId: this.userId, pool: this.pool, threadId: this.threadId, project: view.own.projectOf(this.threadId) });
       const ctx: ThreadContext = { user, pool: this.pool, interface: thread.interface, threadId: this.threadId, view, call };
       // delegate is offered where the depth limit allows; it attaches itself, so background results reach this session.
       const canDelegate = delegation.depth(ctx) < delegation.limits.depth;
@@ -1065,4 +1072,20 @@ function onMachine(r: ApprovalRequest): Partial<PermissionRequest> {
   if (r.server) return { server: r.server, ...(r.serverTool ? { serverTool: r.serverTool } : {}) };
   if (!r.machine) return r.warning ? { warning: r.warning } : {};
   return { machine: r.machine, ...(r.cwd ? { cwd: r.cwd } : {}), ...(r.warning ? { suspect: true as const, warning: r.warning } : {}) };
+}
+
+/** Project ownership follows subagent parents, at every depth. */
+function projectFor(o: HostOptions, userId: string, pool: Pool, threadId: string): string | undefined {
+  const view = o.memory.openThreadView(userId, pool);
+  try {
+    let id = threadId;
+    while (view.own.getThread(id)?.subagent && view.own.getThread(id)?.parent) id = view.own.getThread(id)!.parent!;
+    return view.own.projectOf(id);
+  } finally { view.close(); }
+}
+
+function commandApproval(o: HostOptions, userId: string, pool: Pool, threadId: string, tool: string, input: Record<string, unknown>): Partial<PermissionRequest> {
+  if (tool !== "bash" || input.machine || !projectFor(o, userId, pool, threadId)) return {};
+  const prefix = alwaysAllowPrefix(String(input.command));
+  return prefix ? { alwaysAllow: prefix } : {};
 }

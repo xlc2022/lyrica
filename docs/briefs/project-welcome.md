@@ -67,7 +67,8 @@ ever reads its text.
    thread stays." (Make project… gains the tooltip "Turns this thread into
    a project."). It creates a new pinned project in the thread's pool and
    opens its Project settings. The project chat copies the thread's
-   folders, machines, repositories, MCP servers and local-only switch. Its
+   folders, machines, repositories, MCP servers, local-only switch and model
+   `preset` (#283). Its
    first message links back to the thread and asks Lyrica, on the thread's
    own model (so local-only holds), to draft Goal and Instructions, shown
    on Project settings for editing, never applied silently. The thread's
@@ -127,7 +128,7 @@ welcome card, the open list and the Fold in card go to UI review.
   across pools is refused; a local-only thread is never listed for, or
   folded into, a cloud project chat; a draft is never applied without
   Save; an unlogged thread is never listed or read; the user.db step
-  migrates from every released schema; Continue as project copies the grants and the local-only switch.
+  migrates from every released schema; Continue as project copies the grants, the local-only switch and the preset.
 - `npm run typecheck` and `npm test` pass; PR review verifies both PRs and
   UI review verifies PR 2.
 
@@ -194,7 +195,19 @@ opens PR 1 and sends it to PR review.
 
 Run 1 handoff: built the recent-work, fold, fold-application and Continue as
 project routes, the fold and draft tool actions, and expand-only user.db
-step 6. Selected context is request-only and bounded; unlogged and
+step 9. Selected context is request-only and bounded; unlogged and
 incompatible local-only work is refused. Drafts require user Save or
-discard. The web interface remains for run 2. The user will push this
-commit and open the back-end PR; no push or PR is made by this run.
+discard. The web interface remains for run 2. Merged main adaptation:
+model presets are retained, command rules survive draft saves, and
+migration step 9 follows main’s steps 6–8. The user will
+commit and push the changes and open the back-end PR; this run leaves the
+changes in the tree without committing, pushing or opening a PR.
+
+
+Resume validation: typecheck, 16 migration tests, 3 encrypted project-state
+tests and 14 extension tests pass. The core suite was interrupted after
+existing fake-model tests timed out: this sandbox refuses loopback HTTP
+listeners with EPERM. Core and daemon HTTP tests still need a run on a
+host that permits their fake listeners, under the shared test lock. The
+seven merge-conflicted source files have no markers remaining; the Git
+index still needs staging because .git is read-only in this environment.

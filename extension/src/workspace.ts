@@ -4,7 +4,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
 import {
-  holdsSecret, mcpNamespace, PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, WORKDIR, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  decide, type CommandRule, holdsSecret, mcpNamespace, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, WORKDIR, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -12,6 +12,8 @@ import { proxmoxTool } from "./proxmox.ts";
 
 /** What the workspace tools need for one thread. `Workspace` from core provides it. */
 export interface ThreadTools {
+  /** The owning project's rules, read fresh on every command. Without it, none. */
+  commandRules?(): CommandRule[];
   /** Called on every tool call, so a change of grants applies at once: the sandbox, or one of the thread's machines. */
   target(machine?: string): ExecutionTarget;
   /** What applies to the thread now, its ancestors' limits included. */
@@ -245,6 +247,8 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         return { block: true, reason: `${event.toolName} is off in this thread${tools.settings().mode === "plan" ? " (Plan mode)" : ""}.` };
       }
       const input = event.input as Record<string, unknown>;
+      const rule = event.toolName === "bash" ? decide(String(input.command), tools.commandRules?.() ?? []) : undefined;
+      if (rule?.decision === "forbid") return { block: true, reason: `This project's rules forbid \`${rule.prefix}\`. Ask the user to run it, or do it another way.` };
       const mcp = mcpCall(event.toolName);
       // A call that reaches someone else (a search, a page, an MCP server) never carries one of the sandbox's credentials.
       if ((mcp || LEAVES.has(event.toolName)) && holdsSecret(JSON.stringify(input), sandboxSecrets())) {
@@ -275,7 +279,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const suspect = !!warning && !tools.allowedInThread?.(machine!.name, suspectKey(event.toolName, input));
       // The first call on a machine in a turn asks if anything earlier ran somewhere else, so output from one place can't steer her onto another.
       const moved = !!machine && !places.has(machine.name) && places.size > 0;
-      if (!irreversible && !suspect && !moved && !ASKS[mode].includes(as)) {
+      if (!irreversible && !suspect && !moved && rule?.decision !== "ask" && ((rule?.decision === "allow" && !machine) || !ASKS[mode].includes(as))) {
         if (place) places.add(place);
         return undefined;
       }
@@ -363,7 +367,7 @@ export function describe(tools: ThreadTools): string {
     `A ${WORKDIR} path you write is a link the person can open, and an image under it that you write as markdown (![what it shows](${WORKDIR}/plot.png)) shows in your message.`,
     grants.length ? `Folders you were given: ${grants.join(", ")}.` : "No other folders were given to you in this conversation.",
     network(tools.network()),
-    BROWSER_LINE,
+    ...[toolsLine()].filter(Boolean),
     ...(machines.length ? [`Machines you can work on over SSH, with the machine argument: ${machines.join(", ")}. The sandbox's network settings don't apply there.`] : []),
     ...(pves.length ? [`Proxmox machines you can manage with the proxmox tool: ${pves.join(", ")}.`] : []),
     ...(tools.claudeCode?.() ? [CLAUDE_CODE_LINE] : []),
@@ -374,8 +378,12 @@ export function describe(tools: ThreadTools): string {
 /** The one prompt line for a thread with Claude Code (docs/workspace.md, "Claude Code"). */
 export const CLAUDE_CODE_LINE = "Claude Code is in your sandbox: `claude -p \"<task>\"` with bash, in this folder or a clone, hands a coding or repository job to Anthropic's coding agent, which works here and reports back; `claude -c -p \"<more>\"` continues its last job. It spends the person's own Claude plan, so use it for jobs big or hard enough to need it, never for conversation.";
 
-/** Headless Chromium is in every sandbox (docs/workspace.md, "Images and portrait photos"). It needs --no-sandbox because bwrap is the isolation. */
-export const BROWSER_LINE = "Headless Chromium is in the sandbox for rendering or checking a page: `chromium` (or `chromium-headless-shell`) with `--headless --no-sandbox --disable-gpu --user-data-dir=/tmp/chromium`, plus `--screenshot=<png>` or `--dump-dom`, on a `file://` path. Local files need no network. A static page is checked once it parses and one screenshot looks right.";
+/** The sandbox's programs on this host (sandboxTools in core), and how to use its Chromium when it has one. */
+export function toolsLine(t: { programs: string[]; browser?: string } = sandboxTools()): string {
+  const parts = t.programs.length ? [`The sandbox has bash, ${t.programs.join(", ")}${t.browser ? " and headless Chromium" : ""}.`] : [];
+  if (t.browser) parts.push("To render or check a page: `\"$CHROME_PATH\" --headless --no-sandbox --disable-gpu --user-data-dir=/tmp/chromium` plus `--screenshot=<png>` or `--dump-dom`, on a `file://` path; local files need no network. Playwright and Puppeteer use the same browser, never their own download: `executablePath: process.env.CHROME_PATH` and `args: [\"--no-sandbox\"]`. A static page is checked once it parses and one screenshot looks right.");
+  return parts.join(" ");
+}
 
 /** With internet off, what can't be fetched stays unchecked rather than worked around. */
 export const OFFLINE_LINE = "Public CDNs and package registries are out of reach, so don't mirror or proxy them: say what you couldn't check, or ask the person to turn Internet on or allow the host.";

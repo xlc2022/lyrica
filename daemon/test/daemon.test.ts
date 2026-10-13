@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, writeFileSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { fakeHost } from "../../core/test/fake-host.ts";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { CleanupItem, EndpointInfo, HostStatus, HubTokenInfo, ModelsPage, LoginResponse, Me, ModelsNotice, OfferingInfo, Profiles, MemoryDetail, MemoryHit, MemoryOverview, MemoryTag, State, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { CleanupItem, EndpointInfo, HostStatus, HubTokenInfo, ModelsPage, LoginResponse, Me, ModelsNotice, OfferingInfo, Presets, MemoryDetail, MemoryHit, MemoryOverview, MemoryTag, State, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 describe("lyricad, locked", () => {
@@ -188,7 +188,7 @@ describe("settings", () => {
     expect((await ada.patch(url, { localOnly: false })).status).toBe(400);
     // Nothing was written; the allowed list offers only local models.
     const s = (await ada.get<ThreadSettings>(url)).body;
-    expect(s.models.chat).toMatchObject({ model: m1, label: "gpu/m1", source: "profile", kind: "local" });
+    expect(s.models.chat).toMatchObject({ model: m1, label: "gpu/m1", source: "column", kind: "local" });
     expect(s.allowed.map((e) => e.name)).toEqual(["gpu"]);
     // A folder outside the allowed paths is refused too.
     expect((await ada.patch(url, { grants: [{ path: "/etc", writable: false }] })).status).toBe(400);
@@ -218,15 +218,15 @@ describe("endpoints and offerings", () => {
     expect(edited.models.map((m) => [m.id, m.label])).toEqual([[qwen!.id, "shared.blackwell/qwen3.8-27b"], [flash!.id, "shared.blackwell/qwen3.8-flash"]]);
 
     const samU = `/api/u/${rt.sam.id}`;
-    expect((await sam.put(`${samU}/profiles/local/chat`, { model: { offeringId: qwen!.id } })).status).toBe(200);
+    expect((await sam.put(`${samU}/columns/private/chat`, { model: { offeringId: qwen!.id } })).status).toBe(200);
     expect((await sam.patch(`${samU}/endpoints/${lan.id}`, { name: "mine" })).status).toBe(403);
     expect((await sam.del(`${samU}/offerings/${qwen!.id}`)).status).toBe(403);
     expect((await sam.patch(`${samU}/offerings/${qwen!.id}`, { tools: true })).status).toBe(403);
     expect((await ada.patch<OfferingInfo>(`/api/u/${rt.ada.id}/offerings/${qwen!.id}`, { tools: true, contextWindow: 32768 })).body).toMatchObject({ tools: true, contextWindow: 32768 });
     expect((await ada.post(`/api/u/${rt.ada.id}/offerings/${qwen!.id}/replace`, { with: flash!.id })).status).toBe(200);
-    expect((await sam.get<Profiles>(`${samU}/profiles`)).body.local.chat).toEqual([{ offeringId: flash!.id }]);
+    expect((await sam.get<Presets>(`${samU}/presets`)).body.columns.private.entries.chat).toEqual([{ offeringId: flash!.id }]);
     expect((await sam.get<ModelsNotice>(`${samU}/models/notice`)).body.lines).toEqual([
-      "shared.blackwell/qwen3.8-27b was replaced by shared.blackwell/qwen3.8-flash in the local profile's chat.",
+      "shared.blackwell/qwen3.8-27b was replaced by shared.blackwell/qwen3.8-flash in the private column's chat.",
     ]);
     await sam.del(`${samU}/models/notice`);
     expect((await sam.get<ModelsNotice>(`${samU}/models/notice`)).body.lines).toEqual([]);

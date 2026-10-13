@@ -215,22 +215,22 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     - Each model an endpoint offers is its own entry with its own ID, so the
       same model on two endpoints is two entries. "DeepSeek" in a private
       thread can only ever mean a local copy.
-    - Profiles, thread overrides and recent calls refer to these IDs, so
+    - Presets, thread overrides and recent calls refer to these IDs, so
       renaming an endpoint breaks nothing, and the same model on two
       endpoints can sit in one fallback list.
     - A model an endpoint no longer lists keeps its entry, marked
-      **missing**, so a profile never changes silently.
+      **missing**, so a preset never changes silently.
     - The UI recognises the same model on different endpoints and can offer
       it as a fallback.
   - **Model groups.** A user can group entries from different endpoints as
     one model, for example "Qwen 3.8 27B" served by the Blackwell machine,
     the 3090 and a laptop, in their preferred order. A group has its own
     permanent ID.
-    - Profiles and overrides can name a group or a single entry. A group in a
+    - Presets and overrides can name a group or a single entry. A group in a
       fallback list expands in place into its members, in order.
     - The usual rules filter members: a private or local-only thread skips
       cloud members, and a group that mixes kinds is usable as a whole only
-      in the Custom profile.
+      in a general preset or a Custom General column.
     - The router skips a member that can't handle the call, such as one
       without tool support when tools are needed, or one whose context
       window is smaller than the conversation, and moves on to the next.
@@ -247,8 +247,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - **Editing an endpoint never changes its IDs.** A new URL, address or key,
     or re-pairing a host, keeps them all, so moving a server means editing
     its address.
-  - **Cleaning up** never deletes silently, because profiles, overrides and
-    saved workflows refer to these IDs, including other users' profiles,
+  - **Cleaning up** never deletes silently, because presets, overrides and
+    saved workflows refer to these IDs, including other users' presets,
     which stay encrypted while those users are locked:
     - An endpoint unreachable for 14 days is marked **stale**, and a model
       missing for 30 days is marked **gone**. Fallbacks skip both.
@@ -289,19 +289,20 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   subagents, titles, embeddings, each sleep phase, creating and editing
   images, and speech (dictation and Read aloud). Compaction always uses the thread's chat model (Pi has no
   separate setting for it), so it isn't a task to pick.
-- **Profiles.** A **control panel** sets default models per task in three
-  profiles:
-  - **Local:** local models only. Private and local-only threads always use
-    it.
-  - **Cloud:** cloud models only.
-  - **Custom:** local and cloud models mixed freely, for example a local
-    model for titles and a cloud one for chat, or a local model with a cloud
-    fallback. Only general threads that aren't local-only can use it.
+- **Presets.** A **control panel** sets default models per task in two
+  columns, each following a **preset** — a named map of task to an ordered
+  list of models or groups, or to another task's list:
+  - **Private threads** follows a **private** preset: local models only.
+    Private and local-only threads always resolve from it.
+  - **General threads** follows a private preset or a **general** preset:
+    local and cloud mixed freely, as Custom did.
 
-  Each user chooses which profile general threads use by default, Cloud or
-  Custom, and a general thread can switch. Each thread can also override
-  which model handles which task, including the main conversation and its
-  subagents. That applies to every thread, with or without folders.
+  Two built-ins come with every user: **Local** (private) and **Cloud**
+  (general). A column follows a preset, or is **Custom** with its own
+  table. Each user chooses which preset the General column follows, and a
+  general thread can switch. Each thread can also override which model
+  handles which task, including the main conversation and its subagents.
+  That applies to every thread, with or without folders.
 - **Delegation.** When Lyrica delegates, she picks a tier, never a model,
   following a simple rule:
   - **cheap** for searching, reading, summarizing and checking;
@@ -450,8 +451,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     pairs a managed host. A local endpoint over plain HTTP outside this
     machine or the tailnet is marked **unencrypted**;
   - **Tasks:** a table of tasks against **Private threads** (the Local
-    profile) and **General threads** (the user's default, Cloud or Custom,
-    with a switch to the other and a way to show it too). Each cell shows
+    preset) and **General threads** (the user's default preset, with a menu
+    to switch to another and save or edit presets). Each cell shows
     what answers that task right now and opens a side panel with its ordered
     list of models. A task can instead
     use another task's list (**Same as**), one level deep: by default titles
@@ -499,16 +500,15 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     with pause, through the host's dashboard;
   - recent calls: which model answered, and when a fallback was used.
 
-  Each user manages their own endpoints and profiles. Administrators manage
+  Each user manages their own endpoints and presets. Administrators manage
   shared endpoints and model hosts.
-- **Fallbacks.** A profile can list several models for a task, in order. If
+- **Fallbacks.** A preset can list several models for a task, in order. If
   the first one's endpoint is down, the next is used, and the thread shows
   which model actually answered.
-  - In the Local and Cloud profiles a fallback never crosses the local/cloud
-    line.
-  - In Custom it may, because the user chose that mix. Each model is marked
-    cloud or local, and a call that fell back to cloud says so.
-  - Private and local-only threads never see the Custom profile, so this can
+  - In a private preset a fallback never crosses the local/cloud line.
+  - In a general one it may, because the user chose that mix. Each model is
+    marked cloud or local, and a call that fell back to cloud says so.
+  - Private and local-only threads never see a general preset, so this can
     never reach them.
   - When every model in a list is away, nothing crashes or hangs: chat,
     images and speech all report the same **offline** state, naming what
@@ -800,7 +800,7 @@ it's off.
 
 - **One `image` tool**, with `create`, `edit` and `upscale`.
   - She picks **fast** or **quality**, never a model.
-  - The profiles' `image.create` and `image.edit` tasks decide what those
+  - The presets' `image.create` and `image.edit` tasks decide what those
     mean, so the router's rules apply as for text. Private and local-only
     threads use local image models only.
   - Each recipe is tagged **fast**, **quality** or both (2026-10-12). A
@@ -885,7 +885,7 @@ it's off.
   (ComfyUI-SeedVR2_VideoUpscaler). It's an image model like the others: a
   recipe of its DiT (3B or 7B, at FP16, FP8 or GGUF) and its VAE, with
   defaults such as the scale and the largest size. The task
-  `image.upscale` has its own list in each profile (7B on the Blackwell,
+  `image.upscale` has its own list in each preset (7B on the Blackwell,
   3B on the 3090), and the `image` tool offers `upscale`. Portrait photos
   follow the same rule as for edits. Video is out of scope.
 - **Cloud image services** are cloud endpoints like any other. The provider
@@ -940,8 +940,8 @@ local-only threads use local speech models only.
   thread's **Dictation** select, after a short warning dialog: the
   confirmed pick is the consent, for that thread
   (and its branches) only; threads she starts from it begin without it.
-  Without one, Dictation uses the local profile's
-  model, whatever the thread's profile (`voiceContext`). The owner chose this over
+  Without one, Dictation uses the Private column's
+  model, whatever the thread's preset (`voiceContext`). The owner chose this over
   a separate Voice to cloud switch (2026-10-11). Her text read aloud is
   message text and follows the router's rules alone.
 - **Nothing is kept but text.** Audio is never written to disk or logged,
@@ -1010,8 +1010,8 @@ Project settings and Recent calls by project. The briefs are
   projects, subagents, already attached work and local-only work into a
   cloud-capable project chat are refused.
 - **Continue as project** creates a new pinned project in the source
-  thread's pool, copying its workspace grants, model settings and
-  local-only switch. The first message links to the source and asks for
+  thread's pool, copying its workspace grants, model preset and overrides,
+  and local-only switch. The first message links to the source and asks for
   editable Goal and Instructions drafts, using the source's own model.
   Its child threads move under the project with their state intact. The
   source conversation stays in its original thread. These back-end
@@ -1164,6 +1164,19 @@ Project settings and Recent calls by project. The briefs are
   facts line, and every routine in **Settings → Routines**, with **Pause**,
   **Resume** and **Remove**.
   One-shot reminders stay wake-ups; a calendar is Later.
+- **CI wakes** (2026-10-13). A pull request a run opens through its relay
+  is watched by `lyricad`, so its thread doesn't schedule its own wake for
+  CI: when every check on the head commit finishes, or someone else reviews
+  or comments, the thread gets one turn, marked as a wake-up, with a
+  metadata-only note `lyricad` writes (the pull request number, the commit's
+  short hash, check names and results, review authors and kinds — never
+  log or comment text). GitHub is polled every 2 minutes; a Forgejo or
+  Gitea account whose host resolves into her own network also gets a signed
+  tailnet webhook that nudges a poll at once, and polling stays as its
+  fallback. A merged or closed pull request ends the watch without a turn.
+  Watches are stored in the thread's pool like wake-ups, at most 10 per
+  thread, and share the wake-up guards: the at-once limit, paused projects,
+  and the 24-a-day cap. `threads later` stays for everything else.
 - **Not in projects:** moving an existing thread into a project, and
   sharing a project (Share with copies one thread).
 
@@ -1434,7 +1447,9 @@ Details in [docs/memory.md](docs/memory.md).
 - **Deletion has four levels:** archive, delete a memory, forget a thread, and
   forget a topic. A deleted memory leaves a **tombstone** that holds no text,
   only IDs, so sleep doesn't extract the same fact again from a thread that
-  still exists.
+  still exists. Forgetting a thread can keep its memories: the notes stay, and
+  the thread leaves a text-free tombstone (its ID and deletion time) that the
+  notes' citations of it lead to.
 
 ## Sleep
 
@@ -1560,6 +1575,13 @@ Details in [docs/sleep.md](docs/sleep.md).
   - **Plan:** she can only read, recall and use read-only subagents. She
     writes a plan and asks to go ahead; approving it switches the thread to
     the mode the user picks, and she carries on.
+  - **Project command rules:** Allow, Ask or Forbid prefixes, edited under
+    Commands in Project settings → General, apply to the project chat, its
+    threads and their subagents. Forbid refuses `bash` in every mode and
+    place; Ask always asks. Allow skips mode prompts only in the sandbox,
+    never machine limits or irreversible-action prompts. A sandbox command
+    card can save its computed prefix with **Always allow**. Opaque commands
+    ask when the project has a forbid rule.
   - Irreversible actions that leave the server always ask, whatever the
     mode. Subagents and child threads get the parent's mode or a stricter
     one, and follow the parent when it is made stricter later, at any
@@ -1682,7 +1704,7 @@ Details in [docs/sleep.md](docs/sleep.md).
   | Subcommand | What it does |
   |---|---|
   | `lyrica serve` | Starts `lyricad`. This is what the systemd unit runs. |
-  | `lyrica admin …` | Set up, manage users and administrators, change passwords and profiles. |
+  | `lyrica admin …` | Set up, manage users and administrators, change passwords and presets. |
   | `lyrica dev` | The developer bench. See below. |
   | `lyrica version` | The build, and each database's schema version and oldest reader. |
   | `lyrica smoke-test` | The updater's check of a release, with test data only. |

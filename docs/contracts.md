@@ -210,7 +210,7 @@ nothing else. No code path gives a general view a private handle.
 
 | Area | Methods |
 |---|---|
-| Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title?, project?, goal? })` (a child of a child is refused), `setProject`, `foldThread(projectId, threadId, childrenOnly?)` (existing children become project siblings, preserving entries, steps and wake-ups), `setGoal`, `projectOf`, `projectThreads`, `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared), `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)`, `copyEntries(from, to, { upTo? })` (a thread's entries into another, for forks and branches), `exportEntries(threadId)` → `ExportedEntry[]` (the conversation alone, for Share with: `conversationOnly` drops her context, memory tool calls and results and thinking, and strips citations; `MEMORY_TOOLS` names the tools), `importEntries(threadId, entries)` (into an empty thread of this pool, as its own, indexed, entries), `entriesMentioning(needle)` → `{ thread, n }[]` (where an upload is still mentioned) |
+| Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title?, project?, goal? })` (a child of a child is refused), `setProject`, `foldThread(projectId, threadId, childrenOnly?)` (existing children become project siblings, preserving entries, steps and wake-ups), `setGoal`, `projectOf`, `projectThreads`, `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children?, keepMemories? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared; `keepMemories` removes no notes or project page and leaves a text-free thread tombstone `t:<thread>` in each forgotten thread's place), `getThreadTombstone(id)` → `{ deletedAt } \| undefined`, `citingThread(id)` → the IDs of the notes and pages citing the thread or its entries, `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)`, `copyEntries(from, to, { upTo? })` (a thread's entries into another, for forks and branches), `exportEntries(threadId)` → `ExportedEntry[]` (the conversation alone, for Share with: `conversationOnly` drops her context, memory tool calls and results and thinking, and strips citations; `MEMORY_TOOLS` names the tools), `importEntries(threadId, entries)` (into an empty thread of this pool, as its own, indexed, entries), `entriesMentioning(needle)` → `{ thread, n }[]` (where an upload is still mentioned) |
 | Pins | `pinEntry(threadId, n, pinned)`, `pins(threadId?)` → `PinnedEntry[]` (one thread's, or the pool's), oldest first |
 | Reactions | `react(threadId, n, emoji, by, on)` → `Reaction[]` (`{ emoji, by: string[] }`, `by` user IDs or `LYRICA_REACTS`); `entryPage` entries carry `reactions`. Pool schema step 2 (`entries.reactions`, JSON) |
 | Drafts | `draft(threadId)` → `{ text, updatedAt }` or undefined, `setDraft(threadId, text)` (empty deletes it); one per thread, gone with the thread. Pool schema step 3 (`drafts`) |
@@ -306,7 +306,7 @@ gives the project chat for the chat or any of its threads, and
 - `branchThread` of the project chat or one of its threads makes a thread of
   the project (`child`, parent the project chat), so depth stays 1.
 - `forgetThread` on a project with `children` also forgets the project page
-  and the notes that came only from it.
+  and the notes that came only from it, unless `keepMemories` is set.
 - `sleepMaterial` marks each thread of a logged project with `project`.
 
 `lyricad` anchors such a branch where its source hangs, or for a branch of
@@ -343,20 +343,23 @@ interface Offering extends Capabilities {   // one model on one endpoint, with a
 }
 type ModelRef = { offeringId: string } | { groupId: string };
 interface Group { id; name; shared; members: string[] }      // offering IDs, in order, one per endpoint
-type ProfileName = "cloud" | "local" | "custom";
 type Entry = ModelRef[] | { same: Task };                   // an ordered list, or another task's list
-type Profiles = Partial<Record<Task, Entry>>;
+type Profiles = Partial<Record<Task, Entry>>;              // a preset's or column's table
+type Column = "private" | "general";                       // the Tasks table's two columns
+type PresetScope = "private" | "general";                  // what a preset may hold
+interface Preset { id; name; scope: PresetScope; builtin: "local" | "cloud" | null; entries: Profiles; updatedAt }
+interface ColumnState { column; preset: Preset | null; fromPreset: Preset | null; entries: Profiles }
 
 interface CallContext {
   userId; pool; localOnly: boolean;         // always true for private
-  profile?: "cloud" | "custom";             // general threads only; ignored where localOnly
-  overrides?: Partial<Record<Task, ModelRef[]>>;   // the thread's own lists, which beat the profile
+  preset?: string;                          // the thread's own preset; absent is its column. Ignored in private and local-only threads unless the preset is private
+  overrides?: Partial<Record<Task, ModelRef[]>>;   // the thread's own lists, which beat the preset
   thinking?: ThinkingLevel;
   fallback?: boolean;                       // Fallback; false: only a list's first entry answers; absent is on
 }
 interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality" }        // what the call needs from a model
-interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: ProfileName;
-                       source: "thread" | "profile"; skipped: { label; reason }[]; remaining: number }
+interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: string;   // the preset's name, or "Custom"
+                       source: "thread" | "preset" | "column"; skipped: { label; reason }[]; remaining: number }
 interface Pace { promptTokens; outputTokens; window; ttftMs; genMs; processed }   // counts and times only
 interface CallRecord { at; pool; threadId; task; offeringId; label; endpointName; kind; fallback?; note?; pace?: Pace; audioSeconds? }
 interface AnswerSettings { temperature?; topP?; topK?; minP?; repeatPenalty?; presencePenalty?;
@@ -367,8 +370,8 @@ type Hub = "huggingface" | "modelscope";
 interface ModelIdentity { basename?; sizeLabel?; finetune?; baseModels?: { name?; organization?; repoUrl? }[]; card?: { baseModel?: string[]; baseModelRelation? } }
 interface LibraryEntry { key; name; base?: { key; name }; starred; groups: string[]; copies: { offeringId; label; rawName;
                          endpointId; endpointName; kind; shared; status; downloaded; capabilities; groups; flagged?; size? }[] }
-type Use = { where: "profile"; profile; task } | { where: "thread"; pool; threadId; task }
-         | { where: "workflow"; name } | { where: "group"; groupId; name };
+type Use = { where: "preset"; presetId; name; task } | { where: "column"; column; task }
+         | { where: "thread"; pool; threadId; task } | { where: "workflow"; name } | { where: "group"; groupId; name };
 interface CleanupItem { endpoint?; offering?; group?; label; usedIn: Use[]; otherUsers: number; suggestion?: { offeringId; label } }
 
 class Models {                                              // new Models(keyring, users)
@@ -394,15 +397,18 @@ class Models {                                              // new Models(keyrin
   groups(userId) / group(userId, id) / addGroup(actor, { name, members }, { shared? }) / editGroup(actor, id, { name?, members? }) / removeGroup(actor, id)
   groupDetail(userId, id): { group; members: (Offering & { label; kind; stale })[]; warnings: string[] }
   groupSuggestions(userId): { name; members; strength: "strong" | "weak" }[]   // never made automatically
-  // Profiles, thread choices and resolve
-  profile(userId, name): Profiles / setProfile(userId, name, task, value?: Entry | ModelRef)   // a single ref is a one-model list
-  defaultProfile(userId) / setDefaultProfile(userId, "cloud" | "custom")
+  // Presets, columns, thread choices and resolve
+  presets(userId): Preset[] / preset(userId, id): Preset | undefined
+  addPreset(userId, { name, scope }, from: Column): Preset  // a new preset copying a column's table; it does not make the column follow it
+  editPreset(userId, id, { name }): Preset / removePreset(userId, id)   // built-ins can't be renamed or removed
+  savePreset(userId, id, column) / useColumnPreset(userId, column, id)   // Save to, and following a preset
+  column(userId, column): ColumnState / setColumnTask(userId, column, task, value?: Entry | ModelRef)   // editing a followed column makes it Custom
   setThreadModel(userId, pool, threadId, task, list?: ModelRef[] | ModelRef) / checkThreadList(ctx, task, list): ModelRef[]
-  setThreadProfile(userId, pool, threadId, "cloud" | "custom" | null) / threadProfile(userId, threadId)
+  setThreadPreset(userId, pool, threadId, preset: string | null) / threadPreset(userId, threadId)
   setLocalOnly(userId, pool, threadId, on) / forgetThread(userId, pool, threadId)
   callContext(userId, pool, threadId): CallContext
   childContext(parent, childThreadId, { tier } | { model }): CallContext   // a child under its parent's rules
-  inheritContext(parent, childThreadId, { chat? }): CallContext          // a branch: the parent's local-only, profile, thinking and lists
+  inheritContext(parent, childThreadId, { chat? }): CallContext          // a branch: the parent's local-only, preset, thinking and lists
   resolve(task, ctx, need?, { evenIfDown?, except? }?): Resolution   // throws CloudModelForbidden, NoModel or Offline
   resolveLive(task, ctx, need?, { probeMs?, probeLast? }): Promise<Resolution>   // probes first when there is a fallback; asks again before Offline
   callWithFallback(task, ctx, need, call: (r) => Promise<T>, { probeMs? }?): Promise<T>   // the next model on isUnreachable; Offline when none answers
@@ -457,19 +463,23 @@ class Models {                                              // new Models(keyrin
 // Also exported: CloudModelForbidden, NoModel, Offline (a NoModel: code "offline", task, tried), isUnreachable(err),
 // HostRefused (with `code`), PairingFailed, HostIdentityChanged, voiceContext(ctx);
 // SPEECH_FORMAT (s16le, 24 kHz, mono), SPEECH_CONTENT_TYPE, MAX_CLIP_SECONDS (600), MAX_CLIP_BYTES, MAX_SPEAK_CHARS, wavData, wavSeconds, pcmSeconds, LANGUAGE;
-// STALE_DAYS, GONE_DAYS, HEALTH_MS, CAPABILITIES, ANSWER_SETTINGS, TASKS, TASK_NAMES (each task in words, for messages), THINKING_LEVELS; isRestricted, profileFor,
+// STALE_DAYS, GONE_DAYS, HEALTH_MS, CAPABILITIES, ANSWER_SETTINGS, TASKS, TASK_NAMES (each task in words, for messages), THINKING_LEVELS; isRestricted,
 // checkTask, refId, baseName, acceptedSettings(endpoint), payloadFields(…); fingerprint, normaliseCode, pairingProofs,
 // hostOrigin; probeUrl(baseUrl, apiKey, timeoutMs?, fetchImpl?), discoverModels, addressesOutside.
 ```
 
 - **The boundary.** `isRestricted(ctx)` is `pool === "private" || localOnly`,
   and a private thread is always local-only (`setLocalOnly(…, false)` and
-  `setThreadProfile` on one throw). In a restricted context `allowed`
-  returns local endpoints only, `resolve` uses the local profile whatever
-  `ctx.profile` says, a group's cloud members are skipped, and a cloud model
-  named directly throws `CloudModelForbidden`. Nothing falls back across the
-  local/cloud line: outside Custom a list keeps to one kind (local where
-  restricted, cloud in the cloud profile, else its first model's).
+  `setThreadPreset` to a general preset on one throw). In a restricted
+  context `allowed` returns local endpoints only, `resolve` uses the Private
+  column whatever `ctx.preset` says, a group's cloud members are skipped,
+  and a cloud model named directly throws `CloudModelForbidden`. Nothing
+  falls back across the local/cloud line: outside a general column a list
+  keeps to one kind (local where restricted, cloud in the Cloud preset,
+  else its first model's). A private preset, and the Private column's
+  Custom entries, refuse any cloud model or a group with no local member
+  (`CloudModelForbidden`) on every write path, including `savePreset`,
+  `replace` and `merge`.
 - **Offline** is the one shape for "every model in a task's list is away",
   for chat, images and speech alike: `Offline extends NoModel` with
   `code: "offline"`, the `task`, and `tried` (labels and reasons, in list
@@ -499,12 +509,13 @@ class Models {                                              // new Models(keyrin
   Hub tokens leave core only as `X-Hub-Token` to a host, never in a response,
   log or call record. Call records hold model metadata, never prompt text.
 - **Lists.** The entry that decides a task is the thread's list, else the
-  profile's after one level of `same`, else chat's (not for `embedding` or
-  the image tasks). `resolve` expands groups in place, follows redirects,
-  drops tombstoned entries, and skips a model that is gone, on a stale or
-  down endpoint, or unfit for the `need` (tools, context window, image or
-  edit). `checkThreadList` and `setProfile` refuse a list the router would
-  refuse, before anything is written.
+  thread's preset, else its column's, after one level of `same`, else
+  chat's (not for `embedding` or the image tasks). `resolve` expands groups
+  in place, follows redirects, drops tombstoned entries, and skips a model
+  that is gone, on a stale or down endpoint, or unfit for the `need`
+  (tools, context window, image or edit). `checkThreadList` and
+  `setColumnTask` refuse a list the router would refuse, before anything is
+  written.
 - **Hosts** are called only through `fetchFor`: undici, with a connector that
   checks the pinned key before any byte is sent, no session resumption,
   addresses tried in order. A changed key ends the call with
@@ -523,15 +534,17 @@ class Models {                                              // new Models(keyrin
   `model_groups`, `offering_settings`, `hub_tokens` (shared), plus
   `offering_redirects`, `redirect_pending`, `shared_refs`,
   `shared_refs_indexed`, `legacy_refs` and `host_identity`. In each
-  `user.db`: the same first five (the user's own), `model_profiles`,
-  `thread_models`, `thread_choices`, `local_only_threads`,
-  `starred_offerings` and `model_calls`, with the default profile, default
-  thinking level and the notice in its `settings`. Shared rows change only
-  with an administrator actor. A `user.db` is migrated, has pending shared
-  redirects applied, and is indexed into `shared_refs` the first time it is
-  opened in a process.
+  `user.db`: the same first five (the user's own), `model_presets`,
+  `model_columns`, `thread_models`, `thread_choices`, `local_only_threads`,
+  `starred_offerings` and `model_calls`, with the default thinking level
+  and the notice in its `settings`. The legacy `model_profiles` and
+  `thread_choices.profile` stay one release, kept in step by `syncLegacy`, so
+  a rollback keeps the user's choices. Shared rows change only with an
+  administrator actor. A `user.db` is migrated, has pending shared redirects
+  applied, and is indexed into `shared_refs` the first time it is opened in
+  a process.
 - **Watching.** `watching` ("Watching threads") is a text task: a new
-  profile starts it following `subagent.cheap`, and a stored profile with
+  preset starts it following `subagent.cheap`, and a stored preset with
   no entry for it reads as following `subagent.cheap` too (unless that
   itself follows another task). It is a thread task (`THREAD_TASKS` in
   daemon/src/api.ts) for project chats only: the project chat can choose
@@ -645,6 +658,43 @@ One model-facing tool: `delegate({ action?, ... })`.
   event to refresh open thread views. Stored routine messages have
   `from: { kind: "routine", schedule }` and their note as the text part,
   with the daemon's mark removed; live messages carry the mark until stored.
+- **CI wakes** (`core/src/forge/{types,github,forgejo,decide}.ts`,
+  `daemon/src/forge-watch.ts`, `core/src/workspace/relay.ts`): a pull
+  request a run opens through its relay is watched and wakes its thread.
+  `SandboxSpec` and `RelaySpec` gain `onPullCreate(pr: { repo, number })`,
+  called once after a relayed `POST /repos/{owner}/{repo}/pulls` (GitHub)
+  or `POST /api/v1/repos/{owner}/{repo}/pulls` (Forgejo/Gitea) succeeds,
+  passing only those two facts — never the request or response body.
+  `Workspace.onPullCreate` routes it to `ForgeWatcher.record`, which stores
+  a watch in pool step 7's `watches` table (thread, repo, kind, host,
+  account, number, head, head_since, notified_heads, seen_reviews,
+  webhook_at, created_at) through `PoolStore.addWatch`, at most 10 per
+  thread (an eleventh is not watched; the thread is told once).
+  `ForgeWatcher.load` / `drop` enable / disable polling at unlock / Lock;
+  the daemon tick calls it unless an update drains. Each poll turns the
+  forge's API pages into one snapshot with `githubPullRequest` or
+  `forgejoPullRequest`, then `decideWatch({ number, account, now, last, poll })`
+  returns `{ next, stop, note }`; `PoolStore.settleWatch` saves the next
+  state (or removes the watch) and records the note's wake-up in one
+  transaction, and the note fires as `HostedThread.send(note, { wakeup:
+  wakeupMark(setAt) })` through the existing wake-up guards — never a body,
+  never comment or log text. A merged or closed pull stops the watch
+  without a turn. One request at a time per token; `Retry-After` and
+  GitHub's `x-ratelimit-reset` are honoured; polling slows to 10 minutes
+  while fewer than a fifth of the token's hourly requests remain, or after
+  a webhook for that repository in the last 24 hours.
+- **Forge webhook** (`daemon/src/lyricad.ts`): a Forgejo or Gitea account
+  whose host resolves into her own network (10/8, 172.16/12, 192.168/16,
+  100.64/10, fd00::/8 (with loopback and RFC 1918, as inOwnNetwork) — re-checked at each use) gets a Webhook row in its
+  Settings drawer: `POST https://<tailnet-name>/hooks/forge/<account>` and a
+  per-account random secret, stored like its token
+  (`git_accounts.webhook_secret`). The route answers only on the
+  `tailscale serve` listener (`Request.via === "tailnet"`), verifies
+  `X-Forgejo-Signature` / `X-Gitea-Signature` (HMAC-SHA256, constant time)
+  against that account's secret, reads the repository name from the body
+  and drops it, then nudges `ForgeWatcher.webhook` to poll that
+  repository's watches at once. Anything unsigned gets 401 and does
+  nothing; a forged or replayed hook can at worst cause one extra poll.
 - **Child threads** (`createThreadsExtension(thread, host?: ThreadsHost, meter?)`,
   never in a subagent's thread): one model-facing tool, `threads({ action,
   ... })`: `start` (`title`, `task`, optional narrower `folders`,
@@ -881,10 +931,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `web_fetch` pages (`maskSecrets`) show `SECRET_HIDDEN` for each, and the
     `tool_call` gate refuses a `web_search`, `web_fetch`, `image` or MCP call whose
     input holds one (`holdsSecret`).
-  - `ThreadTools` is `{ target(machine?), settings(), network(),
+  - `ThreadTools` is `{ commandRules?(), target(machine?), settings(), network(),
     claudeCode?(), machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?),
     mcpServers?(), toolAllowedInThread?(server, tool), approve?, setMode?,
     proposePlan?(PlanRequest), recordChange?(NewChange), fileNotes?() }`.
+    `commandRules()` reads the owning project on every bash call. Forbid
+    blocks in all modes and targets; Ask always prompts; Allow skips only
+    sandbox mode prompts. Opaque commands ask with any forbid rule.
+    `user_bash` is never checked.
     `settings()` is the thread's effective settings. `fileNotes()` returns
     `{ added, removed }` paths the Files panel changed since her last turn,
     which the `workspace` prompt section names in one line. `claudeCode()`
@@ -987,7 +1041,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `ThreadTools.approve?(request)`; `lyricad` supplies it and waits for an
   answer from any open view, denying on timeout or Stop. `proposePlan`
   takes the same path: `PermissionAnswer { allow, mode?: GoAhead,
-  allowInThread? }`, and approving a plan without `mode` is `400`. A
+  allowInThread?, alwaysAllow?: true }`, and approving a plan without `mode` is `400`. A
   request on a machine carries `machine` and `cwd`, a suspect one `suspect:
   true` and `warning`, an MCP one `server` and `serverTool`;
   image portrait consent uses `tool: "image"`, `args: { question, provider, model }`
@@ -995,6 +1049,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `allowInThread` stores that exact command, or that server's tool, for the
   thread it runs in and is refused on any other request. A plan switching the mode, or a
   settings change, sends the thread a `{ type: "settings" }` event.
+- A sandbox `bash` permission request in a project can carry
+  `alwaysAllow: string`, computed by lyricad, never the browser. Answering
+  with `alwaysAllow: true` saves that stored prefix as a project Allow rule
+  and approves the call, also for a subagent. Other requests refuse it.
+  `ThreadChange.commandRules` replaces rules only on a project chat;
+  `ProjectSettingsInfo.commandRules` returns them.
 - **Sweep** (`Lyricad.sweep`, nightly, before sleep): `sweepUser(services,
   userId)` for each user whose home workspace is mounted clears snapshots
   and change records older than 30 days (`SWEEP_AGE_MS`), the folders and
@@ -1004,6 +1064,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   and haven't changed in 30 days. `forgetWorktree(path, allowed)` removes a
   worktree's git record only when it is in a folder the user may grant,
   reached with no symlinks, and names that worktree back. Logs counts only.
+  `forgetThreadFiles(services, userId, pool, threads)` does the same for
+  threads just forgotten, at once and with no age limit, and drops their
+  change records and snapshots too, keeping a folder whose id a thread in
+  either pool still has; `DELETE …/threads/:pool/:threadId` calls it.
 - **Web access** (`LyricadOptions.web`): built-in Caddy, configured through
   its admin socket `/run/lyrica-caddy/admin.sock`, or an external proxy, with
   an extra listener whose settings and TLS key are in
@@ -1129,12 +1193,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     read of the source. An unlogged source is refused.
     `threads draft { goal?, instructions? }` keeps unsaved text (each at
     most 2,000 characters) in `project_settings.draft_goal` and
-    `draft_instructions`, nullable columns added by expand-only user step 6.
+    `draft_instructions`, nullable columns added by expand-only user step 9.
     `ThreadSummary.projectSettings.draftGoal` / `draftInstructions` expose
     them; other settings changes preserve them. A user `PATCH` saving
     `goal` / `instructions` clears the respective draft; `discardDraft: true`
-    clears both without applying them. `WorkspaceSettings.reparent` narrows
-    existing grants to the new project. No extra model-facing tool.
+    clears both without applying them. `WorkspaceSettings.reparent(threadId, projectId, pool)` narrows
+    existing grants and network access to the new project. No extra model-facing tool.
   - pins: `PUT`/`DELETE …/messages/:n/pin` (the user's messages and her
     replies only, `400` otherwise, `409` in a subagent's thread), `GET
     …/pins` → `Pins { pins: Pin[], shortened }`, `Message.pinned`,
@@ -1218,24 +1282,29 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       (`sources`, `dropped`, `contextWindow` with its source),
       `OfferingSettingsChange` (`scope: "shared" | "mine"`), `DeleteCopy`
       (`usedIn`, `deleted`, `left`), `ServingSettings`.
-    - **Groups and profiles:** `GET`/`POST groups`; `GET groups/suggestions`;
-      `GET`/`PATCH`/`DELETE groups/:id`; `GET`/`PATCH profiles` (`default`,
-      `thinking`); `PUT profiles/:profile/:task` with `{ models }`, `{ same }` or
-      `{ model }`. Types: `GroupInfo`, `GroupInput`, `GroupChange`,
-      `GroupDetail`, `GroupSuggestion`, `Profiles` (all three plus `default` and
-      `thinking`), `ProfileEntryChange`, `ProfilesChange`.
+    - **Groups and presets:** `GET`/`POST groups`; `GET groups/suggestions`;
+      `GET`/`PATCH`/`DELETE groups/:id`; `GET`/`PATCH presets` (`thinking`,
+      `fallback`, `sleepFallback`, `readAloudLive`); `POST presets`
+      (`{ name, column }`); `PATCH`/`DELETE presets/:id` (`{ name }`);
+      `PUT columns/:column` (`{ preset }`); `PUT columns/:column/:task`
+      (`{ models }`, `{ same }` or `{ model }`); `POST columns/:column/save`
+      (`{ preset }` or `{ name }`). Types: `GroupInfo`, `GroupInput`,
+      `GroupChange`, `GroupDetail`, `GroupSuggestion`, `PresetInfo`,
+      `Presets` (the presets, the two columns, `thinking`, `fallback`,
+      `sleepFallback` and `readAloudLive`), `ColumnTaskChange`,
+      `PresetsChange`.
     - **Models page, library, tokens:** `GET models/page` (→ `ModelsPage`:
       endpoints with `pageStatus`, hosts' status or error (`unpaired` when the
-      host revoked this server), profiles, the last 20 calls,
+      host revoked this server), the presets and columns, the last 20 calls,
       the notice, the Clean up count); `GET models/cleanup`; `GET`/`DELETE
       models/notice`; `GET models/calls`; `GET library/text`; `GET hub-tokens`,
       `PUT`/`DELETE hub-tokens/:hub` (`?shared=1`). Types: `ModelsPage`,
       `CleanupItem`, `ModelUse`, `ModelsNotice`, `CallInfo`, `TextLibrary`,
       `LibraryEntry`, `HubTokenInfo` (last four characters), `HubTokenInput`.
-    - **Threads:** `ThreadSettings` gains `profile`, `profileChoice`, `thinking`,
+    - **Threads:** `ThreadSettings` gains `preset`, `presetChoice`, `thinking`,
       `thinkingLevels` and `answered`; `TaskModel` gains `list`, `label` and
       `modelId`. `ThreadSettingsChange.models` takes a ref, a list or null, and
-      gains `profile` and `thinking`. `DELETE` on a thread calls
+      gains `preset` and `thinking`. `DELETE` on a thread calls
       `Models.forgetThread` for it and each subagent thread under it.
     - **Errors from core** (`statusOf`): `CloudModelForbidden`, `NoModel`,
       `PairingFailed`, `GitAccountProblem` and a plain `Error` (a validation
@@ -1263,7 +1332,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     display shows: a hidden pool's ref keeps its id and gets no link, and a
     general memory's detail never carries a private ref's title, snippet or
     sentence (a private citer is listed by id with no sentence), whatever
-    the display. Differences between revisions are computed in the browser
+    the display. A thread forgotten with `keepMemories` still resolves: its link has `deleted: true`, no title, an empty snippet and `updatedAt` its deletion time. `GET …/threads/:pool/:threadId/tombstone` → `ThreadTombstone` (`{ id: "t:<thread>", deletedAt, memories: MemoryUse[], links, users }`, the notes and pages citing the thread, with their links) is `404` when the thread has no tombstone. Differences between revisions are computed in the browser
     from the revisions already returned; nothing new is stored;
   - speech: `POST …/threads/:pool/:threadId/transcribe` and `POST
     /api/u/:userId/transcribe?pool=` (an `audio/wav` body, `?language=`) →
@@ -1273,11 +1342,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     the message read from the store, never sent by the client;
     `ThreadSettings.speech` (`Speech`, also `GET /api/u/:userId/speech?pool=`)
     and `models["speech.transcribe"]`, `models["speech.speak"]` (thread tasks);
-    `ThreadSettings.fallback` (null follows `Profiles.fallback`) and
-    `fallbackOn`, `ThreadSettingsChange.fallback`, `ProfilesChange.fallback`
+    `ThreadSettings.fallback` (null follows `Presets.fallback`) and
+    `fallbackOn`, `ThreadSettingsChange.fallback`, `PresetsChange.fallback`
     and `sleepFallback`;
-    `Profiles.readAloudLive` and `Speech.readAloudLive` (Read aloud while she
-    writes, off by default), `ProfilesChange.readAloudLive`;
+    `Presets.readAloudLive` and `Speech.readAloudLive` (Read aloud while she
+    writes, off by default), `PresetsChange.readAloudLive`;
     `Capabilities.transcribe` and `speak`, `AnswerSettings.voices` and
     `speed`, `CallInfo.audioSeconds`;
   - sleep: overview, run detail, items (start a chat, dismiss), `sleep.mode`,
@@ -1373,7 +1442,7 @@ new Workspace(keyring, users, { excludePorts, frontDoor? })
 //   the proxy's ports, refused on this machine's addresses, on every address
 //   `hosts` has ever resolved to, and on the proxy's addresses
 resolveAddresses(hosts): Promise<string[] | undefined>   // undefined: never resolved, so no network
-interface WorkspaceThread { userId; pool; threadId }
+interface WorkspaceThread { userId; pool; threadId; project? } // owning project, passed through subagents at every depth
 interface Network { internet: boolean; services: boolean; hosts: string[] }
 interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
   cwd(): Promise<string>;
@@ -1391,7 +1460,12 @@ interface SshTransport { connect(to: SshEndpoint, verify(fingerprint): boolean):
 sandboxedTransport(sandbox: () => HelperSandbox): SshTransport  // the only client; Workspace.sshTransport (WorkspaceOptions.sshTransport for tests)
 // HelperSandbox { exclude, front?, frontHosts?, bwrap?, pasta?, refused? }: refused (the self-test's reason) fails the call
 helperSandbox(address, port, sandbox): Sandbox           // the helper's sandbox: no workspace, that address and port only
-forThread(t)  // { target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), fileNotes() },
+settings(userId).commandRules(pool, project): CommandRule[]
+settings(userId).setCommandRules(pool, project, rules) / addCommandRule(pool, project, rule)
+// CommandRule { prefix; decision: "allow" | "ask" | "forbid" }; at most 100; duplicate prefix replaces.
+// user step 6 adds project_settings.command_rules, JSON default []; Projects.set upserts other columns.
+// rules.ts exports commandRules (validation), decide, alwaysAllowPrefix; machines.ts exports simpleCommands.
+forThread(t)  // { commandRules(), target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), fileNotes() },
               // each read fresh; settings() is effective; fileNotes() takes (reads and clears) what the Files panel added and removed
 files(t): ThreadFiles                     // the Files panel, every call a fresh no-network sandbox over the thread's grants:
   // roots(), list(dir), search(root, q), images(), read(path) → { stream, size, type }, upload(dir, name, bytes) → path,

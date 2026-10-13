@@ -51,8 +51,8 @@ export async function fakeImages() {
     const count = body instanceof FormData ? Number(body.get("n") ?? 1) : (body as { n?: number }).n ?? 1;
     return Response.json({ data: Array.from({ length: count }, () => ({ b64_json: png.toString("base64") })) });
   }));
-  for (const task of ["image.create", "image.edit", "image.upscale"] as const) models.setProfile(ada.id, "local", task, [workstation.ref, spare.ref]);
-  for (const task of ["image.create", "image.edit"] as const) models.setProfile(ada.id, "cloud", task, [ref]);
+  for (const task of ["image.create", "image.edit", "image.upscale"] as const) models.setColumnTask(ada.id, "private", task, [workstation.ref, spare.ref]);
+  for (const task of ["image.create", "image.edit"] as const) models.setColumnTask(ada.id, "general", task, [ref]);
   const ctx = (opts: Partial<CallContext> = {}): CallContext => ({ userId: ada.id, pool: "general", localOnly: false, ...opts });
   return { keyring, users, models, ada, workstation, spare, ref, heard, ctx, host };
 }

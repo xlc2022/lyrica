@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
 import { fakeProxmox, TOKEN as PVE_TOKEN } from "../../core/test/fake-proxmox.ts";
-import type { CallInfo, EndpointInfo, MachineInfo, MachineProbe, MessagePage, PermissionRequest, ThreadEvent, ThreadSettings, ThreadSummary, UploadResponse } from "../src/api.ts";
+import type { CallInfo, EndpointInfo, MachineInfo, MachineProbe, MemoryDetail, MessagePage, PermissionRequest, ThreadEvent, ThreadTombstone, ThreadSettings, ThreadSummary, UploadResponse } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 /** An unlocked lyricad, Ada logged in, a local model, and one general thread. */
@@ -399,19 +399,42 @@ describe("the thread's model", () => {
     await stream.until(is("turn_end"));
     stream.close();
     const settings = (await ada.get<ThreadSettings>(`${path}/settings`)).body;
-    expect(settings).toMatchObject({ profile: "custom", profileChoice: null, thinking: "off", thinkingLevels: ["off"], answered: { label: "gpu/qwen3.8-27b", kind: "local", task: "chat" } });
+    expect(settings).toMatchObject({ profile: "Custom", preset: null, thinking: "off", thinkingLevels: ["off"], answered: { label: "gpu/qwen3.8-27b", kind: "local", task: "chat" } });
     const calls = (await ada.get<CallInfo[]>(`/api/u/${rt.ada.id}/models/calls`)).body;
     expect(calls[0]).toMatchObject({ threadId: thread.id, label: "gpu/qwen3.8-27b" });
     expect(JSON.stringify(calls)).not.toMatch(/Miso/);
 
-    expect((await ada.patch<ThreadSettings>(`${path}/settings`, { thinking: "high", profile: "cloud" })).body).toMatchObject({ thinking: "high", profile: "cloud", profileChoice: "cloud" });
+    expect((await ada.patch<ThreadSettings>(`${path}/settings`, { thinking: "high", preset: "builtin.cloud" })).body).toMatchObject({ thinking: "high", profile: "Cloud", preset: "builtin.cloud" });
     const priv = (await ada.post<ThreadSummary>(`/api/u/${rt.ada.id}/threads`, { pool: "private" })).body;
     const privPath = `/api/u/${rt.ada.id}/threads/private/${enc(priv.id)}/settings`;
-    expect((await ada.patch(privPath, { profile: "custom" })).status).toBe(400);
-    expect((await ada.get<ThreadSettings>(privPath)).body.profile).toBe("local");
+    expect((await ada.patch(privPath, { preset: "builtin.cloud" })).status).toBe(400);
+    expect((await ada.get<ThreadSettings>(privPath)).body.profile).toBe("Custom");
     // Forgetting the thread takes its call records with it.
     await ada.del(path);
     expect((await ada.get<CallInfo[]>(`/api/u/${rt.ada.id}/models/calls`)).body.filter((c) => c.threadId === thread.id)).toEqual([]);
+  });
+});
+
+describe("deleting a thread and keeping its memories", () => {
+  it("keeps a note that cites it, links it as deleted, and serves a text-free tombstone", async () => {
+    const { rt, ada, model, path, thread } = await setup();
+    const u = `/api/u/${rt.ada.id}`;
+    model.reply({ text: "Hello." });
+    const stream = ada.events(`${path}/events`);
+    await stream.ready;
+    await ada.post(`${path}/messages`, { text: "hi" });
+    await stream.until(is("turn_end"));
+    stream.close();
+    const note = (await ada.post<MemoryDetail>(`${u}/memory/general/notes`, { text: "{user} likes tea", links: [`t:${thread.id}`] })).body;
+    expect((await ada.get(`${path}/tombstone`)).status).toBe(404);
+    expect((await ada.del(path, { keepMemories: true })).status).toBe(200);
+    expect((await ada.get(path)).status).toBe(404);
+    const detail = (await ada.get<MemoryDetail>(`${u}/memory/general/${enc(note.item.id)}`)).body;
+    expect(detail.links[`t:${thread.id}`]).toMatchObject({ kind: "thread", snippet: "", deleted: true });
+    expect(detail.links[`t:${thread.id}`]!.title).toBeUndefined();
+    const tomb = (await ada.get<ThreadTombstone>(`${path}/tombstone`)).body;
+    expect(tomb).toMatchObject({ id: `t:${thread.id}`, memories: [{ id: note.item.id }] });
+    expect(JSON.stringify(tomb)).not.toContain("test thread");
   });
 });
 
@@ -422,7 +445,7 @@ describe("a machine that goes away", () => {
     const away = await fakeOpenAI({ label: "away", models: [{ id: "big" }] });
     const ep = (await ada.post<EndpointInfo>(`${u}/endpoints`, { name: "blackwell", kind: "local", baseUrl: away.baseUrl })).body;
     const gpu = (await ada.get<EndpointInfo[]>(`${u}/endpoints`)).body.find((e) => e.name === "gpu")!;
-    await ada.put(`${u}/profiles/custom/chat`, { models: [{ offeringId: ep.models[0]!.id }, { offeringId: gpu.models[0]!.id }] });
+    await ada.put(`${u}/columns/general/chat`, { models: [{ offeringId: ep.models[0]!.id }, { offeringId: gpu.models[0]!.id }] });
     const stream = ada.events(`${path}/events`);
     await stream.ready;
     const turn = async (text: string) => {
@@ -463,7 +486,7 @@ describe("a machine that dies mid-reply", () => {
     await new Promise<void>((r) => dying.listen(0, "127.0.0.1", r));
     const ep = (await ada.post<EndpointInfo>(`${u}/endpoints`, { name: "blackwell", kind: "local", baseUrl: `http://127.0.0.1:${(dying.address() as { port: number }).port}/v1` })).body;
     const gpu = (await ada.get<EndpointInfo[]>(`${u}/endpoints`)).body.find((e) => e.name === "gpu")!;
-    await ada.put(`${u}/profiles/custom/chat`, { models: [{ offeringId: ep.models[0]!.id }, { offeringId: gpu.models[0]!.id }] });
+    await ada.put(`${u}/columns/general/chat`, { models: [{ offeringId: ep.models[0]!.id }, { offeringId: gpu.models[0]!.id }] });
     const stream = ada.events(`${path}/events`);
     await stream.ready;
     const turn = async (text: string) => {
@@ -490,7 +513,7 @@ describe("a machine that dies mid-reply", () => {
 describe("errors and logs", () => {
   it("reports a refused model in plain words, on the stream and in the response", async () => {
     const { ada, path, rt } = await setup();
-    await ada.put(`/api/u/${rt.ada.id}/profiles/custom/chat`, { model: null });
+    await ada.put(`/api/u/${rt.ada.id}/columns/general/chat`, { model: null });
     const stream = ada.events(`${path}/events`);
     await stream.ready;
     const sent = await ada.post<{ error: string }>(`${path}/messages`, { text: "hello?" });
