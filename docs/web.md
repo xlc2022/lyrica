@@ -10,7 +10,7 @@ render mention tokens.
 ## Pages
 
 Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/p/<pool>/<project>/<section>`
-for a project's settings, `…/memory`, `…/settings/<section>`, `…/admin/<section>`,
+for a project's settings, `…/memory`, `…/notifications`, `…/settings/<section>`, `…/admin/<section>`,
 `#/login`), so `lyricad` serves a single file. The old `…/panel` opens Settings.
 A thread's address may carry what the panel beside it shows:
 `…/t/<pool>/<thread>/panel/t/<pool>/<other>` or `…/panel/p/<pool>/<project>/<section>`.
@@ -438,7 +438,7 @@ A thread's address may carry what the panel beside it shows:
   last four characters; Remove is there only where the user may remove it
   (a shared token needs an administrator).
 - **Notifications** (`src/Notifications.tsx`; docs/ux.md §6 "Anything
-  waiting for the user"): the first section of Settings, one list from
+  waiting for the user"): a page of its own (`#/u/<user>/notifications`), one list from
   `GET …/notifications`. Chips filter by type (All with the count, Needs a
   decision, then the types that exist now); Sort offers Newest first,
   Oldest first, By type and By pool (the last two group the rows under eyebrows); Where
@@ -468,7 +468,7 @@ A thread's address may carry what the panel beside it shows:
   counts on the unlock limiter; too many say to wait, longer after each
   wrong code, up to 15 minutes.
 - **Settings** (`src/Panel.tsx`): a page with its sections listed at the
-  left (a scrolling row on a phone): Notifications, Profile (name, pronouns, accent colour,
+  left (a scrolling row on a phone): Profile (name, pronouns, accent colour,
   monogram), Appearance (theme; the **Checklists** switch, which saves
   `Display.checklists` at once and reloads the thread list: off, the API
   sends no steps, so no card or header shows one; then Read aloud while

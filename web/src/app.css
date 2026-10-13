@@ -920,6 +920,7 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .field-fact { padding: 7px 0; }
 
 /* Notifications (docs/ux.md §6): one list over what waits for the user; rows with their actions, filters above. */
+.scroll > .notifications { max-width: 900px; }
 .ntop { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
 .ntop select { min-height: 32px; font-size: 13px; }
 .ntop .cap { display: inline-flex; gap: 6px; align-items: center; }
