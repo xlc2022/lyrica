@@ -3120,3 +3120,41 @@ test("Custom… pronouns opens the five fields, starting from the current words"
   await section.getByLabel("Pronouns").selectOption("they/them");
   await expect(section.getByLabel("herself")).toHaveCount(0);
 });
+
+test("spend share popovers and project filter", async ({ page, baseURL }, testInfo) => {
+  const userId = await enter(page, baseURL!);
+  const project = await page.evaluate(async userId => {
+    const api = async (path: string, data?: unknown) => {
+      const res = await fetch(`/api/u/${userId}${path}`, { method: data ? "POST" : "GET", headers: { "content-type": "application/json" }, body: data ? JSON.stringify(data) : undefined });
+      if (!res.ok) throw new Error(`${path}: ${res.status}`);
+      return res.json();
+    };
+    const t = await api("/threads", { pool: "general", project: true, title: "Usage project" });
+    await fetch(`/api/u/${userId}/threads/general/${encodeURIComponent(t.id)}/settings`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ localOnly: true }) });
+    await api(`/threads/general/${encodeURIComponent(t.id)}/messages`, { text: "steps: done Read; doing Write; todo Check" });
+    return t;
+  }, userId);
+  await expect.poll(() => page.evaluate(async ({ userId, id }) => (await (await fetch(`/api/u/${userId}/threads/general/${encodeURIComponent(id)}/usage`)).json()).tokens, { userId, id: project.id })).toBeGreaterThan(0);
+  await page.goto(`/#/u/${userId}/t/general/${encodeURIComponent(project.id)}`);
+  if (phone(page)) await page.getByRole("button", { name: /^Threads/ }).click();
+  await page.getByRole("button", { name: /^[\d.,]+[kM]? tokens$/ }).click();
+  await expect(page.getByTitle("Counts every request, cached reads included.")).toBeVisible();
+  await expect(page.getByText("By thread", { exact: true })).toBeVisible();
+  await expect(page.getByText("This chat", { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: `/tmp/spend-share-${testInfo.project.name}.png` });
+  await page.getByRole("link", { name: "Recent calls", exact: true }).last().click();
+  await expect(page.getByLabel("Project", { exact: true })).toHaveValue(`general/${project.id}`);
+  await page.reload();
+  await expect(page.getByLabel("Project", { exact: true })).toHaveValue(`general/${project.id}`);
+  // Recent calls keeps its own project list when the sidebar hides projects.
+  await page.evaluate(async userId => {
+    await fetch(`/api/u/${userId}/me/display`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ projects: "none" }) });
+  }, userId);
+  await page.reload();
+  await expect(page.getByLabel("Project", { exact: true })).toHaveValue(`general/${project.id}`);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.evaluate(async userId => {
+    await fetch(`/api/u/${userId}/me/display`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ projects: "all" }) });
+  }, userId);
+});

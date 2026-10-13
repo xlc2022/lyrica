@@ -534,10 +534,11 @@ export interface PresetsChange { thinking?: ThinkingLevel; fallback?: boolean; s
 
 /**
  * One turn's counts and times. `promptTokens` is the whole prompt of its last
- * request; `processed` is the prompt tokens read (not cached); times are in ms.
+ * request; `readTokens` sums every request including cached reads;
+ * `processed` is the prompt tokens read (not cached); times are in ms.
  */
 export interface PaceInfo {
-  promptTokens: number; outputTokens: number; window: number; ttftMs: number; genMs: number; processed: number;
+  promptTokens: number; readTokens?: number; outputTokens: number; window: number; ttftMs: number; genMs: number; processed: number;
   tokPerSec?: number; promptTokPerSec?: number;
 }
 
@@ -1980,3 +1981,11 @@ export interface PhotoCloudSetting { policy: "never" | "ask" | "always" }
 
 /** Routine metadata only; notes stay in the thread. */
 export interface RoutineInfo { id: number; pool: Pool; threadId: string; threadTitle: string; schedule: string; nextAt: string; paused: boolean }
+
+/** GET …/threads/:pool/:id/usage: counted turns and subagents. */
+export interface ThreadUsage {
+  tokens: number;
+  gpuMs?: number;
+  models: { label: string; kind?: "local" | "cloud"; tokens: number; gpuMs?: number }[];
+  threads?: { threadId: string; tokens: number; gpuMs?: number }[];
+}

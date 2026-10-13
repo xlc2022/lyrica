@@ -360,7 +360,7 @@ interface CallContext {
 interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality" }        // what the call needs from a model
 interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: string;   // the preset's name, or "Custom"
                        source: "thread" | "preset" | "column"; skipped: { label; reason }[]; remaining: number }
-interface Pace { promptTokens; outputTokens; window; ttftMs; genMs; processed }   // counts and times only
+interface Pace { promptTokens; readTokens?; outputTokens; window; ttftMs; genMs; processed }   // counts and times only
 interface CallRecord { at; pool; threadId; task; offeringId; label; endpointName; kind; fallback?; note?; pace?: Pace; audioSeconds? }
 interface AnswerSettings { temperature?; topP?; topK?; minP?; repeatPenalty?; presencePenalty?;
                            frequencyPenalty?; maxTokens?; seed?; stop?: string[];
@@ -426,8 +426,10 @@ class Models {                                              // new Models(keyrin
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
   thinkingFor(resolution, asked): { level; note? }
-  recordCall(userId, { pool, threadId, task, resolution, note?, audioSeconds? }, { retry? }) / recentCalls(userId, { limit?, threadId?, speech?: false }): CallRecord[]
-  recordPace(userId, pool, threadId, task, pace) / speedsByOffering(userId): Map<offeringId, { tokPerS?; promptTokPerS? }>   // medians over the last 20 calls
+  recordCall(userId, { pool, threadId, task, resolution, note?, audioSeconds? }, { retry? }) / recentCalls(userId, { limit?, threadId?, threadIds?, pool?, speech?: false }): CallRecord[]
+  recordPace(userId, threadId, pace, task?, pool?) / speedsByOffering(userId): Map<offeringId, { tokPerS?; promptTokPerS? }>   // medians over the last 20 calls
+  usage(userId, pool, threadIds): { threadId; label; kind?: "local" | "cloud"; tokens; gpuMs? }[]
+    // Calls plus durable folded counts plus subagent runs at every depth; pool AND thread filtered.
   // Hosts and pairing
   pairHost(actor, { name, addresses, code }, { shared?, endpointId? }): Promise<Endpoint>   // endpointId: pair again, IDs kept
   setHostAddresses(actor, id, addresses): Endpoint / fetchFor(endpoint): typeof fetch | undefined   // undefined for a plain endpoint
@@ -536,7 +538,7 @@ class Models {                                              // new Models(keyrin
   `shared_refs_indexed`, `legacy_refs` and `host_identity`. In each
   `user.db`: the same first five (the user's own), `model_presets`,
   `model_columns`, `thread_models`, `thread_choices`, `local_only_threads`,
-  `starred_offerings` and `model_calls`, with the default thinking level
+  `starred_offerings`, `model_calls` and `call_totals`, with the default thinking level
   and the notice in its `settings`. The legacy `model_profiles` and
   `thread_choices.profile` stay one release, kept in step by `syncLegacy`, so
   a rollback keeps the user's choices. Shared rows change only with an
@@ -1297,7 +1299,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       endpoints with `pageStatus`, hosts' status or error (`unpaired` when the
       host revoked this server), the presets and columns, the last 20 calls,
       the notice, the Clean up count); `GET models/cleanup`; `GET`/`DELETE
-      models/notice`; `GET models/calls`; `GET library/text`; `GET hub-tokens`,
+      models/notice`; `GET models/calls` (`?project=&pool=` filters both pool and project tree); `GET library/text`; `GET hub-tokens`,
       `PUT`/`DELETE hub-tokens/:hub` (`?shared=1`). Types: `ModelsPage`,
       `CleanupItem`, `ModelUse`, `ModelsNotice`, `CallInfo`, `TextLibrary`,
       `LibraryEntry`, `HubTokenInfo` (last four characters), `HubTokenInput`.
@@ -1704,3 +1706,15 @@ for `ThreadSettings` without creating a thread. On Send it creates the thread,
 PATCHes changed settings, uploads attached files, then sends the first message.
 The read-only defaults route uses the same defaults as thread creation and
 requires the addressed user's session; it returns no thread or memory text.
+
+### Thread usage
+
+`GET /api/u/:userId/threads/:pool/:id/usage` → `ThreadUsage { tokens,
+gpuMs?, models: { label, kind?, tokens, gpuMs? }[], threads?: { threadId,
+tokens, gpuMs? }[] }`. Requires the addressed user's session and thread;
+missing thread is 404. Models sort by tokens descending. `threads` appears
+only for a project chat: the chat first, then descending tokens. The total
+is also `ProjectOverview.tokens`. User step 10 adds nullable
+`model_calls.read_tokens` and `call_totals` keyed by pool, thread, label,
+kind, with tokens, gpu_ms and calls. Pruning folds counted chat records
+before deleting them, in one transaction; forgetting removes their totals.

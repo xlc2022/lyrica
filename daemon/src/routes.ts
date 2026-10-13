@@ -494,7 +494,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       // A project's calls: its chat's and its threads', in the pool it is in.
       const pool = checkPool(r.query.get("pool") ?? "general");
       const ids = owner(d, user, (o) => o[pool].projectThreads(project));
-      return s().models.recentCalls(user.id, { threadIds: ids });
+      return s().models.recentCalls(user.id, { pool, threadIds: ids });
     }),
     route("GET", `${u}/presets`, (r) => presets(d, d.userFor(r).id)),
     route("PATCH", `${u}/presets`, async (r) => {
@@ -1203,6 +1203,30 @@ export function apiRoutes(d: Lyricad): Route[] {
       }
       return owner(d, user, (o) => made.map((id) => summary(d, user, pool, o[pool], o[pool].getThread(id)!, [])));
     }),
+    route("GET", `${t}/usage`, (r): Api.ThreadUsage => {
+      const user = d.userFor(r);
+      const pool = poolOf(r);
+      return owner(d, user, o => {
+        const thread = threadOf(o, r);
+        const ids = thread.project ? o[pool].projectThreads(thread.id) : [thread.id];
+        const rows = s().models.usage(user.id, pool, ids);
+        const sum = (rs: typeof rows) => {
+          const local = rs.filter(x => x.gpuMs !== undefined);
+          return { tokens: rs.reduce((n, x) => n + x.tokens, 0), ...(local.length ? { gpuMs: local.reduce((n, x) => n + x.gpuMs!, 0) } : {}) };
+        };
+        const models: Api.ThreadUsage["models"] = [];
+        for (const row of rows) {
+          let model = models.find(x => x.label === row.label && x.kind === row.kind);
+          if (!model) { model = { label: row.label, ...(row.kind ? { kind: row.kind } : {}), tokens: 0 }; models.push(model); }
+          model.tokens += row.tokens;
+          if (row.gpuMs !== undefined) model.gpuMs = (model.gpuMs ?? 0) + row.gpuMs;
+        }
+        models.sort((a, b) => b.tokens - a.tokens || a.label.localeCompare(b.label));
+        const threads = ids.map(threadId => ({ threadId, ...sum(rows.filter(x => x.threadId === threadId)) }));
+        if (thread.project) threads.sort((a, b) => a.threadId === thread.id ? -1 : b.threadId === thread.id ? 1 : b.tokens - a.tokens || a.threadId.localeCompare(b.threadId));
+        return { ...sum(rows), models, ...(thread.project ? { threads } : {}) };
+      });
+    }),
     route("GET", `${t}/overview`, (r): Api.ProjectOverview => {
       const user = d.userFor(r);
       const pool = poolOf(r);
@@ -1212,7 +1236,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         const ids = o[pool].projectThreads(project.id);
         const threads = ids.slice(1).map((id) => summary(d, user, pool, o[pool], o[pool].getThread(id)!, []));
         return {
-          threads, waiting: threads.filter((x) => x.state === "waiting").length, tokens: s().models.tokensFor(user.id, ids),
+          threads, waiting: threads.filter((x) => x.state === "waiting").length, tokens: s().models.usage(user.id, pool, ids).reduce((n, r) => n + r.tokens, 0),
           started: Object.fromEntries(s().projects.started(user.id, pool, project.id)),
         };
       });

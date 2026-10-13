@@ -334,3 +334,20 @@ describe("user step 9 (project welcome drafts)", () => {
     }
   });
 });
+
+describe("user step 10 (spend share)", () => {
+  it("preserves every released user schema and adds nullable read counts and empty totals", () => {
+    for (let version = 1; version < 10; version++) {
+      const db = scratchDb();
+      const previous = STEPS.user.filter(s => s.version <= version);
+      migrate(db, "user", {}, previous);
+      db.prepare("INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, prompt_tokens, output_tokens) VALUES ('2026-01-01', 'general', 'web/a', 'chat', 'old', 'Old', 'test', 'local', 12, 3)").run();
+      migrate(db, "user");
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: MIN_READER.user });
+      expect(() => checkReadable(db, "user", previous)).not.toThrow();
+      expect(db.prepare("SELECT read_tokens, prompt_tokens, output_tokens FROM model_calls").get()).toEqual({ read_tokens: null, prompt_tokens: 12, output_tokens: 3 });
+      expect(db.prepare("SELECT * FROM call_totals").all()).toEqual([]);
+      db.close();
+    }
+  });
+});
