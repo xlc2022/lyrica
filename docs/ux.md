@@ -78,6 +78,10 @@ Rules:
   doesn't.
 - Keyboard: a context menu's items have letter shortcuts; Escape closes the
   topmost thing (selection, then menu, then panel).
+- A sidebar row that opens its own choice below itself (**New thread** and
+  **New project**, as **Search** does with its field) keeps its place, so the
+  choice reads as that row's. Clicking the row again or pressing Escape closes
+  the choice; opening one closes the other.
 - Submenus: an item with a submenu ends in ›.
 - On devices that can hover (`@media (hover: hover)`, not screen width),
   hovering or clicking the item opens the submenu as a flyout beside it.
