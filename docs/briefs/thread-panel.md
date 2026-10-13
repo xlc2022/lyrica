@@ -45,9 +45,11 @@ as the Claude app's Overview button and thread cards do.
    double-click on the card does the same. Ignore the double-click when it lands on a link or
    button, or leaves a non-empty `getSelection()` (a user selecting text to copy). Below 1180 px both open the full page.
    The per-run "Open 1", "Open 2" links (`ThreadLinks`, Messages.tsx) are replaced,
-   when a run made more than one thread, by one **>** chevron button in the card's
-   head (`aria-expanded`, label "Threads"): it expands the pill into a list of those
-   threads, each row the thread's title and state, a link that opens the panel at
+   when a run made more than one thread, by one **Threads** button with the count in mono and a chevron (Threads 3 >, turning
+   down while open) in the card's head (`aria-expanded`): it expands the pill into a
+   list of those threads, each row the thread's title cut to one line and its state
+   as a dot and a word (§5); on coarse pointers a row is a 44 px tap, and at 390 px the
+   list takes the card's full width, in flow, not as an overlay; a link that opens the panel at
    1180 px and wider and the page below. One thread keeps a single **Open** link,
    which does the same.
 
