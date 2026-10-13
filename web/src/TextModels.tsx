@@ -2,6 +2,7 @@
 // from GET …/library/text, starred first, opening in place to its copies, where groups are made, ordered and undone;
 // each copy's Settings drawer has Sampling and, on a model host, Serving. The whole library is read at once (200 a
 // request), so the header's counts, the search and the chips (Starred among them) work here; the list shows 40 rows at a time.
+import { ModelLabel } from "./ModelLabel.tsx";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   del, get, HttpError, patch, post, put, u,
@@ -336,11 +337,10 @@ function Detail({ L, e, group }: { L: Lib; e: Entry; group?: GroupInfo }) {
                   {group && <td className="num" data-h="Order">{order !== undefined ? order + 1 : null}</td>}
                   <td className="copy">
                     <div className="copy-name">
-                      {c.endpointName} <Kind kind={c.kind} />
+                      <ModelLabel model={c.rawName} endpoint={c.endpointName} raw /> <Kind kind={c.kind} />
                       {c.status !== "listed" && <span className={`pill ${c.status === "gone" ? "bad" : "warn"}`}>{c.status}</span>}
                       {sameFile && <span className="pill">same file</span>}
                     </div>
-                    <code className="raw">{c.rawName}</code>
                     <span className="cap">{cap.map((x, i) => <Fragment key={i}>{i > 0 && "\u00a0· "}{x}</Fragment>)}</span>
                   </td>
                   <td className={`num${diffContext ? " differs" : ""}`} data-h="Context">{c.capabilities.contextWindow ? tokensK(c.capabilities.contextWindow) : "—"}</td>

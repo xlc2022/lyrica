@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState, type ComponentProps, type Rea
 import { draft as loadDraft, saveDraft, upload, type ThreadSettings, type ThreadSettingsChange } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
-import { ATTACH_EVENT, ATTACH_KEY, EDIT_IMAGE_EVENT, take, type AttachRequest, type EditImageRequest } from "./links.ts";
+import { ATTACH_EVENT, ATTACH_KEY, EDIT_IMAGE_EVENT, EDIT_MESSAGE_EVENT, type EditMessageRequest, take, type AttachRequest, type EditImageRequest } from "./links.ts";
 import { ModePicker, nextMode, ToolsMenu, type GrantedMachine } from "./Modes.tsx";
 import { MicButton, stopReading, useDictation } from "./Voice.tsx";
 
@@ -145,6 +145,16 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
     addEventListener(EDIT_IMAGE_EVENT, on);
     return () => removeEventListener(EDIT_IMAGE_EVENT, on);
   }, [base, onSettings]);
+
+  useEffect(() => {
+    const on = (e: Event) => {
+      const { detail } = e as CustomEvent<EditMessageRequest>;
+      if (detail.base !== base) return;
+      detail.handled = true; typed.current = true; setDraft(detail.text); area.current?.focus();
+    };
+    addEventListener(EDIT_MESSAGE_EVENT, on);
+    return () => removeEventListener(EDIT_MESSAGE_EVENT, on);
+  }, [base]);
 
   // Dictated text goes in at the caret, with a space on each side where it meets other text.
   const insert = useCallback((text: string) => {

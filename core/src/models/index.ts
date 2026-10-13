@@ -1,4 +1,4 @@
-import { imageAt, validateImageRequest, type ImageRequest, type GeneratedImage } from "./images.ts";
+import { CLOUD_IMAGE_PROVIDERS, imageAt, validateImageRequest, type ImageRequest, type GeneratedImage } from "./images.ts";
 export { CLOUD_IMAGE_PROVIDERS, type ImageRequest, type GeneratedImage, type ImageInput } from "./images.ts";
 import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
@@ -135,6 +135,8 @@ export interface Capabilities {
   image?: boolean;
   edit?: boolean;
   upscale?: boolean;
+  /** Image create tiers; absent means both. Stored in hand JSON for cloud models. */
+  useFor?: "fast" | "quality" | "both";
   /** The thinking levels it offers, besides off. */
   reasoning?: Exclude<ThinkingLevel, "off">[];
   /** Speech to text (Dictation). */
@@ -144,7 +146,7 @@ export interface Capabilities {
 }
 /** One of a speech model's voices. `language` is a primary language tag, such as "en" or "zh". */
 export interface Voice { id: string; language: string }
-export const CAPABILITIES = ["contextWindow", "tools", "vision", "embedding", "image", "edit", "upscale", "reasoning", "transcribe", "speak"] as const satisfies readonly (keyof Capabilities)[];
+export const CAPABILITIES = ["contextWindow", "tools", "vision", "embedding", "image", "edit", "upscale", "reasoning", "transcribe", "speak", "useFor"] as const satisfies readonly (keyof Capabilities)[];
 
 /** One model on one endpoint, with a permanent ID. */
 export interface Offering extends Capabilities {
@@ -166,8 +168,6 @@ export interface Offering extends Capabilities {
   size?: number;
   /** An image model on a host: a confirmed recipe's name. */
   recipe?: string;
-  /** A host recipe's create tiers; absent means both. */
-  useFor?: "fast" | "quality" | "both";
   /** "Not this model": kept out of the entry its name would put it in. */
   separate?: boolean;
   /** A host's chat template writes `<think>` itself, so a reply can start mid-thought. */
@@ -275,7 +275,7 @@ export interface CleanupItem {
 }
 
 /** What a call needs from a model: tools, room for the conversation, or an image create tier. */
-export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality" }
+export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean }
 /** `evenIfDown`: ignore the health cache (stale still counts). `except`: endpoints to treat as down. */
 export interface ResolveOptions { evenIfDown?: boolean; except?: ReadonlySet<string> }
 
@@ -366,7 +366,7 @@ const NEW_PROFILE: Partial<Record<Task, { same: Task }>> = {
 /** Tasks added after presets were first stored: a preset with no entry for one gets its NEW_PROFILE default when read. */
 const LATER_TASKS: readonly Task[] = ["watching"];
 
-const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
+const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/i;
 /** A primary language tag: "en", "zh", "yue". */
 export const LANGUAGE = /^[a-zA-Z]{2,3}$/;
 const SHARED = "shared.";
@@ -475,6 +475,8 @@ export class Models {
   private readonly discovered = new Set<string>();
   /** Plans that reached their usage limit, until when they're skipped. */
   private readonly limited = new Map<string, number>();
+  private planImageToken?: (userId: string, endpointId: string, signal?: AbortSignal) => Promise<string>;
+
   /** The models each plan offers (setPlanCatalog). */
   private planCatalog: (kind: PlanKind) => DiscoveredModel[] = () => [];
 
@@ -524,6 +526,11 @@ export class Models {
 
   // --- Subscription plans ---
 
+  /** Pi owns refresh; the daemon installs its resolver for image calls. */
+  setPlanImageToken(resolve: (userId: string, endpointId: string, signal?: AbortSignal) => Promise<string>): void {
+    this.planImageToken = resolve;
+  }
+
   /** Throws when a name can't name an endpoint, so a sign-in isn't started for one that would be refused after it. */
   checkEndpointName(name: string): void { checkName(name); }
 
@@ -550,6 +557,13 @@ export class Models {
       const r = db.prepare("SELECT api_key FROM endpoints WHERE id = ? AND api IN ('chatgpt', 'grok')").get(endpointId) as { api_key: string | null } | undefined;
       return r?.api_key ? JSON.parse(r.api_key) as PlanCredential : undefined;
     });
+  }
+
+  /** Only an explicit account label from sign-in; never decode or return tokens. */
+  planAccount(userId: string, endpointId: string): string | undefined {
+    const c = this.planCredential(userId, endpointId);
+    const account = c?.email ?? c?.accountId;
+    return typeof account === "string" && account.trim() ? account : undefined;
   }
 
   /**
@@ -635,6 +649,7 @@ export class Models {
   addModel(actor: User, endpointId: string, m: { modelId: string } & Capabilities): Offering {
     if (!m.modelId) throw new Error("a model needs its ID");
     const { modelId, ...caps } = m;
+    if (m.useFor !== undefined && !["fast", "quality", "both"].includes(m.useFor)) throw new Error("useFor is fast, quality or both");
     let id = "";
     this.write(actor, endpointId, (db) => {
       const row = db.prepare("SELECT id, hand FROM offerings WHERE endpoint = ? AND model = ?").get(endpointId, modelId) as { id: string; hand: string } | undefined;
@@ -650,6 +665,7 @@ export class Models {
   setCapabilities(actor: User, offeringId: string, caps: { [K in keyof Capabilities]?: Capabilities[K] | null }): Offering {
     const o = this.offering(actor.id, offeringId);
     if (!o) throw new NoModel(`no model ${offeringId}`);
+    if (caps.useFor != null && !["fast", "quality", "both"].includes(caps.useFor)) throw new Error("useFor is fast, quality or both");
     if (caps.reasoning?.some((l) => !THINKING_LEVELS.includes(l) || (l as string) === "off")) throw new Error("reasoning levels are low, medium and high");
     if (caps.transcribe !== undefined && caps.transcribe !== null && typeof caps.transcribe !== "boolean") throw new Error("transcribe is true or false");
     if (caps.speak) caps = { ...caps, speak: { voices: checkVoices(caps.speak.voices) } };
@@ -2067,16 +2083,42 @@ export class Models {
     }
   }
 
+  /** The next eligible image model on a different endpoint, without probing or sending. */
+  nextImageModel(ctx: CallContext, action: "create" | "edit" | "upscale", need: Need, afterEndpoint: string, noCloud = false): Resolution | undefined {
+    const task = `image.${action}` as Task;
+    const catalog = this.catalog(ctx.userId), found = this.listFor(task, ctx, catalog);
+    if (!found) return undefined;
+    const list = ctx.fallback === false ? found.list.slice(0, 1) : found.list;
+    const ids = list.flatMap(ref => "offeringId" in ref ? [ref.offeringId] : catalog.groups.get(ref.groupId)?.members ?? []);
+    let passed = false;
+    for (const raw of ids) {
+      const id = this.follow(raw), offering = id ? catalog.offerings.get(id) : undefined;
+      if (!offering) continue;
+      const endpoint = catalog.endpoints.get(offering.endpointId);
+      if (!endpoint) continue;
+      if (endpoint.id === afterEndpoint) { passed = true; continue; }
+      if (!passed || (isRestricted(ctx) || noCloud) && endpoint.kind !== "local") continue;
+      if (this.unfit(task, offering, endpoint, need) || this.away(endpoint, {}, offering)) continue;
+      return { ref: { offeringId: offering.id }, endpoint, offering, label: labelOf(endpoint, offering),
+        profile: found.profile, source: found.source, skipped: [], remaining: 0 };
+    }
+    return undefined;
+  }
+
   /** Images stay in memory; the caller stores results and records the call. */
   async image(ctx: CallContext, request: ImageRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void> } = {}): Promise<{ images: GeneratedImage[]; resolution: Resolution }> {
     validateImageRequest(request);
-    return this.callWithFallback(`image.${request.action}`, ctx, request.action === "create" ? { imageTier: request.tier } : {}, async (r) => {
+    return this.callWithFallback(`image.${request.action}`, ctx, request.action === "create" ? { imageTier: request.tier } : request.action === "edit" ? { imageMask: !!request.mask } : {}, async (r) => {
       opts.signal?.throwIfAborted();
       await opts.beforeSend?.(r);
       opts.signal?.throwIfAborted();
       const ep = r.endpoint;
+      const apiKey = ep.api === "chatgpt"
+        ? this.planImageToken ? await this.planImageToken(ctx.userId, ep.id, opts.signal) : this.planCredential(ctx.userId, ep.id)?.access
+        : ep.apiKey;
+      opts.signal?.throwIfAborted();
       const images = await imageAt({ fetch: this.fetchFor(ep) ?? fetch, baseUrl: ep.api === "host" ? hostOrigin(ep.addresses![0]!) : ep.baseUrl,
-        host: ep.api === "host", modelId: r.offering.modelId, apiKey: ep.apiKey }, request, opts.signal);
+        host: ep.api === "host", api: ep.api, modelId: r.offering.modelId, apiKey }, request, opts.signal);
       return { images, resolution: r };
     });
   }
@@ -2307,7 +2349,13 @@ export class Models {
   private unfit(task: Task, o: Offering, ep: Endpoint, need: Need): string | undefined {
     if (o.status === "gone") return `it has been missing from ${ep.name} for ${GONE_DAYS} days`;
     if (task === "image.create" && !o.image) return "it doesn't make images";
-    if (task === "image.create" && need.imageTier && ep.kind === "local" && o.recipe
+    // Cloud adapters constrain their tasks; local endpoints keep capability-based routing.
+    if (task.startsWith("image.") && ep.kind === "cloud") {
+      const provider = CLOUD_IMAGE_PROVIDERS[ep.api];
+      if (!provider || task === "image.upscale" || (task === "image.create" && !provider.create) || (task === "image.edit" && !provider.edit)) return "this endpoint has no image provider for the task";
+      if (task === "image.edit" && need.imageMask && !provider.mask) return "this image provider does not accept masks";
+    }
+    if (task === "image.create" && need.imageTier
       && o.useFor && o.useFor !== "both" && o.useFor !== need.imageTier) return `it is for ${o.useFor} images`;
     if (task === "image.upscale" && !o.upscale) return "it doesn't upscale images";
     if (task === "image.edit" && !o.edit) return "it doesn't edit images";
@@ -2601,7 +2649,7 @@ function checkCredential(c: PlanCredential): PlanCredential {
 const labelOf = (ep: Endpoint, o: Offering) => `${ep.shared ? SHARED : ""}${ep.name}/${o.modelId}`;
 
 function checkName(name: string): void {
-  if (!NAME.test(name)) throw new Error("endpoint names use lowercase letters, digits and '-'");
+  if (!NAME.test(name)) throw new Error("endpoint names use letters, digits and '-'");
 }
 
 function checkAddresses(addresses: string[]): string[] {

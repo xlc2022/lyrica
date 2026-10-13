@@ -71,6 +71,92 @@ describe("image calls through the router (principles 1 and 2)", () => {
     expect(last.server.images).toHaveLength(1);
     expect(s.heard).toEqual([]);
   });
+  it("uses a non-GPT keyed offering and persists cloud tiers in hand JSON", async () => {
+    const s = await setup();
+    const ep = s.models.endpoint(s.ada.id, s.models.offering(s.ada.id, s.ref.offeringId)!.endpoint.id)!;
+    const fast = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "art-model", image: true, edit: true, useFor: "fast" }).id };
+    s.models.setColumnTask(s.ada.id, "general", "image.create", [fast, s.ref]);
+    expect((await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier: "fast" })).resolution.ref).toEqual(fast);
+    expect(s.heard[0]!.body).toMatchObject({ model: "art-model" });
+    expect((await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier: "quality" })).resolution.ref).toEqual(s.ref);
+    s.models.setCapabilities(s.ada, fast.offeringId, { useFor: "both", edit: false });
+    expect(s.models.offering(s.ada.id, fast.offeringId)!.offering).toMatchObject({ useFor: "both", image: true, edit: false });
+    const db = s.users.openUserDb(s.ada.id);
+    try {
+      const hand = db.prepare("SELECT hand FROM offerings WHERE id = ?").get(fast.offeringId) as { hand: string };
+      expect(JSON.parse(hand.hand)).toMatchObject({ useFor: "both", image: true, edit: false });
+    } finally { db.close(); }
+    expect(() => s.models.setCapabilities(s.ada, fast.offeringId, { useFor: "slow" as "fast" })).toThrow(/useFor/);
+  });
+  it("uses the plan token and Responses image tool for create and maskless edits, never in restricted threads", async () => {
+    const s = await setup();
+    const ep = s.models.addPlan(s.ada, { name: "chatgpt", plan: "chatgpt", credential: { access: "fake-plan", refresh: "fake-refresh", expires: Date.now() + 3600000 } });
+    const ref = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "plan-model", image: true, edit: true }).id };
+    for (const task of ["image.create", "image.edit"] as const) s.models.setColumnTask(s.ada.id, "general", task, [ref, s.ref]);
+    const calls: { url: string; body: any }[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, opts: RequestInit) => {
+      expect(url).toBe("https://api.openai.com/v1/responses");
+      expect(opts.headers).toMatchObject({ authorization: "Bearer fake-plan" });
+      calls.push({ url, body: JSON.parse(String(opts.body)) });
+      return Response.json({ output: [{ type: "image_generation_call", status: "completed", result: png.toString("base64") }] });
+    }));
+    for (const tier of ["fast", "quality"] as const) {
+      const out = await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier, count: 2, size: { width: 1024, height: 1024 }, references: [input] });
+      expect(out.images).toHaveLength(2);
+      expect(calls.at(-1)!.body).toMatchObject({ model: "plan-model", store: false, tools: [{ type: "image_generation", quality: tier === "fast" ? "low" : "high", size: "1024x1024", output_format: "png" }] });
+      expect(calls.at(-1)!.body.input[0].content[1]).toEqual({ type: "input_image", image_url: `data:image/png;base64,${png.toString("base64")}` });
+    }
+    await s.models.image(s.ctx(), { action: "edit", prompt: "Add flowers", image: input });
+    expect(calls.at(-1)!.body.tools[0].action).toBe("edit");
+    for (const ctx of [s.ctx({ pool: "private" }), s.ctx({ localOnly: true })]) {
+      await expect(s.models.image({ ...ctx, overrides: { "image.create": [ref] } }, { action: "create", prompt: "A garden", tier: "fast" })).rejects.toThrow(CloudModelForbidden);
+      await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "fast" });
+    }
+    expect(calls).toHaveLength(5);
+    // Masked edits fall down the list without sending anything to the plan.
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, opts: RequestInit) => {
+      expect(opts.headers).toMatchObject({ authorization: "Bearer fake-key" });
+      return Response.json({ data: [{ b64_json: png.toString("base64") }] });
+    }));
+    expect((await s.models.image(s.ctx(), { action: "edit", prompt: "Add flowers", image: input, mask: input })).resolution.ref).toEqual(s.ref);
+  });
+  it.each(["key", "plan"] as const)("stops on a %s content refusal without echoing provider text or trying the fallback", async kind => {
+    const s = await setup();
+    let ref = s.ref;
+    if (kind === "plan") {
+      const ep = s.models.addPlan(s.ada, { name: "chatgpt", plan: "chatgpt", credential: { access: "fake-plan", refresh: "fake-refresh", expires: Date.now() + 3600000 } });
+      ref = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "plan-model", image: true }).id };
+    }
+    s.models.setColumnTask(s.ada.id, "general", "image.create", [ref, s.workstation.ref]);
+    const preset = s.models.addPreset(s.ada.id, { name: "Image fallbacks", scope: "general" }, "general");
+    expect(s.models.resolve("image.create", s.ctx({ preset: preset.id })).ref).toEqual(ref);
+    vi.stubGlobal("fetch", vi.fn(async () => kind === "key"
+      ? Response.json({ error: { code: "content_policy_violation", message: "SECRET provider prompt" } }, { status: 400 })
+      : Response.json({ output: [{ type: "message", content: [{ type: "refusal", refusal: "SECRET provider prompt" }] }] })));
+    await expect(s.models.image(s.ctx({ preset: preset.id }), { action: "create", prompt: "A garden", tier: "fast" })).rejects.toMatchObject({ code: "image_refusal", message: "Image generation was refused (image_refusal)." });
+    expect(s.workstation.server.images).toEqual([]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it.each([429, 503])("falls back from a plan's HTTP %s to the keyed offering", async status => {
+    const s = await setup();
+    const ep = s.models.addPlan(s.ada, { name: "chatgpt", plan: "chatgpt", credential: { access: "fake-plan", refresh: "fake-refresh", expires: Date.now() + 3600000 } });
+    const ref = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "plan-model", image: true }).id };
+    s.models.setColumnTask(s.ada.id, "general", "image.create", [ref, s.ref]);
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new URL(url).pathname.endsWith("/responses")
+      ? Response.json({ error: { message: "SECRET provider prompt" } }, { status })
+      : Response.json({ data: [{ b64_json: png.toString("base64") }] })));
+    expect((await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier: "fast" })).resolution.ref).toEqual(s.ref);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  it("skips Grok image offerings without sending to the unsupported plan", async () => {
+    const s = await setup();
+    const ep = s.models.addPlan(s.ada, { name: "grok", plan: "grok", credential: { access: "fake-plan", refresh: "fake-refresh", expires: Date.now() + 3600000 } });
+    const ref = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "grok-model", image: true }).id };
+    s.models.setColumnTask(s.ada.id, "general", "image.create", [ref, s.ref]);
+    expect((await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier: "fast" })).resolution.ref).toEqual(s.ref);
+    expect(s.heard).toHaveLength(1);
+    expect(s.heard[0]!.path).toBe("/v1/images/generations");
+  });
   it("removes PNG text and EXIF metadata from provider output", () => {
     const chunk = (tag: string) => { const b = Buffer.alloc(18); b.writeUInt32BE(6); b.write(tag, 4); b.write("secret", 8); return b; };
     const dirty = Buffer.concat([png.subarray(0, 33), chunk("tEXt"), chunk("iTXt"), chunk("zTXt"), chunk("eXIf"), png.subarray(33)]);

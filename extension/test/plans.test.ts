@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PLAN_URLS } from "@lyrica/core";
 import { profile, withModels } from "../../core/test/helpers.ts";
-import { modelRuntimeFor, planCatalog, planError, startPlanSignIn } from "../src/index.ts";
+import { modelRuntimeFor, planCatalog, planImageToken, planError, startPlanSignIn } from "../src/index.ts";
 
 const TOKEN_URLS = { chatgpt: "https://auth.openai.com/api/accounts/oauth/token", grok: "https://auth.x.ai/oauth2/token" };
 const realFetch = globalThis.fetch;
@@ -22,7 +22,7 @@ function tokenEndpoint(status = 200, kind: "chatgpt" | "grok" = "chatgpt") {
   const calls: string[] = [];
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input);
-    if (url !== TOKEN_URLS[kind]) return realFetch(input, init);
+    if (url !== TOKEN_URLS[kind]) throw new Error("Unexpected URL in fake plan transport");
     calls.push(String(init?.body));
     await new Promise((r) => setTimeout(r, 20));
     if (status !== 200) return new Response('{"error":"invalid_grant"}', { status });
@@ -50,8 +50,8 @@ describe("a ChatGPT plan", () => {
 
   it("refuses a name an endpoint can't have, before a sign-in is started for it", async () => {
     const s = await setup();
-    expect(() => s.models.checkEndpointName("My ChatGPT")).toThrow(/lowercase letters/);
-    expect(() => s.models.checkEndpointName("chatgpt-2")).not.toThrow();
+    expect(() => s.models.checkEndpointName("My ChatGPT")).toThrow(/letters, digits/);
+    for (const name of ["chatgpt-2", "ChatGPT", "OpenAI"]) expect(() => s.models.checkEndpointName(name)).not.toThrow();
   });
 
   it("has no URL or key to edit, and merges only with another plan", async () => {
@@ -75,6 +75,29 @@ describe("a ChatGPT plan", () => {
     expect(calls).toHaveLength(1);
   });
 
+  it("shares one refresh between image tokens and chat, with encrypted persistence", async () => {
+    const s = await setup(Date.now() - 1000);
+    const calls = tokenEndpoint();
+    const runtime = await modelRuntimeFor(s.models, s.ctx());
+    const [token, auth] = await Promise.all([planImageToken(s.models, s.ada.id, s.plan.id), runtime.getAuth(s.plan.id)]);
+    expect(calls).toHaveLength(1);
+    expect(token).toBe("at-2");
+    expect(auth?.auth.apiKey).toBe(token);
+    expect(s.models.planCredential(s.ada.id, s.plan.id)?.access).toBe(token);
+  });
+  it("signs the image plan out on a refused refresh without making an image call", async () => {
+    const s = await setup(Date.now() - 1000);
+    const calls = tokenEndpoint(401);
+    await expect(planImageToken(s.models, s.ada.id, s.plan.id)).rejects.toMatchObject({ code: "invalid", message: "The ChatGPT plan is signed out." });
+    expect(calls).toHaveLength(1);
+    expect(s.models.endpoint(s.ada.id, s.plan.id)?.signedOut).toBe(true);
+  });
+  it("reports an image-token refresh outage with a fixed retryable code", async () => {
+    const s = await setup(Date.now() - 1000);
+    tokenEndpoint(503);
+    await expect(planImageToken(s.models, s.ada.id, s.plan.id)).rejects.toMatchObject({ code: "unavailable", message: "The ChatGPT plan could not refresh its sign-in." });
+    expect(s.models.endpoint(s.ada.id, s.plan.id)?.signedOut).toBeUndefined();
+  });
   it("is signed out when OpenAI refuses the refresh, and the router skips it until it signs in again", async () => {
     const s = await setup(Date.now() - 1000);
     tokenEndpoint(400);

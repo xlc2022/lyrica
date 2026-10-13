@@ -194,6 +194,7 @@ export interface CredentialsChange { save: boolean }
 
 /** What a model can do: discovered where the endpoint says, else set by hand. */
 export interface Capabilities {
+  useFor?: "fast" | "quality" | "both";
   contextWindow?: number; tools?: boolean; vision?: boolean; embedding?: boolean; image?: boolean; edit?: boolean; upscale?: boolean;
   /** The thinking levels it offers, besides off. */
   reasoning?: ("low" | "medium" | "high")[];
@@ -231,8 +232,6 @@ export interface OfferingInfo extends Capabilities {
   size?: number;
   /** An image model on a host: the confirmed recipe's name. */
   recipe?: string;
-  /** A host recipe's create tiers; absent means both. */
-  useFor?: "fast" | "quality" | "both";
   /** Moved to a library entry of its own (Not this model). */
   separate?: boolean;
 }
@@ -251,8 +250,14 @@ export interface EndpointInfo {
   addresses?: string[];
   /** A host's pinned key fingerprint. */
   fingerprint?: string;
-  /** API keys are never sent back. */
+  /** Full API keys are never sent back. */
   hasApiKey: boolean;
+  /** Masked display only: the last four characters, omitted for short keys and plans. */
+  keyLast4?: string;
+  /** Explicit account label returned by plan sign-in, if supplied; never a token. */
+  planAccount?: string;
+  /** Cloud row pills; Image includes adapter support and an API key where required. */
+  cloudCapabilities?: ("Text" | "Vision" | "Image")[];
   shared: boolean;
   /** A local endpoint over plain HTTP outside this machine and the tailnet. */
   unencrypted: boolean;
@@ -1117,13 +1122,16 @@ export interface Transcription { text: string; seconds: number; model: string }
 // --- Messages ---
 
 /** One part of a stored message, as the UI draws it. */
+export interface ImageRefusal { code: "image_refusal"; offeringId: string; endpointId: string }
+export interface ImageRetryOptions { next?: { offeringId: string; label: string }; userMessage?: { n: number; text: string }; canEdit: boolean }
+/** GET …/image-calls/:toolCallId: current retry choices. POST { next?: boolean }: retry the stored call. */
 export interface ImagePart { type: "image"; paths: string[]; model: string; tier?: "fast" | "quality" }
 
 export type MessagePart =
   | ImagePart
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
-  | { type: "tool"; toolCallId: string; name: string; args: unknown; result?: string; isError?: boolean; threads?: ThreadRef[] }
+  | { type: "tool"; toolCallId: string; name: string; args: unknown; result?: string; isError?: boolean; threads?: ThreadRef[]; imageRefusal?: ImageRefusal }
   | { type: "recall"; ids: string[] }
   | { type: "remember"; ids: string[] }
   /**
@@ -1391,7 +1399,7 @@ export type ThreadEvent =
   | { type: "thinking"; delta: string }
   | { type: "tool_start"; toolCallId: string; name: string; args: unknown }
   /** `result` is short: the first lines of the tool's output. */
-  | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean; threads?: ThreadRef[]; image?: ImagePart }
+  | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean; threads?: ThreadRef[]; image?: ImagePart; imageRefusal?: ImageRefusal }
   /** Memories recalled for this turn, automatically or with recall/read_memory. */
   | { type: "recall"; ids: string[] }
   /** Notes she saved. */

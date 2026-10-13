@@ -573,37 +573,56 @@ the Private column too, unless a thread picks its own model, so its
 
 ### Image models
 
-Her `image` tool creates and edits pictures through OpenAI or through
+Her `image` tool creates and edits pictures through a ChatGPT plan, a keyed
+OpenAI-compatible endpoint, or through
 confirmed recipes on a paired model host, and upscales through host recipes
 only. It uses the `image.create`, `image.edit` and `image.upscale` task
 lists; private and local-only threads always use the Private column's. Each
 list is an ordered fallback. In **Models → Image models**, open a recipe
 and set **Use for** to **Fast**, **Quality** or **Both** (default) per host.
-Create takes the first matching recipe and falls back down the same list. Hosts
+Create takes the first matching recipe or cloud offering and falls back down
+the same list. Hosts
 keep their recipe defaults for both fast and quality; OpenAI uses low or
 high quality. Results are saved in the encrypted thread folder, with no
 prompt metadata.
 
-For OpenAI, add an endpoint under Models, Hosts and endpoints: Name
-`openai-images`, Kind cloud, Base URL `https://api.openai.com/v1`, and the
-API key. A ChatGPT subscription endpoint doesn't supply this API. If
-discovery doesn't mark the model as able to make and edit images, record it
-through the HTTP API (signed in, with an `Origin` matching her address);
-there is no CLI flag for it yet:
+Hosts and endpoints distinguishes **ChatGPT plan** and **Grok plan** from
+**API key** services. Cloud rows show **Text**, **Vision** and **Image** when
+available; Image requires a supported adapter and a key when it needs one.
+Plans show their type, "only you" and an account label if sign-in supplies
+one; keyed services show their URL and `key ••••last4`. Add endpoint suggests
+**ChatGPT** for that plan and **OpenAI** for api.openai.com; you can rename
+either. Model choices show the endpoint after the model. Put the plan first
+in the General threads column's image task list and the API key after it to
+use the key as a paid fallback; save the column to a named preset if wanted.
 
-```text
-POST /api/u/<user-id>/endpoints/<endpoint-id>/models
-{ "modelId": "gpt-image-1", "image": true, "edit": true }
-```
+For OpenAI, add an endpoint under Models, Hosts and endpoints: Name
+`openai-images` (or keep the suggested `OpenAI`), Kind Custom, select Cloud, Base URL `https://api.openai.com/v1`, and the
+API key. Any model marked as making images can use this adapter. A ChatGPT
+plan uses its own Responses image tool instead: sign in with ChatGPT, mark
+a plan offering as making and editing images, and put it in the same task
+lists. Masked edits skip the plan; maskless edits work there. Open the
+endpoint's model list and turn on **Image generation** and **Image editing**
+for a model that supports them. **Use for** chooses **Fast**, **Quality** or
+**Both**, saved at once. The same controls are in the cloud model's block
+on **Image models**. Only the endpoint's owner, or an administrator for a
+shared endpoint, can change them.
 
 Then put models in the lists, under Models, Tasks, or from a terminal
-(`private` for the Private column, `general` for the General column):
+(`private` for the Private column, `general` for the General column).
+Create skips models tagged only for the other tier:
 
 ```sh
 lyrica admin models preset set general image.create openai-images/gpt-image-1 --user ada
 lyrica admin models preset set general image.edit openai-images/gpt-image-1 --user ada
 lyrica admin models preset set private image.upscale '<host>/<recipe>' --user ada
 ```
+
+A content refusal stops, and the image says the model declined it. **Edit message** copies the
+source into the composer while it is still the last user message; **Resend**
+repeats the image call on the same model; **Try <model>** appears when another
+eligible endpoint follows it. Retries check portrait consent again and keep
+your saved task lists.
 
 Add reference photos and choose their cloud setting in **Settings → Portrait
 photos**. Ask once a day is the default; **Send today** allows them through
