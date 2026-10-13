@@ -48,6 +48,10 @@ third column with one control per column).
   table it will copy (task, first model, "+N fallbacks"), then Save. The
   scope is the column's. A preset's own Edit opens the same drawer to
   rename it, with **Delete** at its foot, confirmed by a dialog.
+- **Names** are 1 to 40 characters, unique per user ignoring case, and
+  never "Custom". The drawer shows "A preset called <name> already
+  exists." under Name and keeps Save from saving; core and the daemon
+  refuse the same.
 - **Deleting a preset in use** leaves each column that followed it Custom
   with the same lists, and each thread that chose it on its column again.
   Nothing loses a model silently.
@@ -92,8 +96,9 @@ third column with one control per column).
    column follows Local; the General column follows Cloud or Mixed, as the
    old default said. Thread choices of `cloud`/`custom` become those
    presets. `model_profiles` and `thread_choices.profile` stay one release,
-   kept in step for Local, Cloud and the default, so a rollback keeps the
-   user's choices. A test migrates from every released `user.db` schema.
+   kept in step (Local with local, Cloud with cloud, Mixed with custom, and
+   the General column's preset with the default where it is one of those),
+   so a rollback keeps the user's choices. A test migrates from every released `user.db` schema.
 3. **Daemon.** `GET`/`POST presets`, `PATCH`/`DELETE presets/:id`,
    `PUT columns/:column` (`{ preset }`), `PUT columns/:column/:task`
    (`{ models }`, `{ same }` or `{}`, as profiles take today),
@@ -113,10 +118,15 @@ third column with one control per column).
      icon button; **Nothing matches** when the search finds none; then
      **Save to <name>** and **Save as preset…** while the column is Custom;
      then **New preset…** last.
+   - Roles: the button has `aria-haspopup="dialog"` and `aria-expanded`;
+     the popover is a dialog labelled "Preset" holding the search box and
+     a list of presets, each preset a button with its Edit button beside
+     it, not inside it (so not `role="menu"`, since a menu item can't hold
+     a button).
    - Keyboard: the button opens the menu with focus in the search box;
      arrows move through items, Enter picks, Escape closes and returns
      focus to the button. The Edit icon has an accessible name ("Edit
-     <name>") and a tooltip.
+     <name>") and a tooltip. docs/ux.md records this keyboard model.
    - Remove **Use Cloud instead**, **Use Custom instead**, **Show Custom
      too**, **Hide Custom**, **Show Cloud too**, **Hide Cloud** and the
      third column.
@@ -152,5 +162,7 @@ profile` commands became `… preset`.
 
 ## Handoff notes
 
-- 2026-10-13: brief written. Next: mockup to UI review and PR review, then
+- 2026-10-13: brief written; PR review's three findings (rollback for
+  Mixed, preset names, the menu's role) folded in. The build PR carries
+  the DESIGN, contracts, models and ux doc changes (PR review's call). Next: mockup to UI review and PR review, then
   the build on lunasa.
