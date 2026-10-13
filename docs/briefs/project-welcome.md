@@ -49,13 +49,17 @@ ever reads its text.
      **Fold in** per row, one primary **Fold in all** with the count in
      mono ("Fold in all 3"); a row goes once it is folded. Folded work takes the
      project's limits (a child's settings are its parent's or narrower), so
-     each row names, muted, any folder, machine, repository or network host
-     the fold would remove, then **Add to project** (secondary): it grants
-     those folders, machines, repositories and hosts to the project chat
-     through the existing settings route, as Save on Project settings
-     would, after which the row lists nothing lost and Fold in keeps the
-     thread's access. Nothing is added without that click. ux.md's Fold in
-     row says so. Folding a thread
+     a row whose fold would remove access shows, under its title, a muted
+     line **Loses** and the names in mono (folders, then machines, then
+     repositories, then network hosts; comma-separated, at most three, then
+     "+n"; the full list in the line's title tooltip), followed by **Add to
+     project** (secondary). No line when the fold removes nothing; on a
+     phone the line wraps under the title and never squeezes the row's Fold
+     in button. Add to project grants those folders, machines,
+     repositories and hosts to the project chat through the existing
+     settings route, as Save on Project settings would, after which the
+     line goes and Fold in keeps the thread's access. Nothing is added
+     without that click. ux.md's Fold in row says all this. Folding a thread
      in moves it, with its child threads, under the project, as Continue
      as project does.
    - **Add repository** opens the Add repository popover in place under
