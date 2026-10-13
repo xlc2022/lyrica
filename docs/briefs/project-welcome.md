@@ -101,7 +101,18 @@ ever reads its text.
   `POST …/:projectId/folds/:callId/apply` `{ index? }` applies one or all.
 - A `threads` tool action `draft` `{ goal?, instructions? }`: stores a
   draft on the project, shown on Project settings until the user saves or
-  discards it; never applied by itself.
+  discards it; never applied by itself. Storage: new nullable draft
+  columns on `project_settings` (core/src/migrations.ts), an expand-only
+  user.db step with a migration test from every released schema.
+  command-rules and spend-share also add user.db steps; whichever of
+  these merges later renumbers its step after merging main.
+- How she reads the ticked threads: Continue posts the user's ticked ids
+  with the first message, and lyricad puts a bounded read of each
+  (`latestEntries`, formatted as the `threads` tool's `read` formats it,
+  through `openThreadView`) into that one turn's context. Only the threads
+  the user ticked, only that turn; the `read` action itself is never
+  widened beyond the project's own threads. Unlogged threads (`unlogged`)
+  are left out of the recent list and of that context.
 
 **PR 2, web** (`feature/project-welcome`): the welcome card and its three
 starters, the in-place recent-work list, the Fold in card, Continue as
@@ -115,7 +126,8 @@ welcome card, the open list and the Fold in card go to UI review.
 - Tests: a fold round trip keeps children, checklist and wake-ups; a fold
   across pools is refused; a local-only thread is never listed for, or
   folded into, a cloud project chat; a draft is never applied without
-  Save; Continue as project copies the grants and the local-only switch.
+  Save; an unlogged thread is never listed or read; the user.db step
+  migrates from every released schema; Continue as project copies the grants and the local-only switch.
 - `npm run typecheck` and `npm test` pass; PR review verifies both PRs and
   UI review verifies PR 2.
 
@@ -144,7 +156,10 @@ from its Build plan, following the patterns of the suggestions/:callId/start
 route in daemon/src/routes.ts, daemon/src/api.ts and core/src/threads.ts.
 Private memory only through openThreadView; model calls only through
 core/models; no message text in logs or temp files. Add the back-end tests
-from Done when. Update docs/contracts.md and DESIGN.md "Projects". Run
+from Done when. The draft columns are an expand-only user.db step with a
+migration test from every released schema; if command-rules or
+spend-share merged a user.db step first, number yours after it. Update
+docs/contracts.md and DESIGN.md "Projects". Run
 npm run typecheck, then the core and daemon test suites one at a time.
 Commit naming principle 1, push, and stop: print the head commit and a
 summary. Do not open a PR.
