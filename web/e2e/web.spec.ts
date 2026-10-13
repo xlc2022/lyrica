@@ -893,7 +893,7 @@ test("Search finds messages by a rare word, marks it, and a hit opens its thread
   await newThread(page, "General");
 
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
-  const side = page.locator("aside.panel");
+  const side = page.getByRole("complementary", { name: "Threads" });
   await side.getByText("Search", { exact: true }).click();
   const box = side.getByRole("searchbox", { name: "Search titles and messages" });
   await expect(box).toHaveAttribute("placeholder", "Search titles and messages");
@@ -1931,7 +1931,7 @@ test("the split view: a thread from its card opens in the panel, links inside it
   const fact = page.locator(".tfacts").getByRole("button", { name: /^Threads/ });
   await expect(fact).toHaveAttribute("aria-pressed", "false");
   await fact.click();
-  const threadList = page.locator("aside.panel");
+  const threadList = page.getByRole("complementary", { name: "Threads" });
   await expect(threadList.getByRole("heading", { level: 1, name: "Threads" })).toBeFocused();
   await expect(fact).toHaveAttribute("aria-pressed", "true");
   expect(page.url()).toMatch(/\/panel\/.*\/threads$/);
