@@ -445,3 +445,43 @@ describe("the router", () => {
     expect(models.resolveModel("chat", models.childContext(models.callContext(ada.id, "general", "web/lo"), "web/c7", { tier: "strong" }))).toEqual(localRef);
   });
 });
+
+describe("presets", () => {
+  it("the Private column can Save to only a private preset", async () => {
+    const { models, ada, cloudRef, localRef } = await withModels();
+    models.setColumnTask(ada.id, "general", "chat", cloudRef);
+    const general = models.addPreset(ada.id, { name: "night", scope: "general" }, "general");
+    expect(() => models.savePreset(ada.id, general.id, "private")).toThrow("the Private column can use only private presets");
+    // A private preset accepts the Private column's table.
+    models.setColumnTask(ada.id, "private", "chat", localRef);
+    const localSetup = models.addPreset(ada.id, { name: "local-setup", scope: "private" }, "private");
+    models.savePreset(ada.id, localSetup.id, "private");
+    expect(models.column(ada.id, "private").preset?.id).toBe(localSetup.id);
+  });
+
+  it("keeps the legacy profile mirror in step with a thread's preset, and clears it when the preset goes", async () => {
+    const { models, ada, users, cloudRef } = await withModels();
+    models.setColumnTask(ada.id, "general", "chat", cloudRef);
+    const mixed = models.addPreset(ada.id, { name: "mixed", scope: "general" }, "general");
+    const other = models.addPreset(ada.id, { name: "other", scope: "general" }, "general");
+    // Mark `mixed` as the migrated Mixed preset, as migration step 8 records it.
+    const db = users.openUserDb(ada.id);
+    set(db, "INSERT INTO settings (key, value) VALUES ('presets.mixed', ?)", mixed.id);
+    db.close();
+    const profile = (thread: string) => {
+      const d = users.openUserDb(ada.id);
+      const row = d.prepare("SELECT profile FROM thread_choices WHERE thread = ?").get(thread) as { profile: string | null } | undefined;
+      d.close();
+      return row?.profile ?? null;
+    };
+    models.setThreadPreset(ada.id, "general", "web/cloud", "builtin.cloud");
+    models.setThreadPreset(ada.id, "general", "web/mixed", mixed.id);
+    models.setThreadPreset(ada.id, "general", "web/other", other.id);
+    expect(profile("web/cloud")).toBe("cloud");
+    expect(profile("web/mixed")).toBe("custom");
+    expect(profile("web/other")).toBeNull();
+    models.removePreset(ada.id, mixed.id);
+    expect([models.threadPreset(ada.id, "web/mixed"), profile("web/mixed")]).toEqual([null, null]);
+  });
+});
+

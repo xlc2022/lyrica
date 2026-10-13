@@ -1595,6 +1595,7 @@ export class Models {
       db.transaction(() => {
         const r = db.prepare("SELECT id, scope FROM model_presets WHERE id = ?").get(id) as { id: string; scope: PresetScope } | undefined;
         if (!r) throw new NoModel(`no preset ${id}`);
+        if (column === "private" && r.scope !== "private") throw new CloudModelForbidden("the Private column can use only private presets");
         const checked = this.checkedTable(userId, this.readColumn(db, column).entries, r.scope === "private" ? "local" : undefined);
         db.prepare("UPDATE model_presets SET entries = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(checked), new Date().toISOString(), id);
         db.prepare("UPDATE model_columns SET preset = ?, from_preset = NULL, entries = '{}' WHERE column = ?").run(id, column);
@@ -1615,7 +1616,7 @@ export class Models {
         if (!r) throw new NoModel(`no preset ${id}`);
         if (r.builtin) throw new Error("the built-in presets stay");
         db.prepare("UPDATE model_columns SET preset = NULL, from_preset = NULL, entries = ? WHERE preset = ?").run(r.entries, id);
-        db.prepare("UPDATE thread_choices SET preset = NULL WHERE preset = ?").run(id);
+        db.prepare("UPDATE thread_choices SET preset = NULL, profile = NULL WHERE preset = ?").run(id);
         db.prepare("DELETE FROM model_presets WHERE id = ?").run(id);
         db.prepare("DELETE FROM settings WHERE key = ? AND value = ?").run(MIXED_PRESET, id);
         syncLegacy(db);
@@ -1804,7 +1805,11 @@ export class Models {
         const localOnly = pool === "private" || !!db.prepare("SELECT 1 FROM local_only_threads WHERE thread = ?").get(threadId);
         if (localOnly && r.scope !== "private") throw new CloudModelForbidden("a private or local-only thread can use only private presets");
       }
-      this.threadChoice(userId, threadId, "preset", preset);
+      // Keep the legacy profile mirror in step, so a rollback keeps the thread's choice: Cloud writes cloud, the migrated Mixed preset writes custom.
+      const mixed = (db.prepare("SELECT value FROM settings WHERE key = ?").get(MIXED_PRESET) as { value: string } | undefined)?.value;
+      const profile = preset === "builtin.cloud" ? "cloud" : preset === mixed ? "custom" : null;
+      db.prepare("INSERT OR IGNORE INTO thread_choices (thread) VALUES (?)").run(threadId);
+      db.prepare("UPDATE thread_choices SET preset = ?, profile = ? WHERE thread = ?").run(preset, profile, threadId);
     });
   }
 
