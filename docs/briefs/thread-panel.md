@@ -42,7 +42,8 @@ as the Claude app's Overview button and thread cards do.
    cannot work on a row: the first click already navigates.)
 3. **View thread** on a thread card in the chat: a button in the card's action
    row (`className="sm"`, the default secondary look) that opens the panel, and a
-   double-click on the card does the same. Below 1180 px both open the full page.
+   double-click on the card does the same. Ignore the double-click when it lands on a link or
+   button, or leaves a non-empty `getSelection()` (a user selecting text to copy). Below 1180 px both open the full page.
    The small "Open" link on subagent runs (`ThreadLinks`, Messages.tsx) opens the
    panel at 1180 px and wider.
 
