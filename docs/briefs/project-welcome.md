@@ -172,7 +172,10 @@ Branch feature/project-welcome off origin/main. Read AGENTS.md,
 docs/ux.md (section 6 and the vocabulary list), docs/web.md,
 docs/briefs/projects-web.md and docs/briefs/project-welcome.md. Build
 "PR 2, web" from the Build plan in web/src (Project.tsx, ThreadMenu.tsx,
-Shell.tsx), reusing the Repositories popover, the Suggested threads card
+Shell.tsx; since #260, New project lives in NewButtons/NewRow and
+submenus open as flyouts from web/src/flyout.tsx, so Continue as project
+is a plain ThreadMenu item beside Make project…, with no submenu),
+reusing the Repositories popover, the Suggested threads card
 and the in-place pattern of Change passphrase…; no new widgets, dialogs or
 button looks. Labels are nouns or the names given in the brief, no
 captions. Update docs/ux.md section 6 and its vocabulary list, and
