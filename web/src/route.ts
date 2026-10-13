@@ -19,6 +19,7 @@ export type Route =
   | { page: "threads"; userId: string; pool: Pool; threadId: string }
   | { page: "memory"; userId: string; pool?: Pool; id?: string }
   | { page: "sleep"; userId: string }
+  | { page: "notifications"; userId: string }
   /**
    * The Models area, at one of its tabs (Overview when none). `add` is a page under its tab: "host" is Add model host
    * under Hosts and endpoints (`…/hosts/add-host`), "text" is Download text model under Downloads (`…/downloads/text`),
@@ -74,6 +75,7 @@ export function parse(hash: string): Route {
   if (section === "p" && pool && b) return { page: "project", userId, pool, threadId: b, ...(c ? { section: c } : {}) };
   if (section === "memory") return { page: "memory", userId, pool, id: pool ? b : undefined };
   if (section === "sleep") return { page: "sleep", userId };
+  if (section === "notifications") return { page: "notifications", userId };
   if (section === "models") {
     const tab = MODELS_TABS.find((t) => t === a);
     const add = UNDER.find((x) => x.tab === tab && x.part === b)?.add;
@@ -105,6 +107,7 @@ export function href(r: Route): string {
     case "threads": return `#/u/${e(r.userId)}/t/${r.pool}/${e(r.threadId)}/threads`;
     case "memory": return `#/u/${e(r.userId)}/memory` + (r.pool && r.id ? `/${r.pool}/${e(r.id)}` : "");
     case "sleep": return `#/u/${e(r.userId)}/sleep`;
+    case "notifications": return `#/u/${e(r.userId)}/notifications`;
     case "models": {
       const under = UNDER.find((x) => x.tab === r.tab && x.add === r.add);
       return `#/u/${e(r.userId)}/models` + (r.tab && r.tab !== "overview" ? `/${r.tab}` : "") + (under ? `/${under.part}` : "");

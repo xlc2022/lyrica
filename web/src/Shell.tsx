@@ -11,7 +11,7 @@ import { Thread, findThread } from "./Thread.tsx";
 import { Memory, memoryTitle } from "./Memory.tsx";
 import { AdminPage, SettingsPage } from "./Panel.tsx";
 import { FilesPage } from "./Files.tsx";
-import { NotificationsCard, useWaiting } from "./Notifications.tsx";
+import { NotificationsCard, NotificationsPage, useWaiting } from "./Notifications.tsx";
 import { SleepCard, SleepPage, useSleepOverview, type SleepState } from "./Sleep.tsx";
 import { BackendCard, ModelsArea, useCleanupCount } from "./Models.tsx";
 import { ThreadMenu, useThreadMenu } from "./ThreadMenu.tsx";
@@ -111,6 +111,8 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
       <SleepPage ctx={ctx} />
     ) : r.page === "models" ? (
       <ModelsArea ctx={ctx} tab={r.tab} add={r.add} />
+    ) : r.page === "notifications" ? (
+      <NotificationsPage ctx={ctx} />
     ) : r.page === "settings" ? (
       <SettingsPage ctx={ctx} section={r.section} />
     ) : r.page === "admin" ? (
@@ -457,7 +459,7 @@ function Sidebar({ ctx, users, route, trail, threads, error, onAuthChange, onClo
               onKeyDown={(e) => { if (e.key === "Escape" && query) { e.preventDefault(); setQuery(""); } }} />
           </div>
         </details>
-        <a href={href({ page: "settings", userId: user.id, section: "notifications" })} aria-current={route.page === "settings" && route.section === "notifications" ? "page" : undefined}>
+        <a href={href({ page: "notifications", userId: user.id })} aria-current={route.page === "notifications" ? "page" : undefined} data-nav="notifications">
           <Icon name="bell" />Notifications{ctx.waiting > 0 && <span className="count" aria-label={`${ctx.waiting} waiting`}>{ctx.waiting}</span>}
         </a>
         <a href={href({ page: "memory", userId: user.id })} aria-current={route.page === "memory" ? "page" : undefined}><Icon name="memory" />Memory</a>

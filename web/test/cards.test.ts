@@ -28,7 +28,7 @@ describe("welcome cards", () => {
     expect(html).toContain('class="card"');
     expect(html).toContain("Notifications</h2>");
     expect(html).toContain("Nothing waiting.");
-    expect(html).toContain('href="#/u/user/settings/notifications">All 0</a>');
+    expect(html).toContain('href="#/u/user/notifications">All 0</a>');
   });
 
   it("shows the last sleep time in mono, or only the empty sentence before any run", () => {

@@ -18,7 +18,6 @@ import { checkName, her, setHer } from "./name.ts";
 import { SleepModeField, SleepTimeSection } from "./Sleep.tsx";
 import { TailnetSection } from "./Tailnet.tsx";
 import { UpdatesSection } from "./Updates.tsx";
-import { NotificationsSection } from "./Notifications.tsx";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { href } from "./route.ts";
 import { PageHead, type ShellContext } from "./Shell.tsx";
@@ -35,7 +34,6 @@ export const PRESETS: Record<string, Pronouns> = {
 type SectionDef = { key: string; label: string; body: (ctx: ShellContext, rest: string) => React.ReactNode };
 
 const SETTINGS: SectionDef[] = [
-  { key: "notifications", label: "Notifications", body: (ctx) => <NotificationsSection ctx={ctx} /> },
   { key: "profile", label: "Profile", body: (ctx) => <ProfileSection ctx={ctx} /> },
   { key: "appearance", label: "Appearance", body: (ctx) => <AppearanceSection ctx={ctx} /> },
   { key: "unlock", label: "Unlock and lock", body: (ctx) => <UnlockSection ctx={ctx} /> },
