@@ -709,8 +709,9 @@ display settings (in `user.db`), passwords, endpoints, model hosts (pair,
 pair again, addresses, status, pause, resume, restart, management,
 downloads, the image library), the text library, hub tokens (last four
 characters only), the Models page overview (`GET …/models/page`, endpoints
-with live status, at most 3 seconds each, and none asked again while it was
-seen down in the last 30 seconds), offerings, model
+with live status, at most 3 seconds each, none asked again while it was seen
+down in the last 30 seconds, and a cloud endpoint whose provider takes a real
+probe asked at most every 90 seconds), offerings, model
 groups, Clean up and the models notice, the presets and columns with the default
 preset and thinking level, recent calls, network
 defaults, machines, Git accounts (`…/git-accounts`, with what each can see

@@ -386,7 +386,7 @@ class Models {                                              // new Models(keyrin
   // Discovery and health
   discover(actor, endpointId): Promise<Offering[]>          // GET /v1/models; a host's /host/v1/models and confirmed recipes
   probe(userId, endpointId, timeoutMs?): Promise<{ state: "up" | "down"; warning? }>
-  pageStatus(userId, endpointId, budgetMs = 3000): Promise<{ state; warning?; status?; error?; unpaired? }>
+  pageStatus(userId, endpointId, budgetMs = 3000): Promise<{ state; warning?; status?; error?; unpaired? }>   // a probed cloud endpoint is asked at most every 90 s
   reportUp(userId, endpointId) / reportDown(endpointId)     // the health cache: HEALTH_MS = 30 s
   sameModel(userId, offeringId): { offeringId }[]           // same base name and kind, other endpoints
   // Redirects and clean-up

@@ -429,7 +429,7 @@ export interface ServingSettings {
  * the host doesn't know the repository, so name it (owner/name, modelscope:owner/name or a link). Administrator (shared host) or owner.
  */
 /** POST /api/u/:userId/offerings/:offeringId/reload → the host's answer: applies saved settings now. A shared host needs an administrator. */
-/** GET /api/u/:userId/models/page → ModelsPage: what the Models page shows, endpoints with live status. An endpoint seen down in the last 30 s isn't asked again, and each gets 3 s. */
+/** GET /api/u/:userId/models/page → ModelsPage: what the Models page shows, endpoints with live status. An endpoint seen down in the last 30 s isn't asked again; a cloud endpoint whose provider takes a real probe is asked at most every 90 s (local ones stay at 30 s); each gets 3 s. */
 export interface ModelsPage {
   endpoints: (EndpointInfo & Probe)[];
   /** A host that is down says why; `unpaired` when it has revoked this server, so pairing again is the fix. */

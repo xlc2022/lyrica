@@ -48,10 +48,11 @@ export function SideStatus({ page, checkedAt }: { page?: ModelsPage; checkedAt: 
   );
 }
 
-/** One endpoint: a dot, its name with the whole of it in the tooltip, and its state — cloud ones add when they were last checked. */
+/** One endpoint: a dot, its name, and its state — cloud ones add when they were last checked. The tooltip holds the whole line, so a truncated one still reads in full. */
 function StatusItemView({ item, checked }: { item: StatusItem; checked?: number }) {
+  const ago = checked !== undefined ? `checked ${checkedAgo(checked)} ago` : undefined;
   return (
-    <span className="status-item" title={item.name}>
+    <span className="status-item" title={[item.name, item.word, ago].filter(Boolean).join(" · ")}>
       <span className={`dot ${item.dot}`} aria-hidden="true" />
       <span className="status-name">{item.name}</span>
       {item.word ? <span className="status-state">· {item.word}</span> : item.dot === "up" && <span className="sr-only"> · up</span>}

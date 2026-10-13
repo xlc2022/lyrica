@@ -43,7 +43,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   loading older messages as needed, and marks it a moment, as the Pinned
   popover does; only the thread and the message number wait in session
   storage for a thread not yet open), **Notifications** with the count of decisions waiting (read with
-  the thread list, every 30 seconds and on focus), Memory, the Sort menu, the thread list, the **status panel** (`src/SideStatus.tsx`: above the user row, its own divider line; up to two most-used local endpoints side by side and up to two cloud ones on their own lines — each a dot and name (docs/ux.md §5), a short state word when it isn't simply online ("Blackwell · paused"), plus "· checked 20 s ago" in mono for the cloud ones, ticking as time passes; picked from `GET …/models/page`'s recent calls; nothing is drawn with no endpoints), and the user. The **Sort
+  the thread list, every 30 seconds and on focus), Memory, the Sort menu, the thread list, the **status panel** (`src/SideStatus.tsx`: above the user row, its own divider line; up to two most-used local endpoints side by side and up to two cloud ones on their own lines — each a dot and name (docs/ux.md §5), a short state word when it isn't simply online ("Blackwell · paused"), plus "· checked 20 s ago" in mono for the cloud ones, ticking as time passes; each item's tooltip holds the whole line; ranked by `GET …/models/page`'s `endpointUses` counts; nothing is drawn with no endpoints), and the user. The **Sort
   menu** ("Sort: By date ▾") has the sorts By date (sections Today, Yesterday,
   Previous 7 days, Previous 30 days, Older), Last activity, Start date, Title and My groups (one
   section per group with its count, then Not in a group, and a New group

@@ -2476,12 +2476,13 @@ test("the sidebar's status panel shows the endpoints on any page, and a very lon
   // A very long name ellipsizes in place, with the whole of it in the tooltip, and never pushes the sidebar wide.
   const eps = await page.evaluate(async (path) => (await fetch(path)).json(), `/api/u/${userId}/endpoints`) as { id: string; name: string }[];
   const gpuId = eps.find((e) => e.name === "gpu")!.id;
+  const routerId = eps.find((e) => e.name === "router")!.id;
   const LONG = "gpu-with-a-name-long-enough-to-ellipsize"; // the longest a name may be (40 chars), and too wide for half the panel's top row
-  const rename = (name: string) => page.evaluate(async ([path, name]) => {
+  const rename = (id: string, name: string) => page.evaluate(async ([path, name]) => {
     const r = await fetch(path, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) });
     if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
-  }, [`/api/u/${userId}/endpoints/${gpuId}`, name] as const);
-  await rename(LONG);
+  }, [`/api/u/${userId}/endpoints/${id}`, name] as const);
+  await rename(gpuId, LONG);
   await page.reload();
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
   const renamed = line.locator(".status-item").filter({ hasText: LONG });
@@ -2492,8 +2493,27 @@ test("the sidebar's status panel shows the endpoints on any page, and a very lon
   expect(await nameBox.evaluate((el) => el.scrollWidth > el.clientWidth), `the long name should ellipsize at ${page.viewportSize()!.width} px`).toBe(true);
   await noHorizontalScroll(page);
 
-  // Back as it was, for the tests that follow.
-  await rename("gpu");
+  // A cloud row with a very long name: the name ellipsizes first and "checked N s ago" stays visible; the tooltip holds the whole line.
+  const LONG_CLOUD = "router-with-a-name-long-enough-to-trim"; // within the 40-char name limit, and too wide for a cloud line beside its checked time
+  await rename(routerId, LONG_CLOUD);
+  await page.reload();
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  const cloudItem = line.locator(".status-item").filter({ hasText: LONG_CLOUD });
+  await expect(cloudItem).toBeVisible();
+  await noHorizontalScroll(page); // settle the drawer before measuring or shooting
+  expect(await cloudItem.locator(".status-name").evaluate((el) => el.scrollWidth > el.clientWidth), `the long cloud name should ellipsize at ${page.viewportSize()!.width} px`).toBe(true);
+  const checked = cloudItem.locator(".status-state", { hasText: "checked" });
+  await expect(checked).toHaveText(/· checked \d+ (s|min) ago/);
+  await expect(checked).toBeInViewport();
+  // Nothing of it is clipped away: the checked time ends inside the item's own box.
+  const [itemBox, checkedBox] = [await cloudItem.boundingBox(), await checked.boundingBox()];
+  expect(checkedBox!.x + checkedBox!.width).toBeLessThanOrEqual(itemBox!.x + itemBox!.width + 1);
+  await expect(cloudItem).toHaveAttribute("title", new RegExp(`^${LONG_CLOUD} · checked \\d+ (s|min) ago$`));
+  if (page.viewportSize()?.width === 390) await page.screenshot({ path: "shots/status-390.png" });
+
+  // Back as they were, for the tests that follow.
+  await rename(gpuId, "gpu");
+  await rename(routerId, "router");
 });
 
 test("Tasks: the table shows each column's models; a cell's drawer adds, reorders and removes, and Same as points a task at another; the Preset menu switches, saves and edits a preset; Settings → Model profiles lands here", async ({ page, baseURL }) => {
