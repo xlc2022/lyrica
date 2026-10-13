@@ -1424,7 +1424,7 @@ function Calls({ ctx, project, pool }: { ctx: MCtx; project?: string; pool?: "ge
   const shown = (calls.data ?? []).filter((c) => !hidden(ctx.me.display, c.pool));
   return (
     <Frame ctx={ctx} tab="calls" title="Recent calls" facts={calls.data && plural(shown.length, "call", "calls")} actions={
-      <label className="project-filter">Project <select value={selected ? `${selected.pool}/${selected.id}` : ""} onChange={e => {
+      <label className="project-filter">Project <select aria-label="Project" value={selected ? `${selected.pool}/${selected.id}` : ""} onChange={e => {
         const t = projects.find(t => `${t.pool}/${t.id}` === e.target.value);
         go({ page: "models", userId: ctx.user.id, tab: "calls", ...(t ? { project: t.id, pool: t.pool } : {}) });
       }}><option value="">All projects</option>{(["general", "private"] as const).map(p => {
