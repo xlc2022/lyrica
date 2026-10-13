@@ -210,7 +210,7 @@ nothing else. No code path gives a general view a private handle.
 
 | Area | Methods |
 |---|---|
-| Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title?, project?, goal? })` (a child of a child is refused), `setProject`, `setGoal`, `projectOf`, `projectThreads`, `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children?, keepMemories? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared; `keepMemories` removes no notes or project page and leaves a text-free thread tombstone `t:<thread>` in each forgotten thread's place), `getThreadTombstone(id)` → `{ deletedAt } \| undefined`, `citingThread(id)` → the IDs of the notes and pages citing the thread or its entries, `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)`, `copyEntries(from, to, { upTo? })` (a thread's entries into another, for forks and branches), `exportEntries(threadId)` → `ExportedEntry[]` (the conversation alone, for Share with: `conversationOnly` drops her context, memory tool calls and results and thinking, and strips citations; `MEMORY_TOOLS` names the tools), `importEntries(threadId, entries)` (into an empty thread of this pool, as its own, indexed, entries), `entriesMentioning(needle)` → `{ thread, n }[]` (where an upload is still mentioned) |
+| Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title?, project?, goal? })` (a child of a child is refused), `setProject`, `foldThread(projectId, threadId, childrenOnly?)` (existing children become project siblings, preserving entries, steps and wake-ups), `setGoal`, `projectOf`, `projectThreads`, `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children?, keepMemories? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared; `keepMemories` removes no notes or project page and leaves a text-free thread tombstone `t:<thread>` in each forgotten thread's place), `getThreadTombstone(id)` → `{ deletedAt } \| undefined`, `citingThread(id)` → the IDs of the notes and pages citing the thread or its entries, `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)`, `copyEntries(from, to, { upTo? })` (a thread's entries into another, for forks and branches), `exportEntries(threadId)` → `ExportedEntry[]` (the conversation alone, for Share with: `conversationOnly` drops her context, memory tool calls and results and thinking, and strips citations; `MEMORY_TOOLS` names the tools), `importEntries(threadId, entries)` (into an empty thread of this pool, as its own, indexed, entries), `entriesMentioning(needle)` → `{ thread, n }[]` (where an upload is still mentioned) |
 | Pins | `pinEntry(threadId, n, pinned)`, `pins(threadId?)` → `PinnedEntry[]` (one thread's, or the pool's), oldest first |
 | Reactions | `react(threadId, n, emoji, by, on)` → `Reaction[]` (`{ emoji, by: string[] }`, `by` user IDs or `LYRICA_REACTS`); `entryPage` entries carry `reactions`. Pool schema step 2 (`entries.reactions`, JSON) |
 | Drafts | `draft(threadId)` → `{ text, updatedAt }` or undefined, `setDraft(threadId, text)` (empty deletes it); one per thread, gone with the thread. Pool schema step 3 (`drafts`) |
@@ -752,6 +752,8 @@ One model-facing tool: `delegate({ action?, ... })`.
   (3) per turn; `list` in a project's thread lists the project's other
   threads with `ChildInfo.state` (`ThreadState`) and `needsYou`; new actions
   `suggest({ threads: { title, task }[] })` (a card, no thread made),
+  `fold({ ids: string[] })` (up to ten existing threads; a card, no move),
+  `draft({ goal?, instructions? })` (`ThreadsHost.draft`, unsaved project settings),
   `resolve({ id? })` and `reopen({ id })` (`ThreadsHost.resolve`; a
   project's thread resolves only itself). Guidance:
   `PROJECT_CHAT_GUIDELINES` and `PROJECT_THREAD_GUIDELINES`. `user.db`
@@ -1146,7 +1148,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `PATCH` making one) also pins the thread; `Display.projects: "all" |
     "only" | "none"` filters the list; `PATCH threads/:id` with `project`,
     `goal`, `paused`, `threadsModel`, `threadsThinking`, `threadsFallback` and `watchThreads`
-    (`user.db` `project_settings`, IDs and switches only), and
+    (`user.db` `project_settings`, settings and unsaved drafts), and
     `projectSettings.pageId` names the project page's memory ID; a project chat's
     look at its threads is marked `[Watching threads]` (`WATCHING_MARK`,
     core/src/threads.ts), which only `daemon/src/watch.ts` writes: a
@@ -1165,6 +1167,38 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     project's threads idle for 7 days (`AUTO_RESOLVE_DAYS`); Paused and Hide
     stop a project's working threads; a user's message in a paused
     project's thread is `409`;
+  - **project welcome** (principle 1): `GET threads/:pool/recent?top=10&project=:id`
+    → `ThreadSummary[]`, most recently active first, at most ten logged
+    top-level non-project threads of that pool; hidden threads stay out.
+    Local-only threads appear only for a local-only asking project chat.
+    `SendRequest.recentThreadIds` supplies up to ten distinct selected IDs
+    to a project chat; only those are read, through `openThreadView`, with
+    `latestEntries` and the `threads read` formatter (ten messages per thread,
+    16,000 characters total), in that turn's system context only. An
+    unlogged or incompatible selection is refused; a busy project chat is
+    `409`, so selection never leaks into a queued turn. `threads read`
+    keeps its existing project-membership boundary.
+    `POST threads/:pool/:projectId/fold { threadId }` → `ThreadSummary`;
+    `threads fold { ids }` suggests moves without applying them;
+    `POST …/:projectId/folds/:callId/apply { index? }` → `ThreadSummary[]`
+    applies one or all, once per index, tracked in `started_suggestions`
+    and the overview's `started`. Every move is same-pool, top-level,
+    non-project work, with its children flattened into project siblings;
+    local-only work needs a local-only project chat. Child state, steps
+    and wake-ups keep their IDs; workspace grants narrow to the project.
+    `POST threads/:pool/:threadId/continue-as-project` → a new pinned
+    project's `ThreadSummary`: copies workspace and model settings,
+    including local-only, moves children, leaves the source conversation,
+    and sends a first linked message asking for drafts with a selected
+    read of the source. An unlogged source is refused.
+    `threads draft { goal?, instructions? }` keeps unsaved text (each at
+    most 2,000 characters) in `project_settings.draft_goal` and
+    `draft_instructions`, nullable columns added by expand-only user step 9.
+    `ThreadSummary.projectSettings.draftGoal` / `draftInstructions` expose
+    them; other settings changes preserve them. A user `PATCH` saving
+    `goal` / `instructions` clears the respective draft; `discardDraft: true`
+    clears both without applying them. `WorkspaceSettings.reparent(threadId, projectId, pool)` narrows
+    existing grants and network access to the new project. No extra model-facing tool.
   - pins: `PUT`/`DELETE …/messages/:n/pin` (the user's messages and her
     replies only, `400` otherwise, `409` in a subagent's thread), `GET
     …/pins` → `Pins { pins: Pin[], shortened }`, `Message.pinned`,

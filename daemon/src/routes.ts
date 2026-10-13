@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
-  describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
+  recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, firstLine, GIT_KINDS, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress, claudeCodeInstalled,
@@ -834,6 +834,76 @@ export function apiRoutes(d: Lyricad): Route[] {
         return summary(d, user, pool, o[pool], thread, []);
       });
     }),
+    route("GET", `${u}/threads/:pool/recent`, (r): Api.ThreadSummary[] => {
+      const user = d.userFor(r), pool = poolOf(r);
+      const view = s().memory.openThreadView(user.id, pool);
+      try {
+        const projectId = r.query.get("project");
+        if (projectId && !view.own.getThread(projectId)?.project) throw new HttpError(404, "no such project");
+        const local = !!projectId && s().models.callContext(user.id, pool, projectId).localOnly;
+        const top = Number(r.query.get("top") ?? 10);
+        if (!Number.isInteger(top) || top < 1 || top > 10) throw new HttpError(400, "top is 1 to 10");
+        return view.own.listThreads().filter(th => recentWorkAllowed(th, s().models.callContext(user.id, pool, th.id).localOnly, local))
+          .map(th => summary(d, user, pool, view.own, th, []))
+          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, top);
+      } finally { view.close(); }
+    }),
+    route("POST", `${t}/fold`, async (r) => {
+      const user = d.userFor(r), pool = poolOf(r);
+      const { threadId } = await r.json<Api.FoldThread>();
+      d.refuseWhileDraining();
+      if (typeof threadId !== "string") throw new HttpError(400, "fold needs a thread id");
+      return foldWork(d, user, pool, r.params.threadId!, threadId);
+    }),
+    route("POST", `${t}/continue-as-project`, async (r) => {
+      const user = d.userFor(r), pool = poolOf(r);
+      d.refuseWhileDraining();
+      const view = s().memory.openThreadView(user.id, pool);
+      let project: Thread;
+      try {
+        const source = view.own.getThread(r.params.threadId!);
+        if (!source) throw new HttpError(404, "no such thread");
+        if (!recentWorkAllowed(source, false, true)) throw new HttpError(400, "continue needs a logged top-level non-project thread");
+        const local = s().models.callContext(user.id, pool, source.id).localOnly;
+        if (!local && view.own.listThreads({ includeHidden: true, parent: source.id, children: true }).some(th => s().models.callContext(user.id, pool, th.id).localOnly)) throw new HttpError(400, "local-only work needs a local-only project chat");
+        project = view.own.createThread({ interface: source.interface, title: source.title, project: true });
+        s().models.inheritContext(s().models.callContext(user.id, pool, source.id), project.id);
+        const ws = s().workspace.settings(user.id);
+        const { parent: _parent, ...settings } = ws.effective(source.id);
+        ws.setThread(project.id, pool, settings);
+        s().projects.pin(user.id, pool, project.id, true);
+        moveWork(d, user, pool, view.own, project.id, source.id, 1, true);
+      } finally { view.close(); }
+      await s().host.get(user.id, pool, project.id).send(`Continue from [t:${r.params.threadId!}]. Draft Goal and Instructions for this project with threads draft, for the person to edit in Project settings.`, { recentThreadIds: [r.params.threadId!] });
+      const result = s().memory.openThreadView(user.id, pool);
+      try { return summary(d, user, pool, result.own, result.own.getThread(project.id)!, []); } finally { result.close(); }
+    }),
+    route("POST", `${t}/folds/:callId/apply`, async (r) => {
+      const user = d.userFor(r), pool = poolOf(r), projectId = r.params.threadId!;
+      const { index } = await r.json<Api.ApplyFold>();
+      d.refuseWhileDraining();
+      const view = s().memory.openThreadView(user.id, pool);
+      try {
+        if (!view.own.getThread(projectId)?.project) throw new HttpError(400, "folds are a project chat's");
+        const entries = view.own.entryPage(projectId, { limit: 100_000 }).entries;
+        const call = entries.flatMap(e => {
+          const data = e.data as { message?: { role?: string; content?: unknown } };
+          return data.message?.role === "assistant" && Array.isArray(data.message.content) ? data.message.content : [];
+        }).find(p => p.type === "toolCall" && p.id === r.params.callId && p.name === "threads" && p.arguments?.action === "fold");
+        const ids: unknown = call?.arguments?.ids;
+        if (!Array.isArray(ids) || !ids.length || ids.length > WELCOME_LIMITS.threads || ids.some(id => typeof id !== "string") || new Set(ids).size !== ids.length) throw new HttpError(404, "no such fold suggestion");
+        const wanted = index === undefined ? ids.map((_, i) => i) : [index];
+        if (wanted.some(i => !Number.isInteger(i) || i < 0 || i >= ids.length)) throw new HttpError(400, "no such fold index");
+        const started = s().projects.started(user.id, pool, projectId);
+        const pending = wanted.filter(i => !started.has(`${r.params.callId}#${i}`));
+        for (const i of pending) checkFold(d, user, pool, view.own, projectId, ids[i]);
+        return pending.map(i => {
+          const folded = foldWork(d, user, pool, projectId, ids[i], anchorOfCall(entries, r.params.callId!));
+          s().projects.markStarted(user.id, pool, projectId, r.params.callId!, i, folded.id);
+          return folded;
+        });
+      } finally { view.close(); }
+    }),
     route("GET", t, (r) => {
       const user = d.userFor(r);
       return owner(d, user, (o) => summary(d, user, poolOf(r), o[poolOf(r)], threadOf(o, r), []));
@@ -852,7 +922,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         }
         const project = !!store.getThread(thread.id)!.project;
         const settings = change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined || change.threadsFallback !== undefined || change.watchThreads !== undefined || change.commandRules !== undefined;
-        if ((change.goal !== undefined || change.instructions !== undefined || settings) && !project) {
+        if ((change.goal !== undefined || change.instructions !== undefined || change.discardDraft !== undefined || settings) && !project) {
           throw new HttpError(400, "only a project has a goal, instructions and project settings");
         }
         if (change.title !== undefined) store.setTitle(thread.id, String(change.title));
@@ -863,6 +933,12 @@ export function apiRoutes(d: Lyricad): Route[] {
         if (change.goal !== undefined) store.setGoal(thread.id, String(change.goal));
         if (change.instructions !== undefined) {
           try { store.setProjectInstructions(thread.id, String(change.instructions), `user:${user.id}`); } catch (err) { throw new HttpError(400, (err as Error).message); }
+        }
+        if (change.goal !== undefined || change.instructions !== undefined || change.discardDraft === true) {
+          s().projects.set(user.id, pool, thread.id, {
+            ...(change.goal !== undefined || change.discardDraft === true ? { draftGoal: null } : {}),
+            ...(change.instructions !== undefined || change.discardDraft === true ? { draftInstructions: null } : {}),
+          });
         }
         if (change.commandRules !== undefined) s().workspace.settings(user.id).setCommandRules(pool, thread.id, change.commandRules);
         if (settings) {
@@ -990,7 +1066,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("POST", `${t}/messages`, async (r) => {
       const user = d.userFor(r);
       d.refuseWhileDraining();
-      const { text, confirm } = await r.json<Api.SendRequest>();
+      const { text, confirm, recentThreadIds } = await r.json<Api.SendRequest>();
       const thread = owner(d, user, (o) => threadOf(o, r));
       // What was sent is no longer a draft; a refused send keeps it.
       const sent = (x: Api.SendResponse) => { owner(d, user, (o) => o[poolOf(r)].setDraft(thread.id, "")); return x; };
@@ -998,7 +1074,18 @@ export function apiRoutes(d: Lyricad): Route[] {
       if (String(text ?? "").trim() === "/sleep") return sent({ queued: false, sleep: await startSleep(d, user, poolOf(r), confirm === true) });
       const project = owner(d, user, (o) => o[poolOf(r)].projectOf(thread.id));
       if (project && project !== thread.id && s().children.stopped(user.id, poolOf(r), project)) throw new HttpError(409, "this project is paused or hidden; resume it to write in its threads");
-      const result = await s().host.get(user.id, poolOf(r), thread.id).send(unmarked(String(text ?? "")));
+      if (recentThreadIds !== undefined) {
+        if (!thread.project || !Array.isArray(recentThreadIds) || recentThreadIds.length > WELCOME_LIMITS.threads || recentThreadIds.some(id => typeof id !== "string") || new Set(recentThreadIds).size !== recentThreadIds.length) throw new HttpError(400, "recent work needs a project and at most ten distinct thread ids");
+        const view = s().memory.openThreadView(user.id, poolOf(r));
+        try {
+          const local = s().models.callContext(user.id, poolOf(r), thread.id).localOnly;
+          for (const id of recentThreadIds) {
+            const row = view.own.getThread(id);
+            if (!row || !recentWorkAllowed(row, s().models.callContext(user.id, poolOf(r), id).localOnly, local)) throw new HttpError(400, "this project can't read the selected work");
+          }
+        } finally { view.close(); }
+      }
+      const result = await s().host.get(user.id, poolOf(r), thread.id).send(unmarked(String(text ?? "")), { recentThreadIds });
       // The user wrote: the thread no longer waits on them, and a resolved one reopens.
       if (thread.child) s().children.userWrote(user.id, poolOf(r), thread.id);
       return sent(result);
@@ -2070,6 +2157,8 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
     ...(pref?.group ? { group: pref.group } : {}), ...(pref?.unread ? { unread: true } : {}),
     ...(th.project ? { project: true as const, ...(th.goal ? { goal: th.goal } : {}), ...instructionsOf(store, th.id) } : {}),
     ...(settings ? { projectSettings: {
+      ...(settings.draftGoal !== undefined ? { draftGoal: settings.draftGoal } : {}),
+      ...(settings.draftInstructions !== undefined ? { draftInstructions: settings.draftInstructions } : {}),
       commandRules: d.services!.workspace.settings(user.id).commandRules(pool, th.id), pageId: `p:${projectSlug(th.id)}`, paused: settings.paused, watchThreads: settings.watch, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
       ...(settings.fallback !== undefined ? { threadsFallback: settings.fallback } : {}),
     } } : {}),
@@ -2305,6 +2394,35 @@ function entryN(r: Request): number {
   const n = Number(r.params.n);
   if (!Number.isInteger(n) || n < 1) throw new HttpError(400, "no such message");
   return n;
+}
+
+/** Fold eligibility is checked for every moved thread before changing any parent. */
+function checkFold(d: Lyricad, user: User, pool: Pool, store: PoolStore, projectId: string, threadId: string): void {
+  const s = d.services!, project = store.getThread(projectId), thread = store.getThread(threadId);
+  if (!project?.project || !thread) throw new HttpError(404, "no such project or thread in this pool");
+  if (projectId === threadId || thread.project || thread.child || thread.subagent) throw new HttpError(400, "only top-level non-project work can be folded");
+  const moved = [thread, ...store.listThreads({ includeHidden: true, parent: threadId, children: true })];
+  if (!s.models.callContext(user.id, pool, projectId).localOnly && moved.some(t => s.models.callContext(user.id, pool, t.id).localOnly)) throw new HttpError(400, "local-only work needs a local-only project chat");
+}
+
+function moveWork(d: Lyricad, user: User, pool: Pool, store: PoolStore, projectId: string, threadId: string, anchor: number, childrenOnly = false): void {
+  const s = d.services!;
+  checkFold(d, user, pool, store, projectId, threadId);
+  const ids = store.foldThread(projectId, threadId, childrenOnly);
+  for (const id of ids) {
+    s.workspace.settings(user.id).reparent(id, projectId, pool);
+    if (s.models.callContext(user.id, pool, projectId).localOnly) s.models.setLocalOnly(user.id, pool, id, true);
+    s.children.adopt(user.id, pool, id, projectId, anchor);
+    s.host.reload(user.id, pool, id);
+  }
+}
+
+function foldWork(d: Lyricad, user: User, pool: Pool, projectId: string, threadId: string, at?: number): Api.ThreadSummary {
+  const view = d.services!.memory.openThreadView(user.id, pool);
+  try {
+    moveWork(d, user, pool, view.own, projectId, threadId, at ?? view.own.nextEntryN(projectId));
+    return summary(d, user, pool, view.own, view.own.getThread(threadId)!, []);
+  } finally { view.close(); }
 }
 
 /**

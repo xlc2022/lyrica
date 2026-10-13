@@ -803,6 +803,8 @@ export interface ThreadStep { text: string; state: "done" | "doing" | "todo" }
 export interface CommandRule { prefix: string; decision: "allow" | "ask" | "forbid" }
 
 export interface ProjectSettingsInfo {
+  draftGoal?: string;
+  draftInstructions?: string;
   commandRules: CommandRule[];
   /** The project page's memory ID, for the memory browser. The page exists once instructions are saved or sleep writes it. */
   pageId: string;
@@ -834,6 +836,8 @@ export interface NewThread { pool: Pool; title?: string; project?: boolean; goal
 export interface ThreadChange {
   /** `group` and `unread` are the user's own view of the thread, kept in user.db; `null` takes it out of its group. */
   group?: string | null; unread?: boolean;
+  /** Clears unsaved welcome drafts without changing Goal or Instructions. */
+  discardDraft?: boolean;
   title?: string; hidden?: boolean; project?: true; goal?: string; instructions?: string;
   commandRules?: CommandRule[];
   paused?: boolean; threadsModel?: ModelRef | ModelRef[] | null; threadsThinking?: ThinkingLevel | null; threadsFallback?: boolean | null; watchThreads?: boolean;
@@ -850,6 +854,12 @@ export interface StartThread { title?: string }
  * Suggested threads card's threads (`index`), or all of them not yet started.
  */
 export interface StartSuggestion { index?: number }
+/** POST …/threads/:pool/:projectId/fold → ThreadSummary. Same-pool top-level work only. */
+export interface FoldThread { threadId: string }
+/** POST …/threads/:pool/:projectId/folds/:callId/apply → ThreadSummary[]. Index or all; idempotent. */
+export interface ApplyFold { index?: number }
+/** POST …/threads/:pool/:threadId/continue-as-project → ThreadSummary. Source stays; children move. */
+/** GET …/threads/:pool/recent?top=10&project=:id → ThreadSummary[]. Logged top-level non-project work only. */
 /** GET …/threads/:pool/:projectId/overview → ProjectOverview */
 export interface ProjectOverview {
   threads: ThreadSummary[];
@@ -1179,6 +1189,8 @@ export interface MessagePage { messages: Message[]; hasMore: boolean }
  */
 export interface SendRequest {
   text: string;
+  /** Selected recent work, at most ten IDs; project chat only, read in this turn alone. */
+  recentThreadIds?: string[];
   /** With text `/sleep` in manual mode: the user confirmed. */
   confirm?: boolean;
 }

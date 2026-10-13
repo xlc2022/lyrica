@@ -45,6 +45,19 @@ The web UI renders image parts and manages portraits in Settings → Portrait ph
 It saves on the host and refreshes discovered offerings; the tag is in the
 host's `recipes.json`, with absent reading as both, not a new database column.
 
+## Project welcome back end
+
+Principle 1: a project can continue from existing work without retyping it.
+The recent-work, fold and Continue as project routes are in `routes.ts`,
+with request shapes in `api.ts` and the full contract in [contracts.md](contracts.md).
+Recent work is logged, same-pool and top-level; local-only text reaches only
+local-only project chats. Selected reads use `openThreadView` and stay in
+one turn's system context, never in stored messages. Fold suggestions need
+user application; Goal and Instructions drafts stay unsaved in encrypted
+user.db until the user saves or discards them. Moving threads keeps their
+IDs, checklists, wake-ups and child state, narrowing workspace grants to
+the project. The welcome web interface is a separate build.
+
 ## Starting and unlocking
 
 `lyrica serve [--runtime <dir>] [--port <port>]` starts it. It listens on

@@ -996,6 +996,27 @@ Project settings and Recent calls by project. The briefs are
   all the way down. Depth stays 1: a project's thread delegates to
   subagents but starts no threads, and a project can't hold a project. A
   thread belongs to its project for good.
+- **Bringing recent work into a project** (principle 1): the back end lists
+  up to ten recent logged top-level non-project threads of the same pool.
+  Selected threads supply a bounded read for that project-chat turn only,
+  through `openThreadView`; a local-only thread is listed or read only for
+  a local-only project chat. `threads draft` keeps unsaved Goal and
+  Instructions in encrypted user.db, separate from the saved settings;
+  only the user's Save applies them, and discard removes them.
+  `threads fold` suggests existing thread IDs; the user applies one or all
+  from the call. Folding moves the thread and its child threads under the
+  project, retaining their state, checklists and wake-ups, with cards;
+  child threads become siblings so depth stays one. Cross-pool moves,
+  projects, subagents, already attached work and local-only work into a
+  cloud-capable project chat are refused.
+- **Continue as project** creates a new pinned project in the source
+  thread's pool, copying its workspace grants, model preset and overrides,
+  and local-only switch. The first message links to the source and asks for
+  editable Goal and Instructions drafts, using the source's own model.
+  Its child threads move under the project with their state intact. The
+  source conversation stays in its original thread. These back-end
+  operations are in `daemon/src/routes.ts`; the welcome interface is in
+  `docs/briefs/project-welcome.md`.
 - **Lyrica coordinates in the project chat.** She is the same person
   there; only her guidance and context differ. She answers a quick question
   in place, starts a thread for each piece of work (several tasks in one
